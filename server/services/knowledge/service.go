@@ -50,6 +50,8 @@ type Config struct {
 	InvocationGuard func(context.Context, string) (func(), error)
 	// IntegrationGuard 从统一集成授权源恢复直接调用或自动任务的原授权。
 	IntegrationGuard func(context.Context, json.RawMessage) (func(), error)
+	// IntegrationPublicationGuard 在一次授权锁内核对全部 API Key 和原自动任务。
+	IntegrationPublicationGuard func(context.Context, []json.RawMessage, string) (func(), error)
 	// Events 复用进程内提交事件。
 	Events *events.Hub
 }
@@ -92,7 +94,11 @@ func (s *Service) Start(ctx context.Context) error {
 		return err
 	}
 	for _, link := range links {
-		receipt, err := s.config.Engine.GetReceipt(ctx, link.RequestID)
+		receiptID := link.RequestID
+		if link.Operation == constants.KnowledgeRetryAuthorityOperation {
+			receiptID = link.ReceiptRequestID
+		}
+		receipt, err := s.config.Engine.GetReceipt(ctx, receiptID)
 		if err != nil {
 			var e *core.Error
 			if errors.As(err, &e) && e.Code == core.ErrNotFound {
@@ -154,7 +160,7 @@ func (s *Service) recoverLibrary(ctx context.Context, library, previousJob strin
 	if origin.Operation != "job.accept" || origin.Backend != "local" || origin.ConnectionID != "local" || origin.KnowledgeBaseID != job.LibraryID || origin.ResourceID != job.ID || origin.ConfigurationID == "" {
 		return status_error.KnowledgeInvalid
 	}
-	session, err := s.config.References.GetTaskConfiguration(ctx, origin.ConfigurationID)
+	session, err := s.jobConfiguration(ctx, job, origin.ConfigurationID)
 	if err != nil {
 		return err
 	}
@@ -387,6 +393,19 @@ func (s *Service) drive(jobID string, session models.KnowledgeTaskConfiguration)
 		logx.Errorf("knowledge task lookup failed: job_id=%s error=%v", jobID, err)
 		return
 	}
+	// 首次尝试已由所有接纳入口固定；仅重试可能附加授权，必须在驱动处按当前尝试恢复。
+	if job.Attempt > 1 {
+		origin, readErr := s.config.References.GetOperation(s.ctx, job.RequestID)
+		err = readErr
+		if err == nil {
+			session, err = s.jobConfiguration(s.ctx, job, origin.ConfigurationID)
+		}
+	}
+	if err != nil {
+		s.mutex.Unlock()
+		logx.Errorf("knowledge task authority lookup failed: job_id=%s error=%v", jobID, err)
+		return
+	}
 	if running := s.running[jobID]; running != 0 {
 		if running != job.Attempt {
 			s.restart[jobID] = session
@@ -448,11 +467,18 @@ func (s *Service) drive(jobID string, session models.KnowledgeTaskConfiguration)
 			}
 		}
 		if err == nil {
+			var release func()
+			release, err = s.publishAttemptGuard(session, jobID, job.Attempt)(attempt.ctx)
+			if err == nil {
+				release()
+			}
+		}
+		if err == nil {
 			_ = s.config.References.SetHostDiagnostic(attempt.ctx, job.RequestID, "active", "", "")
-			_, err = s.config.Engine.RunOrganize(attempt.ctx, core.OrganizeInput{JobID: jobID, Instruction: session.Message, Embed: embedder.Embed, Reader: bridge.TextDocumentReader{}, Generator: generator, PublishGuard: s.publishGuard(session), PrepareDocument: func(ctx context.Context, source string, artifact core.ReadArtifact) (core.ReadArtifact, error) {
+			_, err = s.config.Engine.RunOrganize(attempt.ctx, core.OrganizeInput{JobID: jobID, Instruction: session.Message, Embed: embedder.Embed, Reader: bridge.TextDocumentReader{}, Generator: generator, PublishGuard: s.publishAttemptGuard(session, jobID, job.Attempt), PrepareDocument: func(ctx context.Context, source string, artifact core.ReadArtifact) (core.ReadArtifact, error) {
 				// 核心在外部嵌入结束后取得同一授权闸门，避免撤权期间的迟到索引提交。
 				indexEmbedder := embedder
-				indexEmbedder.PublishGuard = s.publishGuard(session)
+				indexEmbedder.PublishGuard = s.publishAttemptGuard(session, jobID, job.Attempt)
 				return s.config.Engine.PrepareIndexedDocument(ctx, jobID, source, artifact, indexEmbedder)
 			}, OnProgress: func(_ context.Context) { s.emitTaskChanged(jobID, session.KnowledgeBaseID) }, OnPublished: func(_ context.Context, _ *core.Receipt) { s.emitTaskChanged(jobID, session.KnowledgeBaseID) }})
 		}
@@ -505,7 +531,7 @@ func (s *Service) resume(ctx context.Context, job string, restart bool) error {
 	if err != nil {
 		return err
 	}
-	session, err := s.config.References.GetTaskConfiguration(ctx, origin.ConfigurationID)
+	session, err := s.jobConfiguration(ctx, j, origin.ConfigurationID)
 	if err != nil {
 		return err
 	}
@@ -640,10 +666,36 @@ func (s *Service) remotePublicationGuard(session models.KnowledgeTaskConfigurati
 	return guard, guard != nil, nil
 }
 
+// publishAttemptGuard 将真实提交同时绑定原尝试，旧模型准备不能驱动已重试的新尝试。
+func (s *Service) publishAttemptGuard(session models.KnowledgeTaskConfiguration, jobID string, attempt int) func(context.Context) (func(), error) {
+	return func(ctx context.Context) (func(), error) {
+		release, err := s.publishGuard(session)(ctx)
+		if err != nil {
+			return nil, err
+		}
+		current, err := s.config.Engine.GetJob(ctx, jobID)
+		if err != nil {
+			release()
+			return nil, bridge.MapError(err)
+		}
+		if current.Attempt != attempt {
+			release()
+			return nil, status_error.KnowledgeCancelled
+		}
+		return release, nil
+	}
+}
+
 func (s *Service) publishGuard(session models.KnowledgeTaskConfiguration) func(context.Context) (func(), error) {
 	return func(ctx context.Context) (func(), error) {
 		remoteRelease := func() {}
-		if session.RemoteSubject != "" {
+		if len(session.PublicationAuthorizations) > 0 {
+			var err error
+			remoteRelease, err = s.retryPublicationGuard(ctx, session)
+			if err != nil {
+				return nil, err
+			}
+		} else if session.RemoteSubject != "" {
 			guard, _, err := s.remotePublicationGuard(session)
 			if err != nil {
 				return nil, err
@@ -674,6 +726,10 @@ func (s *Service) publishGuard(session models.KnowledgeTaskConfiguration) func(c
 
 // Retry 复核当前授权后重试原冻结任务，不读取其他pending来源。
 func (s *Service) Retry(ctx context.Context, request, job string, version int64) (*core.Receipt, error) {
+	return s.retry(ctx, request, job, version, nil)
+}
+
+func (s *Service) retry(ctx context.Context, request, job string, version int64, extra json.RawMessage) (*core.Receipt, error) {
 	j, err := s.config.Engine.GetJob(ctx, job)
 	if err != nil {
 		return nil, bridge.MapError(err)
@@ -682,13 +738,54 @@ func (s *Service) Retry(ctx context.Context, request, job string, version int64)
 	if err != nil {
 		return nil, err
 	}
-	session, err := s.config.References.GetTaskConfiguration(ctx, link.ConfigurationID)
+	session, err := s.jobConfiguration(ctx, j, link.ConfigurationID)
 	if err != nil {
 		return nil, err
+	}
+	if prior, e := s.config.Engine.GetReceipt(ctx, request); e == nil {
+		release, guardErr := s.publishGuard(session)(ctx)
+		if guardErr != nil {
+			return nil, guardErr
+		}
+		prior, e = s.config.Engine.RetryJob(ctx, core.JobActionInput{RequestID: request, JobID: job, ExpectedVersion: version})
+		release()
+		if e != nil {
+			return nil, bridge.MapError(e)
+		}
+		if e = s.resume(ctx, job, true); e != nil {
+			return nil, e
+		}
+		return prior, nil
+	} else if !errors.Is(bridge.MapError(e), status_error.KnowledgeNotFound) {
+		return nil, bridge.MapError(e)
+	}
+	if len(extra) > 0 {
+		session.PublicationAuthorizations = append(session.PublicationAuthorizations, extra)
+		session.ID = request + "/configuration"
 	}
 	release, err := s.publishGuard(session)(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if len(session.PublicationAuthorizations) > 0 {
+		session.ID = request + "/configuration"
+		frozen, e := s.config.References.FreezeTaskConfiguration(ctx, session)
+		if e != nil {
+			release()
+			return nil, e
+		}
+		session = frozen
+		digest, _ := json.Marshal(struct {
+			Job           string // 原核心任务身份。
+			Version       int64  // 已读核心版本。
+			Configuration string // 本次冻结授权配置。
+		}{job, version, session.ID})
+		sum := sha256.Sum256(digest)
+		e = s.config.References.BeginOperation(ctx, models.KnowledgeOperationLink{RequestID: request + "/authority", ReceiptRequestID: request, Operation: constants.KnowledgeRetryAuthorityOperation, Digest: hex.EncodeToString(sum[:]), Backend: "local", ConnectionID: "local", KnowledgeBaseID: j.LibraryID, ExpectedResourceID: job, TargetAttempt: j.Attempt + 1, TargetVersion: version, ConfigurationID: session.ID})
+		if e != nil {
+			release()
+			return nil, e
+		}
 	}
 	receipt, err := s.config.Engine.RetryJob(ctx, core.JobActionInput{RequestID: request, JobID: job, ExpectedVersion: version})
 	release()

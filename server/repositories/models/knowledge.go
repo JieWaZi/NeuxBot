@@ -63,7 +63,7 @@ type KnowledgeOperationLink struct {
 	// RequestID 是主库和核心共用的稳定幂等身份。
 	RequestID string `gorm:"primaryKey" json:"requestId"`
 	// Operation 是实际领域操作。
-	Operation string `gorm:"index:idx_knowledge_chat_operation,priority:2" json:"operation"`
+	Operation string `gorm:"index:idx_knowledge_chat_operation,priority:2;index:idx_knowledge_retry_authority,priority:1" json:"operation"`
 	// Digest 保护相同请求不可替换内容。
 	Digest string `json:"-"`
 	// Backend 是完整资源协议。
@@ -75,13 +75,17 @@ type KnowledgeOperationLink struct {
 	// ResourceID 是核心回执确认的资源身份。
 	ResourceID string `json:"resourceId"`
 	// ExpectedResourceID 冻结写入前已知的目标身份，供未知结果对账校验，不代表已提交。
-	ExpectedResourceID string `json:"-"`
+	ExpectedResourceID string `gorm:"index:idx_knowledge_retry_authority,priority:2" json:"-"`
 	// JobID 是核心知识任务引用。
 	JobID string `gorm:"index" json:"jobId"`
 	// ChatID 是用户通过普通聊天发起操作时的聊天引用。
 	ChatID string `gorm:"index:idx_knowledge_chat_operation,priority:1" json:"chatId"`
 	// ExecutionID 是用户通过普通聊天发起操作时的执行引用，不参与知识模型调用。
 	ExecutionID string `gorm:"index" json:"executionId"`
+	// TargetAttempt 标记重试候选对应的核心尝试号，只有真实核心回执可使候选生效。
+	TargetAttempt int `gorm:"index:idx_knowledge_retry_authority,priority:3" json:"-"`
+	// TargetVersion 是接纳重试前的核心任务版本，用于核对回执。
+	TargetVersion int64 `json:"-"`
 	// ConfigurationID 是知识作业独立冻结模型选择的引用。
 	ConfigurationID string `gorm:"index" json:"configurationId"`
 }

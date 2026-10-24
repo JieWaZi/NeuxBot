@@ -7,6 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
 	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
 	"github.com/JieWaZi/neux-knowledge/core"
+	"sync"
 )
 
 // KnowledgeRecovery 是服务端生成的持久授权信封，不接受请求正文中的主体声明。
@@ -25,12 +26,29 @@ type KnowledgeRecovery struct {
 
 // RestoreKnowledgeGuard 只恢复原身份；授权失效不能通过重读新 Key 配置扩权。
 func (s *Service) RestoreKnowledgeGuard(ctx context.Context, raw json.RawMessage) (func(), error) {
-	var in KnowledgeRecovery
-	if json.Unmarshal(raw, &in) != nil || in.Origin != "direct_api" || in.Subject == "" || in.Subject != in.Authorization.Identity.KeyID || in.Invocation != nil || in.Authorization.ResourceKind != constants.IntegrationResourceKindKnowledge || in.Permission.PolicyVersion < 1 {
+	return s.RestoreKnowledgeGuards(ctx, []json.RawMessage{raw}, "")
+}
+
+// RestoreKnowledgeGuards 在一次授权读锁内核对全部重试约束和原自动运行，禁止嵌套读锁。
+func (s *Service) RestoreKnowledgeGuards(ctx context.Context, raws []json.RawMessage, runID string) (func(), error) {
+	if s == nil || s.config.Keys == nil || (runID != "" && s.config.Tasks == nil) || (len(raws) == 0 && runID == "") {
 		return nil, status_error.IntegrationForbidden
 	}
-	if in.Authorization.ResourceID == "" || len(in.Authorization.Required) != 2 || in.Authorization.Required[0] != constants.IntegrationCapabilityRetrieve || in.Authorization.Required[1] != constants.IntegrationCapabilityOrganize {
-		return nil, status_error.IntegrationForbidden
+	s.policy.RLock()
+	for _, raw := range raws {
+		var in KnowledgeRecovery
+		if json.Unmarshal(raw, &in) != nil || in.Origin != "direct_api" || in.Invocation != nil || in.Subject != in.Authorization.Identity.KeyID || in.Subject == "" || in.Authorization.ResourceKind != constants.IntegrationResourceKindKnowledge || in.Authorization.ResourceID == "" || len(in.Authorization.Required) != 2 || in.Authorization.Required[0] != constants.IntegrationCapabilityRetrieve || in.Authorization.Required[1] != constants.IntegrationCapabilityOrganize || in.Permission.PolicyVersion < 1 {
+			s.policy.RUnlock()
+			return nil, status_error.IntegrationForbidden
+		}
+		if _, err := s.authorize(ctx, in.Authorization.Identity, in.Authorization.ResourceKind, in.Authorization.ResourceID, in.Authorization.Required); err != nil {
+			s.policy.RUnlock()
+			return nil, err
+		}
 	}
-	return s.AcquireGuard(ctx, in.Authorization)
+	if runID != "" {
+		return s.acquireInvocationGuardLocked(ctx, runID)
+	}
+	var once sync.Once
+	return func() { once.Do(s.policy.RUnlock) }, nil
 }

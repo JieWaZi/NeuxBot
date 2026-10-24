@@ -15,6 +15,11 @@ func (s *Service) AcquireInvocationGuard(ctx context.Context, runID string) (fun
 		return nil, status_error.IntegrationForbidden
 	}
 	s.policy.RLock()
+	return s.acquireInvocationGuardLocked(ctx, runID)
+}
+
+// acquireInvocationGuardLocked 在调用方持有唯一授权读锁时验证自动任务。
+func (s *Service) acquireInvocationGuardLocked(ctx context.Context, runID string) (func(), error) {
 	fail := func() (func(), error) { s.policy.RUnlock(); return nil, status_error.IntegrationForbidden }
 	run, err := s.config.Tasks.GetRun(ctx, runID)
 	if err != nil {
@@ -22,8 +27,8 @@ func (s *Service) AcquireInvocationGuard(ctx context.Context, runID string) (fun
 	}
 	if run.IntegrationInvocation == nil {
 		// 定时与本机手动工作没有合成的集成 Key 依赖。
-		s.policy.RUnlock()
-		return func() {}, nil
+		var once sync.Once
+		return func() { once.Do(s.policy.RUnlock) }, nil
 	}
 	invocation := run.IntegrationInvocation
 	if invocation.TaskID != run.TaskID || run.Source != constants.AutomaticRunSourceAPI {

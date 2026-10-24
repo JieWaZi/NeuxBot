@@ -567,7 +567,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	}
 	ExecutionService = executionCore
 	libraryEmbeddings := knowledgebridge.LibraryEmbeddings{Engine: KnowledgeEngine, References: KnowledgeControllerManager}
-	KnowledgeService = knowledgeservice.New(knowledgeservice.Config{AutomaticRun: AutomaticTaskControllerManager.GetRun, InvocationGuard: IntegrationService.AcquireInvocationGuard, IntegrationGuard: IntegrationService.RestoreKnowledgeGuard, ResolveModel: resolveKnowledgeModel, Generator: newKnowledgeModelGenerator, FreezeEmbedder: libraryEmbeddings.Freeze, Connections: KnowledgeConnectionControllerManager, Engine: KnowledgeEngine, References: KnowledgeControllerManager, Projects: ProjectControllerManager, Chats: ChatService, Events: EventHub})
+	KnowledgeService = knowledgeservice.New(knowledgeservice.Config{AutomaticRun: AutomaticTaskControllerManager.GetRun, InvocationGuard: IntegrationService.AcquireInvocationGuard, IntegrationGuard: IntegrationService.RestoreKnowledgeGuard, IntegrationPublicationGuard: IntegrationService.RestoreKnowledgeGuards, ResolveModel: resolveKnowledgeModel, Generator: newKnowledgeModelGenerator, FreezeEmbedder: libraryEmbeddings.Freeze, Connections: KnowledgeConnectionControllerManager, Engine: KnowledgeEngine, References: KnowledgeControllerManager, Projects: ProjectControllerManager, Chats: ChatService, Events: EventHub})
 	if err := KnowledgeService.Start(ctx); err != nil {
 		return err
 	}

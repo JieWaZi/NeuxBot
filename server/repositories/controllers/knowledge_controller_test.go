@@ -6,6 +6,7 @@ import (
 	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
 	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
 	"github.com/JieWaZi/neux-knowledge/remote"
+	"strings"
 	"testing"
 )
 
@@ -161,5 +162,39 @@ func TestIntegrationClaimRequiresCurrentConnectionAndExactMount(t *testing.T) {
 				t.Fatalf("failed claim persisted: %v", e)
 			}
 		})
+	}
+}
+
+func TestJobRetryAuthorityUsesJobIndex(t *testing.T) {
+	db := newTestDB(t)
+	c := NewKnowledgeController(db)
+	ctx := context.Background()
+	for _, job := range []string{"target", "other"} {
+		if err := c.BeginOperation(ctx, models.KnowledgeOperationLink{RequestID: job, Operation: "job.retry.authority", Digest: job, Backend: "local", ConnectionID: "local", ExpectedResourceID: job, TargetAttempt: 2}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rows, err := c.ListJobRetryOperations(ctx, "target")
+	if err != nil || len(rows) != 1 || rows[0].ExpectedResourceID != "target" {
+		t.Fatal(rows, err)
+	}
+	var plan []struct {
+		Detail string // SQLite 返回的查询计划。
+	}
+	err = db.Raw("EXPLAIN QUERY PLAN SELECT * FROM knowledge_operation_links WHERE operation = ? AND expected_resource_id = ? ORDER BY target_attempt ASC", "job.retry.authority", "target").Scan(&plan).Error
+	if err != nil {
+		t.Fatal(err)
+	}
+	used := false
+	for _, row := range plan {
+		if strings.Contains(row.Detail, "idx_knowledge_retry_authority") && strings.Contains(row.Detail, "SEARCH") {
+			used = true
+		}
+		if strings.Contains(row.Detail, "SCAN knowledge_operation_links") {
+			t.Fatal(row.Detail)
+		}
+	}
+	if !used {
+		t.Fatal(plan)
 	}
 }

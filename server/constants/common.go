@@ -718,3 +718,9 @@ const (
 	// PluginAuthStateNotification 交付协议实际阶段。
 	PluginAuthStateNotification = "auth/state"
 )
+
+// KnowledgeMCPMaxRequestBytes 限制 MCP 请求和显式原件字节的传输体积。
+const KnowledgeMCPMaxRequestBytes = 16 << 20
+
+// KnowledgeRetryAuthorityOperation 标记依核心重试回执生效的宿主授权候选。
+const KnowledgeRetryAuthorityOperation = "job.retry.authority"

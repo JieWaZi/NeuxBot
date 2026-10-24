@@ -1,7 +1,11 @@
-import { Bot, KeyRound, Settings2, Plug } from "lucide-react";
+import { Bot, KeyRound, Settings2, Plug, Network } from "lucide-react";
 
 export type SettingsSection =
-  "general" | "ai-accounts" | "runtime-environments" | "integration-api";
+  | "general"
+  | "ai-accounts"
+  | "runtime-environments"
+  | "integration-api"
+  | "integration-mcp";
 
 export const settingsNavigationGroups = [
   {
@@ -27,6 +31,11 @@ export const settingsNavigationGroups = [
         labelKey: "sections.integrationAPI",
         icon: Plug,
       },
+      {
+        key: "integration-mcp",
+        labelKey: "sections.integrationMCP",
+        icon: Network,
+      },
     ],
   },
 ] as const satisfies ReadonlyArray<{
@@ -50,7 +59,8 @@ export const settingsNavigation = settingsNavigationGroups.flatMap(
 export function settingsSectionOf(value?: string): SettingsSection {
   return value === "runtime-environments" ||
     value === "ai-accounts" ||
-    value === "integration-api"
+    value === "integration-api" ||
+    value === "integration-mcp"
     ? value
     : "general";
 }

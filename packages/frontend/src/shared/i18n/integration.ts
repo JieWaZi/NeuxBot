@@ -1,4 +1,43 @@
 export const integrationZh = {
+  mcp: {
+    title: "MCP 集成",
+    description: "通过 Streamable HTTP MCP，让外部智能体使用本机知识库。",
+    manageAPI: "前往 API 集成",
+    service: "发布服务",
+    serviceStatus: "MCP 发布服务状态",
+    loading: "正在读取 MCP 接入信息",
+    statusAvailable: "运行中",
+    statusDisabled: "已停用",
+    statusUnavailable: "不可用",
+    statusUnknown: "状态未知",
+    sharedService:
+      "MCP 与 API 共用发布服务和 API Key。监听地址、启停和密钥在 API 集成中管理。",
+    url: "MCP URL",
+    noURL: "请先在 API 集成中保存明确的客户端访问地址，再生成 MCP 配置。",
+    savedURL: "地址来自已保存的发布设置；显示配置不代表客户端已连接成功。",
+    copyURL: "复制 MCP URL",
+    copiedURL: "MCP URL 已复制",
+    config: "HTTP MCP 配置",
+    configHelp:
+      "适用于支持 Streamable HTTP 和自定义请求头的客户端。将 <YOUR_API_KEY> 替换为已有 API Key；此页不读取或保存密钥明文。",
+    copyConfig: "复制 MCP 配置",
+    copiedConfig: "MCP 配置已复制",
+    copyFailed: "复制失败，请重试或手动复制。",
+    permissions: "知识库权限",
+    permissionsHelp:
+      "API Key 只能访问明确授权的本机知识库，权限在 API 集成中设置。",
+    retrieve: "读取与检索：retrieve。",
+    ingest: "内容编辑、归档、恢复、目录维护和原件导入：retrieve + ingest。",
+    organize:
+      "开始整理和重试任务：retrieve + organize。整理权限不包含任意内容编辑；任务接纳不代表整理完成。",
+    reachability: "连接与运行边界",
+    loopback:
+      "当前为回环地址，仅限同机客户端使用。远程客户端需要在 API 集成中配置可达地址及相应监听或反向代理。",
+    remote:
+      "远程客户端必须能访问此地址及其监听或反向代理；发布服务运行中不代表远程网络已连通。",
+    lifecycle:
+      "发布服务随 Core 运行。关闭浏览器页面或桌面窗口不会停止服务；停止 Core，或真正退出管理该 Core 的原生应用后，服务随之停止。",
+  },
   title: "API 集成",
   description: "让外部应用安全访问本机知识库与自动任务。",
   service: "API 服务",
@@ -98,4 +137,49 @@ export const integrationZh = {
   },
 } as const;
 
-export const integrationEn = integrationZh;
+export const integrationEn = {
+  ...integrationZh,
+  mcp: {
+    title: "MCP integration",
+    description:
+      "Connect external agents to local knowledge libraries through Streamable HTTP MCP.",
+    manageAPI: "Open API integration",
+    service: "Publishing service",
+    serviceStatus: "MCP publishing service status",
+    loading: "Loading MCP connection details",
+    statusAvailable: "Running",
+    statusDisabled: "Disabled",
+    statusUnavailable: "Unavailable",
+    statusUnknown: "Status unknown",
+    sharedService:
+      "MCP and API share the publishing service and API Keys. Manage the listener, service availability and keys in API integration.",
+    url: "MCP URL",
+    noURL:
+      "Save an explicit client address in API integration to generate the MCP configuration.",
+    savedURL:
+      "This address comes from saved publishing settings. A displayed configuration does not confirm a successful client connection.",
+    copyURL: "Copy MCP URL",
+    copiedURL: "MCP URL copied",
+    config: "HTTP MCP configuration",
+    configHelp:
+      "For clients supporting Streamable HTTP and custom headers. Replace <YOUR_API_KEY> with an existing API Key. This page does not read or store plaintext keys.",
+    copyConfig: "Copy MCP configuration",
+    copiedConfig: "MCP configuration copied",
+    copyFailed: "Copy failed. Retry or copy the text manually.",
+    permissions: "Knowledge library permissions",
+    permissionsHelp:
+      "API Keys can access only explicitly authorized local libraries. Configure permissions in API integration.",
+    retrieve: "Read and search: retrieve.",
+    ingest:
+      "Edit, archive, restore, manage directories and import sources: retrieve + ingest.",
+    organize:
+      "Start and retry organization jobs: retrieve + organize. Organization does not permit arbitrary edits; acceptance does not mean completion.",
+    reachability: "Connectivity and lifecycle",
+    loopback:
+      "This loopback address is for clients on this machine. Remote clients need a reachable address and listener or reverse proxy configured in API integration.",
+    remote:
+      "Remote clients must be able to reach this address and its listener or reverse proxy. A running service does not confirm remote connectivity.",
+    lifecycle:
+      "The publishing service runs with Core. Closing a browser page or desktop window does not stop it. Stopping Core, or quitting the native app that owns that Core, stops the publishing service.",
+  },
+};

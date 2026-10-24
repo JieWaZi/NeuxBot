@@ -31,6 +31,12 @@ const APIIntegrationSection = lazy(() =>
   })),
 );
 
+const MCPIntegrationSection = lazy(() =>
+  import("../components/mcp-integration-section").then((module) => ({
+    default: module.MCPIntegrationSection,
+  })),
+);
+
 function GeneralSettings() {
   const { t } = useTranslation("appSettings");
   const { mode, setMode } = useTheme();
@@ -103,6 +109,29 @@ function SettingsSectionContent({
         }
       >
         <APIIntegrationSection />
+      </Suspense>
+    );
+  if (section === "integration-mcp")
+    return (
+      <Suspense
+        fallback={
+          <SettingsContentShell title={t("sections.integrationMCP")}>
+            <div
+              role="status"
+              aria-busy="true"
+              aria-label={t("sections.integrationMCP")}
+              className="bg-surface-tertiary h-40 rounded-lg"
+            />
+          </SettingsContentShell>
+        }
+      >
+        <MCPIntegrationSection
+          onOpenAPI={
+            onSelectSection
+              ? () => onSelectSection("integration-api")
+              : undefined
+          }
+        />
       </Suspense>
     );
   if (section === "general") return <GeneralSettings />;

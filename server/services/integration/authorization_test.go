@@ -2,7 +2,9 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"github.com/JieWaZi/neux-knowledge/core"
 	"path/filepath"
 	"testing"
 	"time"
@@ -153,5 +155,51 @@ func TestTaskDeletionWaitsForAuthorizationGuardAndRemovesGrants(t *testing.T) {
 	if release, err := s.AcquireGuard(ctx, auth); err == nil {
 		release()
 		t.Fatal("删除后旧授权仍可提交")
+	}
+}
+
+func TestKnowledgeBatchGuardRetainsLockForLocalAutomaticRun(t *testing.T) {
+	s, _, _ := integrationFixture(t)
+	ctx := context.Background()
+	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "tasks.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, _ := db.DB.DB()
+	defer pool.Close()
+	s.config.Tasks = controllers.NewAutomaticTaskController(db.DB)
+	if err = s.config.Tasks.CreateRun(ctx, models.AutomaticRun{ID: "local-run", TaskID: "local-task", WakerID: "fixture", OccurrenceKey: "local"}); err != nil {
+		t.Fatal(err)
+	}
+	identity, _ := s.Authenticate(ctx, "fixture-only")
+	auth, _ := s.Authorize(ctx, identity, constants.IntegrationResourceKindKnowledge, "a", []constants.IntegrationCapability{constants.IntegrationCapabilityRetrieve, constants.IntegrationCapabilityOrganize})
+	raw, _ := json.Marshal(KnowledgeRecovery{Origin: "direct_api", Subject: identity.KeyID, Authorization: auth, Permission: core.PermissionSnapshot{PolicyVersion: 1, Operations: []string{"organize"}}})
+	release, err := s.RestoreKnowledgeGuards(ctx, []json.RawMessage{raw, raw}, "local-run")
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, done := make(chan struct{}), make(chan error, 1)
+	go func() {
+		close(started)
+		done <- s.WithAuthorizationWrite(ctx, func(context.Context) error { return nil })
+	}()
+	<-started
+	select {
+	case err := <-done:
+		t.Fatal("local automatic run dropped publication lock", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	release()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("batch publication lock did not release")
+	}
+	if release, err = s.RestoreKnowledgeGuards(ctx, []json.RawMessage{raw}, "missing"); err == nil {
+		release()
+		t.Fatal("missing run accepted")
 	}
 }

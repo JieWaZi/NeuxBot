@@ -9,6 +9,7 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"reflect"
 	"time"
 )
 
@@ -50,6 +51,8 @@ type KnowledgeController interface {
 	SetHostDiagnostic(context.Context, string, string, string, string) error
 	GetOperation(context.Context, string) (models.KnowledgeOperationLink, error)
 	ListPendingOperations(context.Context) ([]models.KnowledgeOperationLink, error)
+	// ListJobRetryOperations 只枚举原任务的授权候选，是否接纳由核心回执决定。
+	ListJobRetryOperations(context.Context, string) ([]models.KnowledgeOperationLink, error)
 	// FreezeTaskConfiguration 固定知识作业首次接纳的模型选择。
 	FreezeTaskConfiguration(context.Context, models.KnowledgeTaskConfiguration) (models.KnowledgeTaskConfiguration, error)
 	// GetTaskConfiguration 读取知识作业的独立模型配置。
@@ -97,6 +100,13 @@ func (c *knowledgeController) CompleteOperation(ctx context.Context, id, kb, res
 		return databaseError("complete_knowledge_operation", id, err)
 	}
 	return nil
+}
+
+// ListJobRetryOperations 返回重试授权候选，不将宿主字段当作接纳事实。
+func (c *knowledgeController) ListJobRetryOperations(ctx context.Context, job string) ([]models.KnowledgeOperationLink, error) {
+	var rows []models.KnowledgeOperationLink
+	err := controllerDB(ctx, c.db).Where("operation = ? AND expected_resource_id = ?", constants.KnowledgeRetryAuthorityOperation, job).Order("target_attempt ASC").Find(&rows).Error
+	return rows, knowledgeReferenceError("list_knowledge_retry_authority", job, err)
 }
 
 // GetOperation 读取稳定请求的本机锚点。
@@ -290,7 +300,7 @@ func (c *knowledgeController) FreezeTaskConfiguration(ctx context.Context, in mo
 	if err != nil {
 		return stored, err
 	}
-	if stored.Backend != in.Backend || stored.ConnectionID != in.ConnectionID || stored.KnowledgeBaseID != in.KnowledgeBaseID || stored.Message != in.Message || stored.RemoteSubject != in.RemoteSubject || stored.RemoteProfileID != in.RemoteProfileID || string(stored.RemoteAuthorization) != string(in.RemoteAuthorization) {
+	if stored.Backend != in.Backend || stored.ConnectionID != in.ConnectionID || stored.KnowledgeBaseID != in.KnowledgeBaseID || stored.Message != in.Message || stored.RemoteSubject != in.RemoteSubject || stored.RemoteProfileID != in.RemoteProfileID || string(stored.RemoteAuthorization) != string(in.RemoteAuthorization) || !reflect.DeepEqual(stored.PublicationAuthorizations, in.PublicationAuthorizations) {
 		return stored, status_error.KnowledgeConflict
 	}
 	return stored, nil

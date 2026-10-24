@@ -14,6 +14,8 @@ server/internal/agentcapability/contract 是命令 Schema 与解析的共同来�
 
 返回区分同步完成、耐久接纳与候选提交。查询或有限 wait 的超时不改变业务状态；真正完成以所属资源终态为准。
 
+外部 Agent 通过发布服务的 HTTP MCP 调用同源知识合同；内部 allycli 使用 Execution 身份，MCP 使用现有 API Key。两者共享知识操作、版本检查和回执逻辑，入口分别注入授权上下文。MCP 不发布其他领域的内部命令；接入、能力映射和后台撤权边界见 [知识库](knowledge-cn.md#api-集成与指定库接入)。
+
 ## 知识分发
 
 skills/ally 是产品技能源，与个人开发技能安装环境分别维护。Core 按内容摘要准备系统目录，每次受管执行获得当前构建携带的资源。普通用户技能不覆盖系统保留身份。

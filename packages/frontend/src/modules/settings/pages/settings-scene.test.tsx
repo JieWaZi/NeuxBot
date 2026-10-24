@@ -26,7 +26,44 @@ vi.mock("../components/runtime-environments-section", () => ({
   ),
 }));
 
+vi.mock("../components/mcp-integration-section", () => ({
+  MCPIntegrationSection: ({ onOpenAPI }: { onOpenAPI?: () => void }) => (
+    <>
+      <h1>MCP 接入内容</h1>
+      <button onClick={onOpenAPI}>前往 API 集成管理</button>
+    </>
+  ),
+}));
+
 describe("SettingsScene", () => {
+  it("懒加载独立 MCP 分类并转到已有 API 集成", async () => {
+    const user = userEvent.setup();
+    const onSelectSection = vi.fn();
+    render(
+      <>
+        <SettingsContextSidebar
+          activeSection="integration-mcp"
+          onSelect={onSelectSection}
+        />
+        <SettingsScene
+          section="integration-mcp"
+          onClose={() => undefined}
+          onSelectSection={onSelectSection}
+        />
+      </>,
+    );
+    expect(screen.getByRole("navigation", { name: "设置菜单" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "MCP 集成" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("button", { name: "API 集成" })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "MCP 接入内容" }),
+    ).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "前往 API 集成管理" }));
+    expect(onSelectSection).toHaveBeenCalledWith("integration-api");
+  });
   it("从智能体诊断入口切换到 AI 账号设置", async () => {
     const user = userEvent.setup();
     const onSelectSection = vi.fn();
