@@ -27,7 +27,11 @@ NeuxBot brings your AI tools, project context, and collaborators into one local 
 - **Your choice of tools and accounts.** Choose a CLI, account, and model for the work at hand while managing your partners in one place. Use existing CLI logins or separately managed AI accounts.
 - **From delegation to repeatable work.** Let a team leader coordinate specialists and collect their results. Turn recurring work into workflows through conversation, with execution progress, approvals, and outputs available for review.
 
-**Supported CLIs:** Codex · Claude Code · Cursor · Kimi · Pi · OpenCode · Gemini CLI · Grok Build · WorkBuddy
+**Supported CLIs:** Codex · Claude Code · Cursor · Kimi · Pi · OpenCode · Gemini CLI · Grok Build · WorkBuddy · Qoder · Qoder CN
+
+<img src="docs/assets/readme/multi-cli.png" alt="NeuxBot connects Codex, Claude Code, Cursor, Kimi, Pi, OpenCode, Gemini CLI, Grok Build, WorkBuddy, Qoder and Qoder CN, plus a More card, in one workspace." width="100%" />
+
+<sub>CLI support overview · illustration</sub>
 
 Partners and work records are stored locally. AI requests use your chosen providers; available models and tools depend on the CLI and account.
 
