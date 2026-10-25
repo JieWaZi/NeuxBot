@@ -47,6 +47,7 @@ import {
 import { WorkflowResultContent } from "../presentation/node-result";
 import { WorkflowDetailPage } from "./workflow-detail-page";
 import { WorkflowListPage } from "./workflow-list-page";
+import { ResourcesPage } from "@/app/pages/resources-page";
 import { PartnerNavigationLayout } from "@/app/layout/partner-navigation-layout";
 import type { PartnerNavigationPreferences } from "@/app/layout/partner-navigation-preferences";
 // 模块转换属于测试准备阶段；发送断言保留真实动画挂载，不计入首次编译耗时。
@@ -268,6 +269,7 @@ function renderScene(
                     }
                   >
                     <Route path="/workflows" element={<WorkflowListPage />} />
+                    <Route path="/resources" element={<ResourcesPage />} />
                     <Route
                       path="/workflows/:workflowId"
                       element={<WorkflowDetailPage />}
@@ -322,7 +324,10 @@ function WorkflowShell({ collapsed }: { collapsed: boolean }) {
       settingsOpen={false}
       wakers={[{ id: "ordinary-waker", name: "普通伙伴" }]}
     >
-      <output data-testid="workflow-route">{location.pathname}</output>
+      <output data-testid="workflow-route">
+        {location.pathname}
+        {location.search}
+      </output>
       <Outlet />
     </PartnerNavigationLayout>
   );
@@ -1737,7 +1742,7 @@ it.each([false, true])(
     );
     await waitFor(() =>
       expect(screen.getByTestId("workflow-route")).toHaveTextContent(
-        /^\/workflows$/,
+        /^\/resources\?category=workflows$/,
       ),
     );
     await waitFor(() => expect(queryClient.isMutating()).toBe(0));
