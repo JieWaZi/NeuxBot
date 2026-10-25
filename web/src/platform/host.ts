@@ -1,5 +1,5 @@
-import type { HostService } from "@neuxally/platform-contracts/services";
-import { platform } from "@neuxally/frontend/platform";
+import type { HostService } from "@neuxbot/platform-contracts/services";
+import { platform } from "@neuxbot/frontend/platform";
 import { selectCoreDirectory } from "../shell/directory-picker";
 import { webText } from "../i18n";
 

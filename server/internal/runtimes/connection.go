@@ -2,11 +2,11 @@ package runtimes
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"os"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
 const runtimeConnectionTestPrompt = "Reply with a short acknowledgement and do not use tools."

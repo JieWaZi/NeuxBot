@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
 )
 
 func TestPublishedRouterExcludesDesktopManagementAndServesOnlyPublicContract(t *testing.T) {

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "source": {
-    "bundle": "neuxally-plugins.bundle",
+    "bundle": "neux-plugins.bundle",
     "sha256": "5ec8e9291cd7d1470d36a10ea8acef32ab823d8b300aaddd613d6a248ae6d040",
     "commit": "8f8c1f850cc673b1fdc2a19fc9f241c463a70114"
   },

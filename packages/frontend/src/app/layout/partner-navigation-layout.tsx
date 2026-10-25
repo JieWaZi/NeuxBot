@@ -39,8 +39,8 @@ import {
 import { WakerShowcaseDialog, type Waker } from "@/modules/waker";
 import { trackHorizontalDrag } from "@/shared/lib/horizontal-drag";
 import type {
-  GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail as ChannelDetail,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat as Chat,
+  GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as ChannelDetail,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsChat as Chat,
 } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
 import { platform } from "@/shared/platform/provider";

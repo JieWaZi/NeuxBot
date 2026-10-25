@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // AttachmentInput 是用户选择的一份本地文件。
@@ -26,7 +26,7 @@ type AttachmentReference struct {
 	Path string `json:"path"`
 	// MediaType 是根据扩展名推断的 MIME 类型。
 	MediaType string `json:"mediaType,omitempty"`
-	// Managed 表示文件是否复制到 NeuxAlly 归属目录。
+	// Managed 表示文件是否复制到 NeuxBot 归属目录。
 	Managed bool `json:"managed"`
 }
 
@@ -50,7 +50,7 @@ type resolvedAttachment struct {
 	name string
 	// mediaType 是根据扩展名推断的 MIME 类型。
 	mediaType string
-	// managed 表示附件需要复制到 NeuxAlly 归属目录。
+	// managed 表示附件需要复制到 NeuxBot 归属目录。
 	managed bool
 }
 

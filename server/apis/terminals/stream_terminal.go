@@ -2,9 +2,9 @@ package terminals
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/apis/events"
-	"github.com/JieWaZi/NeuxAlly/server/apis/middleware"
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/apis/events"
+	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/shrewx/ginx"

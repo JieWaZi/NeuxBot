@@ -8,7 +8,7 @@ import { useEffect } from "react";
 import { getAiAccountLogin } from "@/shared/api/generated/sdk.gen";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import { subscribeGlobalEvents } from "@/shared/api/global-events";
-import type { GithubComJieWaZiNeuxAllyServerServicesAiaccountLogin as Login } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerServicesAiaccountLogin as Login } from "@/shared/api/generated/types.gen";
 
 /** 读取 Core 作业快照，Query 本身不推进官方授权，也没有周期请求。 */
 export function accountLoginQueryOptions(

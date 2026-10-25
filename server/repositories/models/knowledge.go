@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/neux-knowledge/remote"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )

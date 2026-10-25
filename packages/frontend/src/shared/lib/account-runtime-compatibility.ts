@@ -1,4 +1,4 @@
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccount as AIAccount } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount as AIAccount } from "@/shared/api/generated/types.gen";
 
 const compatibleProtocols: Record<string, readonly string[]> = {
   opencode: [

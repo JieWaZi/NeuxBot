@@ -71,7 +71,7 @@ vi.mock("../api/channel-queries", () => ({
                 additionalWorkingDirectories: undefined,
                 activityState: "waiting" as const,
                 id: "thread-second-page",
-                projectName: "NeuxAlly",
+                projectName: "NeuxBot",
                 title: "第二页会话",
                 updatedAt: 1_788_512_300_000,
               },
@@ -80,7 +80,7 @@ vi.mock("../api/channel-queries", () => ({
               {
                 activityState: "running" as const,
                 id: "thread-frontend",
-                projectName: "NeuxAlly",
+                projectName: "NeuxBot",
                 title: "前端整改",
                 updatedAt: 1_788_512_400_000,
               },
@@ -174,7 +174,7 @@ describe("TeamThreadListPage", () => {
     await screen.findByText("前端整改");
     expect(table).toHaveTextContent("前端整改");
     expect(table).toHaveTextContent("后端排查");
-    expect(table).toHaveTextContent("NeuxAlly");
+    expect(table).toHaveTextContent("NeuxBot");
     expect(table).toHaveTextContent("backend");
 
     await user.type(

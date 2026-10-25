@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { listChannels, listWakers } from "@/shared/api/generated/sdk.gen";
 import type {
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWaker as Waker,
-  GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail as Team,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker as Waker,
+  GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as Team,
 } from "@/shared/api/generated/types.gen";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 

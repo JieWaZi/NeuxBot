@@ -82,7 +82,7 @@ func TestCursorRealModelRetry(t *testing.T) {
 				}
 			}
 			if usage == nil || usage.Turn.OutputTokens <= 0 {
-				t.Fatalf("Cursor token usage did not reach NeuxAlly: %+v", usage)
+				t.Fatalf("Cursor token usage did not reach NeuxBot: %+v", usage)
 			}
 			t.Logf("turn=%d usage=%+v", index+1, usage.Turn)
 		}

@@ -11,16 +11,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability/contract"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	builtinskills "github.com/JieWaZi/NeuxAlly/server/internal/skills/builtin"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // agentCommandFacts 将已持久化命令事实交给同执行实时投影，无需轮询日志。
@@ -100,7 +100,7 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 	}
 	request.Skills = append(request.Skills, runtimes.Skill{Name: constants.AgentCLISkillName, Path: skill})
 	binary = builtinskills.CLIPath(skill)
-	request.Instructions = append(request.Instructions, runtimes.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxAlly-provided operations, read the ally skill at %q. Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands. Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract.", filepath.Join(skill, "SKILL.md"), binary, filepath.Join(skill, "references", "knowledge.md"))})
+	request.Instructions = append(request.Instructions, runtimes.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxBot-provided operations, read the ally skill at %q. Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands. Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract.", filepath.Join(skill, "SKILL.md"), binary, filepath.Join(skill, "references", "knowledge.md"))})
 	roots := []string{}
 	for _, candidate := range append([]string{request.Workspace.Path}, chat.AdditionalWorkingDirectories...) {
 		if actual, err := filepath.EvalSymlinks(candidate); err == nil {

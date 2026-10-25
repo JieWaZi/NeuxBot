@@ -52,7 +52,7 @@ export default function ElasticLogo({
           return typeof probe.fillStyle === "string" ? probe.fillStyle : value;
         };
         renderer = mountElasticMesh(element, {
-          text: "NeuxAlly",
+          text: "NeuxBot",
           intro: initialIntro.current && !completed.current,
           onIntroComplete: () => {
             if (!disposed && !completed.current) {
@@ -114,14 +114,14 @@ export default function ElasticLogo({
       ref={host}
       className="welcome-logo relative touch-pan-y select-none"
       role="img"
-      aria-label="NeuxAlly"
+      aria-label="NeuxBot"
     >
       <span
         className="welcome-logo-fallback"
         hidden={!fallback}
         aria-hidden="true"
       >
-        NeuxAlly
+        NeuxBot
       </span>
       <canvas
         aria-hidden="true"

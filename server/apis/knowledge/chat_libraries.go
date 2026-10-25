@@ -1,9 +1,9 @@
 package knowledge
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	service "github.com/JieWaZi/NeuxAlly/server/services/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	service "github.com/JieWaZi/NeuxBot/server/services/knowledge"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

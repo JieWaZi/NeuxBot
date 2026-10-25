@@ -5,10 +5,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"strconv"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // vecTableName 是 sqlite-vec 向量表名。

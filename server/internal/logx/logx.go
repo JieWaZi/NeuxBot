@@ -1,4 +1,4 @@
-// Package logx 是 NeuxAlly 后端唯一的日志输出边界。
+// Package logx 是 NeuxBot 后端唯一的日志输出边界。
 //
 // ginx/logx 当前会在每次取 logger 时写包级 modulePath，无法安全地被并发调用。
 // 这里保留 ginx/logx 的配置、格式和调用语义，并串行化入口，避免业务并发触发数据竞争。

@@ -22,7 +22,7 @@ import {
 } from "vitest";
 import "@/shared/i18n";
 import { client } from "@/shared/api/generated/client.gen";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition } from "@/shared/api/generated/types.gen";
 import { WorkflowListPage } from "./workflow-list-page";
 
 vi.mock("@/shared/workspace/app-scene-workspace", () => ({
@@ -31,7 +31,7 @@ vi.mock("@/shared/workspace/app-scene-workspace", () => ({
 
 const origin = "http://workflow-list.test";
 const server = setupServer();
-let definition: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition;
+let definition: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition;
 let deleted = false;
 
 beforeAll(() => {

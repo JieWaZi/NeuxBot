@@ -1,5 +1,5 @@
 {
-  "name": "@neuxally/desktop",
+  "name": "@neuxbot/desktop",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -52,15 +52,15 @@
     "vite": "8.1.5",
     "vitest": "4.1.10",
     "zod": "4.4.3",
-    "@neuxally/frontend": "workspace:*",
-    "@neuxally/platform-contracts": "workspace:*",
+    "@neuxbot/frontend": "workspace:*",
+    "@neuxbot/platform-contracts": "workspace:*",
     "node-pty": "1.1.0",
-    "@neuxally/terminal-runtime": "workspace:*"
+    "@neuxbot/terminal-runtime": "workspace:*"
   },
   "main": "dist-electron/main.cjs",
   "build": {
     "appId": "com.neuxally.desktop",
-    "productName": "NeuxAlly",
+    "productName": "NeuxBot",
     "directories": {
       "output": "release"
     },
@@ -158,7 +158,7 @@
     "win": {
       "icon": "resources/icon.ico",
       "target": "nsis",
-      "artifactName": "NeuxAlly-windows-${arch}.${ext}"
+      "artifactName": "NeuxBot-windows-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -172,10 +172,10 @@
       "zh_CN"
     ]
   },
-  "description": "NeuxAlly 本地伙伴工作台",
+  "description": "NeuxBot 本地伙伴工作台",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/JieWaZi/NeuxAlly.git"
+    "url": "https://github.com/JieWaZi/NeuxBot.git"
   }
 }

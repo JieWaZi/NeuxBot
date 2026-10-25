@@ -1,4 +1,4 @@
-// Package status_error 定义对外稳定的 NeuxAlly 业务错误。
+// Package status_error 定义对外稳定的 NeuxBot 业务错误。
 package status_error
 
 import "net/http"

@@ -1,4 +1,4 @@
-module github.com/JieWaZi/NeuxAlly/server
+module github.com/JieWaZi/NeuxBot/server
 
 go 1.25.8
 

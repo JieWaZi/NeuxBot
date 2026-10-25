@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"gorm.io/gorm"
 	"strings"
 )

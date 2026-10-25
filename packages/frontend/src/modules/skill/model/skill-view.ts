@@ -1,9 +1,9 @@
-import type { GithubComJieWaZiNeuxAllyServerApisSkillsWakerSkillResponse } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse } from "@/shared/api/generated/types.gen";
 
 import type { SkillSummary } from "./types";
 
 export function toSkillSummary(
-  item: GithubComJieWaZiNeuxAllyServerApisSkillsWakerSkillResponse,
+  item: GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse,
 ): SkillSummary | null {
   const skill = item.skill;
   if (!skill?.id) return null;

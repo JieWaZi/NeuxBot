@@ -8,8 +8,8 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // Copyright (c) Tencent. MIT License，完整许可见根目录 THIRD_PARTY_NOTICES.md。

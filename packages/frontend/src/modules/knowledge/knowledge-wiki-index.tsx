@@ -2,8 +2,8 @@ import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { ChevronDown } from "lucide-react";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import type {
-  GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexView as IndexView,
-  GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexGroup as IndexGroup,
+  GithubComJieWaZiNeuxBotServerApisKnowledgeWikiIndexView as IndexView,
+  GithubComJieWaZiNeuxBotServerApisKnowledgeWikiIndexGroup as IndexGroup,
 } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 import { EmptyState } from "@/shared/ui/empty-state";

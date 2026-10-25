@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/JieWaZi/neux-knowledge/httpapi"
 )

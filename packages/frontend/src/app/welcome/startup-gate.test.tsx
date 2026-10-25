@@ -35,7 +35,7 @@ vi.mock("@/shared/api/use-query-events", () => ({ useQueryEvents: () => {} }));
 vi.mock("./welcome-brand", () => ({
   WelcomeBrand: ({ children }: { children?: ReactNode }) => (
     <main>
-      <div role="img" aria-label="NeuxAlly" />
+      <div role="img" aria-label="NeuxBot" />
       {children}
     </main>
   ),
@@ -142,7 +142,7 @@ it("首次探测时即可选择 CLI，各项保留检测中状态直到自身完
   api.read.mockResolvedValue({ ...missing, startupDetectionPending: true });
   const client = mount();
   await waitFor(() => expect(api.read).toHaveBeenCalledTimes(1));
-  expect(screen.getByRole("img", { name: "NeuxAlly" })).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "NeuxBot" })).toBeInTheDocument();
   expect(
     await screen.findByRole("heading", { name: "设置智能体" }),
   ).toBeVisible();
@@ -198,7 +198,7 @@ it("欢迎期间已预取准入快照时，首次挂载直接进入，不插入�
   );
   expect(screen.getByText("工作区")).toBeVisible();
   expect(
-    screen.queryByRole("img", { name: "NeuxAlly" }),
+    screen.queryByRole("img", { name: "NeuxBot" }),
   ).not.toBeInTheDocument();
   expect(api.read).toHaveBeenCalledOnce();
 });
@@ -223,7 +223,7 @@ it("新用户检测到 CLI 后必须保存默认选择，保留原配置且不�
     await screen.findByRole("heading", { name: "设置智能体" }),
   ).toBeVisible();
   fireEvent.click(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
   expect(await screen.findByText("工作区")).toBeVisible();
   expect(api.update).toHaveBeenCalledWith(
@@ -250,7 +250,7 @@ it("多个安装版本必须显式选择，不能直接沿用 PATH 结果进入"
   const versions = await screen.findByRole("combobox", { name: "版本" });
   expect(versions).toHaveTextContent("请选择版本");
   expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeDisabled();
   versions.focus();
   await user.keyboard("{Enter}");
@@ -266,7 +266,7 @@ it("多个安装版本必须显式选择，不能直接沿用 PATH 结果进入"
   ).toBeVisible();
   await user.keyboard("{Enter}");
   expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeEnabled();
   expect(api.update).not.toHaveBeenCalled();
 });
@@ -318,14 +318,14 @@ it("切换版本后等待重新探测，最后保存新版本的模型与权限�
   );
   expect(versions).toBeDisabled();
   expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeDisabled();
   expect(screen.queryByText("工作区")).not.toBeInTheDocument();
   await act(async () => finishDetection());
   await waitFor(() => expect(versions).toBeEnabled());
   expect(screen.queryByText("工作区")).not.toBeInTheDocument();
   await user.click(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
   expect(await screen.findByText("工作区")).toBeVisible();
   expect(api.update).toHaveBeenLastCalledWith(
@@ -352,13 +352,13 @@ it("版本切换失败保留错误与引导，可以重新选择重试", async (
   expect(await screen.findByRole("alert")).toHaveTextContent("版本切换失败");
   expect(versions).toHaveTextContent("请选择版本");
   expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeDisabled();
   versions.focus();
   await user.keyboard("{Enter}{Enter}");
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeEnabled();
 });
 
@@ -391,7 +391,7 @@ it("单个安装版本不增加选择字段，模型目录失败时禁止进入�
     "模型与权限配置尚未就绪",
   );
   expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeDisabled();
   api.refreshOne.mockImplementationOnce(async () =>
     api.read.mockResolvedValue(found),
@@ -399,7 +399,7 @@ it("单个安装版本不增加选择字段，模型目录失败时禁止进入�
   fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
   await waitFor(() =>
     expect(
-      screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+      screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
     ).toBeEnabled(),
   );
 });
@@ -418,7 +418,7 @@ it.each([
     });
     mount();
     expect(
-      await screen.findByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+      await screen.findByRole("button", { name: "设为默认并进入 NeuxBot" }),
     ).toBeDisabled();
     expect(api.update).not.toHaveBeenCalled();
   },
@@ -428,11 +428,11 @@ it("所选 CLI 已就绪时可直接保存进入，无需等待其他 CLI 探测
   api.read.mockResolvedValue({ ...found, startupDetectionPending: true });
   mount();
   expect(
-    await screen.findByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    await screen.findByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeEnabled();
   expect(screen.getByRole("status")).toHaveTextContent("已识别 1 个模型");
   fireEvent.click(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
   expect(await screen.findByText("工作区")).toBeVisible();
 });
@@ -467,7 +467,7 @@ it("切换 CLI 后只重检当前项，各项重检并发且不会锁住其他 C
     "codex-model",
   );
   expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
   await waitFor(() => expect(completions.has("codex")).toBe(true));
@@ -493,7 +493,7 @@ it("切换 CLI 后只重检当前项，各项重检并发且不会锁住其他 C
     expect(screen.getByRole("button", { name: "重新检测" })).toBeEnabled(),
   );
   expect(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeEnabled();
   expect(screen.getByRole("button", { name: "模型" })).toHaveTextContent(
     "free-model",
@@ -507,7 +507,7 @@ it("其他 CLI 探测失败时，已就绪的所选 CLI 仍可完成设置", asy
   api.read.mockResolvedValue({ ...found, startupDetectionFailed: true });
   mount();
   fireEvent.click(
-    await screen.findByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    await screen.findByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
   expect(await screen.findByText("工作区")).toBeVisible();
 });
@@ -522,7 +522,7 @@ it("保存后对账发现模型目录失效时仍停留引导", async () => {
   });
   mount();
   fireEvent.click(
-    await screen.findByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    await screen.findByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "模型与权限配置尚未就绪",
@@ -540,7 +540,7 @@ it("用户安装后手动重检，再设置默认进入", async () => {
   });
   fireEvent.click(screen.getByRole("button", { name: "重新检测" }));
   expect(
-    await screen.findByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    await screen.findByRole("button", { name: "设为默认并进入 NeuxBot" }),
   ).toBeVisible();
   expect(api.refreshOne).toHaveBeenCalledWith(
     { path: { runtimeId: "opencode" } },
@@ -548,7 +548,7 @@ it("用户安装后手动重检，再设置默认进入", async () => {
   );
   expect(api.refresh).not.toHaveBeenCalled();
   fireEvent.click(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
   expect(await screen.findByText("工作区")).toBeVisible();
 });
@@ -574,7 +574,7 @@ it("保存失败保留引导与错误，不提前进入", async () => {
   api.update.mockRejectedValue(new Error("默认设置保存失败"));
   mount();
   fireEvent.click(
-    await screen.findByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    await screen.findByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "默认设置保存失败",
@@ -656,7 +656,7 @@ it("保存请求成功但后端未解除准入时仍保留引导", async () => {
   api.update.mockResolvedValue(undefined);
   mount();
   fireEvent.click(
-    await screen.findByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    await screen.findByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "模型与权限配置尚未就绪",
@@ -723,7 +723,7 @@ it("超过十个模型复用搜索选择，按用户所选模型与支持权限�
   ).not.toBeInTheDocument();
   await user.click(screen.getByRole("radio", { name: "模型 11" }));
   await user.click(
-    screen.getByRole("button", { name: "设为默认并进入 NeuxAlly" }),
+    screen.getByRole("button", { name: "设为默认并进入 NeuxBot" }),
   );
   await waitFor(() =>
     expect(api.update).toHaveBeenCalledWith(

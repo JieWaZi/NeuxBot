@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	workflowcatalog "github.com/JieWaZi/NeuxAlly/server/internal/workflow/catalog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	workflowcatalog "github.com/JieWaZi/NeuxBot/server/internal/workflow/catalog"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 

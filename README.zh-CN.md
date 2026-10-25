@@ -2,7 +2,7 @@
 
 [English](README.md) · **简体中文**
 
-<h1>NeuxAlly</h1>
+<h1>NeuxBot</h1>
 
 <p><strong>和你的 AI 伙伴，一起把事情做好。</strong><br />
 本地优先的桌面工作台，让你与 AI 团队一起工作。</p>
@@ -11,17 +11,17 @@
 ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-222822?style=flat-square&logo=apple)
 ![Windows](https://img.shields.io/badge/Windows-x64-222822?style=flat-square&logo=windows)
 
-[下载安装](https://github.com/JieWaZi/NeuxAlly/releases) · [使用文档](docs/README.md) · [参与贡献](CONTRIBUTING.md)
+[下载安装](https://github.com/JieWaZi/NeuxBot/releases) · [使用文档](docs/README.md) · [参与贡献](CONTRIBUTING.md)
 
-<img src="docs/assets/readme/hero.png" alt="NeuxAlly 伙伴形象与桌面工作看板示意。" width="100%" />
+<img src="docs/assets/readme/hero.png" alt="NeuxBot 伙伴形象与桌面工作看板示意。" width="100%" />
 
 <sub>产品示意图 · 示例数据 · 中文界面</sub>
 
 </div>
 
-NeuxAlly 把 AI 工具、项目上下文与分工协作放进同一个本地桌面工作台。围绕自己的工作建立伙伴团队，从提出目标，到查看文件、代码改动与报告。
+NeuxBot 把 AI 工具、项目上下文与分工协作放进同一个本地桌面工作台。围绕自己的工作建立伙伴团队，从提出目标，到查看文件、代码改动与报告。
 
-## 为什么用 NeuxAlly？
+## 为什么用 NeuxBot？
 
 - **让伙伴带着项目知识工作。** 为伙伴配置角色、档案、项目知识及所需的技能与资源，在日常任务、团队分工和工作流中复用这套配置。
 - **自由选择工具与账号。** 根据任务选择 CLI、账号和模型，在同一处管理伙伴。既可沿用 CLI 原生登录，也可独立管理 AI 账号。
@@ -39,7 +39,7 @@ NeuxAlly 把 AI 工具、项目上下文与分工协作放进同一个本地桌�
 
 ## 开始使用
 
-在 [Releases](https://github.com/JieWaZi/NeuxAlly/releases) 查找安装包，或按下方步骤从源码运行。连接支持的 CLI 与账号，创建一位伙伴，把项目交给它。
+在 [Releases](https://github.com/JieWaZi/NeuxBot/releases) 查找安装包，或按下方步骤从源码运行。连接支持的 CLI 与账号，创建一位伙伴，把项目交给它。
 
 <details>
 <summary>从源码运行</summary>
@@ -47,8 +47,8 @@ NeuxAlly 把 AI 工具、项目上下文与分工协作放进同一个本地桌�
 准备 **Node.js 22**、**pnpm 10.34.4**，以及 [go.mod](server/go.mod) 指定的 Go 版本。
 
 ```sh
-git clone https://github.com/JieWaZi/NeuxAlly.git
-cd NeuxAlly
+git clone https://github.com/JieWaZi/NeuxBot.git
+cd NeuxBot
 pnpm install --frozen-lockfile
 go -C server mod download
 pnpm dev:native
@@ -62,4 +62,4 @@ pnpm dev:native
 
 ---
 
-[MIT 许可证](LICENSE) · [第三方声明](THIRD_PARTY_NOTICES.md) · [问题反馈](https://github.com/JieWaZi/NeuxAlly/issues) · 作者 [Ryan Wu / JieWaZi](https://github.com/JieWaZi)
+[MIT 许可证](LICENSE) · [第三方声明](THIRD_PARTY_NOTICES.md) · [问题反馈](https://github.com/JieWaZi/NeuxBot/issues) · 作者 [Ryan Wu / JieWaZi](https://github.com/JieWaZi)

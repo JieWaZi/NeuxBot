@@ -1,5 +1,5 @@
 {
-  "name": "@neuxally/pi-bridge",
+  "name": "@neuxbot/pi-bridge",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -19,6 +19,6 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/JieWaZi/NeuxAlly.git"
+    "url": "https://github.com/JieWaZi/NeuxBot.git"
   }
 }

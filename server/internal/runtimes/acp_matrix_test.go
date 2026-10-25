@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	acp "github.com/coder/acp-go-sdk"
 )
 
@@ -169,7 +169,7 @@ func TestACPRuntimeFailureProjectionMatrix(t *testing.T) {
 		name string
 		// err 是 ACP Agent 在 Prompt 边界返回的错误。
 		err error
-		// code 是 NeuxAlly 对外稳定失败码。
+		// code 是 NeuxBot 对外稳定失败码。
 		code FailureCode
 	}{
 		{name: "authentication", err: acp.NewAuthRequired(nil), code: FailureCodeAuthRequired},

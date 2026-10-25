@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	keyrules "github.com/JieWaZi/NeuxAlly/server/internal/integration"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	keyrules "github.com/JieWaZi/NeuxBot/server/internal/integration"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestIntegrationKeyDigestStorageAndRevision(t *testing.T) {

@@ -3,7 +3,7 @@ package events
 import (
 	"context"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/apis/workspace"
+	"github.com/JieWaZi/NeuxBot/server/apis/workspace"
 )
 
 // newWorkspaceSource 把受限文件观察复用到现有全局事件通道。

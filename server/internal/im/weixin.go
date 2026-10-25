@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // Weixin 使用腾讯当前 iLink 协议，不依赖社区 SDK 的过期二维码流程。
@@ -224,7 +224,7 @@ func weixinBase(connection models.IMConnection) string {
 	return constants.IMWeixinBaseURL
 }
 func weixinInfo() map[string]string {
-	return map[string]string{"channel_version": "2.4.9", "bot_agent": "NeuxAlly/0.1"}
+	return map[string]string{"channel_version": "2.4.9", "bot_agent": "NeuxBot/0.1"}
 }
 
 // Run 严格在整批收件和游标已提交后，才进入下一次长轮询。

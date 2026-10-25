@@ -28,8 +28,8 @@ import type {
   TerminalStarted,
   TerminalOutputEvent,
   TerminalExitEvent,
-} from "@neuxally/platform-contracts/resources";
-import { workspaceSingleFileBytesLimit } from "@neuxally/platform-contracts/workspace-byte-limits";
+} from "@neuxbot/platform-contracts/resources";
+import { workspaceSingleFileBytesLimit } from "@neuxbot/platform-contracts/workspace-byte-limits";
 export type {
   CoreConnection,
   FileDropEvent,
@@ -64,7 +64,7 @@ export type {
   TerminalStarted,
   TerminalOutputEvent,
   TerminalExitEvent,
-} from "@neuxally/platform-contracts/resources";
+} from "@neuxbot/platform-contracts/resources";
 import {
   platform,
   requirePlatformService,
@@ -797,7 +797,7 @@ export async function prepareBrowserWebview(
   chatId?: string,
 ): Promise<string> {
   if (!hasPlatformService("browser")) {
-    throw new Error("内置浏览器仅在 NeuxAlly 桌面应用中可用");
+    throw new Error("内置浏览器仅在 NeuxBot 桌面应用中可用");
   }
   return requirePlatformService("browser").browser_prepare_webview({
     url,

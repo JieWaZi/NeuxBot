@@ -1,8 +1,8 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 

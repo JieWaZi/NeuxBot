@@ -366,7 +366,7 @@ export const workflowZh = {
   json: "JSON",
   form: "表单",
   jsonHelp: "复杂输入可使用完整 JSON；提交时校验全部字段。",
-  jsonPlaceholder: '{\n  "text": "NeuxAlly"\n}',
+  jsonPlaceholder: '{\n  "text": "NeuxBot"\n}',
   invalidJson: "请输入有效 JSON",
   fieldInvalidFormat: "格式不符合要求，请参考字段说明。",
   fieldInvalidNumber: "请输入有效数字；整数字段不能包含小数。",
@@ -857,7 +857,7 @@ export const workflowEn = {
   form: "Form",
   jsonHelp:
     "Use complete JSON for complex input. All fields are validated on submission.",
-  jsonPlaceholder: '{\n  "text": "NeuxAlly"\n}',
+  jsonPlaceholder: '{\n  "text": "NeuxBot"\n}',
   invalidJson: "Enter valid JSON",
   fieldInvalidFormat:
     "The format does not match. Refer to the field description.",

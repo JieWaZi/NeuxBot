@@ -1,8 +1,8 @@
 import type {
-  GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberDetail as ChannelMemberDetail,
-  GithubComJieWaZiNeuxAllyServerApisChannelsChannelThreadDetail as ChannelThreadDetail,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThreadMember as ChannelThreadMember,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWaker as Waker,
+  GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberDetail as ChannelMemberDetail,
+  GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail as ChannelThreadDetail,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThreadMember as ChannelThreadMember,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker as Waker,
 } from "@/shared/api/generated/types.gen";
 import { permissionLevelOf } from "@/shared/lib/runtime-permissions";
 

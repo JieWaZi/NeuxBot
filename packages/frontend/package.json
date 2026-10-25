@@ -1,5 +1,5 @@
 {
-  "name": "@neuxally/frontend",
+  "name": "@neuxbot/frontend",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -138,6 +138,6 @@
     "vitest": "4.1.10",
     "xlsx": "file:vendor/xlsx-0.20.3.tgz",
     "zod": "4.4.3",
-    "@neuxally/platform-contracts": "workspace:*"
+    "@neuxbot/platform-contracts": "workspace:*"
   }
 }

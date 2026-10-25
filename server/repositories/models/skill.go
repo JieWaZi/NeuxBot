@@ -1,8 +1,8 @@
-// Package models 定义 NeuxAlly 的 GORM 持久化模型。
+// Package models 定义 NeuxBot 的 GORM 持久化模型。
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
@@ -26,7 +26,7 @@ type SkillPackage struct {
 	Source constants.SkillSource `gorm:"column:source;type:varchar(16);not null;index" json:"source"`
 	// OwnerWakerID 是私有技能所属伙伴，公开技能为空。
 	OwnerWakerID string `gorm:"column:owner_waker_id;type:varchar(32);index" json:"ownerWakerId,omitempty"`
-	// BuiltIn 表示技能是否随 NeuxAlly 提供且不可卸载。
+	// BuiltIn 表示技能是否随 NeuxBot 提供且不可卸载。
 	BuiltIn bool `gorm:"column:built_in;not null;default:false;index" json:"builtIn"`
 	// GitURL 是 Git 来源地址。
 	GitURL string `gorm:"column:git_url;type:text;not null;default:''" json:"gitUrl,omitempty"`
@@ -51,7 +51,7 @@ type SkillVersion struct {
 	ID string `gorm:"column:id;type:varchar(32);primaryKey" json:"id"`
 	// SkillPackageID 是所属技能包标识。
 	SkillPackageID string `gorm:"column:skill_package_id;type:varchar(32);not null;uniqueIndex:idx_skill_version_package_version,priority:1" json:"skillPackageId"`
-	// Version 是 NeuxAlly 管理的 SemVer 版本号。
+	// Version 是 NeuxBot 管理的 SemVer 版本号。
 	Version string `gorm:"column:version;type:varchar(40);not null;uniqueIndex:idx_skill_version_package_version,priority:2" json:"version"`
 	// Name 是该不可变版本声明的技能名称。
 	Name string `gorm:"column:name;type:varchar(120);not null;default:''" json:"name"`

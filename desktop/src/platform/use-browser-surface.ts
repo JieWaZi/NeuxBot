@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { BrowserSurfaceProps } from "@neuxally/frontend/browser-surface";
+import type { BrowserSurfaceProps } from "@neuxbot/frontend/browser-surface";
 import {
   closeBrowserView,
   controlBrowserView,

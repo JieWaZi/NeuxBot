@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcommand"
-	channeltool "github.com/JieWaZi/NeuxAlly/server/internal/teamcapability"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // submitMemberReport 持久接纳当前成员尝试的真实报告，并尽早投影到负责人 Chat。

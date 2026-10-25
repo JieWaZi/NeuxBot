@@ -1,4 +1,4 @@
-import type { GithubComJieWaZiNeuxAllyServerConstantsChannelTaskStatus as ChannelTaskStatus } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus as ChannelTaskStatus } from "@/shared/api/generated/types.gen";
 
 const taskStatusPriority: Record<ChannelTaskStatus, number> = {
   in_progress: 6,

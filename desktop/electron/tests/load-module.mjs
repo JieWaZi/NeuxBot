@@ -10,7 +10,7 @@ const require = createRequire(path.join(desktop, "package.json"));
 export function loadModule(entry, overrides = {}, window = {}) {
   const source = buildSync({
     entryPoints: [
-      entry.startsWith("@neuxally/")
+      entry.startsWith("@neuxbot/")
         ? require.resolve(entry)
         : path.join(desktop, "electron", entry),
     ],

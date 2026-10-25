@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"

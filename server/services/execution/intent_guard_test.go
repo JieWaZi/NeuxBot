@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 func TestStartIntentGuardRunsBeforeCreationContinuationAndRetry(t *testing.T) {

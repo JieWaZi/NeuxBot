@@ -2,9 +2,9 @@ package knowledge_connections
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/apis/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/apis/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/neux-knowledge/remote"
 	"github.com/gin-gonic/gin"
 	"time"

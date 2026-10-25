@@ -2,8 +2,8 @@ package knowledge_connections
 
 import (
 	"encoding/base64"
-	"github.com/JieWaZi/NeuxAlly/server/apis/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/apis/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"

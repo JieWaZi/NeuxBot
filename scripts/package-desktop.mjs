@@ -6,7 +6,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pnpm = "pnpm";
 
 if (!["darwin", "win32"].includes(process.platform)) {
-  throw new Error("NeuxAlly 桌面安装包当前只支持在 macOS 或 Windows 构建");
+  throw new Error("NeuxBot 桌面安装包当前只支持在 macOS 或 Windows 构建");
 }
 const expectedArch = process.env.EXPECTED_ARCH ?? "";
 if (expectedArch !== "" && process.arch !== expectedArch) {
@@ -78,7 +78,7 @@ run("执行打包产物冒烟测试", process.execPath, [
 ]);
 
 console.log(
-  `\n[desktop-package] 当前架构的 NeuxAlly ${
+  `\n[desktop-package] 当前架构的 NeuxBot ${
     process.platform === "darwin" ? "应用、DMG" : "应用、NSIS 安装包"
   }和体积报告已通过验证`,
 );

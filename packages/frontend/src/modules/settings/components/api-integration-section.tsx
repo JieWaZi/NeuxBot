@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useState } from "react";
 import { KeyRound, Pencil, Trash2 } from "lucide-react";
 import { deleteIntegrationKey } from "@/shared/api/integration-service";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationKey as APIKey } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsIntegrationKey as APIKey } from "@/shared/api/generated/types.gen";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import {
   Table,

@@ -6,8 +6,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/codexoauth"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
 )
 
 const (
@@ -322,7 +322,7 @@ type EventSink interface {
 	Accept(ctx context.Context, event Event) error
 }
 
-// PermissionLevel 是 NeuxAlly 跨 Runtime 使用的三档产品权限。
+// PermissionLevel 是 NeuxBot 跨 Runtime 使用的三档产品权限。
 type PermissionLevel = constants.PermissionLevel
 
 const (
@@ -501,7 +501,7 @@ type Message struct {
 type Skill struct {
 	// Name 是技能向 Agent 展示的名称。
 	Name string
-	// Path 是 NeuxAlly 当前可用技能目录的绝对路径。
+	// Path 是 NeuxBot 当前可用技能目录的绝对路径。
 	Path string
 	// Selected 表示用户在当前消息中明确选择了该技能。
 	Selected bool
@@ -597,7 +597,7 @@ type RunRequest struct {
 type Workspace struct {
 	// Path 是子进程实际使用的工作目录。
 	Path string
-	// Managed 表示该目录是否由 NeuxAlly 管理并允许 SDK 写入集成文件。
+	// Managed 表示该目录是否由 NeuxBot 管理并允许 SDK 写入集成文件。
 	Managed bool
 	// AdditionalWritableDirectories 保存调用方额外授权的可写目录。
 	AdditionalWritableDirectories []string

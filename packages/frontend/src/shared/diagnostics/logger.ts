@@ -20,7 +20,7 @@ function write(
   if (!import.meta.env.DEV && level === "debug") {
     return;
   }
-  globalThis.console[level](`[NeuxAlly] ${message}`, sanitize(context));
+  globalThis.console[level](`[NeuxBot] ${message}`, sanitize(context));
 }
 
 export const logger = {

@@ -19,7 +19,7 @@ import type { TFunction } from "i18next";
 import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,

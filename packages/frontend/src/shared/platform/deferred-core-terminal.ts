@@ -1,10 +1,10 @@
-import type { TerminalService } from "@neuxally/platform-contracts/services";
+import type { TerminalService } from "@neuxbot/platform-contracts/services";
 import type {
   CoreConnection,
   TerminalOutputEvent,
   TerminalExitEvent,
   TerminalSnapshot,
-} from "@neuxally/platform-contracts/resources";
+} from "@neuxbot/platform-contracts/resources";
 
 /** 只有用户创建/恢复终端时加载流客户端，首屏不等待终端模块。 */
 export function createCoreTerminalService(

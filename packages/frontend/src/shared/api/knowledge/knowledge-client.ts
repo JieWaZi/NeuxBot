@@ -1,5 +1,5 @@
 import { knowledgeAdapter } from "./knowledge-adapter";
-import type { GithubComJieWaZiNeuxAllyServerApisKnowledgeImportSourceInput as ImportSource } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisKnowledgeImportSourceInput as ImportSource } from "@/shared/api/generated/types.gen";
 import type { ResourceRef } from "./knowledge-adapter-types";
 
 export const KNOWLEDGE_SOURCE_PAGE_SIZE = 10;

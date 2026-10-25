@@ -1,8 +1,8 @@
 package teamcapability
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // TaskInput 是 channel_tasks 单工具多动作的结构化入参。

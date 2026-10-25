@@ -8,6 +8,8 @@
 
 ## 存储目录
 
+产品名为 NeuxBot；应用标识和默认程序数据目录保留 `com.neuxally.desktop`，受管业务文件根保留 `.neuxally`。改名不移动已有数据库、账号或业务文件。
+
 程序数据目录沿用桌面平台的应用数据位置，由 `ALLY_DATA_DIR` 指定；数据库 `ally.db`、`memory.db`，技能目录 `skills/`、`system-skills/`，独立账号目录 `ai-accounts/`、`account-workspaces/`，执行授权描述 `agent-contexts/`，以及 Electron 数据、程序日志和 `automatic-tasks-api.json` 均保留于此。
 
 受管业务文件默认位于用户主目录的 `~/.neuxally/`，可以通过 `ALLY_MANAGED_FILES_DIR` 独立指定，不改变数据库和程序数据位置：

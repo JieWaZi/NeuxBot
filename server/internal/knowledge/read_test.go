@@ -11,8 +11,8 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/JieWaZi/neux-knowledge/httpapi"
 	"github.com/JieWaZi/neux-knowledge/remote"

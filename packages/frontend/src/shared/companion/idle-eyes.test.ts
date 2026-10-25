@@ -26,7 +26,7 @@ type EyeController = {
 };
 function createEyes() {
   const api: { createIdleEyes?: (random: () => number) => EyeController } = {};
-  runInNewContext(source, { window: { NeuxAlly: api } });
+  runInNewContext(source, { window: { NeuxBot: api } });
   if (!api.createIdleEyes) throw new Error("眼神控制器未注册");
   let seed = 27;
   return api.createIdleEyes(() => {

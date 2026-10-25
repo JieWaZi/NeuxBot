@@ -71,7 +71,7 @@ server/
 scripts/                           # 两端共用生成、构建与检查
 ```
 
-包名为 @neuxally/frontend、@neuxally/platform-contracts，均为仓库内部包。pi-bridge 在独立 Web 交付前迁出 desktop，使用原生成源和许可。
+包名为 @neuxbot/frontend、@neuxbot/platform-contracts，均为仓库内部包。pi-bridge 在独立 Web 交付前迁出 desktop，使用原生成源和许可。
 
 依赖方向：
 

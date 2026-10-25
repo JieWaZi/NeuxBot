@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 )
 
 // TestOfficialGeminiManagedDetection 使用固定官方 CLI 和本地目录端点验证受管信任及精确模型能力。

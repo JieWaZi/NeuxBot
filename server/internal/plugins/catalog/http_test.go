@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"net/http"
 	"net/http/httptest"
 	"os"

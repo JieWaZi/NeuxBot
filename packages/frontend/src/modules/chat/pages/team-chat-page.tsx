@@ -69,8 +69,8 @@ import {
   type TeamMemberExecutionConfig,
 } from "@/modules/team";
 import type {
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat as Chat,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval as PendingApproval,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsChat as Chat,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval,
 } from "@/shared/api/generated/types.gen";
 import {
   clearStableCreateRequest,

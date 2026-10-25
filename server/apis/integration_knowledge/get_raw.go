@@ -3,8 +3,8 @@ package integration_knowledge
 import (
 	"mime"
 
-	"github.com/JieWaZi/NeuxAlly/server/apis/middleware"
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

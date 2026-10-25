@@ -1,8 +1,8 @@
 import { i18n } from "@/shared/i18n";
 import type {
-  GithubComJieWaZiNeuxAllyServerApisPluginsPluginDetailResponse as PluginDetail,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsPluginVersion as PluginVersion,
-  GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogEntry as PluginCatalogEntry,
+  GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse as PluginDetail,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion as PluginVersion,
+  GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry as PluginCatalogEntry,
 } from "@/shared/api/generated/types.gen";
 export type { PluginDetail, PluginVersion, PluginCatalogEntry };
 export type ResourceCategory = "plugins" | "skills" | "connectors";

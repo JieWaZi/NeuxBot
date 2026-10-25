@@ -3,7 +3,7 @@ package integration_knowledge
 import (
 	"strings"
 
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"

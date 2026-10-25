@@ -52,7 +52,7 @@ import {
   supportsInputBindings,
   type InputBindings,
 } from "../model/workflow-inputs";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTask as TriggerTask } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTask as TriggerTask } from "@/shared/api/generated/types.gen";
 
 export function WorkflowTriggerDialog({
   definitionId,

@@ -1,8 +1,8 @@
-# NeuxAlly 后端工程开发约定
+# NeuxBot 后端工程开发约定
 
 > 文档状态：开发基线
 > 适用范围：Go Core、数据库、HTTP/SSE/WebSocket、执行器和进程生命周期
-> 领域词汇：[NeuxAlly 领域词汇](../../CONTEXT.md)
+> 领域词汇：[NeuxBot 领域词汇](../../CONTEXT.md)
 
 本文记录后端实现规则。开始后端改动前，必须先阅读领域词汇，并以用户当前确认的功能范围为准。
 

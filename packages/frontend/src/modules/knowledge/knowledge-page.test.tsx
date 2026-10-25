@@ -1409,7 +1409,7 @@ it.each(["unknown", "separate"])(
       ),
       http.get(`${remote}/capabilities`, () =>
         HttpResponse.json({
-          serviceKind: mode === "unknown" ? "unknown" : "neuxally",
+          serviceKind: mode === "unknown" ? "unknown" : "neuxbot",
           uploadMode: mode,
           connectionRevision: 2,
           operations: { read: true, rawOnly: mode === "separate" },

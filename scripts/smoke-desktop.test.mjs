@@ -17,7 +17,7 @@ const script = fileURLToPath(new URL("./smoke-desktop.cjs", import.meta.url));
 
 async function runSmoke(t, overrides = {}) {
   const resources = await mkdtemp(
-    path.join(os.tmpdir(), "neuxally-smoke-test-"),
+    path.join(os.tmpdir(), "neuxbot-smoke-test-"),
   );
   t.after(() => rm(resources, { recursive: true, force: true }));
   const moduleDirectory = path.join(

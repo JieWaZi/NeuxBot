@@ -30,8 +30,8 @@ test("PDF.js 浏览器资源可用，宿主与Node边界仍受限制", async () 
   for (const source of [
     "node:fs",
     "electron",
-    "@neuxally/web",
-    "@neuxally/desktop/platform",
+    "@neuxbot/web",
+    "@neuxbot/desktop/platform",
     "../../../../web/src/platform/host",
     "../../../desktop/src/platform",
     "@/../../../../web/src/main",

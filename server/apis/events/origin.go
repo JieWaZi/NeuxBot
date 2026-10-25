@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
 )
 
 const trustedOriginsEnvironment = "ALLY_EVENT_TRUSTED_ORIGINS"

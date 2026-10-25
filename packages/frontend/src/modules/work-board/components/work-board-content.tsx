@@ -17,9 +17,9 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import type {
-  GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardSummary as Summary,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardEntry as Entry,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardAttention as Attention,
+  GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardSummary as Summary,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry as Entry,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention as Attention,
 } from "@/shared/api/generated/types.gen";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";

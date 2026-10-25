@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 )
 
 // codexTextNeutralInstructions 满足原生CLI非空基础指令约束，不包含业务规则或代码助手角色。

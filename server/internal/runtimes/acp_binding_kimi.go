@@ -3,7 +3,7 @@ package runtimes
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acpkimi "github.com/JieWaZi/acp-go/pkg/kimi"
 	acp "github.com/coder/acp-go-sdk"
 )
@@ -41,7 +41,7 @@ func kimiACPPermissionLevels(options []acp.SessionConfigOption, modes []acp.Sess
 	for _, entry := range []struct {
 		// mode 是 Kimi 声明的原生权限模式。
 		mode string
-		// level 是对应的 NeuxAlly 产品权限。
+		// level 是对应的 NeuxBot 产品权限。
 		level PermissionLevel
 	}{
 		{"default", PermissionLevelDefault},

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 func (sdk *SDK) definition(id string) (runtimeDefinition, bool) {

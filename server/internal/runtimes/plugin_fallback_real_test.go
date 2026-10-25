@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 )
 
 // TestGeminiPluginFallbackDiscovery 用真实CLI只读发现生产Skill投射，不发起模型调用。

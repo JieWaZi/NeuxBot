@@ -3,9 +3,9 @@ package builtinrolepreset
 import (
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/profile"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestWikiResearcherProvidesIndependentProfileAndDefaultWaker(t *testing.T) {

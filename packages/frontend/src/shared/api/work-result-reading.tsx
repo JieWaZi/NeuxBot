@@ -16,7 +16,7 @@ import {
   listWorkBoardQueryKey,
   viewWorkResultMutation,
 } from "./generated/@tanstack/react-query.gen";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReceipt as Receipt } from "./generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt as Receipt } from "./generated/types.gen";
 import {
   withLocalErrorMutation,
   withLocalErrorSurface,

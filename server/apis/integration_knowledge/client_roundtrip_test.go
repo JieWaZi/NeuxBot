@@ -2,7 +2,7 @@ package integration_knowledge
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/JieWaZi/neux-knowledge/remote"
 	"net/http/httptest"

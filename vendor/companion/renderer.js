@@ -21,7 +21,7 @@ import mecha256 from "./assets/bodies/mecha-256.png";
 import mecha512 from "./assets/bodies/mecha-512.png";
 const window = {};
 window.AllyBodies = {original: {...{"avatar":"companion:v2:00000000000000000000000000000000","effects":{"strong":"#b59b7f","soft":"#e9d9c3","deep":"#806d59"},"eyes":["#62564b","#3b342e","#211f1c"],"glow":"#e9d9c3"}, images: {256: original256, 512: original512}},lava: {...{"avatar":"companion:v2:00000000000000000000000000000001","effects":{"strong":"#ff7a1a","soft":"#ffbc57","deep":"#aa3d12"},"eyes":["#736154","#332822","#15110f"],"glow":"#ff8735"}, images: {256: lava256, 512: lava512}},plush: {...{"avatar":"companion:v1:fe9a9eb52f5e4d7dac1959fe4f9559f2","effects":{"strong":"#c6a394","soft":"#f1ded3","deep":"#8b6b60"},"eyes":["#65514a","#3b2e2a","#211b19"],"glow":"#f1ded3"}, images: {256: plush256, 512: plush512}},metal: {...{"avatar":"companion:v2:00000000000000000000000000000003","effects":{"strong":"#8c9dbb","soft":"#c8deed","deep":"#586987"},"eyes":["#607089","#333c4b","#161c26"],"glow":"#c8deed"}, images: {256: metal256, 512: metal512}},particles: {...{"avatar":"companion:v2:00000000000000000000000000000004","effects":{"strong":"#e338c9","soft":"#f6a1e2","deep":"#a22486"},"eyes":["#76405f","#48213a","#291423"],"glow":"#f6a1e2"}, images: {256: particles256, 512: particles512}},oil: {...{"avatar":"companion:v2:00000000000000000000000000000005","effects":{"strong":"#f26d38","soft":"#ffc85c","deep":"#244a9c"},"eyes":["#58483e","#342c27","#1c1b1b"],"glow":"#f26d38"}, images: {256: oil256, 512: oil512}},comic: {...{"avatar":"companion:v2:00000000000000000000000000000006","effects":{"strong":"#a646eb","soft":"#ffe354","deep":"#542286"},"eyes":["#47304e","#291d30","#16111c"],"glow":"#a646eb"}, images: {256: comic256, 512: comic512}},jelly: {...{"avatar":"companion:v2:00000000000000000000000000000007","effects":{"strong":"#65bdb6","soft":"#b8ece1","deep":"#357b79"},"eyes":["#3b6662","#203d38","#132622"],"glow":"#b8ece1"}, images: {256: jelly256, 512: jelly512}},grass: {...{"avatar":"companion:v2:00000000000000000000000000000008","effects":{"strong":"#80a839","soft":"#efd36b","deep":"#a698ca"},"eyes":["#45552b","#27311b","#151b10"],"glow":"#a5bd58"}, images: {256: grass256, 512: grass512}},mecha: {...{"avatar":"companion:v2:00000000000000000000000000000009","effects":{"strong":"#2bcbe9","soft":"#c9dde8","deep":"#536177"},"eyes":["#496278","#273749","#151d28"],"glow":"#86ddea"}, images: {256: mecha256, 512: mecha512}}};
-/* NeuxAlly-owned eye grammar: the user's 20 × 33 ivory-character oval is the root.
+/* NeuxBot-owned eye grammar: the user's 20 × 33 ivory-character oval is the root.
  * Variants preserve rounded silhouettes, eye spacing and highlight room. */
 (() => {
   function oval(cx,mirror,{width=20,height=33,lid=0,slope=0,tilt=0,lift=0}={}){
@@ -66,10 +66,10 @@ window.AllyBodies = {original: {...{"avatar":"companion:v2:000000000000000000000
   };
 })();
 
-/* NeuxAlly 保留 31 种状态。编号是界面契约，不因删减而重排。 */
+/* NeuxBot 保留 31 种状态。编号是界面契约，不因删减而重排。 */
 (() => {
   const rows = [
-    ['02','life','自在','自己张望，偶尔眯眼或微笑','你好呀，我是 NeuxAlly。'],
+    ['02','life','自在','自己张望，偶尔眯眼或微笑','你好呀，我是 NeuxBot。'],
     ['01','life','醒来','慢慢睁眼，再眨两下回到自在','早呀，让我先睁开眼睛。'],
     ['03','life','好奇','歪着头，一只眼睛抬高一点','那是什么？让我看看。'],
     ['04','life','发呆','半睁着眼，目光悠悠飘远','嗯……刚刚想到哪里了？'],
@@ -153,7 +153,7 @@ window.AllyBodies = {original: {...{"avatar":"companion:v2:000000000000000000000
   };
 })();
 
-/* NeuxAlly 工作表情。身体节拍在下面单独采样，眼神轮廓见 ally-eyes.js。 */
+/* NeuxBot 工作表情。身体节拍在下面单独采样，眼神轮廓见 ally-eyes.js。 */
 (() => {
   const both=(extra={})=>({x:0,y:0,scaleX:1,scaleY:1,rotate:0,open:1,lookX:0,lookY:0,...extra});
   const eyes=(shared,left={},right={})=>({both:shared,left:{...shared,...left},right:{...shared,...right}});
@@ -258,9 +258,9 @@ window.AllyBodies = {original: {...{"avatar":"companion:v2:000000000000000000000
     'down-left': [-7, 5], 'down-right': [7, 5]
   };
   const gestures = [...Object.keys(directions), 'curious-left', 'curious-right', 'wide', 'soft', 'smile', 'wink-left', 'wink-right'];
-  window.NeuxAlly = window.NeuxAlly || {};
-  window.NeuxAlly.idleEyeGestures = gestures;
-  window.NeuxAlly.createIdleEyes = (random = Math.random) => {
+  window.NeuxBot = window.NeuxBot || {};
+  window.NeuxBot.idleEyeGestures = gestures;
+  window.NeuxBot.createIdleEyes = (random = Math.random) => {
     const rest = { x:0, y:0, leftWide:0, rightWide:0, leftTall:0, rightTall:0,
       leftTilt:0, rightTilt:0, soft:0, smile:0, leftWink:0, rightWink:0 };
     const state = { ...rest };
@@ -358,7 +358,7 @@ window.AllyBodies = {original: {...{"avatar":"companion:v2:000000000000000000000
   };
 })();
 
-/* NeuxAlly 动作引擎：动作只是一组可保存、可测试的代码数据，采样不读取真实时钟。 */
+/* NeuxBot 动作引擎：动作只是一组可保存、可测试的代码数据，采样不读取真实时钟。 */
 (() => {
   'use strict';
 
@@ -488,7 +488,7 @@ window.AllyBodies = {original: {...{"avatar":"companion:v2:000000000000000000000
 
 const AllyActionEngine = window.AllyActionEngine;
 /*
- * NeuxAlly 的动作库。
+ * NeuxBot 的动作库。
  *
  * 新动作只需在这里增加：元数据、总时长和关键帧。`pose` 可以只写变化项，
  * 引擎会继承上一帧；`ease` 描述“进入当前帧”的缓动曲线。
@@ -711,7 +711,7 @@ const AllyActionEngine = window.AllyActionEngine;
   window.AllyCompanionEffects = { create };
 })();
 
-/* NeuxAlly 傀儡。完整静态身体与风格配色；眼睛共用 48 点闭环，方便逐点混合。 */
+/* NeuxBot 傀儡。完整静态身体与风格配色；眼睛共用 48 点闭环，方便逐点混合。 */
 (() => {
   const NS = 'http://www.w3.org/2000/svg';
   const eyeScale=1.25;
@@ -744,7 +744,7 @@ const AllyActionEngine = window.AllyActionEngine;
   for(const pair of Object.values(rings))pair.forEach((ring,k)=>{const cx=k?149:91;for(const point of ring){point[0]=cx+(point[0]-cx)*eyeScale;point[1]=104+(point[1]-104)*eyeScale;}});
   window.AllyEyeRings=rings;
 
-  window.NeuxAlly.createPuppet=function(container,opts){
+  window.NeuxBot.createPuppet=function(container,opts){
     const id='ally'+uid++,ch={eyeFamily:rings,defaultEyeRing:rings.calm},material=window.AllyBody.resolve(opts.style);
     const svg=node('svg',{viewBox:'0 0 240 240','aria-hidden':'true',overflow:'visible','pointer-events':'none'},container);
     const defs=node('defs',{},svg);
@@ -771,7 +771,7 @@ const AllyActionEngine = window.AllyActionEngine;
     const sleepTrail=node('g',{'class':'ally-sleep-trail','pointer-events':'none'},svg);
     const zzz=Array.from({length:4},(_,i)=>{const n=node('text',{'font-family':'Georgia,serif','font-weight':600,'font-size':22+i*6,fill:'var(--companion-effect-deep)',opacity:0},sleepTrail);n.textContent='z';return n;});
     let idle=true,lastNow=0,clock=0,emotion=opts.emotion||'02',reduced=false;
-    const idleEyes=window.NeuxAlly.createIdleEyes();
+    const idleEyes=window.NeuxBot.createIdleEyes();
     const actionPlayer=window.AllyActionEngine.createPlayer();
     let free=true,attentionUntil=0,stateStart=0,stateRevision=0;
     let sparks=[];
@@ -1011,11 +1011,11 @@ const AllyActionEngine = window.AllyActionEngine;
   function Clock(target, opts) {
     opts = opts || {};
     const element = typeof target === "string" ? document.querySelector(target) : target;
-    if (!element) throw new Error("NeuxAlly.create：找不到容器");
+    if (!element) throw new Error("NeuxBot.create：找不到容器");
     const catalog = window.AllyExpressions || {};
     const rings = window.AllyEyeRings || {};
     const pair = (name) => rings[name] || rings.calm;
-    this.ball = window.NeuxAlly.createPuppet(element, opts);
+    this.ball = window.NeuxBot.createPuppet(element, opts);
     this._events = {};
     this._catalog = catalog;
     this._pair = pair;
@@ -1146,19 +1146,19 @@ const AllyActionEngine = window.AllyActionEngine;
     },
   };
 
-  window.NeuxAlly = window.NeuxAlly || {};
-  window.NeuxAlly.create = (element, opts) => new Clock(element, opts);
+  window.NeuxBot = window.NeuxBot || {};
+  window.NeuxBot.create = (element, opts) => new Clock(element, opts);
 })();
 
 // 互动目录直接取自实际注册的状态和动作，避免界面维护另一份状态编号。
 export const companionReactions = [
   ...window.AllyStates.map(({ id, group }) => ({ id: 'state:' + id, emotion: id, group, duration: ['30', '37', '40'].includes(id) ? 4200 : 3200 })),
   ...window.AllyActionEngine.list().map(({ name, emotion, duration }) => ({ id: 'action:' + name, emotion, group: 'action', action: name, duration: duration * 1000 + 200 })),
-  ...window.NeuxAlly.idleEyeGestures.map(name => ({ id: 'gaze:' + name, emotion: '02', group: 'action', action: 'look:' + name, duration: 2900 })),
+  ...window.NeuxBot.idleEyeGestures.map(name => ({ id: 'gaze:' + name, emotion: '02', group: 'action', action: 'look:' + name, duration: 2900 })),
 ];
 // 表情与身体共用状态事件；原型演示页承担的同步在此收口。
 export const createCompanion = (element, options) => {
-  const engine = window.NeuxAlly.create(element, options);
+  const engine = window.NeuxBot.create(element, options);
   engine.on('change', ({ id }) => engine.ball.setEmotion(id));
   return engine;
 };

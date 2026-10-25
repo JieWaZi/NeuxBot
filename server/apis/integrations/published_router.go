@@ -1,11 +1,11 @@
 package integrations
 
 import (
-	contract "github.com/JieWaZi/NeuxAlly/server"
-	"github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks"
-	"github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
+	contract "github.com/JieWaZi/NeuxBot/server"
+	"github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks"
+	"github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
 	"net/http"
 	"strings"
 )

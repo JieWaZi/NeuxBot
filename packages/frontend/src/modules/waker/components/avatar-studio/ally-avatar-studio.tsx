@@ -13,8 +13,8 @@ import {
 import "./ally-avatar-studio.css";
 
 /**
- * NeuxAlly Avatar Studio · v10
- * 方向：单轮廓、眼睛和动作分开编排，使用 NeuxAlly 自己的轮廓、配色和交互。
+ * NeuxBot Avatar Studio · v10
+ * 方向：单轮廓、眼睛和动作分开编排，使用 NeuxBot 自己的轮廓、配色和交互。
  */
 
 const clamp = (v: number, min: number, max: number) =>

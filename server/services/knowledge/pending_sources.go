@@ -2,7 +2,7 @@ package knowledge
 
 import (
 	"context"
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"sort"
 )

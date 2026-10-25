@@ -35,7 +35,7 @@ import "@/shared/i18n";
 import { chatWorkspaceHandlers } from "../test/chat-workspace-handlers";
 import { installCanvasDOM } from "../test/canvas-dom";
 import { client } from "@/shared/api/generated/client.gen";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowEvent as WorkflowEvent } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEvent as WorkflowEvent } from "@/shared/api/generated/types.gen";
 import type { ChatEvent } from "@/shared/api/events";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import type * as SceneWorkspace from "@/shared/workspace/app-scene-workspace";
@@ -640,10 +640,10 @@ it("节点标题保存后保留已打开的模型菜单与编辑浮层", async (
       }),
     ),
     http.get(`${origin}/api/v1/wakers`, () =>
-      HttpResponse.json({ resources: [{ id: "ally", name: "NeuxAlly" }] }),
+      HttpResponse.json({ resources: [{ id: "ally", name: "NeuxBot" }] }),
     ),
     http.get(`${origin}/api/v1/wakers/ally`, () =>
-      HttpResponse.json({ id: "ally", name: "NeuxAlly" }),
+      HttpResponse.json({ id: "ally", name: "NeuxBot" }),
     ),
     http.get(`${origin}/api/v1/wakers/ally/connectors`, () =>
       HttpResponse.json([]),
@@ -791,7 +791,7 @@ it("点击新建立即打开画布输入框，不等待列表刷新或创建空�
   expect(welcome.querySelector("[data-typed-phrase]")).toBeInTheDocument();
   expect(
     within(screen.getByTestId("chat-page-layout")).getByRole("button", {
-      name: "与 NeuxAlly 互动",
+      name: "与 NeuxBot 互动",
     }),
   ).toBeInTheDocument();
   expect(create).not.toHaveBeenCalled();

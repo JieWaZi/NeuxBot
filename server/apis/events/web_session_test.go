@@ -1,10 +1,10 @@
 package events
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/apis/middleware"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/localweb"
-	eventhub "github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/localweb"
+	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"net/http"

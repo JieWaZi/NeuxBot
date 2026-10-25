@@ -1,4 +1,4 @@
-# NeuxAlly 开发约定
+# NeuxBot 开发约定
 
 ## 必读路由
 

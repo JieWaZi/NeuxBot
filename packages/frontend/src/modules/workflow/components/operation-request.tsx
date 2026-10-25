@@ -4,7 +4,7 @@ import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { answerWorkflowOperationMutation } from "@/shared/api/generated/@tanstack/react-query.gen";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowOperationRequest as OperationRequest } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequest as OperationRequest } from "@/shared/api/generated/types.gen";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,

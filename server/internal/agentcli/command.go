@@ -14,10 +14,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability/contract"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
 	"github.com/spf13/cobra"
 )
 
@@ -137,7 +137,7 @@ func (r *runner) run(ctx context.Context, method, path string, payload any, muta
 }
 
 func (r *runner) root() *cobra.Command {
-	root := &cobra.Command{Use: "allycli", Short: "Use capabilities authorized for the current NeuxAlly execution", SilenceErrors: true, SilenceUsage: true, CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true}}
+	root := &cobra.Command{Use: "allycli", Short: "Use capabilities authorized for the current NeuxBot execution", SilenceErrors: true, SilenceUsage: true, CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true}}
 	root.RunE = func(cmd *cobra.Command, _ []string) error { r.entered = true; return status_error.AgentInputInvalid }
 	root.AddCommand(&cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(_ *cobra.Command, _ []string) error {
 		r.entered = true

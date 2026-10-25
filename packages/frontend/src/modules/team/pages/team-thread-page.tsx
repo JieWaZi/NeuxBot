@@ -20,8 +20,8 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { subscribeChannel } from "@/shared/api/events";
 import { ApiError } from "@/shared/api/errors";
 import type {
-  GithubComJieWaZiNeuxAllyServerApisChannelsChannelThreadDetail as ChannelThreadDetail,
-  GithubComJieWaZiNeuxAllyServerServicesChannelTimelineMessage as ChannelTimelineMessage,
+  GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail as ChannelThreadDetail,
+  GithubComJieWaZiNeuxBotServerServicesChannelTimelineMessage as ChannelTimelineMessage,
   ListChannelTimelineResponse,
 } from "@/shared/api/generated/types.gen";
 import {

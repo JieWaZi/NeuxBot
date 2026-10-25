@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func TestPrepareRuntimeFilesLayersVirtualTeamInstructionsIntoRuntimeFile(t *testing.T) {
@@ -55,7 +55,7 @@ func TestPrepareRuntimeFilesLayersVirtualTeamInstructionsIntoRuntimeFile(t *test
 		"## TEAM.md",
 		"协作优先级",
 		"# Team: 测试团队",
-		"## NeuxAlly Team Tasks",
+		"## NeuxBot Team Tasks",
 		capabilityContent,
 	} {
 		if !strings.Contains(agents, expected) {
@@ -284,7 +284,7 @@ func TestPrepareRuntimeFilesWritesProjectRoutingForCodexAndClaude(t *testing.T) 
 				"New or modified files that clearly belong to a project must be written under that project's directory",
 				"temporary or unrelated to any project must be created under `attachments/generated/`",
 				"Other paths under `attachments/` contain user-provided files; do not overwrite them",
-				"Do not create user deliverables in the NeuxAlly Chat workspace root",
+				"Do not create user deliverables in the NeuxBot Chat workspace root",
 			} {
 				if !strings.Contains(text, expected) {
 					t.Fatalf("Runtime instructions = %q, want %q", text, expected)

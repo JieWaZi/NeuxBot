@@ -2,7 +2,7 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-<h1>NeuxAlly</h1>
+<h1>NeuxBot</h1>
 
 <p><strong>Your AI partners, working together.</strong><br />
 A local-first desktop workspace for you and your AI team.</p>
@@ -11,17 +11,17 @@ A local-first desktop workspace for you and your AI team.</p>
 ![macOS](https://img.shields.io/badge/macOS-Apple%20Silicon%20%7C%20Intel-222822?style=flat-square&logo=apple)
 ![Windows](https://img.shields.io/badge/Windows-x64-222822?style=flat-square&logo=windows)
 
-[Releases](https://github.com/JieWaZi/NeuxAlly/releases) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
+[Releases](https://github.com/JieWaZi/NeuxBot/releases) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
-<img src="docs/assets/readme/hero.png" alt="NeuxAlly's companion character alongside an illustrated desktop work board." width="100%" />
+<img src="docs/assets/readme/hero.png" alt="NeuxBot's companion character alongside an illustrated desktop work board." width="100%" />
 
 <sub>Product illustration · sample data · Chinese interface</sub>
 
 </div>
 
-NeuxAlly brings your AI tools, project context, and collaborators into one local desktop workspace. Build a team of partners around the way you work, and follow their work through to files, code changes, and reports.
+NeuxBot brings your AI tools, project context, and collaborators into one local desktop workspace. Build a team of partners around the way you work, and follow their work through to files, code changes, and reports.
 
-## Why NeuxAlly?
+## Why NeuxBot?
 
 - **Partners you can keep working with.** Give each partner a role, profile, project knowledge, and the skills and resources it needs. Reuse that setup across tasks, team assignments, and workflows.
 - **Your choice of tools and accounts.** Choose a CLI, account, and model for the work at hand while managing your partners in one place. Use existing CLI logins or separately managed AI accounts.
@@ -39,7 +39,7 @@ Partners and work records are stored locally. AI requests use your chosen provid
 
 ## Get started
 
-Find an installer in [Releases](https://github.com/JieWaZi/NeuxAlly/releases), or run from source below. Connect a supported CLI and account, create a partner, and give it a project to work on.
+Find an installer in [Releases](https://github.com/JieWaZi/NeuxBot/releases), or run from source below. Connect a supported CLI and account, create a partner, and give it a project to work on.
 
 <details>
 <summary>Run from source</summary>
@@ -47,8 +47,8 @@ Find an installer in [Releases](https://github.com/JieWaZi/NeuxAlly/releases), o
 Requires **Node.js 22**, **pnpm 10.34.4**, and the Go version in [go.mod](server/go.mod).
 
 ```sh
-git clone https://github.com/JieWaZi/NeuxAlly.git
-cd NeuxAlly
+git clone https://github.com/JieWaZi/NeuxBot.git
+cd NeuxBot
 pnpm install --frozen-lockfile
 go -C server mod download
 pnpm dev:native
@@ -58,8 +58,8 @@ For the local browser version, run `pnpm dev:web` instead and enter the one-time
 
 </details>
 
-See the [user guides](docs/README.md) for setup and usage, the [allycli capability reference](server/cmd/allycli/README.md) for available system operations, or [CONTRIBUTING.md](CONTRIBUTING.md) to help build NeuxAlly. These documents are currently in Simplified Chinese.
+See the [user guides](docs/README.md) for setup and usage, the [allycli capability reference](server/cmd/allycli/README.md) for available system operations, or [CONTRIBUTING.md](CONTRIBUTING.md) to help build NeuxBot. These documents are currently in Simplified Chinese.
 
 ---
 
-[MIT License](LICENSE) · [Third-Party Notices](THIRD_PARTY_NOTICES.md) · [Issues](https://github.com/JieWaZi/NeuxAlly/issues) · By [Ryan Wu / JieWaZi](https://github.com/JieWaZi)
+[MIT License](LICENSE) · [Third-Party Notices](THIRD_PARTY_NOTICES.md) · [Issues](https://github.com/JieWaZi/NeuxBot/issues) · By [Ryan Wu / JieWaZi](https://github.com/JieWaZi)

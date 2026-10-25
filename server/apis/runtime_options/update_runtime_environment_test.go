@@ -3,8 +3,8 @@ package runtime_options
 import (
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestConfigurationRequiresDetectRefreshOnlyForLaunchChanges(t *testing.T) {

@@ -3,7 +3,7 @@ package system
 import (
 	"runtime"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

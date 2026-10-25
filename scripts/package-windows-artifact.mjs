@@ -31,7 +31,7 @@ export async function verifyWindowsArtifact(release, architecture) {
     release,
     architecture === "arm64" ? "win-arm64-unpacked" : "win-unpacked",
   );
-  const installer = path.join(release, `NeuxAlly-windows-${architecture}.exe`);
+  const installer = path.join(release, `NeuxBot-windows-${architecture}.exe`);
   const report = path.join(release, `size-report-windows-${architecture}.json`);
   await rm(report, { force: true });
   const application = await sizeOf(bundle);

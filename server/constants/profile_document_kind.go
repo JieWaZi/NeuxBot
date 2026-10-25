@@ -1,4 +1,4 @@
-// Package constants 定义 NeuxAlly 跨层共享的稳定枚举和状态常量。
+// Package constants 定义 NeuxBot 跨层共享的稳定枚举和状态常量。
 package constants
 
 //go:generate toolx gen enum ProfileDocumentKind

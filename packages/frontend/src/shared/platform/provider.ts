@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import type { CoreConnection } from "@neuxally/platform-contracts/resources";
+import type { CoreConnection } from "@neuxbot/platform-contracts/resources";
 import type {
   HostService,
   WorkspaceService,
@@ -7,7 +7,7 @@ import type {
   BrowserService,
   TerminalService,
   EventsService,
-} from "@neuxally/platform-contracts/services";
+} from "@neuxbot/platform-contracts/services";
 
 export type Platform = {
   kind: "desktop" | "web";

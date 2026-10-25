@@ -1,5 +1,5 @@
 export const applicationVersionSymbol =
-  "github.com/JieWaZi/NeuxAlly/server/constants.ApplicationVersion";
+  "github.com/JieWaZi/NeuxBot/server/constants.ApplicationVersion";
 
 const releaseVersionPattern = /^[0-9]+\.[0-9]+\.[0-9]+$/;
 

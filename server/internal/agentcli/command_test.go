@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 )
 
 func TestCanceledMutationPreservesUnknownEffectAndReceiptAdvice(t *testing.T) {

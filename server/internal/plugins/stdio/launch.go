@@ -13,8 +13,8 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // Run 在明确插件目录内启动原程序，保留 argv 和三个标准数据流。

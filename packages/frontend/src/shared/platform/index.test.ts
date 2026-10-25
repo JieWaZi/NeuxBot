@@ -31,7 +31,7 @@ import {
 import type {
   WorkspaceResourceChangeEvent,
   WorkspaceResourceRead,
-} from "@neuxally/platform-contracts/resources";
+} from "@neuxbot/platform-contracts/resources";
 afterEach(() => {
   vi.unstubAllGlobals();
 });

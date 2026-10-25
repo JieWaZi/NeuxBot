@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	managedskills "github.com/JieWaZi/NeuxAlly/server/internal/skills"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 )
 
 // skillSelection 保存 Runtime 协议需要显式传递的已选技能。
@@ -102,7 +102,7 @@ func (sdk *SDK) writeRuntimeInstructions(
 		return status_error.SkillUnavailable
 	}
 	var content strings.Builder
-	content.WriteString("# NeuxAlly Chat Workspace Constraints\n\n")
+	content.WriteString("# NeuxBot Chat Workspace Constraints\n\n")
 	appendWorkspaceFileRouting(&content, workspace.ProjectDirectories)
 	for _, instruction := range instructions {
 		name := strings.TrimSpace(instruction.Name)
@@ -180,7 +180,7 @@ func appendWorkspaceFileRouting(
 	directories []WorkspaceProjectDirectory,
 ) {
 	content.WriteString("## Workspace File Routing\n\n")
-	content.WriteString("The current working directory is an NeuxAlly-managed Chat workspace, not a single project.\n\n")
+	content.WriteString("The current working directory is a NeuxBot-managed Chat workspace, not a single project.\n\n")
 	if len(directories) > 0 {
 		content.WriteString("Available project directories:\n\n")
 		for _, directory := range directories {
@@ -208,7 +208,7 @@ func appendWorkspaceFileRouting(
 		"- Other paths under `%s/` contain user-provided files; do not overwrite them.\n",
 		constants.ExecutionWorkspaceAttachmentsDirectory,
 	)
-	content.WriteString("- Do not create user deliverables in the NeuxAlly Chat workspace root.\n\n")
+	content.WriteString("- Do not create user deliverables in the NeuxBot Chat workspace root.\n\n")
 }
 
 func (sdk *SDK) clearRuntimeSkillDirectories(

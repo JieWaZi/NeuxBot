@@ -3,8 +3,8 @@ package workflows
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

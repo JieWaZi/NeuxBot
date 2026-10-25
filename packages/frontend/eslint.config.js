@@ -12,7 +12,7 @@ const rendererImportPaths = [
 
 const nodeImportPattern = {
   regex:
-    "^(?:node:|electron(?:/|$)|@neuxally/(?:desktop|web)(?:/|$)|(?:\\.{1,2}/|@/)(?:[^/]+/)*(?:desktop|web)(?:/|$))",
+    "^(?:node:|electron(?:/|$)|@neuxbot/(?:desktop|web)(?:/|$)|(?:\\.{1,2}/|@/)(?:[^/]+/)*(?:desktop|web)(?:/|$))",
   message: "共享界面不得直接导入 Node、Electron 或 Web/Desktop 宿主实现。",
 };
 

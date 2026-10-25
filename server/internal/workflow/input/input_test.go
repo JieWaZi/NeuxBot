@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 )
 
 func testSchema(t *testing.T) map[string]any {

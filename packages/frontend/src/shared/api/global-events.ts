@@ -1,4 +1,4 @@
-import { CoreEventClient } from "@neuxally/platform-contracts/core-event-client";
+import { CoreEventClient } from "@neuxbot/platform-contracts/core-event-client";
 import {
   globalEventResourceKey,
   type GlobalEventDelivery,
@@ -6,7 +6,7 @@ import {
   type GlobalEventResource,
   type GlobalEventState,
   type GlobalEventTopic,
-} from "@neuxally/platform-contracts/core-event-protocol";
+} from "@neuxbot/platform-contracts/core-event-protocol";
 import { platform, requirePlatformService } from "@/shared/platform/provider";
 import { getCoreConnection } from "@/shared/platform";
 import { initializeApi } from "./runtime";
@@ -17,7 +17,7 @@ export type {
   GlobalEventResource,
   GlobalEventState,
   GlobalEventTopic,
-} from "@neuxally/platform-contracts/core-event-protocol";
+} from "@neuxbot/platform-contracts/core-event-protocol";
 
 type Subscription = {
   observers: Set<GlobalEventObserver>;

@@ -23,8 +23,8 @@ import {
   readLibraryChunkingConfig,
 } from "./knowledge-library-config";
 import type {
-  GithubComJieWaZiNeuxAllyServerApisKnowledgeLibrary as LibraryDTO,
-  GithubComJieWaZiNeuxAllyServerApisKnowledgeSource as SourceDTO,
+  GithubComJieWaZiNeuxBotServerApisKnowledgeLibrary as LibraryDTO,
+  GithubComJieWaZiNeuxBotServerApisKnowledgeSource as SourceDTO,
 } from "@/shared/api/generated/types.gen";
 export const knowledgeKeys = {
   all: ["knowledge"] as const,

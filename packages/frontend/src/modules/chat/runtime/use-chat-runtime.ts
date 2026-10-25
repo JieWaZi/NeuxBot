@@ -72,10 +72,10 @@ function overlayMatchesScope(
   );
 }
 import type {
-  GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage as ChatMessage,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval as PendingApproval,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingElicitation as PendingElicitation,
-  GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution as MessageResult,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as ChatMessage,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation,
+  GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as MessageResult,
 } from "@/shared/api/generated/types.gen";
 
 type ChatRuntimeOptions = {

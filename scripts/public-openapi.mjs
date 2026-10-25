@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 export function projectPublicOpenAPI(source, routes) {
   const out = {
     openapi: source.openapi,
-    info: { title: "NeuxAlly 集成 API", version: "1" },
+    info: { title: "NeuxBot 集成 API", version: "1" },
     paths: {},
     components: {
       securitySchemes: {

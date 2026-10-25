@@ -4,7 +4,7 @@ import type { ComponentProps } from "react";
 
 import { cn } from "@/shared/lib/cn";
 
-// shadcn/ui Card composition, adapted to NeuxAlly surfaces and semantic containers.
+// shadcn/ui Card composition, adapted to NeuxBot surfaces and semantic containers.
 // Source: https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/new-york-v4/ui/card.tsx
 const cardVariants = cva("bg-card text-foreground min-w-0 rounded-xl", {
   variants: {

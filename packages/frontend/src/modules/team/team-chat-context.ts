@@ -2,10 +2,10 @@ import type { ReactNode } from "react";
 
 import type {
   CreateChannelThreadResponse,
-  GithubComJieWaZiNeuxAllyServerApisChannelsChannelWorkInput as ChannelWorkInput,
-  GithubComJieWaZiNeuxAllyServerApisChannelsCreateChannelThreadRequest as CreateChannelThreadRequest,
-  GithubComJieWaZiNeuxAllyServerConstantsChannelTaskStatus as ChannelTaskStatus,
-  GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage as ChatMessage,
+  GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput as ChannelWorkInput,
+  GithubComJieWaZiNeuxBotServerApisChannelsCreateChannelThreadRequest as CreateChannelThreadRequest,
+  GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus as ChannelTaskStatus,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as ChatMessage,
   SendChannelMessageResponse,
 } from "@/shared/api/generated/types.gen";
 import type { PermissionLevel } from "@/shared/lib/runtime-permissions";

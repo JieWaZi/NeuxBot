@@ -10,7 +10,7 @@ import {
 } from "@/shared/platform";
 import { Button } from "@/shared/ui/button";
 import { Spinner } from "@/shared/ui/spinner";
-import { workspaceSingleFileBytesLimit } from "@neuxally/platform-contracts/workspace-byte-limits";
+import { workspaceSingleFileBytesLimit } from "@neuxbot/platform-contracts/workspace-byte-limits";
 import { excelFormat } from "./format";
 import type { ExcelPreview as PreviewData } from "./model";
 import { parseExcel } from "./parse";

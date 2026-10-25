@@ -78,7 +78,7 @@ const (
 	// WorkflowWorkspaceDirectoryName 是作者和运行独立受管工作区的父目录。
 	WorkflowWorkspaceDirectoryName = "workflow-workspaces"
 	// ApplicationName 是 Core 对外报告的产品名称。
-	ApplicationName = "NeuxAlly"
+	ApplicationName = "NeuxBot"
 	// CoreDefaultHost 是桌面 Core 默认监听的回环地址。
 	CoreDefaultHost = "127.0.0.1"
 	// CoreDefaultPort 是桌面 Core 默认监听的端口。
@@ -167,7 +167,7 @@ const (
 	// ChannelEventHeartbeatIntervalSeconds 是团队事件流心跳间隔。
 	ChannelEventHeartbeatIntervalSeconds = 15
 	// ChannelTasksMCPTitle 是团队协作工具的展示名称。
-	ChannelTasksMCPTitle = "NeuxAlly Team Tasks"
+	ChannelTasksMCPTitle = "NeuxBot Team Tasks"
 	// ChannelTasksMCPTokenBytes 是团队协作工具执行期租约标识的随机字节数。
 	ChannelTasksMCPTokenBytes = 32
 	// ChannelCapabilityTTLHours 是单次团队执行能力的强制最长存活小时数。
@@ -674,7 +674,7 @@ const (
 	// PluginLocaleChinese 是插件简体中文展示与文档语言。
 	PluginLocaleChinese = "zh-CN"
 	// PluginCatalogHTTPSource 是默认公开软件目录。
-	PluginCatalogHTTPSource = "https://github.com/JieWaZi/NeuxAlly-Plugins/releases/latest/download/catalog.json"
+	PluginCatalogHTTPSource = "https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog.json"
 	// PluginAuthCommandStrategy 是包内授权桥接策略。
 	PluginAuthCommandStrategy = "plugin-command"
 	// PluginAuthProtocol 是逐行JSON-RPC授权扩展版本。

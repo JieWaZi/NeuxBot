@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
 import { ApiError } from "@/shared/api/errors";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThreadMember as ChannelThreadMember } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThreadMember as ChannelThreadMember } from "@/shared/api/generated/types.gen";
 
 import { TeamThreadPage, type TeamThreadChatContext } from "./team-thread-page";
 

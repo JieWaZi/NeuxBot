@@ -6,7 +6,7 @@
 
 `pnpm build` 构建 Core、Renderer 与 Electron 代码。`pnpm build:native`（别名 `build:desktop`）调用 scripts/package-desktop.mjs，在当前 macOS 或 Windows 原生环境生成安装包；desktop 的 electron:package 复用同一流程。
 
-发布版本使用 X.Y.Z，并通过 ALLY_VERSION 写入 Core；版本写入符号随 Go module 保持一致。发布工作流位于 .github/workflows/release.yml，仓库及安装包归属为 JieWaZi/NeuxAlly。
+发布版本使用 X.Y.Z，并通过 ALLY_VERSION 写入 Core；版本写入符号随 Go module 保持一致。发布工作流位于 .github/workflows/release.yml，仓库及安装包归属为 JieWaZi/NeuxBot。
 
 ## 构建资源
 
@@ -14,7 +14,7 @@
 
 Core 使用 CGO_ENABLED=0、-trimpath 和 -s -w。Renderer 由 Vite 编译，主进程与 preload 由 esbuild 编译，node-pty 保留原生运行依赖。系统技能、Pi Bridge（源在 `packages/pi-bridge`，生成到 `resources/pi-bridge`）、终端 worker（源在 `packages/terminal-runtime`，构建到 `resources/terminal-runtime`）、工作流 SDK、呈现目录与固定插件源必须和生成源一致。
 
-`pnpm plugins:prepare` 生成自有插件库来源元数据，不生成内置插件安装 ZIP；既有提供者兼容依赖仍按固定来源和摘要准备。自有插件包及其桥接依赖由独立 NeuxAlly-Plugins 仓库构建和发布，用户通过 HTTP 目录安装。`pnpm plugins:check` 定向核对来源声明与本地资产规则，不执行第三方 CLI。来源、更新和缓存用法见 [固定插件源](../../plugin-sources/README.md)。运行期间不提供上传或导入本地插件的入口。
+`pnpm plugins:prepare` 生成自有插件库来源元数据，不生成内置插件安装 ZIP；既有提供者兼容依赖仍按固定来源和摘要准备。自有插件包及其桥接依赖由独立 neux-plugins 仓库构建和发布，用户通过 HTTP 目录安装。`pnpm plugins:check` 定向核对来源声明与本地资产规则，不执行第三方 CLI。来源、更新和缓存用法见 [固定插件源](../../plugin-sources/README.md)。运行期间不提供上传或导入本地插件的入口。
 
 已由 Vite 或 esbuild 打包的 JavaScript 依赖放在开发依赖中，安装包仅额外携带 node-pty 及其必要依赖。node-pty 只保留当前平台与架构的预编译文件；本机编译目录仅保留 Release 的原生模块、动态库、可执行文件及 ConPTY 运行文件，排除调试符号、静态库、对象目录和构建元数据。node-addon-api 只保留包信息与许可，不携带编译期头文件和工具。electron-builder 固定使用 `--publish never`，产物由独立发布任务统一上传，打包任务无需 GitHub 发布令牌。
 
@@ -22,7 +22,7 @@ Core 使用 CGO_ENABLED=0、-trimpath 和 -s -w。Renderer 由 Vite 编译，主
 
 首屏静态 JS 预算为 500,000 bytes，工作台启动 JS 预算为 4,500,000 bytes；统计包含启动前等待或预热的动态依赖。启动错误面板仅在失败时加载，Mermaid 引擎仅在实际绘图时加载。打包检查安装包 170 MiB、安装文件 450 MiB、Resources 215 MiB 的体积上限，输出机器可读报告。Resources 包含 Core、CLI、前端产物及必要原生模块；预算涵盖约 72 MiB 的 Core/CLI、约 40 MiB 的前端及运行资源，以及约 47 MiB 的固定飞书原生程序与完整技能、约 38 MiB 的固定 GitHub CLI。macOS arm64 实测 Resources 约 196.3 MiB（加入 GitHub 隔离构建后比 158.5 MiB 基线增加约 37.8 MiB），资源预算保留约 18 MiB 余量；应用实测约 436.6 MiB，其他平台以各自原生构建报告为准。Windows 即使超限也输出三项实测体积及最大的 30 个文件，失败构建的报告由发布工作流单独保存。实际文件名与默认平台以打包脚本为准。
 
-发布矩阵在原生 runner 上分别构建 macOS arm64、macOS x64（amd64）与 Windows x64，并校验构建机架构。GitHub Release 直接提供用户可安装的 NeuxAlly-mac-arm64.dmg、NeuxAlly-mac-x64.dmg 和 NeuxAlly-windows-x64.exe，附带分架构体积报告及 SHA256SUMS。Actions 中以 NeuxAlly 命名的 artifact 仅用于 CI 暂存与跨任务传输，用户下载入口为 Release 中的 DMG 或 EXE。代码签名、公证及签名密钥由发布环境管理；本地签名不表示完成发行签名与公证。
+发布矩阵在原生 runner 上分别构建 macOS arm64、macOS x64（amd64）与 Windows x64，并校验构建机架构。GitHub Release 直接提供用户可安装的 NeuxBot-mac-arm64.dmg、NeuxBot-mac-x64.dmg 和 NeuxBot-windows-x64.exe，附带分架构体积报告及 SHA256SUMS。Actions 中以 NeuxBot 命名的 artifact 仅用于 CI 暂存与跨任务传输，用户下载入口为 Release 中的 DMG 或 EXE。代码签名、公证及签名密钥由发布环境管理；本地签名不表示完成发行签名与公证。
 
 ## 发布前
 

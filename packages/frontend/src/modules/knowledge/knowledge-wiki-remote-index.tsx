@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { ComponentProps, ReactNode } from "react";
-import type { GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexGroup as IndexGroup } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisKnowledgeWikiIndexGroup as IndexGroup } from "@/shared/api/generated/types.gen";
 import type { StaticMarkdown } from "@/shared/ui/static-markdown";
 import { KnowledgeWikiContentLoading } from "./knowledge-loading";
 import { KnowledgeReadFeedback } from "./knowledge-read-feedback";

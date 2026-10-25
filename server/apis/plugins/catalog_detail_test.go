@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	packageplugin "github.com/JieWaZi/NeuxAlly/server/internal/plugins"
+	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/catalog"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 )
 
 func TestCatalogDetailAndRawReadmeAreReadOnlyAndSourceBound(t *testing.T) {

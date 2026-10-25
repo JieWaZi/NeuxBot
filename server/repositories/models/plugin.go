@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 

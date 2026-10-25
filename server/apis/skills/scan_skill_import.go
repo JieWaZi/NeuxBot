@@ -1,13 +1,13 @@
 package skills
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/apis/uploads"
+	"github.com/JieWaZi/NeuxBot/server/apis/uploads"
 	"path/filepath"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	internalSkills "github.com/JieWaZi/NeuxAlly/server/internal/skills"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	internalSkills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

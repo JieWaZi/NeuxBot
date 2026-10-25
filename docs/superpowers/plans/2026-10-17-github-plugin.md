@@ -50,7 +50,7 @@
 
 ### Task 3: 固定 GitHub 插件源与平台程序
 
-**Files:** `.scratch/neuxally-plugins` 独立源；跟踪 `plugin-sources/*`、`scripts/plugin-resources.mjs` 及测试；构建调用；`THIRD_PARTY_NOTICES.md`。
+**Files:** `.scratch/neux-plugins` 独立源；跟踪 `plugin-sources/*`、`scripts/plugin-resources.mjs` 及测试；构建调用；`THIRD_PARTY_NOTICES.md`。
 
 **Interfaces:** source.lock.providers 是多提供者数组，每个提供者含 name/version/upstreamCommit/binary 及固定输入；飞书使用发布 assets，GitHub 使用 source/build（工具链、隔离补丁及回归摘要）；prepareProvider 和 verifyPrepared 遍历当次目标全部提供者。catalog 新增 github，标准 mcp.json 使用官方地址及限制工具组，所需组件为官方 MCP。
 

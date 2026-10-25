@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -52,7 +52,7 @@ type SkillController interface {
 	DeleteByWaker(ctx context.Context, wakerID string) error
 	// DeletePackage 删除技能包、全部版本和全部伙伴关系。
 	DeletePackage(ctx context.Context, skillID string) error
-	// UpdatePackageDisplayName 更新技能包 NeuxAlly 展示名称，不修改版本元数据。
+	// UpdatePackageDisplayName 更新技能包 NeuxBot 展示名称，不修改版本元数据。
 	UpdatePackageDisplayName(ctx context.Context, skillID string, name string) error
 }
 

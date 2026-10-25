@@ -10,7 +10,7 @@ import {
   ChatTaskDialog,
   getChatOptions,
 } from "@/modules/chat";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowCreationSession as ChatSession } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSession as ChatSession } from "@/shared/api/generated/types.gen";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { WorkflowQueryError } from "./query-feedback";
 

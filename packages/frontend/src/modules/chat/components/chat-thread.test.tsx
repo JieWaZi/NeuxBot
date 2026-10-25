@@ -148,12 +148,10 @@ describe("chat work process", () => {
         },
       },
     };
-    const { rerender, container } = render(
-      <AssistantMessage name="NeuxAlly" />,
-    );
+    const { rerender, container } = render(<AssistantMessage name="NeuxBot" />);
     expect(screen.getByRole("alert")).toHaveTextContent("模型服务暂时不可用");
     messageState.current = { ...messageState.current, isLast: false };
-    rerender(<AssistantMessage name="NeuxAlly" />);
+    rerender(<AssistantMessage name="NeuxBot" />);
     expect(screen.queryByText("模型服务暂时不可用")).not.toBeInTheDocument();
     expect(container.querySelector("[data-work-result-body]")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "展开失败详情" }));

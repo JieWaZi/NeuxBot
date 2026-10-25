@@ -4,7 +4,7 @@ import (
 	"context"
 	"sort"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	acpcodex "github.com/JieWaZi/acp-go/pkg/codex"
 	acp "github.com/coder/acp-go-sdk"
 )

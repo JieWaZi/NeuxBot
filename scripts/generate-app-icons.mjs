@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "packages/frontend/public");
 const resourceDir = path.join(root, "desktop/resources");
-const temporaryDir = mkdtempSync(path.join(tmpdir(), "neuxally-icons-"));
+const temporaryDir = mkdtempSync(path.join(tmpdir(), "neuxbot-icons-"));
 const logo = readFileSync(path.join(publicDir, "ally-logo.svg"), "utf8");
 const darkLogo = logo.replaceAll("#1c1c1c", "#f7f7f7");
 const templateLogo = logo.replaceAll(/#[0-9a-f]{6}/g, "#000000");
@@ -85,7 +85,7 @@ try {
     rasterize(tile, path.join(resourceDir, `${name}.png`), 1024);
   }
 
-  const iconset = path.join(temporaryDir, "NeuxAlly.iconset");
+  const iconset = path.join(temporaryDir, "NeuxBot.iconset");
   mkdirSync(iconset);
   const appSource = path.join(resourceDir, "app-icon-source.png");
   for (const size of [16, 32, 128, 256, 512]) {

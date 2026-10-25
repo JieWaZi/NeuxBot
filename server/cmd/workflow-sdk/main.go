@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 )
 
 func main() {

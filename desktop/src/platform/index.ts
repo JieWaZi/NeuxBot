@@ -1,10 +1,10 @@
-import { configurePlatform, type Platform } from "@neuxally/frontend/platform";
+import { configurePlatform, type Platform } from "@neuxbot/frontend/platform";
 import {
   configureEmbeddedBrowserSurface,
   configureBrowserSurface,
-} from "@neuxally/frontend/browser-surface";
-import { createCoreWorkspaceServices } from "@neuxally/frontend/core-workspace";
-import { createCoreTerminalService } from "@neuxally/frontend/core-terminal";
+} from "@neuxbot/frontend/browser-surface";
+import { createCoreWorkspaceServices } from "@neuxbot/frontend/core-workspace";
+import { createCoreTerminalService } from "@neuxbot/frontend/core-terminal";
 import type { DesktopBridge } from "../../electron/shared/contracts";
 import { useEmbeddedBrowserSurface } from "./use-embedded-browser-surface";
 import { useBrowserSurface } from "./use-browser-surface";

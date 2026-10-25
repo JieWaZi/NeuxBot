@@ -12,7 +12,7 @@ export async function buildGitHubProvider({
   offline,
 }) {
   const temporary = await mkdtemp(
-    path.join(tmpdir(), "neuxally-github-build-"),
+    path.join(tmpdir(), "neuxbot-github-build-"),
   );
   try {
     execFileSync(

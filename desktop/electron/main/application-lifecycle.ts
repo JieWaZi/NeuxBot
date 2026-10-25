@@ -138,18 +138,18 @@ export function createApplicationLifecycle({
     if (icon.isEmpty()) throw new Error("托盘图标加载失败");
     if (platform === "darwin") icon.setTemplateImage(true);
     tray = new Tray(icon);
-    tray.setToolTip("NeuxAlly");
+    tray.setToolTip("NeuxBot");
     const menu = Menu.buildFromTemplate([
-      { label: "打开 NeuxAlly", click: restoreWindow },
+      { label: "打开 NeuxBot", click: restoreWindow },
       { type: "separator" },
-      { label: "退出 NeuxAlly", click: requestQuit },
+      { label: "退出 NeuxBot", click: requestQuit },
     ]);
     tray.setContextMenu(menu);
     tray.on("click", restoreWindow);
     if (platform === "darwin" && app.dock) {
       app.dock.setMenu(
         Menu.buildFromTemplate([
-          { label: "打开 NeuxAlly", click: restoreWindow },
+          { label: "打开 NeuxBot", click: restoreWindow },
         ]),
       );
     }

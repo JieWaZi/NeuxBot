@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // SourceState 描述目录缓存与本次同步状态，不把同步失败伪装为空库。
@@ -115,7 +115,7 @@ func indexCache(source string) string {
 	if value, ok := remoteIndexes.Load(source); ok {
 		return value.(*remoteIndex).filename
 	}
-	return cacheFilename(filepath.Join(os.TempDir(), "neuxally-plugin-catalog"), source)
+	return cacheFilename(filepath.Join(os.TempDir(), "neuxbot-plugin-catalog"), source)
 }
 
 func newRemoteIndex(ctx context.Context, source, filename string, changed func()) *remoteIndex {

@@ -1,6 +1,6 @@
 package automatic_tasks
 
-import "github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+import "github.com/JieWaZi/NeuxBot/server/constants/status_error"
 
 func pagination(page, size *int) error {
 	if *page < 0 || *size < 0 || *size > 100 {

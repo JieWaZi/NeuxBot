@@ -15,9 +15,9 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 )
 
 const maxDetailsBytes = 4 * 1024 * 1024
@@ -78,7 +78,7 @@ func detailsLocation(entry Entry) (string, error) {
 	state := actual.(*detailsLoadState)
 	state.mutex.Lock()
 	defer state.mutex.Unlock()
-	directory := filepath.Join(os.TempDir(), "neuxally-plugin-details")
+	directory := filepath.Join(os.TempDir(), "neuxbot-plugin-details")
 	location := filepath.Join(directory, entry.DetailsSHA256+".json")
 	if raw, err := os.ReadFile(location); err == nil {
 		if err := validateDetailsBytes(raw, entry); err == nil {

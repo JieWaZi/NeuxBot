@@ -12,12 +12,12 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowinput "github.com/JieWaZi/NeuxAlly/server/internal/workflow/input"
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 

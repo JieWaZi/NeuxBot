@@ -11,14 +11,14 @@ import (
 	"strings"
 	"testing"
 
-	workflowapi "github.com/JieWaZi/NeuxAlly/server/apis/workflows"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowinput "github.com/JieWaZi/NeuxAlly/server/internal/workflow/input"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	workflowapi "github.com/JieWaZi/NeuxBot/server/apis/workflows"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/gin-gonic/gin"
 )
 
@@ -145,7 +145,7 @@ func TestWorkflowWaitingKeepsSlotAndPinnedPolicyRejectsWrongOwner(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := h.api.TriggerManual(ctx, h.wakerID, saved.TaskID, "manual", map[string]any{"text": "NeuxAlly"})
+	first, err := h.api.TriggerManual(ctx, h.wakerID, saved.TaskID, "manual", map[string]any{"text": "NeuxBot"})
 	if err != nil {
 		t.Fatal(err)
 	}

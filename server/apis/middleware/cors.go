@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"net/http"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/gin-gonic/gin"
 )
 

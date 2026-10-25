@@ -33,7 +33,7 @@ const core = spawn(
 );
 
 core.on("error", (error) => {
-  process.stderr.write(`NeuxAlly Core 启动失败：${error}\n`);
+  process.stderr.write(`NeuxBot Core 启动失败：${error}\n`);
   process.exitCode = 1;
 });
 core.on("exit", (code, signal) => {

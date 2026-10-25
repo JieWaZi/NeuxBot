@@ -9,8 +9,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 const maxProfileDocumentBytes = 1024 * 1024
@@ -222,7 +222,7 @@ func parseWorkMethods(content string) []WorkMethod {
 	return methods
 }
 
-// PatchManual 只替换三份档案中的 NeuxAlly 固定区域并保留其他内容。
+// PatchManual 只替换三份档案中的 NeuxBot 固定区域并保留其他内容。
 func PatchManual(
 	documents map[constants.ProfileDocumentKind]string,
 	manual ManualInput,

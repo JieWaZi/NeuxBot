@@ -1,6 +1,6 @@
 package contract
 
-import "github.com/JieWaZi/NeuxAlly/server/constants"
+import "github.com/JieWaZi/NeuxBot/server/constants"
 
 // knowledgeMaintenanceOperations 复用统一命令目录与 Schema，开放实际知识读取与维护操作。
 func knowledgeMaintenanceOperations() []Operation {

@@ -1,7 +1,7 @@
 import { chatHref } from "@/shared/lib/chat-navigation";
 import type {
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardEntry as Entry,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardAttention as Attention,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry as Entry,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention as Attention,
 } from "@/shared/api/generated/types.gen";
 
 export function workEntryHref(entry: Entry, result = false) {

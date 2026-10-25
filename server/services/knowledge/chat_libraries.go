@@ -2,8 +2,8 @@ package knowledge
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 )
 
 // ChatLibrary 是当前真实聊天可读的完整知识目标；选择器不签发写权限。

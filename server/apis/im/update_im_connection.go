@@ -1,8 +1,8 @@
 package im
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	imservice "github.com/JieWaZi/NeuxAlly/server/services/im"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	imservice "github.com/JieWaZi/NeuxBot/server/services/im"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

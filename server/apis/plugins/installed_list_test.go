@@ -3,9 +3,9 @@ package plugins
 import (
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	packageplugin "github.com/JieWaZi/NeuxAlly/server/internal/plugins"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestInstalledPluginListFiltersBeforeCountingAndPaging(t *testing.T) {

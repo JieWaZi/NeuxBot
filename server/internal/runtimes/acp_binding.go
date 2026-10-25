@@ -153,7 +153,7 @@ func standardACPRuntimeBinding() acpRuntimeBinding {
 	}
 }
 
-// acpAdapterConfigForRequest 把 NeuxAlly 已准备完成的启动事实投影为通用 Adapter 配置。
+// acpAdapterConfigForRequest 把 NeuxBot 已准备完成的启动事实投影为通用 Adapter 配置。
 func acpAdapterConfigForRequest(
 	request acpRunRequest,
 	binding acpRuntimeBinding,
@@ -208,7 +208,7 @@ func acpAgentKeyForBinding(request acpRunRequest, binding acpRuntimeBinding) str
 		request.Prepared.environment.fingerprint + "\x00" + workspace
 }
 
-// allMCPTransports 接受 NeuxAlly 当前支持的三种 MCP 传输。
+// allMCPTransports 接受 NeuxBot 当前支持的三种 MCP 传输。
 func allMCPTransports(transport ConnectorTransport) bool {
 	return transport == ConnectorTransportStdio ||
 		transport == ConnectorTransportStreamableHTTP ||

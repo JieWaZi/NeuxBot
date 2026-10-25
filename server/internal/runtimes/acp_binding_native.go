@@ -3,9 +3,9 @@ package runtimes
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	acpgemini "github.com/JieWaZi/acp-go/pkg/gemini"
 	acpgrok "github.com/JieWaZi/acp-go/pkg/grok"
 	"github.com/JieWaZi/acp-go/pkg/nativeacp"

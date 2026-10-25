@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail as Team } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as Team } from "@/shared/api/generated/types.gen";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
 import { Avatar } from "@/shared/ui/avatar";
 import { Button } from "@/shared/ui/button";

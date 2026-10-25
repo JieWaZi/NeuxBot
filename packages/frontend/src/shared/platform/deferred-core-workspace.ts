@@ -2,8 +2,8 @@ import type {
   HostService,
   WorkspaceService,
   GitService,
-} from "@neuxally/platform-contracts/services";
-import type { WorkspaceResourceChangeEvent } from "@neuxally/platform-contracts/resources";
+} from "@neuxbot/platform-contracts/services";
+import type { WorkspaceResourceChangeEvent } from "@neuxbot/platform-contracts/resources";
 
 /** 文件/Git 按首次业务调用载入；注册事件回调本身不拉入实现或建立连接。 */
 export function createCoreWorkspaceServices(

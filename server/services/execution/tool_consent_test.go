@@ -3,8 +3,8 @@ package execution
 import (
 	"context"
 
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // consentTestJournal 用真实 JSONL 测试许可事实，仅省略与许可无关的执行端口。

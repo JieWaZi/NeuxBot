@@ -1,4 +1,4 @@
-import type { GithubComJieWaZiNeuxAllyServerConstantsChannelEventType as ChannelEventType } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerConstantsChannelEventType as ChannelEventType } from "@/shared/api/generated/types.gen";
 
 export type TeamWorkState = "idle" | "review" | "running";
 
@@ -63,7 +63,7 @@ export function teamWorkStateOf(
 
 /**
  * 任务与交互事件在 300ms 窗口内合并，负责人处理切换在下一宏任务对账。
- * NeuxAlly 当前只有团队对话详情查询，因此精确刷新详情，
+ * NeuxBot 当前只有团队对话详情查询，因此精确刷新详情，
  * 仅生命周期变更额外刷新左侧团队对话导航。
  */
 export function createTeamThreadRefreshScheduler({

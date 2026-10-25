@@ -2,7 +2,7 @@ package plugins
 
 import (
 	"github.com/BurntSushi/toml"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"os"
 	"path/filepath"
 	"strings"

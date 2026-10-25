@@ -6,7 +6,7 @@ import { PdfWorkerFailure } from "./errors";
 import { logger } from "@/shared/diagnostics/logger";
 import { deferred } from "./deferred";
 
-const WORKER_READY = "neuxally-pdf-worker-ready";
+const WORKER_READY = "neuxbot-pdf-worker-ready";
 
 /**
  * Open complete PDF bytes with an explicitly owned Worker. Startup failure
@@ -88,7 +88,7 @@ export function openPdf(
         { type: "text/javascript" },
       ),
     );
-    worker = new Worker(url, { type: "module", name: "neuxally-pdf" });
+    worker = new Worker(url, { type: "module", name: "neuxbot-pdf" });
     worker.addEventListener("error", workerFailed);
     worker.addEventListener("messageerror", workerFailed);
     const started = deferred<undefined>();

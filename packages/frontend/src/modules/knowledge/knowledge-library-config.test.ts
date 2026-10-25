@@ -6,7 +6,7 @@ import {
   readLibraryChunkingConfig,
   readLibraryWikiSettings,
 } from "./knowledge-library-config";
-import type { GithubComJieWaZiNeuxAllyServerApisKnowledgeLibrary as LibraryDTO } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisKnowledgeLibrary as LibraryDTO } from "@/shared/api/generated/types.gen";
 
 describe("knowledge-library-config", () => {
   it("回读分块配置时将服务端省略的父子分块布尔值还原为关闭", () => {

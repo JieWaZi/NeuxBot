@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import type {
   BrowserControlAction,
   BrowserNavigationEvent,
-} from "@neuxally/platform-contracts/resources";
+} from "@neuxbot/platform-contracts/resources";
 
 export type EmbeddedBrowserSurfaceProps = {
   active: boolean;

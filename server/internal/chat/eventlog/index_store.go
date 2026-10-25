@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // queryWithRecoveredIndexLocked 使用已校验索引查询，发现中间索引损坏时从 JSONL 重建并重试一次。

@@ -1,8 +1,8 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 )
 
 // Execution 保存一次 Chat 执行在服务边界流转的领域状态。

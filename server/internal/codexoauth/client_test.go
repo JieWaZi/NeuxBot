@@ -6,7 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	ginxlogx "github.com/shrewx/ginx/pkg/logx"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func testToken(subject string) string {

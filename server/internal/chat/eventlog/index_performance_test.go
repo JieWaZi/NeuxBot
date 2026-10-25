@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // TestWarmIndexReadDoesNotDecodeActiveExecution 验证已校验的热读取不再恢复整个运行中执行。

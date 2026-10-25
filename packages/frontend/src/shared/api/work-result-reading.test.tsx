@@ -27,7 +27,7 @@ import type {
 import type { GlobalEventObserver } from "./global-events";
 import "@/shared/i18n";
 import { client } from "./generated/client.gen";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReceipt as Receipt } from "./generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt as Receipt } from "./generated/types.gen";
 import {
   ChatWorkResultReader,
   useVisibleWorkResult,

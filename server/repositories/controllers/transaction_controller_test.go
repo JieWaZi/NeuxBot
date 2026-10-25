@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // fakeTransactionManager 为事务边界测试返回预设错误。

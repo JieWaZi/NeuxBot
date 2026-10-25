@@ -1,6 +1,6 @@
 # 第三方版权与许可
 
-NeuxAlly 自有代码与文档采用根目录 [MIT License](LICENSE)。以下版权及许可适用于对应的第三方组成，集中保存在本文件，并随安装包分发。
+NeuxBot 自有代码与文档采用根目录 [MIT License](LICENSE)。以下版权及许可适用于对应的第三方组成，集中保存在本文件，并随安装包分发。
 
 ## Dock 组件
 
@@ -272,9 +272,9 @@ SOFTWARE.
 
 ## 飞书办公插件与官方 CLI
 
-适用范围：`plugin-sources/neuxally-plugins.bundle` 内固定插件源与构建产物 `plugins/`。技能和原生程序来源于 [larksuite/cli](https://github.com/larksuite/cli)，固定版本 `v1.0.98`，源码提交 `ac81f5056ab88f37d581d25916f3dab85abfca76`。发布资产 URL、SHA-256、平台和来源提交由 [来源锁](plugin-sources/source.lock.json) 固定，生成的包和程序同时分发原始许可证与 provenance。
+适用范围：`plugin-sources/neux-plugins.bundle` 内固定插件源与构建产物 `plugins/`。技能和原生程序来源于 [larksuite/cli](https://github.com/larksuite/cli)，固定版本 `v1.0.98`，源码提交 `ac81f5056ab88f37d581d25916f3dab85abfca76`。发布资产 URL、SHA-256、平台和来源提交由 [来源锁](plugin-sources/source.lock.json) 固定，生成的包和程序同时分发原始许可证与 provenance。
 
-原作者为 Lark Suite CLI contributors；NeuxAlly contributors 维护插件清单、共享授权适配和本地分发，不代表飞书官方。官方技能目录、相对引用、脚本和规则保持原样；本插件的首版主要验收路径是文档、多维表格、日程和任务，完整官方辅助技能用于保留引用依赖。
+原作者为 Lark Suite CLI contributors；NeuxBot contributors 维护插件清单、共享授权适配和本地分发，不代表飞书官方。官方技能目录、相对引用、脚本和规则保持原样；本插件的首版主要验收路径是文档、多维表格、日程和任务，完整官方辅助技能用于保留引用依赖。
 
 ```text
 MIT License
@@ -302,9 +302,9 @@ SOFTWARE.
 
 ## GitHub 插件与官方 CLI
 
-GitHub 官方 CLI 来源于 [cli/cli](https://github.com/cli/cli)，固定版本 `v2.102.0`，源码提交 `fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd`。程序按固定源码归档和 Go 1.27.1 工具链构建。NeuxAlly 在底层钥匙串 Set/Get/Delete 的 service 加 neuxally: 前缀，隔离官方配置及迁移对机器原有 gh 身份的访问，构建版本为 2.102.0-neuxally.1。该程序是官方源码的隔离构建，不是未修改的官方发布二进制。归档、补丁和隔离回归的 SHA-256 由 [来源锁](plugin-sources/source.lock.json) 固定；原始许可证随程序和插件源分发。
+GitHub 官方 CLI 来源于 [cli/cli](https://github.com/cli/cli)，固定版本 `v2.102.0`，源码提交 `fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd`。程序按固定源码归档和 Go 1.27.1 工具链构建。NeuxBot 在底层钥匙串 Set/Get/Delete 的 service 加 neuxally: 前缀，隔离官方配置及迁移对机器原有 gh 身份的访问，构建版本为 2.102.0-neuxally.1。该程序是官方源码的隔离构建，不是未修改的官方发布二进制。归档、补丁和隔离回归的 SHA-256 由 [来源锁](plugin-sources/source.lock.json) 固定；原始许可证随程序和插件源分发。
 
-GitHub MCP 使用 [github/github-mcp-server](https://github.com/github/github-mcp-server) 提供的官方远程服务 `https://api.githubcopilot.com/mcp/`，本项目不复制该服务程序，也不固定其远端部署版本。插件清单与共享认证适配由 NeuxAlly contributors 编写，操作能力直接来自官方 MCP。
+GitHub MCP 使用 [github/github-mcp-server](https://github.com/github/github-mcp-server) 提供的官方远程服务 `https://api.githubcopilot.com/mcp/`，本项目不复制该服务程序，也不固定其远端部署版本。插件清单与共享认证适配由 NeuxBot contributors 编写，操作能力直接来自官方 MCP。
 
 ```text
 MIT License
@@ -332,7 +332,7 @@ SOFTWARE.
 
 ## ledongthuc/pdf 文本阅读校验
 
-NeuxAlly 的文本 PDF 覆盖核对使用 `github.com/ledongthuc/pdf`，固定版本 `v0.0.0-20260907135840-6c8c28e0e8a0`（提交 `6c8c28e0e8a0`）。来源：[项目仓库](https://github.com/ledongthuc/pdf/tree/6c8c28e0e8a0)，基于 rsc/pdf，BSD-3-Clause。仅读取文本层，不包含 OCR。以下保留原始许可：
+NeuxBot 的文本 PDF 覆盖核对使用 `github.com/ledongthuc/pdf`，固定版本 `v0.0.0-20260907135840-6c8c28e0e8a0`（提交 `6c8c28e0e8a0`）。来源：[项目仓库](https://github.com/ledongthuc/pdf/tree/6c8c28e0e8a0)，基于 rsc/pdf，BSD-3-Clause。仅读取文本层，不包含 OCR。以下保留原始许可：
 
 ```text
 Copyright (c) 2009 The Go Authors. All rights reserved.
@@ -457,9 +457,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ## 企业微信 IM 协议参考
 
-适用范围：`server/internal/im/wecom*.go` 与企业微信扫码接入说明。长连接认证、心跳、消息、主动发送、媒体分片及解密协议参考企业微信团队的 [WecomTeam/aibot-node-sdk](https://github.com/WecomTeam/aibot-node-sdk)；接入行为参考其 [官方 OpenClaw 插件](https://github.com/WecomTeam/wecom-openclaw-plugin)（`2026.10.19`，MIT）。扫码生成与结果查询使用官方 [`@wecom/wecom-openclaw-cli`](https://www.npmjs.com/package/@wecom/wecom-openclaw-cli) `1.1.1`（ISC）发布包公开使用的企业微信 HTTPS 接口，来源标识为 `neuxally`。
+适用范围：`server/internal/im/wecom*.go` 与企业微信扫码接入说明。长连接认证、心跳、消息、主动发送、媒体分片及解密协议参考企业微信团队的 [WecomTeam/aibot-node-sdk](https://github.com/WecomTeam/aibot-node-sdk)；接入行为参考其 [官方 OpenClaw 插件](https://github.com/WecomTeam/wecom-openclaw-plugin)（`2026.10.19`，MIT）。扫码生成与结果查询使用官方 [`@wecom/wecom-openclaw-cli`](https://www.npmjs.com/package/@wecom/wecom-openclaw-cli) `1.1.1`（ISC）发布包公开使用的企业微信 HTTPS 接口，来源标识为 `neuxbot`。
 
-NeuxAlly 在现有 Go IM 边界实现协议互通，不分发或执行上述 Node SDK、OpenClaw 插件和安装 CLI，不代表企业微信官方产品。消息与媒体传输复用仓库已使用的 [Gorilla WebSocket](https://github.com/gorilla/websocket) 及 Go 标准库；上游接口可能独立变化，协议测试和真实平台验收分别维护。
+NeuxBot 在现有 Go IM 边界实现协议互通，不分发或执行上述 Node SDK、OpenClaw 插件和安装 CLI，不代表企业微信官方产品。消息与媒体传输复用仓库已使用的 [Gorilla WebSocket](https://github.com/gorilla/websocket) 及 Go 标准库；上游接口可能独立变化，协议测试和真实平台验收分别维护。
 
 ## 企业微信品牌图标
 

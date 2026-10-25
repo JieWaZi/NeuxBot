@@ -1,7 +1,7 @@
 package integration_knowledge
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"net/http"
 	"net/http/httptest"
 	"strings"

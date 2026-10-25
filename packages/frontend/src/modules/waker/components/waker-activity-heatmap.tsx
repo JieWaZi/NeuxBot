@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { GithubComJieWaZiNeuxAllyServerApisWakersDailyChatCount } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisWakersDailyChatCount } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
 import {
   Tooltip,
@@ -36,7 +36,7 @@ export function activityLevelForCount(count: number, maxCount: number) {
 }
 
 export type HeatmapCell =
-  GithubComJieWaZiNeuxAllyServerApisWakersDailyChatCount | null;
+  GithubComJieWaZiNeuxBotServerApisWakersDailyChatCount | null;
 
 function parseIsoDate(value?: string) {
   if (!value) {
@@ -54,7 +54,7 @@ function mondayBasedWeekday(date: Date) {
 }
 
 export function heatmapWeekColumns(
-  daily: GithubComJieWaZiNeuxAllyServerApisWakersDailyChatCount[],
+  daily: GithubComJieWaZiNeuxBotServerApisWakersDailyChatCount[],
 ) {
   if (daily.length === 0) {
     return 0;
@@ -68,7 +68,7 @@ export function heatmapWeekColumns(
 }
 
 export function layoutHeatmapGrid(
-  daily: GithubComJieWaZiNeuxAllyServerApisWakersDailyChatCount[],
+  daily: GithubComJieWaZiNeuxBotServerApisWakersDailyChatCount[],
 ) {
   const weekColumns = heatmapWeekColumns(daily);
   const grid: HeatmapCell[][] = Array.from(
@@ -134,7 +134,7 @@ function heatmapGridStyle(weekColumns: number) {
 }
 
 type WakerActivityHeatmapProps = {
-  daily: GithubComJieWaZiNeuxAllyServerApisWakersDailyChatCount[];
+  daily: GithubComJieWaZiNeuxBotServerApisWakersDailyChatCount[];
 };
 
 export function WakerActivityHeatmap({ daily }: WakerActivityHeatmapProps) {

@@ -1,8 +1,8 @@
-// Package models 定义 NeuxAlly 的 GORM 持久化模型。
+// Package models 定义 NeuxBot 的 GORM 持久化模型。
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 

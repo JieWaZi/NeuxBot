@@ -3,7 +3,7 @@ import { useQueryEvents } from "@/shared/api/use-query-events";
 import { useInfiniteQuery, useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import type { GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution as AcceptedExecution } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as AcceptedExecution } from "@/shared/api/generated/types.gen";
 import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
 import { openExternalURL } from "@/shared/platform";
 import {

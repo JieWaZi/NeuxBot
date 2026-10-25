@@ -11,7 +11,7 @@ func TestEmitNativeAcceptance(t *testing.T) {
 	if os.Getenv("NEUXALLY_NATIVE_ACCEPTANCE") == "" {
 		t.Skip("explicit isolated CLI acceptance only")
 	}
-	root, err := os.MkdirTemp("", "neuxally-native-artifacts-")
+	root, err := os.MkdirTemp("", "neuxbot-native-artifacts-")
 	if err != nil {
 		t.Fatal(err)
 	}

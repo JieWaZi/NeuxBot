@@ -1,4 +1,4 @@
-// Package middleware 定义 NeuxAlly Core 的 HTTP 中间件。
+// Package middleware 定义 NeuxBot Core 的 HTTP 中间件。
 package middleware
 
 import (
@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/shrewx/ginx"

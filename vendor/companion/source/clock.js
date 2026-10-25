@@ -149,11 +149,11 @@
   function Clock(target, opts) {
     opts = opts || {};
     const element = typeof target === "string" ? document.querySelector(target) : target;
-    if (!element) throw new Error("NeuxAlly.create：找不到容器");
+    if (!element) throw new Error("NeuxBot.create：找不到容器");
     const catalog = window.AllyExpressions || {};
     const rings = window.AllyEyeRings || {};
     const pair = (name) => rings[name] || rings.calm;
-    this.ball = window.NeuxAlly.createPuppet(element, opts);
+    this.ball = window.NeuxBot.createPuppet(element, opts);
     this._events = {};
     this._catalog = catalog;
     this._pair = pair;
@@ -284,6 +284,6 @@
     },
   };
 
-  window.NeuxAlly = window.NeuxAlly || {};
-  window.NeuxAlly.create = (element, opts) => new Clock(element, opts);
+  window.NeuxBot = window.NeuxBot || {};
+  window.NeuxBot.create = (element, opts) => new Clock(element, opts);
 })();

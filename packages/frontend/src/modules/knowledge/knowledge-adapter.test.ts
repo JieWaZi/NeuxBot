@@ -96,7 +96,7 @@ describe("知识库 Adapter 的目标与能力边界", () => {
       http.get(`${remoteRoot}/capabilities`, () =>
         HttpResponse.json({
           ...capabilities(),
-          serviceKind: "neuxally",
+          serviceKind: "neuxbot",
           uploadMode: "separate",
           connectionRevision: 3,
           evidence: ["explicit"],
@@ -108,7 +108,7 @@ describe("知识库 Adapter 的目标与能力边界", () => {
       (await adapter.getLibrary({ path: { libraryId: "other" } })).data.name,
     ).toBe("统一远端");
     expect(await adapter.getCapabilities()).toMatchObject({
-      serviceKind: "neuxally",
+      serviceKind: "neuxbot",
       uploadMode: "separate",
       connectionRevision: 3,
       evidence: ["explicit"],

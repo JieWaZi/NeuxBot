@@ -3,7 +3,7 @@ package integrations
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

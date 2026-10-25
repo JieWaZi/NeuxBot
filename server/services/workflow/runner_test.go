@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	workflowtool "github.com/JieWaZi/NeuxAlly/server/internal/workflow/capability"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func savedTestWorkflow(t *testing.T, s *Service, source string) models.WorkflowDefinition {
@@ -44,7 +44,7 @@ func runTicks(t *testing.T, s *Service, id string, count int) models.WorkflowRun
 func TestRunAdmissionFreezesVersionDefaultsAndComputesF0(t *testing.T) {
 	s, _ := workflowTestService(t)
 	definition := savedTestWorkflow(t, s, workflowTestSource(t))
-	command := StartRunCommand{DefinitionID: definition.ID, RequestID: "run", Args: map[string]any{"text": "NeuxAlly"}}
+	command := StartRunCommand{DefinitionID: definition.ID, RequestID: "run", Args: map[string]any{"text": "NeuxBot"}}
 	run, err := s.StartRun(context.Background(), command)
 	if err != nil {
 		t.Fatal(err)
@@ -66,7 +66,7 @@ func TestRunAdmissionFreezesVersionDefaultsAndComputesF0(t *testing.T) {
 		t.Fatalf("run: %+v", result)
 	}
 	object, ok := result.Result.(map[string]any)
-	if !ok || object["message"] != "NEUXALLY NEUXALLY!" || object["length"] != float64(18) {
+	if !ok || object["message"] != "NEUXBOT NEUXBOT!" || object["length"] != float64(16) {
 		t.Fatalf("actual result: %#v", result.Result)
 	}
 	if result.RevisionID == saved.RevisionID {

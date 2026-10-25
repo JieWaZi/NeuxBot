@@ -14,10 +14,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/codexoauth"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	acpcodex "github.com/JieWaZi/acp-go/pkg/codex"
 )
 

@@ -1,12 +1,12 @@
 import type {
-  GithubComJieWaZiNeuxAllyServerConstantsExecutionStatus as ExecutionStatus,
-  GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage as ChatMessage,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelEvent as ChannelEvent,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowEvent as WorkflowEvent,
-  GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalRequest as ApprovalRequest,
-  GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalResolution as ApprovalResolution,
-  GithubComJieWaZiNeuxAllyServerServicesChatPublicElicitationRequest as ElicitationRequest,
-  GithubComJieWaZiNeuxAllyServerServicesChatPublicElicitationResolution as ElicitationResolution,
+  GithubComJieWaZiNeuxBotServerConstantsExecutionStatus as ExecutionStatus,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as ChatMessage,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelEvent as ChannelEvent,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEvent as WorkflowEvent,
+  GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalRequest as ApprovalRequest,
+  GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalResolution as ApprovalResolution,
+  GithubComJieWaZiNeuxBotServerServicesChatPublicElicitationRequest as ElicitationRequest,
+  GithubComJieWaZiNeuxBotServerServicesChatPublicElicitationResolution as ElicitationResolution,
 } from "./generated/types.gen";
 import { listWorkflowEvents } from "./generated/sdk.gen";
 import {

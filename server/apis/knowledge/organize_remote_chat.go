@@ -1,12 +1,12 @@
 package knowledge
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/apis/uploads"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/internal/workspace"
-	service "github.com/JieWaZi/NeuxAlly/server/services/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/apis/uploads"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
+	service "github.com/JieWaZi/NeuxBot/server/services/knowledge"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

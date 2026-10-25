@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventhub "github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 )
 
 // control 只描述订阅，不承载任何业务命令或任意连接地址。

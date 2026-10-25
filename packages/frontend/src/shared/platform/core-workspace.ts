@@ -3,7 +3,7 @@ import type {
   HostService,
   WorkspaceService,
   GitService,
-} from "@neuxally/platform-contracts/services";
+} from "@neuxbot/platform-contracts/services";
 import type {
   WorkspaceResourceScope,
   WorkspaceResourceRead,
@@ -11,7 +11,7 @@ import type {
   WorkspaceFileContent,
   WorkspaceGitChanges,
   FileReferenceResolution,
-} from "@neuxally/platform-contracts/resources";
+} from "@neuxbot/platform-contracts/resources";
 import * as api from "@/shared/api/generated/sdk.gen";
 import {
   subscribeGlobalEvents,

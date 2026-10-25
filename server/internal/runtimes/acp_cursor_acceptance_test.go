@@ -18,7 +18,7 @@ import (
 // cursorAcceptanceAnswers 把真实 Cursor 问题交给明确的测试用户答案，不由模型替答。
 type cursorAcceptanceAnswers func(context.Context, ElicitationRequest) (ElicitationDecision, error)
 
-// Request 使用同一 NeuxAlly 宿主问答端口回填测试答案。
+// Request 使用同一 NeuxBot 宿主问答端口回填测试答案。
 func (f cursorAcceptanceAnswers) Request(ctx context.Context, request ElicitationRequest) (ElicitationDecision, error) {
 	return f(ctx, request)
 }
@@ -29,7 +29,7 @@ type cursorAcceptanceEcho struct {
 	Text string `json:"text"`
 }
 
-// TestCursorRealAcceptance 通过 NeuxAlly SDK 验证真实文件门禁、恢复、问答、MCP、技能和三档权限。
+// TestCursorRealAcceptance 通过 NeuxBot SDK 验证真实文件门禁、恢复、问答、MCP、技能和三档权限。
 func TestCursorRealAcceptance(t *testing.T) {
 	if os.Getenv("ALLY_CURSOR_REAL_PROBE") != "1" {
 		t.Skip("requires explicit real Cursor probe opt-in")

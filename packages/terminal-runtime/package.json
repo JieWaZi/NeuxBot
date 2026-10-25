@@ -1,5 +1,5 @@
 {
-  "name": "@neuxally/terminal-runtime",
+  "name": "@neuxbot/terminal-runtime",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
     "node-pty": "1.1.0",
     "@xterm/headless": "6.0.0",
     "@xterm/addon-serialize": "0.14.0",
-    "@neuxally/platform-contracts": "workspace:*",
+    "@neuxbot/platform-contracts": "workspace:*",
     "zod": "4.4.3"
   },
   "devDependencies": {

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// TestCursorRealContextUsage 验证真实生成结束后把原生上下文窗口送入 NeuxAlly 事件流。
+// TestCursorRealContextUsage 验证真实生成结束后把原生上下文窗口送入 NeuxBot 事件流。
 func TestCursorRealContextUsage(t *testing.T) {
 	if os.Getenv("ALLY_CURSOR_REAL_PROBE") != "1" {
 		t.Skip("requires explicit real Cursor probe opt-in")

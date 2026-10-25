@@ -34,7 +34,7 @@ vi.mock("@/app/welcome/welcome-brand", () => ({
   ),
 }));
 vi.mock("@/app/welcome/elastic-logo", () => ({
-  default: () => <span>NeuxAlly</span>,
+  default: () => <span>NeuxBot</span>,
 }));
 vi.mock("@/app/router", () => {
   connection.workspaceLoaded();
@@ -67,7 +67,7 @@ afterEach(() => {
 it("入口脚本执行前已有加载状态，首帧主题读取当前偏好", () => {
   const html = readFileSync("../../desktop/index.html", "utf8");
   const parsed = new DOMParser().parseFromString(html, "text/html");
-  expect(parsed.querySelector('[aria-label="NeuxAlly"]')).not.toBeNull();
+  expect(parsed.querySelector('[aria-label="NeuxBot"]')).not.toBeNull();
   expect(parsed.querySelector("p")).toBeNull();
   expect(parsed.querySelector('link[rel="stylesheet"]')).not.toBeNull();
   localStorage.setItem("ally.ui.theme", "dark");

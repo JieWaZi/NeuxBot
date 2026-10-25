@@ -87,7 +87,7 @@ execFileSync(
   },
 );
 if (target.goos !== "windows") await chmod(output, 0o755);
-console.log(`已生成 NeuxAlly Core sidecar: ${output}`);
+console.log(`已生成 NeuxBot Core sidecar: ${output}`);
 
 const cliName = target.goos === "windows" ? "allycli.exe" : "allycli";
 await rm(

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // TestWarmIndexReadDetectsExternalActiveLogCorruption 保留热读对外部修改的活动执行正文校验。

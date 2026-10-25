@@ -9,7 +9,7 @@ import {
 import { useCallback, useMemo, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingElicitation as PendingElicitation } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 

@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // validateModelMappings 保证原生 CLI 映射只引用本账号已选择的实际模型。

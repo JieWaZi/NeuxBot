@@ -1,4 +1,4 @@
-# NeuxAlly UI 标准
+# NeuxBot UI 标准
 
 ## 体系与组件
 

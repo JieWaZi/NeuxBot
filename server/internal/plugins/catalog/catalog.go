@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 )
 
 var keyPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
@@ -199,7 +199,7 @@ func httpAddress(value string) bool {
 }
 
 func download(entry Entry) (string, error) {
-	parent := filepath.Join(os.TempDir(), "neuxally-plugin-downloads")
+	parent := filepath.Join(os.TempDir(), "neuxbot-plugin-downloads")
 	if os.MkdirAll(parent, 0700) != nil {
 		return "", status_error.PluginStorageError
 	}

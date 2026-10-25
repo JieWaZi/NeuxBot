@@ -3,10 +3,10 @@ package messageview
 import (
 	"encoding/json"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability/contract"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
 func (p *MessageViewBuilder) applyAgentCommand(record eventlog.Record) error {

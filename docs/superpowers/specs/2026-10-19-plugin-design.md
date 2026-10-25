@@ -2,15 +2,15 @@
 
 ## 产品边界
 
-NeuxAlly 只安装和管理独立插件仓库发布的自有插件。插件库、伙伴安装、共享配置与授权只记录这些受维护的资源。用户在聊天中要求安装第三方插件时，由当前 Codex 或 Claude Code 使用自己的原生安装能力处理，与外部相同 CLI 共用原生插件环境；不登记、展示、转换或卸载这些外部插件。
+NeuxBot 只安装和管理独立插件仓库发布的自有插件。插件库、伙伴安装、共享配置与授权只记录这些受维护的资源。用户在聊天中要求安装第三方插件时，由当前 Codex 或 Claude Code 使用自己的原生安装能力处理，与外部相同 CLI 共用原生插件环境；不登记、展示、转换或卸载这些外部插件。
 
 用户不再上传插件，也不通过本地目录、ZIP、任意地址导入插件。内部解析器仍服务受维护插件的构建、完整性核验和目标派生，不作为对外导入入口。独立技能和连接器维持各自现有管理范围。
 
 ## 所有权
 
-| 对象 | 权威所有者 | NeuxAlly 职责 |
+| 对象 | 权威所有者 | NeuxBot 职责 |
 | --- | --- | --- |
-| 自有插件目录与发布包 | NeuxAlly-Plugins | HTTP 查询、校验、系统保存及伙伴安装 |
+| 自有插件目录与发布包 | neux-plugins | HTTP 查询、校验、系统保存及伙伴安装 |
 | 自有插件授权 | 包内供应商桥接与 Core 通用会话 | 统一二维码、链接、验证码、取消、到期、凭据绑定 |
 | 自有插件目标产物 | Core 与 CLI adapter | 按受支持 CLI 生成原生格式，其他目标只交付已验证的 Skill/MCP |
 | 外部原生插件及认证 | 对应 Codex / Claude Code | 沿 CLI 原生环境使用，不建立资源记录或统一认证状态 |
@@ -20,12 +20,12 @@ NeuxAlly 只安装和管理独立插件仓库发布的自有插件。插件库�
 
 ```mermaid
 flowchart TB
-  Library[NeuxAlly 自有插件库] --> HTTP[HTTP 目录与固定安装包]
+  Library[NeuxBot 自有插件库] --> HTTP[HTTP 目录与固定安装包]
   HTTP --> Core[系统安装与伙伴关系]
   Core --> Auth[插件桥接与统一授权界面]
   Auth --> Adapter[目标原生格式适配]
-  Adapter --> Codex[NeuxAlly 中的 Codex]
-  Adapter --> Claude[NeuxAlly 中的 Claude Code]
+  Adapter --> Codex[NeuxBot 中的 Codex]
+  Adapter --> Claude[NeuxBot 中的 Claude Code]
   Chat[聊天中的原生安装请求] -->|当前智能体| Codex
   Chat -->|当前智能体| Claude
   Codex <--> CodexHome[Codex 原生插件环境]
@@ -36,7 +36,7 @@ flowchart TB
 
 系统安装只接受配置的自有目录中经核验的条目，安装包固定来源和摘要。关闭上传、扫描、外部准备接口，同时去除前端入口和生成契约。已有资源不做破坏性清空，原生插件也不反向同步入库。新增安装及显式版本切换必须能与当前自有目录的真实归档内容对应；目录已移除的历史版本不凭包内 provenance 重新安装，既有伙伴关系继续固定其快照。
 
-聊天不再暴露系统插件搜索、准备、安装、安装状态操作，也不再注入要求通过 allycli 安装插件的指令。聊天中原生安装的结果由 CLI 决定，不能伪称 NeuxAlly 已安装。系统内安装统一通过插件库界面。
+聊天不再暴露系统插件搜索、准备、安装、安装状态操作，也不再注入要求通过 allycli 安装插件的指令。聊天中原生安装的结果由 CLI 决定，不能伪称 NeuxBot 已安装。系统内安装统一通过插件库界面。
 
 共享原生插件环境必须覆盖读取与写入：外部已安装插件可在后续普通执行中加载，聊天中的原生安装在外部同一 CLI 可见。不能只复制一次原生插件目录或把新安装留在一次性的受管账号目录。自有插件仍作为本轮附加能力交付，不能写入外部全局安装关系。受限执行继续核验其能力范围，不能借外部原生插件获得未授权的工具或账号。
 
@@ -50,12 +50,12 @@ flowchart TB
 
 ## 自有插件规范与授权
 
-插件使用标准清单、skills 与 MCP 配置。NeuxAlly 附加声明只约束本软件支持的授权流程、目标绑定及展示语言，不定义替代原生插件的第二套清单。供应商流程由包维护；Core 管理通用会话和秘密；前端只渲染结构化动作；adapter 生成目标支持的配置。
+插件使用标准清单、skills 与 MCP 配置。NeuxBot 附加声明只约束本软件支持的授权流程、目标绑定及展示语言，不定义替代原生插件的第二套清单。供应商流程由包维护；Core 管理通用会话和秘密；前端只渲染结构化动作；adapter 生成目标支持的配置。
 
 ```mermaid
 sequenceDiagram
   participant U as 用户
-  participant UI as NeuxAlly
+  participant UI as NeuxBot
   participant C as Core
   participant P as 自有插件授权桥接
   participant S as 供应商

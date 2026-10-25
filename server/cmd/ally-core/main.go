@@ -1,4 +1,4 @@
-// NeuxAlly Core 是伙伴工作台的本地业务与持久化进程。
+// NeuxBot Core 是伙伴工作台的本地业务与持久化进程。
 package main
 
 import (
@@ -13,18 +13,18 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/apis"
-	"github.com/JieWaZi/NeuxAlly/server/apis/integrations"
-	apiMiddleware "github.com/JieWaZi/NeuxAlly/server/apis/middleware"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/localweb"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/parentwatch"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/stdio"
-	"github.com/JieWaZi/NeuxAlly/server/internal/terminalruntime"
-	"github.com/JieWaZi/NeuxAlly/server/internal/uploads"
-	workflowfunction "github.com/JieWaZi/NeuxAlly/server/internal/workflow/function"
+	"github.com/JieWaZi/NeuxBot/server/apis"
+	"github.com/JieWaZi/NeuxBot/server/apis/integrations"
+	apiMiddleware "github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/localweb"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/parentwatch"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/stdio"
+	"github.com/JieWaZi/NeuxBot/server/internal/terminalruntime"
+	"github.com/JieWaZi/NeuxBot/server/internal/uploads"
+	workflowfunction "github.com/JieWaZi/NeuxBot/server/internal/workflow/function"
 	"github.com/shrewx/ginx"
 	"github.com/spf13/cobra"
 )
@@ -77,7 +77,7 @@ func main() {
 					origin = developmentOrigin
 				}
 				// 配对凭据属于交互命令输出，不进入持久化服务日志。
-				fmt.Fprintf(command.OutOrStdout(), "NeuxAlly Web: %s\n一次性配对码（5 分钟有效）：%s\n在此终端输入 pair 并回车可重新签发。\n", origin, code)
+				fmt.Fprintf(command.OutOrStdout(), "NeuxBot Web: %s\n一次性配对码（5 分钟有效）：%s\n在此终端输入 pair 并回车可重新签发。\n", origin, code)
 			}
 			emitPairing()
 			go func() {
@@ -127,7 +127,7 @@ func main() {
 			cancel()
 			parentWaitGroup.Wait()
 			if err := global.Close(); err != nil {
-				logx.Errorf("close NeuxAlly Core failed: %v", err)
+				logx.Errorf("close NeuxBot Core failed: %v", err)
 			}
 		})
 		// ginx 的 Shutdown hook 异步运行；退出仍须等待同一关闭完成，再回收终端和释放数据锁。

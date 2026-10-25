@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	eventhub "github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
+	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/gorilla/websocket"
 )
 

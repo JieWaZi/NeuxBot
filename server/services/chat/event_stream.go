@@ -6,12 +6,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 const subscriberBufferSize = 256
@@ -68,7 +68,7 @@ type PublicApprovalLocation struct {
 
 // PublicApprovalRequest 是服务向 API 暴露的安全审批请求。
 type PublicApprovalRequest struct {
-	// ApprovalID 是 NeuxAlly 为本次审批生成的稳定交互标识。
+	// ApprovalID 是 NeuxBot 为本次审批生成的稳定交互标识。
 	ApprovalID string `json:"approvalId"`
 	// ToolCallID 是 Runtime Session 内对应工具调用的标识。
 	ToolCallID string `json:"toolCallId"`
@@ -88,7 +88,7 @@ type PublicApprovalRequest struct {
 
 // PublicApprovalResolution 是服务向 API 暴露的审批处理结果。
 type PublicApprovalResolution struct {
-	// ApprovalID 是被处理的 NeuxAlly 审批标识。
+	// ApprovalID 是被处理的 NeuxBot 审批标识。
 	ApprovalID string `json:"approvalId"`
 	// ToolCallID 是对应 Runtime 工具调用标识。
 	ToolCallID string `json:"toolCallId"`
@@ -108,7 +108,7 @@ type PublicApprovalResolution struct {
 type PublicElicitationRequest struct {
 	// AllowSkip 是 CLI 问答明确冻结的跳过约束。
 	AllowSkip *bool `json:"allowSkip,omitempty"`
-	// ElicitationID 是 NeuxAlly 为本次交互生成的稳定标识。
+	// ElicitationID 是 NeuxBot 为本次交互生成的稳定标识。
 	ElicitationID string `json:"elicitationId"`
 	// ToolCallID 是 Runtime Session 内对应工具调用的标识。
 	ToolCallID string `json:"toolCallId,omitempty"`
@@ -124,7 +124,7 @@ type PublicElicitationRequest struct {
 
 // PublicElicitationResolution 是服务向 API 暴露的结构化输入处理结果。
 type PublicElicitationResolution struct {
-	// ElicitationID 是被处理的 NeuxAlly 交互标识。
+	// ElicitationID 是被处理的 NeuxBot 交互标识。
 	ElicitationID string `json:"elicitationId"`
 	// ToolCallID 是对应 Runtime 工具调用标识。
 	ToolCallID string `json:"toolCallId,omitempty"`

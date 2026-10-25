@@ -181,7 +181,7 @@ test("托盘菜单提供打开和退出，macOS 使用 Template 图标", async (
   );
   assert.deepEqual(
     context.trays[0].menu.template.map((item) => item.label ?? item.type),
-    ["打开 NeuxAlly", "separator", "退出 NeuxAlly"],
+    ["打开 NeuxBot", "separator", "退出 NeuxBot"],
   );
 
   context.trays[0].menu.template[2].click();

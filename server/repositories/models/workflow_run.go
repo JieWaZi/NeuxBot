@@ -1,8 +1,8 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 

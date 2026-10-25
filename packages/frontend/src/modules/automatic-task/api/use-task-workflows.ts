@@ -5,7 +5,7 @@ import {
 } from "@/shared/api/generated/sdk.gen";
 import type {
   ListWorkflowRevisionsResponse,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition as Definition,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition as Definition,
 } from "@/shared/api/generated/types.gen";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 

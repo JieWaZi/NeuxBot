@@ -1,7 +1,7 @@
 # 插件资源与飞书插件设计 Spec
 
 > 独立设计讨论，供评审与后续实施使用；本文描述目标行为，不代表当前软件已经提供插件功能。
-> 设计基线：NeuxAlly `4fb33f868430bc14f5d775d36e3c83f5c6d5e4b0`。
+> 设计基线：NeuxBot `4fb33f868430bc14f5d775d36e3c83f5c6d5e4b0`。
 > 本文依据已确认需求、现有代码及官方协议编写，采用 Superpowers brainstorming 的书面设计与独立审阅流程。
 
 ## 1. 意图与交付结果
@@ -112,7 +112,7 @@ flowchart LR
 
 ## 5. 本地目录与可重复分发
 
-插件资源仓库独立于应用源码维护。建议仓库名为 `neuxally-plugins`，实际远程地址在创建时确定；本 spec 不创建远程仓库或发布资源。
+插件资源仓库独立于应用源码维护。建议仓库名为 `neux-plugins`，实际远程地址在创建时确定；本 spec 不创建远程仓库或发布资源。
 
 ```text
 插件资源仓库/
@@ -181,7 +181,7 @@ MCP 沿用当前智能体的真实传输能力。包中的连接定义与本机�
 | 伙伴插件安装   | 伙伴、插件、明确版本、启停；同一伙伴同一插件只有一个安装关系                |
 | 插件共享配置   | 按插件资源保存的非敏感设置与加密凭据、配置修订；没有伙伴覆盖字段            |
 | 插件组件       | 由指定版本内容解析的技能与 MCP 定义，保留组件身份和来源；不保存独立安装状态 |
-| 飞书程序与授权 | 官方 CLI 的受管程序、共享配置目录及官方凭据存储；NeuxAlly 不复制其 token    |
+| 飞书程序与授权 | 官方 CLI 的受管程序、共享配置目录及官方凭据存储；NeuxBot 不复制其 token    |
 
 同一全局插件的所有安装伙伴共享配置，但各自的版本与启停仍独立。伙伴自有资源只供该伙伴安装；归属决定可见范围，不通过改名或猜 ID 绕过。
 
@@ -383,7 +383,7 @@ sequenceDiagram
 
 首批“飞书办公”插件提供文档、多维表格、日程和任务能力，直接收录官方 Skill 及其完整引用依赖。`lark-shared` 等共同规则保留，官方 `references/`、脚本与相对关系不能只复制 `SKILL.md` 后丢失。普通 CLI 调用由 Skill 指导智能体完成，不新增 MCP 转接服务器。
 
-官方上游采用 MIT；实际分发时仍需核对固定发布资产及所带依赖的版权与许可，并把原作者与 NeuxAlly 包装维护者分别展示。飞书产品、服务与第三方包装者的身份不能混淆。
+官方上游采用 MIT；实际分发时仍需核对固定发布资产及所带依赖的版权与许可，并把原作者与 NeuxBot 包装维护者分别展示。飞书产品、服务与第三方包装者的身份不能混淆。
 
 ### 10.2 程序、配置与工作区
 
@@ -492,6 +492,6 @@ sequenceDiagram
 
 ## 14. 外部依据
 
-- [Claude Code 插件模型](https://code.claude.com/docs/en/plugins)与[插件组件](https://code.claude.com/docs/en/plugins/components)：组件加载、按需 Skill 与 MCP 接入的参考，不代表 NeuxAlly 已实现同等组件集。
+- [Claude Code 插件模型](https://code.claude.com/docs/en/plugins)与[插件组件](https://code.claude.com/docs/en/plugins/components)：组件加载、按需 Skill 与 MCP 接入的参考，不代表 NeuxBot 已实现同等组件集。
 - [Agent Plugins 1.0.0](https://agent-plugins.org/specification)、[清单 Schema](https://agent-plugins.org/schemas/1.0.0/plugin.schema.json)、[MCP Schema](https://agent-plugins.org/schemas/1.0.0/mcp.schema.json)：新包的可移植核心契约。
 - [飞书固定发布](https://github.com/larksuite/cli/releases/tag/v1.0.98)、[对应源码](https://github.com/larksuite/cli/tree/ac81f5056ab88f37d581d25916f3dab85abfca76)、[配置目录实现](https://github.com/larksuite/cli/blob/ac81f5056ab88f37d581d25916f3dab85abfca76/internal/core/config.go)、[官方共享 Skill](https://github.com/larksuite/cli/blob/ac81f5056ab88f37d581d25916f3dab85abfca76/skills/lark-shared/SKILL.md)：首批真实插件的来源与接入依据。

@@ -27,9 +27,9 @@ import {
   updateAiAccountMutation,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 import type {
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccount as AIAccount,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccountEndpoint as Endpoint,
-  GithubComJieWaZiNeuxAllyServerApisAiAccountsAiAccountModel as AIAccountModel,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount as AIAccount,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint as Endpoint,
+  GithubComJieWaZiNeuxBotServerApisAiAccountsAiAccountModel as AIAccountModel,
 } from "@/shared/api/generated/types.gen";
 import { getAiAccountCredential } from "@/shared/api/generated/sdk.gen";
 import { openExternalURL } from "@/shared/platform";

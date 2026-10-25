@@ -21,8 +21,8 @@ import {
   type ReactNode,
 } from "react";
 import type {
-  GithubComJieWaZiNeuxAllyServerApisChatsMessageRequest as ChatMessageRequest,
-  GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution as AcceptedExecution,
+  GithubComJieWaZiNeuxBotServerApisChatsMessageRequest as ChatMessageRequest,
+  GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as AcceptedExecution,
 } from "@/shared/api/generated/types.gen";
 import type { ChatWorkspaceMainContent } from "../components/chat-workspace-surface";
 import { useWorkbench } from "../workbench/workbench-store";
@@ -87,7 +87,7 @@ import {
 } from "@/modules/connector";
 import { listWakersOptions } from "@/modules/waker";
 import { selectDirectory } from "@/shared/platform";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
 import {
   clearStableCreateRequest,
   withStableCreateRequest,

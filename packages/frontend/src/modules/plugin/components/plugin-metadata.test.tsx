@@ -26,7 +26,7 @@ it.each([
           pkg={{
             manifest: {
               name: "maintained-plugin",
-              author: { name: "NeuxAlly contributors" },
+              author: { name: "NeuxBot contributors" },
               version: "0.1.0",
               repository,
             },
@@ -56,7 +56,7 @@ it.each([
     } else {
       expect(screen.queryByText("插件版本")).not.toBeInTheDocument();
     }
-    expect(screen.queryByText("NeuxAlly contributors")).not.toBeInTheDocument();
+    expect(screen.queryByText("NeuxBot contributors")).not.toBeInTheDocument();
     expect(screen.queryByText("0.1.0")).not.toBeInTheDocument();
     expect(screen.queryByText("上游版本")).not.toBeInTheDocument();
   },

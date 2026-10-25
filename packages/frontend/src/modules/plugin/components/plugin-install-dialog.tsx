@@ -386,12 +386,12 @@ export function PluginInstallDialog({
             <span className="bg-surface-subtle grid size-14 place-items-center rounded-lg">
               <img
                 src="/ally-logo.svg"
-                alt="NeuxAlly"
+                alt="NeuxBot"
                 className="size-10 dark:hidden"
               />
               <img
                 src="/ally-logo-dark.svg"
-                alt="NeuxAlly"
+                alt="NeuxBot"
                 className="hidden size-10 dark:block"
               />
             </span>

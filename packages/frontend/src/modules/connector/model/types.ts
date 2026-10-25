@@ -1,8 +1,8 @@
 import type {
-  GithubComJieWaZiNeuxAllyServerApisMcpConnectorResource,
-  GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse,
-  GithubComJieWaZiNeuxAllyServerApisMcpRuntimeCompatibility,
-  GithubComJieWaZiNeuxAllyServerApisMcpSecretInput,
+  GithubComJieWaZiNeuxBotServerApisMcpConnectorResource,
+  GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse,
+  GithubComJieWaZiNeuxBotServerApisMcpRuntimeCompatibility,
+  GithubComJieWaZiNeuxBotServerApisMcpSecretInput,
 } from "@/shared/api/generated/types.gen";
 
 export type ConnectorTransport = "stdio" | "streamable_http" | "sse";
@@ -12,13 +12,13 @@ export type ConnectorActivationPolicy =
   "per_execution" | "team_context" | "workflow_context";
 
 export type ConnectorView =
-  GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+  GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 export type ConnectorRecord =
-  GithubComJieWaZiNeuxAllyServerApisMcpConnectorResource;
+  GithubComJieWaZiNeuxBotServerApisMcpConnectorResource;
 export type ConnectorCompatibility =
-  GithubComJieWaZiNeuxAllyServerApisMcpRuntimeCompatibility;
+  GithubComJieWaZiNeuxBotServerApisMcpRuntimeCompatibility;
 
-export type SecretField = GithubComJieWaZiNeuxAllyServerApisMcpSecretInput & {
+export type SecretField = GithubComJieWaZiNeuxBotServerApisMcpSecretInput & {
   configured?: boolean;
 };
 

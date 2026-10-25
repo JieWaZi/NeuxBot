@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	protocol "github.com/JieWaZi/NeuxAlly/server/internal/im"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/larksuite/oapi-sdk-go/v3/scene/registration"
 )
 
@@ -258,7 +258,7 @@ func (s *Service) loginFeishu(ctx context.Context, connection *models.IMConnecti
 	minimal := false
 	var preset *registration.AppPreset
 	if connection.AppID == "" {
-		preset = &registration.AppPreset{Name: "NeuxAlly 助理", Desc: "通过飞书与 NeuxAlly 伙伴和团队一起工作"}
+		preset = &registration.AppPreset{Name: "NeuxBot 助理", Desc: "通过飞书与 NeuxBot 伙伴和团队一起工作"}
 	}
 	result, err := registration.RegisterApp(ctx, &registration.Options{
 		Source:    "ally",

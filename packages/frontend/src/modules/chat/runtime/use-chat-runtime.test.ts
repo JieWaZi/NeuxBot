@@ -20,7 +20,7 @@ import { ChatQueueProvider, useChatQueueStore } from "./chat-queue-store";
 import { classifyChatSendFailure } from "./chat-send-failure";
 import { conversationKeyOf } from "../model/conversation-identity";
 import { ApiError } from "@/shared/api/errors";
-import type { GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution as MessageResult } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as MessageResult } from "@/shared/api/generated/types.gen";
 import type { ChatEvent } from "@/shared/api/events";
 
 type TestRuntimeAdapter = ExternalStoreAdapter & {

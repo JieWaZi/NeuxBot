@@ -13,8 +13,8 @@ import type {
   ChatScopeKey,
 } from "./conversation-identity";
 import type {
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval as PendingApproval,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingElicitation as PendingElicitation,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation,
 } from "@/shared/api/generated/types.gen";
 
 type ChatInteractionOptions = {

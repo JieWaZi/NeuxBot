@@ -3,10 +3,10 @@ package integrations
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	rules "github.com/JieWaZi/NeuxAlly/server/internal/integration"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	rules "github.com/JieWaZi/NeuxBot/server/internal/integration"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

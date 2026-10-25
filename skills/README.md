@@ -1,6 +1,6 @@
-# NeuxAlly maintained skills
+# NeuxBot maintained skills
 
-This directory is the source of truth for skills shipped with NeuxAlly, separate from repository development skills in `.agents/skills/`.
+This directory is the source of truth for skills shipped with NeuxBot, separate from repository development skills in `.agents/skills/`.
 
 The system `ally` skill is the single entry for application capabilities. Its short English `SKILL.md` routes agents to live `allycli capabilities`, `describe`, and the relevant guide. Add future application capabilities to the shared operation catalog and this skill's references instead of creating a separate built-in skill or MCP server.
 

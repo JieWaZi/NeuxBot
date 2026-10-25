@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )

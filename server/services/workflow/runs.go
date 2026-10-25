@@ -13,16 +13,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcommand"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
-	workflowfiles "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files"
-	workflowfunction "github.com/JieWaZi/NeuxAlly/server/internal/workflow/function"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	workflowfunction "github.com/JieWaZi/NeuxBot/server/internal/workflow/function"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // StartRunCommand 是用户、子运行与自动任务共用的接纳命令。

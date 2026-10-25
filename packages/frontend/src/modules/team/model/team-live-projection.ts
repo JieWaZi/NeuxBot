@@ -1,6 +1,6 @@
 import type {
-  GithubComJieWaZiNeuxAllyServerApisChannelsChannelThreadDetail as ChannelThreadDetail,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelEvent as ChannelEvent,
+  GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail as ChannelThreadDetail,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelEvent as ChannelEvent,
 } from "@/shared/api/generated/types.gen";
 
 const maximumRememberedEvents = 512;
