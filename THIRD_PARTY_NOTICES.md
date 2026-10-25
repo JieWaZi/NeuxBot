@@ -471,7 +471,7 @@ NeuxBot 在现有 Go IM 边界实现协议互通，不分发或执行上述 Node
 
 ## README CLI 品牌图标
 
-适用范围：`docs/assets/readme/multi-cli.png`。Codex、Claude Code、Cursor、Kimi、OpenCode、Gemini CLI 与 Grok 图标复用应用使用的 [LobeHub Icons](https://github.com/lobehub/lobe-icons)（`@lobehub/icons 5.15.0`，MIT）。Qoder 与 Qoder CN 共用 [Qoder 官网图标](https://qoder.com/favIcon.svg)；WorkBuddy 使用[官网 CDN 图标](https://assets.workbuddy.cn/web/workbuddy/a5b2fb510f0e7b156f19d072fae0cd12ae1f2f19/assets/logo.svg)；Pi 使用 [Pi 官网图标](https://pi.dev/favicon.svg)。品牌名称与标识归各自权利人所有，仅用于标识对应 CLI，不表示官方背书。
+适用范围：`docs/assets/readme/multi-cli.png`。Codex、Claude Code、Cursor、Kimi、OpenCode、Gemini CLI 与 Grok 图标复用应用使用的 [LobeHub Icons](https://github.com/lobehub/lobe-icons)（`@lobehub/icons 5.15.0`，MIT）。Qoder 使用 [Qoder 官网图标](https://qoder.com/favIcon.svg)；WorkBuddy 使用[官网 CDN 图标](https://assets.workbuddy.cn/web/workbuddy/a5b2fb510f0e7b156f19d072fae0cd12ae1f2f19/assets/logo.svg)；Pi 使用 [Pi 官网图标](https://pi.dev/favicon.svg)。品牌名称与标识归各自权利人所有，仅用于标识对应 CLI，不表示官方背书。
 
 LobeHub Icons 许可：
 

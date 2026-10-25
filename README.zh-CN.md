@@ -27,9 +27,9 @@ NeuxBot 把 AI 工具、项目上下文与分工协作放进同一个本地桌�
 - **自由选择工具与账号。** 根据任务选择 CLI、账号和模型，在同一处管理伙伴。既可沿用 CLI 原生登录，也可独立管理 AI 账号。
 - **让协作形成可复用的工作。** 由团队负责人协调不同专长的伙伴、汇总成果；把经常做的事情通过对话编排成工作流，随时查看过程、处理审批与检查产出。
 
-**支持的 CLI：** Codex · Claude Code · Cursor · Kimi · Pi · OpenCode · Gemini CLI · Grok Build · WorkBuddy · Qoder · Qoder CN
+**支持的 CLI：** Codex · Claude Code · Cursor · Kimi · Pi · OpenCode · Gemini CLI · Grok Build · WorkBuddy · Qoder
 
-<img src="docs/assets/readme/multi-cli.png" alt="NeuxBot 在同一工作台支持 Codex、Claude Code、Cursor、Kimi、Pi、OpenCode、Gemini CLI、Grok Build、WorkBuddy、Qoder 和 Qoder CN，以及表示更多 CLI 的 More… 卡片。" width="100%" />
+<img src="docs/assets/readme/multi-cli.png" alt="NeuxBot 的现有果冻伙伴形象连接 Codex、Claude Code、Cursor、Kimi、Pi、OpenCode、Gemini CLI、Grok Build、WorkBuddy 和 Qoder，以及表示更多 CLI 的 More… 卡片。" width="100%" />
 
 <sub>多 CLI 支持示意图</sub>
 
