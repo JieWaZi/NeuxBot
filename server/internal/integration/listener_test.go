@@ -72,6 +72,7 @@ func TestIntegrationDisableClosesListenerBeforeServeStarts(t *testing.T) {
 	listener := NewListener(t.TempDir(), func(string) http.Handler { return http.NotFoundHandler() })
 	// 模拟已经登记监听套接字，但 Serve goroutine 尚未被调度的真实窗口。
 	listener.ctx, listener.cancel = context.WithCancel(context.Background())
+	listener.enabled = true
 	listener.api = ListenerStatus{IP: "127.0.0.1", Port: bound.Addr().(*net.TCPAddr).Port, Available: true}
 	listener.server = &http.Server{Handler: http.NotFoundHandler()}
 	listener.listener = bound
@@ -277,5 +278,22 @@ func TestConcurrentAPIAndMCPUpdatesPreserveEachOther(t *testing.T) {
 		if err != nil || json.Unmarshal(data, &saved) != nil || !saved.Enabled || !saved.MCPEnabled || saved.PublicBaseURL != settings.PublicBaseURL {
 			t.Fatal("persisted configuration lost concurrent update", string(data), err)
 		}
+	}
+}
+
+func TestIntegrationDefaultsDisabledWithoutSavedSettings(t *testing.T) {
+	listener := NewListener(t.TempDir(), func(string) http.Handler {
+		t.Fatal("default-disabled integrations attempted to start listening")
+		return http.NotFoundHandler()
+	})
+	if settings := listener.Settings(); settings.Enabled || settings.MCPEnabled || settings.Available {
+		t.Fatal("new integrations are not disabled", settings)
+	}
+	if err := listener.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	if settings := listener.Settings(); settings.Enabled || settings.MCPEnabled || settings.Available || listener.GetAPIStatus().Available {
+		t.Fatal("startup enabled integrations without saved settings", settings)
 	}
 }

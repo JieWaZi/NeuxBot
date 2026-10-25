@@ -89,7 +89,7 @@ type Listener struct {
 
 // NewListener 创建尚未绑定端口的发布服务所有者。
 func NewListener(dataDirectory string, handler func(string) http.Handler) *Listener {
-	return &Listener{dataDirectory: dataDirectory, handler: handler, enabled: true, api: ListenerStatus{IP: constants.AutomaticTaskDefaultAPIIP, Port: constants.AutomaticTaskDefaultAPIPort}}
+	return &Listener{dataDirectory: dataDirectory, handler: handler, api: ListenerStatus{IP: constants.AutomaticTaskDefaultAPIIP, Port: constants.AutomaticTaskDefaultAPIPort}}
 }
 
 // Start 显式加载集成设置并开始监听，绑定失败只影响 API 可用性。

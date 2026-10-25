@@ -29,7 +29,22 @@ import (
 
 func TestPublishedRouterExcludesDesktopManagementAndServesOnlyPublicContract(t *testing.T) {
 	old := global.IntegrationAPIListener
-	global.IntegrationAPIListener = publication.NewListener(t.TempDir(), nil)
+	root := t.TempDir()
+	reservation, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := reservation.Addr().(*net.TCPAddr).Port
+	_ = reservation.Close()
+	data, _ := json.Marshal(map[string]any{"ip": "127.0.0.1", "port": port, "enabled": true})
+	if err = os.WriteFile(filepath.Join(root, "integration-api.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	global.IntegrationAPIListener = publication.NewListener(root, func(string) http.Handler { return http.NotFoundHandler() })
+	if err = global.IntegrationAPIListener.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer global.IntegrationAPIListener.Close()
 	defer func() { global.IntegrationAPIListener = old }()
 	handler := NewPublishedHandler(nil, schedule.Config{}, "127.0.0.1:8431")
 	for _, path := range []string{"/api/v1/integrations/keys", "/api/v1/chats", "/api/v1/knowledge/connections", "/openapi.json", "/api/v1/runtime-options"} {
