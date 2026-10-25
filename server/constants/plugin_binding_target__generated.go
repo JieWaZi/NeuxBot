@@ -41,7 +41,7 @@ func (v PluginBindingTarget) Values() []enum.Enum {
 }
 
 func (v PluginBindingTarget) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.PluginBindingTarget"
+	return "github.com/JieWaZi/NeuxBot/server/constants.PluginBindingTarget"
 }
 
 func (v PluginBindingTarget) MarshalText() ([]byte, error) {

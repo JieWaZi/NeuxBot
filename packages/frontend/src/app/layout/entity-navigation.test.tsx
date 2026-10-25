@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Waker } from "@/modules/waker";
 import "@/shared/i18n";
@@ -57,7 +57,6 @@ function NavigationHarness({
       onModeChange={setMode}
       onNewChat={() => undefined}
       onOpenSettings={() => undefined}
-      onOpenWorkflows={() => undefined}
       onReorder={() => undefined}
       onSelectPartner={onSelectPartner}
       onSelectTeam={onSelectTeam}
@@ -67,17 +66,12 @@ function NavigationHarness({
 }
 
 describe("EntityNavigation", () => {
-  beforeEach(() => {
-    window.localStorage.removeItem("ally.navigation-actions-expanded");
-  });
-
   it.each([true, false])(
-    "默认展开全部菜单，点击导航入口保持展开（侧栏收起=%s）",
+    "工作流合并后仅保留资源库入口（侧栏收起=%s）",
     async (collapsed) => {
       const user = userEvent.setup();
+      const resources = vi.fn();
       const automatic = vi.fn();
-      const workflow = vi.fn();
-      const im = vi.fn();
       const settings = vi.fn();
       render(
         <EntityNavigation
@@ -89,105 +83,27 @@ describe("EntityNavigation", () => {
           onNewChat={() => undefined}
           onOpenSettings={settings}
           onOpenAutomaticTasks={automatic}
-          onOpenWorkflows={workflow}
-          onOpenIM={im}
+          onOpenResources={resources}
           onReorder={() => undefined}
           onSelectPartner={() => undefined}
           onSelectTeam={() => undefined}
           selectedKey="waker:waker-1"
         />,
       );
-      expect(screen.queryByRole("button", { name: "任务看板" })).toBeNull();
-      await user.click(screen.getByRole("button", { name: "自动任务" }));
-      await user.click(screen.getByRole("button", { name: "设置" }));
-      expect(automatic).toHaveBeenCalledTimes(1);
-      expect(settings).toHaveBeenCalledTimes(1);
-      expect(screen.getByRole("button", { name: "设置" })).toBeVisible();
-      expect(screen.queryByRole("button", { name: "更多" })).toBeNull();
-      const trigger = screen.getByRole("button", { name: "收起侧栏菜单" });
-      expect(trigger.parentElement).toContainElement(
-        screen.getByRole("button", { name: "设置" }),
-      );
-      expect(trigger).toHaveTextContent("");
-      expect(trigger).toHaveAttribute("aria-expanded", "true");
       for (const [name, callback] of [
-        ["工作流", workflow],
-        ["IM 集成", im],
+        ["资源库", resources],
+        ["自动任务", automatic],
+        ["设置", settings],
       ] as const) {
-        const entry = screen.getByRole("button", { name });
-        expect(trigger.closest("aside")).toContainElement(entry);
-        expect(screen.queryByRole("menu")).toBeNull();
-        await user.click(entry);
-        expect(callback).toHaveBeenCalledTimes(1);
-        expect(trigger).toHaveAttribute("aria-expanded", "true");
-        expect(entry).toBeVisible();
-      }
-      await user.click(trigger);
-      expect(trigger).toHaveAttribute("aria-expanded", "false");
-      expect(screen.queryByRole("button", { name: "工作流" })).toBeNull();
-      expect(screen.queryByRole("button", { name: "IM 集成" })).toBeNull();
-      for (const name of ["自动任务", "设置"]) {
         await user.click(screen.getByRole("button", { name }));
-        expect(
-          screen.getByRole("button", { name: "展开侧栏菜单" }),
-        ).toHaveAttribute("aria-expanded", "false");
-        expect(screen.getByRole("button", { name })).toBeVisible();
+        expect(callback).toHaveBeenCalledTimes(1);
       }
+      expect(screen.queryByRole("button", { name: "工作流" })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: /展开侧栏菜单|收起侧栏菜单/ }),
+      ).toBeNull();
     },
   );
-
-  it("仅箭头切换菜单，支持键盘操作，Escape 不收起菜单", async () => {
-    const user = userEvent.setup();
-    render(
-      <NavigationHarness
-        collapsed={false}
-        onSelectPartner={() => undefined}
-        onSelectTeam={() => undefined}
-      />,
-    );
-    const trigger = screen.getByRole("button", { name: "收起侧栏菜单" });
-    expect(screen.getByRole("button", { name: "工作流" })).toBeVisible();
-    expect(trigger).toHaveAccessibleName("收起侧栏菜单");
-    await user.click(trigger);
-    expect(screen.queryByRole("button", { name: "工作流" })).toBeNull();
-    await user.keyboard("{Enter}");
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-    screen.getByRole("button", { name: "工作流" }).focus();
-    await user.keyboard("{Escape}");
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("button", { name: "工作流" })).toHaveFocus();
-    await user.click(trigger);
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(trigger).toHaveFocus();
-  });
-
-  it("重新挂载导航后恢复用户保存的收起和展开选择", async () => {
-    const user = userEvent.setup();
-    const navigation = (
-      <NavigationHarness
-        collapsed={false}
-        onSelectPartner={() => undefined}
-        onSelectTeam={() => undefined}
-      />
-    );
-    const first = render(navigation);
-    await user.click(screen.getByRole("button", { name: "收起侧栏菜单" }));
-    first.unmount();
-
-    const second = render(navigation);
-    expect(
-      screen.getByRole("button", { name: "展开侧栏菜单" }),
-    ).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("button", { name: "工作流" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "展开侧栏菜单" }));
-    second.unmount();
-
-    render(navigation);
-    expect(
-      screen.getByRole("button", { name: "收起侧栏菜单" }),
-    ).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("button", { name: "工作流" })).toBeVisible();
-  });
 
   it("悬浮入口展开实体胶囊并在选择后关闭", async () => {
     const user = userEvent.setup();

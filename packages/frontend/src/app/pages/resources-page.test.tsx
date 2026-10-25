@@ -10,6 +10,7 @@ import { afterEach, it, expect, vi } from "vitest";
 import "@/shared/i18n";
 import type * as PluginModule from "@/modules/plugin";
 import { ResourcesPage } from "./resources-page";
+import { WorkflowListPage } from "@/modules/workflow/pages/workflow-list-page";
 vi.mock("@/modules/plugin", async (original) => ({
   ...(await original<typeof PluginModule>()),
   usePluginComponents: () => ({ items: [] }),
@@ -48,6 +49,11 @@ vi.mock("@/modules/skill", () => ({
 vi.mock("@/modules/connector", () => ({
   ConnectorResourceCollection: ({ adding }: { adding: boolean }) => (
     <section>连接器内容{adding && <p>连接器创建</p>}</section>
+  ),
+}));
+vi.mock("@/modules/workflow", () => ({
+  WorkflowResourceCollection: ({ search }: { search: string }) => (
+    <section>工作流内容 {search}</section>
   ),
 }));
 afterEach(cleanup);
@@ -133,4 +139,63 @@ it.each([
     }),
   ).not.toBeInTheDocument();
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+it("工作流分类可从 URL 恢复，切换清理筛选并从页首创建", () => {
+  render(
+    <MemoryRouter
+      initialEntries={[
+        "/resources?category=skills&search=review&source=plugins",
+      ]}
+    >
+      <HistoryControls />
+      <Routes>
+        <Route path="resources" element={<ResourcesPage />} />
+        <Route path="workflows/new" element={<p>新建工作流画布</p>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  fireEvent.click(screen.getByRole("radio", { name: "工作流" }));
+  expect(screen.getByText("工作流内容")).toBeVisible();
+  expect(screen.getByRole("status")).toHaveTextContent("?category=workflows");
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "历史返回" }));
+  expect(screen.getByText(/技能内容 review plugins/)).toBeVisible();
+  fireEvent.click(screen.getByRole("radio", { name: "工作流" }));
+  const create = screen.getByRole("button", { name: "新建工作流" });
+  expect(create.closest("header")).not.toBeNull();
+  fireEvent.click(create);
+  expect(screen.getByText("新建工作流画布")).toBeVisible();
+});
+
+it("伙伴已安装资源继续只展示可安装的三种资源", () => {
+  render(
+    <MemoryRouter initialEntries={["/wakers/w1/resources"]}>
+      <Routes>
+        <Route path="wakers/:wakerId/resources" element={<ResourcesPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  expect(screen.getAllByRole("radio")).toHaveLength(3);
+  expect(
+    screen.queryByRole("radio", { name: "工作流" }),
+  ).not.toBeInTheDocument();
+});
+
+it("旧工作流列表地址跳转资源库并保留搜索条件", () => {
+  render(
+    <MemoryRouter initialEntries={["/workflows?search=周会"]}>
+      <HistoryControls />
+      <Routes>
+        <Route path="workflows" element={<WorkflowListPage />} />
+        <Route path="resources" element={<ResourcesPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  expect(screen.getByRole("radio", { name: "工作流" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  expect(screen.getByText("工作流内容 周会")).toBeVisible();
+  expect(screen.getByRole("status")).toHaveTextContent("category=workflows");
 });

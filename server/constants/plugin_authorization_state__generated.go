@@ -53,7 +53,7 @@ func (v PluginAuthorizationState) Values() []enum.Enum {
 }
 
 func (v PluginAuthorizationState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.PluginAuthorizationState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.PluginAuthorizationState"
 }
 
 func (v PluginAuthorizationState) MarshalText() ([]byte, error) {

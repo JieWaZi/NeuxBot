@@ -1,4 +1,3 @@
-import type { ComponentType } from "react";
 import type { CoreConnection } from "@neuxbot/platform-contracts/resources";
 import type {
   HostService,
@@ -13,7 +12,6 @@ export type Platform = {
   kind: "desktop" | "web";
   /** 宿主窗口控件需要的标题栏起始避让；普通浏览器使用共享默认间距。 */
   chrome?: { navigationInset: number };
-  SessionActions?: ComponentType;
   getConnection(): Promise<CoreConnection>;
   host: HostService;
   workspace?: WorkspaceService;

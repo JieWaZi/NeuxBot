@@ -1113,7 +1113,7 @@ export type GithubComJieWaZiNeuxBotServerApisIntegrationsCreateApiKeyInput = {
 /**
  * MCP 服务设置请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisIntegrationsMcpServiceInput = {
+export type GithubComJieWaZiNeuxBotServerApisIntegrationsMcpServiceInput = {
     /**
      * 启用状态
      */
@@ -2150,6 +2150,10 @@ export type GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryExecutionDefaultsIn
      */
     model?: string;
     /**
+     * 推理强度
+     */
+    reasoning?: string;
+    /**
      * 智能体
      */
     runtimeId: string;
@@ -2228,6 +2232,10 @@ export type GithubComJieWaZiNeuxBotServerApisKnowledgeOrganizeInput = {
      * 模型
      */
     model?: string;
+    /**
+     * 推理强度
+     */
+    reasoning?: string;
     /**
      * 重建知识
      */
@@ -2993,6 +3001,10 @@ export type GithubComJieWaZiNeuxBotServerApisKnowledgeTaskConfiguration = {
      * 模型
      */
     model?: string;
+    /**
+     * 推理强度
+     */
+    reasoning?: string;
     /**
      * 智能体
      */
@@ -5179,16 +5191,6 @@ export type GithubComJieWaZiNeuxBotServerApisWebsessionCapabilities = {
      * 工作区文件
      */
     workspace?: boolean;
-};
-
-/**
- * 本机配对请求
- */
-export type GithubComJieWaZiNeuxBotServerApisWebsessionPairRequest = {
-    /**
-     * 配对码
-     */
-    code: string;
 };
 
 /**
@@ -10546,6 +10548,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsLibraryExecutionDefau
      * Model 是用户选择的模型标识。
      */
     model?: string;
+    /**
+     * Reasoning 是显式推理强度，留空时使用模型支持的最低档。
+     */
+    reasoning?: string;
     /**
      * RuntimeID 是选定智能体，不包含程序路径。
      */
@@ -19208,7 +19214,7 @@ export type UpdateApiKeyResponses = {
 export type UpdateApiKeyResponse = UpdateApiKeyResponses[keyof UpdateApiKeyResponses];
 
 export type UpdateMcpServiceData = {
-    body: GithubComJieWaZiNeuxAllyServerApisIntegrationsMcpServiceInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisIntegrationsMcpServiceInput & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/integrations/mcp';
@@ -40786,15 +40792,15 @@ export type GetSessionResponses = {
 
 export type GetSessionResponse = GetSessionResponses[keyof GetSessionResponses];
 
-export type PairSessionData = {
-    body: GithubComJieWaZiNeuxBotServerApisWebsessionPairRequest & unknown;
+export type CreateSessionData = {
+    body?: never;
     path?: never;
     query?: never;
     url: '/api/web/session';
 };
 
-export type PairSessionResponses = {
+export type CreateSessionResponses = {
     200: GithubComJieWaZiNeuxBotServerApisWebsessionSessionResponse;
 };
 
-export type PairSessionResponse = PairSessionResponses[keyof PairSessionResponses];
+export type CreateSessionResponse = CreateSessionResponses[keyof CreateSessionResponses];

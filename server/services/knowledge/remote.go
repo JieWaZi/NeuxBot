@@ -144,7 +144,7 @@ func (a *RemoteAdapter) Maintain(ctx context.Context, in httpapi.MaintenanceRequ
 	if page.Version != in.ExpectedPageVersion {
 		return nil, status_error.KnowledgeConflict
 	}
-	selected, err := a.Service.ResolveModel(ctx, models.LibraryExecutionDefaults{RuntimeID: session.RuntimeID, AccountID: session.AccountID, Model: session.Model})
+	selected, err := a.Service.ResolveModel(ctx, models.LibraryExecutionDefaults{RuntimeID: session.RuntimeID, AccountID: session.AccountID, Model: session.Model, Reasoning: session.Reasoning})
 	if err != nil {
 		return nil, err
 	}

@@ -179,12 +179,12 @@ export function WakerMemoryPage() {
           actions={
             <>
               <PageAction
-                variant="secondary"
+                variant="plain"
+                hitArea="comfortable"
                 aria-label={t("settingsAction")}
                 onClick={() => setSettingsOpen(true)}
               >
                 <Settings />
-                <PageActionLabel>{t("settingsAction")}</PageActionLabel>
               </PageAction>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

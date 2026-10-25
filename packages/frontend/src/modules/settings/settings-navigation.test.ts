@@ -16,12 +16,13 @@ describe("API 集成设置导航", () => {
   });
 });
 
-it("MCP 收入 API 集成，旧分类入口恢复到 API 页面", () => {
+it("IM 与 API 并列在发布集成分组，MCP 归入 API", () => {
+  expect(settingsSectionOf("integration-im")).toBe("integration-im");
   expect(settingsSectionOf("integration-mcp")).toBe("integration-api");
   expect(
     settingsNavigationGroups
       .find((group) => group.titleKey === "groups.integration")
       ?.items.map((item) => item.key),
-  ).toEqual(["integration-api"]);
+  ).toEqual(["integration-im", "integration-api"]);
   expect(settingsSectionOf("unknown")).toBe("general");
 });

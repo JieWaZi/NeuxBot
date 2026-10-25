@@ -28,6 +28,7 @@ export function readExecutionDefaults(
     runtimeId: value.runtimeId ?? "",
     accountId: value.accountId ?? "",
     model: value.model ?? "",
+    reasoning: value.reasoning ?? "",
   };
 }
 

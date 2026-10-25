@@ -49,7 +49,7 @@ func (v IntegrationCapability) Values() []enum.Enum {
 }
 
 func (v IntegrationCapability) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.IntegrationCapability"
+	return "github.com/JieWaZi/NeuxBot/server/constants.IntegrationCapability"
 }
 
 func (v IntegrationCapability) MarshalText() ([]byte, error) {

@@ -49,7 +49,7 @@ func (v RemoteTransferState) Values() []enum.Enum {
 }
 
 func (v RemoteTransferState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RemoteTransferState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RemoteTransferState"
 }
 
 func (v RemoteTransferState) MarshalText() ([]byte, error) {

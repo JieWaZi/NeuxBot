@@ -41,7 +41,7 @@ func (v IMChatKind) Values() []enum.Enum {
 }
 
 func (v IMChatKind) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.IMChatKind"
+	return "github.com/JieWaZi/NeuxBot/server/constants.IMChatKind"
 }
 
 func (v IMChatKind) MarshalText() ([]byte, error) {

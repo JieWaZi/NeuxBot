@@ -22,9 +22,9 @@ vi.mock("@/shared/hooks/use-execution-selection", () => ({
       runtimeId: "codex",
       accountId: "system",
       model: "model-a",
-      reasoning: "",
       permissionLevel: "default",
       ...value,
+      reasoning: ("reasoning" in value && value.reasoning) || "low",
     },
     runtimes: [{ id: "codex", name: "Codex" }],
     accounts: [],
@@ -32,7 +32,10 @@ vi.mock("@/shared/hooks/use-execution-selection", () => ({
       { id: "model-a", name: "模型 A" },
       { id: "model-b", name: "模型 B" },
     ],
-    reasoningOptions: [],
+    reasoningOptions: [
+      { id: "low", name: "低" },
+      { id: "high", name: "高" },
+    ],
     runtime: { id: "codex", models: [] },
     supportedPermissions: new Set(["default"]),
     loading: false,
@@ -84,6 +87,16 @@ it.each(["create", "edit"] as const)(
       key: "ArrowDown",
     });
     await user.click(screen.getByRole("option", { name: "模型 B" }));
+    expect(
+      screen.getByRole("combobox", { name: "推理强度" }),
+    ).toHaveTextContent("低");
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "推理强度" }), {
+      key: "ArrowDown",
+    });
+    expect(
+      screen.queryByRole("option", { name: "默认推理强度" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "高" }));
     await user.click(screen.getByRole("button", { name: "分块设置" }));
     const chunk = screen.getByRole("slider", { name: "分块大小" });
     chunk.focus();
@@ -110,7 +123,7 @@ it.each(["create", "edit"] as const)(
     expect(save.mock.calls[0]?.[0]).toMatchObject({
       draft: {
         library: { name: "修改后的名称", chunkingConfig: { chunk_size: 4000 } },
-        execution: { model: "model-b" },
+        execution: { model: "model-b", reasoning: "high" },
       },
     });
   },

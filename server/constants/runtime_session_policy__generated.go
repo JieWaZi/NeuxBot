@@ -37,7 +37,7 @@ func (v RuntimeSessionPolicy) Values() []enum.Enum {
 }
 
 func (v RuntimeSessionPolicy) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeSessionPolicy"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeSessionPolicy"
 }
 
 func (v RuntimeSessionPolicy) MarshalText() ([]byte, error) {

@@ -41,7 +41,7 @@ func (v WorkflowRevisionPolicy) Values() []enum.Enum {
 }
 
 func (v WorkflowRevisionPolicy) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.WorkflowRevisionPolicy"
+	return "github.com/JieWaZi/NeuxBot/server/constants.WorkflowRevisionPolicy"
 }
 
 func (v WorkflowRevisionPolicy) MarshalText() ([]byte, error) {

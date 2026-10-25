@@ -45,7 +45,7 @@ func (v RuntimeAuthStatus) Values() []enum.Enum {
 }
 
 func (v RuntimeAuthStatus) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeAuthStatus"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeAuthStatus"
 }
 
 func (v RuntimeAuthStatus) MarshalText() ([]byte, error) {

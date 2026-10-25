@@ -41,7 +41,7 @@ func (v MCPTestStatus) Values() []enum.Enum {
 }
 
 func (v MCPTestStatus) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MCPTestStatus"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MCPTestStatus"
 }
 
 func (v MCPTestStatus) MarshalText() ([]byte, error) {

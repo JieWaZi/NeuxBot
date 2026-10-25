@@ -60,7 +60,7 @@ describe("MCP 已保存地址与配置", () => {
       JSON.parse(mcpClientConfig("https://example.test/proxy/mcp")),
     ).toEqual({
       mcpServers: {
-        neuxally: {
+        neuxbot: {
           url: "https://example.test/proxy/mcp",
           headers: { "X-API-Key": "<YOUR_API_KEY>" },
         },

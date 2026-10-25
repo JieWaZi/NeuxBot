@@ -86,6 +86,21 @@ it("入口脚本执行前已有加载状态，首帧主题读取当前偏好", (
   ).toContain("plush-512.png 512w");
 });
 
+it("桌面首帧样式的浏览器地址落在 Vite 根目录内，并加载共享样式", () => {
+  const html = readFileSync("../../desktop/index.html", "utf8");
+  const parsed = new DOMParser().parseFromString(html, "text/html");
+  const href = parsed
+    .querySelector('link[rel="stylesheet"]')
+    ?.getAttribute("href");
+  if (!href) throw new Error("缺少首帧样式地址");
+  // 浏览器会先规范化 ../，不能将仓库相对路径当成开发服务器地址。
+  const pathname = new URL(href, "http://localhost/").pathname;
+  const stylesheet = readFileSync(`../../desktop${pathname}`, "utf8");
+  expect(stylesheet).toContain(
+    '@import "@neuxbot/frontend/shared/styles/index.css"',
+  );
+});
+
 it("等待服务时显示进度，失败显示原因，重试成功后自动进入工作台", async () => {
   connection.assets.mockResolvedValue(undefined);
   connection.assets.mockImplementationOnce(

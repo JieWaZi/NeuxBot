@@ -275,7 +275,7 @@ export function WorkflowDetailPage() {
         ]) {
           void client.cancelQueries({ queryKey });
         }
-        navigate("/workflows", { replace: true });
+        navigate("/resources?category=workflows", { replace: true });
         void client.invalidateQueries({ queryKey: listWorkflowsQueryKey() });
       },
       onGap: refresh,
@@ -1170,7 +1170,7 @@ export function WorkflowDetailPage() {
           revisionId={detail.data?.definition?.currentRevisionId ?? ""}
           open={active && deleteOpen}
           onOpenChange={setDeleteOpen}
-          onDeleted={() => navigate("/workflows")}
+          onDeleted={() => navigate("/resources?category=workflows")}
         />
       ) : null}
     </div>

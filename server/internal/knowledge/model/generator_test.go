@@ -19,12 +19,12 @@ func (run runtimeFunc) GenerateText(ctx context.Context, request runtimes.TextRe
 
 func TestGeneratorUsesDirectTextAndReleasesEveryAccountLease(t *testing.T) {
 	prepared, released, calls := 0, 0, 0
-	generator := New(Config{Model: "model-a", Prepare: func(context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
+	generator := New(Config{Model: "model-a", Reasoning: "high", Prepare: func(context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
 		prepared++
 		return runtimes.RuntimeTarget{RuntimeID: "codex", AccountID: "account"}, runtimes.DetectionResult{}, func() { released++ }, nil
 	}, Runtime: runtimeFunc(func(_ context.Context, request runtimes.TextRequest) runtimes.TextResult {
 		calls++
-		if request.Thinking || request.Model != "model-a" || request.MaxTokens != 32768 || request.Temperature != .3 || len(request.Messages) != 2 {
+		if request.Reasoning != "high" || request.Thinking || request.Model != "model-a" || request.MaxTokens != 32768 || request.Temperature != .3 || len(request.Messages) != 2 {
 			t.Fatalf("request=%+v", request)
 		}
 		return runtimes.TextResult{Text: "raw model text", StopReason: "max_tokens", Usage: &runtimes.TurnUsageData{InputTokens: 3, CacheReadTokens: 5, OutputTokens: 7}, ActualReasoning: "low", ReasoningFallback: "thinking_off_unsupported"}

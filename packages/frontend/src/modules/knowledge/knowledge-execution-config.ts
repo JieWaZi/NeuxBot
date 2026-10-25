@@ -9,5 +9,6 @@ export function buildExecutionDefaults(
     runtimeId: selection.runtimeId ?? "",
     accountId: selection.accountId ?? "",
     model: selection.model ?? "",
+    reasoning: selection.reasoning ?? "",
   };
 }

@@ -1,4 +1,4 @@
-// Package localweb 管理本机浏览器的配对、会话和静态资源信任边界。
+// Package localweb 管理本机浏览器的会话和静态资源信任边界。
 package localweb
 
 import (
@@ -38,9 +38,9 @@ type Session struct {
 	timer *time.Timer
 }
 
-// Manager 拥有配对摘要、会话和本机来源白名单。
+// Manager 拥有会话和本机来源白名单。
 type Manager struct {
-	// mu 保护签发、尝试预算和会话集合。
+	// mu 保护签发和会话集合。
 	mu sync.Mutex
 	// host 是 Core 实际监听的完整主机与端口。
 	host string
@@ -48,17 +48,9 @@ type Manager struct {
 	origins map[string]bool
 	// files 是限制目录逃逸及软链接的静态资源根。
 	files *os.Root
-	// pairing 保存一次性配对码摘要，原文只交付启动终端。
-	pairing [32]byte
-	// pairExpires 是一次性码有效期。
-	pairExpires time.Time
-	// attempts 是当前分钟的失败尝试数。
-	attempts int
-	// window 是限速时间窗口的起点。
-	window time.Time
 	// sessions 以 Cookie 摘要索引当前会话。
 	sessions map[[32]byte]*Session
-	// now 为到期和限速提供可测试时钟。
+	// now 为到期提供可测试时钟。
 	now func() time.Time
 }
 
@@ -106,19 +98,6 @@ func randomSecret() (string, error) {
 	return hex.EncodeToString(bytes[:]), nil
 }
 
-// RotatePairing 仅供本机启动终端重新签发，旧码立即失效。
-func (m *Manager) RotatePairing() (string, error) {
-	code, err := randomSecret()
-	if err != nil {
-		return "", err
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.pairing = sha256.Sum256([]byte(code))
-	m.pairExpires = m.now().Add(5 * time.Minute)
-	return code, nil
-}
-
 // TrustedHost 拒绝 DNS 重绑定及非预期代理 Host。
 func (m *Manager) TrustedHost(r *http.Request) bool { return r.Host == m.host }
 
@@ -127,26 +106,14 @@ func (m *Manager) TrustedOrigin(r *http.Request) bool {
 	return m.TrustedHost(r) && len(r.Header.Values("Origin")) == 1 && m.origins[r.Header.Get("Origin")]
 }
 
-// Pair 验证一次性码并签发短期 Cookie；响应不包含 Cookie 密钥。
-func (m *Manager) Pair(w http.ResponseWriter, r *http.Request, code string) (*Session, int) {
-	if !m.TrustedOrigin(r) {
+// CreateSession 为可信本机页面签发会话 Cookie；响应不包含 Cookie 密钥。
+func (m *Manager) CreateSession(w http.ResponseWriter, r *http.Request) (*Session, int) {
+	if r.Method != http.MethodPost || !m.TrustedOrigin(r) || r.Header.Get("Authorization") != "" {
 		return nil, http.StatusForbidden
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
-	if now.Sub(m.window) >= time.Minute {
-		m.window = now
-		m.attempts = 0
-	}
-	if m.attempts >= 10 {
-		return nil, http.StatusTooManyRequests
-	}
-	m.attempts++
-	digest := sha256.Sum256([]byte(code))
-	if !now.Before(m.pairExpires) || subtle.ConstantTimeCompare(digest[:], m.pairing[:]) != 1 {
-		return nil, http.StatusUnauthorized
-	}
 	if len(m.sessions) >= 32 {
 		return nil, http.StatusTooManyRequests
 	}
@@ -164,8 +131,6 @@ func (m *Manager) Pair(w http.ResponseWriter, r *http.Request, code string) (*Se
 	s.ID = hex.EncodeToString(key[:])
 	m.sessions[key] = s
 	s.timer = time.AfterFunc(12*time.Hour, func() { m.revoke(key) })
-	m.pairExpires = time.Time{}
-	m.pairing = [32]byte{}
 	http.SetCookie(w, &http.Cookie{Name: CookieName, Value: token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: 12 * 60 * 60})
 	return s, http.StatusOK
 }

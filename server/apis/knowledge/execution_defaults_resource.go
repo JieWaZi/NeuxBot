@@ -17,6 +17,8 @@ type LibraryExecutionDefaultsInput struct {
 	AccountID string `json:"accountId"`
 	// 模型
 	Model string `json:"model"`
+	// 推理强度
+	Reasoning string `json:"reasoning" validate:"max=80"`
 }
 
 // resolveLibraryExecutionDefaults 复用既有执行准入解析，只保存选择引用，不启动模型。
@@ -38,5 +40,5 @@ func resolveLibraryExecutionDefaults(ctx context.Context, libraryID string, in L
 
 // libraryExecutionDefaultsValues 固定用户显式选择，用于持久偏好与稳定请求比较。
 func libraryExecutionDefaultsValues(libraryID string, in LibraryExecutionDefaultsInput) models.LibraryExecutionDefaults {
-	return models.LibraryExecutionDefaults{LibraryID: libraryID, RuntimeID: strings.TrimSpace(in.RuntimeID), AccountID: strings.TrimSpace(in.AccountID), Model: strings.TrimSpace(in.Model)}
+	return models.LibraryExecutionDefaults{LibraryID: libraryID, RuntimeID: strings.TrimSpace(in.RuntimeID), AccountID: strings.TrimSpace(in.AccountID), Model: strings.TrimSpace(in.Model), Reasoning: strings.TrimSpace(in.Reasoning)}
 }

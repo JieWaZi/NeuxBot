@@ -2,7 +2,10 @@ import type { ExecutionSelection } from "@/shared/hooks/use-execution-selection"
 import { resourceKey, type ResourceRef } from "./knowledge-transfer";
 
 type OrganizePreferences = {
-  selection?: Pick<ExecutionSelection, "runtimeId" | "accountId" | "model">;
+  selection?: Pick<
+    ExecutionSelection,
+    "runtimeId" | "accountId" | "model" | "reasoning"
+  >;
   requirements?: string;
   profileId?: string;
 };
@@ -32,6 +35,7 @@ export function saveOrganizePreferences(
             runtimeId: selection.runtimeId,
             accountId: selection.accountId,
             model: selection.model,
+            reasoning: selection.reasoning,
           },
         }
       : {}),

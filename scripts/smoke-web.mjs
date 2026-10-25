@@ -61,12 +61,9 @@ function assertStopped(ids) {
     assert.equal(alive, false, "Core或worker仍存活");
   }
 }
-let output = "";
 let diagnostic = "";
 let exited = false;
-child.stdout.on("data", (data) => {
-  output = (output + data.toString()).slice(-65536);
-});
+child.stdout.resume();
 child.stderr.on("data", (data) => {
   diagnostic = (diagnostic + data.toString()).slice(-8192);
 });
@@ -86,18 +83,12 @@ async function waitFor(predicate) {
   }
   throw new Error("发布Core等待超时");
 }
-async function pairingCode() {
-  return waitFor(
-    () => output.match(/一次性配对码（5 分钟有效）：([a-f0-9]+)/)?.[1],
-  );
-}
-async function pair(code) {
+async function connect() {
   const response = await fetch(`${origin}/api/web/session`, {
     method: "POST",
-    headers: { Origin: origin, "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
+    headers: { Origin: origin },
   });
-  assert.equal(response.status, 200, "配对失败");
+  assert.equal(response.status, 200, "建立会话失败");
   const cookie = response.headers.get("set-cookie");
   assert.match(cookie, /HttpOnly/i);
   assert.match(cookie, /SameSite=Strict/i);
@@ -116,7 +107,6 @@ async function request(route, auth, body, method) {
   });
 }
 try {
-  const code = await pairingCode();
   await waitFor(async () => {
     try {
       return (await fetch(origin)).status === 200;
@@ -126,7 +116,7 @@ try {
   });
   assert.equal((await fetch(`${origin}/api/web/session`)).status, 401);
   ownedPIDs = descendants(child.pid);
-  const first = await pair(code);
+  const first = await connect();
   assert.equal(first.session.capabilities.workspace, true);
   assert.equal(first.session.capabilities.git, true);
   assert.equal(first.session.capabilities.terminal, true);
@@ -134,12 +124,11 @@ try {
     (
       await fetch(`${origin}/api/web/session`, {
         method: "POST",
-        headers: { Origin: origin, "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        headers: { Origin: "http://evil.example" },
       })
     ).status,
-    401,
-    "配对码应单次使用",
+    403,
+    "外部来源不得建立会话",
   );
   assert.equal(
     (
@@ -213,9 +202,7 @@ try {
     ).ok,
     false,
   );
-  output = "";
-  child.stdin.write("pair\n");
-  const second = await pair(await pairingCode());
+  const second = await connect();
   assert.equal(
     (await request(`/api/v1/workspace/read?${query}`, second)).ok,
     false,
@@ -275,7 +262,7 @@ try {
     let ready = false,
       closed = false;
     restarted.stdout.on("data", (data) => {
-      if (data.toString().includes("一次性配对码")) ready = true;
+      if (data.toString().includes("NeuxBot Web:")) ready = true;
     });
     restarted.stderr.on("data", () => {});
     restarted.on("exit", () => {
@@ -305,7 +292,7 @@ try {
       assertStopped(restartedPIDs);
     }
     console.log(
-      "Web发布包HTTP验证通过：配对/退出、CSRF、上传隔离、文件版本/越界、Git、终端授权、Core与worker回收、同数据锁重开。",
+      "Web发布包HTTP验证通过：直接连接/会话撤销、CSRF、上传隔离、文件版本/越界、Git、终端授权、Core与worker回收、同数据锁重开。",
     );
   }
   await rm(temporary, { recursive: true, force: true });

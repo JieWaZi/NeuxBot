@@ -19,6 +19,8 @@ type LibraryExecutionDefaults struct {
 	AccountID string `json:"accountId"`
 	// Model 是用户选择的模型标识。
 	Model string `json:"model"`
+	// Reasoning 是显式推理强度，留空时使用模型支持的最低档。
+	Reasoning string `json:"reasoning,omitempty"`
 	// UpdatedAt 是最近成功保存时间，单位毫秒。
 	UpdatedAt int64 `json:"updatedAt"`
 }

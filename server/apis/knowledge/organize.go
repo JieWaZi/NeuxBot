@@ -34,6 +34,8 @@ type OrganizeInput struct {
 	AccountID string `json:"accountId"`
 	// 模型
 	Model string `json:"model"`
+	// 推理强度
+	Reasoning string `json:"reasoning" validate:"max=80"`
 	// 整理消息
 	Message string `json:"message"`
 }
@@ -53,7 +55,7 @@ func (o *Organize) Output(ctx *gin.Context) (interface{}, error) {
 	if global.KnowledgeService == nil {
 		return nil, status_error.KnowledgeUnsupported
 	}
-	r, s, err := global.KnowledgeService.Organize(bridge.LocalUserActivity(ctx), service.OrganizeCommand{Rebuild: o.Body.Rebuild, RequestID: o.Body.RequestID, LibraryID: o.LibraryID, SourceVersionIDs: o.Body.SourceVersionIDs, Message: o.Body.Message, Configuration: models.KnowledgeTaskConfiguration{ID: o.Body.RequestID, RuntimeID: o.Body.RuntimeID, AccountID: o.Body.AccountID, Model: o.Body.Model}})
+	r, s, err := global.KnowledgeService.Organize(bridge.LocalUserActivity(ctx), service.OrganizeCommand{Rebuild: o.Body.Rebuild, RequestID: o.Body.RequestID, LibraryID: o.LibraryID, SourceVersionIDs: o.Body.SourceVersionIDs, Message: o.Body.Message, Configuration: models.KnowledgeTaskConfiguration{ID: o.Body.RequestID, RuntimeID: o.Body.RuntimeID, AccountID: o.Body.AccountID, Model: o.Body.Model, Reasoning: o.Body.Reasoning}})
 	if err != nil {
 		return nil, err
 	}

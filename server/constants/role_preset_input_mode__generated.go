@@ -37,7 +37,7 @@ func (v RolePresetInputMode) Values() []enum.Enum {
 }
 
 func (v RolePresetInputMode) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RolePresetInputMode"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RolePresetInputMode"
 }
 
 func (v RolePresetInputMode) MarshalText() ([]byte, error) {

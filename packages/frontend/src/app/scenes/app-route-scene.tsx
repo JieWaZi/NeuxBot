@@ -18,7 +18,6 @@ import {
 } from "@/modules/plugin";
 import { WorkBoardPage } from "@/modules/work-board";
 
-import { IMConnectionDetailPage, IMPage } from "@/modules/im";
 import type { ChatRightPanel } from "@/modules/chat";
 import {
   AutomaticTaskDetailPage,
@@ -126,8 +125,6 @@ export function AppRouteScene({ location, outletContext }: AppRouteSceneProps) {
         <Route path="work-board" element={<WorkBoardPage />} />
         <Route path="wakers" element={<WakerListPage />} />
         <Route path="wakers/:wakerId" element={<WakerDetailPage />} />
-        <Route path="im" element={<IMPage />} />
-        <Route path="im/:connectionId" element={<IMConnectionDetailPage />} />
         <Route path="workflows" element={<WorkflowListPage />} />
         <Route path="workflows/:workflowId" element={<WorkflowDetailPage />}>
           <Route index element={<></>} />

@@ -79,6 +79,7 @@ it("资源分类卡片保留单选语义、说明和键盘焦点，跳过禁用�
         { label: "插件", value: "plugins", description: "扩展伙伴能力" },
         { label: "技能", value: "skills", disabled: true },
         { label: "连接器", value: "connectors", description: "连接外部工具" },
+        { label: "工作流", value: "workflows", description: "复用工作流程" },
       ]}
     />,
   );
@@ -92,6 +93,11 @@ it("资源分类卡片保留单选语义、说明和键盘焦点，跳过禁用�
   await user.keyboard("{ArrowRight}");
   expect(onValueChange).toHaveBeenLastCalledWith("connectors");
   expect(connectors).toHaveFocus();
+  await user.keyboard("{End}");
+  const workflows = screen.getByRole("radio", { name: "工作流" });
+  expect(workflows).toHaveFocus();
+  expect(workflows).toHaveAccessibleDescription("复用工作流程");
+  expect(onValueChange).toHaveBeenLastCalledWith("workflows");
   await user.keyboard("{Home}");
   expect(plugins).toHaveFocus();
   await user.click(connectors);

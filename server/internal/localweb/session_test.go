@@ -24,16 +24,12 @@ func request(method string) *http.Request {
 	r.Header.Set("Origin", "http://127.0.0.1:8432")
 	return r
 }
-func pair(t *testing.T, m *Manager) (*Session, *http.Cookie) {
+func session(t *testing.T, m *Manager) (*Session, *http.Cookie) {
 	t.Helper()
-	code, e := m.RotatePairing()
-	if e != nil {
-		t.Fatal(e)
-	}
 	w := httptest.NewRecorder()
-	s, status := m.Pair(w, request("POST"), code)
+	s, status := m.CreateSession(w, request("POST"))
 	if status != 200 {
-		t.Fatalf("pair: %d", status)
+		t.Fatalf("session: %d", status)
 	}
 	c := w.Result().Cookies()[0]
 	if !c.HttpOnly || c.SameSite != http.SameSiteStrictMode || c.Domain != "" || c.Path != "/" {
@@ -42,43 +38,43 @@ func pair(t *testing.T, m *Manager) (*Session, *http.Cookie) {
 	return s, c
 }
 
-func TestPairingReplayExpiryRateLimitAndRotation(t *testing.T) {
+func TestSessionCreationRequiresTrustedLocalOrigin(t *testing.T) {
 	m := manager(t)
-	now := time.Now()
-	m.now = func() time.Time { return now }
-	code, _ := m.RotatePairing()
-	old := code
-	code, _ = m.RotatePairing()
-	if _, s := m.Pair(httptest.NewRecorder(), request("POST"), old); s != 401 {
-		t.Fatalf("old code %d", s)
+	for _, origin := range []string{"", "http://evil.example", "http://127.0.0.1:9999", "null"} {
+		r := request("POST")
+		r.Header.Set("Origin", origin)
+		w := httptest.NewRecorder()
+		if _, status := m.CreateSession(w, r); status != http.StatusForbidden || len(w.Result().Cookies()) != 0 {
+			t.Fatalf("untrusted origin %q: %d", origin, status)
+		}
 	}
-	if _, s := m.Pair(httptest.NewRecorder(), request("POST"), code); s != 200 {
-		t.Fatal(s)
+	for _, invalid := range []string{"host", "method", "authorization", "multiple-origins"} {
+		r := request("POST")
+		switch invalid {
+		case "host":
+			r.Host = "evil.example"
+		case "method":
+			r.Method = "GET"
+		case "authorization":
+			r.Header.Set("Authorization", "Bearer invalid")
+		case "multiple-origins":
+			r.Header.Add("Origin", "http://evil.example")
+		}
+		if _, status := m.CreateSession(httptest.NewRecorder(), r); status != http.StatusForbidden {
+			t.Fatalf("accepted %s: %d", invalid, status)
+		}
 	}
-	if _, s := m.Pair(httptest.NewRecorder(), request("POST"), code); s != 401 {
-		t.Fatal("replay")
+	for range 32 {
+		session(t, m)
 	}
-	code, _ = m.RotatePairing()
-	now = now.Add(6 * time.Minute)
-	if _, s := m.Pair(httptest.NewRecorder(), request("POST"), code); s != 401 {
-		t.Fatal("expired code")
-	}
-	for i := 0; i < 9; i++ {
-		m.Pair(httptest.NewRecorder(), request("POST"), "invalid")
-	}
-	if _, s := m.Pair(httptest.NewRecorder(), request("POST"), "invalid"); s != 429 {
-		t.Fatal("unbounded attempts")
-	}
-	now = now.Add(time.Minute)
-	code, _ = m.RotatePairing()
-	if _, s := m.Pair(httptest.NewRecorder(), request("POST"), code); s != 200 {
-		t.Fatal(s)
+	if _, status := m.CreateSession(httptest.NewRecorder(), request("POST")); status != http.StatusTooManyRequests {
+		t.Fatalf("unbounded sessions: %d", status)
 	}
 }
 
 func TestSessionOriginCSRFAndRevocation(t *testing.T) {
 	m := manager(t)
-	s, c := pair(t, m)
+	s, c := session(t, m)
 	r := request("GET")
 	r.AddCookie(c)
 	if _, ok := m.Authenticate(r, false); !ok {
@@ -129,7 +125,7 @@ func TestSessionOriginCSRFAndRevocation(t *testing.T) {
 
 func TestSessionExpiresAndCoreCloses(t *testing.T) {
 	m := manager(t)
-	s, c := pair(t, m)
+	s, c := session(t, m)
 	m.now = func() time.Time { return s.ExpiresAt }
 	r := request("GET")
 	r.AddCookie(c)
@@ -142,7 +138,7 @@ func TestSessionExpiresAndCoreCloses(t *testing.T) {
 		t.Fatal("expired subscription")
 	}
 	m.now = time.Now
-	s, _ = pair(t, m)
+	s, _ = session(t, m)
 	m.Close()
 	select {
 	case <-s.Context.Done():

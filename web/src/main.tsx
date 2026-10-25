@@ -6,13 +6,8 @@ import { startApplication } from "@neuxbot/frontend/start";
 import { initializeTheme, ThemeProvider } from "@/shared/theme";
 import "@neuxbot/frontend/shared/styles/index.css";
 import { webHost } from "./platform/host";
-import {
-  requestSession,
-  SessionError,
-  type WebSession,
-} from "./platform/session";
-import { SessionActions } from "./shell/session-actions";
-import { PairingScreen } from "./shell/pairing-screen";
+import { requestSession, type WebSession } from "./platform/session";
+import { ConnectionScreen } from "./shell/connection-screen";
 
 initializeTheme();
 window.addEventListener(
@@ -35,7 +30,6 @@ function connect(session: WebSession) {
     terminal: session.capabilities.terminal
       ? createCoreTerminalService(getConnection)
       : undefined,
-    SessionActions: () => <SessionActions session={session} />,
     getConnection,
   });
   // 到期只重载当前页面，Core 中已接纳的工作继续运行。
@@ -47,16 +41,13 @@ function connect(session: WebSession) {
 }
 try {
   connect(await requestSession());
-} catch (error) {
+} catch {
   const container = document.getElementById("root");
   if (!container) throw new Error("缺少应用挂载节点");
   const root = createRoot(container);
   root.render(
     <ThemeProvider>
-      <PairingScreen
-        initialOffline={
-          !(error instanceof SessionError && error.status === 401)
-        }
+      <ConnectionScreen
         onConnected={(session) => {
           root.unmount();
           connect(session);

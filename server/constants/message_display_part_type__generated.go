@@ -45,7 +45,7 @@ func (v MessageDisplayPartType) Values() []enum.Enum {
 }
 
 func (v MessageDisplayPartType) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MessageDisplayPartType"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MessageDisplayPartType"
 }
 
 func (v MessageDisplayPartType) MarshalText() ([]byte, error) {

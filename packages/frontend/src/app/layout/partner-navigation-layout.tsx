@@ -83,7 +83,6 @@ type PartnerNavigationLayoutProps = {
   onManageEntities: (mode: PartnerNavigationPreferences["entityMode"]) => void;
   onOpenPartnerDetail: (partnerId: string) => void;
   onOpenAutomaticTasks: () => void;
-  onOpenWorkflows?: () => void;
   onOpenResources?: () => void;
   onOpenKnowledge?: () => void;
   onOpenSettings: () => void;
@@ -206,7 +205,6 @@ function PartnerNavigationLayoutContent({
   onManageEntities,
   onOpenPartnerDetail,
   onOpenAutomaticTasks,
-  onOpenWorkflows,
   onOpenResources,
   onOpenKnowledge,
   onOpenSettings,
@@ -238,7 +236,6 @@ function PartnerNavigationLayoutContent({
     location.pathname,
   );
   const automaticTasksOpen =
-    location.pathname.startsWith("/im") ||
     location.pathname.startsWith("/automatic-tasks") ||
     location.pathname.startsWith("/workflows");
   const availableRailKeys = useMemo(
@@ -402,9 +399,7 @@ function PartnerNavigationLayoutContent({
                 onPreferencesChange((current) => ({ ...current, entityMode }))
               }
               onOpenSettings={onOpenSettings}
-              onOpenIM={() => navigate("/im")}
               onOpenAutomaticTasks={onOpenAutomaticTasks}
-              onOpenWorkflows={onOpenWorkflows}
               onOpenResources={onOpenResources}
               onOpenKnowledge={onOpenKnowledge}
               onReorder={updateOrder}

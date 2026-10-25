@@ -1,279 +1,184 @@
-import { MessageCircle, Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { useState } from "react";
-import { useQueries } from "@tanstack/react-query";
-import { imConnectionDependencyOptions } from "./queries";
-import {
-  ConnectionDependencies,
-  connectionDeletionBlocked,
-} from "./components/connection-dependencies";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
-import { deleteImConnection } from "@/shared/api/generated/sdk.gen";
-import { useResourceSelection } from "@/shared/hooks/use-resource-selection";
-import {
-  ResourceSelection,
-  ResourceSelectionActions,
-} from "@/shared/ui/resource-selection";
-import { ResourceBatchDeleteDialog } from "@/shared/ui/resource-batch-delete-dialog";
-import type { IMConnection, IMPlatform } from "./types";
-import {
-  localApiErrorMessage,
-  withLocalErrorSurface,
-} from "@/shared/api/local-error-surface";
+import { SettingsContentShell } from "@/modules/settings";
+import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent } from "@/shared/ui/dialog";
-import { EmptyState } from "@/shared/ui/empty-state";
 import {
-  PageAction,
-  PageActionLabel,
-  ResourceCardGrid,
-  ResourcePageHeader,
-  ResourcePageLibraryLabel,
-  ResourcePageSurface,
-  ResourcePageSearchField,
-  ResourcePageToolbar,
-} from "@/shared/ui/resource-page";
-import { ConnectionCard } from "./components/connection-card";
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/shared/ui/collapsible";
+import { Skeleton } from "@/shared/ui/skeleton";
 import { ConnectionDialog } from "./components/connection-dialog";
+import { ConnectionSettingsRow } from "./components/connection-settings-row";
 import { PlatformIcon } from "./components/platform-icon";
+import { IMConnectionDetailDialog } from "./im-connection-detail-dialog";
 import { useIMBindings, useIMConnections } from "./queries";
+import type { IMPlatform } from "./types";
+
+const supportedPlatforms = ["weixin", "feishu", "wecom"] as const;
 
 export function IMPage() {
   const { t } = useTranslation("im");
   const query = useIMConnections();
   const bindings = useIMBindings();
-  const [selectingPlatform, setSelectingPlatform] = useState(false);
+  const [expandedPlatforms, setExpandedPlatforms] = useState<IMPlatform[]>([]);
   const [platform, setPlatform] = useState<IMPlatform>();
-  const [params, setParams] = useSearchParams();
-  const [batchTargets, setBatchTargets] = useState<IMConnection[]>([]);
-  const deletionDependencies = useQueries({
-    queries: batchTargets.map((item) =>
-      imConnectionDependencyOptions(item.id || ""),
-    ),
-  });
-  const search = params.get("search") || "";
-  const connections = (query.data?.resources || []).filter((connection) =>
-    `${connection.name} ${connection.appId || ""}`
-      .toLocaleLowerCase()
-      .includes(search.trim().toLocaleLowerCase()),
-  );
-  const selection = useResourceSelection(
-    connections.flatMap((connection) =>
-      connection.id ? [{ ...connection, id: connection.id }] : [],
-    ),
-    search,
-  );
+  const [detail, setDetail] = useState<{
+    connectionId: string;
+    trigger: HTMLElement;
+  }>();
 
   return (
-    <ResourcePageSurface>
-      <ResourcePageHeader
-        title={t("title")}
-        description={t("description")}
-        actions={
-          <PageAction
-            aria-label={t("addConnection")}
-            onClick={() => setSelectingPlatform(true)}
-          >
-            <Plus />
-            <PageActionLabel>{t("addConnection")}</PageActionLabel>
-          </PageAction>
-        }
-      />
-      <ResourcePageToolbar
-        filters={
-          <ResourcePageSearchField
-            value={search}
-            onChange={(event) => {
-              const value = event.target.value;
-              setParams((current) => {
-                const next = new URLSearchParams(current);
-                if (value) next.set("search", value);
-                else next.delete("search");
-                return next;
-              });
-            }}
-            placeholder={t("searchConnections")}
-            aria-label={t("searchConnections")}
-          />
-        }
-      >
-        <ResourcePageLibraryLabel
-          installed={t("connections")}
-          count={t("connectionCount", { count: connections.length })}
-        />
-        <ResourceSelection
-          checked={selection.checked}
-          disabled={selection.disabled}
-          onChange={selection.selectAll}
-        />
-      </ResourcePageToolbar>
-      <ResourceSelectionActions
-        count={selection.selected.length}
-        onClear={selection.clear}
-        onDelete={() => setBatchTargets(selection.selected)}
-      />
+    <SettingsContentShell title={t("title")} description={t("description")}>
       {query.error ? (
-        <div role="alert" className="text-destructive type-body mb-4">
-          {localApiErrorMessage(query.error, t("operationFailed"))}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p role="alert" className="type-body text-destructive">
+            {localApiErrorMessage(query.error, t("operationFailed"))}
+          </p>
           <Button
             size="sm"
-            variant="ghost"
+            variant="secondary"
             onClick={() => void query.refetch()}
           >
             {t("reload")}
           </Button>
         </div>
       ) : null}
-      {query.isPending ? (
-        <p role="status" className="text-content-secondary type-body py-8">
-          {t("loading")}
-        </p>
-      ) : !connections.length ? (
-        <EmptyState
-          className="mt-6"
-          icon={MessageCircle}
-          title={t(search ? "empty.search" : "empty.connections")}
-        />
-      ) : (
-        <ResourceCardGrid className="mt-6">
-          {connections.map((connection) => (
-            <ConnectionCard
-              key={connection.id}
-              connection={connection}
-              selected={Boolean(
-                connection.id && selection.selectedIds.has(connection.id),
-              )}
-              onSelectedChange={
-                connection.id
-                  ? (selected) =>
-                      selection.setSelected(connection.id || "", selected)
-                  : undefined
+      <div className="flex flex-col gap-3">
+        {supportedPlatforms.map((item) => {
+          const connections =
+            query.data?.resources?.filter(
+              (connection) => connection.platform === item,
+            ) || [];
+          return (
+            <Collapsible
+              key={item}
+              className="bg-surface-tertiary overflow-hidden rounded-lg"
+              open={expandedPlatforms.includes(item)}
+              onOpenChange={(open) =>
+                setExpandedPlatforms((current) =>
+                  open
+                    ? [...current, item]
+                    : current.filter((value) => value !== item),
+                )
               }
-              bindings={
-                bindings.data?.filter(
-                  (binding) => binding.connectionId === connection.id,
-                ) || []
-              }
-              onSaved={() => void query.refresh()}
-            />
-          ))}
-        </ResourceCardGrid>
-      )}
+            >
+              <div className="min-h-row-rich flex flex-wrap items-center gap-x-2">
+                <CollapsibleTrigger
+                  aria-label={t("platformConnections", { platform: t(item) })}
+                  className="group text-content-primary hover:bg-action-quiet-hover focus-visible:ring-ring flex min-w-0 flex-1 basis-48 items-center gap-2 self-stretch px-4 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset"
+                >
+                  <ChevronRight
+                    aria-hidden="true"
+                    className="size-icon-sm text-content-muted shrink-0 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+                  />
+                  <PlatformIcon platform={item} compact />
+                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="type-body font-medium break-words">
+                      {t(item)}
+                    </span>
+                    <span className="type-ui text-content-secondary min-w-0 break-words">
+                      {t("platformDescription." + item)}
+                    </span>
+                  </span>
+                  <span className="type-ui text-content-secondary shrink-0 tabular-nums">
+                    {query.isPending ? (
+                      <Skeleton className="h-4 w-12" />
+                    ) : query.data ? (
+                      t("connectionCount", { count: connections.length })
+                    ) : (
+                      t("connections")
+                    )}
+                  </span>
+                </CollapsibleTrigger>
+                <div className="ml-auto flex max-w-full items-center px-3 py-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label={t("addPlatformBot", { platform: t(item) })}
+                    onClick={() => setPlatform(item)}
+                  >
+                    <Plus />
+                    {t("addBot")}
+                  </Button>
+                </div>
+              </div>
+              <CollapsibleContent>
+                <div className="border-border-subtle divide-border-subtle divide-y border-t">
+                  {query.isPending ? (
+                    <div
+                      role="status"
+                      aria-busy="true"
+                      aria-label={t("loading")}
+                      className="grid gap-3 px-4 py-3"
+                    >
+                      <Skeleton className="h-4 w-1/3" />
+                      <Skeleton className="h-4 w-2/3" />
+                    </div>
+                  ) : connections.length ? (
+                    connections.map((connection) => (
+                      <ConnectionSettingsRow
+                        key={connection.id}
+                        connection={connection}
+                        bindings={
+                          bindings.data?.filter(
+                            (binding) => binding.connectionId === connection.id,
+                          ) || []
+                        }
+                        onSaved={() => void query.refresh()}
+                        onView={(trigger) => {
+                          if (connection.id)
+                            setDetail({ connectionId: connection.id, trigger });
+                        }}
+                      />
+                    ))
+                  ) : !query.error ? (
+                    <p className="type-ui text-content-secondary px-4 py-3">
+                      {t("empty.platformConnections", { platform: t(item) })}
+                    </p>
+                  ) : null}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        })}
+      </div>
       {bindings.error ? (
-        <p role="alert" className="text-destructive type-body mt-4">
-          {localApiErrorMessage(bindings.error, t("authorizationReadFailed"))}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p role="alert" className="type-body text-destructive">
+            {localApiErrorMessage(bindings.error, t("authorizationReadFailed"))}
+          </p>
           <Button
             size="sm"
-            variant="ghost"
+            variant="secondary"
             onClick={() => void bindings.refetch()}
           >
             {t("reload")}
           </Button>
-        </p>
+        </div>
       ) : null}
-      {batchTargets.length ? (
-        <ResourceBatchDeleteDialog
-          items={batchTargets.map((item) => ({
-            id: item.id || "",
-            name: item.name || "",
-          }))}
-          title={t("deleteConnections")}
-          description={t("deleteConnectionsHint")}
-          warning={t("deleteConnectionsWarning")}
-          disabled={deletionDependencies.some(
-            (item) =>
-              item.isPending ||
-              item.error ||
-              connectionDeletionBlocked(item.data),
-          )}
-          onDelete={(id) =>
-            deleteImConnection(
-              withLocalErrorSurface({
-                path: { connectionId: id },
-                query: {
-                  revision:
-                    batchTargets.find((item) => item.id === id)?.revision || 0,
-                  dependencyDigest:
-                    deletionDependencies[
-                      batchTargets.findIndex((item) => item.id === id)
-                    ]?.data?.digest,
-                },
-                throwOnError: true,
-              }),
-            )
-          }
-          onDeleted={async (ids) => {
-            selection.remove(ids);
-            setBatchTargets((targets) =>
-              targets.filter((item) => !ids.includes(item.id || "")),
-            );
-            await query.refresh();
-          }}
-          onOpenChange={(open) => {
-            if (!open) setBatchTargets([]);
-          }}
-        >
-          {deletionDependencies.map((item, index) => (
-            <div key={batchTargets[index]?.id} className="mb-4 grid gap-2">
-              {item.data?.workflows?.length ||
-              connectionDeletionBlocked(item.data) ||
-              item.error ? (
-                <p className="type-label font-medium">
-                  {batchTargets[index]?.name}
-                </p>
-              ) : null}
-              <ConnectionDependencies
-                data={item.data}
-                loading={item.isPending}
-                error={item.error}
-                onRetry={() => void item.refetch()}
-              />
-            </div>
-          ))}
-        </ResourceBatchDeleteDialog>
+      {detail ? (
+        <IMConnectionDetailDialog
+          key={detail.connectionId}
+          connectionId={detail.connectionId}
+          returnFocusTo={detail.trigger}
+          onClose={() => setDetail(undefined)}
+        />
       ) : null}
-      <Dialog open={selectingPlatform} onOpenChange={setSelectingPlatform}>
-        <DialogContent
-          title={t("addConnection")}
-          description={t("selectPlatform")}
-        >
-          <div className="grid gap-3 px-6 pb-6">
-            {(["weixin", "feishu", "wecom"] as const).map((item) => (
-              <div
-                key={item}
-                className="bg-surface-secondary flex items-center gap-4 rounded-xl p-4"
-              >
-                <PlatformIcon platform={item} />
-                <div className="min-w-0 flex-1">
-                  <h2 className="type-label font-medium">{t(item)}</h2>
-                  <p className="text-content-secondary type-caption mt-1">
-                    {t("platformDescription." + item)}
-                  </p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label={t("addPlatformBot", { platform: t(item) })}
-                  onClick={() => {
-                    setSelectingPlatform(false);
-                    setPlatform(item);
-                  }}
-                >
-                  <Plus />
-                  {t("addBot")}
-                </Button>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
       {platform ? (
         <ConnectionDialog
           platform={platform}
           onClose={() => setPlatform(undefined)}
-          onSaved={() => void query.refresh()}
+          onSaved={() => {
+            setExpandedPlatforms((current) =>
+              current.includes(platform) ? current : [...current, platform],
+            );
+            void query.refresh();
+          }}
         />
       ) : null}
-    </ResourcePageSurface>
+    </SettingsContentShell>
   );
 }

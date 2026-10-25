@@ -19,11 +19,10 @@ func TestWebSessionCannotBypassInvalidBearerAndBindsSubject(t *testing.T) {
 	global.LocalWeb = m
 	global.Config.Security.LocalToken = "valid"
 	t.Cleanup(func() { m.Close(); global.LocalWeb = old; global.Config.Security.LocalToken = oldToken })
-	code, _ := m.RotatePairing()
 	pair := httptest.NewRequest("POST", "http://127.0.0.1:8432/api/web/session", nil)
 	pair.Header.Set("Origin", "http://127.0.0.1:8432")
 	recorder := httptest.NewRecorder()
-	session, status := m.Pair(recorder, pair, code)
+	session, status := m.CreateSession(recorder, pair)
 	if status != 200 {
 		t.Fatal(status)
 	}

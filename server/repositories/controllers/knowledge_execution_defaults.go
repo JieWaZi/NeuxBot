@@ -67,7 +67,7 @@ func (c *knowledgeController) UpdateLibraryExecutionDefaults(ctx context.Context
 				return status_error.KnowledgeConflict
 			}
 		} else {
-			result := tx.Model(&models.LibraryExecutionDefaults{}).Where("library_id = ? AND version = ?", in.LibraryID, expectedVersion).Updates(map[string]any{"version": candidate.Version, "runtime_id": candidate.RuntimeID, "account_id": candidate.AccountID, "model": candidate.Model, "updated_at": candidate.UpdatedAt})
+			result := tx.Model(&models.LibraryExecutionDefaults{}).Where("library_id = ? AND version = ?", in.LibraryID, expectedVersion).Updates(map[string]any{"version": candidate.Version, "runtime_id": candidate.RuntimeID, "account_id": candidate.AccountID, "model": candidate.Model, "reasoning": candidate.Reasoning, "updated_at": candidate.UpdatedAt})
 			if result.Error != nil {
 				return result.Error
 			}

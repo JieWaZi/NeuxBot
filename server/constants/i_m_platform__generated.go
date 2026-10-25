@@ -45,7 +45,7 @@ func (v IMPlatform) Values() []enum.Enum {
 }
 
 func (v IMPlatform) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.IMPlatform"
+	return "github.com/JieWaZi/NeuxBot/server/constants.IMPlatform"
 }
 
 func (v IMPlatform) MarshalText() ([]byte, error) {

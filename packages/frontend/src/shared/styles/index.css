@@ -155,8 +155,6 @@
   --spacing-work-board-focus-list: calc(5 * var(--spacing-row-rich) + 3.5rem);
   /* 连接器内容区与技能卡片的 128px 基线一致，标签固定同行，说明保留两行。 */
   --spacing-connector-card-content: 8rem;
-  /* IM 与资源卡片对齐为 128px 内容区和 44px 操作轨道，错误替换范围与权限摘要。 */
-  --spacing-im-connection-card: 10.75rem;
   --spacing-shell-content-top: 1rem;
   --radius-xs: 0.25rem;
   --radius-sm: 0.375rem;

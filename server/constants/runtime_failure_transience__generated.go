@@ -45,7 +45,7 @@ func (v RuntimeFailureTransience) Values() []enum.Enum {
 }
 
 func (v RuntimeFailureTransience) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeFailureTransience"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeFailureTransience"
 }
 
 func (v RuntimeFailureTransience) MarshalText() ([]byte, error) {

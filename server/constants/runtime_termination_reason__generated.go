@@ -57,7 +57,7 @@ func (v RuntimeTerminationReason) Values() []enum.Enum {
 }
 
 func (v RuntimeTerminationReason) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeTerminationReason"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeTerminationReason"
 }
 
 func (v RuntimeTerminationReason) MarshalText() ([]byte, error) {

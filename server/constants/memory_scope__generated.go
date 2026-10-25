@@ -45,7 +45,7 @@ func (v MemoryScope) Values() []enum.Enum {
 }
 
 func (v MemoryScope) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MemoryScope"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MemoryScope"
 }
 
 func (v MemoryScope) MarshalText() ([]byte, error) {

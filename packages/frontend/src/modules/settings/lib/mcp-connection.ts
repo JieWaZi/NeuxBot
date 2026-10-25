@@ -36,7 +36,7 @@ export function mcpClientConfig(url: string) {
   return JSON.stringify(
     {
       mcpServers: {
-        neuxally: {
+        neuxbot: {
           url,
           headers: { "X-API-Key": "<YOUR_API_KEY>" },
         },

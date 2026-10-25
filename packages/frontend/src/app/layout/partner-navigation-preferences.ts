@@ -1,29 +1,4 @@
 const partnerNavigationStorageKey = "ally.partner-navigation";
-const navigationActionsExpandedStorageKey = "ally.navigation-actions-expanded";
-
-export function readNavigationActionsExpanded(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    return (
-      window.localStorage.getItem(navigationActionsExpandedStorageKey) !==
-      "false"
-    );
-  } catch {
-    return true;
-  }
-}
-
-export function writeNavigationActionsExpanded(expanded: boolean) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(
-      navigationActionsExpandedStorageKey,
-      String(expanded),
-    );
-  } catch {
-    // 本地偏好不可用时仍允许切换菜单。
-  }
-}
 
 export type PartnerNavigationPreferences = {
   collapsedGroups: Record<string, string[]>;

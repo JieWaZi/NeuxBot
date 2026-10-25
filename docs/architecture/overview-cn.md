@@ -28,22 +28,22 @@ flowchart LR
 
 ## 代码导航
 
-| 路径                | 职责                                  |
-| ------------------- | ------------------------------------- |
-| packages/frontend/src/app     | 路由、Scene 和跨模块装配              |
-| packages/frontend/src/modules | 产品领域界面与查询                    |
-| packages/frontend/src/shared  | 组件、API、主题与平台服务             |
+| 路径                           | 职责                                          |
+| ------------------------------ | --------------------------------------------- |
+| packages/frontend/src/app      | 路由、Scene 和跨模块装配                      |
+| packages/frontend/src/modules  | 产品领域界面与查询                            |
+| packages/frontend/src/shared   | 组件、API、主题与平台服务                     |
 | desktop/src / desktop/electron | 原生入口、窗口、preload、系统能力与嵌入浏览器 |
-| web/src | 本机配对、会话生命周期与浏览器宿主 |
-| packages/platform-contracts | 中立能力接口和事件协议 |
-| packages/terminal-runtime | Core 管理的 PTY 与终端屏幕运行时 |
-| server/apis         | HTTP Operator、校验及单入口用例       |
-| server/services     | 多入口复用业务与后台生命周期          |
-| server/repositories | 持久化模型、查询及事务实现            |
-| server/internal     | Runtime、日志、文件、编译器等内部能力 |
-| skills/ally         | 随应用交付的系统任务知识              |
+| web/src                        | 本机会话生命周期与浏览器宿主                  |
+| packages/platform-contracts    | 中立能力接口和事件协议                        |
+| packages/terminal-runtime      | Core 管理的 PTY 与终端屏幕运行时              |
+| server/apis                    | HTTP Operator、校验及单入口用例               |
+| server/services                | 多入口复用业务与后台生命周期                  |
+| server/repositories            | 持久化模型、查询及事务实现                    |
+| server/internal                | Runtime、日志、文件、编译器等内部能力         |
+| skills/ally                    | 随应用交付的系统任务知识                      |
 
-当前交付方式包括原生应用和浏览器访问本机回环 Core。Web 包使用 Node.js 22+ 启动器；Native 使用随 Electron 交付的运行时。产品与主仓库名称为 NeuxBot，内部 workspace 包使用 `@neuxbot/*`，Go 模块使用 `github.com/JieWaZi/NeuxBot/server`。`allycli`、`ALLY_*`、`NEUXALLY_*`、`neuxally-auth/1`、`neuxally-resource://` 和知识集成服务身份保持原技术契约；独立插件源位于 `JieWaZi/neux-plugins`。受管文件根目录与程序数据目录分别管理，具体布局见 [工作区与存储](workspace-and-storage-cn.md)。
+当前交付方式包括原生应用和浏览器访问本机回环 Core。Web 包使用 Node.js 22+ 启动器；Native 使用随 Electron 交付的运行时。产品与主仓库名称为 NeuxBot，内部 workspace 包使用 `@neuxbot/*`，Go 模块使用 `github.com/JieWaZi/NeuxBot/server`。`allycli`、`ALLY_*`、已有 `NEUXALLY_*` 插件环境变量、`neuxally-auth/1`、`neuxally-resource://` 和知识集成的服务身份继续作为稳定技术契约；独立插件源位于 `JieWaZi/neux-plugins`。受管文件根目录与程序数据目录分别管理，具体布局见 [工作区与存储](workspace-and-storage-cn.md)。
 
 修改前阅读根目录 AGENTS.md，具体数据边界见 [工作区与存储](workspace-and-storage-cn.md)。
 

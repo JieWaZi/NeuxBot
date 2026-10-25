@@ -49,7 +49,7 @@ func (v ElicitationResult) Values() []enum.Enum {
 }
 
 func (v ElicitationResult) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ElicitationResult"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ElicitationResult"
 }
 
 func (v ElicitationResult) MarshalText() ([]byte, error) {

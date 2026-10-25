@@ -1,7 +1,11 @@
-import { Bot, KeyRound, Settings2, Plug } from "lucide-react";
+import { Bot, KeyRound, Settings2, Plug, MessageCircle } from "lucide-react";
 
 export type SettingsSection =
-  "general" | "ai-accounts" | "runtime-environments" | "integration-api";
+  | "general"
+  | "ai-accounts"
+  | "runtime-environments"
+  | "integration-api"
+  | "integration-im";
 
 export const settingsNavigationGroups = [
   {
@@ -22,6 +26,11 @@ export const settingsNavigationGroups = [
   {
     titleKey: "groups.integration",
     items: [
+      {
+        key: "integration-im",
+        labelKey: "sections.integrationIM",
+        icon: MessageCircle,
+      },
       {
         key: "integration-api",
         labelKey: "sections.integrationAPI",
@@ -51,7 +60,8 @@ export function settingsSectionOf(value?: string): SettingsSection {
   if (value === "integration-mcp") return "integration-api";
   return value === "runtime-environments" ||
     value === "ai-accounts" ||
-    value === "integration-api"
+    value === "integration-api" ||
+    value === "integration-im"
     ? value
     : "general";
 }

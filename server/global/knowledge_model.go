@@ -19,6 +19,7 @@ func resolveKnowledgeModel(ctx context.Context, selection models.LibraryExecutio
 	selection.RuntimeID = strings.TrimSpace(selection.RuntimeID)
 	selection.AccountID = strings.TrimSpace(selection.AccountID)
 	selection.Model = strings.TrimSpace(selection.Model)
+	selection.Reasoning = strings.TrimSpace(selection.Reasoning)
 	if RuntimeEnvironmentControllerManager == nil || selection.RuntimeID == "" {
 		return selection, status_error.KnowledgeInvalid
 	}
@@ -42,7 +43,7 @@ func resolveKnowledgeModel(ctx context.Context, selection models.LibraryExecutio
 		if AIAccountService == nil {
 			return selection, status_error.AIAccountConfigurationInvalid
 		}
-		account, err := AIAccountService.ValidateSelection(ctx, selection.AccountID, environment.BaseRuntimeID, selection.Model, "")
+		account, err := AIAccountService.ValidateSelection(ctx, selection.AccountID, environment.BaseRuntimeID, selection.Model, selection.Reasoning)
 		if err != nil {
 			return selection, err
 		}
@@ -73,7 +74,7 @@ func newKnowledgeModelGenerator(_ context.Context, selection models.LibraryExecu
 	if RuntimeSDK == nil || RuntimeEnvironmentControllerManager == nil {
 		return nil, status_error.RuntimeUnavailable
 	}
-	return knowledgemodel.New(knowledgemodel.Config{Runtime: RuntimeSDK, Model: selection.Model, Prepare: func(ctx context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
+	return knowledgemodel.New(knowledgemodel.Config{Runtime: RuntimeSDK, Model: selection.Model, Reasoning: selection.Reasoning, Prepare: func(ctx context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
 		environment, err := RuntimeEnvironmentControllerManager.Get(ctx, selection.RuntimeID)
 		if err != nil {
 			return runtimes.RuntimeTarget{}, runtimes.DetectionResult{}, nil, err

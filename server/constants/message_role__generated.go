@@ -41,7 +41,7 @@ func (v MessageRole) Values() []enum.Enum {
 }
 
 func (v MessageRole) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MessageRole"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MessageRole"
 }
 
 func (v MessageRole) MarshalText() ([]byte, error) {

@@ -40,12 +40,12 @@ func TestLocalOrganizeHasOnlyIndependentModelConfiguration(t *testing.T) {
 		return value, nil
 	}})
 	defer func() { global.KnowledgeService = previous }()
-	value, err := (&Organize{LibraryID: created.LibraryID, Body: OrganizeInput{RequestID: "organize", RuntimeID: constants.RuntimeIDCodex}}).Output(&gin.Context{})
+	value, err := (&Organize{LibraryID: created.LibraryID, Body: OrganizeInput{RequestID: "organize", RuntimeID: constants.RuntimeIDCodex, Reasoning: "high"}}).Output(&gin.Context{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	response := value.(OrganizeResponse)
-	if !response.Noop || response.Configuration.RuntimeID != constants.RuntimeIDCodex {
+	if !response.Noop || response.Configuration.RuntimeID != constants.RuntimeIDCodex || response.Configuration.Reasoning != "high" {
 		t.Fatalf("响应=%+v", response)
 	}
 	raw, _ := json.Marshal(response)

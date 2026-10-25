@@ -52,7 +52,7 @@ const core = startWeb(directory, {
   ALLY_WEB_DEV_ORIGIN: `http://127.0.0.1:${webPort}`,
   PI_MCP_MODULE_PATH: path.join(root, "resources/pi-bridge/bridge.mjs"),
 });
-// Core 完成加载后再启动开发页面，首屏配对请求不与业务初始化竞争。
+// Core 完成加载后再启动开发页面，首屏会话请求不与业务初始化竞争。
 const coreOrigin = `http://127.0.0.1:${process.env.ALLY_WEB_CORE_PORT || "8432"}`;
 let coreReady = false;
 for (let attempt = 0; attempt < 300; attempt++) {

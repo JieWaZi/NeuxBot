@@ -141,6 +141,9 @@ export function SegmentedControl<T extends string>({
       aria-disabled={disabled || undefined}
       className={cn(
         segmentedControlVariants({ appearance, size, distribution }),
+        appearance === "resources" &&
+          options.length === 4 &&
+          "@[56rem]/resource-page:grid-cols-4",
         className,
       )}
       role="radiogroup"

@@ -45,7 +45,7 @@ func (v MemoryEvent) Values() []enum.Enum {
 }
 
 func (v MemoryEvent) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MemoryEvent"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MemoryEvent"
 }
 
 func (v MemoryEvent) MarshalText() ([]byte, error) {

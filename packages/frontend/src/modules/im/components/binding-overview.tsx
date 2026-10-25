@@ -1,27 +1,23 @@
-import { ReadOnlyField } from "@/shared/ui/read-only-field";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
+import { SettingsFieldGroup, SettingsFieldRow } from "@/modules/settings";
 import { getProjectOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
-import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
+import {
+  localApiErrorMessage,
+  withLocalErrorSurface,
+} from "@/shared/api/local-error-surface";
 import { useWorkExecutors } from "@/shared/hooks/use-work-executors";
 import { runtimeDisplayName } from "@/shared/lib/runtime-display-name";
 import {
   permissionLevelOf,
   permissionLevelTranslationKeys,
 } from "@/shared/lib/runtime-permissions";
-import type { IMBinding } from "../types";
-import { Card } from "@/shared/ui/card";
 import { Button } from "@/shared/ui/button";
-import { localApiErrorMessage } from "@/shared/api/local-error-surface";
-import type { ReactNode } from "react";
+import { Skeleton } from "@/shared/ui/skeleton";
+import type { IMBinding } from "../types";
 
-export function BindingOverview({
-  binding,
-  nested = false,
-}: {
-  binding: IMBinding;
-  nested?: boolean;
-}) {
+export function BindingOverview({ binding }: { binding: IMBinding }) {
   const { t } = useTranslation("im");
   const executors = useWorkExecutors();
   const team = executors.data?.teams.find(
@@ -43,7 +39,6 @@ export function BindingOverview({
     : executors.data?.wakers.find((item) => item.id === binding.wakerId)?.name;
   const level =
     permissionLevelOf(binding.options?.permissionLevel) || "default";
-  const Heading = nested ? "h4" : "h3";
   const hasConfiguration = Boolean(binding.wakerId || binding.channelId);
   function loadedValue(
     pending: boolean,
@@ -61,93 +56,80 @@ export function BindingOverview({
         </span>
       );
     return pending ? (
-      <span role="status" className="text-content-secondary">
-        {t("loading")}
+      <span role="status" aria-busy="true" aria-label={t("loading")}>
+        <Skeleton className="h-4 w-24" />
       </span>
     ) : (
       value
     );
   }
   return (
-    <div className="grid min-w-0 gap-5">
-      <dl className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] gap-x-8 gap-y-4">
-        <ReadOnlyField label={t("externalChatId")}>
-          {binding.externalChatId || binding.name || "—"}
-        </ReadOnlyField>
-        <ReadOnlyField label={t("kind")}>
+    <div className="type-ui text-content-secondary grid min-w-0 gap-4">
+      <SettingsFieldGroup>
+        <SettingsFieldRow label={t("externalChatId")}>
+          <span className="break-all select-text">
+            {binding.externalChatId || binding.name || "—"}
+          </span>
+        </SettingsFieldRow>
+        <SettingsFieldRow label={t("kind")}>
           {t(binding.kind === "group" ? "group" : "direct")}
-        </ReadOnlyField>
-      </dl>
-      {hasConfiguration ? (
-        <Card variant="section">
-          <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-x-8 gap-y-6">
-            <section aria-label={t("runtimeConfiguration")}>
-              <Heading className="type-label font-semibold">
-                {t("runtimeConfiguration")}
-              </Heading>
-              <dl className="mt-4 grid gap-3 [&_dd]:mt-0 [&>div]:grid [&>div]:grid-cols-[6rem_minmax(0,1fr)] [&>div]:items-baseline [&>div]:gap-4">
-                <ReadOnlyField
-                  label={t(binding.channelId ? "team" : "partner")}
-                >
-                  {loadedValue(
-                    executors.isPending,
-                    executors.error,
-                    () => void executors.refetch(),
-                    target || t("notConfigured"),
-                  )}
-                </ReadOnlyField>
-                {!binding.channelId ? (
-                  <>
-                    <ReadOnlyField label={t("agent")}>
-                      {runtimeDisplayName({ id: binding.options?.runtimeId }) ||
-                        t("managed")}
-                    </ReadOnlyField>
-                    <ReadOnlyField label={t("model")}>
-                      {binding.options?.model || t("managed")}
-                    </ReadOnlyField>
-                  </>
-                ) : null}
-              </dl>
-              {binding.channelId ? (
-                <p className="text-content-secondary type-ui mt-4">
-                  {t("teamDefaults")}
-                </p>
-              ) : null}
-            </section>
-            <section aria-label={t("permissionsAndScope")}>
-              <Heading className="type-label font-semibold">
-                {t("permissionsAndScope")}
-              </Heading>
-              <dl className="mt-4 grid gap-3 [&_dd]:mt-0 [&>div]:grid [&>div]:grid-cols-[6rem_minmax(0,1fr)] [&>div]:items-baseline [&>div]:gap-4">
-                {!binding.channelId ? (
-                  <ReadOnlyField label={t("permission")}>
-                    {t(`common:${permissionLevelTranslationKeys[level].label}`)}
-                  </ReadOnlyField>
-                ) : null}
-                <ReadOnlyField label={t("scope")}>
-                  {binding.workingDirectory ||
-                    (binding.projectId
-                      ? loadedValue(
-                          owner ? projects.isPending : executors.isPending,
-                          projects.error || (!owner ? executors.error : null),
-                          () => {
-                            void executors.refetch();
-                            if (owner) void projects.refetch();
-                          },
-                          projects.data?.name || binding.projectId,
-                        )
-                      : t("managed"))}
-                </ReadOnlyField>
-                <ReadOnlyField label={t("workflowDelivery")}>
-                  {t(binding.allowWorkflowDelivery ? "allowed" : "notAllowed")}
-                </ReadOnlyField>
-              </dl>
-            </section>
-          </div>
-        </Card>
-      ) : (
-        <p className="text-content-secondary type-body">{t("notConfigured")}</p>
-      )}
+        </SettingsFieldRow>
+        <SettingsFieldRow label={t("executor")}>
+          {hasConfiguration
+            ? loadedValue(
+                executors.isPending,
+                executors.error,
+                () => void executors.refetch(),
+                <span className="[overflow-wrap:anywhere]">
+                  {target || t("notConfigured")}
+                </span>,
+              )
+            : t("notConfigured")}
+        </SettingsFieldRow>
+        {hasConfiguration ? (
+          <>
+            {binding.channelId ? (
+              <SettingsFieldRow label={t("runtimeConfiguration")}>
+                {t("teamDefaults")}
+              </SettingsFieldRow>
+            ) : (
+              <>
+                <SettingsFieldRow label={t("agent")}>
+                  {runtimeDisplayName({ id: binding.options?.runtimeId }) ||
+                    t("managed")}
+                </SettingsFieldRow>
+                <SettingsFieldRow label={t("model")}>
+                  <span className="[overflow-wrap:anywhere]">
+                    {binding.options?.model || t("managed")}
+                  </span>
+                </SettingsFieldRow>
+                <SettingsFieldRow label={t("permission")}>
+                  {t(`common:${permissionLevelTranslationKeys[level].label}`)}
+                </SettingsFieldRow>
+              </>
+            )}
+            <SettingsFieldRow label={t("scope")}>
+              <span className="[overflow-wrap:anywhere]">
+                {binding.workingDirectory ||
+                  (binding.projectId
+                    ? loadedValue(
+                        owner ? projects.isPending : executors.isPending,
+                        projects.error || (!owner ? executors.error : null),
+                        () => {
+                          void executors.refetch();
+                          if (owner) void projects.refetch();
+                        },
+                        projects.data?.name || binding.projectId,
+                      )
+                    : t("managed"))}
+              </span>
+            </SettingsFieldRow>
+            <SettingsFieldRow label={t("workflowDelivery")}>
+              {t(binding.allowWorkflowDelivery ? "allowed" : "notAllowed")}
+            </SettingsFieldRow>
+          </>
+        ) : null}
+      </SettingsFieldGroup>
     </div>
   );
 }

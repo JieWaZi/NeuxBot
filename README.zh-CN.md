@@ -58,7 +58,7 @@ go -C server mod download
 pnpm dev:native
 ```
 
-使用本机浏览器版时改为运行 `pnpm dev:web`，并输入终端输出的一次性配对码。同一数据目录只运行一个 Core。`pnpm package:web` 生成独立本机 Web 包，`pnpm build:native` 生成桌面安装包；运行要求与配对方式见[构建与发布](docs/development/build-and-release-cn.md)。
+使用本机浏览器版时改为运行 `pnpm dev:web`，按终端地址打开网页即可进入工作台，无需配对码。同一数据目录只运行一个 Core。`pnpm package:web` 生成独立本机 Web 包，`pnpm build:native` 生成桌面安装包；运行要求与启动方式见[构建与发布](docs/development/build-and-release-cn.md)。
 
 </details>
 

@@ -68,8 +68,9 @@ export function LibraryList({
           <>
             {onAddRemote && (
               <PageAction
-                intent="secondary"
-                label={t("addRemote")}
+                variant="plain"
+                hitArea="comfortable"
+                aria-label={t("addRemote")}
                 onClick={onAddRemote}
               >
                 <Cloud />

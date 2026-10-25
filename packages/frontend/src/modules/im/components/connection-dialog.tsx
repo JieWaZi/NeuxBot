@@ -1,3 +1,4 @@
+import { useDialogFocusRestore } from "./use-dialog-focus-restore";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
@@ -20,6 +21,12 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { FieldLabel } from "@/shared/ui/field-label";
+import { Skeleton } from "@/shared/ui/skeleton";
+import {
+  SettingsFieldGroup,
+  SettingsFieldRow,
+  SettingsGroup,
+} from "@/modules/settings";
 import { Input } from "@/shared/ui/input";
 import {
   Select,
@@ -52,6 +59,7 @@ export function ConnectionDialog({
   initialBindingId?: string;
 }) {
   const { t } = useTranslation("im");
+  const dialogFocus = useDialogFocusRestore();
   const id = useId();
   const bindings = useIMBindings(connection?.id || "", Boolean(connection?.id));
   const [bindingId, setBindingId] = useState(initialBindingId || "");
@@ -258,25 +266,38 @@ export function ConnectionDialog({
     (!manual && progress.error) ||
     verify.error;
   const loginFields = (
-    <>
-      {supportsManual ? (
-        <div className="flex justify-end">
+    <SettingsGroup
+      title={t("connectPlatform", { platform: t(value.platform || "weixin") })}
+      trailing={
+        supportsManual ? (
           <Button
             type="button"
+            size="sm"
             variant="ghost"
             onClick={changeMode}
             disabled={start.isPending || save.isPending}
           >
             {t(manual ? "returnQR" : isWecom ? "manualWecom" : "manualFeishu")}
           </Button>
-        </div>
-      ) : null}
+        ) : undefined
+      }
+    >
       {manual ? (
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <FieldLabel htmlFor={id + "-app"} required>
-              {t(isWecom ? "wecomBotId" : "appId")}
-            </FieldLabel>
+        <SettingsFieldGroup
+          description={
+            t(isWecom ? "manualWecomHint" : "manualHint") +
+            (saved?.appId
+              ? " " + t(isWecom ? "existingWecomHint" : "existingFeishuHint")
+              : "")
+          }
+        >
+          <SettingsFieldRow
+            label={
+              <FieldLabel htmlFor={id + "-app"} required>
+                {t(isWecom ? "wecomBotId" : "appId")}
+              </FieldLabel>
+            }
+          >
             <Input
               id={id + "-app"}
               placeholder={t(
@@ -287,11 +308,14 @@ export function ConnectionDialog({
               disabled={Boolean(saved?.appId) || save.isPending}
               onChange={(e) => setValue({ ...value, appId: e.target.value })}
             />
-          </div>
-          <div className="space-y-2">
-            <FieldLabel htmlFor={id + "-secret"} required={!saved?.appId}>
-              {t(isWecom ? "wecomBotSecret" : "appSecret")}
-            </FieldLabel>
+          </SettingsFieldRow>
+          <SettingsFieldRow
+            label={
+              <FieldLabel htmlFor={id + "-secret"} required={!saved?.appId}>
+                {t(isWecom ? "wecomBotSecret" : "appSecret")}
+              </FieldLabel>
+            }
+          >
             <Input
               id={id + "-secret"}
               type="password"
@@ -308,16 +332,13 @@ export function ConnectionDialog({
                 setValue({ ...value, appSecret: e.target.value })
               }
             />
-          </div>
-          <p className="text-content-secondary type-caption">
-            {t(isWecom ? "manualWecomHint" : "manualHint")}
-            {saved?.appId
-              ? " " + t(isWecom ? "existingWecomHint" : "existingFeishuHint")
-              : ""}
-          </p>
-        </div>
+          </SettingsFieldRow>
+        </SettingsFieldGroup>
       ) : current || start.isPending || !connection?.appId ? (
-        <div className="space-y-3 text-center" aria-live="polite">
+        <div
+          className="bg-surface-tertiary grid justify-items-center gap-3 rounded-lg p-4 text-center"
+          aria-live="polite"
+        >
           {isWecom && (!confirmed || !connection) ? (
             <p className="text-content-secondary type-body">
               {t(
@@ -331,7 +352,7 @@ export function ConnectionDialog({
           ) : null}
           {current?.qrContent ? (
             <QRCodeSVG
-              className="mx-auto"
+              className="h-auto max-w-full"
               value={current.qrContent}
               size={208}
               marginSize={4}
@@ -370,35 +391,50 @@ export function ConnectionDialog({
             </Button>
           ) : null}
           {current?.status === "need_verifycode" ? (
-            <div className="flex items-center gap-2">
-              <Input
-                aria-label={t("code")}
-                placeholder={t("codePlaceholder")}
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-              />
-              <Button
-                type="button"
-                disabled={!code || verify.isPending}
-                onClick={() => verify.mutate()}
-              >
-                {t("verify")}
-              </Button>
+            <div className="w-full text-left">
+              <SettingsFieldGroup>
+                <SettingsFieldRow
+                  label={
+                    <FieldLabel htmlFor={id + "-code"}>{t("code")}</FieldLabel>
+                  }
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      id={id + "-code"}
+                      placeholder={t("codePlaceholder")}
+                      value={code}
+                      onChange={(e) => setCode(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      disabled={!code || verify.isPending}
+                      onClick={() => verify.mutate()}
+                    >
+                      {t("verify")}
+                    </Button>
+                  </div>
+                </SettingsFieldRow>
+              </SettingsFieldGroup>
             </div>
           ) : null}
         </div>
       ) : (
-        <div className="flex items-center justify-between gap-3">
-          <ConnectionStatus connection={connection} />
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={start.isPending}
-            onClick={() => begin()}
-          >
-            {t("reconnect")}
-          </Button>
-        </div>
+        <SettingsFieldGroup>
+          <SettingsFieldRow label={t("state")}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <ConnectionStatus connection={connection} />
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={start.isPending}
+                onClick={() => begin()}
+              >
+                {t("reconnect")}
+              </Button>
+            </div>
+          </SettingsFieldRow>
+        </SettingsFieldGroup>
       )}
 
       {error ? (
@@ -406,7 +442,7 @@ export function ConnectionDialog({
           {localApiErrorMessage(error, t("operationFailed"))}
         </p>
       ) : null}
-    </>
+    </SettingsGroup>
   );
   const nameChanged = Boolean(connection && value.name?.trim() !== saved?.name);
   const needsCredentialRecovery =
@@ -415,21 +451,30 @@ export function ConnectionDialog({
     (connection?.state === "login_required" ||
       connection?.errorCode === "IMConnectionReplaced");
   const nameField = (
-    <div className="space-y-2">
-      <FieldLabel htmlFor={id + "-name"} required>
-        {t("name")}
-      </FieldLabel>
-      <Input
-        id={id + "-name"}
-        value={value.name}
-        placeholder={t("namePlaceholder")}
-        maxLength={120}
-        disabled={save.isPending}
-        required
-        onChange={(event) => setValue({ ...value, name: event.target.value })}
-      />
-      <p className="text-content-secondary type-caption">{t("nameHint")}</p>
-    </div>
+    <SettingsFieldGroup title={t("connectionSettings")}>
+      <SettingsFieldRow
+        label={
+          <FieldLabel htmlFor={id + "-name"} required>
+            {t("name")}
+          </FieldLabel>
+        }
+      >
+        <div className="grid gap-2">
+          <Input
+            id={id + "-name"}
+            value={value.name}
+            placeholder={t("namePlaceholder")}
+            maxLength={120}
+            disabled={save.isPending}
+            required
+            onChange={(event) =>
+              setValue({ ...value, name: event.target.value })
+            }
+          />
+          <p className="text-content-secondary type-caption">{t("nameHint")}</p>
+        </div>
+      </SettingsFieldRow>
+    </SettingsFieldGroup>
   );
   const busy =
     save.isPending ||
@@ -443,6 +488,8 @@ export function ConnectionDialog({
       }}
     >
       <DialogContent
+        {...dialogFocus}
+        size="lg"
         title={t(connection ? "editConnection" : "connectPlatform", {
           platform: t(value.platform || "weixin"),
         })}
@@ -465,38 +512,41 @@ export function ConnectionDialog({
               <>
                 {nameField}
                 {loginFields}
-                <div className="space-y-2">
-                  <FieldLabel>{t("chatAccess")}</FieldLabel>
-                  {(bindings.data?.length || 0) > 1 ? (
-                    <Select value={binding.id} onValueChange={setBindingId}>
-                      <SelectTrigger aria-label={t("chatAccess")}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {bindings.data?.map((item) => (
-                          <SelectItem key={item.id} value={item.id || ""}>
-                            {item.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <p className="type-body break-all">{binding.name}</p>
-                  )}
-                  <BindingStatus binding={binding} />
-                </div>
+                <SettingsFieldGroup title={t("chatAccess")}>
+                  <SettingsFieldRow label={t("name")}>
+                    {(bindings.data?.length || 0) > 1 ? (
+                      <Select value={binding.id} onValueChange={setBindingId}>
+                        <SelectTrigger aria-label={t("chatAccess")}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {bindings.data?.map((item) => (
+                            <SelectItem key={item.id} value={item.id || ""}>
+                              {item.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p className="type-body break-all">{binding.name}</p>
+                    )}
+                  </SettingsFieldRow>
+                  <SettingsFieldRow label={t("state")}>
+                    <BindingStatus binding={binding} />
+                  </SettingsFieldRow>
+                </SettingsFieldGroup>
               </>
             }
           />
         ) : (
           <form onSubmit={submit} className="contents">
-            <div className="space-y-5 overflow-y-auto px-6 pb-5">
+            <div className="grid min-h-0 gap-6 overflow-y-auto px-6 pb-6">
               {nameField}
               {loginFields}
               {connection && bindings.isPending ? (
-                <p role="status" className="text-content-secondary type-body">
-                  {t("loading")}
-                </p>
+                <div role="status" aria-label={t("loading")} aria-busy="true">
+                  <Skeleton className="h-row-default w-full" />
+                </div>
               ) : null}
               {connection && !bindings.isPending && !binding ? (
                 <p className="text-content-secondary type-body">

@@ -52,7 +52,7 @@ export const imZh = {
   connectionDetail: "连接详情",
   connectionSettings: "连接设置",
   connectionInformation: "连接信息",
-  connectionDetailDescription: "管理连接、聊天接入与对话记录",
+  connectionDetailDescription: "查看连接、聊天接入与对话记录",
   externalChatId: "聊天 ID",
   runtimeConfiguration: "运行配置",
   permissionsAndScope: "权限与范围",
@@ -84,6 +84,7 @@ export const imZh = {
   addConnection: "添加连接",
   selectPlatform: "选择平台，添加机器人以接收和回复消息。",
   addBot: "添加",
+  platformConnections: "{{platform}}连接",
   addPlatformBot: "添加{{platform}}机器人",
   platformDescription: {
     weixin: "扫码连接微信机器人",
@@ -97,6 +98,11 @@ export const imZh = {
   delete: "删除",
   editConnection: "编辑",
   editConnectionAction: "编辑连接",
+  editNamedConnection: "编辑{{name}}连接",
+  deleteNamedConnection: "删除{{name}}连接",
+  authorizeNamedConnection: "授权{{name}}连接",
+  newNamedConversation: "为{{name}}新建对话",
+  noAuthorizedChats: "请先授权聊天，再新建对话。",
   connectionHint: "完成平台登录后，在这里设置聊天的响应伙伴、团队和工作范围。",
   name: "名称",
   namePlaceholder: "例如：日常助理、项目协作",
@@ -211,6 +217,7 @@ export const imZh = {
     rejected: "已撤销",
   },
   empty: {
+    platformConnections: "尚未添加{{platform}}连接，点击「添加」开始连接。",
     connections: "添加微信、飞书或企业微信连接",
     search: "未找到匹配的机器人连接",
     bindings: "尚未发现聊天",
@@ -288,7 +295,7 @@ export const imEn = {
   connectionSettings: "Connection settings",
   connectionInformation: "Connection information",
   connectionDetailDescription:
-    "Manage the connection, chat access, and conversations",
+    "View the connection, chat access, and conversations",
   externalChatId: "Chat ID",
   runtimeConfiguration: "Runtime configuration",
   permissionsAndScope: "Permissions and scope",
@@ -324,6 +331,7 @@ export const imEn = {
   selectPlatform:
     "Choose a platform and add a bot to receive and reply to messages.",
   addBot: "Add bot",
+  platformConnections: "{{platform}} connections",
   addPlatformBot: "Add {{platform}} bot",
   platformDescription: {
     weixin: "Scan to connect a WeChat bot",
@@ -337,6 +345,11 @@ export const imEn = {
   delete: "Delete",
   editConnection: "Edit",
   editConnectionAction: "Edit connection",
+  editNamedConnection: "Edit {{name}} connection",
+  deleteNamedConnection: "Delete {{name}} connection",
+  authorizeNamedConnection: "Authorize {{name}} connection",
+  newNamedConversation: "New conversation for {{name}}",
+  noAuthorizedChats: "Approve a chat before creating a conversation.",
   connectionHint:
     "After scanning, send a first message from your phone, then configure the chat here.",
   name: "Name",
@@ -457,6 +470,8 @@ export const imEn = {
     rejected: "Revoked",
   },
   empty: {
+    platformConnections:
+      "No {{platform}} connections yet. Choose Add bot to connect.",
     connections: "Add a WeChat, Feishu or WeCom connection",
     search: "No matching bot connections",
     bindings: "No chats discovered yet",

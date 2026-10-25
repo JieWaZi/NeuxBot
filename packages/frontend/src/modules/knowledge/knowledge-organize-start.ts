@@ -59,6 +59,7 @@ export function createKnowledgeOrganizeStart({
               runtimeId: chosen.runtimeId,
               accountId: chosen.accountId,
               model: chosen.model,
+              reasoning: chosen.reasoning,
               message,
             },
             throwOnError: true,

@@ -1,18 +1,13 @@
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Workflow } from "lucide-react";
-import { useEffect } from "react";
+import { Workflow } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button } from "@/shared/ui/button";
+import { Navigate, useSearchParams } from "react-router-dom";
+import { ResourceInfiniteScroll } from "@/shared/ui/resource-infinite-scroll";
 import { EmptyState } from "@/shared/ui/empty-state";
 import {
-  PageAction,
-  PageActionLabel,
   ResourceCardGrid,
-  ResourcePageHeader,
   ResourcePageLibraryLabel,
-  ResourcePageSearchField,
-  ResourcePageSurface,
   ResourcePageToolbar,
 } from "@/shared/ui/resource-page";
 import { WorkflowCard } from "../components/workflow-card";
@@ -24,27 +19,38 @@ import { listWorkflowsQueryKey } from "../api/workflow-queries";
 import { listWorkflowsInfiniteOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 
+/** 旧列表地址继续进入资源库，并保留搜索条件。 */
 export function WorkflowListPage() {
+  const [params] = useSearchParams();
+  const next = new URLSearchParams(params);
+  next.set("category", "workflows");
+  return <Navigate replace to={`/resources?${next}`} />;
+}
+
+export function WorkflowResourceCollection({
+  search,
+  filters,
+}: {
+  search: string;
+  filters: ReactNode;
+}) {
   const { t } = useTranslation("workflow");
-  const navigate = useNavigate();
   const client = useQueryClient();
   const active = useRouteSceneActive();
   useEffect(() => {
     if (active)
       void client.invalidateQueries({ queryKey: listWorkflowsQueryKey() });
   }, [active, client]);
-  const [params, setParams] = useSearchParams();
-  const search = params.get("search") ?? "";
   const query = useInfiniteQuery({
-    ...listWorkflowsInfiniteOptions({ query: { search, limit: 50 } }),
+    ...listWorkflowsInfiniteOptions({ query: { search, limit: 9 } }),
     enabled: active,
-    initialPageParam: { query: { search, limit: 50 } },
+    initialPageParam: { query: { search, limit: 9 } },
     getNextPageParam: (page) =>
       page.nextBefore && page.nextBeforeId
         ? {
             query: {
               search,
-              limit: 50,
+              limit: 9,
               before: page.nextBefore,
               beforeId: page.nextBeforeId,
             },
@@ -52,35 +58,9 @@ export function WorkflowListPage() {
         : undefined,
   });
   const items = query.data?.pages.flatMap((page) => page.items ?? []) ?? [];
-  const submit = () =>
-    navigate(`/workflows/new?draftId=${crypto.randomUUID()}`);
   return (
-    <ResourcePageSurface>
-      <ResourcePageHeader
-        title={t("title")}
-        description={t("subtitle")}
-        actions={
-          <PageAction onClick={submit} aria-label={t("create")}>
-            <Plus />
-            <PageActionLabel>{t("create")}</PageActionLabel>
-          </PageAction>
-        }
-      />
-      <ResourcePageToolbar
-        filters={
-          <ResourcePageSearchField
-            aria-label={t("search")}
-            placeholder={t("search")}
-            value={search}
-            onChange={(event) =>
-              setParams(
-                event.target.value ? { search: event.target.value } : {},
-                { replace: true },
-              )
-            }
-          />
-        }
-      >
+    <>
+      <ResourcePageToolbar filters={filters}>
         <ResourcePageLibraryLabel
           installed={t("library")}
           count={t("count", { count: items.length })}
@@ -110,15 +90,12 @@ export function WorkflowListPage() {
           ))}
         </ResourceCardGrid>
       )}
-      {query.hasNextPage ? (
-        <Button
-          variant="secondary"
-          disabled={query.isFetchingNextPage}
-          onClick={() => void query.fetchNextPage()}
-        >
-          {t("loadMore")}
-        </Button>
-      ) : null}
-    </ResourcePageSurface>
+      <ResourceInfiniteScroll
+        hasMore={Boolean(query.hasNextPage)}
+        pending={query.isFetchingNextPage}
+        error={query.isFetchNextPageError ? query.error : undefined}
+        onLoadMore={() => void query.fetchNextPage()}
+      />
+    </>
   );
 }

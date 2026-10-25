@@ -110,8 +110,9 @@ function LoadedOrganizeDialog({
       readExecutionDefaults(defaults),
   );
   const execution = useExecutionSelection({
-    value: selection,
+    value: { ...selection, reasoning: selection.reasoning ?? "" },
     requiredCapability: "isolated_text_generation",
+    reasoningDefault: "minimum",
   });
   const start = useMutation({
     mutationFn: () =>
@@ -175,7 +176,6 @@ function LoadedOrganizeDialog({
           }}
           disabled={frozen || start.isPending}
           permissionHidden
-          reasoningHidden
           helpHidden
         />
         <Field

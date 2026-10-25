@@ -23,7 +23,7 @@ type principalKey struct{}
 
 // NewHandler 复用唯一发布 Key 和知识服务，协议方法与会话语义交由官方 SDK。
 func NewHandler(knowledge *knowledgeservice.Service, authority *integrationservice.Service) http.Handler {
-	server := sdk.NewServer(&sdk.Implementation{Name: "NeuxAlly Knowledge", Version: "1"}, nil)
+	server := sdk.NewServer(&sdk.Implementation{Name: "NeuxBot Knowledge", Version: "1"}, nil)
 	for _, op := range knowledgeOperations() {
 		schema := toolSchema(op)
 		server.AddTool(&sdk.Tool{Name: strings.ReplaceAll(op.ID, ".", "_"), Description: op.Summary, InputSchema: schema, OutputSchema: responseSchema(op), Annotations: &sdk.ToolAnnotations{ReadOnlyHint: op.Effect == constants.AgentCLIEffectRead}}, func(ctx context.Context, request *sdk.CallToolRequest) (*sdk.CallToolResult, error) {

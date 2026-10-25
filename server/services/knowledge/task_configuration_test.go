@@ -63,21 +63,22 @@ func TestConcurrentOrganizeKeepsFirstPersistedConfiguration(t *testing.T) {
 func TestOrganizeKeepsFrozenSelectionAfterCoreAcceptanceFailure(t *testing.T) {
 	s, library := newServiceFixture(t)
 	ctx := context.Background()
-	defaults, err := s.config.References.UpdateLibraryExecutionDefaults(ctx, "before-accept", 0, models.LibraryExecutionDefaults{LibraryID: library.ID, RuntimeID: "codex", Model: "original"})
+	defaults, err := s.config.References.UpdateLibraryExecutionDefaults(ctx, "before-accept", 0, models.LibraryExecutionDefaults{LibraryID: library.ID, RuntimeID: "codex", Model: "original", Reasoning: "high"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	input := OrganizeCommand{RequestID: "accept-recovery", LibraryID: library.ID, SourceVersionIDs: []string{"missing-source"}, ExplicitSources: true, Configuration: models.KnowledgeTaskConfiguration{}}
 	_, first, err := s.Organize(ctx, input)
-	if err == nil || first.Model != "original" {
+	if err == nil || first.Model != "original" || first.Reasoning != "high" {
 		t.Fatalf("expected core rejection with original selection: %+v %v", first, err)
 	}
 	defaults.Model = "changed-later"
+	defaults.Reasoning = "low"
 	if _, err = s.config.References.UpdateLibraryExecutionDefaults(ctx, "after-accept", defaults.Version, defaults); err != nil {
 		t.Fatal(err)
 	}
 	_, retry, err := s.Organize(ctx, input)
-	if err == nil || retry.Model != "original" {
+	if err == nil || retry.Model != "original" || retry.Reasoning != "high" {
 		t.Fatalf("partial acceptance recovery changed selection: %+v %v", retry, err)
 	}
 }

@@ -128,6 +128,7 @@ describe("页面主记录不存在时的 Scene 标签", () => {
     const tab = screen.getByRole("tab", { name: "资源库" });
     for (const href of [
       "/resources?category=skills",
+      "/resources?category=workflows",
       "/resources/plugins/catalog/office",
       "/resources/plugins/p/skills/guide?version=v1",
       "/resources?view=mine",
@@ -156,7 +157,7 @@ describe("页面主记录不存在时的 Scene 标签", () => {
   });
 
   it.each([
-    ["/im", "IM 集成"],
+    ["/im", "设置"],
     ["/automatic-tasks", "自动任务"],
   ])("%s 在列表、不同详情与返回列表之间复用同一标签", (listHref, label) => {
     const { rerender } = renderScene(listHref);

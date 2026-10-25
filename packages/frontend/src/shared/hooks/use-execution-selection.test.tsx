@@ -30,7 +30,7 @@ const server = setupServer(
             {
               id: "native",
               permissionLevels: ["default", "auto", "full-access"],
-              reasoningOptions: [{ id: "high" }],
+              reasoningOptions: [{ id: "high" }, { id: "low" }],
             },
             {
               id: "limited",
@@ -110,6 +110,7 @@ function selection(
   value: ExecutionSelection,
   defaults = false,
   requiredCapability?: string,
+  reasoningDefault?: "minimum",
 ) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -119,7 +120,12 @@ function selection(
   );
   return renderHook(
     ({ value }) =>
-      useExecutionSelection({ value, defaults, requiredCapability }),
+      useExecutionSelection({
+        value,
+        defaults,
+        requiredCapability,
+        reasoningDefault,
+      }),
     {
       wrapper,
       initialProps: { value },
@@ -308,4 +314,21 @@ it("旧探测缓存允许进入但明确返回待真实验证的状态", async (
   await waitFor(() => expect(knowledge.result.current.loading).toBe(false));
   expect(knowledge.result.current.valid).toBe(true);
   expect(knowledge.result.current.capabilityUnverified).toBe(true);
+});
+
+it("知识模型默认选择真实最低档，显式高档保留，切换模型后重新选择最低档", async () => {
+  const { result, rerender } = selection(
+    { accountId: "system", model: "native" },
+    false,
+    undefined,
+    "minimum",
+  );
+  await waitFor(() => expect(result.current.valid).toBe(true));
+  expect(result.current.selection.reasoning).toBe("low");
+  rerender({
+    value: { accountId: "system", model: "native", reasoning: "high" },
+  });
+  expect(result.current.selection.reasoning).toBe("high");
+  rerender({ value: { accountId: "system", model: "limited", reasoning: "" } });
+  expect(result.current.selection.reasoning).toBe("low");
 });

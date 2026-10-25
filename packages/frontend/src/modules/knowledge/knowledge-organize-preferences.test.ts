@@ -15,6 +15,7 @@ it("按完整知识库身份隔离选择，局部修改保留其他偏好", () =
       runtimeId: "codex",
       accountId: "system",
       model: "chosen",
+      reasoning: "high",
     },
   });
   saveOrganizePreferences(ref, { requirements: "保留限制" });
@@ -23,6 +24,7 @@ it("按完整知识库身份隔离选择，局部修改保留其他偏好", () =
       runtimeId: "codex",
       accountId: "system",
       model: "chosen",
+      reasoning: "high",
     },
     requirements: "保留限制",
   });

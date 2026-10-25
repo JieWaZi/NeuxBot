@@ -31,7 +31,7 @@ func (v MCPConnectorScope) Label() string {
 	case MCPConnectorScopeUnspecified:
 		return "MCPConnectorScopeUnspecified 表示数据库或框架产生的空范围。"
 	case MCPConnectorScopeBuiltIn:
-		return "MCPConnectorScopeBuiltIn 表示随 NeuxAlly 提供的内置连接器。"
+		return "MCPConnectorScopeBuiltIn 表示随 NeuxBot 提供的内置连接器。"
 	case MCPConnectorScopePrivate:
 		return "MCPConnectorScopePrivate 表示只属于一个伙伴的连接器。"
 	case MCPConnectorScopePublic:
@@ -45,7 +45,7 @@ func (v MCPConnectorScope) Values() []enum.Enum {
 }
 
 func (v MCPConnectorScope) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MCPConnectorScope"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MCPConnectorScope"
 }
 
 func (v MCPConnectorScope) MarshalText() ([]byte, error) {

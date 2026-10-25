@@ -24,6 +24,8 @@ type Config struct {
 	Prepare func(context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error)
 	// Model 是已接纳知识任务冻结的模型选择。
 	Model string
+	// Reasoning 是冻结的推理强度，空值沿模型最低档策略。
+	Reasoning string
 	// Observe 接收原始结果诊断，不能改变模型正文或知识发布事实。
 	Observe func(context.Context, core.GenerateRequest, runtimes.TextResult)
 }
@@ -55,7 +57,7 @@ func (generator *Generator) Generate(ctx context.Context, input core.GenerateReq
 	}
 	result := generator.config.Runtime.GenerateText(ctx, runtimes.TextRequest{
 		Target: target, Detection: detection, Model: generator.config.Model,
-		Messages: messages, Thinking: input.Thinking, MaxTokens: input.MaxTokens, Temperature: input.Temperature,
+		Messages: messages, Reasoning: generator.config.Reasoning, Thinking: input.Thinking, MaxTokens: input.MaxTokens, Temperature: input.Temperature,
 	})
 	if generator.config.Observe != nil {
 		generator.config.Observe(ctx, input, result)

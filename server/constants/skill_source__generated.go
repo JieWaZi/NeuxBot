@@ -31,7 +31,7 @@ func (v SkillSource) Label() string {
 	case SkillSourceUnspecified:
 		return "SkillSourceUnspecified 表示未指定来源。"
 	case SkillSourceBuiltin:
-		return "SkillSourceBuiltin 表示随 NeuxAlly 提供的内置技能。"
+		return "SkillSourceBuiltin 表示随 NeuxBot 提供的内置技能。"
 	case SkillSourceGit:
 		return "SkillSourceGit 表示从 Git 地址导入的技能。"
 	case SkillSourceZip:
@@ -45,7 +45,7 @@ func (v SkillSource) Values() []enum.Enum {
 }
 
 func (v SkillSource) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.SkillSource"
+	return "github.com/JieWaZi/NeuxBot/server/constants.SkillSource"
 }
 
 func (v SkillSource) MarshalText() ([]byte, error) {

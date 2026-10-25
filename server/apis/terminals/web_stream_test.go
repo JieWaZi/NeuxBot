@@ -72,11 +72,10 @@ func TestRealWebTerminalHTTPStreamAndLogout(t *testing.T) {
 	}
 	global.LocalWeb = manager
 	defer manager.Close()
-	code, _ := manager.RotatePairing()
 	pairRequest := httptest.NewRequest("POST", server.URL+"/api/web/session", nil)
 	pairRequest.Header.Set("Origin", server.URL)
 	paired := httptest.NewRecorder()
-	session, status := manager.Pair(paired, pairRequest, code)
+	session, status := manager.CreateSession(paired, pairRequest)
 	if status != 200 {
 		t.Fatal(status)
 	}

@@ -61,7 +61,7 @@ func (v WorkflowRunStatus) Values() []enum.Enum {
 }
 
 func (v WorkflowRunStatus) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.WorkflowRunStatus"
+	return "github.com/JieWaZi/NeuxBot/server/constants.WorkflowRunStatus"
 }
 
 func (v WorkflowRunStatus) MarshalText() ([]byte, error) {

@@ -1,3 +1,4 @@
+import { useDialogFocusRestore } from "./use-dialog-focus-restore";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { deleteImConnection } from "@/shared/api/generated/sdk.gen";
@@ -24,6 +25,7 @@ export function ConnectionDeleteDialog({
   onDeleted: () => void;
 }) {
   const { t } = useTranslation("im");
+  const dialogFocus = useDialogFocusRestore();
   const dependencies = useQuery(
     imConnectionDependencyOptions(connection.id || ""),
   );
@@ -55,6 +57,7 @@ export function ConnectionDeleteDialog({
       }}
     >
       <DialogContent
+        {...dialogFocus}
         title={t("deleteConnection")}
         description={t("deleteConnectionHint", { name: connection.name })}
       >

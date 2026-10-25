@@ -156,13 +156,12 @@ export function AutomaticTaskListPage() {
         actions={
           <>
             <PageAction
-              variant="secondary"
+              variant="plain"
+              hitArea="comfortable"
               aria-label={t("apiSettings")}
-              title={t("apiSettings")}
               onClick={() => setAPISettingsOpen(true)}
             >
               <Settings aria-hidden="true" />
-              <PageActionLabel>{t("apiSettings")}</PageActionLabel>
             </PageAction>
             <PageAction
               aria-label={t("create")}

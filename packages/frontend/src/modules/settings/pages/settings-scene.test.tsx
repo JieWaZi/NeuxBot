@@ -31,6 +31,31 @@ vi.mock("../components/api-integration-section", () => ({
 }));
 
 describe("SettingsScene", () => {
+  it("在发布集成导航选择 IM 并显示应用装配的内容", async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    render(
+      <>
+        <SettingsContextSidebar
+          activeSection="integration-im"
+          onSelect={onSelect}
+        />
+        <SettingsScene
+          section="integration-im"
+          onClose={() => undefined}
+          imIntegrationContent={<h1>IM 平台与连接列表</h1>}
+        />
+      </>,
+    );
+    expect(screen.getByText("发布集成")).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "IM 平台与连接列表" }),
+    ).toBeVisible();
+    const item = screen.getByRole("button", { name: "IM 集成" });
+    expect(item).toHaveAttribute("aria-current", "page");
+    await user.click(item);
+    expect(onSelect).toHaveBeenCalledWith("integration-im");
+  });
   it("通过 API 分类懒加载集成内容，不再显示独立 MCP 导航", async () => {
     const onSelectSection = vi.fn();
     render(

@@ -71,9 +71,10 @@ func TestGenerateTextIsFreshEphemeralAndPreservesNativeResult(t *testing.T) {
 	if first.Failure != nil || first.Text != "answer" || first.StopReason != "max_tokens" || first.Usage == nil || first.Usage.InputTokens != 12 || first.Usage.OutputTokens != 7 || first.ActualReasoning != "none" || !first.ThinkingDisabled || first.ToolsDisabled {
 		t.Fatalf("first = %+v", first)
 	}
+	request.Reasoning = "high"
 	request.Messages = []TextMessage{{Role: "user", Content: "second source"}}
 	second := sdk.GenerateText(context.Background(), request)
-	if second.Failure != nil || len(agents) != 2 {
+	if second.Failure != nil || len(agents) != 2 || second.ActualReasoning != "high" || second.ThinkingDisabled {
 		t.Fatalf("second=%+v agents=%d", second, len(agents))
 	}
 	for index, agent := range agents {
@@ -123,7 +124,7 @@ func TestTextReasoningNeverCallsLowDisabled(t *testing.T) {
 		selected string
 		// disabled 只在原生关闭选项存在时成立。
 		disabled bool
-	}{{[]string{"low", "high"}, "low", false}, {[]string{"off", "high"}, "off", true}, {[]string{"high"}, "high", false}, {nil, "", false}} {
+	}{{[]string{"low", "high"}, "low", false}, {[]string{"off", "high"}, "off", true}, {[]string{"high"}, "high", false}, {[]string{"high", "medium"}, "medium", false}, {nil, "", false}} {
 		selection, disabled, fallback := textReasoningSelection(textTestOptions(test.options...), codexACPReasoningConfigID, false)
 		if selection != test.selected || disabled != test.disabled || (!disabled && fallback == "") {
 			t.Fatalf("options=%v selection=%q disabled=%v fallback=%q", test.options, selection, disabled, fallback)
@@ -351,5 +352,24 @@ func TestUnknownTextCapabilityVerifiesManagedSessionBeforePrompt(t *testing.T) {
 	result := sdk.GenerateText(context.Background(), request)
 	if result.Failure == nil || result.Failure.Code != FailureCodeProtocolIncompatible || agent.newCalls != 1 || agent.modeCalls != 1 || agent.promptCalls != 0 || agent.closeSessionCalls != 1 || !agent.closed {
 		t.Fatalf("unverified managed session bypassed configuration: failure=%+v new=%d modes=%d prompt=%d sessionCloses=%d closed=%v", result.Failure, agent.newCalls, agent.modeCalls, agent.promptCalls, agent.closeSessionCalls, agent.closed)
+	}
+}
+
+func TestGenerateTextRejectsUnsupportedExplicitReasoning(t *testing.T) {
+	fixtureHome := t.TempDir()
+	t.Setenv("CODEX_HOME", fixtureHome)
+	if err := os.WriteFile(filepath.Join(fixtureHome, "auth.json"), []byte(`{"access_token":"fixture"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sdk, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := &textACPAgent{&fakeCodexACPAgent{selectedConfigs: map[acp.SessionConfigId]acp.SessionConfigValueId{}, configOptions: textTestOptions("low", "high")}}
+	replaceACPAgentFactory(sdk.acp.(*acpBackend), RuntimeIDCodex, func(context.Context, acpAdapterConfig) (acp.Agent, error) { return agent, nil })
+	binary, _ := os.Executable()
+	result := sdk.GenerateText(context.Background(), TextRequest{Target: RuntimeTarget{RuntimeID: RuntimeIDCodex}, Detection: readyTextDetectionForRun(t, sdk, RuntimeIDCodex, binary), Model: "model-a", Reasoning: "unsupported", Messages: []TextMessage{{Role: "user", Content: "source"}}})
+	if result.Failure == nil || result.Text != "" || agent.promptCalls != 0 {
+		t.Fatalf("result=%+v prompts=%d", result, agent.promptCalls)
 	}
 }

@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Package, Sparkles, Cable, Plus } from "lucide-react";
+import { Package, Sparkles, Cable, Plus, Workflow } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useParams, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   PluginResourceCollection,
   PluginComponentCollection,
@@ -11,6 +11,7 @@ import {
   resourceCategory,
 } from "@/modules/plugin";
 import { SkillResourceCollection } from "@/modules/skill";
+import { WorkflowResourceCollection } from "@/modules/workflow";
 import { ConnectorResourceCollection } from "@/modules/connector";
 import {
   ResourcePageSurface,
@@ -38,7 +39,11 @@ export function ResourcesPage() {
   const { t } = useTranslation("plugin");
   const { wakerId = "" } = useParams();
   const [params, setParams] = useSearchParams();
-  const category = resourceCategory(params.get("category"));
+  const navigate = useNavigate();
+  const category =
+    !wakerId && params.get("category") === "workflows"
+      ? "workflows"
+      : resourceCategory(params.get("category"));
   const search = params.get("search") ?? "";
   const source: "all" | "plugins" | "independent" =
     params.get("source") === "plugins"
@@ -52,7 +57,7 @@ export function ResourcesPage() {
     category === "connectors" ? "connectors" : "skills",
     wakerId,
     search,
-    category !== "plugins",
+    category === "skills" || category === "connectors",
   );
   const [installation, setInstallation] = useState<Installation | null>(null);
   const setParam = (key: string, value: string) =>
@@ -68,8 +73,10 @@ export function ResourcesPage() {
   const searchField = (
     <ResourcePageSearchField
       value={search}
-      aria-label={t("search")}
-      placeholder={t("search")}
+      aria-label={category === "workflows" ? t("workflow:search") : t("search")}
+      placeholder={
+        category === "workflows" ? t("workflow:search") : t("search")
+      }
       onChange={(event) => setParam("search", event.target.value)}
     />
   );
@@ -115,19 +122,33 @@ export function ResourcesPage() {
       <ResourcePageSurface>
         <ResourcePageHeader
           title={wakerId ? t("partnerResources") : t("title")}
-          description={t("description")}
+          description={t(wakerId ? "description" : "libraryDescription")}
           actions={
             category !== "plugins" && (
               <PageAction
                 intent="primary"
                 aria-label={t(
-                  category === "skills" ? "addSkill" : "addConnector",
+                  category === "workflows"
+                    ? "workflow:create"
+                    : category === "skills"
+                      ? "addSkill"
+                      : "addConnector",
                 )}
-                onClick={() => setAdding(true)}
+                onClick={() =>
+                  category === "workflows"
+                    ? navigate(`/workflows/new?draftId=${crypto.randomUUID()}`)
+                    : setAdding(true)
+                }
               >
                 <Plus />
                 <PageActionLabel>
-                  {t(category === "skills" ? "addSkill" : "addConnector")}
+                  {t(
+                    category === "workflows"
+                      ? "workflow:create"
+                      : category === "skills"
+                        ? "addSkill"
+                        : "addConnector",
+                  )}
                 </PageActionLabel>
               </PageAction>
             )
@@ -157,6 +178,16 @@ export function ResourcesPage() {
                 icon: <Cable />,
                 description: t("connectorsHelp"),
               },
+              ...(!wakerId
+                ? [
+                    {
+                      value: "workflows",
+                      label: t("workflow:title"),
+                      icon: <Workflow />,
+                      description: t("workflowsHelp"),
+                    },
+                  ]
+                : []),
             ]}
             onValueChange={(value) =>
               setParams((current) => {
@@ -194,6 +225,8 @@ export function ResourcesPage() {
                 setInstallation({ kind: "skill", id, name })
               }
             />
+          ) : category === "workflows" ? (
+            <WorkflowResourceCollection search={search} filters={searchField} />
           ) : (
             <ConnectorResourceCollection
               {...capabilityProps}

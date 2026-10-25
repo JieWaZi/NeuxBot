@@ -8,21 +8,21 @@
 
 ## 存储目录
 
-产品名为 NeuxBot；应用标识和默认程序数据目录保留 `com.neuxally.desktop`，受管业务文件根保留 `.neuxally`。改名不移动已有数据库、账号或业务文件。
+产品名为 NeuxBot；为延续已有安装的数据身份，应用标识和默认程序数据目录保留 `com.neuxally.desktop`，受管业务文件根保留 `.neuxally`。改名不移动已有数据库、账号或业务文件。
 
 程序数据目录沿用桌面平台的应用数据位置，由 `ALLY_DATA_DIR` 指定；数据库 `ally.db`、`memory.db`，技能目录 `skills/`、`system-skills/`，独立账号目录 `ai-accounts/`、`account-workspaces/`，执行授权描述 `agent-contexts/`，以及 Electron 数据、程序日志和 `automatic-tasks-api.json` 均保留于此。
 
 受管业务文件默认位于用户主目录的 `~/.neuxally/`，可以通过 `ALLY_MANAGED_FILES_DIR` 独立指定，不改变数据库和程序数据位置：
 
-| 路径 | 职责 |
-| --- | --- |
-| `chat/<chat-id>/{log,workspace}/` | 普通聊天权威日志、索引与执行工作区 |
-| `team/<thread-id>/{log,workspace,projects}/` | 团队日志、成员工作区与共享项目入口 |
-| `workflow-workspaces/` | 工作流创作与运行工作区 |
-| `workflow-files/` | 上传原件与 `metadata.json` 归属信息 |
-| `im/{inbox,deliveries,workspaces}/` | IM 接收附件、交付快照和默认工作区 |
-| `forks/`、`deletions/`、`provisioning/` | 分叉、删除和团队创建操作的持久记录与暂存文件 |
-| `workflow-input-staging-*/` | 工作流调用接纳前的临时输入副本 |
+| 路径                                         | 职责                                         |
+| -------------------------------------------- | -------------------------------------------- |
+| `chat/<chat-id>/{log,workspace}/`            | 普通聊天权威日志、索引与执行工作区           |
+| `team/<thread-id>/{log,workspace,projects}/` | 团队日志、成员工作区与共享项目入口           |
+| `workflow-workspaces/`                       | 工作流创作与运行工作区                       |
+| `workflow-files/`                            | 上传原件与 `metadata.json` 归属信息          |
+| `im/{inbox,deliveries,workspaces}/`          | IM 接收附件、交付快照和默认工作区            |
+| `forks/`、`deletions/`、`provisioning/`      | 分叉、删除和团队创建操作的持久记录与暂存文件 |
+| `workflow-input-staging-*/`                  | 工作流调用接纳前的临时输入副本               |
 
 工作区内部使用 `workspace-owner.json` 标记归属，`runtime/accounts/` 保存当前工作区独有的智能体配置及状态，`workflow-inputs/` 保存工作流冻结输入，`attachments/` 保存消息附件及生成文件。账号配置目录保持私有权限，并从桌面文件列表、预览和消息引用中排除。应用自行创建的这些目录和暂存文件不使用点前缀；智能体约定的 `.agents/`、`.claude/`、`.gemini/` 等固定名称保持不变。
 

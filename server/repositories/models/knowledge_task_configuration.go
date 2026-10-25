@@ -18,6 +18,7 @@ type KnowledgeTaskConfiguration struct {
 	RuntimeID                 string            `json:"runtimeId"`                             // 冻结的智能体标识。
 	AccountID                 string            `json:"accountId"`                             // 冻结的账号引用。
 	Model                     string            `json:"model"`                                 // 冻结的模型标识。
+	Reasoning                 string            `json:"reasoning,omitempty"`                   // 冻结的推理强度，空值使用模型最低档。
 	Message                   string            `json:"-"`                                     // 用户本次明确要求。
 	RemoteSubject             string            `json:"-"`                                     // 服务端验证的实际主体。
 	RemoteProfileID           string            `json:"-"`                                     // 服务端固定模型配置引用。

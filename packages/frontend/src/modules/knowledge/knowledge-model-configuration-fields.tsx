@@ -9,7 +9,10 @@ export function KnowledgeModelConfigurationFields(
   const t = useCopy();
   return (
     <>
-      <ExecutionConfigurationFields {...props} />
+      <ExecutionConfigurationFields {...props} reasoningDefaultHidden />
+      <p className="text-content-secondary type-caption">
+        {t("modelReasoningHelp")}
+      </p>
       {props.state.capabilityUnavailable ? (
         <p role="status" className="text-content-secondary type-caption">
           {t("modelCapabilityUnavailable")}

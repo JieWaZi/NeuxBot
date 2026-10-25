@@ -10,16 +10,13 @@ export class SessionError extends Error {
   }
 }
 
-/** 同源配对协议在页面内存保存 CSRF；Cookie 始终由浏览器管理。 */
-export async function requestSession(code?: string): Promise<WebSession> {
-  const response = await fetch("/api/web/session", {
-    method: code === undefined ? "GET" : "POST",
-    credentials: "same-origin",
-    headers:
-      code === undefined ? undefined : { "Content-Type": "application/json" },
-    body: code === undefined ? undefined : JSON.stringify({ code }),
-    cache: "no-store",
-  });
+/** 同源会话协议在页面内存保存 CSRF；Cookie 始终由浏览器管理。 */
+export async function requestSession(): Promise<WebSession> {
+  const options = { credentials: "same-origin", cache: "no-store" } as const;
+  let response = await fetch("/api/web/session", options);
+  if (response.status === 401) {
+    response = await fetch("/api/web/session", { ...options, method: "POST" });
+  }
   if (!response.ok) throw new SessionError(response.status);
   const data: unknown = await response.json();
   if (
@@ -44,15 +41,4 @@ export async function requestSession(code?: string): Promise<WebSession> {
   )
     throw new SessionError(409);
   return data as WebSession;
-}
-
-export async function logoutSession(session: WebSession): Promise<void> {
-  const response = await fetch("/api/web/session", {
-    method: "DELETE",
-    credentials: "same-origin",
-    headers: { "X-Ally-CSRF": session.csrfToken },
-  });
-  if (!response.ok && response.status !== 401)
-    throw new SessionError(response.status);
-  window.location.reload();
 }

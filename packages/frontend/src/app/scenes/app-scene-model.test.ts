@@ -28,6 +28,26 @@ const routeSceneForLocation = (location: RouteSceneLocation) =>
 const settingsSceneTab = () => createSettingsSceneTab(labels.settings);
 
 describe("应用 Scene 模型", () => {
+  it("工作流列表复用资源库标签，工作流编辑仍有独立标签", () => {
+    const library = routeSceneForLocation({
+      pathname: "/resources",
+      search: "",
+    });
+    const workflows = routeSceneForLocation({
+      pathname: "/resources",
+      search: "?category=workflows",
+    });
+    const legacy = routeSceneForLocation({
+      pathname: "/workflows",
+      search: "?search=周会",
+    });
+    expect(workflows.id).toBe(library.id);
+    expect(legacy.id).toBe(library.id);
+    expect(workflows.label).toBe("资源库");
+    expect(
+      routeSceneForLocation({ pathname: "/workflows/flow", search: "" }).id,
+    ).toBe("workflow:flow");
+  });
   it("知识库详情独立标签，同库视图复用且不同连接互不覆盖", () => {
     const resolve = (pathname: string, search = "") =>
       resolveRouteScene(

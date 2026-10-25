@@ -82,13 +82,16 @@ function GeneralSettings() {
 }
 
 function SettingsSectionContent({
+  imIntegrationContent,
   onSelectSection,
   section,
 }: {
   onSelectSection?: (section: SettingsSection) => void;
   section: SettingsSection;
+  imIntegrationContent?: ReactNode;
 }) {
   const { t } = useTranslation("appSettings");
+  if (section === "integration-im") return imIntegrationContent;
   if (section === "integration-api")
     return (
       <Suspense
@@ -117,6 +120,7 @@ function SettingsSectionContent({
 }
 
 export function SettingsScene({
+  imIntegrationContent,
   onClose,
   onSelectSection,
   section,
@@ -126,6 +130,7 @@ export function SettingsScene({
   onSelectSection?: (section: SettingsSection) => void;
   section: SettingsSection;
   showSceneChrome?: boolean;
+  imIntegrationContent?: ReactNode;
 }) {
   const { t } = useTranslation("appSettings");
 
@@ -165,6 +170,7 @@ export function SettingsScene({
             }
           >
             <SettingsSectionContent
+              imIntegrationContent={imIntegrationContent}
               section={section}
               onSelectSection={onSelectSection}
             />

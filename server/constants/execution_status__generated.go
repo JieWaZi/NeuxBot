@@ -53,7 +53,7 @@ func (v ExecutionStatus) Values() []enum.Enum {
 }
 
 func (v ExecutionStatus) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ExecutionStatus"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ExecutionStatus"
 }
 
 func (v ExecutionStatus) MarshalText() ([]byte, error) {

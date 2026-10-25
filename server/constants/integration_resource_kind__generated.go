@@ -37,7 +37,7 @@ func (v IntegrationResourceKind) Values() []enum.Enum {
 }
 
 func (v IntegrationResourceKind) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.IntegrationResourceKind"
+	return "github.com/JieWaZi/NeuxBot/server/constants.IntegrationResourceKind"
 }
 
 func (v IntegrationResourceKind) MarshalText() ([]byte, error) {

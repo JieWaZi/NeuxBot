@@ -45,7 +45,7 @@ func (v KnowledgeLibraryLocation) Values() []enum.Enum {
 }
 
 func (v KnowledgeLibraryLocation) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.KnowledgeLibraryLocation"
+	return "github.com/JieWaZi/NeuxBot/server/constants.KnowledgeLibraryLocation"
 }
 
 func (v KnowledgeLibraryLocation) MarshalText() ([]byte, error) {

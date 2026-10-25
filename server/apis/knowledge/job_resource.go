@@ -78,8 +78,10 @@ type TaskConfiguration struct {
 	AccountID string `json:"accountId"`
 	// 模型
 	Model string `json:"model"`
+	// 推理强度
+	Reasoning string `json:"reasoning"`
 }
 
 func taskConfigurationDTO(value models.KnowledgeTaskConfiguration) TaskConfiguration {
-	return TaskConfiguration{ID: value.ID, RuntimeID: value.RuntimeID, AccountID: value.AccountID, Model: value.Model}
+	return TaskConfiguration{ID: value.ID, RuntimeID: value.RuntimeID, AccountID: value.AccountID, Model: value.Model, Reasoning: value.Reasoning}
 }

@@ -45,7 +45,7 @@ func (v IMBindingState) Values() []enum.Enum {
 }
 
 func (v IMBindingState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.IMBindingState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.IMBindingState"
 }
 
 func (v IMBindingState) MarshalText() ([]byte, error) {

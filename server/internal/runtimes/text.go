@@ -33,6 +33,8 @@ type TextRequest struct {
 	Model string
 	// Messages 是本次完整消息，续写也必须由调用方明确提供。
 	Messages []TextMessage
+	// Reasoning 是显式推理强度，优先于 Thinking，并须由原生配置确认。
+	Reasoning string
 	// Thinking 是期望启用推理；关闭请求按实际模型能力选择。
 	Thinking bool
 	// MaxTokens 是期望的输出上限，ACP 不支持时在结果中明确记录。
@@ -103,7 +105,7 @@ func (sdk *SDK) GenerateText(ctx context.Context, input TextRequest) TextResult 
 	request := RunRequest{
 		Target: input.Target, Detection: input.Detection,
 		Workspace: Workspace{Path: workspace}, Session: SessionDirective{Mode: SessionModeNew},
-		Policy: RunPolicy{Model: input.Model, Execution: ExecutionPolicy{PermissionLevel: PermissionLevelDefault, WorkspaceReadOnly: true}},
+		Policy: RunPolicy{Model: input.Model, Reasoning: strings.TrimSpace(input.Reasoning), Execution: ExecutionPolicy{PermissionLevel: PermissionLevelDefault, WorkspaceReadOnly: true}},
 	}
 	request.Target.CloseAfterRun = true
 	prepared, err := sdk.prepareFromDetection(prepareRequestForRun(sdk, request), input.Detection)
@@ -286,18 +288,22 @@ func textReasoningSelection(options []acp.SessionConfigOption, id acp.SessionCon
 			}
 		}
 	}
-	for _, wanted := range []string{"minimal", "low"} {
+	for _, wanted := range []string{"minimal", "min", "low", "medium", "high", "max", "xhigh"} {
 		for _, value := range values {
 			if strings.EqualFold(string(value.Value), wanted) {
 				return string(value.Value), false, "thinking_off_unsupported: selected " + string(value.Value)
 			}
 		}
 	}
+	if len(values) > 0 {
+		return string(values[0].Value), false, "thinking_off_unsupported: selected " + string(values[0].Value)
+	}
 	return string(selected.CurrentValue), false, "thinking_off_unsupported: retained native default " + string(selected.CurrentValue)
 }
 
 // configureTextSession 读取所选模型的真实配置并校验每个写入回执，不继承其他生成调用。
 func (agent *embeddedACPAgent) configureTextSession(ctx context.Context, sessionID acp.SessionId, request *acpRunRequest, options []acp.SessionConfigOption) error {
+	explicitReasoning := request.Request.Policy.Reasoning
 	request.Request = agent.binding.resolveSelections(agent, sessionID, request.Request)
 	model := request.Request.Policy.Model
 	if model != "" {
@@ -311,6 +317,20 @@ func (agent *embeddedACPAgent) configureTextSession(ctx context.Context, session
 		}
 	}
 	reasoning, disabled, fallback := textReasoningSelection(options, agent.binding.reasoningConfigID, request.Text.thinking)
+	if explicit := explicitReasoning; explicit != "" {
+		option, exists := acpSelectConfig(options, agent.binding.reasoningConfigID)
+		found := false
+		if exists {
+			for _, value := range acpSelectValues(option.Options) {
+				found = found || string(value.Value) == explicit
+			}
+		}
+		if !found {
+			return status_error.RuntimePolicyUnsupported
+		}
+		reasoning, fallback = explicit, ""
+		disabled = strings.EqualFold(explicit, "none") || strings.EqualFold(explicit, "off") || strings.EqualFold(explicit, "disabled")
+	}
 	request.Text.result.ActualReasoning = string(acpConfigCurrentValue(options, agent.binding.reasoningConfigID))
 	request.Text.result.ReasoningFallback = "reasoning_selection_not_confirmed"
 	if reasoning != "" {

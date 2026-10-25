@@ -41,7 +41,7 @@ func (v WorkflowCapabilityScope) Values() []enum.Enum {
 }
 
 func (v WorkflowCapabilityScope) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.WorkflowCapabilityScope"
+	return "github.com/JieWaZi/NeuxBot/server/constants.WorkflowCapabilityScope"
 }
 
 func (v WorkflowCapabilityScope) MarshalText() ([]byte, error) {

@@ -77,7 +77,7 @@ func (v RuntimeCapability) Values() []enum.Enum {
 }
 
 func (v RuntimeCapability) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeCapability"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeCapability"
 }
 
 func (v RuntimeCapability) MarshalText() ([]byte, error) {

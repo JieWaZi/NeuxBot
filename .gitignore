@@ -4,6 +4,7 @@
 
 desktop/node_modules/
 node_modules/
+.pnpm-store/
 pnpm-debug.log*
 desktop/dist/
 desktop/coverage/

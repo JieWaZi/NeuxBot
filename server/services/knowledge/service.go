@@ -270,7 +270,7 @@ func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Recei
 		return nil, in.Configuration, err
 	}
 	// 用户未覆盖配置时使用同一宿主持久偏好；已接纳回执的重放已在上方恢复旧配置。
-	if !frozenConfiguration && in.Configuration.RuntimeID == "" && in.Configuration.AccountID == "" && in.Configuration.Model == "" {
+	if !frozenConfiguration && in.Configuration.RuntimeID == "" && in.Configuration.AccountID == "" && in.Configuration.Model == "" && in.Configuration.Reasoning == "" {
 		defaults, e := s.config.References.LibraryExecutionDefaults(ctx, in.LibraryID)
 		if e != nil {
 			return nil, in.Configuration, e
@@ -278,6 +278,7 @@ func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Recei
 		in.Configuration.RuntimeID = defaults.RuntimeID
 		in.Configuration.AccountID = defaults.AccountID
 		in.Configuration.Model = defaults.Model
+		in.Configuration.Reasoning = defaults.Reasoning
 	}
 	if err := s.validateLibrary(lib); err != nil {
 		return nil, in.Configuration, err
@@ -286,11 +287,11 @@ func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Recei
 		if s.config.ResolveModel == nil {
 			return nil, in.Configuration, status_error.KnowledgeUnsupported
 		}
-		selected, err := s.config.ResolveModel(ctx, models.LibraryExecutionDefaults{RuntimeID: in.Configuration.RuntimeID, AccountID: in.Configuration.AccountID, Model: in.Configuration.Model})
+		selected, err := s.config.ResolveModel(ctx, models.LibraryExecutionDefaults{RuntimeID: in.Configuration.RuntimeID, AccountID: in.Configuration.AccountID, Model: in.Configuration.Model, Reasoning: in.Configuration.Reasoning})
 		if err != nil {
 			return nil, in.Configuration, err
 		}
-		in.Configuration.RuntimeID, in.Configuration.AccountID, in.Configuration.Model = selected.RuntimeID, selected.AccountID, selected.Model
+		in.Configuration.RuntimeID, in.Configuration.AccountID, in.Configuration.Model, in.Configuration.Reasoning = selected.RuntimeID, selected.AccountID, selected.Model, selected.Reasoning
 	}
 	if len(in.SourceVersionIDs) == 0 && !in.ExplicitSources {
 		in.SourceVersionIDs, err = s.pendingSourceHeads(ctx, in.LibraryID)
@@ -448,7 +449,7 @@ func (s *Service) drive(jobID string, session models.KnowledgeTaskConfiguration)
 			s.recordTaskFailure(job, status_error.KnowledgeUnsupported)
 			return
 		}
-		generator, err := s.config.Generator(attempt.ctx, models.LibraryExecutionDefaults{RuntimeID: session.RuntimeID, AccountID: session.AccountID, Model: session.Model})
+		generator, err := s.config.Generator(attempt.ctx, models.LibraryExecutionDefaults{RuntimeID: session.RuntimeID, AccountID: session.AccountID, Model: session.Model, Reasoning: session.Reasoning})
 		if err != nil {
 			s.recordTaskFailure(job, err)
 			return

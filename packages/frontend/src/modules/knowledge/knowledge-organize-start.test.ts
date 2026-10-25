@@ -32,7 +32,7 @@ it.each(["full-access", "auto", "default"])(
       runtimeId: "codex",
       accountId: "system",
       model: "model",
-      reasoning: "",
+      reasoning: "high",
       permissionLevel,
     };
     const start = createKnowledgeOrganizeStart({
@@ -59,7 +59,7 @@ it.each(["full-access", "auto", "default"])(
     });
     expect(requests[0]).not.toHaveProperty("permissionLevel");
     expect(requests[0]).not.toHaveProperty("wakerId");
-    expect(requests[0]).not.toHaveProperty("reasoning");
+    expect(requests[0]).toHaveProperty("reasoning", "high");
     expect(first).toEqual(second);
   },
 );

@@ -30,6 +30,7 @@ export function ExecutionConfigurationFields({
   runtimeHidden = false,
   permissionHidden = false,
   reasoningHidden = false,
+  reasoningDefaultHidden = false,
   name,
   defaults = false,
   required = false,
@@ -42,6 +43,7 @@ export function ExecutionConfigurationFields({
   runtimeHidden?: boolean;
   permissionHidden?: boolean;
   reasoningHidden?: boolean;
+  reasoningDefaultHidden?: boolean;
   name?: string;
   defaults?: boolean;
   required?: boolean;
@@ -185,10 +187,14 @@ export function ExecutionConfigurationFields({
             defaults ? "defaultReasoning" : "reasoning",
             selection.reasoning || "__default",
             [
-              {
-                id: "__default",
-                name: t("executionSelection.defaultReasoning"),
-              },
+              ...(!reasoningDefaultHidden
+                ? [
+                    {
+                      id: "__default",
+                      name: t("executionSelection.defaultReasoning"),
+                    },
+                  ]
+                : []),
               ...reasoningOptions,
             ],
             (reasoning) =>

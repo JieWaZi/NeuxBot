@@ -53,7 +53,7 @@ func (v NotificationKind) Values() []enum.Enum {
 }
 
 func (v NotificationKind) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.NotificationKind"
+	return "github.com/JieWaZi/NeuxBot/server/constants.NotificationKind"
 }
 
 func (v NotificationKind) MarshalText() ([]byte, error) {

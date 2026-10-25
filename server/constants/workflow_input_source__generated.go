@@ -45,7 +45,7 @@ func (v WorkflowInputSource) Values() []enum.Enum {
 }
 
 func (v WorkflowInputSource) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.WorkflowInputSource"
+	return "github.com/JieWaZi/NeuxBot/server/constants.WorkflowInputSource"
 }
 
 func (v WorkflowInputSource) MarshalText() ([]byte, error) {

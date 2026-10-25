@@ -91,6 +91,6 @@ await copyFile(
 );
 await writeFile(
   path.join(output, "README.txt"),
-  "NeuxBot Web\n需要 Node.js 22+；在此目录运行 node start-web.mjs。\n按终端地址打开网页并输入一次性配对码。输入 pair 可重新签发；Ctrl+C 退出。\n默认与 Native 共用 Core 数据目录，启动前请退出另一端。ALLY_DATA_DIR 可指定数据根；同一数据根只能由一个 Core 持有。独立测试还须设置 ALLY_MANAGED_FILES_DIR 为独立受管文件根。ALLY_WEB_CORE_PORT 可修改回环端口。\n智能体 CLI 按设置页面指引在本机安装。文件和 Git 操作限于当前聊天已授权目录；交互终端由 Core 持有，浏览器刷新可恢复。\n",
+  "NeuxBot Web\n需要 Node.js 22+；在此目录运行 node start-web.mjs。\n按终端地址打开网页即可进入工作台，无需配对码；Ctrl+C 退出。\n默认与 Native 共用 Core 数据目录，启动前请退出另一端。ALLY_DATA_DIR 可指定数据根；同一数据根只能由一个 Core 持有。独立测试还须设置 ALLY_MANAGED_FILES_DIR 为独立受管文件根。ALLY_WEB_CORE_PORT 可修改回环端口。\n智能体 CLI 按设置页面指引在本机安装。文件和 Git 操作限于当前聊天已授权目录；交互终端由 Core 持有，浏览器刷新可恢复。\n",
 );
 console.log(`已生成独立 Web 发布目录：${output}`);

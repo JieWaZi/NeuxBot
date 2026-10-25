@@ -30,11 +30,10 @@ func TestWebLogoutClosesEventConnection(t *testing.T) {
 	old := global.LocalWeb
 	global.LocalWeb = m
 	defer func() { m.Close(); global.LocalWeb = old }()
-	code, _ := m.RotatePairing()
 	r := httptest.NewRequest("POST", server.URL+"/api/web/session", nil)
 	r.Header.Set("Origin", server.URL)
 	w := httptest.NewRecorder()
-	_, status := m.Pair(w, r, code)
+	_, status := m.CreateSession(w, r)
 	if status != 200 {
 		t.Fatal(status)
 	}

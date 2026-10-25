@@ -41,7 +41,7 @@ func (v MemoryRetrievalMode) Values() []enum.Enum {
 }
 
 func (v MemoryRetrievalMode) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MemoryRetrievalMode"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MemoryRetrievalMode"
 }
 
 func (v MemoryRetrievalMode) MarshalText() ([]byte, error) {

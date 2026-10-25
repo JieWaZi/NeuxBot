@@ -2,13 +2,11 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -66,28 +64,11 @@ func main() {
 				panic(err)
 			}
 			defer global.LocalWeb.Close()
-			emitPairing := func() {
-				code, err := global.LocalWeb.RotatePairing()
-				if err != nil {
-					logx.Errorf("issue Web pairing code failed: %v", err)
-					return
-				}
-				origin := "http://" + host
-				if developmentOrigin != "" {
-					origin = developmentOrigin
-				}
-				// 配对凭据属于交互命令输出，不进入持久化服务日志。
-				fmt.Fprintf(command.OutOrStdout(), "NeuxBot Web: %s\n一次性配对码（5 分钟有效）：%s\n在此终端输入 pair 并回车可重新签发。\n", origin, code)
+			origin := "http://" + host
+			if developmentOrigin != "" {
+				origin = developmentOrigin
 			}
-			emitPairing()
-			go func() {
-				scanner := bufio.NewScanner(command.InOrStdin())
-				for scanner.Scan() {
-					if strings.TrimSpace(scanner.Text()) == "pair" {
-						emitPairing()
-					}
-				}
-			}()
+			fmt.Fprintf(command.OutOrStdout(), "NeuxBot Web: %s\n", origin)
 		}
 		rootContext, cancel := context.WithCancel(context.Background())
 		var parentWaitGroup sync.WaitGroup

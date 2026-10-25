@@ -14,8 +14,8 @@ vi.mock("@/modules/skill/pages/skill-detail-page", () => ({
 vi.mock("@/modules/memory/pages/waker-memory-page", () => ({
   WakerMemoryPage: () => <div>记忆页面已就绪</div>,
 }));
-vi.mock("@/modules/workflow/pages/workflow-list-page", () => ({
-  WorkflowListPage: () => <div>工作流列表已就绪</div>,
+vi.mock("./pages/resources-page", () => ({
+  ResourcesPage: () => <div>资源库已就绪</div>,
 }));
 vi.mock("@/modules/workflow/pages/workflow-detail-page", async () => {
   const { useEffect } = await import("react");
@@ -74,7 +74,7 @@ describe("公共路由加载", () => {
     expect(workflowPageMounts.current).toBe(initial);
   });
   it.each([
-    ["/workflows", "工作流列表已就绪"],
+    ["/resources?category=workflows", "资源库已就绪"],
     ["/workflows/new", "工作流定义已就绪"],
     ["/workflows/workflow-1", "工作流定义已就绪"],
     ["/workflows/workflow-1/runs/run-1", "工作流运行已就绪"],

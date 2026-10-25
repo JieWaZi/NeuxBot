@@ -1,6 +1,9 @@
 import { lazy } from "react";
 
-export { WorkflowListPage } from "./pages/workflow-list-page";
+export {
+  WorkflowListPage,
+  WorkflowResourceCollection,
+} from "./pages/workflow-list-page";
 export { WorkflowDetailPage } from "./pages/workflow-detail-page";
 
 export const WorkflowRunPage = lazy(() =>

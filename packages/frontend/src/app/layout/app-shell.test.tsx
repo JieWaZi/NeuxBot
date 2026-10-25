@@ -86,6 +86,26 @@ vi.mock("@/modules/chat/pages/team-chat-page", () => ({
   TeamChatPageContent: () => <div>团队历史内容</div>,
 }));
 
+vi.mock("@/modules/im", () => ({
+  IMPage: () => <h1>IM 平台列表</h1>,
+  IMConnectionDetailDialog: ({
+    connectionId,
+    initialBindingId,
+    onClose,
+  }: {
+    connectionId: string;
+    initialBindingId?: string;
+    onClose: () => void;
+  }) => (
+    <div role="dialog" aria-label="IM 连接详情">
+      <p>
+        {connectionId}/{initialBindingId}
+      </p>
+      <button onClick={onClose}>关闭连接</button>
+    </div>
+  ),
+}));
+
 const storage = new Map<string, string>();
 
 vi.mock("@/modules/chat", () => ({
@@ -229,6 +249,7 @@ vi.mock("./partner-navigation-layout", async () => {
       notificationBell,
       preferences,
       settingsOpen,
+      settingsSidebar,
       onManageEntities,
       onOpenPartnerDetail,
       onOpenSettings,
@@ -246,6 +267,7 @@ vi.mock("./partner-navigation-layout", async () => {
       notificationBell?: ReactNode;
       preferences: { globalSidebarCollapsed: boolean };
       settingsOpen: boolean;
+      settingsSidebar?: ReactNode;
       onManageEntities: (mode: "team" | "waker") => void;
       onOpenPartnerDetail: (partnerId: string) => void;
       onOpenSettings: () => void;
@@ -304,6 +326,7 @@ vi.mock("./partner-navigation-layout", async () => {
               设置
             </button>
           </nav>
+          {settingsSidebar}
           {children}
         </div>
       </SceneChromePortalProvider>
@@ -754,6 +777,39 @@ describe("AppShell 伙伴导航", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("旧 IM 深链打开设置内详情，关闭唯一设置后回到首页", async () => {
+    const user = userEvent.setup();
+    renderShell("/im/connection-one?chat=binding-one");
+    expect(
+      await screen.findByRole("heading", { name: "IM 平台列表" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("dialog", { name: "IM 连接详情" }),
+    ).toHaveTextContent("connection-one/binding-one");
+    expect(screen.getByRole("button", { name: "IM 集成" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "关闭连接" }));
+    await user.click(screen.getByRole("button", { name: "关闭 设置" }));
+    expect(screen.queryByRole("region", { name: "设置 Scene" })).toBeNull();
+    expect(await screen.findByText("/", { exact: true })).toBeVisible();
+  });
+
+  it("发布集成中切换 IM 分类后不会重开已关闭的深链详情", async () => {
+    const user = userEvent.setup();
+    renderShell("/im/connection-one?chat=binding-one");
+    await screen.findByRole("dialog", { name: "IM 连接详情" });
+    await user.click(screen.getByRole("button", { name: "关闭连接" }));
+    await user.click(screen.getByRole("button", { name: "通用" }));
+    expect(screen.queryByRole("heading", { name: "IM 平台列表" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "IM 集成" }));
+    expect(screen.getByRole("heading", { name: "IM 平台列表" })).toBeVisible();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getAllByRole("tab")).toHaveLength(1);
+  });
+
   it("设置入口打开唯一 Scene，切到会话后保留设置 Scene", async () => {
     const user = userEvent.setup();
     renderShell();
@@ -788,6 +844,25 @@ describe("AppShell 伙伴导航", () => {
     expect(
       screen.getByText("/chats/chat-a?wakerId=waker-1"),
     ).toBeInTheDocument();
+  });
+
+  it("从 IM 深链切离后，设置入口恢复已有分类且不恢复临时详情", async () => {
+    const user = userEvent.setup();
+    renderShell("/im/connection-one?chat=binding-one");
+    await user.click(await screen.findByRole("button", { name: "关闭连接" }));
+    await user.click(screen.getByRole("button", { name: "管理伙伴一" }));
+    expect(screen.queryByRole("region", { name: "设置 Scene" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    expect(
+      await screen.findByRole("heading", { name: "IM 平台列表" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "IM 集成" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getAllByRole("tab", { name: "设置" })).toHaveLength(1);
   });
 
   it.each([false, true])(

@@ -61,7 +61,7 @@ func (v ChatRecoveryIssue) Values() []enum.Enum {
 }
 
 func (v ChatRecoveryIssue) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ChatRecoveryIssue"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ChatRecoveryIssue"
 }
 
 func (v ChatRecoveryIssue) MarshalText() ([]byte, error) {

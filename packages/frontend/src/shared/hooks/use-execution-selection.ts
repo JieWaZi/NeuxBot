@@ -1,3 +1,4 @@
+import { minimumReasoning } from "@/shared/lib/runtime-reasoning";
 import { listRuntimesOptions } from "@/shared/api/runtime-queries";
 import { useQuery } from "@tanstack/react-query";
 
@@ -31,12 +32,14 @@ export function useExecutionSelection({
   enabled = true,
   defaults = false,
   requiredCapability,
+  reasoningDefault,
 }: {
   value: ExecutionSelection;
   runtime?: RuntimeOption;
   enabled?: boolean;
   defaults?: boolean;
   requiredCapability?: string;
+  reasoningDefault?: "minimum";
 }) {
   const runtimesQuery = useQuery({
     ...listRuntimesOptions(withLocalErrorSurface({})),
@@ -151,8 +154,11 @@ export function useExecutionSelection({
     ? account.defaultReasoning
     : runtime?.defaultReasoning;
   const requestedReasoning =
-    value.reasoning ??
-    (reasoningOptions.find((item) => item.id === preferredReasoning)?.id || "");
+    reasoningDefault === "minimum"
+      ? value.reasoning || minimumReasoning(reasoningOptions)
+      : (value.reasoning ??
+        (reasoningOptions.find((item) => item.id === preferredReasoning)?.id ||
+          ""));
   const reasoning =
     defaults && !reasoningOptions.some((item) => item.id === requestedReasoning)
       ? account

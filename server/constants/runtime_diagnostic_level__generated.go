@@ -45,7 +45,7 @@ func (v RuntimeDiagnosticLevel) Values() []enum.Enum {
 }
 
 func (v RuntimeDiagnosticLevel) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeDiagnosticLevel"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeDiagnosticLevel"
 }
 
 func (v RuntimeDiagnosticLevel) MarshalText() ([]byte, error) {

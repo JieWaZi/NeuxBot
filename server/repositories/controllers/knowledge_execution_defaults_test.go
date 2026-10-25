@@ -53,19 +53,21 @@ func TestLibraryExecutionDefaultsPersistCASAndStableReplay(t *testing.T) {
 	if err != nil || empty.Version != 0 || empty.LibraryID != "library" {
 		t.Fatalf("missing defaults=%+v %v", empty, err)
 	}
-	initial := models.LibraryExecutionDefaults{LibraryID: "library", RuntimeID: "codex", AccountID: "selected-account", Model: "model"}
+	initial := models.LibraryExecutionDefaults{LibraryID: "library", RuntimeID: "codex", AccountID: "selected-account", Model: "model", Reasoning: "high"}
 	first, err := repository.UpdateLibraryExecutionDefaults(ctx, "first", 0, initial)
-	if err != nil || first.Version != 1 {
+	if err != nil || first.Version != 1 || first.Reasoning != "high" {
 		t.Fatalf("first=%+v %v", first, err)
 	}
 	initial.Model = "new-model"
+	initial.Reasoning = ""
 	second, err := repository.UpdateLibraryExecutionDefaults(ctx, "second", 1, initial)
 	if err != nil || second.Version != 2 {
 		t.Fatalf("second=%+v %v", second, err)
 	}
 	initial.Model = "model"
+	initial.Reasoning = "high"
 	replay, err := repository.UpdateLibraryExecutionDefaults(ctx, "first", 0, initial)
-	if err != nil || replay.Version != 1 || replay.Model != "model" {
+	if err != nil || replay.Version != 1 || replay.Model != "model" || replay.Reasoning != "high" {
 		t.Fatalf("replay=%+v %v", replay, err)
 	}
 	_, err = repository.UpdateLibraryExecutionDefaults(ctx, "stale", 1, initial)
@@ -79,7 +81,7 @@ func TestLibraryExecutionDefaultsPersistCASAndStableReplay(t *testing.T) {
 	}
 	repository = NewKnowledgeController(db)
 	saved, err := repository.LibraryExecutionDefaults(ctx, "library")
-	if err != nil || saved.Version != 2 || saved.Model != "new-model" || saved.AccountID != "selected-account" {
+	if err != nil || saved.Version != 2 || saved.Model != "new-model" || saved.AccountID != "selected-account" || saved.Reasoning != "" {
 		t.Fatalf("restart read=%+v %v", saved, err)
 	}
 	other, err := repository.LibraryExecutionDefaults(ctx, "another")

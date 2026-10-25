@@ -113,7 +113,7 @@ it("复制 HTTP 配置包含完整代理地址与 API Key 占位符", async () =
   );
   expect(JSON.parse(await navigator.clipboard.readText())).toEqual({
     mcpServers: {
-      neuxally: {
+      neuxbot: {
         url: "https://example.test/proxy/mcp",
         headers: { "X-API-Key": "<YOUR_API_KEY>" },
       },

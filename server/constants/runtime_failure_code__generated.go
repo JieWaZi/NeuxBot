@@ -133,7 +133,7 @@ func (v RuntimeFailureCode) Values() []enum.Enum {
 }
 
 func (v RuntimeFailureCode) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeFailureCode"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeFailureCode"
 }
 
 func (v RuntimeFailureCode) MarshalText() ([]byte, error) {

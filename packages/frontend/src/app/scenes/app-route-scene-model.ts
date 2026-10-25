@@ -1,4 +1,8 @@
 import type { AppSceneTab } from "@/shared/workspace/app-scene-model";
+import {
+  legacyIMSettingsHref,
+  settingsSectionFromPath,
+} from "./settings-route";
 
 export type RouteSceneLocation = {
   pathname: string;
@@ -52,6 +56,20 @@ export function routeSceneForLocation(
   labels: RouteSceneLabels,
 ): Omit<AppSceneTab, "lastUsed"> {
   const { pathname, search } = location;
+  if (settingsSectionFromPath(pathname)) {
+    const href =
+      legacyIMSettingsHref(pathname, search) || `${pathname}${search}`;
+    const [settingsPath = "", settingsSearch = ""] = href.split("?");
+    const params = new URLSearchParams(settingsSearch);
+    // 临时详情仅属于当前打开动作，切回设置标签时不恢复已离开的弹窗。
+    params.delete("connection");
+    params.delete("binding");
+    params.delete("chat");
+    return {
+      ...settingsSceneTab(labels.settings),
+      href: `${settingsPath}${params.size ? `?${params}` : ""}`,
+    };
+  }
   const knowledge = /^\/knowledge(?:\/([^/]+))?$/.exec(pathname);
   if (knowledge) {
     const params = new URLSearchParams(search);
@@ -73,12 +91,14 @@ export function routeSceneForLocation(
       location,
     );
   }
-  if (pathname === "/resources" || pathname.startsWith("/resources/"))
+  if (
+    pathname === "/workflows" ||
+    pathname === "/resources" ||
+    pathname.startsWith("/resources/")
+  )
     return routeTab("resources", labels.resources, location);
   if (pathname === "/work-board")
     return routeTab("work-board", labels.workBoard || labels.page, location);
-  const im = /^\/im(?:\/([^/]+))?$/.exec(pathname);
-  if (im) return routeTab("im", labels.im || labels.page, location);
   const workflow = /^\/workflows(?:\/([^/]+)(?:\/runs\/([^/]+))?)?$/.exec(
     pathname,
   );

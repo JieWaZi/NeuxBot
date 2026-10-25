@@ -1,4 +1,3 @@
-import { platform } from "@/shared/platform/provider";
 import {
   useInfiniteQuery,
   useQuery,
@@ -7,6 +6,7 @@ import {
 import { PanelRight, Plus } from "lucide-react";
 import {
   type ComponentType,
+  lazy,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -75,11 +75,21 @@ import {
 } from "../scenes/app-route-scene-model";
 import { AppSceneWorkspaceProvider } from "../scenes/app-scene-workspace-provider";
 import {
+  legacyIMSettingsHref,
+  settingsSectionFromPath,
+} from "../scenes/settings-route";
+import {
   readPartnerNavigationPreferences,
   forgetTeamThread,
   rememberTeamThread,
   writePartnerNavigationPreferences,
 } from "./partner-navigation-preferences";
+
+const IMIntegrationSettingsContent = lazy(() =>
+  import("../scenes/im-integration-settings-content").then((module) => ({
+    default: module.IMIntegrationSettingsContent,
+  })),
+);
 
 const titlebarActionClass =
   "border-transparent bg-transparent text-muted-foreground hover:bg-muted hover:text-foreground";
@@ -91,6 +101,10 @@ export function AppShell({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  useEffect(() => {
+    const href = legacyIMSettingsHref(location.pathname, location.search);
+    if (href) navigate(href, { replace: true });
+  }, [location.pathname, location.search, navigate]);
   return (
     <NotificationNavigationProvider resolveHref={notificationHref}>
       <WorkspaceProvider>
@@ -111,7 +125,6 @@ function AppShellContent({
   RouteScene: ComponentType<AppRouteSceneProps>;
 }) {
   const { t } = useTranslation(["team", "chat", "common", "automaticTask"]);
-  const SessionActions = platform().SessionActions;
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -134,9 +147,22 @@ function AppShellContent({
   const entitySelectionRequestRef = useRef(0);
   const settingsPreviousCollapsedRef = useRef(false);
   const previousSettingsOpenRef = useRef(false);
-  const [sceneNavigationVisible, setSceneNavigationVisible] = useState(false);
-  const [settingsSection, setSettingsSection] =
+  const [sceneNavigationVisible, setSceneNavigationVisible] = useState(() =>
+    Boolean(settingsSectionFromPath(location.pathname)),
+  );
+  const [lastSettingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
+  const settingsTab = appScenes.snapshot.tabs.find(
+    (tab) => tab.id === "settings",
+  );
+  const settingsSection =
+    settingsSectionFromPath(location.pathname) ??
+    settingsSectionFromPath(settingsTab?.href?.split("?")[0] || "") ??
+    lastSettingsSection;
+  const selectSettingsSection = (section: SettingsSection) => {
+    setSettingsSection(section);
+    navigate(`/settings/${section}`, { flushSync: true });
+  };
   const [chatRightPanel, setChatRightPanel] = useState<
     ChatRightPanel | undefined
   >(undefined);
@@ -312,13 +338,19 @@ function AppShellContent({
     const wasOpen = previousSettingsOpenRef.current;
     previousSettingsOpenRef.current = settingsOpen;
     if (wasOpen === settingsOpen) return;
+    setSceneNavigationVisible(settingsOpen);
     // Settings 激活时占用完整导航栏；切离后恢复进入前的折叠状态。
-    setPreferences((current) => ({
-      ...current,
-      globalSidebarCollapsed: settingsOpen
-        ? false
-        : settingsPreviousCollapsedRef.current,
-    }));
+    setPreferences((current) => {
+      if (settingsOpen) {
+        settingsPreviousCollapsedRef.current = current.globalSidebarCollapsed;
+      }
+      return {
+        ...current,
+        globalSidebarCollapsed: settingsOpen
+          ? false
+          : settingsPreviousCollapsedRef.current,
+      };
+    });
   }, [settingsOpen]);
 
   const openPartnerDetail = (partnerId: string) => {
@@ -435,28 +467,49 @@ function AppShellContent({
   const openSettings = useCallback(() => {
     setSceneNavigationVisible(true);
     if (settingsOpen) return;
+    const href = `/settings/${settingsSection}`;
     settingsPreviousCollapsedRef.current = preferences.globalSidebarCollapsed;
-    appScenes.dispatch({
-      type: "open",
-      tab: settingsSceneTab(t("common:sceneTabs.settings")),
-    });
-  }, [appScenes, preferences.globalSidebarCollapsed, settingsOpen, t]);
+    if (`${location.pathname}${location.search}` !== href) {
+      navigate(href, { flushSync: true });
+    } else {
+      appScenes.dispatch({
+        type: "open",
+        tab: { ...settingsSceneTab(t("common:sceneTabs.settings")), href },
+      });
+    }
+  }, [
+    appScenes,
+    navigate,
+    preferences.globalSidebarCollapsed,
+    settingsOpen,
+    settingsSection,
+    location.pathname,
+    location.search,
+    t,
+  ]);
   const closeSettings = () => {
     setSceneNavigationVisible(false);
+    setSettingsSection(settingsSection);
     appScenes.dispatch({ type: "close", tabId: "settings" });
+    if (
+      appScenes.snapshot.tabs.length === 1 &&
+      settingsSectionFromPath(location.pathname)
+    ) {
+      navigate("/", { replace: true });
+    }
   };
   useEffect(() => {
     const openGeneral = () => {
       setSettingsSection("general");
-      openSettings();
+      setSceneNavigationVisible(true);
+      navigate("/settings/general", { flushSync: true });
     };
     window.addEventListener("ally:open-general-settings", openGeneral);
     return () =>
       window.removeEventListener("ally:open-general-settings", openGeneral);
-  }, [openSettings]);
+  }, [navigate]);
   const sceneActions = (
     <>
-      {SessionActions ? <SessionActions /> : null}
       {bellInSceneChrome ? (
         <NotificationBell
           active={workBoardActive}
@@ -491,7 +544,6 @@ function AppShellContent({
     <SceneChromeActionsProvider actions={sceneActions}>
       <NotificationPresenter onConnectionChange={setNotificationsConnected} />
       <div className="bg-canvas relative h-full overflow-hidden">
-
         <PartnerNavigationLayout
           notificationBell={
             settingsOpen || bellInSceneChrome ? undefined : (
@@ -534,18 +586,6 @@ function AppShellContent({
               ),
             });
           }}
-          onOpenWorkflows={() => {
-            setSceneNavigationVisible(false);
-            const href = "/workflows";
-            navigate(href, { flushSync: true });
-            appScenes.dispatch({
-              type: "open",
-              tab: routeSceneForLocation(
-                { pathname: href, search: "" },
-                routeSceneLabels,
-              ),
-            });
-          }}
           onOpenSettings={openSettings}
           onPreferencesChange={setPreferences}
           onSceneNavigationVisibleChange={setSceneNavigationVisible}
@@ -573,7 +613,7 @@ function AppShellContent({
             settingsOpen ? (
               <SettingsContextSidebar
                 activeSection={settingsSection}
-                onSelect={setSettingsSection}
+                onSelect={selectSettingsSection}
               />
             ) : undefined
           }
@@ -688,8 +728,9 @@ function AppShellContent({
               <div className="absolute inset-0 z-10">
                 <SettingsScene
                   section={settingsSection}
+                  imIntegrationContent={<IMIntegrationSettingsContent />}
                   onClose={closeSettings}
-                  onSelectSection={setSettingsSection}
+                  onSelectSection={selectSettingsSection}
                   showSceneChrome={false}
                 />
               </div>

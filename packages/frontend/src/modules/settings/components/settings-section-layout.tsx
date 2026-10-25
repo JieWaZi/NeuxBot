@@ -32,11 +32,13 @@ export function SettingsContentShell({
 export function SettingsRow({
   children,
   className,
+  content,
   description,
   title,
   ...props
-}: Omit<ComponentProps<"section">, "title"> & {
+}: Omit<ComponentProps<"section">, "title" | "content"> & {
   description?: ReactNode;
+  content?: ReactNode;
   title: ReactNode;
 }) {
   return (
@@ -53,7 +55,7 @@ export function SettingsRow({
           description ? "items-start" : "items-center",
         )}
       >
-        <div className="min-w-60 flex-1">
+        <div className="min-w-0 flex-1 basis-60">
           <h2 className="type-label text-content-primary font-normal">
             {title}
           </h2>
@@ -69,6 +71,7 @@ export function SettingsRow({
           </div>
         ) : null}
       </div>
+      {content}
     </section>
   );
 }

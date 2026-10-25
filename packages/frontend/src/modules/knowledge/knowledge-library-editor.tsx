@@ -62,8 +62,9 @@ export function KnowledgeLibraryEditor({
   const localConfiguration = knowledgeAdapter(library.ref).localConfiguration;
   const locked = state.pending || Boolean(state.command);
   const execution = useExecutionSelection({
-    value: draft.execution,
+    value: { ...draft.execution, reasoning: draft.execution.reasoning ?? "" },
     requiredCapability: "isolated_text_generation",
+    reasoningDefault: "minimum",
     enabled: opened && localConfiguration,
   });
   const embedding = draft.embedding;
@@ -301,7 +302,6 @@ export function KnowledgeLibraryEditor({
                   }}
                   disabled={locked}
                   permissionHidden
-                  reasoningHidden
                 />
                 <SectionTitle title={t("embeddingSettings")} />
                 <KnowledgeEmbeddingFields

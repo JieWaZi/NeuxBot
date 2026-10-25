@@ -45,7 +45,7 @@ func (v RuntimeDetectionState) Values() []enum.Enum {
 }
 
 func (v RuntimeDetectionState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeDetectionState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeDetectionState"
 }
 
 func (v RuntimeDetectionState) MarshalText() ([]byte, error) {

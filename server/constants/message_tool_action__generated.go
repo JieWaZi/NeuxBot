@@ -97,7 +97,7 @@ func (v MessageToolAction) Values() []enum.Enum {
 }
 
 func (v MessageToolAction) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MessageToolAction"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MessageToolAction"
 }
 
 func (v MessageToolAction) MarshalText() ([]byte, error) {

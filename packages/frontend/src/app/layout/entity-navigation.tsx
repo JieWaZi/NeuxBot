@@ -20,11 +20,8 @@ import {
   Package,
   BookOpen,
   ArrowLeftRight,
-  ChevronUp,
   CircleAlert,
   Clock3,
-  MessageCircle,
-  Workflow,
   LoaderCircle,
   Plus,
   Search,
@@ -48,11 +45,6 @@ import { cn } from "@/shared/lib/cn";
 import { Avatar } from "@/shared/ui/avatar";
 import { wakerCompanionActivity } from "@/shared/companion/activity";
 import { Button } from "@/shared/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/shared/ui/collapsible";
 import { NavigationItem } from "@/shared/ui/navigation-panel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { SearchField } from "@/shared/ui/search-field";
@@ -70,20 +62,14 @@ import {
   entityActivityCounts,
   entityActivitySummaryLabel,
 } from "./entity-activity-summary";
-import {
-  readNavigationActionsExpanded,
-  writeNavigationActionsExpanded,
-  type PartnerNavigationPreferences,
-} from "./partner-navigation-preferences";
+import type { PartnerNavigationPreferences } from "./partner-navigation-preferences";
 
 export type NavigationEntity =
   | { id: string; key: string; kind: "team"; team: ChannelDetail }
   | { id: string; key: string; kind: "waker"; waker: Waker };
 
 type EntityNavigationProps = {
-  onOpenIM?: () => void;
   onOpenAutomaticTasks?: () => void;
-  onOpenWorkflows?: () => void;
   onOpenResources?: () => void;
   onOpenKnowledge?: () => void;
   collapsed: boolean;
@@ -391,9 +377,7 @@ function EntityRow({
 }
 
 export function EntityNavigation({
-  onOpenIM,
   onOpenAutomaticTasks,
-  onOpenWorkflows,
   onOpenResources,
   onOpenKnowledge,
   collapsed,
@@ -417,11 +401,6 @@ export function EntityNavigation({
   const [hoveredRailKey, setHoveredRailKey] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [moreOpen, setMoreOpen] = useState(readNavigationActionsExpanded);
-  const changeMoreOpen = (open: boolean) => {
-    setMoreOpen(open);
-    writeNavigationActionsExpanded(open);
-  };
   const [switching, setSwitching] = useState(false);
   const switchTimer = useRef<number | undefined>(undefined);
   const itemRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -865,200 +844,127 @@ export function EntityNavigation({
         )}
 
         {showSettings ? (
-          <Collapsible open={moreOpen} onOpenChange={changeMoreOpen} asChild>
-            <div
-              className={cn(
-                "border-border-subtle w-full shrink-0 border-t pt-2",
-                collapsed ? "mt-auto grid justify-items-center gap-1" : "mt-2",
-              )}
-            >
-              {onOpenResources ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    {collapsed ? (
-                      <Button
-                        size="icon"
-                        variant="choice"
-                        aria-label={t("plugin:title")}
-                        onClick={onOpenResources}
-                      >
-                        <Package />
-                      </Button>
-                    ) : (
-                      <NavigationItem
-                        density="navigation"
-                        icon={<Package strokeWidth={1.5} />}
-                        label={t("plugin:title")}
-                        onClick={onOpenResources}
-                      />
-                    )}
-                  </TooltipTrigger>
+          <div
+            className={cn(
+              "border-border-subtle w-full shrink-0 border-t pt-2",
+              collapsed ? "mt-auto grid justify-items-center gap-1" : "mt-2",
+            )}
+          >
+            {onOpenResources ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
                   {collapsed ? (
-                    <TooltipContent side="right">
-                      {t("plugin:title")}
-                    </TooltipContent>
-                  ) : null}
-                </Tooltip>
-              ) : null}
-              {onOpenKnowledge ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    {collapsed ? (
-                      <Button
-                        size="icon"
-                        variant="choice"
-                        aria-label={t("knowledge:knowledge")}
-                        onClick={onOpenKnowledge}
-                      >
-                        <BookOpen />
-                      </Button>
-                    ) : (
-                      <NavigationItem
-                        density="navigation"
-                        icon={<BookOpen strokeWidth={1.5} />}
-                        label={t("knowledge:knowledge")}
-                        onClick={onOpenKnowledge}
-                      />
-                    )}
-                  </TooltipTrigger>
-                  {collapsed ? (
-                    <TooltipContent side="right">
-                      {t("knowledge:knowledge")}
-                    </TooltipContent>
-                  ) : null}
-                </Tooltip>
-              ) : null}
-              {onOpenAutomaticTasks ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    {collapsed ? (
-                      <Button
-                        size="icon"
-                        variant="choice"
-                        aria-label={t("automaticTask:title")}
-                        onClick={onOpenAutomaticTasks}
-                      >
-                        <Clock3 />
-                      </Button>
-                    ) : (
-                      <NavigationItem
-                        density="navigation"
-                        icon={<Clock3 strokeWidth={1.5} />}
-                        label={t("automaticTask:title")}
-                        onClick={onOpenAutomaticTasks}
-                      />
-                    )}
-                  </TooltipTrigger>
-                  {collapsed ? (
-                    <TooltipContent side="right">
-                      {t("automaticTask:title")}
-                    </TooltipContent>
-                  ) : null}
-                </Tooltip>
-              ) : null}
-              <CollapsibleContent inert={!moreOpen} aria-hidden={!moreOpen}>
-                <div
-                  className={cn(collapsed && "grid justify-items-center gap-1")}
-                >
-                  {[
-                    {
-                      label: t("workflow:title"),
-                      icon: Workflow,
-                      action: onOpenWorkflows,
-                    },
-                    {
-                      label: t("im:title"),
-                      icon: MessageCircle,
-                      action: onOpenIM,
-                    },
-                  ]
-                    .filter((item) => item.action)
-                    .map(({ label, icon: Icon, action }) => (
-                      <Tooltip key={label}>
-                        <TooltipTrigger asChild>
-                          {collapsed ? (
-                            <Button
-                              size="icon"
-                              variant="choice"
-                              aria-label={label}
-                              onClick={action}
-                            >
-                              <Icon />
-                            </Button>
-                          ) : (
-                            <NavigationItem
-                              density="navigation"
-                              icon={<Icon strokeWidth={1.5} />}
-                              label={label}
-                              onClick={action}
-                            />
-                          )}
-                        </TooltipTrigger>
-                        {collapsed ? (
-                          <TooltipContent side="right">{label}</TooltipContent>
-                        ) : null}
-                      </Tooltip>
-                    ))}
-                </div>
-              </CollapsibleContent>
-              <div
-                className={cn(
-                  "flex items-center",
-                  collapsed && "flex-col gap-1",
-                )}
-              >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    {collapsed ? (
-                      <Button
-                        size="icon"
-                        variant="choice"
-                        aria-label={t("partnerNavigation.settings")}
-                        onClick={onOpenSettings}
-                      >
-                        <Settings />
-                      </Button>
-                    ) : (
-                      <NavigationItem
-                        density="navigation"
-                        icon={<Settings strokeWidth={1.5} />}
-                        label={t("partnerNavigation.settings")}
-                        onClick={onOpenSettings}
-                      />
-                    )}
-                  </TooltipTrigger>
-                  {collapsed ? (
-                    <TooltipContent side="right">
-                      {t("partnerNavigation.settings")}
-                    </TooltipContent>
-                  ) : null}
-                </Tooltip>
-                {onOpenWorkflows || onOpenIM ? (
-                  <CollapsibleTrigger asChild>
                     <Button
                       size="icon"
-                      variant="ghost"
-                      className="shrink-0"
-                      aria-label={t(
-                        moreOpen
-                          ? "partnerNavigation.collapseNavigationActions"
-                          : "partnerNavigation.expandNavigationActions",
-                      )}
+                      variant="choice"
+                      aria-label={t("plugin:title")}
+                      onClick={onOpenResources}
                     >
-                      <ChevronUp
-                        aria-hidden="true"
-                        className={cn(
-                          "duration-standard ease-ui transition-transform motion-reduce:transition-none",
-                          moreOpen && "rotate-180",
-                        )}
-                        strokeWidth={1.5}
-                      />
+                      <Package />
                     </Button>
-                  </CollapsibleTrigger>
+                  ) : (
+                    <NavigationItem
+                      density="navigation"
+                      icon={<Package strokeWidth={1.5} />}
+                      label={t("plugin:title")}
+                      onClick={onOpenResources}
+                    />
+                  )}
+                </TooltipTrigger>
+                {collapsed ? (
+                  <TooltipContent side="right">
+                    {t("plugin:title")}
+                  </TooltipContent>
                 ) : null}
-              </div>
+              </Tooltip>
+            ) : null}
+            {onOpenKnowledge ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {collapsed ? (
+                    <Button
+                      size="icon"
+                      variant="choice"
+                      aria-label={t("knowledge:knowledge")}
+                      onClick={onOpenKnowledge}
+                    >
+                      <BookOpen />
+                    </Button>
+                  ) : (
+                    <NavigationItem
+                      density="navigation"
+                      icon={<BookOpen strokeWidth={1.5} />}
+                      label={t("knowledge:knowledge")}
+                      onClick={onOpenKnowledge}
+                    />
+                  )}
+                </TooltipTrigger>
+                {collapsed ? (
+                  <TooltipContent side="right">
+                    {t("knowledge:knowledge")}
+                  </TooltipContent>
+                ) : null}
+              </Tooltip>
+            ) : null}
+            {onOpenAutomaticTasks ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {collapsed ? (
+                    <Button
+                      size="icon"
+                      variant="choice"
+                      aria-label={t("automaticTask:title")}
+                      onClick={onOpenAutomaticTasks}
+                    >
+                      <Clock3 />
+                    </Button>
+                  ) : (
+                    <NavigationItem
+                      density="navigation"
+                      icon={<Clock3 strokeWidth={1.5} />}
+                      label={t("automaticTask:title")}
+                      onClick={onOpenAutomaticTasks}
+                    />
+                  )}
+                </TooltipTrigger>
+                {collapsed ? (
+                  <TooltipContent side="right">
+                    {t("automaticTask:title")}
+                  </TooltipContent>
+                ) : null}
+              </Tooltip>
+            ) : null}
+            <div
+              className={cn("flex items-center", collapsed && "flex-col gap-1")}
+            >
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {collapsed ? (
+                    <Button
+                      size="icon"
+                      variant="choice"
+                      aria-label={t("partnerNavigation.settings")}
+                      onClick={onOpenSettings}
+                    >
+                      <Settings />
+                    </Button>
+                  ) : (
+                    <NavigationItem
+                      density="navigation"
+                      icon={<Settings strokeWidth={1.5} />}
+                      label={t("partnerNavigation.settings")}
+                      onClick={onOpenSettings}
+                    />
+                  )}
+                </TooltipTrigger>
+                {collapsed ? (
+                  <TooltipContent side="right">
+                    {t("partnerNavigation.settings")}
+                  </TooltipContent>
+                ) : null}
+              </Tooltip>
             </div>
-          </Collapsible>
+          </div>
         ) : null}
       </aside>
     </TooltipProvider>

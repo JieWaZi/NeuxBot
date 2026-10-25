@@ -1,5 +1,6 @@
 // 扩展界面唯一文案源，仅由按需加载的知识模块注册。
 export const knowledgeExtendedZh = {
+  modelReasoningHelp: "默认使用模型支持的最低推理强度，可按需要提高。",
   modelCapabilityUnavailable:
     "当前智能体不支持知识文本生成。请在设置的智能体页面刷新探测，或选择其他智能体。",
   modelCapabilityUnverified:
@@ -210,6 +211,8 @@ export const knowledgeExtendedEn: Record<
   keyof typeof knowledgeExtendedZh,
   string
 > = {
+  modelReasoningHelp:
+    "Uses the lowest reasoning level supported by the model by default; increase it when needed.",
   modelCapabilityUnavailable:
     "This agent does not support isolated knowledge text generation. Refresh detection in Settings > Agents or select another agent.",
   modelCapabilityUnverified:

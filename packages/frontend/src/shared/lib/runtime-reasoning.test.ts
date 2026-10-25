@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isMaximumReasoning } from "./runtime-reasoning";
+import { isMaximumReasoning, minimumReasoning } from "./runtime-reasoning";
 
 describe("具体思考强度的最高档判断", () => {
   it.each(["enabled", "disabled", "on", "off", "default", "auto"])(
@@ -31,4 +31,11 @@ describe("具体思考强度的最高档判断", () => {
     expect(isMaximumReasoning(options, "enabled")).toBe(false);
     expect(isMaximumReasoning([], "high")).toBe(false);
   });
+});
+
+it("最低档取真实选项，不受目录顺序影响，支持关闭与单档模型", () => {
+  expect(minimumReasoning([{ id: "high" }, { id: "low" }])).toBe("low");
+  expect(minimumReasoning([{ id: "high" }, { id: "off" }])).toBe("off");
+  expect(minimumReasoning([{ id: "high" }])).toBe("high");
+  expect(minimumReasoning([])).toBe("");
 });
