@@ -468,3 +468,33 @@ NeuxBot 在现有 Go IM 边界实现协议互通，不分发或执行上述 Node
 ## Qoder 与 WorkBuddy 品牌图标
 
 适用范围：`packages/frontend/src/shared/assets/brands/qoder.svg` 与 `workbuddy.svg`。分别原样取自 [Qoder 官网 favicon](https://qoder.com/favIcon.svg) 与 [WorkBuddy 官网 CDN 图标](https://assets.workbuddy.cn/web/workbuddy/a5b2fb510f0e7b156f19d072fae0cd12ae1f2f19/assets/logo.svg)，随应用本地加载，仅用于标识对应智能体。软件名称与标识的权利归各自权利人所有，不适用本仓库 MIT 许可，不表示官方背书。
+
+## README CLI 品牌图标
+
+适用范围：`docs/assets/readme/multi-cli.png`。Codex、Claude Code、Cursor、Kimi、OpenCode、Gemini CLI 与 Grok 图标复用应用使用的 [LobeHub Icons](https://github.com/lobehub/lobe-icons)（`@lobehub/icons 5.15.0`，MIT）。Qoder 与 Qoder CN 共用 [Qoder 官网图标](https://qoder.com/favIcon.svg)；WorkBuddy 使用[官网 CDN 图标](https://assets.workbuddy.cn/web/workbuddy/a5b2fb510f0e7b156f19d072fae0cd12ae1f2f19/assets/logo.svg)；Pi 使用 [Pi 官网图标](https://pi.dev/favicon.svg)。品牌名称与标识归各自权利人所有，仅用于标识对应 CLI，不表示官方背书。
+
+LobeHub Icons 许可：
+
+```text
+MIT License
+
+Copyright (c) 2023 LobeHub
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
