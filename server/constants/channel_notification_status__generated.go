@@ -41,7 +41,7 @@ func (v ChannelNotificationStatus) Values() []enum.Enum {
 }
 
 func (v ChannelNotificationStatus) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ChannelNotificationStatus"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ChannelNotificationStatus"
 }
 
 func (v ChannelNotificationStatus) MarshalText() ([]byte, error) {

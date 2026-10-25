@@ -3,7 +3,10 @@ package channel
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/teamwork"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // acquireThreadOperation 先确定团队身份，再复用同步接纳链路的聚合保护。
@@ -44,4 +47,23 @@ func (s *service) AcquireChatInput(ctx context.Context, chatID string, userInput
 		return nil, nil, err
 	}
 	return locked, release, nil
+}
+
+// automaticWorkSource 只在原运行尚未整体封闭时沿内部接力保留自动来源。
+// Thread 始终保留最初来源用于追溯；新用户工作和它产生的成员/汇总从封闭事实判断身份。
+func (s *service) automaticWorkSource(ctx context.Context, thread models.ChannelThread) (string, error) {
+	if thread.AutomaticRunID == "" {
+		return "", nil
+	}
+	if s.automaticRun == nil {
+		return "", status_error.AutomaticRunNotFound
+	}
+	run, err := s.automaticRun(ctx, thread.AutomaticRunID)
+	if err != nil {
+		return "", err
+	}
+	if run.FinalState != constants.AutomaticRunStateUnspecified {
+		return "", nil
+	}
+	return thread.AutomaticRunID, nil
 }

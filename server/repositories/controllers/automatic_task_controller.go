@@ -6,9 +6,9 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
 )
@@ -199,12 +199,16 @@ func (c *automaticTaskController) UpdateConfiguration(ctx context.Context, task 
 	if err != nil {
 		return status_error.BadRequest
 	}
+	knowledge, err := json.Marshal(task.Knowledge)
+	if err != nil {
+		return status_error.BadRequest
+	}
 	schedule, err := json.Marshal(task.Schedule)
 	if err != nil {
 		return status_error.BadRequest
 	}
 	// 显式编码可空 JSON，避免 ORM 对 nil interface 执行字段赋值时 panic。
-	updates := map[string]any{"workflow_trigger_detached": task.WorkflowTriggerDetached, "target_kind": task.TargetKind, "workflow_id": task.WorkflowID, "workflow_revision_policy": task.WorkflowRevisionPolicy, "workflow_revision_id": task.WorkflowRevisionID, "workflow_input_bindings": string(args), "workflow_input_revision_id": task.WorkflowInputRevisionID, "workspace_read_only": task.WorkspaceReadOnly, "member_configs": string(members), "waker_id": task.WakerID, "channel_id": task.ChannelID, "executor_waker_id": task.ExecutorWakerID, "name": task.Name, "instruction": task.Instruction, "trigger": task.Trigger, "schedule": string(schedule), "project_id": task.ProjectID, "working_directory": task.WorkingDirectory, "runtime_id": task.RuntimeID, "account_id": task.AccountID, "model": task.Model, "reasoning": task.Reasoning, "permission_level": task.PermissionLevel, "enabled": task.Enabled, "revision": task.Revision, "configuration_version": task.ConfigurationVersion, "trigger_version": task.TriggerVersion, "token_hash": task.TokenHash, "next_run_at": task.NextRunAt, "updated_at": task.UpdatedAt}
+	updates := map[string]any{"knowledge": string(knowledge), "workflow_trigger_detached": task.WorkflowTriggerDetached, "target_kind": task.TargetKind, "workflow_id": task.WorkflowID, "workflow_revision_policy": task.WorkflowRevisionPolicy, "workflow_revision_id": task.WorkflowRevisionID, "workflow_input_bindings": string(args), "workflow_input_revision_id": task.WorkflowInputRevisionID, "workspace_read_only": task.WorkspaceReadOnly, "member_configs": string(members), "waker_id": task.WakerID, "channel_id": task.ChannelID, "executor_waker_id": task.ExecutorWakerID, "name": task.Name, "instruction": task.Instruction, "trigger": task.Trigger, "schedule": string(schedule), "project_id": task.ProjectID, "working_directory": task.WorkingDirectory, "runtime_id": task.RuntimeID, "account_id": task.AccountID, "model": task.Model, "reasoning": task.Reasoning, "permission_level": task.PermissionLevel, "enabled": task.Enabled, "revision": task.Revision, "configuration_version": task.ConfigurationVersion, "trigger_version": task.TriggerVersion, "token_hash": task.TokenHash, "next_run_at": task.NextRunAt, "updated_at": task.UpdatedAt}
 	result := controllerDB(ctx, c.db).Model(&models.AutomaticTask{}).Where("id = ? AND revision = ? AND deleting = ?", task.ID, revision, false).
 		Updates(updates)
 	if result.Error != nil {
@@ -275,31 +279,53 @@ func (c *automaticTaskController) SetDeleting(ctx context.Context, id string, de
 	return nil
 }
 
-// Delete 删除任务主体及其所有机会记录，上层拥有事务边界。
+// Delete 原子删除任务主体、机会记录和 API Key 授权引用，可加入上层事务。
 func (c *automaticTaskController) Delete(ctx context.Context, id string) error {
-	db := controllerDB(ctx, c.db)
-	if err := db.Where("task_id = ?", id).Delete(&models.AutomaticRun{}).Error; err != nil {
-		return databaseError("delete_automatic_runs", "task_id="+id, err)
-	}
-	if err := db.Where("id = ?", id).Delete(&models.AutomaticTask{}).Error; err != nil {
-		return databaseError("delete_automatic_task", "task_id="+id, err)
-	}
-	publishCommittedChange(ctx, c.db, "automatic-tasks", eventsResource("global", ""))
-	return nil
+	return NewTransactionController(dbhelper.NewGormTransactionManager(c.db)).Transaction(ctx, func(tx context.Context) error {
+		db := controllerDB(tx, c.db)
+		if err := removeIntegrationResourceGrants(tx, c.db, constants.IntegrationResourceKindAutomaticTask, []string{id}); err != nil {
+			return err
+		}
+		if err := db.Where("task_id = ?", id).Delete(&models.AutomaticRun{}).Error; err != nil {
+			return databaseError("delete_automatic_runs", id, err)
+		}
+		if err := db.Where("id = ?", id).Delete(&models.AutomaticTask{}).Error; err != nil {
+			return databaseError("delete_automatic_task", id, err)
+		}
+		publishCommittedChange(tx, c.db, "automatic-tasks", eventsResource("global", ""))
+		return nil
+	})
 }
 
 // DeleteByWaker 删除由伙伴独立执行的任务及机会；团队任务保留团队身份。
 func (c *automaticTaskController) DeleteByWaker(ctx context.Context, wakerID string) error {
-	db := controllerDB(ctx, c.db)
-	taskIDs := db.Model(&models.AutomaticTask{}).Select("id").Where("waker_id = ? AND channel_id = ''", wakerID)
-	if err := db.Where("task_id IN (?)", taskIDs).Delete(&models.AutomaticRun{}).Error; err != nil {
-		return databaseError("delete_waker_automatic_runs", "waker_id="+wakerID, err)
-	}
-	if err := db.Where("waker_id = ? AND channel_id = ''", wakerID).Delete(&models.AutomaticTask{}).Error; err != nil {
-		return databaseError("delete_waker_automatic_tasks", "waker_id="+wakerID, err)
-	}
-	publishCommittedChange(ctx, c.db, "automatic-tasks", eventsResource("global", ""))
-	return nil
+	return NewTransactionController(dbhelper.NewGormTransactionManager(c.db)).Transaction(ctx, func(tx context.Context) error {
+		for {
+			var tasks []models.AutomaticTask
+			if err := controllerDB(tx, c.db).Select("id").Where("waker_id = ? AND channel_id = ''", wakerID).Limit(100).Find(&tasks).Error; err != nil {
+				return databaseError("list_deleted_waker_tasks", wakerID, err)
+			}
+			ids := make([]string, 0, len(tasks))
+			for _, task := range tasks {
+				ids = append(ids, task.ID)
+			}
+			if len(ids) > 0 {
+				if err := removeIntegrationResourceGrants(tx, c.db, constants.IntegrationResourceKindAutomaticTask, ids); err != nil {
+					return err
+				}
+				if err := controllerDB(tx, c.db).Where("task_id IN ?", ids).Delete(&models.AutomaticRun{}).Error; err != nil {
+					return databaseError("delete_waker_automatic_runs", wakerID, err)
+				}
+				if err := controllerDB(tx, c.db).Where("id IN ?", ids).Delete(&models.AutomaticTask{}).Error; err != nil {
+					return databaseError("delete_waker_automatic_tasks", wakerID, err)
+				}
+				publishCommittedChange(tx, c.db, "automatic-tasks", eventsResource("global", ""))
+			}
+			if len(tasks) < 100 {
+				return nil
+			}
+		}
+	})
 }
 
 // CreateRun 建立受唯一机会约束保护的运行记录。

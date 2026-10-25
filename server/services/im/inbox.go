@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	protocol "github.com/JieWaZi/NeuxAlly/server/internal/im"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/workinput"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/channel"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 func (s *Service) route(ctx context.Context, input models.IMInbox) error {
@@ -263,7 +263,7 @@ func (s *Service) dispatch(input models.IMInbox) {
 			if updateErr := s.config.Store.UpdateInbox(s.ctx, input); updateErr != nil {
 				logx.Errorf("im input failure commit failed: input_id=%s error=%v", input.ID, updateErr)
 			}
-			if _, deliveryErr := s.CreateDelivery(s.ctx, DeliveryRequest{RequestID: "input-failed:" + input.ID, TargetID: input.BindingID, LinkID: input.LinkID, Content: "本次工作未能接纳，请在 NeuxAlly 查看配置或失败详情。原因：" + input.ErrorCode}); deliveryErr != nil {
+			if _, deliveryErr := s.CreateDelivery(s.ctx, DeliveryRequest{RequestID: "input-failed:" + input.ID, TargetID: input.BindingID, LinkID: input.LinkID, Content: "本次工作未能接纳，请在 NeuxBot 查看配置或失败详情。原因：" + input.ErrorCode}); deliveryErr != nil {
 				logx.Errorf("im failure delivery failed: input_id=%s error=%v", input.ID, deliveryErr)
 			}
 		}
@@ -304,9 +304,6 @@ func (s *Service) accept(ctx context.Context, input models.IMInbox) error {
 	}
 	options := link.Configuration.Options
 	workInput := execution.WorkInput{Actor: string(constants.ChannelMessageActorUser), SubmissionID: input.ID, Content: input.Content}
-	if binding.Kind == constants.IMChatKindGroup {
-		workInput.Content = "[群成员 " + input.SenderID + "]\n" + workInput.Content
-	}
 	if strings.TrimSpace(workInput.Content) == "" {
 		workInput.Content = "请处理附带的文件。"
 	}

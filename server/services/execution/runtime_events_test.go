@@ -3,19 +3,20 @@ package execution
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability/contract"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	eventstream "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 func TestRuntimeEventSinkPersistsOnlyCompleteAssistantMessage(t *testing.T) {
@@ -402,6 +403,10 @@ type runtimeEventTestJournal struct {
 	store *eventlog.Store
 	// live 接收不入 JSONL 的 transient 消息快照。
 	live chan eventstream.PublicEvent
+	// fullReads 记录误读完整历史的次数。
+	fullReads int
+	// executionRecords 记录初始化读取的当前执行事实量。
+	executionRecords int
 }
 
 // ForkChat 不参与 Runtime 事件聚合测试。
@@ -431,7 +436,15 @@ func (j *runtimeEventTestJournal) MarkExecutionStarted(context.Context, models.E
 
 // ReadRecords 返回建立实时投影所需的当前事实。
 func (j *runtimeEventTestJournal) ReadRecords(chatID string) ([]eventlog.Record, error) {
+	j.fullReads++
 	return j.store.ReadAll(chatID)
+}
+
+// ReadExecutionRecords 通过真实 JSONL 索引读取当前执行事实。
+func (j *runtimeEventTestJournal) ReadExecutionRecords(chatID, executionID string) ([]eventlog.Record, error) {
+	records, err := j.store.ReadMessage(chatID, executionID)
+	j.executionRecords = len(records)
+	return records, err
 }
 
 // AppendExecutionFacts 同步追加完整 Runtime 消息事实。
@@ -539,4 +552,42 @@ func TestCommandFactsKeepLiveAndDurableToolCaptionsEqual(t *testing.T) {
 	if len(messages) != 1 || !reflect.DeepEqual(messages[0].DisplayParts, lastLive.DisplayParts) {
 		t.Fatalf("live/durable diverged: live=%+v durable=%+v", lastLive, messages)
 	}
+}
+
+func TestRuntimeEventSinkInitializesOnlyCurrentExecution(t *testing.T) {
+	t.Parallel()
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "43434343434343434343434343434343"
+	inputs := []eventlog.AppendInput{chatCreatedInput()}
+	for i := range 128 {
+		id := fmt.Sprintf("old-execution-%d", i)
+		inputs = append(inputs,
+			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: id, Data: marshalData(eventlog.ExecutionCreatedData{})},
+			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: id, Data: marshalData(eventlog.ExecutionFinishedData{})},
+		)
+	}
+	inputs = append(inputs, activeChatInputs()[1:]...)
+	if _, err := store.Create(chatID, inputs); err != nil {
+		t.Fatal(err)
+	}
+	sink, live := newRuntimeEventSinkForTest(store, chatID)
+	if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: marshalData(map[string]any{"text": "current answer"})}); err != nil {
+		t.Fatal(err)
+	}
+	event := <-live
+	if event.Message == nil || event.Message.ID != "execution-1" || event.Message.Content != "current answer" {
+		t.Fatalf("current live message = %+v", event.Message)
+	}
+	journal := sink.journal.(*runtimeEventTestJournal)
+	if journal.fullReads != 0 || journal.executionRecords != 3 {
+		t.Fatalf("live initialization read full history %d times and %d execution records; want 0 and 3", journal.fullReads, journal.executionRecords)
+	}
+}
+
+// LoadExecutionChat 不参与 Runtime 事件聚合测试。
+func (j *runtimeEventTestJournal) LoadExecutionChat(context.Context, string) (models.Chat, error) {
+	panic("unexpected LoadExecutionChat call")
 }

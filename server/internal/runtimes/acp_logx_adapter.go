@@ -8,7 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/google/uuid"
 )
 
@@ -23,6 +24,8 @@ type acpLogxHandler struct {
 	attributes []slog.Attr
 	// group 是 WithGroup 指定的字段前缀。
 	group string
+	// secrets 只保护当前Agent显式收到的插件授权秘密，不记录环境原文。
+	secrets *strings.Replacer
 	// stderr 聚合当前 Agent 被操作系统拆分的原生诊断行。
 	stderr *acpStderrLines
 }
@@ -68,6 +71,20 @@ func acpAgentLogContext(ctx context.Context, config acpAdapterConfig, binding ac
 			slog.String("operation", operation),
 		},
 		stderr: &acpStderrLines{},
+	}
+	pairs := []string{}
+	for _, entry := range config.Environment {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok || !strings.HasPrefix(key, constants.PluginAuthEnvironmentPrefix) || value == "" {
+			continue
+		}
+		pairs = append(pairs, value, "[REDACTED]")
+		if scheme, credential, ok := strings.Cut(value, " "); ok && strings.EqualFold(scheme, "Bearer") && strings.TrimSpace(credential) != "" {
+			pairs = append(pairs, strings.TrimSpace(credential), "[REDACTED]")
+		}
+	}
+	if len(pairs) > 0 {
+		handler.secrets = strings.NewReplacer(pairs...)
 	}
 	if config.DetectionID != "" {
 		handler.attributes = append(handler.attributes, slog.String("detection_id", config.DetectionID))
@@ -119,7 +136,7 @@ func (h *acpLogxHandler) write(record slog.Record) {
 		fields = append(fields, h.formatAttribute(attribute))
 		return true
 	})
-	message := record.Message
+	message := h.redact(record.Message)
 	if len(fields) > 0 {
 		message += ": " + strings.Join(fields, " ")
 	}
@@ -254,6 +271,7 @@ func (h *acpLogxHandler) WithAttrs(attributes []slog.Attr) slog.Handler {
 		attributes: append([]slog.Attr(nil), h.attributes...),
 		group:      h.group,
 		stderr:     h.stderr,
+		secrets:    h.secrets,
 	}
 	clone.attributes = append(clone.attributes, attributes...)
 	return clone
@@ -265,6 +283,7 @@ func (h *acpLogxHandler) WithGroup(group string) slog.Handler {
 		attributes: append([]slog.Attr(nil), h.attributes...),
 		group:      strings.Trim(strings.TrimSpace(h.group+"."+group), "."),
 		stderr:     h.stderr,
+		secrets:    h.secrets,
 	}
 	return clone
 }
@@ -275,5 +294,13 @@ func (h *acpLogxHandler) formatAttribute(attribute slog.Attr) string {
 	if h.group != "" {
 		key = h.group + "." + key
 	}
-	return key + "=" + fmt.Sprintf("%q", fmt.Sprint(attribute.Value.Any()))
+	return key + "=" + fmt.Sprintf("%q", h.redact(fmt.Sprint(attribute.Value.Any())))
+}
+
+// redact 在日志格式化前去掉当前进程的插件秘密，兼容结构属性和原生stderr。
+func (h *acpLogxHandler) redact(value string) string {
+	if h.secrets == nil {
+		return value
+	}
+	return h.secrets.Replace(value)
 }

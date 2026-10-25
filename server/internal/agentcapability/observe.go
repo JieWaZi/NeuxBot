@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 )
 
 // DecodeParams 只转换已经通过操作 Schema 的参数，不允许再添加调用身份。

@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcommand"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // CreateTask 创建负责人维护的正式任务，并按入口语义立即或在负责人回合后派发。
@@ -333,6 +333,10 @@ func (s *service) dispatchTask(
 	if summary.Chat.ActiveExecutionID != "" {
 		return nil, nil
 	}
+	automaticRunID, err := s.automaticWorkSource(ctx, thread)
+	if err != nil {
+		return nil, err
+	}
 	followUps, err := s.tasks.ListPendingFollowUps(ctx, task.ID)
 	if err != nil {
 		return nil, err
@@ -428,7 +432,7 @@ func (s *service) dispatchTask(
 		toolCapabilities = append(toolCapabilities, capability)
 		capabilityToken = token
 	}
-	accepted, err := s.executions.Start(ctx, execution.WorkIntent{
+	accepted, err := s.executions.Start(ctx, execution.WorkIntent{AutomaticRunID: automaticRunID,
 		ExecutionID: attempt.ExecutionID,
 		Chat:        execution.ChatTarget{ChatID: member.ChatID},
 		Input:       workInput,
@@ -596,6 +600,7 @@ func normalizeTaskInput(input *execution.WorkInput) (*execution.WorkInput, error
 	}
 	cloned.Attachments = append([]execution.AttachmentInput(nil), cloned.Attachments...)
 	cloned.CodeReferences = append([]execution.CodeReferenceInput(nil), cloned.CodeReferences...)
+	cloned.PluginIDs = append([]string(nil), cloned.PluginIDs...)
 	cloned.SkillIDs = append([]string(nil), cloned.SkillIDs...)
 	cloned.ConnectorIDs = append([]string(nil), cloned.ConnectorIDs...)
 	return &cloned, nil
@@ -673,6 +678,7 @@ func nextFollowUpBatch(followUps []models.ChannelTaskFollowUp) []models.ChannelT
 func appendWorkInputReferences(target *execution.WorkInput, source execution.WorkInput) {
 	target.Attachments = append(target.Attachments, source.Attachments...)
 	target.CodeReferences = append(target.CodeReferences, source.CodeReferences...)
+	target.PluginIDs = append(target.PluginIDs, source.PluginIDs...)
 	target.SkillIDs = append(target.SkillIDs, source.SkillIDs...)
 	target.ConnectorIDs = append(target.ConnectorIDs, source.ConnectorIDs...)
 }

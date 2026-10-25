@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	protocol "github.com/JieWaZi/NeuxAlly/server/internal/im"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/larksuite/oapi-sdk-go/v3/scene/registration"
 )
 
@@ -63,8 +63,12 @@ func (s *Service) BeginLogin(ctx context.Context, connectionID string) (LoginPro
 			s.publishLoginProgress(session.progress)
 		}
 	}
-	loginContext, cancel := context.WithTimeout(s.ctx, 10*time.Minute)
-	session := &loginSession{progress: LoginProgress{ID: util.New(), ConnectionID: connectionID, Status: "preparing", ExpiresAt: s.config.Now().Add(10 * time.Minute).UnixMilli()}, cancel: cancel, verification: make(chan string, 1)}
+	lifetime := 10 * time.Minute
+	if connection.Platform == constants.IMPlatformWecom {
+		lifetime = constants.IMWecomQRExpirySeconds * time.Second
+	}
+	loginContext, cancel := context.WithTimeout(s.ctx, lifetime)
+	session := &loginSession{progress: LoginProgress{ID: util.New(), ConnectionID: connectionID, Status: "preparing", ExpiresAt: s.config.Now().Add(lifetime).UnixMilli()}, cancel: cancel, verification: make(chan string, 1)}
 	s.logins[session.progress.ID] = session
 	s.publishLoginProgress(session.progress)
 	s.workers.Add(1)
@@ -151,6 +155,8 @@ func (s *Service) runLogin(ctx context.Context, connection models.IMConnection, 
 	var err error
 	if connection.Platform == constants.IMPlatformWeixin {
 		err = s.loginWeixin(ctx, &connection, session)
+	} else if connection.Platform == constants.IMPlatformWecom {
+		err = s.loginWecom(ctx, &connection, session)
 	} else if connection.Platform == constants.IMPlatformFeishu {
 		err = s.loginFeishu(ctx, &connection, session)
 	} else {
@@ -252,7 +258,7 @@ func (s *Service) loginFeishu(ctx context.Context, connection *models.IMConnecti
 	minimal := false
 	var preset *registration.AppPreset
 	if connection.AppID == "" {
-		preset = &registration.AppPreset{Name: "NeuxAlly 助理", Desc: "通过飞书与 NeuxAlly 伙伴和团队一起工作"}
+		preset = &registration.AppPreset{Name: "NeuxBot 助理", Desc: "通过飞书与 NeuxBot 伙伴和团队一起工作"}
 	}
 	result, err := registration.RegisterApp(ctx, &registration.Options{
 		Source:    "ally",
@@ -291,4 +297,45 @@ func (s *Service) loginFeishu(ctx context.Context, connection *models.IMConnecti
 	connection.Credential = result.ClientSecret
 	connection.OwnerID = result.UserInfo.OpenID
 	return nil
+}
+
+// loginWecom 复用可取消扫码会话及统一事件，平台确认后只在 Core 内保存凭据。
+func (s *Service) loginWecom(ctx context.Context, connection *models.IMConnection, session *loginSession) error {
+	adapter, ok := s.config.Platforms[constants.IMPlatformWecom].(*protocol.Wecom)
+	if !ok {
+		return status_error.IMServiceUnavailable
+	}
+	qr, err := adapter.QR(ctx)
+	if err != nil {
+		return err
+	}
+	s.loginProgress(session, "wait", qr.Content, "")
+	for {
+		result, err := adapter.QRStatus(ctx, qr.Code)
+		if err != nil {
+			return err
+		}
+		switch result.Status {
+		case "success":
+			if result.Bot.ID == "" || result.Bot.Secret == "" {
+				return status_error.IMProtocolInvalid
+			}
+			// 重扫不能将已有聊天授权转移给另一个机器人。
+			if connection.AppID != "" && connection.AppID != result.Bot.ID {
+				return status_error.IMConfigurationConflict
+			}
+			connection.AppID = result.Bot.ID
+			connection.Credential = result.Bot.Secret
+			return nil
+		case "expired", "cancelled", "canceled", "failed":
+			return status_error.IMLoginRequired
+		}
+		timer := time.NewTimer(constants.IMWecomQRPollSeconds * time.Second)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return status_error.IMLoginRequired
+		case <-timer.C:
+		}
+	}
 }

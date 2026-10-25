@@ -3,11 +3,11 @@ package eventstream
 
 import (
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 )
 
 // PublicEvent 是聊天事件历史和 SSE 共用的安全事件信封。
@@ -50,21 +50,35 @@ type Adapter struct {
 	events []PublicEvent
 	// lastSequence 保存最近成功应用的权威事件序号。
 	lastSequence int64
+	// messageRevisions 保存每条消息已经观察到的最大修订号，供订阅拒绝落后实时快照。
+	messageRevisions map[string]int64
+	// retainEvents 表示调用方仍需要公开历史；实时订阅取完积压后关闭保留。
+	retainEvents bool
 }
 
 // NewAdapter 创建一个空的前端事件适配器。
 func NewAdapter() *Adapter {
 	return &Adapter{
-		messageView: messageview.NewMessageViewBuilder(),
-		events:      make([]PublicEvent, 0),
+		messageView:      messageview.NewMessageViewBuilder(),
+		events:           make([]PublicEvent, 0),
+		messageRevisions: make(map[string]int64),
+		retainEvents:     true,
 	}
 }
 
 // Replay 使用有序权威记录恢复事件适配器状态。
 func Replay(records []eventlog.Record) (*Adapter, error) {
+	return ReplayAfter(records, 0)
+}
+
+// ReplayAfter 恢复游标前状态并构建游标之后的公开事件。
+func ReplayAfter(records []eventlog.Record, after int64) (*Adapter, error) {
+	if after < 0 {
+		return nil, status_error.ChatEventCursorInvalid
+	}
 	adapter := NewAdapter()
 	for _, record := range records {
-		if _, err := adapter.Apply(record); err != nil {
+		if _, err := adapter.apply(record, record.Sequence > after); err != nil {
 			return nil, err
 		}
 	}
@@ -73,6 +87,11 @@ func Replay(records []eventlog.Record) (*Adapter, error) {
 
 // Apply 增量应用一条记录并返回对应的安全公开事件。
 func (a *Adapter) Apply(record eventlog.Record) (PublicEvent, error) {
+	return a.apply(record, true)
+}
+
+// apply 始终恢复权威状态并校验事件；游标前不物化公开消息的中间快照。
+func (a *Adapter) apply(record eventlog.Record, emit bool) (PublicEvent, error) {
 	if a == nil || a.messageView == nil {
 		return PublicEvent{}, status_error.ChatLogError
 	}
@@ -128,11 +147,31 @@ func (a *Adapter) Apply(record eventlog.Record) (PublicEvent, error) {
 		event.ElicitationResolution = &resolved
 	}
 	if messageID != "" {
-		event.Message = a.messageView.PublicMessage(messageID)
+		a.messageRevisions[messageID] = max(a.messageRevisions[messageID], a.messageView.MessageRevision(messageID))
+		if emit {
+			event.Message = a.messageView.PublicMessage(messageID)
+		}
 	}
-	a.events = append(a.events, event)
+	if emit && a.retainEvents {
+		a.events = append(a.events, event)
+	}
 	a.lastSequence = record.Sequence
 	return ClonePublicEvent(event), nil
+}
+
+// MessageRevisions 返回每条消息已观察到的最高修订号，不建立历史中间快照。
+func (a *Adapter) MessageRevisions() map[string]int64 {
+	revisions := make(map[string]int64, len(a.messageRevisions))
+	for id, revision := range a.messageRevisions {
+		revisions[id] = revision
+	}
+	return revisions
+}
+
+// ReleaseHistory 释放已交付的公开事件快照；后续 Apply 仅返回当前事件，不再积累历史。
+func (a *Adapter) ReleaseHistory() {
+	a.events = nil
+	a.retainEvents = false
 }
 
 // EventsAfter 返回游标之后的公开事件；limit 为零时不限制数量。

@@ -4,12 +4,12 @@ import (
 	"context"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // enqueueLeadInput 把负责人忙碌期间的完整用户补充及其协调或直接执行模式写入可靠队列。
@@ -120,6 +120,10 @@ func (s *service) drainLeadInputs(
 		}
 		leadExecutionID = identity.ResourceID("lead_execution", thread.ID)
 	}
+	automaticRunID, err := s.automaticWorkSource(ctx, thread)
+	if err != nil {
+		return nil, err
+	}
 	capability, capabilityToken, err := s.mintLeadCapability(ctx, thread, leadExecutionID, true)
 	if err != nil {
 		return nil, err
@@ -140,7 +144,7 @@ func (s *service) drainLeadInputs(
 	)
 	workOptions.AccountID = lead.AccountID
 
-	accepted, err := s.executions.Start(ctx, execution.WorkIntent{
+	accepted, err := s.executions.Start(ctx, execution.WorkIntent{AutomaticRunID: automaticRunID,
 		ExecutionID: leadExecutionID,
 		Chat:        execution.ChatTarget{ChatID: thread.LeadChatID},
 		Input:       workInput,

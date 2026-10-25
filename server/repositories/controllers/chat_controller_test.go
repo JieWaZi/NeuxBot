@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
@@ -588,5 +588,41 @@ func TestWakerPaginationExcludesHiddenChats(t *testing.T) {
 	}
 	if len(chats) != 1 || count != 1 {
 		t.Fatalf("隐藏 Chat 进入普通伙伴分页: len=%d count=%d chats=%+v", len(chats), count, chats)
+	}
+}
+
+// TestChatControllerWakerActivityExcludesOwnedBackgroundChats 验证其他领域拥有的后台聊天不改变伙伴普通聊天活动。
+func TestChatControllerWakerActivityExcludesOwnedBackgroundChats(t *testing.T) {
+	database := newTestDB(t)
+	controller := NewChatController(database)
+	ctx := context.Background()
+	wakerID := "11111111111111111111111111111111"
+	for _, chat := range []models.Chat{
+		{ID: "ordinary-running", WakerID: wakerID, ActiveExecutionID: "running"},
+		{ID: "ordinary-waiting", WakerID: wakerID, ActiveExecutionID: "waiting", WaitingApproval: true},
+		{ID: "workflow-worker", WakerID: wakerID, ActiveExecutionID: "workflow-execution", HiddenFromWakerHistory: true},
+		{ID: "automatic-task", WakerID: wakerID, ActiveExecutionID: "automatic-execution", HiddenFromWakerHistory: true, WaitingApproval: true},
+		{ID: "workflow-other-worker", WakerID: wakerID, ActiveExecutionID: "workflow-other-execution", HiddenFromWakerHistory: true, WaitingElicitation: true},
+	} {
+		if err := controller.Create(ctx, chat); err != nil {
+			t.Fatal(err)
+		}
+	}
+	summaries, err := controller.ListActivitySummariesByWaker(ctx, []string{wakerID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := summaries[wakerID]; got.RunningCount != 1 || got.WaitingCount != 1 {
+		t.Fatalf("ordinary activity = %+v, want running=1 waiting=1", got)
+	}
+	active, err := controller.CountActiveByWaker(ctx, wakerID)
+	if err != nil || active != 2 {
+		t.Fatalf("ordinary active count = %d, error=%v, want 2", active, err)
+	}
+	for _, id := range []string{"workflow-worker", "automatic-task", "workflow-other-worker"} {
+		chat, err := controller.Get(ctx, id)
+		if err != nil || chat.ActiveExecutionID == "" || !chat.HiddenFromWakerHistory {
+			t.Fatalf("background execution fact changed: %+v error=%v", chat, err)
+		}
 	}
 }

@@ -9,11 +9,15 @@ const desktop = path.resolve(
 const require = createRequire(path.join(desktop, "package.json"));
 export function loadModule(entry, overrides = {}, window = {}) {
   const source = buildSync({
-    entryPoints: [path.join(desktop, "electron", entry)],
+    entryPoints: [
+      entry.startsWith("@neuxbot/")
+        ? require.resolve(entry)
+        : path.join(desktop, "electron", entry),
+    ],
     bundle: true,
     platform: "node",
     format: "cjs",
-    packages: "external",
+    external: ["electron", "node-pty", "@xterm/*", "zod", "@git-diff-view/*"],
     write: false,
   }).outputFiles[0].text;
   const module = { exports: {} };

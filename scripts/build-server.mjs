@@ -4,8 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { allyCoreLdflags } from "./go-ldflags.mjs";
 import "./builtin-skills.mjs";
+import { prepareCatalog, prepareProvider } from "./plugin-resources.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const pluginOutput = path.join(root, "server/plugins");
+await prepareCatalog(pluginOutput);
+await prepareProvider(pluginOutput, `${process.platform}-${process.arch}`);
 const output = path.join(root, "server/bin/ally-core");
 await mkdir(path.dirname(output), { recursive: true });
 execFileSync(
@@ -23,7 +27,7 @@ execFileSync(
     stdio: "inherit",
   },
 );
-console.log(`已生成 NeuxAlly Core: ${output}`);
+console.log(`已生成 NeuxBot Core: ${output}`);
 
 const cliOutput = path.join(
   path.dirname(output),

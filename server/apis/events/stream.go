@@ -9,10 +9,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	eventhub "github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/shrewx/ginx"
@@ -42,7 +43,13 @@ func (*StreamEvents) Output(ctx *gin.Context) (interface{}, error) {
 		ctx.AbortWithStatus(http.StatusServiceUnavailable)
 		return nil, nil
 	}
-	return nil, serve(ctx, global.EventHub, newSource)
+	subject := middleware.AuthSubject(ctx)
+	return nil, serve(ctx, global.EventHub, func(child context.Context, command control) (source, error) {
+		if command.Topic == "workspace" {
+			return newWorkspaceSource(child, subject, command)
+		}
+		return newSource(child, command)
+	})
 }
 
 // source 拥有已经注册的原事件订阅及其取消边界。
@@ -92,10 +99,6 @@ type session struct {
 	factory sourceFactory
 }
 
-func trustedOrigin(request *http.Request) bool {
-	origin := request.Header.Get("Origin")
-	return origin == "" || origin == "ally://app" || origin == "http://127.0.0.1:1420"
-}
 func serve(ctx *gin.Context, hub *eventhub.Hub, factory sourceFactory) error {
 	supported := false
 	for _, protocol := range websocket.Subprotocols(ctx.Request) {

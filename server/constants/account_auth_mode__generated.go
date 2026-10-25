@@ -41,7 +41,7 @@ func (v AccountAuthMode) Values() []enum.Enum {
 }
 
 func (v AccountAuthMode) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.AccountAuthMode"
+	return "github.com/JieWaZi/NeuxBot/server/constants.AccountAuthMode"
 }
 
 func (v AccountAuthMode) MarshalText() ([]byte, error) {

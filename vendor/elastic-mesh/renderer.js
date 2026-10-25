@@ -470,7 +470,7 @@ const blurField = (source, width, height, radius) => {
     }
     return out;
 };
-export function mountElasticMesh(container, { text = 'NeuxAlly', src = '', fontFamily = 'system-ui, sans-serif', fontWeight = 900, color = '#3b5bff', colorEnd = '', imageColors = true, material = 'balloon', inflate = 1, stiffness = 0.5, wobble = 0.6, grabRadius = 70, stretch = 0.5, press = 0.5, shadow = 0.5, intro = true, theme = 'dark', dpr, onReady, onIntroComplete, onError } = {}) {
+export function mountElasticMesh(container, { text = 'NeuxBot', src = '', fontFamily = 'system-ui, sans-serif', fontWeight = 900, color = '#3b5bff', colorEnd = '', imageColors = true, material = 'balloon', inflate = 1, stiffness = 0.5, wobble = 0.6, grabRadius = 70, stretch = 0.5, press = 0.5, shadow = 0.5, intro = true, theme = 'dark', dpr, onReady, onIntroComplete, onError } = {}) {
     const containerRef = { current: container };
     const canvasRef = { current: container.querySelector("canvas") };
     const wakeRef = ({current: null});

@@ -4,10 +4,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/mcpclient"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -29,6 +29,11 @@ func (t *TestWakerConnector) Path() string {
 
 // Output 执行协议级连接测试并返回最新详情。
 func (t *TestWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
+	return testConnector(ctx, t)
+}
+
+// testConnector 复用相同资源用例，空伙伴范围表示全局库。
+func testConnector(ctx *gin.Context, t *TestWakerConnector) (ConnectorResponse, error) {
 	wakerID := strings.TrimSpace(t.WakerID)
 	connectorID := strings.TrimSpace(t.ConnectorID)
 	item, err := visibleConnector(
@@ -37,12 +42,12 @@ func (t *TestWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
 		connectorID,
 	)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
 	connector := item.Connector
 	if connector.Scope != constants.MCPConnectorScopeBuiltIn &&
 		trustDigest(connector) != connector.TrustedConfigDigest {
-		return nil, ginx.WithStack(status_error.MCPConnectorTrustRequired)
+		return ConnectorResponse{}, ginx.WithStack(status_error.MCPConnectorTrustRequired)
 	}
 	testResult := runMCPConnectionTest(ctx, connector)
 	connector.TestStatus = testResult.Status
@@ -58,15 +63,16 @@ func (t *TestWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
 		connector,
 		connector.UpdatedAt,
 	); err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
+	notifyResourceChanged(ctx, connectorID)
 	updated, err := visibleConnector(ctx, wakerID, connectorID)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
 	result, err := connectorResponse(ctx, updated)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
 	return result, nil
 }

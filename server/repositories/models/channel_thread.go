@@ -1,12 +1,14 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 )
 
 // ChannelThread 是一个持续复用成员 Chat 上下文的团队对话。
 type ChannelThread struct {
+	// AutomaticRunID 是服务端传入的原自动运行，不能从用户或模型正文绑定。
+	AutomaticRunID string `json:"-"`
 	// ID 是 32 位无连字符 UUID。
 	ID string `gorm:"column:id;type:varchar(32);primaryKey;index:idx_thread_board_identity,priority:1;index:idx_thread_board_activity,priority:2,sort:desc;index:idx_thread_board_executor,priority:3,sort:desc;index:idx_thread_board_title,priority:2" json:"id"`
 	// ChannelID 是创建该对话的团队标识。

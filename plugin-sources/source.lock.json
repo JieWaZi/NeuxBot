@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 2,
+  "source": {
+    "bundle": "neux-plugins.bundle",
+    "sha256": "5ec8e9291cd7d1470d36a10ea8acef32ab823d8b300aaddd613d6a248ae6d040",
+    "commit": "8f8c1f850cc673b1fdc2a19fc9f241c463a70114"
+  },
+  "providers": [
+    {
+      "name": "feishu",
+      "version": "1.0.98",
+      "upstreamCommit": "ac81f5056ab88f37d581d25916f3dab85abfca76",
+      "assets": {
+        "darwin-amd64": {
+          "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-darwin-amd64.tar.gz",
+          "sha256": "44a4ff98e969385fc4bb4d701735ba319307e50560fa6c4c956178d70ccc3525",
+          "file": "lark-cli-1.0.98-darwin-amd64.tar.gz"
+        },
+        "darwin-arm64": {
+          "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-darwin-arm64.tar.gz",
+          "sha256": "ee4a3209bbf8b74ea5c00a07d0da89b79f5e7f6abfd518a8b2d78a7a4f7e3f40",
+          "file": "lark-cli-1.0.98-darwin-arm64.tar.gz"
+        },
+        "linux-amd64": {
+          "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-linux-amd64.tar.gz",
+          "sha256": "4a12dcb7a0aab25986d8bcd046cb45b08278531a9aac3a12b53cf3d94738fe80",
+          "file": "lark-cli-1.0.98-linux-amd64.tar.gz"
+        },
+        "linux-arm64": {
+          "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-linux-arm64.tar.gz",
+          "sha256": "f798b26ce4b369d70411945e7f66bbe4382c411bc47d81950a662de7b69b41ed",
+          "file": "lark-cli-1.0.98-linux-arm64.tar.gz"
+        },
+        "linux-riscv64": {
+          "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-linux-riscv64.tar.gz",
+          "sha256": "068d5618ba8d42c129bd382a7374e5502263f358066391155d1af4508c238579",
+          "file": "lark-cli-1.0.98-linux-riscv64.tar.gz"
+        },
+        "windows-amd64": {
+          "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-windows-amd64.zip",
+          "sha256": "b13a5d710f9afe327b34bfe68c4a736a574d4d97274f6da862e912dfada1ccdc",
+          "file": "lark-cli-1.0.98-windows-amd64.zip"
+        },
+        "windows-arm64": {
+          "url": "https://github.com/larksuite/cli/releases/download/v1.0.98/lark-cli-1.0.98-windows-arm64.zip",
+          "sha256": "6a111ccfed1f89eca95fbf7a9ef0ae941b9017409a864bf6cd93becc430dc810",
+          "file": "lark-cli-1.0.98-windows-arm64.zip"
+        }
+      },
+      "repository": "larksuite/cli",
+      "binary": "lark-cli",
+      "licenseFile": "LICENSE.larksuite-cli"
+    },
+    {
+      "name": "github",
+      "version": "2.102.0",
+      "upstreamCommit": "fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd",
+      "repository": "cli/cli",
+      "binary": "gh",
+      "licenseFile": "LICENSE.github-cli",
+      "source": {
+        "url": "https://github.com/cli/cli/archive/fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd.tar.gz",
+        "sha256": "78542f85b4c271bc641eba52c14257c9f388d793a114ce97d0fac2bd19035773",
+        "file": "github-cli-fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd.tar.gz"
+      },
+      "build": {
+        "toolchain": "go1.27.1",
+        "version": "2.102.0-neuxally.1",
+        "patch": "patches/github-keyring-isolation.patch",
+        "patchSHA256": "63f0c564ce260baf1e747c66a995c3f323756822e7a0fa997fe74ee8ed38cd05",
+        "verification": "patches/github-keyring-isolation_test.go",
+        "verificationSHA256": "6111b6c41a99738ac7accf3296d721ff1f8d488c8f28a392da6e064965a3bcb6",
+        "reason": "Prefix every underlying keyring operation with neuxally:; official OAuth and CLI behavior otherwise retained"
+      }
+    }
+  ]
+}

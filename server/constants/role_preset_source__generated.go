@@ -41,7 +41,7 @@ func (v RolePresetSource) Values() []enum.Enum {
 }
 
 func (v RolePresetSource) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RolePresetSource"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RolePresetSource"
 }
 
 func (v RolePresetSource) MarshalText() ([]byte, error) {

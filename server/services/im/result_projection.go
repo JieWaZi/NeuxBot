@@ -6,11 +6,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func (s *Service) projectResults() {
@@ -57,7 +57,7 @@ func (s *Service) projectLink(ctx context.Context, link models.IMConversationLin
 			}
 			content := message.Content
 			if event.Type == constants.ChatEventTypeExecutionFailed {
-				content += "\n\n本次执行失败，请在 NeuxAlly 查看详情。原因：" + event.ErrorCode
+				content += "\n\n本次执行失败，请在 NeuxBot 查看详情。原因：" + event.ErrorCode
 			}
 			if event.Type == constants.ChatEventTypeExecutionCanceled {
 				content += "\n\n本次工作已停止。"
@@ -165,13 +165,13 @@ func (s *Service) projectInteractions(ctx context.Context, link models.IMConvers
 			for index, option := range approval.Options {
 				content += "\n" + strconv.Itoa(index+1) + ". " + option.Name
 			}
-			content += "\n回复 /approve " + approval.ApprovalID[:8] + " <选项编号>，或在 NeuxAlly 处理。"
+			content += "\n回复 /approve " + approval.ApprovalID[:8] + " <选项编号>，或在 NeuxBot 处理。"
 			if _, err := s.CreateDelivery(ctx, DeliveryRequest{RequestID: "approval:" + link.ID + ":" + chatID + ":" + approval.ApprovalID, TargetID: link.BindingID, LinkID: link.ID, ChatID: chatID, Content: content}); err != nil {
 				return err
 			}
 		}
 		for _, question := range summary.Chat.PendingElicitations {
-			content := "需要补充信息：" + question.Message + "\n编号：" + question.ElicitationID[:8] + "\n请在 NeuxAlly 回答。简单表单也可回复 /answer " + question.ElicitationID[:8] + " <JSON答案>。"
+			content := "需要补充信息：" + question.Message + "\n编号：" + question.ElicitationID[:8] + "\n请在 NeuxBot 回答。简单表单也可回复 /answer " + question.ElicitationID[:8] + " <JSON答案>。"
 			if _, err := s.CreateDelivery(ctx, DeliveryRequest{RequestID: "question:" + link.ID + ":" + chatID + ":" + question.ElicitationID, TargetID: link.BindingID, LinkID: link.ID, ChatID: chatID, Content: content}); err != nil {
 				return err
 			}
@@ -222,14 +222,14 @@ func (s *Service) resolveInteraction(ctx context.Context, input models.IMInbox, 
 		}
 	}
 	if matched != 1 {
-		return s.finishInput(ctx, input, binding, "该交互已结束或编号无法唯一匹配，请在 NeuxAlly 查看当前待处理项。")
+		return s.finishInput(ctx, input, binding, "该交互已结束或编号无法唯一匹配，请在 NeuxBot 查看当前待处理项。")
 	}
 	if command == "/approve" {
 		err = s.config.Executions.ResolveApproval(ctx, targetChat, interactionID, optionID)
 	} else {
 		var answer map[string]any
 		if err := json.Unmarshal([]byte(parts[1]), &answer); err != nil || answer == nil {
-			return s.finishInput(ctx, input, binding, "答案需为符合表单的 JSON 对象。复杂表单请在 NeuxAlly 回答。")
+			return s.finishInput(ctx, input, binding, "答案需为符合表单的 JSON 对象。复杂表单请在 NeuxBot 回答。")
 		}
 		err = s.config.Executions.ResolveElicitation(ctx, targetChat, interactionID, answer, false)
 	}

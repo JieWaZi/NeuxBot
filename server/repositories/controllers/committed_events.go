@@ -3,7 +3,7 @@ package controllers
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"gorm.io/gorm"
 )
 

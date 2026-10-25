@@ -4,22 +4,25 @@ package execution
 import (
 	"context"
 	"encoding/json"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chatstorage"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/projectsource"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/aiaccount"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 )
 
 // Service 是当前 Chat API 与未来 Channel、Schedule、IM 共用的执行接口。
@@ -40,6 +43,8 @@ type Service interface {
 	Cancel(chatID string) error
 	// CancelAndWait 取消指定 Chat 当前活跃执行并等待 durable 终态。
 	CancelAndWait(ctx context.Context, chatID string) error
+	// CancelExecutionAndWait 只取消指定执行占用，旧任务不得影响同Chat后续输入。
+	CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error
 	// ResolveApproval 处理 Chat 当前执行的一次未决审批。
 	ResolveApproval(ctx context.Context, chatID string, approvalID string, optionID string) error
 	// ResolveElicitation 处理 Chat 当前执行的一次未决结构化用户输入。
@@ -93,7 +98,9 @@ type service struct {
 	// agentBinary 是随应用发布的 CLI 真实路径。
 	agentBinary string
 	// agentBindings 提供伙伴当前普通业务能力的领域绑定。
-	agentBindings func(models.Chat, string, []string) []agentcapability.Binding
+	agentBindings func(models.Chat, string, []string, string) []agentcapability.Binding
+	// validateIntent 在任何首发、续发或重试接纳前校验领域持久约束。
+	validateIntent func(context.Context, WorkIntent) error
 	// agentSessions 保存同一原生会话进程独占的连接文件位置。
 	agentSessions *agentSessionFiles
 	// acquireTeamChatInput 将团队成员 Chat 的直接输入纳入团队聚合接纳边界。
@@ -116,6 +123,16 @@ type service struct {
 	skillController controllers.SkillController
 	// connectorController 读取伙伴当前启用并已解密的连接器。
 	connectorController controllers.MCPConnectorController
+	// pluginInstallations 复用声明驱动身份与安装预检。
+	pluginInstallations *plugininstallation.Service
+	// pluginContents 保留进行中执行使用的内容目录。
+	pluginContents *plugins.ContentStore
+	// pluginController 读取插件安装的原子资源快照。
+	pluginController controllers.PluginController
+	// pluginAuthorizers 保护各提供者共享身份的使用期间。
+	pluginAuthorizers map[string]*authorization.Authorizer
+	// pluginLauncher 是受管 Core 可执行文件的绝对位置。
+	pluginLauncher string
 	// runtimeEnvironments 读取已经启用且探测可用的 Runtime 条目。
 	runtimeEnvironments runtimeEnvironmentReader
 	// skillDataDirectory 是技能版本文件的根目录。
@@ -145,7 +162,9 @@ type Config struct {
 	// AgentBinary 是应用提供的 CLI 绝对路径。
 	AgentBinary string
 	// AgentBindings 按冻结伙伴和目录范围签发普通能力。
-	AgentBindings func(models.Chat, string, []string) []agentcapability.Binding
+	AgentBindings func(models.Chat, string, []string, string) []agentcapability.Binding
+	// ValidateIntent 校验入口无关的领域接纳约束；为空时不增加额外限制。
+	ValidateIntent func(context.Context, WorkIntent) error
 	// AcquireTeamChatInput 保护团队成员直接输入，普通 Chat 通过不持锁。
 	AcquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// Accounts 管理受管账号的使用租约和配置投射。
@@ -166,9 +185,19 @@ type Config struct {
 	Skills controllers.SkillController
 	// Connectors 读取伙伴当前启用并已解密的连接器。
 	Connectors controllers.MCPConnectorController
+	// PluginInstallations 提供共享声明驱动身份。
+	PluginInstallations *plugininstallation.Service
+	// PluginContents 保护受管内容使用与延迟回收。
+	PluginContents *plugins.ContentStore
+	// Plugins 读取插件资源和安装。
+	Plugins controllers.PluginController
+	// PluginAuthorizers 提供各官方账号的共享租约。
+	PluginAuthorizers map[string]*authorization.Authorizer
+	// PluginLauncher 提供保持 MCP 工作目录的 Core 程序。
+	PluginLauncher string
 	// RuntimeEnvironments 读取执行准备使用的 Runtime 探测快照。
 	RuntimeEnvironments runtimeEnvironmentReader
-	// SkillDataDirectory 是 NeuxAlly 受管技能版本所在的应用数据目录。
+	// SkillDataDirectory 是 NeuxBot 受管技能版本所在的应用数据目录。
 	SkillDataDirectory string
 	// StorageDirectory 是 Chat 与 Team 聚合目录共同使用的应用数据根目录。
 	StorageDirectory string
@@ -237,6 +266,7 @@ func New(config Config) (Core, error) {
 		agentEndpoint:        config.AgentEndpoint,
 		agentBinary:          config.AgentBinary,
 		agentBindings:        config.AgentBindings,
+		validateIntent:       config.ValidateIntent,
 		agentSessions:        &agentSessionFiles{slots: map[string]agentSessionSlot{}},
 		accounts:             config.Accounts,
 		acquireTeamChatInput: config.AcquireTeamChatInput,
@@ -247,14 +277,17 @@ func New(config Config) (Core, error) {
 		profileController:    config.Profiles,
 		projectController:    config.Projects,
 		skillController:      config.Skills,
-		connectorController:  config.Connectors,
-		runtimeEnvironments:  config.RuntimeEnvironments,
-		skillDataDirectory:   strings.TrimSpace(config.SkillDataDirectory),
-		storage:              storage,
-		executions:           newExecutionRegistry(),
-		createRequests:       newCreateRequestRegistry(),
-		approvals:            newApprovalCoordinator(config.Journal),
-		elicitations:         newElicitationCoordinator(config.Journal, config.Events),
+		pluginContents:       config.PluginContents,
+		pluginInstallations:  config.PluginInstallations,
+		pluginController:     config.Plugins, pluginAuthorizers: config.PluginAuthorizers, pluginLauncher: config.PluginLauncher,
+		connectorController: config.Connectors,
+		runtimeEnvironments: config.RuntimeEnvironments,
+		skillDataDirectory:  strings.TrimSpace(config.SkillDataDirectory),
+		storage:             storage,
+		executions:          newExecutionRegistry(),
+		createRequests:      newCreateRequestRegistry(),
+		approvals:           newApprovalCoordinator(config.Journal),
+		elicitations:        newElicitationCoordinator(config.Journal, config.Events),
 	}, nil
 }
 
@@ -291,6 +324,16 @@ func (m *service) CancelAndWait(ctx context.Context, chatID string) error {
 		return status_error.BadRequest
 	}
 	return m.executions.cancelAndWait(ctx, chatID)
+}
+
+// CancelExecutionAndWait 原子匹配聊天与执行身份后取消，等待该次执行的持久收尾。
+func (m *service) CancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
+	chatID = strings.TrimSpace(chatID)
+	executionID = strings.TrimSpace(executionID)
+	if chatID == "" || executionID == "" {
+		return status_error.BadRequest
+	}
+	return m.executions.cancelExecutionAndWait(ctx, chatID, executionID)
 }
 
 func resolveWorkingDirectory(value string) (models.ProjectSource, error) {

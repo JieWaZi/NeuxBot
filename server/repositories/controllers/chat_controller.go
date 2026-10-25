@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -32,9 +32,9 @@ type ChatController interface {
 	CountByWaker(ctx context.Context, wakerID string) (int64, error)
 	// CountByWakerUpdatedRange 返回伙伴符合标题和最近活动时间筛选的对话总数。
 	CountByWakerUpdatedRange(ctx context.Context, wakerID string, titleQuery string, updatedAtStart int64, updatedAtEnd int64) (int64, error)
-	// CountActiveByWaker 返回 active_execution_id 非空的对话数。
+	// CountActiveByWaker 返回伙伴普通对话中 active_execution_id 非空的数量。
 	CountActiveByWaker(ctx context.Context, wakerID string) (int64, error)
-	// ListActivitySummariesByWaker 批量返回伙伴全部 Chat 的聚合活动计数。
+	// ListActivitySummariesByWaker 批量返回伙伴普通 Chat 的聚合活动计数。
 	ListActivitySummariesByWaker(
 		ctx context.Context,
 		wakerIDs []string,
@@ -84,7 +84,7 @@ func NewChatController(db *gorm.DB) ChatController {
 	return &chatController{db: db}
 }
 
-// ListActivitySummariesByWaker 批量返回伙伴全部 Chat 的聚合活动计数。
+// ListActivitySummariesByWaker 批量返回伙伴普通 Chat 的聚合活动计数。
 func (c *chatController) ListActivitySummariesByWaker(
 	ctx context.Context,
 	wakerIDs []string,
@@ -107,7 +107,7 @@ func (c *chatController) ListActivitySummariesByWaker(
 					AND NOT (waiting_approval = 1 OR waiting_elicitation = 1) THEN 1
 				ELSE 0
 			END) AS running_count`).
-		Where("waker_id IN ?", wakerIDs).
+		Where("waker_id IN ? AND hidden_from_waker_history = ?", wakerIDs, false).
 		Group("waker_id").
 		Find(&rows).Error
 	if err != nil {
@@ -355,7 +355,7 @@ func filterWakerChats(
 	return query
 }
 
-// CountActiveByWaker 返回 active_execution_id 非空的对话数。
+// CountActiveByWaker 返回伙伴普通对话中 active_execution_id 非空的数量。
 func (c *chatController) CountActiveByWaker(
 	ctx context.Context,
 	wakerID string,
@@ -363,7 +363,7 @@ func (c *chatController) CountActiveByWaker(
 	var count int64
 	err := controllerDB(ctx, c.db).
 		Model(&models.Chat{}).
-		Where("waker_id = ? AND active_execution_id <> ''", wakerID).
+		Where("waker_id = ? AND active_execution_id <> '' AND hidden_from_waker_history = ?", wakerID, false).
 		Count(&count).Error
 	if err != nil {
 		return 0, databaseError(

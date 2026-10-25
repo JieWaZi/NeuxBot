@@ -69,7 +69,7 @@ func (v AutomaticRunState) Values() []enum.Enum {
 }
 
 func (v AutomaticRunState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.AutomaticRunState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.AutomaticRunState"
 }
 
 func (v AutomaticRunState) MarshalText() ([]byte, error) {

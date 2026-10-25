@@ -1,18 +1,19 @@
-// Package mcpclient 提供 NeuxAlly 主进程使用的 MCP 协议客户端能力。
+// Package mcpclient 提供 NeuxBot 主进程使用的 MCP 协议客户端能力。
 package mcpclient
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -39,12 +40,22 @@ type headerRoundTripper struct {
 	base http.RoundTripper
 	// headers 是每个 MCP 请求都要携带的静态请求头。
 	headers http.Header
+	// endpoint 在插件诊断中限定真实授权地址。
+	endpoint string
+	// sameOrigin 仅允许 SSE 协议在同源消息端点继续握手，不授予跨源凭据转发。
+	sameOrigin bool
 }
 
-// RoundTrip 克隆请求并附加连接器请求头，避免修改调用方共享对象。
+// RoundTrip 克隆请求并附加连接器请求头，诊断凭据仅交付核准的协议端点。
 func (t *headerRoundTripper) RoundTrip(
 	request *http.Request,
 ) (*http.Response, error) {
+	if t.endpoint != "" && request.URL.String() != t.endpoint {
+		expected, err := url.Parse(t.endpoint)
+		if !t.sameOrigin || err != nil || request.URL.User != nil || request.URL.Scheme != expected.Scheme || request.URL.Host != expected.Host {
+			return nil, status_error.PluginForbidden
+		}
+	}
 	cloned := request.Clone(request.Context())
 	cloned.Header = request.Header.Clone()
 	for name, values := range t.headers {
@@ -58,6 +69,15 @@ func (t *headerRoundTripper) RoundTrip(
 
 // Test 初始化 MCP 会话并读取全部工具摘要。
 func Test(ctx context.Context, connector models.MCPConnector) Result {
+	return testConnection(ctx, connector, "", false)
+}
+
+// TestInDirectory 为包内 STDIO 使用已校验的工作目录，仍只初始化与发现工具。
+func TestInDirectory(ctx context.Context, connector models.MCPConnector, directory string) Result {
+	return testConnection(ctx, connector, directory, true)
+}
+
+func testConnection(ctx context.Context, connector models.MCPConnector, directory string, strict bool) Result {
 	startedAt := time.Now()
 	timeout := time.Duration(connector.TimeoutMS) * time.Millisecond
 	if timeout <= 0 {
@@ -66,13 +86,13 @@ func Test(ctx context.Context, connector models.MCPConnector) Result {
 	testContext, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	transport, err := newTransport(testContext, connector, timeout)
+	transport, err := newTransport(testContext, connector, timeout, transportOptions{directory: directory, strict: strict})
 	if err != nil {
 		return failedResult(startedAt, err)
 	}
 	client := mcp.NewClient(&mcp.Implementation{
 		Name:    "ally",
-		Title:   "NeuxAlly",
+		Title:   "NeuxBot",
 		Version: "1",
 	}, nil)
 	session, err := client.Connect(testContext, transport, nil)
@@ -92,11 +112,28 @@ func Test(ctx context.Context, connector models.MCPConnector) Result {
 	}
 }
 
+// transportOptions 只描述调用方已经固定的诊断边界。
+type transportOptions struct {
+	// directory 是核验后的插件启动目录。
+	directory string
+	// strict 表示禁止重定向，且仅对 SSE 允许同源协议消息端点。
+	strict bool
+}
+
 func newTransport(
 	ctx context.Context,
 	connector models.MCPConnector,
 	timeout time.Duration,
+	options ...transportOptions,
 ) (mcp.Transport, error) {
+	option := transportOptions{}
+	if len(options) > 0 {
+		option = options[0]
+	}
+	endpoint := ""
+	if option.strict {
+		endpoint = connector.URL
+	}
 	switch connector.Transport {
 	case constants.MCPTransportStdio:
 		if strings.TrimSpace(connector.Command) == "" {
@@ -111,13 +148,14 @@ func newTransport(
 		}
 		command := exec.CommandContext(ctx, connector.Command, connector.Arguments...)
 		command.Env = environment
+		command.Dir = option.directory
 		command.Stderr = io.Discard
 		return &mcp.CommandTransport{
 			Command:           command,
 			TerminateDuration: min(timeout, time.Second),
 		}, nil
 	case constants.MCPTransportStreamableHTTP:
-		client, err := connectorHTTPClient(connector.Headers, timeout)
+		client, err := connectorHTTPClient(connector.Headers, timeout, endpoint, false)
 		if err != nil {
 			return nil, err
 		}
@@ -128,7 +166,7 @@ func newTransport(
 			DisableStandaloneSSE: true,
 		}, nil
 	case constants.MCPTransportSSE:
-		client, err := connectorHTTPClient(connector.Headers, timeout)
+		client, err := connectorHTTPClient(connector.Headers, timeout, endpoint, true)
 		if err != nil {
 			return nil, err
 		}
@@ -144,6 +182,8 @@ func newTransport(
 func connectorHTTPClient(
 	definitions []models.MCPSecretDefinition,
 	timeout time.Duration,
+	endpoint string,
+	sameOrigin bool,
 ) (*http.Client, error) {
 	headers := make(http.Header, len(definitions))
 	for _, definition := range definitions {
@@ -157,13 +197,19 @@ func connectorHTTPClient(
 			headers.Set(definition.Name, definition.Value)
 		}
 	}
-	return &http.Client{
+	client := &http.Client{
 		Transport: &headerRoundTripper{
-			base:    http.DefaultTransport,
-			headers: headers,
+			base:       http.DefaultTransport,
+			headers:    headers,
+			endpoint:   endpoint,
+			sameOrigin: sameOrigin,
 		},
 		Timeout: timeout,
-	}, nil
+	}
+	if endpoint != "" {
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
+	return client, nil
 }
 
 func mergedEnvironment(

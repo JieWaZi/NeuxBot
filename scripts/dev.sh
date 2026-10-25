@@ -7,7 +7,7 @@ export ALLY_LOCAL_TOKEN="$ALLY_DEV_TOKEN"
 export VITE_ALLY_LOCAL_TOKEN="$ALLY_DEV_TOKEN"
 export VITE_ALLY_CORE_URL="${VITE_ALLY_CORE_URL:-http://127.0.0.1:8432}"
 pnpm pi:bridge:generate
-export PI_MCP_MODULE_PATH="$(pwd)/desktop/resources/pi-bridge/bridge.mjs"
+export PI_MCP_MODULE_PATH="$(pwd)/resources/pi-bridge/bridge.mjs"
 
 (
   cd server

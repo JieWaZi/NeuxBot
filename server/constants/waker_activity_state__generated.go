@@ -41,7 +41,7 @@ func (v WakerActivityState) Values() []enum.Enum {
 }
 
 func (v WakerActivityState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.WakerActivityState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.WakerActivityState"
 }
 
 func (v WakerActivityState) MarshalText() ([]byte, error) {

@@ -13,20 +13,24 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcommand"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
-	workflowfiles "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files"
-	workflowfunction "github.com/JieWaZi/NeuxAlly/server/internal/workflow/function"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	workflowfunction "github.com/JieWaZi/NeuxBot/server/internal/workflow/function"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // StartRunCommand 是用户、子运行与自动任务共用的接纳命令。
 type StartRunCommand struct {
+	// AutomaticRunID 是服务端传入的原自动运行，不能从用户或模型正文绑定。
+	AutomaticRunID string `json:"-"`
+	// InputFileOwnerKeyID 由调用入口填写，原件同时绑定任务和集成主体。
+	InputFileOwnerKeyID string `json:"-"`
 	// InputFileRoots 只由 CLI 认证层提供，允许读取的原文件将在接纳前冻结。
 	InputFileRoots []string `json:"-"`
 	// WorkerConfigurations 仅由重新运行入口携带原节点配置，外部输入不能自行填写。
@@ -71,7 +75,7 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 	if err != nil || len(encodedArgs) > constants.WorkflowOutputLimitBytes {
 		return models.WorkflowRun{}, status_error.WorkflowBudgetExceeded.WithField("budget", "input_bytes")
 	}
-	digest := workflowstate.Digest([]any{command, command.DefinitionID, command.TriggerSource, command.RetrySourceRunID, command.ParentRunID, command.Joined, command.Depth, command.ConsumerLeaseID, command.ApprovedScope, command.InputFileTaskID, command.WorkerConfigurations})
+	digest := workflowstate.Digest([]any{command, command.DefinitionID, command.TriggerSource, command.RetrySourceRunID, command.ParentRunID, command.Joined, command.Depth, command.ConsumerLeaseID, command.ApprovedScope, command.InputFileTaskID, command.InputFileOwnerKeyID, command.AutomaticRunID, command.WorkerConfigurations})
 	// 幂等重放不重新访问已经冻结的目录或账号。
 	if receipt, found, err := s.store.FindReceipt(ctx, command.DefinitionID, command.RequestID); err != nil {
 		return models.WorkflowRun{}, err
@@ -235,7 +239,7 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		if command.ConsumerLeaseID != "" {
 			flowContext["consumerLeaseId"] = command.ConsumerLeaseID
 		}
-		run = models.WorkflowRun{ID: id, RootRunID: rootRunID, DefinitionID: definition.ID, RevisionID: revision.ID, RevisionOrdinal: revision.Ordinal, Status: constants.WorkflowRunStatusQueued, Args: args, Defaults: command.Defaults, WorkerConfigurations: configurations, Limits: revision.Manifest.Meta.Limits, ScopeBinding: scope, Context: flowContext, RootFiberID: fiberID, ParentRunID: command.ParentRunID, Joined: command.Joined, Depth: command.Depth, Version: 1, StartedAt: now, DeadlineAt: now + timeout}
+		run = models.WorkflowRun{AutomaticRunID: command.AutomaticRunID, ID: id, RootRunID: rootRunID, DefinitionID: definition.ID, RevisionID: revision.ID, RevisionOrdinal: revision.Ordinal, Status: constants.WorkflowRunStatusQueued, Args: args, Defaults: command.Defaults, WorkerConfigurations: configurations, Limits: revision.Manifest.Meta.Limits, ScopeBinding: scope, Context: flowContext, RootFiberID: fiberID, ParentRunID: command.ParentRunID, Joined: command.Joined, Depth: command.Depth, Version: 1, StartedAt: now, DeadlineAt: now + timeout}
 		fiber := models.WorkflowFiber{ID: fiberID, RunID: id, Path: "root", Status: constants.WorkflowStepStatusReady, State: workflowdsl.NewMachine(revision.Bundle, args, flowContext, now)}
 		if err = s.runs.CreateRun(ctx, run, fiber); err != nil {
 			return err
@@ -443,7 +447,7 @@ func (s *Service) UploadFile(ctx context.Context, definitionID, taskID, name str
 func (s *Service) prepareInputFiles(ctx context.Context, command StartRunCommand, revision models.WorkflowRevision, runID string, scope models.WorkflowScopeBinding, args any) (any, error) {
 	return workflowdsl.MapFiles(revision.Manifest.Meta.InputSchema, args, func(pointer, reference string) (string, error) {
 		if strings.HasPrefix(reference, constants.WorkflowFileReferencePrefix) {
-			return workflowfiles.Materialize(ctx, s.dataDirectory, command.DefinitionID, command.InputFileTaskID, runID, scope.WorkingDirectory, reference)
+			return workflowfiles.Materialize(ctx, s.dataDirectory, command.DefinitionID, command.InputFileTaskID, runID, scope.WorkingDirectory, reference, command.InputFileOwnerKeyID)
 		}
 		if len(command.InputFileRoots) > 0 {
 			frozen, err := workflowfiles.FreezeLocalInput(ctx, command.InputFileRoots, reference, scope.WorkingDirectory, runID, pointer)
@@ -551,4 +555,15 @@ func OpenDeclaredOutputFile(run models.WorkflowRun, schema map[string]any, resul
 		}
 	}
 	return nil, "", status_error.WorkflowFileNotFound
+}
+
+// UploadFileForKey 由集成入口保存主体隔离的任务输入，不改变旧 Token 或本机上传归属。
+func (s *Service) UploadFileForKey(ctx context.Context, definitionID, taskID, keyID, name string, input io.Reader) (workflowfiles.Upload, error) {
+	if keyID == "" || taskID == "" {
+		return workflowfiles.Upload{}, status_error.WorkflowFileInvalid
+	}
+	if _, err := s.store.GetDefinition(ctx, definitionID); err != nil {
+		return workflowfiles.Upload{}, err
+	}
+	return workflowfiles.Save(ctx, s.dataDirectory, definitionID, taskID, name, input, keyID)
 }

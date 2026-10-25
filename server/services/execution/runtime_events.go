@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	eventstream "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // pendingRuntimeMessage 保存尚未到达完整消息边界的 Assistant 内容。
@@ -196,7 +196,7 @@ func (s *runtimeEventSink) ensureLiveAdapterLocked() error {
 	if s.liveAdapter != nil {
 		return nil
 	}
-	records, err := s.journal.ReadRecords(s.chatID)
+	records, err := s.journal.ReadExecutionRecords(s.chatID, s.executionID)
 	if err != nil {
 		return err
 	}

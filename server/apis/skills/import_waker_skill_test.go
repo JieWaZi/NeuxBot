@@ -7,11 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -173,7 +172,7 @@ func TestImportWakerSkillInstallsOnlySelectedCandidates(t *testing.T) {
 		Body: ImportSkillRequest{
 			Token: batch.Token,
 			Candidates: []InstallSkillCandidateRequest{{
-				ID: selectedID, Scope: constants.SkillScopePrivate, Version: "1.0.0",
+				ID: selectedID, Version: "1.0.0",
 			}},
 		},
 	}).Output(ctx); err != nil {
@@ -258,8 +257,8 @@ func TestImportWakerSkillValidatesEverySelectionBeforeWritingVersions(t *testing
 		Body: ImportSkillRequest{
 			Token: batch.Token,
 			Candidates: []InstallSkillCandidateRequest{
-				{ID: batch.Candidates[0].ID, Scope: constants.SkillScopePrivate, Version: "1.0.0"},
-				{ID: "missing-candidate", Scope: constants.SkillScopePrivate, Version: "1.0.0"},
+				{ID: batch.Candidates[0].ID, Version: "1.0.0"},
+				{ID: "missing-candidate", Version: "1.0.0"},
 			},
 		},
 	}).Output(ctx)

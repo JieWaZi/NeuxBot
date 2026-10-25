@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -59,5 +59,6 @@ func (s *SetWakerConnectorEnabled) Output(ctx *gin.Context) (interface{}, error)
 	); err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	notifyResourceChanged(ctx, s.ConnectorID)
 	return ginx.CommonSuccessResponse(), nil
 }

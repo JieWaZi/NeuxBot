@@ -1,0 +1,8 @@
+dist
+coverage
+src/shared/api/generated
+dist-electron
+release
+
+binaries
+resources

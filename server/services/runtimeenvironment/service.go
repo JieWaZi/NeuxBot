@@ -9,16 +9,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/aiaccount"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 )
 
 // Service 提供运行时环境条目的初始化和探测生命周期能力。
@@ -73,8 +73,14 @@ type service struct {
 	cancelLifecycle context.CancelFunc
 	// waitGroup 等待全部后台探测 goroutine 退出。
 	waitGroup sync.WaitGroup
-	// refreshMutex 串行化全量和单条刷新，避免快照互相覆盖。
+	// refreshMutex 串行化探测结果提交与默认选择，不持锁等待外部 CLI。
 	refreshMutex sync.Mutex
+	// refreshAllMutex 串行化全量刷新轮次，单条刷新不等待其他智能体。
+	refreshAllMutex sync.Mutex
+	// runtimeMutex 保护各智能体刷新锁的创建和读取。
+	runtimeMutex sync.Mutex
+	// runtimeRefreshLocks 只串行化同一智能体的探测与结果提交。
+	runtimeRefreshLocks map[string]*sync.Mutex
 	// initializeMutex 合并空库初始化请求，确保只执行一轮初始化探测。
 	initializeMutex sync.Mutex
 	// startupMutex 保护本次启动探测的完成与失败事实。
@@ -213,8 +219,8 @@ func (s *service) EnsureInitialized(ctx context.Context) (bool, error) {
 
 // RefreshAll 重新探测全部已注册 Runtime。
 func (s *service) RefreshAll(ctx context.Context) (err error) {
-	s.refreshMutex.Lock()
-	defer s.refreshMutex.Unlock()
+	s.refreshAllMutex.Lock()
+	defer s.refreshAllMutex.Unlock()
 	// 与探测快照保持同一串行顺序，避免启动失败的旧终态覆盖成功重试。
 	defer func() {
 		s.startupMutex.Lock()
@@ -227,20 +233,25 @@ func (s *service) RefreshAll(ctx context.Context) (err error) {
 			s.eventPublisher.Publish(events.Event{Topic: "runtimes", Type: "runtimes.changed", Resource: events.Resource{Kind: "global"}})
 		}
 	}()
-	if err = s.refreshAllLocked(ctx); err != nil {
-		return err
-	}
-	return s.ensureDefault(ctx)
+	return s.refreshAllLocked(ctx)
 }
 
 // RefreshOne 重新探测指定 Runtime。
 func (s *service) RefreshOne(ctx context.Context, runtimeID string) error {
-	s.refreshMutex.Lock()
-	defer s.refreshMutex.Unlock()
-	if err := s.refreshOneLocked(ctx, strings.TrimSpace(runtimeID)); err != nil {
-		return err
+	runtimeID = strings.TrimSpace(runtimeID)
+	s.runtimeMutex.Lock()
+	if s.runtimeRefreshLocks == nil {
+		s.runtimeRefreshLocks = make(map[string]*sync.Mutex)
 	}
-	return s.ensureDefault(ctx)
+	lock := s.runtimeRefreshLocks[runtimeID]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		s.runtimeRefreshLocks[runtimeID] = lock
+	}
+	s.runtimeMutex.Unlock()
+	lock.Lock()
+	defer lock.Unlock()
+	return s.refreshOneLocked(ctx, runtimeID)
 }
 
 func (s *service) initialize(ctx context.Context) error {
@@ -252,13 +263,6 @@ func (s *service) initialize(ctx context.Context) error {
 		}
 		return nil
 	})
-}
-
-type detectedEnvironment struct {
-	// result 是本次探测得到的完整快照。
-	result runtimes.DetectionResult
-	// environment 是产生探测结果时使用的持久化环境配置。
-	environment models.RuntimeEnvironment
 }
 
 func (s *service) refreshAllLocked(ctx context.Context) error {
@@ -279,32 +283,19 @@ func (s *service) refreshAllLocked(ctx context.Context) error {
 				return err
 			}
 		}
-		environment, err = s.reconcileEnvironment(ctx, summary, environment)
-		if err != nil {
-			return err
-		}
-		byID[summary.ID] = environment
 	}
-	results := make(chan detectedEnvironment, len(summaries))
+	results := make(chan error, len(summaries))
 	for _, summary := range summaries {
 		go func() {
-			environment := byID[summary.ID]
-			results <- detectedEnvironment{
-				result:      s.detect(ctx, summary, environment),
-				environment: environment,
-			}
+			results <- s.RefreshOne(ctx, summary.ID)
 		}()
 	}
 	// 接收全部 worker 的唯一结果后再返回，既及时发布完成项，也保证生命周期等待完整。
 	var firstError error
 	for range summaries {
-		detected := <-results
-		if firstError != nil {
-			continue
+		if err := <-results; firstError == nil {
+			firstError = err
 		}
-		firstError = s.transactions.Transaction(ctx, func(transactionContext context.Context) error {
-			return s.persistDetection(transactionContext, detected.environment, detected.result, time.Now().UnixMilli())
-		})
 	}
 	return firstError
 }
@@ -329,6 +320,8 @@ func (s *service) refreshOneLocked(ctx context.Context, runtimeID string) error 
 		return err
 	}
 	result := s.detect(ctx, summary, environment)
+	s.refreshMutex.Lock()
+	defer s.refreshMutex.Unlock()
 	if err := s.transactions.Transaction(ctx, func(transactionContext context.Context) error {
 		return s.persistDetection(
 			transactionContext,
@@ -339,7 +332,7 @@ func (s *service) refreshOneLocked(ctx context.Context, runtimeID string) error 
 	}); err != nil {
 		return err
 	}
-	return nil
+	return s.ensureDefault(ctx)
 }
 
 // reconcileEnvironment 只同步注册表管理的产品名称，不改写用户配置的启动命令。
@@ -541,27 +534,28 @@ func runtimeDetectRequest(
 }
 
 func (s *service) ensureDefault(ctx context.Context) error {
-	environments, err := s.environments.List(ctx)
-	if err != nil {
-		return err
-	}
-	for _, environment := range environments {
-		if environment.IsDefault && environment.Enabled && environment.Detection.State == runtimes.DetectionStateReady {
-			return nil
+	// 检查与替换共享短事务，避免后台完成项覆盖用户刚保存的默认选择。
+	return s.transactions.Transaction(ctx, func(transactionContext context.Context) error {
+		environments, err := s.environments.List(transactionContext)
+		if err != nil {
+			return err
 		}
-	}
-	for _, environment := range environments {
-		if !environment.Enabled || environment.Detection.State != runtimes.DetectionStateReady {
-			continue
+		for _, environment := range environments {
+			if environment.IsDefault && environment.Enabled && environment.Detection.State == runtimes.DetectionStateReady {
+				return nil
+			}
 		}
-		return s.transactions.Transaction(ctx, func(transactionContext context.Context) error {
+		for _, environment := range environments {
+			if !environment.Enabled || environment.Detection.State != runtimes.DetectionStateReady {
+				continue
+			}
 			if err := s.environments.ClearDefault(transactionContext); err != nil {
 				return err
 			}
 			return s.environments.UpdateFields(transactionContext, environment.RuntimeID, map[string]any{"is_default": true})
-		})
-	}
-	return s.environments.ClearDefault(ctx)
+		}
+		return s.environments.ClearDefault(transactionContext)
+	})
 }
 
 func newEnvironment(summary runtimes.RuntimeSummary) models.RuntimeEnvironment {

@@ -105,8 +105,22 @@ func (v StatusError) Key() string {
 		return "IMConfigurationInvalid"
 	case IMFileInvalid:
 		return "IMFileInvalid"
+	case PluginManifestInvalid:
+		return "PluginManifestInvalid"
+	case PluginContentInvalid:
+		return "PluginContentInvalid"
+	case PluginContentLimitExceeded:
+		return "PluginContentLimitExceeded"
+	case WorkspacePathInvalid:
+		return "WorkspacePathInvalid"
+	case TerminalInvalid:
+		return "TerminalInvalid"
 	case AgentInputInvalid:
 		return "AgentInputInvalid"
+	case KnowledgeInvalid:
+		return "KnowledgeInvalid"
+	case IntegrationInvalid:
+		return "IntegrationInvalid"
 	case Unauthorized:
 		return "Unauthorized"
 	case MemoryContextUnauthorized:
@@ -117,14 +131,28 @@ func (v StatusError) Key() string {
 		return "IMLoginRequired"
 	case AgentContextUnauthorized:
 		return "AgentContextUnauthorized"
+	case KnowledgeRemoteUnauthorized:
+		return "KnowledgeRemoteUnauthorized"
+	case IntegrationUnauthorized:
+		return "IntegrationUnauthorized"
 	case IMChatNotAuthorized:
 		return "IMChatNotAuthorized"
 	case IMWorkflowDeliveryNotAllowed:
 		return "IMWorkflowDeliveryNotAllowed"
 	case IMTargetNotAuthorized:
 		return "IMTargetNotAuthorized"
+	case PluginForbidden:
+		return "PluginForbidden"
+	case WorkspaceScopeInvalid:
+		return "WorkspaceScopeInvalid"
+	case TerminalForbidden:
+		return "TerminalForbidden"
 	case AgentOperationForbidden:
 		return "AgentOperationForbidden"
+	case KnowledgeForbidden:
+		return "KnowledgeForbidden"
+	case IntegrationForbidden:
+		return "IntegrationForbidden"
 	case WakerNotFound:
 		return "WakerNotFound"
 	case RolePresetNotFound:
@@ -171,8 +199,18 @@ func (v StatusError) Key() string {
 		return "IMResourceNotFound"
 	case IMTargetUnavailable:
 		return "IMTargetUnavailable"
+	case PluginNotFound:
+		return "PluginNotFound"
+	case WorkspaceResourceNotFound:
+		return "WorkspaceResourceNotFound"
+	case TerminalNotFound:
+		return "TerminalNotFound"
 	case AgentReceiptNotFound:
 		return "AgentReceiptNotFound"
+	case KnowledgeNotFound:
+		return "KnowledgeNotFound"
+	case IntegrationNotFound:
+		return "IntegrationNotFound"
 	case OperationCanceled:
 		return "OperationCanceled"
 	case OperationTimeout:
@@ -279,10 +317,42 @@ func (v StatusError) Key() string {
 		return "IMConnectionHasWorkflowDependencies"
 	case IMConnectionDisabled:
 		return "IMConnectionDisabled"
+	case IMConnectionReplaced:
+		return "IMConnectionReplaced"
+	case PluginVersionConflict:
+		return "PluginVersionConflict"
+	case PluginConfigurationConflict:
+		return "PluginConfigurationConflict"
+	case PluginNotReady:
+		return "PluginNotReady"
+	case PluginSkillConflict:
+		return "PluginSkillConflict"
+	case PluginBusy:
+		return "PluginBusy"
+	case WorkspaceResourceConflict:
+		return "WorkspaceResourceConflict"
 	case AgentCommandOutcomeUnknown:
 		return "AgentCommandOutcomeUnknown"
 	case AgentCommandRequestConflict:
 		return "AgentCommandRequestConflict"
+	case KnowledgeConflict:
+		return "KnowledgeConflict"
+	case KnowledgeCancelled:
+		return "KnowledgeCancelled"
+	case KnowledgeFolderHasChildren:
+		return "KnowledgeFolderHasChildren"
+	case KnowledgeFolderHasPages:
+		return "KnowledgeFolderHasPages"
+	case IntegrationConflict:
+		return "IntegrationConflict"
+	case WorkspaceResourceTooLarge:
+		return "WorkspaceResourceTooLarge"
+	case KnowledgeCandidateInvalid:
+		return "KnowledgeCandidateInvalid"
+	case KnowledgeUnsupported:
+		return "KnowledgeUnsupported"
+	case KnowledgeEmbeddingNotConfigured:
+		return "KnowledgeEmbeddingNotConfigured"
 	case AutomaticTaskRateLimited:
 		return "AutomaticTaskRateLimited"
 	case InternalServerError:
@@ -405,8 +475,18 @@ func (v StatusError) Key() string {
 		return "WorkflowFileStorageError"
 	case IMCredentialError:
 		return "IMCredentialError"
+	case PluginStorageError:
+		return "PluginStorageError"
+	case WorkspaceStorageFailed:
+		return "WorkspaceStorageFailed"
+	case WorkspaceGitFailed:
+		return "WorkspaceGitFailed"
 	case AgentContextStorageError:
 		return "AgentContextStorageError"
+	case KnowledgeStorageError:
+		return "KnowledgeStorageError"
+	case IntegrationCredentialError:
+		return "IntegrationCredentialError"
 	case MemoryEmbeddingUnavailable:
 		return "MemoryEmbeddingUnavailable"
 	case MCPConnectorProtocolInvalid:
@@ -419,12 +499,30 @@ func (v StatusError) Key() string {
 		return "IMPlatformUnavailable"
 	case IMProtocolInvalid:
 		return "IMProtocolInvalid"
+	case PluginAuthorizationFailed:
+		return "PluginAuthorizationFailed"
+	case PluginDistributionUnavailable:
+		return "PluginDistributionUnavailable"
+	case KnowledgeRemoteUnreachable:
+		return "KnowledgeRemoteUnreachable"
+	case KnowledgeRemoteIncompatible:
+		return "KnowledgeRemoteIncompatible"
+	case KnowledgeEmbeddingUnavailable:
+		return "KnowledgeEmbeddingUnavailable"
+	case KnowledgeEmbeddingResponseInvalid:
+		return "KnowledgeEmbeddingResponseInvalid"
 	case DatabaseBusy:
 		return "DatabaseBusy"
 	case IMServiceUnavailable:
 		return "IMServiceUnavailable"
+	case TerminalUnavailable:
+		return "TerminalUnavailable"
 	case AgentConnectionUnavailable:
 		return "AgentConnectionUnavailable"
+	case IntegrationListenerError:
+		return "IntegrationListenerError"
+	case KnowledgeRemoteOutcomeUnknown:
+		return "KnowledgeRemoteOutcomeUnknown"
 	}
 	return "UNKNOWN"
 }
@@ -488,16 +586,30 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowIMTargetNotDeclared:          "delivery target is not declared as a workflow dependency; optimize the workflow to declare its target scope",
 			IMConfigurationInvalid:               "im configuration is invalid",
 			IMFileInvalid:                        "im file is missing, outside scope, or too large",
+			PluginManifestInvalid:                "plugin manifest is invalid or its format version is unsupported",
+			PluginContentInvalid:                 "plugin content or package path is invalid",
+			PluginContentLimitExceeded:           "plugin content exceeds import limits",
+			WorkspacePathInvalid:                 "workspace path is invalid",
+			TerminalInvalid:                      "terminal request is invalid",
 			AgentInputInvalid:                    "command input does not satisfy the operation contract",
+			KnowledgeInvalid:                     "invalid knowledge request",
+			IntegrationInvalid:                   "integration name, expiration or grants are invalid",
 			Unauthorized:                         "invalid local access token",
 			MemoryContextUnauthorized:            "memory invocation context is invalid or expired",
 			AutomaticTaskTokenInvalid:            "automatic task token is invalid or revoked",
 			IMLoginRequired:                      "im sign-in is required",
 			AgentContextUnauthorized:             "capability execution context is invalid or expired",
+			KnowledgeRemoteUnauthorized:          "remote knowledge authentication failed",
+			IntegrationUnauthorized:              "integration credential is invalid, expired or revoked",
 			IMChatNotAuthorized:                  "im chat is not authorized",
 			IMWorkflowDeliveryNotAllowed:         "workflow delivery is disabled for this chat; enable it in the chat configuration",
 			IMTargetNotAuthorized:                "chat is not authorized or authorization was revoked; authorize it in the chat configuration",
+			PluginForbidden:                      "plugin is outside the current partner scope",
+			WorkspaceScopeInvalid:                "workspace scope is invalid or expired",
+			TerminalForbidden:                    "terminal session is not authorized",
 			AgentOperationForbidden:              "operation is not authorized for the current execution",
+			KnowledgeForbidden:                   "knowledge resource or operation is outside the execution scope",
+			IntegrationForbidden:                 "integration principal is not authorized for this resource or operation",
 			WakerNotFound:                        "waker not found: {{.WakerID}}",
 			RolePresetNotFound:                   "role preset not found: {{.RolePresetID}}",
 			ProfileDocumentNotFound:              "profile document not found",
@@ -521,7 +633,12 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowFileNotFound:                 "workflow file was not found within the allowed scope",
 			IMResourceNotFound:                   "im resource was not found",
 			IMTargetUnavailable:                  "delivery target no longer exists; optimize the workflow and select an approved chat",
+			PluginNotFound:                       "plugin or version was not found",
+			WorkspaceResourceNotFound:            "workspace resource was not found",
+			TerminalNotFound:                     "terminal session was not found or has ended",
 			AgentReceiptNotFound:                 "command acceptance receipt was not found in the current scope",
+			KnowledgeNotFound:                    "knowledge resource not found",
+			IntegrationNotFound:                  "integration record was not found",
 			OperationCanceled:                    "operation canceled",
 			OperationTimeout:                     "operation timed out",
 			DatabaseOperationCancelled:           "database operation was cancelled",
@@ -575,8 +692,24 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			IMConnectionInUse:                    "connection is used by active workflows or pending deliveries; wait or stop the related work",
 			IMConnectionHasWorkflowDependencies:  "saved workflows reference this connection; review the affected workflows and confirm deletion again if dependencies change",
 			IMConnectionDisabled:                 "delivery connection is disabled; enable it in connection settings and retry",
+			IMConnectionReplaced:                 "wecom bot connected elsewhere; close the other connection and save settings to reconnect",
+			PluginVersionConflict:                "plugin version or content changed; confirm the operation again",
+			PluginConfigurationConflict:          "plugin shared configuration changed or is incompatible",
+			PluginNotReady:                       "complete required plugin configuration, authentication and dependencies first",
+			PluginSkillConflict:                  "skills with the same declared name have different content",
+			PluginBusy:                           "shared account is in use by work or authorization; try again after it exits",
+			WorkspaceResourceConflict:            "workspace resource changed; read it again",
 			AgentCommandOutcomeUnknown:           "command outcome is uncertain; inspect the original request receipt",
 			AgentCommandRequestConflict:          "command request identifier was already used with different content",
+			KnowledgeConflict:                    "knowledge version or request content has changed",
+			KnowledgeCancelled:                   "knowledge operation was cancelled or its attempt is stale",
+			KnowledgeFolderHasChildren:           "folder contains subfolders; delete them first",
+			KnowledgeFolderHasPages:              "folder contains pages; move them out first",
+			IntegrationConflict:                  "integration revision or request identity conflicts",
+			WorkspaceResourceTooLarge:            "workspace resource exceeds the size limit",
+			KnowledgeCandidateInvalid:            "knowledge execution or candidate is not eligible for publication",
+			KnowledgeUnsupported:                 "knowledge provider or runtime does not support this operation",
+			KnowledgeEmbeddingNotConfigured:      "configure this library's embedding service first",
 			AutomaticTaskRateLimited:             "automatic task request rate exceeds the per-minute limit",
 			InternalServerError:                  "core internal error",
 			DatabaseError:                        "database operation failed",
@@ -638,16 +771,30 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowStateInvalid:                 "workflow execution state is corrupt",
 			WorkflowFileStorageError:             "workflow file storage failed",
 			IMCredentialError:                    "failed to read or save im credentials",
+			PluginStorageError:                   "plugin files could not be safely prepared or read",
+			WorkspaceStorageFailed:               "workspace storage operation failed",
+			WorkspaceGitFailed:                   "workspace git operation failed",
 			AgentContextStorageError:             "capability context file could not be safely prepared or read",
+			KnowledgeStorageError:                "knowledge storage failed",
+			IntegrationCredentialError:           "integration credential generation failed",
 			MemoryEmbeddingUnavailable:           "embedding service is unavailable",
 			MCPConnectorProtocolInvalid:          "mcp connector returned an invalid protocol response",
 			AIAccountModelsUnavailable:           "model catalog service is unavailable",
 			AIAccountModelsResponseInvalid:       "model catalog response is invalid",
 			IMPlatformUnavailable:                "im platform is unavailable",
 			IMProtocolInvalid:                    "im platform returned an invalid protocol response",
+			PluginAuthorizationFailed:            "plugin authentication did not complete or external authorization expired",
+			PluginDistributionUnavailable:        "plugin catalog or archive could not be downloaded; check the network and retry",
+			KnowledgeRemoteUnreachable:           "remote knowledge service is unreachable",
+			KnowledgeRemoteIncompatible:          "remote knowledge service protocol is incompatible",
+			KnowledgeEmbeddingUnavailable:        "knowledge embedding service unavailable",
+			KnowledgeEmbeddingResponseInvalid:    "invalid knowledge embedding response",
 			DatabaseBusy:                         "processing other data; please try again later",
 			IMServiceUnavailable:                 "im integration service is unavailable",
+			TerminalUnavailable:                  "terminal service is unavailable",
 			AgentConnectionUnavailable:           "capability connection is unavailable or its protocol does not match",
+			IntegrationListenerError:             "integration listener or configuration update failed",
+			KnowledgeRemoteOutcomeUnknown:        "remote operation outcome is unknown; inspect the original request receipt",
 		},
 		"zh": {
 			BadRequest:                           "请求参数不合法",
@@ -683,16 +830,30 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowIMTargetNotDeclared:          "发送目标未声明为工作流依赖，请通过优化工作流补充发送目标范围",
 			IMConfigurationInvalid:               "IM 配置不完整或执行目标不可用",
 			IMFileInvalid:                        "IM 文件不存在、超出范围或过大",
+			PluginManifestInvalid:                "插件清单无效或格式版本不受支持",
+			PluginContentInvalid:                 "插件内容或路径不合法",
+			PluginContentLimitExceeded:           "插件内容超过导入限制",
+			WorkspacePathInvalid:                 "工作区路径不合法",
+			TerminalInvalid:                      "终端请求无效",
 			AgentInputInvalid:                    "软件能力命令参数不符合契约",
+			KnowledgeInvalid:                     "知识请求参数不合法",
+			IntegrationInvalid:                   "API 集成名称、有效期或授权范围无效",
 			Unauthorized:                         "本地访问令牌无效",
 			MemoryContextUnauthorized:            "记忆调用上下文无效或已过期",
 			AutomaticTaskTokenInvalid:            "自动任务密钥无效或已经失效",
 			IMLoginRequired:                      "IM 登录已失效，请重新登录",
 			AgentContextUnauthorized:             "软件能力执行身份无效或已过期",
+			KnowledgeRemoteUnauthorized:          "远端知识服务认证失败，请检查连接凭据",
+			IntegrationUnauthorized:              "API Key 无效、已到期或已撤销",
 			IMChatNotAuthorized:                  "此 IM 聊天尚未获准接入",
 			IMWorkflowDeliveryNotAllowed:         "此聊天未允许工作流发送，请在聊天配置中开启工作流发送",
 			IMTargetNotAuthorized:                "此聊天尚未授权或授权已撤销，请在聊天配置中授权",
+			PluginForbidden:                      "此插件不属于当前伙伴可用范围",
+			WorkspaceScopeInvalid:                "工作区授权范围无效或已过期",
+			TerminalForbidden:                    "当前会话无权操作此终端",
 			AgentOperationForbidden:              "当前执行未获准使用此软件能力",
+			KnowledgeForbidden:                   "当前执行无权访问此知识资源或操作",
+			IntegrationForbidden:                 "当前 API Key 没有访问该资源或操作的权限",
 			WakerNotFound:                        "伙伴不存在：{{.WakerID}}",
 			RolePresetNotFound:                   "角色预设不存在：{{.RolePresetID}}",
 			ProfileDocumentNotFound:              "档案文档不存在",
@@ -716,7 +877,12 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowFileNotFound:                 "工作流文件不存在或不在允许范围内",
 			IMResourceNotFound:                   "IM 连接、聊天或投递记录不存在",
 			IMTargetUnavailable:                  "发送目标已不存在，请优化工作流并重新选择获准聊天",
+			PluginNotFound:                       "插件或版本不存在",
+			WorkspaceResourceNotFound:            "工作区资源不存在",
+			TerminalNotFound:                     "终端会话不存在或已结束",
 			AgentReceiptNotFound:                 "当前范围内尚无该命令的接纳回执",
+			KnowledgeNotFound:                    "知识资源不存在",
+			IntegrationNotFound:                  "未找到对应的 API 集成记录",
 			OperationCanceled:                    "操作已取消",
 			OperationTimeout:                     "操作等待超时",
 			DatabaseOperationCancelled:           "数据库操作已取消",
@@ -770,8 +936,24 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			IMConnectionInUse:                    "连接仍被运行中的工作流或待发送消息使用，请等待完成或先停止相关任务",
 			IMConnectionHasWorkflowDependencies:  "连接被已保存工作流引用，请查看受影响流程并确认删除；依赖变化后需重新确认",
 			IMConnectionDisabled:                 "发送连接已停用，请在连接设置中启用后重试",
+			IMConnectionReplaced:                 "企业微信机器人已在其他客户端连接，请关闭其他连接后保存设置以重连",
+			PluginVersionConflict:                "插件版本或内容已变化，请重新确认",
+			PluginConfigurationConflict:          "插件共享配置已变化或不兼容，请重新确认",
+			PluginNotReady:                       "请先完成插件所需配置、认证和程序准备",
+			PluginSkillConflict:                  "技能声明名称相同但内容不同，请调整已启用的技能或插件",
+			PluginBusy:                           "认证进程或工作仍在使用共享账号，请稍后重试",
+			WorkspaceResourceConflict:            "工作区资源已变化，请重新读取",
 			AgentCommandOutcomeUnknown:           "软件能力命令提交结果尚不确定，请查询原请求回执",
 			AgentCommandRequestConflict:          "同一命令请求标识不能用于不同内容",
+			KnowledgeConflict:                    "知识版本或请求内容已变化，请刷新后重试",
+			KnowledgeCancelled:                   "当前知识操作已取消或阶段已失效",
+			KnowledgeFolderHasChildren:           "目录下还有子目录，请先删除子目录",
+			KnowledgeFolderHasPages:              "目录下还有页面，请先移出页面",
+			IntegrationConflict:                  "API 集成配置已变化，请刷新后重试",
+			WorkspaceResourceTooLarge:            "工作区资源超过大小限制",
+			KnowledgeCandidateInvalid:            "知识执行或候选未满足发布条件",
+			KnowledgeUnsupported:                 "当前知识服务或智能体不支持此操作",
+			KnowledgeEmbeddingNotConfigured:      "请先配置此知识库的独立嵌入服务",
 			AutomaticTaskRateLimited:             "自动任务触发频率超过每分钟上限，请稍后重试",
 			InternalServerError:                  "本地服务内部错误",
 			DatabaseError:                        "数据库操作失败",
@@ -833,16 +1015,30 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowStateInvalid:                 "工作流内部执行状态损坏",
 			WorkflowFileStorageError:             "工作流文件存储失败",
 			IMCredentialError:                    "无法读取或保存 IM 凭据",
+			PluginStorageError:                   "插件文件无法安全准备或读取",
+			WorkspaceStorageFailed:               "工作区文件操作失败",
+			WorkspaceGitFailed:                   "Git 操作失败",
 			AgentContextStorageError:             "软件能力连接文件无法安全准备或读取",
+			KnowledgeStorageError:                "知识存储访问失败",
+			IntegrationCredentialError:           "无法生成 API Key，请稍后重试",
 			MemoryEmbeddingUnavailable:           "Embedding 服务当前不可用",
 			MCPConnectorProtocolInvalid:          "MCP 连接器返回了不合法的协议响应",
 			AIAccountModelsUnavailable:           "模型目录服务暂时不可用",
 			AIAccountModelsResponseInvalid:       "模型目录响应不合法",
 			IMPlatformUnavailable:                "IM 平台暂时不可用",
 			IMProtocolInvalid:                    "IM 平台响应不符合当前协议",
+			PluginAuthorizationFailed:            "插件认证未完成或外部授权失效",
+			PluginDistributionUnavailable:        "插件目录或安装包暂时无法下载，请检查网络后重试",
+			KnowledgeRemoteUnreachable:           "远端知识服务连接失败",
+			KnowledgeRemoteIncompatible:          "远端知识服务响应不符合支持的协议",
+			KnowledgeEmbeddingUnavailable:        "知识库嵌入服务暂时不可用",
+			KnowledgeEmbeddingResponseInvalid:    "知识库嵌入服务返回无效向量",
 			DatabaseBusy:                         "正在处理其他数据，请稍后重试",
 			IMServiceUnavailable:                 "IM 集成服务当前不可用",
+			TerminalUnavailable:                  "终端服务不可用",
 			AgentConnectionUnavailable:           "软件能力连接不可用或协议不匹配",
+			IntegrationListenerError:             "API 服务监听或配置保存失败，原配置仍然有效",
+			KnowledgeRemoteOutcomeUnknown:        "远端操作结果待确认，请使用原请求查询回执",
 		},
 	}
 }

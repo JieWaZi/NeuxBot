@@ -2,8 +2,12 @@ import { spawn, execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import "./builtin-skills.mjs";
+import { prepareCatalog, prepareProvider } from "./plugin-resources.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const pluginOutput = path.join(root, "desktop/resources/plugins");
+await prepareCatalog(pluginOutput);
+await prepareProvider(pluginOutput, `${process.platform}-${process.arch}`);
 const cliPath = path.join(
   root,
   "server/bin",
@@ -21,17 +25,15 @@ const core = spawn(
     env: {
       ...process.env,
       ALLYCLI_BINARY_PATH: cliPath,
-      PI_MCP_MODULE_PATH: path.join(
-        root,
-        "desktop/resources/pi-bridge/bridge.mjs",
-      ),
+      ALLY_PLUGIN_RESOURCES_DIR: pluginOutput,
+      PI_MCP_MODULE_PATH: path.join(root, "resources/pi-bridge/bridge.mjs"),
     },
     stdio: "inherit",
   },
 );
 
 core.on("error", (error) => {
-  process.stderr.write(`NeuxAlly Core 启动失败：${error}\n`);
+  process.stderr.write(`NeuxBot Core 启动失败：${error}\n`);
   process.exitCode = 1;
 });
 core.on("exit", (code, signal) => {

@@ -59,3 +59,14 @@ func builtinWorkBuddyDefinition() runtimeDefinition {
 	definition.instructionFileName = "CODEBUDDY.md"
 	return definition
 }
+
+// builtinQoderDefinition 隔离国际版与中国版的原生命令和用户配置根，项目技能均使用 .qoder。
+func builtinQoderDefinition(china bool) runtimeDefinition {
+	definition := builtinNativeDefinition(RuntimeIDQoder, "Qoder", []string{"qoder", "qodercli"}, ".qoder", "QODER_CONFIG_DIR")
+	definition.userBinaryCandidates = []string{".qoder/bin/qodercli/qodercli"}
+	if china {
+		definition = builtinNativeDefinition(RuntimeIDQoderCN, "Qoder CN", []string{"qodercn", "qoder-cn", "qoderclicn"}, ".qoder", "QODERCN_CONFIG_DIR")
+		definition.userBinaryCandidates = []string{".qoder-cn/bin/qoderclicn/qoderclicn"}
+	}
+	return definition
+}

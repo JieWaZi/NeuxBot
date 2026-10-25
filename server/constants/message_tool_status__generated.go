@@ -41,7 +41,7 @@ func (v MessageToolStatus) Values() []enum.Enum {
 }
 
 func (v MessageToolStatus) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MessageToolStatus"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MessageToolStatus"
 }
 
 func (v MessageToolStatus) MarshalText() ([]byte, error) {

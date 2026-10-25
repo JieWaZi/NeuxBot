@@ -3,7 +3,7 @@ package messageview
 import (
 	"encoding/json"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // standardACPFileDiffContent 是标准 ACP 单个文件差异的内部完整内容。
@@ -72,6 +72,9 @@ func messageFileChangeDiffs(
 	summaries []ToolFileChangeSummary,
 	scope workspacePathScope,
 ) []MessageFileChangeDiff {
+	if len(summaries) == 0 {
+		return nil
+	}
 	allowedTools := make(map[string]struct{})
 	for _, part := range parts {
 		if part.Type == constants.MessageDisplayPartTool &&

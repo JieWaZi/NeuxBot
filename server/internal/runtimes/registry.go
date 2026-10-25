@@ -1,7 +1,7 @@
 package runtimes
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -18,6 +18,8 @@ type runtimeDefinition struct {
 	profile bool
 	// binaryCandidates 是按优先级尝试的可执行文件候选。
 	binaryCandidates []string
+	// userBinaryCandidates 是相对用户主目录的官方原生程序路径，不包含仅分发命令的桌面入口。
+	userBinaryCandidates []string
 	// prefixArgs 是所有探测和调用共享的前置参数。
 	prefixArgs []string
 	// environment 是 Definition 和 Profile 合并后的环境覆盖。
@@ -42,6 +44,8 @@ func newRegistry(profiles []ProfileSpec) (map[string]runtimeDefinition, error) {
 		RuntimeIDGemini:    builtinGeminiDefinition(),
 		RuntimeIDGrok:      builtinNativeDefinition(RuntimeIDGrok, "Grok Build", []string{"grok"}, ".grok", "GROK_HOME"),
 		RuntimeIDWorkBuddy: builtinWorkBuddyDefinition(),
+		RuntimeIDQoderCN:   builtinQoderDefinition(true),
+		RuntimeIDQoder:     builtinQoderDefinition(false),
 		RuntimeIDCodex:     builtinCodexDefinition(),
 		RuntimeIDClaude:    builtinClaudeDefinition(),
 		RuntimeIDKimi:      builtinNativeDefinition(RuntimeIDKimi, "Kimi", []string{"kimi"}, ".agents", ""),
@@ -82,6 +86,7 @@ func resolveProfile(
 	}
 	if profile.BinaryCandidates != nil {
 		resolved.binaryCandidates = cloneStrings(profile.BinaryCandidates)
+		resolved.userBinaryCandidates = nil
 	}
 	if profile.PrefixArgs != nil {
 		resolved.prefixArgs = cloneStrings(profile.PrefixArgs)
@@ -109,6 +114,7 @@ func definitionWithLaunchOverride(
 	resolved := cloneDefinition(definition)
 	if binary := strings.TrimSpace(override.Binary); binary != "" {
 		resolved.binaryCandidates = []string{binary}
+		resolved.userBinaryCandidates = nil
 	}
 	if override.PrefixArgs != nil {
 		resolved.prefixArgs = cloneStrings(override.PrefixArgs)
@@ -210,6 +216,7 @@ func validateArguments(name string, arguments []string) error {
 func cloneDefinition(source runtimeDefinition) runtimeDefinition {
 	cloned := source
 	cloned.binaryCandidates = cloneStrings(source.binaryCandidates)
+	cloned.userBinaryCandidates = cloneStrings(source.userBinaryCandidates)
 	cloned.prefixArgs = cloneStrings(source.prefixArgs)
 	cloned.environment = cloneStringMap(source.environment)
 	cloned.models = cloneModels(source.models)

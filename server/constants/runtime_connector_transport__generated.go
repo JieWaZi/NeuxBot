@@ -45,7 +45,7 @@ func (v RuntimeConnectorTransport) Values() []enum.Enum {
 }
 
 func (v RuntimeConnectorTransport) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeConnectorTransport"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeConnectorTransport"
 }
 
 func (v RuntimeConnectorTransport) MarshalText() ([]byte, error) {

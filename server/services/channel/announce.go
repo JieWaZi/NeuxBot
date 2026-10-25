@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	messageview "github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	messageview "github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 const memberReportTruncationNotice = "> Report truncated: this is only a limited preview. The lead must not act on it; ask the member to resend a concise report."

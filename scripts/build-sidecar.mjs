@@ -1,9 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { chmod, mkdir, rm } from "node:fs/promises";
+import { chmod, copyFile, mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { allyCoreLdflags } from "./go-ldflags.mjs";
 import "./builtin-skills.mjs";
+import { prepareCatalog, prepareProvider } from "./plugin-resources.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const requested = process.argv[2];
@@ -46,6 +47,14 @@ const targetName = requested ?? nativeTarget;
 const target = targets[targetName];
 if (!target) throw new Error(`不支持的桌面目标：${targetName}`);
 
+const pluginOutput = path.join(root, "desktop/resources/plugins");
+await prepareCatalog(pluginOutput);
+await rm(path.join(pluginOutput, "providers"), {
+  recursive: true,
+  force: true,
+});
+await prepareProvider(pluginOutput, `${target.goos}-${target.goarch}`);
+
 const outputDirectory = path.join(root, "desktop/binaries");
 const output = path.join(outputDirectory, target.file);
 await mkdir(outputDirectory, { recursive: true });
@@ -78,7 +87,7 @@ execFileSync(
   },
 );
 if (target.goos !== "windows") await chmod(output, 0o755);
-console.log(`已生成 NeuxAlly Core sidecar: ${output}`);
+console.log(`已生成 NeuxBot Core sidecar: ${output}`);
 
 const cliName = target.goos === "windows" ? "allycli.exe" : "allycli";
 await rm(
@@ -112,3 +121,27 @@ execFileSync(
 );
 if (target.goos !== "windows") await chmod(cliOutput, 0o755);
 console.log(`已生成软件能力 CLI: ${cliOutput}`);
+
+// 许可随实际引用的模块版本交付，宿主不重复维护依赖许可正文。
+const knowledgeModule = JSON.parse(
+  execFileSync(
+    "go",
+    ["list", "-m", "-json", "github.com/JieWaZi/neux-knowledge"],
+    {
+      cwd: path.join(root, "server"),
+      encoding: "utf8",
+    },
+  ),
+);
+const knowledgeLicenses = path.join(
+  root,
+  "desktop/resources/licenses/neux-knowledge",
+);
+await mkdir(knowledgeLicenses, { recursive: true });
+for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md"]) {
+  const destination = path.join(knowledgeLicenses, name);
+  // Go 模块缓存文件只读；先替换旧产物，保证重复构建可以覆盖。
+  await rm(destination, { force: true });
+  await copyFile(path.join(knowledgeModule.Dir, name), destination);
+  await chmod(destination, 0o644);
+}

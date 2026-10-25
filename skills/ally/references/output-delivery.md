@@ -35,4 +35,4 @@ A single image uses the same root file schema; a set uses file items. Let the pa
 
 ## Structured content with supplementary files
 
-Choose `nodeResultPages` when the user primarily reads composed structured content in NeuxAlly. `FileList` may supplement it with agreed deliverables. Do not regenerate a second page containing the same report merely because a file has a path. Internal response caches, credentials and raw snapshots stay outside the delivery contract unless the user explicitly requested that data.
+Choose `nodeResultPages` when the user primarily reads composed structured content in NeuxBot. `FileList` may supplement it with agreed deliverables. Do not regenerate a second page containing the same report merely because a file has a path. Internal response caches, credentials and raw snapshots stay outside the delivery contract unless the user explicitly requested that data.

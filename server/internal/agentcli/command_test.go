@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 )
 
 func TestCanceledMutationPreservesUnknownEffectAndReceiptAdvice(t *testing.T) {
@@ -120,6 +120,14 @@ func TestHelpAndVersionNeedNoContext(t *testing.T) {
 	var failure agentcapability.Response
 	if code != 2 || out.Len() != 0 || json.Unmarshal(errOut.Bytes(), &failure) != nil || failure.OK {
 		t.Fatalf("usage: %d %s %s", code, &out, &errOut)
+	}
+}
+
+func TestRetiredKnowledgeMCPCommandIsNotAvailable(t *testing.T) {
+	var out, errOut bytes.Buffer
+	code := Execute(context.Background(), []string{"serve-knowledge-mcp", "--help"}, IO{Out: &out, Err: &errOut})
+	if code != 2 || out.Len() != 0 || !strings.Contains(errOut.String(), "AgentInputInvalid") {
+		t.Fatalf("retired MCP transport is still exposed: code=%d out=%s err=%s", code, &out, &errOut)
 	}
 }
 

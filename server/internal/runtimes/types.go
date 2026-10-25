@@ -6,7 +6,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
 )
 
 const (
@@ -28,6 +29,10 @@ const (
 	RuntimeIDGrok = constants.RuntimeIDGrok
 	// RuntimeIDWorkBuddy 是 WorkBuddy 标准 ACP 运行时标识。
 	RuntimeIDWorkBuddy = constants.RuntimeIDWorkBuddy
+	// RuntimeIDQoder 是 Qoder CLI 标准 ACP 运行时标识。
+	RuntimeIDQoder = constants.RuntimeIDQoder
+	// RuntimeIDQoderCN 是 Qoder 中国版 CLI 标准 ACP 运行时标识。
+	RuntimeIDQoderCN = constants.RuntimeIDQoderCN
 )
 
 const (
@@ -75,8 +80,13 @@ type Defaults struct {
 	EventDelivery time.Duration
 }
 
+// CredentialRefresh 把凭据更新交给宿主权威，适配器只在原生认证请求时调用。
+type CredentialRefresh = codexoauth.RefreshFunc
+
 // DetectRequest 保存有界探测 Runtime 所需的显式输入。
 type DetectRequest struct {
+	// RefreshCredentials 将原生能力探测的刷新交给账号凭据权威。
+	RefreshCredentials CredentialRefresh `json:"-"`
 	// WorkingDirectory 是调用方创建并拥有的隔离探测目录；空值由 SDK 创建。
 	WorkingDirectory string
 	// Model 是本次必须实际选择并读取能力的原生模型 ID。
@@ -197,6 +207,8 @@ const (
 type Capability = constants.RuntimeCapability
 
 const (
+	// CapabilityIsolatedTextGeneration 表示探测会话已确认隔离文本生成策略可配置。
+	CapabilityIsolatedTextGeneration = constants.RuntimeCapabilityIsolatedTextGeneration
 	// CapabilityStructuredOutput 表示 Runtime 支持要求的结构化输出格式。
 	CapabilityStructuredOutput = constants.RuntimeCapabilityStructuredOutput
 	// CapabilityResumeSession 表示 Runtime 支持恢复原生 Session。
@@ -310,7 +322,7 @@ type EventSink interface {
 	Accept(ctx context.Context, event Event) error
 }
 
-// PermissionLevel 是 NeuxAlly 跨 Runtime 使用的三档产品权限。
+// PermissionLevel 是 NeuxBot 跨 Runtime 使用的三档产品权限。
 type PermissionLevel = constants.PermissionLevel
 
 const (
@@ -404,6 +416,8 @@ type ElicitationHandler interface {
 
 // RuntimeTarget 保存一次调用选择的 Runtime 及受控本地启动覆盖。
 type RuntimeTarget struct {
+	// RefreshCredentials 只协调原生令牌刷新，不限制会话或模型请求并发。
+	RefreshCredentials CredentialRefresh `json:"-"`
 	// AccountID 是本次执行固定使用的受管账号，空值表示沿用现有 CLI 配置。
 	AccountID string
 	// Environment 是账号准备生成的受控环境变量，不进入事件或日志。
@@ -419,6 +433,14 @@ type RuntimeTarget struct {
 	Binary string
 	// PrefixArgs 是本地 Profile 配置的受控前置参数。
 	PrefixArgs []string
+	// NativePluginDirectories 是本轮已经核验且独占交付的Claude原生包目录。
+	NativePluginDirectories []string
+	// CodexPluginConfiguration 是自有插件仅在本次进程生效的原生点路径覆盖。
+	CodexPluginConfiguration map[string]string
+	// NativePluginScope 是本轮外部原生插件事实摘要，变化时不得复用旧进程。
+	NativePluginScope string
+	// ClaudeSettingsPath 是只对本次进程生效的受管模型设置文件。
+	ClaudeSettingsPath string
 	// ConfigHome 是 Runtime 使用的受控配置目录。
 	ConfigHome string
 }
@@ -479,7 +501,7 @@ type Message struct {
 type Skill struct {
 	// Name 是技能向 Agent 展示的名称。
 	Name string
-	// Path 是 NeuxAlly 当前可用技能目录的绝对路径。
+	// Path 是 NeuxBot 当前可用技能目录的绝对路径。
 	Path string
 	// Selected 表示用户在当前消息中明确选择了该技能。
 	Selected bool
@@ -575,7 +597,7 @@ type RunRequest struct {
 type Workspace struct {
 	// Path 是子进程实际使用的工作目录。
 	Path string
-	// Managed 表示该目录是否由 NeuxAlly 管理并允许 SDK 写入集成文件。
+	// Managed 表示该目录是否由 NeuxBot 管理并允许 SDK 写入集成文件。
 	Managed bool
 	// AdditionalWritableDirectories 保存调用方额外授权的可写目录。
 	AdditionalWritableDirectories []string
@@ -794,6 +816,10 @@ type Failure struct {
 
 // Result 是 Runtime Invocation 的可重复读取终态。
 type Result struct {
+	// StopReason 是协议实际返回的原始停止原因；空值表示未收到该事实。
+	StopReason string
+	// TerminationReason 是协议停止原因的归一化结论，不替代 Failure 或执行状态。
+	TerminationReason constants.RuntimeTerminationReason
 	// ExitCode 是主进程退出码，未成功启动时为 -1。
 	ExitCode int
 	// Signal 是平台可以识别时的终止信号。

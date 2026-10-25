@@ -1,10 +1,11 @@
-module github.com/JieWaZi/NeuxAlly/server
+module github.com/JieWaZi/NeuxBot/server
 
 go 1.25.8
 
 require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/JieWaZi/acp-go v0.0.0-20261015060857-ff51cfbfe5fb
+	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261023091500-82c296bfb0b3
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/dop251/goja v0.0.0-20261002135814-104bc28c3abd
 	github.com/gin-gonic/gin v1.12.0
@@ -21,9 +22,16 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shrewx/ginx v1.2.7-0.20260801090805-290a56f47cbc
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/mod v0.34.0
 	golang.org/x/sys v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.1
+)
+
+require (
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
+	github.com/go-courier/codegen v1.1.2 // indirect
+	github.com/julienschmidt/httprouter v1.3.0 // indirect
 )
 
 require (
@@ -57,7 +65,8 @@ require (
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/glebarez/sqlite v1.11.0 // indirect
-	github.com/go-courier/packagesx v1.0.2 // indirect
+	github.com/go-courier/oas v1.2.1
+	github.com/go-courier/packagesx v1.0.2
 	github.com/go-courier/reflectx v1.3.4 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.6.2 // indirect
@@ -95,6 +104,7 @@ require (
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
+	github.com/ledongthuc/pdf v0.0.0-20260907135840-6c8c28e0e8a0
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.0 // indirect
 	github.com/mattn/go-colorable v0.1.9 // indirect
@@ -119,7 +129,7 @@ require (
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/sergi/go-diff v1.3.2-0.20230802210424-5b0b94c5c0d3 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
+	github.com/sirupsen/logrus v1.9.3
 	github.com/skeema/knownhosts v1.3.1 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
@@ -140,7 +150,6 @@ require (
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
-	golang.org/x/mod v0.34.0 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect

@@ -4,13 +4,11 @@ import (
 	"context"
 	"errors"
 	"io"
-	"strconv"
-	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/acp-go/pkg/acpserver"
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/google/uuid"
@@ -31,6 +29,8 @@ type acpRunner interface {
 
 // acpOptionsRequest 保存一次 ACP 配置探测已经准备完成的启动事实。
 type acpOptionsRequest struct {
+	// RefreshCredentials 与执行共用账号刷新权威，探测不私自刷新副本。
+	RefreshCredentials CredentialRefresh
 	// Model 是隔离探测会话需要实际选择的原生模型。
 	Model string
 	// RuntimeID 是内置 Runtime 或本地 Profile 的稳定标识。
@@ -81,6 +81,8 @@ type acpRunRequest struct {
 	Sink EventSink
 	// EphemeralSession 表示本次隔离调用完成后必须立即关闭原生 Session。
 	EphemeralSession bool
+	// Text 仅在无状态模型生成时启用独占进程、配置确认和工具拒绝。
+	Text *textInvocation
 }
 
 // acpBackend 按 Runtime 启动指纹复用内嵌 ACP Agent。
@@ -180,7 +182,8 @@ func (backend *acpBackend) DetectOptions(
 	runRequest := acpRunRequest{
 		Prepared: request.Prepared,
 		Request: RunRequest{Target: RuntimeTarget{
-			RuntimeID: request.RuntimeID,
+			RuntimeID:          request.RuntimeID,
+			RefreshCredentials: request.RefreshCredentials,
 		}},
 	}
 	binding, err := backend.binding(request.Prepared.definition.baseRuntimeID)
@@ -471,7 +474,11 @@ func newEmbeddedACPAgent(
 
 	clientToAgentReader, clientToAgentWriter := io.Pipe()
 	agentToClientReader, agentToClientWriter := io.Pipe()
-	server, err := acpserver.NewWithUserInput(
+	newServer := acpserver.NewWithUserInput
+	if config.TextOnly {
+		newServer = acpserver.New
+	}
+	server, err := newServer(
 		agent,
 		clientToAgentReader,
 		agentToClientWriter,
@@ -546,25 +553,6 @@ func (agent *embeddedACPAgent) Start(ctx context.Context) error {
 	return nil
 }
 
-// acpAdapterConfigForRequest 把 NeuxAlly 已准备完成的启动事实投影为通用 Adapter 配置。
-func acpAdapterConfigForRequest(
-	request acpRunRequest,
-	binding acpRuntimeBinding,
-) acpAdapterConfig {
-	config := acpAdapterConfig{
-		RuntimeID:        request.Request.Target.RuntimeID,
-		Executable:       request.Prepared.detection.ResolvedBinary,
-		PrefixArgs:       cloneStrings(request.Prepared.definition.prefixArgs),
-		Environment:      request.Prepared.environment.list(),
-		WorkingDirectory: request.Request.Workspace.Path,
-		PermissionMode:   string(request.Request.Policy.Execution.PermissionLevel),
-	}
-	if binding.stateDirectory != nil {
-		config.StateDirectory = binding.stateDirectory(request)
-	}
-	return config
-}
-
 // alive 返回 ACP Server 是否仍在运行。
 func (agent *embeddedACPAgent) alive() bool {
 	select {
@@ -607,27 +595,6 @@ func (agent *embeddedACPAgent) Close(ctx context.Context) error {
 	return agent.closeErr
 }
 
-// acpAgentKey 使不同 Runtime、二进制版本和受控配置使用独立 ACP Agent。
-func acpAgentKey(request acpRunRequest) string {
-	binding := defaultACPRuntimeBindings()[request.Prepared.definition.baseRuntimeID]
-	return acpAgentKeyForBinding(request, binding)
-}
-
-// acpAgentKeyForBinding 使用当前 Backend 实际绑定计算 Agent 隔离键。
-func acpAgentKeyForBinding(request acpRunRequest, binding acpRuntimeBinding) string {
-	prefixArgs := request.Prepared.definition.prefixArgs
-	workspace := ""
-	if binding.agentScope != nil {
-		workspace = binding.agentScope(request)
-	}
-	return request.Request.Target.RuntimeID + "\x00" +
-		request.Prepared.detection.ResolvedBinary + "\x00" +
-		request.Prepared.detection.Version + "\x00" +
-		strconv.Itoa(len(prefixArgs)) + "\x00" +
-		strings.Join(prefixArgs, "\x00") + "\x00" +
-		request.Prepared.environment.fingerprint + "\x00" + workspace
-}
-
 // acpFailedResult 把连接和调用错误转换为 Runtime 稳定终态。
 func acpFailedResult(
 	request acpRunRequest,
@@ -656,11 +623,12 @@ func acpFailedResult(
 	failure := newFailureFromError(code, stage, err)
 	failure.SessionState = session.State
 	return Result{
-		ExitCode:    -1,
-		Session:     session,
-		Facts:       acpInvocationFacts(request),
-		Diagnostics: append([]Diagnostic(nil), request.Prepared.detection.Diagnostics...),
-		Failure:     failure,
+		TerminationReason: constants.RuntimeTerminationReasonUnknown,
+		ExitCode:          -1,
+		Session:           session,
+		Facts:             acpInvocationFacts(request),
+		Diagnostics:       append([]Diagnostic(nil), request.Prepared.detection.Diagnostics...),
+		Failure:           failure,
 	}
 }
 

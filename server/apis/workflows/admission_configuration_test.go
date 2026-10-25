@@ -5,15 +5,16 @@ import (
 	"encoding/json"
 	"sync"
 	"testing"
+	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
 // mutableAdmissionEnvironment 只替代外部目录配置，运行状态仍由真实 SQLite 与 Core 持有。
@@ -89,6 +90,9 @@ func (r *admissionConfigurationRuntime) Run(ctx context.Context, request runtime
 }
 
 func TestWorkerAdmissionFreezesDefaultsAcrossHumanWaitAndRestart(t *testing.T) {
+	// 外部模型由替身处理，测试不依赖本机 CLI 或用户原生配置。
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
 	for _, reasoning := range []string{"low", ""} {
 		name := reasoning
 		if name == "" {
@@ -138,7 +142,12 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 		if index == 1 {
 			permission = runtimes.PermissionLevelFullAccess
 		}
-		actual := <-runtime.observations
+		var actual observedWorkerConfiguration
+		select {
+		case actual = <-runtime.observations:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("worker %d was not dispatched: status=%s failure=%+v", index, state.Run.Status, state.Run.Failure)
+		}
 		configurationMatches := actual.model == model && actual.reasoning == reasoning && actual.permission == permission
 		if actual.account != "" || !configurationMatches {
 			t.Fatalf("worker %d followed changed global defaults: %+v", index, actual)
@@ -160,7 +169,12 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 		if index == 1 {
 			permission = runtimes.PermissionLevelFullAccess
 		}
-		actual := <-runtime.observations
+		var actual observedWorkerConfiguration
+		select {
+		case actual = <-runtime.observations:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("worker %d was not dispatched: status=%s failure=%+v", index, state.Run.Status, state.Run.Failure)
+		}
 		configurationMatches := actual.model == model && actual.reasoning == reasoning && actual.permission == permission
 		if actual.account != "" || !configurationMatches {
 			t.Fatalf("retry changed the original resolved configuration: %+v", actual)

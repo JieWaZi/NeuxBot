@@ -5,10 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinrolepreset"
-	"github.com/JieWaZi/NeuxAlly/server/internal/profile"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -63,7 +64,7 @@ func TestEnsureDefaultsSeedsBuiltinWakerWithoutPersistingDocuments(t *testing.T)
 	if err != nil {
 		t.Fatalf("get builtin waker: %v", err)
 	}
-	if waker.Name != "NeuxAlly" {
+	if waker.Name != "lumi" {
 		t.Fatalf("waker name = %q", waker.Name)
 	}
 
@@ -98,6 +99,37 @@ func TestEnsureDefaultsSeedsBuiltinWakerWithoutPersistingDocuments(t *testing.T)
 	}
 	if count != int64(len(builtinrolepreset.DefinitionsWithDefaultWaker())) {
 		t.Fatalf("waker count = %d, want all registered built-ins", count)
+	}
+
+	researcher, err := wakers.Get(ctx, builtinrolepreset.WikiResearcherWakerID)
+	if err != nil || researcher.Name != "nova" || researcher.RoleName != "维基研究员" {
+		t.Fatalf("unexpected builtin researcher: %+v, %v", researcher, err)
+	}
+	researcher.Name = "我的研究伙伴"
+	if err := wakers.Update(ctx, researcher.ID, researcher); err != nil {
+		t.Fatal(err)
+	}
+	if err := documents.CreateWakerDocuments(ctx, []models.WakerDocument{{
+		ID: "d72204129e3e4eff8036af4a317b5c93", WakerID: researcher.ID,
+		Kind: constants.ProfileDocumentKindPersona, Content: "按用户指定的研究风格表达",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureDefaults(ctx, wakerCatalog); err != nil {
+		t.Fatal(err)
+	}
+	researcher, err = wakers.Get(ctx, researcher.ID)
+	if err != nil || researcher.Name != "我的研究伙伴" {
+		t.Fatalf("startup overwrote customized researcher: %+v, %v", researcher, err)
+	}
+	stored, err := documents.ListWakerDocuments(ctx, researcher.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved, err = builtinrolepreset.ResolveWakerContents(researcher.ID, stored)
+	if err != nil || resolved[constants.ProfileDocumentKindPersona] != "按用户指定的研究风格表达" ||
+		resolved[constants.ProfileDocumentKindPlaybook] == "" {
+		t.Fatalf("startup lost researcher profile override or fallback: %v", err)
 	}
 }
 
@@ -137,8 +169,10 @@ func TestEnsureDefaultsCreatesMissingBuiltinWakerWhenOtherWakersExist(t *testing
 	if err := EnsureDefaults(ctx, ControllerCatalog{Wakers: wakers}); err != nil {
 		t.Fatalf("EnsureDefaults() error = %v", err)
 	}
-	if _, err := wakers.Get(ctx, builtinrolepreset.PersonalAssistantWakerID); err != nil {
-		t.Fatalf("missing builtin waker alongside existing waker: %v", err)
+	for _, definition := range builtinrolepreset.DefinitionsWithDefaultWaker() {
+		if _, err := wakers.Get(ctx, definition.DefaultWaker.ID); err != nil {
+			t.Fatalf("missing builtin waker %q alongside existing waker: %v", definition.RoleName, err)
+		}
 	}
 }
 

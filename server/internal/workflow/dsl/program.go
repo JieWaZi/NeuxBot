@@ -3,7 +3,7 @@ package dsl
 import (
 	"encoding/json"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // Meta 是从纯字面量解析的原生工作流声明。

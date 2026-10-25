@@ -38,10 +38,10 @@ electron-updater 的 macOS 标准更新路径要求代码签名及 ZIP 更新产
 
 后续决定启用时，优先复用当时成熟框架和开源发布流程，再按个人发行身份核验账号与服务资格：
 
-| 平台 | 可参考的正式发行路线 | 接入条件 |
-| --- | --- | --- |
-| macOS | Developer ID Application 签名、Hardened Runtime、Apple 公证及票据附加 | Apple Developer Program 账号、证书及安全保管的私钥、公证认证；个人身份可用。 |
-| Windows | 公开受信任的 Authenticode 签名、SHA-256 及 RFC 3161 可信时间戳 | 可用的个人签名服务或通过审核的开源资助；资助证书可能显示基金会名称，不能当作自有个人证书。 |
+| 平台    | 可参考的正式发行路线                                                  | 接入条件                                                                                   |
+| ------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| macOS   | Developer ID Application 签名、Hardened Runtime、Apple 公证及票据附加 | Apple Developer Program 账号、证书及安全保管的私钥、公证认证；个人身份可用。               |
+| Windows | 公开受信任的 Authenticode 签名、SHA-256 及 RFC 3161 可信时间戳        | 可用的个人签名服务或通过审核的开源资助；资助证书可能显示基金会名称，不能当作自有个人证书。 |
 
 Apple 开发者计划标准年费为 99 美元，中国大陆通过 Developer App 的年费为 688 元，以实际注册页面为准；开源本身不提供普遍费用豁免。Windows 的 SignPath 开源资助需要审核，商业服务需核验个人与地区资格；Microsoft Artifact Signing 的个人 Public Trust 资格目前限美国、加拿大，不能由语言、时区或构建机位置推定资格。这些是后续参考，不是当前采购或注册计划。[Apple 年费说明](https://developer.apple.com/cn/help/account/membership/enrolling-in-the-app/)、[Apple 费用豁免](https://developer.apple.com/help/account/membership/fee-waivers/)、[SignPath 条件](https://signpath.org/terms.html)、[Microsoft 服务资格](https://learn.microsoft.com/en-us/azure/artifact-signing/quickstart)
 
@@ -49,12 +49,12 @@ Apple 开发者计划标准年费为 99 美元，中国大陆通过 Developer Ap
 
 ## 开源项目的可参考做法
 
-| 项目 | 从项目自身资料核实的做法 | 可参考的部分 |
-| --- | --- | --- |
-| Electron Fiddle | 打包配置指定 OpenJS Foundation 的 Developer ID，并配置 macOS 公证；当前发布工作流将 Windows 签名接入 Azure Trusted Signing，使用独立 Windows 作业与 OIDC 登录 | 两个平台分别接入官方信任链，签名、公证属于 CI 发行流程；签名身份不使用随意填写的产品品牌。 |
-| Flameshot | README 明确其 Windows 二进制使用 SignPath.io 与 SignPath Foundation，并说明签名目前需要人工处理，并非每个补丁包都会签名 | 开源资助是实际存在的路线，但“项目使用签名服务”不等于任意下载产物都已签名；本项目应逐个发行产物验证。 |
-| OpenBitFun | 当前桌面发布流程在公开发行时要求 Apple Developer ID 签名、公证资料及 Windows Authenticode 签名；Windows 接入 Certum SimplySign。公开运行 `38772060516` 的 macOS x64 签名配置及签名、公证验证步骤均成功 | 正式信任链确实用于桌面发行；项目另有 minisign 下载签名，不可将其与系统签名混为一谈，也不可用数据迁移器的未签名说明推定桌面产品未签名。 |
-| Proma | `v0.19.58` 发布流程导入 macOS 证书，并向打包步骤传入公证所需 Apple 账号及 Team ID；公开运行 `36101031688` 的 arm64、x64 证书导入和打包步骤均成功。所查公开 Windows 发布配置未见独立证书接入 | 工作流头部虽将 macOS 签名、公证资料写为“可选”，具体发行仍应核对实际步骤和运行记录，不能仅凭注释判断未签名。公开记录不能证明账号属于作者个人或公司，也不能代替对最终安装包的签名检查。 |
+| 项目            | 从项目自身资料核实的做法                                                                                                                                                                               | 可参考的部分                                                                                                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Electron Fiddle | 打包配置指定 OpenJS Foundation 的 Developer ID，并配置 macOS 公证；当前发布工作流将 Windows 签名接入 Azure Trusted Signing，使用独立 Windows 作业与 OIDC 登录                                          | 两个平台分别接入官方信任链，签名、公证属于 CI 发行流程；签名身份不使用随意填写的产品品牌。                                                                                            |
+| Flameshot       | README 明确其 Windows 二进制使用 SignPath.io 与 SignPath Foundation，并说明签名目前需要人工处理，并非每个补丁包都会签名                                                                                | 开源资助是实际存在的路线，但“项目使用签名服务”不等于任意下载产物都已签名；本项目应逐个发行产物验证。                                                                                  |
+| OpenBitFun      | 当前桌面发布流程在公开发行时要求 Apple Developer ID 签名、公证资料及 Windows Authenticode 签名；Windows 接入 Certum SimplySign。公开运行 `38772060516` 的 macOS x64 签名配置及签名、公证验证步骤均成功 | 正式信任链确实用于桌面发行；项目另有 minisign 下载签名，不可将其与系统签名混为一谈，也不可用数据迁移器的未签名说明推定桌面产品未签名。                                                |
+| Proma           | `v0.19.58` 发布流程导入 macOS 证书，并向打包步骤传入公证所需 Apple 账号及 Team ID；公开运行 `36101031688` 的 arm64、x64 证书导入和打包步骤均成功。所查公开 Windows 发布配置未见独立证书接入            | 工作流头部虽将 macOS 签名、公证资料写为“可选”，具体发行仍应核对实际步骤和运行记录，不能仅凭注释判断未签名。公开记录不能证明账号属于作者个人或公司，也不能代替对最终安装包的签名检查。 |
 
 依据：[Electron Fiddle 打包配置](https://github.com/electron/fiddle/blob/main/forge.config.ts)、[Electron Fiddle 发布工作流](https://github.com/electron/fiddle/blob/main/.github/workflows/release.yml)、[Flameshot 签名政策](https://github.com/flameshot-org/flameshot#code-signing-policy)。
 

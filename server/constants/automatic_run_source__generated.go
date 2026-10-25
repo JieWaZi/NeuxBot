@@ -45,7 +45,7 @@ func (v AutomaticRunSource) Values() []enum.Enum {
 }
 
 func (v AutomaticRunSource) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.AutomaticRunSource"
+	return "github.com/JieWaZi/NeuxBot/server/constants.AutomaticRunSource"
 }
 
 func (v AutomaticRunSource) MarshalText() ([]byte, error) {

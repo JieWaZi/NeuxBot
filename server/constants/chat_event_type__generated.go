@@ -113,7 +113,7 @@ func (v ChatEventType) Values() []enum.Enum {
 }
 
 func (v ChatEventType) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ChatEventType"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ChatEventType"
 }
 
 func (v ChatEventType) MarshalText() ([]byte, error) {

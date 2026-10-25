@@ -45,7 +45,7 @@ func (v MCPTransport) Values() []enum.Enum {
 }
 
 func (v MCPTransport) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MCPTransport"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MCPTransport"
 }
 
 func (v MCPTransport) MarshalText() ([]byte, error) {

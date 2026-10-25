@@ -30,17 +30,17 @@ jobs:
           - id: mac-arm64
             os: macos-15
             arch: arm64
-            installer: NeuxAlly-mac-arm64.dmg
+            installer: NeuxBot-mac-arm64.dmg
             report: size-report-arm64.json
           - id: mac-x64
             os: macos-15-intel
             arch: x64
-            installer: NeuxAlly-mac-x64.dmg
+            installer: NeuxBot-mac-x64.dmg
             report: size-report-x64.json
           - id: windows-x64
             os: windows-latest
             arch: x64
-            installer: NeuxAlly-windows-x64.exe
+            installer: NeuxBot-windows-x64.exe
             report: size-report-windows-x64.json
     steps:
       - uses: actions/checkout@v4
@@ -96,7 +96,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: NeuxAlly-${{ matrix.id }}
+          name: NeuxBot-${{ matrix.id }}
           if-no-files-found: error
           path: |
             desktop/release/${{ matrix.installer }}
@@ -116,6 +116,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: 校验 tag
         shell: bash
         run: |
@@ -128,7 +130,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: NeuxAlly-*
+          pattern: NeuxBot-*
           merge-multiple: true
           path: dist
 
@@ -138,9 +140,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           release_files=(
-            NeuxAlly-mac-arm64.dmg
-            NeuxAlly-mac-x64.dmg
-            NeuxAlly-windows-x64.exe
+            NeuxBot-mac-arm64.dmg
+            NeuxBot-mac-x64.dmg
+            NeuxBot-windows-x64.exe
             size-report-arm64.json
             size-report-x64.json
             size-report-windows-x64.json
@@ -152,7 +154,12 @@ jobs:
             cd dist
             sha256sum "${release_files[@]}"
           ) > dist/SHA256SUMS
-          notes="$(gh api --method POST "/repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$RELEASE_TAG" --jq .body)"
+          notes_file="docs/releases/${RELEASE_TAG}.md"
+          if [[ -f "$notes_file" ]]; then
+            notes="$(cat "$notes_file")"
+          else
+            notes="$(gh api --method POST "/repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$RELEASE_TAG" --jq .body)"
+          fi
           {
             printf '%s\n\n' "$notes"
             printf '%s\n' "当前安装包尚未做正式发行代码签名：macOS 为临时签名且未公证，Windows 未做代码签名。"
@@ -166,6 +173,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md
             gh release upload "$RELEASE_TAG" dist/* --clobber
           else
             gh release create "$RELEASE_TAG" dist/* \

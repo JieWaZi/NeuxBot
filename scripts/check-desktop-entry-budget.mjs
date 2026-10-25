@@ -4,11 +4,12 @@ import { fileURLToPath } from "node:url";
 
 const entryBudgetBytes = 500_000;
 const startupBudgetBytes = 4_500_000;
-const workspaceKey = "src/app/workspace.tsx";
+const platformKey = "src/platform/index.ts";
+const workspaceKey = "../packages/frontend/src/app/workspace.tsx";
 const welcomeKeys = [
   "../vendor/companion/renderer.js",
   "../vendor/elastic-mesh/renderer.js",
-  "src/app/welcome/elastic-logo.tsx",
+  "../packages/frontend/src/app/welcome/elastic-logo.tsx",
 ];
 
 /** 使用 Vite 生成的真实依赖图，避免正则漏掉压缩后的静态导入。 */
@@ -38,6 +39,10 @@ export async function readStartupAssets(desktopDist) {
   const startupFiles = new Set(entryFiles);
   // main.tsx 在渲染工作台前 await 此动态入口，它也属于真实启动成本。
   collect(workspaceKey, startupFiles);
+  // Native 平台注入必须在 React 挂载前完成，也属于启动成本。
+  if (!entry.dynamicImports?.includes(platformKey))
+    throw new Error("未找到启动时等待的原生平台入口");
+  collect(platformKey, startupFiles);
   // 欢迎完成前会预热的渲染代码同样属于启动成本，不能因动态导入漏记。
   for (const key of welcomeKeys) collect(key, startupFiles);
   const sizes = await Promise.all(

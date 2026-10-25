@@ -17,15 +17,15 @@
 
 ## 从代码和文档查明的事实
 
-| 事实 | 依据 | 对需求的影响 |
-| --- | --- | --- |
-| 桌面采用 Electron 与 electron-builder，当前发行矩阵为 macOS arm64、macOS x64、Windows x64 | [构建与发布](../development/build-and-release-cn.md)、[安装包配置](../../desktop/package.json)、[发布工作流](../../.github/workflows/release.yml) | 本轮以已经交付的平台为基线，不把新增平台混入升级需求。 |
-| macOS 当前走临时签名，发布说明将 Windows 包标为未签名 | [签名脚本](../../scripts/sign-desktop.mjs)、[发布工作流](../../.github/workflows/release.yml) | 本轮沿用既有未正式签名的打包路径，README 补齐安装说明。安装包摘要校验与发行签名是不同的保障。 |
-| 当前升级代码使用自行实现的 GitHub 发行探测、安装包下载与 SHA256 校验，最后调用系统打开安装包 | [更新服务](../../desktop/electron/main/application-update.ts)、[桌面装配](../../desktop/electron/main/index.ts) | 尚未接入 electron-updater；当前实现完成的是检测和下载，不包含应用自行安装并重启。 |
-| 当前自动检查为启动后 15 秒及每 6 小时，下载由用户手动发起 | [更新服务](../../desktop/electron/main/application-update.ts) | 这是现有实现选择，不是已经由用户确认的检查与下载策略。 |
-| 关闭窗口会隐藏应用，真正退出会回收 Core；现有窗口对未保存文件草稿有提示 | [桌面生命周期](../architecture/desktop-lifecycle-cn.md)、[退出流程](../../desktop/electron/main/application-lifecycle.ts)、[窗口装配](../../desktop/electron/main/index.ts) | “关闭窗口后安装”不能作为退出规则。自动安装需要协调执行、草稿、原生资源及 Core 的收尾。 |
-| 下载操作位于原通知入口位置，旁侧保留原通知按钮、计数与工作看板导航 | [Shell 操作入口](../../desktop/src/app/layout/desktop-attention-action.tsx)、[通知与工作看板](../architecture/notifications-and-work-board-cn.md) | 独立审查发现并修复看板入口丢失问题；有更新、下载中及已下载三种状态均有真实路由回归测试。 |
-| 本机数据目录与安装目录分别管理，数据库当前由 AutoMigrate 管理，不维护独立 SQL Migration 框架 | [工作区与存储](../architecture/workspace-and-storage-cn.md)、[后端约定](../development/backend-cn.md#5-gorm-和-sqlite) | 整包替换不等于删除用户数据；安装回退与数据格式回退也不是同一件事。 |
+| 事实                                                                                         | 依据                                                                                                                                                                        | 对需求的影响                                                                                  |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 桌面采用 Electron 与 electron-builder，当前发行矩阵为 macOS arm64、macOS x64、Windows x64    | [构建与发布](../development/build-and-release-cn.md)、[安装包配置](../../desktop/package.json)、[发布工作流](../../.github/workflows/release.yml)                           | 本轮以已经交付的平台为基线，不把新增平台混入升级需求。                                        |
+| macOS 当前走临时签名，发布说明将 Windows 包标为未签名                                        | [签名脚本](../../scripts/sign-desktop.mjs)、[发布工作流](../../.github/workflows/release.yml)                                                                               | 本轮沿用既有未正式签名的打包路径，README 补齐安装说明。安装包摘要校验与发行签名是不同的保障。 |
+| 当前升级代码使用自行实现的 GitHub 发行探测、安装包下载与 SHA256 校验，最后调用系统打开安装包 | [更新服务](../../desktop/electron/main/application-update.ts)、[桌面装配](../../desktop/electron/main/index.ts)                                                             | 尚未接入 electron-updater；当前实现完成的是检测和下载，不包含应用自行安装并重启。             |
+| 当前自动检查为启动后 15 秒及每 6 小时，下载由用户手动发起                                    | [更新服务](../../desktop/electron/main/application-update.ts)                                                                                                               | 这是现有实现选择，不是已经由用户确认的检查与下载策略。                                        |
+| 关闭窗口会隐藏应用，真正退出会回收 Core；现有窗口对未保存文件草稿有提示                      | [桌面生命周期](../architecture/desktop-lifecycle-cn.md)、[退出流程](../../desktop/electron/main/application-lifecycle.ts)、[窗口装配](../../desktop/electron/main/index.ts) | “关闭窗口后安装”不能作为退出规则。自动安装需要协调执行、草稿、原生资源及 Core 的收尾。        |
+| 下载操作位于原通知入口位置，旁侧保留原通知按钮、计数与工作看板导航                           | [Shell 操作入口](../../packages/frontend/src/app/layout/desktop-attention-action.tsx)、[通知与工作看板](../architecture/notifications-and-work-board-cn.md)                 | 独立审查发现并修复看板入口丢失问题；有更新、下载中及已下载三种状态均有真实路由回归测试。      |
+| 本机数据目录与安装目录分别管理，数据库当前由 AutoMigrate 管理，不维护独立 SQL Migration 框架 | [工作区与存储](../architecture/workspace-and-storage-cn.md)、[后端约定](../development/backend-cn.md#5-gorm-和-sqlite)                                                      | 整包替换不等于删除用户数据；安装回退与数据格式回退也不是同一件事。                            |
 
 对于候选开源方案，electron-updater 支持 GitHub Release 与 Windows NSIS；其 macOS 标准自动更新要求代码签名及 ZIP 更新产物。本轮不做正式签名，用户已确认采用当前手动覆盖安装路径，暂不接入该自动替换机制。[electron-builder v26 官方说明](https://www.electron.build/v26/docs/features/auto-update/)
 
@@ -59,15 +59,15 @@
 
 ## 文档归属与修订范围
 
-| 文档 | 适合记录的内容 | 本次处理原则 |
-| --- | --- | --- |
-| [CONTEXT.md](../../CONTEXT.md) | 确实影响本项目领域理解的术语和边界，例如软件版本与工作流版本、智能体程序版本的区别 | 出现并解决真实术语歧义后，按一到两句话补充；不放状态机、签名配置或接口细节。 |
-| [桌面生命周期](../architecture/desktop-lifecycle-cn.md#软件更新) | 更新状态所有权、安装与退出流程、进程回收、信任边界及恢复边界 | 根据已确认且落实的方案更新。现有手动安装章节与 D1 确认的首轮方案一致。 |
-| [通知与工作看板](../architecture/notifications-and-work-board-cn.md) | 更新探测例外、事件与订阅、更新期间的业务通知规则 | 按 SPEC 同步，保留原通知和工作看板入口，保持原待办、阅读和执行事实的归属。 |
-| [构建与发布](../development/build-and-release-cn.md) | 支持平台、发行产物、签名与公证、元数据、公开条件和校验 | 随 D2、SPEC 及实际发布流程同步更新；不写入秘密值。 |
-| [入门指南](../guide/getting-started-cn.md) | 用户检查、下载、安装、退出、核对版本及遇到失败时的操作 | 安装体验确定并实现后，补充与实际界面一致的升级说明。 |
-| 本讨论文档 | 已确认需求、事实、未决项及访谈确认结果 | 在访谈中维护，避免将建议写成正式能力。 |
-| `docs/adr/` | 具有显著改变成本、缺少背景会令人意外且确实存在取舍的已确认决定 | 只有三项条件同时满足才创建 ADR，不为每个按钮或检查间隔建立决策记录。 |
+| 文档                                                                 | 适合记录的内容                                                                     | 本次处理原则                                                                 |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| [CONTEXT.md](../../CONTEXT.md)                                       | 确实影响本项目领域理解的术语和边界，例如软件版本与工作流版本、智能体程序版本的区别 | 出现并解决真实术语歧义后，按一到两句话补充；不放状态机、签名配置或接口细节。 |
+| [桌面生命周期](../architecture/desktop-lifecycle-cn.md#软件更新)     | 更新状态所有权、安装与退出流程、进程回收、信任边界及恢复边界                       | 根据已确认且落实的方案更新。现有手动安装章节与 D1 确认的首轮方案一致。       |
+| [通知与工作看板](../architecture/notifications-and-work-board-cn.md) | 更新探测例外、事件与订阅、更新期间的业务通知规则                                   | 按 SPEC 同步，保留原通知和工作看板入口，保持原待办、阅读和执行事实的归属。   |
+| [构建与发布](../development/build-and-release-cn.md)                 | 支持平台、发行产物、签名与公证、元数据、公开条件和校验                             | 随 D2、SPEC 及实际发布流程同步更新；不写入秘密值。                           |
+| [入门指南](../guide/getting-started-cn.md)                           | 用户检查、下载、安装、退出、核对版本及遇到失败时的操作                             | 安装体验确定并实现后，补充与实际界面一致的升级说明。                         |
+| 本讨论文档                                                           | 已确认需求、事实、未决项及访谈确认结果                                             | 在访谈中维护，避免将建议写成正式能力。                                       |
+| `docs/adr/`                                                          | 具有显著改变成本、缺少背景会令人意外且确实存在取舍的已确认决定                     | 只有三项条件同时满足才创建 ADR，不为每个按钮或检查间隔建立决策记录。         |
 
 ## 当前交付位置
 

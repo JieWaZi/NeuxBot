@@ -53,7 +53,7 @@ func (v AutomaticRunAdmission) Values() []enum.Enum {
 }
 
 func (v AutomaticRunAdmission) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.AutomaticRunAdmission"
+	return "github.com/JieWaZi/NeuxBot/server/constants.AutomaticRunAdmission"
 }
 
 func (v AutomaticRunAdmission) MarshalText() ([]byte, error) {

@@ -3,10 +3,40 @@ package builtinrolepreset
 import (
 	"strings"
 	"testing"
+	"unicode"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
+
+func TestBuiltinAgentDocumentsFollowEnglishProfileFormat(t *testing.T) {
+	for _, definition := range Definitions() {
+		t.Run(definition.RoleName, func(t *testing.T) {
+			for kind, heading := range map[constants.ProfileDocumentKind]string{
+				constants.ProfileDocumentKindIdentity: "## Role\n",
+				constants.ProfileDocumentKindPersona:  "## Working Style\n",
+				constants.ProfileDocumentKindPlaybook: "## Playbook\n",
+			} {
+				content := definition.Documents[kind]
+				if !strings.HasPrefix(content, heading) {
+					t.Errorf("document %q must start with %q", kind, heading)
+				}
+				for _, character := range content {
+					if unicode.Is(unicode.Han, character) {
+						t.Errorf("builtin Agent document %q must be English", kind)
+						break
+					}
+				}
+			}
+			if !strings.Contains(definition.Documents[constants.ProfileDocumentKindIdentity], "\n## Principles\n") {
+				t.Error("identity must separate role from principles")
+			}
+			if strings.Count(definition.Documents[constants.ProfileDocumentKindPlaybook], "\n### ") != 6 {
+				t.Error("playbook must contain six numbered steps")
+			}
+		})
+	}
+}
 
 func TestResolveRolePresetContentsUsesBuiltinDefinition(t *testing.T) {
 	contents, err := ResolveRolePresetContents(

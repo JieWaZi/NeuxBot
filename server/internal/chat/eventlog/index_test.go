@@ -1,12 +1,72 @@
 package eventlog
 
 import (
+	"bytes"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
+
+// TestWarmIndexReadDetectsExternalActiveLogCorruption 保留热读对外部修改的活动执行正文校验。
+func TestWarmIndexReadDetectsExternalActiveLogCorruption(t *testing.T) {
+	store, chatID, latest := activeExecutionStore(t, 8)
+	records, err := store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, _ := store.LogPath(chatID)
+	file, err := os.OpenFile(path, os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteAt([]byte{'['}, records[4].Offset); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(time.Second)
+	if err := os.Chtimes(path, future, future); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReadAfter(chatID, latest, 1); err == nil {
+		t.Fatal("hot read accepted corrupted active execution after external log change")
+	}
+}
+
+// TestWarmIndexReadRestoresExternallyChangedScope 验证文件版本变化后重新恢复作用域，后续追加不沿用旧调用身份。
+func TestWarmIndexReadRestoresExternallyChangedScope(t *testing.T) {
+	store, chatID, latest := activeExecutionStore(t, 8)
+	path, _ := store.LogPath(chatID)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content = bytes.ReplaceAll(content, []byte(`"invocation"`), []byte(`"externally"`))
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(time.Second)
+	if err := os.Chtimes(path, future, future); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReadAfter(chatID, latest, 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Append(chatID, []AppendInput{{Type: constants.ChatEventTypeAssistantMessage, ExecutionID: "active", InvocationID: "externally", Data: marshalTestData(t, RuntimeMessageData{MessageRevision: latest + 1})}}); err != nil {
+		t.Fatal(err)
+	}
+	content, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := bytes.Split(bytes.TrimSpace(content), []byte{'\n'})
+	if bytes.Contains(lines[len(lines)-1], []byte("invocation")) {
+		t.Fatalf("append rewrote invocation identity instead of using recovered scope: %s", lines[len(lines)-1])
+	}
+}
 
 func TestStoreMaintainsIndexAndPagesMessagesWithoutSQLite(t *testing.T) {
 	t.Parallel()

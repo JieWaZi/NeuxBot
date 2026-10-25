@@ -2,7 +2,11 @@ import { readFile, readdir } from "node:fs/promises";
 import { extname, relative } from "node:path";
 
 const repositoryRoot = new URL("../", import.meta.url);
-const sourceRoot = new URL("../desktop/src/", import.meta.url);
+const sourceRoots = [
+  "../packages/frontend/src/",
+  "../web/src/",
+  "../desktop/src/",
+].map((path) => new URL(path, import.meta.url));
 const supportedExtensions = new Set([".css", ".ts", ".tsx"]);
 
 const rules = [
@@ -15,8 +19,7 @@ const rules = [
   {
     name: "非语义字号",
     pattern: /\btext-(?:xs|sm|base|lg|xl|[2-9]xl)\b/g,
-    guidance:
-      "使用 NeuxAlly 语义字号 Token，不直接使用 Tailwind 默认字号层级。",
+    guidance: "使用 NeuxBot 语义字号 Token，不直接使用 Tailwind 默认字号层级。",
   },
   {
     name: "任意行高",
@@ -123,17 +126,19 @@ function excerptForOffset(source, offset) {
 }
 
 const avatarStudioPrefix =
-  "desktop/src/modules/waker/components/avatar-studio/";
+  "packages/frontend/src/modules/waker/components/avatar-studio/";
 
 const violations = [];
-for (const fileUrl of await collectFiles(sourceRoot)) {
+for (const fileUrl of (
+  await Promise.all(sourceRoots.map(collectFiles))
+).flat()) {
   const source = await readFile(fileUrl, "utf8");
   const file = relative(repositoryRoot.pathname, fileUrl.pathname);
   const isAvatarStudioAsset = file.startsWith(avatarStudioPrefix);
 
   if (isAvatarStudioAsset) continue;
 
-  if (file === "desktop/src/shared/styles/index.css") {
+  if (file === "packages/frontend/src/shared/styles/index.css") {
     const rootRule = source.match(/html,\s*body,\s*#root\s*\{([^}]*)\}/)?.[1];
     const rootFollowsViewport =
       rootRule?.includes("width: 100%;") &&
@@ -291,8 +296,8 @@ for (const fileUrl of await collectFiles(sourceRoot)) {
   }
 
   const ownsThemeValues =
-    file === "desktop/src/shared/styles/theme.css" ||
-    file === "desktop/src/shared/styles/index.css";
+    file === "packages/frontend/src/shared/styles/theme.css" ||
+    file === "packages/frontend/src/shared/styles/index.css";
   if (!isTestFile && !ownsThemeValues) {
     for (const match of source.matchAll(
       /#[0-9a-f]{3,8}\b|\b(?:rgb|hsl|oklab|oklch)a?\(/gi,
@@ -312,8 +317,8 @@ for (const fileUrl of await collectFiles(sourceRoot)) {
   }
 
   const ownsMotionValues =
-    file === "desktop/src/shared/styles/motion.css" ||
-    file === "desktop/src/shared/styles/index.css";
+    file === "packages/frontend/src/shared/styles/motion.css" ||
+    file === "packages/frontend/src/shared/styles/index.css";
   if (!isTestFile && !ownsMotionValues) {
     for (const match of source.matchAll(/animation\s*:[^;\n]*\binfinite\b/gi)) {
       violations.push({
@@ -330,7 +335,9 @@ for (const fileUrl of await collectFiles(sourceRoot)) {
     }
   }
 
-  if (file === "desktop/src/modules/chat/components/chat-thread.tsx") {
+  if (
+    file === "packages/frontend/src/modules/chat/components/chat-thread.tsx"
+  ) {
     for (const match of source.matchAll(
       /\banimate-(?:fade|dialog|popover|collapse|shell)[\w-]*\b/g,
     )) {
@@ -384,7 +391,7 @@ for (const fileUrl of await collectFiles(sourceRoot)) {
         "ResourcePageSearchField",
         "PageAction",
       ]
-    : file === "desktop/src/modules/waker/pages/waker-detail-page.tsx"
+    : file === "packages/frontend/src/modules/waker/pages/waker-detail-page.tsx"
       ? ["PageAction"]
       : [];
   const resourceDetailPages =

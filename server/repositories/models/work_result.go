@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
@@ -10,7 +10,7 @@ func init() {
 	dbhelper.RegisterTable(&WorkResultTracking{})
 }
 
-// WorkResultReference 引用原结果身份，不复制回复、文件或状态。
+// WorkResultReference 引用原结果身份，不复制正文或执行状态。
 type WorkResultReference struct {
 	// ChatID 是结果所在的真实对话。
 	ChatID string `json:"chatId,omitempty"`

@@ -1,21 +1,28 @@
-// NeuxAlly Core 是伙伴工作台的本地业务与持久化进程。
+// NeuxBot Core 是伙伴工作台的本地业务与持久化进程。
 package main
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/apis"
-	"github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks"
-	apiMiddleware "github.com/JieWaZi/NeuxAlly/server/apis/middleware"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/parentwatch"
-	workflowfunction "github.com/JieWaZi/NeuxAlly/server/internal/workflow/function"
+	"github.com/JieWaZi/NeuxBot/server/apis"
+	"github.com/JieWaZi/NeuxBot/server/apis/integrations"
+	apiMiddleware "github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/localweb"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/parentwatch"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/stdio"
+	"github.com/JieWaZi/NeuxBot/server/internal/terminalruntime"
+	"github.com/JieWaZi/NeuxBot/server/internal/uploads"
+	workflowfunction "github.com/JieWaZi/NeuxBot/server/internal/workflow/function"
 	"github.com/shrewx/ginx"
 	"github.com/spf13/cobra"
 )
@@ -23,16 +30,46 @@ import (
 //go:generate toolx gen openapi
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == constants.PluginStdioMode {
+		streams := &cobra.Command{}
+		os.Exit(stdio.Main(os.Args[2:], streams.InOrStdin(), streams.OutOrStdout(), streams.ErrOrStderr()))
+	}
 	if workflowfunction.IsChildMode() {
 		os.Exit(workflowfunction.RunChild(os.Stdin))
 	}
-	ginx.Launch(func(*cobra.Command, []string) {
+	ginx.Launch(func(command *cobra.Command, _ []string) {
 		ginx.Parse(global.Config)
 		ginx.SetCORSMiddleware(apiMiddleware.CORS())
 		if err := global.Prepare(global.Config); err != nil {
 			panic(err)
 		}
 
+		unlock, err := localweb.LockDataDirectory(global.Config.DataDirectory)
+		if err != nil {
+			panic(err)
+		}
+		defer unlock()
+		global.Uploads, err = uploads.New(global.Config.DataDirectory)
+		if err != nil {
+			panic(err)
+		}
+		defer global.Uploads.Close()
+		if directory, developmentOrigin := os.Getenv("ALLY_WEB_DIR"), os.Getenv("ALLY_WEB_DEV_ORIGIN"); directory != "" || developmentOrigin != "" {
+			if global.Config.Server.Https {
+				panic("本机 Web 模式使用回环 HTTP")
+			}
+			host := net.JoinHostPort(global.Config.Server.Host, strconv.Itoa(global.Config.Server.Port))
+			global.LocalWeb, err = localweb.New(host, directory, developmentOrigin)
+			if err != nil {
+				panic(err)
+			}
+			defer global.LocalWeb.Close()
+			origin := "http://" + host
+			if developmentOrigin != "" {
+				origin = developmentOrigin
+			}
+			fmt.Fprintf(command.OutOrStdout(), "NeuxBot Web: %s\n", origin)
+		}
 		rootContext, cancel := context.WithCancel(context.Background())
 		var parentWaitGroup sync.WaitGroup
 		if parentPIDValue := os.Getenv("ALLY_DESKTOP_PARENT_PID"); parentPIDValue != "" {
@@ -53,19 +90,36 @@ func main() {
 				}
 			}()
 		}
-		if err := global.Load(rootContext, global.Config, automatic_tasks.NewLocalHandler); err != nil {
+		if err := global.Load(rootContext, global.Config, integrations.NewPublishedHandler); err != nil {
 			cancel()
 			parentWaitGroup.Wait()
 			panic(err)
 		}
 
-		ginx.AddShutdownHook(func() {
+		if worker := os.Getenv("ALLY_TERMINAL_RUNTIME_PATH"); worker != "" {
+			global.TerminalRuntime, err = terminalruntime.New(os.Getenv("ALLY_TERMINAL_NODE_PATH"), worker)
+			if err != nil {
+				logx.Errorf("terminal runtime unavailable: %v", err)
+			} else {
+				defer global.TerminalRuntime.Close()
+			}
+		}
+		closeCore := onceCleanup(func() {
 			cancel()
 			parentWaitGroup.Wait()
 			if err := global.Close(); err != nil {
-				logx.Errorf("close NeuxAlly Core failed: %v", err)
+				logx.Errorf("close NeuxBot Core failed: %v", err)
 			}
 		})
+		// ginx 的 Shutdown hook 异步运行；退出仍须等待同一关闭完成，再回收终端和释放数据锁。
+		defer closeCore()
+		ginx.AddShutdownHook(closeCore)
 		ginx.RunServer(&global.Config.Server, apis.RootRouter)
 	})
+}
+
+// onceCleanup 让异步关闭钩子与主函数退出等待同一次资源回收。
+func onceCleanup(cleanup func()) func() {
+	var once sync.Once
+	return func() { once.Do(cleanup) }
 }

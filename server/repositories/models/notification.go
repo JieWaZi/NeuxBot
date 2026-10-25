@@ -1,6 +1,6 @@
 package models
 
-import "github.com/JieWaZi/NeuxAlly/server/constants"
+import "github.com/JieWaZi/NeuxBot/server/constants"
 
 // NotificationTarget 是原业务入口的有判别定位，不保存任意可执行地址。
 type NotificationTarget struct {

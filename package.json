@@ -1,24 +1,24 @@
 {
-  "name": "neuxally",
+  "name": "neuxbot",
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@10.34.4",
   "scripts": {
-    "dev": "sh ./scripts/dev.sh",
+    "dev": "pnpm dev:web",
     "dev:desktop": "pnpm --dir desktop dev",
-    "dev:native": "pnpm build:sidecar && pnpm --dir desktop electron:dev",
+    "dev:native": "pnpm build:sidecar && pnpm terminal:build && pnpm --dir desktop electron:dev",
     "dev:server": "pnpm pi:bridge:generate && node scripts/dev-server.mjs",
     "icon:generate": "sh ./scripts/generate-macos-app-icon.sh",
     "api:generate": "sh ./scripts/generate-api.sh",
-    "api:check": "node --test scripts/normalize-openapi.test.mjs && sh ./scripts/check-generated-api.sh",
+    "api:check": "node --test scripts/normalize-openapi.test.mjs scripts/public-openapi.test.mjs scripts/generate-api.test.mjs && sh ./scripts/check-generated-api.sh",
     "build:server": "node ./scripts/build-server.mjs",
     "build:sidecar": "pnpm pi:bridge:generate && node ./scripts/build-sidecar.mjs",
-    "pi:bridge:generate": "pnpm --dir desktop/pi-bridge build",
-    "pi:bridge:check": "pnpm --dir desktop/pi-bridge check",
+    "pi:bridge:generate": "pnpm --dir packages/pi-bridge build",
+    "pi:bridge:check": "pnpm --dir packages/pi-bridge check",
     "build:desktop": "node scripts/package-desktop.mjs",
     "build": "pnpm pi:bridge:generate && pnpm --dir desktop build && pnpm --dir desktop electron:build && pnpm build:server",
-    "test": "pnpm --dir desktop test && cd server && go test ./...",
-    "check": "pnpm docs:check && node --test scripts/go-ldflags.test.mjs scripts/stamp-release-version.test.mjs scripts/check-desktop-entry-budget.test.mjs scripts/package-windows-artifact.test.mjs scripts/smoke-desktop.test.mjs && pnpm companion:check && pnpm pi:bridge:check && pnpm skills:check && pnpm workflow:sdk:check && pnpm workflow:presentation:check && pnpm api:check && pnpm --dir desktop check && cd server && go vet ./... && go test ./...",
+    "test": "pnpm --dir packages/frontend test && pnpm --dir desktop test && pnpm --dir web test && cd server && go test ./...",
+    "check": "pnpm docs:check && node --test scripts/go-ldflags.test.mjs scripts/stamp-release-version.test.mjs scripts/check-desktop-entry-budget.test.mjs scripts/package-windows-artifact.test.mjs scripts/smoke-desktop.test.mjs && pnpm companion:check && pnpm pi:bridge:check && pnpm plugins:check && pnpm skills:check && pnpm workflow:sdk:check && pnpm workflow:presentation:check && pnpm api:check && pnpm --dir packages/frontend typecheck && pnpm --dir packages/frontend lint && pnpm --dir web typecheck && pnpm --dir desktop check && cd server && go vet ./... && go test ./...",
     "smoke:desktop": "node scripts/smoke-desktop.mjs",
     "companion:generate": "node scripts/build-companion.mjs",
     "companion:check": "node scripts/build-companion.mjs --check",
@@ -28,11 +28,26 @@
     "skills:check": "node scripts/builtin-skills.mjs --check",
     "workflow:presentation:generate": "node scripts/workflow-presentation.mjs",
     "workflow:presentation:check": "node scripts/workflow-presentation.mjs --check",
-    "docs:check": "node scripts/check-docs.mjs"
+    "docs:check": "node scripts/check-docs.mjs",
+    "plugins:prepare": "node scripts/plugin-resources.mjs",
+    "plugins:check": "node --test scripts/plugin-resources.test.mjs && node scripts/plugin-resources.mjs --check",
+    "dev:web": "node scripts/dev-web.mjs",
+    "build:web": "pnpm --dir web build",
+    "start:web": "node scripts/start-web.mjs",
+    "package:web": "node scripts/package-web.mjs",
+    "build:native": "pnpm build:desktop",
+    "terminal:build": "pnpm --dir packages/terminal-runtime build",
+    "terminal:test": "pnpm --dir packages/terminal-runtime test"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/JieWaZi/NeuxAlly.git"
+    "url": "https://github.com/JieWaZi/NeuxBot.git"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "prettier": "3.9.6",
+    "zod": "4.4.3",
+    "fflate": "0.8.3"
   }
 }

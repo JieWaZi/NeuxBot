@@ -1,11 +1,54 @@
 const { strict: assert } = require("node:assert");
-const { mkdtemp, rm } = require("node:fs/promises");
+const { mkdtemp, rm, readdir, readFile } = require("node:fs/promises");
+const { brotliDecompressSync } = require("node:zlib");
 const { tmpdir } = require("node:os");
 const path = require("node:path");
 const resources = process.argv[2];
 if (!resources) throw new Error("需要传入应用 Resources 目录");
-const pty = require(path.join(resources, "app.asar/node_modules/node-pty"));
+const pty = require(
+  path.join(resources, "terminal-runtime/node_modules/node-pty"),
+);
+async function checkRendererBytes(source, packaged) {
+  let compressed = 0;
+  for (const entry of await readdir(source, { withFileTypes: true })) {
+    if (entry.name === ".vite" || entry.name.endsWith(".map")) continue;
+    const original = path.join(source, entry.name),
+      target = path.join(packaged, entry.name);
+    if (entry.isDirectory()) {
+      compressed += await checkRendererBytes(original, target);
+      continue;
+    }
+    let actual;
+    try {
+      actual = await readFile(target);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      actual = brotliDecompressSync(await readFile(`${target}.br`));
+      compressed++;
+    }
+    assert.deepEqual(
+      actual,
+      await readFile(original),
+      `Renderer asset changed: ${entry.name}`,
+    );
+  }
+  return compressed;
+}
 (async () => {
+  if (process.argv[3]) {
+    const count = await checkRendererBytes(
+      process.argv[3],
+      path.join(resources, "app.asar/dist"),
+    );
+    assert.ok(
+      count > 0,
+      "Packaged Renderer should include compressed text assets",
+    );
+    process.stdout.write(
+      `Packaged Renderer bytes: passed (${count} Brotli assets)\n`,
+    );
+  }
+
   const directory = await mkdtemp(path.join(tmpdir(), "ally-smoke-"));
   try {
     await new Promise((resolve, reject) => {

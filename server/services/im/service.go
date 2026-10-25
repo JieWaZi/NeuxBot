@@ -8,16 +8,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	protocol "github.com/JieWaZi/NeuxAlly/server/internal/im"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/channel"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
@@ -41,7 +41,7 @@ type Config struct {
 	TeamTasks controllers.ChannelTaskController
 	// DataDirectory 是 IM 输入和输出受管暂存位置。
 	DataDirectory string
-	// Platforms 可替换两种真实传输边界，用于不联网的验收。
+	// Platforms 可替换各平台真实传输边界，用于不联网的验收。
 	Platforms map[constants.IMPlatform]protocol.Platform
 	// Events 在内存扫码进度生效后交付安全事件，不替代平台认证或连接事实。
 	Events *events.Hub
@@ -95,7 +95,7 @@ func New(config Config) *Service {
 		config.Now = time.Now
 	}
 	if config.Platforms == nil {
-		config.Platforms = map[constants.IMPlatform]protocol.Platform{constants.IMPlatformWeixin: &protocol.Weixin{}, constants.IMPlatformFeishu: &protocol.Feishu{}}
+		config.Platforms = map[constants.IMPlatform]protocol.Platform{constants.IMPlatformWeixin: &protocol.Weixin{}, constants.IMPlatformFeishu: &protocol.Feishu{}, constants.IMPlatformWecom: &protocol.Wecom{}}
 	}
 	return &Service{config: config, connections: map[string]*connectionWorker{}, dispatching: map[string]bool{}, dispatchConnections: map[string]int{}, delivering: map[string]bool{}, logins: map[string]*loginSession{}}
 }
@@ -247,8 +247,8 @@ func (s *Service) maintainConnections() {
 		if !configuration.Enabled || s.suspended || s.ctx.Err() != nil {
 			continue
 		}
-		// 登录失效保持人工恢复状态，不每秒重试认证。
-		if configuration.State == constants.IMConnectionStateLoginRequired {
+		// 登录失效及被替换的企微连接保持人工恢复状态，避免反复抢占机器人。
+		if configuration.State == constants.IMConnectionStateLoginRequired || configuration.ErrorCode == status_error.IMConnectionReplaced.Key() {
 			continue
 		}
 		ctx, cancel := context.WithCancel(s.ctx)
@@ -301,7 +301,7 @@ func (s *Service) runConnection(ctx context.Context, configuration models.IMConn
 	}
 }
 
-// Receive 在飞书 ACK 或微信游标推进前原子提交整批输入。
+// Receive 在执行接纳前原子提交平台输入；飞书 ACK 和微信游标推进在提交之后。
 func (s *Service) Receive(ctx context.Context, connection models.IMConnection, messages []protocol.Message, cursor string) error {
 	return s.config.Transactions.Transaction(ctx, func(ctx context.Context) error {
 		current, err := s.config.Store.Connection(ctx, connection.ID)

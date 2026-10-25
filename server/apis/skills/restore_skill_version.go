@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	internalSkills "github.com/JieWaZi/NeuxAlly/server/internal/skills"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	internalSkills "github.com/JieWaZi/NeuxBot/server/internal/skills"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -41,45 +41,51 @@ func (r *RestoreSkillVersion) Path() string {
 
 // Output 复制历史版本目录并追加新的当前版本。
 func (r *RestoreSkillVersion) Output(ctx *gin.Context) (interface{}, error) {
+	return restoreSkillVersion(ctx, r)
+}
+
+// restoreSkillVersion 复用相同资源用例，空伙伴范围表示全局库。
+func restoreSkillVersion(ctx *gin.Context, r *RestoreSkillVersion) (models.SkillVersion, error) {
 	skill, err := visibleSkill(ctx, r.WakerID, r.SkillID)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return models.SkillVersion{}, ginx.WithStack(err)
 	}
 	source, err := global.SkillControllerManager.GetVersion(ctx, r.VersionID)
 	if err != nil || source.SkillPackageID != skill.ID {
-		return nil, ginx.WithStack(status_error.SkillVersionNotFound)
+		return models.SkillVersion{}, ginx.WithStack(status_error.SkillVersionNotFound)
 	}
 	current, err := global.SkillControllerManager.GetVersion(ctx, skill.CurrentVersionID)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return models.SkillVersion{}, ginx.WithStack(err)
 	}
 	nextVersion, ok := nextPatchSemVer(current.Version)
 	if !ok {
-		return nil, ginx.WithStack(status_error.BadRequest)
+		return models.SkillVersion{}, ginx.WithStack(status_error.BadRequest)
 	}
 	relative := filepath.Clean(source.ContentPath)
 	if filepath.IsAbs(relative) || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return nil, ginx.WithStack(status_error.BadRequest)
+		return models.SkillVersion{}, ginx.WithStack(status_error.BadRequest)
 	}
 	path := filepath.Join(global.Config.DataDirectory, relative)
 	if _, err := os.Stat(path); err != nil {
-		return nil, ginx.WithStack(status_error.SkillStorageError)
+		return models.SkillVersion{}, ginx.WithStack(status_error.SkillStorageError)
 	}
 	versionID := util.New()
 	contentPath, digest, err := internalSkills.CopyVersion(global.Config.DataDirectory, skill.ID, nextVersion, path)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return models.SkillVersion{}, ginx.WithStack(err)
 	}
 	metadata, err := internalSkills.ReadMetadata(filepath.Join(global.Config.DataDirectory, contentPath))
 	if err != nil {
 		_ = internalSkills.RemoveVersion(global.Config.DataDirectory, contentPath)
-		return nil, ginx.WithStack(err)
+		return models.SkillVersion{}, ginx.WithStack(err)
 	}
 	version := models.SkillVersion{ID: versionID, SkillPackageID: skill.ID, Version: nextVersion, Name: metadata.Name, Description: metadata.Description, Operation: "restore", Notes: r.Body.Notes, ContentPath: contentPath, ContentDigest: digest}
 	if err := global.SkillControllerManager.CreateVersion(ctx, version, true, current.ID); err != nil {
 		_ = internalSkills.RemoveVersion(global.Config.DataDirectory, contentPath)
-		return nil, ginx.WithStack(err)
+		return models.SkillVersion{}, ginx.WithStack(err)
 	}
+	notifyResourceChanged(ctx, r.SkillID)
 	return version, nil
 }
 

@@ -1,9 +1,9 @@
-# NeuxAlly 前端工程开发约定
+# NeuxBot 前端工程开发约定
 
 > 文档状态：开发基线
-> 适用范围：React、TypeScript、Electron Renderer、前端状态和测试
-> 领域词汇：[NeuxAlly 领域词汇](../../CONTEXT.md)
-> UI 标准：[NeuxAlly UI 设计标准](./ui-cn.md)
+> 适用范围：React、TypeScript、Web、Electron Renderer、前端状态和测试
+> 领域词汇：[NeuxBot 领域词汇](../../CONTEXT.md)
+> UI 标准：[NeuxBot UI 设计标准](./ui-cn.md)
 
 本文记录前端实现规则。功能范围以用户当前确认的需求为准；页面、组件、样式和交互改动还必须完整阅读并遵守 UI 设计标准，UI 视觉规则以 UI 设计标准为准。
 
@@ -32,7 +32,7 @@
 ## 2. 目录和模块边界
 
 ```text
-desktop/src/
+packages/frontend/src/
   app/
   modules/
     waker/
@@ -42,7 +42,7 @@ desktop/src/
     project/
   shared/
     api/
-    desktop/
+    platform/
     diagnostics/
     hooks/
     i18n/
@@ -50,6 +50,8 @@ desktop/src/
     styles/
     ui/
 ```
+
+`web/src` 和 `desktop/src` 只负责宿主装配，业务组件放在上述共享包。公共包不得导入 Electron、Node.js 或任一端的实现；通过 `configurePlatform` 注入宿主能力。文件、Git、终端使用共享 Core 适配器，原生窗口、选择器、系统打开、通知与嵌入网页由 Desktop 实现。能力不可用时按能力关闭入口，不能返回空成功数据。
 
 依赖只允许：
 
@@ -122,7 +124,7 @@ app -> modules -> shared
 
 ## 6. OpenAPI、Query 和表单
 
-- 生成目录为 `desktop/src/shared/api/generated`；
+- 生成目录为 `packages/frontend/src/shared/api/generated`；
 - 业务代码禁止修改生成目录；
 - 自定义认证、错误和请求配置放在生成目录外的 Client Adapter；
 - `pnpm api:generate` 负责生成，`pnpm api:check` 负责检查差异；
@@ -158,8 +160,8 @@ app -> modules -> shared
 ## 8. 桌面边界
 
 - 页面、组件和领域 Hook 禁止导入 `electron` 或 Node 内置模块；
-- 业务 HTTP 与实时订阅统一通过 `shared/api`；全局 WS 的桌面连接由主进程拥有，Renderer 仅通过受限 `shared/desktop` 事件适配接收，不把普通 CRUD 改为 IPC；
-- 目录选择、外链、日志目录和窗口能力通过 `shared/desktop`；
+- 业务 HTTP 与实时订阅统一通过 `shared/api`；全局 WS 的桌面连接由主进程拥有，Renderer 仅通过受限 `shared/platform` 事件适配接收，不把普通 CRUD 改为 IPC；
+- 目录选择、外链、日志目录和窗口能力通过 `shared/platform`；
 - Bridge 暴露窄且有类型的业务无关接口；
 - Bridge 订阅方法必须返回清理函数；
 - 浏览器开发环境提供行为可控的 Fake；
@@ -172,7 +174,7 @@ app -> modules -> shared
 - 其他富文本使用 `shared/ui` 的静态 Streamdown 包装；
 - 普通说明、标签和短文本使用原生语义元素；
 - 禁止原始 HTML，远程图片默认不加载；
-- 外部链接经 `shared/desktop` 打开；
+- 外部链接经 `shared/platform` 打开；
 - Markdown 中的代码只展示和复制，不自动执行；
 - 使用 `i18next + react-i18next`；
 - 初始只交付 `zh-CN` 并作为 fallback；
@@ -197,7 +199,7 @@ app -> modules -> shared
 
 ## 11. 列表和大数据量
 
-- 列表接口默认服务端分页，每页 50 条；
+- 列表界面默认服务端分页，每页 10 条；使用共享分页组件展示总条数与每页条数选择，查询参数与界面选择保持一致；
 - 筛选、排序和分页写入 URL；
 - 当前不预装虚拟列表库；
 - 实际性能数据证明需要时再为单个长列表引入虚拟化；
@@ -216,7 +218,7 @@ app -> modules -> shared
 - Vitest 测试纯函数、事件归并、错误转换和 Query Key；
 - React Testing Library 按用户行为测试组件；
 - MSW 拦截生成 Client 发出的真实请求；
-- `shared/desktop` 使用 Fake 做契约测试；
+- `shared/platform` 使用 Fake 做契约测试；
 - 当前不把 Playwright 和 Storybook 加入项目依赖；
 - 不设置全局覆盖率百分比门槛；
 - 不使用大面积 Snapshot 替代行为断言。

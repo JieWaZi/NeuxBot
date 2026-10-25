@@ -77,7 +77,7 @@ func (v WorkflowControlKind) Values() []enum.Enum {
 }
 
 func (v WorkflowControlKind) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.WorkflowControlKind"
+	return "github.com/JieWaZi/NeuxBot/server/constants.WorkflowControlKind"
 }
 
 func (v WorkflowControlKind) MarshalText() ([]byte, error) {

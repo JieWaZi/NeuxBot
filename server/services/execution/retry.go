@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // runtimeFailureRetryable 只允许明确的短暂拒绝，任何已观察输出、工具或未知会话均阻止重放。
@@ -67,11 +67,12 @@ func (m *service) retryExecution(ctx context.Context, chatID, executionID string
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
-	request := pendingMessage{
+	request := pendingMessage{automaticRunID: previous.AutomaticRunID,
 		chatID:            chatID,
 		executionID:       retryID,
 		parentExecutionID: executionID,
 		retry:             true,
+		pluginSnapshots:   previous.PluginResources,
 		admission:         constants.ExecutionAdmissionCommitBeforeDispatch,
 		runtime: runtimeSelection{
 			RuntimeID:         previous.RuntimeID,
@@ -91,6 +92,9 @@ func (m *service) retryExecution(ctx context.Context, chatID, executionID string
 		request.message.Attachments = append(request.message.Attachments, AttachmentInput{
 			SourcePath: filepath.Join(workspaceRoot, attachment.Path),
 		})
+	}
+	for _, plugin := range message.Plugins {
+		request.message.PluginIDs = append(request.message.PluginIDs, plugin.ID)
 	}
 	for _, skill := range message.Skills {
 		request.message.SkillIDs = append(request.message.SkillIDs, skill.ID)
@@ -164,6 +168,8 @@ func executionFromRecords(records []eventlog.Record, executionID string) (models
 				return execution, latestID, status_error.ChatLogError
 			}
 			execution = models.Execution{
+				PluginResources:   created.PluginResources,
+				AccountID:         created.AccountID,
 				ID:                executionID,
 				ChatID:            record.ChatID,
 				UserMessageID:     created.UserMessageID,

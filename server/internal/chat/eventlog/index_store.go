@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // queryWithRecoveredIndexLocked 使用已校验索引查询，发现中间索引损坏时从 JSONL 重建并重试一次。
@@ -71,7 +71,7 @@ func (s *Store) recoverIndexLocked(chatID string, state *fileState) (IndexRecove
 	if info.Size() == 0 {
 		return IndexRecovery{}, status_error.ChatLogCorrupted
 	}
-	if err := s.loadValidIndexLocked(chatID, info.Size(), state); err == nil && !state.indexDirty {
+	if err := s.loadValidIndexLocked(chatID, info, state); err == nil && !state.indexDirty {
 		return IndexRecovery{
 			LatestSequence:   state.lastSequence,
 			LogSize:          info.Size(),
@@ -101,12 +101,13 @@ func (s *Store) recoverIndexLocked(chatID string, state *fileState) (IndexRecove
 	}, nil
 }
 
-// loadValidIndexLocked 以常量级文件读取验证完整索引，并恢复下一次追加所需作用域。
+// loadValidIndexLocked 校验索引锚点；仅在日志版本变化时恢复下一次追加所需作用域。
 func (s *Store) loadValidIndexLocked(
 	chatID string,
-	logSize int64,
+	logInfo os.FileInfo,
 	state *fileState,
 ) error {
+	logSize := logInfo.Size()
 	file, err := os.Open(s.indexPath(chatID))
 	if err != nil {
 		return err
@@ -148,6 +149,12 @@ func (s *Store) loadValidIndexLocked(
 			return err
 		}
 	}
+	// 即使作用域可复用，仍校验索引头尾和权威日志锚点，保留外部损坏的恢复入口。
+	if state.initialized && !state.indexDirty && state.lastSequence == count &&
+		state.scopeLogInfo != nil && os.SameFile(state.scopeLogInfo, logInfo) &&
+		state.scopeLogInfo.Size() == logInfo.Size() && state.scopeLogInfo.ModTime().Equal(logInfo.ModTime()) {
+		return nil
+	}
 	state.initialized = true
 	state.lastSequence = count
 	state.scope = recordScope{}
@@ -180,6 +187,7 @@ func (s *Store) loadValidIndexLocked(
 		}
 		state.scope = scope
 	}
+	state.scopeLogInfo = logInfo
 	return nil
 }
 

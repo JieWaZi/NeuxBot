@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	internalSkills "github.com/JieWaZi/NeuxAlly/server/internal/skills"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	internalSkills "github.com/JieWaZi/NeuxBot/server/internal/skills"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -38,8 +38,6 @@ type ImportSkillRequest struct {
 type InstallSkillCandidateRequest struct {
 	// 标识
 	ID string `json:"id" validate:"required"`
-	// 技能范围
-	Scope constants.SkillScope `json:"scope" validate:"required"`
 	// 版本号
 	Version string `json:"version" validate:"required"`
 	// 描述
@@ -74,9 +72,7 @@ func (i *ImportWakerSkill) Validate(*gin.Context) error {
 	}
 	seen := make(map[string]struct{}, len(i.Body.Candidates))
 	for _, candidate := range i.Body.Candidates {
-		if candidate.Scope != constants.SkillScopePublic && candidate.Scope != constants.SkillScopePrivate {
-			return ginx.WithStack(status_error.BadRequest)
-		}
+
 		if !isSemVer(candidate.Version) || strings.TrimSpace(candidate.ID) == "" {
 			return ginx.WithStack(status_error.BadRequest)
 		}
@@ -90,8 +86,15 @@ func (i *ImportWakerSkill) Validate(*gin.Context) error {
 
 // Output 导入技能并为当前伙伴创建启用关系。
 func (i *ImportWakerSkill) Output(ctx *gin.Context) (interface{}, error) {
-	if _, err := global.WakerControllerManager.Get(ctx, i.WakerID); err != nil {
-		return nil, ginx.WithStack(err)
+	return importSkills(ctx, i)
+}
+
+// importSkills 复用相同资源用例，空伙伴范围表示全局库。
+func importSkills(ctx *gin.Context, i *ImportWakerSkill) ([]models.SkillPackage, error) {
+	if i.WakerID != "" {
+		if _, err := global.WakerControllerManager.Get(ctx, i.WakerID); err != nil {
+			return nil, ginx.WithStack(err)
+		}
 	}
 	temporaryParent := filepath.Join(global.Config.DataDirectory, "skills", "tmp")
 	batch, err := internalSkills.OpenStagedImport(temporaryParent, i.Body.Token)
@@ -112,8 +115,7 @@ func (i *ImportWakerSkill) Output(ctx *gin.Context) (interface{}, error) {
 	seen := make(map[string]struct{}, len(i.Body.Candidates))
 	for _, selection := range i.Body.Candidates {
 		selection.ID = strings.TrimSpace(selection.ID)
-		if selection.ID == "" || !isSemVer(selection.Version) ||
-			(selection.Scope != constants.SkillScopePublic && selection.Scope != constants.SkillScopePrivate) {
+		if selection.ID == "" || !isSemVer(selection.Version) {
 			return nil, ginx.WithStack(status_error.BadRequest)
 		}
 		if _, exists := seen[selection.ID]; exists {
@@ -138,6 +140,10 @@ func (i *ImportWakerSkill) Output(ctx *gin.Context) (interface{}, error) {
 	}()
 	for _, candidate := range selected {
 		selection := candidate.request
+		scope := constants.SkillScopePrivate
+		if i.WakerID == "" {
+			scope = constants.SkillScopePublic
+		}
 		imported := candidate.imported
 		packageID, versionID := util.New(), util.New()
 		relative, digest, copyErr := internalSkills.CopyVersion(global.Config.DataDirectory, packageID, selection.Version, imported.Directory)
@@ -150,7 +156,7 @@ func (i *ImportWakerSkill) Output(ctx *gin.Context) (interface{}, error) {
 		}
 		skill := models.SkillPackage{
 			ID: packageID, Name: imported.Name, Description: description,
-			Scope: selection.Scope, Source: batch.Source.Kind,
+			Scope: scope, Source: batch.Source.Kind,
 			OwnerWakerID: i.WakerID, CurrentVersionID: versionID,
 		}
 		if skill.Source == constants.SkillSourceGit {
@@ -158,7 +164,7 @@ func (i *ImportWakerSkill) Output(ctx *gin.Context) (interface{}, error) {
 			skill.GitRef = batch.Source.Ref
 			skill.GitSubpath = candidateGitSubpath(imported.RelativePath)
 		}
-		if selection.Scope == constants.SkillScopePublic {
+		if scope == constants.SkillScopePublic {
 			skill.OwnerWakerID = ""
 		}
 		prepared = append(prepared, preparedSkillImport{
@@ -183,8 +189,10 @@ func (i *ImportWakerSkill) Output(ctx *gin.Context) (interface{}, error) {
 				if err := global.SkillControllerManager.CreateVersion(transactionContext, item.version, true, item.version.ID); err != nil {
 					return err
 				}
-				if err := global.SkillControllerManager.UpsertWakerSkill(transactionContext, item.relation); err != nil {
-					return err
+				if item.relation.WakerID != "" {
+					if err := global.SkillControllerManager.UpsertWakerSkill(transactionContext, item.relation); err != nil {
+						return err
+					}
 				}
 			}
 			return nil
@@ -201,6 +209,7 @@ func (i *ImportWakerSkill) Output(ctx *gin.Context) (interface{}, error) {
 	for _, item := range prepared {
 		created = append(created, item.skill)
 	}
+	notifyResourceChanged(ctx, "")
 	return created, nil
 }
 

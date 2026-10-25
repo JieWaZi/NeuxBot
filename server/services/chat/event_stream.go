@@ -6,12 +6,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 const subscriberBufferSize = 256
@@ -68,7 +68,7 @@ type PublicApprovalLocation struct {
 
 // PublicApprovalRequest 是服务向 API 暴露的安全审批请求。
 type PublicApprovalRequest struct {
-	// ApprovalID 是 NeuxAlly 为本次审批生成的稳定交互标识。
+	// ApprovalID 是 NeuxBot 为本次审批生成的稳定交互标识。
 	ApprovalID string `json:"approvalId"`
 	// ToolCallID 是 Runtime Session 内对应工具调用的标识。
 	ToolCallID string `json:"toolCallId"`
@@ -88,7 +88,7 @@ type PublicApprovalRequest struct {
 
 // PublicApprovalResolution 是服务向 API 暴露的审批处理结果。
 type PublicApprovalResolution struct {
-	// ApprovalID 是被处理的 NeuxAlly 审批标识。
+	// ApprovalID 是被处理的 NeuxBot 审批标识。
 	ApprovalID string `json:"approvalId"`
 	// ToolCallID 是对应 Runtime 工具调用标识。
 	ToolCallID string `json:"toolCallId"`
@@ -108,7 +108,7 @@ type PublicApprovalResolution struct {
 type PublicElicitationRequest struct {
 	// AllowSkip 是 CLI 问答明确冻结的跳过约束。
 	AllowSkip *bool `json:"allowSkip,omitempty"`
-	// ElicitationID 是 NeuxAlly 为本次交互生成的稳定标识。
+	// ElicitationID 是 NeuxBot 为本次交互生成的稳定标识。
 	ElicitationID string `json:"elicitationId"`
 	// ToolCallID 是 Runtime Session 内对应工具调用的标识。
 	ToolCallID string `json:"toolCallId,omitempty"`
@@ -124,7 +124,7 @@ type PublicElicitationRequest struct {
 
 // PublicElicitationResolution 是服务向 API 暴露的结构化输入处理结果。
 type PublicElicitationResolution struct {
-	// ElicitationID 是被处理的 NeuxAlly 交互标识。
+	// ElicitationID 是被处理的 NeuxBot 交互标识。
 	ElicitationID string `json:"elicitationId"`
 	// ToolCallID 是对应 Runtime 工具调用标识。
 	ToolCallID string `json:"toolCallId,omitempty"`
@@ -289,7 +289,7 @@ func (m *service) ListEvents(
 	if err != nil {
 		return nil, err
 	}
-	adapter, err := eventstream.Replay(window.Records)
+	adapter, err := eventstream.ReplayAfter(window.Records, after)
 	if err != nil {
 		logx.Errorf(
 			"project public chat events failed: chat_id=%s error=%v",
@@ -318,7 +318,7 @@ func (m *service) SubscribeEvents(
 		m.subscriptions.remove(chatID, subscriberID)
 		return Subscription{}, err
 	}
-	adapter, err := eventstream.Replay(window.Records)
+	adapter, err := eventstream.ReplayAfter(window.Records, after)
 	if err != nil {
 		m.subscriptions.remove(chatID, subscriberID)
 		logx.Errorf(
@@ -328,9 +328,9 @@ func (m *service) SubscribeEvents(
 		)
 		return Subscription{}, status_error.ChatLogError
 	}
-	allEvents := publicEventsFromStream(adapter.EventsAfter(0, 0))
-	backlog := eventsAfter(allEvents, after)
-	_, revisions := publicEventState(allEvents)
+	backlog := publicEventsFromStream(adapter.EventsAfter(after, 0))
+	revisions := adapter.MessageRevisions()
+	adapter.ReleaseHistory()
 	latestSequence := window.LatestSequence
 	streamContext, cancel := context.WithCancel(ctx)
 	events := make(chan PublicEvent, subscriberBufferSize)
@@ -536,32 +536,6 @@ func publicElicitationResolution(
 		Content:       content,
 		Result:        resolution.Result,
 	}
-}
-
-// publicEventState 提取权威公开事件当前游标和每条消息的最新修订号。
-func publicEventState(events []PublicEvent) (int64, map[string]int64) {
-	latestSequence := int64(0)
-	revisions := make(map[string]int64)
-	for _, event := range events {
-		if event.Sequence > latestSequence {
-			latestSequence = event.Sequence
-		}
-		if event.Message != nil && event.Message.Revision > revisions[event.Message.ID] {
-			revisions[event.Message.ID] = event.Message.Revision
-		}
-	}
-	return latestSequence, revisions
-}
-
-// eventsAfter 过滤已经完成转换的公开事件，不重新解释权威 Record。
-func eventsAfter(events []PublicEvent, after int64) []PublicEvent {
-	result := make([]PublicEvent, 0)
-	for _, event := range events {
-		if event.Sequence > after {
-			result = append(result, event)
-		}
-	}
-	return result
 }
 
 // sendPublicEvent 在订阅关闭时停止等待慢消费者。

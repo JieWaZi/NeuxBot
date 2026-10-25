@@ -1,4 +1,4 @@
-// allycli 是随 NeuxAlly 应用交付的受管能力命令入口。
+// allycli 是随 NeuxBot 应用交付的受管能力命令入口。
 package main
 
 import (
@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcli"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcli"
 )
 
 func main() {

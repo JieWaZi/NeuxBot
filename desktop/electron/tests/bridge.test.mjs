@@ -94,17 +94,19 @@ test("预加载只暴露白名单方法，事件注销幂等且不泄露 Electro
   assert.equal(bridge.invoke, undefined);
   assert.equal(bridge.send, undefined);
   assert.equal(typeof bridge.stage_attachment, "function");
+  assert.equal(bridge.terminal_start, undefined);
+  assert.equal(bridge.open_workspace_scope, undefined);
   const received = [];
-  const stop = bridge.onTerminalOutput((event) => received.push(event));
+  const stop = bridge.onBrowserNavigation((event) => received.push(event));
   ipc.emit(
-    "ally:terminal-output",
+    "ally:browser-navigation",
     { sender: "privileged" },
     { sessionId: "a", data: "hello" },
   );
   assert.deepEqual(received, [{ sessionId: "a", data: "hello" }]);
   stop();
   stop();
-  assert.equal(ipc.listenerCount("ally:terminal-output"), 0);
+  assert.equal(ipc.listenerCount("ally:browser-navigation"), 0);
 });
 test("文件拖放在预加载层解析路径，注销后不再交付", () => {
   let bridge;
@@ -396,111 +398,6 @@ test("草稿对话可创建隔离网页浏览器，但不能借此打开本地�
   }
 });
 
-test("界面崩溃和重载保留终端，窗口销毁才释放进程", async (t) => {
-  const registered = new Map();
-  const children = [];
-  const electron = {
-    ipcMain: {
-      handle: (name, handler) => registered.set(name, handler),
-      removeHandler: (name) => registered.delete(name),
-    },
-    Notification: { isSupported: () => false },
-  };
-  const { installDesktopServices } = loadModule("main/desktop-services.ts", {
-    electron,
-    "node-pty": {
-      spawn() {
-        const child = {
-          killed: false,
-          kill() {
-            this.killed = true;
-          },
-          onData() {
-            return { dispose() {} };
-          },
-          onExit() {
-            return { dispose() {} };
-          },
-          resize() {},
-          write() {},
-        };
-        children.push(child);
-        return child;
-      },
-    },
-  });
-  const contents = new EventEmitter();
-  contents.mainFrame = { url: "ally://app/index.html" };
-  contents.send = () => undefined;
-  let destroyed = false;
-  contents.isDestroyed = () => destroyed;
-  const window = {
-    get webContents() {
-      if (destroyed) throw new TypeError("Object has been destroyed");
-      return contents;
-    },
-    isDestroyed: () => destroyed,
-  };
-  const event = { sender: contents, senderFrame: contents.mainFrame };
-  const originalFetch = globalThis.fetch;
-  t.after(() => {
-    globalThis.fetch = originalFetch;
-  });
-  globalThis.fetch = async () =>
-    Response.json({
-      chat: {
-        id: "a".repeat(32),
-        workspaceDirectory: process.cwd(),
-        additionalWorkingDirectories: [],
-      },
-    });
-  const dispose = installDesktopServices(
-    window,
-    {
-      connection: () => ({
-        baseUrl: "http://127.0.0.1:8432",
-        token: "secret",
-      }),
-    },
-    "ally://app/index.html",
-  );
-  const start = (createWhenMissing) =>
-    registered.get("ally:terminal_start")(event, {
-      root: process.cwd(),
-      chatId: "a".repeat(32),
-      ownerKey: "tab-1",
-      createWhenMissing,
-    });
-
-  const first = await start(true);
-  contents.emit("render-process-gone");
-  assert.equal(children[0].killed, false);
-
-  contents.emit(
-    "did-start-navigation",
-    {},
-    "ally://app/index.html",
-    false,
-    true,
-  );
-  const recovered = await start(false);
-  assert.equal(recovered.sessionId, first.sessionId);
-  assert.equal(children.length, 1);
-  contents.emit(
-    "did-start-navigation",
-    {},
-    "ally://app/index.html",
-    false,
-    true,
-  );
-  assert.equal(children[0].killed, false);
-
-  destroyed = true;
-  assert.doesNotThrow(() => dispose());
-  assert.equal(children[0].killed, true);
-  assert.equal(registered.size, 0);
-});
-
 test("事件IPC只接受白名单资源，Renderer重载释放自身订阅并保留主连接", async () => {
   const registered = new Map();
   const { installDesktopServices } = loadModule("main/desktop-services.ts", {
@@ -586,80 +483,6 @@ test("事件IPC只接受白名单资源，Renderer重载释放自身订阅并保
       subscriptionId: input.subscriptionId,
     });
     assert.equal(released, 1);
-  } finally {
-    dispose();
-  }
-});
-
-test("Core新epoch在地址令牌不变时也废止旧文件授权", async (t) => {
-  const directory = await mkdtemp(path.join(tmpdir(), "ally-core-epoch-"));
-  const previous = globalThis.fetch;
-  const chatId = "a".repeat(32);
-  globalThis.fetch = async () =>
-    new Response(
-      JSON.stringify({ chat: { id: chatId, workspaceDirectory: directory } }),
-    );
-  t.after(async () => {
-    globalThis.fetch = previous;
-    await rm(directory, { recursive: true, force: true });
-  });
-  const registered = new Map();
-  let observer;
-  const { installDesktopServices } = loadModule("main/desktop-services.ts", {
-    electron: {
-      ipcMain: {
-        handle: (name, handler) => registered.set(name, handler),
-        removeHandler: (name) => registered.delete(name),
-      },
-      Notification: { isSupported: () => false },
-      dialog: {},
-    },
-    "node-pty": {},
-  });
-  const contents = new EventEmitter();
-  contents.mainFrame = { url: "ally://app/index.html" };
-  contents.isDestroyed = () => false;
-  contents.send = () => {};
-  const dispose = installDesktopServices(
-    { webContents: contents, isDestroyed: () => false },
-    {
-      connection: async () => ({
-        baseUrl: "http://127.0.0.1:8432",
-        token: "same-token",
-      }),
-    },
-    contents.mainFrame.url,
-    {
-      subscribe: (_topic, _resource, input) => {
-        observer = input;
-        return () => {};
-      },
-      requestResync() {},
-    },
-  );
-  const sender = { sender: contents, senderFrame: contents.mainFrame };
-  try {
-    await registered.get("ally:subscribe_core_events")(sender, {
-      subscriptionId: "00000000-0000-4000-8000-000000000001",
-      topic: "notifications",
-      resource: { kind: "global" },
-    });
-    observer.onEvent({ epoch: "before" });
-    const old = await registered.get("ally:open_workspace_scope")(sender, {
-      chatId,
-    });
-    observer.onEvent({ epoch: "after" });
-    await assert.rejects(
-      registered.get("ally:stat_workspace_resource")(sender, {
-        scopeId: old.id,
-        relativePath: "missing",
-      }),
-      /文件范围无效/,
-    );
-    const fresh = await registered.get("ally:open_workspace_scope")(sender, {
-      chatId,
-    });
-    assert.notEqual(fresh.id, old.id);
   } finally {
     dispose();
   }

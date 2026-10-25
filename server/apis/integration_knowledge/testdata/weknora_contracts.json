@@ -1,0 +1,21 @@
+{
+  "source_commit": "8776a2d92d11ad3e76865d51cf3192e37e2a9976",
+  "sources": [
+    "internal/router/routes_knowledge.go",
+    "internal/handler/knowledgebase.go",
+    "internal/handler/knowledge.go",
+    "internal/handler/wiki_page.go",
+    "internal/types/wiki_page.go"
+  ],
+  "responses": {
+    "/api/v1/knowledge-bases/library-a": {"success": true, "data": {"id": "library-a", "name": "合同示例", "type": "wiki"}},
+    "/api/v1/knowledgebase/library-a/wiki/pages/主题/入门": {"id": "page-a", "knowledge_base_id": "library-a", "slug": "主题/入门", "title": "入门", "content": "示例正文", "summary": "示例摘要", "version": 1, "page_type": "concept", "folder_id": "", "aliases": [], "source_refs": [], "in_links": [], "out_links": []},
+    "/api/v1/knowledge-bases/malformed": {"ok": true, "result": []}
+  },
+  "limits": {
+    "wiki_atomic_cas": "unverified; handler version precheck does not establish atomic storage CAS",
+    "upload_idempotency": "unverified; never automatically resend an uncertain upload",
+    "processing_terminal": "parse status is not proof of complete Wiki and index publication",
+    "system_info": "routes_auth_tenant.go RegisterSystemRoutes: manage_vector_stores or full_access; failure alone never identifies the service"
+  }
+}

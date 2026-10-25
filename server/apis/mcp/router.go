@@ -15,3 +15,16 @@ func init() {
 	Router.Register(&SetWakerConnectorEnabled{})
 	Router.Register(&TestWakerConnector{})
 }
+
+// LibraryRouter 提供全局资源专业操作。
+var LibraryRouter = ginx.NewRouter(ginx.Group("/connectors"))
+
+func init() {
+	LibraryRouter.Register(&GetLibraryConnector{})
+	LibraryRouter.Register(&CreateLibraryConnector{})
+	LibraryRouter.Register(&UpdateLibraryConnector{})
+	LibraryRouter.Register(&TestLibraryConnector{})
+	LibraryRouter.Register(&DeleteLibraryConnector{})
+	LibraryRouter.Register(&ListLibraryConnectors{})
+	LibraryRouter.Register(&InstallLibraryConnector{})
+}

@@ -2,13 +2,16 @@ package execution
 
 import (
 	"context"
+	"errors"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	eventstream "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // terminalJournal 记录执行终态的 durable 与公开两阶段交接。
@@ -129,4 +132,82 @@ func TestFinishExecutionReleasesReservationAndPublishesDurableTerminal(t *testin
 		t.Fatalf("reserve after visible terminal event error = %v", err)
 	}
 	registry.release(chatID, "22222222222222222222222222222222")
+}
+
+func TestExecutionOutcomeIsDurableAndKeepsChatCompletedSemantics(t *testing.T) {
+	cases := []struct {
+		// raw 是 Runtime 报告的协议停止原因。
+		raw string
+		// reason 是 Runtime 归一化的完整性结论。
+		reason constants.RuntimeTerminationReason
+	}{{"end_turn", constants.RuntimeTerminationReasonNormal}, {"max_tokens", constants.RuntimeTerminationReasonTruncated}, {"max_turn_requests", constants.RuntimeTerminationReasonTurnLimit}, {"refusal", constants.RuntimeTerminationReasonRefusal}, {"future", constants.RuntimeTerminationReasonUnknown}, {"", constants.RuntimeTerminationReasonUnspecified}}
+	for _, test := range cases {
+		t.Run(test.raw, func(t *testing.T) {
+			runner := &retryTestRuntime{result: runtimes.Result{StopReason: test.raw, TerminationReason: test.reason}}
+			manager := newMessageTestService(t, t.TempDir(), runner)
+			accepted := retryTestStart(t, manager, retryTestIntent(t))
+			outcome, err := manager.chats.ReadExecutionOutcome(context.Background(), accepted.Chat.ID, accepted.Execution.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := test.reason
+			if want == constants.RuntimeTerminationReasonUnspecified {
+				want = constants.RuntimeTerminationReasonUnknown
+			}
+			if outcome.Execution.Status != constants.ExecutionStatusCompleted || outcome.InvocationID == "" || outcome.StopReason != test.raw || outcome.TerminationReason != want {
+				t.Fatalf("durable outcome = %+v", outcome)
+			}
+			// 后续聊天正常完成，不能覆盖指定旧执行的截断或未知结论。
+			runner.mutex.Lock()
+			runner.result = runtimes.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal}
+			runner.mutex.Unlock()
+			intent := retryTestIntent(t)
+			intent.Chat = ChatTarget{ChatID: accepted.Chat.ID}
+			intent.ClientRequestID = ""
+			retryTestStart(t, manager, intent)
+			old, err := manager.chats.ReadExecutionOutcome(context.Background(), accepted.Chat.ID, accepted.Execution.ID)
+			if err != nil || old.InvocationID != outcome.InvocationID || old.TerminationReason != want {
+				t.Fatalf("later turn overwrote outcome: %+v %v", old, err)
+			}
+			if _, err := manager.chats.ReadExecutionOutcome(context.Background(), accepted.Chat.ID, "missing"); !errors.Is(err, status_error.ExecutionNotFound) {
+				t.Fatalf("missing execution = %v", err)
+			}
+		})
+	}
+}
+
+func TestExecutionOutcomeKeepsFailureAlongsideStopReason(t *testing.T) {
+	runner := &retryTestRuntime{result: runtimes.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery, Stage: "sink", Message: "delivery failed"}}}
+	manager := newMessageTestService(t, t.TempDir(), runner)
+	accepted := retryTestStart(t, manager, retryTestIntent(t))
+	outcome, err := manager.chats.ReadExecutionOutcome(context.Background(), accepted.Chat.ID, accepted.Execution.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Execution.Status != constants.ExecutionStatusFailed || outcome.TerminationReason != constants.RuntimeTerminationReasonNormal || outcome.FailureCode != constants.RuntimeFailureCodeEventDelivery || outcome.FailureMessage != "delivery failed" || outcome.FailureStage != "sink" {
+		t.Fatalf("failure evidence lost: %+v", outcome)
+	}
+}
+
+func TestExecutionOutcomePreservesConfirmedCancellation(t *testing.T) {
+	runner := &retryTestRuntime{result: runtimes.Result{StopReason: "cancelled", TerminationReason: constants.RuntimeTerminationReasonCancelled, Failure: &runtimes.Failure{Code: runtimes.FailureCodeContextCanceled, Stage: "prompt", Message: "cancelled by user"}}}
+	manager := newMessageTestService(t, t.TempDir(), runner)
+	accepted := retryTestStart(t, manager, retryTestIntent(t))
+	outcome, err := manager.chats.ReadExecutionOutcome(context.Background(), accepted.Chat.ID, accepted.Execution.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome.Execution.Status != constants.ExecutionStatusCanceled || outcome.StopReason != "cancelled" || outcome.TerminationReason != constants.RuntimeTerminationReasonCancelled || outcome.FailureMessage != "cancelled by user" {
+		t.Fatalf("cancellation facts lost: %+v", outcome)
+	}
+}
+
+// LoadExecutionChat 不参与此日志边界测试。
+func (j *terminalJournal) LoadExecutionChat(context.Context, string) (models.Chat, error) {
+	panic("unexpected LoadExecutionChat call")
+}
+
+// ReadExecutionRecords 不参与此日志边界测试。
+func (j *terminalJournal) ReadExecutionRecords(string, string) ([]eventlog.Record, error) {
+	panic("unexpected ReadExecutionRecords call")
 }

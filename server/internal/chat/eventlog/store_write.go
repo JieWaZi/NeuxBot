@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // Create 使用独占文件创建一份新 Chat 日志。
@@ -50,6 +50,7 @@ func (s *Store) Create(chatID string, inputs []AppendInput) ([]Record, error) {
 	state.initialized = true
 	state.lastSequence = records[len(records)-1].Sequence
 	state.scope = scope
+	state.scopeLogInfo, _ = os.Stat(path)
 	return records, nil
 }
 
@@ -95,6 +96,7 @@ func (s *Store) Append(chatID string, inputs []AppendInput) ([]Record, error) {
 	}
 	state.lastSequence = records[len(records)-1].Sequence
 	state.scope = scope
+	state.scopeLogInfo, _ = os.Stat(path)
 	if err := s.appendIndexLocked(chatID, records); err != nil {
 		state.indexDirty = true
 	}

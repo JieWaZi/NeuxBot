@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinrolepreset"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -58,6 +58,14 @@ func TestListWakersReturnsAggregatedActivityState(t *testing.T) {
 		ActiveExecutionID: "execution-running",
 	}); err != nil {
 		t.Fatalf("create Chat: %v", err)
+	}
+
+	if err := global.ChatControllerManager.Create(ctx, models.Chat{
+		ID: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", WakerID: idleWakerID,
+		ActiveExecutionID: "background-workflow-execution", HiddenFromWakerHistory: true,
+		WaitingApproval: true,
+	}); err != nil {
+		t.Fatalf("create background Chat: %v", err)
 	}
 
 	output, err := (&ListWakers{PageNum: 1, PageSize: 100}).Output(ctx)

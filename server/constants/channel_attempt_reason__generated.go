@@ -45,7 +45,7 @@ func (v ChannelAttemptReason) Values() []enum.Enum {
 }
 
 func (v ChannelAttemptReason) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ChannelAttemptReason"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ChannelAttemptReason"
 }
 
 func (v ChannelAttemptReason) MarshalText() ([]byte, error) {

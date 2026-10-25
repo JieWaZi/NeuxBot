@@ -1,0 +1,895 @@
+@import "tailwindcss";
+@source "../../";
+@source "../../../../../web/src";
+@source "../../../../../desktop/src";
+@import "./theme.css";
+@import "./motion.css";
+@import "./welcome.css";
+@import "@ncdai/react-wheel-picker/style.css" layer(components);
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
+@source "../../../node_modules/@streamdown/mermaid/dist/*.js";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-card: var(--card-surface);
+  --color-card-hover: var(--card-hover);
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-canvas: var(--surface-canvas);
+  --color-surface-panel: var(--surface-panel);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-scene: var(--surface-scene);
+  --color-surface-workbench: var(--surface-workbench);
+  --color-surface-tertiary: var(--surface-tertiary);
+  --color-surface-chrome: var(--surface-chrome);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-foreground: var(--foreground);
+  --color-content-caption: var(--content-caption);
+  --color-content-primary: var(--content-primary);
+  --color-content-secondary: var(--content-secondary);
+  --color-content-muted: var(--content-muted);
+  --color-content-disabled: var(--content-disabled);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-border-default: var(--border-default);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--action-primary-hover);
+  --color-primary-pressed: var(--action-primary-pressed);
+  --color-link: var(--link);
+  --color-link-hover: var(--link-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-content: var(--accent-content);
+  --color-accent-surface: var(--accent-surface);
+  --color-accent-surface-subtle: var(--accent-surface-subtle);
+  --color-accent-surface-strong: var(--accent-surface-strong);
+  --color-accent-border: var(--accent-border);
+  --color-accent-secondary: var(--accent-secondary);
+  --color-accent-secondary-surface: var(--accent-secondary-surface);
+  --color-accent-secondary-border: var(--accent-secondary-border);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+  --color-overlay: var(--overlay);
+  --color-avatar: var(--avatar);
+  --color-avatar-foreground: var(--avatar-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-status-success-content: var(--status-success-content);
+  --color-status-success-surface: var(--status-success-surface);
+  --color-status-success-border: var(--status-success-border);
+  --color-status-info-content: var(--status-info-content);
+  --color-status-info-surface: var(--status-info-surface);
+  --color-status-info-border: var(--status-info-border);
+  --color-status-warning-content: var(--status-warning-content);
+  --color-status-warning-surface: var(--status-warning-surface);
+  --color-status-warning-border: var(--status-warning-border);
+  --color-status-danger-content: var(--status-danger-content);
+  --color-status-danger-surface: var(--status-danger-surface);
+  --color-status-danger-border: var(--status-danger-border);
+  --color-field: var(--field-background);
+  --color-field-hover: var(--field-background-hover);
+  --color-field-border: var(--field-border);
+  --color-field-border-hover: var(--field-border-hover);
+  --color-field-border-active: var(--field-border-active);
+  --color-control-switch-thumb: var(--control-switch-thumb);
+  --color-control-switch-track-checked: var(--control-switch-track-checked);
+  --color-control-highlight: var(--control-highlight-background);
+  --color-control-highlight-foreground: var(--control-highlight-content);
+  --color-control-switch-track: var(--control-switch-track);
+  --color-control-launcher: var(--control-launcher-background);
+  --color-control-launcher-hover: var(--control-launcher-background-hover);
+  --color-control-launcher-pressed: var(--control-launcher-background-pressed);
+  --color-control-launcher-content: var(--control-launcher-content);
+  --color-control-launcher-content-hover: var(--control-launcher-content-hover);
+  --color-button-content: var(--button-content);
+  --color-button-outline: var(--button-outline-border);
+  --color-button-fill: var(--button-fill-background);
+  --color-button-fill-hover: var(--button-fill-background-hover);
+  --color-button-fill-pressed: var(--button-fill-background-pressed);
+  --color-button-primary: var(--button-primary-background);
+  --color-button-primary-hover: var(--button-primary-background-hover);
+  --color-button-primary-pressed: var(--button-primary-background-pressed);
+  --color-action-quiet: var(--action-quiet-content);
+  --color-action-quiet-hover: var(--action-quiet-hover);
+  --color-action-quiet-pressed: var(--action-quiet-pressed);
+  --color-selection-surface: var(--selection-surface);
+  --color-composer-context: var(--composer-context-background);
+  --color-status-offline: var(--status-offline);
+  --color-activity-0: var(--activity-0);
+  --color-activity-1: var(--activity-1);
+  --color-activity-2: var(--activity-2);
+  --color-activity-3: var(--activity-3);
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI",
+    "Noto Sans", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --spacing-button-sm: 1.75rem;
+  --spacing-button-md: 2rem;
+  --spacing-button-lg: 2.25rem;
+  --spacing-control-sm: 1.75rem;
+  --spacing-control-md: 2.25rem;
+  --spacing-control-lg: 2.75rem;
+  --spacing-control-launcher: 7rem;
+  /* Dock 使用 58px 表面和 48px 图标入口。 */
+  --spacing-dock: 3.625rem;
+  --spacing-dock-button: 3rem;
+  --spacing-scene-bottom: max(3rem, var(--scene-overlay-clearance, 0px));
+  --spacing-control-tab: 1.875rem;
+  --spacing-control-search-sm: 1.875rem;
+  --spacing-control-hit-target: 2.25rem;
+  --spacing-field-filter: 8rem;
+  --spacing-field-filter-min: 6rem;
+  --spacing-field-date-range: 15rem;
+  --spacing-field-search: 18rem;
+  --spacing-field-search-min: 10rem;
+  --spacing-field-form-compact: 20rem;
+  --spacing-icon-xs: 0.75rem;
+  --spacing-icon-sm: 0.875rem;
+  --spacing-icon-md: 1rem;
+  --spacing-icon-lg: 1.25rem;
+  --spacing-icon-xl: 1.5rem;
+  --spacing-avatar-xs: 1.5rem;
+  --spacing-avatar-sm: 2rem;
+  --spacing-avatar-md: 2.5rem;
+  --spacing-avatar-lg: 3.5rem;
+  --spacing-avatar-xl: 5rem;
+  --spacing-avatar-hero: 8rem;
+  --spacing-avatar-docked: 10rem;
+  --spacing-row-compact: 1.875rem;
+  --spacing-row-default: 2.5rem;
+  --spacing-row-settings: 2rem;
+  --spacing-row-navigation: 2.75rem;
+  --spacing-row-rich: 3.5rem;
+  --spacing-work-board-focus-list: calc(5 * var(--spacing-row-rich) + 3.5rem);
+  /* 连接器内容区与技能卡片的 128px 基线一致，标签固定同行，说明保留两行。 */
+  --spacing-connector-card-content: 8rem;
+  --spacing-shell-content-top: 1rem;
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 2rem;
+  --radius-control: 0.75rem;
+  --radius-control-inner: 0.5rem;
+  --shadow-xs: var(--elevation-xs);
+  --shadow-sm: var(--elevation-sm);
+  --shadow-md: var(--elevation-md);
+  --shadow-lg: var(--elevation-lg);
+  --shadow-scene: var(--scene-edge-shadow);
+  --shadow-composer: var(--composer-shadow);
+  --shadow-menu: var(--menu-shadow);
+  --animate-collapse-in: collapse-in var(--duration-layout) var(--ease-ui);
+  --animate-collapse-out: collapse-out var(--duration-exit) var(--ease-ui);
+  --animate-popover-in: dialog-in var(--duration-quick) var(--ease-ui) both;
+  --animate-popover-out: dialog-out var(--duration-quick) var(--ease-ui) both;
+  --animate-fade-in: fade-in var(--duration-enter) var(--ease-ui);
+  --animate-fade-out: fade-out var(--duration-exit) var(--ease-ui);
+  --animate-dialog-in: dialog-in var(--duration-enter) var(--ease-ui) both;
+  --animate-dialog-out: dialog-out var(--duration-exit) var(--ease-ui) both;
+  --animate-shell-side-panel-in: shell-side-panel-in var(--duration-layout)
+    var(--ease-ui);
+  --animate-shell-side-panel-out: shell-side-panel-out var(--duration-layout)
+    var(--ease-ui) forwards;
+}
+
+@utility type-caption {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+}
+
+@utility type-ui {
+  font-size: 0.75rem;
+  line-height: 1rem;
+}
+
+@utility type-body {
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+/* 聊天最终内容使用更舒展的阅读字号，不改变全局 UI 正文密度。 */
+@utility type-chat {
+  font-size: 0.9375rem;
+  line-height: 1.625rem;
+}
+
+@utility type-chat-title {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+
+@utility type-chat-heading {
+  font-size: 1.25rem;
+  line-height: 1.875rem;
+}
+
+@utility type-chat-subheading {
+  font-size: 1.0625rem;
+  line-height: 1.625rem;
+}
+
+@utility type-chat-code {
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+}
+
+@utility type-label {
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+@utility type-title {
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+
+@utility type-page-title {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+}
+
+@utility type-display {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+
+:root {
+  --shell-detail-dock-clearance: 6rem;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --shell-titlebar-height: 44px;
+  --shell-global-sidebar-width: 240px;
+  --shell-global-sidebar-collapsed-width: 0px;
+  --shell-rail-width: var(--shell-global-sidebar-collapsed-width);
+  --shell-context-width: 240px;
+  --shell-context-min-width: 216px;
+  --shell-context-max-width: 360px;
+  --shell-side-panel-width: 280px;
+  --shell-inspector-width: 320px;
+  --shell-inspector-wide-width: 400px;
+  --shell-navigation-leading-inset: 8px;
+  --shell-titlebar-navigation-width: calc(
+    var(--shell-navigation-leading-inset) + 60px
+  );
+  --shell-scene-radius: 24px;
+  --shell-inset: 0px;
+  --shell-gap: 0px;
+  --traffic-light-close: #ff5f57;
+  --traffic-light-minimize: #febc2e;
+  --traffic-light-expand: #28c840;
+}
+
+@utility duration-quick {
+  transition-duration: var(--duration-quick);
+}
+
+@utility duration-instant {
+  transition-duration: var(--duration-instant);
+}
+
+@utility duration-standard {
+  transition-duration: var(--duration-standard);
+}
+
+@utility duration-slow {
+  transition-duration: var(--duration-slow);
+}
+
+@utility duration-deliberate {
+  transition-duration: var(--duration-deliberate);
+}
+
+@utility duration-layout {
+  transition-duration: var(--duration-layout);
+}
+
+@utility ease-ui {
+  transition-timing-function: var(--ease-ui);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+:focus,
+:focus-visible,
+:focus-within {
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: var(--canvas);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  transition:
+    background-color var(--duration-quick) var(--ease-ui),
+    color var(--duration-quick) var(--ease-ui);
+}
+
+[data-desktop-drag-region] {
+  -webkit-app-region: drag;
+}
+
+[data-desktop-drag-region] button,
+[data-desktop-drag-region] input,
+[data-desktop-drag-region] a,
+[data-desktop-drag-region] label {
+  -webkit-app-region: no-drag;
+}
+
+[data-desktop-no-drag-region] {
+  -webkit-app-region: no-drag;
+}
+
+[data-navigation-collapsed] [data-scene-tab-strip] {
+  -webkit-app-region: no-drag;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+::selection {
+  background: var(--selection-surface);
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+@utility scrollbar-hidden {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.agent-grid-spinner {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 2px;
+}
+
+.agent-grid-spinner > span {
+  background-color: currentcolor;
+  animation: agent-grid-pulse 1.3s infinite ease-in-out;
+}
+
+.agent-grid-spinner > span:nth-child(1) {
+  animation-delay: 200ms;
+}
+
+.agent-grid-spinner > span:nth-child(2) {
+  animation-delay: 300ms;
+}
+
+.agent-grid-spinner > span:nth-child(3) {
+  animation-delay: 400ms;
+}
+
+.agent-grid-spinner > span:nth-child(4) {
+  animation-delay: 100ms;
+}
+
+.agent-grid-spinner > span:nth-child(5) {
+  animation-delay: 200ms;
+}
+
+.agent-grid-spinner > span:nth-child(6) {
+  animation-delay: 300ms;
+}
+
+.agent-grid-spinner > span:nth-child(8) {
+  animation-delay: 100ms;
+}
+
+.agent-grid-spinner > span:nth-child(9) {
+  animation-delay: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-grid-spinner > span {
+    animation: none;
+  }
+}
+
+/* 概览卡片的悬停光晕与右上角入口呼应，不改变内容布局与命中区域。 */
+.overview-card-glow {
+  background: radial-gradient(
+    ellipse at 100% 0%,
+    color-mix(in srgb, var(--control-highlight-background) 28%, transparent),
+    transparent 68%
+  );
+}
+
+[data-chat-composer-surface] {
+  overflow: hidden;
+}
+
+/* 最高推理档只叠加装饰效果，不改变编辑器的尺寸、布局或命中区域。 */
+.composer-effort-effect {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.composer-effort-glow {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: radial-gradient(
+    140% 120% at 0% 100%,
+    color-mix(in srgb, var(--control-highlight-background) 26%, transparent),
+    transparent 62%
+  );
+  transition: opacity var(--duration-slow) var(--ease-ui);
+}
+
+.composer-effort-effect[data-active] .composer-effort-glow {
+  opacity: 1;
+}
+
+[data-stepped] > span:has([data-slot="slider-thumb"]) {
+  transition: left var(--duration-standard) var(--ease-ui);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer-effort-glow,
+  [data-stepped] > span:has([data-slot="slider-thumb"]) {
+    transition: none;
+  }
+}
+
+[data-chat-composer-surface]:has([data-file-dragging="true"]) {
+  border-color: var(--field-border-active);
+}
+
+[data-chat-composer-input] {
+  display: block;
+  max-height: 10rem;
+  min-height: 4rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+}
+
+[data-chat-composer-input] p {
+  margin: 0;
+}
+
+[data-chat-composer-input] p.is-editor-empty:first-child::before {
+  color: var(--muted-foreground);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* 伙伴概览等分组面使用的低密度装饰纹理，仅作背景层次，不承载信息。 */
+.surface-pattern-dots {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--border-default) 28%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 14px 14px;
+}
+
+.surface-pattern-dots-strong {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--border-default) 52%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 10px 10px;
+}
+
+/* 工作流画布缩放平移时的点阵底纹，略高于默认密度以便对齐节点。 */
+.surface-pattern-dots-canvas {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--border-default) 44%, transparent) 1px,
+    transparent 1px
+  );
+}
+
+.surface-pattern-grid {
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--border-subtle) 65%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--border-subtle) 65%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 22px 22px;
+}
+
+[data-theme="light"] .surface-pattern-grid-strong,
+:root:not([data-theme="dark"]) .surface-pattern-grid-strong {
+  background-image:
+    linear-gradient(
+      color-mix(in srgb, var(--border-default) 38%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--border-default) 38%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 18px 18px;
+}
+
+/* 大面积柔光色块，用于顶栏等白底分组（非网格、非点阵） */
+.surface-pattern-wash {
+  background-image:
+    radial-gradient(
+      ellipse 115% 85% at 0% 0%,
+      color-mix(in srgb, var(--border-subtle) 70%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 95% 75% at 100% 5%,
+      color-mix(in srgb, var(--accent-surface-subtle) 90%, transparent),
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse 100% 80% at 92% 100%,
+      color-mix(in srgb, var(--border-subtle) 55%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      ellipse 85% 70% at 8% 95%,
+      color-mix(in srgb, var(--accent-surface-subtle) 75%, transparent),
+      transparent 55%
+    );
+}
+
+.surface-pattern-wash-strong {
+  background-image:
+    radial-gradient(
+      ellipse 120% 90% at -8% -12%,
+      color-mix(in srgb, var(--border-default) 28%, transparent),
+      transparent 56%
+    ),
+    radial-gradient(
+      ellipse 100% 80% at 105% 0%,
+      color-mix(in srgb, var(--accent-surface) 55%, transparent),
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse 110% 85% at 88% 105%,
+      color-mix(in srgb, var(--border-default) 22%, transparent),
+      transparent 60%
+    );
+}
+
+/* 概览侧栏：与 wash 左右镜像，柔光落在右上与左下 */
+.surface-pattern-wash-mirror {
+  background-image:
+    radial-gradient(
+      ellipse 115% 85% at 100% 0%,
+      color-mix(in srgb, var(--border-subtle) 70%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 95% 75% at 0% 5%,
+      color-mix(in srgb, var(--accent-surface-subtle) 90%, transparent),
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse 100% 80% at 8% 100%,
+      color-mix(in srgb, var(--border-subtle) 55%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      ellipse 85% 70% at 92% 95%,
+      color-mix(in srgb, var(--accent-surface-subtle) 75%, transparent),
+      transparent 55%
+    );
+}
+
+/* 顶栏伙伴信息：左侧留白，右侧约 1/3 宽度的柔和曲线山峦（SVG 随主题切换描边色） */
+.surface-pattern-wash-header {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    transparent 64%,
+    #000 72%,
+    #000 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    transparent 64%,
+    #000 72%,
+    #000 100%
+  );
+  background-image:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20240%20180'%20preserveAspectRatio%3D'none'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g0'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.010'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.032'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g1'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.012'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.036'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g2'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.013'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.038'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g3'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.014'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.040'%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cpath%20fill%3D'url(%23g0)'%20d%3D'M0%20180%20C%2018%20180%2028%20150%2042%20118%20C%2056%2086%2068%2072%2082%2088%20C%2096%20104%20108%20138%20122%20158%20C%20136%20172%20148%20132%20164%2096%20C%20180%2062%20194%2058%20208%2078%20C%20222%2098%20232%20128%20240%20168%20L%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g1)'%20d%3D'M0%20180%20C%2024%20180%2036%20128%2054%2098%20C%2072%2068%2088%2052%20104%2068%20C%20120%2084%20132%20118%20148%20142%20C%20164%20162%20176%20108%20192%2072%20C%20208%2044%20224%2052%20236%2088%20C%20240%20108%20238%20148%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g2)'%20d%3D'M0%20180%20C%2030%20180%2044%20112%2062%2082%20C%2080%2052%2098%2042%20114%2058%20C%20130%2074%20142%20108%20158%20128%20C%20174%20146%20188%2092%20204%2062%20C%20220%2038%20232%2048%20240%2082%20C%20240%20102%20238%20142%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g3)'%20d%3D'M0%20180%20C%2038%20180%2052%2096%2072%2068%20C%2092%2040%20110%2034%20126%2052%20C%20142%2070%20154%20104%20170%20124%20C%20186%20142%20200%2088%20216%2058%20C%20230%2036%20240%2050%20240%2078%20C%20240%20108%20234%20148%20240%20180%20Z'%2F%3E%3C%2Fsvg%3E"),
+    radial-gradient(
+      ellipse 90% 70% at 100% 0%,
+      color-mix(in srgb, var(--border-subtle) 32%, transparent),
+      transparent 56%
+    );
+  background-repeat: no-repeat, no-repeat;
+  background-size:
+    33.333% 100%,
+    33.333% 42%;
+  background-position:
+    right bottom,
+    right top;
+}
+
+.surface-pattern-wash-header-strong {
+  background-image:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20240%20180'%20preserveAspectRatio%3D'none'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g0'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.022'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.070'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g1'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.025'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.077'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g2'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.028'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.081'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g3'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.031'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23101A27'%20stop-opacity%3D'0.087'%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cpath%20fill%3D'url(%23g0)'%20d%3D'M0%20180%20C%2018%20180%2028%20150%2042%20118%20C%2056%2086%2068%2072%2082%2088%20C%2096%20104%20108%20138%20122%20158%20C%20136%20172%20148%20132%20164%2096%20C%20180%2062%20194%2058%20208%2078%20C%20222%2098%20232%20128%20240%20168%20L%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g1)'%20d%3D'M0%20180%20C%2024%20180%2036%20128%2054%2098%20C%2072%2068%2088%2052%20104%2068%20C%20120%2084%20132%20118%20148%20142%20C%20164%20162%20176%20108%20192%2072%20C%20208%2044%20224%2052%20236%2088%20C%20240%20108%20238%20148%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g2)'%20d%3D'M0%20180%20C%2030%20180%2044%20112%2062%2082%20C%2080%2052%2098%2042%20114%2058%20C%20130%2074%20142%20108%20158%20128%20C%20174%20146%20188%2092%20204%2062%20C%20220%2038%20232%2048%20240%2082%20C%20240%20102%20238%20142%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g3)'%20d%3D'M0%20180%20C%2038%20180%2052%2096%2072%2068%20C%2092%2040%20110%2034%20126%2052%20C%20142%2070%20154%20104%20170%20124%20C%20186%20142%20200%2088%20216%2058%20C%20230%2036%20240%2050%20240%2078%20C%20240%20108%20234%20148%20240%20180%20Z'%2F%3E%3C%2Fsvg%3E"),
+    radial-gradient(
+      ellipse 95% 75% at 100% 0%,
+      color-mix(in srgb, var(--border-subtle) 40%, transparent),
+      transparent 54%
+    );
+  background-repeat: no-repeat, no-repeat;
+  background-size:
+    33.333% 100%,
+    33.333% 42%;
+  background-position:
+    right bottom,
+    right top;
+}
+
+[data-theme="dark"] .surface-pattern-wash-header {
+  background-image:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20240%20180'%20preserveAspectRatio%3D'none'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g0'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.010'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.032'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g1'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.012'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.036'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g2'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.013'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.038'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g3'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.014'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.040'%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cpath%20fill%3D'url(%23g0)'%20d%3D'M0%20180%20C%2018%20180%2028%20150%2042%20118%20C%2056%2086%2068%2072%2082%2088%20C%2096%20104%20108%20138%20122%20158%20C%20136%20172%20148%20132%20164%2096%20C%20180%2062%20194%2058%20208%2078%20C%20222%2098%20232%20128%20240%20168%20L%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g1)'%20d%3D'M0%20180%20C%2024%20180%2036%20128%2054%2098%20C%2072%2068%2088%2052%20104%2068%20C%20120%2084%20132%20118%20148%20142%20C%20164%20162%20176%20108%20192%2072%20C%20208%2044%20224%2052%20236%2088%20C%20240%20108%20238%20148%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g2)'%20d%3D'M0%20180%20C%2030%20180%2044%20112%2062%2082%20C%2080%2052%2098%2042%20114%2058%20C%20130%2074%20142%20108%20158%20128%20C%20174%20146%20188%2092%20204%2062%20C%20220%2038%20232%2048%20240%2082%20C%20240%20102%20238%20142%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g3)'%20d%3D'M0%20180%20C%2038%20180%2052%2096%2072%2068%20C%2092%2040%20110%2034%20126%2052%20C%20142%2070%20154%20104%20170%20124%20C%20186%20142%20200%2088%20216%2058%20C%20230%2036%20240%2050%20240%2078%20C%20240%20108%20234%20148%20240%20180%20Z'%2F%3E%3C%2Fsvg%3E"),
+    radial-gradient(
+      ellipse 90% 70% at 100% 0%,
+      color-mix(in srgb, var(--border-subtle) 38%, transparent),
+      transparent 56%
+    );
+}
+
+[data-theme="dark"] .surface-pattern-wash-header-strong {
+  background-image:
+    url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20240%20180'%20preserveAspectRatio%3D'none'%3E%3Cdefs%3E%3ClinearGradient%20id%3D'g0'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.022'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.070'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g1'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.025'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.077'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g2'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.028'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.081'%2F%3E%3C%2FlinearGradient%3E%3ClinearGradient%20id%3D'g3'%20x1%3D'0'%20y1%3D'0'%20x2%3D'1'%20y2%3D'0'%3E%3Cstop%20offset%3D'0%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.031'%2F%3E%3Cstop%20offset%3D'100%25'%20stop-color%3D'%23F5F7FA'%20stop-opacity%3D'0.087'%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Cpath%20fill%3D'url(%23g0)'%20d%3D'M0%20180%20C%2018%20180%2028%20150%2042%20118%20C%2056%2086%2068%2072%2082%2088%20C%2096%20104%20108%20138%20122%20158%20C%20136%20172%20148%20132%20164%2096%20C%20180%2062%20194%2058%20208%2078%20C%20222%2098%20232%20128%20240%20168%20L%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g1)'%20d%3D'M0%20180%20C%2024%20180%2036%20128%2054%2098%20C%2072%2068%2088%2052%20104%2068%20C%20120%2084%20132%20118%20148%20142%20C%20164%20162%20176%20108%20192%2072%20C%20208%2044%20224%2052%20236%2088%20C%20240%20108%20238%20148%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g2)'%20d%3D'M0%20180%20C%2030%20180%2044%20112%2062%2082%20C%2080%2052%2098%2042%20114%2058%20C%20130%2074%20142%20108%20158%20128%20C%20174%20146%20188%2092%20204%2062%20C%20220%2038%20232%2048%20240%2082%20C%20240%20102%20238%20142%20240%20180%20Z'%2F%3E%3Cpath%20fill%3D'url(%23g3)'%20d%3D'M0%20180%20C%2038%20180%2052%2096%2072%2068%20C%2092%2040%20110%2034%20126%2052%20C%20142%2070%20154%20104%20170%20124%20C%20186%20142%20200%2088%20216%2058%20C%20230%2036%20240%2050%20240%2078%20C%20240%20108%20234%20148%20240%20180%20Z'%2F%3E%3C%2Fsvg%3E"),
+    radial-gradient(
+      ellipse 95% 75% at 100% 0%,
+      color-mix(in srgb, var(--border-subtle) 48%, transparent),
+      transparent 54%
+    );
+}
+/* 顶栏伙伴信息：右侧叠层柔光，形成山峦起伏感 */
+.surface-pattern-wash-ridge {
+  background-image:
+    radial-gradient(
+      ellipse 48% 42% at 94% 108%,
+      color-mix(in srgb, var(--border-subtle) 72%, transparent),
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 40% 34% at 76% 112%,
+      color-mix(in srgb, var(--accent-surface-subtle) 85%, transparent),
+      transparent 72%
+    ),
+    radial-gradient(
+      ellipse 36% 30% at 88% 98%,
+      color-mix(in srgb, var(--border-default) 16%, transparent),
+      transparent 66%
+    ),
+    radial-gradient(
+      ellipse 52% 38% at 68% 106%,
+      color-mix(in srgb, var(--border-subtle) 45%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 115% 85% at 0% 0%,
+      color-mix(in srgb, var(--border-subtle) 70%, transparent),
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 75% 55% at 100% 8%,
+      color-mix(in srgb, var(--accent-surface-subtle) 70%, transparent),
+      transparent 52%
+    );
+}
+
+.surface-pattern-wash-ridge-strong {
+  background-image:
+    radial-gradient(
+      ellipse 52% 46% at 92% 110%,
+      color-mix(in srgb, var(--border-default) 26%, transparent),
+      transparent 66%
+    ),
+    radial-gradient(
+      ellipse 44% 38% at 74% 114%,
+      color-mix(in srgb, var(--accent-surface) 48%, transparent),
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 38% 32% at 96% 96%,
+      color-mix(in srgb, var(--border-default) 20%, transparent),
+      transparent 62%
+    ),
+    radial-gradient(
+      ellipse 48% 40% at 66% 108%,
+      color-mix(in srgb, var(--border-subtle) 58%, transparent),
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 120% 90% at -6% -10%,
+      color-mix(in srgb, var(--border-default) 24%, transparent),
+      transparent 56%
+    ),
+    radial-gradient(
+      ellipse 85% 65% at 102% 4%,
+      color-mix(in srgb, var(--accent-surface) 50%, transparent),
+      transparent 48%
+    );
+}
+
+[data-chat-composer-stop-indicator],
+.composer-stop-indicator {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--spacing-control-sm);
+  height: var(--spacing-control-sm);
+  border: 1px solid transparent;
+  border-radius: 9999px;
+  background: var(--button-primary-background);
+  transition: background-color var(--duration-quick) var(--ease-ui);
+}
+
+[data-chat-composer-stop-indicator]::after,
+.composer-stop-indicator::after {
+  width: 0.5625rem;
+  height: 0.5625rem;
+  border-radius: 2px;
+  background: var(--primary-foreground);
+  content: "";
+  transition: background-color var(--duration-quick) var(--ease-ui);
+}
+
+[data-chat-composer-stop]:hover:not(:disabled)
+  [data-chat-composer-stop-indicator],
+[data-chat-composer-stop]:hover:not(:disabled) .composer-stop-indicator {
+  background: var(--button-primary-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-chat-composer-stop-indicator],
+  .composer-stop-indicator,
+  [data-chat-composer-stop-indicator]::after,
+  .composer-stop-indicator::after {
+    transition: none;
+  }
+}
+
+/* 页面操作以真实 36px 按钮承载 32px 视觉表面，避免用不可点击的外围留白充当热区。 */
+.page-action[data-page-action] {
+  position: relative;
+  isolation: isolate;
+  height: var(--spacing-control-md);
+  border: 0;
+  background: transparent;
+}
+.page-action[data-page-action]::before {
+  content: "";
+  position: absolute;
+  inset: 2px 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--page-action-fill, transparent);
+  border: 1px solid var(--page-action-border, transparent);
+  transition:
+    background-color var(--duration-quick),
+    border-color var(--duration-quick);
+}
+.page-action[data-variant="primary"] {
+  --page-action-fill: var(--button-primary-background);
+}
+.page-action[data-variant="primary"]:hover {
+  --page-action-fill: var(--button-primary-background-hover);
+}
+.page-action[data-variant="primary"]:active {
+  --page-action-fill: var(--button-primary-background-pressed);
+}
+.page-action[data-variant="secondary"] {
+  --page-action-fill: var(--button-fill-background);
+  --page-action-border: var(--button-outline-border);
+}
+.page-action[data-variant="secondary"]:hover {
+  --page-action-fill: var(--button-fill-background-hover);
+}
+.page-action[data-variant="secondary"]:active {
+  --page-action-fill: var(--button-fill-background-pressed);
+}
+.page-action[data-variant="surface"] {
+  --page-action-fill: var(--surface-scene);
+}
+.page-action[data-variant="surface"]:hover,
+.page-action[data-variant="ghost"]:hover {
+  --page-action-fill: var(--action-quiet-hover);
+}
+.page-action[data-variant="surface"]:active,
+.page-action[data-variant="ghost"]:active {
+  --page-action-fill: var(--action-quiet-pressed);
+}
+.page-action[data-variant="danger-quiet"]:hover {
+  --page-action-fill: color-mix(in srgb, var(--destructive) 8%, transparent);
+}
+.page-action[data-variant="danger-quiet"]:active {
+  --page-action-fill: color-mix(in srgb, var(--destructive) 12%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-action[data-page-action]::before {
+    transition: none;
+  }
+}
+
+.page-action[data-variant="danger"] {
+  --page-action-fill: var(--destructive);
+}
+.page-action[data-variant="danger"]:hover {
+  --page-action-fill: color-mix(in srgb, var(--destructive) 88%, transparent);
+}
+.page-action[data-variant="success"] {
+  --page-action-fill: var(--success);
+}
+.page-action[data-variant="success"]:hover {
+  --page-action-fill: color-mix(in srgb, var(--success) 88%, transparent);
+}

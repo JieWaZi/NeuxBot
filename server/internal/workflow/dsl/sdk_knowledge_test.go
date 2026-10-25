@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/workflow/catalog"
+	"github.com/JieWaZi/NeuxBot/server/internal/workflow/catalog"
 )
 
 func TestSDKQueriesReturnFocusedGeneratedGuidanceAndCompilableExamples(t *testing.T) {

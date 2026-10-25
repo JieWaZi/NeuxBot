@@ -1,8 +1,8 @@
 package mcp
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // 密钥输入
@@ -53,6 +53,8 @@ type SecretDefinition struct {
 
 // 连接器资源
 type ConnectorResource struct {
+	// 所属伙伴
+	OwnerWakerID string `json:"ownerWakerId,omitempty"`
 	// 标识
 	ID string `json:"id"`
 	// 名称

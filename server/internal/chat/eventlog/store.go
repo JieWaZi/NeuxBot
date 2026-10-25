@@ -5,8 +5,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 )
 
 // Store 管理应用数据目录中的 Chat JSONL。
@@ -34,6 +34,8 @@ type fileState struct {
 	lastSequence int64
 	// scope 是最近合法记录之后仍然活跃的执行与调用作用域。
 	scope recordScope
+	// scopeLogInfo 记录 scope 对应的日志文件身份和版本，文件变化后必须重新恢复作用域。
+	scopeLogInfo os.FileInfo
 	// indexDirty 表示派生索引需要在下次读取或启动恢复时重建。
 	indexDirty bool
 	// tailBytesRemoved 是最近一次尾行修复删除的不完整字节数。

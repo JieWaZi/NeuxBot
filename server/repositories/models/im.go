@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
@@ -29,13 +29,13 @@ type IMConnection struct {
 	State constants.IMConnectionState `json:"state"`
 	// ErrorCode 是可本地化的最近失败原因。
 	ErrorCode string `json:"errorCode"`
-	// AppID 是飞书应用标识或微信机器人标识。
+	// AppID 是飞书应用或微信、企业微信机器人标识。
 	AppID string `json:"appId"`
 	// OwnerID 是扫码所有者的平台身份，用于单聊及群控制授权。
 	OwnerID string `json:"ownerId"`
 	// BaseURL 是经过官方域名校验的微信实际服务地址。
 	BaseURL string `json:"-"`
-	// CredentialCiphertext 是登录令牌或飞书密钥的加密值。
+	// CredentialCiphertext 是登录令牌、飞书应用密钥或企业微信机器人密钥的加密值。
 	CredentialCiphertext string `json:"-"`
 	// Credential 是仅在进程内交给适配器的解密值，不参与 ORM。
 	Credential string `gorm:"-" json:"-"`

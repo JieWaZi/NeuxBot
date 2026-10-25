@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
 func TestAnnotationReplayAndSourceReceiptResolveExactlyOnce(t *testing.T) {

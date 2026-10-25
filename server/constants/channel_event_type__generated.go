@@ -117,7 +117,7 @@ func (v ChannelEventType) Values() []enum.Enum {
 }
 
 func (v ChannelEventType) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ChannelEventType"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ChannelEventType"
 }
 
 func (v ChannelEventType) MarshalText() ([]byte, error) {

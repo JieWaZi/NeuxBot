@@ -45,7 +45,7 @@ func (v ChannelMessageActor) Values() []enum.Enum {
 }
 
 func (v ChannelMessageActor) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ChannelMessageActor"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ChannelMessageActor"
 }
 
 func (v ChannelMessageActor) MarshalText() ([]byte, error) {

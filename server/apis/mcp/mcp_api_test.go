@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -111,7 +111,7 @@ func TestMCPConnectorAPIMaintainsSharedConfigurationAndEncryptedCredentials(
 		t.Fatalf("list connector for other waker: %v", err)
 	}
 	listed := listedValue.([]ConnectorResponse)
-	if len(listed) != 1 || listed[0].Enabled {
+	if len(listed) != 0 {
 		t.Fatalf("other waker connectors = %+v", listed)
 	}
 
@@ -210,10 +210,13 @@ func TestMCPConnectorAPIMaintainsSharedConfigurationAndEncryptedCredentials(
 	if err := global.MCPConnectorControllerManager.Create(ctx, second); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{created.Connector.ID, second.ID} {
+	for _, id := range []string{second.ID} {
 		if err := global.MCPConnectorControllerManager.UpsertWakerConnector(ctx, models.WakerMCPConnector{ID: "relation-" + id, WakerID: "waker-2", MCPConnectorID: id, Enabled: true}); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := global.MCPConnectorControllerManager.UpsertWakerConnector(ctx, models.WakerMCPConnector{ID: "second-w1", WakerID: "waker-1", MCPConnectorID: second.ID, Enabled: true}); err != nil {
+		t.Fatal(err)
 	}
 	if _, err := (&DeleteWakerConnector{WakerID: "waker-1", ConnectorID: second.ID}).Output(ctx); err != nil {
 		t.Fatal(err)
@@ -233,7 +236,11 @@ func TestMCPConnectorAPIMaintainsSharedConfigurationAndEncryptedCredentials(
 	}
 	for _, id := range []string{created.Connector.ID, second.ID} {
 		var count int64
-		if err := database.DB.Model(&models.WakerMCPConnector{}).Where("mcp_connector_id = ?", id).Count(&count).Error; err != nil || count != 0 {
+		want := int64(0)
+		if id == second.ID {
+			want = 1
+		}
+		if err := database.DB.Model(&models.WakerMCPConnector{}).Where("mcp_connector_id = ?", id).Count(&count).Error; err != nil || count != want {
 			t.Fatalf("deleted connector relations = %d, %v", count, err)
 		}
 	}

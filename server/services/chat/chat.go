@@ -10,16 +10,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chatstorage"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/projectsource"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/internal/workspace"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 type chatDetail struct {
@@ -302,7 +302,7 @@ func (m *service) ReadMessageHistory(
 	if len(window.Records) == 0 {
 		return MessageHistoryPage{Resources: []messageview.Message{}}, nil
 	}
-	messages, err := messageview.ReplayMessages(window.Records)
+	messages, err := messageview.ReplayPublicMessages(window.Records)
 	if err != nil {
 		logx.Errorf(
 			"project chat message window failed: chat_id=%s error=%v",
@@ -450,10 +450,11 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 			if err := json.Unmarshal(record.Data, &executionData); err != nil {
 				return chatState{}, status_error.ChatLogCorrupted
 			}
-			execution := models.Execution{
+			execution := models.Execution{AutomaticRunID: executionData.AutomaticRunID,
 				ID:                record.ExecutionID,
 				ChatID:            record.ChatID,
 				UserMessageID:     executionData.UserMessageID,
+				PluginResources:   executionData.PluginResources,
 				SubmissionID:      executionData.SubmissionID,
 				SubmissionHash:    executionData.SubmissionHash,
 				ParentExecutionID: executionData.ParentExecutionID,

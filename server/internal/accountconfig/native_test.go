@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // TestNativeManagedProfiles 验证真实原生配置路径、协议地址与账号修订隔离。

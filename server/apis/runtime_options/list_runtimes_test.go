@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestRuntimeOptionIncludesDetectedModelReasoningOptions(t *testing.T) {

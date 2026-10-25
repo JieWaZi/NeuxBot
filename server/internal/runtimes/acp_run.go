@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	acp "github.com/coder/acp-go-sdk"
 )
@@ -39,6 +39,8 @@ type acpSessionOpenResult struct {
 	action string
 	// scopeFingerprint 是工作目录、额外目录和 MCP 挂载范围的不可逆摘要。
 	scopeFingerprint string
+	// configOptions 是本次新建会话实际返回的模型与推理配置。
+	configOptions []acp.SessionConfigOption
 }
 
 // run 执行 Session 打开、配置、Prompt 和事件收尾。
@@ -105,8 +107,14 @@ func (agent *embeddedACPAgent) run(
 		cancelClose()
 	}()
 	sessionConfigStartedAt := time.Now()
-	if err := agent.configureSession(ctx, sessionID, request.Request); err != nil {
-		return acpFailedResult(request, constants.RuntimeACPFailureStageSessionConfig, err)
+	var configErr error
+	if request.Text != nil {
+		configErr = agent.configureTextSession(ctx, sessionID, &request, openedSession.configOptions)
+	} else {
+		configErr = agent.configureSession(ctx, sessionID, request.Request)
+	}
+	if configErr != nil {
+		return acpFailedResult(request, constants.RuntimeACPFailureStageSessionConfig, configErr)
 	}
 	logx.Infof(
 		"ACP invocation session configured: runtime_id=%s invocation_id=%s session_id=%s stage_duration_ms=%d total_duration_ms=%d",
@@ -131,6 +139,9 @@ func (agent *embeddedACPAgent) run(
 	bridge.approvalHandler = request.Request.ApprovalHandler
 	bridge.elicitationHandler = request.Request.ElicitationHandler
 	bridge.userInputState = request.Request.UserInputState
+	if request.Text != nil {
+		bridge.rejectTextInteraction = request.Text.reject
+	}
 	if err := agent.client.register(bridge); err != nil {
 		return acpFailedResult(request, constants.RuntimeACPFailureStageSessionActive, err)
 	}
@@ -454,6 +465,7 @@ func (agent *embeddedACPAgent) openSession(
 		sessionID:        response.SessionId,
 		action:           "created",
 		scopeFingerprint: scopeFingerprint,
+		configOptions:    response.ConfigOptions,
 	}, nil
 }
 
@@ -677,8 +689,23 @@ func acpResult(
 	deliveryErr error,
 	sessionCloseErr error,
 ) Result {
+	terminationReason := constants.RuntimeTerminationReasonUnknown
+	switch prompt.response.StopReason {
+	case acp.StopReasonEndTurn:
+		terminationReason = constants.RuntimeTerminationReasonNormal
+	case acp.StopReasonMaxTokens:
+		terminationReason = constants.RuntimeTerminationReasonTruncated
+	case acp.StopReasonMaxTurnRequests:
+		terminationReason = constants.RuntimeTerminationReasonTurnLimit
+	case acp.StopReasonRefusal:
+		terminationReason = constants.RuntimeTerminationReasonRefusal
+	case acp.StopReasonCancelled:
+		terminationReason = constants.RuntimeTerminationReasonCancelled
+	}
 	result := Result{
-		ExitCode: 0,
+		StopReason:        string(prompt.response.StopReason),
+		TerminationReason: terminationReason,
+		ExitCode:          0,
 		Session: SessionResult{
 			Mode:     request.Request.Session.Mode,
 			InputID:  request.Request.Session.ID,

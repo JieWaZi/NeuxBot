@@ -41,7 +41,7 @@ func (v MCPActivationPolicy) Values() []enum.Enum {
 }
 
 func (v MCPActivationPolicy) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MCPActivationPolicy"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MCPActivationPolicy"
 }
 
 func (v MCPActivationPolicy) MarshalText() ([]byte, error) {

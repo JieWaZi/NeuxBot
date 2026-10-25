@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestCreationResourcePagesExposeEnforcedPoliciesAndBoundConnectors(t *testing.T) {
@@ -31,8 +31,8 @@ func TestCreationResourcePagesExposeEnforcedPoliciesAndBoundConnectors(t *testin
 		if !strings.Contains(string(encoded), `"nativeTools":["inherit"]`) || !strings.Contains(string(encoded), `"connectors":["inherit","allowlist"]`) {
 			t.Fatalf("actual policy capabilities absent from %s: %s", kind, encoded)
 		}
-		if kind == "wakers" && (!strings.Contains(string(encoded), `"id":"bound"`) || !strings.Contains(string(encoded), definition.CreationWakerID) || !strings.Contains(string(encoded), `"name":"NeuxAlly"`)) {
-			t.Fatalf("bound connector or reused NeuxAlly partner absent: %s", encoded)
+		if kind == "wakers" && (!strings.Contains(string(encoded), `"id":"bound"`) || !strings.Contains(string(encoded), definition.CreationWakerID) || !strings.Contains(string(encoded), `"name":"NeuxBot"`)) {
+			t.Fatalf("bound connector or reused NeuxBot partner absent: %s", encoded)
 		}
 		if strings.Contains(string(encoded), "private-token") || strings.Contains(string(encoded), "private.invalid") {
 			t.Fatal("resource page exposed connector transport credentials")
@@ -47,5 +47,5 @@ type resourceWakerFixture struct {
 }
 
 func (resourceWakerFixture) List(context.Context, string, int, int) ([]models.Waker, error) {
-	return []models.Waker{{ID: "fixture-ally", Name: "NeuxAlly"}}, nil
+	return []models.Waker{{ID: "fixture-ally", Name: "NeuxBot"}}, nil
 }

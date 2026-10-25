@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func TestStoreWritesScopedJSONLAndRestoresRecordContext(t *testing.T) {
@@ -361,4 +361,40 @@ func marshalTestData(t *testing.T, value interface{}) []byte {
 		t.Fatalf("MarshalData() error = %v", err)
 	}
 	return data
+}
+
+func TestInvocationTerminationSurvivesStoreReopenAndLegacyStaysUnknown(t *testing.T) {
+	directory := t.TempDir()
+	store, err := NewStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "78787878787878787878787878787878"
+	_, err = store.Create(chatID, []AppendInput{
+		{Type: constants.ChatEventTypeCreated},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "execution-1"},
+		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: "execution-1", InvocationID: "old", Data: json.RawMessage(`{"exitCode":0,"protocolHealthy":true}`)},
+		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: "execution-1", InvocationID: "new", Data: json.RawMessage(`{"stopReason":"max_tokens","terminationReason":"truncated","failureMessage":"delivery failed"}`)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewStore(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := reopened.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	invocations, err := ReplayInvocations(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(invocations) != 2 || string(invocations[0].Facts.TerminationReason) != "unknown" || invocations[0].Facts.StopReason != "" {
+		t.Fatalf("legacy completion inferred: %+v", invocations)
+	}
+	if string(invocations[1].Facts.TerminationReason) != "truncated" || invocations[1].Facts.StopReason != "max_tokens" || invocations[1].Facts.FailureMessage != "delivery failed" {
+		t.Fatalf("termination facts lost: %+v", invocations[1])
+	}
 }

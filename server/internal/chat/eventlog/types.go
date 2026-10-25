@@ -3,9 +3,10 @@ package eventlog
 
 import (
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // Record 是 Chat JSONL 中一条已经提交的稳定事件信封。
@@ -114,7 +115,7 @@ type AttachmentReference struct {
 	Path string `json:"path"`
 	// MediaType 是根据扩展名推断的 MIME 类型。
 	MediaType string `json:"mediaType,omitempty"`
-	// Managed 表示文件是否位于 NeuxAlly 归属目录。
+	// Managed 表示文件是否位于 NeuxBot 归属目录。
 	Managed bool `json:"managed"`
 }
 
@@ -166,6 +167,8 @@ type MessageCreatedData struct {
 	Attachments []AttachmentReference `json:"attachments,omitempty"`
 	// Skills 是本轮用户明确选择的技能快照。
 	Skills []MessageSkillReference `json:"skills,omitempty"`
+	// Plugins 是本轮用户明确选择的插件快照。
+	Plugins []plugins.Snapshot `json:"plugins,omitempty"`
 	// Connectors 是本轮用户明确选择的 MCP 连接器快照。
 	Connectors []MessageConnectorReference `json:"connectors,omitempty"`
 	// CodeReferences 是本轮用户选择的有序整文件或代码片段引用。
@@ -174,6 +177,8 @@ type MessageCreatedData struct {
 
 // ExecutionCreatedData 保存一次执行创建时冻结的选择。
 type ExecutionCreatedData struct {
+	// AutomaticRunID 是服务端冻结的自动任务来源，随原执行事实恢复。
+	AutomaticRunID string `json:"automaticRunId,omitempty"`
 	// SubmissionID 是入口无关的稳定输入身份，写入同一权威执行事实。
 	SubmissionID string `json:"submissionId,omitempty"`
 	// SubmissionHash 是规范化输入和冻结配置的摘要，拒绝同键异内容。
@@ -192,6 +197,10 @@ type ExecutionCreatedData struct {
 	Reasoning string `json:"reasoning"`
 	// PermissionLevel 是本次发送冻结的跨 Runtime 产品权限等级。
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel"`
+	// PluginResources 是接纳时冻结的插件身份、版本与配置修订。
+	PluginResources []plugins.Snapshot `json:"pluginResources,omitempty"`
+	// NativePluginScope 是接纳时冻结的外部原生插件摘要，供分叉续聊核验能力边界。
+	NativePluginScope string `json:"nativePluginScope,omitempty"`
 	// WorkspaceReadOnly 表示本次 Runtime 只能读取工作区且不能申请文件修改。
 	WorkspaceReadOnly bool `json:"workspaceReadOnly,omitempty"`
 }
@@ -216,7 +225,7 @@ type ApprovalLocationData struct {
 
 // ApprovalRequestedData 保存一次等待用户处理的安全审批请求。
 type ApprovalRequestedData struct {
-	// ApprovalID 是 NeuxAlly 为本次 ACP 回调生成的稳定交互标识。
+	// ApprovalID 是 NeuxBot 为本次 ACP 回调生成的稳定交互标识。
 	ApprovalID string `json:"approvalId"`
 	// ToolCallID 是 ACP Session 内对应工具调用的稳定标识。
 	ToolCallID string `json:"toolCallId"`
@@ -236,7 +245,7 @@ type ApprovalRequestedData struct {
 
 // ApprovalResolvedData 保存一次审批的权威处理结果。
 type ApprovalResolvedData struct {
-	// ApprovalID 是被处理的 NeuxAlly 审批标识。
+	// ApprovalID 是被处理的 NeuxBot 审批标识。
 	ApprovalID string `json:"approvalId"`
 	// ToolCallID 是对应 ACP 工具调用标识。
 	ToolCallID string `json:"toolCallId"`
@@ -260,7 +269,7 @@ type ElicitationRequestedData struct {
 	CommandDigest string `json:"commandDigest,omitempty"`
 	// AllowSkip 是 CLI 问答冻结的跳过约束；原生请求不设置。
 	AllowSkip *bool `json:"allowSkip,omitempty"`
-	// ElicitationID 是 NeuxAlly 生成的稳定交互标识。
+	// ElicitationID 是 NeuxBot 生成的稳定交互标识。
 	ElicitationID string `json:"elicitationId"`
 	// ToolCallID 是对应 ACP 工具调用标识，URL 模式可能为空。
 	ToolCallID string `json:"toolCallId,omitempty"`
@@ -276,7 +285,7 @@ type ElicitationRequestedData struct {
 
 // ElicitationResolvedData 保存一次结构化输入的权威处理结果。
 type ElicitationResolvedData struct {
-	// ElicitationID 是被处理的 NeuxAlly 交互标识。
+	// ElicitationID 是被处理的 NeuxBot 交互标识。
 	ElicitationID string `json:"elicitationId"`
 	// ToolCallID 是对应 ACP 工具调用标识。
 	ToolCallID string `json:"toolCallId,omitempty"`
@@ -324,6 +333,10 @@ type InvocationDiagnosticData struct {
 
 // InvocationFinishedData 保存一次 Runtime Invocation 的完整可诊断事实。
 type InvocationFinishedData struct {
+	// StopReason 是协议实际返回的原始停止原因，未知扩展值原样保留。
+	StopReason string `json:"stopReason,omitempty"`
+	// TerminationReason 是可恢复的调用终止原因，旧日志缺失时为未知。
+	TerminationReason constants.RuntimeTerminationReason `json:"terminationReason,omitempty"`
 	// PrefixArgs 是调用时冻结的自定义运行时前置参数。
 	PrefixArgs []string `json:"prefixArgs,omitempty"`
 	// ConfigHome 是调用时冻结的原生配置与会话主目录，不进入公开接口。
@@ -460,6 +473,9 @@ func ReplayInvocations(records []Record) ([]Invocation, error) {
 		var facts InvocationFinishedData
 		if err := json.Unmarshal(record.Data, &facts); err != nil {
 			return nil, status_error.ChatLogCorrupted
+		}
+		if facts.TerminationReason == constants.RuntimeTerminationReasonUnspecified {
+			facts.TerminationReason = constants.RuntimeTerminationReasonUnknown
 		}
 		invocations = append(invocations, Invocation{
 			ID:          record.InvocationID,

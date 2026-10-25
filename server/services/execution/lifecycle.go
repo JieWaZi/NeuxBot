@@ -7,13 +7,14 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // activeExecution 保存进程内对话执行的取消入口和退出通知。
@@ -177,6 +178,24 @@ func (r *executionRegistry) cancelAndWait(ctx context.Context, chatID string) er
 	}
 }
 
+// cancelExecutionAndWait 捕获精确执行的取消句柄，锁释放后新执行也不会成为取消目标。
+func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
+	r.mutex.Lock()
+	active, exists := r.active[chatID]
+	matched := exists && active.executionID == executionID
+	r.mutex.Unlock()
+	if !matched {
+		return nil
+	}
+	active.cancel()
+	select {
+	case <-active.done:
+		return nil
+	case <-ctx.Done():
+		return status_error.ChatHasActiveExecution
+	}
+}
+
 // messageExecution 保存 Chat 已解析的一次 Runtime 调用及其业务身份。
 type messageExecution struct {
 	// agentFacts 交付同一执行已提交的命令事实，保证实时与重放一致。
@@ -189,6 +208,10 @@ type messageExecution struct {
 	capabilityRelease func()
 	// accountRelease 在 Runtime 进程结束后释放账号使用租约。
 	accountRelease func()
+	// pluginRelease 释放本轮冻结共享授权的使用租约。
+	pluginRelease func()
+	// plugins 是消息明确选择的插件展示快照。
+	plugins []plugins.Snapshot
 	// request 是本次调用交给 Runtime 的结构化输入。
 	request runtimes.RunRequest
 	// state 是首事件提交前仍未进入权威日志的对话状态。
@@ -223,6 +246,9 @@ type executionStartResult struct {
 func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 	if plan.precommitted && plan.agentActivate != nil {
 		plan.agentActivate()
+	}
+	if plan.pluginRelease != nil {
+		defer plan.pluginRelease()
 	}
 	if plan.capabilityRelease != nil {
 		defer plan.capabilityRelease()
@@ -319,6 +345,7 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 	}
 	if err := m.recordInvocationResult(
 		chat,
+		plan.request.Workspace.Path,
 		execution,
 		result,
 		attempt,
@@ -413,6 +440,7 @@ func (m *service) commitStartedExecution(
 		plan.files.codeReferences,
 		plan.skills,
 		plan.connectors,
+		plan.plugins,
 	)
 	inputs = append(inputs, eventlog.AppendInput{
 		Type:         constants.ChatEventTypeExecutionStarted,
@@ -444,6 +472,7 @@ func (m *service) commitAcceptedExecution(
 		plan.files.codeReferences,
 		plan.skills,
 		plan.connectors,
+		plan.plugins,
 	)
 	return m.journal.CommitAcceptedTurn(context.Background(), chatservice.StartedTurn{
 		NewChat:   plan.state.isNew,
@@ -539,6 +568,7 @@ func (m *service) finishExecution(
 // recordInvocationResult 将 Runtime 归一化的调用事实提交到权威日志。
 func (m *service) recordInvocationResult(
 	chat models.Chat,
+	workingDirectory string,
 	execution models.Execution,
 	result runtimes.Result,
 	attempt int,
@@ -554,12 +584,18 @@ func (m *service) recordInvocationResult(
 	sort.Slice(capabilities, func(left int, right int) bool {
 		return capabilities[left] < capabilities[right]
 	})
+	terminationReason := result.TerminationReason
+	if terminationReason == constants.RuntimeTerminationReasonUnspecified {
+		terminationReason = constants.RuntimeTerminationReasonUnknown
+	}
 	data := eventlog.InvocationFinishedData{
+		StopReason:                    result.StopReason,
+		TerminationReason:             terminationReason,
 		PrefixArgs:                    result.Facts.PrefixArgs,
 		ConfigHome:                    result.Facts.ConfigHome,
 		EnvironmentFingerprint:        result.Facts.EnvironmentFingerprint,
 		AdditionalWritableDirectories: chat.AdditionalWorkingDirectories,
-		WorkingDirectory:              chat.WorkspaceDirectory,
+		WorkingDirectory:              workingDirectory,
 		Attempt:                       attempt,
 		RecoveryStrategy:              recoveryStrategy,
 		TriggerReason:                 triggerReason,

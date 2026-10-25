@@ -14,13 +14,13 @@ import { test } from "node:test";
 import { loadModule } from "./load-module.mjs";
 
 const { ApplicationUpdate } = loadModule("main/application-update.ts");
-const api = "https://api.github.com/repos/JieWaZi/NeuxAlly/releases/latest";
-const bytes = Buffer.from("NeuxAlly installer fixture");
+const api = "https://api.github.com/repos/JieWaZi/NeuxBot/releases/latest";
+const bytes = Buffer.from("NeuxBot installer fixture");
 const digest = createHash("sha256").update(bytes).digest("hex");
 const names = [
-  "NeuxAlly-mac-arm64.dmg",
-  "NeuxAlly-mac-x64.dmg",
-  "NeuxAlly-windows-x64.exe",
+  "NeuxBot-mac-arm64.dmg",
+  "NeuxBot-mac-x64.dmg",
+  "NeuxBot-windows-x64.exe",
 ];
 
 function release(version = "0.2.0") {

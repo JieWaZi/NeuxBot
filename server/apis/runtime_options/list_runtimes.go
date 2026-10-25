@@ -1,10 +1,10 @@
 package runtime_options
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -53,6 +53,8 @@ type RuntimeInstallation struct {
 
 // 运行时选项
 type RuntimeOption struct {
+	// 探测能力
+	Capabilities runtimes.CapabilitySet `json:"capabilities"`
 	// 默认账号
 	DefaultAccountID string `json:"defaultAccountId"`
 	// 基础 CLI 类型，用于账号协议兼容性判断。
@@ -181,6 +183,7 @@ func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 		})
 	}
 	return RuntimeOption{
+		Capabilities:           detection.Capabilities,
 		DefaultAccountID:       environment.DefaultAccountID,
 		BaseRuntimeID:          environment.BaseRuntimeID,
 		ID:                     environment.RuntimeID,

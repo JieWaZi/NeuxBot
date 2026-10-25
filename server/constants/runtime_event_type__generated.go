@@ -85,7 +85,7 @@ func (v RuntimeEventType) Values() []enum.Enum {
 }
 
 func (v RuntimeEventType) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeEventType"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeEventType"
 }
 
 func (v RuntimeEventType) MarshalText() ([]byte, error) {

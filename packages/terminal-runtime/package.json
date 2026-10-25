@@ -1,0 +1,24 @@
+{
+  "name": "@neuxbot/terminal-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./manager": "./src/manager.ts"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "node --test manager.test.mjs worker.test.mjs"
+  },
+  "dependencies": {
+    "node-pty": "1.1.0",
+    "@xterm/headless": "6.0.0",
+    "@xterm/addon-serialize": "0.14.0",
+    "@neuxbot/platform-contracts": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "@types/node": "26.1.2"
+  }
+}

@@ -1,6 +1,7 @@
 packages:
   - desktop
-  - desktop/pi-bridge
+  - web
+  - packages/*
 onlyBuiltDependencies:
   - electron
   - esbuild

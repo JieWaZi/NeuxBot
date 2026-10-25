@@ -49,7 +49,7 @@ func (v ProfileDocumentKind) Values() []enum.Enum {
 }
 
 func (v ProfileDocumentKind) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ProfileDocumentKind"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ProfileDocumentKind"
 }
 
 func (v ProfileDocumentKind) MarshalText() ([]byte, error) {

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
@@ -45,8 +45,8 @@ func TestRegistryValidatesCatalog(t *testing.T) {
 
 func TestDefinitionsWithDefaultWakerIncludesPersonalAssistant(t *testing.T) {
 	items := DefinitionsWithDefaultWaker()
-	if len(items) != 1 {
-		t.Fatalf("default waker count = %d, want 1", len(items))
+	if len(items) != 2 {
+		t.Fatalf("default waker count = %d, want 2", len(items))
 	}
 	if items[0].ID != PersonalAssistantRolePresetID {
 		t.Fatalf("default waker role preset id = %q", items[0].ID)

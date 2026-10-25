@@ -11,9 +11,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	workflowfiles "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files"
-	workflowinput "github.com/JieWaZi/NeuxAlly/server/internal/workflow/input"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
 )
 
 func TestTaskFileUploadRunResultAndDownload(t *testing.T) {

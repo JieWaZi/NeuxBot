@@ -37,7 +37,7 @@ func (v ExecutionAdmission) Values() []enum.Enum {
 }
 
 func (v ExecutionAdmission) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ExecutionAdmission"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ExecutionAdmission"
 }
 
 func (v ExecutionAdmission) MarshalText() ([]byte, error) {

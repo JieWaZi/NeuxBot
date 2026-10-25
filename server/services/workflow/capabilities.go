@@ -11,21 +11,21 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability/contract"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcommand"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/skills/builtin"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowtool "github.com/JieWaZi/NeuxAlly/server/internal/workflow/capability"
-	workflowcatalog "github.com/JieWaZi/NeuxAlly/server/internal/workflow/catalog"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
+	workflowcatalog "github.com/JieWaZi/NeuxBot/server/internal/workflow/catalog"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Scope, input workflowtool.Input) (map[string]any, error) {
@@ -381,7 +381,7 @@ func (s *Service) handleConsumerTool(ctx context.Context, scope workflowtool.Sco
 		if input.InputFileRoots != nil {
 			roots = input.InputFileRoots
 		}
-		run, err := s.StartRun(ctx, StartRunCommand{InputFileRoots: roots, DefinitionID: input.WorkflowID, RevisionID: input.RevisionID, RequestID: requestID, Args: input.Args, TriggerSource: "agent", ConsumerLeaseID: lease.ID, ApprovedScope: &approved, Defaults: models.WorkflowExecutionDefaults{RuntimeID: actual.RuntimeID, AccountID: actual.AccountID, Model: actual.Model, Reasoning: actual.Reasoning, PermissionLevel: actual.PermissionLevel, WorkspaceReadOnly: actual.WorkspaceReadOnly}})
+		run, err := s.StartRun(ctx, StartRunCommand{AutomaticRunID: actual.AutomaticRunID, InputFileRoots: roots, DefinitionID: input.WorkflowID, RevisionID: input.RevisionID, RequestID: requestID, Args: input.Args, TriggerSource: "agent", ConsumerLeaseID: lease.ID, ApprovedScope: &approved, Defaults: models.WorkflowExecutionDefaults{RuntimeID: actual.RuntimeID, AccountID: actual.AccountID, Model: actual.Model, Reasoning: actual.Reasoning, PermissionLevel: actual.PermissionLevel, WorkspaceReadOnly: actual.WorkspaceReadOnly}})
 		if err != nil {
 			return nil, err
 		}

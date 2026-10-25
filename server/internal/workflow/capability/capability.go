@@ -1,7 +1,7 @@
 // Package capability 保存工作流业务场景身份，CLI 契约由 agentcapability/contract 唯一维护。
 package capability
 
-import "github.com/JieWaZi/NeuxAlly/server/constants"
+import "github.com/JieWaZi/NeuxBot/server/constants"
 
 // Input 是稳定工具面的结构化动作输入。
 type Input struct {

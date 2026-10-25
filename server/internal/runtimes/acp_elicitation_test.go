@@ -72,3 +72,18 @@ func TestACPElicitationRequiresExactSessionRoute(t *testing.T) {
 		t.Fatalf("exact-route calls = (%d, %d), want (0, 1)", firstHandler.calls, secondHandler.calls)
 	}
 }
+
+func TestKnowledgeMCPMetadataDoesNotBypassUserInput(t *testing.T) {
+	request := acp.NewUnstableCreateElicitationRequestForm(acp.UnstableElicitationSchema{Type: acp.UnstableElicitationSchemaTypeObject, Properties: map[string]any{}})
+	request.Form.Message = "Allow the ally_knowledge MCP server to run tool \"knowledge_stage\"?"
+	request.Form.Meta = map[string]any{"codex": map[string]any{"sessionId": "session", "serverName": "ally_knowledge"}}
+	bridge := newACPBridge("session", "invocation", nil, Workspace{}, ExecutionPolicy{}, codexACPRuntimeBinding(), 0)
+	if response := bridge.createElicitation(context.Background(), request); response.Accept != nil {
+		t.Fatal("retired knowledge metadata bypassed user input")
+	}
+	handler := &recordingElicitationHandler{}
+	bridge.elicitationHandler = handler
+	if response := bridge.createElicitation(context.Background(), request); response.Accept == nil || handler.calls != 1 {
+		t.Fatal("ordinary elicitation no longer reaches its handler")
+	}
+}

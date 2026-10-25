@@ -41,7 +41,7 @@ func (v SkillScope) Values() []enum.Enum {
 }
 
 func (v SkillScope) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.SkillScope"
+	return "github.com/JieWaZi/NeuxBot/server/constants.SkillScope"
 }
 
 func (v SkillScope) MarshalText() ([]byte, error) {

@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -66,6 +66,14 @@ func (d *ListWorkBoard) Validate(*gin.Context) error {
 	for _, raw := range strings.Split(d.States, ",") {
 		if raw == "" {
 			continue
+		}
+		if d.Mode == "attention" {
+			switch constants.NotificationKind(raw) {
+			case constants.NotificationKindApproval, constants.NotificationKindInput, constants.NotificationKindReview:
+				continue
+			default:
+				return status_error.BadRequest
+			}
 		}
 		var state constants.WorkBoardState
 		if state.UnmarshalText([]byte(raw)) != nil {

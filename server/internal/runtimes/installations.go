@@ -48,7 +48,7 @@ func (sdk *SDK) DiscoverInstallations(
 	for _, installation := range previous {
 		add(installation.Path)
 	}
-	for _, candidate := range definition.binaryCandidates {
+	for _, candidate := range definitionExecutableCandidates(definition, request.HomeDirectory) {
 		if filepath.IsAbs(candidate) || strings.ContainsAny(candidate, `/\`) {
 			if _, err := validateExecutablePath(candidate); err == nil {
 				add(candidate)

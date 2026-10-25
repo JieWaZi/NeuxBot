@@ -1,8 +1,8 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	workflowinput "github.com/JieWaZi/NeuxAlly/server/internal/workflow/input"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
@@ -49,6 +49,8 @@ type AutomaticTaskMemberConfiguration struct {
 
 // AutomaticTaskConfiguration 是用户可编辑并在每次接纳时冻结的执行配置。
 type AutomaticTaskConfiguration struct {
+	// Knowledge 固定用户明确选中的知识维护资源和操作，普通任务为空。
+	Knowledge *KnowledgeMaintenanceAuthorization `gorm:"serializer:json;type:text" json:"knowledge,omitempty"`
 	// TargetKind 是伙伴、团队或工作流中的唯一目标类型。
 	TargetKind constants.AutomaticTaskTargetKind `gorm:"size:24;not null;default:''" json:"targetKind"`
 	// WorkflowID 是工作流目标，其他目标必须为空。
@@ -134,6 +136,8 @@ func (AutomaticTask) TableName() string { return "automatic_tasks" }
 
 // AutomaticRun 保存一次机会的不可变输入和标准 Chat 接纳关系。
 type AutomaticRun struct {
+	// IntegrationInvocation 是原集成调用的受信身份，nil 保留定时与旧 Token 行为。
+	IntegrationInvocation *IntegrationInvocation `gorm:"serializer:json;type:text" json:"-"`
 	// WorkflowRunID 是已接纳的工作流运行，伙伴和团队目标为空。
 	WorkflowRunID string `gorm:"size:32;not null;default:'';index" json:"workflowRunId"`
 	// FinalState 是团队首次整体结束时的投影，防止用户后续续聊重新占用自动运行槽。

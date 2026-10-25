@@ -4,12 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // embedRequestPayload 是测试服务器捕获的请求体。
@@ -114,6 +115,10 @@ func TestOpenAIEmbedderErrors(t *testing.T) {
 	if _, err := unreachable.Embed(context.Background(), "测试", constants.MemoryEmbeddingActionAdd); err == nil {
 		t.Fatalf("expected error for unreachable endpoint")
 	}
+	invalid := NewOpenAIEmbedder(EmbeddingConfig{BaseURL: "://invalid", APIKey: "k", Model: "m"})
+	if _, err := invalid.Embed(context.Background(), "测试", constants.MemoryEmbeddingActionAdd); err != status_error.MemoryEmbeddingRequestFailed {
+		t.Fatalf("expected original request-failed error, got %v", err)
+	}
 
 	// 调用取消返回独立的取消语义。
 	canceledContext, cancel := context.WithCancel(context.Background())
@@ -122,5 +127,41 @@ func TestOpenAIEmbedderErrors(t *testing.T) {
 		t.Fatal("expected canceled request to fail")
 	} else if !errors.Is(err, status_error.OperationCanceled) {
 		t.Fatalf("expected operation-canceled error, got %v", err)
+	}
+}
+
+func TestOpenAIEmbedderMatchesVectorsToInputIndices(t *testing.T) {
+	cases := []struct {
+		// name 标识服务响应与输入的映射场景。
+		name string
+		// payload 是服务端实际返回的 JSON。
+		payload string
+		// invalid 表示响应不能确定每个输入的唯一向量。
+		invalid bool
+	}{
+		{"reordered", `{"data":[{"index":1,"embedding":[0,1]},{"index":0,"embedding":[1,0]}]}`, false},
+		{"duplicate", `{"data":[{"index":0,"embedding":[1,0]},{"index":0,"embedding":[0,1]}]}`, true},
+		{"outside", `{"data":[{"index":0,"embedding":[1,0]},{"index":2,"embedding":[0,1]}]}`, true},
+		{"mixed", `{"data":[{"index":0,"embedding":[1,0]},{"embedding":[0,1]}]}`, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, tc.payload)
+			}))
+			defer server.Close()
+			embedder := NewOpenAIEmbedder(EmbeddingConfig{BaseURL: server.URL, Model: "model-a", APIKey: "test-key"})
+			vectors, err := embedder.EmbedBatch(context.Background(), []string{"first", "second"}, constants.MemoryEmbeddingActionAdd)
+			if tc.invalid {
+				if !errors.Is(err, status_error.MemoryEmbeddingResponseInvalid) {
+					t.Fatalf("ambiguous input mapping accepted: %v %v", vectors, err)
+				}
+				return
+			}
+			if err != nil || len(vectors) != 2 || vectors[0][0] != 1 || vectors[1][1] != 1 {
+				t.Fatalf("response indices ignored: %v %v", vectors, err)
+			}
+		})
 	}
 }

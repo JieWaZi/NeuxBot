@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
@@ -36,7 +36,7 @@ type AIAccount struct {
 	DefaultModel string `gorm:"type:varchar(200);not null;default:''" json:"defaultModel"`
 	// DefaultReasoning 是选择该账号时优先使用的推理强度标识。
 	DefaultReasoning string `gorm:"type:varchar(80);not null;default:''" json:"defaultReasoning"`
-	// LiveAuthPath 记录最近投射的受管认证文件，重启后先回收 CLI 刷新的凭据。
+	// LiveAuthPath 仅保留旧版单执行认证投射的恢复入口，新调用通过账号刷新权威持久化。
 	LiveAuthPath string `gorm:"type:text;not null;default:''" json:"-"`
 	// Revision 用于更新冲突检测和隔离进程缓存。
 	Revision int64 `gorm:"not null" json:"revision"`

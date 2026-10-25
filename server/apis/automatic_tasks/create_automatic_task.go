@@ -1,8 +1,8 @@
 package automatic_tasks
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -26,6 +26,12 @@ func (o *CreateAutomaticTask) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	// 创建需要返回身份，API 类型同时返回只展示一次的密钥收据。
-	return result, nil
+	// 调用凭据统一在 API 集成中管理，任务保存只返回资源身份。
+	return AutomaticTaskReference{TaskID: result.TaskID}, nil
+}
+
+// 已保存的自动任务身份
+type AutomaticTaskReference struct {
+	// 任务标识
+	TaskID string `json:"taskId"`
 }

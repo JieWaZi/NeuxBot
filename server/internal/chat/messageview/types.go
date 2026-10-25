@@ -3,9 +3,10 @@ package messageview
 
 import (
 	"encoding/json"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
 // MessageRuntimeEvent 是附着到 Assistant 消息的完整 Runtime 事件视图。
@@ -140,6 +141,8 @@ type Message struct {
 	Attachments []eventlog.AttachmentReference `json:"attachments,omitempty"`
 	// Skills 是用户发送消息时明确选择的技能快照。
 	Skills []eventlog.MessageSkillReference `json:"skills,omitempty"`
+	// Plugins 是接纳时冻结的插件身份、版本与配置修订。
+	Plugins []plugins.Snapshot `json:"plugins,omitempty"`
 	// Connectors 是用户发送消息时明确选择的 MCP 连接器快照。
 	Connectors []eventlog.MessageConnectorReference `json:"connectors,omitempty"`
 	// CodeReferences 是用户消息携带的有序整文件或代码片段引用。

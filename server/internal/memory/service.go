@@ -3,9 +3,10 @@ package memory
 import (
 	"context"
 	"crypto/md5"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"net/url"
 	"sort"
 	"strconv"
@@ -13,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
 // ConfigSource 在每次操作时提供当前 Embedding 配置，使记忆设置变更即时生效。
@@ -778,6 +779,47 @@ func (s *Service) ListMemories(ctx context.Context, filter ListFilter) (MemoryPa
 // ListTimeline 返回指定伙伴或项目范围内的一页追加式变更事件。
 func (s *Service) ListTimeline(ctx context.Context, filter ListFilter) (TimelinePage, error) {
 	return s.store.listTimelinePage(ctx, normalizeListFilter(filter))
+}
+
+// FreezeEmbedder 固定当前选中的模型与凭据，不将记忆索引的就绪状态带给调用方。
+func (s *Service) FreezeEmbedder(ctx context.Context, modelID string) (FrozenEmbedder, error) {
+	switch ctx.Err() {
+	case context.Canceled:
+		return FrozenEmbedder{}, status_error.OperationCanceled
+	case context.DeadlineExceeded:
+		return FrozenEmbedder{}, status_error.OperationTimeout
+	}
+	// 与设置变更共用锁，避免把不同配置版本的地址、模型和密钥拼成一个快照。
+	s.mutationMu.Lock()
+	defer s.mutationMu.Unlock()
+	config, err := s.configSource(ctx)
+	if err != nil {
+		return FrozenEmbedder{}, err
+	}
+	config.BaseURL = strings.TrimRight(strings.TrimSpace(config.BaseURL), "/")
+	config.Model = strings.TrimSpace(config.Model)
+	modelID = strings.TrimSpace(modelID)
+	if !config.Complete() || modelID == "" {
+		return FrozenEmbedder{}, status_error.MemoryEmbeddingNotConfigured
+	}
+	if config.Model != modelID {
+		return FrozenEmbedder{}, status_error.MemoryEmbeddingConflict
+	}
+	if err := validateEmbeddingBaseURL(config.BaseURL); err != nil {
+		return FrozenEmbedder{}, err
+	}
+	embedder := s.embedderFactory(config)
+	if embedder == nil {
+		return FrozenEmbedder{}, status_error.MemoryEmbeddingUnavailable
+	}
+	fingerprint := sha256.Sum256([]byte(config.BaseURL + "\x00" + config.Model))
+	return FrozenEmbedder{
+		ModelID:     config.Model,
+		Fingerprint: hex.EncodeToString(fingerprint[:]),
+		Embed: func(ctx context.Context, texts []string) ([][]float32, error) {
+			return embedder.EmbedBatch(ctx, texts, constants.MemoryEmbeddingActionAdd)
+		},
+	}, nil
 }
 
 // GetEmbeddingSettings 返回不含明文凭据的嵌入配置。

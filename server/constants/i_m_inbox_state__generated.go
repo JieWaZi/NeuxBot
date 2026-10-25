@@ -57,7 +57,7 @@ func (v IMInboxState) Values() []enum.Enum {
 }
 
 func (v IMInboxState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.IMInboxState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.IMInboxState"
 }
 
 func (v IMInboxState) MarshalText() ([]byte, error) {

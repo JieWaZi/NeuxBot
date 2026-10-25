@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 const rendererImportPaths = [
   {
     name: "electron",
-    message: "渲染进程只能通过 shared/desktop 使用 Electron 能力。",
+    message: "渲染进程只能通过 shared/platform 使用 Electron 能力。",
   },
 ];
 
@@ -21,21 +21,16 @@ export default tseslint.config(
   {
     ignores: [
       "dist",
+      "dist-native",
       "release",
       "coverage",
       "src/shared/api/generated",
       "dist-electron",
-      "resources/pi-bridge/bridge.mjs",
       "openapi-ts.config.ts",
     ],
   },
   {
-    files: [
-      "electron/**/*.mjs",
-      "electron/**/*.{ts,tsx}",
-      "scripts/**/*.mjs",
-      "pi-bridge/**/*.mjs",
-    ],
+    files: ["electron/**/*.mjs", "electron/**/*.{ts,tsx}", "scripts/**/*.mjs"],
     languageOptions: { globals: { ...globals.node, ...globals.es2023 } },
     rules: { "no-restricted-imports": "off" },
   },

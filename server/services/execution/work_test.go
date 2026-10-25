@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -11,15 +12,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -109,8 +110,12 @@ func TestWorkIntentWorkspaceReadOnlyFreezesNonMutationPolicy(t *testing.T) {
 		t.Fatalf("runtime requests = %d, want 1", len(runtime.requests))
 	}
 	request := runtime.requests[0]
+	testExecutable, executableErr := os.Executable()
+	if executableErr != nil {
+		t.Fatal(executableErr)
+	}
 	if request.Detection.State != runtimes.DetectionStateReady ||
-		request.Detection.ResolvedBinary != "codex" {
+		request.Detection.ResolvedBinary != testExecutable {
 		t.Fatalf("runtime detection snapshot = %+v", request.Detection)
 	}
 	if !request.Policy.Execution.WorkspaceReadOnly {
@@ -285,6 +290,8 @@ func (r *gatedRuntime) Run(
 
 // trackingSkillController 是提交测试用于确认聊天选择只读技能关系的替身。
 type trackingSkillController struct {
+	// SkillController 仅补齐消息执行未使用的其他仓储端口。
+	controllers.SkillController
 	// enabled 是伙伴当前已经持久启用的技能快照。
 	enabled []models.SkillWithState
 	// upsertCalls 记录是否错误地通过聊天选择修改了持久启停关系。
@@ -1170,6 +1177,59 @@ func TestSendMessagePersistsSessionAndResumesAfterModelChange(t *testing.T) {
 	}
 }
 
+// forkContinuationRuntime 仅替换真实 CLI 分叉，保留工作接纳和权威日志流程。
+type forkContinuationRuntime struct {
+	// fakeRuntime 提供会话执行及结构化请求记录。
+	fakeRuntime
+}
+
+func (r *forkContinuationRuntime) ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error) {
+	return runtimes.ForkSessionResult{SessionID: "fork-child-session"}, nil
+}
+
+func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
+	for _, changed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("external_changed=%t", changed), func(t *testing.T) {
+			runtime := &forkContinuationRuntime{fakeRuntime: fakeRuntime{result: runtimes.Result{Session: runtimes.SessionResult{OutputID: "parent-session", State: runtimes.SessionStateCreated, ForkMode: "turn", ForkPosition: "parent-turn"}}}}
+			environment, _ := (readyRuntimeEnvironmentReader{}).Get(context.Background(), runtimes.RuntimeIDCodex)
+			environment.BaseRuntimeID = runtimes.RuntimeIDCodex
+			manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{runtimeEnvironments: configurationEnvironmentReader{environment: environment}})
+			first, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitForChatTerminal(t, manager, first.Chat.ID)
+			child, err := manager.execution.ForkChat(context.Background(), chatservice.ForkInput{ChatID: first.Chat.ID, ExecutionID: first.Execution.ID, ClientRequestID: "fork-scope"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if changed {
+				home := runtime.requests[0].Target.ConfigHome
+				if err := os.MkdirAll(home, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[plugins.\"external@community\"]\nenabled = true\n"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			continued, err := manager.sendTestMessage(context.Background(), testMessageInput{ChatID: child, Message: userMessage{Text: "继续分支"}, Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex}})
+			if changed {
+				if !errors.Is(err, status_error.PluginNotReady) {
+					t.Fatalf("changed native scope accepted: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unchanged fork cannot continue without a local scope cache: %v", err)
+			}
+			waitForChatTerminal(t, manager, continued.Chat.ID)
+			if runtime.requests[1].Session.Mode != runtimes.SessionModeResume || runtime.requests[1].Session.ID != "fork-child-session" {
+				t.Fatal("fork continuation lost the native child session")
+			}
+		})
+	}
+}
+
 func TestSendMessageMergesSupplementalInstructionsBeforeToolCapabilities(t *testing.T) {
 	runtime := &fakeRuntime{}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
@@ -1693,6 +1753,9 @@ func newMessageTestService(
 	if len(options) > 0 {
 		selectedOptions = options[0]
 	}
+	if selectedOptions.skillDataDirectory == "" {
+		selectedOptions.skillDataDirectory = t.TempDir()
+	}
 	transactions := controllers.NewTransactionController(
 		dbhelper.NewGormTransactionManager(database.DB),
 	)
@@ -1718,6 +1781,7 @@ func newMessageTestService(
 	if runtimeEnvironments == nil {
 		runtimeEnvironments = readyRuntimeEnvironmentReader{}
 	}
+	runtimeEnvironments = isolatedNativeTestEnvironmentReader{source: runtimeEnvironments, root: t.TempDir()}
 	executionCore, err := New(Config{
 		Runtime:             runtime,
 		Journal:             chatModule,
@@ -1726,6 +1790,7 @@ func newMessageTestService(
 		Profiles:            profiles,
 		Projects:            projects,
 		Skills:              selectedOptions.skills,
+		Plugins:             selectedOptions.plugins,
 		RuntimeEnvironments: runtimeEnvironments,
 		SkillDataDirectory:  selectedOptions.skillDataDirectory,
 		StorageDirectory:    logDirectory,
@@ -1748,6 +1813,28 @@ func newMessageTestService(
 		projectSources: projectSources,
 		wakers:         wakers,
 	}
+}
+
+// isolatedNativeTestEnvironmentReader 让执行替身始终使用临时原生 home，避免触碰真实用户插件和凭据。
+type isolatedNativeTestEnvironmentReader struct {
+	// source 保留测试已经声明的模型、权限和能力快照。
+	source runtimeEnvironmentReader
+	// root 是本测试独占的原生配置根目录。
+	root string
+}
+
+func (reader isolatedNativeTestEnvironmentReader) Get(ctx context.Context, id string) (models.RuntimeEnvironment, error) {
+	entry, err := reader.source.Get(ctx, id)
+	if err != nil {
+		return entry, err
+	}
+	if entry.ConfigHome == "" {
+		entry.ConfigHome = filepath.Join(reader.root, id)
+	}
+	if !filepath.IsAbs(entry.Detection.ResolvedBinary) {
+		entry.Detection.ResolvedBinary, err = os.Executable()
+	}
+	return entry, err
 }
 
 // readyRuntimeEnvironmentReader 为提交测试提供稳定可用的 Runtime 快照。
@@ -1797,6 +1884,8 @@ func readyTestModel(id string) runtimes.ModelOption {
 
 // messageTestOptions 保存仅部分消息测试需要的可选技能依赖。
 type messageTestOptions struct {
+	// plugins 提供安装快照的只读端口。
+	plugins controllers.PluginController
 	// skills 提供伙伴已启用技能的只读快照。
 	skills controllers.SkillController
 	// skillDataDirectory 是断言权威技能版本绝对路径时使用的数据目录。
@@ -1825,4 +1914,36 @@ func TestForkContinuationNeverSuppliesInheritedPrompt(t *testing.T) {
 	if request.Session.Mode != runtimes.SessionModeResume || len(request.History) != 0 {
 		t.Fatal("missing native session fell back to history")
 	}
+}
+
+func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir(), &fakeRuntime{})
+	ctx := context.Background()
+	intent := WorkIntent{AutomaticRunID: "original-automatic-run", ClientRequestID: "automatic-provenance", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}}, Input: WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理正文"}, Options: WorkOptions{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: runtimes.PermissionLevelAuto}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+	accepted, err := manager.execution.Start(ctx, intent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
+	initial, err := manager.chats.(chatservice.Module).ReadInitialExecution(ctx, accepted.Chat.ID)
+	if err != nil || initial.InitialExecution.AutomaticRunID != intent.AutomaticRunID {
+		t.Fatal("journal lost trusted automatic origin", initial, err)
+	}
+	replay, err := manager.execution.Start(ctx, intent)
+	if err != nil || replay.Execution.AutomaticRunID != intent.AutomaticRunID {
+		t.Fatal(replay, err)
+	}
+	changed := intent
+	changed.AutomaticRunID = "another-run"
+	if _, err = manager.execution.Start(ctx, changed); !errors.Is(err, status_error.CreateRequestConflict) {
+		t.Fatal("same execution changed its automatic origin", err)
+	}
+	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "用户后续操作"}, Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if continued.Execution.AutomaticRunID != "" {
+		t.Fatal("manual continuation inherited API caller", continued.Execution)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
 }

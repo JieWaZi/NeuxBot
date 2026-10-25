@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	protocol "github.com/JieWaZi/NeuxAlly/server/internal/im"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // DeliveryRequest 由 IM 回复、普通伙伴和工作流共用，来源范围由调用入口签发。
@@ -206,6 +206,11 @@ func (s *Service) sendDelivery(ctx context.Context, delivery models.IMDelivery) 
 		delivery.ErrorCode = status_error.IMWorkflowDeliveryNotAllowed.Key()
 		return s.config.Store.UpdateDelivery(ctx, delivery)
 	}
+	platform := s.config.Platforms[connection.Platform]
+	if readiness, ok := platform.(protocol.ConnectionReadiness); ok && !readiness.ConnectionReady(connection.ID) {
+		// 沿用已有维护节拍等待认证或重连，不领取、不计尝试，也不增加等待协程。
+		return nil
+	}
 	claimed, err := s.config.Store.ClaimDelivery(ctx, delivery.ID)
 	if err != nil || !claimed {
 		return err
@@ -217,13 +222,17 @@ func (s *Service) sendDelivery(ctx context.Context, delivery models.IMDelivery) 
 	}
 	// 接收方由登记时冻结，之后修改绑定不能改变既有投递目的地。
 	binding.ExternalChatID = delivery.ExternalChatID
-	platform := s.config.Platforms[connection.Platform]
 	if platform == nil {
 		delivery.State = constants.IMDeliveryStateFailed
 		delivery.ErrorCode = status_error.IMConfigurationInvalid.Key()
 		return s.commitDeliveryProgress(ctx, delivery)
 	}
-	texts := protocol.SplitText(delivery.Content, 1800)
+	textLimit := 1800
+	if connection.Platform == constants.IMPlatformWecom {
+		// 主动 Markdown 上限按 UTF-8 字节计，最多四字节字符也不超过 4096。
+		textLimit = 1000
+	}
+	texts := protocol.SplitText(delivery.Content, textLimit)
 	total := len(texts) + len(delivery.Files)
 	for delivery.NextPart < total {
 		if delivery.WorkflowRunID != "" {
@@ -247,6 +256,11 @@ func (s *Service) sendDelivery(ctx context.Context, delivery models.IMDelivery) 
 		receipt, definitive, sendErr := platform.Send(ctx, connection, binding, partIdentity(delivery.ID, index), text, file)
 		if sendErr != nil {
 			delivery.ErrorCode = errorCode(sendErr)
+			if connection.Platform == constants.IMPlatformWecom && definitive && hasCode(sendErr, status_error.IMServiceUnavailable) {
+				// 就绪检查后连接也可能退出；仅尚未写出消息的失活会话允许继续排队。
+				delivery.State = constants.IMDeliveryStatePending
+				return s.commitDeliveryProgress(ctx, delivery)
+			}
 			delivery.State = constants.IMDeliveryStateUnknown
 			if definitive {
 				delivery.State = constants.IMDeliveryStateFailed

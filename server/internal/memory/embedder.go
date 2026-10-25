@@ -1,17 +1,10 @@
 package memory
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"errors"
-	"io"
-	"net/http"
-	"strings"
-	"time"
-
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/embedding"
 )
 
 // Embedder 是记忆嵌入端口，对齐 记忆嵌入调用契约。
@@ -22,72 +15,36 @@ type Embedder interface {
 	EmbedBatch(ctx context.Context, texts []string, action constants.MemoryEmbeddingAction) ([][]float32, error)
 }
 
-// EmbeddingConfig 是 OpenAI 兼容嵌入端点的配置。
-type EmbeddingConfig struct {
-	// BaseURL 是 OpenAI 兼容服务的基础地址，例如 https://api.openai.com/v1。
-	BaseURL string
-	// APIKey 是访问嵌入服务的凭据。
-	APIKey string
-	// Model 是嵌入模型名。
-	Model string
+// FrozenEmbedder 复用已保存的嵌入配置，为独立索引提供固定的模型与向量空间身份。
+type FrozenEmbedder struct {
+	// ModelID 是接纳时核对的嵌入模型名称。
+	ModelID string
+	// Fingerprint 标识基础地址与模型组合，不包含访问凭据。
+	Fingerprint string
+	// Embed 使用冻结配置批量嵌入文本，不读取或修改记忆内容及其索引。
+	Embed func(context.Context, []string) ([][]float32, error)
 }
 
-// Complete 返回三项配置是否齐全；齐全才启用语义检索。
-func (c EmbeddingConfig) Complete() bool {
-	return strings.TrimSpace(c.BaseURL) != "" &&
-		c.APIKey != "" &&
-		strings.TrimSpace(c.Model) != ""
-}
+// EmbeddingConfig 沿用通用客户端配置；记忆持久设置仍由记忆模块独占。
+type EmbeddingConfig = embedding.Config
 
-// embeddingRequest 是 OpenAI 兼容 /embeddings 的请求体。
-type embeddingRequest struct {
-	// Model 是嵌入模型名。
-	Model string `json:"model"`
-	// Input 是待嵌入文本列表。
-	Input []string `json:"input"`
-	// EncodingFormat 要求以浮点数组返回向量。
-	EncodingFormat string `json:"encoding_format"`
-}
-
-// embeddingResponse 是 OpenAI 兼容 /embeddings 的响应体。
-type embeddingResponse struct {
-	// Data 是按输入顺序返回的嵌入结果。
-	Data []struct {
-		// Embedding 是浮点向量。
-		Embedding []float32 `json:"embedding"`
-	} `json:"data"`
-	// Error 是服务返回的错误对象。
-	Error *struct {
-		// Message 是服务错误描述。
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-// openAIEmbedder 是 OpenAI 兼容端点的 Embedder 实现。
+// openAIEmbedder 仅适配记忆调用与错误码，不向其他模块暴露记忆设置。
 type openAIEmbedder struct {
-	// config 是当前嵌入端点配置。
-	config EmbeddingConfig
-	// client 是带超时的 HTTP 客户端。
-	client *http.Client
+	// client 是独立实例的通用嵌入客户端。
+	client *embedding.Client
 }
 
-// embeddingHTTPTimeout 是单次嵌入调用的最大耗时。
-const embeddingHTTPTimeout = 30 * time.Second
-
-// NewOpenAIEmbedder 创建 OpenAI 兼容端点的 Embedder。
+// NewOpenAIEmbedder 创建直接返回记忆领域稳定错误的嵌入适配器。
 func NewOpenAIEmbedder(config EmbeddingConfig) Embedder {
-	return &openAIEmbedder{
-		config: config,
-		client: &http.Client{Timeout: embeddingHTTPTimeout},
-	}
+	return &openAIEmbedder{client: embedding.NewOpenAIClient(config, embedding.ErrorSet{
+		RequestFailed:   status_error.MemoryEmbeddingRequestFailed,
+		Unavailable:     status_error.MemoryEmbeddingUnavailable,
+		ResponseInvalid: status_error.MemoryEmbeddingResponseInvalid,
+	})}
 }
 
-// Embed 嵌入单条文本。
-func (e *openAIEmbedder) Embed(
-	ctx context.Context,
-	text string,
-	action constants.MemoryEmbeddingAction,
-) ([]float32, error) {
+// Embed 返回单条文本的向量，保留批量客户端的原始稳定错误。
+func (e *openAIEmbedder) Embed(ctx context.Context, text string, action constants.MemoryEmbeddingAction) ([]float32, error) {
 	vectors, err := e.EmbedBatch(ctx, []string{text}, action)
 	if err != nil {
 		return nil, err
@@ -98,69 +55,7 @@ func (e *openAIEmbedder) Embed(
 	return vectors[0], nil
 }
 
-// EmbedBatch 一次请求嵌入多条文本，失败不做逐条降级重试，由上层决定整体失败语义。
-func (e *openAIEmbedder) EmbedBatch(
-	ctx context.Context,
-	texts []string,
-	action constants.MemoryEmbeddingAction,
-) ([][]float32, error) {
-	_ = action
-	if len(texts) == 0 {
-		return [][]float32{}, nil
-	}
-	body, err := json.Marshal(embeddingRequest{
-		Model:          e.config.Model,
-		Input:          texts,
-		EncodingFormat: "float",
-	})
-	if err != nil {
-		return nil, status_error.MemoryEmbeddingRequestFailed
-	}
-	endpoint := strings.TrimRight(strings.TrimSpace(e.config.BaseURL), "/") + "/embeddings"
-	request, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodPost,
-		endpoint,
-		bytes.NewReader(body),
-	)
-	if err != nil {
-		return nil, status_error.MemoryEmbeddingRequestFailed
-	}
-	request.Header.Set("Content-Type", "application/json")
-	request.Header.Set("Authorization", "Bearer "+e.config.APIKey)
-
-	response, err := e.client.Do(request)
-	if err != nil {
-		switch {
-		case errors.Is(ctx.Err(), context.Canceled):
-			return nil, status_error.OperationCanceled
-		case errors.Is(ctx.Err(), context.DeadlineExceeded):
-			return nil, status_error.OperationTimeout
-		default:
-			return nil, status_error.MemoryEmbeddingUnavailable
-		}
-	}
-	defer response.Body.Close()
-	payload, err := io.ReadAll(io.LimitReader(response.Body, 32<<20))
-	if err != nil {
-		return nil, status_error.MemoryEmbeddingResponseInvalid
-	}
-	var decoded embeddingResponse
-	if err := json.Unmarshal(payload, &decoded); err != nil {
-		return nil, status_error.MemoryEmbeddingResponseInvalid
-	}
-	if response.StatusCode != http.StatusOK {
-		return nil, status_error.MemoryEmbeddingUnavailable
-	}
-	if len(decoded.Data) != len(texts) {
-		return nil, status_error.MemoryEmbeddingResponseInvalid
-	}
-	vectors := make([][]float32, 0, len(decoded.Data))
-	for _, item := range decoded.Data {
-		if len(item.Embedding) == 0 {
-			return nil, status_error.MemoryEmbeddingResponseInvalid
-		}
-		vectors = append(vectors, item.Embedding)
-	}
-	return vectors, nil
+// EmbedBatch 复用通用HTTP调用，不在记忆适配层重复转换错误。
+func (e *openAIEmbedder) EmbedBatch(ctx context.Context, texts []string, _ constants.MemoryEmbeddingAction) ([][]float32, error) {
+	return e.client.EmbedBatch(ctx, texts)
 }

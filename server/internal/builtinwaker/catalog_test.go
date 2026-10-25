@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinrolepreset"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 type wakerCatalogFake struct {
@@ -40,7 +40,7 @@ func TestEnsureDefaultsSeedsPersonalAssistantWaker(t *testing.T) {
 	if waker.Avatar != constants.PersonalAssistantAvatar {
 		t.Fatalf("avatar = %q", waker.Avatar)
 	}
-	if waker.Name != "NeuxAlly" || waker.RoleName != "私人助理" {
+	if waker.Name != "lumi" || waker.RoleName != "私人助理" {
 		t.Fatalf("unexpected waker: %+v", waker)
 	}
 }

@@ -1,10 +1,10 @@
 # 第三方版权与许可
 
-NeuxAlly 自有代码与文档采用根目录 [MIT License](LICENSE)。以下版权及许可适用于对应的第三方组成，集中保存在本文件，并随安装包分发。
+NeuxBot 自有代码与文档采用根目录 [MIT License](LICENSE)。以下版权及许可适用于对应的第三方组成，集中保存在本文件，并随安装包分发。
 
 ## Dock 组件
 
-适用范围：desktop/src/shared/ui/dock.tsx。
+适用范围：packages/frontend/src/shared/ui/dock.tsx。
 
 ```text
 MIT License
@@ -260,6 +260,235 @@ copies or substantial portions of the Software.
 You may use this Software, including for any commercial purpose, **so long as you do not sell, sublicense, or redistribute the components themselves-whether alone, in a bundle, or as a ported version.**
 
 ## No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## 飞书办公插件与官方 CLI
+
+适用范围：`plugin-sources/neux-plugins.bundle` 内固定插件源与构建产物 `plugins/`。技能和原生程序来源于 [larksuite/cli](https://github.com/larksuite/cli)，固定版本 `v1.0.98`，源码提交 `ac81f5056ab88f37d581d25916f3dab85abfca76`。发布资产 URL、SHA-256、平台和来源提交由 [来源锁](plugin-sources/source.lock.json) 固定，生成的包和程序同时分发原始许可证与 provenance。
+
+原作者为 Lark Suite CLI contributors；NeuxBot contributors 维护插件清单、共享授权适配和本地分发，不代表飞书官方。官方技能目录、相对引用、脚本和规则保持原样；本插件的首版主要验收路径是文档、多维表格、日程和任务，完整官方辅助技能用于保留引用依赖。
+
+```text
+MIT License
+
+Copyright (c) 2026 Lark Technologies Pte. Ltd.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## GitHub 插件与官方 CLI
+
+GitHub 官方 CLI 来源于 [cli/cli](https://github.com/cli/cli)，固定版本 `v2.102.0`，源码提交 `fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd`。程序按固定源码归档和 Go 1.27.1 工具链构建。NeuxBot 在底层钥匙串 Set/Get/Delete 的 service 加 neuxally: 前缀，隔离官方配置及迁移对机器原有 gh 身份的访问，构建版本为 2.102.0-neuxally.1。该程序是官方源码的隔离构建，不是未修改的官方发布二进制。归档、补丁和隔离回归的 SHA-256 由 [来源锁](plugin-sources/source.lock.json) 固定；原始许可证随程序和插件源分发。
+
+GitHub MCP 使用 [github/github-mcp-server](https://github.com/github/github-mcp-server) 提供的官方远程服务 `https://api.githubcopilot.com/mcp/`，本项目不复制该服务程序，也不固定其远端部署版本。插件清单与共享认证适配由 NeuxBot contributors 编写，操作能力直接来自官方 MCP。
+
+```text
+MIT License
+
+Copyright (c) 2019 GitHub Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## ledongthuc/pdf 文本阅读校验
+
+NeuxBot 的文本 PDF 覆盖核对使用 `github.com/ledongthuc/pdf`，固定版本 `v0.0.0-20260907135840-6c8c28e0e8a0`（提交 `6c8c28e0e8a0`）。来源：[项目仓库](https://github.com/ledongthuc/pdf/tree/6c8c28e0e8a0)，基于 rsc/pdf，BSD-3-Clause。仅读取文本层，不包含 OCR。以下保留原始许可：
+
+```text
+Copyright (c) 2009 The Go Authors. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## 知识库
+
+### 图谱引擎与初始几何
+
+图谱使用 [react-force-graph-2d](https://github.com/vasturiano/react-force-graph) 及其 [force-graph](https://github.com/vasturiano/force-graph) Canvas 引擎（MIT），标准布局力来自 [d3-force](https://github.com/d3/d3-force)（ISC）。依赖包中的原始许可继续保留；图谱引擎的 MIT 许可如下。
+
+```text
+MIT License
+
+Copyright (c) 2018 Vasco Asturiano
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+D3 force 的 ISC 许可：
+
+```text
+Copyright 2010-2021 Mike Bostock
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+```
+
+`packages/frontend/src/modules/knowledge/knowledge-graph-layout.ts` 中的初始布局、连通社区、主题名称、标签避让与轮廓几何及对应测试迁自 [Tencent/WeKnora 固定提交](https://github.com/Tencent/WeKnora/tree/8776a2d92d11ad3e76865d51cf3192e37e2a9976) 的 `frontend/src/views/knowledge/wiki/wikiGraphLayout.ts`。宿主适配节点尺寸和显式引用校验；运行中的力导向与绘制由第三方引擎负责。WeKnora 的 MIT 许可与版权见本节下方声明。
+
+### WeKnora 集成凭据与授权
+
+应用内集成凭据及路由授权迁自 [Tencent/WeKnora 固定提交](https://github.com/Tencent/WeKnora/tree/8776a2d92d11ad3e76865d51cf3192e37e2a9976)：`internal/application/service/tenant_api_key.go` 的随机凭据、摘要与 ID 归一化迁入 `server/internal/integration/key.go`；能力和资源集合规则来自 `internal/types/tenant_api_key.go`，在 `server/internal/integration/authorization.go` 适配空范围拒绝及独立整理授权。对应创建格式、授权、轮换和到期行为由宿主测试保留。未迁入上游第三方数据库、队列和前端依赖。
+
+```text
++Tencent is pleased to support the open source community by making  WeKnora available.
+
+Copyright (C) 2026 Tencent.  All rights reserved.
+
+The open-source software included in this distribution may have been modified by Tencent (“Tencent Modifications”). All Tencent Modifications are Copyright (C) Tencent.
+
+ WeKnora is licensed under the MIT except for the third-party components listed below.
+
+
+Terms of the MIT:
+--------------------------------------------------------------------
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### 独立知识核心
+
+知识库使用 [neux-knowledge](https://github.com/JieWaZi/neux-knowledge)，采用 MIT 许可。完整许可与第三方声明由该模块维护，构建时从所引用的模块版本复制并随安装包交付，见 [LICENSE](https://github.com/JieWaZi/neux-knowledge/blob/v0.1.0/LICENSE) 和 [THIRD_PARTY_NOTICES.md](https://github.com/JieWaZi/neux-knowledge/blob/v0.1.0/THIRD_PARTY_NOTICES.md)。
+
+
+## 企业微信 IM 协议参考
+
+适用范围：`server/internal/im/wecom*.go` 与企业微信扫码接入说明。长连接认证、心跳、消息、主动发送、媒体分片及解密协议参考企业微信团队的 [WecomTeam/aibot-node-sdk](https://github.com/WecomTeam/aibot-node-sdk)；接入行为参考其 [官方 OpenClaw 插件](https://github.com/WecomTeam/wecom-openclaw-plugin)（`2026.10.19`，MIT）。扫码生成与结果查询使用官方 [`@wecom/wecom-openclaw-cli`](https://www.npmjs.com/package/@wecom/wecom-openclaw-cli) `1.1.1`（ISC）发布包公开使用的企业微信 HTTPS 接口，来源标识为 `neuxbot`。
+
+NeuxBot 在现有 Go IM 边界实现协议互通，不分发或执行上述 Node SDK、OpenClaw 插件和安装 CLI，不代表企业微信官方产品。消息与媒体传输复用仓库已使用的 [Gorilla WebSocket](https://github.com/gorilla/websocket) 及 Go 标准库；上游接口可能独立变化，协议测试和真实平台验收分别维护。
+
+## 企业微信品牌图标
+
+适用范围：`packages/frontend/src/shared/assets/brands/wecom.png`。图标原样取自[企业微信官网](https://work.weixin.qq.com/)导航使用的[官方 CDN 资源](https://wwcdn.weixin.qq.com/node/wework/images/wecom_20.c2xok7bh.png)，随应用本地加载，仅用于标识企业微信集成。企业微信名称与标识的权利归腾讯及相应权利人所有，不适用本仓库 MIT 许可，不表示官方背书。
+
+## Qoder 与 WorkBuddy 品牌图标
+
+适用范围：`packages/frontend/src/shared/assets/brands/qoder.svg` 与 `workbuddy.svg`。分别原样取自 [Qoder 官网 favicon](https://qoder.com/favIcon.svg) 与 [WorkBuddy 官网 CDN 图标](https://assets.workbuddy.cn/web/workbuddy/a5b2fb510f0e7b156f19d072fae0cd12ae1f2f19/assets/logo.svg)，随应用本地加载，仅用于标识对应智能体。软件名称与标识的权利归各自权利人所有，不适用本仓库 MIT 许可，不表示官方背书。
+
+## README CLI 品牌图标
+
+适用范围：`docs/assets/readme/multi-cli.png`。Codex、Claude Code、Cursor、Kimi、OpenCode、Gemini CLI 与 Grok 图标复用应用使用的 [LobeHub Icons](https://github.com/lobehub/lobe-icons)（`@lobehub/icons 5.15.0`，MIT）。Qoder 使用 [Qoder 官网图标](https://qoder.com/favIcon.svg)；WorkBuddy 使用[官网 CDN 图标](https://assets.workbuddy.cn/web/workbuddy/a5b2fb510f0e7b156f19d072fae0cd12ae1f2f19/assets/logo.svg)；Pi 使用 [Pi 官网图标](https://pi.dev/favicon.svg)。品牌名称与标识归各自权利人所有，仅用于标识对应 CLI，不表示官方背书。
+
+LobeHub Icons 许可：
+
+```text
+MIT License
+
+Copyright (c) 2023 LobeHub
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

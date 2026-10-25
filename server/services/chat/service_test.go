@@ -6,10 +6,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -217,6 +217,9 @@ func TestReadMessageHistoryReadsLatestAndOlderJSONLWindows(t *testing.T) {
 		changes[0].Path != "projects/Desktop/main.go" || changes[0].AddedLines != 1 {
 		t.Fatalf("latest file changes = %+v, want managed workspace relative path", changes)
 	}
+	if len(latest.Resources[1].RuntimeEvents) != 0 || len(latest.Resources[1].FileChangeDiffs) != 0 {
+		t.Fatal("message history must not retain private runtime events or full file diffs")
+	}
 	diff, err := chatService.GetMessageFileChange(
 		context.Background(),
 		chatID,
@@ -339,7 +342,7 @@ func TestMetadataFromRecordsUsesJSONLExecutionState(t *testing.T) {
 			Data: marshalData(eventlog.ChatCreatedData{
 				WakerID:                      "waker-1",
 				ProjectID:                    "project-1",
-				ProjectName:                  "NeuxAlly",
+				ProjectName:                  "NeuxBot",
 				WorkspaceDirectory:           "/tmp/project",
 				AdditionalWorkingDirectories: []string{"/tmp/desktop", "/tmp/server"},
 				Title:                        "初始标题",
@@ -376,7 +379,7 @@ func TestMetadataFromRecordsUsesJSONLExecutionState(t *testing.T) {
 	if chat.ActiveExecutionID != "" ||
 		chat.LatestSequence != 3 ||
 		chat.ProjectID != "project-1" ||
-		chat.ProjectName != "NeuxAlly" ||
+		chat.ProjectName != "NeuxBot" ||
 		!reflect.DeepEqual(
 			chat.AdditionalWorkingDirectories,
 			[]string{"/tmp/desktop", "/tmp/server"},

@@ -7,11 +7,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestLiveSummaryRecoversUnpublishedNativeQuestionWithoutCancellingExecution(t *testing.T) {
@@ -187,5 +187,85 @@ func TestLiveSummaryPreservesProjectionFailureAndCancellation(t *testing.T) {
 				t.Fatalf("GetChatSummary() error = %v, want %v", err, failure)
 			}
 		})
+	}
+}
+
+func TestTerminalCommitCatchesUpLaggingProjection(t *testing.T) {
+	ctx := context.Background()
+	_, manager := newRecoveryTestService(t, t.TempDir())
+	chatID := "91919191919191919191919191919194"
+	executionID := "terminal-after-gap"
+	workspace := t.TempDir()
+	if _, err := manager.CreateDormantChats(ctx, []DormantChat{{Chat: models.Chat{ID: chatID, WakerID: "worker", WorkspaceDirectory: workspace, AdditionalWorkingDirectories: []string{workspace}}}}); err != nil {
+		t.Fatal(err)
+	}
+	// 并发命令与 Runtime 消息的投影提交可以乱序；权威日志已经领先 SQLite。
+	if _, err := manager.logStore.Append(chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: executionID, Data: marshalData(eventlog.ExecutionCreatedData{})},
+		{Type: constants.ChatEventTypeAgentCommandCommitted, ExecutionID: executionID, Data: marshalData(eventlog.AgentCommandData{CommandID: "ready", Operation: "knowledge.search"})},
+		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: executionID, Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, TerminationReason: constants.RuntimeTerminationReasonNormal})},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	commit, err := manager.CommitTerminal(ctx, TerminalFact{Execution: models.Execution{ID: executionID, ChatID: chatID}, Type: constants.ChatEventTypeExecutionCompleted, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted}), Status: constants.ExecutionStatusCompleted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.PublishTerminal(commit)
+	indexed, err := manager.queryIndexes.chatController.Get(ctx, chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if indexed.LatestSequence != 5 || indexed.ActiveExecutionID != "" || indexed.LastEndedExecutionID != executionID || indexed.LastEndedExecutionStatus != constants.ExecutionStatusCompleted {
+		t.Fatalf("durable terminal did not repair lagging projection: %+v", indexed)
+	}
+}
+
+func TestTerminalEventRemainsPublishedWhenProjectionFails(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, manager := newRecoveryTestService(t, t.TempDir())
+	chatID := "91919191919191919191919191919195"
+	workspace := t.TempDir()
+	if _, err := manager.CreateDormantChats(ctx, []DormantChat{{Chat: models.Chat{ID: chatID, WakerID: "worker", WorkspaceDirectory: workspace, AdditionalWorkingDirectories: []string{workspace}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.AppendExecutionFacts(ctx, chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user", Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: "整理资料"})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "target", Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "user"})},
+		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "target"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	sub, err := manager.SubscribeEvents(ctx, chatID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Close()
+	manager.queryIndexes.transactionController = liveProjectionRaceTransaction{
+		TransactionController: manager.queryIndexes.transactionController,
+		beforeTransaction:     func(context.Context) error { return status_error.DatabaseError },
+	}
+	commit, err := manager.CommitTerminal(ctx, TerminalFact{Execution: models.Execution{ID: "target", ChatID: chatID}, Type: constants.ChatEventTypeExecutionCompleted, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted}), Status: constants.ExecutionStatusCompleted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.PublishTerminal(commit)
+	for {
+		select {
+		case event, open := <-sub.Events:
+			if !open {
+				t.Fatal("chat subscription closed before durable terminal")
+			}
+			if event.Type == constants.ChatEventTypeExecutionCompleted {
+				outcome, err := manager.ReadExecutionOutcome(ctx, chatID, "target")
+				if err != nil || outcome.Execution.Status != constants.ExecutionStatusCompleted {
+					t.Fatalf("published terminal was not durable: %+v %v", outcome, err)
+				}
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal("projection failure suppressed durable terminal event")
+		}
 	}
 }

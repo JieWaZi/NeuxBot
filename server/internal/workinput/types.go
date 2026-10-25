@@ -17,6 +17,8 @@ type Input struct {
 	SkillIDs []string `json:"skillIds,omitempty"`
 	// ConnectorIDs 是本轮明确选择的连接器标识。
 	ConnectorIDs []string `json:"connectorIds,omitempty"`
+	// PluginIDs 是本轮明确选择的插件标识。
+	PluginIDs []string `json:"pluginIds,omitempty"`
 	// ContextInstructions 是入口冻结的执行说明，随耐久队列保真，不进入用户消息或标题。
 	ContextInstructions []Instruction `json:"contextInstructions,omitempty"`
 }

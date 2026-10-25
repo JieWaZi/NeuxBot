@@ -1,13 +1,50 @@
 package chat
 
 import (
+	"context"
 	"testing"
+	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	eventstream "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 )
+
+// TestSubscriptionRestoresRevisionBaselineWithoutPrefixBacklog 验证空积压重连仍拒绝已落后于权威历史的实时快照。
+func TestSubscriptionRestoresRevisionBaselineWithoutPrefixBacklog(t *testing.T) {
+	manager, chatID, latest := eventCursorService(t, 4)
+	manager.subscriptions.publishLive(chatID, eventstream.PublicEvent{
+		Transient: true, Message: &messageview.Message{ID: "active", Revision: latest - 1, Content: "过期内容"},
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	subscription, err := manager.SubscribeEvents(ctx, chatID, latest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Close()
+	if len(subscription.Backlog) != 0 {
+		t.Fatalf("backlog = %d, want no events before cursor", len(subscription.Backlog))
+	}
+	data, err := eventlog.MarshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := manager.logStore.Append(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "active", Data: data}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.subscriptions.publishCommitted(chatID, records)
+	select {
+	case event := <-subscription.Events:
+		if event.Transient || event.Type != constants.ChatEventTypeExecutionCompleted || event.Message == nil || len(event.Message.DisplayParts) != 4 {
+			t.Fatalf("first subscribed event = %+v, want terminal with restored message", event)
+		}
+	case <-ctx.Done():
+		t.Fatal("subscription did not deliver committed terminal")
+	}
+}
 
 func TestSubscriptionHubReplaysLatestLiveSnapshotToNewSubscriber(t *testing.T) {
 	hub := newSubscriptionHub()

@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // PrepareParticipantResult 只产生引用，正式交付资格由团队在原事务中提交。
@@ -63,7 +63,7 @@ func resultFromRecords(records []eventlog.Record, messageID string) (*models.Wor
 	if terminal == nil {
 		return nil, nil
 	}
-	messages, err := messageview.ReplayMessages(records)
+	messages, err := messageview.ReplayPublicMessages(records)
 	if err != nil {
 		return nil, err
 	}

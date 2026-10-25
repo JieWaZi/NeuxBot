@@ -17,12 +17,12 @@ const script = fileURLToPath(new URL("./smoke-desktop.cjs", import.meta.url));
 
 async function runSmoke(t, overrides = {}) {
   const resources = await mkdtemp(
-    path.join(os.tmpdir(), "neuxally-smoke-test-"),
+    path.join(os.tmpdir(), "neuxbot-smoke-test-"),
   );
   t.after(() => rm(resources, { recursive: true, force: true }));
   const moduleDirectory = path.join(
     resources,
-    "app.asar/node_modules/node-pty",
+    "terminal-runtime/node_modules/node-pty",
   );
   const record = path.join(resources, "pty-cwd.txt");
   await mkdir(moduleDirectory, { recursive: true });

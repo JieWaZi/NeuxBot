@@ -57,7 +57,7 @@ func (v AutomaticScheduleKind) Values() []enum.Enum {
 }
 
 func (v AutomaticScheduleKind) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.AutomaticScheduleKind"
+	return "github.com/JieWaZi/NeuxBot/server/constants.AutomaticScheduleKind"
 }
 
 func (v AutomaticScheduleKind) MarshalText() ([]byte, error) {

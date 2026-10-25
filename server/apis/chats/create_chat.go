@@ -3,10 +3,11 @@ package chats
 import (
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/apis/uploads"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -49,6 +50,12 @@ func (c *CreateChat) Validate(*gin.Context) error {
 // Output 调用 Chat 首发用例并返回启动后的对话和执行标识。
 func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 	input, options := c.Body.MessageRequest.workInput()
+	release, err := uploads.ClaimWork(ctx, &input, ctx.Request.URL.Path+":"+strings.TrimSpace(c.Body.ClientRequestID))
+	if err != nil {
+		return nil, err
+	}
+	accepted := false
+	defer func() { release(accepted) }()
 	intent := execution.WorkIntent{
 		ClientRequestID: strings.TrimSpace(c.Body.ClientRequestID),
 		Chat: execution.ChatTarget{Create: &execution.CreateChatSpec{
@@ -71,5 +78,6 @@ func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	accepted = true
 	return result, nil
 }

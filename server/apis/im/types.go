@@ -1,6 +1,6 @@
 package im
 
-import "github.com/JieWaZi/NeuxAlly/server/repositories/models"
+import "github.com/JieWaZi/NeuxBot/server/repositories/models"
 
 // ListIMConnectionsResponse 连接列表响应。
 type ListIMConnectionsResponse struct {

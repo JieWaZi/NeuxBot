@@ -3,9 +3,10 @@ package channels
 import (
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	channelservice "github.com/JieWaZi/NeuxAlly/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/apis/uploads"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -53,6 +54,13 @@ func (c *CreateChannelThread) Validate(*gin.Context) error {
 
 // Output 首次发送时才建立团队对话和全部成员独立 Chat。
 func (c *CreateChannelThread) Output(ctx *gin.Context) (interface{}, error) {
+	input := c.Body.workInput()
+	release, err := uploads.ClaimWork(ctx, &input, ctx.Request.URL.Path+":"+strings.TrimSpace(c.Body.ClientRequestID))
+	if err != nil {
+		return nil, err
+	}
+	accepted := false
+	defer func() { release(accepted) }()
 	result, err := global.ChannelService.SubmitMessage(ctx, channelservice.SubmitMessageInput{Create: &channelservice.CreateThreadInput{
 		ChannelID:        c.ChannelID,
 		ClientRequestID:  c.Body.ClientRequestID,
@@ -60,10 +68,11 @@ func (c *CreateChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 		WorkingDirectory: c.Body.WorkingDirectory,
 		MentionWakerID:   c.Body.MentionWakerID,
 		MemberConfigs:    memberExecutionConfigInputs(c.Body.MemberConfigs),
-		Input:            c.Body.workInput(),
+		Input:            input,
 	}})
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	accepted = true
 	return *result.Thread, nil
 }

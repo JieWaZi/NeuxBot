@@ -5,13 +5,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	internalSkills "github.com/JieWaZi/NeuxAlly/server/internal/skills"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	internalSkills "github.com/JieWaZi/NeuxBot/server/internal/skills"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -50,19 +50,24 @@ func (p *PullSkillUpdate) Validate(*gin.Context) error {
 
 // Output 拉取 Git 来源并写入新的当前版本。
 func (p *PullSkillUpdate) Output(ctx *gin.Context) (interface{}, error) {
+	return pullSkillUpdate(ctx, p)
+}
+
+// pullSkillUpdate 复用相同资源用例，空伙伴范围表示全局库。
+func pullSkillUpdate(ctx *gin.Context, p *PullSkillUpdate) (models.SkillVersion, error) {
 	skill, err := visibleSkill(ctx, p.WakerID, p.SkillID)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return models.SkillVersion{}, ginx.WithStack(err)
 	}
 	if skill.Source != constants.SkillSourceGit || strings.TrimSpace(skill.GitURL) == "" {
-		return nil, ginx.WithStack(status_error.BadRequest)
+		return models.SkillVersion{}, ginx.WithStack(status_error.BadRequest)
 	}
 	current, err := global.SkillControllerManager.GetVersion(ctx, skill.CurrentVersionID)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return models.SkillVersion{}, ginx.WithStack(err)
 	}
 	if compareSemVer(p.Body.Version, current.Version) <= 0 {
-		return nil, ginx.WithStack(status_error.BadRequest)
+		return models.SkillVersion{}, ginx.WithStack(status_error.BadRequest)
 	}
 	packages, root, err := importSkillSource(
 		ctx,
@@ -77,7 +82,7 @@ func (p *PullSkillUpdate) Output(ctx *gin.Context) (interface{}, error) {
 			skill.GitSubpath,
 			err,
 		)
-		return nil, ginx.WithStack(status_error.SkillImportFailed)
+		return models.SkillVersion{}, ginx.WithStack(status_error.SkillImportFailed)
 	}
 	defer os.RemoveAll(root)
 	expectedSubpath := filepath.ToSlash(filepath.Clean(filepath.FromSlash(skill.GitSubpath)))
@@ -92,12 +97,12 @@ func (p *PullSkillUpdate) Output(ctx *gin.Context) (interface{}, error) {
 		}
 	}
 	if selected == nil {
-		return nil, ginx.WithStack(status_error.BadRequest)
+		return models.SkillVersion{}, ginx.WithStack(status_error.BadRequest)
 	}
 	versionID := util.New()
 	contentPath, digest, err := internalSkills.CopyVersion(global.Config.DataDirectory, skill.ID, p.Body.Version, selected.Directory)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return models.SkillVersion{}, ginx.WithStack(err)
 	}
 	if digest == current.ContentDigest {
 		_ = internalSkills.RemoveVersion(global.Config.DataDirectory, contentPath)
@@ -106,7 +111,8 @@ func (p *PullSkillUpdate) Output(ctx *gin.Context) (interface{}, error) {
 	version := models.SkillVersion{ID: versionID, SkillPackageID: skill.ID, Version: strings.TrimSpace(p.Body.Version), Name: selected.Name, Description: selected.Description, Operation: "pull", Notes: p.Body.Notes, ContentPath: contentPath, ContentDigest: digest}
 	if err := global.SkillControllerManager.CreateVersion(ctx, version, true, current.ID); err != nil {
 		_ = internalSkills.RemoveVersion(global.Config.DataDirectory, contentPath)
-		return nil, ginx.WithStack(err)
+		return models.SkillVersion{}, ginx.WithStack(err)
 	}
+	notifyResourceChanged(ctx, p.SkillID)
 	return version, nil
 }

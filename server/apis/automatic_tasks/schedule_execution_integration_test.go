@@ -12,16 +12,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	channelservice "github.com/JieWaZi/NeuxAlly/server/services/channel"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -70,12 +70,20 @@ func (r *integrationRuntime) Run(ctx context.Context, request runtimes.RunReques
 type integrationEnvironment struct{}
 
 func (integrationEnvironment) Get(context.Context, string) (models.RuntimeEnvironment, error) {
-	return models.RuntimeEnvironment{RuntimeID: "codex", BaseRuntimeID: "codex", Enabled: true, Binary: "codex", DefaultModel: "model", DefaultAccountID: "another-default-account",
-		Detection: runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}, State: runtimes.DetectionStateReady, ResolvedBinary: "codex", Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true},
+	// Runtime.Run 已由测试替身接管，仅用测试进程满足 Core 的可执行路径校验。
+	binary, err := os.Executable()
+	if err != nil {
+		return models.RuntimeEnvironment{}, err
+	}
+	return models.RuntimeEnvironment{RuntimeID: "codex", BaseRuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "model", DefaultAccountID: "another-default-account",
+		Detection: runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}, State: runtimes.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true},
 			Models: []runtimes.ModelOption{{ID: "model", PermissionLevels: []runtimes.PermissionLevel{runtimes.PermissionLevelDefault, runtimes.PermissionLevelAuto, runtimes.PermissionLevelFullAccess}}}}}, nil
 }
 
 func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
+	// 外部模型由替身处理，测试不依赖本机 CLI 或用户原生配置。
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("CODEX_HOME", t.TempDir())
 	ctx := context.Background()
 	dataDirectory := t.TempDir()
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(dataDirectory, "integration.db"), Migrate: true})
@@ -116,7 +124,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 			return ctx, func() {}, nil
 		}
 		return teams.AcquireChatInput(ctx, chatID, userInput)
-	}, Runtime: runtime, Journal: chats, DormantChats: chats, Wakers: wakers, Profiles: profiles, Projects: projects, RuntimeEnvironments: integrationEnvironment{}, StorageDirectory: dataDirectory})
+	}, Runtime: runtime, Journal: chats, DormantChats: chats, Wakers: wakers, Profiles: profiles, Projects: projects, RuntimeEnvironments: integrationEnvironment{}, StorageDirectory: dataDirectory, SkillDataDirectory: dataDirectory})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +135,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 	channels := controllers.NewChannelController(database.DB)
 	threads := controllers.NewChannelThreadController(database.DB)
 	teamTasks := controllers.NewChannelTaskController(database.DB)
-	teams, err = channelservice.New(channelservice.Config{BeforeUserInput: func(ctx context.Context, threadID string) error {
+	teams, err = channelservice.New(channelservice.Config{AutomaticRun: controllers.NewAutomaticTaskController(database.DB).GetRun, BeforeUserInput: func(ctx context.Context, threadID string) error {
 		if service == nil {
 			return nil
 		}
@@ -152,8 +160,8 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
-	portData, _ := json.Marshal(schedule.APIStatus{IP: "127.0.0.1", Port: port})
-	if err := os.WriteFile(filepath.Join(dataDirectory, "automatic-tasks-api.json"), portData, 0600); err != nil {
+	portData, _ := json.Marshal(map[string]any{"ip": "127.0.0.1", "port": port, "enabled": true})
+	if err := os.WriteFile(filepath.Join(dataDirectory, "integration-api.json"), portData, 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Start(ctx); err != nil {
@@ -476,10 +484,15 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		// 首次整体结束后不查询自动任务，直接由 Core 接纳手动续聊，仍须冻结原结果。
 		closedAt := finishedAt
 
-		if _, err := core.Start(ctx, execution.WorkIntent{Chat: execution.ChatTarget{ChatID: run.ChatID}, Input: execution.WorkInput{Actor: "user", Content: "手动续聊"}, Options: execution.WorkOptions{RuntimeID: "codex", AccountID: "system", Model: "model", PermissionLevel: constants.PermissionLevelDefault}}); err != nil {
-			t.Fatal(err)
+		continuation, err := teams.SubmitMessage(ctx, channelservice.SubmitMessageInput{Continue: &channelservice.SendMessageInput{ThreadID: run.ThreadID, Input: execution.WorkInput{Content: "手动续聊"}}})
+		if err != nil || continuation.Message == nil || continuation.Message.Execution == nil {
+			t.Fatalf("团队用户续聊未接纳: %+v %v", continuation, err)
 		}
 		receive("手动续聊")
+		userExecution, err := chats.ReadExecution(ctx, run.ChatID, continuation.Message.Execution.ID)
+		if err != nil || userExecution.AutomaticRunID != "" {
+			t.Fatalf("团队普通续聊继承了历史自动来源: %+v %v", userExecution, err)
+		}
 		continued, err := service.Get(ctx, wakerID, saved.TaskID)
 		if err != nil || continued.ActiveRun != nil || continued.LastRun.State != constants.AutomaticRunStateCompleted || continued.LastRun.CompletedAt == nil || *continued.LastRun.CompletedAt < closedAt {
 			t.Fatalf("手动续聊改写自动运行: %+v %v", continued, err)
@@ -515,7 +528,14 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 				t.Fatal(err)
 			}
 			if state.Chat.ActiveExecutionID == "" {
-				break
+				// 日志终态先于SQLite查询投影收尾；成员续聊前需确认原团队已整体空闲。
+				active, err := threads.CountActiveWork(ctx, memberRun.ThreadID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if active == 0 {
+					break
+				}
 			}
 			if time.Now().After(deadline) {
 				t.Fatal("第二次团队首轮未结束")

@@ -12,17 +12,17 @@ import (
 	"testing"
 	"time"
 
-	automatic_tasks "github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowinput "github.com/JieWaZi/NeuxAlly/server/internal/workflow/input"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	automatic_tasks "github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -36,7 +36,7 @@ func TestWorkflowTriggersAtomicConfigurationReplayAndRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	definition, config := triggerWorkflowFixture(t, h, string(source))
-	config.WorkflowInputBindings = map[string]workflowinput.Binding{"text": {Source: constants.WorkflowInputSourceFixed, Value: "NeuxAlly"}}
+	config.WorkflowInputBindings = map[string]workflowinput.Binding{"text": {Source: constants.WorkflowInputSourceFixed, Value: "NeuxBot"}}
 	original, err := readTriggersThroughOperator(ctx, definition.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestWorkflowTriggersAtomicConfigurationReplayAndRemoval(t *testing.T) {
 		t.Fatalf("incomplete aggregate: %+v %v", stored, err)
 	}
 	for _, task := range stored.Tasks {
-		if task.WakerID != h.wakerID || task.WorkflowID != definition.ID || task.WorkflowInputBindings["text"].Value != "NeuxAlly" {
+		if task.WakerID != h.wakerID || task.WorkflowID != definition.ID || task.WorkflowInputBindings["text"].Value != "NeuxBot" {
 			t.Fatalf("lost shared input or binding: %+v", task)
 		}
 	}
@@ -73,7 +73,7 @@ func TestWorkflowTriggersAtomicConfigurationReplayAndRemoval(t *testing.T) {
 		t.Fatal("accepted invalid second trigger")
 	}
 	unchanged, err := readTriggersThroughOperator(ctx, definition.ID)
-	if err != nil || unchanged.Fingerprint != stored.Fingerprint || unchanged.Tasks[0].WorkflowInputBindings["text"].Value != "NeuxAlly" {
+	if err != nil || unchanged.Fingerprint != stored.Fingerprint || unchanged.Tasks[0].WorkflowInputBindings["text"].Value != "NeuxBot" {
 		t.Fatalf("partially committed shared config: %+v %v", unchanged, err)
 	}
 	response := triggerTaskThroughHTTP(h, ctx, saved.Tasks[0].TaskID, saved.Tasks[0].Token, "still-valid")
@@ -158,8 +158,8 @@ func newTriggerHarness(t *testing.T) *triggerHarness {
 	}
 	port := listener.Addr().(*net.TCPAddr).Port
 	_ = listener.Close()
-	settings, _ := json.Marshal(schedule.APIStatus{IP: "127.0.0.1", Port: port})
-	if err := os.WriteFile(filepath.Join(dataDirectory, "automatic-tasks-api.json"), settings, 0600); err != nil {
+	settings, _ := json.Marshal(map[string]any{"ip": "127.0.0.1", "port": port, "enabled": true})
+	if err := os.WriteFile(filepath.Join(dataDirectory, "integration-api.json"), settings, 0600); err != nil {
 		t.Fatal(err)
 	}
 	h.scheduler = schedule.New(h.taskConfig)

@@ -3,14 +3,14 @@ package wakers
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinrolepreset"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	managedskills "github.com/JieWaZi/NeuxAlly/server/internal/skills"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -84,41 +84,60 @@ func (d *DeleteWaker) Output(ctx *gin.Context) (interface{}, error) {
 		}
 		offset += len(page)
 	}
-	err = global.TransactionControllerManager.Transaction(
-		ctx,
-		func(transactionContext context.Context) error {
-			if global.AutomaticTaskControllerManager != nil {
-				if err := global.AutomaticTaskControllerManager.DeleteByWaker(transactionContext, d.WakerID); err != nil {
+	run := func(policyContext context.Context) error {
+		return global.TransactionControllerManager.Transaction(
+			policyContext,
+			func(transactionContext context.Context) error {
+				if global.AutomaticTaskControllerManager != nil {
+					if err := global.AutomaticTaskControllerManager.DeleteByWaker(transactionContext, d.WakerID); err != nil {
+						return err
+					}
+				}
+				if err := global.ProjectControllerManager.DeleteByWaker(
+					transactionContext,
+					d.WakerID,
+				); err != nil {
 					return err
 				}
-			}
-			if err := global.ProjectControllerManager.DeleteByWaker(
-				transactionContext,
-				d.WakerID,
-			); err != nil {
-				return err
-			}
-			if err := global.ProfileDocumentControllerManager.DeleteWakerDocuments(
-				transactionContext,
-				d.WakerID,
-			); err != nil {
-				return err
-			}
-			if err := global.SkillControllerManager.DeleteByWaker(
-				transactionContext,
-				d.WakerID,
-			); err != nil {
-				return err
-			}
-			if err := global.MCPConnectorControllerManager.DeleteByWaker(
-				transactionContext,
-				d.WakerID,
-			); err != nil {
-				return err
-			}
-			return global.WakerControllerManager.Delete(transactionContext, d.WakerID)
-		},
-	)
+				if err := global.ProfileDocumentControllerManager.DeleteWakerDocuments(
+					transactionContext,
+					d.WakerID,
+				); err != nil {
+					return err
+				}
+				if err := global.SkillControllerManager.DeleteByWaker(
+					transactionContext,
+					d.WakerID,
+				); err != nil {
+					return err
+				}
+				if err := global.MCPConnectorControllerManager.DeleteByWaker(
+					transactionContext,
+					d.WakerID,
+				); err != nil {
+					return err
+				}
+				if global.PluginControllerManager != nil {
+					if err := global.PluginControllerManager.DeleteByWaker(transactionContext, d.WakerID); err != nil {
+						return err
+					}
+				}
+				return global.WakerControllerManager.Delete(transactionContext, d.WakerID)
+			},
+		)
+	}
+	change := func(policyContext context.Context) error {
+		if global.KnowledgeService != nil {
+			return global.KnowledgeService.WithPolicyWrite(func() error { return run(policyContext) })
+		}
+		return run(policyContext)
+	}
+	// 发布与聚合删除统一先协调集成授权，再协调知识关系；事务 Context 保留重入身份。
+	if global.IntegrationService != nil {
+		err = global.IntegrationService.WithAuthorizationWrite(ctx, change)
+	} else {
+		err = change(ctx)
+	}
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

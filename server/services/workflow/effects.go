@@ -10,16 +10,16 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/mcpclient"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
-	workflowfunction "github.com/JieWaZi/NeuxAlly/server/internal/workflow/function"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfunction "github.com/JieWaZi/NeuxBot/server/internal/workflow/function"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
@@ -80,7 +80,7 @@ func (s *Service) dispatchChild(ctx context.Context, run models.WorkflowRun, eff
 		revisionID, _ := options["revisionId"].(string)
 		mode, _ := options["mode"].(string)
 		joined := mode != "detached"
-		child, err = s.StartRun(ctx, StartRunCommand{DefinitionID: target, RequestID: effect.ID, RevisionID: revisionID, Args: options["args"], Defaults: run.Defaults, ParentRunID: run.ID, Joined: joined, Depth: run.Depth + 1, TriggerSource: "workflow"})
+		child, err = s.StartRun(ctx, StartRunCommand{AutomaticRunID: run.AutomaticRunID, DefinitionID: target, RequestID: effect.ID, RevisionID: revisionID, Args: options["args"], Defaults: run.Defaults, ParentRunID: run.ID, Joined: joined, Depth: run.Depth + 1, TriggerSource: "workflow"})
 	}
 	if err != nil {
 		s.finishEffect(ctx, effect, WorkerReceipt{}, err)

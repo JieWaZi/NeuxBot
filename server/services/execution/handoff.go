@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 const handoffPrompt = "Summarize the current conversation for a new agent taking over this task. " +
@@ -120,6 +120,7 @@ func (m *service) summarizeCurrentSession(
 		}
 		defer release()
 		run.Target.AccountID = target.AccountID
+		run.Target.RefreshCredentials = target.RefreshCredentials
 		run.Target.Environment = target.Environment
 		run.Target.Isolated = target.Isolated
 		run.Target.CloseAfterRun = target.CloseAfterRun

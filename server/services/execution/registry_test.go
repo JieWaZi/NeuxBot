@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 func TestExecutionRegistryCloseWaitsForReservedExecution(t *testing.T) {
@@ -114,4 +114,29 @@ func TestExecutionRegistryCancelAndWaitCoversCompletionAndTimeout(t *testing.T) 
 	}
 	registry.release("chat-timeout", "execution-timeout")
 	registry.close()
+}
+
+func TestCancelExecutionAndWaitCannotCancelNextChatExecution(t *testing.T) {
+	registry := newExecutionRegistry()
+	registry.start(context.Background())
+	defer registry.close()
+	old, err := registry.reserve("shared-chat", "old-worker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry.release("shared-chat", "old-worker")
+	next, err := registry.reserve("shared-chat", "new-input")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer registry.release("shared-chat", "new-input")
+	if err = registry.cancelExecutionAndWait(context.Background(), "shared-chat", "old-worker"); err != nil {
+		t.Fatal(err)
+	}
+	if next.Err() != nil {
+		t.Fatal("stopping old worker cancelled the new ordinary input")
+	}
+	if old.Err() != nil {
+		t.Fatal("obsolete cancel invoked old reservation after release")
+	}
 }

@@ -7,12 +7,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	channeltool "github.com/JieWaZi/NeuxAlly/server/internal/teamcapability"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -161,5 +161,104 @@ func assertLeaderTurnIntent(t *testing.T, intent execution.WorkIntent, content s
 	}
 	if !strings.Contains(instructions[0].Content, want) || strings.Contains(instructions[0].Content, unwanted) {
 		t.Fatalf("direct=%t instructions did not preserve turn mode: %s", direct, instructions[0].Content)
+	}
+}
+
+// TestAutomaticTeamSourceFollowsOpenRun 验证自动运行封闭后负责人和成员的新工作不会复用历史调用身份。
+func TestAutomaticTeamSourceFollowsOpenRun(t *testing.T) {
+	for _, closed := range []bool{false, true} {
+		for _, route := range []string{"lead", "direct_member", "lead_created_member", "notification"} {
+			t.Run(fmt.Sprintf("closed=%t/%s", closed, route), func(t *testing.T) {
+				ctx := t.Context()
+				db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "source.db"), Migrate: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				pool, _ := db.DB.DB()
+				t.Cleanup(func() { _ = pool.Close() })
+				channels := controllers.NewChannelController(db.DB)
+				threads := controllers.NewChannelThreadController(db.DB)
+				tasks := controllers.NewChannelTaskController(db.DB)
+				runs := controllers.NewAutomaticTaskController(db.DB)
+				wakers := controllers.NewWakerController(db.DB)
+				createChannelTestWakers(t, ctx, wakers, "lead-waker", "member-waker")
+				if err := channels.Create(ctx, models.Channel{ID: "team", Name: "来源测试", LeadWakerID: "lead-waker"}, []models.ChannelMember{{ChannelID: "team", WakerID: "lead-waker"}, {ChannelID: "team", WakerID: "member-waker"}}); err != nil {
+					t.Fatal(err)
+				}
+				thread := models.ChannelThread{ID: "thread", ChannelID: "team", LeadWakerID: "lead-waker", LeadChatID: "lead-chat", AutomaticRunID: "automatic-run", ReadyAt: testTimestamp(1), MaxParallel: 2, MaxTasks: 10}
+				if err := threads.Create(ctx, thread, []models.ChannelThreadMember{
+					{ThreadID: thread.ID, WakerID: "lead-waker", ChatID: "lead-chat", IsLead: true, RuntimeID: "codex"},
+					{ThreadID: thread.ID, WakerID: "member-waker", ChatID: "member-chat", RuntimeID: "codex"},
+				}); err != nil {
+					t.Fatal(err)
+				}
+				if err := runs.CreateRun(ctx, models.AutomaticRun{ID: "automatic-run", TaskID: "automatic-task", ThreadID: thread.ID}); err != nil {
+					t.Fatal(err)
+				}
+				chats := &postTurnChatFake{summaries: map[string]chatservice.ChatSummary{
+					"lead-chat": {Chat: models.Chat{ID: "lead-chat"}}, "member-chat": {Chat: models.Chat{ID: "member-chat"}},
+				}}
+				executions := &postTurnExecutionFake{}
+				sut := &service{channels: channels, threads: threads, tasks: tasks, wakers: wakers, chats: chats, executions: executions,
+					transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(db.DB)), capabilities: channeltool.NewRegistry(), automaticRun: runs.GetRun,
+				}
+				// 模拟原调度器在用户新输入前冻结已经结束的团队运行；实际来源读取仍访问真实仓库。
+				sut.beforeUserInput = func(ctx context.Context, _ string) error {
+					if closed {
+						return runs.CloseTeamRun(ctx, "automatic-run", constants.AutomaticRunStateCompleted, testTimestamp(5))
+					}
+					return nil
+				}
+				switch route {
+				case "lead", "direct_member":
+					mention := ""
+					if route == "direct_member" {
+						mention = "member-waker"
+					}
+					if _, err := sut.sendMessage(ctx, SendMessageInput{ThreadID: thread.ID, MentionWakerID: mention, Input: execution.WorkInput{Content: "新的用户工作"}}); err != nil {
+						t.Fatal(err)
+					}
+				case "lead_created_member":
+					// 原自动内部的负责人派发与用户续聊负责人派发都走正式任务路径。
+					if _, err := sut.CreateTask(ctx, CreateTaskInput{ThreadID: thread.ID, SenderWakerID: thread.LeadWakerID, AssigneeWakerID: "member-waker", Subject: "成员工作", Description: "读取知识并报告"}); err != nil {
+						t.Fatal(err)
+					}
+				case "notification":
+					if closed {
+						if err := runs.CloseTeamRun(ctx, "automatic-run", constants.AutomaticRunStateCompleted, testTimestamp(5)); err != nil {
+							t.Fatal(err)
+						}
+					}
+					task := models.ChannelTask{ID: "reported-task", ThreadID: thread.ID, AssigneeWakerID: "member-waker", Subject: "成员结果", Status: constants.ChannelTaskStatusCompleted, Result: "已核验", CurrentFence: 1}
+					if err := tasks.Create(ctx, task, nil); err != nil {
+						t.Fatal(err)
+					}
+					attempt := models.ChannelTaskAttempt{ID: "reported-attempt", TaskID: task.ID, ChatID: "member-chat", ExecutionID: "reported-execution", AssigneeWakerID: "member-waker", Fence: 1, Reason: constants.ChannelAttemptReasonInitial, Status: constants.ExecutionStatusCompleted}
+					if err := tasks.CreateAttempt(ctx, attempt); err != nil {
+						t.Fatal(err)
+					}
+					if err := tasks.CreateNotification(ctx, models.ChannelLeadNotification{ID: "notification", ThreadID: thread.ID, TaskID: task.ID, AttemptID: attempt.ID, Payload: task.Result, Status: constants.ChannelNotificationStatusPending}); err != nil {
+						t.Fatal(err)
+					}
+					if err := sut.drainNotifications(ctx, thread.ID); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if executions.startCount() != 1 {
+					t.Fatalf("execution count=%d", executions.startCount())
+				}
+				want := thread.AutomaticRunID
+				if closed {
+					want = ""
+				}
+				if got := executions.firstStart().AutomaticRunID; got != want {
+					t.Fatalf("AutomaticRunID=%q, want %q", got, want)
+				}
+				stored, err := threads.Get(ctx, thread.ID)
+				if err != nil || stored.AutomaticRunID != thread.AutomaticRunID {
+					t.Fatalf("historical thread source changed: %+v %v", stored, err)
+				}
+			})
+		}
 	}
 }

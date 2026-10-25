@@ -4,22 +4,23 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability/contract"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	builtinskills "github.com/JieWaZi/NeuxAlly/server/internal/skills/builtin"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // agentCommandFacts 将已持久化命令事实交给同执行实时投影，无需轮询日志。
@@ -72,7 +73,7 @@ func agentIdentity(value string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, facts *agentCommandFacts) (func(), func(), func(runtimes.Result), error) {
+func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, facts *agentCommandFacts, automaticRunIDs ...string) (func(), func(), func(runtimes.Result), error) {
 	if m.agent == nil {
 		return nil, nil, nil, nil
 	}
@@ -88,7 +89,7 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 	if err != nil {
 		return nil, nil, nil, status_error.AgentContextStorageError
 	}
-	skill, err := builtinskills.SystemDirectory(root)
+	skill, err := builtinskills.SystemDirectory(root, binary)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -98,16 +99,35 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 		}
 	}
 	request.Skills = append(request.Skills, runtimes.Skill{Name: constants.AgentCLISkillName, Path: skill})
-	request.Instructions = append(request.Instructions, runtimes.Instruction{Name: "软件能力", Content: "For NeuxAlly-provided operations, read the ally skill and use allycli capabilities to discover the current authorized commands. Read only the relevant guide and live operation contract."})
+	binary = builtinskills.CLIPath(skill)
+	request.Instructions = append(request.Instructions, runtimes.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxBot-provided operations, read the ally skill at %q. Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands. Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract.", filepath.Join(skill, "SKILL.md"), binary, filepath.Join(skill, "references", "knowledge.md"))})
 	roots := []string{}
 	for _, candidate := range append([]string{request.Workspace.Path}, chat.AdditionalWorkingDirectories...) {
 		if actual, err := filepath.EvalSymlinks(candidate); err == nil {
 			roots = append(roots, actual)
 		}
 	}
+	automaticRunID := ""
+	if len(automaticRunIDs) > 0 {
+		automaticRunID = automaticRunIDs[0]
+	}
 	bindings := []agentcapability.Binding{}
-	if m.agentBindings != nil {
-		for _, binding := range m.agentBindings(chat, executionID, roots) {
+	if m.agentBindings != nil && (allowedDomains == nil || len(*allowedDomains) > 0) {
+		for _, binding := range m.agentBindings(chat, executionID, roots, automaticRunID) {
+			// 自动来源首发已经由业务入口签发同一整理能力；恢复时由默认绑定重建，不能重复登记。
+			duplicate := false
+			if automaticRunID != "" && binding.Operation == "knowledge.jobs.start" {
+				for _, capability := range capabilities {
+					for _, explicit := range capability.Bindings {
+						if explicit.Operation == binding.Operation {
+							duplicate = true
+						}
+					}
+				}
+			}
+			if duplicate {
+				continue
+			}
 			domain, _, _ := strings.Cut(binding.Operation, ".")
 			if allowedDomains == nil || slices.Contains(*allowedDomains, domain) {
 				bindings = append(bindings, binding)
@@ -123,11 +143,11 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 	grant, activate, revoke, err := m.agent.Prepare(agentcapability.GrantSpec{ExecutionID: executionID, Bindings: bindings, FileRoots: roots, Record: func(ctx context.Context, op contract.Operation, result agentcapability.Result) error {
 		return facts.record(ctx, m.journal, chat.ID, executionID, op, result)
 	}, Validate: func(ctx context.Context) error {
-		current, err := m.journal.LoadExecutionContext(ctx, chat.ID)
+		current, err := m.journal.LoadExecutionChat(ctx, chat.ID)
 		if err != nil {
 			return err
 		}
-		if current.Chat.WakerID != chat.WakerID || current.Chat.ActiveExecutionID != executionID {
+		if current.WakerID != chat.WakerID || current.ActiveExecutionID != executionID {
 			return status_error.AgentContextUnauthorized
 		}
 		return nil
@@ -156,6 +176,7 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 	}
 	request.Target.Environment[constants.AgentCLIContextEnvironment] = path
 	request.Target.Environment[constants.AgentCLIBinaryEnvironment] = binary
+
 	inheritedPath := request.Target.Environment["PATH"]
 	if inheritedPath == "" {
 		inheritedPath = os.Getenv("PATH")

@@ -41,7 +41,7 @@ func (v InvocationRecoveryStrategy) Values() []enum.Enum {
 }
 
 func (v InvocationRecoveryStrategy) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.InvocationRecoveryStrategy"
+	return "github.com/JieWaZi/NeuxBot/server/constants.InvocationRecoveryStrategy"
 }
 
 func (v InvocationRecoveryStrategy) MarshalText() ([]byte, error) {

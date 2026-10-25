@@ -33,7 +33,7 @@ func TestUnifiedPermissionAuditProjection(t *testing.T) {
 
 // TestNativeCLIDiscoveryModelSelectionAndResume 验证公开适配器使用真实子进程连接选择模型和恢复历史。
 func TestNativeCLIDiscoveryModelSelectionAndResume(t *testing.T) {
-	for _, fixtureID := range []string{RuntimeIDKimi, RuntimeIDPi, RuntimeIDOpenCode, RuntimeIDGrok, RuntimeIDWorkBuddy, "kimi-legacy"} {
+	for _, fixtureID := range []string{RuntimeIDKimi, RuntimeIDPi, RuntimeIDOpenCode, RuntimeIDGrok, RuntimeIDWorkBuddy, RuntimeIDQoder, RuntimeIDQoderCN, "kimi-legacy"} {
 		id := strings.TrimSuffix(fixtureID, "-legacy")
 		t.Run(fixtureID, func(t *testing.T) {
 			binary, err := os.Executable()
@@ -42,7 +42,7 @@ func TestNativeCLIDiscoveryModelSelectionAndResume(t *testing.T) {
 			}
 			marker := filepath.Join(t.TempDir(), "model-selected")
 			profile := ProfileSpec{ID: id + "-fixture", BaseRuntimeID: id, BinaryCandidates: []string{binary}, PrefixArgs: []string{"-test.run=^TestAllyNativeACPProcess$", "--"}, Environment: map[string]string{"ALLY_NATIVE_ACP_TEST": fixtureID, "ALLY_NATIVE_ACP_MARKER": marker}}
-			if id == RuntimeIDWorkBuddy {
+			if id == RuntimeIDWorkBuddy || id == RuntimeIDQoder || id == RuntimeIDQoderCN {
 				profile.Environment["ALLY_NATIVE_ACP_PREFIX_RECORD"] = filepath.Join(t.TempDir(), "static-prefix")
 			}
 			if id == RuntimeIDPi {
@@ -118,7 +118,7 @@ func TestNativeCLIDiscoveryModelSelectionAndResume(t *testing.T) {
 					}
 				}
 				if finalUsage.Turn == nil || finalUsage.Context == nil || finalUsage.Turn.InputTokens != 7 || finalUsage.Turn.OutputTokens != 5 || finalUsage.Turn.CacheReadTokens != 3 || finalUsage.Turn.CacheCreationTokens != 2 || finalUsage.Context.UsedTokens != 123 || finalUsage.Context.WindowTokens != 100000 {
-					t.Fatalf("Pi usage lost before NeuxAlly: %+v", finalUsage)
+					t.Fatalf("Pi usage lost before NeuxBot: %+v", finalUsage)
 				}
 			}
 			request.Session = SessionDirective{Mode: SessionModeResume, ID: result.Session.OutputID}
@@ -152,7 +152,7 @@ func TestNativeCLIDiscoveryModelSelectionAndResume(t *testing.T) {
 			if !LaunchOverrideArgumentsAllowed(id, nil) || LaunchOverrideArgumentsAllowed(id, []string{"--model=override"}) {
 				t.Fatal("invalid launch override policy")
 			}
-			if id == RuntimeIDWorkBuddy {
+			if id == RuntimeIDWorkBuddy || id == RuntimeIDQoder || id == RuntimeIDQoderCN {
 				if _, err := os.Stat(profile.Environment["ALLY_NATIVE_ACP_PREFIX_RECORD"]); err != nil {
 					t.Fatalf("static prefix was never observed: %v", err)
 				}
@@ -210,6 +210,9 @@ func TestAllyNativeACPProcess(t *testing.T) {
 	if id == RuntimeIDPi {
 		runAllyPiRPCFixture(t)
 		return
+	}
+	if (id == RuntimeIDQoder || id == RuntimeIDQoderCN) && os.Args[len(os.Args)-1] != "--acp" {
+		t.Fatal("Qoder must start through --acp")
 	}
 	legacy := id == "kimi-legacy"
 	id = strings.TrimSuffix(id, "-legacy")
@@ -272,6 +275,9 @@ func TestAllyNativeACPProcess(t *testing.T) {
 			if id == RuntimeIDWorkBuddy {
 				modes = []map[string]string{{"id": "default", "name": "Default"}, {"id": "auto", "name": "Auto"}, {"id": "bypassPermissions", "name": "Bypass"}, {"id": "plan", "name": "Plan"}}
 			}
+			if id == RuntimeIDQoder || id == RuntimeIDQoderCN {
+				modes = []map[string]string{{"id": "default", "name": "Default"}, {"id": "bypassPermissions", "name": "Bypass"}}
+			}
 			if id == RuntimeIDPi {
 				modes = []map[string]string{{"id": "high", "name": "High thinking"}}
 			}
@@ -322,9 +328,12 @@ func TestAllyNativeACPProcess(t *testing.T) {
 			if id == RuntimeIDWorkBuddy {
 				root, command, instructionFile = ".codebuddy", "/review", "CODEBUDDY.md"
 			}
-			if id == RuntimeIDOpenCode || id == RuntimeIDGrok {
+			if id == RuntimeIDOpenCode || id == RuntimeIDGrok || id == RuntimeIDQoder || id == RuntimeIDQoderCN {
 				root = "." + id
 				command = "/review"
+			}
+			if id == RuntimeIDQoderCN {
+				root = ".qoder"
 			}
 			if id == RuntimeIDPi {
 				root = ".pi"

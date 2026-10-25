@@ -21,3 +21,22 @@ func init() {
 	Router.Register(&ScanWakerSkillImport{})
 	Router.Register(&ImportWakerSkill{})
 }
+
+// LibraryRouter 提供全局资源专业操作。
+var LibraryRouter = ginx.NewRouter(ginx.Group("/skills"))
+
+func init() {
+	LibraryRouter.Register(&GetLibrarySkill{})
+	LibraryRouter.Register(&UpdateLibrarySkill{})
+	LibraryRouter.Register(&ScanLibrarySkillImport{})
+	LibraryRouter.Register(&ImportLibrarySkills{})
+	LibraryRouter.Register(&ListLibrarySkillVersions{})
+	LibraryRouter.Register(&GetLibrarySkillVersion{})
+	LibraryRouter.Register(&GetLibrarySkillVersionFile{})
+	LibraryRouter.Register(&CreateLibrarySkillVersion{})
+	LibraryRouter.Register(&RestoreLibrarySkillVersion{})
+	LibraryRouter.Register(&PullLibrarySkillUpdate{})
+	LibraryRouter.Register(&DeleteLibrarySkill{})
+	LibraryRouter.Register(&ListLibrarySkills{})
+	LibraryRouter.Register(&InstallLibrarySkill{})
+}

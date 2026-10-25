@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -69,7 +69,7 @@ func TestProjectAPICRUDPreservesDirectoryOrderAndLocalFiles(t *testing.T) {
 	create := CreateProject{
 		WakerID: waker.ID,
 		Body: ProjectInput{
-			Name:  " NeuxAlly ",
+			Name:  " NeuxBot ",
 			Brief: " 多目录项目 ",
 			Directories: []ProjectDirectoryInput{
 				{Path: secondDirectory},
@@ -97,7 +97,7 @@ func TestProjectAPICRUDPreservesDirectoryOrderAndLocalFiles(t *testing.T) {
 		t.Fatalf("list created project sources: %v", err)
 	}
 	created := projectResource(createdProject, createdDirectories)
-	if created.Name != "NeuxAlly" || created.Brief != "多目录项目" {
+	if created.Name != "NeuxBot" || created.Brief != "多目录项目" {
 		t.Fatalf("created project = %+v", created)
 	}
 	if len(created.Sources) != 2 || created.Sources[0].Path != resolvedSecondDirectory ||
@@ -131,7 +131,7 @@ func TestProjectAPICRUDPreservesDirectoryOrderAndLocalFiles(t *testing.T) {
 		WakerID:   waker.ID,
 		ProjectID: created.ID,
 		Body: ProjectInput{
-			Name:  "NeuxAlly 2",
+			Name:  "NeuxBot 2",
 			Brief: "更新后",
 			Directories: []ProjectDirectoryInput{
 				{Path: firstDirectory, LoadInstructions: &loadInstructions},

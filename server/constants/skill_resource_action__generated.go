@@ -45,7 +45,7 @@ func (v SkillResourceAction) Values() []enum.Enum {
 }
 
 func (v SkillResourceAction) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.SkillResourceAction"
+	return "github.com/JieWaZi/NeuxBot/server/constants.SkillResourceAction"
 }
 
 func (v SkillResourceAction) MarshalText() ([]byte, error) {

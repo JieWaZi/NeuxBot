@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chatstorage"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // Service 集中声明 Chat 对外提供的全部业务能力。
@@ -20,6 +20,8 @@ import (
 // 调用方只依赖这些稳定用例和公开结果，不需要理解 JSONL、SQLite 查询索引、
 // Runtime 重试、Session 恢复或事件适配实现。
 type Service interface {
+	// ReadExecutionOutcome 读取指定执行最后一次持久调用的终止和失败事实。
+	ReadExecutionOutcome(context.Context, string, string) (ExecutionOutcome, error)
 	// ReadExecution 按稳定身份读取任意已接纳回合的权威事实。
 	ReadExecution(context.Context, string, string) (models.Execution, error)
 	// ForkTargets 返回普通会话各个结束回合的真实分叉可用性。

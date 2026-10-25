@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	acp "github.com/coder/acp-go-sdk"
 )
 
@@ -169,7 +169,7 @@ func TestACPRuntimeFailureProjectionMatrix(t *testing.T) {
 		name string
 		// err 是 ACP Agent 在 Prompt 边界返回的错误。
 		err error
-		// code 是 NeuxAlly 对外稳定失败码。
+		// code 是 NeuxBot 对外稳定失败码。
 		code FailureCode
 	}{
 		{name: "authentication", err: acp.NewAuthRequired(nil), code: FailureCodeAuthRequired},
@@ -319,6 +319,22 @@ func TestACPWorkspaceReadOnlyPolicyOverridesWritablePermissionMode(t *testing.T)
 	}
 	if actual, err := claudeACPRuntimeBinding().modeID(policy, nil); err != nil || actual != "default" {
 		t.Fatalf("Claude read-only mode = %q, want default", actual)
+	}
+}
+
+func TestManagedNativeWorkspaceReadOnlyDoesNotRequireKnowledgeMCP(t *testing.T) {
+	t.Parallel()
+	policy := ExecutionPolicy{
+		PermissionLevel:   PermissionLevelDefault,
+		WorkspaceReadOnly: true,
+	}
+	for _, id := range []string{RuntimeIDOpenCode, RuntimeIDGrok, RuntimeIDGemini} {
+		t.Run(id, func(t *testing.T) {
+			binding := defaultACPRuntimeBindings()[id]
+			if _, err := binding.modeID(policy, nil); err != nil {
+				t.Fatalf("modeID: %v", err)
+			}
+		})
 	}
 }
 

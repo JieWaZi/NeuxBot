@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acp "github.com/coder/acp-go-sdk"
 )
 
@@ -15,6 +15,8 @@ func BaseRuntimeIDs() []string {
 		RuntimeIDGemini,
 		RuntimeIDGrok,
 		RuntimeIDWorkBuddy,
+		RuntimeIDQoder,
+		RuntimeIDQoderCN,
 		RuntimeIDCodex,
 		RuntimeIDClaude,
 		RuntimeIDKimi,

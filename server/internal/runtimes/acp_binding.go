@@ -2,6 +2,9 @@ package runtimes
 
 import (
 	"context"
+	"encoding/json"
+	"maps"
+	"strconv"
 	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -9,6 +12,8 @@ import (
 
 // acpAdapterConfig 保存所有 acp-go Runtime Adapter 共用的启动事实。
 type acpAdapterConfig struct {
+	// RefreshCredentials 将原生刷新路由到共享凭据权威。
+	RefreshCredentials CredentialRefresh
 	// RuntimeID 是本次连接所属的内置智能体或本地配置标识。
 	RuntimeID string
 	// DetectionID 关联一次独立能力探测；普通执行为空。
@@ -17,6 +22,12 @@ type acpAdapterConfig struct {
 	Executable string
 	// PrefixArgs 是本地 Profile 配置的受控前置参数。
 	PrefixArgs []string
+	// NativePluginDirectories 是本轮已经固定的原生包目录。
+	NativePluginDirectories []string
+	// CodexPluginConfiguration 是自有插件仅在本次进程生效的原生点路径覆盖。
+	CodexPluginConfiguration map[string]string
+	// ClaudeSettingsPath 是只对本次进程生效的受管模型设置文件。
+	ClaudeSettingsPath string
 	// Environment 是 Adapter 与其 Session 进程使用的完整环境快照。
 	Environment []string
 	// WorkingDirectory 是原生 ACP 进程的隔离启动目录。
@@ -25,6 +36,8 @@ type acpAdapterConfig struct {
 	StateDirectory string
 	// PermissionMode 是本次原生进程冻结的执行权限。
 	PermissionMode string
+	// TextOnly 表示本次不安装问答 MCP，只提供无状态模型生成。
+	TextOnly bool
 }
 
 // acpAgentFactory 从统一启动事实创建一个标准 ACP Agent。
@@ -97,6 +110,8 @@ func defaultACPRuntimeBindings() map[string]acpRuntimeBinding {
 		RuntimeIDGemini:    geminiACPRuntimeBinding(),
 		RuntimeIDGrok:      grokACPRuntimeBinding(),
 		RuntimeIDWorkBuddy: workBuddyACPRuntimeBinding(),
+		RuntimeIDQoder:     qoderACPRuntimeBinding(),
+		RuntimeIDQoderCN:   qoderCNACPRuntimeBinding(),
 		RuntimeIDCodex:     codexACPRuntimeBinding(),
 		RuntimeIDClaude:    claudeACPRuntimeBinding(),
 		RuntimeIDKimi:      kimiACPRuntimeBinding(),
@@ -138,7 +153,62 @@ func standardACPRuntimeBinding() acpRuntimeBinding {
 	}
 }
 
-// allMCPTransports 接受 NeuxAlly 当前支持的三种 MCP 传输。
+// acpAdapterConfigForRequest 把 NeuxBot 已准备完成的启动事实投影为通用 Adapter 配置。
+func acpAdapterConfigForRequest(
+	request acpRunRequest,
+	binding acpRuntimeBinding,
+) acpAdapterConfig {
+	config := acpAdapterConfig{
+		RefreshCredentials: request.Request.Target.RefreshCredentials,
+		RuntimeID:          request.Request.Target.RuntimeID,
+		Executable:         request.Prepared.detection.ResolvedBinary,
+		PrefixArgs:         cloneStrings(request.Prepared.definition.prefixArgs),
+		Environment:        request.Prepared.environment.list(),
+		WorkingDirectory:   request.Request.Workspace.Path,
+		PermissionMode:     string(request.Request.Policy.Execution.PermissionLevel),
+	}
+	config.NativePluginDirectories = cloneStrings(request.Request.Target.NativePluginDirectories)
+	config.CodexPluginConfiguration = maps.Clone(request.Request.Target.CodexPluginConfiguration)
+	config.ClaudeSettingsPath = request.Request.Target.ClaudeSettingsPath
+	if binding.stateDirectory != nil {
+		config.StateDirectory = binding.stateDirectory(request)
+	}
+	if request.Text != nil {
+		config.TextOnly = true
+		config, _ = textAdapterConfig(config, binding.baseRuntimeID)
+	}
+	return config
+}
+
+// acpAgentKey 使不同 Runtime、二进制版本和受控配置使用独立 ACP Agent。
+func acpAgentKey(request acpRunRequest) string {
+	binding := defaultACPRuntimeBindings()[request.Prepared.definition.baseRuntimeID]
+	return acpAgentKeyForBinding(request, binding)
+}
+
+// acpAgentKeyForBinding 使用当前 Backend 实际绑定计算 Agent 隔离键。
+func acpAgentKeyForBinding(request acpRunRequest, binding acpRuntimeBinding) string {
+	prefixArgs := cloneStrings(request.Prepared.definition.prefixArgs)
+	for _, directory := range request.Request.Target.NativePluginDirectories {
+		prefixArgs = append(prefixArgs, directory)
+	}
+	pluginConfiguration, _ := json.Marshal(request.Request.Target.CodexPluginConfiguration)
+	workspace := ""
+	if binding.agentScope != nil {
+		workspace = binding.agentScope(request)
+	}
+	if request.Text != nil {
+		workspace += "\x00text\x00" + request.InvocationID
+	}
+	return request.Request.Target.RuntimeID + "\x00" +
+		request.Prepared.detection.ResolvedBinary + "\x00" +
+		request.Prepared.detection.Version + "\x00" +
+		strconv.Itoa(len(prefixArgs)) + "\x00" +
+		strings.Join(prefixArgs, "\x00") + "\x00" + string(pluginConfiguration) + "\x00" + request.Request.Target.NativePluginScope + "\x00" + request.Request.Target.ClaudeSettingsPath + "\x00" +
+		request.Prepared.environment.fingerprint + "\x00" + workspace
+}
+
+// allMCPTransports 接受 NeuxBot 当前支持的三种 MCP 传输。
 func allMCPTransports(transport ConnectorTransport) bool {
 	return transport == ConnectorTransportStdio ||
 		transport == ConnectorTransportStreamableHTTP ||

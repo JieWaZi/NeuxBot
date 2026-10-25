@@ -37,7 +37,7 @@ func (v InvocationTriggerReason) Values() []enum.Enum {
 }
 
 func (v InvocationTriggerReason) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.InvocationTriggerReason"
+	return "github.com/JieWaZi/NeuxBot/server/constants.InvocationTriggerReason"
 }
 
 func (v InvocationTriggerReason) MarshalText() ([]byte, error) {

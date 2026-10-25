@@ -41,7 +41,7 @@ func (v MemoryEmbeddingAction) Values() []enum.Enum {
 }
 
 func (v MemoryEmbeddingAction) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MemoryEmbeddingAction"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MemoryEmbeddingAction"
 }
 
 func (v MemoryEmbeddingAction) MarshalText() ([]byte, error) {

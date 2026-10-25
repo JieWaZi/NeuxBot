@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // IsNativeAccountRuntime 标识必须按真实选中模型探测能力的新原生运行时。
@@ -27,7 +27,7 @@ func NativeModelID(runtimeID, model string) string {
 	return model
 }
 
-// AccountModelID 仅剥离 NeuxAlly 自己创建的 OpenCode 命名空间，保留原始服务端 ID。
+// AccountModelID 仅剥离 NeuxBot 自己创建的 OpenCode 命名空间，保留原始服务端 ID。
 func AccountModelID(runtimeID, model string) string {
 	if runtimeID == constants.RuntimeIDOpenCode {
 		return strings.TrimPrefix(model, constants.AIAccountOpenCodeProvider+"/")
@@ -113,7 +113,7 @@ func prepareNative(workspace string, spec Spec) (map[string]string, error) {
 			}
 			models[id] = model
 		}
-		provider := map[string]any{"npm": npm, "name": "NeuxAlly", "options": map[string]any{"baseURL": endpoint, "apiKey": spec.APIKey}, "models": models, "whitelist": spec.SelectedModels}
+		provider := map[string]any{"npm": npm, "name": "NeuxBot", "options": map[string]any{"baseURL": endpoint, "apiKey": spec.APIKey}, "models": models, "whitelist": spec.SelectedModels}
 		content, err := json.Marshal(map[string]any{"model": NativeModelID(spec.RuntimeID, spec.Model), "enabled_providers": []string{constants.AIAccountOpenCodeProvider}, "provider": map[string]any{constants.AIAccountOpenCodeProvider: provider}})
 		if err != nil {
 			return nil, storageError(err)
@@ -131,7 +131,7 @@ func prepareNative(workspace string, spec Spec) (map[string]string, error) {
 		if err := WriteFile(filepath.Join(profile, "settings.json"), content); err != nil {
 			return nil, err
 		}
-		// 仅信任 NeuxAlly 所有的当前工作目录；原生系统策略仍可拒绝启动。
+		// 仅信任 NeuxBot 所有的当前工作目录；原生系统策略仍可拒绝启动。
 		trustedWorkspace, err := filepath.EvalSymlinks(workspace)
 		if err != nil {
 			return nil, storageError(err)

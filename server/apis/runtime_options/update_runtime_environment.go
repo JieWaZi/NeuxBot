@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -110,8 +110,7 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 		if err != nil {
 			return nil, ginx.WithStack(err)
 		}
-		pending, failed, _ := global.RuntimeEnvironmentService.StartupDetection()
-		if canCompleteStartupSetup(confirmed, pending, failed) {
+		if canCompleteStartupSetup(confirmed) {
 			global.RuntimeEnvironmentService.CompleteStartupSetup()
 		}
 	}
@@ -119,14 +118,10 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 }
 
 // canCompleteStartupSetup 只在所选默认智能体完成模型与权限探测后解除首次引导。
-func canCompleteStartupSetup(
-	environment models.RuntimeEnvironment,
-	pending bool,
-	failed bool,
-) bool {
+func canCompleteStartupSetup(environment models.RuntimeEnvironment) bool {
 	configured := environment.Enabled && environment.IsDefault && environment.DefaultModel != ""
 	installed := environment.Detection.ResolvedBinary != "" && environment.Detection.State == runtimes.DetectionStateReady
-	if pending || failed || !configured || !installed {
+	if !configured || !installed {
 		return false
 	}
 	for _, diagnostic := range environment.Detection.Diagnostics {

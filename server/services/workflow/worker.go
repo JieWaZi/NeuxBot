@@ -6,18 +6,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // WorkerDispatch 保存已经在 outbox 冻结的真实派发输入。
@@ -105,7 +105,7 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	}
 	domains := []string{"memory", "interaction"}
 	scope := input.Run.ScopeBinding
-	accepted, err := a.Executions.Start(ctx, execution.WorkIntent{ExecutionID: input.Effect.ExecutionID, ClientRequestID: input.Effect.ID, Chat: execution.ChatTarget{Create: &execution.CreateChatSpec{HiddenFromWakerHistory: true, WakerID: wakerID, WorkingDirectory: scope.WorkingDirectory}}, Input: execution.WorkInput{Actor: "workflow", Content: prompt}, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: configuration.RuntimeID, AccountID: configuration.AccountID, Model: configuration.Model, Reasoning: configuration.Reasoning, PermissionLevel: defaults.PermissionLevel, WorkspaceReadOnly: defaults.WorkspaceReadOnly, SessionPolicy: constants.RuntimeSessionPolicyNew, ToolCapabilities: tools, AllowedConnectorIDs: allowedConnectors, AllowedAgentDomains: &domains}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
+	accepted, err := a.Executions.Start(ctx, execution.WorkIntent{AutomaticRunID: input.Run.AutomaticRunID, ExecutionID: input.Effect.ExecutionID, ClientRequestID: input.Effect.ID, Chat: execution.ChatTarget{Create: &execution.CreateChatSpec{HiddenFromWakerHistory: true, WakerID: wakerID, WorkingDirectory: scope.WorkingDirectory}}, Input: execution.WorkInput{Actor: "workflow", Content: prompt}, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: configuration.RuntimeID, AccountID: configuration.AccountID, Model: configuration.Model, Reasoning: configuration.Reasoning, PermissionLevel: defaults.PermissionLevel, WorkspaceReadOnly: defaults.WorkspaceReadOnly, SessionPolicy: constants.RuntimeSessionPolicyNew, ToolCapabilities: tools, AllowedConnectorIDs: allowedConnectors, AllowedAgentDomains: &domains}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
 	if err != nil {
 		return WorkerReceipt{}, err
 	}

@@ -1,13 +1,15 @@
 package channel
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // CreateThreadInput 是团队草稿首次发送时提交的完整输入。
 type CreateThreadInput struct {
+	// AutomaticRunID 是服务端传入的原自动运行，不能从用户或模型正文绑定。
+	AutomaticRunID string `json:"-"`
 	// ExecutionID 是持久编排预留的负责人首发执行标识；普通交互为空。
 	ExecutionID string
 	// ChannelID 是需要快照的团队标识。

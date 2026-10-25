@@ -1,4 +1,4 @@
-// Package global 负责 NeuxAlly Core 的进程级配置与组件装配。
+// Package global 负责 NeuxBot Core 的进程级配置与组件装配。
 package global
 
 import (
@@ -6,6 +6,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
+	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,35 +17,51 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinrolepreset"
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinwaker"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/memory"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	managedskills "github.com/JieWaZi/NeuxAlly/server/internal/skills"
-	builtinskills "github.com/JieWaZi/NeuxAlly/server/internal/skills/builtin"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/aiaccount"
-	channelservice "github.com/JieWaZi/NeuxAlly/server/services/channel"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
-	imservice "github.com/JieWaZi/NeuxAlly/server/services/im"
-	"github.com/JieWaZi/NeuxAlly/server/services/notification"
-	"github.com/JieWaZi/NeuxAlly/server/services/runtimeenvironment"
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinwaker"
+	integrationapi "github.com/JieWaZi/NeuxBot/server/internal/integration"
+	knowledgebridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/memory"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/feishu"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/github"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
+	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	imservice "github.com/JieWaZi/NeuxBot/server/services/im"
+	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/services/notification"
+	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
+	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
 )
 
 var (
+	// KnowledgeService 复用页面、聊天与自动入口的真实知识维护。
+	KnowledgeService *knowledgeservice.Service
+	// KnowledgeRemoteMountControllerManager 只保存用户明确选择的远端库入口。
+	KnowledgeRemoteMountControllerManager controllers.KnowledgeRemoteMountController
+	// KnowledgeEngine 拥有专属知识库和受管原件生命周期。
+	KnowledgeEngine *core.Engine
+	// KnowledgeControllerManager 仅持久化本机知识接入引用。
+	KnowledgeControllerManager controllers.KnowledgeController
 	// AgentCapabilities 只接纳当前执行授权，不接受桌面全局管理令牌。
 	AgentCapabilities *agentcapability.Registry
 	// EventHub 是当前 Core 生命周期内所有安全事件的窄路由器。
@@ -104,6 +124,10 @@ var (
 	ChannelThreadControllerManager controllers.ChannelThreadController
 	// ChannelTaskControllerManager 提供全局团队任务板和投递队列接口。
 	ChannelTaskControllerManager controllers.ChannelTaskController
+	// PluginAuthorizations 是各提供者唯一的共享身份、授权等待与工作占用装配。
+	PluginAuthorizations map[string]*authorization.Authorizer
+	// PluginControllerManager 保存插件资源、版本、共享配置和伙伴安装。
+	PluginControllerManager controllers.PluginController
 	// SkillControllerManager 提供全局技能包、版本和伙伴关系持久化接口。
 	SkillControllerManager controllers.SkillController
 	// MCPConnectorControllerManager 提供共享连接器和伙伴关系持久化接口。
@@ -124,7 +148,7 @@ var (
 	MemoryService *memory.Service
 )
 
-// Configuration 保存 NeuxAlly Core 的本地运行配置。
+// Configuration 保存 NeuxBot Core 的本地运行配置。
 type Configuration struct {
 	// Server 配置 ginx 的回环 HTTP 服务。
 	Server conf.Server `yaml:"server"`
@@ -136,6 +160,8 @@ type Configuration struct {
 	WorkflowPythonExecutable string `yaml:"workflowPythonExecutable"`
 	// DataDirectory 保存数据库、技能、独立账号数据及程序配置。
 	DataDirectory string `yaml:"-"`
+	// PluginResourcesDirectory 是构建交付的本地插件与固定程序目录。
+	PluginResourcesDirectory string `yaml:"-"`
 	// ManagedFilesDirectory 保存 Chat、Team、工作流和 IM 的受管文件，默认位于用户主目录。
 	ManagedFilesDirectory string `yaml:"-"`
 }
@@ -213,6 +239,16 @@ func Prepare(configuration *Configuration) error {
 			configuration.DataDirectory = temporaryDataDirectory
 		}
 	}
+	if configuration.PluginResourcesDirectory == "" {
+		configuration.PluginResourcesDirectory = strings.TrimSpace(os.Getenv("ALLY_PLUGIN_RESOURCES_DIR"))
+	}
+	if configuration.PluginResourcesDirectory == "" {
+		executable, err := os.Executable()
+		if err != nil {
+			return mapCoreError("resolve_plugin_resources", status_error.CoreDataDirectoryError, err)
+		}
+		configuration.PluginResourcesDirectory = filepath.Join(filepath.Dir(executable), "..", "plugins")
+	}
 	managedDirectory := strings.TrimSpace(os.Getenv("ALLY_MANAGED_FILES_DIR"))
 	if managedDirectory == "" {
 		home, err := os.UserHomeDir()
@@ -244,16 +280,25 @@ func Load(ctx context.Context, configuration *Configuration, handlerFactory sche
 	return runLoadSequence(
 		func() {
 			if err := Close(); err != nil {
-				logx.Errorf("rollback NeuxAlly Core initialization failed: error=%v", err)
+				logx.Errorf("rollback NeuxBot Core initialization failed: error=%v", err)
 			}
 		},
 		func() error { return loadDB(ctx, configuration) },
 		func() error { return cleanupSkillArtifacts(ctx, configuration) },
 		func() error { return loadBuiltinSkills(ctx, configuration) },
 		func() error { return loadMemory(ctx, configuration) },
+		func() error { return loadKnowledge(ctx, configuration) },
 		func() error { return loadRuntime(ctx) },
 		func() error { return loadChat(ctx, configuration, handlerFactory) },
 		func() error { return loadNotifications(ctx) },
+		func() error { return loadIntegrationAPI(ctx) },
+		func() error {
+			hub := EventHub
+			closePluginCatalog = catalog.Start(ctx, PluginCatalogSource(), filepath.Join(configuration.DataDirectory, "plugins", "catalog"), func() {
+				_ = events.Emit(hub, constants.PluginEventTopic, "plugins.changed", events.Resource{Kind: "global"}, nil)
+			})
+			return nil
+		},
 	)
 }
 
@@ -281,6 +326,7 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	EventHub = events.New()
 	AgentCapabilities = agentcapability.New(builtinskills.Guide)
 	DB = controllers.WithEventPublisher(database.DB, EventHub)
+	KnowledgeControllerManager = controllers.NewKnowledgeController(DB)
 	IMControllerManager = controllers.NewIMController(DB)
 	WakerControllerManager = controllers.NewWakerController(DB)
 	RolePresetControllerManager = controllers.NewRolePresetController(DB)
@@ -288,6 +334,7 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	TransactionControllerManager = controllers.NewTransactionController(
 		dbhelper.NewGormTransactionManager(DB),
 	)
+	loadIntegrationAuthorization()
 	ProjectSourceControllerManager = controllers.NewProjectSourceController(DB)
 	ProjectControllerManager = controllers.NewProjectController(DB)
 	WorkResultControllerManager = controllers.NewWorkResultController(DB)
@@ -301,11 +348,46 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	ChannelControllerManager = controllers.NewChannelController(DB)
 	ChannelThreadControllerManager = controllers.NewChannelThreadController(DB)
 	ChannelTaskControllerManager = controllers.NewChannelTaskController(DB)
+	PluginControllerManager = controllers.NewPluginController(DB, func() {
+		if PluginContents != nil {
+			if err := PluginContents.Collect(); err != nil {
+				logx.Warnf("collect plugin content after commit failed: %v", err)
+			}
+		}
+	})
+	PluginContents = plugins.NewContentStore(configuration.DataDirectory, func() ([]string, error) { return PluginControllerManager.ContentReferences(context.Background()) })
+	providerPath := func(provider, version, binary string) string {
+		if runtime.GOOS == "windows" {
+			binary += ".exe"
+		}
+		return filepath.Join(configuration.PluginResourcesDirectory, "providers", provider, version, runtime.GOOS+"-"+runtime.GOARCH, binary)
+	}
+	changed := func(provider string) func(authorization.Session) {
+		return func(authorization.Session) {
+			if EventHub != nil {
+				_ = events.Emit(EventHub, constants.PluginEventTopic, "plugins.changed", events.Resource{Kind: "global"}, map[string]string{"provider": provider})
+			}
+		}
+	}
+	PluginAuthorizations = map[string]*authorization.Authorizer{
+		constants.PluginProviderFeishu: feishu.New(feishu.Config{Binary: providerPath(constants.PluginProviderFeishu, constants.FeishuCLIVersion, "lark-cli"), ProfileDirectory: filepath.Join(configuration.DataDirectory, "plugins", "providers", constants.PluginProviderFeishu), Changed: changed(constants.PluginProviderFeishu)}),
+		constants.PluginProviderGitHub: github.New(github.Config{Binary: providerPath(constants.PluginProviderGitHub, constants.GitHubCLIVersion, "gh"), ProfileDirectory: filepath.Join(configuration.DataDirectory, "plugins", "providers", constants.PluginProviderGitHub), Changed: changed(constants.PluginProviderGitHub)}),
+	}
+	for _, auth := range PluginAuthorizations {
+		auth.Open(ctx)
+	}
+	PluginBridgeEnvironment = os.Environ()
+	PluginBridges = commandbridge.NewRegistry(ctx, func(id string) {
+		if EventHub != nil {
+			_ = events.Emit(EventHub, constants.PluginEventTopic, "plugins.changed", events.Resource{Kind: "plugin", ID: id}, nil)
+		}
+	})
+
 	SkillControllerManager = controllers.NewSkillController(DB)
 	MCPConnectorControllerManager = controllers.NewMCPConnectorController(DB)
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(DB)
 	AIAccountControllerManager = controllers.NewAIAccountController(DB)
-	AutomaticTaskControllerManager = controllers.NewAutomaticTaskController(DB)
+	AutomaticTaskControllerManager = IntegrationService.CoordinateTasks(controllers.NewAutomaticTaskController(DB))
 	AttentionNoticeControllerManager = controllers.NewAttentionNoticeController(DB)
 	WorkflowControllerManager = controllers.NewWorkflowController(DB)
 	WorkflowRunControllerManager = controllers.NewWorkflowRunController(DB)
@@ -434,6 +516,12 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		return mapCoreError("start_chat_service", status_error.CoreChatInitializationFailed, err)
 	}
 	executionCore, err := execution.New(execution.Config{
+		ValidateIntent: func(ctx context.Context, intent execution.WorkIntent) error {
+			if KnowledgeService == nil {
+				return nil
+			}
+			return KnowledgeService.ValidateWorkIntent(ctx, intent)
+		},
 		AcquireTeamChatInput: func(ctx context.Context, chatID string, userInput bool) (context.Context, func(), error) {
 			if ChannelService == nil {
 				return ctx, func() {}, nil
@@ -443,8 +531,17 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Agent: AgentCapabilities, Events: EventHub,
 		AgentEndpoint: "http://127.0.0.1:" + strconv.Itoa(configuration.Server.Port) + constants.AgentCLIPath,
 		AgentBinary:   agentBinaryPath(),
-		AgentBindings: func(chat models.Chat, executionID string, roots []string) []agentcapability.Binding {
+		AgentBindings: func(chat models.Chat, executionID string, roots []string, automaticRunID string) []agentcapability.Binding {
 			bindings := MemoryService.AgentBindings(memory.Context{RunID: executionID, ChatID: chat.ID, PartnerID: chat.WakerID, ProjectID: chat.ProjectID})
+			if KnowledgeService != nil {
+				knowledgeChat := chat
+				knowledgeChat.ActiveExecutionID = executionID
+				if automaticRunID != "" {
+					bindings = append(bindings, KnowledgeService.AutomaticBindings(context.Background(), knowledgeChat, automaticRunID)...)
+				} else {
+					bindings = append(bindings, KnowledgeService.AgentBindings(context.Background(), knowledgeChat)...)
+				}
+			}
 			if IMService != nil {
 				bindings = append(bindings, IMService.AgentBindings(chat, executionID, roots, EventHub)...)
 			}
@@ -458,6 +555,8 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Profiles:            ProfileDocumentControllerManager,
 		Projects:            ProjectControllerManager,
 		Skills:              SkillControllerManager,
+		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Authorizers: PluginAuthorizations, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment}),
+		PluginContents:      PluginContents, Plugins: PluginControllerManager, PluginAuthorizers: PluginAuthorizations, PluginLauncher: coreExecutablePath(),
 		Connectors:          MCPConnectorControllerManager,
 		RuntimeEnvironments: RuntimeEnvironmentControllerManager,
 		SkillDataDirectory:  configuration.DataDirectory,
@@ -467,10 +566,16 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		return mapCoreError("initialize_execution_service", status_error.CoreChatInitializationFailed, err)
 	}
 	ExecutionService = executionCore
+	libraryEmbeddings := knowledgebridge.LibraryEmbeddings{Engine: KnowledgeEngine, References: KnowledgeControllerManager}
+	KnowledgeService = knowledgeservice.New(knowledgeservice.Config{AutomaticRun: AutomaticTaskControllerManager.GetRun, InvocationGuard: IntegrationService.AcquireInvocationGuard, IntegrationGuard: IntegrationService.RestoreKnowledgeGuard, IntegrationPublicationGuard: IntegrationService.RestoreKnowledgeGuards, ResolveModel: resolveKnowledgeModel, Generator: newKnowledgeModelGenerator, FreezeEmbedder: libraryEmbeddings.Freeze, Connections: KnowledgeConnectionControllerManager, Engine: KnowledgeEngine, References: KnowledgeControllerManager, Projects: ProjectControllerManager, Chats: ChatService, Events: EventHub})
+	if err := KnowledgeService.Start(ctx); err != nil {
+		return err
+	}
 	if err := ExecutionService.Open(ctx); err != nil {
 		return mapCoreError("open_execution_service", status_error.CoreChatInitializationFailed, err)
 	}
 	channelModule, err := channelservice.New(channelservice.Config{
+		AutomaticRun:        AutomaticTaskControllerManager.GetRun,
 		Commands:            controllers.NewAgentCommandController(DB),
 		PrepareDirectResult: ChatService.PrepareParticipantResult,
 		Results:             WorkResultControllerManager,
@@ -522,16 +627,22 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		DataDirectory:    configuration.ManagedFilesDirectory,
 		Projects:         ProjectControllerManager,
 	})
-	ScheduleService = schedule.New(schedule.Config{
-		Workflows:    WorkflowService,
-		WorkflowRuns: WorkflowRunControllerManager,
-		APIHandler:   handlerFactory,
-		Tasks:        AutomaticTaskControllerManager, Transactions: TransactionControllerManager,
+	scheduleConfig := schedule.Config{AuthorizationWrite: IntegrationService.WithAuthorizationWrite,
+		BindKnowledge: KnowledgeService.BindIntent,
+		Workflows:     WorkflowService,
+		WorkflowRuns:  WorkflowRunControllerManager,
+		APIHandler:    handlerFactory,
+		Tasks:         AutomaticTaskControllerManager, Transactions: TransactionControllerManager,
 		Wakers: WakerControllerManager, Projects: ProjectControllerManager,
 		Executions: ExecutionService, Chats: chatModule, DataDirectory: configuration.DataDirectory,
 		ManagedFilesDirectory: configuration.ManagedFilesDirectory,
 		Teams:                 ChannelService, Channels: ChannelControllerManager, Threads: ChannelThreadControllerManager, TeamTasks: ChannelTaskControllerManager,
+	}
+	IntegrationAPIListener = integrationapi.NewListener(configuration.DataDirectory, func(address string) http.Handler {
+		return handlerFactory(ScheduleService, scheduleConfig, address)
 	})
+	scheduleConfig.APIListener = IntegrationAPIListener
+	ScheduleService = schedule.New(scheduleConfig)
 	if err := WorkflowService.Start(ctx); err != nil {
 		return err
 	}
@@ -546,7 +657,18 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 
 // Close 按依赖逆序停止后台流程并关闭数据库连接。
 func Close() error {
+	closeIntegrationAPI()
 	var result error
+	KnowledgeConnectionControllerManager = nil
+	KnowledgeRemoteMountControllerManager = nil
+	if KnowledgeService != nil {
+		KnowledgeService.Close()
+		KnowledgeService = nil
+	}
+	if closePluginCatalog != nil {
+		closePluginCatalog()
+		closePluginCatalog = nil
+	}
 	if AgentCapabilities != nil {
 		AgentCapabilities.Close()
 		AgentCapabilities = nil
@@ -580,6 +702,14 @@ func Close() error {
 		ExecutionService.Close()
 		ExecutionService = nil
 	}
+	for _, auth := range PluginAuthorizations {
+		auth.Close()
+	}
+	PluginAuthorizations = nil
+	if PluginBridges != nil {
+		PluginBridges.Close()
+		PluginBridges = nil
+	}
 	if ChatService != nil {
 		ChatService.Close()
 		ChatService = nil
@@ -602,6 +732,12 @@ func Close() error {
 		}
 		cancelClose()
 		RuntimeSDK = nil
+	}
+	if KnowledgeEngine != nil {
+		if err := KnowledgeEngine.Close(); err != nil && result == nil {
+			result = knowledgebridge.MapError(err)
+		}
+		KnowledgeEngine = nil
 	}
 	if MemoryService != nil {
 		MemoryService.Close()
@@ -670,4 +806,47 @@ func agentBinaryPath() string {
 		filename += ".exe"
 	}
 	return filepath.Join(filepath.Dir(executable), filename)
+}
+
+// coreExecutablePath 只使用当前受管 Core 的真实可执行文件。
+func coreExecutablePath() string {
+	value, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return value
+}
+
+// PluginBridges 管理声明驱动的唯一插件身份。
+var PluginBridges *commandbridge.Registry
+
+// PluginBridgeEnvironment 只包含固定受信程序资产。
+var PluginBridgeEnvironment []string
+
+// PluginContents 保存当前 Core 的短期内容使用计数。
+var PluginContents *plugins.ContentStore
+
+// loadKnowledge 打开独立知识数据库，不启动模型或第二套执行宿主。
+func loadKnowledge(ctx context.Context, configuration *Configuration) error {
+	KnowledgeConnectionControllerManager = controllers.NewKnowledgeConnectionController(DB)
+	KnowledgeRemoteMountControllerManager = controllers.NewKnowledgeRemoteMountController(DB)
+	if KnowledgeControllerManager != nil {
+		if err := KnowledgeControllerManager.RecoverRemoteSending(ctx); err != nil {
+			return err
+		}
+	}
+	var err error
+	KnowledgeEngine, err = knowledgebridge.Open(ctx, configuration.DataDirectory, configuration.ManagedFilesDirectory)
+	return err
+}
+
+// closePluginCatalog 取消并等待启动时的目录更新，先于事件通道关闭。
+var closePluginCatalog func()
+
+// PluginCatalogSource 返回HTTP分发入口；显式本地目录用于镜像与测试。
+func PluginCatalogSource() string {
+	if value := strings.TrimSpace(os.Getenv("ALLY_PLUGIN_CATALOG_URL")); value != "" {
+		return value
+	}
+	return constants.PluginCatalogHTTPSource
 }

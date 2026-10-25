@@ -11,17 +11,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/codexoauth"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -127,6 +128,120 @@ func mustEncodeCredential(t *testing.T, credential codexCredential) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+func TestSubscriptionConcurrentRefreshPersistsBeforeReturningAndRejectsStaleProjection(t *testing.T) {
+	service, account, original := subscriptionFixture(t)
+	var refreshes atomic.Int32
+	next := subscriptionTokens("user", "refresh-new")
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		refreshes.Add(1)
+		_ = r.ParseForm()
+		if r.Form.Get("refresh_token") != original.Tokens.RefreshToken {
+			t.Error("刷新服务收到已轮换令牌")
+		}
+		_ = json.NewEncoder(w).Encode(next)
+	}))
+	defer endpoint.Close()
+	service.oauth.Origin = endpoint.URL
+	firstWorkspace := t.TempDir()
+	first, releaseFirst, err := service.Prepare(context.Background(), account.ID, constants.RuntimeIDCodex, firstWorkspace, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseFirst()
+	second, releaseSecond, err := service.PrepareQueued(context.Background(), account.ID, constants.RuntimeIDCodex, t.TempDir(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseSecond()
+	if first.RefreshCredentials == nil || second.RefreshCredentials == nil {
+		t.Fatal("账号刷新权威没有交付 Runtime")
+	}
+	var group sync.WaitGroup
+	for _, refresh := range []codexoauth.RefreshFunc{first.RefreshCredentials, second.RefreshCredentials, first.RefreshCredentials, second.RefreshCredentials} {
+		group.Add(1)
+		go func(refresh codexoauth.RefreshFunc) {
+			defer group.Done()
+			tokens, err := refresh(context.Background(), original.Tokens.RefreshToken)
+			if err != nil || tokens.RefreshToken != next.RefreshToken {
+				t.Errorf("并发刷新失败: %v", err)
+				return
+			}
+			encoded, err := service.accounts.Credential(context.Background(), account.ID)
+			var saved codexCredential
+			if err != nil || json.Unmarshal([]byte(encoded), &saved) != nil || saved.Tokens.RefreshToken != next.RefreshToken {
+				t.Error("返回新令牌前没有持久化")
+			}
+		}(refresh)
+	}
+	group.Wait()
+	if refreshes.Load() != 1 {
+		t.Fatalf("重复刷新同一旧令牌: %d", refreshes.Load())
+	}
+	// 模拟较早执行晚结束，时间戳较新也不能覆盖账号权威已轮换的令牌。
+	stale := codexLiveAuth{LastRefresh: time.Now().Add(time.Hour), Tokens: codexLiveTokens{IDToken: original.Tokens.IDToken, AccessToken: original.Tokens.AccessToken, RefreshToken: "stale-projection", AccountID: original.Tokens.AccountID()}}
+	data, _ := json.Marshal(stale)
+	if err := accountconfig.WriteFile(filepath.Join(accountconfig.Home(firstWorkspace, constants.RuntimeIDCodex), "auth.json"), data); err != nil {
+		t.Fatal(err)
+	}
+	releaseFirst()
+	releaseSecond()
+	encoded, err := service.accounts.Credential(context.Background(), account.ID)
+	var saved codexCredential
+	if err != nil || json.Unmarshal([]byte(encoded), &saved) != nil || saved.Tokens.RefreshToken != next.RefreshToken {
+		t.Fatal("旧执行覆盖了最新认证")
+	}
+}
+
+func TestSubscriptionCredentialWaitCanBeCancelledWithoutReleasingOtherOwner(t *testing.T) {
+	service, account, _ := subscriptionFixture(t)
+	unlock, err := service.credentialGate(account.ID).Lock(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, _, err := service.Prepare(ctx, account.ID, constants.RuntimeIDCodex, t.TempDir(), ""); !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, status_error.DatabaseOperationCancelled) {
+		t.Fatalf("准备未响应取消: %v", err)
+	}
+	if _, err := service.refreshSubscription(ctx, account.ID, "old"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("刷新未响应取消: %v", err)
+	}
+	// 取消的准备不能泄漏共享执行租约。
+	release, err := service.Exclusive(account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+}
+
+// subscriptionTransportFunc 在不访问网络的前提下控制认证响应与取消的先后顺序。
+type subscriptionTransportFunc func(*http.Request) (*http.Response, error)
+
+func (f subscriptionTransportFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestSubscriptionRefreshPersistsReceivedRotationAfterCallerCancellation(t *testing.T) {
+	service, account, original := subscriptionFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	next := subscriptionTokens("user", "rotation-before-cancel")
+	service.oauth.HTTP = &http.Client{Transport: subscriptionTransportFunc(func(r *http.Request) (*http.Response, error) {
+		data, _ := json.Marshal(next)
+		// 服务端已经产生新令牌，调用方随即取消；本地不能丢弃已收到的轮换结果。
+		cancel()
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(data)))}, nil
+	})}
+	_, err := service.refreshSubscription(ctx, account.ID, original.Tokens.RefreshToken)
+	if err != nil {
+		t.Fatalf("已收到的令牌轮换因取消而丢失: %v", err)
+	}
+	encoded, err := service.accounts.Credential(context.Background(), account.ID)
+	var saved codexCredential
+	if err != nil || json.Unmarshal([]byte(encoded), &saved) != nil || saved.Tokens.RefreshToken != next.RefreshToken {
+		t.Fatal("取消后没有保存已接收的新令牌")
+	}
 }
 
 func TestCancelLoginInterruptsPollAndPreservesPreviousAccount(t *testing.T) {

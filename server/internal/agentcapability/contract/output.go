@@ -21,6 +21,40 @@ func outputSchema(id string) map[string]any {
 		return object("items", "total", "pageNum", "pageSize", "nextCursor")
 	case "im.deliveries.create", "im.deliveries.get":
 		return object("deliveryId", "state", "errorCode", "partsSent", "createdAt")
+	case "knowledge.jobs.start":
+		return object("receipt", "noop")
+	case "knowledge.libraries.list":
+		return object("items", "total")
+	case "knowledge.pages.search":
+		return object("ref", "items", "total", "chunks", "retrievalMode")
+	case "knowledge.pages.get":
+		return object("ref", "page")
+	case "knowledge.sources.get":
+		return object("ref", "source")
+	case "knowledge.libraries.get":
+		return object("ref", "library")
+	case "knowledge.sources.list":
+		return object("ref", "items", "total", "versioning")
+	case "knowledge.pages.list", "knowledge.revisions.list", "knowledge.jobs.list":
+		return object("ref", "items", "total")
+	case "knowledge.sources.read":
+		return object("ref", "source", "items", "total", "offset", "nextOffset", "hasMore", "truncated")
+	case "knowledge.themes.list":
+		return object("ref", "items")
+	case "knowledge.index.get":
+		return object("ref", "index")
+	case "knowledge.revisions.get":
+		return object("ref", "revision")
+	case "knowledge.jobs.get":
+		return object("ref", "job")
+	case "knowledge.audit.get":
+		return object("ref", "audit")
+	case "knowledge.activity.list":
+		return object("ref", "items", "nextCursor")
+	case "knowledge.export.get":
+		return object("ref", "export")
+	case "knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.revisions.restore", "knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry":
+		return object("ref", "receipt")
 	case "workflow.source.get":
 		return object("workflowId", "revisionId", "currentRevisionId", "source", "sourceDigest", "sdkVersion")
 	case "workflow.source.validate":

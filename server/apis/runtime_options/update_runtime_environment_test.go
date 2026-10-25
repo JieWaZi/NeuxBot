@@ -3,8 +3,8 @@ package runtime_options
 import (
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestConfigurationRequiresDetectRefreshOnlyForLaunchChanges(t *testing.T) {
@@ -48,16 +48,13 @@ func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.
 		name string
 		// change 修改所选智能体的真实探测与默认配置。
 		change func(*models.RuntimeEnvironment)
-		// pending 表示本次启动的后台探测尚未结束。
-		pending bool
-		// failed 表示本次启动探测存在未恢复的持久化失败。
-		failed bool
 		// allowed 表示是否允许解除首次引导。
 		allowed bool
 	}{
 		{name: "模型与权限就绪", allowed: true},
-		{name: "探测尚未结束", pending: true},
-		{name: "探测失败", failed: true},
+		{name: "所选智能体探测未就绪", change: func(environment *models.RuntimeEnvironment) {
+			environment.Detection.State = runtimes.DetectionStateUnavailable
+		}},
 		{name: "尚未设为默认", change: func(environment *models.RuntimeEnvironment) {
 			environment.IsDefault = false
 		}},
@@ -83,7 +80,7 @@ func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.
 			if test.change != nil {
 				test.change(&environment)
 			}
-			if got := canCompleteStartupSetup(environment, test.pending, test.failed); got != test.allowed {
+			if got := canCompleteStartupSetup(environment); got != test.allowed {
 				t.Fatalf("canCompleteStartupSetup() = %v, want %v", got, test.allowed)
 			}
 		})

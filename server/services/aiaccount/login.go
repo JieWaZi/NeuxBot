@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/codexoauth"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // Login 保存前端完成设备授权需要的非秘密信息。
@@ -362,27 +362,107 @@ func (s *Service) prepareSubscription(ctx context.Context, account *models.AIAcc
 		}
 		credential = codexCredential{Tokens: refreshed, LastRefresh: time.Now().UTC()}
 	}
+	latest, _ := json.Marshal(credential)
+	// 令牌可能已在服务端轮换；即使调用方取消或投射目录失败，也先保存已收到的结果。
+	persistContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := s.accounts.StoreCredential(persistContext, account.ID, account.Revision, string(latest), ""); err != nil {
+		return err
+	}
+	account.Revision++
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	home, homeErr := accountconfig.EnsureHome(workspace, constants.RuntimeIDCodex)
 	if homeErr != nil {
 		return homeErr
 	}
 	path := filepath.Join(home, "auth.json")
-	latest, _ := json.Marshal(credential)
-	// 先持久化最新令牌，再投射文件；文件失败时不把旧文件关联到新凭据。
-	if err := s.accounts.StoreCredential(ctx, account.ID, account.Revision, string(latest), ""); err != nil {
-		return err
-	}
-	account.Revision++
 	live := codexLiveAuth{LastRefresh: credential.LastRefresh, Tokens: codexLiveTokens{IDToken: credential.Tokens.IDToken, AccessToken: credential.Tokens.AccessToken, RefreshToken: credential.Tokens.RefreshToken, AccountID: credential.Tokens.AccountID()}}
 	data, _ := json.Marshal(live)
 	if err := accountconfig.WriteFile(path, data); err != nil {
 		return err
 	}
-	if err := s.accounts.StoreCredential(ctx, account.ID, account.Revision, string(latest), path); err != nil {
+	return nil
+}
+
+// refreshSubscription 合并同一旧令牌的并发刷新，并在返回原生进程前保存新凭据。
+func (s *Service) refreshSubscription(ctx context.Context, id, previous string) (codexoauth.Tokens, error) {
+	unlock, err := s.credentialGate(id).Lock(ctx)
+	if err != nil {
+		return codexoauth.Tokens{}, err
+	}
+	defer unlock()
+	account, err := s.accounts.Get(ctx, id)
+	if err != nil {
+		return codexoauth.Tokens{}, err
+	}
+	encoded, err := s.accounts.Credential(ctx, id)
+	if err != nil {
+		return codexoauth.Tokens{}, err
+	}
+	var credential codexCredential
+	if json.Unmarshal([]byte(encoded), &credential) != nil || !credential.Tokens.Valid() {
+		return codexoauth.Tokens{}, status_error.AIAccountCredentialError
+	}
+	if credential.Tokens.RefreshToken != previous {
+		return credential.Tokens, nil
+	}
+	tokens, err := s.oauth.Refresh(ctx, credential.Tokens)
+	if err != nil {
+		return codexoauth.Tokens{}, err
+	}
+	if tokens.AccountID() != credential.Tokens.AccountID() {
+		return codexoauth.Tokens{}, status_error.AIAccountCredentialError
+	}
+	data, _ := json.Marshal(codexCredential{Tokens: tokens, LastRefresh: time.Now().UTC()})
+	persistContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	if err := s.accounts.StoreCredential(persistContext, id, account.Revision, string(data), ""); err != nil {
+		return codexoauth.Tokens{}, err
+	}
+	return tokens, nil
+}
+
+// backfillProjection 只回收本次投射，账号已产生新凭据时拒绝旧执行覆盖。
+func (s *Service) backfillProjection(ctx context.Context, id, path, seed string) error {
+	unlock, err := s.credentialGate(id).Lock(ctx)
+	if err != nil {
 		return err
 	}
-	account.Revision++
-	return nil
+	defer unlock()
+	account, err := s.accounts.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	encoded, err := s.accounts.Credential(ctx, id)
+	if err != nil {
+		return err
+	}
+	if encoded != seed {
+		return nil
+	}
+	var credential codexCredential
+	if json.Unmarshal([]byte(encoded), &credential) != nil {
+		return status_error.AIAccountCredentialError
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return status_error.AIAccountCredentialError
+	}
+	var live codexLiveAuth
+	if json.Unmarshal(data, &live) != nil {
+		return status_error.AIAccountCredentialError
+	}
+	tokens := codexoauth.Tokens{IDToken: live.Tokens.IDToken, AccessToken: live.Tokens.AccessToken, RefreshToken: live.Tokens.RefreshToken}
+	if !tokens.Valid() || tokens.Identity() != credential.Tokens.Identity() || tokens.AccountID() != credential.Tokens.AccountID() || tokens.AccountID() != live.Tokens.AccountID {
+		return status_error.AIAccountCredentialError
+	}
+	if !live.LastRefresh.After(credential.LastRefresh) {
+		return nil
+	}
+	latest, _ := json.Marshal(codexCredential{Tokens: tokens, LastRefresh: live.LastRefresh})
+	return s.accounts.StoreCredential(ctx, id, account.Revision, string(latest), "")
 }
 
 // recoverWorkspaceAuth 在覆盖认证文件前回收旧账号，失败时阻止本次切换。

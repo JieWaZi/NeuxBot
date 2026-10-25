@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -53,25 +53,35 @@ func (u *UpdateProject) Output(ctx *gin.Context) (interface{}, error) {
 	project.Name = u.Body.Name
 	project.Brief = u.Body.Brief
 	project.UpdatedAt = now
-	err = global.TransactionControllerManager.Transaction(ctx, func(transactionContext context.Context) error {
-		for index := range directories {
-			directories[index].Source.UpdatedAt = now
-			if ensureErr := global.ProjectSourceControllerManager.Ensure(
-				transactionContext,
-				directories[index].Source,
-			); ensureErr != nil {
-				return ensureErr
+	run := func() error {
+		return global.TransactionControllerManager.Transaction(ctx, func(transactionContext context.Context) error {
+			for index := range directories {
+				directories[index].Source.UpdatedAt = now
+				if ensureErr := global.ProjectSourceControllerManager.Ensure(
+					transactionContext,
+					directories[index].Source,
+				); ensureErr != nil {
+					return ensureErr
+				}
 			}
-		}
-		if updateErr := global.ProjectControllerManager.Update(transactionContext, project); updateErr != nil {
-			return updateErr
-		}
-		return global.ProjectControllerManager.ReplaceDirectories(
-			transactionContext,
-			project.ID,
-			directories,
-		)
-	})
+			if updateErr := global.ProjectControllerManager.Update(transactionContext, project); updateErr != nil {
+				return updateErr
+			}
+			if err := global.ProjectControllerManager.ReplaceDirectories(
+				transactionContext,
+				project.ID,
+				directories,
+			); err != nil {
+				return err
+			}
+			return nil
+		})
+	}
+	if global.KnowledgeService != nil {
+		err = global.KnowledgeService.WithPolicyWrite(run)
+	} else {
+		err = run()
+	}
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

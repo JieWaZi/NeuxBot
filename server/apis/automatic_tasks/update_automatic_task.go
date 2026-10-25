@@ -1,8 +1,8 @@
 package automatic_tasks
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -36,6 +36,6 @@ func (o *UpdateAutomaticTask) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	// 切换到 API 后需要返回新密钥收据。
-	return result, nil
+	// API 触发类型同样使用集成 Key，不随任务编辑颁发凭据。
+	return AutomaticTaskReference{TaskID: result.TaskID}, nil
 }

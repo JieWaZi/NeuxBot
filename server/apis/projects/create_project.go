@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -57,26 +57,36 @@ func (c *CreateProject) Output(ctx *gin.Context) (interface{}, error) {
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
-	err = global.TransactionControllerManager.Transaction(ctx, func(transactionContext context.Context) error {
-		for index := range directories {
-			directories[index].Source.CreatedAt = now
-			directories[index].Source.UpdatedAt = now
-			if ensureErr := global.ProjectSourceControllerManager.Ensure(
-				transactionContext,
-				directories[index].Source,
-			); ensureErr != nil {
-				return ensureErr
+	run := func() error {
+		return global.TransactionControllerManager.Transaction(ctx, func(transactionContext context.Context) error {
+			for index := range directories {
+				directories[index].Source.CreatedAt = now
+				directories[index].Source.UpdatedAt = now
+				if ensureErr := global.ProjectSourceControllerManager.Ensure(
+					transactionContext,
+					directories[index].Source,
+				); ensureErr != nil {
+					return ensureErr
+				}
 			}
-		}
-		if createErr := global.ProjectControllerManager.Create(transactionContext, project); createErr != nil {
-			return createErr
-		}
-		return global.ProjectControllerManager.ReplaceDirectories(
-			transactionContext,
-			project.ID,
-			directories,
-		)
-	})
+			if createErr := global.ProjectControllerManager.Create(transactionContext, project); createErr != nil {
+				return createErr
+			}
+			if err := global.ProjectControllerManager.ReplaceDirectories(
+				transactionContext,
+				project.ID,
+				directories,
+			); err != nil {
+				return err
+			}
+			return nil
+		})
+	}
+	if global.KnowledgeService != nil {
+		err = global.KnowledgeService.WithPolicyWrite(run)
+	} else {
+		err = run()
+	}
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

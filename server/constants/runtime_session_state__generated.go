@@ -53,7 +53,7 @@ func (v RuntimeSessionState) Values() []enum.Enum {
 }
 
 func (v RuntimeSessionState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.RuntimeSessionState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.RuntimeSessionState"
 }
 
 func (v RuntimeSessionState) MarshalText() ([]byte, error) {

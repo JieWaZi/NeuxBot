@@ -10,13 +10,12 @@ import {
   shell,
 } from "electron";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import { appendFile, mkdir } from "node:fs/promises";
 import { CoreSupervisor } from "./core-supervisor";
 import { installDesktopServices } from "./desktop-services";
 import { configureApplicationIcon } from "./application-icon";
 import { createApplicationLifecycle } from "./application-lifecycle";
-import { rendererFile, rendererCSP } from "./renderer-protocol";
+import { rendererResponse } from "./renderer-protocol";
 import { installIMPowerLifecycle } from "./im-power-lifecycle";
 import { createCoreEvents } from "./core-events";
 import type { CoreEventClient } from "../shared/core-event-client";
@@ -34,7 +33,7 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
-app.setName("NeuxAlly");
+app.setName("NeuxBot");
 // 桌面会话存储与 Core 数据分别拥有目录，Core 延续应用标识对应的数据位置。
 const dataDir =
   process.env.ALLY_DATA_DIR ||
@@ -73,7 +72,7 @@ async function createWindow(): Promise<BrowserWindow> {
   if (development && new URL(rendererURL).origin !== "http://127.0.0.1:1420")
     throw new Error("开发页面地址无效");
   const current = new BrowserWindow({
-    title: "NeuxAlly",
+    title: "NeuxBot",
     width: 1280,
     height: 820,
     minWidth: 900,
@@ -153,14 +152,9 @@ else {
       const dist = path.join(__dirname, "../dist");
       protocol.handle("ally", async (request) => {
         try {
-          const target = await rendererFile(dist, request.url);
-          const response = await net.fetch(pathToFileURL(target).href);
-          const headers = new Headers(response.headers);
-          headers.set("Content-Security-Policy", await rendererCSP(target));
-          return new Response(response.body, {
-            status: response.status,
-            headers,
-          });
+          return await rendererResponse(dist, request.url, (url) =>
+            net.fetch(url),
+          );
         } catch {
           return new Response("Not found", { status: 404 });
         }
@@ -188,9 +182,20 @@ else {
         dataDir,
         env: {
           ...process.env,
+          ALLY_PLUGIN_RESOURCES_DIR: app.isPackaged
+            ? path.join(process.resourcesPath, "plugins")
+            : path.join(__dirname, "../resources/plugins"),
+          ALLY_TERMINAL_RUNTIME_PATH: app.isPackaged
+            ? path.join(process.resourcesPath, "terminal-runtime", "worker.cjs")
+            : path.join(
+                __dirname,
+                "../../resources/terminal-runtime/worker.cjs",
+              ),
+          ALLY_TERMINAL_NODE_PATH: process.execPath,
+          ALLY_TERMINAL_ELECTRON_NODE: "1",
           PI_MCP_MODULE_PATH: app.isPackaged
             ? path.join(process.resourcesPath, "pi-bridge", "bridge.mjs")
-            : path.join(__dirname, "../resources/pi-bridge/bridge.mjs"),
+            : path.join(__dirname, "../../resources/pi-bridge/bridge.mjs"),
         },
         log,
       });

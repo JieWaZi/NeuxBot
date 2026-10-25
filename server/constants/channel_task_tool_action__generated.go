@@ -65,7 +65,7 @@ func (v ChannelTaskToolAction) Values() []enum.Enum {
 }
 
 func (v ChannelTaskToolAction) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ChannelTaskToolAction"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ChannelTaskToolAction"
 }
 
 func (v ChannelTaskToolAction) MarshalText() ([]byte, error) {

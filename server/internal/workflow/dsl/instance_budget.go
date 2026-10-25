@@ -3,8 +3,8 @@ package dsl
 import (
 	"fmt"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // ValidateInstanceBudget 拒绝连最少正常执行路径都无法容纳的实例预算。

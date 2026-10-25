@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // capabilityDetector 记录能力查询是否在租约释放后才启动原生探测。
@@ -23,11 +23,11 @@ func (d capabilityDetector) Detect(context.Context, runtimes.DetectRequest) runt
 	return runtimes.DetectionResult{State: runtimes.DetectionStateReady}
 }
 
-func TestCapabilityQueryWaitsForSubscriptionUseAndCanBeCancelled(t *testing.T) {
+func TestCapabilityQueryWaitsForAccountMutationAndCanBeCancelled(t *testing.T) {
 	for _, cancelQuery := range []bool{false, true} {
 		t.Run(map[bool]string{false: "release", true: "cancel"}[cancelQuery], func(t *testing.T) {
 			service, account, _ := subscriptionFixture(t)
-			_, release, err := service.Prepare(context.Background(), account.ID, constants.RuntimeIDCodex, t.TempDir(), "")
+			release, err := service.Exclusive(account.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -44,7 +44,7 @@ func TestCapabilityQueryWaitsForSubscriptionUseAndCanBeCancelled(t *testing.T) {
 			case err := <-finished:
 				t.Fatalf("read-only capability query failed instead of waiting: %v", err)
 			case <-detector.called:
-				t.Fatal("query bypassed active subscription ownership")
+				t.Fatal("query bypassed active account mutation")
 			case <-time.After(30 * time.Millisecond):
 			}
 			if cancelQuery {

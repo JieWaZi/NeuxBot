@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	workflowtool "github.com/JieWaZi/NeuxAlly/server/internal/workflow/capability"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // retryWorker 控制真实派发边界的终态，实际身份与候选仍通过持久服务处理。

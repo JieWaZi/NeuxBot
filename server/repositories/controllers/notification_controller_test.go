@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -391,4 +391,31 @@ func TestNotificationQueryPlansUseCandidateIndexes(t *testing.T) {
 		t.Fatalf("IM dependencies must not scan terminal run history: %s", activeRuns)
 	}
 	t.Logf("latest failure plan:\n%s\nunread candidates plan:\n%s", latest, results)
+}
+
+// 历史整理收据不再进入铃铛、未读计数或通知分页。
+func TestLegacyKnowledgeDocumentResultsAreExcludedFromNotifications(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	for _, state := range []string{"processed", "failed"} {
+		row := models.WorkResultReceipt{OwnerKind: "knowledge_source", OwnerID: "source-" + state, LatestVersion: 3, AvailableAt: 10, Reference: models.WorkResultReference{}}
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+		// 模拟旧版本写入的 JSON；新模型不再声明这些交付字段。
+		if err := db.Exec("UPDATE work_result_receipts SET reference = ? WHERE owner_kind = ? AND owner_id = ?", `{"knowledgeSourceState":"`+state+`","knowledgeSourceName":"资料.md"}`, "knowledge_source", row.OwnerID).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	notices := NewNotificationController(db)
+	facts, err := notices.Snapshot(ctx)
+	if err != nil || facts.UnreadResultCount != 0 || facts.UnreadFailureCount != 0 || len(facts.UnreadPreview) != 0 {
+		t.Fatalf("整理收据仍产生通知: %+v %v", facts, err)
+	}
+	for _, source := range []string{"", "knowledge"} {
+		page, total, err := notices.List(ctx, NotificationQuery{Bucket: "unread", Source: source, Limit: 10})
+		if err != nil || total != 0 || len(page) != 0 {
+			t.Fatalf("page=%+v total=%d err=%v", page, total, err)
+		}
+	}
 }

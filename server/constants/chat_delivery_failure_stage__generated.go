@@ -41,7 +41,7 @@ func (v ChatDeliveryFailureStage) Values() []enum.Enum {
 }
 
 func (v ChatDeliveryFailureStage) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ChatDeliveryFailureStage"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ChatDeliveryFailureStage"
 }
 
 func (v ChatDeliveryFailureStage) MarshalText() ([]byte, error) {

@@ -9,22 +9,26 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/teamwork"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowfiles "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files"
-	workflowinput "github.com/JieWaZi/NeuxAlly/server/internal/workflow/input"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	channelservice "github.com/JieWaZi/NeuxAlly/server/services/channel"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
 // AdmissionCommand 提供所有入口共用的冻结机会接纳事实。
 type AdmissionCommand struct {
+	// IntegrationInvocation 固定最初集成调用；不能通过任务正文自报。
+	IntegrationInvocation *models.IntegrationInvocation
+	// AcquireAuthorization 仅在原子领取机会时取得短授权锁，网络与 Runtime 调用前释放。
+	AcquireAuthorization func(context.Context) (func(), error)
 	// Task 是在协调保护内读取和校验的当前任务。
 	Task models.AutomaticTask
 	// Source 区分定时、手动与本机 API 机会。
@@ -127,7 +131,7 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 	}
 	if !exists {
 		run = models.AutomaticRun{ID: util.New(), TaskID: task.ID, WakerID: task.WakerID, OccurrenceKey: occurrence, RequestHash: hash, Input: input,
-			Source: source, Configuration: task.AutomaticTaskConfiguration, ConfigurationRevision: task.ConfigurationVersion,
+			IntegrationInvocation: command.IntegrationInvocation, Source: source, Configuration: task.AutomaticTaskConfiguration, ConfigurationRevision: task.ConfigurationVersion,
 			ExecutionID: util.New(), Admission: constants.AutomaticRunAdmissionPending, ScheduledAt: scheduledAt, CreatedAt: now.UnixMilli(), UpdatedAt: now.UnixMilli()}
 		if run.Configuration.WorkflowID != "" {
 			if s.config.Workflows == nil {
@@ -144,7 +148,7 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 				return RunView{}, err
 			}
 			if source == constants.AutomaticRunSourceAPI {
-				if err := workflowfiles.ValidateAPIInputFiles(s.config.ManagedFilesDirectory, config.WorkflowID, task.ID, revision.Manifest.Meta.InputSchema, callArgs); err != nil {
+				if err := workflowfiles.ValidateAPIInputFiles(s.config.ManagedFilesDirectory, config.WorkflowID, task.ID, revision.Manifest.Meta.InputSchema, callArgs, invocationOwner(run.IntegrationInvocation)); err != nil {
 					return RunView{}, err
 				}
 			}
@@ -157,6 +161,19 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 		}
 	}
 	if task.ActiveRunID == "" {
+		authorizationRelease := func() {}
+		if command.IntegrationInvocation != nil {
+			if command.AcquireAuthorization == nil {
+				return RunView{}, status_error.IntegrationForbidden
+			}
+			authorizationRelease, err = command.AcquireAuthorization(ctx)
+			if err != nil {
+				return RunView{}, err
+			}
+			if authorizationRelease == nil {
+				return RunView{}, status_error.IntegrationForbidden
+			}
+		}
 		err = s.config.Transactions.Transaction(ctx, func(tx context.Context) error {
 			claimed, err := s.config.Tasks.ClaimRun(tx, task.ID, task.Revision, run.ID, next)
 			if err != nil {
@@ -170,6 +187,7 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 			}
 			return nil
 		})
+		authorizationRelease()
 		if err != nil {
 			return RunView{}, err
 		}
@@ -211,12 +229,22 @@ func (s *Service) Admit(ctx context.Context, command AdmissionCommand) (RunView,
 		defer release()
 		accepted, run.ThreadID, startErr = s.startTeam(ctx, run, content)
 	} else {
-		accepted, startErr = s.config.Executions.Start(ctx, execution.WorkIntent{
-			ClientRequestID: run.ID, ExecutionID: run.ExecutionID, Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
+		intent := execution.WorkIntent{
+			AutomaticRunID: run.ID, ClientRequestID: run.ID, ExecutionID: run.ExecutionID, Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
 			Chat:    execution.ChatTarget{Create: &execution.CreateChatSpec{WakerID: run.WakerID, ProjectID: run.Configuration.ProjectID, WorkingDirectory: run.Configuration.WorkingDirectory, HiddenFromWakerHistory: true}},
 			Input:   execution.WorkInput{Actor: constants.AutomaticTaskActor, Content: content},
 			Options: execution.WorkOptions{RuntimeID: run.Configuration.RuntimeID, AccountID: run.Configuration.AccountID, Model: run.Configuration.Model, Reasoning: run.Configuration.Reasoning, PermissionLevel: run.Configuration.PermissionLevel},
-		})
+		}
+		if run.Configuration.Knowledge != nil {
+			if s.config.BindKnowledge == nil {
+				startErr = status_error.KnowledgeUnsupported
+			} else {
+				intent, startErr = s.config.BindKnowledge(ctx, intent, *run.Configuration.Knowledge)
+			}
+		}
+		if startErr == nil {
+			accepted, startErr = s.config.Executions.Start(ctx, intent)
+		}
 	}
 	if startErr != nil {
 		// 首批事实可能已提交但响应失败。先以稳定身份对账，绝不创建第二个 Chat。
@@ -330,7 +358,7 @@ func (s *Service) rateAllowed(taskID string, now time.Time) bool {
 
 // startTeam 复用团队首发的幂等、成员快照和负责人编排，不额外建立独立伙伴会话。
 func (s *Service) startTeam(ctx context.Context, run models.AutomaticRun, content string) (execution.AcceptedExecution, string, error) {
-	result, err := s.config.Teams.SubmitMessage(ctx, channelservice.SubmitMessageInput{Create: &channelservice.CreateThreadInput{ChannelID: run.Configuration.ChannelID, ClientRequestID: run.ID, ExecutionID: run.ExecutionID, ProjectID: run.Configuration.ProjectID, WorkingDirectory: run.Configuration.WorkingDirectory, MemberConfigs: teamMemberOverrides(run.Configuration), Input: execution.WorkInput{Actor: constants.AutomaticTaskActor, Content: content}}})
+	result, err := s.config.Teams.SubmitMessage(ctx, channelservice.SubmitMessageInput{Create: &channelservice.CreateThreadInput{AutomaticRunID: run.ID, ChannelID: run.Configuration.ChannelID, ClientRequestID: run.ID, ExecutionID: run.ExecutionID, ProjectID: run.Configuration.ProjectID, WorkingDirectory: run.Configuration.WorkingDirectory, MemberConfigs: teamMemberOverrides(run.Configuration), Input: execution.WorkInput{Actor: constants.AutomaticTaskActor, Content: content}}})
 	if err != nil {
 		return execution.AcceptedExecution{}, "", err
 	}
@@ -481,7 +509,7 @@ func candidateWorkflowRunID(run models.AutomaticRun) string {
 }
 
 func (s *Service) startWorkflow(ctx context.Context, run *models.AutomaticRun) error {
-	accepted, err := s.config.Workflows.StartRun(ctx, workflow.StartRunCommand{DefinitionID: run.Configuration.WorkflowID, RequestID: run.ID, RevisionID: run.Configuration.WorkflowRevisionID, Args: run.WorkflowResolvedArgs, Defaults: workflowDefaults(run.Configuration), TriggerSource: string(run.Source), InputFileTaskID: run.TaskID})
+	accepted, err := s.config.Workflows.StartRun(ctx, workflow.StartRunCommand{AutomaticRunID: run.ID, DefinitionID: run.Configuration.WorkflowID, RequestID: run.ID, RevisionID: run.Configuration.WorkflowRevisionID, Args: run.WorkflowResolvedArgs, Defaults: workflowDefaults(run.Configuration), TriggerSource: string(run.Source), InputFileOwnerKeyID: invocationOwner(run.IntegrationInvocation), InputFileTaskID: run.TaskID})
 	if err != nil {
 		return err
 	}
@@ -688,4 +716,22 @@ func (s *Service) waitingForOperation(ctx context.Context, runID string) (bool, 
 		}
 	}
 	return false, nil
+}
+
+// IntegrationTask 只为完成集成 Key 认证的入口读取可发布任务；不代替任何凭据验证。
+func (s *Service) IntegrationTask(ctx context.Context, id string, invoke bool) (models.AutomaticTask, error) {
+	ctx, release := s.AcquireMutation(ctx)
+	defer release()
+	task, err := s.config.Tasks.Get(ctx, id)
+	if err != nil || task.Trigger != constants.AutomaticTaskTriggerAPI || task.Deleting || s.sealedWakers[task.WakerID] || (invoke && !task.Enabled) {
+		return models.AutomaticTask{}, status_error.AutomaticTaskNotFound
+	}
+	return task, nil
+}
+
+func invocationOwner(invocation *models.IntegrationInvocation) string {
+	if invocation == nil {
+		return ""
+	}
+	return invocation.Identity.KeyID
 }

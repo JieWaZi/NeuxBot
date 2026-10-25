@@ -4,9 +4,9 @@ import (
 	"encoding/base64"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	workflowfiles "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

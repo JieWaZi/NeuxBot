@@ -53,7 +53,7 @@ func (v WorkBoardState) Values() []enum.Enum {
 }
 
 func (v WorkBoardState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.WorkBoardState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.WorkBoardState"
 }
 
 func (v WorkBoardState) MarshalText() ([]byte, error) {

@@ -9,11 +9,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"io"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 
 	// ncruces/go-sqlite3 是 CGO-free 的 SQLite 驱动，仅 Memory 模块使用；
 	// luist18/sqlite-vec-go 为每个 ncruces 连接自动注册 sqlite-vec 扩展。

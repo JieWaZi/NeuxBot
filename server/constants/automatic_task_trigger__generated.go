@@ -41,7 +41,7 @@ func (v AutomaticTaskTrigger) Values() []enum.Enum {
 }
 
 func (v AutomaticTaskTrigger) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.AutomaticTaskTrigger"
+	return "github.com/JieWaZi/NeuxBot/server/constants.AutomaticTaskTrigger"
 }
 
 func (v AutomaticTaskTrigger) MarshalText() ([]byte, error) {

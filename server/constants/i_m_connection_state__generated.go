@@ -53,7 +53,7 @@ func (v IMConnectionState) Values() []enum.Enum {
 }
 
 func (v IMConnectionState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.IMConnectionState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.IMConnectionState"
 }
 
 func (v IMConnectionState) MarshalText() ([]byte, error) {

@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/teamwork"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // SubmitMessage 统一承接两个 HTTP 入口，并保证首次发送与续发严格互斥。
@@ -159,7 +159,7 @@ func (s *service) createThread(
 	if leadChatID == "" || leadConfig.WakerID == "" {
 		return ThreadResult{}, status_error.ChannelLeadInvalid
 	}
-	thread := models.ChannelThread{
+	thread := models.ChannelThread{AutomaticRunID: input.AutomaticRunID,
 		ID:                           threadID,
 		ChannelID:                    channel.ID,
 		ClientRequestID:              &requestIdentity.ID,
@@ -305,11 +305,11 @@ func (s *service) createThread(
 	workOptions.AccountID = leadConfig.AccountID
 
 	accepted, err := s.executions.Start(ctx, execution.WorkIntent{
-		ExecutionID: leadExecutionID,
-		Chat:        execution.ChatTarget{ChatID: leadChat.ID},
-		Input:       input.Input,
-		Options:     workOptions,
-		Admission:   constants.ExecutionAdmissionCommitBeforeDispatch,
+		AutomaticRunID: thread.AutomaticRunID, ExecutionID: leadExecutionID,
+		Chat:      execution.ChatTarget{ChatID: leadChat.ID},
+		Input:     input.Input,
+		Options:   workOptions,
+		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
 	})
 	if err != nil {
 		s.capabilities.Revoke(capabilityToken)

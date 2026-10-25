@@ -61,7 +61,7 @@ func (v MessageToolCategory) Values() []enum.Enum {
 }
 
 func (v MessageToolCategory) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MessageToolCategory"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MessageToolCategory"
 }
 
 func (v MessageToolCategory) MarshalText() ([]byte, error) {

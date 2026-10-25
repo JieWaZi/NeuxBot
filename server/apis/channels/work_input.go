@@ -3,9 +3,9 @@ package channels
 import (
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/apis/chats"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/apis/chats"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // 团队消息输入
@@ -18,6 +18,8 @@ type ChannelWorkInput struct {
 	Attachments []chats.MessageAttachment `json:"attachments" validate:"max=100,dive"`
 	// 技能列表
 	SkillIDs []string `json:"skillIds" validate:"max=100,dive,max=32"`
+	// 连接器列表
+	PluginIDs []string `json:"pluginIds,omitempty" validate:"max=100,dive,max=32"`
 	// 连接器列表
 	ConnectorIDs []string `json:"connectorIds" validate:"max=100,dive,max=32"`
 	// 代码引用
@@ -47,5 +49,6 @@ func (i ChannelWorkInput) workInput() execution.WorkInput {
 		CodeReferences: references,
 		SkillIDs:       append([]string(nil), i.SkillIDs...),
 		ConnectorIDs:   append([]string(nil), i.ConnectorIDs...),
+		PluginIDs:      append([]string(nil), i.PluginIDs...),
 	}
 }

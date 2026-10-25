@@ -16,6 +16,5 @@ func init() {
 	Router.Register(&DeleteAutomaticTask{})
 	Router.Register(&TriggerAutomaticTask{})
 	Router.Register(&ListAutomaticRuns{})
-	Router.Register(&RotateAutomaticTaskToken{})
 	Router.Register(&PreviewAutomaticSchedule{})
 }

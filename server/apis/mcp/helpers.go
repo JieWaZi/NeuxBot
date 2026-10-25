@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -13,12 +14,12 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/mozillazg/go-pinyin"
 )
 
@@ -27,6 +28,16 @@ func visibleConnector(
 	wakerID string,
 	connectorID string,
 ) (models.MCPConnectorWithState, error) {
+	if wakerID == "" {
+		connector, err := global.MCPConnectorControllerManager.Get(ctx, connectorID)
+		if err != nil {
+			return models.MCPConnectorWithState{}, err
+		}
+		if connector.OwnerWakerID != "" {
+			return models.MCPConnectorWithState{}, status_error.MCPConnectorNotFound
+		}
+		return models.MCPConnectorWithState{Connector: connector}, nil
+	}
 	if _, err := global.WakerControllerManager.Get(ctx, wakerID); err != nil {
 		return models.MCPConnectorWithState{}, err
 	}
@@ -48,26 +59,27 @@ func connectorResponses(
 	ctx context.Context,
 	items []models.MCPConnectorWithState,
 ) ([]ConnectorResponse, error) {
-	count, err := global.WakerControllerManager.Count(ctx, "")
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.Connector.ID)
+	}
+	counts, err := global.MCPConnectorControllerManager.InstalledCounts(ctx, ids)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]ConnectorResponse, 0, len(items))
 	for _, item := range items {
-		result = append(result, newConnectorResponse(item, count))
+		result = append(result, newConnectorResponse(item, counts[item.Connector.ID]))
 	}
 	return result, nil
 }
 
-func connectorResponse(
-	ctx context.Context,
-	item models.MCPConnectorWithState,
-) (ConnectorResponse, error) {
-	count, err := global.WakerControllerManager.Count(ctx, "")
+func connectorResponse(ctx context.Context, item models.MCPConnectorWithState) (ConnectorResponse, error) {
+	result, err := connectorResponses(ctx, []models.MCPConnectorWithState{item})
 	if err != nil {
 		return ConnectorResponse{}, err
 	}
-	return newConnectorResponse(item, count), nil
+	return result[0], nil
 }
 
 func newConnectorResponse(
@@ -81,6 +93,7 @@ func newConnectorResponse(
 	return ConnectorResponse{
 		Connector: ConnectorResource{
 			ID:               connector.ID,
+			OwnerWakerID:     connector.OwnerWakerID,
 			Name:             connector.Name,
 			Description:      connector.Description,
 			Scope:            connector.Scope,
@@ -104,7 +117,7 @@ func newConnectorResponse(
 		},
 		Enabled:            enabled,
 		AffectedWakerCount: affectedWakerCount,
-		Compatibility:      connectorCompatibility(connector.Transport),
+		Compatibility:      ConnectorCompatibility(connector.Transport),
 	}
 }
 
@@ -318,7 +331,8 @@ func clearTestSnapshot(connector *models.MCPConnector) {
 	connector.TestTools = []models.MCPToolSummary{}
 }
 
-func connectorCompatibility(
+// ConnectorCompatibility 按既有智能体传输规则生成公开结论，供独立和插件连接器共同展示。
+func ConnectorCompatibility(
 	transport constants.MCPTransport,
 ) []RuntimeCompatibility {
 	runtimeIDs := runtimes.BaseRuntimeIDs()
@@ -477,4 +491,16 @@ func runtimeKeySegments(name string) []string {
 	}
 	flushASCII()
 	return segments
+}
+
+// notifyResourceChanged 仅在对应资源写入生效后登记缓存失效。
+func notifyResourceChanged(ctx context.Context, id string) {
+	if global.EventHub == nil {
+		return
+	}
+	resource := events.Resource{Kind: "connector", ID: id}
+	if id == "" {
+		resource = events.Resource{Kind: "global"}
+	}
+	events.AfterCommit(ctx, func() { _ = events.Emit(global.EventHub, "resources", "resources.changed", resource, resource) })
 }

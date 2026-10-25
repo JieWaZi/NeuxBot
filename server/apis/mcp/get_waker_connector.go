@@ -23,17 +23,22 @@ func (g *GetWakerConnector) Path() string {
 
 // Output 返回连接器详情。
 func (g *GetWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
+	return getConnector(ctx, g)
+}
+
+// getConnector 复用相同资源用例，空伙伴范围表示全局库。
+func getConnector(ctx *gin.Context, g *GetWakerConnector) (ConnectorResponse, error) {
 	item, err := visibleConnector(
 		ctx,
 		strings.TrimSpace(g.WakerID),
 		strings.TrimSpace(g.ConnectorID),
 	)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
 	result, err := connectorResponse(ctx, item)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
 	return result, nil
 }

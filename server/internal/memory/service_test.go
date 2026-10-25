@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // fakeEmbedder 是测试用的确定性嵌入替身，按显式映射或首字符 one-hot 返回向量。
@@ -656,5 +656,82 @@ func TestRankedSearchJoinKeepsScopeAndOrder(t *testing.T) {
 	semantic, err := service.vectors.search(ctx, []float32{1, 0, 0}, 10, constants.MemoryScopePartner, mc.PartnerID)
 	if err != nil || len(semantic) != 2 || semantic[0].Memory.ID != first.Memory.ID || semantic[1].Memory.ID != second.Memory.ID || semantic[0].Score <= semantic[1].Score {
 		t.Fatalf("rank/scope query=%+v %v", semantic, err)
+	}
+}
+
+func TestFreezeEmbedderKeepsSelectedConfiguration(t *testing.T) {
+	ctx := context.Background()
+	service, err := NewService(ServiceConfig{DBPath: filepath.Join(t.TempDir(), "memory.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(service.Close)
+	if _, err := service.UpdateEmbeddingSettings(ctx, EmbeddingSettingsUpdate{
+		BaseURL: "https://embedding.example/v1/", Model: "model-a", APIKey: "old-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var frozenConfig EmbeddingConfig
+	embedder := newFakeEmbedder(3)
+	service.embedderFactory = func(config EmbeddingConfig) Embedder {
+		frozenConfig = config
+		return embedder
+	}
+	frozen, err := service.FreezeEmbedder(ctx, "model-a")
+	if err != nil || frozen.ModelID != "model-a" || frozen.Fingerprint == "" || frozen.Embed == nil {
+		t.Fatalf("freeze: %+v %v", frozen, err)
+	}
+	if _, err := service.UpdateEmbeddingSettings(ctx, EmbeddingSettingsUpdate{
+		BaseURL: "https://other.example/v1", Model: "model-b", APIKey: "new-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	vectors, err := frozen.Embed(ctx, []string{"original input"})
+	if err != nil || len(vectors) != 1 || len(vectors[0]) != 3 {
+		t.Fatalf("embed: %v %v", vectors, err)
+	}
+	if frozenConfig.BaseURL != "https://embedding.example/v1" || frozenConfig.Model != "model-a" || frozenConfig.APIKey != "old-key" {
+		t.Fatal("frozen embedder did not retain the selected configuration")
+	}
+	if _, err := service.FreezeEmbedder(ctx, "model-a"); !errors.Is(err, status_error.MemoryEmbeddingConflict) {
+		t.Fatalf("changed model should reject the old selection: %v", err)
+	}
+}
+
+func TestFreezeEmbedderFingerprintIdentifiesVectorSpace(t *testing.T) {
+	ctx := context.Background()
+	service := newTestService(t, semanticConfig, newFakeEmbedder(3))
+	current := semanticConfig
+	service.configSource = func(context.Context) (EmbeddingConfig, error) { return current, nil }
+	first, err := service.FreezeEmbedder(ctx, current.Model)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current.APIKey = "rotated-key"
+	current.BaseURL += "/"
+	rotated, err := service.FreezeEmbedder(ctx, current.Model)
+	if err != nil || rotated.Fingerprint != first.Fingerprint {
+		t.Fatalf("credentials and trailing slash must not change vector space: %v", err)
+	}
+	current.BaseURL = "https://different.example/v1"
+	moved, err := service.FreezeEmbedder(ctx, current.Model)
+	if err != nil || moved.Fingerprint == first.Fingerprint {
+		t.Fatalf("endpoint change must change vector space: %v", err)
+	}
+}
+
+func TestFreezeEmbedderRejectsMissingConfigurationAndCanceledContext(t *testing.T) {
+	service := newTestService(t, EmbeddingConfig{}, newFakeEmbedder(3))
+	if _, err := service.FreezeEmbedder(context.Background(), "model-a"); !errors.Is(err, status_error.MemoryEmbeddingNotConfigured) {
+		t.Fatalf("missing configuration: %v", err)
+	}
+	service.configSource = func(context.Context) (EmbeddingConfig, error) { return semanticConfig, nil }
+	if _, err := service.FreezeEmbedder(context.Background(), ""); !errors.Is(err, status_error.MemoryEmbeddingNotConfigured) {
+		t.Fatalf("empty selection: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := service.FreezeEmbedder(ctx, semanticConfig.Model); !errors.Is(err, status_error.OperationCanceled) {
+		t.Fatalf("canceled snapshot: %v", err)
 	}
 }

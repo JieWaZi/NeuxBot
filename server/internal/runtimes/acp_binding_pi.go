@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acppi "github.com/JieWaZi/acp-go/pkg/pi"
 	acp "github.com/coder/acp-go-sdk"
 )

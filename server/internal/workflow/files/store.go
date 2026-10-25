@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 )
 
 // Upload 是上传后可直接放入文件参数的引用及真实元数据。
@@ -34,6 +34,8 @@ type Upload struct {
 type storedUpload struct {
 	// Upload 保存可公开的引用与元数据。
 	Upload
+	// OwnerKeyID 固定集成主体；legacy 和 managed 分别表示旧任务 Token 与本机输入。
+	OwnerKeyID string `json:"ownerKeyId"`
 	// TaskID 为空表示由 Core 管理入口上传，否则只允许该任务的 API 使用。
 	TaskID string `json:"taskId"`
 }
@@ -74,7 +76,7 @@ func storageError(operation string, err error) error {
 }
 
 // Save 在事务外有界写入原件，只有完整内容和归属元数据都落盘后才签发引用。
-func Save(ctx context.Context, dataDirectory, definitionID, taskID, name string, input io.Reader) (Upload, error) {
+func Save(ctx context.Context, dataDirectory, definitionID, taskID, name string, input io.Reader, ownerKeyIDs ...string) (Upload, error) {
 	if !fileName(name) || (taskID != "" && !identity(taskID)) {
 		return Upload{}, status_error.WorkflowFileInvalid
 	}
@@ -117,7 +119,7 @@ func Save(ctx context.Context, dataDirectory, definitionID, taskID, name string,
 		return Upload{}, storageError("close", closeErr)
 	}
 	upload := Upload{Reference: constants.WorkflowFileReferencePrefix + id + "/" + name, Name: name, Size: size, Digest: hex.EncodeToString(digest.Sum(nil))}
-	metadata, err := json.Marshal(storedUpload{Upload: upload, TaskID: taskID})
+	metadata, err := json.Marshal(storedUpload{Upload: upload, TaskID: taskID, OwnerKeyID: uploadOwner(taskID, ownerKeyIDs)})
 	if err != nil {
 		return Upload{}, storageError("encode", err)
 	}
@@ -129,7 +131,7 @@ func Save(ctx context.Context, dataDirectory, definitionID, taskID, name string,
 	return upload, nil
 }
 
-func open(dataDirectory, definitionID, taskID, reference string, allowManaged bool) (*os.File, storedUpload, error) {
+func open(dataDirectory, definitionID, taskID, reference string, allowManaged bool, ownerKeyIDs ...string) (*os.File, storedUpload, error) {
 	id, _, err := referenceParts(reference)
 	if err != nil {
 		return nil, storedUpload{}, err
@@ -151,6 +153,13 @@ func open(dataDirectory, definitionID, taskID, reference string, allowManaged bo
 	if json.Unmarshal(metadata, &upload) != nil || upload.Reference != reference || (upload.TaskID != taskID && !(allowManaged && upload.TaskID == "")) {
 		return nil, storedUpload{}, status_error.WorkflowFileInvalid
 	}
+	owner := upload.OwnerKeyID
+	if owner == "" {
+		owner = uploadOwner(upload.TaskID, nil)
+	}
+	if owner != uploadOwner(taskID, ownerKeyIDs) && !(allowManaged && upload.TaskID == "" && owner == "managed") {
+		return nil, storedUpload{}, status_error.WorkflowFileInvalid
+	}
 	file, err := root.Open(filepath.Join(id, "content"))
 	if err != nil {
 		return nil, storedUpload{}, status_error.WorkflowFileNotFound
@@ -164,8 +173,8 @@ func open(dataDirectory, definitionID, taskID, reference string, allowManaged bo
 }
 
 // ValidateReference 校验上传原件的归属，不允许 API 引用本地路径或其他任务的文件。
-func ValidateReference(dataDirectory, definitionID, taskID, reference string, allowManaged bool) error {
-	file, _, err := open(dataDirectory, definitionID, taskID, reference, allowManaged)
+func ValidateReference(dataDirectory, definitionID, taskID, reference string, allowManaged bool, ownerKeyIDs ...string) error {
+	file, _, err := open(dataDirectory, definitionID, taskID, reference, allowManaged, ownerKeyIDs...)
 	if err == nil {
 		_ = file.Close()
 	}
@@ -173,8 +182,8 @@ func ValidateReference(dataDirectory, definitionID, taskID, reference string, al
 }
 
 // Materialize 将原件复制到本次冻结范围，真实路径供全部工作流节点读取。
-func Materialize(ctx context.Context, dataDirectory, definitionID, taskID, runID, workingDirectory, reference string) (string, error) {
-	file, upload, err := open(dataDirectory, definitionID, taskID, reference, true)
+func Materialize(ctx context.Context, dataDirectory, definitionID, taskID, runID, workingDirectory, reference string, ownerKeyIDs ...string) (string, error) {
+	file, upload, err := open(dataDirectory, definitionID, taskID, reference, true, ownerKeyIDs...)
 	if err != nil {
 		return "", err
 	}
@@ -255,9 +264,9 @@ func PrepareManagedWorkspace(dataDirectory, id string) (string, error) {
 }
 
 // ValidateAPIInputFiles 将调用参数中的文件引用限制在本任务的受管上传中。
-func ValidateAPIInputFiles(dataDirectory, definitionID, taskID string, schema map[string]any, args any) error {
+func ValidateAPIInputFiles(dataDirectory, definitionID, taskID string, schema map[string]any, args any, ownerKeyIDs ...string) error {
 	for pointer, reference := range workflowdsl.FileValues(schema, args) {
-		if err := ValidateReference(dataDirectory, definitionID, taskID, reference, false); err != nil {
+		if err := ValidateReference(dataDirectory, definitionID, taskID, reference, false, ownerKeyIDs...); err != nil {
 			return err
 		}
 		if reference == "" {
@@ -265,4 +274,15 @@ func ValidateAPIInputFiles(dataDirectory, definitionID, taskID string, schema ma
 		}
 	}
 	return nil
+}
+
+// uploadOwner 保持存量元数据的明确 legacy 语义，新 Key 不继承空归属文件。
+func uploadOwner(taskID string, owners []string) string {
+	if len(owners) > 0 && owners[0] != "" {
+		return owners[0]
+	}
+	if taskID == "" {
+		return "managed"
+	}
+	return "legacy"
 }

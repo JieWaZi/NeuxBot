@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
 // Run 执行一次完整 Runtime 调用，并在进程和事件交付收尾后返回唯一终态。
@@ -236,7 +236,7 @@ func failedRunError(stage string, err error) Result {
 }
 
 func failedRunResult(code FailureCode, stage string, message string) Result {
-	return Result{ExitCode: -1, Failure: newFailure(code, stage, message)}
+	return Result{TerminationReason: constants.RuntimeTerminationReasonUnknown, ExitCode: -1, Failure: newFailure(code, stage, message)}
 }
 
 func defaultExecutionPolicy() ExecutionPolicy {

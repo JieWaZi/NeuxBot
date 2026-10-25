@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	acp "github.com/coder/acp-go-sdk"
 )
 
@@ -29,6 +29,8 @@ type acpClient struct {
 
 // acpBridge 串行交付一个 Invocation 的 ACP 更新和 Runtime 事件。
 type acpBridge struct {
+	// rejectTextInteraction 在纯模型调用观察到工具或交互时立即取消，不执行宿主能力。
+	rejectTextInteraction func()
 	// sessionID 是当前调用使用的 ACP Session 标识。
 	sessionID acp.SessionId
 	// invocationID 是 Runtime 统一事件绑定的调用标识。
@@ -172,6 +174,12 @@ func (client *acpClient) SessionUpdate(
 		return nil
 	}
 	bridge.observeFirstUpdate()
+	if bridge.rejectTextInteraction != nil && (notification.Update.ToolCall != nil || notification.Update.ToolCallUpdate != nil || notification.Update.Plan != nil) {
+		bridge.rejectTextInteraction()
+		bridge.setFailure(status_error.RuntimePolicyUnsupported)
+		client.mutex.RUnlock()
+		return status_error.RuntimePolicyUnsupported
+	}
 	clone := notification
 	err := bridge.enqueue(acpDelivery{notification: &clone})
 	client.mutex.RUnlock()
@@ -191,6 +199,10 @@ func (client *acpClient) RequestPermission(
 			Outcome: acp.NewRequestPermissionOutcomeCancelled(),
 		}, nil
 	}
+	if bridge.rejectTextInteraction != nil {
+		bridge.rejectTextInteraction()
+		return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
+	}
 	return bridge.requestPermission(ctx, request), nil
 }
 
@@ -209,6 +221,10 @@ func (client *acpClient) UnstableCreateElicitation(
 			sessionID,
 			ok,
 		)
+		return acp.NewUnstableCreateElicitationResponseCancel(), nil
+	}
+	if bridge.rejectTextInteraction != nil {
+		bridge.rejectTextInteraction()
 		return acp.NewUnstableCreateElicitationResponseCancel(), nil
 	}
 	return bridge.createElicitation(ctx, request), nil

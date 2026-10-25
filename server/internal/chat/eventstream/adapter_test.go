@@ -2,12 +2,167 @@ package eventstream
 
 import (
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
+
+// TestReplayAfterRestoresPrefixWithoutKeepingSnapshots 验证游标前恢复状态，但只为游标后事实保留公开事件。
+func TestReplayAfterRestoresPrefixWithoutKeepingSnapshots(t *testing.T) {
+	records := fixtureRecords(t)
+	full, err := Replay(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored, err := ReplayAfter(records, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(restored.events) != 1 {
+		t.Fatalf("retained %d events, want only one event after cursor", len(restored.events))
+	}
+	if got, want := restored.EventsAfter(4, 0), full.EventsAfter(4, 0); !reflect.DeepEqual(got, want) {
+		t.Fatalf("restored tail = %+v, want %+v", got, want)
+	}
+}
+
+// TestReplayAfterKeepsHighestObservedRevision 保留审批更新后 Runtime 修订号暂时落后时的去重基线。
+func TestReplayAfterKeepsHighestObservedRevision(t *testing.T) {
+	records := fixtureRecords(t)
+	approval, err := eventlog.MarshalData(eventlog.ApprovalResolvedData{ToolCallID: "tool-command", Result: constants.ApprovalResultSelected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	records = append(records, eventlog.Record{Sequence: 6, ExecutionID: "execution-1", Type: constants.ChatEventTypeApprovalResolved, Data: approval})
+	late := executionMessageRecord(t, 7, constants.ChatEventTypeAssistantMessage, "text_delta", map[string]any{"text": "继续"})
+	var data eventlog.RuntimeMessageData
+	if err := json.Unmarshal(late.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	data.MessageRevision = 3
+	late.Data, err = eventlog.MarshalData(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records = append(records, late)
+	adapter, err := ReplayAfter(records, 7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := adapter.MessageRevisions()["execution-1"]; got != 6 {
+		t.Fatalf("revision baseline = %d, want highest observed revision 6", got)
+	}
+}
+
+// TestReplayAfterKeepsInteractionTerminalAndRevisionSemantics 验证每个游标边界都保留审批、问答和终态信封及最终修订号。
+func TestReplayAfterKeepsInteractionTerminalAndRevisionSemantics(t *testing.T) {
+	records := fixtureRecords(t)
+	appendRecord := func(kind constants.ChatEventType, value any) {
+		data, err := eventlog.MarshalData(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		records = append(records, eventlog.Record{Sequence: int64(len(records) + 1), Type: kind, ExecutionID: "execution-1", Data: data})
+	}
+	appendRecord(constants.ChatEventTypeApprovalRequested, eventlog.ApprovalRequestedData{ApprovalID: "approval", ToolCallID: "tool-command"})
+	appendRecord(constants.ChatEventTypeApprovalResolved, eventlog.ApprovalResolvedData{ApprovalID: "approval", ToolCallID: "tool-command", Result: constants.ApprovalResultSelected})
+	appendRecord(constants.ChatEventTypeElicitationRequested, eventlog.ElicitationRequestedData{ElicitationID: "question", Mode: "form", Message: "确认参数"})
+	appendRecord(constants.ChatEventTypeElicitationResolved, eventlog.ElicitationResolvedData{ElicitationID: "question", Result: constants.ElicitationResultAccepted})
+	appendRecord(constants.ChatEventTypeExecutionCompleted, eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
+	full, err := Replay(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for after := int64(0); after <= int64(len(records)); after++ {
+		restored, err := ReplayAfter(records, after)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := restored.EventsAfter(after, 0), full.EventsAfter(after, 0); !reflect.DeepEqual(got, want) {
+			t.Fatalf("cursor %d event envelopes changed", after)
+		}
+		if got, want := restored.MessageRevisions(), full.MessageRevisions(); !reflect.DeepEqual(got, want) {
+			t.Fatalf("cursor %d revision baseline = %v, want %v", after, got, want)
+		}
+	}
+}
+
+// TestReleaseHistoryKeepsOnlyCurrentStreamState 验证已交付快照释放后仍能生成完整增量消息，且不会重新累积历史。
+func TestReleaseHistoryKeepsOnlyCurrentStreamState(t *testing.T) {
+	records := fixtureRecords(t)
+	adapter, err := ReplayAfter(records, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delivered := adapter.EventsAfter(4, 0)
+	adapter.ReleaseHistory()
+	for index := 0; index < 8; index++ {
+		record := executionMessageRecord(t, int64(6+index), constants.ChatEventTypeAssistantMessage, "text_delta", map[string]any{"text": "追加"})
+		event, err := adapter.Apply(record)
+		if err != nil || event.Message == nil || !strings.HasSuffix(event.Message.Content, strings.Repeat("追加", index+1)) {
+			t.Fatalf("stream message = %+v, error %v", event.Message, err)
+		}
+		if len(adapter.events) != 0 {
+			t.Fatalf("stream retained %d delivered events", len(adapter.events))
+		}
+	}
+	if delivered[0].Message.Content != "最终正文" {
+		t.Fatal("previously delivered snapshot changed during live streaming")
+	}
+}
+
+// TestReplayAfterStillValidatesPrefixEnvelopes 验证静默恢复前缀没有跳过公开事件载荷校验。
+func TestReplayAfterStillValidatesPrefixEnvelopes(t *testing.T) {
+	for _, kind := range []constants.ChatEventType{constants.ChatEventTypeApprovalRequested, constants.ChatEventTypeApprovalResolved, constants.ChatEventTypeElicitationRequested, constants.ChatEventTypeElicitationResolved, constants.ChatEventTypeExecutionCompleted} {
+		if _, err := ReplayAfter([]eventlog.Record{{Sequence: 1, Type: kind, Data: json.RawMessage(`[`)}}, 1); err == nil {
+			t.Fatalf("accepted malformed prefix event %s", kind)
+		}
+	}
+}
+
+// BenchmarkReplayAfterLatest 覆盖重连时仅恢复当前消息状态的时间及分配成本。
+func BenchmarkReplayAfterLatest(b *testing.B) {
+	for _, count := range []int{128, 512} {
+		b.Run(fmt.Sprintf("tools=%d", count), func(b *testing.B) {
+			records := cursorToolRecords(b, count)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				if _, err := ReplayAfter(records, records[len(records)-1].Sequence); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func cursorToolRecords(t testing.TB, count int) []eventlog.Record {
+	t.Helper()
+	encode := func(value any) json.RawMessage {
+		data, err := eventlog.MarshalData(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return data
+	}
+	records := []eventlog.Record{{Sequence: 1, Type: constants.ChatEventTypeCreated, Data: encode(eventlog.ChatCreatedData{WorkspaceDirectory: "/workspace"})}, {
+		Sequence: 2, Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "active", Data: encode(eventlog.ExecutionCreatedData{}),
+	}}
+	for index := 0; index < count; index++ {
+		sequence := int64(index + 3)
+		records = append(records, eventlog.Record{
+			Sequence: sequence, Type: constants.ChatEventTypeAssistantMessage, MessageID: "active", ExecutionID: "active",
+			Data: encode(eventlog.RuntimeMessageData{MessageRevision: sequence, Content: []eventlog.RuntimeMessageContent{{Type: "tool_use", Data: encode(map[string]any{
+				"toolCallId": fmt.Sprintf("tool-%d", index), "name": "read_file", "path": "/workspace/main.go",
+			})}}}),
+		})
+	}
+	return records
+}
 
 func TestAdapterAppliesRecordsIncrementallyAndKeepsStableMessageRevision(t *testing.T) {
 	t.Parallel()

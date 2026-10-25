@@ -10,14 +10,14 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -53,7 +53,7 @@ func bindAndOutput(t *testing.T, operator ginx.HandleOperator, wakerID, taskID, 
 	return operator.Output(ctx)
 }
 
-func TestManagementBindingsCRUDAndTokenReceipts(t *testing.T) {
+func TestManagementBindingsCRUDAndTaskReferences(t *testing.T) {
 	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "management.db"), Migrate: true})
 	if err != nil {
 		t.Fatal(err)
@@ -79,8 +79,8 @@ func TestManagementBindingsCRUDAndTokenReceipts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created := result.(schedule.SavedTask)
-	if created.TaskID == "" || created.Token == "" {
+	created := result.(AutomaticTaskReference)
+	if created.TaskID == "" {
 		t.Fatalf("missing creation receipt: %+v", created)
 	}
 	result, err = bindAndOutput(t, &GetAutomaticTask{}, wakerID, created.TaskID, "", nil)
@@ -89,7 +89,7 @@ func TestManagementBindingsCRUDAndTokenReceipts(t *testing.T) {
 	}
 	task := result.(schedule.TaskView)
 	encoded, _ := json.Marshal(task)
-	if bytes.Contains(encoded, []byte(created.Token)) || bytes.Contains(encoded, []byte("tokenHash")) {
+	if bytes.Contains(encoded, []byte(`"token"`)) || bytes.Contains(encoded, []byte("tokenHash")) {
 		t.Fatal("read leaked token")
 	}
 	config.Name = "更新归档"
@@ -110,10 +110,6 @@ func TestManagementBindingsCRUDAndTokenReceipts(t *testing.T) {
 		t.Fatalf("false filter or counts: %+v", list)
 	}
 	task = list.Resources[0]
-	result, err = bindAndOutput(t, &RotateAutomaticTaskToken{}, wakerID, created.TaskID, "", RotateAutomaticTaskTokenRequest{Revision: task.ConfigurationVersion})
-	if err != nil || result.(schedule.SavedTask).Token == created.Token {
-		t.Fatalf("rotate: %+v %v", result, err)
-	}
 	if _, err := bindAndOutput(t, &GetAutomaticTask{}, "another-waker", created.TaskID, "", nil); !errors.Is(err, status_error.AutomaticTaskNotFound) {
 		t.Fatalf("scope: %v", err)
 	}
@@ -130,7 +126,7 @@ func TestManagementBindingsCRUDAndTokenReceipts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherTask := result.(schedule.SavedTask)
+	otherTask := result.(AutomaticTaskReference)
 	result, err = bindAndOutput(t, &ListGlobalAutomaticTasks{}, "", "", "?pageNum=1&pageSize=20", nil)
 	if err != nil {
 		t.Fatal(err)

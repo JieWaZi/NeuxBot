@@ -3,11 +3,12 @@ package builtin
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	managedskills "github.com/JieWaZi/NeuxAlly/server/internal/skills"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 )
 
 func systemDefinition() (definition, error) {
@@ -23,17 +24,36 @@ func systemDefinition() (definition, error) {
 	return definition{}, status_error.SkillUnavailable
 }
 
-// SystemDirectory 从同包只读资源准备完整技能，不使用用户可编辑的版本指针。
-func SystemDirectory(dataDirectory string) (string, error) {
+// CLIPath 返回系统技能中当前平台的可执行入口。
+func CLIPath(directory string) string {
+	name := "allycli"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return filepath.Join(directory, "scripts", name)
+}
+
+// SystemDirectory 将同包资源和受管 CLI 一起准备为不可变技能，不使用用户版本指针。
+func SystemDirectory(dataDirectory, binaryPath string) (string, error) {
 	item, err := systemDefinition()
 	if err != nil {
 		return "", err
 	}
+	info, err := os.Stat(binaryPath)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", status_error.AgentConnectionUnavailable
+	}
+	binary, err := os.ReadFile(binaryPath)
+	if err != nil || len(binary) == 0 {
+		return "", status_error.AgentConnectionUnavailable
+	}
+	// CLI 字节和执行位纳入同一内容摘要，更新程序时不会复用旧入口。
+	item.Files = append(item.Files, resource{Path: filepath.ToSlash(CLIPath("")), Data: binary, Executable: true})
 	root := filepath.Join(dataDirectory, "system-skills")
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return "", status_error.SkillStorageError
 	}
-	info, err := os.Lstat(root)
+	info, err = os.Lstat(root)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return "", status_error.SkillContentInvalid
 	}
@@ -73,7 +93,7 @@ func SystemDirectory(dataDirectory string) (string, error) {
 
 // Guide 返回与实际系统技能完全相同的单个按需指南。
 func Guide(id string) (string, error) {
-	files := map[string]string{"im.delivery": "im-delivery.md", "workflow.authoring": "workflow-authoring.md", "workflow.execution": "workflow-execution.md", "workflow.results": "workflow-results.md", "workflow.output-delivery": "output-delivery.md", "workflow.api-retrieval": "api-retrieval.md", "team.lead": "team-lead.md", "team.member": "team-member.md", "memory": "memory.md", "interaction.questions": "user-questions.md"}
+	files := map[string]string{"knowledge.maintenance": "wiki-maintenance.md", "knowledge": "knowledge.md", "im.delivery": "im-delivery.md", "workflow.authoring": "workflow-authoring.md", "workflow.execution": "workflow-execution.md", "workflow.results": "workflow-results.md", "workflow.output-delivery": "output-delivery.md", "workflow.api-retrieval": "api-retrieval.md", "team.lead": "team-lead.md", "team.member": "team-member.md", "memory": "memory.md", "interaction.questions": "user-questions.md"}
 	name, ok := files[id]
 	if !ok {
 		return "", status_error.AgentOperationForbidden

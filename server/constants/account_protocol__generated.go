@@ -49,7 +49,7 @@ func (v AccountProtocol) Values() []enum.Enum {
 }
 
 func (v AccountProtocol) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.AccountProtocol"
+	return "github.com/JieWaZi/NeuxBot/server/constants.AccountProtocol"
 }
 
 func (v AccountProtocol) MarshalText() ([]byte, error) {

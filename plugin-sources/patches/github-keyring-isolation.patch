@@ -1,0 +1,11 @@
+--- a/internal/keyring/keyring.go
++++ b/internal/keyring/keyring.go
+@@ -26 +26 @@
+-		ch <- keyring.Set(service, user, secret)
++		ch <- keyring.Set("neuxally:"+service, user, secret)
+@@ -44 +44 @@
+-		val, err := keyring.Get(service, user)
++		val, err := keyring.Get("neuxally:"+service, user)
+@@ -66 +66 @@
+-		ch <- keyring.Delete(service, user)
++		ch <- keyring.Delete("neuxally:"+service, user)

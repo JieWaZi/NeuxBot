@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
@@ -19,7 +19,7 @@ func TestProjectControllerContract(t *testing.T) {
 	project := models.Project{
 		ID:        "11111111111111111111111111111111",
 		WakerID:   "waker-1",
-		Name:      "NeuxAlly",
+		Name:      "NeuxBot",
 		Brief:     "多目录项目",
 		CreatedAt: now,
 		UpdatedAt: now,
@@ -73,7 +73,7 @@ func TestProjectControllerContract(t *testing.T) {
 		t.Fatalf("replace project directories with two defaults error = %v", err)
 	}
 
-	project.Name = "NeuxAlly 更新"
+	project.Name = "NeuxBot 更新"
 	project.Brief = "更新后的简介"
 	project.UpdatedAt = now + 1
 	if err := controller.Update(ctx, project); err != nil {
@@ -117,19 +117,19 @@ func TestProjectSearchMatchesBeforePaginationAndStaysWithinWaker(t *testing.T) {
 	controller := NewProjectController(newTestDB(t))
 	ctx := context.Background()
 	for _, project := range []models.Project{
-		{ID: "one", WakerID: "a", Name: "NeuxAlly", Brief: "目录工具", UpdatedAt: 3},
-		{ID: "two", WakerID: "a", Name: "Other", Brief: "NeuxAlly integration", UpdatedAt: 2},
-		{ID: "three", WakerID: "b", Name: "NeuxAlly", UpdatedAt: 1},
+		{ID: "one", WakerID: "a", Name: "NeuxBot", Brief: "目录工具", UpdatedAt: 3},
+		{ID: "two", WakerID: "a", Name: "Other", Brief: "NeuxBot integration", UpdatedAt: 2},
+		{ID: "three", WakerID: "b", Name: "NeuxBot", UpdatedAt: 1},
 	} {
 		if err := controller.Create(ctx, project); err != nil {
 			t.Fatal(err)
 		}
 	}
-	items, err := controller.ListByWaker(ctx, "a", " ALLY ", 1, 1)
+	items, err := controller.ListByWaker(ctx, "a", " BOT ", 1, 1)
 	if err != nil || len(items) != 1 || items[0].ID != "two" {
 		t.Fatalf("search page: %v, %v", items, err)
 	}
-	count, err := controller.CountByWaker(ctx, "a", " ALLY ")
+	count, err := controller.CountByWaker(ctx, "a", " BOT ")
 	if err != nil || count != 2 {
 		t.Fatalf("search count: %d, %v", count, err)
 	}

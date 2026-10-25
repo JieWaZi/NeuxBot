@@ -2,14 +2,13 @@ package chat
 
 import (
 	"context"
-	"encoding/json"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // eventCommitter 固化权威事件的提交后顺序：JSONL、派生文件索引、SSE。
@@ -284,42 +283,6 @@ func (p *queryIndexStore) indexExecutionStarted(
 		"latest_sequence": record.Sequence,
 		"updated_at":      record.RecordedAt,
 	})
-}
-
-// indexExecutionFinished 保存终态并清除 Chat 活跃执行索引。
-func (p *queryIndexStore) indexExecutionFinished(
-	notificationContext context.Context,
-	execution models.Execution,
-	record eventlog.Record,
-) {
-	var ended eventlog.ExecutionFinishedData
-	if err := json.Unmarshal(record.Data, &ended); err != nil {
-		logx.Errorf("decode ended execution: %v", err)
-		return
-	}
-	receipt, err := p.prepareResult(execution.ChatID, execution.ID)
-	if err != nil {
-		logx.Errorf("prepare work result: chat_id=%s error=%v", execution.ChatID, err)
-		return
-	}
-	err = p.transactionController.Transaction(notificationContext, func(ctx context.Context) error {
-		if err := p.chatController.AdvanceProjection(ctx, execution.ChatID, record.Sequence-1, map[string]any{
-			"latest_sequence":             record.Sequence,
-			"active_execution_id":         "",
-			"updated_at":                  record.RecordedAt,
-			"last_ended_execution_id":     execution.ID,
-			"last_ended_execution_status": ended.Status,
-			"last_ended_execution_at":     record.RecordedAt,
-			"waiting_approval":            false, "pending_approvals": "[]",
-			"waiting_elicitation": false, "pending_elicitations": "[]",
-		}); err != nil {
-			return err
-		}
-		return p.publishResult(ctx, receipt)
-	})
-	if err != nil {
-		logx.Errorf("index ended execution: chat_id=%s error=%v", execution.ChatID, err)
-	}
 }
 
 // indexChatCursor 只推进不改变查询业务字段的权威事件游标。

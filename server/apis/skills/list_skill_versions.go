@@ -1,7 +1,8 @@
 package skills
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -20,6 +21,11 @@ func (l *ListSkillVersions) Path() string { return "/:wakerId/skills/:skillId/ve
 
 // Output 返回技能版本列表。
 func (l *ListSkillVersions) Output(ctx *gin.Context) (interface{}, error) {
+	return listSkillVersions(ctx, l)
+}
+
+// listSkillVersions 复用相同资源用例，空伙伴范围表示全局库。
+func listSkillVersions(ctx *gin.Context, l *ListSkillVersions) ([]models.SkillVersion, error) {
 	if _, err := visibleSkill(ctx, l.WakerID, l.SkillID); err != nil {
 		return nil, ginx.WithStack(err)
 	}

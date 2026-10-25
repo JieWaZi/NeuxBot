@@ -9,9 +9,9 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -85,26 +85,31 @@ func (g *GetSkillVersion) Path() string { return "/:wakerId/skills/:skillId/vers
 
 // Output 返回版本元数据和内容。
 func (g *GetSkillVersion) Output(ctx *gin.Context) (interface{}, error) {
+	return getSkillVersion(ctx, g)
+}
+
+// getSkillVersion 复用相同资源用例，空伙伴范围表示全局库。
+func getSkillVersion(ctx *gin.Context, g *GetSkillVersion) (SkillVersionResponse, error) {
 	skill, err := visibleSkill(ctx, g.WakerID, g.SkillID)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return SkillVersionResponse{}, ginx.WithStack(err)
 	}
 	version, err := global.SkillControllerManager.GetVersion(ctx, g.VersionID)
 	if err != nil || version.SkillPackageID != skill.ID {
-		return nil, ginx.WithStack(status_error.SkillVersionNotFound)
+		return SkillVersionResponse{}, ginx.WithStack(status_error.SkillVersionNotFound)
 	}
 	relative := filepath.Clean(version.ContentPath)
 	if filepath.IsAbs(relative) || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) || relative == ".." {
-		return nil, ginx.WithStack(status_error.BadRequest)
+		return SkillVersionResponse{}, ginx.WithStack(status_error.BadRequest)
 	}
 	versionDirectory := filepath.Join(global.Config.DataDirectory, relative)
 	content, err := os.ReadFile(filepath.Join(versionDirectory, "SKILL.md"))
 	if err != nil {
-		return nil, ginx.WithStack(status_error.SkillStorageError)
+		return SkillVersionResponse{}, ginx.WithStack(status_error.SkillStorageError)
 	}
 	resources, err := listSkillResources(versionDirectory)
 	if err != nil {
-		return nil, ginx.WithStack(status_error.SkillStorageError)
+		return SkillVersionResponse{}, ginx.WithStack(status_error.SkillStorageError)
 	}
 	return SkillVersionResponse{
 		Version:   version,
@@ -120,21 +125,26 @@ func (g *GetSkillVersionFile) Path() string {
 
 // Output 返回经过可见性和版本归属校验的文件内容。
 func (g *GetSkillVersionFile) Output(ctx *gin.Context) (interface{}, error) {
+	return getSkillVersionFile(ctx, g)
+}
+
+// getSkillVersionFile 复用相同资源用例，空伙伴范围表示全局库。
+func getSkillVersionFile(ctx *gin.Context, g *GetSkillVersionFile) (SkillVersionFileResponse, error) {
 	skill, err := visibleSkill(ctx, g.WakerID, g.SkillID)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return SkillVersionFileResponse{}, ginx.WithStack(err)
 	}
 	version, err := global.SkillControllerManager.GetVersion(ctx, g.VersionID)
 	if err != nil || version.SkillPackageID != skill.ID {
-		return nil, ginx.WithStack(status_error.SkillVersionNotFound)
+		return SkillVersionFileResponse{}, ginx.WithStack(status_error.SkillVersionNotFound)
 	}
 	root, err := skillVersionDirectory(version.ContentPath)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return SkillVersionFileResponse{}, ginx.WithStack(err)
 	}
 	file, err := readSkillVersionFile(root, g.FilePath)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return SkillVersionFileResponse{}, ginx.WithStack(err)
 	}
 	return file, nil
 }

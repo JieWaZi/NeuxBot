@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 const lostHTTPReceiptSource = `export const meta={sdk:'ally.workflow/1',title:'HTTP回执',description:'外部效果对账',actions:[{id:'post',label:'提交',description:'非幂等写入',type:'http',risk:'write',allowedOrigins:['http://workflow.example'],methods:['POST']}],phases:[{id:'write',title:'写入',detail:'写入',canExit:true}]};return await action('post',{id:'post-node',label:'提交',phase:'write',method:'POST',url:'http://workflow.example/write'});`

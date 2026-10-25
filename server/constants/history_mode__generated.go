@@ -41,7 +41,7 @@ func (v HistoryMode) Values() []enum.Enum {
 }
 
 func (v HistoryMode) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.HistoryMode"
+	return "github.com/JieWaZi/NeuxBot/server/constants.HistoryMode"
 }
 
 func (v HistoryMode) MarshalText() ([]byte, error) {

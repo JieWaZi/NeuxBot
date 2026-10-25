@@ -11,7 +11,7 @@ const bundle =
     ? path.join(
         release,
         process.arch === "arm64" ? "mac-arm64" : "mac",
-        "NeuxAlly.app",
+        "NeuxBot.app",
       )
     : path.join(
         release,
@@ -23,11 +23,15 @@ const resources =
     : path.join(bundle, "resources");
 const executable =
   process.platform === "darwin"
-    ? path.join(bundle, "Contents/MacOS/NeuxAlly")
-    : path.join(bundle, "NeuxAlly.exe");
+    ? path.join(bundle, "Contents/MacOS/NeuxBot")
+    : path.join(bundle, "NeuxBot.exe");
 execFileSync(
   executable,
-  [path.join(root, "scripts/smoke-desktop.cjs"), resources],
+  [
+    path.join(root, "scripts/smoke-desktop.cjs"),
+    resources,
+    path.join(root, "desktop/dist"),
+  ],
   {
     env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     stdio: "inherit",
@@ -39,6 +43,15 @@ const dataDir = await mkdtemp(path.join(tmpdir(), "ally-packaged-core-"));
 const env = { ...process.env };
 // 冒烟测试的业务文件与数据库一起隔离，不写入用户的默认受管目录。
 env.ALLY_MANAGED_FILES_DIR = path.join(dataDir, "managed-files");
+env.PI_MCP_MODULE_PATH = path.join(resources, "pi-bridge", "bridge.mjs");
+env.ALLY_PLUGIN_RESOURCES_DIR = path.join(resources, "plugins");
+env.ALLY_TERMINAL_RUNTIME_PATH = path.join(
+  resources,
+  "terminal-runtime",
+  "worker.cjs",
+);
+env.ALLY_TERMINAL_NODE_PATH = executable;
+env.ALLY_TERMINAL_ELECTRON_NODE = "1";
 delete env.ALLY_CORE_URL;
 delete env.ALLY_LOCAL_TOKEN;
 const core = new CoreSupervisor({

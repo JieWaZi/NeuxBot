@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	eventstream "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // approvalOutcome 保存审批回调测试收到的最终选择。
@@ -249,4 +249,14 @@ func waitPendingApprovals(t *testing.T, journal *approvalTestJournal, want int) 
 	}
 	t.Fatalf("pending approval count did not become %d", want)
 	return nil
+}
+
+// LoadExecutionChat 不参与此日志边界测试。
+func (j *approvalTestJournal) LoadExecutionChat(context.Context, string) (models.Chat, error) {
+	panic("unexpected LoadExecutionChat call")
+}
+
+// ReadExecutionRecords 不参与此日志边界测试。
+func (j *approvalTestJournal) ReadExecutionRecords(string, string) ([]eventlog.Record, error) {
+	panic("unexpected ReadExecutionRecords call")
 }

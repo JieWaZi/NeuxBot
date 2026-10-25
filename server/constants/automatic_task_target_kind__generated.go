@@ -45,7 +45,7 @@ func (v AutomaticTaskTargetKind) Values() []enum.Enum {
 }
 
 func (v AutomaticTaskTargetKind) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.AutomaticTaskTargetKind"
+	return "github.com/JieWaZi/NeuxBot/server/constants.AutomaticTaskTargetKind"
 }
 
 func (v AutomaticTaskTargetKind) MarshalText() ([]byte, error) {

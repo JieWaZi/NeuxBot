@@ -26,7 +26,7 @@ When changing delivery, update the prompt, schemas, presentation declaration, do
 
 Write complete source to a UTF-8 file and use the prepared save contract. A separate `source validate` is optional for preflight. Repair returned diagnostics before another save; a changed payload needs a new request ID. Reconcile a revision conflict against current source. The SDK's saving section defines the commit receipt and recovery path.
 
-Compare the submitted source with the agreed goal and report any deviation. Distinguish saving, preflight/simulated tests, a real authenticated run and actual external delivery. Do not run or publish a workflow just to prove it was created without authorization. If the current execution lacks authoring capability, explain that saving needs an authorized NeuxAlly workflow creation context.
+Compare the submitted source with the agreed goal and report any deviation. Distinguish saving, preflight/simulated tests, a real authenticated run and actual external delivery. Do not run or publish a workflow just to prove it was created without authorization. If the current execution lacks authoring capability, explain that saving needs an authorized NeuxBot workflow creation context.
 
 ## Authoring execution recovery
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func testMachineSource(body string) string {
@@ -59,7 +59,7 @@ func TestF0ActuallyExecutesInGoAcrossEveryCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	phases := []string{}
-	state := runTestMachine(t, string(data), map[string]any{"text": "NeuxAlly", "repeat": 2, "uppercase": true, "suffix": "!"}, func(boundary EffectBoundary) Value {
+	state := runTestMachine(t, string(data), map[string]any{"text": "NeuxBot", "repeat": 2, "uppercase": true, "suffix": "!"}, func(boundary EffectBoundary) Value {
 		if boundary.Primitive != "phase" {
 			t.Fatalf("unexpected host call %+v", boundary)
 		}
@@ -69,7 +69,7 @@ func TestF0ActuallyExecutesInGoAcrossEveryCheckpoint(t *testing.T) {
 	if state.Failure != nil {
 		t.Fatalf("program failed: %+v", state.Failure)
 	}
-	expected := JSONValue(map[string]any{"message": "NEUXALLY NEUXALLY!", "length": 18, "repeat": 2})
+	expected := JSONValue(map[string]any{"message": "NEUXBOT NEUXBOT!", "length": 16, "repeat": 2})
 	if !reflect.DeepEqual(state.Result, expected) || !reflect.DeepEqual(phases, []string{"prepare", "compose"}) {
 		t.Fatalf("result=%+v phases=%v", state.Result, phases)
 	}

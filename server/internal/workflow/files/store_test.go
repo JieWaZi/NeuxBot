@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
 func TestUploadOwnershipAndIndependentRunFiles(t *testing.T) {
@@ -71,5 +71,39 @@ func TestUploadOwnershipAndIndependentRunFiles(t *testing.T) {
 	}
 	if _, err := Materialize(ctx, data, definition, task, util.New(), scope, upload.Reference); err == nil {
 		t.Fatal("tampered upload materialized")
+	}
+}
+
+func TestIntegrationAutomaticTaskAPIFileOwnerIsolation(t *testing.T) {
+	ctx := context.Background()
+	directory, scope := t.TempDir(), t.TempDir()
+	definition, task := util.New(), util.New()
+	upload, err := Save(ctx, directory, definition, task, "input.md", bytes.NewReader([]byte("# input")), "key-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateReference(directory, definition, task, upload.Reference, false, "key-a"); err != nil {
+		t.Fatal(err)
+	}
+	for _, owner := range []string{"key-b", "legacy"} {
+		if err := ValidateReference(directory, definition, task, upload.Reference, false, owner); err == nil {
+			t.Fatal("cross owner reference accepted", owner)
+		}
+	}
+	if err := ValidateReference(directory, definition, task, upload.Reference, false); err == nil {
+		t.Fatal("legacy task token adopted integration upload")
+	}
+	if _, err := Materialize(ctx, directory, definition, task, util.New(), scope, upload.Reference, "key-b"); err == nil {
+		t.Fatal("cross owner file copied into workflow")
+	}
+	if _, err := Materialize(ctx, directory, definition, task, util.New(), scope, upload.Reference, "key-a"); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := Save(ctx, directory, definition, task, "legacy.md", bytes.NewReader([]byte("legacy")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateReference(directory, definition, task, legacy.Reference, false, "key-a"); err == nil {
+		t.Fatal("integration key adopted old token upload")
 	}
 }

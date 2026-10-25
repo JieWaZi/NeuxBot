@@ -1,9 +1,9 @@
-// Package models 定义 NeuxAlly 的 GORM 持久化模型。
+// Package models 定义 NeuxBot 的 GORM 持久化模型。
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
@@ -29,11 +29,11 @@ type Waker struct {
 	WorkStyle []string `gorm:"column:work_style;type:text;not null;serializer:json" json:"workStyle"`
 	// WorkMethods 保存从工作方式档案解析出的具名流程展示投影。
 	WorkMethods []profile.WorkMethod `gorm:"column:work_methods;type:text;not null;serializer:json" json:"workMethods"`
-	// ActivityState 是列表查询按伙伴全部 Chat 聚合出的只读活动状态。
+	// ActivityState 是列表查询按伙伴普通 Chat 聚合出的只读活动状态。
 	ActivityState constants.WakerActivityState `gorm:"-" json:"activityState,omitempty"`
-	// RunningCount 是列表查询聚合出的运行中会话数量。
+	// RunningCount 是列表查询聚合出的运行中普通会话数量。
 	RunningCount int `gorm:"-" json:"runningCount,omitempty"`
-	// WaitingCount 是列表查询聚合出的待审批或待输入会话数量。
+	// WaitingCount 是列表查询聚合出的待审批或待输入普通会话数量。
 	WaitingCount int `gorm:"-" json:"waitingCount,omitempty"`
 	// IsDefault 表示该伙伴由系统提供且不允许删除。
 	IsDefault bool `gorm:"-" json:"isDefault,omitempty"`

@@ -3,14 +3,14 @@ package global
 import (
 	"context"
 	"errors"
-	builtinskills "github.com/JieWaZi/NeuxAlly/server/internal/skills/builtin"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinrolepreset"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -43,7 +43,11 @@ func TestLoadSystemSkillStaysOutsideEditablePartnerCatalog(t *testing.T) {
 	if err != nil || len(enabled) != 0 {
 		t.Fatalf("system skill leaked into editable partner state: %+v %v", enabled, err)
 	}
-	directory, err := builtinskills.SystemDirectory(configuration.DataDirectory)
+	binary := filepath.Join(t.TempDir(), "allycli")
+	if err := os.WriteFile(binary, []byte("cli fixture"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	directory, err := builtinskills.SystemDirectory(configuration.DataDirectory, binary)
 	if err != nil {
 		t.Fatal(err)
 	}

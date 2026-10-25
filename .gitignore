@@ -4,6 +4,7 @@
 
 desktop/node_modules/
 node_modules/
+.pnpm-store/
 pnpm-debug.log*
 desktop/dist/
 desktop/coverage/
@@ -22,6 +23,7 @@ server/**/*.log
 
 .agents
 .scratch/
+.superpowers/
 
 desktop/dist-electron/
 desktop/release/
@@ -31,3 +33,24 @@ prototypes
 desktop/.scratch/
 server/.scratch/
 generated_images/
+
+# 固定插件源生成的本地分发产物
+desktop/resources/plugins/
+server/plugins/
+
+# 本地跨仓库 Go 联合开发
+go.work
+go.work.sum
+
+# 从 Go 模块复制的许可分发文件
+desktop/resources/licenses/neux-knowledge/
+
+# Shared application and Web build outputs
+web/dist/
+web/coverage/
+web/release/
+packages/frontend/coverage/
+packages/frontend/dist/
+
+# Core-managed PTY runtime is rebuilt for each packaging target.
+resources/terminal-runtime/

@@ -1,12 +1,14 @@
 package runtimes
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func TestPrepareRuntimeFilesLayersVirtualTeamInstructionsIntoRuntimeFile(t *testing.T) {
@@ -53,7 +55,7 @@ func TestPrepareRuntimeFilesLayersVirtualTeamInstructionsIntoRuntimeFile(t *test
 		"## TEAM.md",
 		"协作优先级",
 		"# Team: 测试团队",
-		"## NeuxAlly Team Tasks",
+		"## NeuxBot Team Tasks",
 		capabilityContent,
 	} {
 		if !strings.Contains(agents, expected) {
@@ -282,7 +284,7 @@ func TestPrepareRuntimeFilesWritesProjectRoutingForCodexAndClaude(t *testing.T) 
 				"New or modified files that clearly belong to a project must be written under that project's directory",
 				"temporary or unrelated to any project must be created under `attachments/generated/`",
 				"Other paths under `attachments/` contain user-provided files; do not overwrite them",
-				"Do not create user deliverables in the NeuxAlly Chat workspace root",
+				"Do not create user deliverables in the NeuxBot Chat workspace root",
 			} {
 				if !strings.Contains(text, expected) {
 					t.Fatalf("Runtime instructions = %q, want %q", text, expected)
@@ -325,6 +327,48 @@ func TestLinkOrCopyRuntimeSkillFallsBackForExistingTarget(t *testing.T) {
 	}
 	if string(content) != "# Review" {
 		t.Fatalf("copied skill = %q", content)
+	}
+}
+
+func TestRuntimeSkillPreservesExecutableAndKnowledgeReference(t *testing.T) {
+	source := t.TempDir()
+	resources := map[string]string{
+		"SKILL.md":                "# Skill\nRead references/knowledge.md and run scripts/allycli.",
+		"references/knowledge.md": "Knowledge reference fixture",
+		"scripts/allycli":         "CLI fixture",
+	}
+	for name, content := range resources {
+		path := filepath.Join(source, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, copyFallback := range []bool{false, true} {
+		t.Run(fmt.Sprintf("copy=%t", copyFallback), func(t *testing.T) {
+			target := filepath.Join(t.TempDir(), "ally")
+			if copyFallback {
+				if err := os.MkdirAll(target, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := linkOrCopyRuntimeSkill(source, target); err != nil {
+				t.Fatal(err)
+			}
+			for name, want := range resources {
+				path := filepath.Join(target, filepath.FromSlash(name))
+				content, err := os.ReadFile(path)
+				if err != nil || string(content) != want {
+					t.Fatalf("skill resource unavailable: %s %v", name, err)
+				}
+			}
+			info, err := os.Stat(filepath.Join(target, "scripts", "allycli"))
+			if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0) {
+				t.Fatalf("skill CLI lost execution permission: %v", err)
+			}
+		})
 	}
 }
 

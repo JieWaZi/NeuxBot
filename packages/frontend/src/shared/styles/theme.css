@@ -1,0 +1,610 @@
+/* NeuxBot 语义主题；业务组件不得直接依赖参考色阶。 */
+
+:root {
+  /* 欢迎字标浅色绿到黑、暗色绿到白，两种渲染方式共用同一组颜色。 */
+  --welcome-wordmark-start: var(--accent-default);
+  --welcome-wordmark-end: var(--ref-neutral-1000);
+
+  /* 伙伴卡壳的固定低饱和反光色，不参与身体图片的材质或颜色。 */
+  --companion-card-tint-ivory: #fbf5eb;
+  --companion-card-tint-oat: #e8dfd3;
+  --companion-card-tint-rose: #e8d8d8;
+  --companion-card-tint-sage: #dbe2d8;
+  --companion-card-tint-mist: #d9e1e9;
+
+  /* 伙伴卡片；边框用普通语义边框，卡面随浅色/暗色语义表面变化，光泽由身体风格配色晕染。 */
+  --companion-card-edge: color-mix(
+    in srgb,
+    var(--border) 82%,
+    var(--companion-card-tint-ivory)
+  );
+  --companion-card-back: color-mix(
+    in srgb,
+    var(--surface-chrome) 82%,
+    var(--companion-card-tint-ivory)
+  );
+  --companion-card-back-line: color-mix(
+    in srgb,
+    var(--border-strong) 62%,
+    var(--companion-card-tint-ivory)
+  );
+  --companion-card-prism-cyan: hsl(166 70% 80%);
+  --companion-card-prism-violet: hsl(252 75% 87%);
+  --companion-card-glare: hsl(0 0% 100% / 0.82);
+  --companion-card-shade: hsl(0 0% 0% / 0.48);
+  --companion-card-scan-light: hsl(0 0% 40%);
+  --companion-card-scan-dark: hsl(0 0% 0%);
+  --companion-card-bar: hsl(0 0% 78%);
+  --companion-card-sunpillar-1: var(--companion-card-tint-rose);
+  --companion-card-sunpillar-2: var(--companion-card-tint-ivory);
+  --companion-card-sunpillar-3: var(--companion-card-tint-sage);
+  --companion-card-sunpillar-4: var(--companion-card-tint-mist);
+  --companion-card-sunpillar-5: var(--companion-card-tint-oat);
+  --companion-card-sunpillar-6: var(--companion-card-tint-ivory);
+
+  --ref-neutral-0: #ffffff;
+  --ref-neutral-50: #fdfdfd;
+  --ref-neutral-70: #f8f8f9;
+  --ref-neutral-75: #f7f7f7;
+  --ref-neutral-100: #f3f3f5;
+  --ref-neutral-150: #ededee;
+  --ref-neutral-200: #e8e8e8;
+  --ref-neutral-250: #dddddd;
+  --ref-neutral-300: #c9c9cc;
+  --ref-neutral-350: #b0b0b0;
+  --ref-neutral-400: #a1a1aa;
+  --ref-neutral-450: #9a9a9a;
+  --ref-neutral-500: #8f8f92;
+  --ref-neutral-550: #858585;
+  --ref-neutral-600: #77777a;
+  --ref-neutral-650: #6a6a6a;
+  --ref-neutral-700: #5f5f62;
+  --ref-neutral-750: #555555;
+  --ref-neutral-800: #404044;
+  --ref-neutral-850: #2f2f33;
+  --ref-neutral-900: #1c1c1f;
+  --ref-neutral-950: #0e0e10;
+  --ref-neutral-1000: #000000;
+  --ref-navy-950: #101a27;
+  --ref-blue-300: #93c5fd;
+  --ref-blue-400: #60a5fa;
+  --ref-blue-500: #3b82f6;
+  --ref-blue-550: #2e7eff;
+  --ref-blue-600: #2563eb;
+  --ref-blue-700: #005fcc;
+  --ref-cyan-500: #059cb0;
+  --ref-purple-500: #8b5cf6;
+  --ref-purple-600: #7c6b99;
+  --ref-purple-700: #655680;
+  --ref-pink-600: #db2777;
+  --ref-ally-green-light: oklch(84.92% 0.127 150);
+  --ref-ally-green-dark: oklch(72% 0.13 150);
+  --ref-green-550: #1aa73e;
+  --ref-amber-550: #ff8c00;
+  --ref-red-650: #ec221f;
+}
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --editor-syntax-black: #383a42;
+  --editor-syntax-gray: #a0a1a7;
+  --editor-syntax-faint-gray: #4f525e;
+  --editor-syntax-white: #ffffff;
+  --editor-syntax-off-white: #fafafa;
+  --editor-syntax-red: #e45649;
+  --editor-syntax-green: #50a14f;
+  --editor-syntax-yellow: #c18401;
+  --editor-syntax-blue: #0184bc;
+  --editor-syntax-magenta: #a626a4;
+  --editor-syntax-cyan: #0997b3;
+  --editor-syntax-orange: #986801;
+  --editor-syntax-link: #4078f2;
+  --editor-selection: rgba(0, 0, 0, 0.12);
+  --editor-active-line: rgba(0, 0, 0, 0.03);
+
+  --surface-canvas: var(--ref-neutral-50);
+  --surface-panel: var(--ref-neutral-0);
+  --surface-raised: var(--ref-neutral-0);
+  --surface-scene: var(--ref-neutral-0);
+  --surface-workbench: var(--ref-neutral-100);
+  --surface-tertiary: var(--ref-neutral-75);
+  --surface-chrome: var(--ref-neutral-70);
+  --surface-subtle: rgba(16, 26, 39, 0.03);
+  /* 无边框 Card 以表面明度区分，交互时只加深色阶。 */
+  --card-surface: var(--ref-neutral-75);
+  --card-hover: var(--ref-neutral-150);
+  --document-page-surface: var(--ref-neutral-0);
+  --companion-card-wash-strong: 62%;
+  --companion-card-wash-soft: 34%;
+  --companion-card-frost: hsl(222 15% 82%);
+  --companion-card-bloom: 76%;
+
+  --content-caption: var(--ref-neutral-650);
+  --content-primary: rgba(0, 0, 0, 0.8);
+  --content-secondary: rgba(0, 0, 0, 0.6);
+  --content-muted: var(--ref-neutral-650);
+  --content-disabled: rgba(0, 0, 0, 0.3);
+  --content-inverse: var(--ref-neutral-0);
+
+  --accent-default: var(--ref-ally-green-light);
+  --accent-hover: var(--ref-ally-green-dark);
+  --accent-content: color-mix(
+    in srgb,
+    var(--accent-default) 40%,
+    var(--ref-neutral-1000)
+  );
+  --accent-disabled: color-mix(in srgb, var(--accent-default) 30%, transparent);
+  --accent-surface-subtle: color-mix(
+    in srgb,
+    var(--accent-default) 5%,
+    transparent
+  );
+  --accent-surface: color-mix(in srgb, var(--accent-default) 9%, transparent);
+  --accent-surface-strong: color-mix(
+    in srgb,
+    var(--accent-default) 15%,
+    transparent
+  );
+  --accent-border-subtle: color-mix(
+    in srgb,
+    var(--accent-default) 25%,
+    transparent
+  );
+  --accent-border: color-mix(in srgb, var(--accent-default) 40%, transparent);
+  --accent-secondary: var(--ref-purple-600);
+  --accent-secondary-hover: var(--ref-purple-700);
+  --accent-secondary-surface: color-mix(
+    in srgb,
+    var(--accent-secondary) 9%,
+    transparent
+  );
+  --accent-secondary-surface-strong: color-mix(
+    in srgb,
+    var(--accent-secondary) 15%,
+    transparent
+  );
+  --accent-secondary-border: color-mix(
+    in srgb,
+    var(--accent-secondary) 25%,
+    transparent
+  );
+
+  --link-default: color-mix(
+    in srgb,
+    var(--accent-default) 55%,
+    var(--ref-neutral-1000)
+  );
+  --link-hover: var(--accent-content);
+  --border-subtle: rgba(16, 26, 39, 0.08);
+  --border-default: rgba(16, 26, 39, 0.15);
+  --border-strong: rgba(16, 26, 39, 0.34);
+
+  --action-neutral-surface: rgba(0, 0, 0, 0.05);
+  --action-neutral-hover: rgba(0, 0, 0, 0.08);
+  --action-neutral-pressed: rgba(0, 0, 0, 0.1);
+  --action-neutral-border: rgba(0, 0, 0, 0.05);
+  --action-neutral-content: var(--content-primary);
+  --action-neutral-content-disabled: var(--content-disabled);
+  --action-primary: var(--ref-navy-950);
+  --action-primary-hover: var(--ref-neutral-900);
+  --action-primary-pressed: var(--ref-neutral-1000);
+  --action-primary-content: var(--ref-neutral-0);
+  --action-secondary: var(--ref-neutral-100);
+  --action-secondary-hover: rgba(16, 26, 39, 0.09);
+  --action-secondary-pressed: rgba(16, 26, 39, 0.13);
+  --action-secondary-content: var(--content-primary);
+  --action-quiet-hover: var(--ref-neutral-100);
+  --action-quiet-pressed: rgba(16, 26, 39, 0.09);
+  --action-quiet-content: var(--content-secondary);
+  --selection-surface: var(--action-neutral-hover);
+
+  --field-group-background: rgba(0, 0, 0, 0.03);
+  --field-background: var(--ref-neutral-0);
+  --field-background-hover: var(--field-background);
+  --field-placeholder: var(--content-muted);
+  --field-border: rgba(0, 0, 0, 0.08);
+  --field-border-hover: rgba(0, 0, 0, 0.2);
+  --field-border-focus: var(--ref-neutral-550);
+  --field-border-active: var(--field-border-hover);
+  --focus-ring: var(--ref-neutral-650);
+  --overlay-scrim: rgba(16, 26, 39, 0.2);
+  --scrollbar-thumb: var(--action-neutral-pressed);
+  --control-highlight-background: var(--accent-default);
+  --control-highlight-content: var(--ref-neutral-1000);
+  --control-launcher-background: var(--action-neutral-hover);
+  --control-launcher-background-hover: color-mix(
+    in srgb,
+    var(--control-highlight-background) 20%,
+    transparent
+  );
+  --control-launcher-background-pressed: color-mix(
+    in srgb,
+    var(--control-highlight-background) 30%,
+    transparent
+  );
+  --control-launcher-content: var(--action-neutral-content);
+  --control-launcher-content-hover: var(--control-highlight-background);
+  --control-switch-track: var(--action-neutral-pressed);
+  --control-switch-track-checked: var(--control-highlight-background);
+  --control-switch-thumb: var(--ref-neutral-0);
+
+  --button-content: var(--action-neutral-content);
+  --button-outline-border: var(--action-neutral-hover);
+  --button-fill-background: var(--action-neutral-hover);
+  --button-fill-background-hover: var(--action-neutral-hover);
+  --button-fill-background-pressed: var(--action-neutral-hover);
+  --button-primary-background: rgba(0, 0, 0, 0.8);
+  --button-primary-background-hover: rgba(0, 0, 0, 0.6);
+  --button-primary-background-pressed: rgba(0, 0, 0, 0.9);
+  --composer-border: var(--field-border);
+  --composer-context-background: rgba(0, 0, 0, 0.03);
+
+  --status-info-emphasis: var(--ref-blue-550);
+  --status-success-emphasis: var(--ref-green-550);
+  --status-warning-emphasis: var(--ref-amber-550);
+  --status-danger-emphasis: var(--ref-red-650);
+  --status-info-content: color-mix(
+    in srgb,
+    var(--status-info-emphasis) 76%,
+    var(--ref-neutral-1000)
+  );
+  --status-success-content: color-mix(
+    in srgb,
+    var(--status-success-emphasis) 68%,
+    var(--ref-neutral-1000)
+  );
+  --status-warning-content: color-mix(
+    in srgb,
+    var(--status-warning-emphasis) 54%,
+    var(--ref-neutral-1000)
+  );
+  --status-danger-content: color-mix(
+    in srgb,
+    var(--status-danger-emphasis) 80%,
+    var(--ref-neutral-1000)
+  );
+  --status-success-surface: color-mix(
+    in srgb,
+    var(--status-success-emphasis) 10%,
+    transparent
+  );
+  --status-info-surface: color-mix(
+    in srgb,
+    var(--status-info-emphasis) 10%,
+    transparent
+  );
+  --status-warning-surface: color-mix(
+    in srgb,
+    var(--status-warning-emphasis) 10%,
+    transparent
+  );
+  --status-danger-surface: color-mix(
+    in srgb,
+    var(--status-danger-emphasis) 10%,
+    transparent
+  );
+  --status-info-border: color-mix(
+    in srgb,
+    var(--status-info-emphasis) 30%,
+    transparent
+  );
+  --status-success-border: color-mix(
+    in srgb,
+    var(--status-success-emphasis) 30%,
+    transparent
+  );
+  --status-warning-border: color-mix(
+    in srgb,
+    var(--status-warning-emphasis) 30%,
+    transparent
+  );
+  --status-danger-border: color-mix(
+    in srgb,
+    var(--status-danger-emphasis) 30%,
+    transparent
+  );
+
+  --elevation-xs: 0 1px 2px rgba(16, 26, 39, 0.04);
+  --elevation-sm: 0 2px 4px rgba(16, 26, 39, 0.055);
+  --elevation-md: 0 4px 8px rgba(16, 26, 39, 0.07);
+  --elevation-lg: 0 8px 16px rgba(16, 26, 39, 0.09);
+  --elevation-xl: 0 12px 24px rgba(16, 26, 39, 0.11);
+  --scene-edge-shadow: -4px 0 12px -6px rgba(16, 26, 39, 0.08);
+  --composer-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  --menu-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --welcome-wordmark-end: var(--ref-neutral-0);
+
+  --editor-syntax-black: #282c34;
+  --editor-syntax-gray: #abb2bf;
+  --editor-syntax-faint-gray: #5c6370;
+  --editor-syntax-white: #ffffff;
+  --editor-syntax-off-white: #fafafa;
+  --editor-syntax-red: #e06c75;
+  --editor-syntax-green: #98c379;
+  --editor-syntax-yellow: #e5c07b;
+  --editor-syntax-blue: #61afef;
+  --editor-syntax-magenta: #c678dd;
+  --editor-syntax-cyan: #56b6c2;
+  --editor-syntax-orange: #d19a66;
+  --editor-syntax-link: #61afef;
+  --editor-selection: rgba(255, 255, 255, 0.22);
+  --editor-active-line: rgba(255, 255, 255, 0.04);
+
+  --surface-canvas: var(--ref-neutral-950);
+  --surface-panel: var(--ref-neutral-900);
+  --surface-raised: var(--ref-neutral-900);
+  --surface-scene: var(--ref-neutral-900);
+  --surface-workbench: var(--ref-neutral-950);
+  --surface-tertiary: var(--ref-neutral-950);
+  --surface-chrome: var(--ref-neutral-950);
+  --surface-subtle: rgba(255, 255, 255, 0.06);
+  --card-surface: color-mix(
+    in srgb,
+    var(--surface-raised) 96%,
+    var(--ref-neutral-200)
+  );
+  --card-hover: color-mix(
+    in srgb,
+    var(--surface-raised) 92%,
+    var(--ref-neutral-200)
+  );
+  --companion-card-wash-strong: 28%;
+  --companion-card-wash-soft: 14%;
+  --companion-card-frost: hsl(224 10% 18%);
+  --companion-card-bloom: 40%;
+
+  --content-caption: var(--ref-neutral-450);
+  --content-primary: var(--ref-neutral-200);
+  --content-secondary: var(--ref-neutral-350);
+  --content-muted: var(--ref-neutral-450);
+  --content-disabled: var(--ref-neutral-750);
+  --content-inverse: var(--ref-neutral-950);
+
+  --accent-default: var(--ref-ally-green-dark);
+  --accent-hover: var(--ref-ally-green-light);
+  --accent-content: var(--accent-hover);
+  --accent-disabled: color-mix(in srgb, var(--accent-default) 30%, transparent);
+  --accent-surface-subtle: color-mix(
+    in srgb,
+    var(--accent-default) 5%,
+    transparent
+  );
+  --accent-surface: color-mix(in srgb, var(--accent-default) 9%, transparent);
+  --accent-surface-strong: color-mix(
+    in srgb,
+    var(--accent-default) 15%,
+    transparent
+  );
+  --accent-border-subtle: color-mix(
+    in srgb,
+    var(--accent-default) 25%,
+    transparent
+  );
+  --accent-border: color-mix(in srgb, var(--accent-default) 40%, transparent);
+  --accent-secondary: var(--ref-purple-500);
+  --accent-secondary-hover: var(--ref-purple-600);
+  --accent-secondary-surface: color-mix(
+    in srgb,
+    var(--accent-secondary) 9%,
+    transparent
+  );
+  --accent-secondary-surface-strong: color-mix(
+    in srgb,
+    var(--accent-secondary) 15%,
+    transparent
+  );
+  --accent-secondary-border: color-mix(
+    in srgb,
+    var(--accent-secondary) 25%,
+    transparent
+  );
+
+  --link-default: var(--accent-default);
+  --link-hover: var(--accent-hover);
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --border-default: rgba(255, 255, 255, 0.18);
+  --border-strong: rgba(255, 255, 255, 0.3);
+
+  --action-neutral-surface: rgba(255, 255, 255, 0.1);
+  --action-neutral-hover: rgba(255, 255, 255, 0.12);
+  --action-neutral-pressed: rgba(255, 255, 255, 0.15);
+  --action-neutral-border: rgba(255, 255, 255, 0.18);
+  --action-neutral-content: var(--ref-neutral-350);
+  --action-neutral-content-disabled: var(--ref-neutral-750);
+  --action-primary: rgba(255, 255, 255, 0.16);
+  --action-primary-hover: rgba(255, 255, 255, 0.24);
+  --action-primary-pressed: rgba(255, 255, 255, 0.2);
+  --action-primary-content: var(--ref-neutral-100);
+  --action-secondary: rgba(255, 255, 255, 0.06);
+  --action-secondary-hover: rgba(255, 255, 255, 0.1);
+  --action-secondary-pressed: rgba(255, 255, 255, 0.12);
+  --action-secondary-content: var(--ref-neutral-200);
+  --action-quiet-hover: rgba(255, 255, 255, 0.06);
+  --action-quiet-pressed: rgba(255, 255, 255, 0.1);
+  --action-quiet-content: var(--ref-neutral-350);
+  --selection-surface: var(--action-neutral-hover);
+
+  --field-group-background: var(--surface-tertiary);
+  --field-background: var(--ref-neutral-900);
+  --field-background-hover: rgba(255, 255, 255, 0.06);
+  --field-placeholder: var(--ref-neutral-550);
+  --field-border: rgba(255, 255, 255, 0.18);
+  --field-border-hover: rgba(255, 255, 255, 0.24);
+  --field-border-focus: var(--ref-neutral-550);
+  --field-border-active: var(--field-border-focus);
+  --focus-ring: var(--accent-default);
+  --overlay-scrim: rgba(0, 0, 0, 0.56);
+  --scrollbar-thumb: var(--action-neutral-pressed);
+  --control-highlight-background: var(--accent-default);
+  --control-highlight-content: var(--ref-neutral-1000);
+  --control-launcher-background: var(--action-neutral-pressed);
+  --control-launcher-background-hover: color-mix(
+    in srgb,
+    var(--control-highlight-background) 20%,
+    transparent
+  );
+  --control-launcher-background-pressed: color-mix(
+    in srgb,
+    var(--control-highlight-background) 30%,
+    transparent
+  );
+  --control-launcher-content: var(--action-neutral-content);
+  --control-launcher-content-hover: var(--control-highlight-background);
+  --control-switch-track: var(--ref-neutral-750);
+  --control-switch-track-checked: var(--control-highlight-background);
+  --control-switch-thumb: var(--ref-neutral-0);
+
+  --button-content: var(--action-neutral-content);
+  --button-outline-border: var(--action-neutral-border);
+  --button-fill-background: var(--action-neutral-surface);
+  --button-fill-background-hover: var(--action-neutral-hover);
+  --button-fill-background-pressed: var(--action-neutral-pressed);
+  --button-primary-background: var(--action-primary);
+  --button-primary-background-hover: var(--action-primary-hover);
+  --button-primary-background-pressed: var(--action-primary-pressed);
+  --composer-border: var(--field-border);
+  --composer-context-background: var(--surface-subtle);
+
+  --status-info-emphasis: var(--ref-blue-550);
+  --status-success-emphasis: var(--ref-green-550);
+  --status-warning-emphasis: var(--ref-amber-550);
+  --status-danger-emphasis: var(--ref-red-650);
+  --status-info-content: color-mix(
+    in srgb,
+    var(--status-info-emphasis) 62%,
+    var(--ref-neutral-0)
+  );
+  --status-success-content: color-mix(
+    in srgb,
+    var(--status-success-emphasis) 70%,
+    var(--ref-neutral-0)
+  );
+  --status-warning-content: color-mix(
+    in srgb,
+    var(--status-warning-emphasis) 94%,
+    var(--ref-neutral-0)
+  );
+  --status-danger-content: color-mix(
+    in srgb,
+    var(--status-danger-emphasis) 58%,
+    var(--ref-neutral-0)
+  );
+  --status-success-surface: color-mix(
+    in srgb,
+    var(--status-success-emphasis) 10%,
+    transparent
+  );
+  --status-info-surface: color-mix(
+    in srgb,
+    var(--status-info-emphasis) 10%,
+    transparent
+  );
+  --status-warning-surface: color-mix(
+    in srgb,
+    var(--status-warning-emphasis) 10%,
+    transparent
+  );
+  --status-danger-surface: color-mix(
+    in srgb,
+    var(--status-danger-emphasis) 10%,
+    transparent
+  );
+  --status-info-border: color-mix(
+    in srgb,
+    var(--status-info-emphasis) 30%,
+    transparent
+  );
+  --status-success-border: color-mix(
+    in srgb,
+    var(--status-success-emphasis) 30%,
+    transparent
+  );
+  --status-warning-border: color-mix(
+    in srgb,
+    var(--status-warning-emphasis) 30%,
+    transparent
+  );
+  --status-danger-border: color-mix(
+    in srgb,
+    var(--status-danger-emphasis) 30%,
+    transparent
+  );
+
+  --elevation-xs: 0 1px 2px rgba(0, 0, 0, 0.9);
+  --elevation-sm: 0 2px 4px rgba(0, 0, 0, 0.8);
+  --elevation-md: 0 4px 8px rgba(0, 0, 0, 0.7);
+  --elevation-lg: 0 8px 16px rgba(0, 0, 0, 0.6);
+  --elevation-xl: 0 12px 24px rgba(0, 0, 0, 0.5);
+  --scene-edge-shadow: -4px 0 12px -8px rgba(0, 0, 0, 0.45);
+  --composer-shadow: 0 2px 6px rgba(0, 0, 0, 0.32);
+  --menu-shadow: 0 4px 10px rgba(0, 0, 0, 0.48);
+}
+
+/* 组件层语义接口统一映射到底层主题，业务组件只消费这一稳定接口。 */
+:root,
+[data-theme="light"],
+[data-theme="dark"] {
+  --background: var(--surface-canvas);
+  --canvas: var(--surface-workbench);
+  --surface: var(--surface-panel);
+  --surface-elevated: var(--surface-raised);
+  --foreground: var(--content-primary);
+  --muted: var(--action-quiet-hover);
+  --muted-foreground: var(--content-secondary);
+  --border: var(--border-subtle);
+  --primary: var(--action-primary);
+  --primary-foreground: var(--action-primary-content);
+  --link: var(--link-default);
+  --accent: var(--accent-default);
+  --accent-foreground: var(--ref-neutral-1000);
+  --destructive: var(--status-danger-content);
+  --destructive-foreground: var(--ref-neutral-0);
+  --ring: var(--focus-ring);
+  --overlay: var(--overlay-scrim);
+  --avatar: var(--accent-surface-strong);
+  --avatar-foreground: var(--content-primary);
+  --success: var(--status-success-content);
+  --success-foreground: var(--ref-neutral-0);
+  --warning: var(--status-warning-content);
+  --warning-foreground: var(--ref-neutral-0);
+  --status-offline: var(--content-disabled);
+  --activity-0: var(--status-success-surface);
+  --activity-1: color-mix(
+    in srgb,
+    var(--status-success-emphasis) 24%,
+    transparent
+  );
+  --activity-2: color-mix(
+    in srgb,
+    var(--status-success-emphasis) 52%,
+    transparent
+  );
+  --activity-3: var(--status-success-emphasis);
+  --avatar-preset-frontend: var(--ref-cyan-500);
+  --avatar-preset-project: var(--ref-blue-550);
+  --avatar-preset-backend: var(--ref-purple-500);
+  --avatar-preset-designer: var(--ref-pink-600);
+  --avatar-preset-testing: var(--ref-amber-550);
+  --avatar-preset-devops: var(--ref-blue-400);
+  --avatar-preset-product: var(--ref-green-550);
+  --avatar-preset-data: var(--ref-cyan-500);
+  --avatar-preset-content: var(--ref-red-650);
+  --avatar-preset-assistant: var(--ref-purple-500);
+  --avatar-preset-surface: color-mix(
+    in srgb,
+    var(--avatar-preset-color) 14%,
+    var(--surface-panel)
+  );
+}
+
+[data-theme="dark"] {
+  --destructive-foreground: var(--ref-neutral-1000);
+  --success-foreground: var(--ref-neutral-1000);
+  --warning-foreground: var(--ref-neutral-1000);
+}

@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	eventhub "github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 )
 
 func validateResource(ctx context.Context, command control) error {
@@ -17,6 +17,35 @@ func validateResource(ctx context.Context, command control) error {
 	}
 	var err error
 	switch command.Topic {
+	case "knowledge":
+		if resource.ParentID == "local" {
+			if global.KnowledgeEngine == nil {
+				return status_error.KnowledgeUnsupported
+			}
+			_, err = global.KnowledgeEngine.GetLibrary(ctx, resource.ID)
+		} else {
+			if global.KnowledgeConnectionControllerManager == nil {
+				return status_error.KnowledgeUnsupported
+			}
+			connection, readErr := global.KnowledgeConnectionControllerManager.Get(ctx, resource.ParentID)
+			if readErr != nil {
+				return readErr
+			}
+			if !connection.Enabled {
+				return status_error.KnowledgeForbidden
+			}
+		}
+	case "resources":
+		switch resource.Kind {
+		case "skill":
+			_, err = global.SkillControllerManager.GetPackage(ctx, resource.ID)
+		case "connector":
+			_, err = global.MCPConnectorControllerManager.Get(ctx, resource.ID)
+		case "waker":
+			_, err = global.WakerControllerManager.Get(ctx, resource.ID)
+		}
+	case "plugins":
+		_, err = global.PluginControllerManager.Get(ctx, resource.ID)
 	case "chat":
 		_, err = global.ChatControllerManager.Get(ctx, resource.ID)
 	case "team":

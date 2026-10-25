@@ -2,11 +2,12 @@ package controllers
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // boardAttentionFact 补充通知需要的原验收围栏和人工输入期限，不持久化派生状态。
@@ -385,7 +386,7 @@ func boardContains(text, query string) bool {
 }
 
 func boardAttentionMatches(a models.WorkBoardAttention, q WorkBoardQuery) bool {
-	return (q.ExecutorID == "" || q.ExecutorID == a.ExecutorID) && (q.Source == "" || q.Source == a.Source) && (q.Query == "" || boardContains(a.WorkTitle, q.Query))
+	return (len(q.States) == 0 || slices.Contains(q.States, a.Kind)) && (q.ExecutorID == "" || q.ExecutorID == a.ExecutorID) && (q.Source == "" || q.Source == a.Source) && (q.Query == "" || boardContains(a.WorkTitle, q.Query))
 }
 
 // AttentionOverview 合并顶部概览的请求数、工作数和预览，不重复扫描当前等待集合。

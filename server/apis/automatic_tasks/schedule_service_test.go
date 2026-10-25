@@ -11,17 +11,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -147,8 +147,8 @@ func newHarness(t *testing.T) *testHarness {
 	h.api = taskAPI{config: schedule.Config{APIHandler: NewLocalHandler, Workflows: h.workflows, WorkflowRuns: workflowRuns, Tasks: controllers.NewAutomaticTaskController(database.DB), Transactions: tx, Wakers: wakers,
 		Projects: controllers.NewProjectController(database.DB), Executions: boundary, Chats: boundary,
 		Channels: controllers.NewChannelController(database.DB), Threads: controllers.NewChannelThreadController(database.DB), TeamTasks: controllers.NewChannelTaskController(database.DB), DataDirectory: dataDirectory, ManagedFilesDirectory: managedDirectory, Now: func() time.Time { return time.UnixMilli(h.now.Load()).UTC() }}}
-	portData, _ := json.Marshal(schedule.APIStatus{IP: "127.0.0.1", Port: availableAPIPort(t)})
-	if err := os.WriteFile(filepath.Join(dataDirectory, "automatic-tasks-api.json"), portData, 0600); err != nil {
+	portData, _ := json.Marshal(map[string]any{"ip": "127.0.0.1", "port": availableAPIPort(t), "enabled": true})
+	if err := os.WriteFile(filepath.Join(dataDirectory, "integration-api.json"), portData, 0600); err != nil {
 		t.Fatal(err)
 	}
 	h.service = schedule.New(h.api.config)

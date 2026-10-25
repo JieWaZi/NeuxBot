@@ -18,14 +18,14 @@ const release = path.join(root, "desktop/release");
 const bundle = path.join(
   release,
   process.arch === "arm64" ? "mac-arm64" : "mac",
-  "NeuxAlly.app",
+  "NeuxBot.app",
 );
 const mib = 1024 * 1024;
 const budgets = {
   application: 450 * mib,
-  // 包含约 72 MiB 的 Core/CLI 与约 40 MiB 的前端和运行资源。
-  resources: 125 * mib,
-  installer: 150 * mib,
+  // 固定飞书约 47 MiB、GitHub CLI 约 38 MiB；macOS arm64 Resources 实测 196.3 MiB，保留约 18 MiB 余量。
+  resources: 215 * mib,
+  installer: 170 * mib,
 };
 
 async function sizeOf(file) {
@@ -68,13 +68,13 @@ check("Application resources", resources, budgets.resources);
 const source = path.dirname(bundle);
 await removeLegacyApplicationsLink(path.join(source, "Applications"));
 const entries = await readdir(source);
-if (entries.some((name) => name !== "NeuxAlly.app")) {
+if (entries.some((name) => name !== "NeuxBot.app")) {
   throw new Error("Installer source contains unexpected build artifacts");
 }
-const installer = path.join(release, `NeuxAlly-mac-${process.arch}.dmg`);
+const installer = path.join(release, `NeuxBot-mac-${process.arch}.dmg`);
 const staging = await mkdtemp(path.join(tmpdir(), `ally-dmg-${process.arch}-`));
 try {
-  const stagedBundle = path.join(staging, "NeuxAlly.app");
+  const stagedBundle = path.join(staging, "NeuxBot.app");
   // DMG 专用内容位于仓库外，避免 Applications 链接被 Vite 或其他工具遍历。
   execFileSync("/usr/bin/ditto", [bundle, stagedBundle], { stdio: "inherit" });
   execFileSync(
@@ -84,16 +84,24 @@ try {
   );
   await symlink("/Applications", path.join(staging, "Applications"));
   // 在签名后生成分架构安装镜像，避免将不同架构及其他构建产物重复装入。
+  // Chromium 的 ULMO 方案使用 8192 sectors（4 MiB）；本项目为交付压缩
+  // 采用 32768 个 512-byte sector（16 MiB），以最终镜像实测为准。
+  // 这减少 x64 大二进制在块间的重复，实际镜像仍须通过校验与体积预算。
+  // https://chromium.googlesource.com/chromium/src/+/HEAD/chrome/installer/mac/pkg-dmg
   execFileSync(
     "/usr/bin/hdiutil",
     [
       "create",
       "-volname",
-      "NeuxAlly",
+      "NeuxBot",
       "-srcfolder",
       staging,
+      "-fs",
+      "HFS+",
       "-format",
       "ULMO",
+      "-imagekey",
+      "udif-chunk-size=32768",
       "-ov",
       installer,
     ],

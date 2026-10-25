@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 func (sdk *SDK) definition(id string) (runtimeDefinition, bool) {
@@ -47,7 +47,7 @@ func (sdk *SDK) ResolveExecutable(request DetectRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return resolveExecutable(definition.binaryCandidates, environment)
+	return resolveExecutable(definitionExecutableCandidates(definition, request.HomeDirectory), environment)
 }
 
 // Detect 对指定 Runtime 执行有界且不触发模型推理的可用性探测。
@@ -113,7 +113,7 @@ func (sdk *SDK) Detect(
 		})
 		return result
 	}
-	binary, err := resolveExecutable(definition.binaryCandidates, environment)
+	binary, err := resolveExecutable(definitionExecutableCandidates(definition, request.HomeDirectory), environment)
 	if err != nil {
 		result.Diagnostics = append(result.Diagnostics, Diagnostic{
 			Code:    "RUNTIME_UNAVAILABLE",
@@ -143,8 +143,9 @@ func (sdk *SDK) Detect(
 	}
 
 	catalog, catalogErr := sdk.acp.DetectOptions(ctx, acpOptionsRequest{
-		RuntimeID: definition.id,
-		Model:     request.Model,
+		RefreshCredentials: request.RefreshCredentials,
+		RuntimeID:          definition.id,
+		Model:              request.Model,
 		Prepared: preparedRuntime{
 			definition:  definition,
 			detection:   result,

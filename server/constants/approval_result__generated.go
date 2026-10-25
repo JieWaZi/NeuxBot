@@ -45,7 +45,7 @@ func (v ApprovalResult) Values() []enum.Enum {
 }
 
 func (v ApprovalResult) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.ApprovalResult"
+	return "github.com/JieWaZi/NeuxBot/server/constants.ApprovalResult"
 }
 
 func (v ApprovalResult) MarshalText() ([]byte, error) {

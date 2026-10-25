@@ -53,7 +53,7 @@ func (v IMDeliveryState) Values() []enum.Enum {
 }
 
 func (v IMDeliveryState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.IMDeliveryState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.IMDeliveryState"
 }
 
 func (v IMDeliveryState) MarshalText() ([]byte, error) {

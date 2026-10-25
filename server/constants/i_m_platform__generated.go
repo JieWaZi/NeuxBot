@@ -18,6 +18,8 @@ func (v IMPlatform) String() string {
 		return ""
 	case IMPlatformFeishu:
 		return "feishu"
+	case IMPlatformWecom:
+		return "wecom"
 	case IMPlatformWeixin:
 		return "weixin"
 	}
@@ -30,6 +32,8 @@ func (v IMPlatform) Label() string {
 		return "IMPlatformUnspecified 表示未选择平台。"
 	case IMPlatformFeishu:
 		return "IMPlatformFeishu 表示飞书企业机器人。"
+	case IMPlatformWecom:
+		return "IMPlatformWecom 表示企业微信智能机器人。"
 	case IMPlatformWeixin:
 		return "IMPlatformWeixin 表示个人微信 iLink 机器人。"
 	}
@@ -37,16 +41,16 @@ func (v IMPlatform) Label() string {
 }
 
 func (v IMPlatform) Values() []enum.Enum {
-	return []enum.Enum{IMPlatformUnspecified, IMPlatformFeishu, IMPlatformWeixin}
+	return []enum.Enum{IMPlatformUnspecified, IMPlatformFeishu, IMPlatformWecom, IMPlatformWeixin}
 }
 
 func (v IMPlatform) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.IMPlatform"
+	return "github.com/JieWaZi/NeuxBot/server/constants.IMPlatform"
 }
 
 func (v IMPlatform) MarshalText() ([]byte, error) {
 	switch v {
-	case IMPlatformUnspecified, IMPlatformFeishu, IMPlatformWeixin:
+	case IMPlatformUnspecified, IMPlatformFeishu, IMPlatformWecom, IMPlatformWeixin:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -59,6 +63,8 @@ func (v *IMPlatform) UnmarshalText(text []byte) error {
 		*v = IMPlatformUnspecified
 	case IMPlatformFeishu.String():
 		*v = IMPlatformFeishu
+	case IMPlatformWecom.String():
+		*v = IMPlatformWecom
 	case IMPlatformWeixin.String():
 		*v = IMPlatformWeixin
 	default:

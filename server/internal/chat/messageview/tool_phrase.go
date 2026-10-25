@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // buildToolPhrase 将不同 Runtime 的工具结构归一为不泄露结果正文的完成态和加载态短语。

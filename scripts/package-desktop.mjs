@@ -6,7 +6,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pnpm = "pnpm";
 
 if (!["darwin", "win32"].includes(process.platform)) {
-  throw new Error("NeuxAlly 桌面安装包当前只支持在 macOS 或 Windows 构建");
+  throw new Error("NeuxBot 桌面安装包当前只支持在 macOS 或 Windows 构建");
 }
 const expectedArch = process.env.EXPECTED_ARCH ?? "";
 if (expectedArch !== "" && process.arch !== expectedArch) {
@@ -25,15 +25,19 @@ function run(label, command, args) {
 }
 
 run("构建 Go Core sidecar", pnpm, ["build:sidecar"]);
+run("构建共享终端执行资源", pnpm, ["terminal:build"]);
 run("构建 Renderer", pnpm, ["--dir", "desktop", "build"]);
 run("检查首屏静态资源预算", pnpm, ["--dir", "desktop", "bundle:check"]);
+run("准备原生Renderer无损交付资源", process.execPath, [
+  path.join(root, "scripts/package-native-renderer.mjs"),
+]);
 run("构建 Electron 主进程与 preload", pnpm, [
   "--dir",
   "desktop",
   "electron:build",
 ]);
-// Release 的 package 任务在 verify 已跑过 electron:test；Windows 契约测试尚未全平台适配。
-if (process.env.ALLY_RELEASE_PACKAGE !== "1") {
+// 全量契约测试由调用方显式选择；打包仍执行资源预算和隔离产物冒烟。
+if (process.argv.includes("--test-contracts")) {
   run("验证 Electron 桌面契约", pnpm, ["--dir", "desktop", "electron:test"]);
 }
 if (process.platform === "darwin") {
@@ -74,7 +78,7 @@ run("执行打包产物冒烟测试", process.execPath, [
 ]);
 
 console.log(
-  `\n[desktop-package] 当前架构的 NeuxAlly ${
+  `\n[desktop-package] 当前架构的 NeuxBot ${
     process.platform === "darwin" ? "应用、DMG" : "应用、NSIS 安装包"
   }和体积报告已通过验证`,
 );

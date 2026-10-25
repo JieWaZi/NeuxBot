@@ -5,12 +5,12 @@ import (
 	"os"
 	"slices"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // ModelDetector 是查询账号能力所需的只读原生探测边界。
@@ -43,6 +43,7 @@ func (s *Service) DetectModel(ctx context.Context, detector ModelDetector, id st
 	nativeModel := accountconfig.NativeModelID(environment.BaseRuntimeID, model)
 	request := runtimes.DetectRequest{RuntimeID: environment.RuntimeID, WorkingDirectory: workspace, BaseEnvironment: accountconfig.Environment(os.Environ()), HomeDirectory: home, LaunchOverride: runtimes.LaunchOverride{Binary: environment.Binary, PrefixArgs: slices.Clone(environment.PrefixArgs), Environment: target.Environment}}
 	// 既有运行时保持原探测约定；新绑定对目标模型验证原生 setter 回执。
+	request.RefreshCredentials = target.RefreshCredentials
 	if accountconfig.IsNativeAccountRuntime(environment.BaseRuntimeID) {
 		request.Model = nativeModel
 	}

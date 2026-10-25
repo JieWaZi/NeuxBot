@@ -41,7 +41,7 @@ func (v TeamMemberActivityState) Values() []enum.Enum {
 }
 
 func (v TeamMemberActivityState) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.TeamMemberActivityState"
+	return "github.com/JieWaZi/NeuxBot/server/constants.TeamMemberActivityState"
 }
 
 func (v TeamMemberActivityState) MarshalText() ([]byte, error) {

@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/teamwork"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
 // taskAPI 直接编排管理与本机任务入口，调度服务仅提供共享业务和协调能力。
@@ -124,13 +124,13 @@ func (s *taskAPI) Delete(ctx context.Context, wakerID, id string) error {
 	if _, err := s.getTask(ctx, wakerID, id); err != nil {
 		return err
 	}
-	if err := s.config.Tasks.SetDeleting(ctx, id, true); err != nil {
+	if err := s.service.WithAuthorizationWrite(ctx, func(ctx context.Context) error { return s.config.Tasks.SetDeleting(ctx, id, true) }); err != nil {
 		return err
 	}
 	committed := false
 	defer func() {
 		if !committed {
-			_ = s.config.Tasks.SetDeleting(context.WithoutCancel(ctx), id, false)
+			_ = s.service.WithAuthorizationWrite(context.WithoutCancel(ctx), func(ctx context.Context) error { return s.config.Tasks.SetDeleting(ctx, id, false) })
 		}
 	}()
 	runs, _, err := s.config.Tasks.ListRuns(ctx, id, 0, 0)
@@ -218,11 +218,14 @@ func (s *taskAPI) Delete(ctx context.Context, wakerID, id string) error {
 		}
 		return s.config.Tasks.Delete(tx, id)
 	}
-	if len(chatIDs) == 0 {
-		err = s.config.Transactions.Transaction(ctx, finalize)
-	} else {
-		err = s.config.Chats.DeleteChatsAtomically(ctx, chatIDs, finalize)
-	}
+	// 最终删除必须先进入授权屏障，再获取数据库写锁；同一 Context 让任务仓库重入，
+	// 避免 Chat 索引已写入后才等待撤权锁，与 Key 更新形成反向锁序。
+	err = s.service.WithAuthorizationWrite(ctx, func(ctx context.Context) error {
+		if len(chatIDs) == 0 {
+			return s.config.Transactions.Transaction(ctx, finalize)
+		}
+		return s.config.Chats.DeleteChatsAtomically(ctx, chatIDs, finalize)
+	})
 	committed = err == nil
 	if committed {
 		s.service.ForgetTask(ctx, id)
@@ -356,11 +359,7 @@ func (s *taskAPI) ReadAPIState(ctx context.Context, taskID, token, runID string)
 	if run.TaskID != taskID {
 		return PublicRun{}, status_error.AutomaticRunNotFound
 	}
-	if err := s.service.ReconcileRun(ctx, &run); err != nil {
-		return PublicRun{}, err
-	}
-	view, err := s.service.ReadRun(ctx, run)
-	return publicRun(view), err
+	return s.readRunState(ctx, run)
 }
 
 func (s *taskAPI) authenticatedWorkflowRun(ctx context.Context, taskID, token, runID string) (models.AutomaticRun, error) {
@@ -387,6 +386,28 @@ func (s *taskAPI) ReadAPIResult(ctx context.Context, taskID, token, runID string
 	if err != nil {
 		return PublicWorkflowResult{}, err
 	}
+	return s.workflowResult(ctx, run)
+}
+
+// 工作流运行结果
+type PublicWorkflowResult struct {
+	// 运行状态
+	PublicRun
+	// 运行结果
+	Result any `json:"result"`
+	// 结果文件
+	Files []workflow.OutputFile `json:"files"`
+}
+
+func (s *taskAPI) readRunState(ctx context.Context, run models.AutomaticRun) (PublicRun, error) {
+	if err := s.service.ReconcileRun(ctx, &run); err != nil {
+		return PublicRun{}, err
+	}
+	view, err := s.service.ReadRun(ctx, run)
+	return publicRun(view), err
+}
+
+func (s *taskAPI) workflowResult(ctx context.Context, run models.AutomaticRun) (PublicWorkflowResult, error) {
 	view, err := s.service.ReadRun(ctx, run)
 	if err != nil {
 		return PublicWorkflowResult{}, err
@@ -404,14 +425,4 @@ func (s *taskAPI) ReadAPIResult(ctx context.Context, taskID, token, runID string
 		response.Files, err = s.config.Workflows.OutputFiles(ctx, actual)
 	}
 	return response, err
-}
-
-// 工作流运行结果
-type PublicWorkflowResult struct {
-	// 运行状态
-	PublicRun
-	// 运行结果
-	Result any `json:"result"`
-	// 结果文件
-	Files []workflow.OutputFile `json:"files"`
 }

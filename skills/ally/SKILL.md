@@ -1,22 +1,45 @@
 ---
 name: ally
-description: Use NeuxAlly-provided capabilities through allycli for message and file delivery, workflow authoring or execution, team coordination, memory, and structured user questions. Apply when a task needs a platform operation advertised by allycli; ordinary file editing or shell work alone does not require this skill.
+description: Use when factual or technical questions may be covered by available NeuxBot knowledge bases, or a task needs knowledge research, organizing chat attachments and existing materials, message and file delivery, workflows, team coordination, memory, plugins, or structured user questions. Ordinary file editing or shell work alone does not require this skill.
 ---
 
-# NeuxAlly
+# NeuxBot
 
-Use `allycli` to perform the platform operations needed for the user's task.
-The application supplies the binary and execution context. Do not install a
+The application supplies a complete skill directory and execution context.
+Resolve paths from the directory containing this `SKILL.md`, not the current
+working directory. The executable is `scripts/allycli` in that directory
+(`scripts/allycli.exe` on Windows); references are in its `references/` directory.
+Use the exact absolute paths supplied in the execution instructions. For example:
+
+```sh
+"<absolute-skill-directory>/scripts/allycli" capabilities
+```
+
+Every `allycli` command below and in the references means this same quoted
+absolute executable. `ALLYCLI_BINARY_PATH` also points to this skill-local
+executable; use the current shell's environment syntax when invoking it.
+Do not rely on bare command lookup, search global installations, install a
 replacement, invent credentials, or call desktop administration endpoints.
-If command lookup is ambiguous, invoke the quoted absolute executable supplied
-in `ALLYCLI_BINARY_PATH` using the current shell's environment syntax.
+
+For questions about topics covered by the user's available knowledge bases,
+knowledge-base searches, Wiki revisions or requests to save or organize materials, read
+[the knowledge reference](references/knowledge.md) from this same skill directory,
+using the absolute reference path supplied in the execution instructions.
+Do not look for `references/knowledge.md` relative to the working directory.
+The user's chat request is
+the entry point: resolve the target and requested sources through the current
+CLI contracts. Use the knowledge reading workflow even when the user does not
+explicitly say "search the knowledge base"; select the depth from their question
+and the evidence gaps. It applies to every companion, without a specialist role
+or a user-selected research mode. Respect an explicit choice of other sources.
+Keep large inputs and results in files.
 
 ## Discover only what is needed
 
 - At first use in an execution, run `allycli capabilities`. Its result is the
   current authorized surface, not permission to perform extra work.
 - For workflow creation/editing, run `allycli workflow authoring prepare
-  --primitives <actual DSL calls>` when advertised. It returns the minimal
+--primitives <actual DSL calls>` when advertised. It returns the minimal
   guides/SDK, current source and save contract together. Reuse that result.
 - For a contract still missing, run `allycli describe <operation-id>`.
   Use its schema, limits, completion meaning and advertised legal values.
@@ -55,3 +78,7 @@ Use real file references for requested artifacts. Submit the actual candidate
 or report through the advertised result operation; a final chat message is
 not a submission receipt. Tell the user what was actually saved, accepted,
 completed, or delivered, preserving failures and uncertainty.
+
+## Plugins
+
+For plugin requests in chat, use the current agent's native plugin and authentication mechanisms within the user's request. Native installation belongs to that agent's shared environment; describe its actual result without claiming a NeuxBot system installation. NeuxBot's maintained plugins are installed and authorized from the plugin library interface.

@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // Client 封装有界的官方认证 HTTP 请求。
@@ -140,16 +140,19 @@ func (c *Client) request(ctx context.Context, path string, body any, form url.Va
 	request.Header.Set("Content-Type", contentType)
 	request.Header.Set("User-Agent", "ally-codex-oauth")
 	response, err := c.HTTP.Do(request)
-	if errors.Is(ctx.Err(), context.Canceled) {
-		return 0, status_error.OperationCanceled
-	}
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return 0, status_error.OperationTimeout
+	if response != nil {
+		defer response.Body.Close()
 	}
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return 0, status_error.OperationCanceled
+		}
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return 0, status_error.OperationTimeout
+		}
 		return 0, requestFailure(path, "transport", 0, err)
 	}
-	defer response.Body.Close()
+	// 已收到成功响应时仍解析令牌，让调用方保存已发生的轮换，避免取消丢弃新凭据。
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		// 设备授权的 403/404 是尚未确认，不属于外部故障。
 		if path == "/api/accounts/deviceauth/token" && (response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusNotFound) {

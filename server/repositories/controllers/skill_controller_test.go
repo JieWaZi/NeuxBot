@@ -2,11 +2,86 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"gorm.io/gorm"
 )
+
+func TestSkillInstalledPartnerPreviewsStayBoundedAndUseRealProfiles(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	partners := []models.Waker{}
+	for i := 0; i < 7; i++ {
+		partners = append(partners, models.Waker{ID: fmt.Sprintf("partner-%d", i), Name: fmt.Sprintf("伙伴%d", i), Avatar: fmt.Sprintf("actual-avatar-%d", i)})
+	}
+	if err := db.Create(&partners).Error; err != nil {
+		t.Fatal(err)
+	}
+	ids := []string{}
+	relations := []models.WakerSkill{}
+	for i := 0; i < 101; i++ {
+		id := fmt.Sprintf("skill-%03d", i)
+		ids = append(ids, id)
+		for j := 0; j < 6; j++ {
+			relations = append(relations, models.WakerSkill{ID: fmt.Sprintf("relation-%d-%d", i, j), SkillPackageID: id, WakerID: partners[j].ID, Enabled: j%2 == 0})
+		}
+	}
+	if err := db.CreateInBatches(&relations, 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	var queries, maxRows int64
+	if err := db.Callback().Query().After("gorm:query").Register("test:skill_partner_reads", func(query *gorm.DB) {
+		if !query.DryRun {
+			queries++
+			maxRows = max(maxRows, query.RowsAffected)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	store := NewSkillController(db)
+	for _, size := range []int{1, 101} {
+		queries, maxRows = 0, 0
+		previews, err := store.InstalledPartnerPreviews(ctx, ids[:size])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(previews) != size || queries != int64(2*((size+99)/100)) || maxRows > 400 {
+			t.Fatalf("unbounded preview: skills=%d queries=%d rows=%d", len(previews), queries, maxRows)
+		}
+		for _, id := range ids[:size] {
+			if len(previews[id]) != constants.SkillPartnerPreviewLimit {
+				t.Fatalf("preview for %s = %+v", id, previews[id])
+			}
+			for i, partner := range previews[id] {
+				if partner.ID != partners[i].ID || partner.Avatar != partners[i].Avatar || partner.Name != partners[i].Name {
+					t.Fatalf("incorrect partner: %+v", partner)
+				}
+			}
+		}
+	}
+	counts, err := store.InstalledCounts(ctx, ids[:1])
+	if err != nil || counts[ids[0]] != 6 {
+		t.Fatalf("preview changed total usage: %v %v", counts, err)
+	}
+	var plan []struct {
+		// Detail 是 SQLite 返回的实际查询计划说明。
+		Detail string
+	}
+	if err := db.Raw("EXPLAIN QUERY PLAN SELECT skill_package_id, waker_id, ROW_NUMBER() OVER (PARTITION BY skill_package_id ORDER BY waker_id) FROM waker_skills WHERE skill_package_id IN ?", ids).Find(&plan).Error; err != nil {
+		t.Fatal(err)
+	}
+	indexed := false
+	for _, step := range plan {
+		indexed = indexed || strings.Contains(step.Detail, "idx_skill_installed_partners")
+	}
+	if !indexed {
+		t.Fatalf("preview query lost its covering index: %+v", plan)
+	}
+}
 
 func TestSkillControllerVisibleStateAndEnabledSkills(t *testing.T) {
 	controller := NewSkillController(newTestDB(t))

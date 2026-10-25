@@ -6,15 +6,15 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/codexoauth"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // Service 复用设置登录、账号修改和执行启动所需的账号生命周期。
@@ -27,9 +27,11 @@ type Service struct {
 	accounts controllers.AIAccountController
 	// mutex 保护进程生命周期、账号租约和登录任务。
 	mutex sync.Mutex
-	// readers 统计共享使用租约；负数表示订阅调用、配置修改或登录等独占使用。
+	// readers 统计共享执行租约；负数仅表示配置修改或登录等独占使用。
 	readers map[string]int
-	// leaseChanged 在租约释放时唤醒等待能力查询，不轮询账号使用状态。
+	// credentials 仅在准备、刷新和回收时串行同账号凭据，不覆盖模型调用。
+	credentials sync.Map
+	// leaseChanged 在租约释放时唤醒能力查询和后台调用，不轮询账号使用状态。
 	leaseChanged chan struct{}
 	// jobs 保存每个账号最近一次登录任务的安全状态。
 	jobs map[string]*loginJob
@@ -192,12 +194,17 @@ func (s *Service) ValidateSelection(ctx context.Context, id, runtimeID, model, r
 	return account, nil
 }
 
-// Prepare 冻结账号版本并生成 workspace 配置，返回必须在 Runtime 退出后释放的租约。
+// Prepare 冻结账号配置并取得共享执行租约，Runtime 退出后回收本次投射。
 func (s *Service) Prepare(ctx context.Context, id, runtimeID, workspace, model string) (runtimes.RuntimeTarget, func(), error) {
 	return s.prepareWithLease(ctx, id, runtimeID, workspace, model, false)
 }
 
-// PrepareProbe 让只读能力探测等待正在使用的账号，保持认证投射与回收的独占边界。
+// PrepareQueued 为后台模型调用等待账号租约；等待可取消，取得后仍沿既有认证投射与回收流程。
+func (s *Service) PrepareQueued(ctx context.Context, id, runtimeID, workspace, model string) (runtimes.RuntimeTarget, func(), error) {
+	return s.prepareWithLease(ctx, id, runtimeID, workspace, model, true)
+}
+
+// PrepareProbe 让只读能力探测等待账号设置修改，与普通执行共享账号。
 func (s *Service) PrepareProbe(ctx context.Context, id, runtimeID, workspace, model string) (runtimes.RuntimeTarget, func(), error) {
 	return s.prepareWithLease(ctx, id, runtimeID, workspace, model, true)
 }
@@ -207,30 +214,62 @@ func (s *Service) prepareWithLease(ctx context.Context, id, runtimeID, workspace
 	if err != nil {
 		return runtimes.RuntimeTarget{}, nil, err
 	}
-	release, err := s.acquireLease(ctx, id, account.AuthMode == constants.AccountAuthModeSubscription, wait)
+	release, err := s.acquireLease(ctx, id, false, wait)
 	if err != nil {
 		return runtimes.RuntimeTarget{}, nil, err
 	}
+	unlock, err := s.credentialGate(id).Lock(ctx)
+	if err != nil {
+		release()
+		return runtimes.RuntimeTarget{}, nil, err
+	}
+	// 账号可能在取得共享租约前被修改，认证模式必须使用租约内的当前快照。
+	account, err = s.accounts.Get(ctx, id)
+	if err != nil {
+		unlock()
+		release()
+		return runtimes.RuntimeTarget{}, nil, err
+	}
 	if err := s.recoverWorkspaceAuth(ctx, account.ID, runtimeID, workspace); err != nil {
+		unlock()
 		release()
 		return runtimes.RuntimeTarget{}, nil, err
 	}
 	target, err := s.prepare(ctx, account, runtimeID, workspace, model)
 	if err != nil {
+		unlock()
 		release()
 		return runtimes.RuntimeTarget{}, nil, err
 	}
+	seed := ""
+	if account.AuthMode == constants.AccountAuthModeSubscription && runtimeID == constants.RuntimeIDCodex {
+		seed, err = s.accounts.Credential(ctx, id)
+		if err != nil {
+			unlock()
+			release()
+			return runtimes.RuntimeTarget{}, nil, err
+		}
+		target.RefreshCredentials = func(ctx context.Context, previous string) (codexoauth.Tokens, error) {
+			return s.refreshSubscription(ctx, id, previous)
+		}
+	}
+	unlock()
 	var once sync.Once
 	return target, func() {
 		once.Do(func() {
-			if account.AuthMode == constants.AccountAuthModeSubscription {
-				if err := s.backfill(context.WithoutCancel(ctx), account.ID); err != nil {
+			if seed != "" {
+				if err := s.backfillProjection(context.WithoutCancel(ctx), account.ID, filepath.Join(accountconfig.Home(workspace, runtimeID), "auth.json"), seed); err != nil {
 					logx.Errorf("recover account CLI credentials failed: account_id=%s error=%v", account.ID, err)
 				}
 			}
 			release()
 		})
 	}, nil
+}
+
+func (s *Service) credentialGate(id string) *codexoauth.CredentialGate {
+	gate, _ := s.credentials.LoadOrStore(id, codexoauth.NewCredentialGate())
+	return gate.(*codexoauth.CredentialGate)
 }
 
 func (s *Service) prepare(ctx context.Context, account models.AIAccount, runtimeID, workspace, model string) (runtimes.RuntimeTarget, error) {

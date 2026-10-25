@@ -1,12 +1,28 @@
 package runtimes
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 )
+
+// definitionExecutableCandidates 在 PATH 命令之后补充官方用户级原生程序，显式路径覆盖不会回退到其他安装。
+func definitionExecutableCandidates(definition runtimeDefinition, homeDirectory string) []string {
+	candidates := cloneStrings(definition.binaryCandidates)
+	if homeDirectory == "" {
+		return candidates
+	}
+	for _, relative := range definition.userBinaryCandidates {
+		path := filepath.Join(homeDirectory, filepath.FromSlash(relative))
+		if runtime.GOOS == "windows" {
+			path += ".exe"
+		}
+		candidates = append(candidates, path)
+	}
+	return candidates
+}
 
 func resolveExecutable(
 	candidates []string,

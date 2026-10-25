@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // ConnectionConfiguration 只接受管理员可编辑的字段，平台凭据仅写入。
@@ -31,7 +31,7 @@ type ConnectionConfiguration struct {
 // SaveConfiguration 创建或按版本更新连接，不允许手工注入微信令牌和服务域名。
 func (s *Service) SaveConfiguration(ctx context.Context, id string, input ConnectionConfiguration) (models.IMConnection, error) {
 	value := models.IMConnection{ID: id, Name: strings.TrimSpace(input.Name), Platform: input.Platform, Enabled: input.Enabled, KeepAwake: input.KeepAwake, State: constants.IMConnectionStateDisconnected}
-	if value.Name == "" || (value.Platform != constants.IMPlatformWeixin && value.Platform != constants.IMPlatformFeishu) {
+	if value.Name == "" || (value.Platform != constants.IMPlatformWeixin && value.Platform != constants.IMPlatformFeishu && value.Platform != constants.IMPlatformWecom) {
 		return value, status_error.IMConfigurationInvalid
 	}
 	if id == "" {
@@ -50,8 +50,10 @@ func (s *Service) SaveConfiguration(ctx context.Context, id string, input Connec
 		value.Enabled = input.Enabled
 		value.KeepAwake = input.KeepAwake
 	}
+	input.AppID = strings.TrimSpace(input.AppID)
+	input.AppSecret = strings.TrimSpace(input.AppSecret)
 	if input.AppSecret != "" || input.AppID != "" {
-		if value.Platform != constants.IMPlatformFeishu || strings.TrimSpace(input.AppID) == "" || (input.AppSecret == "" && input.AppID != value.AppID) {
+		if (value.Platform != constants.IMPlatformFeishu && value.Platform != constants.IMPlatformWecom) || strings.TrimSpace(input.AppID) == "" || (input.AppSecret == "" && input.AppID != value.AppID) {
 			return value, status_error.IMConfigurationInvalid
 		}
 		if value.AppID != "" && value.AppID != strings.TrimSpace(input.AppID) {

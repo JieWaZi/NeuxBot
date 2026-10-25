@@ -45,7 +45,7 @@ func (v WorkResultOwnerKind) Values() []enum.Enum {
 }
 
 func (v WorkResultOwnerKind) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.WorkResultOwnerKind"
+	return "github.com/JieWaZi/NeuxBot/server/constants.WorkResultOwnerKind"
 }
 
 func (v WorkResultOwnerKind) MarshalText() ([]byte, error) {

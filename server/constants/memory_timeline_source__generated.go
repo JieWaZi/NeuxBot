@@ -37,7 +37,7 @@ func (v MemoryTimelineSource) Values() []enum.Enum {
 }
 
 func (v MemoryTimelineSource) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MemoryTimelineSource"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MemoryTimelineSource"
 }
 
 func (v MemoryTimelineSource) MarshalText() ([]byte, error) {

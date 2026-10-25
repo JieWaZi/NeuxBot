@@ -8,6 +8,8 @@ type RuntimeCapability string
 const (
 	// RuntimeCapabilityUnspecified 表示未指定 Runtime 能力。
 	RuntimeCapabilityUnspecified RuntimeCapability = ""
+	// RuntimeCapabilityIsolatedTextGeneration 表示真实会话已确认可配置隔离文本生成策略。
+	RuntimeCapabilityIsolatedTextGeneration RuntimeCapability = "isolated_text_generation"
 	// RuntimeCapabilityStructuredOutput 表示 Runtime 支持要求的结构化输出格式。
 	RuntimeCapabilityStructuredOutput RuntimeCapability = "structured_output"
 	// RuntimeCapabilityResumeSession 表示 Runtime 支持恢复原生 Session。

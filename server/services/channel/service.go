@@ -7,14 +7,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcommand"
-	channeltool "github.com/JieWaZi/NeuxAlly/server/internal/teamcapability"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
@@ -64,6 +64,8 @@ type Config struct {
 	PrepareDirectResult func(context.Context, string, string) (*models.WorkResultReceipt, error)
 	// Results 在正式直达资格提交事务中发布原结果引用。
 	Results controllers.WorkResultController
+	// AutomaticRun 读取原自动运行的封闭事实，区分自动内部接力与用户新工作。
+	AutomaticRun func(context.Context, string) (models.AutomaticRun, error)
 	// BeforeUserInput 在新用户输入提交前冻结已结束的自动运行，回调不持有调度全局锁。
 	BeforeUserInput func(context.Context, string) error
 	// Channels 读取团队当前配置。
@@ -92,6 +94,8 @@ type service struct {
 	prepareDirectResult func(context.Context, string, string) (*models.WorkResultReceipt, error)
 	// results 持久化正式结果交付与阅读事实。
 	results controllers.WorkResultController
+	// automaticRun 读取原运行的权威封闭事实，不另存工作来源状态。
+	automaticRun func(context.Context, string) (models.AutomaticRun, error)
 	// beforeUserInput 在新用户输入前封闭已结束的自动运行。
 	beforeUserInput func(context.Context, string) error
 	// channels 读取团队当前配置。
@@ -157,6 +161,7 @@ func New(config Config) (Service, error) {
 		commands:            config.Commands,
 		channels:            config.Channels,
 		beforeUserInput:     config.BeforeUserInput,
+		automaticRun:        config.AutomaticRun,
 		prepareDirectResult: config.PrepareDirectResult,
 		results:             config.Results,
 		threads:             config.Threads,

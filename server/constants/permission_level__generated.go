@@ -45,7 +45,7 @@ func (v PermissionLevel) Values() []enum.Enum {
 }
 
 func (v PermissionLevel) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.PermissionLevel"
+	return "github.com/JieWaZi/NeuxBot/server/constants.PermissionLevel"
 }
 
 func (v PermissionLevel) MarshalText() ([]byte, error) {

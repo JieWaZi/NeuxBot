@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventhub "github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 )
 
 // control 只描述订阅，不承载任何业务命令或任意连接地址。
@@ -54,7 +54,7 @@ type frame struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
-var allowedTopics = map[string]bool{"notifications": true, "work-board": true, "work-results": true, "entities": true, "automatic-tasks": true, "im": true, "runtimes": true, "system": true, "chat": true, "team": true, "workflow": true, "account-login": true}
+var allowedTopics = map[string]bool{"notifications": true, "work-board": true, "work-results": true, "entities": true, "automatic-tasks": true, "im": true, "runtimes": true, "system": true, "chat": true, "team": true, "workflow": true, "account-login": true, "plugins": true, "resources": true, "knowledge": true, "workspace": true}
 
 func decodeControl(data []byte) (control, error) {
 	var result control
@@ -92,12 +92,16 @@ func validResourceShape(topic string, resource eventhub.Resource) bool {
 		return false
 	}
 	if resource.Kind == "global" {
-		return resource.ID == "" && resource.ParentID == "" && topic != "chat" && topic != "team" && topic != "workflow" && topic != "account-login"
+		return resource.ID == "" && resource.ParentID == "" && topic != "chat" && topic != "team" && topic != "workflow" && topic != "account-login" && topic != "workspace"
 	}
 	if resource.ID == "" {
 		return false
 	}
 	switch topic {
+	case "workspace":
+		return resource.Kind == "workspace_watch" && resource.ParentID == ""
+	case "knowledge":
+		return resource.Kind == "knowledge_library" && resource.ParentID != ""
 	case "chat":
 		return resource.Kind == "chat" && resource.ParentID == ""
 	case "team":
@@ -114,6 +118,10 @@ func validResourceShape(topic string, resource eventhub.Resource) bool {
 		return (resource.Kind == "automatic_task" || resource.Kind == "waker" || resource.Kind == "channel") && resource.ParentID == ""
 	case "im":
 		return (resource.Kind == "connection" || resource.Kind == "binding" || resource.Kind == "conversation" || resource.Kind == "login") && resource.ParentID == ""
+	case "resources":
+		return (resource.Kind == "skill" || resource.Kind == "connector" || resource.Kind == "waker") && resource.ParentID == ""
+	case "plugins":
+		return resource.Kind == "plugin" && resource.ParentID == ""
 	case "runtimes":
 		return resource.Kind == "runtime" && resource.ParentID == ""
 	default:

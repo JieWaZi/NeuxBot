@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 type catalogFake struct {
@@ -74,7 +74,7 @@ func TestEnsureCatalogSeedsPersonalAssistantPreset(t *testing.T) {
 	if len(preset.Expertise) != 5 || len(preset.WorkStyle) != 5 || len(preset.WorkMethods) != 4 {
 		t.Fatalf("unexpected projection: %+v", preset)
 	}
-	if len(catalog.deletedDocuments) != 1 ||
+	if len(catalog.deletedDocuments) != len(Definitions()) ||
 		catalog.deletedDocuments[0] != PersonalAssistantRolePresetID {
 		t.Fatalf("EnsureCatalog() must not persist documents: %+v", catalog.deletedDocuments)
 	}

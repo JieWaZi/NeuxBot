@@ -3,14 +3,12 @@ package controllers
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestMCPConnectorControllerUsesScopeDefaultsAndExplicitState(t *testing.T) {
@@ -40,7 +38,7 @@ func TestMCPConnectorControllerUsesScopeDefaultsAndExplicitState(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list connectors: %v", err)
 	}
-	if len(items) != 2 || !items[0].Enabled || items[1].Enabled {
+	if len(items) != 1 || !items[0].Enabled {
 		t.Fatalf("unexpected default states: %+v", items)
 	}
 	if err := controller.UpsertWakerConnector(ctx, models.WakerMCPConnector{
@@ -73,7 +71,7 @@ func TestMCPConnectorControllerUsesScopeDefaultsAndExplicitState(t *testing.T) {
 	}
 }
 
-func TestMCPConnectorControllerMapsGlobalNameConflict(t *testing.T) {
+func TestMCPConnectorControllerAllowsDuplicateDisplayNames(t *testing.T) {
 	controller := NewMCPConnectorController(newTestDB(t))
 	ctx := context.Background()
 	now := time.Now().UnixMilli()
@@ -92,11 +90,11 @@ func TestMCPConnectorControllerMapsGlobalNameConflict(t *testing.T) {
 	if err := controller.Create(ctx, first); err != nil {
 		t.Fatalf("create first connector: %v", err)
 	}
-	if err := controller.Create(ctx, second); !errors.Is(
-		err,
-		status_error.MCPConnectorNameConflict,
-	) {
-		t.Fatalf("duplicate error = %v, want name conflict", err)
+	if err := controller.Create(ctx, second); err != nil {
+		t.Fatalf("duplicate display name rejected: %v", err)
+	}
+	if got, err := controller.Get(ctx, second.ID); err != nil || got.Name != first.Name {
+		t.Fatalf("distinct resource not preserved: %+v %v", got, err)
 	}
 }
 

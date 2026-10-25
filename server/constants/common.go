@@ -1,5 +1,8 @@
 package constants
 
+// KnowledgeLibraryScanBatchSize 限制目录搜索与活动任务恢复每批读取的库元数据。
+const KnowledgeLibraryScanBatchSize = 100
+
 // RuntimeUserInputMCPServerName 是运行时受管问答服务的稳定协议名称。
 const RuntimeUserInputMCPServerName = "acp_go_user_input"
 
@@ -39,6 +42,9 @@ const ChatForkDirectoryName = "forks"
 // WorkflowFileMaximumBytes 限制单次上传或下载的文件字节数。
 const WorkflowFileMaximumBytes int64 = 100 << 20
 
+// SkillPartnerPreviewLimit 是独立技能卡片最多返回的安装伙伴预览数。
+const SkillPartnerPreviewLimit = 4
+
 const (
 	// WorkflowInstanceBudget 标识整次工作流累计节点实例数的预算错误。
 	WorkflowInstanceBudget = "instances"
@@ -72,7 +78,7 @@ const (
 	// WorkflowWorkspaceDirectoryName 是作者和运行独立受管工作区的父目录。
 	WorkflowWorkspaceDirectoryName = "workflow-workspaces"
 	// ApplicationName 是 Core 对外报告的产品名称。
-	ApplicationName = "NeuxAlly"
+	ApplicationName = "NeuxBot"
 	// CoreDefaultHost 是桌面 Core 默认监听的回环地址。
 	CoreDefaultHost = "127.0.0.1"
 	// CoreDefaultPort 是桌面 Core 默认监听的端口。
@@ -161,7 +167,7 @@ const (
 	// ChannelEventHeartbeatIntervalSeconds 是团队事件流心跳间隔。
 	ChannelEventHeartbeatIntervalSeconds = 15
 	// ChannelTasksMCPTitle 是团队协作工具的展示名称。
-	ChannelTasksMCPTitle = "NeuxAlly Team Tasks"
+	ChannelTasksMCPTitle = "NeuxBot Team Tasks"
 	// ChannelTasksMCPTokenBytes 是团队协作工具执行期租约标识的随机字节数。
 	ChannelTasksMCPTokenBytes = 32
 	// ChannelCapabilityTTLHours 是单次团队执行能力的强制最长存活小时数。
@@ -226,6 +232,8 @@ const (
 	MCPConnectorMinimumTimeoutMS = int64(100)
 	// MCPConnectorMaximumTimeoutMS 是 MCP 连接器允许的最大请求超时毫秒数。
 	MCPConnectorMaximumTimeoutMS = int64(300_000)
+	// PluginConnectorDiagnosticCacheLimit 是当前 Core 最多保留的插件连接诊断数量。
+	PluginConnectorDiagnosticCacheLimit = 256
 	// MCPConnectorMaximumToolCount 是单个连接器允许公开的最大工具数。
 	MCPConnectorMaximumToolCount = 200
 	// MCPConnectorMaximumSummaryLength 是连接器测试摘要允许的最大字符数。
@@ -257,6 +265,18 @@ const (
 	RuntimeIDGrok = "grok"
 	// RuntimeIDWorkBuddy 通过 CodeBuddy Code 标准 ACP 提供 WorkBuddy 执行能力。
 	RuntimeIDWorkBuddy = "workbuddy"
+	// RuntimeIDQoder 是官方 Qoder CLI ACP 运行时。
+	RuntimeIDQoder = "qoder"
+	// RuntimeIDQoderCN 是官方 Qoder CN CLI ACP 运行时。
+	RuntimeIDQoderCN = "qoder-cn"
+	// RuntimeQoderDefaultModeID 是 Qoder 的默认权限模式。
+	RuntimeQoderDefaultModeID = "default"
+	// RuntimeQoderBypassModeID 是 Qoder ACP 的跳过权限模式。
+	RuntimeQoderBypassModeID = "bypassPermissions"
+	// RuntimeQoderYoloModeID 是当前 Qoder ACP 声明的完全访问模式。
+	RuntimeQoderYoloModeID = "yolo"
+	// RuntimeQoderAutoModeID 是支持自动风险审查的 Qoder ACP 模式。
+	RuntimeQoderAutoModeID = "auto"
 	// RuntimeWorkBuddyFastModelID 是本阶段不开放的快速自动路由模型标识。
 	RuntimeWorkBuddyFastModelID = "fast-model"
 	// RuntimeWorkBuddyBalancedModelID 是本阶段不开放的均衡自动路由模型标识。
@@ -380,6 +400,8 @@ const (
 	CompanionAvatarPrefix = "companion:v2:"
 	// PersonalAssistantAvatar 固定内置私人助理的毛绒形象身份，由前端风格目录统一还原。
 	PersonalAssistantAvatar = "companion:v1:fe9a9eb52f5e4d7dac1959fe4f9559f2"
+	// WikiResearcherAvatar 固定内置维基研究员的形象身份，由共享形象目录还原。
+	WikiResearcherAvatar = CompanionAvatarPrefix + "854de954b7bd4e2cb9582fd0930dcd6d"
 	// DefaultAvatar 是未指定头像时使用的默认预设头像。
 	DefaultAvatar = "preset:generic"
 	// ChatLogSchemaVersion 是当前 Chat JSONL 信封版本。
@@ -472,6 +494,36 @@ const (
 	WorkflowControlPathFinally = "finally"
 	// WorkflowControlPathItems 表示数量由运行输入决定的逐项任务模板。
 	WorkflowControlPathItems = "items"
+)
+
+// 企业微信智能机器人使用官方长连接通道，不开放任意服务器地址。
+const (
+	// IMWecomQRExpirySeconds 是扫码等待上限，与官方 CLI 的五分钟窗口一致。
+	IMWecomQRExpirySeconds = 300
+	// IMWecomQRPollSeconds 是官方扫码状态查询间隔，取消或确认后退出。
+	IMWecomQRPollSeconds = 3
+	// IMWecomQRBaseURL 是官方 CLI 使用的扫码注册入口。
+	IMWecomQRBaseURL = "https://work.weixin.qq.com/ai/qc"
+	// IMWecomWebSocketURL 是企业微信公有云长连接入口。
+	IMWecomWebSocketURL = "wss://openws.work.weixin.qq.com"
+	// IMWecomSubscribe 是机器人凭据订阅命令。
+	IMWecomSubscribe = "aibot_subscribe"
+	// IMWecomHeartbeat 是应用层心跳命令。
+	IMWecomHeartbeat = "ping"
+	// IMWecomMessageCallback 是消息推送命令。
+	IMWecomMessageCallback = "aibot_msg_callback"
+	// IMWecomEventCallback 是事件推送命令。
+	IMWecomEventCallback = "aibot_event_callback"
+	// IMWecomSendMessage 是向已发现会话主动发送的命令。
+	IMWecomSendMessage = "aibot_send_msg"
+	// IMWecomUploadInit 初始化临时素材上传。
+	IMWecomUploadInit = "aibot_upload_media_init"
+	// IMWecomUploadChunk 上传素材分片。
+	IMWecomUploadChunk = "aibot_upload_media_chunk"
+	// IMWecomUploadFinish 完成临时素材上传。
+	IMWecomUploadFinish = "aibot_upload_media_finish"
+	// IMWecomDisconnected 表示同一机器人被其他连接替换。
+	IMWecomDisconnected = "disconnected_event"
 )
 
 // IMFileMaximumBytes 是单个 IM 文件允许上传或下载的最大字节数。
@@ -570,3 +622,105 @@ const (
 	// WorkflowQueryResultSchema 查询当前节点要求的结果格式。
 	WorkflowQueryResultSchema = "result_schema"
 )
+
+const (
+	// PluginManifestSchema 是本地支持的通用插件清单版本。
+	PluginManifestSchema = "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json"
+	// PluginMCPSchema 是本地支持的插件 MCP 配置版本。
+	PluginMCPSchema = "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json"
+	// PluginFormatPortable 表示通用插件包。
+	PluginFormatPortable = "agent-plugins"
+	// PluginFormatClaude 表示仅导入可支持组件的 Claude 插件包。
+	PluginFormatClaude = "claude"
+	// PluginFormatCodex 表示仅导入可支持组件的 Codex 兼容插件包。
+	PluginFormatCodex = "codex"
+	// PluginExtensionNamespace 是客户端扩展空间。
+	PluginExtensionNamespace = "com.ally"
+)
+
+const (
+	// PluginProviderFeishu 表示固定飞书官方 CLI 适配。
+	PluginProviderFeishu = "feishu"
+	// PluginEventTopic 是插件资源唯一状态事件主题。
+	PluginEventTopic = "plugins"
+	// PluginProviderGitHub 表示固定 GitHub 官方 CLI 与远程 MCP 适配。
+	PluginProviderGitHub = "github"
+	// GitHubCLIVersion 是固定 GitHub 官方程序版本。
+	GitHubCLIVersion = "2.102.0"
+	// GitHubCLIBuildVersion 标识包含应用钥匙串隔离补丁的固定构建。
+	GitHubCLIBuildVersion = "2.102.0-neuxally.1"
+	// GitHubMCPURL 是允许共享身份交付的精确官方服务地址。
+	GitHubMCPURL = "https://api.githubcopilot.com/mcp/"
+	// GitHubMCPToolsets 限定首版官方工具范围。
+	GitHubMCPToolsets = "context,repos,issues,pull_requests,users"
+	// FeishuCLIVersion 是首批固定飞书程序版本。
+	FeishuCLIVersion = "1.0.98"
+)
+
+// PluginStdioMode 是 Core 内部的原生 MCP 工作目录子进程模式。
+const PluginStdioMode = "plugin-stdio"
+
+// KnowledgeSourceStateQueued 表示来源已进入本次任务，尚未被真实阅读阶段领取。
+const KnowledgeSourceStateQueued = "queued"
+
+// KnowledgeSourceStateProcessing 表示来源已被真实阅读阶段领取，任务尚未结算。
+const KnowledgeSourceStateProcessing = "processing"
+
+// KnowledgeChatOrganizeOperation 标识普通聊天整理请求的持久输入锚点。
+const KnowledgeChatOrganizeOperation = "chat.organize"
+const (
+	// PluginLocaleEnglish 是插件英文展示与默认文档语言。
+	PluginLocaleEnglish = "en"
+	// PluginLocaleChinese 是插件简体中文展示与文档语言。
+	PluginLocaleChinese = "zh-CN"
+	// PluginCatalogHTTPSource 是默认公开软件目录。
+	PluginCatalogHTTPSource = "https://github.com/JieWaZi/neux-plugins/releases/latest/download/catalog.json"
+	// PluginAuthCommandStrategy 是包内授权桥接策略。
+	PluginAuthCommandStrategy = "plugin-command"
+	// PluginAuthProtocol 是逐行JSON-RPC授权扩展版本。
+	PluginAuthProtocol = "neuxally-auth/1"
+	// PluginAuthPreparationTimeoutSeconds 为首次挑战前的受管资产下载与启动保留有界准备时间。
+	PluginAuthPreparationTimeoutSeconds = 150
+	// PluginAuthQRPNGPrefix 标识桥接提供的内联 PNG 二维码原图。
+	PluginAuthQRPNGPrefix = "data:image/png;base64,"
+	// PluginAuthQRPNGMaxBytes 限制二维码原图解码后的字节数。
+	PluginAuthQRPNGMaxBytes = 256 * 1024
+	// PluginAuthQRPNGMaxDimension 限制二维码原图的单边像素数。
+	PluginAuthQRPNGMaxDimension = 1024
+	// PluginAuthEnvironmentPrefix 隔离原生插件桥接秘密的进程环境键。
+	PluginAuthEnvironmentPrefix = "ALLY_PLUGIN_AUTH_"
+	// AIAccountCodexAPIKeyEnvironment 仅在执行进程中传递所选 Codex API 账号凭据。
+	AIAccountCodexAPIKeyEnvironment = "ALLY_CODEX_MODEL_API_KEY"
+	// PluginNativeMarketplace 是应用私有Codex原生索引身份。
+	PluginNativeMarketplace = "neuxally-managed"
+	// PluginNativeScopeDirectory 是工作区内原生插件能力摘要的独占目录。
+	PluginNativeScopeDirectory = "native-plugins"
+	// NativeWorktreesDirectory 是原生 CLI 配置根内存放独立 Git 工作区的目录。
+	NativeWorktreesDirectory = "worktrees"
+	// PluginDeliveryNative 是完整原生包交付。
+	PluginDeliveryNative = "native"
+	// PluginDeliveryProjection 是Skill/MCP投射交付。
+	PluginDeliveryProjection = "skill-mcp"
+	// PluginLoadStagePrepared 表示固定产物已准备，尚不代表模型调用成功。
+	PluginLoadStagePrepared = "prepared"
+	// PluginAuthStartMethod 发起桥接授权。
+	PluginAuthStartMethod = "auth/start"
+	// PluginAuthStatusMethod 核验实际身份。
+	PluginAuthStatusMethod = "auth/status"
+	// PluginAuthCancelMethod 停止上游等待。
+	PluginAuthCancelMethod = "auth/cancel"
+	// PluginAuthResolveMethod 解析获准组件秘密。
+	PluginAuthResolveMethod = "auth/resolve"
+	// PluginAuthLogoutMethod 清理插件私有身份。
+	PluginAuthLogoutMethod = "auth/logout"
+	// PluginAuthChallengeNotification 交付当前临时挑战。
+	PluginAuthChallengeNotification = "auth/challenge"
+	// PluginAuthStateNotification 交付协议实际阶段。
+	PluginAuthStateNotification = "auth/state"
+)
+
+// KnowledgeMCPMaxRequestBytes 限制 MCP 请求和显式原件字节的传输体积。
+const KnowledgeMCPMaxRequestBytes = 16 << 20
+
+// KnowledgeRetryAuthorityOperation 标记依核心重试回执生效的宿主授权候选。
+const KnowledgeRetryAuthorityOperation = "job.retry.authority"

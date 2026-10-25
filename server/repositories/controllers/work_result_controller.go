@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -76,11 +76,12 @@ func (c *workResultController) Publish(ctx context.Context, value models.WorkRes
 	if value.AvailableAt < c.startedAt.Load() {
 		return nil
 	}
+	where := "excluded.latest_version > work_result_receipts.latest_version"
 	value.ViewedVersion, value.ViewedAt = 0, nil
 	result := controllerDB(ctx, c.db).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "owner_kind"}, {Name: "owner_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"latest_version", "reference", "available_at"}),
-		Where:     clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "excluded.latest_version > work_result_receipts.latest_version"}}},
+		Where:     clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: where}}},
 	}).Create(&value)
 	if result.Error != nil {
 		return databaseError("publish_work_result", value.OwnerID, result.Error)

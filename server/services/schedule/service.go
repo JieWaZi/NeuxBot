@@ -2,31 +2,28 @@ package schedule
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/schedulecalc"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowfiles "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	channelservice "github.com/JieWaZi/NeuxAlly/server/services/channel"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	integrationapi "github.com/JieWaZi/NeuxBot/server/internal/integration"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/schedulecalc"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
 // Executions 是自动入口共用的标准执行和保存前校验端口。
@@ -71,10 +68,16 @@ type Workflows interface {
 
 // Config 提供自动任务需要的稳定依赖，时钟可用于确定性验收。
 type Config struct {
+	// AuthorizationWrite 将任务授权变更与知识提交置于统一协调锁内，回调只含数据库写入。
+	AuthorizationWrite func(context.Context, func(context.Context) error) error
+	// BindKnowledge 为已有自动任务冻结明确的知识维护授权，不另设调度器。
+	BindKnowledge func(context.Context, execution.WorkIntent, models.KnowledgeMaintenanceAuthorization) (execution.WorkIntent, error)
 	// WorkflowRuns 读取工作流真实运行、操作许可和节点状态。
 	WorkflowRuns controllers.WorkflowRunController
 	// APIHandler 由 API 层提供本机 HTTP 适配器，服务只拥有监听生命周期。
 	APIHandler LocalHandlerFactory
+	// APIListener 注入发布服务的唯一监听所有者，省略时保留独立测试和旧宿主行为。
+	APIListener *integrationapi.Listener
 	// Workflows 接纳冻结版本的工作流并读取真实状态。
 	Workflows Workflows
 	// Teams 复用团队首发、成员快照和任务编排。
@@ -113,8 +116,6 @@ type Service struct {
 	gate sync.Mutex
 	// life 保护后台上下文、监听器及关闭等待的登记。
 	life sync.Mutex
-	// portGate 串行保护监听配置替换及关闭，避免并发设置使用同一临时文件。
-	portGate sync.Mutex
 	// ctx 是显式 Start 后生效的 Core 子上下文。
 	ctx context.Context
 	// cancel 取消后台扫描和所有正在接纳的请求。
@@ -125,12 +126,10 @@ type Service struct {
 	suspended bool
 	// lastTick 是前一次连续运行的扫描时间，用于检测时钟跳变。
 	lastTick time.Time
-	// listener 保存已绑定的套接字，确保 Serve 尚未开始时也能同步释放。
-	listener net.Listener
-	// server 是独立于 Renderer 管理接口的本机 HTTP 服务。
-	server *http.Server
-	// api 保存地址、端口及监听结果的安全展示状态。
-	api APIStatus
+	// apiOwner 是状态与地址配置的唯一发布服务。
+	apiOwner *integrationapi.Listener
+	// ownsAPI 区分独立宿主和由 Core 全局管理的共享监听。
+	ownsAPI bool
 	// rates 保存每个任务最近一分钟已接纳 API 请求的时间。
 	rates map[string][]time.Time
 	// sealedWakers 封闭伙伴聚合删除期间的新任务及新接纳。
@@ -142,20 +141,16 @@ func New(config Config) *Service {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
-	return &Service{api: APIStatus{IP: constants.AutomaticTaskDefaultAPIIP, Port: constants.AutomaticTaskDefaultAPIPort}, config: config, rates: map[string][]time.Time{}, sealedWakers: map[string]bool{}}
+	s := &Service{config: config, rates: map[string][]time.Time{}, sealedWakers: map[string]bool{}, apiOwner: config.APIListener}
+	if s.apiOwner == nil {
+		s.ownsAPI = true
+		s.apiOwner = integrationapi.NewListener(config.DataDirectory, func(address string) http.Handler { return config.APIHandler(s, config, address) })
+	}
+	return s
 }
 
-// APIStatus 是可持久修改的监听地址、端口及当前监听状态。
-type APIStatus struct {
-	// IP 是任务 API 监听的 IPv4 或 IPv6 地址。
-	IP string `json:"ip"`
-	// Port 是任务 API 监听端口。
-	Port int `json:"port"`
-	// Available 表示当前已经成功监听配置地址。
-	Available bool `json:"available"`
-	// ErrorCode 是端口冲突等失败的稳定原因，不含操作系统细节。
-	ErrorCode string `json:"errorCode,omitempty"`
-}
+// APIStatus 继续使用原任务状态合同，实际状态归集成监听所有者。
+type APIStatus = integrationapi.ListenerStatus
 
 // LocalHandlerFactory 把 API 层的真实 HTTP 入口注入后台监听器。
 type LocalHandlerFactory func(*Service, Config, string) http.Handler
@@ -216,10 +211,10 @@ func (s *Service) Start(ctx context.Context) error {
 		s.cancel()
 		return err
 	}
-	if err := s.loadAPISettings(); err != nil {
-		s.api.ErrorCode = util.ErrorCode(err, status_error.AutomaticTaskServiceInvalid.Key())
-	} else {
-		s.listen()
+	if s.ownsAPI {
+		if err := s.apiOwner.Start(s.ctx); err != nil {
+			return err
+		}
 	}
 	s.workers.Add(1)
 	go func() {
@@ -242,22 +237,13 @@ func (s *Service) Start(ctx context.Context) error {
 
 // Close 先取消接纳和扫描，再关闭监听器并等待后台工作退出。
 func (s *Service) Close() {
-	s.portGate.Lock()
-	defer s.portGate.Unlock()
 	s.life.Lock()
 	if s.cancel != nil {
 		s.cancel()
 	}
-	server, listener := s.server, s.listener
-	s.server = nil
-	s.listener = nil
-	s.api.Available = false
 	s.life.Unlock()
-	if server != nil {
-		_ = server.Close()
-	}
-	if listener != nil {
-		_ = listener.Close()
+	if s.ownsAPI {
+		s.apiOwner.Close()
 	}
 	s.workers.Wait()
 }
@@ -418,150 +404,12 @@ func (s *Service) begin(ctx context.Context) (context.Context, func(), error) {
 	return linked, func() { stop(); cancel(); s.workers.Done() }, nil
 }
 
-func (s *Service) loadAPISettings() error {
-	s.api = APIStatus{IP: constants.AutomaticTaskDefaultAPIIP, Port: constants.AutomaticTaskDefaultAPIPort}
-	data, err := os.ReadFile(filepath.Join(s.config.DataDirectory, "automatic-tasks-api.json"))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	var saved APIStatus
-	if err != nil || json.Unmarshal(data, &saved) != nil || net.ParseIP(saved.IP) == nil || saved.Port < 1 || saved.Port > 65535 {
-		return status_error.AutomaticTaskAPIUnavailable
-	}
-	s.api.IP, s.api.Port = net.ParseIP(saved.IP).String(), saved.Port
-	return nil
-}
+// GetAPIStatus 从唯一发布服务读取实际监听事实。
+func (s *Service) GetAPIStatus() APIStatus { return s.apiOwner.GetAPIStatus() }
 
-func listenAddress(ip string, port int) (net.Listener, error) {
-	network := "tcp6"
-	if net.ParseIP(ip).To4() != nil {
-		network = "tcp4"
-	}
-	return net.Listen(network, net.JoinHostPort(ip, strconv.Itoa(port)))
-}
-
-func (s *Service) listen() {
-	s.life.Lock()
-	defer s.life.Unlock()
-	if s.ctx.Err() != nil {
-		return
-	}
-	listener, err := listenAddress(s.api.IP, s.api.Port)
-	if err != nil {
-		logx.Errorf("listen automatic task API failed: ip=%s port=%d error=%v", s.api.IP, s.api.Port, err)
-		s.api.Available = false
-		s.api.ErrorCode = status_error.AutomaticTaskAPIUnavailable.Key()
-		return
-	}
-	s.serveLocked(listener)
-}
-
-// serveLocked 在持有生命周期锁时登记监听服务和退出等待。
-func (s *Service) serveLocked(listener net.Listener) {
-	server := &http.Server{Handler: s.config.APIHandler(s, s.config, s.api.IP), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second,
-		MaxHeaderBytes: 8192, BaseContext: func(net.Listener) context.Context { return s.ctx }}
-	s.server = server
-	s.listener = listener
-	s.api.Available = true
-	s.api.ErrorCode = ""
-	s.workers.Add(1)
-	go func() {
-		defer s.workers.Done()
-		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logx.Errorf("serve automatic task API failed: error=%v", err)
-			s.life.Lock()
-			if s.server == server {
-				s.api.Available = false
-				s.api.ErrorCode = status_error.AutomaticTaskAPIUnavailable.Key()
-			}
-			s.life.Unlock()
-		}
-	}()
-}
-
-// GetAPIStatus 返回监听地址、端口及当前监听结果。
-func (s *Service) GetAPIStatus() APIStatus {
-	s.life.Lock()
-	defer s.life.Unlock()
-	return s.api
-}
-
-// SetAPIAddress 在新地址监听及持久保存成功后切换入口，失败恢复原监听。
+// SetAPIAddress 由旧入口修改同一个集成服务，不再保存第二份配置。
 func (s *Service) SetAPIAddress(ctx context.Context, ip string, port int) error {
-	s.portGate.Lock()
-	defer s.portGate.Unlock()
-	parsed := net.ParseIP(ip)
-	if parsed == nil || parsed.IsMulticast() || port < 1 || port > 65535 {
-		return status_error.BadRequest
-	}
-	if ctx.Err() != nil {
-		return status_error.OperationCanceled
-	}
-	ip = parsed.String()
-	s.life.Lock()
-	if s.ctx == nil || s.ctx.Err() != nil {
-		s.life.Unlock()
-		return status_error.OperationCanceled
-	}
-	old, server, oldListener := s.api, s.server, s.listener
-	s.life.Unlock()
-	if old.Available && old.IP == ip && old.Port == port {
-		return nil
-	}
-	releasedOld, committed := false, false
-	defer func() {
-		if releasedOld && !committed {
-			s.listen()
-		}
-	}()
-	listener, err := listenAddress(ip, port)
-	// 相同端口的通配地址与旧地址可能互斥；先释放，再尝试并在失败时恢复。
-	if err != nil && server != nil && old.Port == port {
-		_ = server.Close()
-		if oldListener != nil {
-			_ = oldListener.Close()
-		}
-		releasedOld = true
-		listener, err = listenAddress(ip, port)
-	}
-	if err != nil {
-		logx.Errorf("configure automatic task API failed: ip=%s port=%d error=%v", ip, port, err)
-		return status_error.AutomaticTaskAPIUnavailable
-	}
-	defer func() {
-		if !committed {
-			_ = listener.Close()
-		}
-	}()
-	data, _ := json.Marshal(APIStatus{IP: ip, Port: port})
-	path := filepath.Join(s.config.DataDirectory, "automatic-tasks-api.json")
-	if err := os.MkdirAll(s.config.DataDirectory, 0700); err != nil {
-		logx.Errorf("create automatic task API settings directory failed: error=%v", err)
-		return status_error.AutomaticTaskAPIUnavailable
-	}
-	if err := os.WriteFile(path+".tmp", data, 0600); err != nil {
-		logx.Errorf("write automatic task API settings failed: error=%v", err)
-		return status_error.AutomaticTaskAPIUnavailable
-	}
-	defer os.Remove(path + ".tmp")
-	if ctx.Err() != nil || s.ctx.Err() != nil {
-		return status_error.OperationCanceled
-	}
-	if err := os.Rename(path+".tmp", path); err != nil {
-		logx.Errorf("replace automatic task API settings failed: error=%v", err)
-		return status_error.AutomaticTaskAPIUnavailable
-	}
-	s.life.Lock()
-	s.api = APIStatus{IP: ip, Port: port}
-	s.serveLocked(listener)
-	s.life.Unlock()
-	committed = true
-	if server != nil && !releasedOld {
-		shutdown, cancel := context.WithTimeout(ctx, 5*time.Second)
-		_ = server.Shutdown(shutdown)
-		cancel()
-	}
-	return nil
+	return s.apiOwner.SetAPIAddress(ctx, ip, port)
 }
 
 // SealWaker 为伙伴聚合删除持有接纳边界，返回必须释放的恢复函数。
@@ -572,4 +420,12 @@ func (s *Service) SealWaker(wakerID string) func() {
 		delete(s.sealedWakers, wakerID)
 		s.gate.Unlock()
 	}
+}
+
+// WithAuthorizationWrite 保持先接纳锁后授权锁的顺序；回调不能执行模型、网络或文件操作。
+func (s *Service) WithAuthorizationWrite(ctx context.Context, change func(context.Context) error) error {
+	if s.config.AuthorizationWrite == nil {
+		return change(ctx)
+	}
+	return s.config.AuthorizationWrite(ctx, change)
 }

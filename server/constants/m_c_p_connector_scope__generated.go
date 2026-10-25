@@ -18,6 +18,8 @@ func (v MCPConnectorScope) String() string {
 		return ""
 	case MCPConnectorScopeBuiltIn:
 		return "built_in"
+	case MCPConnectorScopePrivate:
+		return "private"
 	case MCPConnectorScopePublic:
 		return "public"
 	}
@@ -29,7 +31,9 @@ func (v MCPConnectorScope) Label() string {
 	case MCPConnectorScopeUnspecified:
 		return "MCPConnectorScopeUnspecified 表示数据库或框架产生的空范围。"
 	case MCPConnectorScopeBuiltIn:
-		return "MCPConnectorScopeBuiltIn 表示随 NeuxAlly 提供的内置连接器。"
+		return "MCPConnectorScopeBuiltIn 表示随 NeuxBot 提供的内置连接器。"
+	case MCPConnectorScopePrivate:
+		return "MCPConnectorScopePrivate 表示只属于一个伙伴的连接器。"
 	case MCPConnectorScopePublic:
 		return "MCPConnectorScopePublic 表示全部伙伴可见的用户连接器。"
 	}
@@ -37,16 +41,16 @@ func (v MCPConnectorScope) Label() string {
 }
 
 func (v MCPConnectorScope) Values() []enum.Enum {
-	return []enum.Enum{MCPConnectorScopeUnspecified, MCPConnectorScopeBuiltIn, MCPConnectorScopePublic}
+	return []enum.Enum{MCPConnectorScopeUnspecified, MCPConnectorScopeBuiltIn, MCPConnectorScopePrivate, MCPConnectorScopePublic}
 }
 
 func (v MCPConnectorScope) Type() string {
-	return "github.com/JieWaZi/NeuxAlly/server/constants.MCPConnectorScope"
+	return "github.com/JieWaZi/NeuxBot/server/constants.MCPConnectorScope"
 }
 
 func (v MCPConnectorScope) MarshalText() ([]byte, error) {
 	switch v {
-	case MCPConnectorScopeUnspecified, MCPConnectorScopeBuiltIn, MCPConnectorScopePublic:
+	case MCPConnectorScopeUnspecified, MCPConnectorScopeBuiltIn, MCPConnectorScopePrivate, MCPConnectorScopePublic:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -59,6 +63,8 @@ func (v *MCPConnectorScope) UnmarshalText(text []byte) error {
 		*v = MCPConnectorScopeUnspecified
 	case MCPConnectorScopeBuiltIn.String():
 		*v = MCPConnectorScopeBuiltIn
+	case MCPConnectorScopePrivate.String():
+		*v = MCPConnectorScopePrivate
 	case MCPConnectorScopePublic.String():
 		*v = MCPConnectorScopePublic
 	default:

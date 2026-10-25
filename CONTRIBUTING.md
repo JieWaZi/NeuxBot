@@ -1,12 +1,12 @@
-# 参与 NeuxAlly 开发
+# 参与 NeuxBot 开发
 
 ## 准备环境
 
 使用 Node.js 22、仓库 packageManager 固定的 pnpm，以及 server/go.mod 指定的 Go 版本。桌面安装包在 macOS 或 Windows 原生环境构建。智能体 CLI 及其登录由开发者自行准备。
 
 ```sh
-git clone https://github.com/JieWaZi/NeuxAlly.git
-cd NeuxAlly
+git clone https://github.com/JieWaZi/NeuxBot.git
+cd NeuxBot
 pnpm install --frozen-lockfile
 go -C server mod download
 ALLY_TOOLX_MODULE_VERSION=$(go -C server list -m -f '{{.Version}}' github.com/shrewx/ginx)

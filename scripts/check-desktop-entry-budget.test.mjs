@@ -26,11 +26,19 @@ const manifest = {
     file: "assets/entry.js",
     isEntry: true,
     imports: ["shared"],
-    dynamicImports: ["src/app/workspace.tsx"],
+    dynamicImports: [
+      "../packages/frontend/src/app/workspace.tsx",
+      "src/platform/index.ts",
+    ],
     size: 10,
   },
+  "src/platform/index.ts": {
+    file: "assets/platform.js",
+    imports: ["shared"],
+    size: 9,
+  },
   shared: { file: "assets/shared.js", size: 20 },
-  "src/app/workspace.tsx": {
+  "../packages/frontend/src/app/workspace.tsx": {
     file: "assets/workspace.js",
     imports: ["shared", "page"],
     dynamicImports: ["diff"],
@@ -40,7 +48,7 @@ const manifest = {
   diff: { file: "assets/diff.js", size: 100 },
   "../vendor/companion/renderer.js": { file: "assets/companion.js", size: 6 },
   "../vendor/elastic-mesh/renderer.js": { file: "assets/elastic.js", size: 7 },
-  "src/app/welcome/elastic-logo.tsx": {
+  "../packages/frontend/src/app/welcome/elastic-logo.tsx": {
     file: "assets/logo.js",
     imports: ["shared"],
     size: 5,
@@ -51,13 +59,14 @@ test("启动预算包含工作台与品牌预热依赖，共享文件只计一�
   const directory = await fixture(t, manifest);
   const assets = await readStartupAssets(directory);
   assert.equal(assets.entryBytes, 30);
-  assert.equal(assets.startupBytes, 118);
+  assert.equal(assets.startupBytes, 127);
   assert.deepEqual(assets.startupFiles.map((asset) => asset.file).sort(), [
     "assets/companion.js",
     "assets/elastic.js",
     "assets/entry.js",
     "assets/logo.js",
     "assets/page.js",
+    "assets/platform.js",
     "assets/shared.js",
     "assets/workspace.js",
   ]);
@@ -69,11 +78,14 @@ test("依赖图存在循环时仍然有限遍历", async (t) => {
     shared: { ...manifest.shared, imports: ["page"] },
   });
   const assets = await readStartupAssets(directory);
-  assert.equal(assets.startupBytes, 118);
+  assert.equal(assets.startupBytes, 127);
 });
 
 test("工作台入口消失时拒绝只检查轻量启动画面", async (t) => {
-  const { "src/app/workspace.tsx": workspace, ...withoutWorkspace } = manifest;
+  const {
+    "../packages/frontend/src/app/workspace.tsx": workspace,
+    ...withoutWorkspace
+  } = manifest;
   assert.ok(workspace);
   const directory = await fixture(t, withoutWorkspace);
   await assert.rejects(readStartupAssets(directory), /工作台/);

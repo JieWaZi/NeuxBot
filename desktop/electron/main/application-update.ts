@@ -17,9 +17,9 @@ import {
   type ApplicationUpdateState,
 } from "../shared/application-update";
 
-const repositoryURL = "https://github.com/JieWaZi/NeuxAlly";
+const repositoryURL = "https://github.com/JieWaZi/NeuxBot";
 const latestReleaseURL =
-  "https://api.github.com/repos/JieWaZi/NeuxAlly/releases/latest";
+  "https://api.github.com/repos/JieWaZi/NeuxBot/releases/latest";
 const metadataLimit = 1024 * 1024;
 const installerLimit = 512 * 1024 * 1024;
 const checkInterval = 6 * 60 * 60 * 1000;
@@ -182,7 +182,7 @@ export class ApplicationUpdate {
         target.port ||
         target.hash ||
         (github
-          ? !target.pathname.startsWith("/JieWaZi/NeuxAlly/releases/download/")
+          ? !target.pathname.startsWith("/JieWaZi/NeuxBot/releases/download/")
           : ![
               "https://api.github.com",
               "https://release-assets.githubusercontent.com",
@@ -199,7 +199,7 @@ export class ApplicationUpdate {
             url === latestReleaseURL
               ? "application/vnd.github+json"
               : "application/octet-stream",
-          "User-Agent": `NeuxAlly/${this.options.version}`,
+          "User-Agent": `NeuxBot/${this.options.version}`,
         },
       });
       if ([301, 302, 303, 307, 308].includes(response.status)) {
@@ -292,8 +292,8 @@ export class ApplicationUpdate {
       }
       const name =
         this.options.platform === "darwin"
-          ? `NeuxAlly-mac-${this.options.arch}.dmg`
-          : `NeuxAlly-windows-${this.options.arch}.exe`;
+          ? `NeuxBot-mac-${this.options.arch}.dmg`
+          : `NeuxBot-windows-${this.options.arch}.exe`;
       const asset = release.assets.find(
         (item) =>
           item.name === name && item.state === "uploaded" && item.size > 0,

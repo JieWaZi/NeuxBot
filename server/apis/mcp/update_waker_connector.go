@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -29,6 +29,11 @@ func (u *UpdateWakerConnector) Path() string {
 
 // Output 更新共享连接器。
 func (u *UpdateWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
+	return updateConnector(ctx, u)
+}
+
+// updateConnector 复用相同资源用例，空伙伴范围表示全局库。
+func updateConnector(ctx *gin.Context, u *UpdateWakerConnector) (ConnectorResponse, error) {
 	wakerID := strings.TrimSpace(u.WakerID)
 	connectorID := strings.TrimSpace(u.ConnectorID)
 	item, err := visibleConnector(
@@ -37,16 +42,16 @@ func (u *UpdateWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
 		connectorID,
 	)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
 	existing := item.Connector
 	prepared, err := prepareConnector(existing, u.Body, &existing)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
 	if existing.Scope == constants.MCPConnectorScopeBuiltIn &&
 		builtInDefinitionChanged(existing, prepared) {
-		return nil, ginx.WithStack(status_error.BuiltInMCPConnectorReadOnly)
+		return ConnectorResponse{}, ginx.WithStack(status_error.BuiltInMCPConnectorReadOnly)
 	}
 	now := time.Now().UnixMilli()
 	currentDigest := trustDigest(prepared)
@@ -55,7 +60,7 @@ func (u *UpdateWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
 		prepared.TrustedAt = existing.TrustedAt
 	} else if currentDigest != existing.TrustedConfigDigest {
 		if !u.Body.TrustConfirmed {
-			return nil, ginx.WithStack(status_error.MCPConnectorTrustRequired)
+			return ConnectorResponse{}, ginx.WithStack(status_error.MCPConnectorTrustRequired)
 		}
 		prepared.TrustedConfigDigest = currentDigest
 		prepared.TrustedAt = now
@@ -65,15 +70,16 @@ func (u *UpdateWakerConnector) Output(ctx *gin.Context) (interface{}, error) {
 		clearTestSnapshot(&prepared)
 	}
 	if err := global.MCPConnectorControllerManager.Update(ctx, prepared); err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
+	notifyResourceChanged(ctx, connectorID)
 	updated, err := visibleConnector(ctx, wakerID, connectorID)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
 	result, err := connectorResponse(ctx, updated)
 	if err != nil {
-		return nil, ginx.WithStack(err)
+		return ConnectorResponse{}, ginx.WithStack(err)
 	}
 	return result, nil
 }

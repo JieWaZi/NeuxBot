@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { loadModule } from "./load-module.mjs";
-const { CoreEventClient } = loadModule("shared/core-event-client.ts");
+const { CoreEventClient } = loadModule(
+  "@neuxbot/platform-contracts/core-event-client",
+);
 const { globalEventSubscriptionSchema } = loadModule(
-  "shared/core-event-protocol.ts",
+  "@neuxbot/platform-contracts/core-event-protocol",
 );
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 class Socket {

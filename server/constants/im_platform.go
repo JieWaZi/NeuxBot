@@ -10,6 +10,8 @@ const (
 	IMPlatformUnspecified IMPlatform = ""
 	// IMPlatformWeixin 表示个人微信 iLink 机器人。
 	IMPlatformWeixin IMPlatform = "weixin"
+	// IMPlatformWecom 表示企业微信智能机器人。
+	IMPlatformWecom IMPlatform = "wecom"
 	// IMPlatformFeishu 表示飞书企业机器人。
 	IMPlatformFeishu IMPlatform = "feishu"
 )
