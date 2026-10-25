@@ -125,11 +125,11 @@ func TestProjectSearchMatchesBeforePaginationAndStaysWithinWaker(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	items, err := controller.ListByWaker(ctx, "a", " ALLY ", 1, 1)
+	items, err := controller.ListByWaker(ctx, "a", " BOT ", 1, 1)
 	if err != nil || len(items) != 1 || items[0].ID != "two" {
 		t.Fatalf("search page: %v, %v", items, err)
 	}
-	count, err := controller.CountByWaker(ctx, "a", " ALLY ")
+	count, err := controller.CountByWaker(ctx, "a", " BOT ")
 	if err != nil || count != 2 {
 		t.Fatalf("search count: %d, %v", count, err)
 	}
