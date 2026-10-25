@@ -12,11 +12,11 @@
 
 在设置“发布集成”分组增加“MCP 集成”，与 API 集成并列。此页是同一服务的接入视图，不是新的端点管理系统。
 
-- 复用 integrationServiceOptions 查询，显示启用/可用状态、MCP URL、通用 HTTP MCP JSON 配置和认证说明。
+- 复用 integrationServiceOptions 查询，MCP 默认关闭，页头只提供开启／关闭动作，开启后展示可复制的 HTTP MCP JSON 配置。
 - URL 使用已保存的 publicBaseUrl，移除末尾 `/api/v1` 后追加 `/mcp`，保留代理路径前缀。无确定访问主机时不生成伪可用 URL，不使用未保存草稿。
-- 配置使用 `X-API-Key: <YOUR_API_KEY>` 占位符。链接到 API 集成管理既有 Key；不读取或保存已有 Key 明文。
-- 说明读取、编辑、整理的权限、回环地址仅限同机、远程客户端需要可达地址、Core 退出后服务停止。禁用或绑定失败不显示连接成功。
-- 复用共享 UI、语义 Token、i18n、加载/失败/复制反馈；不增加独立端口、启停、Token、工具白名单、Endpoint CRUD 或密钥表。
+- 配置使用 `X-API-Key: <YOUR_API_KEY>` 占位符。不读取或保存已有 Key 明文；页面不提供 API 集成跳转。
+- 移除独立 URL 区块与底部权限、连接边界说明。禁用或绑定失败不显示连接成功。
+- 复用共享 UI、语义 Token、i18n、加载/失败/复制反馈；MCP 与 API 各有开关，保存在同一设置文件；任一开启时复用唯一监听，仅接纳已开启入口的请求。不增加独立端口、Token、工具白名单、Endpoint CRUD 或密钥表。
 
 WeKnora 的端点本身是另一种授权主体，我们已有 API Key；只借鉴独立接入说明，不照搬其持久模型。
 

@@ -12,5 +12,6 @@ func init() {
 	Router.Register(&DeleteAPIKey{})
 	Router.Register(&GetAPIService{})
 	Router.Register(&UpdateAPIService{})
+	Router.Register(&UpdateMCPService{})
 	Router.Register(&ListPublishableResources{})
 }

@@ -25,6 +25,7 @@ beforeEach(() => {
       port: 8431,
       available: true,
       enabled: false,
+      mcpEnabled: true,
       publicBaseUrl: "https://example.test/api/v1",
     },
   });
@@ -143,4 +144,26 @@ it("调用示例保留反代前缀并使用应用级 API Key", () => {
   expect(example.trigger).toContain("X-API-Key: <API_KEY>");
   expect(example.status).toContain("X-API-Key: <API_KEY>");
   expect(example.trigger).not.toContain("Bearer");
+});
+
+it("只有 MCP 开启时，共享监听可用也不表示 API 已启动", async () => {
+  renderSettings();
+  expect(
+    await screen.findByText("API 不可用，请检查 IP 和端口。"),
+  ).toBeVisible();
+  expect(screen.queryByText("API 已启动")).not.toBeInTheDocument();
+});
+
+it("API 已启用且真实监听可用时显示 API 已启动", async () => {
+  getAPI.mockResolvedValue({
+    data: {
+      ip: "127.0.0.1",
+      port: 8431,
+      available: true,
+      enabled: true,
+      mcpEnabled: false,
+    },
+  });
+  renderSettings();
+  expect(await screen.findByText("API 已启动")).toBeVisible();
 });

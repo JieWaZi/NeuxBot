@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -84,5 +85,197 @@ func TestIntegrationDisableClosesListenerBeforeServeStarts(t *testing.T) {
 	}
 	if listener.GetAPIStatus().Available || listener.Settings().Enabled {
 		t.Fatal("disabled API remains available")
+	}
+}
+
+func integrationFreePort(t *testing.T) int {
+	t.Helper()
+	reservation, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := reservation.Addr().(*net.TCPAddr).Port
+	_ = reservation.Close()
+	return port
+}
+func integrationSavedListener(t *testing.T, root string, port int, enabled bool) *Listener {
+	t.Helper()
+	data, _ := json.Marshal(map[string]any{"ip": "127.0.0.1", "port": port, "enabled": enabled})
+	if err := os.WriteFile(filepath.Join(root, "integration-api.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	listener := NewListener(root, func(string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	})
+	if err := listener.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(listener.Close)
+	return listener
+}
+func integrationProbeListener(t *testing.T, listener *Listener) {
+	t.Helper()
+	settings := listener.Settings()
+	response, err := http.Get("http://" + net.JoinHostPort(settings.IP, strconv.Itoa(settings.Port)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatal(response.StatusCode)
+	}
+}
+
+func TestMCPDefaultsPersistenceAndIndependentListenerLifecycle(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	port := integrationFreePort(t)
+	if NewListener(root, nil).Settings().MCPEnabled {
+		t.Fatal("new MCP settings enabled by default")
+	}
+	listener := integrationSavedListener(t, root, port, false)
+	if settings := listener.Settings(); settings.MCPEnabled || settings.Available || settings.Enabled {
+		t.Fatal("old configuration unexpectedly opened MCP", settings)
+	}
+	if err := listener.SetMCPEnabled(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	if settings := listener.Settings(); !settings.MCPEnabled || !settings.Available || settings.Enabled || listener.GetAPIStatus().Available {
+		t.Fatal("MCP-only listener advertised API availability", settings)
+	}
+	integrationProbeListener(t, listener)
+	socket := listener.listener
+	if err := listener.Configure(ctx, "127.0.0.1", port, false, "https://proxy.example.test/prefix"); err != nil {
+		t.Fatal(err)
+	}
+	if settings := listener.Settings(); !settings.MCPEnabled || settings.Enabled || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" || listener.listener != socket {
+		t.Fatal("API update lost MCP settings or replaced socket", settings)
+	}
+	if err := listener.Configure(ctx, "127.0.0.1", port, true, listener.Settings().PublicBaseURL); err != nil {
+		t.Fatal(err)
+	}
+	if err := listener.SetMCPEnabled(ctx, false); err != nil {
+		t.Fatal(err)
+	}
+	if settings := listener.Settings(); settings.MCPEnabled || !settings.Enabled || !settings.Available || !listener.GetAPIStatus().Available || listener.listener != socket {
+		t.Fatal("MCP disable disrupted API", settings)
+	}
+	if err := listener.Configure(ctx, "127.0.0.1", port, false, listener.Settings().PublicBaseURL); err != nil {
+		t.Fatal(err)
+	}
+	if listener.Settings().Available {
+		t.Fatal("both-disabled listener still bound")
+	}
+	if err := listener.SetMCPEnabled(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	listener.Close()
+	restarted := NewListener(root, func(string) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	})
+	if err := restarted.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer restarted.Close()
+	settings := restarted.Settings()
+	if !settings.MCPEnabled || settings.Enabled || !settings.Available || restarted.GetAPIStatus().Available || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" {
+		t.Fatal("restart lost independent switches", settings)
+	}
+	integrationProbeListener(t, restarted)
+	nextPort := integrationFreePort(t)
+	if err := restarted.SetAPIAddress(ctx, "127.0.0.1", nextPort); err != nil {
+		t.Fatal(err)
+	}
+	if settings = restarted.Settings(); !settings.MCPEnabled || settings.Enabled || settings.Port != nextPort || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" {
+		t.Fatal("address update lost MCP or saved API fields", settings)
+	}
+	integrationProbeListener(t, restarted)
+}
+
+func TestMCPListenerEnableAndPersistenceFailureRollBack(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	blocked, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	port := blocked.Addr().(*net.TCPAddr).Port
+	listener := integrationSavedListener(t, root, port, false)
+	before := listener.Settings()
+	path := filepath.Join(root, "integration-api.json")
+	saved, _ := os.ReadFile(path)
+	if err = listener.SetMCPEnabled(ctx, true); err == nil {
+		t.Fatal("MCP enabled despite occupied port")
+	}
+	after, _ := os.ReadFile(path)
+	if listener.Settings() != before || string(after) != string(saved) {
+		t.Fatal("failed MCP enable changed saved or runtime settings", listener.Settings())
+	}
+	_ = blocked.Close()
+	if err = listener.SetMCPEnabled(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	before = listener.Settings()
+	socket := listener.listener
+	conflict, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conflict.Close()
+	if err = listener.SetAPIAddress(ctx, "127.0.0.1", conflict.Addr().(*net.TCPAddr).Port); err == nil {
+		t.Fatal("MCP-only address conflict accepted")
+	}
+	if listener.Settings() != before || listener.listener != socket {
+		t.Fatal("address conflict disrupted MCP listener")
+	}
+	integrationProbeListener(t, listener)
+	if err = os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Mkdir(path, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = listener.SetMCPEnabled(ctx, false); err == nil {
+		t.Fatal("MCP disable ignored settings replacement failure")
+	}
+	if listener.Settings() != before || listener.listener != socket {
+		t.Fatal("failed save closed MCP listener", listener.Settings())
+	}
+	integrationProbeListener(t, listener)
+}
+
+func TestConcurrentAPIAndMCPUpdatesPreserveEachOther(t *testing.T) {
+	ctx := context.Background()
+	port := integrationFreePort(t)
+	listener := integrationSavedListener(t, t.TempDir(), port, false)
+	for i := 0; i < 5; i++ {
+		if err := listener.SetMCPEnabled(ctx, false); err != nil {
+			t.Fatal(err)
+		}
+		if err := listener.Configure(ctx, "127.0.0.1", port, false, ""); err != nil {
+			t.Fatal(err)
+		}
+		start := make(chan struct{})
+		done := make(chan error, 2)
+		go func() {
+			<-start
+			done <- listener.Configure(ctx, "127.0.0.1", port, true, "https://proxy.example.test/shared")
+		}()
+		go func() { <-start; done <- listener.SetMCPEnabled(ctx, true) }()
+		close(start)
+		for j := 0; j < 2; j++ {
+			if err := <-done; err != nil {
+				t.Fatal(err)
+			}
+		}
+		settings := listener.Settings()
+		if !settings.Enabled || !settings.MCPEnabled || !settings.Available || settings.PublicBaseURL != "https://proxy.example.test/shared/api/v1" {
+			t.Fatal("concurrent update lost independent configuration", settings)
+		}
+		var saved listenerSaved
+		data, err := os.ReadFile(filepath.Join(listener.dataDirectory, "integration-api.json"))
+		if err != nil || json.Unmarshal(data, &saved) != nil || !saved.Enabled || !saved.MCPEnabled || saved.PublicBaseURL != settings.PublicBaseURL {
+			t.Fatal("persisted configuration lost concurrent update", string(data), err)
+		}
 	}
 }

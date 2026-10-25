@@ -13,10 +13,25 @@ import (
 
 // NewPublishedHandler 只装配已声明的知识和自动任务合同，只接受统一 API Key。
 func NewPublishedHandler(service *schedule.Service, config schedule.Config, address string) http.Handler {
+	publisher := global.IntegrationAPIListener
 	knowledge := integration_knowledge.NewHandler(global.KnowledgeEngine, global.KnowledgeService, global.IntegrationService, integration_knowledge.Options{References: global.KnowledgeControllerManager, Events: global.EventHub})
 	mcp := knowledgemcp.NewHandler(global.KnowledgeService, global.IntegrationService)
 	tasks := automatic_tasks.NewIntegrationHandler(service, config, global.IntegrationService)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if publisher == nil {
+			http.NotFound(w, r)
+			return
+		}
+		settings := publisher.Settings()
+		if r.URL.Path == "/mcp" {
+			if !settings.MCPEnabled {
+				http.NotFound(w, r)
+				return
+			}
+		} else if !settings.Enabled {
+			http.NotFound(w, r)
+			return
+		}
 		switch {
 		case r.URL.Path == "/mcp":
 			mcp.ServeHTTP(w, r)

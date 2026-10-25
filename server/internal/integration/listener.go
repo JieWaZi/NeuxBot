@@ -25,7 +25,7 @@ type ListenerStatus struct {
 	IP string `json:"ip"`
 	// Port 是真实监听端口。
 	Port int `json:"port"`
-	// Available 表示已成功绑定且正在提供服务。
+	// Available 在共享设置中表示实际绑定，在 API 状态中还要求 API 已启用。
 	Available bool `json:"available"`
 	// ErrorCode 是端口冲突等安全错误码。
 	ErrorCode string `json:"errorCode,omitempty"`
@@ -37,6 +37,8 @@ type ListenerSettings struct {
 	ListenerStatus
 	// Enabled 表示允许对外接受 API 请求，不控制定时调度。
 	Enabled bool `json:"enabled"`
+	// MCPEnabled 表示允许接纳 HTTP MCP 请求，默认关闭。
+	MCPEnabled bool `json:"mcpEnabled"`
 	// PublicBaseURL 是可复制的完整 API 地址，通配监听不会自行推导访问主机。
 	PublicBaseURL string `json:"publicBaseUrl"`
 }
@@ -47,8 +49,10 @@ type listenerSaved struct {
 	IP string `json:"ip"`
 	// Port 是配置的监听端口。
 	Port int `json:"port"`
-	// Enabled 是保存的发布启用状态。
+	// Enabled 是保存的 API 发布启用状态。
 	Enabled bool `json:"enabled"`
+	// MCPEnabled 独立保存 MCP 开关；旧配置缺省时保持关闭。
+	MCPEnabled bool `json:"mcpEnabled"`
 	// PublicBaseURL 是用户配置的代理或访问地址。
 	PublicBaseURL string `json:"publicBaseUrl,omitempty"`
 }
@@ -77,6 +81,8 @@ type Listener struct {
 	api ListenerStatus
 	// enabled 是发布服务配置，不代表任务执行状态。
 	enabled bool
+	// mcpEnabled 是独立的 MCP 接纳开关，不改变 API 授权或业务状态。
+	mcpEnabled bool
 	// publicBaseURL 是已验证的访问地址。
 	publicBaseURL string
 }
@@ -105,7 +111,7 @@ func (s *Listener) Start(ctx context.Context) error {
 			return nil
 		}
 		s.api.IP, s.api.Port = net.ParseIP(saved.IP).String(), saved.Port
-		s.enabled = saved.Enabled
+		s.enabled, s.mcpEnabled = saved.Enabled, saved.MCPEnabled
 		s.publicBaseURL = saved.PublicBaseURL
 	} else if !errors.Is(err, os.ErrNotExist) {
 		s.api.ErrorCode = status_error.AutomaticTaskAPIUnavailable.Key()
@@ -113,7 +119,7 @@ func (s *Listener) Start(ctx context.Context) error {
 		return nil
 	}
 	s.life.Unlock()
-	if s.enabled {
+	if s.enabled || s.mcpEnabled {
 		s.listen()
 	}
 	return nil
@@ -130,7 +136,7 @@ func listenAddress(ip string, port int) (net.Listener, error) {
 func (s *Listener) listen() {
 	s.life.Lock()
 	defer s.life.Unlock()
-	if s.ctx == nil || s.ctx.Err() != nil || !s.enabled {
+	if s.ctx == nil || s.ctx.Err() != nil || !(s.enabled || s.mcpEnabled) {
 		return
 	}
 	listener, err := listenAddress(s.api.IP, s.api.Port)
@@ -160,11 +166,13 @@ func (s *Listener) serveLocked(listener net.Listener) {
 	}()
 }
 
-// GetAPIStatus 返回真实监听状态，不复制到调用方的业务状态源。
+// GetAPIStatus 保持任务 API 的可用语义，MCP 独立监听不使已关闭的 API 变为可用。
 func (s *Listener) GetAPIStatus() ListenerStatus {
 	s.life.Lock()
 	defer s.life.Unlock()
-	return s.api
+	status := s.api
+	status.Available = status.Available && s.enabled
+	return status
 }
 
 // Settings 返回设置及可复制 API 基地址。
@@ -175,21 +183,41 @@ func (s *Listener) Settings() ListenerSettings {
 	if base == "" && !net.ParseIP(s.api.IP).IsUnspecified() {
 		base = "http://" + net.JoinHostPort(s.api.IP, strconv.Itoa(s.api.Port)) + "/api/v1"
 	}
-	return ListenerSettings{ListenerStatus: s.api, Enabled: s.enabled, PublicBaseURL: base}
+	return ListenerSettings{ListenerStatus: s.api, Enabled: s.enabled, MCPEnabled: s.mcpEnabled, PublicBaseURL: base}
 }
 
-// SetAPIAddress 保持原管理入口的语义，修改同一所有者的地址。
+// SetAPIAddress 保持原管理入口的语义，在同一配置锁内保留两个开关。
 func (s *Listener) SetAPIAddress(ctx context.Context, ip string, port int) error {
+	s.portGate.Lock()
+	defer s.portGate.Unlock()
 	s.life.Lock()
-	enabled, publicURL := s.enabled, s.publicBaseURL
+	enabled, mcpEnabled, publicURL := s.enabled, s.mcpEnabled, s.publicBaseURL
 	s.life.Unlock()
-	return s.Configure(ctx, ip, port, enabled, publicURL)
+	return s.configureLocked(ctx, ip, port, enabled, mcpEnabled, publicURL)
 }
 
-// Configure 在新绑定及设置落盘成功后切换，失败恢复原有效监听。
+// Configure 保留 MCP 当前开关，只更新 API 设置；所有字段在同一配置锁内读取与替换。
 func (s *Listener) Configure(ctx context.Context, ip string, port int, enabled bool, publicURL string) error {
 	s.portGate.Lock()
 	defer s.portGate.Unlock()
+	s.life.Lock()
+	mcpEnabled := s.mcpEnabled
+	s.life.Unlock()
+	return s.configureLocked(ctx, ip, port, enabled, mcpEnabled, publicURL)
+}
+
+// SetMCPEnabled 只修改 MCP 开关，不覆盖同时更新的地址、API 开关或代理配置。
+func (s *Listener) SetMCPEnabled(ctx context.Context, enabled bool) error {
+	s.portGate.Lock()
+	defer s.portGate.Unlock()
+	s.life.Lock()
+	ip, port, apiEnabled, publicURL := s.api.IP, s.api.Port, s.enabled, s.publicBaseURL
+	s.life.Unlock()
+	return s.configureLocked(ctx, ip, port, apiEnabled, enabled, publicURL)
+}
+
+// configureLocked 在已持有配置锁时绑定并保存完整配置，失败恢复原有效监听。
+func (s *Listener) configureLocked(ctx context.Context, ip string, port int, enabled, mcpEnabled bool, publicURL string) error {
 	parsed := net.ParseIP(ip)
 	if parsed == nil || parsed.IsMulticast() || port < 1 || port > 65535 {
 		return status_error.BadRequest
@@ -211,8 +239,9 @@ func (s *Listener) Configure(ctx context.Context, ip string, port int, enabled b
 		return status_error.OperationCanceled
 	}
 	old, server, oldListener := s.api, s.server, s.listener
-	oldEnabled := s.enabled
-	if old.Available && old.IP == ip && old.Port == port && oldEnabled == enabled && s.publicBaseURL == publicURL {
+	oldEnabled, oldMCPEnabled := s.enabled, s.mcpEnabled
+	active := enabled || mcpEnabled
+	if old.Available && old.IP == ip && old.Port == port && oldEnabled == enabled && oldMCPEnabled == mcpEnabled && s.publicBaseURL == publicURL {
 		s.life.Unlock()
 		return nil
 	}
@@ -224,7 +253,7 @@ func (s *Listener) Configure(ctx context.Context, ip string, port int, enabled b
 		}
 	}()
 	var listener net.Listener
-	if enabled {
+	if active {
 		var err error
 		if old.Available && old.IP == ip && old.Port == port {
 			listener = oldListener
@@ -249,7 +278,7 @@ func (s *Listener) Configure(ctx context.Context, ip string, port int, enabled b
 			}
 		}()
 	}
-	data, _ := json.Marshal(listenerSaved{IP: ip, Port: port, Enabled: enabled, PublicBaseURL: publicURL})
+	data, _ := json.Marshal(listenerSaved{IP: ip, Port: port, Enabled: enabled, MCPEnabled: mcpEnabled, PublicBaseURL: publicURL})
 	path := filepath.Join(s.dataDirectory, "integration-api.json")
 	if err := os.MkdirAll(s.dataDirectory, 0700); err != nil {
 		logx.Errorf("create integration API directory: %v", err)
@@ -268,17 +297,17 @@ func (s *Listener) Configure(ctx context.Context, ip string, port int, enabled b
 		return status_error.AutomaticTaskAPIUnavailable
 	}
 	s.life.Lock()
-	s.api.IP, s.api.Port, s.enabled, s.publicBaseURL = ip, port, enabled, publicURL
-	if enabled && listener == oldListener && !releasedOld {
-		// 只有访问地址改变时继续使用原套接字和处理器。
-	} else if enabled {
+	s.api.IP, s.api.Port, s.enabled, s.mcpEnabled, s.publicBaseURL = ip, port, enabled, mcpEnabled, publicURL
+	if active && listener == oldListener && !releasedOld {
+		// 独立开关或访问地址变化继续复用原套接字，处理器逐次读取当前开关。
+	} else if active {
 		s.serveLocked(listener)
 	} else {
 		s.api.Available, s.api.ErrorCode, s.server, s.listener = false, "", nil, nil
 	}
 	s.life.Unlock()
 	committed = true
-	if server != nil && (!enabled || listener != oldListener) && !releasedOld {
+	if server != nil && (!active || listener != oldListener) && !releasedOld {
 		shutdown, cancel := context.WithTimeout(ctx, 5*time.Second)
 		_ = server.Shutdown(shutdown)
 		cancel()

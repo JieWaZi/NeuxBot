@@ -125,13 +125,7 @@ function SettingsSectionContent({
           </SettingsContentShell>
         }
       >
-        <MCPIntegrationSection
-          onOpenAPI={
-            onSelectSection
-              ? () => onSelectSection("integration-api")
-              : undefined
-          }
-        />
+        <MCPIntegrationSection />
       </Suspense>
     );
   if (section === "general") return <GeneralSettings />;

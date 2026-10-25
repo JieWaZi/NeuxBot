@@ -50,6 +50,8 @@ export function APISettingsForm({ onClose }: { onClose: () => void }) {
       onClose();
     },
   });
+  const available =
+    query.data?.enabled === true && query.data.available === true;
   const submit = (event: FormEvent) => {
     event.preventDefault();
     save.mutate({
@@ -105,15 +107,13 @@ export function APISettingsForm({ onClose }: { onClose: () => void }) {
         <p className="text-content-secondary type-ui">{t("apiIPHint")}</p>
         <p
           className={
-            query.data?.available
-              ? "text-success type-ui"
-              : "text-warning type-ui"
+            available ? "text-success type-ui" : "text-warning type-ui"
           }
           role="status"
         >
           {query.isPending
             ? t("common:pageLoading")
-            : t(query.data?.available ? "apiAvailable" : "apiUnavailable")}
+            : t(available ? "apiAvailable" : "apiUnavailable")}
         </p>
         {query.error || save.error ? (
           <p role="alert" className="text-destructive type-ui">
