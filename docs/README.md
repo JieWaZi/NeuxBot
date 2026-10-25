@@ -12,6 +12,10 @@
 - [资源与记忆](guide/resources-cn.md)
 - [团队与工作流](guide/teams-and-workflows-cn.md)
 
+## 版本说明
+
+- [v0.2.0：相对 v0.1.0 的新增功能与优化](releases/v0.2.0.md)
+
 ## 开发约定
 
 - [NeuxBot 后端工程开发约定](development/backend-cn.md)

@@ -7,14 +7,17 @@ on:
   pull_request:
   workflow_call:
 
+permissions:
+  contents: read
+
 jobs:
-  verify:
+  generated:
+    name: Generated contracts and resources
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
+        id: go
         with:
           go-version-file: server/go.mod
           cache: true
@@ -39,6 +42,111 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        id: install
+      - run: node --test scripts/go-ldflags.test.mjs scripts/stamp-release-version.test.mjs
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: node --test scripts/package-windows-artifact.test.mjs scripts/smoke-desktop.test.mjs
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm docs:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm companion:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm pi:bridge:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm skills:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm workflow:sdk:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm workflow:presentation:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm api:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+
+  frontend:
+    name: Frontend types and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        id: install
+      - run: pnpm --dir packages/frontend typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm --dir packages/frontend lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+
+  frontend-tests:
+    name: Frontend tests (${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        id: install
+      - run: pnpm --dir packages/frontend test --shard=${{ matrix.shard }}/4
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+
+  web:
+    name: Web and terminal
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+        id: install
+      - run: pnpm --dir web typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm --dir web test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm terminal:build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        id: terminal-build
+      - run: pnpm terminal:test
+        if: ${{ !cancelled() && steps.terminal-build.outcome == 'success' }}
+      - run: pnpm build:web
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: node --test scripts/start-web.test.mjs scripts/package-native-renderer.test.mjs
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+
+  desktop:
+    name: Desktop checks and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.34.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
       - name: 缓存 Electron 下载
         uses: actions/cache@v4
         with:
@@ -48,23 +156,67 @@ jobs:
           key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'desktop/package.json') }}
           restore-keys: |
             electron-${{ runner.os }}-
-      - run: node --test scripts/go-ldflags.test.mjs scripts/stamp-release-version.test.mjs
       - run: pnpm install --frozen-lockfile
-      - run: node --test scripts/package-windows-artifact.test.mjs scripts/smoke-desktop.test.mjs
-      - run: pnpm docs:check
-      - run: pnpm companion:check
-      - run: pnpm pi:bridge:check
-      - run: pnpm skills:check
-      - run: pnpm workflow:sdk:check
-      - run: pnpm workflow:presentation:check
-      - run: pnpm api:check
-      - run: pnpm --dir packages/frontend typecheck
-      - run: pnpm --dir packages/frontend lint
-      - run: pnpm --dir packages/frontend test
-      - run: pnpm --dir web typecheck
-      - run: pnpm --dir web test
-      - run: pnpm terminal:build && pnpm terminal:test
-      - run: pnpm build:web
-      - run: node --test scripts/start-web.test.mjs scripts/package-native-renderer.test.mjs
-      - run: pnpm --dir desktop check
-      - run: cd server && go vet ./... && go test ./...
+        id: install
+      - run: pnpm --dir desktop typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm --dir desktop lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm --dir desktop ui:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm --dir desktop format:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm --dir desktop test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: pnpm --dir desktop build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        id: renderer-build
+      - run: pnpm --dir desktop bundle:check
+        if: ${{ !cancelled() && steps.renderer-build.outcome == 'success' }}
+      - run: pnpm --dir desktop electron:build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        id: electron-build
+      - run: pnpm --dir desktop electron:test
+        if: ${{ !cancelled() && steps.electron-build.outcome == 'success' }}
+
+  backend:
+    name: Go vet and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        id: go
+        with:
+          go-version-file: server/go.mod
+          cache: true
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v4
+        id: node
+        with:
+          node-version: 22
+      - run: go vet ./...
+        working-directory: server
+      - run: go test ./...
+        if: ${{ !cancelled() && steps.go.outcome == 'success' && steps.node.outcome == 'success' }}
+        working-directory: server
+
+  verify:
+    name: verify
+    if: ${{ always() }}
+    needs: [generated, frontend, frontend-tests, web, desktop, backend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 汇总全部检查结果
+        env:
+          CHECK_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          node <<'NODE'
+          const results = JSON.parse(process.env.CHECK_RESULTS);
+          console.log(JSON.stringify(results, null, 2));
+          if (Object.values(results).some((check) => check.result !== "success")) {
+            process.exitCode = 1;
+          }
+          NODE

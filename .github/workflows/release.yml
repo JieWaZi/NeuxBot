@@ -116,6 +116,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: 校验 tag
         shell: bash
         run: |
@@ -152,7 +154,12 @@ jobs:
             cd dist
             sha256sum "${release_files[@]}"
           ) > dist/SHA256SUMS
-          notes="$(gh api --method POST "/repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$RELEASE_TAG" --jq .body)"
+          notes_file="docs/releases/${RELEASE_TAG}.md"
+          if [[ -f "$notes_file" ]]; then
+            notes="$(cat "$notes_file")"
+          else
+            notes="$(gh api --method POST "/repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$RELEASE_TAG" --jq .body)"
+          fi
           {
             printf '%s\n\n' "$notes"
             printf '%s\n' "内部试用包：macOS 为临时签名且未公证，Windows 未做代码签名。"
@@ -165,6 +172,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file release-notes.md
             gh release upload "$RELEASE_TAG" dist/* --clobber
           else
             gh release create "$RELEASE_TAG" dist/* \
