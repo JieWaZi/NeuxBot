@@ -11,9 +11,7 @@ export async function buildGitHubProvider({
   sourceRoot,
   offline,
 }) {
-  const temporary = await mkdtemp(
-    path.join(tmpdir(), "neuxbot-github-build-"),
-  );
+  const temporary = await mkdtemp(path.join(tmpdir(), "neuxbot-github-build-"));
   try {
     execFileSync(
       "tar",
