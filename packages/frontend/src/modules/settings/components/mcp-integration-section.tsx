@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Copy } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   integrationMcpServiceMutation,
   integrationServiceOptions,
@@ -9,15 +9,15 @@ import {
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
-import { QueryRefreshError, QueryState } from "@/shared/ui/query-state";
-import { PageAction } from "@/shared/ui/resource-page";
+import { Switch } from "@/shared/ui/switch";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { mcpClientConfig, mcpConnection } from "../lib/mcp-connection";
 import { useIntegrationCopy } from "../use-integration-copy";
-import { SettingsContentShell, SettingsGroup } from "./settings-section-layout";
+import { SettingsGroup } from "./settings-section-layout";
 
 export function MCPIntegrationSection() {
   const t = useIntegrationCopy();
+  const id = useId();
   const client = useQueryClient();
   const service = useQuery(integrationServiceOptions());
   const connection = mcpConnection(service.data?.publicBaseUrl);
@@ -25,7 +25,12 @@ export function MCPIntegrationSection() {
   const [copied, setCopied] = useState<string>();
   const [copyFailed, setCopyFailed] = useState(false);
   const enabled = service.data?.mcpEnabled;
-  const known = typeof enabled === "boolean" && !service.error;
+  const apiEnabled = service.data?.enabled;
+  const known =
+    typeof enabled === "boolean" &&
+    typeof apiEnabled === "boolean" &&
+    !service.error;
+  const effective = apiEnabled === true && enabled === true;
   const save = useMutation({
     ...integrationMcpServiceMutation(),
     onSuccess: async () => {
@@ -48,24 +53,19 @@ export function MCPIntegrationSection() {
     }
   }
   return (
-    <SettingsContentShell
-      title={t("mcp.title")}
+    <SettingsGroup
+      title={<label htmlFor={id}>{t("mcp.title")}</label>}
       description={t("mcp.description")}
-      actions={
-        <PageAction
-          intent={enabled ? "secondary" : "primary"}
-          label={t(
-            save.isPending
-              ? save.variables?.body.enabled
-                ? "mcp.enabling"
-                : "mcp.disabling"
-              : !known
-                ? "mcp.statusUnknown"
-                : enabled
-                  ? "mcp.disable"
-                  : "mcp.enable",
-          )}
-          disabled={!known || service.isPending || save.isPending}
+      trailing={
+        <Switch
+          id={id}
+          aria-label={t("mcp.switchLabel")}
+          aria-busy={save.isPending}
+          checked={enabled === true}
+          disabled={
+            !known || apiEnabled !== true || service.isPending || save.isPending
+          }
+          hitArea="comfortable"
           onClick={() => save.mutate({ body: { enabled: !enabled } })}
         />
       }
@@ -81,25 +81,17 @@ export function MCPIntegrationSection() {
             <Skeleton className="h-row-default w-full" />
             <Skeleton className="h-40 w-full" />
           </div>
-        ) : service.error && !service.data ? (
-          <QueryState
-            error={service.error}
-            onRetry={() => void service.refetch()}
-          />
         ) : (
           <div className="grid min-w-0 gap-4">
-            {service.error && (
-              <QueryRefreshError
-                error={service.error}
-                pending={service.isFetching}
-                onRetry={() => void service.refetch()}
-              />
-            )}
-            {typeof enabled !== "boolean" || (service.error && !enabled) ? (
+            {!known ? (
               <p role="status" className="type-body text-content-secondary">
                 {t("mcp.statusUnknown")}
               </p>
-            ) : !enabled ? (
+            ) : apiEnabled !== true ? (
+              <p className="type-body text-content-secondary">
+                {t("mcp.requiresAPI")}
+              </p>
+            ) : !effective ? (
               <p className="type-body text-content-secondary">
                 {t("mcp.disabled")}
               </p>
@@ -152,6 +144,15 @@ export function MCPIntegrationSection() {
                 )}
               </>
             )}
+            {save.isPending && (
+              <p role="status" className="type-ui text-content-secondary">
+                {t(
+                  save.variables?.body.enabled
+                    ? "mcp.enabling"
+                    : "mcp.disabling",
+                )}
+              </p>
+            )}
             {save.error && !service.error && (
               <p role="alert" className="type-body text-destructive">
                 {localApiErrorMessage(save.error, t("failed"))}
@@ -165,6 +166,6 @@ export function MCPIntegrationSection() {
           </div>
         )}
       </Card>
-    </SettingsContentShell>
+    </SettingsGroup>
   );
 }

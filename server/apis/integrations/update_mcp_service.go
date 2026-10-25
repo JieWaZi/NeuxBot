@@ -23,7 +23,7 @@ type UpdateMCPService struct {
 // Path 返回独立 MCP 开关的本机管理入口。
 func (*UpdateMCPService) Path() string { return "/mcp" }
 
-// Output 只切换 MCP 接纳，不改变同一发布服务的 API 开关和地址。
+// Output 只保存 MCP 子功能偏好，不改变发布服务总开关和地址。
 func (o *UpdateMCPService) Output(ctx *gin.Context) (interface{}, error) {
 	if global.IntegrationAPIListener == nil {
 		return nil, status_error.IntegrationListenerError

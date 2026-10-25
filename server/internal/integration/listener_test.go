@@ -127,7 +127,7 @@ func integrationProbeListener(t *testing.T, listener *Listener) {
 	}
 }
 
-func TestMCPDefaultsPersistenceAndIndependentListenerLifecycle(t *testing.T) {
+func TestMCPDefaultsPersistenceAndParentListenerLifecycle(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	port := integrationFreePort(t)
@@ -141,20 +141,23 @@ func TestMCPDefaultsPersistenceAndIndependentListenerLifecycle(t *testing.T) {
 	if err := listener.SetMCPEnabled(ctx, true); err != nil {
 		t.Fatal(err)
 	}
-	if settings := listener.Settings(); !settings.MCPEnabled || !settings.Available || settings.Enabled || listener.GetAPIStatus().Available {
-		t.Fatal("MCP-only listener advertised API availability", settings)
+	if settings := listener.Settings(); !settings.MCPEnabled || settings.Available || settings.Enabled || listener.GetAPIStatus().Available {
+		t.Fatal("MCP preference bypassed disabled publishing service", settings)
 	}
-	integrationProbeListener(t, listener)
-	socket := listener.listener
+	if listener.listener != nil {
+		t.Fatal("MCP preference opened listener")
+	}
 	if err := listener.Configure(ctx, "127.0.0.1", port, false, "https://proxy.example.test/prefix"); err != nil {
 		t.Fatal(err)
 	}
-	if settings := listener.Settings(); !settings.MCPEnabled || settings.Enabled || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" || listener.listener != socket {
-		t.Fatal("API update lost MCP settings or replaced socket", settings)
+	if settings := listener.Settings(); !settings.MCPEnabled || settings.Enabled || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" || listener.listener != nil {
+		t.Fatal("API update lost MCP preference or opened listener", settings)
 	}
 	if err := listener.Configure(ctx, "127.0.0.1", port, true, listener.Settings().PublicBaseURL); err != nil {
 		t.Fatal(err)
 	}
+	socket := listener.listener
+	integrationProbeListener(t, listener)
 	if err := listener.SetMCPEnabled(ctx, false); err != nil {
 		t.Fatal(err)
 	}
@@ -179,16 +182,27 @@ func TestMCPDefaultsPersistenceAndIndependentListenerLifecycle(t *testing.T) {
 	}
 	defer restarted.Close()
 	settings := restarted.Settings()
-	if !settings.MCPEnabled || settings.Enabled || !settings.Available || restarted.GetAPIStatus().Available || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" {
-		t.Fatal("restart lost independent switches", settings)
+	if !settings.MCPEnabled || settings.Enabled || settings.Available || restarted.GetAPIStatus().Available || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" {
+		t.Fatal("restart lost parent switch or MCP preference", settings)
 	}
-	integrationProbeListener(t, restarted)
+	if restarted.listener != nil {
+		t.Fatal("restart opened disabled parent listener")
+	}
 	nextPort := integrationFreePort(t)
 	if err := restarted.SetAPIAddress(ctx, "127.0.0.1", nextPort); err != nil {
 		t.Fatal(err)
 	}
 	if settings = restarted.Settings(); !settings.MCPEnabled || settings.Enabled || settings.Port != nextPort || settings.PublicBaseURL != "https://proxy.example.test/prefix/api/v1" {
 		t.Fatal("address update lost MCP or saved API fields", settings)
+	}
+	if restarted.Settings().Available {
+		t.Fatal("address update bypassed disabled parent")
+	}
+	if err := restarted.Configure(ctx, "127.0.0.1", nextPort, true, restarted.Settings().PublicBaseURL); err != nil {
+		t.Fatal(err)
+	}
+	if !restarted.Settings().MCPEnabled || !restarted.Settings().Available {
+		t.Fatal("enabling parent lost child preference")
 	}
 	integrationProbeListener(t, restarted)
 }
@@ -202,18 +216,24 @@ func TestMCPListenerEnableAndPersistenceFailureRollBack(t *testing.T) {
 	}
 	port := blocked.Addr().(*net.TCPAddr).Port
 	listener := integrationSavedListener(t, root, port, false)
-	before := listener.Settings()
 	path := filepath.Join(root, "integration-api.json")
+	if err = listener.SetMCPEnabled(ctx, true); err != nil {
+		t.Fatal("disabled parent should save preference without binding", err)
+	}
+	before := listener.Settings()
 	saved, _ := os.ReadFile(path)
-	if err = listener.SetMCPEnabled(ctx, true); err == nil {
-		t.Fatal("MCP enabled despite occupied port")
+	if before.Available || before.Enabled || !before.MCPEnabled {
+		t.Fatal(before)
+	}
+	if err = listener.Configure(ctx, "127.0.0.1", port, true, ""); err == nil {
+		t.Fatal("parent enable ignored occupied port")
 	}
 	after, _ := os.ReadFile(path)
-	if listener.Settings() != before || string(after) != string(saved) {
-		t.Fatal("failed MCP enable changed saved or runtime settings", listener.Settings())
+	if listener.Settings() != before || string(saved) != string(after) {
+		t.Fatal("failed parent enable changed child preference")
 	}
 	_ = blocked.Close()
-	if err = listener.SetMCPEnabled(ctx, true); err != nil {
+	if err = listener.Configure(ctx, "127.0.0.1", port, true, ""); err != nil {
 		t.Fatal(err)
 	}
 	before = listener.Settings()
@@ -224,7 +244,7 @@ func TestMCPListenerEnableAndPersistenceFailureRollBack(t *testing.T) {
 	}
 	defer conflict.Close()
 	if err = listener.SetAPIAddress(ctx, "127.0.0.1", conflict.Addr().(*net.TCPAddr).Port); err == nil {
-		t.Fatal("MCP-only address conflict accepted")
+		t.Fatal("enabled publishing address conflict accepted")
 	}
 	if listener.Settings() != before || listener.listener != socket {
 		t.Fatal("address conflict disrupted MCP listener")

@@ -1,13 +1,13 @@
 export const integrationZh = {
   mcp: {
-    title: "MCP 集成",
+    title: "MCP",
     description: "通过 Streamable HTTP MCP，让外部智能体使用本机知识库。",
     loading: "正在读取 MCP 接入信息",
     statusUnknown: "状态未知",
     statusUnavailable: "MCP 服务暂不可用。",
     disabled: "MCP 尚未开启。",
-    enable: "开启 MCP",
-    disable: "关闭 MCP",
+    switchLabel: "启用 MCP",
+    requiresAPI: "请先开启 API 服务。",
     enabling: "正在开启…",
     disabling: "正在关闭…",
     noURL: "尚无可用的客户端访问地址。",
@@ -119,15 +119,15 @@ export const integrationZh = {
 export const integrationEn = {
   ...integrationZh,
   mcp: {
-    title: "MCP integration",
+    title: "MCP",
     description:
       "Connect external agents to local knowledge libraries through Streamable HTTP MCP.",
     loading: "Loading MCP connection details",
     statusUnknown: "Status unknown",
     statusUnavailable: "The MCP service is currently unavailable.",
     disabled: "MCP is turned off.",
-    enable: "Enable MCP",
-    disable: "Disable MCP",
+    switchLabel: "Enable MCP",
+    requiresAPI: "Enable the API service first.",
     enabling: "Enabling…",
     disabling: "Disabling…",
     noURL: "No client address is available.",

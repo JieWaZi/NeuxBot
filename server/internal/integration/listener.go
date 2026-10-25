@@ -51,7 +51,7 @@ type listenerSaved struct {
 	Port int `json:"port"`
 	// Enabled 是保存的 API 发布启用状态。
 	Enabled bool `json:"enabled"`
-	// MCPEnabled 独立保存 MCP 开关；旧配置缺省时保持关闭。
+	// MCPEnabled 保存 MCP 子功能偏好；旧配置缺省关闭，总开关关闭时仍保留。
 	MCPEnabled bool `json:"mcpEnabled"`
 	// PublicBaseURL 是用户配置的代理或访问地址。
 	PublicBaseURL string `json:"publicBaseUrl,omitempty"`
@@ -81,7 +81,7 @@ type Listener struct {
 	api ListenerStatus
 	// enabled 是发布服务配置，不代表任务执行状态。
 	enabled bool
-	// mcpEnabled 是独立的 MCP 接纳开关，不改变 API 授权或业务状态。
+	// mcpEnabled 是受总开关约束的 MCP 子功能偏好，不改变授权或业务状态。
 	mcpEnabled bool
 	// publicBaseURL 是已验证的访问地址。
 	publicBaseURL string
@@ -119,7 +119,7 @@ func (s *Listener) Start(ctx context.Context) error {
 		return nil
 	}
 	s.life.Unlock()
-	if s.enabled || s.mcpEnabled {
+	if s.enabled {
 		s.listen()
 	}
 	return nil
@@ -136,7 +136,7 @@ func listenAddress(ip string, port int) (net.Listener, error) {
 func (s *Listener) listen() {
 	s.life.Lock()
 	defer s.life.Unlock()
-	if s.ctx == nil || s.ctx.Err() != nil || !(s.enabled || s.mcpEnabled) {
+	if s.ctx == nil || s.ctx.Err() != nil || !s.enabled {
 		return
 	}
 	listener, err := listenAddress(s.api.IP, s.api.Port)
@@ -166,7 +166,7 @@ func (s *Listener) serveLocked(listener net.Listener) {
 	}()
 }
 
-// GetAPIStatus 保持任务 API 的可用语义，MCP 独立监听不使已关闭的 API 变为可用。
+// GetAPIStatus 返回总开关允许且实际绑定的发布服务状态。
 func (s *Listener) GetAPIStatus() ListenerStatus {
 	s.life.Lock()
 	defer s.life.Unlock()
@@ -175,7 +175,7 @@ func (s *Listener) GetAPIStatus() ListenerStatus {
 	return status
 }
 
-// Settings 返回设置及可复制 API 基地址。
+// Settings 返回总服务开关、MCP 子功能偏好、实际监听状态及可复制 API 基地址。
 func (s *Listener) Settings() ListenerSettings {
 	s.life.Lock()
 	defer s.life.Unlock()
@@ -206,7 +206,7 @@ func (s *Listener) Configure(ctx context.Context, ip string, port int, enabled b
 	return s.configureLocked(ctx, ip, port, enabled, mcpEnabled, publicURL)
 }
 
-// SetMCPEnabled 只修改 MCP 开关，不覆盖同时更新的地址、API 开关或代理配置。
+// SetMCPEnabled 只保存 MCP 子功能偏好，不绕过总开关或覆盖地址和代理配置。
 func (s *Listener) SetMCPEnabled(ctx context.Context, enabled bool) error {
 	s.portGate.Lock()
 	defer s.portGate.Unlock()
@@ -240,7 +240,7 @@ func (s *Listener) configureLocked(ctx context.Context, ip string, port int, ena
 	}
 	old, server, oldListener := s.api, s.server, s.listener
 	oldEnabled, oldMCPEnabled := s.enabled, s.mcpEnabled
-	active := enabled || mcpEnabled
+	active := enabled
 	if old.Available && old.IP == ip && old.Port == port && oldEnabled == enabled && oldMCPEnabled == mcpEnabled && s.publicBaseURL == publicURL {
 		s.life.Unlock()
 		return nil

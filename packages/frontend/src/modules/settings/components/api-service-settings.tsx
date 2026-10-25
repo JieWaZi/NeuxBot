@@ -47,8 +47,7 @@ export function APIServiceSettings() {
   const publicURL = draft.publicURL ?? service.data?.publicBaseUrl ?? "";
   const save = useMutation({
     ...integrationServiceMutation(),
-    onSuccess: async (data) => {
-      client.setQueryData(integrationServiceQueryKey(), data);
+    onSuccess: async () => {
       setDraft({});
       setCopied(false);
       await client.invalidateQueries({

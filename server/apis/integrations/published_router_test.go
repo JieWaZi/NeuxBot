@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxAlly/server/global"
 	publication "github.com/JieWaZi/NeuxAlly/server/internal/integration"
@@ -77,7 +78,7 @@ func TestPublishedRouterExcludesDesktopManagementAndServesOnlyPublicContract(t *
 	}
 }
 
-func TestPublishedAPIAndMCPIndependentSwitches(t *testing.T) {
+func TestPublishedMCPRequiresEnabledParentService(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	db, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(root, "app.db"), Migrate: true})
@@ -172,32 +173,44 @@ func TestPublishedAPIAndMCPIndependentSwitches(t *testing.T) {
 	if _, err = (&UpdateAPIService{Body: APIServiceInput{Enabled: false, IP: "127.0.0.1", Port: port, PublicBaseURL: "https://proxy.example.test/prefix"}}).Output(manage); err != nil {
 		t.Fatal(err)
 	}
-	if settings := listener.Settings(); !settings.MCPEnabled || !settings.Available || settings.Enabled || listener.GetAPIStatus().Available {
-		t.Fatal("MCP-only state mismatch", settings)
+	if settings := listener.Settings(); !settings.MCPEnabled || settings.Available || settings.Enabled || listener.GetAPIStatus().Available {
+		t.Fatal("MCP preference bypassed disabled parent", settings)
 	}
-	probe("/mcp", 200, "route-library")
-	probe("/api/v1/knowledge-bases/"+created.ResourceID, 404, "")
-	probe("/integration-openapi.json", 404, "")
 	handler := NewPublishedHandler(nil, schedule.Config{}, "127.0.0.1")
-	if _, err = (&UpdateMCPService{Body: MCPServiceInput{Enabled: false}}).Output(manage); err != nil {
+	disabled := func() {
+		t.Helper()
+		for _, path := range []string{"/mcp", "/api/v1/knowledge-bases/" + created.ResourceID, "/integration-openapi.json"} {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest("GET", path, nil))
+			if response.Code != 404 {
+				t.Fatal("disabled parent admitted route", path, response.Code)
+			}
+		}
+	}
+	disabled()
+	if _, err = (&UpdateMCPService{Body: MCPServiceInput{Enabled: true}}).Output(manage); err != nil {
 		t.Fatal(err)
 	}
 	if listener.Settings().Available {
-		t.Fatal("both-disabled listener still active")
+		t.Fatal("direct child enable opened disabled service")
 	}
-	for _, path := range []string{"/mcp", "/api/v1/knowledge-bases/" + created.ResourceID} {
-		response := httptest.NewRecorder()
-		handler.ServeHTTP(response, httptest.NewRequest("GET", path, nil))
-		if response.Code != 404 {
-			t.Fatal("disabled route admitted directly", path, response.Code)
-		}
+	disabled()
+	connection, e := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), time.Second)
+	if e == nil {
+		connection.Close()
+		t.Fatal("disabled parent retained listening port")
 	}
 	if _, err = (&UpdateAPIService{Body: APIServiceInput{Enabled: true, IP: "127.0.0.1", Port: port}}).Output(manage); err != nil {
 		t.Fatal(err)
 	}
+	probe("/mcp", 200, "route-library")
+	probe("/api/v1/knowledge-bases/"+created.ResourceID, 200, "route-library")
+	if _, err = (&UpdateMCPService{Body: MCPServiceInput{Enabled: false}}).Output(manage); err != nil {
+		t.Fatal(err)
+	}
 	probe("/mcp", 404, "")
 	probe("/api/v1/knowledge-bases/"+created.ResourceID, 200, "route-library")
-	if listener.Settings().MCPEnabled {
-		t.Fatal("API enable changed MCP setting")
+	if !listener.Settings().Enabled || !listener.Settings().Available || listener.Settings().MCPEnabled {
+		t.Fatal("child disable disrupted parent", listener.Settings())
 	}
 }

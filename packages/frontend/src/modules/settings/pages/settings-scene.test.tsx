@@ -26,34 +26,37 @@ vi.mock("../components/runtime-environments-section", () => ({
   ),
 }));
 
-vi.mock("../components/mcp-integration-section", () => ({
-  MCPIntegrationSection: () => <h1>MCP 接入内容</h1>,
+vi.mock("../components/api-integration-section", () => ({
+  APIIntegrationSection: () => <h1>API 与 MCP 集成内容</h1>,
 }));
 
 describe("SettingsScene", () => {
-  it("懒加载独立 MCP 分类并保留设置导航", async () => {
+  it("通过 API 分类懒加载集成内容，不再显示独立 MCP 导航", async () => {
     const onSelectSection = vi.fn();
     render(
       <>
         <SettingsContextSidebar
-          activeSection="integration-mcp"
+          activeSection="integration-api"
           onSelect={onSelectSection}
         />
         <SettingsScene
-          section="integration-mcp"
+          section="integration-api"
           onClose={() => undefined}
           onSelectSection={onSelectSection}
         />
       </>,
     );
     expect(screen.getByRole("navigation", { name: "设置菜单" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "MCP 集成" })).toHaveAttribute(
+    expect(
+      screen.queryByRole("button", { name: "MCP 集成" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "API 集成" })).toHaveAttribute(
       "aria-current",
       "page",
     );
     expect(screen.getByRole("button", { name: "API 集成" })).toBeVisible();
     expect(
-      await screen.findByRole("heading", { name: "MCP 接入内容" }),
+      await screen.findByRole("heading", { name: "API 与 MCP 集成内容" }),
     ).toBeVisible();
   });
   it("从智能体诊断入口切换到 AI 账号设置", async () => {

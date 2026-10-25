@@ -24,7 +24,7 @@ func NewPublishedHandler(service *schedule.Service, config schedule.Config, addr
 		}
 		settings := publisher.Settings()
 		if r.URL.Path == "/mcp" {
-			if !settings.MCPEnabled {
+			if !settings.Enabled || !settings.MCPEnabled {
 				http.NotFound(w, r)
 				return
 			}

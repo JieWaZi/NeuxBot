@@ -8,15 +8,15 @@
 
 参考 WeKnora 提交 `0d7516ea0`：`internal/mcpserver` 提供 HTTP 服务，`frontend/src/views/integrations/McpServerIntegrationSettings.vue` 提供独立配置页面。参考协议和交互，不复制其知识业务。
 
-## 2. 独立 MCP 集成页
+## 2. API 集成内的 MCP 设置
 
-在设置“发布集成”分组增加“MCP 集成”，与 API 集成并列。此页是同一服务的接入视图，不是新的端点管理系统。
+MCP 设置嵌入“发布集成 → API 集成”，不提供独立分类或页面。复用同一服务、API Key 和共享 Switch 组件。
 
-- 复用 integrationServiceOptions 查询，MCP 默认关闭，页头只提供开启／关闭动作，开启后展示可复制的 HTTP MCP JSON 配置。
+- 复用 integrationServiceOptions 查询，API 服务总开关和 MCP 子开关默认关闭；API 未开启时不能使用 MCP，子开关沿用已有 Switch；有效开启后展示可复制的 HTTP MCP JSON 配置。
 - URL 使用已保存的 publicBaseUrl，移除末尾 `/api/v1` 后追加 `/mcp`，保留代理路径前缀。无确定访问主机时不生成伪可用 URL，不使用未保存草稿。
-- 配置使用 `X-API-Key: <YOUR_API_KEY>` 占位符。不读取或保存已有 Key 明文；页面不提供 API 集成跳转。
+- 配置使用 `X-API-Key: <YOUR_API_KEY>` 占位符。不读取或保存已有 Key 明文；不提供额外跳转。
 - 移除独立 URL 区块与底部权限、连接边界说明。禁用或绑定失败不显示连接成功。
-- 复用共享 UI、语义 Token、i18n、加载/失败/复制反馈；MCP 与 API 各有开关，保存在同一设置文件；任一开启时复用唯一监听，仅接纳已开启入口的请求。不增加独立端口、Token、工具白名单、Endpoint CRUD 或密钥表。
+- 复用共享 UI、语义 Token、i18n、加载/失败/复制反馈；总服务开关和 MCP 子开关保存在同一设置文件；仅开启总服务才监听，MCP 还需开启子开关。关闭总服务保留子开关偏好。不增加独立端口、Token、工具白名单、Endpoint CRUD 或密钥表。
 
 WeKnora 的端点本身是另一种授权主体，我们已有 API Key；只借鉴独立接入说明，不照搬其持久模型。
 

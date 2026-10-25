@@ -20,7 +20,7 @@ WeKnora 官方接入继续使用官方 `/wiki/pages` 分页协议，每批上限
 
 对外监听仅注册已声明的知识与任务 Operator，以及知识 Streamable HTTP MCP 的 `/mcp` 入口，与桌面管理认证隔离，默认回环 `127.0.0.1:8431`，配置独立保存在 `integration-api.json`。公开合同由运行时登记和同一 ginx 扫描器生成，`/integration-openapi.json` 只含公开路由和可达 Schema。功能按全新配置实现，无旧 Token／数据库结构迁移或兼容监听。
 
-“发布集成 → MCP 集成”默认关闭，由页面的开启／关闭按钮控制；开启后提供占位 API Key 的连接配置。MCP 与 API 分别启停，复用同一监听地址和密钥权限；不建立独立端点、Token 或权限表。MCP URL 从发布地址移除末尾 `/api/v1` 后追加 `/mcp`，保留反向代理路径前缀。
+MCP 设置位于“发布集成 → API 集成”内，使用共享 Switch 控制，默认关闭。API 服务开启后，才可启用 MCP 并复制占位 API Key 的连接配置。API 总开关控制发布监听，MCP 子开关控制知识工具入口；关闭总服务保留子开关偏好，重新开启后恢复。两者复用同一监听地址和密钥权限；不建立独立端点、Token 或权限表。MCP URL 从发布地址移除末尾 `/api/v1` 后追加 `/mcp`，保留反向代理路径前缀。
 
 MCP 的工具名将 `agentcapability/contract` 中知识命令的点号转换为下划线，业务 Schema 与 allycli 同源。读取复用既有 Provider，编辑、导入及任务操作复用知识 Service；外部身份由 `X-API-Key` 认证，每次调用重新检查该 Key 的明确本地库范围。读取需要 `retrieve`，直接编辑和导入需要 `retrieve + ingest`，整理和重试需要 `retrieve + organize`。该入口不转授已挂载远端库的凭据，也不创建内部 Chat 或 Execution。整理显式指定库及已导入来源，不能引用内部对话的附件序号。
 

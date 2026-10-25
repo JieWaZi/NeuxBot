@@ -1071,7 +1071,6 @@ const resources = {
         runtimeEnvironments: "智能体",
         accounts: "账号管理",
         integrationAPI: "API 集成",
-        integrationMCP: "MCP 集成",
       },
       general: {
         title: "通用",

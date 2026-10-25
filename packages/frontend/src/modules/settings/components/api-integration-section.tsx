@@ -28,6 +28,7 @@ import { Skeleton } from "@/shared/ui/skeleton";
 import { PageAction } from "@/shared/ui/resource-page";
 import { apiKeysOptions, apiKeysQueryKey } from "../api/integration-queries";
 import { SettingsContentShell, SettingsGroup } from "./settings-section-layout";
+import { MCPIntegrationSection } from "./mcp-integration-section";
 import { APIServiceSettings } from "./api-service-settings";
 
 import { useIntegrationCopy } from "../use-integration-copy";
@@ -125,6 +126,7 @@ export function APIIntegrationSection() {
       }
     >
       <APIServiceSettings />
+      <MCPIntegrationSection />
       <SettingsGroup
         title={
           <span className="type-label text-content-primary font-medium">
