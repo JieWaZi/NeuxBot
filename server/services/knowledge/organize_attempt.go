@@ -2,11 +2,11 @@ package knowledge
 
 import (
 	"context"
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/neux-knowledge/core"
 )
 

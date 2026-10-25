@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, Columns3 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelTask as ChannelTask } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask as ChannelTask } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";

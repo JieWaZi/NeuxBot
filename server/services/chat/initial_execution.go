@@ -3,10 +3,10 @@ package chat
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // InitialExecutionState 是产品入口对账首次接纳与运行结果的窄权威视图。

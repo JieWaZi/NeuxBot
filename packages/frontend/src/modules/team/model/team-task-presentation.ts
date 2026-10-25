@@ -1,6 +1,6 @@
 import type {
-  GithubComJieWaZiNeuxAllyServerConstantsChannelTaskStatus as ChannelTaskStatus,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelTask as ChannelTask,
+  GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus as ChannelTaskStatus,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask as ChannelTask,
 } from "@/shared/api/generated/types.gen";
 
 export type TeamTaskMember = {

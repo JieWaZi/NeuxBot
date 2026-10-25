@@ -3,8 +3,8 @@ package models
 import (
 	"encoding/json"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/workinput"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 )
 
 // ChannelLeadInput 保存等待进入原负责人 Chat 的协调或直接执行用户输入。

@@ -27,7 +27,7 @@ import {
   downloadWorkflowFile,
 } from "@/shared/api/generated/sdk.gen";
 import { getWorkflowNodeResultOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
-import type { GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultReference as ResultReference } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference as ResultReference } from "@/shared/api/generated/types.gen";
 import {
   withLocalErrorSurface,
   localApiErrorMessage,

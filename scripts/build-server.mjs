@@ -27,7 +27,7 @@ execFileSync(
     stdio: "inherit",
   },
 );
-console.log(`已生成 NeuxAlly Core: ${output}`);
+console.log(`已生成 NeuxBot Core: ${output}`);
 
 const cliOutput = path.join(
   path.dirname(output),

@@ -7,7 +7,7 @@ const bundle = path.join(
   root,
   "desktop/release",
   process.arch === "arm64" ? "mac-arm64" : "mac",
-  "NeuxAlly.app",
+  "NeuxBot.app",
 );
 execFileSync(
   "/usr/bin/codesign",

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
 func TestF2PipelineIndependentApprovalAndReportFacts(t *testing.T) {

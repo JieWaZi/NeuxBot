@@ -5,8 +5,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // ownerMarker 是受管目录删除和替换前必须核对的归属事实。

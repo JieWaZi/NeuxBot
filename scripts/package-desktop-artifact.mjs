@@ -18,7 +18,7 @@ const release = path.join(root, "desktop/release");
 const bundle = path.join(
   release,
   process.arch === "arm64" ? "mac-arm64" : "mac",
-  "NeuxAlly.app",
+  "NeuxBot.app",
 );
 const mib = 1024 * 1024;
 const budgets = {
@@ -68,13 +68,13 @@ check("Application resources", resources, budgets.resources);
 const source = path.dirname(bundle);
 await removeLegacyApplicationsLink(path.join(source, "Applications"));
 const entries = await readdir(source);
-if (entries.some((name) => name !== "NeuxAlly.app")) {
+if (entries.some((name) => name !== "NeuxBot.app")) {
   throw new Error("Installer source contains unexpected build artifacts");
 }
-const installer = path.join(release, `NeuxAlly-mac-${process.arch}.dmg`);
+const installer = path.join(release, `NeuxBot-mac-${process.arch}.dmg`);
 const staging = await mkdtemp(path.join(tmpdir(), `ally-dmg-${process.arch}-`));
 try {
-  const stagedBundle = path.join(staging, "NeuxAlly.app");
+  const stagedBundle = path.join(staging, "NeuxBot.app");
   // DMG 专用内容位于仓库外，避免 Applications 链接被 Vite 或其他工具遍历。
   execFileSync("/usr/bin/ditto", [bundle, stagedBundle], { stdio: "inherit" });
   execFileSync(
@@ -93,7 +93,7 @@ try {
     [
       "create",
       "-volname",
-      "NeuxAlly",
+      "NeuxBot",
       "-srcfolder",
       staging,
       "-fs",

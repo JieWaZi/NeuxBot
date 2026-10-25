@@ -6,7 +6,7 @@ import {
   getAiAccountNativeModels,
   getAiAccountThinking,
 } from "@/shared/api/generated/sdk.gen";
-import type { GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption as RuntimeOption } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption as RuntimeOption } from "@/shared/api/generated/types.gen";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import { accountSupportsRuntime } from "@/shared/lib/account-runtime-compatibility";
 import {

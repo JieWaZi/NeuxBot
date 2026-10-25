@@ -219,7 +219,7 @@ function renderPage() {
 }
 
 describe("SkillDetailPage", () => {
-  it("uses the NeuxAlly detail layout with a title return action and exposes real content tabs", async () => {
+  it("uses the NeuxBot detail layout with a title return action and exposes real content tabs", async () => {
     const user = userEvent.setup();
     renderPage();
 

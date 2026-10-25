@@ -2,7 +2,7 @@ package knowledge
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/gin-gonic/gin"
 	"path/filepath"

@@ -15,7 +15,7 @@ import {
 
 const names = Object.keys(styles) as (keyof typeof styles)[];
 describe("静态身体风格", () => {
-  it("内置 NeuxAlly 固定毛绒，所有目录身份都直接还原对应风格", () => {
+  it("内置 NeuxBot 固定毛绒，所有目录身份都直接还原对应风格", () => {
     const builtinAvatar = backendConstants.match(
       /PersonalAssistantAvatar = "([^"]+)"/,
     )?.[1];

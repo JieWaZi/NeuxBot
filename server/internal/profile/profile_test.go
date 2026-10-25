@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func TestPatchManualPreservesOtherSectionsAndParsesProjection(t *testing.T) {

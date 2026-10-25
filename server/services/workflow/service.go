@@ -6,16 +6,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcommand"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // Service 是 HTTP、执行能力、触发入口及 Runner 共同复用的应用边界。

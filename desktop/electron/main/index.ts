@@ -31,7 +31,7 @@ protocol.registerSchemesAsPrivileged([
     },
   },
 ]);
-app.setName("NeuxAlly");
+app.setName("NeuxBot");
 // 桌面会话存储与 Core 数据分别拥有目录，Core 延续应用标识对应的数据位置。
 const dataDir =
   process.env.ALLY_DATA_DIR ||
@@ -69,7 +69,7 @@ async function createWindow(): Promise<BrowserWindow> {
   if (development && new URL(rendererURL).origin !== "http://127.0.0.1:1420")
     throw new Error("开发页面地址无效");
   const current = new BrowserWindow({
-    title: "NeuxAlly",
+    title: "NeuxBot",
     width: 1280,
     height: 820,
     minWidth: 900,

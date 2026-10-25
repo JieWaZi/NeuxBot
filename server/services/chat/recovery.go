@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 

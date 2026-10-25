@@ -4,12 +4,12 @@ import (
 	"context"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/aiaccount"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 )
 
 // ValidateConfiguration 校验 Runtime、模型、推理强度和权限组合可以用于下一次执行。

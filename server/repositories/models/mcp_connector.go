@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
@@ -35,7 +35,7 @@ type MCPToolSummary struct {
 
 // MCPConnector 保存一个全局共享 MCP 连接器的权威普通配置。
 type MCPConnector struct {
-	// ID 是 32 位无连字符 UUID，仅用于 NeuxAlly 内部关联连接器。
+	// ID 是 32 位无连字符 UUID，仅用于 NeuxBot 内部关联连接器。
 	ID string `gorm:"column:id;type:varchar(32);primaryKey" json:"id"`
 	// Name 是连接器显示名称，不参与资源身份判断。
 	Name string `gorm:"column:name;type:varchar(120);not null" json:"name"`
@@ -59,7 +59,7 @@ type MCPConnector struct {
 	URL string `gorm:"column:url;type:text;not null;default:''" json:"url,omitempty"`
 	// Headers 是远程请求头的非明文定义。
 	Headers []MCPSecretDefinition `gorm:"column:headers;type:text;not null;serializer:json" json:"headers"`
-	// TimeoutMS 是 NeuxAlly 连接测试使用的超时；支持时也传给 Runtime 作为启动超时。
+	// TimeoutMS 是 NeuxBot 连接测试使用的超时；支持时也传给 Runtime 作为启动超时。
 	TimeoutMS int64 `gorm:"column:timeout_ms;not null;default:10000" json:"timeoutMs"`
 	// TrustedConfigDigest 是最近一次用户确认的敏感执行配置摘要。
 	TrustedConfigDigest string `gorm:"column:trusted_config_digest;type:varchar(64);not null;default:''" json:"-"`

@@ -243,7 +243,7 @@ func runRealACPCapabilitySmoke(t *testing.T, test realACPRuntimeCase) {
 		Name: "ally-acp-smoke", Path: skillDirectory, Selected: true,
 	}}
 	capabilityRequest.Connectors = []Connector{{
-		ID: "ally-smoke", Name: "NeuxAlly Smoke MCP", RuntimeKey: "ally_smoke",
+		ID: "ally-smoke", Name: "NeuxBot Smoke MCP", RuntimeKey: "ally_smoke",
 		Selected: true, Transport: ConnectorTransportStdio,
 		Command: "go", Arguments: []string{"run", mcpServerPath},
 	}}
@@ -327,7 +327,7 @@ func createRealACPSmokeSkill(t *testing.T, runtimeID string) string {
 	marker := "ACP_" + strings.ToUpper(runtimeID) + "_CAPABILITY_OK"
 	content := fmt.Sprintf(`---
 name: ally-acp-smoke
-description: NeuxAlly ACP release smoke capability.
+description: NeuxBot ACP release smoke capability.
 ---
 
 When this skill is explicitly invoked, do all of the following:

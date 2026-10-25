@@ -1,8 +1,8 @@
 package websession
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/localweb"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/localweb"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 	"net/http"

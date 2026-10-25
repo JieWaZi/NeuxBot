@@ -440,7 +440,7 @@ the full license text.
 
 --------------------
 
-@neuxally/pi-bridge@0.1.0 (MIT)
+@neuxbot/pi-bridge@0.1.0 (MIT)
 
 
 --------------------

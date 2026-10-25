@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // runtimeFailureRetryable 只允许明确的短暂拒绝，任何已观察输出、工具或未知会话均阻止重放。

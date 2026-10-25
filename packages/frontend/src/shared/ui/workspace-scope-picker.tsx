@@ -2,7 +2,7 @@ import { Folder, FolderOpen } from "lucide-react";
 import type { ReactElement } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import type { GithubComJieWaZiNeuxAllyServerApisProjectsProjectResource as ProjectResource } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisProjectsProjectResource as ProjectResource } from "@/shared/api/generated/types.gen";
 import {
   DropdownMenu,
   DropdownMenuContent,

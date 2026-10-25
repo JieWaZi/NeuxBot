@@ -15,7 +15,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // Started 是稳定终端身份。

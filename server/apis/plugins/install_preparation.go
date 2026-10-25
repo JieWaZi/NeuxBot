@@ -5,7 +5,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // prepareInstallationVersions 为首次安装和版本切换复用内容、依赖与认证预检。

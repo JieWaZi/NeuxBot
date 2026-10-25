@@ -1,9 +1,9 @@
 package knowledge
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

@@ -3,7 +3,7 @@ import { getByPath } from "@json-render/core";
 import { ArrowUpRight, Download, Folders } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { WorkspaceDetailSplit, WorkspaceFileViewer } from "@/modules/chat";
-import type { GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultResponse as ResultResponse } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultResponse as ResultResponse } from "@/shared/api/generated/types.gen";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import type { PresentationFile } from "@/shared/presentation/result-renderer";
 import type { WorkspaceFileView } from "@/shared/workspace/workspace-tab";

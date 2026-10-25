@@ -1,7 +1,7 @@
 // Package authorization 管理插件提供者共享身份的生命周期与安全投影。
 package authorization
 
-import "github.com/JieWaZi/NeuxAlly/server/constants"
+import "github.com/JieWaZi/NeuxBot/server/constants"
 
 // Account 是可显示的共享身份摘要，不保存或返回登录 token。
 type Account struct {

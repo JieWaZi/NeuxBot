@@ -343,7 +343,7 @@ describe("chat markdown", () => {
     );
   });
 
-  it("网页链接不弹确认框并直接交给 NeuxAlly 浏览器处理", async () => {
+  it("网页链接不弹确认框并直接交给 NeuxBot 浏览器处理", async () => {
     const user = userEvent.setup();
     const onOpenLink = vi.fn(() => true);
     render(

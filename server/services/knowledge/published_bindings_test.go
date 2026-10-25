@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	rules "github.com/JieWaZi/NeuxAlly/server/internal/integration"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	integrationservice "github.com/JieWaZi/NeuxAlly/server/services/integration"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	rules "github.com/JieWaZi/NeuxBot/server/internal/integration"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	integrationservice "github.com/JieWaZi/NeuxBot/server/services/integration"
 	"github.com/JieWaZi/neux-knowledge/core"
 )
 

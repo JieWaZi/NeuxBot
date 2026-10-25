@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func TestAllyCLIReadmeMatchesRegisteredOperations(t *testing.T) {

@@ -1,8 +1,8 @@
 package integration_knowledge
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"

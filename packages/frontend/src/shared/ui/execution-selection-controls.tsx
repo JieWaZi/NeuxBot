@@ -8,8 +8,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type {
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccount as AiAccount,
-  GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption as RuntimeOption,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount as AiAccount,
+  GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption as RuntimeOption,
 } from "@/shared/api/generated/types.gen";
 import { accountSupportsRuntime } from "@/shared/lib/account-runtime-compatibility";
 import { runtimeDisplayName } from "@/shared/lib/runtime-display-name";

@@ -15,8 +15,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // NativeEnvironmentSpec 分开声明模型账号目录与原生插件唯一权威目录。

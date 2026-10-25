@@ -1,7 +1,7 @@
 package automatic_tasks
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

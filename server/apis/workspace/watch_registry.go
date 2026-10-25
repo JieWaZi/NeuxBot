@@ -2,9 +2,9 @@ package workspace
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/internal/workspacefiles"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspacefiles"
 	"sync"
 	"time"
 )

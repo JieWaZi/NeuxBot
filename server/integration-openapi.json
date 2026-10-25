@@ -1,14 +1,14 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "NeuxAlly 集成 API",
+    "title": "NeuxBot 集成 API",
     "version": "1"
   },
   "paths": {
     "/api/v1/knowledge-bases/{id}": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "读取集成知识库",
         "operationId": "PublishedGetLibrary",
@@ -34,7 +34,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeLibraryResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeLibraryResponse"
                 }
               }
             }
@@ -144,7 +144,7 @@
     "/api/v1/knowledge-bases": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "列出集成知识库",
         "operationId": "PublishedListLibraries",
@@ -154,7 +154,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeLibraryListResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeLibraryListResponse"
                 }
               }
             }
@@ -277,7 +277,7 @@
     "/api/v1/knowledge-bases/{id}/integration-capabilities": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "读取知识 API 能力",
         "operationId": "PublishedGetCapabilities",
@@ -303,7 +303,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeCapabilities"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeCapabilities"
                 }
               }
             }
@@ -358,7 +358,7 @@
     "/api/v1/knowledge-bases/{id}/integration-receipts/{requestId}": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "查询原集成请求回执",
         "operationId": "PublishedGetReceipt",
@@ -523,7 +523,7 @@
     "/api/v1/knowledge-bases/{id}/integration-jobs/{jobId}": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "读取原主体知识作业",
         "operationId": "PublishedGetJob",
@@ -563,7 +563,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedJob"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedJob"
                 }
               }
             }
@@ -674,7 +674,7 @@
     "/api/v1/knowledge-bases/{id}/integration-jobs": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "列出本主体知识作业",
         "operationId": "PublishedListJobs",
@@ -728,7 +728,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedJobList"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedJobList"
                 }
               }
             }
@@ -838,7 +838,7 @@
     "/api/v1/knowledge-bases/{id}/knowledge": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "列出集成资料",
         "operationId": "PublishedListSources",
@@ -966,7 +966,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeSourceListResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeSourceListResponse"
                 }
               }
             }
@@ -1076,7 +1076,7 @@
     "/api/v1/knowledgebase/{kb_id}/wiki/pages": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "列出集成 Wiki",
         "operationId": "PublishedListPages",
@@ -1205,7 +1205,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePageListResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePageListResponse"
                 }
               }
             }
@@ -1313,7 +1313,7 @@
       },
       "post": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "创建集成 Wiki 页面",
         "operationId": "PublishedCreatePage",
@@ -1340,7 +1340,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedCreatePageInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedCreatePageInput"
                   },
                   {
                     "description": "页面内容",
@@ -1358,7 +1358,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedPageWriteResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedPageWriteResponse"
                 }
               }
             }
@@ -1485,7 +1485,7 @@
     "/api/v1/knowledgebase/{kb_id}/wiki/page-directory": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "列出集成轻量页面目录",
         "operationId": "PublishedListPageDirectory",
@@ -1539,7 +1539,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePageDirectoryResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePageDirectoryResponse"
                 }
               }
             }
@@ -1649,7 +1649,7 @@
     "/api/v1/knowledgebase/{kb_id}/wiki/pages/{slug}": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "读取集成 Wiki",
         "operationId": "PublishedGetPage",
@@ -1797,7 +1797,7 @@
       },
       "put": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "编辑集成 Wiki",
         "operationId": "PublishedWritePage",
@@ -1838,7 +1838,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedPageInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedPageInput"
                   },
                   {
                     "description": "请求体",
@@ -1856,7 +1856,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedPageWriteResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedPageWriteResponse"
                 }
               }
             }
@@ -1983,7 +1983,7 @@
     "/api/v1/knowledgebase/{kb_id}/wiki/page-by-id/{pageId}": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "按标识读取集成 Wiki",
         "operationId": "PublishedGetPageByID",
@@ -2133,7 +2133,7 @@
     "/api/v1/knowledgebase/{kb_id}/wiki/revisions/{slug}": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "列出集成 Wiki 历史",
         "operationId": "PublishedListRevisions",
@@ -2212,7 +2212,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeRevisionListResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeRevisionListResponse"
                 }
               }
             }
@@ -2322,7 +2322,7 @@
     "/api/v1/knowledgebase/{kb_id}/wiki/folders": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "列出集成 Wiki 目录",
         "operationId": "PublishedListThemes",
@@ -2372,7 +2372,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeThemeListResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeThemeListResponse"
                 }
               }
             }
@@ -2480,7 +2480,7 @@
       },
       "post": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "创建集成目录",
         "operationId": "PublishedCreateTheme",
@@ -2507,7 +2507,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedThemeInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedThemeInput"
                   },
                   {
                     "description": "目录内容",
@@ -2650,7 +2650,7 @@
     "/api/v1/knowledgebase/{kb_id}/wiki/search": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "检索集成 Wiki",
         "operationId": "PublishedSearch",
@@ -2703,7 +2703,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeSearchResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeSearchResponse"
                 }
               }
             }
@@ -2813,7 +2813,7 @@
     "/api/v1/knowledge-bases/{id}/hybrid-search": {
       "post": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "检索知识原件",
         "operationId": "PublishedHybridSearch",
@@ -2840,7 +2840,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeHybridSearchInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeHybridSearchInput"
                   },
                   {
                     "description": "检索要求",
@@ -2979,7 +2979,7 @@
       },
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "读取知识原件检索结果",
         "operationId": "PublishedHybridSearchGET",
@@ -3006,7 +3006,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeHybridSearchInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeHybridSearchInput"
                   },
                   {
                     "description": "检索要求",
@@ -3147,7 +3147,7 @@
     "/api/v1/knowledgebase/{kb_id}/wiki/graph": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "读取集成 Wiki 图谱",
         "operationId": "PublishedGetGraph",
@@ -3345,7 +3345,7 @@
     "/api/v1/knowledge/{id}": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "读取集成资料",
         "operationId": "PublishedGetSource",
@@ -3371,7 +3371,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeSourceResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeSourceResponse"
                 }
               }
             }
@@ -3481,7 +3481,7 @@
     "/api/v1/knowledge/{id}/download": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "下载集成原件",
         "operationId": "PublishedGetRaw",
@@ -3610,7 +3610,7 @@
     "/api/v1/knowledge-bases/{id}/organize": {
       "post": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "整理公开知识原件",
         "operationId": "PublishedOrganize",
@@ -3637,7 +3637,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedOrganizeInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedOrganizeInput"
                   },
                   {
                     "description": "整理要求",
@@ -3779,7 +3779,7 @@
     "/api/v1/knowledge/{id}/reparse": {
       "post": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "重建集成资料",
         "operationId": "PublishedReparseSource",
@@ -3806,7 +3806,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedOrganizeInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedOrganizeInput"
                   },
                   {
                     "description": "重建要求",
@@ -3948,7 +3948,7 @@
     "/api/v1/knowledge-bases/{id}/knowledge/file": {
       "post": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "上传集成知识资料",
         "operationId": "PublishedImportSource",
@@ -3974,7 +3974,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeSourceResponse"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeSourceResponse"
                 }
               }
             }
@@ -4101,7 +4101,7 @@
     "/api/v1/knowledgebase/{kb_id}/wiki/maintenance/{pageId}": {
       "post": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "修订公开知识页面",
         "operationId": "PublishedMaintain",
@@ -4142,7 +4142,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedMaintenanceInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedMaintenanceInput"
                   },
                   {
                     "description": "修订内容",
@@ -4160,7 +4160,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedJobAcceptance"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedJobAcceptance"
                 }
               }
             }
@@ -4287,7 +4287,7 @@
     "/api/v1/knowledgebase/{kb_id}/wiki/folders/{folder_id}": {
       "put": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "修改集成目录",
         "operationId": "PublishedWriteTheme",
@@ -4328,7 +4328,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedThemeInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedThemeInput"
                   },
                   {
                     "description": "目录内容",
@@ -4469,7 +4469,7 @@
       },
       "delete": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+          "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
         ],
         "summary": "删除空集成目录",
         "operationId": "PublishedDeleteTheme",
@@ -4648,7 +4648,7 @@
     "/api/v1/automatic-tasks/{id}/runs": {
       "post": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks"
+          "github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks"
         ],
         "summary": "调用公开自动任务",
         "operationId": "PublishedTriggerTask",
@@ -4675,7 +4675,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublishedTaskInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublishedTaskInput"
                   },
                   {
                     "description": "本次输入",
@@ -4693,7 +4693,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublicRun"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublicRun"
                 }
               }
             }
@@ -5107,7 +5107,7 @@
     "/api/v1/automatic-tasks/{id}/runs/{runId}": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks"
+          "github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks"
         ],
         "summary": "读取公开任务运行状态",
         "operationId": "PublishedTaskState",
@@ -5147,7 +5147,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublicRun"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublicRun"
                 }
               }
             }
@@ -5561,7 +5561,7 @@
     "/api/v1/automatic-tasks/{id}/runs/{runId}/result": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks"
+          "github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks"
         ],
         "summary": "读取公开任务结构化结果",
         "operationId": "PublishedTaskResult",
@@ -5601,7 +5601,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublicWorkflowResult"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublicWorkflowResult"
                 }
               }
             }
@@ -6015,7 +6015,7 @@
     "/api/v1/automatic-tasks/{id}/files": {
       "post": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks"
+          "github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks"
         ],
         "summary": "上传公开任务输入文件",
         "operationId": "PublishedTaskUpload",
@@ -6041,7 +6041,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerInternalWorkflowFilesUpload"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalWorkflowFilesUpload"
                 }
               }
             }
@@ -6110,7 +6110,7 @@
     "/api/v1/automatic-tasks/{id}/runs/{runId}/files/{fileId}": {
       "get": {
         "tags": [
-          "github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks"
+          "github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks"
         ],
         "summary": "下载本主体任务产出",
         "operationId": "PublishedTaskDownload",
@@ -6578,13 +6578,13 @@
       }
     },
     "schemas": {
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeLibraryResponse": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeLibraryResponse": {
         "type": "object",
         "properties": {
           "data": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedLibrary"
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedLibrary"
               },
               {
                 "description": "知识库",
@@ -6599,10 +6599,10 @@
           }
         },
         "description": "知识库详情响应",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeLibraryResponse",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.LibraryResponse"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeLibraryResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.LibraryResponse"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedLibrary": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedLibrary": {
         "allOf": [
           {
             "$ref": "#/components/schemas/GithubComJieWaZiNeuxKnowledgeInternalDomainLibrary"
@@ -6617,8 +6617,8 @@
               }
             },
             "description": "兼容知识库",
-            "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedLibrary",
-            "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedLibrary"
+            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedLibrary",
+            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedLibrary"
           }
         ]
       },
@@ -6984,13 +6984,13 @@
         "x-go-struct-name": "GithubComShrewxGinxPkgStatuserrorStatusErr",
         "x-go-vendor-type": "github.com/shrewx/ginx/pkg/statuserror.StatusErr"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeLibraryListResponse": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeLibraryListResponse": {
         "type": "object",
         "properties": {
           "data": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedLibrary"
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedLibrary"
             },
             "description": "知识库列表",
             "x-go-field-name": "Data"
@@ -7002,10 +7002,10 @@
           }
         },
         "description": "知识库列表响应",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeLibraryListResponse",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.LibraryListResponse"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeLibraryListResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.LibraryListResponse"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeCapabilities": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeCapabilities": {
         "type": "object",
         "properties": {
           "atomic_conditional_write": {
@@ -7016,7 +7016,7 @@
           "details": {
             "type": "object",
             "additionalProperties": {
-              "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeCapabilityStatus"
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeCapabilityStatus"
             },
             "propertyNames": {
               "type": "string"
@@ -7043,7 +7043,7 @@
           "profiles": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeExecutionProfile"
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeExecutionProfile"
             },
             "description": "服务端配置",
             "x-go-field-name": "Profiles"
@@ -7070,10 +7070,10 @@
           }
         },
         "description": "集成知识能力",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeCapabilities",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.Capabilities"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeCapabilities",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.Capabilities"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeCapabilityStatus": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeCapabilityStatus": {
         "type": "object",
         "properties": {
           "condition": {
@@ -7093,10 +7093,10 @@
           }
         },
         "description": "集成能力明细",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeCapabilityStatus",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.CapabilityStatus"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeCapabilityStatus",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.CapabilityStatus"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeExecutionProfile": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeExecutionProfile": {
         "type": "object",
         "properties": {
           "id": {
@@ -7111,8 +7111,8 @@
           }
         },
         "description": "服务端执行配置",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeExecutionProfile",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.ExecutionProfile"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeExecutionProfile",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.ExecutionProfile"
       },
       "GithubComJieWaZiNeuxKnowledgeInternalDomainReceipt": {
         "type": "object",
@@ -7181,7 +7181,7 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxKnowledgeInternalDomainReceipt",
         "x-go-vendor-type": "github.com/JieWaZi/neux-knowledge/internal/domain.Receipt"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedJob": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedJob": {
         "type": "object",
         "properties": {
           "attempt": {
@@ -7238,16 +7238,16 @@
           }
         },
         "description": "集成知识作业事实",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedJob",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedJob"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedJob",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedJob"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedJobList": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedJobList": {
         "type": "object",
         "properties": {
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedJob"
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedJob"
             },
             "description": "本主体作业",
             "x-go-field-name": "Items"
@@ -7272,16 +7272,16 @@
           }
         },
         "description": "集成作业分页事实",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedJobList",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedJobList"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedJobList",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedJobList"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeSourceListResponse": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeSourceListResponse": {
         "type": "object",
         "properties": {
           "data": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedSource"
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedSource"
             },
             "description": "资料列表",
             "x-go-field-name": "Data"
@@ -7311,10 +7311,10 @@
           }
         },
         "description": "资料列表响应",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeSourceListResponse",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.SourceListResponse"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeSourceListResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.SourceListResponse"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedSource": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedSource": {
         "allOf": [
           {
             "$ref": "#/components/schemas/GithubComJieWaZiNeuxKnowledgeInternalDomainSourceVersion"
@@ -7349,8 +7349,8 @@
               }
             },
             "description": "兼容资料",
-            "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedSource",
-            "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedSource"
+            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedSource",
+            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedSource"
           }
         ]
       },
@@ -7523,7 +7523,7 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxKnowledgeInternalDomainKnowledgeProfile",
         "x-go-vendor-type": "github.com/JieWaZi/neux-knowledge/internal/domain.KnowledgeProfile"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePageListResponse": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePageListResponse": {
         "type": "object",
         "properties": {
           "page": {
@@ -7560,8 +7560,8 @@
           }
         },
         "description": "Wiki 页面列表",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePageListResponse",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PageListResponse"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePageListResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PageListResponse"
       },
       "GithubComJieWaZiNeuxKnowledgeInternalDomainWikiPage": {
         "type": "object",
@@ -8018,7 +8018,7 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxKnowledgeInternalDomainJSON",
         "x-go-vendor-type": "github.com/JieWaZi/neux-knowledge/internal/domain.JSON"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedCreatePageInput": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedCreatePageInput": {
         "type": "object",
         "properties": {
           "aliases": {
@@ -8084,10 +8084,10 @@
           "page_type"
         ],
         "description": "公开页面创建内容",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedCreatePageInput",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedCreatePageInput"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedCreatePageInput",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedCreatePageInput"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedPageWriteResponse": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedPageWriteResponse": {
         "allOf": [
           {
             "$ref": "#/components/schemas/GithubComJieWaZiNeuxKnowledgeInternalDomainWikiPage"
@@ -8109,12 +8109,12 @@
               }
             },
             "description": "Wiki 编辑响应",
-            "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedPageWriteResponse",
-            "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedPageWriteResponse"
+            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedPageWriteResponse",
+            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedPageWriteResponse"
           }
         ]
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePageDirectoryResponse": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePageDirectoryResponse": {
         "type": "object",
         "properties": {
           "items": {
@@ -8145,8 +8145,8 @@
           }
         },
         "description": "轻量页面目录响应",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePageDirectoryResponse",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PageDirectoryResponse"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePageDirectoryResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PageDirectoryResponse"
       },
       "GithubComJieWaZiNeuxKnowledgeInternalDomainWikiPageDirectoryEntry": {
         "type": "object",
@@ -8214,7 +8214,7 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxKnowledgeInternalDomainWikiPageDirectoryEntry",
         "x-go-vendor-type": "github.com/JieWaZi/neux-knowledge/internal/domain.WikiPageDirectoryEntry"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedPageInput": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedPageInput": {
         "type": "object",
         "properties": {
           "aliases": {
@@ -8286,10 +8286,10 @@
           }
         },
         "description": "Wiki 条件编辑请求",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedPageInput",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedPageInput"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedPageInput",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedPageInput"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeRevisionListResponse": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeRevisionListResponse": {
         "type": "object",
         "properties": {
           "current_version": {
@@ -8314,8 +8314,8 @@
           }
         },
         "description": "Wiki 历史响应",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeRevisionListResponse",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.RevisionListResponse"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeRevisionListResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.RevisionListResponse"
       },
       "GithubComJieWaZiNeuxKnowledgeInternalDomainWikiPageRevision": {
         "type": "object",
@@ -8486,13 +8486,13 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxKnowledgeInternalDomainWikiPageRevision",
         "x-go-vendor-type": "github.com/JieWaZi/neux-knowledge/internal/domain.WikiPageRevision"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeThemeListResponse": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeThemeListResponse": {
         "type": "object",
         "properties": {
           "folders": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedTheme"
+              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedTheme"
             },
             "description": "子目录列表",
             "x-go-field-name": "Folders"
@@ -8504,10 +8504,10 @@
           }
         },
         "description": "目录列表响应",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeThemeListResponse",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.ThemeListResponse"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeThemeListResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.ThemeListResponse"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedTheme": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedTheme": {
         "allOf": [
           {
             "$ref": "#/components/schemas/GithubComJieWaZiNeuxKnowledgeInternalDomainWikiFolder"
@@ -8528,8 +8528,8 @@
               }
             },
             "description": "兼容 Wiki 目录",
-            "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedTheme",
-            "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedTheme"
+            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedTheme",
+            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedTheme"
           }
         ]
       },
@@ -8627,7 +8627,7 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxKnowledgeInternalDomainWikiFolder",
         "x-go-vendor-type": "github.com/JieWaZi/neux-knowledge/internal/domain.WikiFolder"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedThemeInput": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedThemeInput": {
         "type": "object",
         "properties": {
           "name": {
@@ -8656,10 +8656,10 @@
           }
         },
         "description": "目录条件修改",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedThemeInput",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedThemeInput"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedThemeInput",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedThemeInput"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeSearchResponse": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeSearchResponse": {
         "type": "object",
         "properties": {
           "pages": {
@@ -8672,10 +8672,10 @@
           }
         },
         "description": "Wiki 搜索响应",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeSearchResponse",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.SearchResponse"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeSearchResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.SearchResponse"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeHybridSearchInput": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeHybridSearchInput": {
         "type": "object",
         "properties": {
           "match_count": {
@@ -8696,8 +8696,8 @@
           "query_text"
         ],
         "description": "公开原件检索要求",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeHybridSearchInput",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.HybridSearchInput"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeHybridSearchInput",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.HybridSearchInput"
       },
       "GithubComJieWaZiNeuxKnowledgeInternalDomainWikiGraphData": {
         "type": "object",
@@ -8837,13 +8837,13 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxKnowledgeInternalDomainWikiGraphNode",
         "x-go-vendor-type": "github.com/JieWaZi/neux-knowledge/internal/domain.WikiGraphNode"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeSourceResponse": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeSourceResponse": {
         "type": "object",
         "properties": {
           "data": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedSource"
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedSource"
               },
               {
                 "description": "资料详情",
@@ -8871,10 +8871,10 @@
           }
         },
         "description": "资料详情响应",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgeSourceResponse",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.SourceResponse"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeSourceResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.SourceResponse"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedOrganizeInput": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedOrganizeInput": {
         "type": "object",
         "properties": {
           "expected_version": {
@@ -8919,10 +8919,10 @@
           }
         },
         "description": "公开整理要求",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedOrganizeInput",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedOrganizeInput"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedOrganizeInput",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedOrganizeInput"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedMaintenanceInput": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedMaintenanceInput": {
         "type": "object",
         "properties": {
           "expected_page_version": {
@@ -8963,10 +8963,10 @@
           "instruction"
         ],
         "description": "公开页面修订要求",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedMaintenanceInput",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedMaintenanceInput"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedMaintenanceInput",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedMaintenanceInput"
       },
-      "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedJobAcceptance": {
+      "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedJobAcceptance": {
         "type": "object",
         "properties": {
           "noop": {
@@ -8988,10 +8988,10 @@
           }
         },
         "description": "公开作业接纳结果",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisIntegrationKnowledgePublishedJobAcceptance",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge.PublishedJobAcceptance"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgePublishedJobAcceptance",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge.PublishedJobAcceptance"
       },
-      "GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublishedTaskInput": {
+      "GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublishedTaskInput": {
         "type": "object",
         "properties": {
           "args": {
@@ -9014,10 +9014,10 @@
           }
         },
         "description": "集成任务调用输入",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublishedTaskInput",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks.PublishedTaskInput"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublishedTaskInput",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks.PublishedTaskInput"
       },
-      "GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublicRun": {
+      "GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublicRun": {
         "type": "object",
         "properties": {
           "completedAt": {
@@ -9047,7 +9047,7 @@
           "state": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunState"
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsAutomaticRunState"
               },
               {
                 "description": "运行状态",
@@ -9057,10 +9057,10 @@
           }
         },
         "description": "自动运行状态",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublicRun",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks.PublicRun"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublicRun",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks.PublicRun"
       },
-      "GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunState": {
+      "GithubComJieWaZiNeuxBotServerConstantsAutomaticRunState": {
         "type": "string",
         "enum": [
           "",
@@ -9087,13 +9087,13 @@
           "waiting_approval": "AutomaticRunStateWaitingApproval 表示首次执行正在等待操作审批。",
           "waiting_input": "AutomaticRunStateWaitingInput 表示首次执行正在等待用户补充输入。"
         },
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunState",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/constants.AutomaticRunState"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerConstantsAutomaticRunState",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/constants.AutomaticRunState"
       },
-      "GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublicWorkflowResult": {
+      "GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublicWorkflowResult": {
         "allOf": [
           {
-            "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublicRun"
+            "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublicRun"
           },
           {
             "type": "object",
@@ -9101,7 +9101,7 @@
               "files": {
                 "type": "array",
                 "items": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxAllyServerServicesWorkflowOutputFile"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile"
                 },
                 "description": "结果文件",
                 "x-go-field-name": "Files"
@@ -9112,12 +9112,12 @@
               }
             },
             "description": "工作流运行结果",
-            "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerApisAutomaticTasksPublicWorkflowResult",
-            "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks.PublicWorkflowResult"
+            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisAutomaticTasksPublicWorkflowResult",
+            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks.PublicWorkflowResult"
           }
         ]
       },
-      "GithubComJieWaZiNeuxAllyServerServicesWorkflowOutputFile": {
+      "GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile": {
         "type": "object",
         "properties": {
           "available": {
@@ -9153,10 +9153,10 @@
           }
         },
         "description": "OutputFile 是最终输出 schema 中明确声明的可下载文件。",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerServicesWorkflowOutputFile",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/services/workflow.OutputFile"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/workflow.OutputFile"
       },
-      "GithubComJieWaZiNeuxAllyServerInternalWorkflowFilesUpload": {
+      "GithubComJieWaZiNeuxBotServerInternalWorkflowFilesUpload": {
         "type": "object",
         "properties": {
           "digest": {
@@ -9182,8 +9182,8 @@
           }
         },
         "description": "Upload 是上传后可直接放入文件参数的引用及真实元数据。",
-        "x-go-struct-name": "GithubComJieWaZiNeuxAllyServerInternalWorkflowFilesUpload",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files.Upload"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalWorkflowFilesUpload",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/workflow/files.Upload"
       }
     }
   }

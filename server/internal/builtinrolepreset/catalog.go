@@ -6,10 +6,10 @@ import (
 	"errors"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/profile"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
@@ -25,7 +25,7 @@ type Definition struct {
 	Description string
 	// Projection 是面向页面展示的摘要；内置角色与 Agent 档案分离时使用。
 	Projection profile.Projection
-	// Documents 保存三份 Agent 档案的完整 Markdown 内容，不含 NeuxAlly 固定展示区域。
+	// Documents 保存三份 Agent 档案的完整 Markdown 内容，不含 NeuxBot 固定展示区域。
 	Documents map[constants.ProfileDocumentKind]string
 	// DefaultSkills 是从该角色新建伙伴及初始化其内置伙伴时自动启用的技能声明名。
 	DefaultSkills []string

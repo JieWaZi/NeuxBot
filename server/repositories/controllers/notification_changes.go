@@ -7,10 +7,10 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // chatNoticeChanges 在原投影 CAS 前捕获语义差异；正文游标推进不重建全局通知。

@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // schemaDeclaresFiles 只检查可从根结果到达的文件声明，不把未使用的定义或普通字符串当文件。

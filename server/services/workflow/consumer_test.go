@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	workflowfiles "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // consumerExecutionBoundary 只替代外部 Runtime 配置验证，运行仍经真实 SQLite 和 Compiler。

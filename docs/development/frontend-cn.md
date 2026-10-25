@@ -1,9 +1,9 @@
-# NeuxAlly 前端工程开发约定
+# NeuxBot 前端工程开发约定
 
 > 文档状态：开发基线
 > 适用范围：React、TypeScript、Web、Electron Renderer、前端状态和测试
-> 领域词汇：[NeuxAlly 领域词汇](../../CONTEXT.md)
-> UI 标准：[NeuxAlly UI 设计标准](./ui-cn.md)
+> 领域词汇：[NeuxBot 领域词汇](../../CONTEXT.md)
+> UI 标准：[NeuxBot UI 设计标准](./ui-cn.md)
 
 本文记录前端实现规则。功能范围以用户当前确认的需求为准；页面、组件、样式和交互改动还必须完整阅读并遵守 UI 设计标准，UI 视觉规则以 UI 设计标准为准。
 

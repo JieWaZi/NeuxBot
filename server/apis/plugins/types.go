@@ -1,10 +1,10 @@
 package plugins
 
 import (
-	packageplugin "github.com/JieWaZi/NeuxAlly/server/internal/plugins"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/authorization"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/catalog"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // 插件详情

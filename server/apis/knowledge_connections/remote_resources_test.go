@@ -13,11 +13,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/apis/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/apis/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/gin-gonic/gin"
 )

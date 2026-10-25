@@ -3,10 +3,10 @@ package messageview
 
 import (
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
 // MessageRuntimeEvent 是附着到 Assistant 消息的完整 Runtime 事件视图。

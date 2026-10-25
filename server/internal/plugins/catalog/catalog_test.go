@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,7 +117,7 @@ func TestBuiltPresentationArtifacts(t *testing.T) {
 			if stage.Package.Icon != entry.Package.Icon {
 				t.Fatal("catalog and ZIP icon diverged")
 			}
-			if stage.Package.Manifest.Version != "0.1.0" || stage.Package.Presentation.DeveloperName != "NeuxAlly" {
+			if stage.Package.Manifest.Version != "0.1.0" || stage.Package.Presentation.DeveloperName != "NeuxBot" {
 				t.Fatal("logical plugin identity or developer differs")
 			}
 			for _, locale := range []string{"en", "zh-CN"} {

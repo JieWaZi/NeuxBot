@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   GlobalEventDelivery,
   GlobalEventFrame,
-} from "@neuxally/platform-contracts/core-event-protocol";
+} from "@neuxbot/platform-contracts/core-event-protocol";
 import {
   subscribeGlobalEvents,
   registerCoreConnectionRecovery,

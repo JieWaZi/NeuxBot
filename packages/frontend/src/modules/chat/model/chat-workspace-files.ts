@@ -1,4 +1,4 @@
-import type { GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage as ChatMessage } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as ChatMessage } from "@/shared/api/generated/types.gen";
 import type { WorkspaceFileEntry } from "@/shared/platform";
 import type { WorkspaceFile } from "@/shared/workspace/types";
 

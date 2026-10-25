@@ -2,8 +2,8 @@ package workspace
 
 import (
 	"encoding/base64"
-	"github.com/JieWaZi/NeuxAlly/server/apis/middleware"
-	"github.com/JieWaZi/NeuxAlly/server/internal/workspacefiles"
+	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspacefiles"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

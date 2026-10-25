@@ -1,6 +1,6 @@
 package knowledge
 
-import service "github.com/JieWaZi/NeuxAlly/server/services/knowledge"
+import service "github.com/JieWaZi/NeuxBot/server/services/knowledge"
 
 // 聊天远端整理请求
 type RemoteChatInput struct {

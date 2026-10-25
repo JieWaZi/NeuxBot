@@ -1,9 +1,9 @@
 package channels
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/apis/uploads"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	channelservice "github.com/JieWaZi/NeuxAlly/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/apis/uploads"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

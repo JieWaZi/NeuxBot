@@ -3,7 +3,7 @@ package util
 import (
 	"errors"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 

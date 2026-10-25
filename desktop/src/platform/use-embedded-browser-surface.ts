@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { EmbeddedBrowserSurfaceProps } from "@neuxally/frontend/browser-surface";
+import type { EmbeddedBrowserSurfaceProps } from "@neuxbot/frontend/browser-surface";
 
 import {
   isDesktopRuntime,

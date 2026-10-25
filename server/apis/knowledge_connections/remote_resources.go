@@ -1,8 +1,8 @@
 package knowledge_connections
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/apis/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/apis/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/neux-knowledge/remote"
 )
 

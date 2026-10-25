@@ -1,10 +1,10 @@
-import { createCoreWorkspaceServices } from "@neuxally/frontend/core-workspace";
-import { createCoreTerminalService } from "@neuxally/frontend/core-terminal";
+import { createCoreWorkspaceServices } from "@neuxbot/frontend/core-workspace";
+import { createCoreTerminalService } from "@neuxbot/frontend/core-terminal";
 import { createRoot } from "react-dom/client";
-import { configurePlatform } from "@neuxally/frontend/platform";
-import { startApplication } from "@neuxally/frontend/start";
+import { configurePlatform } from "@neuxbot/frontend/platform";
+import { startApplication } from "@neuxbot/frontend/start";
 import { initializeTheme, ThemeProvider } from "@/shared/theme";
-import "@neuxally/frontend/shared/styles/index.css";
+import "@neuxbot/frontend/shared/styles/index.css";
 import { webHost } from "./platform/host";
 import {
   requestSession,

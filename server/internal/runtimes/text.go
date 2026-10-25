@@ -9,8 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	acp "github.com/coder/acp-go-sdk"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
@@ -94,7 +94,7 @@ func (sdk *SDK) GenerateText(ctx context.Context, input TextRequest) TextResult 
 			return output
 		}
 	}
-	workspace, err := os.MkdirTemp("", "neuxally-model-")
+	workspace, err := os.MkdirTemp("", "neuxbot-model-")
 	if err != nil {
 		output.Failure = newFailure(FailureCodeRuntimeUnavailable, "text_workspace", err.Error())
 		return output

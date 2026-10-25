@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
 func TestUploadOwnershipAndIndependentRunFiles(t *testing.T) {

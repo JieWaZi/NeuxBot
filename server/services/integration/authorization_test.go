@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	rules "github.com/JieWaZi/NeuxAlly/server/internal/integration"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	rules "github.com/JieWaZi/NeuxBot/server/internal/integration"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )

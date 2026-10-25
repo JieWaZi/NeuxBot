@@ -3,11 +3,11 @@ package eventstream
 
 import (
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 )
 
 // PublicEvent 是聊天事件历史和 SSE 共用的安全事件信封。

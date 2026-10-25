@@ -1,10 +1,10 @@
-// Package models 定义 NeuxAlly 的 GORM 持久化模型。
+// Package models 定义 NeuxBot 的 GORM 持久化模型。
 package models
 
 import (
 	"encoding/json"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
@@ -51,7 +51,7 @@ type PendingApprovalLocation struct {
 
 // PendingApproval 保存 Chat 查询投影中的安全未决审批。
 type PendingApproval struct {
-	// ApprovalID 是 NeuxAlly 生成的稳定交互标识。
+	// ApprovalID 是 NeuxBot 生成的稳定交互标识。
 	ApprovalID string `json:"approvalId"`
 	// ToolCallID 是 ACP Session 内对应工具调用标识。
 	ToolCallID string `json:"toolCallId"`
@@ -77,7 +77,7 @@ type PendingApproval struct {
 type PendingElicitation struct {
 	// AllowSkip 明确 CLI 问答是否允许跳过；原生请求沿用默认行为。
 	AllowSkip *bool `json:"allowSkip,omitempty"`
-	// ElicitationID 是 NeuxAlly 生成的稳定交互标识。
+	// ElicitationID 是 NeuxBot 生成的稳定交互标识。
 	ElicitationID string `json:"elicitationId"`
 	// ToolCallID 是对应 ACP 工具调用标识，URL 模式可能为空。
 	ToolCallID string `json:"toolCallId,omitempty"`

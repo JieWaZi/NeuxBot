@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func firstDisplayString(data map[string]interface{}, keys ...string) string {

@@ -21,7 +21,7 @@ import {
   teamQueryKeys,
 } from "../api/channel-queries";
 import { TeamConfirmationDialog } from "../components/team-confirmation-dialog";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThread as ChannelThread } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThread as ChannelThread } from "@/shared/api/generated/types.gen";
 import {
   localDateRangeBounds,
   normalizeDateInput,

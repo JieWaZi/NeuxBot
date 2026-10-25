@@ -9,7 +9,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	acp "github.com/coder/acp-go-sdk"
 )
 

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { loadModule } from "./load-module.mjs";
 
-test("开发态使用 NeuxAlly 图标，正式包保留应用包声明的图标", () => {
+test("开发态使用 NeuxBot 图标，正式包保留应用包声明的图标", () => {
   const { configureApplicationIcon } = loadModule("main/application-icon.ts");
   const icons = [];
   const developmentApp = {

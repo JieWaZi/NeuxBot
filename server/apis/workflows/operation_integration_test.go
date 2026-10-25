@@ -9,12 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	workflowfunction "github.com/JieWaZi/NeuxAlly/server/internal/workflow/function"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	workflowfunction "github.com/JieWaZi/NeuxBot/server/internal/workflow/function"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
 func TestOperationApprovalIsIndependentAndFirstAnswerWins(t *testing.T) {

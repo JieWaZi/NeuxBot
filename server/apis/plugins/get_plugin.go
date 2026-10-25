@@ -1,9 +1,9 @@
 package plugins
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	packageplugin "github.com/JieWaZi/NeuxAlly/server/internal/plugins"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/catalog"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

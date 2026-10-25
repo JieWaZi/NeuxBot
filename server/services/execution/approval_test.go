@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	eventstream "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // approvalOutcome 保存审批回调测试收到的最终选择。

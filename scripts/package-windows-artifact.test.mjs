@@ -92,7 +92,7 @@ async function fixture(
   architecture = "x64",
 ) {
   const release = await mkdtemp(
-    path.join(os.tmpdir(), "neuxally-windows-budget-"),
+    path.join(os.tmpdir(), "neuxbot-windows-budget-"),
   );
   t.after(() => rm(release, { recursive: true, force: true }));
   const bundle = path.join(
@@ -102,9 +102,9 @@ async function fixture(
   await mkdir(path.join(bundle, "resources"), { recursive: true });
   // 稀疏文件验证真实目录计量与预算边界，不实际分配数百 MiB 的内容。
   for (const [file, size] of [
-    [path.join(bundle, "NeuxAlly.exe"), application - resources],
+    [path.join(bundle, "NeuxBot.exe"), application - resources],
     [path.join(bundle, "resources/app.asar"), resources],
-    [path.join(release, `NeuxAlly-windows-${architecture}.exe`), installer],
+    [path.join(release, `NeuxBot-windows-${architecture}.exe`), installer],
   ]) {
     const handle = await open(file, "w");
     try {
@@ -133,7 +133,7 @@ test("Windows x64 和 arm64 的三项体积在上限时通过", async (t) => {
       ),
     );
     assert.deepEqual(report.bytes, bytes);
-    assert.equal(report.largestFiles[0].path, "NeuxAlly.exe");
+    assert.equal(report.largestFiles[0].path, "NeuxBot.exe");
   }
 });
 

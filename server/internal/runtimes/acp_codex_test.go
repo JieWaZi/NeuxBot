@@ -305,7 +305,7 @@ func (agent *fakeCodexACPAgent) Prompt(
 	}, nil
 }
 
-// TestCodexACPToolPayloadNormalizesStandardToolFacts 验证 NeuxAlly 只归一化 ACP 标准字段。
+// TestCodexACPToolPayloadNormalizesStandardToolFacts 验证 NeuxBot 只归一化 ACP 标准字段。
 func TestCodexACPToolPayloadNormalizesStandardToolFacts(t *testing.T) {
 	t.Parallel()
 
@@ -314,7 +314,7 @@ func TestCodexACPToolPayloadNormalizesStandardToolFacts(t *testing.T) {
 		name string
 		// update 是 acp-go 发出的标准 ToolCall 或 ToolCallUpdate。
 		update any
-		// wantName 是 NeuxAlly 跨 Runtime 使用的规范工具名。
+		// wantName 是 NeuxBot 跨 Runtime 使用的规范工具名。
 		wantName string
 		// wantType 是需要补充给产品投影的原生动作类型。
 		wantType string

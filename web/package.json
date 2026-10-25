@@ -1,5 +1,5 @@
 {
-  "name": "@neuxally/web",
+  "name": "@neuxbot/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@neuxally/frontend": "workspace:*",
-    "@neuxally/platform-contracts": "workspace:*",
+    "@neuxbot/frontend": "workspace:*",
+    "@neuxbot/platform-contracts": "workspace:*",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

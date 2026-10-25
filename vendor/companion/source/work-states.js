@@ -1,4 +1,4 @@
-/* NeuxAlly 工作表情。身体节拍在下面单独采样，眼神轮廓见 ally-eyes.js。 */
+/* NeuxBot 工作表情。身体节拍在下面单独采样，眼神轮廓见 ally-eyes.js。 */
 (() => {
   const both=(extra={})=>({x:0,y:0,scaleX:1,scaleY:1,rotate:0,open:1,lookX:0,lookY:0,...extra});
   const eyes=(shared,left={},right={})=>({both:shared,left:{...shared,...left},right:{...shared,...right}});

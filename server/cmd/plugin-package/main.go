@@ -3,8 +3,8 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/spf13/cobra"
 	"os"
 )

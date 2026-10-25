@@ -3,9 +3,9 @@ package system
 import (
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	eventstream "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 )
 
 // TestSubscriptionRestoresRevisionBaselineWithoutPrefixBacklog 验证空积压重连仍拒绝已落后于权威历史的实时快照。

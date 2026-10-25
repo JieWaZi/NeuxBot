@@ -2,8 +2,8 @@ package integration
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // coordinatedTasks 只为会改变知识权限的任务写入增加同一提交屏障。

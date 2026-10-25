@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestAgentDeliveryFreezesBytesReplaysAndWakesOnCommittedState(t *testing.T) {

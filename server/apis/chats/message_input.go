@@ -3,8 +3,8 @@ package chats
 import (
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // 消息请求

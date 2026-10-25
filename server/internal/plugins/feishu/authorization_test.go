@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 func TestAuthorizationReusesPendingSessionAndVerifiesFinalIdentity(t *testing.T) {

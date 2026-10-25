@@ -1,7 +1,7 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mergeConfig } from "vite";
-import { createFrontendViteConfig } from "@neuxally/frontend/vite";
+import { createFrontendViteConfig } from "@neuxbot/frontend/vite";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const corePort = Number(process.env.ALLY_WEB_CORE_PORT || 8432);

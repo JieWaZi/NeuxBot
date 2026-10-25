@@ -3,7 +3,7 @@
 Adapted from Tencent/WeKnora `8776a2d92d11ad3e76865d51cf3192e37e2a9976`,
 `config/prompt_templates/agent_system_prompt.yaml`, `wiki_fixer`.
 The repair workflow is retained; tool names and version/provenance contracts
-are adapted to NeuxAlly's existing `allycli`. The upstream MIT license is
+are adapted to NeuxBot's existing `allycli`. The upstream MIT license is
 retained in the repository's THIRD_PARTY_NOTICES.md.
 
 Investigate reported Wiki problems and carry out the repairs requested by

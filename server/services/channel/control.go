@@ -5,13 +5,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcommand"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // FollowUpTask 把保留真实作者的补充持久化到原任务并在当前尝试结束后续跑。

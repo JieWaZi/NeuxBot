@@ -23,7 +23,7 @@ export type GithubComGinGonicGinHandlerFunc = unknown;
 /**
  * AIAccountModel 是账号服务返回的模型目录项。
  */
-export type GithubComJieWaZiNeuxAllyServerApisAiAccountsAiAccountModel = {
+export type GithubComJieWaZiNeuxBotServerApisAiAccountsAiAccountModel = {
     /**
      * ID 是服务端接受的模型标识。
      */
@@ -37,7 +37,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAiAccountsAiAccountModel = {
 /**
  * AccountThinkingOption 是原生 ACP 返回的模型专属档位。
  */
-export type GithubComJieWaZiNeuxAllyServerApisAiAccountsAccountThinkingOption = {
+export type GithubComJieWaZiNeuxBotServerApisAiAccountsAccountThinkingOption = {
     /**
      * ID 是 CLI 接受的推理强度标识。
      */
@@ -51,12 +51,12 @@ export type GithubComJieWaZiNeuxAllyServerApisAiAccountsAccountThinkingOption = 
 /**
  * 新增账号请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisAiAccountsCreateAiAccountRequest = {
+export type GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountRequest = {
     /**
      * 接口密钥
      */
     apiKey?: string;
-    authMode: GithubComJieWaZiNeuxAllyServerConstantsAccountAuthMode & unknown;
+    authMode: GithubComJieWaZiNeuxBotServerConstantsAccountAuthMode & unknown;
     /**
      * Claude Code 各模型角色使用的实际请求模型 ID。
      */
@@ -78,7 +78,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAiAccountsCreateAiAccountRequest =
     /**
      * 协议入口
      */
-    endpoints: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccountEndpoint>;
+    endpoints: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint>;
     /**
      * 最近一次获取的模型目录
      */
@@ -114,7 +114,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAiAccountsCreateAiAccountRequest =
 /**
  * 新增账号响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisAiAccountsCreateAiAccountResponse = {
+export type GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountResponse = {
     /**
      * 账号标识
      */
@@ -124,7 +124,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAiAccountsCreateAiAccountResponse 
 /**
  * GetAIAccountCredentialResponse 账号密钥响应。
  */
-export type GithubComJieWaZiNeuxAllyServerApisAiAccountsGetAiAccountCredentialResponse = {
+export type GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountCredentialResponse = {
     /**
      * APIKey 是已解密密钥。
      */
@@ -134,7 +134,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAiAccountsGetAiAccountCredentialRe
 /**
  * GetAIAccountNativeModelsResponse 是订阅账号本地模型目录。
  */
-export type GithubComJieWaZiNeuxAllyServerApisAiAccountsGetAiAccountNativeModelsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountNativeModelsResponse = {
     /**
      * DefaultModel 是该账号原生配置声明的默认模型。
      */
@@ -148,7 +148,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAiAccountsGetAiAccountNativeModels
 /**
  * GetAIAccountThinkingResponse 区分探测成功与没有可靠模型专属回执。
  */
-export type GithubComJieWaZiNeuxAllyServerApisAiAccountsGetAiAccountThinkingResponse = {
+export type GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountThinkingResponse = {
     /**
      * Available 表示获得了当前模型的原生能力目录。
      */
@@ -156,33 +156,33 @@ export type GithubComJieWaZiNeuxAllyServerApisAiAccountsGetAiAccountThinkingResp
     /**
      * Options 只含当前选中模型原生返回的档位。
      */
-    options?: Array<GithubComJieWaZiNeuxAllyServerApisAiAccountsAccountThinkingOption>;
+    options?: Array<GithubComJieWaZiNeuxBotServerApisAiAccountsAccountThinkingOption>;
 };
 
 /**
  * 账号列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisAiAccountsListAiAccountsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisAiAccountsListAiAccountsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccount>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount>;
 };
 
 /**
  * RefreshAIAccountModelsResponse 是账号模型目录响应。
  */
-export type GithubComJieWaZiNeuxAllyServerApisAiAccountsRefreshAiAccountModelsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisAiAccountsRefreshAiAccountModelsResponse = {
     /**
      * Resources 是去重后的远端模型列表。
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisAiAccountsAiAccountModel>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisAiAccountsAiAccountModel>;
 };
 
 /**
  * 更新账号请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisAiAccountsUpdateAiAccountRequest = {
+export type GithubComJieWaZiNeuxBotServerApisAiAccountsUpdateAiAccountRequest = {
     /**
      * 替换密钥
      */
@@ -208,7 +208,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAiAccountsUpdateAiAccountRequest =
     /**
      * 协议入口
      */
-    endpoints: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccountEndpoint>;
+    endpoints: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint>;
     /**
      * 最近一次获取的模型目录
      */
@@ -248,21 +248,21 @@ export type GithubComJieWaZiNeuxAllyServerApisAiAccountsUpdateAiAccountRequest =
 /**
  * 待处理自动运行
  */
-export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksAttention = {
+export type GithubComJieWaZiNeuxBotServerApisAutomaticTasksAttention = {
     /**
      * 活跃会话
      */
-    activeChats?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat>;
+    activeChats?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChat>;
     /**
      * 待处理运行
      */
-    runs?: Array<GithubComJieWaZiNeuxAllyServerServicesScheduleRunView>;
+    runs?: Array<GithubComJieWaZiNeuxBotServerServicesScheduleRunView>;
 };
 
 /**
  * 已保存的自动任务身份
  */
-export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksAutomaticTaskReference = {
+export type GithubComJieWaZiNeuxBotServerApisAutomaticTasksAutomaticTaskReference = {
     /**
      * 任务标识
      */
@@ -272,7 +272,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksAutomaticTaskReferen
 /**
  * 自动运行列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksListAutomaticRunsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisAutomaticTasksListAutomaticRunsResponse = {
     /**
      * 页码
      */
@@ -284,7 +284,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksListAutomaticRunsRes
     /**
      * 任务列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerServicesScheduleRunView>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerServicesScheduleRunView>;
     /**
      * 总数量
      */
@@ -294,8 +294,8 @@ export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksListAutomaticRunsRes
 /**
  * 自动任务列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksListAutomaticTasksResponse = {
-    counts?: GithubComJieWaZiNeuxAllyServerRepositoriesControllersAutomaticTaskCounts & unknown;
+export type GithubComJieWaZiNeuxBotServerApisAutomaticTasksListAutomaticTasksResponse = {
+    counts?: GithubComJieWaZiNeuxBotServerRepositoriesControllersAutomaticTaskCounts & unknown;
     /**
      * 页码
      */
@@ -307,7 +307,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksListAutomaticTasksRe
     /**
      * 任务列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerServicesScheduleTaskView>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerServicesScheduleTaskView>;
     /**
      * 总数量
      */
@@ -317,7 +317,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksListAutomaticTasksRe
 /**
  * 定时规则预览
  */
-export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksSchedulePreview = {
+export type GithubComJieWaZiNeuxBotServerApisAutomaticTasksSchedulePreview = {
     /**
      * 未来运行时间
      */
@@ -331,7 +331,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksSchedulePreview = {
 /**
  * 自动任务启停请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksSetAutomaticTaskEnabledRequest = {
+export type GithubComJieWaZiNeuxBotServerApisAutomaticTasksSetAutomaticTaskEnabledRequest = {
     /**
      * 启停状态
      */
@@ -345,7 +345,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksSetAutomaticTaskEnab
 /**
  * 自动任务运行请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksTriggerAutomaticTaskRequest = {
+export type GithubComJieWaZiNeuxBotServerApisAutomaticTasksTriggerAutomaticTaskRequest = {
     /**
      * 工作流参数
      */
@@ -358,7 +358,7 @@ export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksTriggerAutomaticTask
     clientRequestId: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksUpdateAutomaticTaskRequest = GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfiguration & {
+export type GithubComJieWaZiNeuxBotServerApisAutomaticTasksUpdateAutomaticTaskRequest = GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskConfiguration & {
     /**
      * 配置版本
      */
@@ -368,13 +368,13 @@ export type GithubComJieWaZiNeuxAllyServerApisAutomaticTasksUpdateAutomaticTaskR
 /**
  * 团队详情
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail = {
-    activityState?: GithubComJieWaZiNeuxAllyServerConstantsChannelActivityState & unknown;
-    channel?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannel & unknown;
+export type GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail = {
+    activityState?: GithubComJieWaZiNeuxBotServerConstantsChannelActivityState & unknown;
+    channel?: GithubComJieWaZiNeuxBotServerRepositoriesModelsChannel & unknown;
     /**
      * 成员
      */
-    members?: Array<GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberDetail>;
+    members?: Array<GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberDetail>;
     /**
      * 运行中的团队对话数量
      */
@@ -388,7 +388,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail = {
 /**
  * 团队输入
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelInput = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsChannelInput = {
     /**
      * 团队说明
      */
@@ -400,7 +400,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelInput = {
     /**
      * 团队成员
      */
-    members: Array<GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberInput>;
+    members: Array<GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberInput>;
     /**
      * 团队名称
      */
@@ -410,7 +410,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelInput = {
 /**
  * 团队成员详情
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberDetail = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberDetail = {
     /**
      * 账号标识
      */
@@ -419,7 +419,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberDetail = {
      * 模型
      */
     model?: string;
-    permissionLevel?: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    permissionLevel?: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * 展示顺序
      */
@@ -432,13 +432,13 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberDetail = {
      * 运行时标识
      */
     runtimeId?: string;
-    waker?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWaker & unknown;
+    waker?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker & unknown;
 };
 
 /**
  * 团队成员输入
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberInput = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberInput = {
     /**
      * 账号标识
      */
@@ -447,7 +447,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberInput = {
      * 模型
      */
     model?: string;
-    permissionLevel: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    permissionLevel: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * 推理强度
      */
@@ -465,7 +465,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberInput = {
 /**
  * 团队对话详情
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelThreadDetail = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail = {
     /**
      * 最新团队事件游标
      */
@@ -481,24 +481,24 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelThreadDetail = {
     /**
      * 成员运行与等待操作状态
      */
-    memberActivities?: Array<GithubComJieWaZiNeuxAllyServerServicesChannelTeamMemberActivity>;
+    memberActivities?: Array<GithubComJieWaZiNeuxBotServerServicesChannelTeamMemberActivity>;
     /**
      * 成员快照
      */
-    members?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThreadMember>;
+    members?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThreadMember>;
     /**
      * 等待用户处理的成员交互
      */
-    pendingInteractions?: Array<GithubComJieWaZiNeuxAllyServerServicesChannelPendingTeamInteraction>;
+    pendingInteractions?: Array<GithubComJieWaZiNeuxBotServerServicesChannelPendingTeamInteraction>;
     /**
      * 任务板
      */
-    tasks?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelTask>;
-    thread?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThread & unknown;
+    tasks?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask>;
+    thread?: GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThread & unknown;
     /**
      * 聚合时间线
      */
-    timeline?: Array<GithubComJieWaZiNeuxAllyServerServicesChannelTimelineMessage>;
+    timeline?: Array<GithubComJieWaZiNeuxBotServerServicesChannelTimelineMessage>;
     /**
      * 更早消息
      */
@@ -512,7 +512,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelThreadDetail = {
 /**
  * 团队时间线页
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelTimelinePage = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsChannelTimelinePage = {
     /**
      * 更早消息
      */
@@ -524,21 +524,21 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelTimelinePage = {
     /**
      * 消息列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerServicesChannelTimelineMessage>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerServicesChannelTimelineMessage>;
 };
 
 /**
  * 团队消息输入
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelWorkInput = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput = {
     /**
      * 附件列表
      */
-    attachments?: Array<GithubComJieWaZiNeuxAllyServerApisChatsMessageAttachment>;
+    attachments?: Array<GithubComJieWaZiNeuxBotServerApisChatsMessageAttachment>;
     /**
      * 代码引用
      */
-    codeReferences?: Array<GithubComJieWaZiNeuxAllyServerApisChatsMessageCodeReference>;
+    codeReferences?: Array<GithubComJieWaZiNeuxBotServerApisChatsMessageCodeReference>;
     /**
      * 连接器列表
      */
@@ -564,7 +564,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsChannelWorkInput = {
 /**
  * 创建团队任务请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsCreateChannelTaskRequest = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsCreateChannelTaskRequest = {
     /**
      * 执行伙伴标识
      */
@@ -591,7 +591,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsCreateChannelTaskRequest =
     subject: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisChannelsCreateChannelThreadRequest = GithubComJieWaZiNeuxAllyServerApisChannelsChannelWorkInput & {
+export type GithubComJieWaZiNeuxBotServerApisChannelsCreateChannelThreadRequest = GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput & {
     /**
      * 首次发送幂等标识
      */
@@ -599,7 +599,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsCreateChannelThreadRequest
     /**
      * 成员配置
      */
-    memberConfigs?: Array<GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberInput>;
+    memberConfigs?: Array<GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberInput>;
     /**
      * 项目标识
      */
@@ -613,7 +613,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsCreateChannelThreadRequest
 /**
  * 团队任务补充请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsFollowUpChannelTaskRequest = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsFollowUpChannelTaskRequest = {
     /**
      * 补充内容
      */
@@ -623,7 +623,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsFollowUpChannelTaskRequest
 /**
  * 团队对话列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsListChannelThreadsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsListChannelThreadsResponse = {
     /**
      * 是否存在下一页
      */
@@ -643,7 +643,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsListChannelThreadsResponse
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThread>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThread>;
     /**
      * 总数
      */
@@ -653,7 +653,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsListChannelThreadsResponse
 /**
  * 团队列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsListChannelsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsListChannelsResponse = {
     /**
      * 页码
      */
@@ -665,7 +665,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsListChannelsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail>;
     /**
      * 总数
      */
@@ -675,7 +675,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsListChannelsResponse = {
 /**
  * 验收团队任务请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsReviewChannelTaskRequest = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsReviewChannelTaskRequest = {
     /**
      * 是否通过
      */
@@ -689,14 +689,14 @@ export type GithubComJieWaZiNeuxAllyServerApisChannelsReviewChannelTaskRequest =
 /**
  * 更新团队成员配置请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisChannelsUpdateChannelThreadMemberConfigsRequest = {
+export type GithubComJieWaZiNeuxBotServerApisChannelsUpdateChannelThreadMemberConfigsRequest = {
     /**
      * 成员配置
      */
-    members: Array<GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberInput>;
+    members: Array<GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberInput>;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisChatsCreateChatRequest = GithubComJieWaZiNeuxAllyServerApisChatsMessageRequest & {
+export type GithubComJieWaZiNeuxBotServerApisChatsCreateChatRequest = GithubComJieWaZiNeuxBotServerApisChatsMessageRequest & {
     /**
      * 客户端首次发送标识
      */
@@ -718,7 +718,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsCreateChatRequest = GithubCom
 /**
  * 分叉对话请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisChatsForkChatRequest = {
+export type GithubComJieWaZiNeuxBotServerApisChatsForkChatRequest = {
     /**
      * 幂等标识
      */
@@ -732,7 +732,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsForkChatRequest = {
 /**
  * 分叉对话结果
  */
-export type GithubComJieWaZiNeuxAllyServerApisChatsForkChatResponse = {
+export type GithubComJieWaZiNeuxBotServerApisChatsForkChatResponse = {
     /**
      * 新对话标识
      */
@@ -742,17 +742,17 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsForkChatResponse = {
 /**
  * 事件列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisChatsListChatEventsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisChatsListChatEventsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerServicesChatPublicEvent>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerServicesChatPublicEvent>;
 };
 
 /**
  * 对话列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisChatsListChatsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisChatsListChatsResponse = {
     /**
      * 是否有更多
      */
@@ -772,13 +772,13 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsListChatsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChat>;
 };
 
 /**
  * 消息附件
  */
-export type GithubComJieWaZiNeuxAllyServerApisChatsMessageAttachment = {
+export type GithubComJieWaZiNeuxBotServerApisChatsMessageAttachment = {
     /**
      * 本地路径
      */
@@ -788,7 +788,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsMessageAttachment = {
 /**
  * 代码引用
  */
-export type GithubComJieWaZiNeuxAllyServerApisChatsMessageCodeReference = {
+export type GithubComJieWaZiNeuxBotServerApisChatsMessageCodeReference = {
     /**
      * 文件内容
      */
@@ -810,7 +810,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsMessageCodeReference = {
 /**
  * 消息请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisChatsMessageRequest = {
+export type GithubComJieWaZiNeuxBotServerApisChatsMessageRequest = {
     /**
      * AccountID 是本次冻结的账号标识；空值使用智能体默认配置。
      */
@@ -818,16 +818,16 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsMessageRequest = {
     /**
      * 附件列表
      */
-    attachments?: Array<GithubComJieWaZiNeuxAllyServerApisChatsMessageAttachment>;
+    attachments?: Array<GithubComJieWaZiNeuxBotServerApisChatsMessageAttachment>;
     /**
      * 代码引用
      */
-    codeReferences?: Array<GithubComJieWaZiNeuxAllyServerApisChatsMessageCodeReference>;
+    codeReferences?: Array<GithubComJieWaZiNeuxBotServerApisChatsMessageCodeReference>;
     /**
      * 连接器列表
      */
     connectorIds?: Array<string>;
-    historyMode?: GithubComJieWaZiNeuxAllyServerConstantsHistoryMode & unknown;
+    historyMode?: GithubComJieWaZiNeuxBotServerConstantsHistoryMode & unknown;
     /**
      * 最近对话轮数
      */
@@ -836,7 +836,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsMessageRequest = {
      * 模型
      */
     model?: string;
-    permissionLevel: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    permissionLevel: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * 连接器列表
      */
@@ -878,7 +878,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsMessageRequest = {
 /**
  * 审批请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisChatsResolveApprovalRequest = {
+export type GithubComJieWaZiNeuxBotServerApisChatsResolveApprovalRequest = {
     /**
      * 选项标识
      */
@@ -888,7 +888,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsResolveApprovalRequest = {
 /**
  * 结构化输入请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisChatsResolveElicitationRequest = {
+export type GithubComJieWaZiNeuxBotServerApisChatsResolveElicitationRequest = {
     /**
      * 表单内容
      */
@@ -904,7 +904,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsResolveElicitationRequest = {
 /**
  * 更新对话请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisChatsUpdateChatRequest = {
+export type GithubComJieWaZiNeuxBotServerApisChatsUpdateChatRequest = {
     /**
      * 标题
      */
@@ -914,7 +914,7 @@ export type GithubComJieWaZiNeuxAllyServerApisChatsUpdateChatRequest = {
 /**
  * BindingConfiguration 聊天授权配置。
  */
-export type GithubComJieWaZiNeuxAllyServerApisImBindingConfiguration = {
+export type GithubComJieWaZiNeuxBotServerApisImBindingConfiguration = {
     /**
      * 工作流投递
      */
@@ -931,7 +931,7 @@ export type GithubComJieWaZiNeuxAllyServerApisImBindingConfiguration = {
      * 聊天名称
      */
     name: string;
-    options?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsImExecutionOptions & unknown;
+    options?: GithubComJieWaZiNeuxBotServerRepositoriesModelsImExecutionOptions & unknown;
     /**
      * 项目标识
      */
@@ -940,7 +940,7 @@ export type GithubComJieWaZiNeuxAllyServerApisImBindingConfiguration = {
      * 配置版本
      */
     revision?: number;
-    state?: GithubComJieWaZiNeuxAllyServerConstantsImBindingState & unknown;
+    state?: GithubComJieWaZiNeuxBotServerConstantsImBindingState & unknown;
     /**
      * 伙伴标识
      */
@@ -954,7 +954,7 @@ export type GithubComJieWaZiNeuxAllyServerApisImBindingConfiguration = {
 /**
  * GetIMStatusResponse 运行策略响应。
  */
-export type GithubComJieWaZiNeuxAllyServerApisImGetImStatusResponse = {
+export type GithubComJieWaZiNeuxBotServerApisImGetImStatusResponse = {
     /**
      * 维持运行
      */
@@ -964,11 +964,11 @@ export type GithubComJieWaZiNeuxAllyServerApisImGetImStatusResponse = {
 /**
  * ListIMBindingsResponse 授权列表响应。
  */
-export type GithubComJieWaZiNeuxAllyServerApisImListImBindingsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisImListImBindingsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsImBinding>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsImBinding>;
     /**
      * 资源总数
      */
@@ -978,27 +978,27 @@ export type GithubComJieWaZiNeuxAllyServerApisImListImBindingsResponse = {
 /**
  * ListIMConnectionsResponse 连接列表响应。
  */
-export type GithubComJieWaZiNeuxAllyServerApisImListImConnectionsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisImListImConnectionsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConnection>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsImConnection>;
 };
 
 /**
  * ListIMConversationsResponse 对话列表响应。
  */
-export type GithubComJieWaZiNeuxAllyServerApisImListImConversationsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisImListImConversationsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConversationLink>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsImConversationLink>;
 };
 
 /**
  * SelectIMConversationRequest 对话选择请求。
  */
-export type GithubComJieWaZiNeuxAllyServerApisImSelectImConversationRequest = {
+export type GithubComJieWaZiNeuxBotServerApisImSelectImConversationRequest = {
     /**
      * 对话标识
      */
@@ -1008,7 +1008,7 @@ export type GithubComJieWaZiNeuxAllyServerApisImSelectImConversationRequest = {
 /**
  * VerifyIMLoginRequest 验证码请求。
  */
-export type GithubComJieWaZiNeuxAllyServerApisImVerifyImLoginRequest = {
+export type GithubComJieWaZiNeuxBotServerApisImVerifyImLoginRequest = {
     /**
      * 验证码
      */
@@ -1018,12 +1018,12 @@ export type GithubComJieWaZiNeuxAllyServerApisImVerifyImLoginRequest = {
 /**
  * 密钥签发结果
  */
-export type GithubComJieWaZiNeuxAllyServerApisIntegrationsApiKeyIssuance = {
+export type GithubComJieWaZiNeuxBotServerApisIntegrationsApiKeyIssuance = {
     /**
      * 签发状态
      */
     issuanceState?: string;
-    key?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationKey & unknown;
+    key?: GithubComJieWaZiNeuxBotServerRepositoriesModelsIntegrationKey & unknown;
     /**
      * 主体标识
      */
@@ -1037,7 +1037,7 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsApiKeyIssuance = {
 /**
  * API Key 列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisIntegrationsApiKeyList = {
+export type GithubComJieWaZiNeuxBotServerApisIntegrationsApiKeyList = {
     /**
      * 当前页码
      */
@@ -1049,7 +1049,7 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsApiKeyList = {
     /**
      * 密钥列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationKey>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsIntegrationKey>;
     /**
      * 总记录数
      */
@@ -1059,7 +1059,7 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsApiKeyList = {
 /**
  * 密钥版本请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisIntegrationsApiKeyRevisionInput = {
+export type GithubComJieWaZiNeuxBotServerApisIntegrationsApiKeyRevisionInput = {
     /**
      * 预期版本
      */
@@ -1069,7 +1069,7 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsApiKeyRevisionInput = 
 /**
  * API 服务设置请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisIntegrationsApiServiceInput = {
+export type GithubComJieWaZiNeuxBotServerApisIntegrationsApiServiceInput = {
     /**
      * 启用状态
      */
@@ -1091,7 +1091,7 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsApiServiceInput = {
 /**
  * 创建密钥请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisIntegrationsCreateApiKeyInput = {
+export type GithubComJieWaZiNeuxBotServerApisIntegrationsCreateApiKeyInput = {
     /**
      * 失效时间
      */
@@ -1099,7 +1099,7 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsCreateApiKeyInput = {
     /**
      * 资源授权
      */
-    grants?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationGrant>;
+    grants?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsIntegrationGrant>;
     /**
      * 集成名称
      */
@@ -1123,7 +1123,7 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsMcpServiceInput = {
 /**
  * 可发布资源
  */
-export type GithubComJieWaZiNeuxAllyServerApisIntegrationsPublishableResource = {
+export type GithubComJieWaZiNeuxBotServerApisIntegrationsPublishableResource = {
     /**
      * 资源标识
      */
@@ -1137,11 +1137,11 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsPublishableResource = 
 /**
  * 可发布资源列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisIntegrationsPublishableResourceList = {
+export type GithubComJieWaZiNeuxBotServerApisIntegrationsPublishableResourceList = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisIntegrationsPublishableResource>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisIntegrationsPublishableResource>;
     /**
      * 总记录数
      */
@@ -1151,7 +1151,7 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsPublishableResourceLis
 /**
  * 修改密钥请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisIntegrationsUpdateApiKeyInput = {
+export type GithubComJieWaZiNeuxBotServerApisIntegrationsUpdateApiKeyInput = {
     /**
      * 预期版本
      */
@@ -1163,7 +1163,7 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsUpdateApiKeyInput = {
     /**
      * 资源授权
      */
-    grants?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationGrant>;
+    grants?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsIntegrationGrant>;
     /**
      * 集成名称
      */
@@ -1173,7 +1173,7 @@ export type GithubComJieWaZiNeuxAllyServerApisIntegrationsUpdateApiKeyInput = {
 /**
  * 归档原件请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeArchiveSourceInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeArchiveSourceInput = {
     /**
      * 已归档
      */
@@ -1191,17 +1191,17 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeArchiveSourceInput = {
 /**
  * 当前聊天知识目标
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeChatLibraryList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeChatLibraryList = {
     /**
      * 知识库列表
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerServicesKnowledgeChatLibrary>;
+    items?: Array<GithubComJieWaZiNeuxBotServerServicesKnowledgeChatLibrary>;
 };
 
 /**
  * 聊天操作附件沿用桌面文件选择器与既有Chat附件物化，不接受模型工具调用。
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeChatOperationAttachment = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeChatOperationAttachment = {
     /**
      * 用户所选文件
      */
@@ -1211,7 +1211,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeChatOperationAttachment =
 /**
  * 实现证据
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeCodeEvidence = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeCodeEvidence = {
     /**
      * 提交身份
      */
@@ -1245,7 +1245,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeCodeEvidence = {
 /**
  * 确认来源清理请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConfirmSourcePurgeInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConfirmSourcePurgeInput = {
     /**
      * 明确确认
      */
@@ -1267,7 +1267,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConfirmSourcePurgeInput =
 /**
  * 远端知识库接入请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsAddRemoteLibraryInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsAddRemoteLibraryInput = {
     /**
      * 集成密钥
      */
@@ -1289,7 +1289,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsAddRemoteLibra
 /**
  * 知识连接
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnection = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnection = {
     /**
      * 认证类型
      */
@@ -1324,7 +1324,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnection = {
 /**
  * 连接检查结果
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionCheck = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnectionCheck = {
     /**
      * 服务类型
      */
@@ -1342,7 +1342,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionChec
 /**
  * 连接配置请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnectionInput = {
     /**
      * 认证类型
      */
@@ -1380,17 +1380,17 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionInpu
 /**
  * 连接列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnectionList = {
     /**
      * 连接配置
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnection>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnection>;
 };
 
 /**
  * 连接编辑回执
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionReceipt = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnectionReceipt = {
     /**
      * 连接标识
      */
@@ -1404,7 +1404,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionRece
 /**
  * 远端识别请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRedetectConnectionInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRedetectConnectionInput = {
     /**
      * 连接版本
      */
@@ -1418,7 +1418,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRedetectConnec
 /**
  * 远端资源能力
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteCapabilities = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteCapabilities = {
     /**
      * 连接版本
      */
@@ -1427,7 +1427,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteCapabili
      * 能力明细
      */
     details?: {
-        [key: string]: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteCapabilityStatus;
+        [key: string]: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteCapabilityStatus;
     };
     /**
      * 识别依据
@@ -1452,14 +1452,14 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteCapabili
     /**
      * 服务器配置
      */
-    profiles?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteProfile>;
+    profiles?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteProfile>;
     /**
      * 能力说明
      */
     reasons?: {
         [key: string]: string;
     };
-    ref?: GithubComJieWaZiNeuxAllyServerApisKnowledgeResourceRef & unknown;
+    ref?: GithubComJieWaZiNeuxBotServerApisKnowledgeResourceRef & unknown;
     /**
      * 服务标识
      */
@@ -1477,7 +1477,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteCapabili
 /**
  * 远端能力状态
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteCapabilityStatus = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteCapabilityStatus = {
     /**
      * 资源条件
      */
@@ -1495,7 +1495,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteCapabili
 /**
  * 远端关系图
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteGraph = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteGraph = {
     /**
      * 定向关系
      */
@@ -1510,7 +1510,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteGraph = 
 /**
  * 远端维护请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteMaintenanceInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteMaintenanceInput = {
     /**
      * 页面版本
      */
@@ -1544,15 +1544,15 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteMaintena
 /**
  * 远端知识挂载回执
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteMountReceipt = {
-    connection?: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnection & unknown;
-    mount?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsKnowledgeRemoteMount & unknown;
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteMountReceipt = {
+    connection?: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnection & unknown;
+    mount?: GithubComJieWaZiNeuxBotServerRepositoriesModelsKnowledgeRemoteMount & unknown;
 };
 
 /**
  * 远端操作引用
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOperation = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteOperation = {
     /**
      * 原连接版本
      */
@@ -1577,7 +1577,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOperatio
      * 回执已确认
      */
     receiptConfirmed?: boolean;
-    ref?: GithubComJieWaZiNeuxAllyServerApisKnowledgeResourceRef & unknown;
+    ref?: GithubComJieWaZiNeuxBotServerApisKnowledgeResourceRef & unknown;
     /**
      * 远端明确拒绝
      */
@@ -1590,7 +1590,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOperatio
      * 资源标识
      */
     resourceId?: string;
-    transferState?: GithubComJieWaZiNeuxAllyServerConstantsRemoteTransferState & unknown;
+    transferState?: GithubComJieWaZiNeuxBotServerConstantsRemoteTransferState & unknown;
     /**
      * 上传模式
      */
@@ -1600,11 +1600,11 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOperatio
 /**
  * 待确认远端操作
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOperationList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteOperationList = {
     /**
      * 操作引用
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOperation>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteOperation>;
     /**
      * 待确认总数
      */
@@ -1614,7 +1614,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOperatio
 /**
  * 远端整理请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOrganizeInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteOrganizeInput = {
     /**
      * 当前版本
      */
@@ -1648,7 +1648,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOrganize
 /**
  * 服务器执行配置
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteProfile = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteProfile = {
     /**
      * 配置标识
      */
@@ -1659,7 +1659,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteProfile 
     name?: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteRevision = GithubComJieWaZiNeuxAllyServerApisKnowledgeRevision & {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteRevision = GithubComJieWaZiNeuxBotServerApisKnowledgeRevision & {
     /**
      * 正文已读取
      */
@@ -1669,7 +1669,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteRevision
 /**
  * 远端修订列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteRevisionList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteRevisionList = {
     /**
      * 当前版本
      */
@@ -1677,14 +1677,14 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteRevision
     /**
      * 修订列表
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteRevision>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteRevision>;
     /**
      * 修订总数
      */
     total?: number;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteTheme = GithubComJieWaZiNeuxAllyServerApisKnowledgeTheme & {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteTheme = GithubComJieWaZiNeuxBotServerApisKnowledgeTheme & {
     /**
      * 子主题存在
      */
@@ -1698,7 +1698,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteTheme = 
 /**
  * 远端主题列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteThemeList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteThemeList = {
     /**
      * 完整目录
      */
@@ -1706,14 +1706,14 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteThemeLis
     /**
      * 主题列表
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteTheme>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteTheme>;
     /**
      * 上级标识
      */
     parentId?: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteUploadInput = GithubComJieWaZiNeuxAllyServerApisKnowledgeImportSourceInput & {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteUploadInput = GithubComJieWaZiNeuxBotServerApisKnowledgeImportSourceInput & {
     /**
      * 已观察连接版本
      */
@@ -1727,7 +1727,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteUploadIn
 /**
  * 原生远端上传结果
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteUploadResult = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteUploadResult = {
     /**
      * 已接纳
      */
@@ -1736,7 +1736,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteUploadRe
      * 处理状态
      */
     processingState?: string;
-    receipt?: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt & unknown;
+    receipt?: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt & unknown;
     /**
      * 原请求标识
      */
@@ -1745,7 +1745,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteUploadRe
      * 原件身份
      */
     sourceId?: string;
-    transferState?: GithubComJieWaZiNeuxAllyServerConstantsRemoteTransferState & unknown;
+    transferState?: GithubComJieWaZiNeuxBotServerConstantsRemoteTransferState & unknown;
     /**
      * 上传行为
      */
@@ -1755,12 +1755,12 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteUploadRe
 /**
  * 远端页面保存请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteWritePageInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteWritePageInput = {
     /**
      * 当前版本
      */
     expectedVersion?: number;
-    page?: GithubComJieWaZiNeuxAllyServerApisKnowledgePage & unknown;
+    page?: GithubComJieWaZiNeuxBotServerApisKnowledgePage & unknown;
     /**
      * 请求标识
      */
@@ -1774,14 +1774,14 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteWritePag
 /**
  * 创建知识库请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeCreateLibraryInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeCreateLibraryInput = {
     chunkingConfig?: GithubComJieWaZiNeuxKnowledgeInternalDomainChunkingConfig & unknown;
     /**
      * 嵌入模型标识
      */
     embeddingModelId?: string;
-    embeddingProfile?: GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryEmbeddingInput & unknown;
-    executionDefaults?: GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryExecutionDefaultsInput & unknown;
+    embeddingProfile?: GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryEmbeddingInput & unknown;
+    executionDefaults?: GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryExecutionDefaultsInput & unknown;
     indexingStrategy?: GithubComJieWaZiNeuxKnowledgeInternalDomainIndexingStrategy & unknown;
     /**
      * 名称
@@ -1805,8 +1805,8 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeCreateLibraryInput = {
 /**
  * 创建页面请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeCreatePageInput = {
-    page?: GithubComJieWaZiNeuxAllyServerApisKnowledgePage & unknown;
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeCreatePageInput = {
+    page?: GithubComJieWaZiNeuxBotServerApisKnowledgePage & unknown;
     /**
      * 请求标识
      */
@@ -1820,7 +1820,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeCreatePageInput = {
 /**
  * 创建主题请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeCreateThemeInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeCreateThemeInput = {
     /**
      * 请求标识
      */
@@ -1829,13 +1829,13 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeCreateThemeInput = {
      * 目录版本
      */
     structureVersion?: number;
-    theme?: GithubComJieWaZiNeuxAllyServerApisKnowledgeTheme & unknown;
+    theme?: GithubComJieWaZiNeuxBotServerApisKnowledgeTheme & unknown;
 };
 
 /**
  * 删除知识库请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeDeleteLibraryInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeDeleteLibraryInput = {
     /**
      * 当前版本
      */
@@ -1849,7 +1849,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeDeleteLibraryInput = {
 /**
  * 保存原件请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeImportSourceInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeImportSourceInput = {
     /**
      * 原始字节
      */
@@ -1879,7 +1879,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeImportSourceInput = {
 /**
  * 知识任务
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeJob = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeJob = {
     /**
      * 尝试序号
      */
@@ -1945,20 +1945,20 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeJob = {
 /**
  * 知识任务详情
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeJobDetail = {
-    configuration?: GithubComJieWaZiNeuxAllyServerApisKnowledgeTaskConfiguration & unknown;
-    job?: GithubComJieWaZiNeuxAllyServerApisKnowledgeJob & unknown;
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeJobDetail = {
+    configuration?: GithubComJieWaZiNeuxBotServerApisKnowledgeTaskConfiguration & unknown;
+    job?: GithubComJieWaZiNeuxBotServerApisKnowledgeJob & unknown;
 };
 
 /**
  * 知识任务列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeJobList = {
-    activeJob?: GithubComJieWaZiNeuxAllyServerApisKnowledgeJob & unknown;
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeJobList = {
+    activeJob?: GithubComJieWaZiNeuxBotServerApisKnowledgeJob & unknown;
     /**
      * 任务
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeJob>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeJob>;
     /**
      * 总数
      */
@@ -1968,7 +1968,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeJobList = {
 /**
  * 知识库详情
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibrary = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeLibrary = {
     /**
      * 已归档
      */
@@ -2023,7 +2023,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibrary = {
      * 用途
      */
     purpose?: string;
-    ref?: GithubComJieWaZiNeuxAllyServerApisKnowledgeResourceRef & unknown;
+    ref?: GithubComJieWaZiNeuxBotServerApisKnowledgeResourceRef & unknown;
     /**
      * 目录版本
      */
@@ -2046,7 +2046,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibrary = {
 /**
  * 知识库活动
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryActivity = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryActivity = {
     /**
      * 动作
      */
@@ -2098,11 +2098,11 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryActivity = {
 /**
  * 知识库活动页
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryActivityList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryActivityList = {
     /**
      * 活动列表
      */
-    data?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryActivity>;
+    data?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryActivity>;
     /**
      * 下页游标
      */
@@ -2112,7 +2112,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryActivityList = {
 /**
  * LibraryEmbeddingInput 是此库独立服务草稿，密钥只输入不回显。
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryEmbeddingInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryEmbeddingInput = {
     /**
      * 访问密钥
      */
@@ -2130,7 +2130,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryEmbeddingInput = {
 /**
  * LibraryEmbeddingTestResult 是真实探测返回的维度，不代表配置已保存或资料已索引。
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryEmbeddingTestResult = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryEmbeddingTestResult = {
     /**
      * 向量维度
      */
@@ -2140,7 +2140,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryEmbeddingTestResul
 /**
  * 知识库执行选择
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryExecutionDefaultsInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryExecutionDefaultsInput = {
     /**
      * 账号标识
      */
@@ -2158,11 +2158,11 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryExecutionDefaultsI
 /**
  * 知识库列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryList = {
     /**
      * 知识库
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeLibrary>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeLibrary>;
     /**
      * 总数
      */
@@ -2172,7 +2172,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryList = {
 /**
  * Wiki修订消息
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeMaintenanceMessageInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeMaintenanceMessageInput = {
     /**
      * 账号标识
      */
@@ -2193,7 +2193,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeMaintenanceMessageInput =
      * 页面标识
      */
     pageId: string;
-    permissionLevel: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    permissionLevel: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * 推理强度
      */
@@ -2215,7 +2215,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeMaintenanceMessageInput =
 /**
  * 整理知识请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeOrganizeInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeOrganizeInput = {
     /**
      * 账号标识
      */
@@ -2249,19 +2249,19 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeOrganizeInput = {
 /**
  * 整理接纳响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeOrganizeResponse = {
-    configuration?: GithubComJieWaZiNeuxAllyServerApisKnowledgeTaskConfiguration & unknown;
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeOrganizeResponse = {
+    configuration?: GithubComJieWaZiNeuxBotServerApisKnowledgeTaskConfiguration & unknown;
     /**
      * 无新增来源
      */
     noop?: boolean;
-    receipt?: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt & unknown;
+    receipt?: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt & unknown;
 };
 
 /**
  * 知识页面
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgePage = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgePage = {
     /**
      * 别名
      */
@@ -2278,7 +2278,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgePage = {
      * 正文
      */
     content?: string;
-    evidence?: GithubComJieWaZiNeuxAllyServerApisKnowledgePageEvidence & unknown;
+    evidence?: GithubComJieWaZiNeuxBotServerApisKnowledgePageEvidence & unknown;
     /**
      * 页面标识
      */
@@ -2307,7 +2307,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgePage = {
      * 排序
      */
     sortOrder?: number;
-    sourcePurgeReview?: GithubComJieWaZiNeuxAllyServerApisKnowledgeSourcePurgeReview & unknown;
+    sourcePurgeReview?: GithubComJieWaZiNeuxBotServerApisKnowledgeSourcePurgeReview & unknown;
     /**
      * 原件引用
      */
@@ -2345,7 +2345,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgePage = {
 /**
  * 页面目录条目
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgePageDirectoryEntry = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgePageDirectoryEntry = {
     /**
      * 目录路径
      */
@@ -2387,11 +2387,11 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgePageDirectoryEntry = {
 /**
  * 页面目录响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgePageDirectoryList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgePageDirectoryList = {
     /**
      * 目录条目
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgePageDirectoryEntry>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgePageDirectoryEntry>;
     /**
      * 总数
      */
@@ -2401,25 +2401,25 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgePageDirectoryList = {
 /**
  * 页面证据
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgePageEvidence = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgePageEvidence = {
     /**
      * 实现证据
      */
-    code?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeCodeEvidence>;
+    code?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeCodeEvidence>;
     /**
      * 原件证据
      */
-    sources?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceEvidence>;
+    sources?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeSourceEvidence>;
 };
 
 /**
  * 页面列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgePageList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgePageList = {
     /**
      * 页面
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgePage>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgePage>;
     /**
      * 总数
      */
@@ -2429,16 +2429,16 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgePageList = {
 /**
  * 分块预览结果
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgePreviewChunkingResult = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgePreviewChunkingResult = {
     /**
      * 真实分块
      */
     chunks?: Array<GithubComJieWaZiNeuxKnowledgeCorePreviewChunkResult>;
-    profile?: GithubComJieWaZiNeuxAllyServerApisKnowledgePreviewDocumentProfile & unknown;
+    profile?: GithubComJieWaZiNeuxBotServerApisKnowledgePreviewDocumentProfile & unknown;
     /**
      * 策略诊断
      */
-    rejected?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgePreviewTierRejection>;
+    rejected?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgePreviewTierRejection>;
     /**
      * 实际策略
      */
@@ -2453,7 +2453,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgePreviewChunkingResult = {
 /**
  * 文本分块特征
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgePreviewDocumentProfile = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgePreviewDocumentProfile = {
     /**
      * 大写短行数量
      */
@@ -2537,7 +2537,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgePreviewDocumentProfile = 
 /**
  * 策略拒绝原因
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgePreviewTierRejection = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgePreviewTierRejection = {
     /**
      * 拒绝原因
      */
@@ -2551,7 +2551,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgePreviewTierRejection = {
 /**
  * 原件字节响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRawSource = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeRawSource = {
     /**
      * 原始字节
      */
@@ -2569,7 +2569,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRawSource = {
 /**
  * 知识操作回执
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt = {
     /**
      * 任务标识
      */
@@ -2603,7 +2603,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt = {
 /**
  * 恢复来源清理请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRecoverSourcePurgeInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeRecoverSourcePurgeInput = {
     /**
      * 当前授权版本
      */
@@ -2617,16 +2617,16 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRecoverSourcePurgeInput =
 /**
  * 聊天远端整理请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeRemoteChatInput = {
     /**
      * 所选附件
      */
-    attachments: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeChatOperationAttachment>;
+    attachments: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeChatOperationAttachment>;
     /**
      * 服务器配置
      */
     profileId: string;
-    ref?: GithubComJieWaZiNeuxAllyServerApisKnowledgeResourceRef & unknown;
+    ref?: GithubComJieWaZiNeuxBotServerApisKnowledgeResourceRef & unknown;
     /**
      * 请求标识
      */
@@ -2636,11 +2636,11 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatInput = {
 /**
  * 聊天远端操作列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatOperationList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeRemoteChatOperationList = {
     /**
      * 操作列表
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatOperationRef>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeRemoteChatOperationRef>;
     /**
      * 总数
      */
@@ -2650,7 +2650,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatOperationList =
 /**
  * 聊天远端操作引用
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatOperationRef = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeRemoteChatOperationRef = {
     /**
      * 已确认任务
      */
@@ -2659,7 +2659,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatOperationRef = 
      * 原回执已确认
      */
     receiptConfirmed?: boolean;
-    ref?: GithubComJieWaZiNeuxAllyServerApisKnowledgeResourceRef & unknown;
+    ref?: GithubComJieWaZiNeuxBotServerApisKnowledgeResourceRef & unknown;
     /**
      * 操作标识
      */
@@ -2669,7 +2669,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatOperationRef = 
 /**
  * 聊天远端知识操作只包含真实回执引用，不伪造聊天Execution。
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatResult = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeRemoteChatResult = {
     /**
      * 可继续接纳
      */
@@ -2678,13 +2678,13 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatResult = {
      * 聊天标识
      */
     chatId?: string;
-    job?: GithubComJieWaZiNeuxAllyServerApisKnowledgeJob & unknown;
+    job?: GithubComJieWaZiNeuxBotServerApisKnowledgeJob & unknown;
     /**
      * 待确认请求
      */
     pendingRequestId?: string;
-    receipt?: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt & unknown;
-    ref?: GithubComJieWaZiNeuxAllyServerApisKnowledgeResourceRef & unknown;
+    receipt?: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt & unknown;
+    ref?: GithubComJieWaZiNeuxBotServerApisKnowledgeResourceRef & unknown;
     /**
      * 操作标识
      */
@@ -2698,7 +2698,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatResult = {
 /**
  * 知识资源引用
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeResourceRef = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeResourceRef = {
     /**
      * 服务类型
      */
@@ -2716,7 +2716,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeResourceRef = {
 /**
  * 恢复正文请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRestorePageInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeRestorePageInput = {
     /**
      * 当前版本
      */
@@ -2738,7 +2738,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRestorePageInput = {
 /**
  * 恢复参数
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeResumeJobInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeResumeJobInput = {
     /**
      * 当前版本
      */
@@ -2748,7 +2748,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeResumeJobInput = {
 /**
  * 重试任务请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRetryJobInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeRetryJobInput = {
     /**
      * 当前版本
      */
@@ -2762,7 +2762,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRetryJobInput = {
 /**
  * 页面修订
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRevision = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeRevision = {
     /**
      * 正文
      */
@@ -2775,7 +2775,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRevision = {
      * 编辑时间
      */
     editedAt?: number;
-    evidence?: GithubComJieWaZiNeuxAllyServerApisKnowledgePageEvidence & unknown;
+    evidence?: GithubComJieWaZiNeuxBotServerApisKnowledgePageEvidence & unknown;
     /**
      * 修订标识
      */
@@ -2805,11 +2805,11 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRevision = {
 /**
  * 修订列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRevisionList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeRevisionList = {
     /**
      * 修订
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeRevision>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeRevision>;
     /**
      * 总数
      */
@@ -2819,7 +2819,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeRevisionList = {
 /**
  * 原件版本
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSource = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeSource = {
     /**
      * 已归档
      */
@@ -2887,7 +2887,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSource = {
 /**
  * 原件证据
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceEvidence = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeSourceEvidence = {
     /**
      * 论断类型
      */
@@ -2900,7 +2900,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceEvidence = {
      * 摘录摘要
      */
     excerptHash?: string;
-    locator?: GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceLocator & unknown;
+    locator?: GithubComJieWaZiNeuxBotServerApisKnowledgeSourceLocator & unknown;
     /**
      * 原件摘要
      */
@@ -2918,11 +2918,11 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceEvidence = {
 /**
  * 原件列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeSourceList = {
     /**
      * 原件
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeSource>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeSource>;
     /**
      * 总数
      */
@@ -2932,7 +2932,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceList = {
 /**
  * 证据位置
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceLocator = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeSourceLocator = {
     /**
      * 结束行
      */
@@ -2958,7 +2958,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceLocator = {
 /**
  * SourcePurgeReview 仅暴露清理后需要人工核查的来源身份，不透传自由元数据。
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSourcePurgeReview = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeSourcePurgeReview = {
     /**
      * 需要核查
      */
@@ -2980,7 +2980,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeSourcePurgeReview = {
 /**
  * 知识任务模型选择
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeTaskConfiguration = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeTaskConfiguration = {
     /**
      * 账号标识
      */
@@ -2999,7 +2999,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeTaskConfiguration = {
     runtimeId?: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeTestLibraryEmbeddingInput = GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryEmbeddingInput & {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeTestLibraryEmbeddingInput = GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryEmbeddingInput & {
     /**
      * 知识库标识
      */
@@ -3009,7 +3009,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeTestLibraryEmbeddingInput
 /**
  * 知识主题
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeTheme = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeTheme = {
     /**
      * 主题标识
      */
@@ -3043,14 +3043,14 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeTheme = {
 /**
  * 主题列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeThemeList = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeThemeList = {
     /**
      * 主题
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeTheme>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeTheme>;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeUpdateLibraryEmbeddingProfileInput = GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryEmbeddingInput & {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeUpdateLibraryEmbeddingProfileInput = GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryEmbeddingInput & {
     /**
      * 知识库版本
      */
@@ -3065,7 +3065,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeUpdateLibraryEmbeddingPro
     requestId: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeUpdateLibraryExecutionDefaultsInput = GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryExecutionDefaultsInput & {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeUpdateLibraryExecutionDefaultsInput = GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryExecutionDefaultsInput & {
     /**
      * 当前版本
      */
@@ -3079,7 +3079,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeUpdateLibraryExecutionDef
 /**
  * 修改知识库请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeUpdateLibraryInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeUpdateLibraryInput = {
     /**
      * 已归档
      */
@@ -3116,7 +3116,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeUpdateLibraryInput = {
 /**
  * Wiki索引条目
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexEntry = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeWikiIndexEntry = {
     /**
      * 分类路径
      */
@@ -3154,11 +3154,11 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexEntry = {
 /**
  * Wiki索引分组
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexGroup = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeWikiIndexGroup = {
     /**
      * 页面条目
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexEntry>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeWikiIndexEntry>;
     /**
      * 后页游标
      */
@@ -3176,11 +3176,11 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexGroup = {
 /**
  * Wiki结构化索引
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexView = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeWikiIndexView = {
     /**
      * 分组目录
      */
-    groups?: Array<GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexGroup>;
+    groups?: Array<GithubComJieWaZiNeuxBotServerApisKnowledgeWikiIndexGroup>;
     /**
      * 索引导言
      */
@@ -3194,12 +3194,12 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexView = {
 /**
  * 保存页面请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeWritePageInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeWritePageInput = {
     /**
      * 当前版本
      */
     expectedVersion?: number;
-    page?: GithubComJieWaZiNeuxAllyServerApisKnowledgePage & unknown;
+    page?: GithubComJieWaZiNeuxBotServerApisKnowledgePage & unknown;
     /**
      * 请求标识
      */
@@ -3213,7 +3213,7 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeWritePageInput = {
 /**
  * 保存主题请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisKnowledgeWriteThemeInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeWriteThemeInput = {
     /**
      * 删除主题
      */
@@ -3226,13 +3226,13 @@ export type GithubComJieWaZiNeuxAllyServerApisKnowledgeWriteThemeInput = {
      * 目录版本
      */
     structureVersion?: number;
-    theme?: GithubComJieWaZiNeuxAllyServerApisKnowledgeTheme & unknown;
+    theme?: GithubComJieWaZiNeuxBotServerApisKnowledgeTheme & unknown;
 };
 
 /**
  * 连接器输入
  */
-export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorInput = {
+export type GithubComJieWaZiNeuxBotServerApisMcpConnectorInput = {
     /**
      * 命令参数
      */
@@ -3248,11 +3248,11 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorInput = {
     /**
      * 环境变量
      */
-    environment?: Array<GithubComJieWaZiNeuxAllyServerApisMcpSecretInput>;
+    environment?: Array<GithubComJieWaZiNeuxBotServerApisMcpSecretInput>;
     /**
      * 请求头
      */
-    headers?: Array<GithubComJieWaZiNeuxAllyServerApisMcpSecretInput>;
+    headers?: Array<GithubComJieWaZiNeuxBotServerApisMcpSecretInput>;
     /**
      * 名称
      */
@@ -3261,7 +3261,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorInput = {
      * 超时毫秒
      */
     timeoutMs?: number;
-    transport?: GithubComJieWaZiNeuxAllyServerConstantsMcpTransport & unknown;
+    transport?: GithubComJieWaZiNeuxBotServerConstantsMcpTransport & unknown;
     /**
      * 风险确认
      */
@@ -3275,8 +3275,8 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorInput = {
 /**
  * 连接器资源
  */
-export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorResource = {
-    activationPolicy?: GithubComJieWaZiNeuxAllyServerConstantsMcpActivationPolicy & unknown;
+export type GithubComJieWaZiNeuxBotServerApisMcpConnectorResource = {
+    activationPolicy?: GithubComJieWaZiNeuxBotServerConstantsMcpActivationPolicy & unknown;
     /**
      * 命令参数
      */
@@ -3296,11 +3296,11 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorResource = {
     /**
      * 环境变量
      */
-    environment?: Array<GithubComJieWaZiNeuxAllyServerApisMcpSecretDefinition>;
+    environment?: Array<GithubComJieWaZiNeuxBotServerApisMcpSecretDefinition>;
     /**
      * 请求头
      */
-    headers?: Array<GithubComJieWaZiNeuxAllyServerApisMcpSecretDefinition>;
+    headers?: Array<GithubComJieWaZiNeuxBotServerApisMcpSecretDefinition>;
     /**
      * 标识
      */
@@ -3313,7 +3313,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorResource = {
      * 所属伙伴
      */
     ownerWakerId?: string;
-    scope?: GithubComJieWaZiNeuxAllyServerConstantsMcpConnectorScope & unknown;
+    scope?: GithubComJieWaZiNeuxBotServerConstantsMcpConnectorScope & unknown;
     /**
      * 测试耗时
      */
@@ -3322,7 +3322,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorResource = {
      * 测试错误
      */
     testError?: string;
-    testStatus?: GithubComJieWaZiNeuxAllyServerConstantsMcpTestStatus & unknown;
+    testStatus?: GithubComJieWaZiNeuxBotServerConstantsMcpTestStatus & unknown;
     /**
      * 工具数量
      */
@@ -3330,7 +3330,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorResource = {
     /**
      * 工具列表
      */
-    testTools?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsMcpToolSummary>;
+    testTools?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsMcpToolSummary>;
     /**
      * 测试时间
      */
@@ -3339,7 +3339,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorResource = {
      * 超时毫秒
      */
     timeoutMs?: number;
-    transport?: GithubComJieWaZiNeuxAllyServerConstantsMcpTransport & unknown;
+    transport?: GithubComJieWaZiNeuxBotServerConstantsMcpTransport & unknown;
     /**
      * 确认时间
      */
@@ -3357,7 +3357,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorResource = {
 /**
  * 连接器响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse = {
+export type GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse = {
     /**
      * 影响伙伴数
      */
@@ -3365,8 +3365,8 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse = {
     /**
      * 兼容结论
      */
-    compatibility?: Array<GithubComJieWaZiNeuxAllyServerApisMcpRuntimeCompatibility>;
-    connector?: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResource & unknown;
+    compatibility?: Array<GithubComJieWaZiNeuxBotServerApisMcpRuntimeCompatibility>;
+    connector?: GithubComJieWaZiNeuxBotServerApisMcpConnectorResource & unknown;
     /**
      * 启用状态
      */
@@ -3376,7 +3376,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse = {
 /**
  * InstallLibraryConnectorRequest 描述明确选择的安装伙伴。
  */
-export type GithubComJieWaZiNeuxAllyServerApisMcpInstallLibraryConnectorRequest = {
+export type GithubComJieWaZiNeuxBotServerApisMcpInstallLibraryConnectorRequest = {
     /**
      * 所选伙伴
      */
@@ -3386,7 +3386,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpInstallLibraryConnectorRequest 
 /**
  * ListLibraryConnectorsResponse 是准确分页结果。
  */
-export type GithubComJieWaZiNeuxAllyServerApisMcpListLibraryConnectorsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisMcpListLibraryConnectorsResponse = {
     /**
      * 当前页码
      */
@@ -3398,7 +3398,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpListLibraryConnectorsResponse =
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse>;
     /**
      * 准确总数
      */
@@ -3408,7 +3408,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpListLibraryConnectorsResponse =
 /**
  * 运行时兼容
  */
-export type GithubComJieWaZiNeuxAllyServerApisMcpRuntimeCompatibility = {
+export type GithubComJieWaZiNeuxBotServerApisMcpRuntimeCompatibility = {
     /**
      * 原因码
      */
@@ -3426,7 +3426,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpRuntimeCompatibility = {
 /**
  * 密钥定义
  */
-export type GithubComJieWaZiNeuxAllyServerApisMcpSecretDefinition = {
+export type GithubComJieWaZiNeuxBotServerApisMcpSecretDefinition = {
     /**
      * 已配置
      */
@@ -3444,7 +3444,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpSecretDefinition = {
 /**
  * 密钥输入
  */
-export type GithubComJieWaZiNeuxAllyServerApisMcpSecretInput = {
+export type GithubComJieWaZiNeuxBotServerApisMcpSecretInput = {
     /**
      * 清除已有值
      */
@@ -3466,7 +3466,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpSecretInput = {
 /**
  * 启停请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisMcpSetConnectorEnabledRequest = {
+export type GithubComJieWaZiNeuxBotServerApisMcpSetConnectorEnabledRequest = {
     /**
      * 启用状态
      */
@@ -3476,7 +3476,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMcpSetConnectorEnabledRequest = {
 /**
  * 嵌入配置
  */
-export type GithubComJieWaZiNeuxAllyServerApisMemoryEmbeddingSettingsResource = {
+export type GithubComJieWaZiNeuxBotServerApisMemoryEmbeddingSettingsResource = {
     /**
      * 密钥已配置
      */
@@ -3494,7 +3494,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryEmbeddingSettingsResource = 
 /**
  * 记忆列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisMemoryListMemoriesResponse = {
+export type GithubComJieWaZiNeuxBotServerApisMemoryListMemoriesResponse = {
     /**
      * 页码
      */
@@ -3506,7 +3506,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryListMemoriesResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisMemoryMemoryResource>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisMemoryMemoryResource>;
     /**
      * 总数
      */
@@ -3516,7 +3516,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryListMemoriesResponse = {
 /**
  * 时间线列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisMemoryListTimelineResponse = {
+export type GithubComJieWaZiNeuxBotServerApisMemoryListTimelineResponse = {
     /**
      * 页码
      */
@@ -3528,7 +3528,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryListTimelineResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisMemoryTimelineResource>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisMemoryTimelineResource>;
     /**
      * 总数
      */
@@ -3538,7 +3538,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryListTimelineResponse = {
 /**
  * 记忆变更请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisMemoryMemoryMutationRequest = {
+export type GithubComJieWaZiNeuxBotServerApisMemoryMemoryMutationRequest = {
     /**
      * 记忆正文
      */
@@ -3547,13 +3547,13 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryMemoryMutationRequest = {
      * 项目标识
      */
     projectId?: string;
-    scope: GithubComJieWaZiNeuxAllyServerConstantsMemoryScope & unknown;
+    scope: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
 };
 
 /**
  * 记忆资源
  */
-export type GithubComJieWaZiNeuxAllyServerApisMemoryMemoryResource = {
+export type GithubComJieWaZiNeuxBotServerApisMemoryMemoryResource = {
     /**
      * 记忆正文
      */
@@ -3566,7 +3566,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryMemoryResource = {
      * 标识
      */
     id?: string;
-    scope?: GithubComJieWaZiNeuxAllyServerConstantsMemoryScope & unknown;
+    scope?: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
     /**
      * 范围标识
      */
@@ -3584,7 +3584,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryMemoryResource = {
 /**
  * 记忆状态
  */
-export type GithubComJieWaZiNeuxAllyServerApisMemoryMemoryStatusResource = {
+export type GithubComJieWaZiNeuxBotServerApisMemoryMemoryStatusResource = {
     /**
      * 已配置
      */
@@ -3601,7 +3601,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryMemoryStatusResource = {
      * 记忆总数
      */
     memoryCount?: number;
-    mode?: GithubComJieWaZiNeuxAllyServerConstantsMemoryRetrievalMode & unknown;
+    mode?: GithubComJieWaZiNeuxBotServerConstantsMemoryRetrievalMode & unknown;
     /**
      * 模型
      */
@@ -3619,7 +3619,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryMemoryStatusResource = {
 /**
  * 重建索引响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisMemoryReindexMemoryIndexResponse = {
+export type GithubComJieWaZiNeuxBotServerApisMemoryReindexMemoryIndexResponse = {
     /**
      * 向量维度
      */
@@ -3637,8 +3637,8 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryReindexMemoryIndexResponse =
 /**
  * 时间线事件
  */
-export type GithubComJieWaZiNeuxAllyServerApisMemoryTimelineResource = {
-    event?: GithubComJieWaZiNeuxAllyServerConstantsMemoryEvent & unknown;
+export type GithubComJieWaZiNeuxBotServerApisMemoryTimelineResource = {
+    event?: GithubComJieWaZiNeuxBotServerConstantsMemoryEvent & unknown;
     /**
      * 标识
      */
@@ -3659,12 +3659,12 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryTimelineResource = {
      * 变更前正文
      */
     oldContent?: string;
-    scope?: GithubComJieWaZiNeuxAllyServerConstantsMemoryScope & unknown;
+    scope?: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
     /**
      * 范围标识
      */
     scopeId?: string;
-    source?: GithubComJieWaZiNeuxAllyServerConstantsMemoryTimelineSource & unknown;
+    source?: GithubComJieWaZiNeuxBotServerConstantsMemoryTimelineSource & unknown;
     /**
      * 执行标识
      */
@@ -3674,7 +3674,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryTimelineResource = {
 /**
  * 嵌入配置请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisMemoryUpdateMemorySettingsRequest = {
+export type GithubComJieWaZiNeuxBotServerApisMemoryUpdateMemorySettingsRequest = {
     /**
      * API 密钥
      */
@@ -3696,7 +3696,7 @@ export type GithubComJieWaZiNeuxAllyServerApisMemoryUpdateMemorySettingsRequest 
 /**
  * 通知分页响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisNotificationsListNotificationsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisNotificationsListNotificationsResponse = {
     /**
      * 生命周期
      */
@@ -3720,7 +3720,7 @@ export type GithubComJieWaZiNeuxAllyServerApisNotificationsListNotificationsResp
     /**
      * 通知条目
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationItem>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem>;
     /**
      * 观察水位
      */
@@ -3734,8 +3734,8 @@ export type GithubComJieWaZiNeuxAllyServerApisNotificationsListNotificationsResp
 /**
  * 通知阅读请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisNotificationsViewNotificationRequest = {
-    target?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationTarget & unknown;
+export type GithubComJieWaZiNeuxBotServerApisNotificationsViewNotificationRequest = {
+    target?: GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationTarget & unknown;
     /**
      * 观察版本
      */
@@ -3745,7 +3745,7 @@ export type GithubComJieWaZiNeuxAllyServerApisNotificationsViewNotificationReque
 /**
  * AuthorizationScopeRequest 描述用户明确请求的补充权限。
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsAuthorizationScopeRequest = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsAuthorizationScopeRequest = {
     /**
      * 补充权限
      */
@@ -3755,7 +3755,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsAuthorizationScopeRequest =
 /**
  * 飞书配置请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsConfigureAuthorizationRequest = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsConfigureAuthorizationRequest = {
     /**
      * 应用标识
      */
@@ -3769,7 +3769,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsConfigureAuthorizationReque
 /**
  * 插件删除请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsDeletePluginRequest = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsDeletePluginRequest = {
     /**
      * 已确认影响
      */
@@ -3777,13 +3777,13 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsDeletePluginRequest = {
     /**
      * 原安装集合
      */
-    installations?: Array<GithubComJieWaZiNeuxAllyServerApisPluginsVersionSwitch>;
+    installations?: Array<GithubComJieWaZiNeuxBotServerApisPluginsVersionSwitch>;
 };
 
 /**
  * 插件安装请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsInstallPluginRequest = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsInstallPluginRequest = {
     /**
      * 预期配置修订
      */
@@ -3801,7 +3801,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsInstallPluginRequest = {
 /**
  * 插件安装结果
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsInstallPluginResponse = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsInstallPluginResponse = {
     /**
      * 插件标识
      */
@@ -3809,17 +3809,17 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsInstallPluginResponse = {
     /**
      * 逐伙伴结果
      */
-    results?: Array<GithubComJieWaZiNeuxAllyServerApisPluginsPartnerInstallResult>;
+    results?: Array<GithubComJieWaZiNeuxBotServerApisPluginsPartnerInstallResult>;
 };
 
 /**
  * 插件目录响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsListPluginCatalogResponse = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsListPluginCatalogResponse = {
     /**
      * 本地条目
      */
-    entries?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogEntry>;
+    entries?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry>;
     /**
      * 当前页码
      */
@@ -3828,7 +3828,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsListPluginCatalogResponse =
      * 每页数量
      */
     pageSize?: number;
-    source?: GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogSourceState & unknown;
+    source?: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState & unknown;
     /**
      * 准确总数
      */
@@ -3838,8 +3838,8 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsListPluginCatalogResponse =
 /**
  * 插件列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsListPluginsResponse = {
-    catalogSource?: GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogSourceState & unknown;
+export type GithubComJieWaZiNeuxBotServerApisPluginsListPluginsResponse = {
+    catalogSource?: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState & unknown;
     /**
      * 当前页码
      */
@@ -3851,7 +3851,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsListPluginsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisPluginsPluginDetailResponse>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse>;
     /**
      * 总数
      */
@@ -3861,7 +3861,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsListPluginsResponse = {
 /**
  * 伙伴安装结果
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsPartnerInstallResult = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsPartnerInstallResult = {
     /**
      * 错误标识
      */
@@ -3879,12 +3879,12 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPartnerInstallResult = {
 /**
  * 插件授权响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginAuthorizationResponse = {
-    account?: GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationAccount & unknown;
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginAuthorizationResponse = {
+    account?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationAccount & unknown;
     /**
      * 占用工作
      */
-    activeUses?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationUsage>;
+    activeUses?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationUsage>;
     /**
      * 缺少权限
      */
@@ -3897,19 +3897,19 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginAuthorizationResponse
      * 所需权限
      */
     requiredScopes?: Array<string>;
-    session?: GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationSession & unknown;
+    session?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationSession & unknown;
 };
 
 /**
  * 插件详情
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginDetailResponse = {
-    account?: GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationAccount & unknown;
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse = {
+    account?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationAccount & unknown;
     /**
      * 阻塞原因
      */
     blockers?: Array<string>;
-    catalogSource?: GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogSourceState & unknown;
+    catalogSource?: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState & unknown;
     /**
      * 组件授权标识
      */
@@ -3927,11 +3927,11 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginDetailResponse = {
     /**
      * 配置定义
      */
-    fields?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsConfigurationField>;
+    fields?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsConfigurationField>;
     /**
      * 安装关系
      */
-    installations?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWakerPlugin>;
+    installations?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerPlugin>;
     /**
      * 伙伴头像
      */
@@ -3944,7 +3944,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginDetailResponse = {
     partnerNames?: {
         [key: string]: string;
     };
-    plugin?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsPlugin & unknown;
+    plugin?: GithubComJieWaZiNeuxBotServerRepositoriesModelsPlugin & unknown;
     /**
      * 当前就绪
      */
@@ -3953,7 +3953,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginDetailResponse = {
      * 当前解析版本
      */
     resolvedVersionId?: string;
-    update?: GithubComJieWaZiNeuxAllyServerApisPluginsPluginUpdateResponse & unknown;
+    update?: GithubComJieWaZiNeuxBotServerApisPluginsPluginUpdateResponse & unknown;
     /**
      * 普通配置
      */
@@ -3963,13 +3963,13 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginDetailResponse = {
     /**
      * 保留版本
      */
-    versions?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsPluginVersion>;
+    versions?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion>;
 };
 
 /**
  * 插件启停请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginEnabledRequest = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginEnabledRequest = {
     /**
      * 启用状态
      */
@@ -3979,7 +3979,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginEnabledRequest = {
 /**
  * 插件原文响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginReadmeResponse = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginReadmeResponse = {
     /**
      * 完整原文
      */
@@ -3989,28 +3989,28 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginReadmeResponse = {
 /**
  * 插件技能正文
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginSkillResponse = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginSkillResponse = {
     /**
      * 技能正文
      */
     content?: string;
-    file?: GithubComJieWaZiNeuxAllyServerInternalPackagefilesResourceFile & unknown;
+    file?: GithubComJieWaZiNeuxBotServerInternalPackagefilesResourceFile & unknown;
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerInternalPackagefilesResourceEntry>;
-    skill?: GithubComJieWaZiNeuxAllyServerInternalPluginsSkill & unknown;
-    version?: GithubComJieWaZiNeuxAllyServerApisPluginsPluginSkillVersion & unknown;
+    resources?: Array<GithubComJieWaZiNeuxBotServerInternalPackagefilesResourceEntry>;
+    skill?: GithubComJieWaZiNeuxBotServerInternalPluginsSkill & unknown;
+    version?: GithubComJieWaZiNeuxBotServerApisPluginsPluginSkillVersion & unknown;
     /**
      * 历史版本
      */
-    versions?: Array<GithubComJieWaZiNeuxAllyServerApisPluginsPluginSkillVersion>;
+    versions?: Array<GithubComJieWaZiNeuxBotServerApisPluginsPluginSkillVersion>;
 };
 
 /**
  * 插件技能版本
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginSkillVersion = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginSkillVersion = {
     /**
      * 登记时间
      */
@@ -4019,7 +4019,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginSkillVersion = {
      * 版本标识
      */
     id?: string;
-    skill?: GithubComJieWaZiNeuxAllyServerInternalPluginsSkill & unknown;
+    skill?: GithubComJieWaZiNeuxBotServerInternalPluginsSkill & unknown;
     /**
      * 插件版本
      */
@@ -4029,7 +4029,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginSkillVersion = {
 /**
  * 插件更新摘要
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginUpdateResponse = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsPluginUpdateResponse = {
     /**
      * 归档摘要
      */
@@ -4055,7 +4055,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPluginUpdateResponse = {
 /**
  * 目录准备请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsPrepareCatalogPluginRequest = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsPrepareCatalogPluginRequest = {
     /**
      * 预期归档摘要
      */
@@ -4073,7 +4073,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsPrepareCatalogPluginRequest
 /**
  * 插件密钥输入
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsSecretValue = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsSecretValue = {
     /**
      * 清除已有值
      */
@@ -4091,7 +4091,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsSecretValue = {
 /**
  * 插件配置请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsUpdateConfigurationRequest = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsUpdateConfigurationRequest = {
     /**
      * 预期修订
      */
@@ -4099,11 +4099,11 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsUpdateConfigurationRequest 
     /**
      * 密钥更新
      */
-    secrets?: Array<GithubComJieWaZiNeuxAllyServerApisPluginsSecretValue>;
+    secrets?: Array<GithubComJieWaZiNeuxBotServerApisPluginsSecretValue>;
     /**
      * 版本切换
      */
-    switches?: Array<GithubComJieWaZiNeuxAllyServerApisPluginsVersionSwitch>;
+    switches?: Array<GithubComJieWaZiNeuxBotServerApisPluginsVersionSwitch>;
     /**
      * 普通配置
      */
@@ -4115,7 +4115,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsUpdateConfigurationRequest 
 /**
  * 插件资料请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsUpdatePluginRequest = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsUpdatePluginRequest = {
     /**
      * 用途说明
      */
@@ -4129,7 +4129,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsUpdatePluginRequest = {
 /**
  * 伙伴版本切换
  */
-export type GithubComJieWaZiNeuxAllyServerApisPluginsVersionSwitch = {
+export type GithubComJieWaZiNeuxBotServerApisPluginsVersionSwitch = {
     /**
      * 原版本标识
      */
@@ -4147,7 +4147,7 @@ export type GithubComJieWaZiNeuxAllyServerApisPluginsVersionSwitch = {
 /**
  * 创建项目响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisProjectsCreateProjectResponse = {
+export type GithubComJieWaZiNeuxBotServerApisProjectsCreateProjectResponse = {
     /**
      * 项目标识
      */
@@ -4157,7 +4157,7 @@ export type GithubComJieWaZiNeuxAllyServerApisProjectsCreateProjectResponse = {
 /**
  * 项目列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisProjectsListProjectsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisProjectsListProjectsResponse = {
     /**
      * 页码
      */
@@ -4169,7 +4169,7 @@ export type GithubComJieWaZiNeuxAllyServerApisProjectsListProjectsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisProjectsProjectResource>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisProjectsProjectResource>;
     /**
      * 总数
      */
@@ -4179,7 +4179,7 @@ export type GithubComJieWaZiNeuxAllyServerApisProjectsListProjectsResponse = {
 /**
  * 项目目录输入
  */
-export type GithubComJieWaZiNeuxAllyServerApisProjectsProjectDirectoryInput = {
+export type GithubComJieWaZiNeuxBotServerApisProjectsProjectDirectoryInput = {
     /**
      * 默认目录
      */
@@ -4197,7 +4197,7 @@ export type GithubComJieWaZiNeuxAllyServerApisProjectsProjectDirectoryInput = {
 /**
  * 项目输入
  */
-export type GithubComJieWaZiNeuxAllyServerApisProjectsProjectInput = {
+export type GithubComJieWaZiNeuxBotServerApisProjectsProjectInput = {
     /**
      * 简介
      */
@@ -4205,7 +4205,7 @@ export type GithubComJieWaZiNeuxAllyServerApisProjectsProjectInput = {
     /**
      * 目录列表
      */
-    directories: Array<GithubComJieWaZiNeuxAllyServerApisProjectsProjectDirectoryInput>;
+    directories: Array<GithubComJieWaZiNeuxBotServerApisProjectsProjectDirectoryInput>;
     /**
      * 名称
      */
@@ -4215,7 +4215,7 @@ export type GithubComJieWaZiNeuxAllyServerApisProjectsProjectInput = {
 /**
  * 项目资源
  */
-export type GithubComJieWaZiNeuxAllyServerApisProjectsProjectResource = {
+export type GithubComJieWaZiNeuxBotServerApisProjectsProjectResource = {
     /**
      * 可用状态
      */
@@ -4239,7 +4239,7 @@ export type GithubComJieWaZiNeuxAllyServerApisProjectsProjectResource = {
     /**
      * 目录列表
      */
-    sources?: Array<GithubComJieWaZiNeuxAllyServerApisProjectsProjectSourceResource>;
+    sources?: Array<GithubComJieWaZiNeuxBotServerApisProjectsProjectSourceResource>;
     /**
      * 更新时间
      */
@@ -4253,7 +4253,7 @@ export type GithubComJieWaZiNeuxAllyServerApisProjectsProjectResource = {
 /**
  * 项目目录
  */
-export type GithubComJieWaZiNeuxAllyServerApisProjectsProjectSourceResource = {
+export type GithubComJieWaZiNeuxBotServerApisProjectsProjectSourceResource = {
     /**
      * 可用状态
      */
@@ -4283,7 +4283,7 @@ export type GithubComJieWaZiNeuxAllyServerApisProjectsProjectSourceResource = {
 /**
  * 预设列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisRolePresetsListRolePresetsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisRolePresetsListRolePresetsResponse = {
     /**
      * 页码
      */
@@ -4295,7 +4295,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRolePresetsListRolePresetsResponse
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsRolePreset>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsRolePreset>;
     /**
      * 总数
      */
@@ -4305,7 +4305,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRolePresetsListRolePresetsResponse
 /**
  * 角色预设请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisRolePresetsRolePresetWriteRequest = {
+export type GithubComJieWaZiNeuxBotServerApisRolePresetsRolePresetWriteRequest = {
     /**
      * 默认头像
      */
@@ -4314,9 +4314,9 @@ export type GithubComJieWaZiNeuxAllyServerApisRolePresetsRolePresetWriteRequest 
      * 描述
      */
     description: string;
-    documents?: GithubComJieWaZiNeuxAllyServerInternalProfileDocumentsInput & unknown;
-    inputMode: GithubComJieWaZiNeuxAllyServerConstantsRolePresetInputMode & unknown;
-    manual?: GithubComJieWaZiNeuxAllyServerInternalProfileManualInput & unknown;
+    documents?: GithubComJieWaZiNeuxBotServerInternalProfileDocumentsInput & unknown;
+    inputMode: GithubComJieWaZiNeuxBotServerConstantsRolePresetInputMode & unknown;
+    manual?: GithubComJieWaZiNeuxBotServerInternalProfileManualInput & unknown;
     /**
      * 角色名称
      */
@@ -4326,11 +4326,11 @@ export type GithubComJieWaZiNeuxAllyServerApisRolePresetsRolePresetWriteRequest 
 /**
  * 运行时列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsListRuntimesResponse = {
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsListRuntimesResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption>;
     /**
      * 启动探测失败
      */
@@ -4348,7 +4348,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsListRuntimesResponse
 /**
  * 运行时诊断
  */
-export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeDiagnostic = {
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeDiagnostic = {
     /**
      * 诊断码
      */
@@ -4366,7 +4366,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeDiagnostic = 
 /**
  * 运行时 CLI 安装实例
  */
-export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeInstallation = {
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeInstallation = {
     /**
      * 当前路径是否可执行
      */
@@ -4384,7 +4384,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeInstallation 
 /**
  * 模型选项
  */
-export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeModelOption = {
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption = {
     /**
      * 自定义模型
      */
@@ -4400,17 +4400,17 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeModelOption =
     /**
      * 权限等级
      */
-    permissionLevels?: Array<GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel>;
+    permissionLevels?: Array<GithubComJieWaZiNeuxBotServerConstantsPermissionLevel>;
     /**
      * 推理选项
      */
-    reasoningOptions?: Array<GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeReasoningOption>;
+    reasoningOptions?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption>;
 };
 
 /**
  * 运行时选项
  */
-export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption = {
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
     /**
      * 鉴权结论
      */
@@ -4423,7 +4423,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption = {
      * 可执行路径
      */
     binary?: string;
-    capabilities?: GithubComJieWaZiNeuxAllyServerInternalRuntimesCapabilitySet & unknown;
+    capabilities?: GithubComJieWaZiNeuxBotServerInternalRuntimesCapabilitySet & unknown;
     /**
      * 配置目录
      */
@@ -4444,7 +4444,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption = {
      * 默认模型
      */
     defaultModel?: string;
-    defaultPermissionLevel?: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    defaultPermissionLevel?: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * 默认推理
      */
@@ -4456,7 +4456,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption = {
     /**
      * 诊断信息
      */
-    diagnostics?: Array<GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeDiagnostic>;
+    diagnostics?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeDiagnostic>;
     /**
      * 启用状态
      */
@@ -4468,7 +4468,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption = {
     /**
      * 已发现及历史保存的安装实例
      */
-    installations?: Array<GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeInstallation>;
+    installations?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeInstallation>;
     /**
      * 可执行文件是否已在当前探测环境中找到
      */
@@ -4480,7 +4480,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption = {
     /**
      * 模型列表
      */
-    models?: Array<GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeModelOption>;
+    models?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption>;
     /**
      * 名称
      */
@@ -4492,7 +4492,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption = {
     /**
      * 推理选项
      */
-    reasoningOptions?: Array<GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeReasoningOption>;
+    reasoningOptions?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption>;
     /**
      * 当前选中的可执行文件绝对路径
      */
@@ -4510,7 +4510,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption = {
 /**
  * 推理选项
  */
-export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeReasoningOption = {
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption = {
     /**
      * 标识
      */
@@ -4524,7 +4524,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeReasoningOpti
 /**
  * 环境变量请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsUpdateRuntimeEnvironmentRequest = {
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsUpdateRuntimeEnvironmentRequest = {
     /**
      * 可执行路径
      */
@@ -4545,7 +4545,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsUpdateRuntimeEnviron
      * 默认模型
      */
     defaultModel?: string;
-    defaultPermissionLevel: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    defaultPermissionLevel: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * 默认推理
      */
@@ -4567,7 +4567,7 @@ export type GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsUpdateRuntimeEnviron
 /**
  * 创建版本请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsCreateSkillVersionRequest = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsCreateSkillVersionRequest = {
     /**
      * 文件内容
      */
@@ -4575,7 +4575,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsCreateSkillVersionRequest = 
     /**
      * 文件列表
      */
-    files?: Array<GithubComJieWaZiNeuxAllyServerApisSkillsSkillFileUpdate>;
+    files?: Array<GithubComJieWaZiNeuxBotServerApisSkillsSkillFileUpdate>;
     /**
      * 版本备注
      */
@@ -4583,7 +4583,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsCreateSkillVersionRequest = 
     /**
      * 资源操作
      */
-    resourceOperations?: Array<GithubComJieWaZiNeuxAllyServerApisSkillsSkillResourceOperation>;
+    resourceOperations?: Array<GithubComJieWaZiNeuxBotServerApisSkillsSkillResourceOperation>;
     /**
      * 版本号
      */
@@ -4593,11 +4593,11 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsCreateSkillVersionRequest = 
 /**
  * 导入技能请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsImportSkillRequest = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsImportSkillRequest = {
     /**
      * 候选列表
      */
-    candidates: Array<GithubComJieWaZiNeuxAllyServerApisSkillsInstallSkillCandidateRequest>;
+    candidates: Array<GithubComJieWaZiNeuxBotServerApisSkillsInstallSkillCandidateRequest>;
     /**
      * 批次令牌
      */
@@ -4607,7 +4607,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsImportSkillRequest = {
 /**
  * InstallLibrarySkillRequest 描述明确选择的安装伙伴。
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsInstallLibrarySkillRequest = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsInstallLibrarySkillRequest = {
     /**
      * 所选伙伴
      */
@@ -4617,7 +4617,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsInstallLibrarySkillRequest =
 /**
  * 安装候选请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsInstallSkillCandidateRequest = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsInstallSkillCandidateRequest = {
     /**
      * 描述
      */
@@ -4635,7 +4635,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsInstallSkillCandidateRequest
 /**
  * ListLibrarySkillsResponse 是准确分页结果。
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsListLibrarySkillsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsListLibrarySkillsResponse = {
     /**
      * 当前页码
      */
@@ -4647,7 +4647,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsListLibrarySkillsResponse = 
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisSkillsWakerSkillResponse>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse>;
     /**
      * 准确总数
      */
@@ -4657,7 +4657,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsListLibrarySkillsResponse = 
 /**
  * 拉取更新请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsPullSkillUpdateRequest = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsPullSkillUpdateRequest = {
     /**
      * 版本备注
      */
@@ -4671,7 +4671,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsPullSkillUpdateRequest = {
 /**
  * 恢复版本请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsRestoreSkillVersionRequest = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsRestoreSkillVersionRequest = {
     /**
      * 版本备注
      */
@@ -4681,8 +4681,8 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsRestoreSkillVersionRequest =
 /**
  * 扫描导入请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsScanSkillImportRequest = {
-    kind: GithubComJieWaZiNeuxAllyServerConstantsSkillSource & unknown;
+export type GithubComJieWaZiNeuxBotServerApisSkillsScanSkillImportRequest = {
+    kind: GithubComJieWaZiNeuxBotServerConstantsSkillSource & unknown;
     /**
      * 来源位置
      */
@@ -4700,7 +4700,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsScanSkillImportRequest = {
 /**
  * 启停技能请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsSetSkillEnabledRequest = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsSetSkillEnabledRequest = {
     /**
      * 启用状态
      */
@@ -4710,7 +4710,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsSetSkillEnabledRequest = {
 /**
  * 文件更新
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillFileUpdate = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsSkillFileUpdate = {
     /**
      * 文件内容
      */
@@ -4724,11 +4724,11 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillFileUpdate = {
 /**
  * 导入批次
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillImportBatch = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsSkillImportBatch = {
     /**
      * 候选列表
      */
-    candidates?: Array<GithubComJieWaZiNeuxAllyServerApisSkillsSkillImportCandidate>;
+    candidates?: Array<GithubComJieWaZiNeuxBotServerApisSkillsSkillImportCandidate>;
     /**
      * 批次令牌
      */
@@ -4738,7 +4738,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillImportBatch = {
 /**
  * 导入候选
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillImportCandidate = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsSkillImportCandidate = {
     /**
      * 描述
      */
@@ -4764,7 +4764,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillImportCandidate = {
 /**
  * 技能安装伙伴
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillPartnerResponse = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsSkillPartnerResponse = {
     /**
      * 伙伴头像
      */
@@ -4782,7 +4782,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillPartnerResponse = {
 /**
  * 资源条目
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillResourceEntry = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsSkillResourceEntry = {
     /**
      * 内容摘要
      */
@@ -4808,8 +4808,8 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillResourceEntry = {
 /**
  * 资源操作
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillResourceOperation = {
-    action: GithubComJieWaZiNeuxAllyServerConstantsSkillResourceAction & unknown;
+export type GithubComJieWaZiNeuxBotServerApisSkillsSkillResourceOperation = {
+    action: GithubComJieWaZiNeuxBotServerConstantsSkillResourceAction & unknown;
     /**
      * 文件内容
      */
@@ -4831,7 +4831,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillResourceOperation = {
 /**
  * 版本文件响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillVersionFileResponse = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsSkillVersionFileResponse = {
     /**
      * 二进制文件
      */
@@ -4861,7 +4861,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillVersionFileResponse = {
 /**
  * 版本响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillVersionResponse = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsSkillVersionResponse = {
     /**
      * 文件内容
      */
@@ -4869,14 +4869,14 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsSkillVersionResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerApisSkillsSkillResourceEntry>;
-    version?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion & unknown;
+    resources?: Array<GithubComJieWaZiNeuxBotServerApisSkillsSkillResourceEntry>;
+    version?: GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion & unknown;
 };
 
 /**
  * 更新技能请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsUpdateWakerSkillRequest = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsUpdateWakerSkillRequest = {
     /**
      * 名称
      */
@@ -4886,12 +4886,12 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsUpdateWakerSkillRequest = {
 /**
  * 技能响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisSkillsWakerSkillResponse = {
+export type GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse = {
     /**
      * 影响伙伴数
      */
     affectedWakerCount?: number;
-    currentVersion?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion & unknown;
+    currentVersion?: GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion & unknown;
     /**
      * 启用状态
      */
@@ -4899,15 +4899,15 @@ export type GithubComJieWaZiNeuxAllyServerApisSkillsWakerSkillResponse = {
     /**
      * 安装伙伴预览
      */
-    installedPartners?: Array<GithubComJieWaZiNeuxAllyServerApisSkillsSkillPartnerResponse>;
-    skill?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillPackage & unknown;
+    installedPartners?: Array<GithubComJieWaZiNeuxBotServerApisSkillsSkillPartnerResponse>;
+    skill?: GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillPackage & unknown;
 };
 
 /**
  * 健康检查响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisSystemHealthResponse = {
-    chatIndexes?: GithubComJieWaZiNeuxAllyServerServicesChatRecoveryHealth & unknown;
+export type GithubComJieWaZiNeuxBotServerApisSystemHealthResponse = {
+    chatIndexes?: GithubComJieWaZiNeuxBotServerServicesChatRecoveryHealth & unknown;
     /**
      * 状态
      */
@@ -4925,7 +4925,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSystemHealthResponse = {
 /**
  * API 监听设置
  */
-export type GithubComJieWaZiNeuxAllyServerApisSystemSetAutomaticTaskApiRequest = {
+export type GithubComJieWaZiNeuxBotServerApisSystemSetAutomaticTaskApiRequest = {
     /**
      * 监听地址
      */
@@ -4939,7 +4939,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSystemSetAutomaticTaskApiRequest =
 /**
  * 设备休眠状态请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisSystemSetAutomaticTaskSuspendedRequest = {
+export type GithubComJieWaZiNeuxBotServerApisSystemSetAutomaticTaskSuspendedRequest = {
     /**
      * 休眠状态
      */
@@ -4949,7 +4949,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSystemSetAutomaticTaskSuspendedReq
 /**
  * 版本响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisSystemVersionResponse = {
+export type GithubComJieWaZiNeuxBotServerApisSystemVersionResponse = {
     /**
      * Go 版本
      */
@@ -4971,7 +4971,7 @@ export type GithubComJieWaZiNeuxAllyServerApisSystemVersionResponse = {
 /**
  * 创建终端请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisTerminalsStartRequest = {
+export type GithubComJieWaZiNeuxBotServerApisTerminalsStartRequest = {
     /**
      * 对话标识
      */
@@ -4993,7 +4993,7 @@ export type GithubComJieWaZiNeuxAllyServerApisTerminalsStartRequest = {
 /**
  * 终端身份
  */
-export type GithubComJieWaZiNeuxAllyServerApisTerminalsStartResponse = {
+export type GithubComJieWaZiNeuxBotServerApisTerminalsStartResponse = {
     /**
      * 会话标识
      */
@@ -5007,7 +5007,7 @@ export type GithubComJieWaZiNeuxAllyServerApisTerminalsStartResponse = {
 /**
  * 上传结果
  */
-export type GithubComJieWaZiNeuxAllyServerApisUploadsUploadResponse = {
+export type GithubComJieWaZiNeuxBotServerApisUploadsUploadResponse = {
     /**
      * 上传引用
      */
@@ -5017,7 +5017,7 @@ export type GithubComJieWaZiNeuxAllyServerApisUploadsUploadResponse = {
 /**
  * 创建伙伴请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWakersCreateWakerRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWakersCreateWakerRequest = {
     /**
      * 头像
      */
@@ -5039,7 +5039,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersCreateWakerRequest = {
 /**
  * 日消息统计
  */
-export type GithubComJieWaZiNeuxAllyServerApisWakersDailyChatCount = {
+export type GithubComJieWaZiNeuxBotServerApisWakersDailyChatCount = {
     /**
      * 消息数量
      */
@@ -5053,7 +5053,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersDailyChatCount = {
 /**
  * 删除伙伴请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWakersDeleteWakerRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWakersDeleteWakerRequest = {
     /**
      * 确认名称
      */
@@ -5063,7 +5063,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersDeleteWakerRequest = {
 /**
  * 伙伴对话列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisWakersListWakerChatsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWakersListWakerChatsResponse = {
     /**
      * 页码
      */
@@ -5075,7 +5075,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersListWakerChatsResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChat>;
     /**
      * 总数
      */
@@ -5085,7 +5085,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersListWakerChatsResponse = {
 /**
  * 伙伴列表响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisWakersListWakersResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWakersListWakersResponse = {
     /**
      * 页码
      */
@@ -5097,7 +5097,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersListWakersResponse = {
     /**
      * 资源列表
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWaker>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker>;
     /**
      * 总数
      */
@@ -5107,7 +5107,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersListWakersResponse = {
 /**
  * 更新文档请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWakersUpdateWakerDocumentRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerDocumentRequest = {
     /**
      * 文件内容
      */
@@ -5117,7 +5117,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersUpdateWakerDocumentRequest =
 /**
  * 更新伙伴请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWakersUpdateWakerRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerRequest = {
     /**
      * 头像
      */
@@ -5126,7 +5126,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersUpdateWakerRequest = {
      * 简介
      */
     bio?: string;
-    manual?: GithubComJieWaZiNeuxAllyServerInternalProfileManualInput & unknown;
+    manual?: GithubComJieWaZiNeuxBotServerInternalProfileManualInput & unknown;
     /**
      * 名称
      */
@@ -5140,7 +5140,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersUpdateWakerRequest = {
 /**
  * 工作记录响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisWakersWakerWorkRecordResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWakersWakerWorkRecordResponse = {
     /**
      * 活跃对话数
      */
@@ -5152,7 +5152,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersWakerWorkRecordResponse = {
     /**
      * 每日统计
      */
-    dailyChats?: Array<GithubComJieWaZiNeuxAllyServerApisWakersDailyChatCount>;
+    dailyChats?: Array<GithubComJieWaZiNeuxBotServerApisWakersDailyChatCount>;
     /**
      * 自动任务总数
      */
@@ -5166,7 +5166,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWakersWakerWorkRecordResponse = {
 /**
  * Web 能力
  */
-export type GithubComJieWaZiNeuxAllyServerApisWebsessionCapabilities = {
+export type GithubComJieWaZiNeuxBotServerApisWebsessionCapabilities = {
     /**
      * 版本控制
      */
@@ -5184,7 +5184,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWebsessionCapabilities = {
 /**
  * 本机配对请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWebsessionPairRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWebsessionPairRequest = {
     /**
      * 配对码
      */
@@ -5194,8 +5194,8 @@ export type GithubComJieWaZiNeuxAllyServerApisWebsessionPairRequest = {
 /**
  * 本机会话
  */
-export type GithubComJieWaZiNeuxAllyServerApisWebsessionSessionResponse = {
-    capabilities?: GithubComJieWaZiNeuxAllyServerApisWebsessionCapabilities & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWebsessionSessionResponse = {
+    capabilities?: GithubComJieWaZiNeuxBotServerApisWebsessionCapabilities & unknown;
     /**
      * 请求证明
      */
@@ -5213,8 +5213,8 @@ export type GithubComJieWaZiNeuxAllyServerApisWebsessionSessionResponse = {
 /**
  * ViewWorkResultRequest 固定客户端本次真正渲染的版本与引用。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkBoardViewWorkResultRequest = {
-    reference: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReference & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardViewWorkResultRequest = {
+    reference: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference & unknown;
     /**
      * Version 是本次渲染真正观察到的版本，禁止使用请求时最新版本代替。
      */
@@ -5224,21 +5224,21 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkBoardViewWorkResultRequest = {
 /**
  * WorkBoardExecutorsResponse 返回最多五十个名称匹配的执行对象。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardExecutorsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardExecutorsResponse = {
     /**
      * Resources 是原配置对象，不含工作历史。
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardExecutor>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardExecutor>;
 };
 
 /**
  * WorkBoardPage 返回当前筛选的准确总数及游标页。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardPage = {
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardPage = {
     /**
      * Attention 是当前需要操作页，按等待最久优先。
      */
-    attention?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardAttention>;
+    attention?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
     /**
      * HasMore 表示查询窗口之外仍存在候选。
      */
@@ -5250,7 +5250,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardPage = {
     /**
      * Resources 是当前工作或结果页。
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardEntry>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry>;
     /**
      * 筛选总数
      */
@@ -5260,7 +5260,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardPage = {
 /**
  * WorkBoardSummary 不把不同统计单位相加为任务总数。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardSummary = {
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardSummary = {
     /**
      * 需操作工作数
      */
@@ -5268,7 +5268,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardSummary = {
     /**
      * Attention 是最多五个最久等待的有效请求。
      */
-    attention?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardAttention>;
+    attention?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention>;
     /**
      * AttentionCount 是全部有效请求数量。
      */
@@ -5284,7 +5284,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardSummary = {
     /**
      * Results 是最多五个最新未读结果的原容器引用。
      */
-    results?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardEntry>;
+    results?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry>;
     /**
      * 进行中工作数
      */
@@ -5298,14 +5298,14 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardSummary = {
 /**
  * WorkResultResponse 容器没有新结果时允许空引用。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkResultResponse = {
-    result?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReceipt & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkResultResponse = {
+    result?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt & unknown;
 };
 
 /**
  * 流程输入回答
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsAnswerHumanCommand = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand = {
     /**
      * 提交标识
      */
@@ -5323,7 +5323,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsAnswerHumanCommand = {
 /**
  * 操作许可回答
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsAnswerOperationCommand = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerOperationCommand = {
     /**
      * 明确批准
      */
@@ -5341,7 +5341,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsAnswerOperationCommand = 
 /**
  * 创建工作流请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsCreateDefinitionCommand = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsCreateDefinitionCommand = {
     /**
      * 请求标识
      */
@@ -5351,7 +5351,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsCreateDefinitionCommand =
 /**
  * 删除工作流依据
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsDeleteWorkflowBody = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsDeleteWorkflowBody = {
     /**
      * 当前版本
      */
@@ -5361,8 +5361,8 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsDeleteWorkflowBody = {
 /**
  * 配置修改请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsEditConfigurationCommand = {
-    edit?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourceEdit & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsEditConfigurationCommand = {
+    edit?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceEdit & unknown;
     /**
      * 当前版本
      */
@@ -5376,7 +5376,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsEditConfigurationCommand 
 /**
  * 版本恢复请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsRestoreWorkflowRevisionRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsRestoreWorkflowRevisionRequest = {
     /**
      * 当前版本
      */
@@ -5394,7 +5394,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsRestoreWorkflowRevisionRe
 /**
  * 流程重跑请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsRetryRunCommand = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsRetryRunCommand = {
     /**
      * 运行版本
      */
@@ -5408,8 +5408,8 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsRetryRunCommand = {
 /**
  * 触发配置请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsSaveWorkflowTriggersCommand = {
-    configuration?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfiguration & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsSaveWorkflowTriggersCommand = {
+    configuration?: GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskConfiguration & unknown;
     /**
      * 配置指纹
      */
@@ -5421,13 +5421,13 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsSaveWorkflowTriggersComma
     /**
      * 触发方式
      */
-    triggers?: Array<GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowTrigger>;
+    triggers?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowTrigger>;
 };
 
 /**
  * 触发配置回执
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsSavedWorkflowTriggers = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsSavedWorkflowTriggers = {
     /**
      * 配置指纹
      */
@@ -5439,21 +5439,21 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsSavedWorkflowTriggers = {
     /**
      * 任务回执
      */
-    tasks?: Array<GithubComJieWaZiNeuxAllyServerServicesScheduleSavedTask>;
+    tasks?: Array<GithubComJieWaZiNeuxBotServerServicesScheduleSavedTask>;
 };
 
 /**
  * 工作流创作消息
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsSendCreationMessageCommand = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsSendCreationMessageCommand = {
     /**
      * 消息附件
      */
-    attachments?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkinputAttachment>;
+    attachments?: Array<GithubComJieWaZiNeuxBotServerInternalWorkinputAttachment>;
     /**
      * 代码引用
      */
-    codeReferences?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkinputCodeReference>;
+    codeReferences?: Array<GithubComJieWaZiNeuxBotServerInternalWorkinputCodeReference>;
     /**
      * 连接器列表
      */
@@ -5462,8 +5462,8 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsSendCreationMessageComman
      * 修改要求
      */
     content?: string;
-    defaults?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
-    historyMode?: GithubComJieWaZiNeuxAllyServerConstantsHistoryMode & unknown;
+    defaults?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
+    historyMode?: GithubComJieWaZiNeuxBotServerConstantsHistoryMode & unknown;
     /**
      * 历史轮数
      */
@@ -5498,14 +5498,14 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsSendCreationMessageComman
     summaryReasoning?: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsSendWorkflowCreationMessageResponse = GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowCreationSession & {
-    execution?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsExecution & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsSendWorkflowCreationMessageResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSession & {
+    execution?: GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution & unknown;
 };
 
 /**
  * 步骤跳过请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsSkipWorkerCommand = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsSkipWorkerCommand = {
     /**
      * 尝试代际
      */
@@ -5519,7 +5519,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsSkipWorkerCommand = {
 /**
  * 源码校验请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsValidateWorkflowSourceRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsValidateWorkflowSourceRequest = {
     /**
      * 契约版本
      */
@@ -5530,14 +5530,14 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsValidateWorkflowSourceReq
     source: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowActionCallView = GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowActionCall & {
-    result?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowActionCallView = GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowActionCall & {
+    result?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
 };
 
 /**
  * 批注请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowAnnotationRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowAnnotationRequest = {
     /**
      * 基准版本
      */
@@ -5559,7 +5559,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowAnnotationRequest
 /**
  * 工作流文件预览
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowArtifactResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowArtifactResponse = {
     /**
      * 候选路径
      */
@@ -5609,23 +5609,23 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowArtifactResponse 
 /**
  * 工作流详情
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowDetailResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowDetailResponse = {
     /**
      * 修改批注
      */
-    annotations?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowAnnotation>;
+    annotations?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowAnnotation>;
     /**
      * 创作会话
      */
-    creationSessions?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowCreationSession>;
-    definition?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition & unknown;
-    revision?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRevision & unknown;
+    creationSessions?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSession>;
+    definition?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition & unknown;
+    revision?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRevision & unknown;
 };
 
 /**
  * 效果收据
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowEffectView = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowEffectView = {
     /**
      * 尝试代际
      */
@@ -5650,35 +5650,35 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowEffectView = {
      * 跳过意图
      */
     skipRequested?: boolean;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowStepStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
 };
 
 /**
  * 事件列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowEventListResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowEventListResponse = {
     /**
      * 持久事件
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowEvent>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEvent>;
 };
 
 /**
  * 执行步骤详情
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowInstanceResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowInstanceResponse = {
     /**
      * 内部工具调用
      */
-    actionCalls?: Array<GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowActionCallView>;
+    actionCalls?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowActionCallView>;
     /**
      * 尝试历史
      */
-    attempts?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowEffect>;
-    chat?: GithubComJieWaZiNeuxAllyServerServicesChatChatSummary & unknown;
-    effect?: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowEffectView & unknown;
-    execution?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsExecution & unknown;
-    instance?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowNodeInstance & unknown;
+    attempts?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEffect>;
+    chat?: GithubComJieWaZiNeuxBotServerServicesChatChatSummary & unknown;
+    effect?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowEffectView & unknown;
+    execution?: GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution & unknown;
+    instance?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowNodeInstance & unknown;
     /**
      * 运行版本
      */
@@ -5688,11 +5688,11 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowInstanceResponse 
 /**
  * 工作流列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowListResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowListResponse = {
     /**
      * 工作流列表
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition>;
+    items?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition>;
     /**
      * 时间游标
      */
@@ -5706,7 +5706,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowListResponse = {
 /**
  * 节点产出条目
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultItem = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultItem = {
     /**
      * 实例标题
      */
@@ -5715,14 +5715,14 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultItem = 
      * 实例路径
      */
     path?: string;
-    reference?: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultReference & unknown;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowStepStatus & unknown;
+    reference?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
 };
 
 /**
  * 节点产出引用
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultReference = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference = {
     /**
      * 尝试标识
      */
@@ -5752,7 +5752,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultReferen
 /**
  * 节点产出详情
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultResponse = {
     /**
      * 尝试代际
      */
@@ -5765,21 +5765,21 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultRespons
      * 执行标识
      */
     executionId?: string;
-    fileView?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslFileResultDefinition & unknown;
+    fileView?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslFileResultDefinition & unknown;
     /**
      * 可用文件
      */
-    files?: Array<GithubComJieWaZiNeuxAllyServerServicesWorkflowOutputFile>;
+    files?: Array<GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile>;
     /**
      * 源码节点
      */
     nodeId?: string;
-    page?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPageDefinition & unknown;
+    page?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition & unknown;
     /**
      * 结果存在
      */
     present?: boolean;
-    reference?: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultReference & unknown;
+    reference?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference & unknown;
     /**
      * 成功结果
      */
@@ -5788,7 +5788,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultRespons
      * 冻结版本
      */
     revisionId?: string;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowStepStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
     /**
      * 文件目录
      */
@@ -5798,11 +5798,11 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultRespons
 /**
  * 节点产出列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultsResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultsResponse = {
     /**
      * 实例条目
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultItem>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultItem>;
     /**
      * 后续偏移
      */
@@ -5816,11 +5816,11 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultsRespon
 /**
  * 工作流版本列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRevisionListResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionListResponse = {
     /**
      * 版本列表
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRevisionSummary>;
+    items?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionSummary>;
     /**
      * 版本游标
      */
@@ -5830,7 +5830,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRevisionListRespo
 /**
  * 工作流版本摘要
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRevisionSummary = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionSummary = {
     /**
      * 保存时间
      */
@@ -5860,19 +5860,19 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRevisionSummary =
 /**
  * 运行详情
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRunDetailResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse = {
     /**
      * 子运行
      */
-    children?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun>;
+    children?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun>;
     /**
      * 文件产物
      */
-    files?: Array<GithubComJieWaZiNeuxAllyServerServicesWorkflowOutputFile>;
+    files?: Array<GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile>;
     /**
      * 人工请求
      */
-    humanRequests?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowHumanRequest>;
+    humanRequests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest>;
     /**
      * 实例总数
      */
@@ -5880,8 +5880,8 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRunDetailResponse
     /**
      * 节点实例
      */
-    instances?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowNodeInstance>;
-    manifest?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslManifest & unknown;
+    instances?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowNodeInstance>;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest & unknown;
     /**
      * 后续游标
      */
@@ -5889,22 +5889,22 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRunDetailResponse
     /**
      * 节点状态汇总
      */
-    nodeCounts?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesControllersWorkflowNodeCount>;
+    nodeCounts?: Array<GithubComJieWaZiNeuxBotServerRepositoriesControllersWorkflowNodeCount>;
     /**
      * 操作许可
      */
-    operationRequests?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowOperationRequest>;
-    run?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun & unknown;
+    operationRequests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequest>;
+    run?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun & unknown;
 };
 
 /**
  * 运行列表
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRunListResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunListResponse = {
     /**
      * 运行列表
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun>;
+    items?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun>;
     /**
      * 时间游标
      */
@@ -5918,7 +5918,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRunListResponse =
 /**
  * 工作流 SDK
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowSdkResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowSdkResponse = {
     /**
      * 类型声明
      */
@@ -5930,7 +5930,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowSdkResponse = {
     /**
      * 宿主契约
      */
-    primitives?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPrimitiveContract>;
+    primitives?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslPrimitiveContract>;
     /**
      * 契约版本
      */
@@ -5940,12 +5940,12 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowSdkResponse = {
 /**
  * 工作流源码
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowSourceResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowSourceResponse = {
     /**
      * 操作实现
      */
     actionDetails?: {
-        [key: string]: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslActionSourceDetail;
+        [key: string]: GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionSourceDetail;
     };
     /**
      * 版本标识
@@ -5968,25 +5968,25 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowSourceResponse = 
 /**
  * 工作流触发方式
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowTrigger = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowTrigger = {
     /**
      * 参数来源
      */
     inputBindings?: {
-        [key: string]: GithubComJieWaZiNeuxAllyServerInternalWorkflowInputBinding;
+        [key: string]: GithubComJieWaZiNeuxBotServerInternalWorkflowInputBinding;
     };
-    schedule?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskSchedule & unknown;
+    schedule?: GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskSchedule & unknown;
     /**
      * 任务标识
      */
     taskId?: string;
-    trigger?: GithubComJieWaZiNeuxAllyServerConstantsAutomaticTaskTrigger & unknown;
+    trigger?: GithubComJieWaZiNeuxBotServerConstantsAutomaticTaskTrigger & unknown;
 };
 
 /**
  * 工作流触发配置
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowTriggersView = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowTriggersView = {
     /**
      * 配置指纹
      */
@@ -5994,18 +5994,18 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowTriggersView = {
     /**
      * 自动任务
      */
-    tasks?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTask>;
+    tasks?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTask>;
 };
 
 /**
  * 源码校验结果
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowValidationResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowValidationResponse = {
     /**
      * 编译诊断
      */
-    diagnostics?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslDiagnostic>;
-    manifest?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslManifest & unknown;
+    diagnostics?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslDiagnostic>;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest & unknown;
     /**
      * 校验通过
      */
@@ -6015,7 +6015,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowValidationRespons
 /**
  * DeleteDirectoryRequest 是工作区操作参数。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceDeleteDirectoryRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceDeleteDirectoryRequest = {
     /**
      * 相对路径
      */
@@ -6033,7 +6033,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceDeleteDirectoryRequest = 
 /**
  * 文件删除请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceDeleteRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceDeleteRequest = {
     /**
      * 预期版本
      */
@@ -6055,7 +6055,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceDeleteRequest = {
 /**
  * 切换仓库分支请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitCheckoutRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceGitCheckoutRequest = {
     /**
      * 分支名称
      */
@@ -6081,7 +6081,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitCheckoutRequest = {
 /**
  * 分支切换响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitCheckoutResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceGitCheckoutResponse = {
     /**
      * 当前分支
      */
@@ -6091,7 +6091,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitCheckoutResponse = {
 /**
  * 提交暂存修改请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitCommitRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceGitCommitRequest = {
     /**
      * 提交说明
      */
@@ -6113,7 +6113,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitCommitRequest = {
 /**
  * Git 文本结果
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitContent = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceGitContent = {
     /**
      * 文本内容
      */
@@ -6123,7 +6123,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitContent = {
 /**
  * 丢弃文件改动请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitDiscardRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceGitDiscardRequest = {
     /**
      * 相对路径
      */
@@ -6145,7 +6145,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitDiscardRequest = {
 /**
  * 暂存文件请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitStageRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceGitStageRequest = {
     /**
      * 相对路径
      */
@@ -6167,7 +6167,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitStageRequest = {
 /**
  * 取消暂存请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitUnstageRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceGitUnstageRequest = {
     /**
      * 相对路径
      */
@@ -6189,7 +6189,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceGitUnstageRequest = {
 /**
  * ImportFileRequest 是工作区操作参数。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceImportFileRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceImportFileRequest = {
     /**
      * 文件内容
      */
@@ -6215,7 +6215,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceImportFileRequest = {
 /**
  * OpenDraftScopeRequest 是工作区操作参数。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceOpenDraftScopeRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceOpenDraftScopeRequest = {
     /**
      * 额外项目目录
      */
@@ -6229,7 +6229,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceOpenDraftScopeRequest = {
 /**
  * PathResponse 是目录或导入操作后的资源位置。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspacePathResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspacePathResponse = {
     /**
      * 相对路径
      */
@@ -6239,18 +6239,18 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspacePathResponse = {
 /**
  * 文件读取响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceReadResponse = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceReadResponse = {
     /**
      * 文件字节
      */
     bytesBase64?: string;
-    resource?: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesResource & unknown;
+    resource?: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesResource & unknown;
 };
 
 /**
  * RenameDirectoryRequest 是工作区操作参数。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceRenameDirectoryRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceRenameDirectoryRequest = {
     /**
      * 新名称
      */
@@ -6272,7 +6272,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceRenameDirectoryRequest = 
 /**
  * 文件改名请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceRenameRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceRenameRequest = {
     /**
      * 预期版本
      */
@@ -6298,7 +6298,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceRenameRequest = {
 /**
  * ResolveReferenceRequest 是工作区操作参数。
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceResolveReferenceRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceResolveReferenceRequest = {
     /**
      * 基准目录
      */
@@ -6316,7 +6316,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceResolveReferenceRequest =
 /**
  * 工作范围请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceScopeRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceScopeRequest = {
     /**
      * 对话标识
      */
@@ -6326,7 +6326,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceScopeRequest = {
 /**
  * 工作文件观察请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceWatchRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceWatchRequest = {
     /**
      * 观察目录
      */
@@ -6348,7 +6348,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceWatchRequest = {
 /**
  * 文件保存请求
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceWriteRequest = {
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceWriteRequest = {
     /**
      * 文件内容
      */
@@ -6378,8 +6378,8 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceWriteRequest = {
 /**
  * 文件保存响应
  */
-export type GithubComJieWaZiNeuxAllyServerApisWorkspaceWriteResponse = {
-    resource?: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesResource & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkspaceWriteResponse = {
+    resource?: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesResource & unknown;
     /**
      * 编辑修订
      */
@@ -6393,7 +6393,7 @@ export type GithubComJieWaZiNeuxAllyServerApisWorkspaceWriteResponse = {
  * * `subscription` - AccountAuthModeSubscription 使用官方设备授权取得的订阅凭据。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsAccountAuthMode = '' | 'api-key' | 'subscription';
+export type GithubComJieWaZiNeuxBotServerConstantsAccountAuthMode = '' | 'api-key' | 'subscription';
 
 /**
  * >
@@ -6404,7 +6404,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsAccountAuthMode = '' | 'api-k
  * * `openai-responses` - AccountProtocolOpenAIResponses 对应 OpenAI Responses API。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsAccountProtocol = '' | 'anthropic-messages' | 'google-generative-ai' | 'openai-completions' | 'openai-responses';
+export type GithubComJieWaZiNeuxBotServerConstantsAccountProtocol = '' | 'anthropic-messages' | 'google-generative-ai' | 'openai-completions' | 'openai-responses';
 
 /**
  * >
@@ -6414,7 +6414,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsAccountProtocol = '' | 'anthr
  * * `selected` - ApprovalResultSelected 表示用户选择了 ACP 提供的一个选项。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsApprovalResult = '' | 'cancelled' | 'invalidated' | 'selected';
+export type GithubComJieWaZiNeuxBotServerConstantsApprovalResult = '' | 'cancelled' | 'invalidated' | 'selected';
 
 /**
  * >
@@ -6426,7 +6426,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsApprovalResult = '' | 'cancel
  * * `skipped` - AutomaticRunAdmissionSkipped 表示该计划机会因忙碌或错过被跳过。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunAdmission = '' | 'accepted' | 'failed' | 'interrupted' | 'pending' | 'skipped';
+export type GithubComJieWaZiNeuxBotServerConstantsAutomaticRunAdmission = '' | 'accepted' | 'failed' | 'interrupted' | 'pending' | 'skipped';
 
 /**
  * >
@@ -6436,7 +6436,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunAdmission = '' | 
  * * `schedule` - AutomaticRunSourceSchedule 表示一次计划时间到达。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunSource = '' | 'api' | 'manual' | 'schedule';
+export type GithubComJieWaZiNeuxBotServerConstantsAutomaticRunSource = '' | 'api' | 'manual' | 'schedule';
 
 /**
  * >
@@ -6452,7 +6452,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunSource = '' | 'ap
  * * `waiting_input` - AutomaticRunStateWaitingInput 表示首次执行正在等待用户补充输入。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunState = '' | 'canceled' | 'completed' | 'failed' | 'interrupted' | 'pending' | 'running' | 'skipped' | 'waiting_approval' | 'waiting_input';
+export type GithubComJieWaZiNeuxBotServerConstantsAutomaticRunState = '' | 'canceled' | 'completed' | 'failed' | 'interrupted' | 'pending' | 'running' | 'skipped' | 'waiting_approval' | 'waiting_input';
 
 /**
  * >
@@ -6465,7 +6465,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunState = '' | 'can
  * * `weekly` - AutomaticScheduleKindWeekly 表示每周指定星期的时间。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticScheduleKind = '' | 'cron' | 'daily' | 'hourly' | 'monthly' | 'once' | 'weekly';
+export type GithubComJieWaZiNeuxBotServerConstantsAutomaticScheduleKind = '' | 'cron' | 'daily' | 'hourly' | 'monthly' | 'once' | 'weekly';
 
 /**
  * >
@@ -6475,7 +6475,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticScheduleKind = '' | 
  * * `workflow` - AutomaticTaskTargetKindWorkflow 启动冻结版本的工作流。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticTaskTargetKind = '' | 'team' | 'waker' | 'workflow';
+export type GithubComJieWaZiNeuxBotServerConstantsAutomaticTaskTargetKind = '' | 'team' | 'waker' | 'workflow';
 
 /**
  * >
@@ -6484,7 +6484,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticTaskTargetKind = '' 
  * * `schedule` - AutomaticTaskTriggerSchedule 表示根据任务时区的时间规则触发。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticTaskTrigger = '' | 'api' | 'schedule';
+export type GithubComJieWaZiNeuxBotServerConstantsAutomaticTaskTrigger = '' | 'api' | 'schedule';
 
 /**
  * >
@@ -6493,7 +6493,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsAutomaticTaskTrigger = '' | '
  * * `waiting` - ChannelActivityStateWaiting 表示团队至少有一个对话等待审批、输入或验收。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsChannelActivityState = 'idle' | 'running' | 'waiting';
+export type GithubComJieWaZiNeuxBotServerConstantsChannelActivityState = 'idle' | 'running' | 'waiting';
 
 /**
  * >
@@ -6521,7 +6521,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsChannelActivityState = 'idle'
  * * `thread.work_stopping` - ChannelEventThreadWorkStopping 表示团队对话已经冻结新工作并正在收敛真实执行。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsChannelEventType = '' | 'interaction.approval.requested' | 'interaction.approval.resolved' | 'interaction.elicitation.requested' | 'interaction.elicitation.resolved' | 'lead.input_queued' | 'members.config_updated' | 'task.cancelled' | 'task.created' | 'task.dispatch_deferred' | 'task.finished' | 'task.follow_up_queued' | 'task.recovery_failed' | 'task.retry_queued' | 'task.review_approved' | 'task.started' | 'task.updated' | 'team.leader.processing' | 'team.member.direct_delivered' | 'thread.created' | 'thread.work_stopped' | 'thread.work_stopping';
+export type GithubComJieWaZiNeuxBotServerConstantsChannelEventType = '' | 'interaction.approval.requested' | 'interaction.approval.resolved' | 'interaction.elicitation.requested' | 'interaction.elicitation.resolved' | 'lead.input_queued' | 'members.config_updated' | 'task.cancelled' | 'task.created' | 'task.dispatch_deferred' | 'task.finished' | 'task.follow_up_queued' | 'task.recovery_failed' | 'task.retry_queued' | 'task.review_approved' | 'task.started' | 'task.updated' | 'team.leader.processing' | 'team.member.direct_delivered' | 'thread.created' | 'thread.work_stopped' | 'thread.work_stopping';
 
 /**
  * >
@@ -6531,7 +6531,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsChannelEventType = '' | 'inte
  * * `pending` - ChannelInputStatusPending 表示消息已经持久化但尚未进入负责人 Chat。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsChannelInputStatus = 'cancelled' | 'consumed' | 'delivering' | 'pending';
+export type GithubComJieWaZiNeuxBotServerConstantsChannelInputStatus = 'cancelled' | 'consumed' | 'delivering' | 'pending';
 
 /**
  * >
@@ -6543,7 +6543,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsChannelInputStatus = 'cancell
  * * `pending` - ChannelTaskStatusPending 表示任务已创建但尚未开始执行。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsChannelTaskStatus = 'cancelled' | 'completed' | 'failed' | 'in_progress' | 'in_review' | 'pending';
+export type GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus = 'cancelled' | 'completed' | 'failed' | 'in_progress' | 'in_review' | 'pending';
 
 /**
  * >
@@ -6570,7 +6570,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsChannelTaskStatus = 'cancelle
  * * `tool.message` - ChatEventTypeToolMessage 表示 Runtime 已完整形成一条工具结果执行消息。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'invocation.finished' | 'message.inherited' | 'message.user_created' | 'native_session.cleared' | 'native_session.updated' | 'runtime.event' | 'tool.message';
+export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'invocation.finished' | 'message.inherited' | 'message.user_created' | 'native_session.cleared' | 'native_session.updated' | 'runtime.event' | 'tool.message';
 
 /**
  * >
@@ -6584,7 +6584,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsChatEventType = '' | 'agent.c
  * * `tail_repaired` - ChatRecoveryIssueTailRepaired 表示权威日志尾部已完成安全修复。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsChatRecoveryIssue = 'chat_projection_ahead' | 'chat_projection_content_mismatch' | 'chat_projection_lagging' | 'chat_projection_missing' | 'file_index_rebuilt' | 'interrupted_execution_canceled' | 'log_corrupt_or_recovery_failed' | 'tail_repaired';
+export type GithubComJieWaZiNeuxBotServerConstantsChatRecoveryIssue = 'chat_projection_ahead' | 'chat_projection_content_mismatch' | 'chat_projection_lagging' | 'chat_projection_missing' | 'file_index_rebuilt' | 'interrupted_execution_canceled' | 'log_corrupt_or_recovery_failed' | 'tail_repaired';
 
 /**
  * >
@@ -6595,7 +6595,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsChatRecoveryIssue = 'chat_pro
  * * `repaired` - ChatRecoveryStateRepaired 表示启动时已增量追平投影或收尾中断执行。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsChatRecoveryState = '' | 'healthy' | 'isolated' | 'rebuilt' | 'repaired';
+export type GithubComJieWaZiNeuxBotServerConstantsChatRecoveryState = '' | 'healthy' | 'isolated' | 'rebuilt' | 'repaired';
 
 /**
  * >
@@ -6606,7 +6606,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsChatRecoveryState = '' | 'hea
  * * `invalidated` - ElicitationResultInvalidated 表示执行结束或运行时断开使输入失效。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsElicitationResult = '' | 'accepted' | 'cancelled' | 'declined' | 'invalidated';
+export type GithubComJieWaZiNeuxBotServerConstantsElicitationResult = '' | 'accepted' | 'cancelled' | 'declined' | 'invalidated';
 
 /**
  * >
@@ -6618,7 +6618,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsElicitationResult = '' | 'acc
  * * `running` - ExecutionStatusRunning 表示执行正在产生事件。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsExecutionStatus = '' | 'canceled' | 'completed' | 'failed' | 'pending' | 'running';
+export type GithubComJieWaZiNeuxBotServerConstantsExecutionStatus = '' | 'canceled' | 'completed' | 'failed' | 'pending' | 'running';
 
 /**
  * >
@@ -6627,7 +6627,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsExecutionStatus = '' | 'cance
  * * `summary` - HistoryModeSummary 使用旧会话生成的隐藏交接内容。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsHistoryMode = 'unknown' | 'recent' | 'summary';
+export type GithubComJieWaZiNeuxBotServerConstantsHistoryMode = 'unknown' | 'recent' | 'summary';
 
 /**
  * >
@@ -6637,7 +6637,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsHistoryMode = 'unknown' | 're
  * * `rejected` - IMBindingStateRejected 表示已拒绝该聊天接入。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsImBindingState = '' | 'approved' | 'pending' | 'rejected';
+export type GithubComJieWaZiNeuxBotServerConstantsImBindingState = '' | 'approved' | 'pending' | 'rejected';
 
 /**
  * >
@@ -6646,7 +6646,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsImBindingState = '' | 'approv
  * * `group` - IMChatKindGroup 表示平台群聊。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsImChatKind = '' | 'direct' | 'group';
+export type GithubComJieWaZiNeuxBotServerConstantsImChatKind = '' | 'direct' | 'group';
 
 /**
  * >
@@ -6658,7 +6658,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsImChatKind = '' | 'direct' | 
  * * `login_required` - IMConnectionStateLoginRequired 表示需要重新登录。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsImConnectionState = '' | 'connected' | 'connecting' | 'disconnected' | 'failed' | 'login_required';
+export type GithubComJieWaZiNeuxBotServerConstantsImConnectionState = '' | 'connected' | 'connecting' | 'disconnected' | 'failed' | 'login_required';
 
 /**
  * >
@@ -6668,7 +6668,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsImConnectionState = '' | 'con
  * * `weixin` - IMPlatformWeixin 表示个人微信 iLink 机器人。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsImPlatform = '' | 'feishu' | 'wecom' | 'weixin';
+export type GithubComJieWaZiNeuxBotServerConstantsImPlatform = '' | 'feishu' | 'wecom' | 'weixin';
 
 /**
  * >
@@ -6679,7 +6679,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsImPlatform = '' | 'feishu' | 
  * * `retrieve` - IntegrationCapabilityRetrieve 沿用 WeKnora 的读取与检索能力。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsIntegrationCapability = 'automatic_task.invoke' | 'automatic_task.results' | 'ingest' | 'organize' | 'retrieve';
+export type GithubComJieWaZiNeuxBotServerConstantsIntegrationCapability = 'automatic_task.invoke' | 'automatic_task.results' | 'ingest' | 'organize' | 'retrieve';
 
 /**
  * >
@@ -6687,7 +6687,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsIntegrationCapability = 'auto
  * * `knowledge` - IntegrationResourceKindKnowledge 表示本机权威知识库。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsIntegrationResourceKind = 'automatic_task' | 'knowledge';
+export type GithubComJieWaZiNeuxBotServerConstantsIntegrationResourceKind = 'automatic_task' | 'knowledge';
 
 /**
  * >
@@ -6697,7 +6697,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsIntegrationResourceKind = 'au
  * * `remote` - KnowledgeLibraryLocationRemote 只读取启用连接中的远端知识库。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsKnowledgeLibraryLocation = 'unknown' | 'all' | 'local' | 'remote';
+export type GithubComJieWaZiNeuxBotServerConstantsKnowledgeLibraryLocation = 'unknown' | 'all' | 'local' | 'remote';
 
 /**
  * >
@@ -6706,17 +6706,17 @@ export type GithubComJieWaZiNeuxAllyServerConstantsKnowledgeLibraryLocation = 'u
  * * `workflow_context` - MCPActivationPolicyWorkflowContext 表示由工作流入口按当前执行签发，伙伴不能独立启停。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMcpActivationPolicy = 'per_execution' | 'team_context' | 'workflow_context';
+export type GithubComJieWaZiNeuxBotServerConstantsMcpActivationPolicy = 'per_execution' | 'team_context' | 'workflow_context';
 
 /**
  * >
  * * `` - MCPConnectorScopeUnspecified 表示数据库或框架产生的空范围。
- * * `built_in` - MCPConnectorScopeBuiltIn 表示随 NeuxAlly 提供的内置连接器。
+ * * `built_in` - MCPConnectorScopeBuiltIn 表示随 NeuxBot 提供的内置连接器。
  * * `private` - MCPConnectorScopePrivate 表示只属于一个伙伴的连接器。
  * * `public` - MCPConnectorScopePublic 表示全部伙伴可见的用户连接器。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMcpConnectorScope = '' | 'built_in' | 'private' | 'public';
+export type GithubComJieWaZiNeuxBotServerConstantsMcpConnectorScope = '' | 'built_in' | 'private' | 'public';
 
 /**
  * >
@@ -6725,7 +6725,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMcpConnectorScope = '' | 'bui
  * * `untested` - MCPTestStatusUntested 表示连接器当前配置尚未完成测试。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMcpTestStatus = 'failed' | 'succeeded' | 'untested';
+export type GithubComJieWaZiNeuxBotServerConstantsMcpTestStatus = 'failed' | 'succeeded' | 'untested';
 
 /**
  * >
@@ -6735,7 +6735,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMcpTestStatus = 'failed' | 's
  * * `streamable_http` - MCPTransportStreamableHTTP 表示使用 Streamable HTTP 连接远程 MCP。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMcpTransport = '' | 'sse' | 'stdio' | 'streamable_http';
+export type GithubComJieWaZiNeuxBotServerConstantsMcpTransport = '' | 'sse' | 'stdio' | 'streamable_http';
 
 /**
  * >
@@ -6745,7 +6745,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMcpTransport = '' | 'sse' | '
  * * `UPDATE` - MemoryEventUpdate 表示更新一条记忆的正文。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMemoryEvent = '' | 'ADD' | 'DELETE' | 'UPDATE';
+export type GithubComJieWaZiNeuxBotServerConstantsMemoryEvent = '' | 'ADD' | 'DELETE' | 'UPDATE';
 
 /**
  * >
@@ -6754,7 +6754,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMemoryEvent = '' | 'ADD' | 'D
  * * `semantic` - MemoryRetrievalModeSemantic 表示已配置 Embedding，使用 sqlite-vec 语义 KNN 召回。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMemoryRetrievalMode = '' | 'keyword' | 'semantic';
+export type GithubComJieWaZiNeuxBotServerConstantsMemoryRetrievalMode = '' | 'keyword' | 'semantic';
 
 /**
  * >
@@ -6764,7 +6764,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMemoryRetrievalMode = '' | 'k
  * * `project` - MemoryScopeProject 表示当前项目内跨对话使用的长期记忆。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMemoryScope = '' | 'all' | 'partner' | 'project';
+export type GithubComJieWaZiNeuxBotServerConstantsMemoryScope = '' | 'all' | 'partner' | 'project';
 
 /**
  * >
@@ -6772,7 +6772,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMemoryScope = '' | 'all' | 'p
  * * `mcp` - MemoryTimelineSourceMCP 表示时间线事件来自执行中的 MCP 工具调用。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMemoryTimelineSource = 'manual' | 'mcp';
+export type GithubComJieWaZiNeuxBotServerConstantsMemoryTimelineSource = 'manual' | 'mcp';
 
 /**
  * >
@@ -6782,7 +6782,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMemoryTimelineSource = 'manua
  * * `tool` - MessageDisplayPartTool 表示消息展示投影中的工具活动部件。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMessageDisplayPartType = 'process_commentary' | 'reasoning' | 'text' | 'tool';
+export type GithubComJieWaZiNeuxBotServerConstantsMessageDisplayPartType = 'process_commentary' | 'reasoning' | 'text' | 'tool';
 
 /**
  * >
@@ -6791,7 +6791,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMessageDisplayPartType = 'pro
  * * `user` - MessageRoleUser 表示用户提交的消息。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMessageRole = '' | 'assistant' | 'user';
+export type GithubComJieWaZiNeuxBotServerConstantsMessageRole = '' | 'assistant' | 'user';
 
 /**
  * >
@@ -6814,7 +6814,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMessageRole = '' | 'assistant
  * * `write_file` - MessageToolActionWriteFile 表示创建或完整写入文件。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMessageToolAction = 'build_project' | 'call_service' | 'check_project' | 'execute_command' | 'fetch_web' | 'format_code' | 'inspect_git' | 'list_files' | 'modify_file' | 'other' | 'read_file' | 'run_tests' | 'search_files' | 'search_web' | 'use_skill' | 'view_image' | 'write_file';
+export type GithubComJieWaZiNeuxBotServerConstantsMessageToolAction = 'build_project' | 'call_service' | 'check_project' | 'execute_command' | 'fetch_web' | 'format_code' | 'inspect_git' | 'list_files' | 'modify_file' | 'other' | 'read_file' | 'run_tests' | 'search_files' | 'search_web' | 'use_skill' | 'view_image' | 'write_file';
 
 /**
  * >
@@ -6828,7 +6828,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMessageToolAction = 'build_pr
  * * `skill` - MessageToolCategorySkill 表示加载或使用技能。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMessageToolCategory = 'command' | 'file_modify' | 'file_read' | 'file_search' | 'mcp' | 'network' | 'other' | 'skill';
+export type GithubComJieWaZiNeuxBotServerConstantsMessageToolCategory = 'command' | 'file_modify' | 'file_read' | 'file_search' | 'mcp' | 'network' | 'other' | 'skill';
 
 /**
  * >
@@ -6837,7 +6837,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMessageToolCategory = 'comman
  * * `running` - MessageToolStatusRunning 表示工具调用尚未收到结果。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsMessageToolStatus = 'completed' | 'failed' | 'running';
+export type GithubComJieWaZiNeuxBotServerConstantsMessageToolStatus = 'completed' | 'failed' | 'running';
 
 /**
  * >
@@ -6849,7 +6849,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsMessageToolStatus = 'complete
  * * `review` - NotificationKindReview 表示当前围栏的团队人工验收。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsNotificationKind = '' | 'approval' | 'automatic_failure' | 'input' | 'result' | 'review';
+export type GithubComJieWaZiNeuxBotServerConstantsNotificationKind = '' | 'approval' | 'automatic_failure' | 'input' | 'result' | 'review';
 
 /**
  * >
@@ -6859,7 +6859,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsNotificationKind = '' | 'appr
  * * `full-access` - PermissionLevelFullAccess 表示用户明确允许 Runtime 使用最大可用权限。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel = '' | 'auto' | 'default' | 'full-access';
+export type GithubComJieWaZiNeuxBotServerConstantsPermissionLevel = '' | 'auto' | 'default' | 'full-access';
 
 /**
  * >
@@ -6871,7 +6871,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel = '' | 'auto'
  * * `waiting` - PluginAuthorizationStateWaiting 表示正在等待外部确认。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsPluginAuthorizationState = '' | 'cancelled' | 'expired' | 'failed' | 'ready' | 'waiting';
+export type GithubComJieWaZiNeuxBotServerConstantsPluginAuthorizationState = '' | 'cancelled' | 'expired' | 'failed' | 'ready' | 'waiting';
 
 /**
  * >
@@ -6882,7 +6882,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsPluginAuthorizationState = ''
  * * `playbook` - ProfileDocumentKindPlaybook 表示工作方式文档。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsProfileDocumentKind = '' | 'identity' | 'memory' | 'persona' | 'playbook';
+export type GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind = '' | 'identity' | 'memory' | 'persona' | 'playbook';
 
 /**
  * >
@@ -6893,7 +6893,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsProfileDocumentKind = '' | 'i
  * * `unknown` - RemoteTransferStateUnknown 表示可能已接纳，禁止自动重传。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsRemoteTransferState = 'accepted' | 'failed' | 'not_sent' | 'sending' | 'unknown';
+export type GithubComJieWaZiNeuxBotServerConstantsRemoteTransferState = 'accepted' | 'failed' | 'not_sent' | 'sending' | 'unknown';
 
 /**
  * >
@@ -6901,7 +6901,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsRemoteTransferState = 'accept
  * * `markdown` - RolePresetInputModeMarkdown 表示直接提交三份完整 Markdown。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsRolePresetInputMode = 'manual' | 'markdown';
+export type GithubComJieWaZiNeuxBotServerConstantsRolePresetInputMode = 'manual' | 'markdown';
 
 /**
  * >
@@ -6910,7 +6910,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsRolePresetInputMode = 'manual
  * * `user` - RolePresetSourceUser 表示用户创建并可管理的角色预设。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsRolePresetSource = '' | 'system' | 'user';
+export type GithubComJieWaZiNeuxBotServerConstantsRolePresetSource = '' | 'system' | 'user';
 
 /**
  * >
@@ -6928,7 +6928,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsRolePresetSource = '' | 'syst
  * * `structured_output` - RuntimeCapabilityStructuredOutput 表示 Runtime 支持要求的结构化输出格式。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsRuntimeCapability = '' | 'add_directory' | 'dynamic_models' | 'image_path' | 'isolated_text_generation' | 'mcp_sse' | 'mcp_streamable_http' | 'partial_messages' | 'resume_session' | 'skill_directory' | 'streaming_user_messages' | 'structured_output';
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability = '' | 'add_directory' | 'dynamic_models' | 'image_path' | 'isolated_text_generation' | 'mcp_sse' | 'mcp_streamable_http' | 'partial_messages' | 'resume_session' | 'skill_directory' | 'streaming_user_messages' | 'structured_output';
 
 /**
  * >
@@ -6938,7 +6938,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsRuntimeCapability = '' | 'add
  * * `write` - SkillResourceActionWrite 表示写入或覆盖一个资源文件。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsSkillResourceAction = 'delete' | 'mkdir' | 'move' | 'write';
+export type GithubComJieWaZiNeuxBotServerConstantsSkillResourceAction = 'delete' | 'mkdir' | 'move' | 'write';
 
 /**
  * >
@@ -6947,17 +6947,17 @@ export type GithubComJieWaZiNeuxAllyServerConstantsSkillResourceAction = 'delete
  * * `public` - SkillScopePublic 表示所有伙伴都可见的公开技能。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsSkillScope = '' | 'private' | 'public';
+export type GithubComJieWaZiNeuxBotServerConstantsSkillScope = '' | 'private' | 'public';
 
 /**
  * >
  * * `` - SkillSourceUnspecified 表示未指定来源。
- * * `builtin` - SkillSourceBuiltin 表示随 NeuxAlly 提供的内置技能。
+ * * `builtin` - SkillSourceBuiltin 表示随 NeuxBot 提供的内置技能。
  * * `git` - SkillSourceGit 表示从 Git 地址导入的技能。
  * * `zip` - SkillSourceZip 表示从 ZIP 压缩包导入的技能。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsSkillSource = '' | 'builtin' | 'git' | 'zip';
+export type GithubComJieWaZiNeuxBotServerConstantsSkillSource = '' | 'builtin' | 'git' | 'zip';
 
 /**
  * >
@@ -6966,7 +6966,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsSkillSource = '' | 'builtin' 
  * * `running` - TeamMemberActivityStateRunning 表示成员 Chat 当前存在活跃执行。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsTeamMemberActivityState = 'idle' | 'requires_action' | 'running';
+export type GithubComJieWaZiNeuxBotServerConstantsTeamMemberActivityState = 'idle' | 'requires_action' | 'running';
 
 /**
  * >
@@ -6975,7 +6975,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsTeamMemberActivityState = 'id
  * * `waiting` - WakerActivityStateWaiting 表示伙伴至少有一个 Chat 等待审批或输入。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsWakerActivityState = 'idle' | 'running' | 'waiting';
+export type GithubComJieWaZiNeuxBotServerConstantsWakerActivityState = 'idle' | 'running' | 'waiting';
 
 /**
  * >
@@ -6985,7 +6985,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsWakerActivityState = 'idle' |
  * * `workflow_run` - WorkResultOwnerKindWorkflowRun 表示顶层工作流运行。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsWorkResultOwnerKind = '' | 'chat' | 'team_thread' | 'workflow_run';
+export type GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind = '' | 'chat' | 'team_thread' | 'workflow_run';
 
 /**
  * >
@@ -7003,7 +7003,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsWorkResultOwnerKind = '' | 'c
  * * `try` - WorkflowControlKindTry 表示正常路径和异常处理路径。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsWorkflowControlKind = 'break' | 'continue' | 'decision' | 'join_workflow' | 'loop' | 'node' | 'parallel' | 'pipeline' | 'return' | 'task_return' | 'throw' | 'try';
+export type GithubComJieWaZiNeuxBotServerConstantsWorkflowControlKind = 'break' | 'continue' | 'decision' | 'join_workflow' | 'loop' | 'node' | 'parallel' | 'pipeline' | 'return' | 'task_return' | 'throw' | 'try';
 
 /**
  * >
@@ -7013,7 +7013,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsWorkflowControlKind = 'break'
  * * `workflow_default` - WorkflowInputSourceDefault 使用实际工作流版本的默认或省略行为。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsWorkflowInputSource = '' | 'api' | 'fixed' | 'workflow_default';
+export type GithubComJieWaZiNeuxBotServerConstantsWorkflowInputSource = '' | 'api' | 'fixed' | 'workflow_default';
 
 /**
  * >
@@ -7022,7 +7022,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsWorkflowInputSource = '' | 'a
  * * `pinned` - WorkflowRevisionPolicyPinned 始终使用明确指定的不可变版本。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsWorkflowRevisionPolicy = '' | 'current' | 'pinned';
+export type GithubComJieWaZiNeuxBotServerConstantsWorkflowRevisionPolicy = '' | 'current' | 'pinned';
 
 /**
  * >
@@ -7036,7 +7036,7 @@ export type GithubComJieWaZiNeuxAllyServerConstantsWorkflowRevisionPolicy = '' |
  * * `waiting` - WorkflowRunStatusWaiting 表示流程等待用户或外部结果。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsWorkflowRunStatus = 'cancelled' | 'cancelling' | 'failed' | 'queued' | 'recovering' | 'running' | 'succeeded' | 'waiting';
+export type GithubComJieWaZiNeuxBotServerConstantsWorkflowRunStatus = 'cancelled' | 'cancelling' | 'failed' | 'queued' | 'recovering' | 'running' | 'succeeded' | 'waiting';
 
 /**
  * >
@@ -7054,14 +7054,14 @@ export type GithubComJieWaZiNeuxAllyServerConstantsWorkflowRunStatus = 'cancelle
  * * `waiting` - WorkflowStepStatusWaiting 表示等待效果、子任务或用户。
  *
  */
-export type GithubComJieWaZiNeuxAllyServerConstantsWorkflowStepStatus = 'unknown' | 'answered' | 'cancelled' | 'failed' | 'prepared' | 'ready' | 'running' | 'skipped' | 'succeeded' | 'timed_out' | 'unknown' | 'waiting';
+export type GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus = 'unknown' | 'answered' | 'cancelled' | 'failed' | 'prepared' | 'ready' | 'running' | 'skipped' | 'succeeded' | 'timed_out' | 'unknown' | 'waiting';
 
 /**
  * AttachmentReference 是一条经过路径校验并可以安全重放的附件引用。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatEventlogAttachmentReference = {
+export type GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference = {
     /**
-     * Managed 表示文件是否位于 NeuxAlly 归属目录。
+     * Managed 表示文件是否位于 NeuxBot 归属目录。
      */
     managed?: boolean;
     /**
@@ -7081,7 +7081,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatEventlogAttachmentReferenc
 /**
  * CodeReference 保存整文件路径引用或连续文本区间快照。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatEventlogCodeReference = {
+export type GithubComJieWaZiNeuxBotServerInternalChatEventlogCodeReference = {
     /**
      * Content 是发送时冻结的选中文本，整文件引用为空。
      */
@@ -7103,7 +7103,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatEventlogCodeReference = {
 /**
  * MessageConnectorReference 冻结用户发送消息时明确选择的 MCP 连接器展示信息。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatEventlogMessageConnectorReference = {
+export type GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageConnectorReference = {
     /**
      * ID 是连接器的稳定标识，用于打开连接器详情。
      */
@@ -7117,7 +7117,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatEventlogMessageConnectorRe
 /**
  * MessageSkillReference 冻结用户发送消息时明确选择的技能展示信息。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatEventlogMessageSkillReference = {
+export type GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageSkillReference = {
     /**
      * ID 是技能包的稳定标识，用于打开技能详情。
      */
@@ -7135,7 +7135,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatEventlogMessageSkillRefere
 /**
  * Message 是从权威事件重放出的聊天消息视图。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage = {
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
     /**
      * Actor 是产生用户输入的入口无关参与者，用于聚合视图隐藏内部协调输入。
      */
@@ -7143,15 +7143,15 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage = {
     /**
      * Attachments 是用户消息携带的有序附件引用。
      */
-    attachments?: Array<GithubComJieWaZiNeuxAllyServerInternalChatEventlogAttachmentReference>;
+    attachments?: Array<GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference>;
     /**
      * CodeReferences 是用户消息携带的有序整文件或代码片段引用。
      */
-    codeReferences?: Array<GithubComJieWaZiNeuxAllyServerInternalChatEventlogCodeReference>;
+    codeReferences?: Array<GithubComJieWaZiNeuxBotServerInternalChatEventlogCodeReference>;
     /**
      * Connectors 是用户发送消息时明确选择的 MCP 连接器快照。
      */
-    connectors?: Array<GithubComJieWaZiNeuxAllyServerInternalChatEventlogMessageConnectorReference>;
+    connectors?: Array<GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageConnectorReference>;
     /**
      * Content 是截至当前日志游标构建出的完整文本。
      */
@@ -7163,7 +7163,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage = {
     /**
      * DisplayParts 是供聊天界面渲染的最小跨 Runtime 展示视图。
      */
-    displayParts?: Array<GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageDisplayPart>;
+    displayParts?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart>;
     /**
      * ErrorCode 是失败时供界面映射的稳定错误码。
      */
@@ -7179,7 +7179,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage = {
     /**
      * FileChanges 是当前执行内全部成功文件修改工具聚合出的有序变更摘要。
      */
-    fileChanges?: Array<GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolFileChangeSummary>;
+    fileChanges?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolFileChangeSummary>;
     /**
      * ID 是消息的稳定标识。
      */
@@ -7191,7 +7191,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage = {
     /**
      * Plugins 是接纳时冻结的插件身份、版本与配置修订。
      */
-    plugins?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsSnapshot>;
+    plugins?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSnapshot>;
     /**
      * Retryable 表示后端允许用户安全重试该失败回合。
      */
@@ -7200,12 +7200,12 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage = {
      * Revision 是最后一次改变公开消息快照的权威事件序号。
      */
     revision?: number;
-    role?: GithubComJieWaZiNeuxAllyServerConstantsMessageRole & unknown;
-    runMetrics?: GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageRunMetrics & unknown;
+    role?: GithubComJieWaZiNeuxBotServerConstantsMessageRole & unknown;
+    runMetrics?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageRunMetrics & unknown;
     /**
      * Skills 是用户发送消息时明确选择的技能快照。
      */
-    skills?: Array<GithubComJieWaZiNeuxAllyServerInternalChatEventlogMessageSkillReference>;
+    skills?: Array<GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageSkillReference>;
     /**
      * SourceChatID 是跨 Chat 投递消息的原始 Chat 标识，用于下钻完整执行。
      */
@@ -7214,7 +7214,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage = {
      * SourceWakerID 是跨 Chat 投递消息的原始伙伴标识，用于展示真实作者。
      */
     sourceWakerId?: string;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsExecutionStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
     /**
      * Truncated 表示正文只是受限预览，负责人不得把它视为完整报告。
      */
@@ -7228,7 +7228,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage = {
 /**
  * MessageDisplayPart 是聊天接口返回的最小跨 Runtime 展示部件。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageDisplayPart = {
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart = {
     /**
      * ID 是部件在同一消息多次增量快照之间保持不变的标识。
      */
@@ -7237,13 +7237,13 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageDisplayP
      * Text 是文本或思考部件的连续可见内容。
      */
     text?: string;
-    toolAction?: GithubComJieWaZiNeuxAllyServerConstantsMessageToolAction & unknown;
-    toolApprovalResult?: GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolApprovalResult & unknown;
+    toolAction?: GithubComJieWaZiNeuxBotServerConstantsMessageToolAction & unknown;
+    toolApprovalResult?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolApprovalResult & unknown;
     /**
      * ToolCallID 是工具调用和结果配对使用的稳定标识。
      */
     toolCallId?: string;
-    toolCategory?: GithubComJieWaZiNeuxAllyServerConstantsMessageToolCategory & unknown;
+    toolCategory?: GithubComJieWaZiNeuxBotServerConstantsMessageToolCategory & unknown;
     /**
      * ToolLabel 是工具完成态使用的简短语义短语。
      */
@@ -7252,15 +7252,15 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageDisplayP
      * ToolLoadingLabel 是工具运行态使用的简短语义短语。
      */
     toolLoadingLabel?: string;
-    toolSafeSummary?: GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolSafeSummary & unknown;
-    toolStatus?: GithubComJieWaZiNeuxAllyServerConstantsMessageToolStatus & unknown;
-    type?: GithubComJieWaZiNeuxAllyServerConstantsMessageDisplayPartType & unknown;
+    toolSafeSummary?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolSafeSummary & unknown;
+    toolStatus?: GithubComJieWaZiNeuxBotServerConstantsMessageToolStatus & unknown;
+    type?: GithubComJieWaZiNeuxBotServerConstantsMessageDisplayPartType & unknown;
 };
 
 /**
  * MessageFileChangeDiff 是从一条 Assistant 消息的标准 ACP diff 投影出的执行级文件差异。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageFileChangeDiff = {
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFileChangeDiff = {
     /**
      * NewContent 是本次执行最后一次成功修改该文件后的完整文本。
      */
@@ -7278,7 +7278,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageFileChan
 /**
  * MessageRunMetrics 是聊天界面可安全展示的执行时间与 Token 用量摘要。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageRunMetrics = {
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageRunMetrics = {
     /**
      * CacheCreationTokens 是 Runtime 报告的缓存写入 Token 数。
      */
@@ -7320,7 +7320,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageRunMetri
 /**
  * ToolApprovalResult 是一次工具审批的安全展示结果。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolApprovalResult = {
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolApprovalResult = {
     /**
      * Command 是本次审批对应的受限命令展示摘要。
      */
@@ -7333,13 +7333,13 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolApprovalRes
      * OptionName 是 ACP 提供的用户可见选项名称，取消或失效时为空。
      */
     optionName?: string;
-    result?: GithubComJieWaZiNeuxAllyServerConstantsApprovalResult & unknown;
+    result?: GithubComJieWaZiNeuxBotServerConstantsApprovalResult & unknown;
 };
 
 /**
  * ToolFileChangeSummary 是单个项目文件的安全变更摘要。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolFileChangeSummary = {
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolFileChangeSummary = {
     /**
      * AddedLines 是标准 diff 推导出的新增行数。
      */
@@ -7357,7 +7357,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolFileChangeS
 /**
  * ToolSafeSummary 是聊天接口允许展示的受限工具摘要。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolSafeSummary = {
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolSafeSummary = {
     /**
      * AddedLines 是工具明确结构化提供的新增行数。
      */
@@ -7373,14 +7373,14 @@ export type GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolSafeSummary
     /**
      * Files 是标准 diff 推导出的有序文件变更摘要。
      */
-    files?: Array<GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolFileChangeSummary>;
+    files?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolFileChangeSummary>;
     /**
      * Path 是位于锁定工作目录内的项目相对路径。
      */
     path?: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerInternalIntegrationListenerSettings = GithubComJieWaZiNeuxAllyServerInternalIntegrationListenerStatus & {
+export type GithubComJieWaZiNeuxBotServerInternalIntegrationListenerSettings = GithubComJieWaZiNeuxBotServerInternalIntegrationListenerStatus & {
     /**
      * Enabled 表示允许对外接受 API 请求，不控制定时调度。
      */
@@ -7398,7 +7398,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalIntegrationListenerSettings = 
 /**
  * ListenerStatus 是统一发布服务的实际监听状态。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalIntegrationListenerStatus = {
+export type GithubComJieWaZiNeuxBotServerInternalIntegrationListenerStatus = {
     /**
      * Available 在共享设置中表示实际绑定，在 API 状态中还要求 API 已启用。
      */
@@ -7420,7 +7420,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalIntegrationListenerStatus = {
 /**
  * ResourceRef 保存提供者原生身份，禁止仅按库 ID 跨连接判断资源。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalKnowledgeResourceRef = {
+export type GithubComJieWaZiNeuxBotServerInternalKnowledgeResourceRef = {
     /**
      * Backend 是 local、weknora 或 custom。
      */
@@ -7438,7 +7438,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalKnowledgeResourceRef = {
 /**
  * 资源条目
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPackagefilesResourceEntry = {
+export type GithubComJieWaZiNeuxBotServerInternalPackagefilesResourceEntry = {
     /**
      * 内容摘要
      */
@@ -7464,7 +7464,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPackagefilesResourceEntry = {
 /**
  * 资源文件
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPackagefilesResourceFile = {
+export type GithubComJieWaZiNeuxBotServerInternalPackagefilesResourceFile = {
     /**
      * 是否二进制
      */
@@ -7494,7 +7494,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPackagefilesResourceFile = {
 /**
  * Authentication 声明包内授权桥接，不复制供应商协议。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthentication = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthentication = {
     /**
      * Args 是独立传递的入口参数。
      */
@@ -7502,7 +7502,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthentication = {
     /**
      * Bindings 将授权秘密限定到明确的原生目标和远端连接。
      */
-    bindings?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsAuthenticationBinding>;
+    bindings?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsAuthenticationBinding>;
     /**
      * Command 是已安装包内的固定入口。
      */
@@ -7528,7 +7528,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthentication = {
 /**
  * AuthenticationBinding 将桥接秘密限定到一个原生运行目标的远端请求头。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthenticationBinding = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthenticationBinding = {
     /**
      * Header 是允许桥接提供的请求头名称。
      */
@@ -7550,7 +7550,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthenticationBinding =
 /**
  * Author 保存包作者的公开署名资料。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthor = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthor = {
     /**
      * Email 是公开联系地址。
      */
@@ -7568,7 +7568,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthor = {
 /**
  * Account 是可显示的共享身份摘要，不保存或返回登录 token。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationAccount = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationAccount = {
     /**
      * AppID 是当前应用身份。
      */
@@ -7602,7 +7602,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationAccount = 
 /**
  * Action 是本次挑战提供的临时资料，不从插件名称推导。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationAction = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationAction = {
     /**
      * Type 是允许的交互动作。
      */
@@ -7620,7 +7620,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationAction = {
 /**
  * 授权提醒
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationNotice = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationNotice = {
     /**
      * 提示文案
      */
@@ -7632,12 +7632,12 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationNotice = {
 /**
  * Session 是本机授权等待的安全投影。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationSession = {
-    account?: GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationAccount & unknown;
+export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationSession = {
+    account?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationAccount & unknown;
     /**
      * Actions 是本次协议明确允许的通用交互。
      */
-    actions?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationAction>;
+    actions?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationAction>;
     /**
      * ChallengeID 是本次唯一挑战身份。
      */
@@ -7658,8 +7658,8 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationSession = 
      * ID 是本次等待身份。
      */
     id?: string;
-    notice?: GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationNotice & unknown;
-    state?: GithubComJieWaZiNeuxAllyServerConstantsPluginAuthorizationState & unknown;
+    notice?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationNotice & unknown;
+    state?: GithubComJieWaZiNeuxBotServerConstantsPluginAuthorizationState & unknown;
     /**
      * UserCode 是需用户在官方页面输入的一次性验证码。
      */
@@ -7673,7 +7673,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationSession = 
 /**
  * Usage 是一个正在使用共享身份的工作引用，不保存输入或凭据。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationUsage = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationUsage = {
     /**
      * ChatID 是关联对话标识。
      */
@@ -7695,7 +7695,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationUsage = {
 /**
  * Entry 描述一个本地目录项及其不可变来源。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogEntry = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry = {
     /**
      * ArchiveSHA256 是完整压缩包摘要。
      */
@@ -7720,7 +7720,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogEntry = {
      * Key 是目录项稳定身份。
      */
     key?: string;
-    package?: GithubComJieWaZiNeuxAllyServerInternalPluginsPackage & unknown;
+    package?: GithubComJieWaZiNeuxBotServerInternalPluginsPackage & unknown;
     /**
      * PackagePath 是完整来源中的逻辑入口。
      */
@@ -7738,7 +7738,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogEntry = {
 /**
  * SourceState 描述目录缓存与本次同步状态，不把同步失败伪装为空库。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogSourceState = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsCatalogSourceState = {
     /**
      * ErrorCode 是同步失败的稳定错误。
      */
@@ -7756,7 +7756,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogSourceState = {
 /**
  * ConfigurationField 描述一个真实可编辑配置，不保存配置值。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsConfigurationField = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsConfigurationField = {
     /**
      * Default 是非敏感默认值。
      */
@@ -7786,7 +7786,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsConfigurationField = {
 /**
  * Diagnostic 保存组件局部失败和未支持能力，不含凭据。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsDiagnostic = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsDiagnostic = {
     /**
      * Code 是可本地化的稳定诊断标识。
      */
@@ -7800,25 +7800,25 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsDiagnostic = {
 /**
  * Integration 只保存原生引用和授权扩展，不重复包身份和组件。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsIntegration = {
-    authentication?: GithubComJieWaZiNeuxAllyServerInternalPluginsAuthentication & unknown;
+export type GithubComJieWaZiNeuxBotServerInternalPluginsIntegration = {
+    authentication?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthentication & unknown;
     /**
      * NativePlugins 按目标选择完整原生实现。
      */
     nativePlugins?: {
-        [key: string]: GithubComJieWaZiNeuxAllyServerInternalPluginsNativeReference;
+        [key: string]: GithubComJieWaZiNeuxBotServerInternalPluginsNativeReference;
     };
 };
 
 /**
  * Manifest 保存标准元数据；客户端扩展不覆盖标准组件发现。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsManifest = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsManifest = {
     /**
      * Schema 是固定规范标识。
      */
     $schema?: string;
-    author?: GithubComJieWaZiNeuxAllyServerInternalPluginsAuthor & unknown;
+    author?: GithubComJieWaZiNeuxBotServerInternalPluginsAuthor & unknown;
     /**
      * Description 是能力说明。
      */
@@ -7858,7 +7858,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsManifest = {
 /**
  * NativeComponent 描述原生完整保留的组件；投射路径不宣称支持其执行语义。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeComponent = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeComponent = {
     /**
      * Kind 是原生组件类别。
      */
@@ -7872,15 +7872,15 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeComponent = {
 /**
  * NativeImplementation 是精确目标来源摘要，不表示已经加载。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeImplementation = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeImplementation = {
     /**
      * Components 是保留的原生组成。
      */
-    components?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsNativeComponent>;
+    components?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeComponent>;
     /**
      * Config 是实际原生包所需配置，必填约束只用于选中该目标时。
      */
-    config?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsConfigurationField>;
+    config?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsConfigurationField>;
     /**
      * Digest 是实际原生完整摘要。
      */
@@ -7904,7 +7904,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeImplementation = 
     /**
      * 连接摘要
      */
-    servers?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsNativeServerSummary>;
+    servers?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeServerSummary>;
     /**
      * SkillCount 是已发现技能数量。
      */
@@ -7912,7 +7912,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeImplementation = 
     /**
      * 技能摘要
      */
-    skills?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsNativeSkillSummary>;
+    skills?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeSkillSummary>;
     /**
      * TrustRequired 表示实际原生包包含需要执行信任的组件或授权入口。
      */
@@ -7926,7 +7926,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeImplementation = 
 /**
  * NativeReference 指向同一已核验来源快照中的原生包。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeReference = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeReference = {
     /**
      * Path 是相对完整来源根的目录。
      */
@@ -7936,7 +7936,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeReference = {
 /**
  * 上游连接摘要
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeServerSummary = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeServerSummary = {
     /**
      * 服务源站
      */
@@ -7958,7 +7958,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeServerSummary = {
 /**
  * 上游技能摘要
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeSkillSummary = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsNativeSkillSummary = {
     /**
      * 技能说明
      */
@@ -7976,11 +7976,11 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsNativeSkillSummary = {
 /**
  * 插件包
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsPackage = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPackage = {
     /**
      * 兼容性说明
      */
-    diagnostics?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsDiagnostic>;
+    diagnostics?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsDiagnostic>;
     /**
      * 包格式
      */
@@ -7989,19 +7989,19 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsPackage = {
      * 软件图标
      */
     icon?: string;
-    integration?: GithubComJieWaZiNeuxAllyServerInternalPluginsIntegration & unknown;
-    manifest?: GithubComJieWaZiNeuxAllyServerInternalPluginsManifest & unknown;
+    integration?: GithubComJieWaZiNeuxBotServerInternalPluginsIntegration & unknown;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalPluginsManifest & unknown;
     /**
      * 原生组成
      */
-    nativeComponents?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsNativeComponent>;
+    nativeComponents?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsNativeComponent>;
     /**
      * 目标实现
      */
     nativeImplementations?: {
-        [key: string]: GithubComJieWaZiNeuxAllyServerInternalPluginsNativeImplementation;
+        [key: string]: GithubComJieWaZiNeuxBotServerInternalPluginsNativeImplementation;
     };
-    presentation?: GithubComJieWaZiNeuxAllyServerInternalPluginsPresentation & unknown;
+    presentation?: GithubComJieWaZiNeuxBotServerInternalPluginsPresentation & unknown;
     /**
      * 插件说明
      */
@@ -8017,22 +8017,22 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsPackage = {
     /**
      * 包含连接器
      */
-    servers?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsServer>;
+    servers?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsServer>;
     /**
      * 包含技能
      */
-    skills?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsSkill>;
+    skills?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSkill>;
     /**
      * 来源入口
      */
     sourcePath?: string;
-    upstream?: GithubComJieWaZiNeuxAllyServerInternalPluginsUpstreamSource & unknown;
+    upstream?: GithubComJieWaZiNeuxBotServerInternalPluginsUpstreamSource & unknown;
 };
 
 /**
  * 插件展示资料
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsPresentation = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsPresentation = {
     /**
      * 分类
      */
@@ -8082,7 +8082,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsPresentation = {
 /**
  * Server 保存插件内 MCP 连接定义，不包含本机共享凭据。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsServer = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsServer = {
     /**
      * Args 是保持原序的程序参数。
      */
@@ -8124,7 +8124,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsServer = {
 /**
  * Skill 是插件版本派生的技能，不拥有独立安装事实。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsSkill = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsSkill = {
     /**
      * Description 是技能用途。
      */
@@ -8150,7 +8150,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsSkill = {
 /**
  * Snapshot 保存执行接纳时的插件事实，不包含配置值或凭据。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsSnapshot = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsSnapshot = {
     /**
      * ComponentIDs 是本次交付组件的稳定授权身份。
      */
@@ -8204,7 +8204,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsSnapshot = {
 /**
  * UpstreamSource 保留来源记录明确声明的业务上游资料。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalPluginsUpstreamSource = {
+export type GithubComJieWaZiNeuxBotServerInternalPluginsUpstreamSource = {
     /**
      * 作者
      */
@@ -8230,7 +8230,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalPluginsUpstreamSource = {
 /**
  * Document 表示一份可读取或编辑的标准档案。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalProfileDocument = {
+export type GithubComJieWaZiNeuxBotServerInternalProfileDocument = {
     /**
      * Content 是完整 Markdown 文本。
      */
@@ -8243,7 +8243,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalProfileDocument = {
      * FileName 是展示和导出时使用的固定文件名。
      */
     fileName?: string;
-    kind?: GithubComJieWaZiNeuxAllyServerConstantsProfileDocumentKind & unknown;
+    kind?: GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind & unknown;
     /**
      * UpdatedAt 是文档最近修改时的 Unix 毫秒时间。
      */
@@ -8253,7 +8253,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalProfileDocument = {
 /**
  * DocumentsInput 保存三份标准档案的完整 Markdown 输入。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalProfileDocumentsInput = {
+export type GithubComJieWaZiNeuxBotServerInternalProfileDocumentsInput = {
     /**
      * Identity 是身份与擅长领域文档；nil 表示更新时保留原文。
      */
@@ -8271,7 +8271,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalProfileDocumentsInput = {
 /**
  * Expertise 表示一项带说明的擅长领域。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalProfileExpertise = {
+export type GithubComJieWaZiNeuxBotServerInternalProfileExpertise = {
     /**
      * Description 是对能力范围和价值的具体说明。
      */
@@ -8285,15 +8285,15 @@ export type GithubComJieWaZiNeuxAllyServerInternalProfileExpertise = {
 /**
  * ManualInput 保存手动填写模式下的结构化摘要输入。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalProfileManualInput = {
+export type GithubComJieWaZiNeuxBotServerInternalProfileManualInput = {
     /**
      * Expertise 是需要写入身份档案固定区域的擅长领域。
      */
-    expertise?: Array<GithubComJieWaZiNeuxAllyServerInternalProfileExpertise>;
+    expertise?: Array<GithubComJieWaZiNeuxBotServerInternalProfileExpertise>;
     /**
      * WorkMethods 是需要写入工作方式档案固定区域的具名过程。
      */
-    workMethods?: Array<GithubComJieWaZiNeuxAllyServerInternalProfileWorkMethod>;
+    workMethods?: Array<GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod>;
     /**
      * WorkStyle 是需要写入角色风格档案固定区域的工作风格。
      */
@@ -8303,7 +8303,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalProfileManualInput = {
 /**
  * WorkMethod 表示面向用户展示的一套具名工作过程。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalProfileWorkMethod = {
+export type GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod = {
     /**
      * Name 是工作过程的名称。
      */
@@ -8317,14 +8317,14 @@ export type GithubComJieWaZiNeuxAllyServerInternalProfileWorkMethod = {
 /**
  * CapabilitySet 保存一次探测确认可用的 Runtime 能力。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalRuntimesCapabilitySet = {
+export type GithubComJieWaZiNeuxBotServerInternalRuntimesCapabilitySet = {
     [key: string]: boolean;
 };
 
 /**
  * ActionDeclaration 冻结确定性动作允许使用的宿主能力。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslActionDeclaration = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration = {
     /**
      * AllowedOrigins 限制 HTTP 目标源。
      */
@@ -8390,7 +8390,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslActionDeclaration =
 /**
  * ActionSourceDetail 是从固定版本源码派生的只读操作实现，不读取或执行外部脚本。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslActionSourceDetail = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionSourceDetail = {
     /**
      * ActionID 关联源码实际引用的动作声明，支持顶层常量引用。
      */
@@ -8408,7 +8408,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslActionSourceDetail 
 /**
  * Binding 是持久词法 scope 内的一个值。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslBinding = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslBinding = {
     /**
      * Constant 禁止给绑定重新赋值。
      */
@@ -8417,17 +8417,17 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslBinding = {
      * ReadOnly 禁止修改全局上下文的任意子属性。
      */
     readOnly?: boolean;
-    value?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue & unknown;
+    value?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
 };
 
 /**
  * ControlBranch 是控制结构内的一条静态路径或任务模板。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslControlBranch = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlBranch = {
     /**
      * Hints 是此路径依次执行的控制结构，空数组表示直接通过。
      */
-    hints?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslControlHint>;
+    hints?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlHint>;
     /**
      * Label 是 true、false、body、catch、finally 或任务序号等路径语义。
      */
@@ -8437,11 +8437,11 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslControlBranch = {
 /**
  * ControlHint 是固定 AST 派生的只读控制结构，分支内顺序与原始求值顺序一致。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslControlHint = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlHint = {
     /**
      * Branches 保存互斥分支、独立任务、管道步骤或异常处理块。
      */
-    branches?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslControlBranch>;
+    branches?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlBranch>;
     /**
      * Concurrency 是分组声明或宿主默认的最大并发数，非分组结构省略。
      */
@@ -8462,7 +8462,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslControlHint = {
      * ID 是当前 revision 内确定的控制结构身份，不用作运行实例或跨版本节点身份。
      */
     id?: string;
-    kind?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowControlKind & unknown;
+    kind?: GithubComJieWaZiNeuxBotServerConstantsWorkflowControlKind & unknown;
     /**
      * NodeID 关联已有的可编辑调用模板；逻辑门本身不能编辑。
      */
@@ -8471,13 +8471,13 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslControlHint = {
      * PhaseID 为调用与退出指定展示阶段，复合结构由其子调用确定阶段。
      */
     phaseId?: string;
-    range?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourceRange & unknown;
+    range?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange & unknown;
 };
 
 /**
  * Diagnostic 是可以直接定位创作源码的编译反馈。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslDiagnostic = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslDiagnostic = {
     /**
      * Code 是稳定的机器可读诊断名称。
      */
@@ -8498,7 +8498,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslDiagnostic = {
      * NodeID 在可解析时关联稳定节点身份。
      */
     nodeId?: string;
-    range?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourceRange & unknown;
+    range?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange & unknown;
     /**
      * Severity 区分阻断保存的错误和只读提示。
      */
@@ -8508,7 +8508,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslDiagnostic = {
 /**
  * DisplayEdge 表达阶段声明的展示连线。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslDisplayEdge = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslDisplayEdge = {
     /**
      * From 是起点阶段身份。
      */
@@ -8522,7 +8522,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslDisplayEdge = {
 /**
  * FileResultDefinition 声明文件产出入口，文件清单由节点 Schema 和成功结果派生。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslFileResultDefinition = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslFileResultDefinition = {
     /**
      * Description 是文件交付的简短说明，不复制文件正文。
      */
@@ -8536,7 +8536,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslFileResultDefinitio
 /**
  * Group 描述静态并行和管道调用。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslGroup = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslGroup = {
     /**
      * ID 是分组的稳定身份。
      */
@@ -8545,13 +8545,13 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslGroup = {
      * Kind 区分并行与逐项管道。
      */
     kind?: string;
-    range?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourceRange & unknown;
+    range?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange & unknown;
 };
 
 /**
  * Limits 保存创作声明的运行预算。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslLimits = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits = {
     /**
      * Concurrency 限制运行外部调用的并发数。
      */
@@ -8573,57 +8573,57 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslLimits = {
 /**
  * Manifest 是只读画布与详情使用的源码投影。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslManifest = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest = {
     /**
      * ControlHints 保留源码的控制结构与调用身份，不参与调度或成为第二份编辑数据。
      */
-    controlHints?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslControlHint>;
+    controlHints?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlHint>;
     /**
      * DisplayEdges 是阶段间展示关系。
      */
-    displayEdges?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslDisplayEdge>;
+    displayEdges?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslDisplayEdge>;
     /**
      * Groups 是并行或管道分组模板。
      */
-    groups?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslGroup>;
+    groups?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslGroup>;
     /**
      * InputPropertyOrder 按输入 Schema 的 JSON Pointer 保留源码属性声明顺序，仅用于只读表单布局。
      */
     inputPropertyOrder?: {
         [key: string]: Array<string>;
     };
-    meta?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslMeta & unknown;
+    meta?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslMeta & unknown;
     /**
      * Nodes 是按源码位置排列的调用模板。
      */
-    nodes?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslNode>;
+    nodes?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslNode>;
 };
 
 /**
  * Meta 是从纯字面量解析的原生工作流声明。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslMeta = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslMeta = {
     /**
      * Actions 是源码允许调用的确定性动作声明。
      */
-    actions?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslActionDeclaration>;
+    actions?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration>;
     /**
      * Description 描述工作流的业务结果。
      */
     description?: string;
-    inputPage?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPageDefinition & unknown;
+    inputPage?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition & unknown;
     /**
      * InputSchema 校验运行参数。
      */
     inputSchema?: {
         [key: string]: unknown;
     };
-    limits?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslLimits & unknown;
+    limits?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits & unknown;
     /**
      * NodeResultFiles 声明以真实文件交付的伙伴产出，复用宿主文件查看器。
      */
     nodeResultFiles?: {
-        [key: string]: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslFileResultDefinition;
+        [key: string]: GithubComJieWaZiNeuxBotServerInternalWorkflowDslFileResultDefinition;
     };
     /**
      * NodeResultPageOmissions 记录逐个评估伙伴输出后无需展示页面的具体理由。
@@ -8635,7 +8635,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslMeta = {
      * NodeResultPages 按稳定节点身份声明需要向用户展示的产出页面。
      */
     nodeResultPages?: {
-        [key: string]: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPageDefinition;
+        [key: string]: GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition;
     };
     /**
      * OutputSchema 校验最终返回值。
@@ -8646,7 +8646,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslMeta = {
     /**
      * Phases 是稳定身份的展示阶段。
      */
-    phases?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPhase>;
+    phases?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslPhase>;
     /**
      * SDK 是必须与宿主匹配的声明版本。
      */
@@ -8664,7 +8664,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslMeta = {
 /**
  * Node 是一个稳定的源码调用模板。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslNode = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslNode = {
     /**
      * GroupID 是所属并行或管道模板。
      */
@@ -8699,13 +8699,13 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslNode = {
      * PromptTemplate 保留 prompt 的源码文本。
      */
     promptTemplate?: string;
-    range?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourceRange & unknown;
+    range?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange & unknown;
 };
 
 /**
  * PageDefinition 冻结创作时确定的组件目录和原生 json-render Spec。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPageDefinition = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition = {
     /**
      * CatalogDigest 冻结编译时的组件属性契约，防止同版本目录漂移。
      */
@@ -8737,7 +8737,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPageDefinition = {
 /**
  * Phase 是源码声明的阶段身份与显示关系。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPhase = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslPhase = {
     /**
      * CanExit 表示此阶段允许流程结束。
      */
@@ -8763,7 +8763,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPhase = {
 /**
  * PrimitiveContract 是创作声明、编译与宿主绑定共同使用的契约项。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPrimitiveContract = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslPrimitiveContract = {
     /**
      * AwaitRequired 表示调用必须等待结果。
      */
@@ -8785,7 +8785,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPrimitiveContract =
 /**
  * SaveReceipt 证明一份源码已经成为完整不可变版本。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSaveReceipt = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt = {
     /**
      * DefinitionID 是工作流稳定身份。
      */
@@ -8815,7 +8815,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSaveReceipt = {
 /**
  * SourceEdit 把用户表单修改定位到权威源码，不建立第二份可执行图数据。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourceEdit = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceEdit = {
     /**
      * Fields 是表单实际修改的字段，未提交的表达式及注释保持原样。
      */
@@ -8839,7 +8839,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourceEdit = {
 /**
  * SourcePosition 同时保留 UTF-8 字节位置和编辑器的 UTF-16 行列。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourcePosition = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition = {
     /**
      * Column 是编辑器的一基 UTF-16 列号。
      */
@@ -8857,20 +8857,20 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourcePosition = {
 /**
  * SourceRange 指向原始源码中的半开范围。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourceRange = {
-    end?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourcePosition & unknown;
-    start?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSourcePosition & unknown;
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange = {
+    end?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition & unknown;
+    start?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition & unknown;
 };
 
 /**
  * Value 保留 JSON 与受限 continuation 的类型，用户 JSON 不能伪造内部 handle。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue = {
     /**
      * Captures 是按值复制的词法绑定，不保存 JavaScript 闭包。
      */
     captures?: {
-        [key: string]: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslBinding;
+        [key: string]: GithubComJieWaZiNeuxBotServerInternalWorkflowDslBinding;
     };
     /**
      * Data 是 JSON 字面数据或受限内部标量。
@@ -8879,7 +8879,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue = {
     /**
      * Items 是任务构造数组，普通 JSON 数组仍存放在 Data。
      */
-    items?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue>;
+    items?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue>;
     /**
      * Kind 区分普通 JSON、任务程序、子运行 handle 和有限纯内置值。
      */
@@ -8893,7 +8893,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue = {
 /**
  * Upload 是上传后可直接放入文件参数的引用及真实元数据。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowFilesUpload = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowFilesUpload = {
     /**
      * Digest 是原件的 SHA-256 摘要。
      */
@@ -8915,8 +8915,8 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowFilesUpload = {
 /**
  * Binding 保存一个工作流输入字段的唯一来源。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowInputBinding = {
-    source?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowInputSource & unknown;
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowInputBinding = {
+    source?: GithubComJieWaZiNeuxBotServerConstantsWorkflowInputSource & unknown;
     /**
      * Value 是固定来源的原始 JSON 值，允许显式 null。
      */
@@ -8926,7 +8926,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowInputBinding = {
 /**
  * Contract 是从权威工作流版本与任务来源派生的调用契约。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowInputContract = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowInputContract = {
     /**
      * Example 是仅包含开放字段的示例对象。
      */
@@ -8940,7 +8940,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowInputContract = {
     /**
      * Fields 保留全部参数的来源、类型与说明。
      */
-    fields?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowInputField>;
+    fields?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowInputField>;
     /**
      * Schema 只包含调用方可提供的参数。
      */
@@ -8952,7 +8952,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowInputContract = {
 /**
  * Field 是一个参数的只读展示与调用说明。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkflowInputField = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowInputField = {
     /**
      * Description 说明参数用途与格式。
      */
@@ -8971,7 +8971,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowInputField = {
     schema?: {
         [key: string]: unknown;
     };
-    source?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowInputSource & unknown;
+    source?: GithubComJieWaZiNeuxBotServerConstantsWorkflowInputSource & unknown;
     /**
      * Title 是面向用户的参数名称。
      */
@@ -8985,7 +8985,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkflowInputField = {
 /**
  * Attachment 是一份等待后端权威校验的本地文件路径。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkinputAttachment = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkinputAttachment = {
     /**
      * SourcePath 是桌面文件选择器返回的本地文件路径。
      */
@@ -8995,7 +8995,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkinputAttachment = {
 /**
  * CodeReference 是提交前等待路径和可选行号校验的内容引用。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkinputCodeReference = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkinputCodeReference = {
     /**
      * Content 是发送时冻结的选中文本，整文件引用为空。
      */
@@ -9017,8 +9017,8 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkinputCodeReference = {
 /**
  * ChangeEvent 表示一个资源观察订阅的状态或变化。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesChangeEvent = {
-    resource?: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesResource & unknown;
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesChangeEvent = {
+    resource?: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesResource & unknown;
     /**
      * Sequence 是该实例内递增的交付序号。
      */
@@ -9036,11 +9036,11 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesChangeEvent = {
 /**
  * ChatFiles 是会话文件列表及用户隐藏记录。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesChatFiles = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesChatFiles = {
     /**
      * Generated 是受管生成附件。
      */
-    generated?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesFileMatch>;
+    generated?: Array<GithubComJieWaZiNeuxBotServerInternalWorkspacefilesFileMatch>;
     /**
      * RemovedPaths 是应在会话中隐藏的相对路径。
      */
@@ -9050,7 +9050,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesChatFiles = {
 /**
  * CheckoutConflict 描述可能被分支切换覆盖的本地文件。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesCheckoutConflict = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesCheckoutConflict = {
     /**
      * AddedLines 是本地新增行数。
      */
@@ -9068,7 +9068,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesCheckoutConflict
 /**
  * CheckoutPreview 是分支切换前的冲突预检。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesCheckoutPreview = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesCheckoutPreview = {
     /**
      * CanCheckout 表明当前快照可以直接切换。
      */
@@ -9076,13 +9076,13 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesCheckoutPreview 
     /**
      * Conflicts 是阻止直接切换的本地改动。
      */
-    conflicts?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesCheckoutConflict>;
+    conflicts?: Array<GithubComJieWaZiNeuxBotServerInternalWorkspacefilesCheckoutConflict>;
 };
 
 /**
  * Entry 是一个目录条目。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesEntry = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesEntry = {
     /**
      * IsDirectory 表明条目是否为目录。
      */
@@ -9104,7 +9104,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesEntry = {
 /**
  * FileMatch 是搜索返回的文件身份。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesFileMatch = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesFileMatch = {
     /**
      * Name 是文件展示名称。
      */
@@ -9122,7 +9122,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesFileMatch = {
 /**
  * GitBranch 描述本地或远程分支。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitBranch = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesGitBranch = {
     /**
      * IsCurrent 标识当前检出分支。
      */
@@ -9140,11 +9140,11 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitBranch = {
 /**
  * GitBranches 返回分支选择器所需的仓库信息。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitBranches = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesGitBranches = {
     /**
      * Branches 是可选择分支。
      */
-    branches?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitBranch>;
+    branches?: Array<GithubComJieWaZiNeuxBotServerInternalWorkspacefilesGitBranch>;
     /**
      * GitRoot 是选中仓库的真实根目录。
      */
@@ -9158,7 +9158,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitBranches = {
 /**
  * GitEntry 保留暂存与未暂存的独立状态。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitEntry = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesGitEntry = {
     /**
      * LineCountUnavailable 表明二进制等条目不具有可靠行数。
      */
@@ -9192,7 +9192,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitEntry = {
 /**
  * GitLogEntry 描述一条提交日志。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitLogEntry = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesGitLogEntry = {
     /**
      * Author 是提交作者。
      */
@@ -9222,7 +9222,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitLogEntry = {
 /**
  * GitStatus 是选中仓库的工作树快照。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitStatus = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesGitStatus = {
     /**
      * Branch 是当前分支或分离头说明。
      */
@@ -9230,7 +9230,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitStatus = {
     /**
      * Entries 是逐路径变更状态。
      */
-    entries?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitEntry>;
+    entries?: Array<GithubComJieWaZiNeuxBotServerInternalWorkspacefilesGitEntry>;
     /**
      * IsRepo 表明授权目录内存在仓库。
      */
@@ -9248,7 +9248,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitStatus = {
 /**
  * Resolution 是工作区文件引用的解析结果。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesResolution = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesResolution = {
     /**
      * BaseDirectory 是范围内解析基准目录。
      */
@@ -9274,7 +9274,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesResolution = {
 /**
  * Resource 描述完整文件及普通外部修改的版本。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesResource = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesResource = {
     /**
      * MediaType 是扩展名对应的内容类型。
      */
@@ -9300,7 +9300,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesResource = {
 /**
  * Scope 是绑定认证主体的临时文件范围。
  */
-export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesScope = {
+export type GithubComJieWaZiNeuxBotServerInternalWorkspacefilesScope = {
     /**
      * ID 是重启后失效的不透明范围标识。
      */
@@ -9314,7 +9314,7 @@ export type GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesScope = {
 /**
  * AutomaticTaskCounts 是当前查询范围全部任务按触发和启停分类的数量。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesControllersAutomaticTaskCounts = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesControllersAutomaticTaskCounts = {
     /**
      * API 是采用本机 API 触发的任务数。
      */
@@ -9336,7 +9336,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesControllersAutomaticTaskCo
 /**
  * WorkflowNodeCount 是完整运行事实的有界节点状态汇总。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesControllersWorkflowNodeCount = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesControllersWorkflowNodeCount = {
     /**
      * Count 是这一状态下的实际实例数量。
      */
@@ -9349,14 +9349,14 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesControllersWorkflowNodeCou
      * NodeID 是源码职责身份。
      */
     nodeId?: string;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowStepStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
 };
 
 /**
  * AIAccount 保存可由智能体默认配置及聊天选择的受管账号。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccount = {
-    authMode?: GithubComJieWaZiNeuxAllyServerConstantsAccountAuthMode & unknown;
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount = {
+    authMode?: GithubComJieWaZiNeuxBotServerConstantsAccountAuthMode & unknown;
     /**
      * ClaudeModelRoles 保存 Claude Code 各内置模型角色对应的实际请求模型 ID。
      */
@@ -9382,7 +9382,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccount = {
     /**
      * Endpoints 保存账号唯一的请求协议及服务地址；数组形式兼容已有存储。
      */
-    endpoints?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccountEndpoint>;
+    endpoints?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint>;
     /**
      * HasCredential 表示已保存 API Key 或完整订阅令牌。
      */
@@ -9434,24 +9434,24 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccount = {
 /**
  * AIAccountEndpoint 是同一账号原生支持的一种协议入口。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccountEndpoint = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint = {
     /**
      * 服务地址
      */
     baseUrl: string;
-    protocol: GithubComJieWaZiNeuxAllyServerConstantsAccountProtocol & unknown;
+    protocol: GithubComJieWaZiNeuxBotServerConstantsAccountProtocol & unknown;
 };
 
 /**
  * AutomaticRun 保存一次机会的不可变输入和标准 Chat 接纳关系。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticRun = {
-    admission?: GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunAdmission & unknown;
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticRun = {
+    admission?: GithubComJieWaZiNeuxBotServerConstantsAutomaticRunAdmission & unknown;
     /**
      * ChatID 是与首次发送身份稳定派生的关联 Chat 标识。
      */
     chatId?: string;
-    configuration?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfiguration & unknown;
+    configuration?: GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskConfiguration & unknown;
     /**
      * CreatedAt 是机会登记的 Unix 毫秒时间。
      */
@@ -9472,7 +9472,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticRun = {
      * ScheduledAt 是本次定时机会的 UTC 时间，其他来源为空。
      */
     scheduledAt?: number;
-    source?: GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunSource & unknown;
+    source?: GithubComJieWaZiNeuxBotServerConstantsAutomaticRunSource & unknown;
     /**
      * TaskID 是运行所属自动任务。
      */
@@ -9501,7 +9501,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticRun = {
     workflowRunId?: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTask = GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfiguration & {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTask = GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskConfiguration & {
     /**
      * ActiveRunID 是当前占用自动运行槽的运行标识。
      */
@@ -9543,7 +9543,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTask = Gith
 /**
  * AutomaticTaskConfiguration 是用户可编辑并在每次接纳时冻结的执行配置。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfiguration = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskConfiguration = {
     /**
      * AccountID 是选用的受管账号；保存时将空值规范化为 system，固定使用智能体原生登录。
      */
@@ -9564,11 +9564,11 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfigu
      * Instruction 是每次执行发送给伙伴的完整工作指令。
      */
     instruction?: string;
-    knowledge?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsKnowledgeMaintenanceAuthorization & unknown;
+    knowledge?: GithubComJieWaZiNeuxBotServerRepositoriesModelsKnowledgeMaintenanceAuthorization & unknown;
     /**
      * MemberConfigs 是团队成员的任务专属覆盖；未列出的成员沿用运行时团队设置。
      */
-    memberConfigs?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskMemberConfiguration>;
+    memberConfigs?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskMemberConfiguration>;
     /**
      * Model 是执行使用的模型，空值使用智能体默认值。
      */
@@ -9577,7 +9577,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfigu
      * Name 是自动任务的用户可见名称。
      */
     name: string;
-    permissionLevel?: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    permissionLevel?: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * ProjectID 是所属伙伴的项目，使用临时目录时为空。
      */
@@ -9590,9 +9590,9 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfigu
      * RuntimeID 是执行时使用的智能体环境标识。
      */
     runtimeId?: string;
-    schedule?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskSchedule & unknown;
-    targetKind?: GithubComJieWaZiNeuxAllyServerConstantsAutomaticTaskTargetKind & unknown;
-    trigger?: GithubComJieWaZiNeuxAllyServerConstantsAutomaticTaskTrigger & unknown;
+    schedule?: GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskSchedule & unknown;
+    targetKind?: GithubComJieWaZiNeuxBotServerConstantsAutomaticTaskTargetKind & unknown;
+    trigger?: GithubComJieWaZiNeuxBotServerConstantsAutomaticTaskTrigger & unknown;
     /**
      * WorkflowID 是工作流目标，其他目标必须为空。
      */
@@ -9601,7 +9601,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfigu
      * WorkflowInputBindings 为每个顶层参数保存唯一来源与可选固定值。
      */
     workflowInputBindings?: {
-        [key: string]: GithubComJieWaZiNeuxAllyServerInternalWorkflowInputBinding;
+        [key: string]: GithubComJieWaZiNeuxBotServerInternalWorkflowInputBinding;
     };
     /**
      * WorkflowInputRevisionID 保存参数来源配置依据的不可变工作流版本。
@@ -9611,7 +9611,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfigu
      * WorkflowRevisionID 是 pinned 策略下指定的不可变版本。
      */
     workflowRevisionId?: string;
-    workflowRevisionPolicy?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowRevisionPolicy & unknown;
+    workflowRevisionPolicy?: GithubComJieWaZiNeuxBotServerConstantsWorkflowRevisionPolicy & unknown;
     /**
      * WorkingDirectory 是用户授权的本地目录，选择项目时为空。
      */
@@ -9625,7 +9625,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfigu
 /**
  * AutomaticTaskMemberConfiguration 保存一位成员在此自动任务中的完整覆盖配置。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskMemberConfiguration = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskMemberConfiguration = {
     /**
      * AccountID 是此成员选用的账号。
      */
@@ -9634,7 +9634,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskMemberC
      * Model 是此成员选用的模型，空值使用智能体默认模型。
      */
     model?: string;
-    permissionLevel?: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    permissionLevel?: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * Reasoning 是此成员选用的推理强度，空值使用默认强度。
      */
@@ -9652,7 +9652,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskMemberC
 /**
  * AutomaticTaskSchedule 保存可预览与持久化的当地定时规则。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskSchedule = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskSchedule = {
     /**
      * Cron 是仅包含分、时、日、月、周的自定义表达式。
      */
@@ -9665,7 +9665,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskSchedul
      * Hour 是每天、每周或每月规则的小时。
      */
     hour?: number;
-    kind?: GithubComJieWaZiNeuxAllyServerConstantsAutomaticScheduleKind & unknown;
+    kind?: GithubComJieWaZiNeuxBotServerConstantsAutomaticScheduleKind & unknown;
     /**
      * Minute 是每小时或固定时间规则的分钟。
      */
@@ -9687,7 +9687,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskSchedul
 /**
  * Channel 是用户配置并长期复用的团队定义。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannel = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChannel = {
     /**
      * CreatedAt 是团队建立时的 Unix 毫秒时间。
      */
@@ -9717,7 +9717,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannel = {
 /**
  * ChannelEvent 是团队主时间线和进度面板共用的持久事件游标。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelEvent = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelEvent = {
     /**
      * ChannelID 是事件所属团队标识。
      */
@@ -9730,22 +9730,22 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelEvent = {
      * ID 是 32 位无连字符 UUID，也是事件流的稳定游标。
      */
     id?: string;
-    payload?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelEventPayload & unknown;
+    payload?: GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelEventPayload & unknown;
     /**
      * ThreadID 是事件所属团队对话标识。
      */
     threadId?: string;
-    type?: GithubComJieWaZiNeuxAllyServerConstantsChannelEventType & unknown;
+    type?: GithubComJieWaZiNeuxBotServerConstantsChannelEventType & unknown;
 };
 
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelEventPayload = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelEventPayload = {
     [key: string]: unknown;
 };
 
 /**
  * ChannelTask 是团队负责人动态维护并派发到成员 Chat 的任务板条目。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelTask = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask = {
     /**
      * AssigneeWakerID 是当前执行伙伴标识，重试前允许由负责人调整。
      */
@@ -9806,7 +9806,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelTask = {
      * StartedAt 是当前或最近一次尝试开始时的 Unix 毫秒时间。
      */
     startedAt?: number;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsChannelTaskStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus & unknown;
     /**
      * Subject 是任务板展示的简短主题。
      */
@@ -9824,8 +9824,8 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelTask = {
 /**
  * ChannelThread 是一个持续复用成员 Chat 上下文的团队对话。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThread = {
-    activityState?: GithubComJieWaZiNeuxAllyServerConstantsChannelActivityState & unknown;
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThread = {
+    activityState?: GithubComJieWaZiNeuxBotServerConstantsChannelActivityState & unknown;
     /**
      * AdditionalWorkingDirectories 是首发时冻结并授权给全部成员 Chat 的真实目录。
      */
@@ -9895,7 +9895,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThread = {
 /**
  * ChannelThreadMember 保存一位团队成员在团队对话中的固定 Chat 映射和可调执行配置。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThreadMember = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThreadMember = {
     /**
      * AccountID 是该成员后续新执行使用的账号；system 表示原生登录。
      */
@@ -9923,7 +9923,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThreadMember 
     /**
      * Expertise 是首次发送时冻结并裁剪的成员专长摘要。
      */
-    expertise?: Array<GithubComJieWaZiNeuxAllyServerInternalProfileExpertise>;
+    expertise?: Array<GithubComJieWaZiNeuxBotServerInternalProfileExpertise>;
     /**
      * IsLead 表示该成员是否为首发时冻结的唯一团队负责人。
      */
@@ -9932,7 +9932,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThreadMember 
      * Model 是该成员后续新执行使用的模型。
      */
     model?: string;
-    permissionLevel?: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    permissionLevel?: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * Position 是成员在首发团队快照中的稳定顺序。
      */
@@ -9966,7 +9966,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThreadMember 
 /**
  * Chat 保存可由权威 JSONL 重建的对话查询索引。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChat = {
     /**
      * ActiveExecutionID 是当前活跃执行标识，没有活跃执行时为空。
      */
@@ -10007,12 +10007,12 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat = {
      * LastEndedExecutionID 是最近真实结束回合的身份，可从 JSONL 重建。
      */
     lastEndedExecutionId?: string;
-    lastEndedExecutionStatus?: GithubComJieWaZiNeuxAllyServerConstantsExecutionStatus & unknown;
+    lastEndedExecutionStatus?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
     /**
      * LastModel 是最近一次执行选择的模型标识。
      */
     lastModel?: string;
-    lastPermissionLevel?: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    lastPermissionLevel?: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * LastReasoning 是最近一次执行或分叉边界冻结的推理强度。
      */
@@ -10028,11 +10028,11 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat = {
     /**
      * PendingApprovals 是按到达顺序保存的安全未决审批查询投影。
      */
-    pendingApprovals?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval>;
+    pendingApprovals?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval>;
     /**
      * PendingElicitations 是按到达顺序保存的安全未决结构化输入查询投影。
      */
-    pendingElicitations?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingElicitation>;
+    pendingElicitations?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation>;
     /**
      * ProjectID 是首次发送时选择的项目标识，临时文件夹对话为空。
      */
@@ -10072,7 +10072,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat = {
  *
  * 历史执行事实只写入 Chat JSONL；该结构不注册为 GORM 表，也不形成 SQLite 历史投影。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsExecution = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution = {
     /**
      * AccountID 是本次冻结的账号标识；空值使用智能体默认配置。
      */
@@ -10109,11 +10109,11 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsExecution = {
      * ParentExecutionID 是触发本次执行的父执行标识，普通用户回合为空。
      */
     parentExecutionId?: string;
-    permissionLevel?: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    permissionLevel?: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * PluginResources 是接纳时冻结的插件身份、版本与配置修订。
      */
-    pluginResources?: Array<GithubComJieWaZiNeuxAllyServerInternalPluginsSnapshot>;
+    pluginResources?: Array<GithubComJieWaZiNeuxBotServerInternalPluginsSnapshot>;
     /**
      * Reasoning 是本次执行选择的推理强度标识。
      */
@@ -10126,7 +10126,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsExecution = {
      * RuntimeID 是本次执行选择的开放 Runtime 标识。
      */
     runtimeId?: string;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsExecutionStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
     /**
      * SubmissionHash 是规范化输入和冻结配置的摘要，拒绝同键异内容。
      */
@@ -10152,7 +10152,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsExecution = {
 /**
  * IMBinding 是聊天授权及投递目标，不复制内部对话历史。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImBinding = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImBinding = {
     /**
      * ActiveLinkID 是该聊天共同使用的当前对话指针，空值表示下一条任务新建。
      */
@@ -10185,12 +10185,12 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImBinding = {
      * ID 同时是模型可发现的投递目标身份。
      */
     id?: string;
-    kind?: GithubComJieWaZiNeuxAllyServerConstantsImChatKind & unknown;
+    kind?: GithubComJieWaZiNeuxBotServerConstantsImChatKind & unknown;
     /**
      * Name 是显示及模型发现使用的聊天名称。
      */
     name?: string;
-    options?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsImExecutionOptions & unknown;
+    options?: GithubComJieWaZiNeuxBotServerRepositoriesModelsImExecutionOptions & unknown;
     /**
      * ProjectID 是由桌面批准的项目，使用受管临时目录时为空。
      */
@@ -10199,7 +10199,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImBinding = {
      * Revision 是授权和指针的并发版本。
      */
     revision?: number;
-    state?: GithubComJieWaZiNeuxAllyServerConstantsImBindingState & unknown;
+    state?: GithubComJieWaZiNeuxBotServerConstantsImBindingState & unknown;
     /**
      * UpdatedAt 是最近授权或上下文变化的时间。
      */
@@ -10217,7 +10217,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImBinding = {
 /**
  * IMConnection 保存一份平台连接及后台收取游标，不公开登录凭据。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConnection = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImConnection = {
     /**
      * AppID 是飞书应用或微信、企业微信机器人标识。
      */
@@ -10254,12 +10254,12 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConnection = {
      * OwnerID 是扫码所有者的平台身份，用于单聊及群控制授权。
      */
     ownerId?: string;
-    platform?: GithubComJieWaZiNeuxAllyServerConstantsImPlatform & unknown;
+    platform?: GithubComJieWaZiNeuxBotServerConstantsImPlatform & unknown;
     /**
      * Revision 防止编辑及登录回调覆盖较新连接配置。
      */
     revision?: number;
-    state?: GithubComJieWaZiNeuxAllyServerConstantsImConnectionState & unknown;
+    state?: GithubComJieWaZiNeuxBotServerConstantsImConnectionState & unknown;
     /**
      * UpdatedAt 是最近修改时间。
      */
@@ -10269,7 +10269,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConnection = {
 /**
  * IMConnectionDependencies 是删除前读取且在删除事务中再次核验的真实影响清单。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConnectionDependencies = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImConnectionDependencies = {
     /**
      * Digest 绑定用户已确认的依赖清单，引用变化后旧确认失效。
      */
@@ -10281,13 +10281,13 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConnectionDependen
     /**
      * Workflows 仅包含当前版本及活跃运行的依赖，不包含纯历史引用。
      */
-    workflows?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsImWorkflowDependency>;
+    workflows?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsImWorkflowDependency>;
 };
 
 /**
  * IMConversationLink 保存一段 IM 对话与标准 Chat 或 Team Thread 的稳定关系。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConversationLink = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImConversationLink = {
     /**
      * BindingID 限定可查询和继续的聊天授权范围。
      */
@@ -10321,7 +10321,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConversationLink =
 /**
  * IMExecutionOptions 保存聊天新建时冻结的执行选择。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImExecutionOptions = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImExecutionOptions = {
     /**
      * AccountID 是选择的账号，空值沿用智能体设置。
      */
@@ -10330,7 +10330,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImExecutionOptions =
      * Model 是选择的模型。
      */
     model?: string;
-    permissionLevel?: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    permissionLevel?: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * Reasoning 是选择的推理强度。
      */
@@ -10344,7 +10344,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImExecutionOptions =
 /**
  * IMWorkflowDependency 描述当前工作流或活跃运行对一个连接内聊天的引用。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImWorkflowDependency = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsImWorkflowDependency = {
     /**
      * DefinitionID 是受影响的工作流身份。
      */
@@ -10374,22 +10374,22 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsImWorkflowDependency
 /**
  * IntegrationGrant 保存同类能力集合与明确资源集合，不维护逐资源权限矩阵。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationGrant = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsIntegrationGrant = {
     /**
      * Capabilities 应用于本组全部资源。
      */
-    capabilities?: Array<GithubComJieWaZiNeuxAllyServerConstantsIntegrationCapability>;
+    capabilities?: Array<GithubComJieWaZiNeuxBotServerConstantsIntegrationCapability>;
     /**
      * ResourceIDs 是保存时明确展开的资源身份，空集不授予访问。
      */
     resourceIds?: Array<string>;
-    resourceKind?: GithubComJieWaZiNeuxAllyServerConstantsIntegrationResourceKind & unknown;
+    resourceKind?: GithubComJieWaZiNeuxBotServerConstantsIntegrationResourceKind & unknown;
 };
 
 /**
  * IntegrationKey 是应用颁发的稳定集成主体，修改授权不会更换凭据。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationKey = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsIntegrationKey = {
     /**
      * CreatedAt 是首次签发的 Unix 毫秒时间。
      */
@@ -10417,7 +10417,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationKey = {
     /**
      * Grants 是每类最多一组的明确资源与能力。
      */
-    grants?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationGrant>;
+    grants?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsIntegrationGrant>;
     /**
      * ID 是密钥的稳定调用主体。
      */
@@ -10447,7 +10447,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationKey = {
 /**
  * KnowledgeMaintenanceAuthorization 记录用户明确允许的精确维护范围。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsKnowledgeMaintenanceAuthorization = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsKnowledgeMaintenanceAuthorization = {
     /**
      * 附件序号
      */
@@ -10477,7 +10477,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsKnowledgeMaintenance
 /**
  * KnowledgeRemoteMount 只保存用户明确指定的远端库入口，不枚举 Key 的全部可见库。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsKnowledgeRemoteMount = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsKnowledgeRemoteMount = {
     /**
      * ConnectionID 固定实际连接与凭据身份。
      */
@@ -10499,7 +10499,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsKnowledgeRemoteMount
 /**
  * LibraryEmbeddingProfile 是按库隔离的唯一嵌入服务配置，不继承记忆配置。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsLibraryEmbeddingProfile = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsLibraryEmbeddingProfile = {
     /**
      * BaseURL 是OpenAI兼容嵌入服务地址。
      */
@@ -10533,7 +10533,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsLibraryEmbeddingProf
 /**
  * LibraryExecutionDefaults 是本机知识库唯一的执行选择偏好，不属于通用知识核心配置。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsLibraryExecutionDefaults = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsLibraryExecutionDefaults = {
     /**
      * AccountID 是既有账号引用，不包含认证资料。
      */
@@ -10563,7 +10563,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsLibraryExecutionDefa
 /**
  * MCPToolSummary 保存连接测试发现的有界工具展示信息。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsMcpToolSummary = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsMcpToolSummary = {
     /**
      * Description 是 MCP 服务声明的工具简短说明。
      */
@@ -10577,7 +10577,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsMcpToolSummary = {
 /**
  * NotificationItem 是由原领域事实派生的安全通知，不注册持久化表。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationItem = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem = {
     /**
      * 关注分桶
      */
@@ -10594,7 +10594,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationItem = {
      * 提示已收起
      */
     dismissed?: boolean;
-    executor?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardExecutor & unknown;
+    executor?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardExecutor & unknown;
     /**
      * 原交付失败
      */
@@ -10603,12 +10603,12 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationItem = {
      * 通知标识
      */
     id?: string;
-    kind?: GithubComJieWaZiNeuxAllyServerConstantsNotificationKind & unknown;
+    kind?: GithubComJieWaZiNeuxBotServerConstantsNotificationKind & unknown;
     /**
      * 原始来源
      */
     source?: string;
-    target?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationTarget & unknown;
+    target?: GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationTarget & unknown;
     /**
      * 安全标题
      */
@@ -10622,7 +10622,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationItem = {
 /**
  * NotificationTarget 是原业务入口的有判别定位，不保存任意可执行地址。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationTarget = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationTarget = {
     /**
      * 自动运行
      */
@@ -10643,7 +10643,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationTarget =
      * 提交围栏
      */
     fence?: number;
-    kind?: GithubComJieWaZiNeuxAllyServerConstantsNotificationKind & unknown;
+    kind?: GithubComJieWaZiNeuxBotServerConstantsNotificationKind & unknown;
     /**
      * 精确消息
      */
@@ -10652,8 +10652,8 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationTarget =
      * 容器标识
      */
     ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxAllyServerConstantsWorkResultOwnerKind & unknown;
-    reference?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReference & unknown;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
+    reference?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference & unknown;
     /**
      * 原请求标识
      */
@@ -10683,9 +10683,9 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationTarget =
 /**
  * PendingApproval 保存 Chat 查询投影中的安全未决审批。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval = {
     /**
-     * ApprovalID 是 NeuxAlly 生成的稳定交互标识。
+     * ApprovalID 是 NeuxBot 生成的稳定交互标识。
      */
     approvalId?: string;
     /**
@@ -10699,11 +10699,11 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval = {
     /**
      * Locations 是 ACP Agent 提供的安全文件位置。
      */
-    locations?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApprovalLocation>;
+    locations?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApprovalLocation>;
     /**
      * Options 是 ACP Agent 允许用户选择的全部有效选项。
      */
-    options?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApprovalOption>;
+    options?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApprovalOption>;
     /**
      * RequestedAt 是请求进入权威日志的 Unix 毫秒时间。
      */
@@ -10729,7 +10729,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval = {
 /**
  * PendingApprovalLocation 保存未决审批的一处安全文件位置。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApprovalLocation = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApprovalLocation = {
     /**
      * Line 是 ACP 提供的可选无符号行号；为空表示未提供。
      */
@@ -10743,7 +10743,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApprovalLocat
 /**
  * PendingApprovalOption 保存未决审批的一项安全 ACP 选择。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApprovalOption = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApprovalOption = {
     /**
      * ID 是 ACP 选项标识。
      */
@@ -10761,13 +10761,13 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApprovalOptio
 /**
  * PendingElicitation 保存 Chat 查询投影中的安全未决结构化输入。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingElicitation = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation = {
     /**
      * AllowSkip 明确 CLI 问答是否允许跳过；原生请求沿用默认行为。
      */
     allowSkip?: boolean;
     /**
-     * ElicitationID 是 NeuxAlly 生成的稳定交互标识。
+     * ElicitationID 是 NeuxBot 生成的稳定交互标识。
      */
     elicitationId?: string;
     /**
@@ -10800,7 +10800,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingElicitation =
 /**
  * Plugin 保存稳定的本机插件资源与归属，展示名不参与身份判断。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPlugin = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPlugin = {
     /**
      * CreatedAt 是创建时间的 Unix 毫秒值。
      */
@@ -10834,7 +10834,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPlugin = {
 /**
  * PluginVersion 保存完整不可变内容和由其解析的组件快照。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPluginVersion = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion = {
     /**
      * CreatedAt 是版本登记时间的 Unix 毫秒值。
      */
@@ -10847,7 +10847,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPluginVersion = {
      * ID 是版本标识。
      */
     id?: string;
-    package?: GithubComJieWaZiNeuxAllyServerInternalPluginsPackage & unknown;
+    package?: GithubComJieWaZiNeuxBotServerInternalPluginsPackage & unknown;
     /**
      * PluginID 是所属资源。
      */
@@ -10871,7 +10871,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsPluginVersion = {
 /**
  * RolePreset 保存创建伙伴时可复用的一次性初始化内容。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsRolePreset = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsRolePreset = {
     /**
      * CreatedAt 是记录创建时的 Unix 毫秒时间。
      */
@@ -10887,7 +10887,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsRolePreset = {
     /**
      * Expertise 保存从身份档案解析出的擅长领域展示投影。
      */
-    expertise?: Array<GithubComJieWaZiNeuxAllyServerInternalProfileExpertise>;
+    expertise?: Array<GithubComJieWaZiNeuxBotServerInternalProfileExpertise>;
     /**
      * ID 是 32 位无连字符 UUID。
      */
@@ -10896,7 +10896,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsRolePreset = {
      * RoleName 是角色名称并同时作为预设展示名称。
      */
     roleName?: string;
-    source?: GithubComJieWaZiNeuxAllyServerConstantsRolePresetSource & unknown;
+    source?: GithubComJieWaZiNeuxBotServerConstantsRolePresetSource & unknown;
     /**
      * UpdatedAt 是记录最近修改时的 Unix 毫秒时间。
      */
@@ -10904,7 +10904,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsRolePreset = {
     /**
      * WorkMethods 保存从工作方式档案解析出的具名流程展示投影。
      */
-    workMethods?: Array<GithubComJieWaZiNeuxAllyServerInternalProfileWorkMethod>;
+    workMethods?: Array<GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod>;
     /**
      * WorkStyle 保存从角色风格档案解析出的工作风格展示投影。
      */
@@ -10914,9 +10914,9 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsRolePreset = {
 /**
  * SkillPackage 保存一个技能包的共享元数据和来源信息。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillPackage = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillPackage = {
     /**
-     * BuiltIn 表示技能是否随 NeuxAlly 提供且不可卸载。
+     * BuiltIn 表示技能是否随 NeuxBot 提供且不可卸载。
      */
     builtIn?: boolean;
     /**
@@ -10955,8 +10955,8 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillPackage = {
      * OwnerWakerID 是私有技能所属伙伴，公开技能为空。
      */
     ownerWakerId?: string;
-    scope?: GithubComJieWaZiNeuxAllyServerConstantsSkillScope & unknown;
-    source?: GithubComJieWaZiNeuxAllyServerConstantsSkillSource & unknown;
+    scope?: GithubComJieWaZiNeuxBotServerConstantsSkillScope & unknown;
+    source?: GithubComJieWaZiNeuxBotServerConstantsSkillSource & unknown;
     /**
      * UpdatedAt 是最近更新时间的 Unix 毫秒值。
      */
@@ -10966,7 +10966,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillPackage = {
 /**
  * SkillVersion 保存不可变的技能版本元数据。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion = {
     /**
      * ContentDigest 是完整技能包内容的 SHA-256 摘要。
      */
@@ -11004,7 +11004,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion = {
      */
     skillPackageId?: string;
     /**
-     * Version 是 NeuxAlly 管理的 SemVer 版本号。
+     * Version 是 NeuxBot 管理的 SemVer 版本号。
      */
     version?: string;
 };
@@ -11012,8 +11012,8 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion = {
 /**
  * Waker 保存伙伴当前资料。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWaker = {
-    activityState?: GithubComJieWaZiNeuxAllyServerConstantsWakerActivityState & unknown;
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker = {
+    activityState?: GithubComJieWaZiNeuxBotServerConstantsWakerActivityState & unknown;
     /**
      * Avatar 是头像 URL、Data URL 或内置头像标识。
      */
@@ -11029,7 +11029,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWaker = {
     /**
      * Expertise 保存从身份档案解析出的擅长领域展示投影。
      */
-    expertise?: Array<GithubComJieWaZiNeuxAllyServerInternalProfileExpertise>;
+    expertise?: Array<GithubComJieWaZiNeuxBotServerInternalProfileExpertise>;
     /**
      * ID 是 32 位无连字符 UUID。
      */
@@ -11061,7 +11061,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWaker = {
     /**
      * WorkMethods 保存从工作方式档案解析出的具名流程展示投影。
      */
-    workMethods?: Array<GithubComJieWaZiNeuxAllyServerInternalProfileWorkMethod>;
+    workMethods?: Array<GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod>;
     /**
      * WorkStyle 保存从角色风格档案解析出的工作风格展示投影。
      */
@@ -11071,7 +11071,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWaker = {
 /**
  * WakerPlugin 保存一个伙伴固定版本的安装关系与独立启停。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWakerPlugin = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWakerPlugin = {
     /**
      * CreatedAt 是安装时间的 Unix 毫秒值。
      */
@@ -11105,7 +11105,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWakerPlugin = {
 /**
  * WorkBoardAttention 是一个有效用户交互的只读定位信息。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardAttention = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardAttention = {
     /**
      * ActorName 是实际等待操作的成员或工作流名称。
      */
@@ -11138,7 +11138,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardAttention =
      * OwnerID 是事项所属的原工作身份。
      */
     ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxAllyServerConstantsWorkResultOwnerKind & unknown;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
     /**
      * RunID 是实际等待操作的运行，可能是子运行。
      */
@@ -11172,8 +11172,8 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardAttention =
 /**
  * WorkBoardEntry 是既有工作容器的窄查询结果，不注册数据库表。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardEntry = {
-    activity?: GithubComJieWaZiNeuxAllyServerConstantsChannelActivityState & unknown;
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardEntry = {
+    activity?: GithubComJieWaZiNeuxBotServerConstantsChannelActivityState & unknown;
     /**
      * ApprovalCount 是此工作仍有效的审批数量。
      */
@@ -11206,8 +11206,8 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardEntry = {
      * OwnerID 是原容器标识。
      */
     ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxAllyServerConstantsWorkResultOwnerKind & unknown;
-    result?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReceipt & unknown;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
+    result?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt & unknown;
     /**
      * ReviewCount 是此工作等待团队人工验收的任务数。
      */
@@ -11237,7 +11237,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardEntry = {
 /**
  * WorkBoardExecutor 是原执行对象配置的有界搜索结果，不保存工作历史。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardExecutor = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkBoardExecutor = {
     /**
      * ID 是伙伴、团队或流程定义的原标识。
      */
@@ -11255,7 +11255,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkBoardExecutor = 
 /**
  * WorkResultReceipt 保存每个既有容器的最新交付与用户查看或主动清空确认。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReceipt = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt = {
     /**
      * AvailableAt 是该结果真实交付时间及未读排序键。
      */
@@ -11268,8 +11268,8 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReceipt = 
      * OwnerID 是原容器身份，不另建 WorkID。
      */
     ownerId?: string;
-    ownerKind?: GithubComJieWaZiNeuxAllyServerConstantsWorkResultOwnerKind & unknown;
-    reference?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReference & unknown;
+    ownerKind?: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
+    reference?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference & unknown;
     /**
      * ViewedAt 是最后一次有效查看或主动清空确认时间，不改变工作活动时间。
      */
@@ -11283,7 +11283,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReceipt = 
 /**
  * WorkResultReference 引用原结果身份，不复制正文或执行状态。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReference = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference = {
     /**
      * ChatID 是结果所在的真实对话。
      */
@@ -11305,7 +11305,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkResultReference 
 /**
  * WorkflowActionCall 保存 handler 内每个稳定工具步骤的 outbox 与回执。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowActionCall = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowActionCall = {
     /**
      * CallID 是创作为每项步骤提供的稳定身份。
      */
@@ -11318,7 +11318,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowActionCall =
      * EffectID 限定所属 handler 效果。
      */
     effectId?: string;
-    failure?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue & unknown;
+    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
     /**
      * ID 是内部调用的存储身份。
      */
@@ -11335,7 +11335,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowActionCall =
      * RunID 限定所属运行。
      */
     runId?: string;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowStepStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
     /**
      * ToolName 是本次实际调用的工具名称。
      */
@@ -11345,7 +11345,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowActionCall =
 /**
  * WorkflowAnnotation 是绑定版本与稳定职责的待处理修改要求。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowAnnotation = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowAnnotation = {
     /**
      * BaseRevisionID 是用户阅读的基准版本。
      */
@@ -11379,7 +11379,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowAnnotation =
 /**
  * WorkflowCreationSession 绑定真实创作 Chat 和当前执行能力，回复不构成源码回执。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowCreationSession = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSession = {
     /**
      * AcceptedExecutionID 是已经返回权威接纳收据的本轮执行。
      */
@@ -11396,7 +11396,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowCreationSess
      * CreatedAt 是创建时间。
      */
     createdAt?: number;
-    defaults?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
+    defaults?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
     /**
      * DefinitionID 是唯一可修改的工作流。
      */
@@ -11422,7 +11422,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowCreationSess
 /**
  * WorkflowDefinition 只拥有稳定身份、当前版本及创作和范围关系。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition = {
     /**
      * CreatedAt 是建立时间的 Unix 毫秒。
      */
@@ -11443,7 +11443,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition =
      * Ordinal 是最后成功保存的版本序号。
      */
     ordinal?: number;
-    scopeBinding?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowScopeBinding & unknown;
+    scopeBinding?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding & unknown;
     /**
      * Title 是 Agent 从流程目标生成的标题，空定义尚未命名。
      */
@@ -11461,7 +11461,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition =
 /**
  * WorkflowEffect 是派发前持久保存的 outbox 与不可变效果收据。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowEffect = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEffect = {
     /**
      * AttemptGeneration 区分真实尝试，不随 Runner 所有者改变。
      */
@@ -11486,8 +11486,8 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowEffect = {
      * ExecutionID 是派发前预分配的 Core 执行身份。
      */
     executionId?: string;
-    executionStatus?: GithubComJieWaZiNeuxAllyServerConstantsExecutionStatus & unknown;
-    failure?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue & unknown;
+    executionStatus?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
+    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
     /**
      * FiberID 是等待此效果的执行帧。
      */
@@ -11508,13 +11508,13 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowEffect = {
      * RunID 是所属运行。
      */
     runId?: string;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowStepStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
 };
 
 /**
  * WorkflowEvent 是提交后 SSE 与断线重放共用的有界持久事件。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowEvent = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEvent = {
     /**
      * CreatedAt 是提交时间的 Unix 毫秒。
      */
@@ -11550,7 +11550,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowEvent = {
 /**
  * WorkflowExecutionDefaults 是运行接纳时冻结的真实智能体配置。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowExecutionDefaults = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults = {
     /**
      * AccountID 是账号身份，空值交给该智能体的既有账号规则。
      */
@@ -11559,7 +11559,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowExecutionDef
      * Model 是选定模型。
      */
     model?: string;
-    permissionLevel?: GithubComJieWaZiNeuxAllyServerConstantsPermissionLevel & unknown;
+    permissionLevel?: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * Reasoning 是推理强度。
      */
@@ -11577,7 +11577,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowExecutionDef
 /**
  * WorkflowHumanRequest 是业务输入，不复用 Runtime 的内存交互请求。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowHumanRequest = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest = {
     /**
      * AnsweredAt 是首个有效回答提交时间。
      */
@@ -11620,7 +11620,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowHumanRequest
      * Source 区分 user、skip 和 timeout。
      */
     source?: string;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowStepStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
     /**
      * Value 是用户实际提交的答案。
      */
@@ -11630,7 +11630,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowHumanRequest
 /**
  * WorkflowNodeInstance 是一个源码职责在实际项、轮次和分支中的执行。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowNodeInstance = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowNodeInstance = {
     /**
      * AttemptGeneration 是结果能力绑定的独立尝试代际。
      */
@@ -11655,7 +11655,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowNodeInstance
      * ExecutionID 是首次派发的权威执行。
      */
     executionId?: string;
-    failure?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue & unknown;
+    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
     /**
      * FiberID 是执行该实例的帧。
      */
@@ -11671,7 +11671,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowNodeInstance
     /**
      * Input 是效果求值后冻结的真实参数，不包含能力令牌。
      */
-    input?: Array<GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue>;
+    input?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue>;
     /**
      * ItemIndex 是该组原始输入中的有序索引。
      */
@@ -11714,13 +11714,13 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowNodeInstance
      * StageIndex 是管道中的实际阶段索引。
      */
     stageIndex?: number;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowStepStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
 };
 
 /**
  * WorkflowOperationRequest 是宿主操作许可，与业务人工输入和 Runtime 授权分别持久化。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowOperationRequest = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequest = {
     /**
      * Allowed 是用户明确选择的许可，等待状态下不参与判断。
      */
@@ -11763,13 +11763,13 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowOperationReq
      * RunID 限定所属运行。
      */
     runId?: string;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowStepStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
 };
 
 /**
  * WorkflowRevision 是原始源码、投影与 Go 指令的不可变绑定。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRevision = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRevision = {
     /**
      * CompilerVersion 是保存时固定的编译器版本。
      */
@@ -11798,7 +11798,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRevision = {
      * IRVersion 是保存时固定的持久指令格式版本。
      */
     irVersion?: number;
-    manifest?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslManifest & unknown;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest & unknown;
     /**
      * ManifestDigest 绑定此版本的只读投影。
      */
@@ -11824,7 +11824,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRevision = {
 /**
  * WorkflowRun 固定版本、参数、执行配置和租约，不读取后续创作修改。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun = {
     /**
      * Args 是已填显式默认值并校验的运行输入。
      */
@@ -11841,7 +11841,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun = {
      * DeadlineAt 是运行总预算期限。
      */
     deadlineAt?: number;
-    defaults?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
+    defaults?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
     /**
      * DefinitionID 是所属定义。
      */
@@ -11850,7 +11850,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun = {
      * Depth 是调用树深度。
      */
     depth?: number;
-    failure?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslValue & unknown;
+    failure?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
     /**
      * Context 是只读流程上下文，不包含账号密钥。
      */
@@ -11865,7 +11865,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun = {
      * Joined 表示父运行取消时也应停止本运行。
      */
     joined?: boolean;
-    limits?: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslLimits & unknown;
+    limits?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits & unknown;
     /**
      * ParentRunID 是 joined 或 detached 子运行的来源。
      */
@@ -11890,12 +11890,12 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun = {
      * RootRunID 绑定调用树，统一限制全部后代的数量。
      */
     rootRunId?: string;
-    scopeBinding?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowScopeBinding & unknown;
+    scopeBinding?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding & unknown;
     /**
      * StartedAt 是冻结的时间来源。
      */
     startedAt?: number;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsWorkflowRunStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowRunStatus & unknown;
     /**
      * UpdatedAt 是最后提交时间。
      */
@@ -11909,7 +11909,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun = {
 /**
  * WorkflowScopeBinding 是用户选定的工作范围，不是流程逻辑的副本。
  */
-export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowScopeBinding = {
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowScopeBinding = {
     /**
      * ProjectID 是真实项目身份，空值表示无项目。
      */
@@ -11923,7 +11923,7 @@ export type GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowScopeBinding
 /**
  * Login 保存前端完成设备授权需要的非秘密信息。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesAiaccountLogin = {
+export type GithubComJieWaZiNeuxBotServerServicesAiaccountLogin = {
     /**
      * 完成状态
      */
@@ -11957,8 +11957,8 @@ export type GithubComJieWaZiNeuxAllyServerServicesAiaccountLogin = {
 /**
  * PendingTeamInteraction 是 Team 页面处理所有成员 Runtime 交互的统一安全投影。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChannelPendingTeamInteraction = {
-    approval?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval & unknown;
+export type GithubComJieWaZiNeuxBotServerServicesChannelPendingTeamInteraction = {
+    approval?: GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval & unknown;
     /**
      * ChatID 是实际等待 Runtime 响应的成员 Chat 标识。
      */
@@ -11971,7 +11971,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesChannelPendingTeamInteraction 
      * CreatedSequence 是请求在来源 Chat 权威日志中的创建序号。
      */
     createdSequence?: number;
-    elicitation?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingElicitation & unknown;
+    elicitation?: GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation & unknown;
     /**
      * ExecutionID 是交互所属的当前成员执行标识。
      */
@@ -11997,7 +11997,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesChannelPendingTeamInteraction 
 /**
  * QueuedLeadInput 是不暴露内部序列化载荷的负责人输入接纳结果。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChannelQueuedLeadInput = {
+export type GithubComJieWaZiNeuxBotServerServicesChannelQueuedLeadInput = {
     /**
      * CreatedAt 是输入进入可靠队列的 Unix 毫秒时间。
      */
@@ -12006,22 +12006,22 @@ export type GithubComJieWaZiNeuxAllyServerServicesChannelQueuedLeadInput = {
      * ID 是可靠队列中的用户输入标识。
      */
     id?: string;
-    status?: GithubComJieWaZiNeuxAllyServerConstantsChannelInputStatus & unknown;
+    status?: GithubComJieWaZiNeuxBotServerConstantsChannelInputStatus & unknown;
 };
 
 /**
  * SendMessageResult 是团队消息接纳后的负责人执行或正式任务。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChannelSendMessageResult = {
-    execution?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsExecution & unknown;
-    queuedInput?: GithubComJieWaZiNeuxAllyServerServicesChannelQueuedLeadInput & unknown;
-    task?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelTask & unknown;
+export type GithubComJieWaZiNeuxBotServerServicesChannelSendMessageResult = {
+    execution?: GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution & unknown;
+    queuedInput?: GithubComJieWaZiNeuxBotServerServicesChannelQueuedLeadInput & unknown;
+    task?: GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask & unknown;
 };
 
 /**
  * TeamMemberActivity 是 Team 页面展示成员运行或等待用户操作状态的统一投影。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChannelTeamMemberActivity = {
+export type GithubComJieWaZiNeuxBotServerServicesChannelTeamMemberActivity = {
     /**
      * ChatID 是成员在当前团队对话中的固定 Chat 标识。
      */
@@ -12030,7 +12030,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesChannelTeamMemberActivity = {
      * ExecutionID 是当前活跃执行标识；空表示 idle。
      */
     executionId?: string;
-    state?: GithubComJieWaZiNeuxAllyServerConstantsTeamMemberActivityState & unknown;
+    state?: GithubComJieWaZiNeuxBotServerConstantsTeamMemberActivityState & unknown;
     /**
      * WakerID 是成员伙伴标识。
      */
@@ -12040,12 +12040,12 @@ export type GithubComJieWaZiNeuxAllyServerServicesChannelTeamMemberActivity = {
 /**
  * ThreadResult 是首发接纳后返回的团队对话快照和负责人执行。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChannelThreadResult = {
-    leadExecution?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsExecution & unknown;
+export type GithubComJieWaZiNeuxBotServerServicesChannelThreadResult = {
+    leadExecution?: GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution & unknown;
     /**
      * Members 是与团队快照顺序一致的成员 Chat 映射。
      */
-    members?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThreadMember>;
+    members?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThreadMember>;
     /**
      * Replayed 表示响应来自同键同内容的既有就绪团队对话。
      */
@@ -12053,14 +12053,14 @@ export type GithubComJieWaZiNeuxAllyServerServicesChannelThreadResult = {
     /**
      * Tasks 是首发显式提及非负责人成员时创建的正式任务；普通首发或提及负责人时为空。
      */
-    tasks?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelTask>;
-    thread?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThread & unknown;
+    tasks?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask>;
+    thread?: GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThread & unknown;
 };
 
 /**
  * TimelineMessage 是团队主会话从一份权威 Chat JSONL 投影出的公开消息段。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChannelTimelineMessage = {
+export type GithubComJieWaZiNeuxBotServerServicesChannelTimelineMessage = {
     /**
      * ChatID 是消息所属的权威 Chat 标识。
      */
@@ -12073,7 +12073,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesChannelTimelineMessage = {
      * DirectDelivered 表示这条成员消息已直接作为完整答复交给用户，使用普通消息样式。
      */
     directDelivered?: boolean;
-    message?: GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage & unknown;
+    message?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage & unknown;
     /**
      * WakerID 是 Assistant 消息实际执行伙伴的标识；用户消息为空。
      */
@@ -12083,14 +12083,14 @@ export type GithubComJieWaZiNeuxAllyServerServicesChannelTimelineMessage = {
 /**
  * ChatSummary 是打开 Chat 时不重放完整 JSONL 的查询摘要。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatChatSummary = {
-    chat?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat & unknown;
+export type GithubComJieWaZiNeuxBotServerServicesChatChatSummary = {
+    chat?: GithubComJieWaZiNeuxBotServerRepositoriesModelsChat & unknown;
 };
 
 /**
  * ForkTarget 是不包含原生句柄的回合分叉入口状态。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatForkTarget = {
+export type GithubComJieWaZiNeuxBotServerServicesChatForkTarget = {
     /**
      * Available 表示当前空闲状态和原生定位允许执行分叉。
      */
@@ -12112,7 +12112,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatForkTarget = {
 /**
  * MessageHistoryPage 是按消息创建序号向前读取的一页权威聊天历史。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatMessageHistoryPage = {
+export type GithubComJieWaZiNeuxBotServerServicesChatMessageHistoryPage = {
     /**
      * HasMore 表示当前窗口之前是否仍有更早消息。
      */
@@ -12128,13 +12128,13 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatMessageHistoryPage = {
     /**
      * Resources 是按创建顺序升序排列的消息窗口。
      */
-    resources?: Array<GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage>;
+    resources?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage>;
 };
 
 /**
  * PublicApprovalLocation 是公开审批请求声明的一处安全文件位置。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalLocation = {
+export type GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalLocation = {
     /**
      * Line 是 Runtime 提供的可选行号；为空表示未提供。
      */
@@ -12148,7 +12148,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalLocation = {
 /**
  * PublicApprovalOption 是公开审批请求中可供用户选择的一项操作。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalOption = {
+export type GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalOption = {
     /**
      * ID 是必须原样回传 Runtime 的选项标识。
      */
@@ -12166,9 +12166,9 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalOption = {
 /**
  * PublicApprovalRequest 是服务向 API 暴露的安全审批请求。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalRequest = {
+export type GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalRequest = {
     /**
-     * ApprovalID 是 NeuxAlly 为本次审批生成的稳定交互标识。
+     * ApprovalID 是 NeuxBot 为本次审批生成的稳定交互标识。
      */
     approvalId?: string;
     /**
@@ -12182,11 +12182,11 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalRequest = {
     /**
      * Locations 是 Runtime 提供的安全文件位置。
      */
-    locations?: Array<GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalLocation>;
+    locations?: Array<GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalLocation>;
     /**
      * Options 是 Runtime 允许用户选择的全部有效选项。
      */
-    options?: Array<GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalOption>;
+    options?: Array<GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalOption>;
     /**
      * Summary 是 Runtime 提供或由标准字段形成的安全摘要。
      */
@@ -12204,9 +12204,9 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalRequest = {
 /**
  * PublicApprovalResolution 是服务向 API 暴露的审批处理结果。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalResolution = {
+export type GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalResolution = {
     /**
-     * ApprovalID 是被处理的 NeuxAlly 审批标识。
+     * ApprovalID 是被处理的 NeuxBot 审批标识。
      */
     approvalId?: string;
     /**
@@ -12225,7 +12225,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalResolution =
      * OptionName 是用户选择的 Runtime 选项名称。
      */
     optionName?: string;
-    result?: GithubComJieWaZiNeuxAllyServerConstantsApprovalResult & unknown;
+    result?: GithubComJieWaZiNeuxBotServerConstantsApprovalResult & unknown;
     /**
      * ToolCallID 是对应 Runtime 工具调用标识。
      */
@@ -12235,13 +12235,13 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalResolution =
 /**
  * PublicElicitationRequest 是服务向 API 暴露的安全结构化输入请求。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatPublicElicitationRequest = {
+export type GithubComJieWaZiNeuxBotServerServicesChatPublicElicitationRequest = {
     /**
      * AllowSkip 是 CLI 问答明确冻结的跳过约束。
      */
     allowSkip?: boolean;
     /**
-     * ElicitationID 是 NeuxAlly 为本次交互生成的稳定标识。
+     * ElicitationID 是 NeuxBot 为本次交互生成的稳定标识。
      */
     elicitationId?: string;
     /**
@@ -12266,7 +12266,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicElicitationRequest =
 /**
  * PublicElicitationResolution 是服务向 API 暴露的结构化输入处理结果。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatPublicElicitationResolution = {
+export type GithubComJieWaZiNeuxBotServerServicesChatPublicElicitationResolution = {
     /**
      * Content 是用户提交的表单内容，拒绝或取消时为空。
      */
@@ -12274,10 +12274,10 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicElicitationResolutio
         [key: string]: unknown;
     };
     /**
-     * ElicitationID 是被处理的 NeuxAlly 交互标识。
+     * ElicitationID 是被处理的 NeuxBot 交互标识。
      */
     elicitationId?: string;
-    result?: GithubComJieWaZiNeuxAllyServerConstantsElicitationResult & unknown;
+    result?: GithubComJieWaZiNeuxBotServerConstantsElicitationResult & unknown;
     /**
      * ToolCallID 是对应 Runtime 工具调用标识。
      */
@@ -12287,11 +12287,11 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicElicitationResolutio
 /**
  * PublicEvent 是 Chat 服务向 API 和 SSE 调用方交付的安全事件边界。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatPublicEvent = {
-    approvalRequest?: GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalRequest & unknown;
-    approvalResolution?: GithubComJieWaZiNeuxAllyServerServicesChatPublicApprovalResolution & unknown;
-    elicitationRequest?: GithubComJieWaZiNeuxAllyServerServicesChatPublicElicitationRequest & unknown;
-    elicitationResolution?: GithubComJieWaZiNeuxAllyServerServicesChatPublicElicitationResolution & unknown;
+export type GithubComJieWaZiNeuxBotServerServicesChatPublicEvent = {
+    approvalRequest?: GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalRequest & unknown;
+    approvalResolution?: GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalResolution & unknown;
+    elicitationRequest?: GithubComJieWaZiNeuxBotServerServicesChatPublicElicitationRequest & unknown;
+    elicitationResolution?: GithubComJieWaZiNeuxBotServerServicesChatPublicElicitationResolution & unknown;
     /**
      * ErrorCode 是可以安全暴露给调用方的错误代码。
      */
@@ -12300,8 +12300,8 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicEvent = {
      * ErrorMessage 是可以安全暴露给调用方的错误说明。
      */
     errorMessage?: string;
-    executionStatus?: GithubComJieWaZiNeuxAllyServerConstantsExecutionStatus & unknown;
-    message?: GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage & unknown;
+    executionStatus?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
+    message?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage & unknown;
     /**
      * RecordedAt 是事件发生时间的 Unix 毫秒时间戳。
      */
@@ -12318,13 +12318,13 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatPublicEvent = {
      * Transient 标识事件仅用于实时展示，不推进恢复游标。
      */
     transient?: boolean;
-    type?: GithubComJieWaZiNeuxAllyServerConstantsChatEventType & unknown;
+    type?: GithubComJieWaZiNeuxBotServerConstantsChatEventType & unknown;
 };
 
 /**
  * RecoveryDiagnostic 保存一个 Chat 最近一次启动恢复的可查询结果。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatRecoveryDiagnostic = {
+export type GithubComJieWaZiNeuxBotServerServicesChatRecoveryDiagnostic = {
     /**
      * ChatID 是被检查的 Chat 标识。
      */
@@ -12340,12 +12340,12 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatRecoveryDiagnostic = {
     /**
      * Issues 是本次检查发现的 ChatRecoveryIssue 问题码列表。
      */
-    issues?: Array<GithubComJieWaZiNeuxAllyServerConstantsChatRecoveryIssue>;
+    issues?: Array<GithubComJieWaZiNeuxBotServerConstantsChatRecoveryIssue>;
     /**
      * LogLatestSequence 是权威 JSONL 的最终事件序号。
      */
     logLatestSequence?: number;
-    state?: GithubComJieWaZiNeuxAllyServerConstantsChatRecoveryState & unknown;
+    state?: GithubComJieWaZiNeuxBotServerConstantsChatRecoveryState & unknown;
     /**
      * TailBytesRemoved 是本次或此前最近一次安全尾行修复删除的字节数。
      */
@@ -12359,11 +12359,11 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatRecoveryDiagnostic = {
 /**
  * RecoveryHealth 汇总最近一次启动时全部 Chat 当前投影的健康状态。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesChatRecoveryHealth = {
+export type GithubComJieWaZiNeuxBotServerServicesChatRecoveryHealth = {
     /**
      * Chats 是按 Chat 标识排序的逐项检查结果。
      */
-    chats?: Array<GithubComJieWaZiNeuxAllyServerServicesChatRecoveryDiagnostic>;
+    chats?: Array<GithubComJieWaZiNeuxBotServerServicesChatRecoveryDiagnostic>;
     /**
      * CheckedAt 是本次恢复检查完成的 Unix 毫秒时间。
      */
@@ -12397,9 +12397,9 @@ export type GithubComJieWaZiNeuxAllyServerServicesChatRecoveryHealth = {
 /**
  * AcceptedExecution 是首批事实 durable 后返回给入口的稳定结果。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution = {
-    chat?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsChat & unknown;
-    execution?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsExecution & unknown;
+export type GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution = {
+    chat?: GithubComJieWaZiNeuxBotServerRepositoriesModelsChat & unknown;
+    execution?: GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution & unknown;
     /**
      * Replayed 表示本次返回的是相同首次创建请求已经提交的确定结果。
      */
@@ -12413,7 +12413,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution = {
 /**
  * ConnectionConfiguration 只接受管理员可编辑的字段，平台凭据仅写入。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesImConnectionConfiguration = {
+export type GithubComJieWaZiNeuxBotServerServicesImConnectionConfiguration = {
     /**
      * 应用标识
      */
@@ -12434,7 +12434,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesImConnectionConfiguration = {
      * 连接名称
      */
     name: string;
-    platform?: GithubComJieWaZiNeuxAllyServerConstantsImPlatform & unknown;
+    platform?: GithubComJieWaZiNeuxBotServerConstantsImPlatform & unknown;
     /**
      * 配置版本
      */
@@ -12444,7 +12444,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesImConnectionConfiguration = {
 /**
  * LoginProgress 是快照查询与全局事件使用的扫码状态，不含平台令牌及密钥。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesImLoginProgress = {
+export type GithubComJieWaZiNeuxBotServerServicesImLoginProgress = {
     /**
      * 连接标识
      */
@@ -12474,7 +12474,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesImLoginProgress = {
 /**
  * ChatLibrary 是当前真实聊天可读的完整知识目标；选择器不签发写权限。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesKnowledgeChatLibrary = {
+export type GithubComJieWaZiNeuxBotServerServicesKnowledgeChatLibrary = {
     /**
      * 支持聊天摄入
      */
@@ -12487,13 +12487,13 @@ export type GithubComJieWaZiNeuxAllyServerServicesKnowledgeChatLibrary = {
      * 知识库名称
      */
     name?: string;
-    ref?: GithubComJieWaZiNeuxAllyServerInternalKnowledgeResourceRef & unknown;
+    ref?: GithubComJieWaZiNeuxBotServerInternalKnowledgeResourceRef & unknown;
 };
 
 /**
  * Snapshot 是 REST 与 WS 共同读取的带版本通知摘要。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesNotificationSnapshot = {
+export type GithubComJieWaZiNeuxBotServerServicesNotificationSnapshot = {
     /**
      * 待处理数
      */
@@ -12501,7 +12501,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesNotificationSnapshot = {
     /**
      * 待处理预览
      */
-    actionPreview?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationItem>;
+    actionPreview?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem>;
     /**
      * 生命周期
      */
@@ -12529,25 +12529,25 @@ export type GithubComJieWaZiNeuxAllyServerServicesNotificationSnapshot = {
     /**
      * 待查看预览
      */
-    unreadPreview?: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationItem>;
+    unreadPreview?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem>;
     /**
      * 未读成果数
      */
     unreadResultCount?: number;
 };
 
-export type GithubComJieWaZiNeuxAllyServerServicesScheduleRunView = GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticRun & {
+export type GithubComJieWaZiNeuxBotServerServicesScheduleRunView = GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticRun & {
     /**
      * CompletedAt 是首次独立执行或团队整体运行结束的 Unix 毫秒时间。
      */
     completedAt?: number;
-    state?: GithubComJieWaZiNeuxAllyServerConstantsAutomaticRunState & unknown;
+    state?: GithubComJieWaZiNeuxBotServerConstantsAutomaticRunState & unknown;
 };
 
 /**
  * SavedTask 是创建或切换 API 时只返回一次的密钥收据。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesScheduleSavedTask = {
+export type GithubComJieWaZiNeuxBotServerServicesScheduleSavedTask = {
     /**
      * TaskID 是已保存的任务标识。
      */
@@ -12558,8 +12558,8 @@ export type GithubComJieWaZiNeuxAllyServerServicesScheduleSavedTask = {
     token?: string;
 };
 
-export type GithubComJieWaZiNeuxAllyServerServicesScheduleTaskView = GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTask & {
-    activeRun?: GithubComJieWaZiNeuxAllyServerServicesScheduleRunView & unknown;
+export type GithubComJieWaZiNeuxBotServerServicesScheduleTaskView = GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTask & {
+    activeRun?: GithubComJieWaZiNeuxBotServerServicesScheduleRunView & unknown;
     /**
      * ConfigurationError 是当前依赖失效的安全原因，便于禁用运行并提示修复。
      */
@@ -12576,18 +12576,18 @@ export type GithubComJieWaZiNeuxAllyServerServicesScheduleTaskView = GithubComJi
      * ExecutorName 是当前伙伴或团队的产品展示名称。
      */
     executorName?: string;
-    lastRun?: GithubComJieWaZiNeuxAllyServerServicesScheduleRunView & unknown;
+    lastRun?: GithubComJieWaZiNeuxBotServerServicesScheduleRunView & unknown;
     /**
      * RunCount 是已经进入 Chat 的运行次数。
      */
     runCount?: number;
-    workflowInputContract?: GithubComJieWaZiNeuxAllyServerInternalWorkflowInputContract & unknown;
+    workflowInputContract?: GithubComJieWaZiNeuxBotServerInternalWorkflowInputContract & unknown;
 };
 
 /**
  * OutputFile 是最终输出 schema 中明确声明的可下载文件。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesWorkflowOutputFile = {
+export type GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile = {
     /**
      * Available 表示文件仍存在且属于本次运行范围。
      */
@@ -12617,7 +12617,7 @@ export type GithubComJieWaZiNeuxAllyServerServicesWorkflowOutputFile = {
 /**
  * SaveSourceCommand 是源码保存和恢复共同遵守的 CAS 命令。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesWorkflowSaveSourceCommand = {
+export type GithubComJieWaZiNeuxBotServerServicesWorkflowSaveSourceCommand = {
     /**
      * ExpectedRevisionID 是保存前读取到的当前版本。
      */
@@ -12643,12 +12643,12 @@ export type GithubComJieWaZiNeuxAllyServerServicesWorkflowSaveSourceCommand = {
 /**
  * StartRunCommand 是用户、子运行与自动任务共用的接纳命令。
  */
-export type GithubComJieWaZiNeuxAllyServerServicesWorkflowStartRunCommand = {
+export type GithubComJieWaZiNeuxBotServerServicesWorkflowStartRunCommand = {
     /**
      * Args 是用户提交的原始 JSON。
      */
     args?: unknown;
-    defaults?: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
+    defaults?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults & unknown;
     /**
      * RequestID 是同一触发发生的稳定身份。
      */
@@ -14423,20 +14423,20 @@ export type ListAiAccountsData = {
 };
 
 export type ListAiAccountsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAiAccountsListAiAccountsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisAiAccountsListAiAccountsResponse;
 };
 
 export type ListAiAccountsResponse = ListAiAccountsResponses[keyof ListAiAccountsResponses];
 
 export type CreateAiAccountData = {
-    body: GithubComJieWaZiNeuxAllyServerApisAiAccountsCreateAiAccountRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/ai-accounts';
 };
 
 export type CreateAiAccountResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAiAccountsCreateAiAccountResponse;
+    200: GithubComJieWaZiNeuxBotServerApisAiAccountsCreateAiAccountResponse;
 };
 
 export type CreateAiAccountResponse = CreateAiAccountResponses[keyof CreateAiAccountResponses];
@@ -14454,7 +14454,7 @@ export type PreviewAiAccountModelsData = {
          * APIKey 是仅用于本次目录获取的临时密钥。
          */
         apiKey?: string;
-        endpoint: GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccountEndpoint & unknown;
+        endpoint: GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint & unknown;
     };
     path?: never;
     query?: never;
@@ -14487,7 +14487,7 @@ export type PreviewAiAccountModelsErrors = {
 export type PreviewAiAccountModelsError = PreviewAiAccountModelsErrors[keyof PreviewAiAccountModelsErrors];
 
 export type PreviewAiAccountModelsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAiAccountsRefreshAiAccountModelsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisAiAccountsRefreshAiAccountModelsResponse;
 };
 
 export type PreviewAiAccountModelsResponse = PreviewAiAccountModelsResponses[keyof PreviewAiAccountModelsResponses];
@@ -14528,7 +14528,7 @@ export type DeleteAiAccountResponses = {
 export type DeleteAiAccountResponse = DeleteAiAccountResponses[keyof DeleteAiAccountResponses];
 
 export type UpdateAiAccountData = {
-    body: GithubComJieWaZiNeuxAllyServerApisAiAccountsUpdateAiAccountRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisAiAccountsUpdateAiAccountRequest & unknown;
     path: {
         /**
          * 账号标识
@@ -14586,7 +14586,7 @@ export type GetAiAccountCredentialErrors = {
 export type GetAiAccountCredentialError = GetAiAccountCredentialErrors[keyof GetAiAccountCredentialErrors];
 
 export type GetAiAccountCredentialResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAiAccountsGetAiAccountCredentialResponse;
+    200: GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountCredentialResponse;
 };
 
 export type GetAiAccountCredentialResponse = GetAiAccountCredentialResponses[keyof GetAiAccountCredentialResponses];
@@ -14916,7 +14916,7 @@ export type StartAiAccountLoginErrors = {
 export type StartAiAccountLoginError = StartAiAccountLoginErrors[keyof StartAiAccountLoginErrors];
 
 export type StartAiAccountLoginResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesAiaccountLogin;
+    200: GithubComJieWaZiNeuxBotServerServicesAiaccountLogin;
 };
 
 export type StartAiAccountLoginResponse = StartAiAccountLoginResponses[keyof StartAiAccountLoginResponses];
@@ -15289,7 +15289,7 @@ export type GetAiAccountLoginErrors = {
 export type GetAiAccountLoginError = GetAiAccountLoginErrors[keyof GetAiAccountLoginErrors];
 
 export type GetAiAccountLoginResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesAiaccountLogin;
+    200: GithubComJieWaZiNeuxBotServerServicesAiaccountLogin;
 };
 
 export type GetAiAccountLoginResponse = GetAiAccountLoginResponses[keyof GetAiAccountLoginResponses];
@@ -15330,7 +15330,7 @@ export type GetAiAccountNativeModelsErrors = {
 export type GetAiAccountNativeModelsError = GetAiAccountNativeModelsErrors[keyof GetAiAccountNativeModelsErrors];
 
 export type GetAiAccountNativeModelsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAiAccountsGetAiAccountNativeModelsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountNativeModelsResponse;
 };
 
 export type GetAiAccountNativeModelsResponse = GetAiAccountNativeModelsResponses[keyof GetAiAccountNativeModelsResponses];
@@ -15373,7 +15373,7 @@ export type RefreshAiAccountModelsErrors = {
 export type RefreshAiAccountModelsError = RefreshAiAccountModelsErrors[keyof RefreshAiAccountModelsErrors];
 
 export type RefreshAiAccountModelsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAiAccountsRefreshAiAccountModelsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisAiAccountsRefreshAiAccountModelsResponse;
 };
 
 export type RefreshAiAccountModelsResponse = RefreshAiAccountModelsResponses[keyof RefreshAiAccountModelsResponses];
@@ -15435,7 +15435,7 @@ export type GetAiAccountThinkingErrors = {
 export type GetAiAccountThinkingError = GetAiAccountThinkingErrors[keyof GetAiAccountThinkingErrors];
 
 export type GetAiAccountThinkingResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAiAccountsGetAiAccountThinkingResponse;
+    200: GithubComJieWaZiNeuxBotServerApisAiAccountsGetAiAccountThinkingResponse;
 };
 
 export type GetAiAccountThinkingResponse = GetAiAccountThinkingResponses[keyof GetAiAccountThinkingResponses];
@@ -15464,7 +15464,7 @@ export type ListGlobalAutomaticTasksData = {
          * Query 是任务名称或指令的搜索词。
          */
         query?: string;
-        trigger?: GithubComJieWaZiNeuxAllyServerConstantsAutomaticTaskTrigger & unknown;
+        trigger?: GithubComJieWaZiNeuxBotServerConstantsAutomaticTaskTrigger & unknown;
     };
     url: '/api/v1/automatic-tasks';
 };
@@ -15782,13 +15782,13 @@ export type ListGlobalAutomaticTasksErrors = {
 export type ListGlobalAutomaticTasksError = ListGlobalAutomaticTasksErrors[keyof ListGlobalAutomaticTasksErrors];
 
 export type ListGlobalAutomaticTasksResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksListAutomaticTasksResponse;
+    200: GithubComJieWaZiNeuxBotServerApisAutomaticTasksListAutomaticTasksResponse;
 };
 
 export type ListGlobalAutomaticTasksResponse = ListGlobalAutomaticTasksResponses[keyof ListGlobalAutomaticTasksResponses];
 
 export type CreateWorkflowAutomaticTaskData = {
-    body: GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfiguration & unknown;
+    body: GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskConfiguration & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/automatic-tasks';
@@ -15843,13 +15843,13 @@ export type CreateWorkflowAutomaticTaskErrors = {
 export type CreateWorkflowAutomaticTaskError = CreateWorkflowAutomaticTaskErrors[keyof CreateWorkflowAutomaticTaskErrors];
 
 export type CreateWorkflowAutomaticTaskResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesScheduleSavedTask;
+    200: GithubComJieWaZiNeuxBotServerServicesScheduleSavedTask;
 };
 
 export type CreateWorkflowAutomaticTaskResponse = CreateWorkflowAutomaticTaskResponses[keyof CreateWorkflowAutomaticTaskResponses];
 
 export type PreviewGlobalAutomaticScheduleData = {
-    body: GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskSchedule & unknown;
+    body: GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskSchedule & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/automatic-tasks/schedule-preview';
@@ -15867,7 +15867,7 @@ export type PreviewGlobalAutomaticScheduleErrors = {
 export type PreviewGlobalAutomaticScheduleError = PreviewGlobalAutomaticScheduleErrors[keyof PreviewGlobalAutomaticScheduleErrors];
 
 export type PreviewGlobalAutomaticScheduleResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksSchedulePreview;
+    200: GithubComJieWaZiNeuxBotServerApisAutomaticTasksSchedulePreview;
 };
 
 export type PreviewGlobalAutomaticScheduleResponse = PreviewGlobalAutomaticScheduleResponses[keyof PreviewGlobalAutomaticScheduleResponses];
@@ -16197,13 +16197,13 @@ export type GetGlobalAutomaticTaskErrors = {
 export type GetGlobalAutomaticTaskError = GetGlobalAutomaticTaskErrors[keyof GetGlobalAutomaticTaskErrors];
 
 export type GetGlobalAutomaticTaskResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesScheduleTaskView;
+    200: GithubComJieWaZiNeuxBotServerServicesScheduleTaskView;
 };
 
 export type GetGlobalAutomaticTaskResponse = GetGlobalAutomaticTaskResponses[keyof GetGlobalAutomaticTaskResponses];
 
 export type UpdateWorkflowAutomaticTaskData = {
-    body: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksUpdateAutomaticTaskRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisAutomaticTasksUpdateAutomaticTaskRequest & unknown;
     path: {
         /**
          * TaskID 是需要编辑的任务身份。
@@ -16527,7 +16527,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
 export type UpdateWorkflowAutomaticTaskError = UpdateWorkflowAutomaticTaskErrors[keyof UpdateWorkflowAutomaticTaskErrors];
 
 export type UpdateWorkflowAutomaticTaskResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesScheduleSavedTask;
+    200: GithubComJieWaZiNeuxBotServerServicesScheduleSavedTask;
 };
 
 export type UpdateWorkflowAutomaticTaskResponse = UpdateWorkflowAutomaticTaskResponses[keyof UpdateWorkflowAutomaticTaskResponses];
@@ -16553,13 +16553,13 @@ export type ListChannelsData = {
 };
 
 export type ListChannelsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisChannelsListChannelsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisChannelsListChannelsResponse;
 };
 
 export type ListChannelsResponse = ListChannelsResponses[keyof ListChannelsResponses];
 
 export type CreateChannelData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChannelsChannelInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChannelsChannelInput & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/channels';
@@ -16591,7 +16591,7 @@ export type CreateChannelErrors = {
 export type CreateChannelError = CreateChannelErrors[keyof CreateChannelErrors];
 
 export type CreateChannelResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail;
+    200: GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail;
 };
 
 export type CreateChannelResponse = CreateChannelResponses[keyof CreateChannelResponses];
@@ -16663,13 +16663,13 @@ export type GetChannelErrors = {
 export type GetChannelError = GetChannelErrors[keyof GetChannelErrors];
 
 export type GetChannelResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail;
+    200: GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail;
 };
 
 export type GetChannelResponse = GetChannelResponses[keyof GetChannelResponses];
 
 export type UpdateChannelData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChannelsChannelInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChannelsChannelInput & unknown;
     path: {
         /**
          * 团队标识
@@ -16741,7 +16741,7 @@ export type ListChannelThreadsData = {
          * 搜索关键字
          */
         query?: string;
-        status?: GithubComJieWaZiNeuxAllyServerConstantsChannelActivityState & unknown;
+        status?: GithubComJieWaZiNeuxBotServerConstantsChannelActivityState & unknown;
         /**
          * 时间终点
          */
@@ -16766,13 +16766,13 @@ export type ListChannelThreadsErrors = {
 export type ListChannelThreadsError = ListChannelThreadsErrors[keyof ListChannelThreadsErrors];
 
 export type ListChannelThreadsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisChannelsListChannelThreadsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisChannelsListChannelThreadsResponse;
 };
 
 export type ListChannelThreadsResponse = ListChannelThreadsResponses[keyof ListChannelThreadsResponses];
 
 export type CreateChannelThreadData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChannelsCreateChannelThreadRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChannelsCreateChannelThreadRequest & unknown;
     path: {
         /**
          * 团队标识
@@ -16795,7 +16795,7 @@ export type CreateChannelThreadErrors = {
 export type CreateChannelThreadError = CreateChannelThreadErrors[keyof CreateChannelThreadErrors];
 
 export type CreateChannelThreadResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesChannelThreadResult;
+    200: GithubComJieWaZiNeuxBotServerServicesChannelThreadResult;
 };
 
 export type CreateChannelThreadResponse = CreateChannelThreadResponses[keyof CreateChannelThreadResponses];
@@ -16876,7 +16876,7 @@ export type GetChannelThreadErrors = {
 export type GetChannelThreadError = GetChannelThreadErrors[keyof GetChannelThreadErrors];
 
 export type GetChannelThreadResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisChannelsChannelThreadDetail;
+    200: GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail;
 };
 
 export type GetChannelThreadResponse = GetChannelThreadResponses[keyof GetChannelThreadResponses];
@@ -16918,13 +16918,13 @@ export type ListChannelEventsErrors = {
 export type ListChannelEventsError = ListChannelEventsErrors[keyof ListChannelEventsErrors];
 
 export type ListChannelEventsResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelEvent>;
+    200: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelEvent>;
 };
 
 export type ListChannelEventsResponse = ListChannelEventsResponses[keyof ListChannelEventsResponses];
 
 export type UpdateChannelThreadMemberConfigsData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChannelsUpdateChannelThreadMemberConfigsRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChannelsUpdateChannelThreadMemberConfigsRequest & unknown;
     path: {
         /**
          * 团队标识
@@ -16976,7 +16976,7 @@ export type UpdateChannelThreadMemberConfigsResponses = {
 export type UpdateChannelThreadMemberConfigsResponse = UpdateChannelThreadMemberConfigsResponses[keyof UpdateChannelThreadMemberConfigsResponses];
 
 export type SendChannelMessageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChannelsChannelWorkInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput & unknown;
     path: {
         /**
          * 团队标识
@@ -17009,13 +17009,13 @@ export type SendChannelMessageErrors = {
 export type SendChannelMessageError = SendChannelMessageErrors[keyof SendChannelMessageErrors];
 
 export type SendChannelMessageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesChannelSendMessageResult;
+    200: GithubComJieWaZiNeuxBotServerServicesChannelSendMessageResult;
 };
 
 export type SendChannelMessageResponse = SendChannelMessageResponses[keyof SendChannelMessageResponses];
 
 export type CreateChannelTaskData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChannelsCreateChannelTaskRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChannelsCreateChannelTaskRequest & unknown;
     path: {
         /**
          * 团队标识
@@ -17054,7 +17054,7 @@ export type CreateChannelTaskResponses = {
 export type CreateChannelTaskResponse = CreateChannelTaskResponses[keyof CreateChannelTaskResponses];
 
 export type FollowUpChannelTaskData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChannelsFollowUpChannelTaskRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChannelsFollowUpChannelTaskRequest & unknown;
     path: {
         /**
          * 团队标识
@@ -17098,7 +17098,7 @@ export type FollowUpChannelTaskResponses = {
 export type FollowUpChannelTaskResponse = FollowUpChannelTaskResponses[keyof FollowUpChannelTaskResponses];
 
 export type ReviewChannelTaskData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChannelsReviewChannelTaskRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChannelsReviewChannelTaskRequest & unknown;
     path: {
         /**
          * 团队标识
@@ -17240,7 +17240,7 @@ export type ListChannelTimelineErrors = {
 export type ListChannelTimelineError = ListChannelTimelineErrors[keyof ListChannelTimelineErrors];
 
 export type ListChannelTimelineResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisChannelsChannelTimelinePage;
+    200: GithubComJieWaZiNeuxBotServerApisChannelsChannelTimelinePage;
 };
 
 export type ListChannelTimelineResponse = ListChannelTimelineResponses[keyof ListChannelTimelineResponses];
@@ -17292,13 +17292,13 @@ export type ListChatsData = {
 };
 
 export type ListChatsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisChatsListChatsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisChatsListChatsResponse;
 };
 
 export type ListChatsResponse = ListChatsResponses[keyof ListChatsResponses];
 
 export type CreateChatData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChatsCreateChatRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChatsCreateChatRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/chats';
@@ -17374,7 +17374,7 @@ export type CreateChatErrors = {
 export type CreateChatError = CreateChatErrors[keyof CreateChatErrors];
 
 export type CreateChatResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution;
+    200: GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution;
 };
 
 export type CreateChatResponse = CreateChatResponses[keyof CreateChatResponses];
@@ -17434,13 +17434,13 @@ export type GetChatData = {
 };
 
 export type GetChatResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesChatChatSummary;
+    200: GithubComJieWaZiNeuxBotServerServicesChatChatSummary;
 };
 
 export type GetChatResponse = GetChatResponses[keyof GetChatResponses];
 
 export type UpdateChatData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChatsUpdateChatRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChatsUpdateChatRequest & unknown;
     path: {
         /**
          * 对话标识
@@ -17481,7 +17481,7 @@ export type UpdateChatResponses = {
 export type UpdateChatResponse = UpdateChatResponses[keyof UpdateChatResponses];
 
 export type ResolveApprovalData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChatsResolveApprovalRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChatsResolveApprovalRequest & unknown;
     path: {
         /**
          * 审批标识
@@ -17521,7 +17521,7 @@ export type CancelChatExecutionResponses = {
 export type CancelChatExecutionResponse = CancelChatExecutionResponses[keyof CancelChatExecutionResponses];
 
 export type ResolveElicitationData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChatsResolveElicitationRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChatsResolveElicitationRequest & unknown;
     path: {
         /**
          * 对话标识
@@ -17571,7 +17571,7 @@ export type ListChatEventsErrors = {
 export type ListChatEventsError = ListChatEventsErrors[keyof ListChatEventsErrors];
 
 export type ListChatEventsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisChatsListChatEventsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisChatsListChatEventsResponse;
 };
 
 export type ListChatEventsResponse = ListChatEventsResponses[keyof ListChatEventsResponses];
@@ -17593,13 +17593,13 @@ export type RetryChatExecutionData = {
 };
 
 export type RetryChatExecutionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution;
+    200: GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution;
 };
 
 export type RetryChatExecutionResponse = RetryChatExecutionResponses[keyof RetryChatExecutionResponses];
 
 export type ForkChatData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChatsForkChatRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChatsForkChatRequest & unknown;
     path: {
         /**
          * 对话标识
@@ -17611,7 +17611,7 @@ export type ForkChatData = {
 };
 
 export type ForkChatResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisChatsForkChatResponse;
+    200: GithubComJieWaZiNeuxBotServerApisChatsForkChatResponse;
 };
 
 export type ForkChatResponse = ForkChatResponses[keyof ForkChatResponses];
@@ -17629,7 +17629,7 @@ export type GetChatForkTargetsData = {
 };
 
 export type GetChatForkTargetsResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerServicesChatForkTarget>;
+    200: Array<GithubComJieWaZiNeuxBotServerServicesChatForkTarget>;
 };
 
 export type GetChatForkTargetsResponse = GetChatForkTargetsResponses[keyof GetChatForkTargetsResponses];
@@ -17673,13 +17673,13 @@ export type ListChatMessagesErrors = {
 export type ListChatMessagesError = ListChatMessagesErrors[keyof ListChatMessagesErrors];
 
 export type ListChatMessagesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesChatMessageHistoryPage;
+    200: GithubComJieWaZiNeuxBotServerServicesChatMessageHistoryPage;
 };
 
 export type ListChatMessagesResponse = ListChatMessagesResponses[keyof ListChatMessagesResponses];
 
 export type SendMessageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisChatsMessageRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChatsMessageRequest & unknown;
     path: {
         /**
          * 对话标识
@@ -17760,7 +17760,7 @@ export type SendMessageErrors = {
 export type SendMessageError = SendMessageErrors[keyof SendMessageErrors];
 
 export type SendMessageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution;
+    200: GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution;
 };
 
 export type SendMessageResponse = SendMessageResponses[keyof SendMessageResponses];
@@ -17811,7 +17811,7 @@ export type GetChatMessageFileChangeErrors = {
 export type GetChatMessageFileChangeError = GetChatMessageFileChangeErrors[keyof GetChatMessageFileChangeErrors];
 
 export type GetChatMessageFileChangeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageFileChangeDiff;
+    200: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFileChangeDiff;
 };
 
 export type GetChatMessageFileChangeResponse = GetChatMessageFileChangeResponses[keyof GetChatMessageFileChangeResponses];
@@ -17866,13 +17866,13 @@ export type ListLibraryConnectorsErrors = {
 export type ListLibraryConnectorsError = ListLibraryConnectorsErrors[keyof ListLibraryConnectorsErrors];
 
 export type ListLibraryConnectorsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpListLibraryConnectorsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpListLibraryConnectorsResponse;
 };
 
 export type ListLibraryConnectorsResponse = ListLibraryConnectorsResponses[keyof ListLibraryConnectorsResponses];
 
 export type CreateLibraryConnectorData = {
-    body: GithubComJieWaZiNeuxAllyServerApisMcpConnectorInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisMcpConnectorInput & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/connectors';
@@ -17920,7 +17920,7 @@ export type CreateLibraryConnectorErrors = {
 export type CreateLibraryConnectorError = CreateLibraryConnectorErrors[keyof CreateLibraryConnectorErrors];
 
 export type CreateLibraryConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type CreateLibraryConnectorResponse = CreateLibraryConnectorResponses[keyof CreateLibraryConnectorResponses];
@@ -18018,13 +18018,13 @@ export type GetLibraryConnectorErrors = {
 export type GetLibraryConnectorError = GetLibraryConnectorErrors[keyof GetLibraryConnectorErrors];
 
 export type GetLibraryConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type GetLibraryConnectorResponse = GetLibraryConnectorResponses[keyof GetLibraryConnectorResponses];
 
 export type UpdateLibraryConnectorData = {
-    body: GithubComJieWaZiNeuxAllyServerApisMcpConnectorInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisMcpConnectorInput & unknown;
     path: {
         /**
          * 连接器标识
@@ -18078,13 +18078,13 @@ export type UpdateLibraryConnectorErrors = {
 export type UpdateLibraryConnectorError = UpdateLibraryConnectorErrors[keyof UpdateLibraryConnectorErrors];
 
 export type UpdateLibraryConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type UpdateLibraryConnectorResponse = UpdateLibraryConnectorResponses[keyof UpdateLibraryConnectorResponses];
 
 export type InstallLibraryConnectorData = {
-    body: GithubComJieWaZiNeuxAllyServerApisMcpInstallLibraryConnectorRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisMcpInstallLibraryConnectorRequest & unknown;
     path: {
         /**
          * 资源标识
@@ -18172,7 +18172,7 @@ export type TestLibraryConnectorErrors = {
 export type TestLibraryConnectorError = TestLibraryConnectorErrors[keyof TestLibraryConnectorErrors];
 
 export type TestLibraryConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type TestLibraryConnectorResponse = TestLibraryConnectorResponses[keyof TestLibraryConnectorResponses];
@@ -18519,13 +18519,13 @@ export type ListImBindingsData = {
 };
 
 export type ListImBindingsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisImListImBindingsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisImListImBindingsResponse;
 };
 
 export type ListImBindingsResponse = ListImBindingsResponses[keyof ListImBindingsResponses];
 
 export type UpdateImBindingData = {
-    body: GithubComJieWaZiNeuxAllyServerApisImBindingConfiguration & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisImBindingConfiguration & unknown;
     path: {
         /**
          * 聊天标识
@@ -18554,7 +18554,7 @@ export type UpdateImBindingResponses = {
 export type UpdateImBindingResponse = UpdateImBindingResponses[keyof UpdateImBindingResponses];
 
 export type SelectImConversationData = {
-    body: GithubComJieWaZiNeuxAllyServerApisImSelectImConversationRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisImSelectImConversationRequest & unknown;
     path: {
         /**
          * 聊天授权身份
@@ -18613,7 +18613,7 @@ export type ListImConversationsErrors = {
 export type ListImConversationsError = ListImConversationsErrors[keyof ListImConversationsErrors];
 
 export type ListImConversationsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisImListImConversationsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisImListImConversationsResponse;
 };
 
 export type ListImConversationsResponse = ListImConversationsResponses[keyof ListImConversationsResponses];
@@ -18626,13 +18626,13 @@ export type ListImConnectionsData = {
 };
 
 export type ListImConnectionsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisImListImConnectionsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisImListImConnectionsResponse;
 };
 
 export type ListImConnectionsResponse = ListImConnectionsResponses[keyof ListImConnectionsResponses];
 
 export type CreateImConnectionData = {
-    body: GithubComJieWaZiNeuxAllyServerServicesImConnectionConfiguration & unknown;
+    body: GithubComJieWaZiNeuxBotServerServicesImConnectionConfiguration & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/im/connections';
@@ -18662,7 +18662,7 @@ export type CreateImConnectionErrors = {
 export type CreateImConnectionError = CreateImConnectionErrors[keyof CreateImConnectionErrors];
 
 export type CreateImConnectionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConnection;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsImConnection;
 };
 
 export type CreateImConnectionResponse = CreateImConnectionResponses[keyof CreateImConnectionResponses];
@@ -18706,7 +18706,7 @@ export type DeleteImConnectionResponses = {
 export type DeleteImConnectionResponse = DeleteImConnectionResponses[keyof DeleteImConnectionResponses];
 
 export type UpdateImConnectionData = {
-    body: GithubComJieWaZiNeuxAllyServerServicesImConnectionConfiguration & unknown;
+    body: GithubComJieWaZiNeuxBotServerServicesImConnectionConfiguration & unknown;
     path: {
         /**
          * 连接标识
@@ -18741,7 +18741,7 @@ export type UpdateImConnectionErrors = {
 export type UpdateImConnectionError = UpdateImConnectionErrors[keyof UpdateImConnectionErrors];
 
 export type UpdateImConnectionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConnection;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsImConnection;
 };
 
 export type UpdateImConnectionResponse = UpdateImConnectionResponses[keyof UpdateImConnectionResponses];
@@ -18759,7 +18759,7 @@ export type GetImConnectionDependenciesData = {
 };
 
 export type GetImConnectionDependenciesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConnectionDependencies;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsImConnectionDependencies;
 };
 
 export type GetImConnectionDependenciesResponse = GetImConnectionDependenciesResponses[keyof GetImConnectionDependenciesResponses];
@@ -18820,7 +18820,7 @@ export type StartImLoginErrors = {
 export type StartImLoginError = StartImLoginErrors[keyof StartImLoginErrors];
 
 export type StartImLoginResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesImLoginProgress;
+    200: GithubComJieWaZiNeuxBotServerServicesImLoginProgress;
 };
 
 export type StartImLoginResponse = StartImLoginResponses[keyof StartImLoginResponses];
@@ -18878,13 +18878,13 @@ export type GetImLoginErrors = {
 export type GetImLoginError = GetImLoginErrors[keyof GetImLoginErrors];
 
 export type GetImLoginResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesImLoginProgress;
+    200: GithubComJieWaZiNeuxBotServerServicesImLoginProgress;
 };
 
 export type GetImLoginResponse = GetImLoginResponses[keyof GetImLoginResponses];
 
 export type VerifyImLoginData = {
-    body: GithubComJieWaZiNeuxAllyServerApisImVerifyImLoginRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisImVerifyImLoginRequest & unknown;
     path: {
         /**
          * 临时认证标识
@@ -18932,7 +18932,7 @@ export type GetImStatusData = {
 };
 
 export type GetImStatusResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisImGetImStatusResponse;
+    200: GithubComJieWaZiNeuxBotServerApisImGetImStatusResponse;
 };
 
 export type GetImStatusResponse = GetImStatusResponses[keyof GetImStatusResponses];
@@ -19014,13 +19014,13 @@ export type ListApiKeysErrors = {
 export type ListApiKeysError = ListApiKeysErrors[keyof ListApiKeysErrors];
 
 export type ListApiKeysResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisIntegrationsApiKeyList;
+    200: GithubComJieWaZiNeuxBotServerApisIntegrationsApiKeyList;
 };
 
 export type ListApiKeysResponse = ListApiKeysResponses[keyof ListApiKeysResponses];
 
 export type CreateApiKeyData = {
-    body: GithubComJieWaZiNeuxAllyServerApisIntegrationsCreateApiKeyInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisIntegrationsCreateApiKeyInput & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/integrations/keys';
@@ -19089,13 +19089,13 @@ export type CreateApiKeyErrors = {
 export type CreateApiKeyError = CreateApiKeyErrors[keyof CreateApiKeyErrors];
 
 export type CreateApiKeyResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisIntegrationsApiKeyIssuance;
+    200: GithubComJieWaZiNeuxBotServerApisIntegrationsApiKeyIssuance;
 };
 
 export type CreateApiKeyResponse = CreateApiKeyResponses[keyof CreateApiKeyResponses];
 
 export type DeleteApiKeyData = {
-    body: GithubComJieWaZiNeuxAllyServerApisIntegrationsApiKeyRevisionInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisIntegrationsApiKeyRevisionInput & unknown;
     path: {
         /**
          * 密钥标识
@@ -19130,7 +19130,7 @@ export type DeleteApiKeyResponses = {
 export type DeleteApiKeyResponse = DeleteApiKeyResponses[keyof DeleteApiKeyResponses];
 
 export type UpdateApiKeyData = {
-    body: GithubComJieWaZiNeuxAllyServerApisIntegrationsUpdateApiKeyInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisIntegrationsUpdateApiKeyInput & unknown;
     path: {
         /**
          * 主体标识
@@ -19536,7 +19536,7 @@ export type ListPublishableResourcesData = {
     body?: never;
     path?: never;
     query: {
-        kind: GithubComJieWaZiNeuxAllyServerConstantsIntegrationResourceKind & unknown;
+        kind: GithubComJieWaZiNeuxBotServerConstantsIntegrationResourceKind & unknown;
         /**
          * 当前页码
          */
@@ -19602,7 +19602,7 @@ export type ListPublishableResourcesErrors = {
 export type ListPublishableResourcesError = ListPublishableResourcesErrors[keyof ListPublishableResourcesErrors];
 
 export type ListPublishableResourcesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisIntegrationsPublishableResourceList;
+    200: GithubComJieWaZiNeuxBotServerApisIntegrationsPublishableResourceList;
 };
 
 export type ListPublishableResourcesResponse = ListPublishableResourcesResponses[keyof ListPublishableResourcesResponses];
@@ -19626,13 +19626,13 @@ export type GetApiServiceErrors = {
 export type GetApiServiceError = GetApiServiceErrors[keyof GetApiServiceErrors];
 
 export type GetApiServiceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalIntegrationListenerSettings;
+    200: GithubComJieWaZiNeuxBotServerInternalIntegrationListenerSettings;
 };
 
 export type GetApiServiceResponse = GetApiServiceResponses[keyof GetApiServiceResponses];
 
 export type UpdateApiServiceData = {
-    body: GithubComJieWaZiNeuxAllyServerApisIntegrationsApiServiceInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisIntegrationsApiServiceInput & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/integrations/service';
@@ -20043,7 +20043,7 @@ export type ChatLibrariesErrors = {
 export type ChatLibrariesError = ChatLibrariesErrors[keyof ChatLibrariesErrors];
 
 export type ChatLibrariesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeChatLibraryList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeChatLibraryList;
 };
 
 export type ChatLibrariesResponse = ChatLibrariesResponses[keyof ChatLibrariesResponses];
@@ -20136,13 +20136,13 @@ export type GetRemoteChatOperationErrors = {
 export type GetRemoteChatOperationError = GetRemoteChatOperationErrors[keyof GetRemoteChatOperationErrors];
 
 export type GetRemoteChatOperationResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatResult;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeRemoteChatResult;
 };
 
 export type GetRemoteChatOperationResponse = GetRemoteChatOperationResponses[keyof GetRemoteChatOperationResponses];
 
 export type OrganizeRemoteChatData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeRemoteChatInput & unknown;
     path: {
         /**
          * 聊天标识
@@ -20229,7 +20229,7 @@ export type OrganizeRemoteChatErrors = {
 export type OrganizeRemoteChatError = OrganizeRemoteChatErrors[keyof OrganizeRemoteChatErrors];
 
 export type OrganizeRemoteChatResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatResult;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeRemoteChatResult;
 };
 
 export type OrganizeRemoteChatResponse = OrganizeRemoteChatResponses[keyof OrganizeRemoteChatResponses];
@@ -20273,7 +20273,7 @@ export type ListRemoteChatOperationsErrors = {
 export type ListRemoteChatOperationsError = ListRemoteChatOperationsErrors[keyof ListRemoteChatOperationsErrors];
 
 export type ListRemoteChatOperationsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeRemoteChatOperationList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeRemoteChatOperationList;
 };
 
 export type ListRemoteChatOperationsResponse = ListRemoteChatOperationsResponses[keyof ListRemoteChatOperationsResponses];
@@ -20343,7 +20343,7 @@ export type PreviewChunkingErrors = {
 export type PreviewChunkingError = PreviewChunkingErrors[keyof PreviewChunkingErrors];
 
 export type PreviewChunkingResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgePreviewChunkingResult;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgePreviewChunkingResult;
 };
 
 export type PreviewChunkingResponse = PreviewChunkingResponses[keyof PreviewChunkingResponses];
@@ -20367,13 +20367,13 @@ export type ListConnectionsErrors = {
 export type ListConnectionsError = ListConnectionsErrors[keyof ListConnectionsErrors];
 
 export type ListConnectionsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnectionList;
 };
 
 export type ListConnectionsResponse = ListConnectionsResponses[keyof ListConnectionsResponses];
 
 export type CreateConnectionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnectionInput & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/knowledge/connections';
@@ -20436,7 +20436,7 @@ export type CreateConnectionErrors = {
 export type CreateConnectionError = CreateConnectionErrors[keyof CreateConnectionErrors];
 
 export type CreateConnectionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnectionReceipt;
 };
 
 export type CreateConnectionResponse = CreateConnectionResponses[keyof CreateConnectionResponses];
@@ -20449,7 +20449,7 @@ export type ListAvailableLibrariesData = {
          * 每页条数
          */
         limit?: number;
-        location?: GithubComJieWaZiNeuxAllyServerConstantsKnowledgeLibraryLocation & unknown;
+        location?: GithubComJieWaZiNeuxBotServerConstantsKnowledgeLibraryLocation & unknown;
         /**
          * 起始位置
          */
@@ -20534,13 +20534,13 @@ export type ListAvailableLibrariesErrors = {
 export type ListAvailableLibrariesError = ListAvailableLibrariesErrors[keyof ListAvailableLibrariesErrors];
 
 export type ListAvailableLibrariesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryList;
 };
 
 export type ListAvailableLibrariesResponse = ListAvailableLibrariesResponses[keyof ListAvailableLibrariesResponses];
 
 export type AddRemoteLibraryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsAddRemoteLibraryInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsAddRemoteLibraryInput & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/knowledge/connections/mounts';
@@ -20610,7 +20610,7 @@ export type AddRemoteLibraryErrors = {
 export type AddRemoteLibraryError = AddRemoteLibraryErrors[keyof AddRemoteLibraryErrors];
 
 export type AddRemoteLibraryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteMountReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteMountReceipt;
 };
 
 export type AddRemoteLibraryResponse = AddRemoteLibraryResponses[keyof AddRemoteLibraryResponses];
@@ -20650,7 +20650,7 @@ export type RemoveRemoteMountResponses = {
 export type RemoveRemoteMountResponse = RemoveRemoteMountResponses[keyof RemoveRemoteMountResponses];
 
 export type UpdateConnectionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnectionInput & unknown;
     path: {
         /**
          * 连接标识
@@ -20718,7 +20718,7 @@ export type UpdateConnectionErrors = {
 export type UpdateConnectionError = UpdateConnectionErrors[keyof UpdateConnectionErrors];
 
 export type UpdateConnectionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnectionReceipt;
 };
 
 export type UpdateConnectionResponse = UpdateConnectionResponses[keyof UpdateConnectionResponses];
@@ -20792,13 +20792,13 @@ export type CheckConnectionErrors = {
 export type CheckConnectionError = CheckConnectionErrors[keyof CheckConnectionErrors];
 
 export type CheckConnectionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnectionCheck;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnectionCheck;
 };
 
 export type CheckConnectionResponse = CheckConnectionResponses[keyof CheckConnectionResponses];
 
 export type RedetectConnectionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRedetectConnectionInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRedetectConnectionInput & unknown;
     path: {
         /**
          * 连接标识
@@ -20866,7 +20866,7 @@ export type RedetectConnectionErrors = {
 export type RedetectConnectionError = RedetectConnectionErrors[keyof RedetectConnectionErrors];
 
 export type RedetectConnectionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsConnection;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsConnection;
 };
 
 export type RedetectConnectionResponse = RedetectConnectionResponses[keyof RedetectConnectionResponses];
@@ -20950,13 +20950,13 @@ export type ListRemoteLibrariesErrors = {
 export type ListRemoteLibrariesError = ListRemoteLibrariesErrors[keyof ListRemoteLibrariesErrors];
 
 export type ListRemoteLibrariesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryList;
 };
 
 export type ListRemoteLibrariesResponse = ListRemoteLibrariesResponses[keyof ListRemoteLibrariesResponses];
 
 export type CreateRemoteLibraryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeCreateLibraryInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeCreateLibraryInput & unknown;
     path: {
         /**
          * 连接标识
@@ -21024,13 +21024,13 @@ export type CreateRemoteLibraryErrors = {
 export type CreateRemoteLibraryError = CreateRemoteLibraryErrors[keyof CreateRemoteLibraryErrors];
 
 export type CreateRemoteLibraryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type CreateRemoteLibraryResponse = CreateRemoteLibraryResponses[keyof CreateRemoteLibraryResponses];
 
 export type DeleteRemoteLibraryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeDeleteLibraryInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeDeleteLibraryInput & unknown;
     path: {
         /**
          * 连接标识
@@ -21102,7 +21102,7 @@ export type DeleteRemoteLibraryErrors = {
 export type DeleteRemoteLibraryError = DeleteRemoteLibraryErrors[keyof DeleteRemoteLibraryErrors];
 
 export type DeleteRemoteLibraryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type DeleteRemoteLibraryResponse = DeleteRemoteLibraryResponses[keyof DeleteRemoteLibraryResponses];
@@ -21180,13 +21180,13 @@ export type GetRemoteLibraryErrors = {
 export type GetRemoteLibraryError = GetRemoteLibraryErrors[keyof GetRemoteLibraryErrors];
 
 export type GetRemoteLibraryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeLibrary;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeLibrary;
 };
 
 export type GetRemoteLibraryResponse = GetRemoteLibraryResponses[keyof GetRemoteLibraryResponses];
 
 export type UpdateRemoteLibraryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeUpdateLibraryInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeUpdateLibraryInput & unknown;
     path: {
         /**
          * 连接标识
@@ -21258,7 +21258,7 @@ export type UpdateRemoteLibraryErrors = {
 export type UpdateRemoteLibraryError = UpdateRemoteLibraryErrors[keyof UpdateRemoteLibraryErrors];
 
 export type UpdateRemoteLibraryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type UpdateRemoteLibraryResponse = UpdateRemoteLibraryResponses[keyof UpdateRemoteLibraryResponses];
@@ -21357,7 +21357,7 @@ export type ListRemoteLibraryActivityErrors = {
 export type ListRemoteLibraryActivityError = ListRemoteLibraryActivityErrors[keyof ListRemoteLibraryActivityErrors];
 
 export type ListRemoteLibraryActivityResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryActivityList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryActivityList;
 };
 
 export type ListRemoteLibraryActivityResponse = ListRemoteLibraryActivityResponses[keyof ListRemoteLibraryActivityResponses];
@@ -21513,7 +21513,7 @@ export type GetRemoteCapabilitiesErrors = {
 export type GetRemoteCapabilitiesError = GetRemoteCapabilitiesErrors[keyof GetRemoteCapabilitiesErrors];
 
 export type GetRemoteCapabilitiesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteCapabilities;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteCapabilities;
 };
 
 export type GetRemoteCapabilitiesResponse = GetRemoteCapabilitiesResponses[keyof GetRemoteCapabilitiesResponses];
@@ -21597,7 +21597,7 @@ export type GetRemoteLibraryDeletionResponses = {
 export type GetRemoteLibraryDeletionResponse = GetRemoteLibraryDeletionResponses[keyof GetRemoteLibraryDeletionResponses];
 
 export type RecoverRemoteLibraryDeletionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeDeleteLibraryInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeDeleteLibraryInput & unknown;
     path: {
         /**
          * 连接标识
@@ -21669,7 +21669,7 @@ export type RecoverRemoteLibraryDeletionErrors = {
 export type RecoverRemoteLibraryDeletionError = RecoverRemoteLibraryDeletionErrors[keyof RecoverRemoteLibraryDeletionErrors];
 
 export type RecoverRemoteLibraryDeletionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type RecoverRemoteLibraryDeletionResponse = RecoverRemoteLibraryDeletionResponses[keyof RecoverRemoteLibraryDeletionResponses];
@@ -21764,7 +21764,7 @@ export type GetRemoteGraphErrors = {
 export type GetRemoteGraphError = GetRemoteGraphErrors[keyof GetRemoteGraphErrors];
 
 export type GetRemoteGraphResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteGraph;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteGraph;
 };
 
 export type GetRemoteGraphResponse = GetRemoteGraphResponses[keyof GetRemoteGraphResponses];
@@ -21852,7 +21852,7 @@ export type ListRemoteJobsErrors = {
 export type ListRemoteJobsError = ListRemoteJobsErrors[keyof ListRemoteJobsErrors];
 
 export type ListRemoteJobsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeJobList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeJobList;
 };
 
 export type ListRemoteJobsResponse = ListRemoteJobsResponses[keyof ListRemoteJobsResponses];
@@ -21934,13 +21934,13 @@ export type GetRemoteJobErrors = {
 export type GetRemoteJobError = GetRemoteJobErrors[keyof GetRemoteJobErrors];
 
 export type GetRemoteJobResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeJobDetail;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeJobDetail;
 };
 
 export type GetRemoteJobResponse = GetRemoteJobResponses[keyof GetRemoteJobResponses];
 
 export type MaintainRemoteData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteMaintenanceInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteMaintenanceInput & unknown;
     path: {
         /**
          * 连接标识
@@ -22012,7 +22012,7 @@ export type MaintainRemoteErrors = {
 export type MaintainRemoteError = MaintainRemoteErrors[keyof MaintainRemoteErrors];
 
 export type MaintainRemoteResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type MaintainRemoteResponse = MaintainRemoteResponses[keyof MaintainRemoteResponses];
@@ -22138,7 +22138,7 @@ export type ListRemoteOperationsErrors = {
 export type ListRemoteOperationsError = ListRemoteOperationsErrors[keyof ListRemoteOperationsErrors];
 
 export type ListRemoteOperationsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOperationList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteOperationList;
 };
 
 export type ListRemoteOperationsResponse = ListRemoteOperationsResponses[keyof ListRemoteOperationsResponses];
@@ -22181,13 +22181,13 @@ export type GetRemoteOperationErrors = {
 export type GetRemoteOperationError = GetRemoteOperationErrors[keyof GetRemoteOperationErrors];
 
 export type GetRemoteOperationResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOperation;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteOperation;
 };
 
 export type GetRemoteOperationResponse = GetRemoteOperationResponses[keyof GetRemoteOperationResponses];
 
 export type OrganizeRemoteData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteOrganizeInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteOrganizeInput & unknown;
     path: {
         /**
          * 连接标识
@@ -22259,7 +22259,7 @@ export type OrganizeRemoteErrors = {
 export type OrganizeRemoteError = OrganizeRemoteErrors[keyof OrganizeRemoteErrors];
 
 export type OrganizeRemoteResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type OrganizeRemoteResponse = OrganizeRemoteResponses[keyof OrganizeRemoteResponses];
@@ -22342,7 +22342,7 @@ export type GetRemotePageBySlugErrors = {
 export type GetRemotePageBySlugError = GetRemotePageBySlugErrors[keyof GetRemotePageBySlugErrors];
 
 export type GetRemotePageBySlugResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgePage;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgePage;
 };
 
 export type GetRemotePageBySlugResponse = GetRemotePageBySlugResponses[keyof GetRemotePageBySlugResponses];
@@ -22429,7 +22429,7 @@ export type ListRemotePageDirectoryErrors = {
 export type ListRemotePageDirectoryError = ListRemotePageDirectoryErrors[keyof ListRemotePageDirectoryErrors];
 
 export type ListRemotePageDirectoryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgePageDirectoryList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgePageDirectoryList;
 };
 
 export type ListRemotePageDirectoryResponse = ListRemotePageDirectoryResponses[keyof ListRemotePageDirectoryResponses];
@@ -22529,13 +22529,13 @@ export type ListRemotePagesErrors = {
 export type ListRemotePagesError = ListRemotePagesErrors[keyof ListRemotePagesErrors];
 
 export type ListRemotePagesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgePageList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgePageList;
 };
 
 export type ListRemotePagesResponse = ListRemotePagesResponses[keyof ListRemotePagesResponses];
 
 export type CreateRemotePageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeCreatePageInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeCreatePageInput & unknown;
     path: {
         /**
          * 连接标识
@@ -22607,7 +22607,7 @@ export type CreateRemotePageErrors = {
 export type CreateRemotePageError = CreateRemotePageErrors[keyof CreateRemotePageErrors];
 
 export type CreateRemotePageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type CreateRemotePageResponse = CreateRemotePageResponses[keyof CreateRemotePageResponses];
@@ -22694,13 +22694,13 @@ export type GetRemotePageErrors = {
 export type GetRemotePageError = GetRemotePageErrors[keyof GetRemotePageErrors];
 
 export type GetRemotePageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgePage;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgePage;
 };
 
 export type GetRemotePageResponse = GetRemotePageResponses[keyof GetRemotePageResponses];
 
 export type WriteRemotePageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteWritePageInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteWritePageInput & unknown;
     path: {
         /**
          * 连接标识
@@ -22776,13 +22776,13 @@ export type WriteRemotePageErrors = {
 export type WriteRemotePageError = WriteRemotePageErrors[keyof WriteRemotePageErrors];
 
 export type WriteRemotePageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type WriteRemotePageResponse = WriteRemotePageResponses[keyof WriteRemotePageResponses];
 
 export type RestoreRemotePageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeRestorePageInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeRestorePageInput & unknown;
     path: {
         /**
          * 连接标识
@@ -22858,7 +22858,7 @@ export type RestoreRemotePageErrors = {
 export type RestoreRemotePageError = RestoreRemotePageErrors[keyof RestoreRemotePageErrors];
 
 export type RestoreRemotePageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type RestoreRemotePageResponse = RestoreRemotePageResponses[keyof RestoreRemotePageResponses];
@@ -22954,7 +22954,7 @@ export type ListRemoteRevisionsErrors = {
 export type ListRemoteRevisionsError = ListRemoteRevisionsErrors[keyof ListRemoteRevisionsErrors];
 
 export type ListRemoteRevisionsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteRevisionList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteRevisionList;
 };
 
 export type ListRemoteRevisionsResponse = ListRemoteRevisionsResponses[keyof ListRemoteRevisionsResponses];
@@ -23045,7 +23045,7 @@ export type GetRemoteRevisionErrors = {
 export type GetRemoteRevisionError = GetRemoteRevisionErrors[keyof GetRemoteRevisionErrors];
 
 export type GetRemoteRevisionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeRevision;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeRevision;
 };
 
 export type GetRemoteRevisionResponse = GetRemoteRevisionResponses[keyof GetRemoteRevisionResponses];
@@ -23127,7 +23127,7 @@ export type GetRemoteReceiptErrors = {
 export type GetRemoteReceiptError = GetRemoteReceiptErrors[keyof GetRemoteReceiptErrors];
 
 export type GetRemoteReceiptResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type GetRemoteReceiptResponse = GetRemoteReceiptResponses[keyof GetRemoteReceiptResponses];
@@ -23220,7 +23220,7 @@ export type ListRemoteSourcePurgesResponses = {
 export type ListRemoteSourcePurgesResponse = ListRemoteSourcePurgesResponses[keyof ListRemoteSourcePurgesResponses];
 
 export type ConfirmRemoteSourcePurgeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeConfirmSourcePurgeInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeConfirmSourcePurgeInput & unknown;
     path: {
         /**
          * 连接标识
@@ -23292,7 +23292,7 @@ export type ConfirmRemoteSourcePurgeErrors = {
 export type ConfirmRemoteSourcePurgeError = ConfirmRemoteSourcePurgeErrors[keyof ConfirmRemoteSourcePurgeErrors];
 
 export type ConfirmRemoteSourcePurgeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type ConfirmRemoteSourcePurgeResponse = ConfirmRemoteSourcePurgeResponses[keyof ConfirmRemoteSourcePurgeResponses];
@@ -23463,7 +23463,7 @@ export type GetRemoteSourcePurgeResponses = {
 export type GetRemoteSourcePurgeResponse = GetRemoteSourcePurgeResponses[keyof GetRemoteSourcePurgeResponses];
 
 export type RecoverRemoteSourcePurgeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeRecoverSourcePurgeInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeRecoverSourcePurgeInput & unknown;
     path: {
         /**
          * 连接标识
@@ -23539,7 +23539,7 @@ export type RecoverRemoteSourcePurgeErrors = {
 export type RecoverRemoteSourcePurgeError = RecoverRemoteSourcePurgeErrors[keyof RecoverRemoteSourcePurgeErrors];
 
 export type RecoverRemoteSourcePurgeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type RecoverRemoteSourcePurgeResponse = RecoverRemoteSourcePurgeResponses[keyof RecoverRemoteSourcePurgeResponses];
@@ -23638,13 +23638,13 @@ export type ListRemoteSourcesErrors = {
 export type ListRemoteSourcesError = ListRemoteSourcesErrors[keyof ListRemoteSourcesErrors];
 
 export type ListRemoteSourcesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeSourceList;
 };
 
 export type ListRemoteSourcesResponse = ListRemoteSourcesResponses[keyof ListRemoteSourcesResponses];
 
 export type ImportRemoteSourceData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeImportSourceInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeImportSourceInput & unknown;
     path: {
         /**
          * 连接标识
@@ -23716,7 +23716,7 @@ export type ImportRemoteSourceErrors = {
 export type ImportRemoteSourceError = ImportRemoteSourceErrors[keyof ImportRemoteSourceErrors];
 
 export type ImportRemoteSourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type ImportRemoteSourceResponse = ImportRemoteSourceResponses[keyof ImportRemoteSourceResponses];
@@ -23798,13 +23798,13 @@ export type GetRemoteSourceErrors = {
 export type GetRemoteSourceError = GetRemoteSourceErrors[keyof GetRemoteSourceErrors];
 
 export type GetRemoteSourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeSource;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeSource;
 };
 
 export type GetRemoteSourceResponse = GetRemoteSourceResponses[keyof GetRemoteSourceResponses];
 
 export type ArchiveRemoteSourceData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeArchiveSourceInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeArchiveSourceInput & unknown;
     path: {
         /**
          * 连接标识
@@ -23880,7 +23880,7 @@ export type ArchiveRemoteSourceErrors = {
 export type ArchiveRemoteSourceError = ArchiveRemoteSourceErrors[keyof ArchiveRemoteSourceErrors];
 
 export type ArchiveRemoteSourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type ArchiveRemoteSourceResponse = ArchiveRemoteSourceResponses[keyof ArchiveRemoteSourceResponses];
@@ -24044,7 +24044,7 @@ export type GetRemoteRawErrors = {
 export type GetRemoteRawError = GetRemoteRawErrors[keyof GetRemoteRawErrors];
 
 export type GetRemoteRawResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeRawSource;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeRawSource;
 };
 
 export type GetRemoteRawResponse = GetRemoteRawResponses[keyof GetRemoteRawResponses];
@@ -24131,13 +24131,13 @@ export type ListRemoteThemesErrors = {
 export type ListRemoteThemesError = ListRemoteThemesErrors[keyof ListRemoteThemesErrors];
 
 export type ListRemoteThemesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteThemeList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteThemeList;
 };
 
 export type ListRemoteThemesResponse = ListRemoteThemesResponses[keyof ListRemoteThemesResponses];
 
 export type CreateRemoteThemeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeCreateThemeInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeCreateThemeInput & unknown;
     path: {
         /**
          * 连接标识
@@ -24209,13 +24209,13 @@ export type CreateRemoteThemeErrors = {
 export type CreateRemoteThemeError = CreateRemoteThemeErrors[keyof CreateRemoteThemeErrors];
 
 export type CreateRemoteThemeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type CreateRemoteThemeResponse = CreateRemoteThemeResponses[keyof CreateRemoteThemeResponses];
 
 export type WriteRemoteThemeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeWriteThemeInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeWriteThemeInput & unknown;
     path: {
         /**
          * 连接标识
@@ -24291,13 +24291,13 @@ export type WriteRemoteThemeErrors = {
 export type WriteRemoteThemeError = WriteRemoteThemeErrors[keyof WriteRemoteThemeErrors];
 
 export type WriteRemoteThemeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type WriteRemoteThemeResponse = WriteRemoteThemeResponses[keyof WriteRemoteThemeResponses];
 
 export type UploadRemoteSourceData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteUploadInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteUploadInput & unknown;
     path: {
         /**
          * 连接标识
@@ -24369,7 +24369,7 @@ export type UploadRemoteSourceErrors = {
 export type UploadRemoteSourceError = UploadRemoteSourceErrors[keyof UploadRemoteSourceErrors];
 
 export type UploadRemoteSourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteUploadResult;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteUploadResult;
 };
 
 export type UploadRemoteSourceResponse = UploadRemoteSourceResponses[keyof UploadRemoteSourceResponses];
@@ -24451,13 +24451,13 @@ export type GetRemoteUploadStatusErrors = {
 export type GetRemoteUploadStatusError = GetRemoteUploadStatusErrors[keyof GetRemoteUploadStatusErrors];
 
 export type GetRemoteUploadStatusResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeConnectionsRemoteUploadResult;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeConnectionsRemoteUploadResult;
 };
 
 export type GetRemoteUploadStatusResponse = GetRemoteUploadStatusResponses[keyof GetRemoteUploadStatusResponses];
 
 export type TestLibraryEmbeddingData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeTestLibraryEmbeddingInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeTestLibraryEmbeddingInput & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/knowledge/embedding/test';
@@ -24530,7 +24530,7 @@ export type TestLibraryEmbeddingErrors = {
 export type TestLibraryEmbeddingError = TestLibraryEmbeddingErrors[keyof TestLibraryEmbeddingErrors];
 
 export type TestLibraryEmbeddingResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryEmbeddingTestResult;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryEmbeddingTestResult;
 };
 
 export type TestLibraryEmbeddingResponse = TestLibraryEmbeddingResponses[keyof TestLibraryEmbeddingResponses];
@@ -24604,13 +24604,13 @@ export type ListLibrariesErrors = {
 export type ListLibrariesError = ListLibrariesErrors[keyof ListLibrariesErrors];
 
 export type ListLibrariesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryList;
 };
 
 export type ListLibrariesResponse = ListLibrariesResponses[keyof ListLibrariesResponses];
 
 export type CreateLibraryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeCreateLibraryInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeCreateLibraryInput & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/knowledge/libraries';
@@ -24669,13 +24669,13 @@ export type CreateLibraryErrors = {
 export type CreateLibraryError = CreateLibraryErrors[keyof CreateLibraryErrors];
 
 export type CreateLibraryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type CreateLibraryResponse = CreateLibraryResponses[keyof CreateLibraryResponses];
 
 export type DeleteLibraryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeDeleteLibraryInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeDeleteLibraryInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -24744,7 +24744,7 @@ export type DeleteLibraryErrors = {
 export type DeleteLibraryError = DeleteLibraryErrors[keyof DeleteLibraryErrors];
 
 export type DeleteLibraryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type DeleteLibraryResponse = DeleteLibraryResponses[keyof DeleteLibraryResponses];
@@ -24813,13 +24813,13 @@ export type GetLibraryErrors = {
 export type GetLibraryError = GetLibraryErrors[keyof GetLibraryErrors];
 
 export type GetLibraryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeLibrary;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeLibrary;
 };
 
 export type GetLibraryResponse = GetLibraryResponses[keyof GetLibraryResponses];
 
 export type UpdateLibraryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeUpdateLibraryInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeUpdateLibraryInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -24882,7 +24882,7 @@ export type UpdateLibraryErrors = {
 export type UpdateLibraryError = UpdateLibraryErrors[keyof UpdateLibraryErrors];
 
 export type UpdateLibraryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type UpdateLibraryResponse = UpdateLibraryResponses[keyof UpdateLibraryResponses];
@@ -24972,7 +24972,7 @@ export type ListLibraryActivityErrors = {
 export type ListLibraryActivityError = ListLibraryActivityErrors[keyof ListLibraryActivityErrors];
 
 export type ListLibraryActivityResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeLibraryActivityList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryActivityList;
 };
 
 export type ListLibraryActivityResponse = ListLibraryActivityResponses[keyof ListLibraryActivityResponses];
@@ -25116,7 +25116,7 @@ export type GetLibraryDeletionResponses = {
 export type GetLibraryDeletionResponse = GetLibraryDeletionResponses[keyof GetLibraryDeletionResponses];
 
 export type RecoverLibraryDeletionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeDeleteLibraryInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeDeleteLibraryInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -25185,7 +25185,7 @@ export type RecoverLibraryDeletionErrors = {
 export type RecoverLibraryDeletionError = RecoverLibraryDeletionErrors[keyof RecoverLibraryDeletionErrors];
 
 export type RecoverLibraryDeletionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type RecoverLibraryDeletionResponse = RecoverLibraryDeletionResponses[keyof RecoverLibraryDeletionResponses];
@@ -25254,13 +25254,13 @@ export type GetLibraryEmbeddingProfileErrors = {
 export type GetLibraryEmbeddingProfileError = GetLibraryEmbeddingProfileErrors[keyof GetLibraryEmbeddingProfileErrors];
 
 export type GetLibraryEmbeddingProfileResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsLibraryEmbeddingProfile;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsLibraryEmbeddingProfile;
 };
 
 export type GetLibraryEmbeddingProfileResponse = GetLibraryEmbeddingProfileResponses[keyof GetLibraryEmbeddingProfileResponses];
 
 export type UpdateLibraryEmbeddingProfileData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeUpdateLibraryEmbeddingProfileInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeUpdateLibraryEmbeddingProfileInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -25323,7 +25323,7 @@ export type UpdateLibraryEmbeddingProfileErrors = {
 export type UpdateLibraryEmbeddingProfileError = UpdateLibraryEmbeddingProfileErrors[keyof UpdateLibraryEmbeddingProfileErrors];
 
 export type UpdateLibraryEmbeddingProfileResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsLibraryEmbeddingProfile;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsLibraryEmbeddingProfile;
 };
 
 export type UpdateLibraryEmbeddingProfileResponse = UpdateLibraryEmbeddingProfileResponses[keyof UpdateLibraryEmbeddingProfileResponses];
@@ -25392,13 +25392,13 @@ export type GetLibraryExecutionDefaultsErrors = {
 export type GetLibraryExecutionDefaultsError = GetLibraryExecutionDefaultsErrors[keyof GetLibraryExecutionDefaultsErrors];
 
 export type GetLibraryExecutionDefaultsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsLibraryExecutionDefaults;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsLibraryExecutionDefaults;
 };
 
 export type GetLibraryExecutionDefaultsResponse = GetLibraryExecutionDefaultsResponses[keyof GetLibraryExecutionDefaultsResponses];
 
 export type UpdateLibraryExecutionDefaultsData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeUpdateLibraryExecutionDefaultsInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeUpdateLibraryExecutionDefaultsInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -25461,7 +25461,7 @@ export type UpdateLibraryExecutionDefaultsErrors = {
 export type UpdateLibraryExecutionDefaultsError = UpdateLibraryExecutionDefaultsErrors[keyof UpdateLibraryExecutionDefaultsErrors];
 
 export type UpdateLibraryExecutionDefaultsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsLibraryExecutionDefaults;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsLibraryExecutionDefaults;
 };
 
 export type UpdateLibraryExecutionDefaultsResponse = UpdateLibraryExecutionDefaultsResponses[keyof UpdateLibraryExecutionDefaultsResponses];
@@ -25540,7 +25540,7 @@ export type ListJobsErrors = {
 export type ListJobsError = ListJobsErrors[keyof ListJobsErrors];
 
 export type ListJobsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeJobList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeJobList;
 };
 
 export type ListJobsResponse = ListJobsResponses[keyof ListJobsResponses];
@@ -25613,13 +25613,13 @@ export type GetJobErrors = {
 export type GetJobError = GetJobErrors[keyof GetJobErrors];
 
 export type GetJobResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeJobDetail;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeJobDetail;
 };
 
 export type GetJobResponse = GetJobResponses[keyof GetJobResponses];
 
 export type ResumeJobData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeResumeJobInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeResumeJobInput & unknown;
     path: {
         /**
          * 任务标识
@@ -25687,13 +25687,13 @@ export type ResumeJobErrors = {
 export type ResumeJobError = ResumeJobErrors[keyof ResumeJobErrors];
 
 export type ResumeJobResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeJob;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeJob;
 };
 
 export type ResumeJobResponse = ResumeJobResponses[keyof ResumeJobResponses];
 
 export type RetryJobData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeRetryJobInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeRetryJobInput & unknown;
     path: {
         /**
          * 任务标识
@@ -25761,13 +25761,13 @@ export type RetryJobErrors = {
 export type RetryJobError = RetryJobErrors[keyof RetryJobErrors];
 
 export type RetryJobResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type RetryJobResponse = RetryJobResponses[keyof RetryJobResponses];
 
 export type SendMaintenanceMessageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeMaintenanceMessageInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeMaintenanceMessageInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -25855,7 +25855,7 @@ export type SendMaintenanceMessageErrors = {
 export type SendMaintenanceMessageError = SendMaintenanceMessageErrors[keyof SendMaintenanceMessageErrors];
 
 export type SendMaintenanceMessageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution;
+    200: GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution;
 };
 
 export type SendMaintenanceMessageResponse = SendMaintenanceMessageResponses[keyof SendMaintenanceMessageResponses];
@@ -25935,7 +25935,7 @@ export type ExportLibraryMarkdownResponses = {
 export type ExportLibraryMarkdownResponse = ExportLibraryMarkdownResponses[keyof ExportLibraryMarkdownResponses];
 
 export type OrganizeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeOrganizeInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeOrganizeInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -25999,7 +25999,7 @@ export type OrganizeErrors = {
 export type OrganizeError = OrganizeErrors[keyof OrganizeErrors];
 
 export type OrganizeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeOrganizeResponse;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeOrganizeResponse;
 };
 
 export type OrganizeResponse = OrganizeResponses[keyof OrganizeResponses];
@@ -26073,7 +26073,7 @@ export type GetPageBySlugErrors = {
 export type GetPageBySlugError = GetPageBySlugErrors[keyof GetPageBySlugErrors];
 
 export type GetPageBySlugResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgePage;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgePage;
 };
 
 export type GetPageBySlugResponse = GetPageBySlugResponses[keyof GetPageBySlugResponses];
@@ -26151,7 +26151,7 @@ export type ListPageDirectoryErrors = {
 export type ListPageDirectoryError = ListPageDirectoryErrors[keyof ListPageDirectoryErrors];
 
 export type ListPageDirectoryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgePageDirectoryList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgePageDirectoryList;
 };
 
 export type ListPageDirectoryResponse = ListPageDirectoryResponses[keyof ListPageDirectoryResponses];
@@ -26242,13 +26242,13 @@ export type ListPagesErrors = {
 export type ListPagesError = ListPagesErrors[keyof ListPagesErrors];
 
 export type ListPagesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgePageList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgePageList;
 };
 
 export type ListPagesResponse = ListPagesResponses[keyof ListPagesResponses];
 
 export type CreatePageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeCreatePageInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeCreatePageInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -26311,7 +26311,7 @@ export type CreatePageErrors = {
 export type CreatePageError = CreatePageErrors[keyof CreatePageErrors];
 
 export type CreatePageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type CreatePageResponse = CreatePageResponses[keyof CreatePageResponses];
@@ -26384,13 +26384,13 @@ export type GetPageErrors = {
 export type GetPageError = GetPageErrors[keyof GetPageErrors];
 
 export type GetPageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgePage;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgePage;
 };
 
 export type GetPageResponse = GetPageResponses[keyof GetPageResponses];
 
 export type WritePageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeWritePageInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeWritePageInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -26457,13 +26457,13 @@ export type WritePageErrors = {
 export type WritePageError = WritePageErrors[keyof WritePageErrors];
 
 export type WritePageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type WritePageResponse = WritePageResponses[keyof WritePageResponses];
 
 export type RestorePageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeRestorePageInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeRestorePageInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -26530,7 +26530,7 @@ export type RestorePageErrors = {
 export type RestorePageError = RestorePageErrors[keyof RestorePageErrors];
 
 export type RestorePageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type RestorePageResponse = RestorePageResponses[keyof RestorePageResponses];
@@ -26613,7 +26613,7 @@ export type ListRevisionsErrors = {
 export type ListRevisionsError = ListRevisionsErrors[keyof ListRevisionsErrors];
 
 export type ListRevisionsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeRevisionList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeRevisionList;
 };
 
 export type ListRevisionsResponse = ListRevisionsResponses[keyof ListRevisionsResponses];
@@ -26697,7 +26697,7 @@ export type ListSourcePurgesResponses = {
 export type ListSourcePurgesResponse = ListSourcePurgesResponses[keyof ListSourcePurgesResponses];
 
 export type ConfirmSourcePurgeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeConfirmSourcePurgeInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeConfirmSourcePurgeInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -26760,7 +26760,7 @@ export type ConfirmSourcePurgeErrors = {
 export type ConfirmSourcePurgeError = ConfirmSourcePurgeErrors[keyof ConfirmSourcePurgeErrors];
 
 export type ConfirmSourcePurgeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type ConfirmSourcePurgeResponse = ConfirmSourcePurgeResponses[keyof ConfirmSourcePurgeResponses];
@@ -26913,7 +26913,7 @@ export type GetSourcePurgeResponses = {
 export type GetSourcePurgeResponse = GetSourcePurgeResponses[keyof GetSourcePurgeResponses];
 
 export type RecoverSourcePurgeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeRecoverSourcePurgeInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeRecoverSourcePurgeInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -26980,7 +26980,7 @@ export type RecoverSourcePurgeErrors = {
 export type RecoverSourcePurgeError = RecoverSourcePurgeErrors[keyof RecoverSourcePurgeErrors];
 
 export type RecoverSourcePurgeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type RecoverSourcePurgeResponse = RecoverSourcePurgeResponses[keyof RecoverSourcePurgeResponses];
@@ -27070,13 +27070,13 @@ export type ListSourcesErrors = {
 export type ListSourcesError = ListSourcesErrors[keyof ListSourcesErrors];
 
 export type ListSourcesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeSourceList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeSourceList;
 };
 
 export type ListSourcesResponse = ListSourcesResponses[keyof ListSourcesResponses];
 
 export type ImportSourceData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeImportSourceInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeImportSourceInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -27139,7 +27139,7 @@ export type ImportSourceErrors = {
 export type ImportSourceError = ImportSourceErrors[keyof ImportSourceErrors];
 
 export type ImportSourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type ImportSourceResponse = ImportSourceResponses[keyof ImportSourceResponses];
@@ -27212,13 +27212,13 @@ export type GetSourceErrors = {
 export type GetSourceError = GetSourceErrors[keyof GetSourceErrors];
 
 export type GetSourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeSource;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeSource;
 };
 
 export type GetSourceResponse = GetSourceResponses[keyof GetSourceResponses];
 
 export type ArchiveSourceData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeArchiveSourceInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeArchiveSourceInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -27285,7 +27285,7 @@ export type ArchiveSourceErrors = {
 export type ArchiveSourceError = ArchiveSourceErrors[keyof ArchiveSourceErrors];
 
 export type ArchiveSourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type ArchiveSourceResponse = ArchiveSourceResponses[keyof ArchiveSourceResponses];
@@ -27431,7 +27431,7 @@ export type GetRawErrors = {
 export type GetRawError = GetRawErrors[keyof GetRawErrors];
 
 export type GetRawResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeRawSource;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeRawSource;
 };
 
 export type GetRawResponse = GetRawResponses[keyof GetRawResponses];
@@ -27500,13 +27500,13 @@ export type ListThemesErrors = {
 export type ListThemesError = ListThemesErrors[keyof ListThemesErrors];
 
 export type ListThemesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeThemeList;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeThemeList;
 };
 
 export type ListThemesResponse = ListThemesResponses[keyof ListThemesResponses];
 
 export type CreateThemeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeCreateThemeInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeCreateThemeInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -27569,13 +27569,13 @@ export type CreateThemeErrors = {
 export type CreateThemeError = CreateThemeErrors[keyof CreateThemeErrors];
 
 export type CreateThemeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type CreateThemeResponse = CreateThemeResponses[keyof CreateThemeResponses];
 
 export type WriteThemeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisKnowledgeWriteThemeInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeWriteThemeInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -27642,7 +27642,7 @@ export type WriteThemeErrors = {
 export type WriteThemeError = WriteThemeErrors[keyof WriteThemeErrors];
 
 export type WriteThemeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeReceipt;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeReceipt;
 };
 
 export type WriteThemeResponse = WriteThemeResponses[keyof WriteThemeResponses];
@@ -27724,7 +27724,7 @@ export type GetWikiIndexErrors = {
 export type GetWikiIndexError = GetWikiIndexErrors[keyof GetWikiIndexErrors];
 
 export type GetWikiIndexResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisKnowledgeWikiIndexView;
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeWikiIndexView;
 };
 
 export type GetWikiIndexResponse = GetWikiIndexResponses[keyof GetWikiIndexResponses];
@@ -27758,7 +27758,7 @@ export type ReindexMemoryIndexErrors = {
 export type ReindexMemoryIndexError = ReindexMemoryIndexErrors[keyof ReindexMemoryIndexErrors];
 
 export type ReindexMemoryIndexResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMemoryReindexMemoryIndexResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMemoryReindexMemoryIndexResponse;
 };
 
 export type ReindexMemoryIndexResponse = ReindexMemoryIndexResponses[keyof ReindexMemoryIndexResponses];
@@ -27783,13 +27783,13 @@ export type GetMemorySettingsErrors = {
 export type GetMemorySettingsError = GetMemorySettingsErrors[keyof GetMemorySettingsErrors];
 
 export type GetMemorySettingsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMemoryEmbeddingSettingsResource;
+    200: GithubComJieWaZiNeuxBotServerApisMemoryEmbeddingSettingsResource;
 };
 
 export type GetMemorySettingsResponse = GetMemorySettingsResponses[keyof GetMemorySettingsResponses];
 
 export type UpdateMemorySettingsData = {
-    body: GithubComJieWaZiNeuxAllyServerApisMemoryUpdateMemorySettingsRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisMemoryUpdateMemorySettingsRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/memory/settings';
@@ -27869,7 +27869,7 @@ export type GetMemoryStatusErrors = {
 export type GetMemoryStatusError = GetMemoryStatusErrors[keyof GetMemoryStatusErrors];
 
 export type GetMemoryStatusResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMemoryMemoryStatusResource;
+    200: GithubComJieWaZiNeuxBotServerApisMemoryMemoryStatusResource;
 };
 
 export type GetMemoryStatusResponse = GetMemoryStatusResponses[keyof GetMemoryStatusResponses];
@@ -27899,7 +27899,7 @@ export type ListMemoriesData = {
          * 搜索关键字
          */
         query?: string;
-        scope?: GithubComJieWaZiNeuxAllyServerConstantsMemoryScope & unknown;
+        scope?: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
         /**
          * 时间终点
          */
@@ -27936,13 +27936,13 @@ export type ListMemoriesErrors = {
 export type ListMemoriesError = ListMemoriesErrors[keyof ListMemoriesErrors];
 
 export type ListMemoriesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMemoryListMemoriesResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMemoryListMemoriesResponse;
 };
 
 export type ListMemoriesResponse = ListMemoriesResponses[keyof ListMemoriesResponses];
 
 export type CreateMemoryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisMemoryMemoryMutationRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisMemoryMemoryMutationRequest & unknown;
     path: {
         /**
          * 伙伴标识
@@ -28008,7 +28008,7 @@ export type DeleteMemoryData = {
          * 项目标识
          */
         projectId?: string;
-        scope: GithubComJieWaZiNeuxAllyServerConstantsMemoryScope & unknown;
+        scope: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
     };
     url: '/api/v1/memory/wakers/{wakerId}/memories/{memoryId}';
 };
@@ -28051,7 +28051,7 @@ export type DeleteMemoryResponses = {
 export type DeleteMemoryResponse = DeleteMemoryResponses[keyof DeleteMemoryResponses];
 
 export type UpdateMemoryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisMemoryMemoryMutationRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisMemoryMemoryMutationRequest & unknown;
     path: {
         /**
          * 记忆标识
@@ -28129,7 +28129,7 @@ export type ListTimelineData = {
          * 搜索关键字
          */
         query?: string;
-        scope?: GithubComJieWaZiNeuxAllyServerConstantsMemoryScope & unknown;
+        scope?: GithubComJieWaZiNeuxBotServerConstantsMemoryScope & unknown;
     };
     url: '/api/v1/memory/wakers/{wakerId}/timeline';
 };
@@ -28158,7 +28158,7 @@ export type ListTimelineErrors = {
 export type ListTimelineError = ListTimelineErrors[keyof ListTimelineErrors];
 
 export type ListTimelineResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMemoryListTimelineResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMemoryListTimelineResponse;
 };
 
 export type ListTimelineResponse = ListTimelineResponses[keyof ListTimelineResponses];
@@ -28211,7 +28211,7 @@ export type ListNotificationsErrors = {
 export type ListNotificationsError = ListNotificationsErrors[keyof ListNotificationsErrors];
 
 export type ListNotificationsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisNotificationsListNotificationsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisNotificationsListNotificationsResponse;
 };
 
 export type ListNotificationsResponse = ListNotificationsResponses[keyof ListNotificationsResponses];
@@ -28235,7 +28235,7 @@ export type GetNotificationSnapshotErrors = {
 export type GetNotificationSnapshotError = GetNotificationSnapshotErrors[keyof GetNotificationSnapshotErrors];
 
 export type GetNotificationSnapshotResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesNotificationSnapshot;
+    200: GithubComJieWaZiNeuxBotServerServicesNotificationSnapshot;
 };
 
 export type GetNotificationSnapshotResponse = GetNotificationSnapshotResponses[keyof GetNotificationSnapshotResponses];
@@ -28266,7 +28266,7 @@ export type GetNotificationData = {
 };
 
 export type GetNotificationResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationItem;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem;
 };
 
 export type GetNotificationResponse = GetNotificationResponses[keyof GetNotificationResponses];
@@ -28290,7 +28290,7 @@ export type DismissNotificationResponses = {
 export type DismissNotificationResponse = DismissNotificationResponses[keyof DismissNotificationResponses];
 
 export type ViewNotificationData = {
-    body: GithubComJieWaZiNeuxAllyServerApisNotificationsViewNotificationRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisNotificationsViewNotificationRequest & unknown;
     path: {
         /**
          * 通知标识
@@ -28659,7 +28659,7 @@ export type ListPluginsErrors = {
 export type ListPluginsError = ListPluginsErrors[keyof ListPluginsErrors];
 
 export type ListPluginsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsListPluginsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsListPluginsResponse;
 };
 
 export type ListPluginsResponse = ListPluginsResponses[keyof ListPluginsResponses];
@@ -28709,7 +28709,7 @@ export type ListPluginCatalogErrors = {
 export type ListPluginCatalogError = ListPluginCatalogErrors[keyof ListPluginCatalogErrors];
 
 export type ListPluginCatalogResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsListPluginCatalogResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsListPluginCatalogResponse;
 };
 
 export type ListPluginCatalogResponse = ListPluginCatalogResponses[keyof ListPluginCatalogResponses];
@@ -28809,7 +28809,7 @@ export type GetCatalogPluginErrors = {
 export type GetCatalogPluginError = GetCatalogPluginErrors[keyof GetCatalogPluginErrors];
 
 export type GetCatalogPluginResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalPluginsCatalogEntry;
+    200: GithubComJieWaZiNeuxBotServerInternalPluginsCatalogEntry;
 };
 
 export type GetCatalogPluginResponse = GetCatalogPluginResponses[keyof GetCatalogPluginResponses];
@@ -28894,13 +28894,13 @@ export type GetCatalogPluginConnectorErrors = {
 export type GetCatalogPluginConnectorError = GetCatalogPluginConnectorErrors[keyof GetCatalogPluginConnectorErrors];
 
 export type GetCatalogPluginConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type GetCatalogPluginConnectorResponse = GetCatalogPluginConnectorResponses[keyof GetCatalogPluginConnectorResponses];
 
 export type PrepareCatalogPluginData = {
-    body: GithubComJieWaZiNeuxAllyServerApisPluginsPrepareCatalogPluginRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisPluginsPrepareCatalogPluginRequest & unknown;
     path: {
         /**
          * 目录条目
@@ -29224,7 +29224,7 @@ export type PrepareCatalogPluginErrors = {
 export type PrepareCatalogPluginError = PrepareCatalogPluginErrors[keyof PrepareCatalogPluginErrors];
 
 export type PrepareCatalogPluginResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsPluginDetailResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse;
 };
 
 export type PrepareCatalogPluginResponse = PrepareCatalogPluginResponses[keyof PrepareCatalogPluginResponses];
@@ -29295,7 +29295,7 @@ export type GetCatalogPluginReadmeErrors = {
 export type GetCatalogPluginReadmeError = GetCatalogPluginReadmeErrors[keyof GetCatalogPluginReadmeErrors];
 
 export type GetCatalogPluginReadmeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsPluginReadmeResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginReadmeResponse;
 };
 
 export type GetCatalogPluginReadmeResponse = GetCatalogPluginReadmeResponses[keyof GetCatalogPluginReadmeResponses];
@@ -29374,13 +29374,13 @@ export type GetCatalogPluginSkillErrors = {
 export type GetCatalogPluginSkillError = GetCatalogPluginSkillErrors[keyof GetCatalogPluginSkillErrors];
 
 export type GetCatalogPluginSkillResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsPluginSkillResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginSkillResponse;
 };
 
 export type GetCatalogPluginSkillResponse = GetCatalogPluginSkillResponses[keyof GetCatalogPluginSkillResponses];
 
 export type DeletePluginData = {
-    body: GithubComJieWaZiNeuxAllyServerApisPluginsDeletePluginRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisPluginsDeletePluginRequest & unknown;
     path: {
         /**
          * 插件标识
@@ -29780,13 +29780,13 @@ export type GetPluginErrors = {
 export type GetPluginError = GetPluginErrors[keyof GetPluginErrors];
 
 export type GetPluginResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsPluginDetailResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginDetailResponse;
 };
 
 export type GetPluginResponse = GetPluginResponses[keyof GetPluginResponses];
 
 export type UpdatePluginData = {
-    body: GithubComJieWaZiNeuxAllyServerApisPluginsUpdatePluginRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisPluginsUpdatePluginRequest & unknown;
     path: {
         /**
          * 插件标识
@@ -29956,13 +29956,13 @@ export type GetPluginAuthorizationErrors = {
 export type GetPluginAuthorizationError = GetPluginAuthorizationErrors[keyof GetPluginAuthorizationErrors];
 
 export type GetPluginAuthorizationResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsPluginAuthorizationResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginAuthorizationResponse;
 };
 
 export type GetPluginAuthorizationResponse = GetPluginAuthorizationResponses[keyof GetPluginAuthorizationResponses];
 
 export type StartPluginAuthorizationData = {
-    body: GithubComJieWaZiNeuxAllyServerApisPluginsAuthorizationScopeRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisPluginsAuthorizationScopeRequest & unknown;
     path: {
         /**
          * 插件标识
@@ -30028,13 +30028,13 @@ export type StartPluginAuthorizationErrors = {
 export type StartPluginAuthorizationError = StartPluginAuthorizationErrors[keyof StartPluginAuthorizationErrors];
 
 export type StartPluginAuthorizationResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalPluginsAuthorizationSession;
+    200: GithubComJieWaZiNeuxBotServerInternalPluginsAuthorizationSession;
 };
 
 export type StartPluginAuthorizationResponse = StartPluginAuthorizationResponses[keyof StartPluginAuthorizationResponses];
 
 export type ConfigurePluginAuthorizationData = {
-    body: GithubComJieWaZiNeuxAllyServerApisPluginsConfigureAuthorizationRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisPluginsConfigureAuthorizationRequest & unknown;
     path: {
         /**
          * 插件标识
@@ -30176,7 +30176,7 @@ export type CancelPluginAuthorizationResponses = {
 export type CancelPluginAuthorizationResponse = CancelPluginAuthorizationResponses[keyof CancelPluginAuthorizationResponses];
 
 export type UpdatePluginConfigurationData = {
-    body: GithubComJieWaZiNeuxAllyServerApisPluginsUpdateConfigurationRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisPluginsUpdateConfigurationRequest & unknown;
     path: {
         /**
          * 插件标识
@@ -30317,7 +30317,7 @@ export type GetPluginConnectorErrors = {
 export type GetPluginConnectorError = GetPluginConnectorErrors[keyof GetPluginConnectorErrors];
 
 export type GetPluginConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type GetPluginConnectorResponse = GetPluginConnectorResponses[keyof GetPluginConnectorResponses];
@@ -30416,13 +30416,13 @@ export type TestPluginConnectorErrors = {
 export type TestPluginConnectorError = TestPluginConnectorErrors[keyof TestPluginConnectorErrors];
 
 export type TestPluginConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type TestPluginConnectorResponse = TestPluginConnectorResponses[keyof TestPluginConnectorResponses];
 
 export type InstallPluginData = {
-    body: GithubComJieWaZiNeuxAllyServerApisPluginsInstallPluginRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisPluginsInstallPluginRequest & unknown;
     path: {
         /**
          * 插件标识
@@ -30746,7 +30746,7 @@ export type InstallPluginErrors = {
 export type InstallPluginError = InstallPluginErrors[keyof InstallPluginErrors];
 
 export type InstallPluginResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsInstallPluginResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsInstallPluginResponse;
 };
 
 export type InstallPluginResponse = InstallPluginResponses[keyof InstallPluginResponses];
@@ -30808,7 +30808,7 @@ export type GetPluginReadmeErrors = {
 export type GetPluginReadmeError = GetPluginReadmeErrors[keyof GetPluginReadmeErrors];
 
 export type GetPluginReadmeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsPluginReadmeResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginReadmeResponse;
 };
 
 export type GetPluginReadmeResponse = GetPluginReadmeResponses[keyof GetPluginReadmeResponses];
@@ -30882,7 +30882,7 @@ export type GetPluginSkillErrors = {
 export type GetPluginSkillError = GetPluginSkillErrors[keyof GetPluginSkillErrors];
 
 export type GetPluginSkillResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsPluginSkillResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsPluginSkillResponse;
 };
 
 export type GetPluginSkillResponse = GetPluginSkillResponses[keyof GetPluginSkillResponses];
@@ -30908,13 +30908,13 @@ export type ListRolePresetsData = {
 };
 
 export type ListRolePresetsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisRolePresetsListRolePresetsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisRolePresetsListRolePresetsResponse;
 };
 
 export type ListRolePresetsResponse = ListRolePresetsResponses[keyof ListRolePresetsResponses];
 
 export type CreateRolePresetData = {
-    body: GithubComJieWaZiNeuxAllyServerApisRolePresetsRolePresetWriteRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisRolePresetsRolePresetWriteRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/role-presets';
@@ -30940,7 +30940,7 @@ export type CreateRolePresetErrors = {
 export type CreateRolePresetError = CreateRolePresetErrors[keyof CreateRolePresetErrors];
 
 export type CreateRolePresetResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsRolePreset;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsRolePreset;
 };
 
 export type CreateRolePresetResponse = CreateRolePresetResponses[keyof CreateRolePresetResponses];
@@ -31011,13 +31011,13 @@ export type GetRolePresetData = {
 };
 
 export type GetRolePresetResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsRolePreset;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsRolePreset;
 };
 
 export type GetRolePresetResponse = GetRolePresetResponses[keyof GetRolePresetResponses];
 
 export type UpdateRolePresetData = {
-    body: GithubComJieWaZiNeuxAllyServerApisRolePresetsRolePresetWriteRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisRolePresetsRolePresetWriteRequest & unknown;
     path: {
         /**
          * 预设标识
@@ -31091,7 +31091,7 @@ export type ListRolePresetDocumentsErrors = {
 export type ListRolePresetDocumentsError = ListRolePresetDocumentsErrors[keyof ListRolePresetDocumentsErrors];
 
 export type ListRolePresetDocumentsResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerInternalProfileDocument>;
+    200: Array<GithubComJieWaZiNeuxBotServerInternalProfileDocument>;
 };
 
 export type ListRolePresetDocumentsResponse = ListRolePresetDocumentsResponses[keyof ListRolePresetDocumentsResponses];
@@ -31145,7 +31145,7 @@ export type ListRuntimesData = {
 };
 
 export type ListRuntimesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsListRuntimesResponse;
+    200: GithubComJieWaZiNeuxBotServerApisRuntimeOptionsListRuntimesResponse;
 };
 
 export type ListRuntimesResponse = ListRuntimesResponses[keyof ListRuntimesResponses];
@@ -31164,7 +31164,7 @@ export type RefreshRuntimesResponses = {
 export type RefreshRuntimesResponse = RefreshRuntimesResponses[keyof RefreshRuntimesResponses];
 
 export type UpdateRuntimeEnvironmentData = {
-    body: GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsUpdateRuntimeEnvironmentRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisRuntimeOptionsUpdateRuntimeEnvironmentRequest & unknown;
     path: {
         /**
          * 运行时标识
@@ -31237,13 +31237,13 @@ export type ListLibrarySkillsData = {
 };
 
 export type ListLibrarySkillsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSkillsListLibrarySkillsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisSkillsListLibrarySkillsResponse;
 };
 
 export type ListLibrarySkillsResponse = ListLibrarySkillsResponses[keyof ListLibrarySkillsResponses];
 
 export type ImportLibrarySkillsData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsImportSkillRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsImportSkillRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/skills/import';
@@ -31278,13 +31278,13 @@ export type ImportLibrarySkillsErrors = {
 export type ImportLibrarySkillsError = ImportLibrarySkillsErrors[keyof ImportLibrarySkillsErrors];
 
 export type ImportLibrarySkillsResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillPackage>;
+    200: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillPackage>;
 };
 
 export type ImportLibrarySkillsResponse = ImportLibrarySkillsResponses[keyof ImportLibrarySkillsResponses];
 
 export type ScanLibrarySkillImportData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsScanSkillImportRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsScanSkillImportRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/skills/import/scan';
@@ -31313,7 +31313,7 @@ export type ScanLibrarySkillImportErrors = {
 export type ScanLibrarySkillImportError = ScanLibrarySkillImportErrors[keyof ScanLibrarySkillImportErrors];
 
 export type ScanLibrarySkillImportResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSkillsSkillImportBatch;
+    200: GithubComJieWaZiNeuxBotServerApisSkillsSkillImportBatch;
 };
 
 export type ScanLibrarySkillImportResponse = ScanLibrarySkillImportResponses[keyof ScanLibrarySkillImportResponses];
@@ -31399,13 +31399,13 @@ export type GetLibrarySkillErrors = {
 export type GetLibrarySkillError = GetLibrarySkillErrors[keyof GetLibrarySkillErrors];
 
 export type GetLibrarySkillResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSkillsWakerSkillResponse;
+    200: GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse;
 };
 
 export type GetLibrarySkillResponse = GetLibrarySkillResponses[keyof GetLibrarySkillResponses];
 
 export type UpdateLibrarySkillData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsUpdateWakerSkillRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsUpdateWakerSkillRequest & unknown;
     path: {
         /**
          * 技能标识
@@ -31434,7 +31434,7 @@ export type UpdateLibrarySkillResponses = {
 export type UpdateLibrarySkillResponse = UpdateLibrarySkillResponses[keyof UpdateLibrarySkillResponses];
 
 export type InstallLibrarySkillData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsInstallLibrarySkillRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsInstallLibrarySkillRequest & unknown;
     path: {
         /**
          * 资源标识
@@ -31463,7 +31463,7 @@ export type InstallLibrarySkillResponses = {
 export type InstallLibrarySkillResponse = InstallLibrarySkillResponses[keyof InstallLibrarySkillResponses];
 
 export type PullLibrarySkillUpdateData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsPullSkillUpdateRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsPullSkillUpdateRequest & unknown;
     path: {
         /**
          * 技能标识
@@ -31506,7 +31506,7 @@ export type PullLibrarySkillUpdateErrors = {
 export type PullLibrarySkillUpdateError = PullLibrarySkillUpdateErrors[keyof PullLibrarySkillUpdateErrors];
 
 export type PullLibrarySkillUpdateResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion;
 };
 
 export type PullLibrarySkillUpdateResponse = PullLibrarySkillUpdateResponses[keyof PullLibrarySkillUpdateResponses];
@@ -31535,13 +31535,13 @@ export type ListLibrarySkillVersionsErrors = {
 export type ListLibrarySkillVersionsError = ListLibrarySkillVersionsErrors[keyof ListLibrarySkillVersionsErrors];
 
 export type ListLibrarySkillVersionsResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion>;
+    200: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion>;
 };
 
 export type ListLibrarySkillVersionsResponse = ListLibrarySkillVersionsResponses[keyof ListLibrarySkillVersionsResponses];
 
 export type CreateLibrarySkillVersionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsCreateSkillVersionRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsCreateSkillVersionRequest & unknown;
     path: {
         /**
          * 技能标识
@@ -31584,7 +31584,7 @@ export type CreateLibrarySkillVersionErrors = {
 export type CreateLibrarySkillVersionError = CreateLibrarySkillVersionErrors[keyof CreateLibrarySkillVersionErrors];
 
 export type CreateLibrarySkillVersionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion;
 };
 
 export type CreateLibrarySkillVersionResponse = CreateLibrarySkillVersionResponses[keyof CreateLibrarySkillVersionResponses];
@@ -31630,7 +31630,7 @@ export type GetLibrarySkillVersionErrors = {
 export type GetLibrarySkillVersionError = GetLibrarySkillVersionErrors[keyof GetLibrarySkillVersionErrors];
 
 export type GetLibrarySkillVersionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSkillsSkillVersionResponse;
+    200: GithubComJieWaZiNeuxBotServerApisSkillsSkillVersionResponse;
 };
 
 export type GetLibrarySkillVersionResponse = GetLibrarySkillVersionResponses[keyof GetLibrarySkillVersionResponses];
@@ -31681,13 +31681,13 @@ export type GetLibrarySkillVersionFileErrors = {
 export type GetLibrarySkillVersionFileError = GetLibrarySkillVersionFileErrors[keyof GetLibrarySkillVersionFileErrors];
 
 export type GetLibrarySkillVersionFileResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSkillsSkillVersionFileResponse;
+    200: GithubComJieWaZiNeuxBotServerApisSkillsSkillVersionFileResponse;
 };
 
 export type GetLibrarySkillVersionFileResponse = GetLibrarySkillVersionFileResponses[keyof GetLibrarySkillVersionFileResponses];
 
 export type RestoreLibrarySkillVersionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsRestoreSkillVersionRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsRestoreSkillVersionRequest & unknown;
     path: {
         /**
          * 技能标识
@@ -31736,7 +31736,7 @@ export type RestoreLibrarySkillVersionErrors = {
 export type RestoreLibrarySkillVersionError = RestoreLibrarySkillVersionErrors[keyof RestoreLibrarySkillVersionErrors];
 
 export type RestoreLibrarySkillVersionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion;
 };
 
 export type RestoreLibrarySkillVersionResponse = RestoreLibrarySkillVersionResponses[keyof RestoreLibrarySkillVersionResponses];
@@ -31749,13 +31749,13 @@ export type GetAutomaticTaskApiData = {
 };
 
 export type GetAutomaticTaskApiResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalIntegrationListenerStatus;
+    200: GithubComJieWaZiNeuxBotServerInternalIntegrationListenerStatus;
 };
 
 export type GetAutomaticTaskApiResponse = GetAutomaticTaskApiResponses[keyof GetAutomaticTaskApiResponses];
 
 export type SetAutomaticTaskApiData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSystemSetAutomaticTaskApiRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSystemSetAutomaticTaskApiRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/system/automatic-tasks-api';
@@ -32080,7 +32080,7 @@ export type SetAutomaticTaskApiResponses = {
 export type SetAutomaticTaskApiResponse = SetAutomaticTaskApiResponses[keyof SetAutomaticTaskApiResponses];
 
 export type SetAutomaticTaskSuspendedData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSystemSetAutomaticTaskSuspendedRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSystemSetAutomaticTaskSuspendedRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/system/automatic-tasks-suspended';
@@ -32111,7 +32111,7 @@ export type GetHealthData = {
 };
 
 export type GetHealthResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSystemHealthResponse;
+    200: GithubComJieWaZiNeuxBotServerApisSystemHealthResponse;
 };
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
@@ -32124,7 +32124,7 @@ export type GetVersionData = {
 };
 
 export type GetVersionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSystemVersionResponse;
+    200: GithubComJieWaZiNeuxBotServerApisSystemVersionResponse;
 };
 
 export type GetVersionResponse = GetVersionResponses[keyof GetVersionResponses];
@@ -32159,7 +32159,7 @@ export type CloseTerminalResponses = {
 export type CloseTerminalResponse = CloseTerminalResponses[keyof CloseTerminalResponses];
 
 export type StartTerminalData = {
-    body: GithubComJieWaZiNeuxAllyServerApisTerminalsStartRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisTerminalsStartRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/terminals';
@@ -32189,7 +32189,7 @@ export type StartTerminalErrors = {
 export type StartTerminalError = StartTerminalErrors[keyof StartTerminalErrors];
 
 export type StartTerminalResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisTerminalsStartResponse;
+    200: GithubComJieWaZiNeuxBotServerApisTerminalsStartResponse;
 };
 
 export type StartTerminalResponse = StartTerminalResponses[keyof StartTerminalResponses];
@@ -32276,7 +32276,7 @@ export type StageUploadErrors = {
 export type StageUploadError = StageUploadErrors[keyof StageUploadErrors];
 
 export type StageUploadResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisUploadsUploadResponse;
+    200: GithubComJieWaZiNeuxBotServerApisUploadsUploadResponse;
 };
 
 export type StageUploadResponse = StageUploadResponses[keyof StageUploadResponses];
@@ -32302,13 +32302,13 @@ export type ListWakersData = {
 };
 
 export type ListWakersResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWakersListWakersResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWakersListWakersResponse;
 };
 
 export type ListWakersResponse = ListWakersResponses[keyof ListWakersResponses];
 
 export type CreateWakerData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWakersCreateWakerRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWakersCreateWakerRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/wakers';
@@ -32351,7 +32351,7 @@ export type CreateWakerResponses = {
 export type CreateWakerResponse = CreateWakerResponses[keyof CreateWakerResponses];
 
 export type DeleteWakerData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWakersDeleteWakerRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWakersDeleteWakerRequest & unknown;
     path: {
         /**
          * 伙伴标识
@@ -32415,13 +32415,13 @@ export type GetWakerData = {
 };
 
 export type GetWakerResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWaker;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker;
 };
 
 export type GetWakerResponse = GetWakerResponses[keyof GetWakerResponses];
 
 export type UpdateWakerData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWakersUpdateWakerRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerRequest & unknown;
     path: {
         /**
          * 伙伴标识
@@ -32474,7 +32474,7 @@ export type ListAutomaticTasksData = {
          * 查询参数
          */
         query?: string;
-        trigger?: GithubComJieWaZiNeuxAllyServerConstantsAutomaticTaskTrigger & unknown;
+        trigger?: GithubComJieWaZiNeuxBotServerConstantsAutomaticTaskTrigger & unknown;
     };
     url: '/api/v1/wakers/{wakerId}/automatic-tasks';
 };
@@ -32792,13 +32792,13 @@ export type ListAutomaticTasksErrors = {
 export type ListAutomaticTasksError = ListAutomaticTasksErrors[keyof ListAutomaticTasksErrors];
 
 export type ListAutomaticTasksResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksListAutomaticTasksResponse;
+    200: GithubComJieWaZiNeuxBotServerApisAutomaticTasksListAutomaticTasksResponse;
 };
 
 export type ListAutomaticTasksResponse = ListAutomaticTasksResponses[keyof ListAutomaticTasksResponses];
 
 export type CreateAutomaticTaskData = {
-    body: GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfiguration & unknown;
+    body: GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskConfiguration & unknown;
     path: {
         /**
          * 伙伴标识
@@ -32858,7 +32858,7 @@ export type CreateAutomaticTaskErrors = {
 export type CreateAutomaticTaskError = CreateAutomaticTaskErrors[keyof CreateAutomaticTaskErrors];
 
 export type CreateAutomaticTaskResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksAutomaticTaskReference;
+    200: GithubComJieWaZiNeuxBotServerApisAutomaticTasksAutomaticTaskReference;
 };
 
 export type CreateAutomaticTaskResponse = CreateAutomaticTaskResponses[keyof CreateAutomaticTaskResponses];
@@ -33188,13 +33188,13 @@ export type ListAutomaticTaskAttentionErrors = {
 export type ListAutomaticTaskAttentionError = ListAutomaticTaskAttentionErrors[keyof ListAutomaticTaskAttentionErrors];
 
 export type ListAutomaticTaskAttentionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksAttention;
+    200: GithubComJieWaZiNeuxBotServerApisAutomaticTasksAttention;
 };
 
 export type ListAutomaticTaskAttentionResponse = ListAutomaticTaskAttentionResponses[keyof ListAutomaticTaskAttentionResponses];
 
 export type PreviewAutomaticScheduleData = {
-    body: GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskSchedule & unknown;
+    body: GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskSchedule & unknown;
     path: {
         /**
          * 伙伴标识
@@ -33217,7 +33217,7 @@ export type PreviewAutomaticScheduleErrors = {
 export type PreviewAutomaticScheduleError = PreviewAutomaticScheduleErrors[keyof PreviewAutomaticScheduleErrors];
 
 export type PreviewAutomaticScheduleResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksSchedulePreview;
+    200: GithubComJieWaZiNeuxBotServerApisAutomaticTasksSchedulePreview;
 };
 
 export type PreviewAutomaticScheduleResponse = PreviewAutomaticScheduleResponses[keyof PreviewAutomaticScheduleResponses];
@@ -33885,13 +33885,13 @@ export type GetAutomaticTaskErrors = {
 export type GetAutomaticTaskError = GetAutomaticTaskErrors[keyof GetAutomaticTaskErrors];
 
 export type GetAutomaticTaskResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesScheduleTaskView;
+    200: GithubComJieWaZiNeuxBotServerServicesScheduleTaskView;
 };
 
 export type GetAutomaticTaskResponse = GetAutomaticTaskResponses[keyof GetAutomaticTaskResponses];
 
 export type UpdateAutomaticTaskData = {
-    body: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksUpdateAutomaticTaskRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisAutomaticTasksUpdateAutomaticTaskRequest & unknown;
     path: {
         /**
          * 任务标识
@@ -33955,13 +33955,13 @@ export type UpdateAutomaticTaskErrors = {
 export type UpdateAutomaticTaskError = UpdateAutomaticTaskErrors[keyof UpdateAutomaticTaskErrors];
 
 export type UpdateAutomaticTaskResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksAutomaticTaskReference;
+    200: GithubComJieWaZiNeuxBotServerApisAutomaticTasksAutomaticTaskReference;
 };
 
 export type UpdateAutomaticTaskResponse = UpdateAutomaticTaskResponses[keyof UpdateAutomaticTaskResponses];
 
 export type SetAutomaticTaskEnabledData = {
-    body: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksSetAutomaticTaskEnabledRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisAutomaticTasksSetAutomaticTaskEnabledRequest & unknown;
     path: {
         /**
          * 任务标识
@@ -34368,13 +34368,13 @@ export type ListAutomaticRunsErrors = {
 export type ListAutomaticRunsError = ListAutomaticRunsErrors[keyof ListAutomaticRunsErrors];
 
 export type ListAutomaticRunsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksListAutomaticRunsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisAutomaticTasksListAutomaticRunsResponse;
 };
 
 export type ListAutomaticRunsResponse = ListAutomaticRunsResponses[keyof ListAutomaticRunsResponses];
 
 export type TriggerAutomaticTaskData = {
-    body: GithubComJieWaZiNeuxAllyServerApisAutomaticTasksTriggerAutomaticTaskRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisAutomaticTasksTriggerAutomaticTaskRequest & unknown;
     path: {
         /**
          * 任务标识
@@ -34702,7 +34702,7 @@ export type TriggerAutomaticTaskErrors = {
 export type TriggerAutomaticTaskError = TriggerAutomaticTaskErrors[keyof TriggerAutomaticTaskErrors];
 
 export type TriggerAutomaticTaskResponses = {
-    200: GithubComJieWaZiNeuxAllyServerServicesScheduleRunView;
+    200: GithubComJieWaZiNeuxBotServerServicesScheduleRunView;
 };
 
 export type TriggerAutomaticTaskResponse = TriggerAutomaticTaskResponses[keyof TriggerAutomaticTaskResponses];
@@ -34741,7 +34741,7 @@ export type ListWakerChatsData = {
 };
 
 export type ListWakerChatsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWakersListWakerChatsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWakersListWakerChatsResponse;
 };
 
 export type ListWakerChatsResponse = ListWakerChatsResponses[keyof ListWakerChatsResponses];
@@ -34793,13 +34793,13 @@ export type ListWakerConnectorsErrors = {
 export type ListWakerConnectorsError = ListWakerConnectorsErrors[keyof ListWakerConnectorsErrors];
 
 export type ListWakerConnectorsResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse>;
+    200: Array<GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse>;
 };
 
 export type ListWakerConnectorsResponse = ListWakerConnectorsResponses[keyof ListWakerConnectorsResponses];
 
 export type CreateWakerConnectorData = {
-    body: GithubComJieWaZiNeuxAllyServerApisMcpConnectorInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisMcpConnectorInput & unknown;
     path: {
         /**
          * 伙伴标识
@@ -34852,7 +34852,7 @@ export type CreateWakerConnectorErrors = {
 export type CreateWakerConnectorError = CreateWakerConnectorErrors[keyof CreateWakerConnectorErrors];
 
 export type CreateWakerConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type CreateWakerConnectorResponse = CreateWakerConnectorResponses[keyof CreateWakerConnectorResponses];
@@ -34958,13 +34958,13 @@ export type GetWakerConnectorErrors = {
 export type GetWakerConnectorError = GetWakerConnectorErrors[keyof GetWakerConnectorErrors];
 
 export type GetWakerConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type GetWakerConnectorResponse = GetWakerConnectorResponses[keyof GetWakerConnectorResponses];
 
 export type UpdateWakerConnectorData = {
-    body: GithubComJieWaZiNeuxAllyServerApisMcpConnectorInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisMcpConnectorInput & unknown;
     path: {
         /**
          * 连接器标识
@@ -35022,13 +35022,13 @@ export type UpdateWakerConnectorErrors = {
 export type UpdateWakerConnectorError = UpdateWakerConnectorErrors[keyof UpdateWakerConnectorErrors];
 
 export type UpdateWakerConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type UpdateWakerConnectorResponse = UpdateWakerConnectorResponses[keyof UpdateWakerConnectorResponses];
 
 export type SetWakerConnectorEnabledData = {
-    body: GithubComJieWaZiNeuxAllyServerApisMcpSetConnectorEnabledRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisMcpSetConnectorEnabledRequest & unknown;
     path: {
         /**
          * 连接器标识
@@ -35118,7 +35118,7 @@ export type TestWakerConnectorErrors = {
 export type TestWakerConnectorError = TestWakerConnectorErrors[keyof TestWakerConnectorErrors];
 
 export type TestWakerConnectorResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+    200: GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 };
 
 export type TestWakerConnectorResponse = TestWakerConnectorResponses[keyof TestWakerConnectorResponses];
@@ -35153,7 +35153,7 @@ export type ListWakerDocumentsErrors = {
 export type ListWakerDocumentsError = ListWakerDocumentsErrors[keyof ListWakerDocumentsErrors];
 
 export type ListWakerDocumentsResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerInternalProfileDocument>;
+    200: Array<GithubComJieWaZiNeuxBotServerInternalProfileDocument>;
 };
 
 export type ListWakerDocumentsResponse = ListWakerDocumentsResponses[keyof ListWakerDocumentsResponses];
@@ -35161,7 +35161,7 @@ export type ListWakerDocumentsResponse = ListWakerDocumentsResponses[keyof ListW
 export type GetWakerDocumentData = {
     body?: never;
     path: {
-        kind: GithubComJieWaZiNeuxAllyServerConstantsProfileDocumentKind & unknown;
+        kind: GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind & unknown;
         /**
          * 伙伴标识
          */
@@ -35189,15 +35189,15 @@ export type GetWakerDocumentErrors = {
 export type GetWakerDocumentError = GetWakerDocumentErrors[keyof GetWakerDocumentErrors];
 
 export type GetWakerDocumentResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalProfileDocument;
+    200: GithubComJieWaZiNeuxBotServerInternalProfileDocument;
 };
 
 export type GetWakerDocumentResponse = GetWakerDocumentResponses[keyof GetWakerDocumentResponses];
 
 export type UpdateWakerDocumentData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWakersUpdateWakerDocumentRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWakersUpdateWakerDocumentRequest & unknown;
     path: {
-        kind: GithubComJieWaZiNeuxAllyServerConstantsProfileDocumentKind & unknown;
+        kind: GithubComJieWaZiNeuxBotServerConstantsProfileDocumentKind & unknown;
         /**
          * 伙伴标识
          */
@@ -35570,7 +35570,7 @@ export type ListWakerPluginsErrors = {
 export type ListWakerPluginsError = ListWakerPluginsErrors[keyof ListWakerPluginsErrors];
 
 export type ListWakerPluginsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisPluginsListPluginsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisPluginsListPluginsResponse;
 };
 
 export type ListWakerPluginsResponse = ListWakerPluginsResponses[keyof ListWakerPluginsResponses];
@@ -35637,7 +35637,7 @@ export type UninstallWakerPluginResponses = {
 export type UninstallWakerPluginResponse = UninstallWakerPluginResponses[keyof UninstallWakerPluginResponses];
 
 export type SetWakerPluginEnabledData = {
-    body: GithubComJieWaZiNeuxAllyServerApisPluginsPluginEnabledRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisPluginsPluginEnabledRequest & unknown;
     path: {
         /**
          * 插件标识
@@ -35747,13 +35747,13 @@ export type ListProjectsErrors = {
 export type ListProjectsError = ListProjectsErrors[keyof ListProjectsErrors];
 
 export type ListProjectsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisProjectsListProjectsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisProjectsListProjectsResponse;
 };
 
 export type ListProjectsResponse = ListProjectsResponses[keyof ListProjectsResponses];
 
 export type CreateProjectData = {
-    body: GithubComJieWaZiNeuxAllyServerApisProjectsProjectInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisProjectsProjectInput & unknown;
     path: {
         /**
          * 伙伴标识
@@ -35782,7 +35782,7 @@ export type CreateProjectErrors = {
 export type CreateProjectError = CreateProjectErrors[keyof CreateProjectErrors];
 
 export type CreateProjectResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisProjectsCreateProjectResponse;
+    200: GithubComJieWaZiNeuxBotServerApisProjectsCreateProjectResponse;
 };
 
 export type CreateProjectResponse = CreateProjectResponses[keyof CreateProjectResponses];
@@ -35867,13 +35867,13 @@ export type GetProjectErrors = {
 export type GetProjectError = GetProjectErrors[keyof GetProjectErrors];
 
 export type GetProjectResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisProjectsProjectResource;
+    200: GithubComJieWaZiNeuxBotServerApisProjectsProjectResource;
 };
 
 export type GetProjectResponse = GetProjectResponses[keyof GetProjectResponses];
 
 export type UpdateProjectData = {
-    body: GithubComJieWaZiNeuxAllyServerApisProjectsProjectInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisProjectsProjectInput & unknown;
     path: {
         /**
          * 项目标识
@@ -35935,13 +35935,13 @@ export type ListWakerSkillsData = {
 };
 
 export type ListWakerSkillsResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerApisSkillsWakerSkillResponse>;
+    200: Array<GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse>;
 };
 
 export type ListWakerSkillsResponse = ListWakerSkillsResponses[keyof ListWakerSkillsResponses];
 
 export type ImportWakerSkillData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsImportSkillRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsImportSkillRequest & unknown;
     path: {
         /**
          * 伙伴标识
@@ -35981,13 +35981,13 @@ export type ImportWakerSkillErrors = {
 export type ImportWakerSkillError = ImportWakerSkillErrors[keyof ImportWakerSkillErrors];
 
 export type ImportWakerSkillResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillPackage>;
+    200: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillPackage>;
 };
 
 export type ImportWakerSkillResponse = ImportWakerSkillResponses[keyof ImportWakerSkillResponses];
 
 export type ScanWakerSkillImportData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsScanSkillImportRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsScanSkillImportRequest & unknown;
     path: {
         /**
          * 伙伴标识
@@ -36021,7 +36021,7 @@ export type ScanWakerSkillImportErrors = {
 export type ScanWakerSkillImportError = ScanWakerSkillImportErrors[keyof ScanWakerSkillImportErrors];
 
 export type ScanWakerSkillImportResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSkillsSkillImportBatch;
+    200: GithubComJieWaZiNeuxBotServerApisSkillsSkillImportBatch;
 };
 
 export type ScanWakerSkillImportResponse = ScanWakerSkillImportResponses[keyof ScanWakerSkillImportResponses];
@@ -36115,13 +36115,13 @@ export type GetWakerSkillErrors = {
 export type GetWakerSkillError = GetWakerSkillErrors[keyof GetWakerSkillErrors];
 
 export type GetWakerSkillResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSkillsWakerSkillResponse;
+    200: GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse;
 };
 
 export type GetWakerSkillResponse = GetWakerSkillResponses[keyof GetWakerSkillResponses];
 
 export type UpdateWakerSkillData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsUpdateWakerSkillRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsUpdateWakerSkillRequest & unknown;
     path: {
         /**
          * 技能标识
@@ -36154,7 +36154,7 @@ export type UpdateWakerSkillResponses = {
 export type UpdateWakerSkillResponse = UpdateWakerSkillResponses[keyof UpdateWakerSkillResponses];
 
 export type SetWakerSkillEnabledData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsSetSkillEnabledRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsSetSkillEnabledRequest & unknown;
     path: {
         /**
          * 技能标识
@@ -36187,7 +36187,7 @@ export type SetWakerSkillEnabledResponses = {
 export type SetWakerSkillEnabledResponse = SetWakerSkillEnabledResponses[keyof SetWakerSkillEnabledResponses];
 
 export type PullSkillUpdateData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsPullSkillUpdateRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsPullSkillUpdateRequest & unknown;
     path: {
         /**
          * 技能标识
@@ -36234,7 +36234,7 @@ export type PullSkillUpdateErrors = {
 export type PullSkillUpdateError = PullSkillUpdateErrors[keyof PullSkillUpdateErrors];
 
 export type PullSkillUpdateResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion;
 };
 
 export type PullSkillUpdateResponse = PullSkillUpdateResponses[keyof PullSkillUpdateResponses];
@@ -36267,13 +36267,13 @@ export type ListSkillVersionsErrors = {
 export type ListSkillVersionsError = ListSkillVersionsErrors[keyof ListSkillVersionsErrors];
 
 export type ListSkillVersionsResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion>;
+    200: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion>;
 };
 
 export type ListSkillVersionsResponse = ListSkillVersionsResponses[keyof ListSkillVersionsResponses];
 
 export type CreateSkillVersionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsCreateSkillVersionRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsCreateSkillVersionRequest & unknown;
     path: {
         /**
          * 技能标识
@@ -36320,7 +36320,7 @@ export type CreateSkillVersionErrors = {
 export type CreateSkillVersionError = CreateSkillVersionErrors[keyof CreateSkillVersionErrors];
 
 export type CreateSkillVersionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion;
 };
 
 export type CreateSkillVersionResponse = CreateSkillVersionResponses[keyof CreateSkillVersionResponses];
@@ -36370,7 +36370,7 @@ export type GetSkillVersionErrors = {
 export type GetSkillVersionError = GetSkillVersionErrors[keyof GetSkillVersionErrors];
 
 export type GetSkillVersionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSkillsSkillVersionResponse;
+    200: GithubComJieWaZiNeuxBotServerApisSkillsSkillVersionResponse;
 };
 
 export type GetSkillVersionResponse = GetSkillVersionResponses[keyof GetSkillVersionResponses];
@@ -36425,13 +36425,13 @@ export type GetSkillVersionFileErrors = {
 export type GetSkillVersionFileError = GetSkillVersionFileErrors[keyof GetSkillVersionFileErrors];
 
 export type GetSkillVersionFileResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisSkillsSkillVersionFileResponse;
+    200: GithubComJieWaZiNeuxBotServerApisSkillsSkillVersionFileResponse;
 };
 
 export type GetSkillVersionFileResponse = GetSkillVersionFileResponses[keyof GetSkillVersionFileResponses];
 
 export type RestoreSkillVersionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisSkillsRestoreSkillVersionRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisSkillsRestoreSkillVersionRequest & unknown;
     path: {
         /**
          * 技能标识
@@ -36484,7 +36484,7 @@ export type RestoreSkillVersionErrors = {
 export type RestoreSkillVersionError = RestoreSkillVersionErrors[keyof RestoreSkillVersionErrors];
 
 export type RestoreSkillVersionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion;
 };
 
 export type RestoreSkillVersionResponse = RestoreSkillVersionResponses[keyof RestoreSkillVersionResponses];
@@ -36507,7 +36507,7 @@ export type GetWakerWorkRecordData = {
 };
 
 export type GetWakerWorkRecordResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWakersWakerWorkRecordResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWakersWakerWorkRecordResponse;
 };
 
 export type GetWakerWorkRecordResponse = GetWakerWorkRecordResponses[keyof GetWakerWorkRecordResponses];
@@ -36516,7 +36516,7 @@ export type ListWorkBoardData = {
     body?: never;
     path?: never;
     query?: {
-        activity?: GithubComJieWaZiNeuxAllyServerConstantsChannelActivityState & unknown;
+        activity?: GithubComJieWaZiNeuxBotServerConstantsChannelActivityState & unknown;
         /**
          * Cursor 是不透明的时间、种类、身份锚点。
          */
@@ -36573,7 +36573,7 @@ export type ListWorkBoardErrors = {
 export type ListWorkBoardError = ListWorkBoardErrors[keyof ListWorkBoardErrors];
 
 export type ListWorkBoardResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardPage;
+    200: GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardPage;
 };
 
 export type ListWorkBoardResponse = ListWorkBoardResponses[keyof ListWorkBoardResponses];
@@ -36591,7 +36591,7 @@ export type ListWorkBoardExecutorsData = {
 };
 
 export type ListWorkBoardExecutorsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardExecutorsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardExecutorsResponse;
 };
 
 export type ListWorkBoardExecutorsResponse = ListWorkBoardExecutorsResponses[keyof ListWorkBoardExecutorsResponses];
@@ -36616,26 +36616,26 @@ export type GetWorkResultData = {
          * OwnerID 是原容器标识。
          */
         ownerId: string;
-        ownerKind: GithubComJieWaZiNeuxAllyServerConstantsWorkResultOwnerKind & unknown;
+        ownerKind: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
     };
     query?: never;
     url: '/api/v1/work-board/results/{ownerKind}/{ownerId}';
 };
 
 export type GetWorkResultResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkResultResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkBoardWorkResultResponse;
 };
 
 export type GetWorkResultResponse = GetWorkResultResponses[keyof GetWorkResultResponses];
 
 export type ViewWorkResultData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkBoardViewWorkResultRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkBoardViewWorkResultRequest & unknown;
     path: {
         /**
          * OwnerID 是原容器身份。
          */
         ownerId: string;
-        ownerKind: GithubComJieWaZiNeuxAllyServerConstantsWorkResultOwnerKind & unknown;
+        ownerKind: GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind & unknown;
     };
     query?: never;
     url: '/api/v1/work-board/results/{ownerKind}/{ownerId}/view';
@@ -36683,7 +36683,7 @@ export type GetWorkBoardSummaryData = {
 };
 
 export type GetWorkBoardSummaryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkBoardWorkBoardSummary;
+    200: GithubComJieWaZiNeuxBotServerApisWorkBoardWorkBoardSummary;
 };
 
 export type GetWorkBoardSummaryResponse = GetWorkBoardSummaryResponses[keyof GetWorkBoardSummaryResponses];
@@ -36713,13 +36713,13 @@ export type ListWorkflowsData = {
 };
 
 export type ListWorkflowsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowListResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowListResponse;
 };
 
 export type ListWorkflowsResponse = ListWorkflowsResponses[keyof ListWorkflowsResponses];
 
 export type CreateWorkflowData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsCreateDefinitionCommand & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsCreateDefinitionCommand & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workflows';
@@ -36770,7 +36770,7 @@ export type CreateWorkflowErrors = {
 export type CreateWorkflowError = CreateWorkflowErrors[keyof CreateWorkflowErrors];
 
 export type CreateWorkflowResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition;
 };
 
 export type CreateWorkflowResponse = CreateWorkflowResponses[keyof CreateWorkflowResponses];
@@ -36788,7 +36788,7 @@ export type GetWorkflowChatResultsData = {
 };
 
 export type GetWorkflowChatResultsResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultReference>;
+    200: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference>;
 };
 
 export type GetWorkflowChatResultsResponse = GetWorkflowChatResultsResponses[keyof GetWorkflowChatResultsResponses];
@@ -36801,13 +36801,13 @@ export type GetWorkflowSdkData = {
 };
 
 export type GetWorkflowSdkResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowSdkResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowSdkResponse;
 };
 
 export type GetWorkflowSdkResponse = GetWorkflowSdkResponses[keyof GetWorkflowSdkResponses];
 
 export type DeleteWorkflowData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsDeleteWorkflowBody & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsDeleteWorkflowBody & unknown;
     path: {
         /**
          * 工作流标识
@@ -37154,13 +37154,13 @@ export type GetWorkflowData = {
 };
 
 export type GetWorkflowResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowDetailResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowDetailResponse;
 };
 
 export type GetWorkflowResponse = GetWorkflowResponses[keyof GetWorkflowResponses];
 
 export type CreateWorkflowAnnotationData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowAnnotationRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowAnnotationRequest & unknown;
     path: {
         /**
          * 工作流标识
@@ -37214,13 +37214,13 @@ export type CreateWorkflowAnnotationErrors = {
 export type CreateWorkflowAnnotationError = CreateWorkflowAnnotationErrors[keyof CreateWorkflowAnnotationErrors];
 
 export type CreateWorkflowAnnotationResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowAnnotation;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowAnnotation;
 };
 
 export type CreateWorkflowAnnotationResponse = CreateWorkflowAnnotationResponses[keyof CreateWorkflowAnnotationResponses];
 
 export type EditWorkflowConfigurationData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsEditConfigurationCommand & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsEditConfigurationCommand & unknown;
     path: {
         /**
          * ID 是路由中的工作流稳定身份。
@@ -37274,13 +37274,13 @@ export type EditWorkflowConfigurationErrors = {
 export type EditWorkflowConfigurationError = EditWorkflowConfigurationErrors[keyof EditWorkflowConfigurationErrors];
 
 export type EditWorkflowConfigurationResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSaveReceipt;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt;
 };
 
 export type EditWorkflowConfigurationResponse = EditWorkflowConfigurationResponses[keyof EditWorkflowConfigurationResponses];
 
 export type SendWorkflowCreationMessageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsSendCreationMessageCommand & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsSendCreationMessageCommand & unknown;
     path: {
         /**
          * 工作流标识
@@ -37604,7 +37604,7 @@ export type SendWorkflowCreationMessageErrors = {
 export type SendWorkflowCreationMessageError = SendWorkflowCreationMessageErrors[keyof SendWorkflowCreationMessageErrors];
 
 export type SendWorkflowCreationMessageResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsSendWorkflowCreationMessageResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsSendWorkflowCreationMessageResponse;
 };
 
 export type SendWorkflowCreationMessageResponse = SendWorkflowCreationMessageResponses[keyof SendWorkflowCreationMessageResponses];
@@ -37646,7 +37646,7 @@ export type ListWorkflowEventsErrors = {
 export type ListWorkflowEventsError = ListWorkflowEventsErrors[keyof ListWorkflowEventsErrors];
 
 export type ListWorkflowEventsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowEventListResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowEventListResponse;
 };
 
 export type ListWorkflowEventsResponse = ListWorkflowEventsResponses[keyof ListWorkflowEventsResponses];
@@ -37692,13 +37692,13 @@ export type UploadWorkflowFileErrors = {
 export type UploadWorkflowFileError = UploadWorkflowFileErrors[keyof UploadWorkflowFileErrors];
 
 export type UploadWorkflowFileResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkflowFilesUpload;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkflowFilesUpload;
 };
 
 export type UploadWorkflowFileResponse = UploadWorkflowFileResponses[keyof UploadWorkflowFileResponses];
 
 export type RestoreWorkflowRevisionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsRestoreWorkflowRevisionRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsRestoreWorkflowRevisionRequest & unknown;
     path: {
         /**
          * 工作流标识
@@ -37752,7 +37752,7 @@ export type RestoreWorkflowRevisionErrors = {
 export type RestoreWorkflowRevisionError = RestoreWorkflowRevisionErrors[keyof RestoreWorkflowRevisionErrors];
 
 export type RestoreWorkflowRevisionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSaveReceipt;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt;
 };
 
 export type RestoreWorkflowRevisionResponse = RestoreWorkflowRevisionResponses[keyof RestoreWorkflowRevisionResponses];
@@ -37779,7 +37779,7 @@ export type ListWorkflowRevisionsData = {
 };
 
 export type ListWorkflowRevisionsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRevisionListResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionListResponse;
 };
 
 export type ListWorkflowRevisionsResponse = ListWorkflowRevisionsResponses[keyof ListWorkflowRevisionsResponses];
@@ -37874,13 +37874,13 @@ export type ListWorkflowRunsData = {
 };
 
 export type ListWorkflowRunsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRunListResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunListResponse;
 };
 
 export type ListWorkflowRunsResponse = ListWorkflowRunsResponses[keyof ListWorkflowRunsResponses];
 
 export type StartWorkflowRunData = {
-    body: GithubComJieWaZiNeuxAllyServerServicesWorkflowStartRunCommand & unknown;
+    body: GithubComJieWaZiNeuxBotServerServicesWorkflowStartRunCommand & unknown;
     path: {
         /**
          * 工作流标识
@@ -37932,7 +37932,7 @@ export type StartWorkflowRunErrors = {
 export type StartWorkflowRunError = StartWorkflowRunErrors[keyof StartWorkflowRunErrors];
 
 export type StartWorkflowRunResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun;
 };
 
 export type StartWorkflowRunResponse = StartWorkflowRunResponses[keyof StartWorkflowRunResponses];
@@ -38044,7 +38044,7 @@ export type GetWorkflowRunErrors = {
 export type GetWorkflowRunError = GetWorkflowRunErrors[keyof GetWorkflowRunErrors];
 
 export type GetWorkflowRunResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowRunDetailResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse;
 };
 
 export type GetWorkflowRunResponse = GetWorkflowRunResponses[keyof GetWorkflowRunResponses];
@@ -38098,7 +38098,7 @@ export type GetWorkflowArtifactErrors = {
 export type GetWorkflowArtifactError = GetWorkflowArtifactErrors[keyof GetWorkflowArtifactErrors];
 
 export type GetWorkflowArtifactResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowArtifactResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowArtifactResponse;
 };
 
 export type GetWorkflowArtifactResponse = GetWorkflowArtifactResponses[keyof GetWorkflowArtifactResponses];
@@ -38231,7 +38231,7 @@ export type DownloadWorkflowFileResponses = {
 export type DownloadWorkflowFileResponse = DownloadWorkflowFileResponses[keyof DownloadWorkflowFileResponses];
 
 export type AnswerWorkflowHumanData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsAnswerHumanCommand & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand & unknown;
     path: {
         /**
          * 请求标识
@@ -38633,7 +38633,7 @@ export type GetWorkflowInstanceErrors = {
 export type GetWorkflowInstanceError = GetWorkflowInstanceErrors[keyof GetWorkflowInstanceErrors];
 
 export type GetWorkflowInstanceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowInstanceResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowInstanceResponse;
 };
 
 export type GetWorkflowInstanceResponse = GetWorkflowInstanceResponses[keyof GetWorkflowInstanceResponses];
@@ -38683,13 +38683,13 @@ export type GetWorkflowNodeResultErrors = {
 export type GetWorkflowNodeResultError = GetWorkflowNodeResultErrors[keyof GetWorkflowNodeResultErrors];
 
 export type GetWorkflowNodeResultResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultResponse;
 };
 
 export type GetWorkflowNodeResultResponse = GetWorkflowNodeResultResponses[keyof GetWorkflowNodeResultResponses];
 
 export type SkipWorkflowWorkerData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsSkipWorkerCommand & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsSkipWorkerCommand & unknown;
     path: {
         /**
          * 工作流标识
@@ -38795,13 +38795,13 @@ export type ListWorkflowNodeResultsErrors = {
 export type ListWorkflowNodeResultsError = ListWorkflowNodeResultsErrors[keyof ListWorkflowNodeResultsErrors];
 
 export type ListWorkflowNodeResultsResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultsResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultsResponse;
 };
 
 export type ListWorkflowNodeResultsResponse = ListWorkflowNodeResultsResponses[keyof ListWorkflowNodeResultsResponses];
 
 export type AnswerWorkflowOperationData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsAnswerOperationCommand & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerOperationCommand & unknown;
     path: {
         /**
          * 工作流标识
@@ -38871,7 +38871,7 @@ export type AnswerWorkflowOperationResponses = {
 export type AnswerWorkflowOperationResponse = AnswerWorkflowOperationResponses[keyof AnswerWorkflowOperationResponses];
 
 export type RetryWorkflowRunData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsRetryRunCommand & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsRetryRunCommand & unknown;
     path: {
         /**
          * 工作流标识
@@ -38930,7 +38930,7 @@ export type RetryWorkflowRunErrors = {
 export type RetryWorkflowRunError = RetryWorkflowRunErrors[keyof RetryWorkflowRunErrors];
 
 export type RetryWorkflowRunResponses = {
-    200: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun;
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun;
 };
 
 export type RetryWorkflowRunResponse = RetryWorkflowRunResponses[keyof RetryWorkflowRunResponses];
@@ -38971,13 +38971,13 @@ export type GetWorkflowSourceErrors = {
 export type GetWorkflowSourceError = GetWorkflowSourceErrors[keyof GetWorkflowSourceErrors];
 
 export type GetWorkflowSourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowSourceResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowSourceResponse;
 };
 
 export type GetWorkflowSourceResponse = GetWorkflowSourceResponses[keyof GetWorkflowSourceResponses];
 
 export type SaveWorkflowSourceData = {
-    body: GithubComJieWaZiNeuxAllyServerServicesWorkflowSaveSourceCommand & unknown;
+    body: GithubComJieWaZiNeuxBotServerServicesWorkflowSaveSourceCommand & unknown;
     path: {
         /**
          * 工作流标识
@@ -39019,7 +39019,7 @@ export type SaveWorkflowSourceErrors = {
 export type SaveWorkflowSourceError = SaveWorkflowSourceErrors[keyof SaveWorkflowSourceErrors];
 
 export type SaveWorkflowSourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkflowDslSaveReceipt;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt;
 };
 
 export type SaveWorkflowSourceResponse = SaveWorkflowSourceResponses[keyof SaveWorkflowSourceResponses];
@@ -39037,13 +39037,13 @@ export type GetWorkflowTriggersData = {
 };
 
 export type GetWorkflowTriggersResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowTriggersView;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowTriggersView;
 };
 
 export type GetWorkflowTriggersResponse = GetWorkflowTriggersResponses[keyof GetWorkflowTriggersResponses];
 
 export type SaveWorkflowTriggersData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsSaveWorkflowTriggersCommand & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsSaveWorkflowTriggersCommand & unknown;
     path: {
         /**
          * 工作流标识
@@ -39104,13 +39104,13 @@ export type SaveWorkflowTriggersErrors = {
 export type SaveWorkflowTriggersError = SaveWorkflowTriggersErrors[keyof SaveWorkflowTriggersErrors];
 
 export type SaveWorkflowTriggersResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsSavedWorkflowTriggers;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsSavedWorkflowTriggers;
 };
 
 export type SaveWorkflowTriggersResponse = SaveWorkflowTriggersResponses[keyof SaveWorkflowTriggersResponses];
 
 export type ValidateWorkflowSourceData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkflowsValidateWorkflowSourceRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsValidateWorkflowSourceRequest & unknown;
     path: {
         /**
          * 工作流标识
@@ -39140,7 +39140,7 @@ export type ValidateWorkflowSourceErrors = {
 export type ValidateWorkflowSourceError = ValidateWorkflowSourceErrors[keyof ValidateWorkflowSourceErrors];
 
 export type ValidateWorkflowSourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowValidationResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowValidationResponse;
 };
 
 export type ValidateWorkflowSourceResponse = ValidateWorkflowSourceResponses[keyof ValidateWorkflowSourceResponses];
@@ -39258,13 +39258,13 @@ export type ListChatFilesErrors = {
 export type ListChatFilesError = ListChatFilesErrors[keyof ListChatFilesErrors];
 
 export type ListChatFilesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesChatFiles;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesChatFiles;
 };
 
 export type ListChatFilesResponse = ListChatFilesResponses[keyof ListChatFilesResponses];
 
 export type DeleteFileData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceDeleteRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceDeleteRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/delete';
@@ -39318,7 +39318,7 @@ export type DeleteFileResponses = {
 export type DeleteFileResponse = DeleteFileResponses[keyof DeleteFileResponses];
 
 export type DeleteDirectoryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceDeleteDirectoryRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceDeleteDirectoryRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/directory/delete';
@@ -39366,7 +39366,7 @@ export type DeleteDirectoryResponses = {
 export type DeleteDirectoryResponse = DeleteDirectoryResponses[keyof DeleteDirectoryResponses];
 
 export type RenameDirectoryData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceRenameDirectoryRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceRenameDirectoryRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/directory/rename';
@@ -39414,13 +39414,13 @@ export type RenameDirectoryErrors = {
 export type RenameDirectoryError = RenameDirectoryErrors[keyof RenameDirectoryErrors];
 
 export type RenameDirectoryResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkspacePathResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkspacePathResponse;
 };
 
 export type RenameDirectoryResponse = RenameDirectoryResponses[keyof RenameDirectoryResponses];
 
 export type OpenDraftScopeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceOpenDraftScopeRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceOpenDraftScopeRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/draft-scopes';
@@ -39456,7 +39456,7 @@ export type OpenDraftScopeErrors = {
 export type OpenDraftScopeError = OpenDraftScopeErrors[keyof OpenDraftScopeErrors];
 
 export type OpenDraftScopeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesScope;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesScope;
 };
 
 export type OpenDraftScopeResponse = OpenDraftScopeResponses[keyof OpenDraftScopeResponses];
@@ -39518,13 +39518,13 @@ export type GitBranchesErrors = {
 export type GitBranchesError = GitBranchesErrors[keyof GitBranchesErrors];
 
 export type GitBranchesResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitBranches;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesGitBranches;
 };
 
 export type GitBranchesResponse = GitBranchesResponses[keyof GitBranchesResponses];
 
 export type GitCheckoutData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceGitCheckoutRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceGitCheckoutRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/git/checkout';
@@ -39573,7 +39573,7 @@ export type GitCheckoutErrors = {
 export type GitCheckoutError = GitCheckoutErrors[keyof GitCheckoutErrors];
 
 export type GitCheckoutResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkspaceGitCheckoutResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkspaceGitCheckoutResponse;
 };
 
 export type GitCheckoutResponse = GitCheckoutResponses[keyof GitCheckoutResponses];
@@ -39639,13 +39639,13 @@ export type GitCheckoutPreviewErrors = {
 export type GitCheckoutPreviewError = GitCheckoutPreviewErrors[keyof GitCheckoutPreviewErrors];
 
 export type GitCheckoutPreviewResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesCheckoutPreview;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesCheckoutPreview;
 };
 
 export type GitCheckoutPreviewResponse = GitCheckoutPreviewResponses[keyof GitCheckoutPreviewResponses];
 
 export type GitCommitData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceGitCommitRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceGitCommitRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/git/commit';
@@ -39760,7 +39760,7 @@ export type GitCommitDiffErrors = {
 export type GitCommitDiffError = GitCommitDiffErrors[keyof GitCommitDiffErrors];
 
 export type GitCommitDiffResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkspaceGitContent;
+    200: GithubComJieWaZiNeuxBotServerApisWorkspaceGitContent;
 };
 
 export type GitCommitDiffResponse = GitCommitDiffResponses[keyof GitCommitDiffResponses];
@@ -39830,13 +39830,13 @@ export type GitDiffErrors = {
 export type GitDiffError = GitDiffErrors[keyof GitDiffErrors];
 
 export type GitDiffResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkspaceGitContent;
+    200: GithubComJieWaZiNeuxBotServerApisWorkspaceGitContent;
 };
 
 export type GitDiffResponse = GitDiffResponses[keyof GitDiffResponses];
 
 export type GitDiscardData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceGitDiscardRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceGitDiscardRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/git/discard';
@@ -39955,7 +39955,7 @@ export type GitLogErrors = {
 export type GitLogError = GitLogErrors[keyof GitLogErrors];
 
 export type GitLogResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitLogEntry>;
+    200: Array<GithubComJieWaZiNeuxBotServerInternalWorkspacefilesGitLogEntry>;
 };
 
 export type GitLogResponse = GitLogResponses[keyof GitLogResponses];
@@ -40025,13 +40025,13 @@ export type GitShowErrors = {
 export type GitShowError = GitShowErrors[keyof GitShowErrors];
 
 export type GitShowResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkspaceGitContent;
+    200: GithubComJieWaZiNeuxBotServerApisWorkspaceGitContent;
 };
 
 export type GitShowResponse = GitShowResponses[keyof GitShowResponses];
 
 export type GitStageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceGitStageRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceGitStageRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/git/stage';
@@ -40142,13 +40142,13 @@ export type GitStatusErrors = {
 export type GitStatusError = GitStatusErrors[keyof GitStatusErrors];
 
 export type GitStatusResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesGitStatus;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesGitStatus;
 };
 
 export type GitStatusResponse = GitStatusResponses[keyof GitStatusResponses];
 
 export type GitUnstageData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceGitUnstageRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceGitUnstageRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/git/unstage';
@@ -40203,7 +40203,7 @@ export type GitUnstageResponses = {
 export type GitUnstageResponse = GitUnstageResponses[keyof GitUnstageResponses];
 
 export type ImportFileData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceImportFileRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceImportFileRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/import';
@@ -40251,7 +40251,7 @@ export type ImportFileErrors = {
 export type ImportFileError = ImportFileErrors[keyof ImportFileErrors];
 
 export type ImportFileResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkspacePathResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkspacePathResponse;
 };
 
 export type ImportFileResponse = ImportFileResponses[keyof ImportFileResponses];
@@ -40312,7 +40312,7 @@ export type ListDirectoryErrors = {
 export type ListDirectoryError = ListDirectoryErrors[keyof ListDirectoryErrors];
 
 export type ListDirectoryResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesEntry>;
+    200: Array<GithubComJieWaZiNeuxBotServerInternalWorkspacefilesEntry>;
 };
 
 export type ListDirectoryResponse = ListDirectoryResponses[keyof ListDirectoryResponses];
@@ -40379,13 +40379,13 @@ export type ReadFileErrors = {
 export type ReadFileError = ReadFileErrors[keyof ReadFileErrors];
 
 export type ReadFileResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkspaceReadResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkspaceReadResponse;
 };
 
 export type ReadFileResponse = ReadFileResponses[keyof ReadFileResponses];
 
 export type RenameFileData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceRenameRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceRenameRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/rename';
@@ -40433,13 +40433,13 @@ export type RenameFileErrors = {
 export type RenameFileError = RenameFileErrors[keyof RenameFileErrors];
 
 export type RenameFileResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesResource;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesResource;
 };
 
 export type RenameFileResponse = RenameFileResponses[keyof RenameFileResponses];
 
 export type ResolveReferenceData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceResolveReferenceRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceResolveReferenceRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/resolve';
@@ -40475,13 +40475,13 @@ export type ResolveReferenceErrors = {
 export type ResolveReferenceError = ResolveReferenceErrors[keyof ResolveReferenceErrors];
 
 export type ResolveReferenceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesResolution;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesResolution;
 };
 
 export type ResolveReferenceResponse = ResolveReferenceResponses[keyof ResolveReferenceResponses];
 
 export type OpenScopeData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceScopeRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceScopeRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/scopes';
@@ -40517,7 +40517,7 @@ export type OpenScopeErrors = {
 export type OpenScopeError = OpenScopeErrors[keyof OpenScopeErrors];
 
 export type OpenScopeResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesScope;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesScope;
 };
 
 export type OpenScopeResponse = OpenScopeResponses[keyof OpenScopeResponses];
@@ -40586,7 +40586,7 @@ export type SearchFilesErrors = {
 export type SearchFilesError = SearchFilesErrors[keyof SearchFilesErrors];
 
 export type SearchFilesResponses = {
-    200: Array<GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesFileMatch>;
+    200: Array<GithubComJieWaZiNeuxBotServerInternalWorkspacefilesFileMatch>;
 };
 
 export type SearchFilesResponse = SearchFilesResponses[keyof SearchFilesResponses];
@@ -40653,7 +40653,7 @@ export type StatFileErrors = {
 export type StatFileError = StatFileErrors[keyof StatFileErrors];
 
 export type StatFileResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesResource;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesResource;
 };
 
 export type StatFileResponse = StatFileResponses[keyof StatFileResponses];
@@ -40677,7 +40677,7 @@ export type UnwatchResourceResponses = {
 export type UnwatchResourceResponse = UnwatchResourceResponses[keyof UnwatchResourceResponses];
 
 export type WatchResourceData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceWatchRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceWatchRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/watch';
@@ -40701,13 +40701,13 @@ export type WatchResourceErrors = {
 export type WatchResourceError = WatchResourceErrors[keyof WatchResourceErrors];
 
 export type WatchResourceResponses = {
-    200: GithubComJieWaZiNeuxAllyServerInternalWorkspacefilesChangeEvent;
+    200: GithubComJieWaZiNeuxBotServerInternalWorkspacefilesChangeEvent;
 };
 
 export type WatchResourceResponse = WatchResourceResponses[keyof WatchResourceResponses];
 
 export type WriteFileData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWorkspaceWriteRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWorkspaceWriteRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/v1/workspace/write';
@@ -40755,7 +40755,7 @@ export type WriteFileErrors = {
 export type WriteFileError = WriteFileErrors[keyof WriteFileErrors];
 
 export type WriteFileResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWorkspaceWriteResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWorkspaceWriteResponse;
 };
 
 export type WriteFileResponse = WriteFileResponses[keyof WriteFileResponses];
@@ -40781,20 +40781,20 @@ export type GetSessionData = {
 };
 
 export type GetSessionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWebsessionSessionResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWebsessionSessionResponse;
 };
 
 export type GetSessionResponse = GetSessionResponses[keyof GetSessionResponses];
 
 export type PairSessionData = {
-    body: GithubComJieWaZiNeuxAllyServerApisWebsessionPairRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisWebsessionPairRequest & unknown;
     path?: never;
     query?: never;
     url: '/api/web/session';
 };
 
 export type PairSessionResponses = {
-    200: GithubComJieWaZiNeuxAllyServerApisWebsessionSessionResponse;
+    200: GithubComJieWaZiNeuxBotServerApisWebsessionSessionResponse;
 };
 
 export type PairSessionResponse = PairSessionResponses[keyof PairSessionResponses];

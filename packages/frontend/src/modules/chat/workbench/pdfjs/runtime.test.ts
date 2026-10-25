@@ -37,7 +37,7 @@ class ControlledWorker extends EventTarget {
   ready() {
     this.dispatchEvent(
       new MessageEvent("message", {
-        data: { type: "neuxally-pdf-worker-ready" },
+        data: { type: "neuxbot-pdf-worker-ready" },
       }),
     );
   }
@@ -76,7 +76,7 @@ describe("PDF.js worker ownership", () => {
     const source = new TextEncoder().encode("%PDF-test");
     const session = openPdf(source, new AbortController().signal, vi.fn());
     const worker = firstWorker();
-    expect(worker.options).toEqual({ type: "module", name: "neuxally-pdf" });
+    expect(worker.options).toEqual({ type: "module", name: "neuxbot-pdf" });
     expect(api.getDocument).not.toHaveBeenCalled();
     worker.ready();
     await vi.waitFor(() => expect(api.getDocument).toHaveBeenCalledOnce());

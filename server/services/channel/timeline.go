@@ -8,15 +8,15 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 const (

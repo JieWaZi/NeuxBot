@@ -11,11 +11,11 @@ async function canonicalDirectory(value: string): Promise<string> {
 import type {
   TerminalSnapshot,
   TerminalStarted,
-} from "@neuxally/platform-contracts/resources";
+} from "@neuxbot/platform-contracts/resources";
 
 type TerminalEvents = {
-  "terminal-output": import("@neuxally/platform-contracts/resources").TerminalOutputEvent;
-  "terminal-exit": import("@neuxally/platform-contracts/resources").TerminalExitEvent;
+  "terminal-output": import("@neuxbot/platform-contracts/resources").TerminalOutputEvent;
+  "terminal-exit": import("@neuxbot/platform-contracts/resources").TerminalExitEvent;
 };
 
 const outputHighWatermark = 256 * 1024;

@@ -1,6 +1,6 @@
 package models
 
-import "github.com/JieWaZi/NeuxAlly/server/constants"
+import "github.com/JieWaZi/NeuxBot/server/constants"
 
 // WorkBoardCounts 是原工作容器的即时聚合，不注册数据库表。
 type WorkBoardCounts struct {

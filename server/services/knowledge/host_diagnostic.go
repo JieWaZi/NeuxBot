@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // hostDiagnostic 映射已知稳定码，不存储可能带账号、路径和来源正文的任意错误文字。

@@ -3,14 +3,14 @@ package global
 import (
 	"context"
 	"errors"
-	builtinskills "github.com/JieWaZi/NeuxAlly/server/internal/skills/builtin"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"os"
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinrolepreset"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )

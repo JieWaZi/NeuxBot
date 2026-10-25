@@ -3,15 +3,15 @@ package execution
 import (
 	"context"
 	"errors"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	eventstream "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // terminalJournal 记录执行终态的 durable 与公开两阶段交接。

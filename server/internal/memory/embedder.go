@@ -2,9 +2,9 @@ package memory
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/embedding"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/embedding"
 )
 
 // Embedder 是记忆嵌入端口，对齐 记忆嵌入调用契约。

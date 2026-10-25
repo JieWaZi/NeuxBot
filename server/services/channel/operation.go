@@ -3,10 +3,10 @@ package channel
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/teamwork"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/teamwork"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // acquireThreadOperation 先确定团队身份，再复用同步接纳链路的聚合保护。

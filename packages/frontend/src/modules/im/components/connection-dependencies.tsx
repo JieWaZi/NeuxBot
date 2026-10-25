@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsImConnectionDependencies as Dependencies } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsImConnectionDependencies as Dependencies } from "@/shared/api/generated/types.gen";
 import { localApiErrorMessage } from "@/shared/api/local-error-surface";
 import { Button } from "@/shared/ui/button";
 import { ContentLoadingState } from "@/shared/ui/content-loading-state";

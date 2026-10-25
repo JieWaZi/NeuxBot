@@ -1,5 +1,5 @@
 import { knowledgeAdapter } from "@/shared/api/knowledge";
-import type { GithubComJieWaZiNeuxAllyServerApisKnowledgeOrganizeResponse as OrganizeResponse } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisKnowledgeOrganizeResponse as OrganizeResponse } from "@/shared/api/generated/types.gen";
 import type { ExecutionSelection } from "@/shared/hooks/use-execution-selection";
 import type { Library } from "./knowledge-model";
 import type { KnowledgePerform } from "./knowledge-writes";

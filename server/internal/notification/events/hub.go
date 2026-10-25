@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
 const (

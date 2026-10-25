@@ -1,10 +1,10 @@
 package workflows
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

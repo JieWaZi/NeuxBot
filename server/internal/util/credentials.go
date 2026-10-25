@@ -6,8 +6,8 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // NewAutomaticTaskToken 生成只在签发响应返回的密钥及用于持久化的单向摘要。

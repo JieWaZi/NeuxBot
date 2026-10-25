@@ -3,7 +3,7 @@ package integration_knowledge
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"net/http/httptest"
 	"strings"

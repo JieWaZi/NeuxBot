@@ -1,10 +1,10 @@
 package uploads
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/apis/middleware"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	uploadstore "github.com/JieWaZi/NeuxAlly/server/internal/uploads"
+	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	uploadstore "github.com/JieWaZi/NeuxBot/server/internal/uploads"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 	"net/http"

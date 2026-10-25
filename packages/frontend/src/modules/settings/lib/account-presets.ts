@@ -1,4 +1,4 @@
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccountEndpoint as Endpoint } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccountEndpoint as Endpoint } from "@/shared/api/generated/types.gen";
 
 export const protocols = [
   "google-generative-ai",

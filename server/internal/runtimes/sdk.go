@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // SDK 是并发安全且构造后不可变的 Runtime 深模块门面。

@@ -3,7 +3,7 @@ import type { ComponentProps } from "react";
 import { cn } from "@/shared/lib/cn";
 import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
 
-// shadcn/ui HoverCard composition, adapted to NeuxAlly tokens and native overlays.
+// shadcn/ui HoverCard composition, adapted to NeuxBot tokens and native overlays.
 // Source: https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/new-york-v4/ui/hover-card.tsx
 export const HoverCard = HoverCardPrimitive.Root;
 export const HoverCardTrigger = HoverCardPrimitive.Trigger;

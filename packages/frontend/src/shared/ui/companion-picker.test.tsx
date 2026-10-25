@@ -17,7 +17,7 @@ describe("伙伴形象切换", () => {
       return (
         <CompanionPicker
           label="头像"
-          name="NeuxAlly"
+          name="NeuxBot"
           value={value}
           onChange={(avatar) => {
             changed(avatar);

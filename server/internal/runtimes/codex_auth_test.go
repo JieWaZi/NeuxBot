@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/codexoauth"
+	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
 	acp "github.com/coder/acp-go-sdk"
 )
 

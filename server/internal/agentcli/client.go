@@ -10,9 +10,9 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 )
 
 // client 固定一次 CLI 进程读取的授权，不在失败后换用下一轮连接文件。

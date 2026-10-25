@@ -15,13 +15,13 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/apis/mcp"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	packageplugin "github.com/JieWaZi/NeuxAlly/server/internal/plugins"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/commandbridge"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/apis/mcp"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 

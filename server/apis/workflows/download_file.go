@@ -6,12 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	workflowfiles "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

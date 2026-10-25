@@ -6,9 +6,9 @@
     'down-left': [-7, 5], 'down-right': [7, 5]
   };
   const gestures = [...Object.keys(directions), 'curious-left', 'curious-right', 'wide', 'soft', 'smile', 'wink-left', 'wink-right'];
-  window.NeuxAlly = window.NeuxAlly || {};
-  window.NeuxAlly.idleEyeGestures = gestures;
-  window.NeuxAlly.createIdleEyes = (random = Math.random) => {
+  window.NeuxBot = window.NeuxBot || {};
+  window.NeuxBot.idleEyeGestures = gestures;
+  window.NeuxBot.createIdleEyes = (random = Math.random) => {
     const rest = { x:0, y:0, leftWide:0, rightWide:0, leftTall:0, rightTall:0,
       leftTilt:0, rightTilt:0, soft:0, smile:0, leftWink:0, rightWink:0 };
     const state = { ...rest };

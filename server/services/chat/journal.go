@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	eventstream "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // ExecutionContext 是 Execution Core 准备一次工作所需的权威 Chat 快照。

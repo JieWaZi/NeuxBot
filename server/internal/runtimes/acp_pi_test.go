@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// runAllyPiRPCFixture 验证 NeuxAlly 经 Go 适配器只发送 Pi 原生 RPC，且恢复时刷新 MCP。
+// runAllyPiRPCFixture 验证 NeuxBot 经 Go 适配器只发送 Pi 原生 RPC，且恢复时刷新 MCP。
 func runAllyPiRPCFixture(t *testing.T) {
 	cwd, _ := os.Getwd()
 	file := filepath.Join(os.Getenv("PI_CODING_AGENT_DIR"), "sessions", "fixture.jsonl")

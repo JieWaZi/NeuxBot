@@ -3,7 +3,7 @@ import type { ComponentProps } from "react";
 import { Check } from "lucide-react";
 import { cn } from "@/shared/lib/cn";
 
-// shadcn/ui RadioGroup composition, adapted to NeuxAlly field tokens.
+// shadcn/ui RadioGroup composition, adapted to NeuxBot field tokens.
 // Source: https://github.com/shadcn-ui/ui/blob/main/apps/v4/registry/new-york-v4/ui/radio-group.tsx
 export function RadioGroup({
   className,

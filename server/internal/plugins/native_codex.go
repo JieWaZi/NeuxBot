@@ -15,9 +15,9 @@ import (
 	"sync"
 
 	"github.com/BurntSushi/toml"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // 同进程准备串行化，避免两个执行接纳同时更新同一份账号快照。

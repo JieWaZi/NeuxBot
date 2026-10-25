@@ -3,7 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import "@/shared/i18n";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelTask as ChannelTask } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask as ChannelTask } from "@/shared/api/generated/types.gen";
 
 import { TeamTaskBoard } from "./team-task-board";
 

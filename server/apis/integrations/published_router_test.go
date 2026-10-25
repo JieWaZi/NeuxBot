@@ -3,11 +3,11 @@ package integrations
 import (
 	"context"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	integrationservice "github.com/JieWaZi/NeuxAlly/server/services/integration"
-	knowledgeservice "github.com/JieWaZi/NeuxAlly/server/services/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	integrationservice "github.com/JieWaZi/NeuxBot/server/services/integration"
+	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -23,9 +23,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	publication "github.com/JieWaZi/NeuxAlly/server/internal/integration"
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	publication "github.com/JieWaZi/NeuxBot/server/internal/integration"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
 )
 
 func TestPublishedRouterExcludesDesktopManagementAndServesOnlyPublicContract(t *testing.T) {

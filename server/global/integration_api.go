@@ -3,9 +3,9 @@ package global
 import (
 	"context"
 
-	integrationapi "github.com/JieWaZi/NeuxAlly/server/internal/integration"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	integrationservice "github.com/JieWaZi/NeuxAlly/server/services/integration"
+	integrationapi "github.com/JieWaZi/NeuxBot/server/internal/integration"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	integrationservice "github.com/JieWaZi/NeuxBot/server/services/integration"
 )
 
 var (

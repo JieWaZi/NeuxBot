@@ -3,10 +3,10 @@ package eventlog
 
 import (
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // Record 是 Chat JSONL 中一条已经提交的稳定事件信封。
@@ -115,7 +115,7 @@ type AttachmentReference struct {
 	Path string `json:"path"`
 	// MediaType 是根据扩展名推断的 MIME 类型。
 	MediaType string `json:"mediaType,omitempty"`
-	// Managed 表示文件是否位于 NeuxAlly 归属目录。
+	// Managed 表示文件是否位于 NeuxBot 归属目录。
 	Managed bool `json:"managed"`
 }
 
@@ -225,7 +225,7 @@ type ApprovalLocationData struct {
 
 // ApprovalRequestedData 保存一次等待用户处理的安全审批请求。
 type ApprovalRequestedData struct {
-	// ApprovalID 是 NeuxAlly 为本次 ACP 回调生成的稳定交互标识。
+	// ApprovalID 是 NeuxBot 为本次 ACP 回调生成的稳定交互标识。
 	ApprovalID string `json:"approvalId"`
 	// ToolCallID 是 ACP Session 内对应工具调用的稳定标识。
 	ToolCallID string `json:"toolCallId"`
@@ -245,7 +245,7 @@ type ApprovalRequestedData struct {
 
 // ApprovalResolvedData 保存一次审批的权威处理结果。
 type ApprovalResolvedData struct {
-	// ApprovalID 是被处理的 NeuxAlly 审批标识。
+	// ApprovalID 是被处理的 NeuxBot 审批标识。
 	ApprovalID string `json:"approvalId"`
 	// ToolCallID 是对应 ACP 工具调用标识。
 	ToolCallID string `json:"toolCallId"`
@@ -269,7 +269,7 @@ type ElicitationRequestedData struct {
 	CommandDigest string `json:"commandDigest,omitempty"`
 	// AllowSkip 是 CLI 问答冻结的跳过约束；原生请求不设置。
 	AllowSkip *bool `json:"allowSkip,omitempty"`
-	// ElicitationID 是 NeuxAlly 生成的稳定交互标识。
+	// ElicitationID 是 NeuxBot 生成的稳定交互标识。
 	ElicitationID string `json:"elicitationId"`
 	// ToolCallID 是对应 ACP 工具调用标识，URL 模式可能为空。
 	ToolCallID string `json:"toolCallId,omitempty"`
@@ -285,7 +285,7 @@ type ElicitationRequestedData struct {
 
 // ElicitationResolvedData 保存一次结构化输入的权威处理结果。
 type ElicitationResolvedData struct {
-	// ElicitationID 是被处理的 NeuxAlly 交互标识。
+	// ElicitationID 是被处理的 NeuxBot 交互标识。
 	ElicitationID string `json:"elicitationId"`
 	// ToolCallID 是对应 ACP 工具调用标识。
 	ToolCallID string `json:"toolCallId,omitempty"`

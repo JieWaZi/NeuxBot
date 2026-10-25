@@ -4,7 +4,7 @@ import { Check, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelTask as ChannelTask } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask as ChannelTask } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { Textarea } from "@/shared/ui/textarea";

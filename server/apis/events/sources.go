@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	eventhub "github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	eventhub "github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 )
 
 func validateResource(ctx context.Context, command control) error {

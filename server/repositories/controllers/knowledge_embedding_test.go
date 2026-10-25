@@ -3,7 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"strings"
 	"testing"
 )

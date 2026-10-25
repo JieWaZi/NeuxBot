@@ -1,8 +1,8 @@
 # 快速开始
 
-从 [Releases](https://github.com/JieWaZi/NeuxAlly/releases) 获取已发布的当前平台安装包。若尚无版本，可按根目录 CONTRIBUTING.md 从源码运行。
+从 [Releases](https://github.com/JieWaZi/NeuxBot/releases) 获取已发布的当前平台安装包。若尚无版本，可按根目录 CONTRIBUTING.md 从源码运行。
 
-1. 安装并启动 NeuxAlly。
+1. 安装并启动 NeuxBot。
 2. 准备至少一种支持的智能体 CLI，完成对应产品要求的登录或账号配置。
 3. 首次引导确认实际安装版本、模型和默认权限。
 4. 创建伙伴，可选择本地项目或临时文件夹，输入目标并开始对话。

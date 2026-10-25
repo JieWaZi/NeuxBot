@@ -5,8 +5,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 )
 
 // Store 管理应用数据目录中的 Chat JSONL。

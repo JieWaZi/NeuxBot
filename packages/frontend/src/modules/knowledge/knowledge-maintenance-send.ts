@@ -1,6 +1,6 @@
 import { knowledgeAdapter, type ResourceRef } from "@/shared/api/knowledge";
 import type { ExecutionSelection } from "@/shared/hooks/use-execution-selection";
-import type { GithubComJieWaZiNeuxAllyServerServicesExecutionAcceptedExecution as AcceptedExecution } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as AcceptedExecution } from "@/shared/api/generated/types.gen";
 import { permissionLevelOf } from "@/shared/lib/runtime-permissions";
 import { ApiError } from "@/shared/api/errors";
 import { i18n } from "@/shared/i18n";

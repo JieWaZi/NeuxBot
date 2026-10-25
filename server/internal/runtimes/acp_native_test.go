@@ -118,7 +118,7 @@ func TestNativeCLIDiscoveryModelSelectionAndResume(t *testing.T) {
 					}
 				}
 				if finalUsage.Turn == nil || finalUsage.Context == nil || finalUsage.Turn.InputTokens != 7 || finalUsage.Turn.OutputTokens != 5 || finalUsage.Turn.CacheReadTokens != 3 || finalUsage.Turn.CacheCreationTokens != 2 || finalUsage.Context.UsedTokens != 123 || finalUsage.Context.WindowTokens != 100000 {
-					t.Fatalf("Pi usage lost before NeuxAlly: %+v", finalUsage)
+					t.Fatalf("Pi usage lost before NeuxBot: %+v", finalUsage)
 				}
 			}
 			request.Session = SessionDirective{Mode: SessionModeResume, ID: result.Session.OutputID}

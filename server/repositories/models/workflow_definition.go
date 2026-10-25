@@ -1,7 +1,7 @@
 package models
 
 import (
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 

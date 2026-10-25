@@ -2,10 +2,10 @@ package automatic_tasks
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/apis/middleware"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	workflowfiles "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files"
+	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 	"io"

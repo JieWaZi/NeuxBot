@@ -21,7 +21,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
           {
             activeExecutionId: "",
             id: "chat-1",
-            projectName: "NeuxAlly",
+            projectName: "NeuxBot",
             title: "整理对话任务页",
             updatedAt: 1_785_892_500_000,
             wakerId: "waker-1",

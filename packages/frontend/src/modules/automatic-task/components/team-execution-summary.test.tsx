@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { expect, it, vi } from "vitest";
-import type { GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail as Team } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as Team } from "@/shared/api/generated/types.gen";
 import { TeamExecutionSummary } from "./team-execution-summary";
 import "@/shared/i18n";
 

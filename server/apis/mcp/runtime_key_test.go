@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func TestNewRuntimeKeyUsesReadableStableNameAndBoundedSuffix(t *testing.T) {

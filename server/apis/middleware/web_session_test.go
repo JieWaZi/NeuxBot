@@ -1,8 +1,8 @@
 package middleware
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/localweb"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/localweb"
 	"github.com/gin-gonic/gin"
 	"net/http"
 	"net/http/httptest"

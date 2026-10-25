@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // operations 串行化同一受管 Chat 的发送准备、分叉和删除入口。

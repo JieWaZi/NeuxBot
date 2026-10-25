@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/codexoauth"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // Login 保存前端完成设备授权需要的非秘密信息。

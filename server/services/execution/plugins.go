@@ -3,9 +3,9 @@ package execution
 import (
 	"context"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/authorization"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/commandbridge"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,13 +15,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/packagefiles"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/plugininstallation"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/packagefiles"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 )
 
 // preparedPlugins 是本轮冻结的能力投射，不创建独立 Skill/MCP 资源。

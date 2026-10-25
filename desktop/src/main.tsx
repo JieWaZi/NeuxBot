@@ -1,4 +1,4 @@
-import { startApplication } from "@neuxally/frontend/start";
+import { startApplication } from "@neuxbot/frontend/start";
 
 const { configureDesktopPlatform } = await import("./platform");
 configureDesktopPlatform();

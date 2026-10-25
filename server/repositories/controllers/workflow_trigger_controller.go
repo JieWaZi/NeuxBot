@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"gorm.io/gorm"
 )
 

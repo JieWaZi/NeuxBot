@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileViewer } from "@/modules/chat";
-import type { GithubComJieWaZiNeuxAllyServerApisWorkflowsWorkflowNodeResultResponse as ResultResponse } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultResponse as ResultResponse } from "@/shared/api/generated/types.gen";
 import "@/shared/i18n";
 import { NodeResultFiles } from "./node-result-files";
 

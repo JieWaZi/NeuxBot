@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // ConnectionConfiguration 只接受管理员可编辑的字段，平台凭据仅写入。

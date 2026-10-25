@@ -80,7 +80,7 @@ vi.mock("@/modules/team/api/channel-queries", () => ({
         leadChatId: "lead-chat",
         leadWakerId: "lead-1",
         projectId: "project-1",
-        projectName: "NeuxAlly",
+        projectName: "NeuxBot",
         title: "研发会话",
         updatedAt: Date.now(),
       },
@@ -107,7 +107,7 @@ vi.mock("@/modules/team/api/channel-queries", () => ({
         {
           id: "thread-1",
           projectId: "project-1",
-          projectName: "NeuxAlly",
+          projectName: "NeuxBot",
           title: "研发会话",
           updatedAt: Date.now(),
         },
@@ -184,7 +184,7 @@ describe("团队导航菜单", () => {
             {
               id: "thread-1",
               projectId: "project-1",
-              projectName: "NeuxAlly",
+              projectName: "NeuxBot",
               title: "研发会话",
               updatedAt: Date.now(),
             },

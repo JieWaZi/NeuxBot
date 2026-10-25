@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // fakeEmbedder 是测试用的确定性嵌入替身，按显式映射或首字符 one-hot 返回向量。

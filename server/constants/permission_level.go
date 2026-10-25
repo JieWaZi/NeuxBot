@@ -2,7 +2,7 @@ package constants
 
 //go:generate toolx gen enum PermissionLevel
 
-// PermissionLevel 是 NeuxAlly 跨 Runtime 使用的三档产品权限。
+// PermissionLevel 是 NeuxBot 跨 Runtime 使用的三档产品权限。
 type PermissionLevel string
 
 const (

@@ -2,9 +2,9 @@ package knowledge_connections
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/apis/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/apis/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
 )
 
 // offlineMountedLibrary 使用已验证的本机连接快照保留读取失败远端的入口。

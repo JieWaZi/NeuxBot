@@ -7,15 +7,15 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/projectsource"
-	"github.com/JieWaZi/NeuxAlly/server/internal/schedulecalc"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowinput "github.com/JieWaZi/NeuxAlly/server/internal/workflow/input"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	channelservice "github.com/JieWaZi/NeuxAlly/server/services/channel"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
+	"github.com/JieWaZi/NeuxBot/server/internal/schedulecalc"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // SavedTask 是创建或切换 API 时只返回一次的密钥收据。

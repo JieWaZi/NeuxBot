@@ -5,11 +5,11 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // AgentBindings 将 IM 真实范围与耐久投递直接交给统一命令入口，不经过 MCP 传输。

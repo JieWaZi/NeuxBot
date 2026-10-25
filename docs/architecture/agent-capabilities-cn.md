@@ -2,7 +2,7 @@
 
 ## 职责
 
-系统 ally 技能教授任务方法，allycli 负责发现、参数和调用，Core 负责身份、授权、领域规则与真实回执。技能与命令名称是当前技术契约，产品名称为 NeuxAlly。
+系统 ally 技能教授任务方法，allycli 负责发现、参数和调用，Core 负责身份、授权、领域规则与真实回执。技能与命令名称是当前技术契约，产品名称为 NeuxBot。
 
 server/internal/agentcapability/contract 是命令 Schema 与解析的共同来源，agentcapability 负责执行授权和有界观察，agentcli 提供客户端。记忆、IM、团队、工作流与知识业务状态仍由各自领域拥有。所有领域的当前命令、完成语义和调用示例统一见 [allycli README](../../server/cmd/allycli/README.md)。
 

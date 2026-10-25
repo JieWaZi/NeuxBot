@@ -124,8 +124,8 @@ import {
   type ChatSendFailure,
 } from "../runtime/chat-send-failure";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsPendingElicitation as PendingElicitation } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation } from "@/shared/api/generated/types.gen";
 import {
   approvalQueuePosition,
   approvalResultLabel,

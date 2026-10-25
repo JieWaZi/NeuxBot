@@ -11,7 +11,7 @@ import { prepareCatalog, prepareProvider } from "./plugin-resources.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const directory = path.join(root, "web/.runtime");
 await mkdir(path.join(directory, "bin"), { recursive: true });
-execFileSync("pnpm", ["--filter", "@neuxally/pi-bridge", "build"], {
+execFileSync("pnpm", ["--filter", "@neuxbot/pi-bridge", "build"], {
   cwd: root,
   stdio: "inherit",
   shell: process.platform === "win32",

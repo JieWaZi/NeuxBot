@@ -3,12 +3,12 @@ package plugininstallation
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	packageplugin "github.com/JieWaZi/NeuxAlly/server/internal/plugins"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/authorization"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/commandbridge"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"os"
 	"path/filepath"
 	"slices"

@@ -1,7 +1,7 @@
 export type {
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskConfiguration as TaskConfiguration,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsAutomaticTaskSchedule as TaskSchedule,
-  GithubComJieWaZiNeuxAllyServerServicesScheduleTaskView as TaskView,
-  GithubComJieWaZiNeuxAllyServerServicesScheduleRunView as RunView,
-  GithubComJieWaZiNeuxAllyServerServicesScheduleSavedTask as SavedTask,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskConfiguration as TaskConfiguration,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsAutomaticTaskSchedule as TaskSchedule,
+  GithubComJieWaZiNeuxBotServerServicesScheduleTaskView as TaskView,
+  GithubComJieWaZiNeuxBotServerServicesScheduleRunView as RunView,
+  GithubComJieWaZiNeuxBotServerServicesScheduleSavedTask as SavedTask,
 } from "@/shared/api/generated/types.gen";

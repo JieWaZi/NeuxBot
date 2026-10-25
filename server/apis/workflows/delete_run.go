@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

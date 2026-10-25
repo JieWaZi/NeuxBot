@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatComposerPanel } from "@/modules/chat";
 import { PERSONAL_ASSISTANT_WAKER_ID } from "@/modules/waker";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowCreationSession as ChatSession } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSession as ChatSession } from "@/shared/api/generated/types.gen";
 import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
 import { Badge } from "@/shared/ui/badge";
 import {

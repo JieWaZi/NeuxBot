@@ -2,9 +2,9 @@ package dsl
 
 import (
 	"embed"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/workflow/catalog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/workflow/catalog"
 	"slices"
 	"strings"
 )
@@ -391,7 +391,7 @@ func sdkTypeSource() string {
 
 func sdkCreationKnowledge() string {
 	var result strings.Builder
-	result.WriteString("# NeuxAlly Workflow SDK " + constants.WorkflowSDKVersion + "\n\n")
+	result.WriteString("# NeuxBot Workflow SDK " + constants.WorkflowSDKVersion + "\n\n")
 	for _, section := range sdkSections() {
 		result.WriteString(section.content + "\n\n")
 	}

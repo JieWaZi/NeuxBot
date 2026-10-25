@@ -1,8 +1,8 @@
 package models
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 )
 
 // ChannelThread 是一个持续复用成员 Chat 上下文的团队对话。

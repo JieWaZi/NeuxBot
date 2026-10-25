@@ -5,9 +5,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/workinput"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestChannelTaskDispatchClaimIsAtomicAndQuotaBound(t *testing.T) {

@@ -55,7 +55,7 @@ const resources = {
         done: "完成",
       },
 
-      appName: "NeuxAlly",
+      appName: "NeuxBot",
       onboarding: {
         setupTitle: "设置智能体",
         catalogHelp:
@@ -66,9 +66,9 @@ const resources = {
         chooseVersionBeforeModel: "请选择要使用的版本，再查看该版本的模型。",
         permissionHelp: "所选权限将用于这个智能体的默认执行设置。",
         installTitle: "选择你的第一个智能体",
-        installHelp: "安装一个 CLI，让 NeuxAlly 开始工作。",
+        installHelp: "安装一个 CLI，让 NeuxBot 开始工作。",
         chooseTitle: "智能体已找到",
-        chooseHelp: "选择默认智能体，模型检测完成后即可进入 NeuxAlly。",
+        chooseHelp: "选择默认智能体，模型检测完成后即可进入 NeuxBot。",
         cliLabel: "智能体",
         versionLabel: "版本",
         chooseVersion: "请选择版本",
@@ -104,7 +104,7 @@ const resources = {
         checkFailed: "未能完成智能体检测",
         checkFailedHelp: "本次检测未能完整完成，请重试。",
         saving: "正在保存…",
-        enter: "设为默认并进入 NeuxAlly",
+        enter: "设为默认并进入 NeuxBot",
       },
       companion: {
         interact: "与 {{name}} 互动",
@@ -1186,7 +1186,7 @@ const resources = {
         edit: "编辑技能",
         editDisplayName: "编辑展示名称",
         displayName: "展示名称",
-        displayNameHelp: "用于在 NeuxAlly 中识别技能，不改变 SKILL.md 的内容。",
+        displayNameHelp: "用于在 NeuxBot 中识别技能，不改变 SKILL.md 的内容。",
         saveDisplayName: "保存名称",
         displayNameSaveFailed: "展示名称保存失败，请检查是否与其他技能重名。",
         metadata: "元数据",
@@ -2314,7 +2314,7 @@ const resources = {
         fileVersionUnavailable:
           "File version is unavailable. Reopen the file and try again.",
         fileExternalConflict:
-          "The file changed outside NeuxAlly. Your draft is still available; review the differences before saving.",
+          "The file changed outside NeuxBot. Your draft is still available; review the differences before saving.",
         excelScopeRequired:
           "Spreadsheet preview requires chat workspace access",
         excelInvalid:
@@ -2333,7 +2333,7 @@ const resources = {
           shapes: "shapes",
           conditionalFormatting: "conditional formatting",
         },
-        fileTooLarge: "File is too large to preview in NeuxAlly",
+        fileTooLarge: "File is too large to preview in NeuxBot",
         legacyOfficeUnavailable:
           "Preview conversion for older Word and PowerPoint files is unavailable. Open the file in a system app using the button above.",
         binaryFileUnsupported:

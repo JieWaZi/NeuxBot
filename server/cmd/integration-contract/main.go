@@ -9,8 +9,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks"
-	"github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge"
+	"github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks"
+	"github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge"
 	"github.com/go-courier/oas"
 	"github.com/go-courier/packagesx"
 	"github.com/shrewx/ginx/pkg/openapi"
@@ -27,7 +27,7 @@ func main() {
 	parameters := regexp.MustCompile(`/[:*]([^/]+)`)
 	for _, route := range routes {
 		var typeName *types.TypeName
-		for _, path := range []string{"github.com/JieWaZi/NeuxAlly/server/apis/integration_knowledge", "github.com/JieWaZi/NeuxAlly/server/apis/automatic_tasks"} {
+		for _, path := range []string{"github.com/JieWaZi/NeuxBot/server/apis/integration_knowledge", "github.com/JieWaZi/NeuxBot/server/apis/automatic_tasks"} {
 			candidate := packagesx.NewPackage(pkg.Pkg(path)).TypeName(route.OperationID)
 			if candidate != nil {
 				typeName = candidate

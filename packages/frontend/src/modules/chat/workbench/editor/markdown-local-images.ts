@@ -1,7 +1,7 @@
 /**
  * Local image
  * references become inert preview markers; the React image component resolves
- * each marker through NeuxAlly's Chat-scoped file bridge before creating a Blob URL.
+ * each marker through NeuxBot's Chat-scoped file bridge before creating a Blob URL.
  */
 const markerBase = "https://ally.invalid/__workbench_markdown_image__";
 

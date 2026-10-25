@@ -8,7 +8,7 @@ import {
 import { registerCoreConnectionRecovery } from "./global-events";
 import { logger } from "@/shared/diagnostics/logger";
 import { i18n } from "@/shared/i18n";
-import type { WorkspaceResourceChangeEvent } from "@neuxally/platform-contracts/resources";
+import type { WorkspaceResourceChangeEvent } from "@neuxbot/platform-contracts/resources";
 
 type Observer = (event: WorkspaceResourceChangeEvent | Error) => void;
 type Subscription = {
@@ -207,7 +207,13 @@ export function useWorkspaceQueryEvents(
   const rootKey = [...new Set(roots.filter(Boolean))].sort().join("\0");
   const prefixKey = [...new Set(prefixes)].sort().join("\0");
   useEffect(() => {
-    if (!active || !visible || !chatId || !rootKey || !hasPlatformService("workspace"))
+    if (
+      !active ||
+      !visible ||
+      !chatId ||
+      !rootKey ||
+      !hasPlatformService("workspace")
+    )
       return;
     const rootPaths = rootKey.split("\0");
     const queryPrefixes = prefixKey.split("\0");

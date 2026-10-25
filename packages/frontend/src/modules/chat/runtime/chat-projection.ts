@@ -5,12 +5,12 @@ import type {
 } from "@assistant-ui/react";
 
 import type {
-  GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessage as ChatMessage,
-  GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageDisplayPart as MessageDisplayPart,
-  GithubComJieWaZiNeuxAllyServerInternalChatMessageviewMessageRunMetrics as MessageRunMetrics,
-  GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolApprovalResult as ToolApprovalResult,
-  GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolFileChangeSummary as ToolFileChangeSummary,
-  GithubComJieWaZiNeuxAllyServerInternalChatMessageviewToolSafeSummary as ToolSafeSummary,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as ChatMessage,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart as MessageDisplayPart,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageRunMetrics as MessageRunMetrics,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolApprovalResult as ToolApprovalResult,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolFileChangeSummary as ToolFileChangeSummary,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolSafeSummary as ToolSafeSummary,
 } from "@/shared/api/generated/types.gen";
 import type { ChatEvent } from "@/shared/api/events";
 import type { ChatCodeReference } from "./chat-queue-store";

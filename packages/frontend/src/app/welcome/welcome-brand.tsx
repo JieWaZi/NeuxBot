@@ -79,7 +79,7 @@ export function WelcomeBrand({
   return (
     <main className="welcome-screen bg-background text-foreground">
       <div className="welcome-layout" data-guide={guideShown}>
-        <div className="welcome-brand" role="img" aria-label="NeuxAlly">
+        <div className="welcome-brand" role="img" aria-label="NeuxBot">
           <div className="welcome-brand-content">
             <div
               className="welcome-character shrink-0"

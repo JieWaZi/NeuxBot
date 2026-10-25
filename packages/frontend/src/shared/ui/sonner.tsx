@@ -138,7 +138,7 @@ function withCountdown(
   return <ToastMessage message={message} duration={options?.duration} />;
 }
 
-/** shadcn/ui 官方 Sonner 包装，适配 NeuxAlly 的主题与尺寸 Token。 */
+/** shadcn/ui 官方 Sonner 包装，适配 NeuxBot 的主题与尺寸 Token。 */
 export function Toaster({
   offset = {
     top: "calc(var(--shell-titlebar-height) + var(--shell-inset) + 8px)",

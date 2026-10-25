@@ -1,6 +1,6 @@
 import { useEffect, useMemo, type RefObject } from "react";
 import { isElementVisible } from "@/shared/lib/element-visibility";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsNotificationItem as Notice } from "./generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsNotificationItem as Notice } from "./generated/types.gen";
 
 export type ChatResultOwner = { kind: "chat" | "team_thread"; id: string };
 export type ChatResultSource = { chatId: string; owner: ChatResultOwner };

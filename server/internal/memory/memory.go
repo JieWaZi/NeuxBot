@@ -3,7 +3,7 @@
 package memory
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // Memory 是一条伙伴或项目范围内的长期记忆。

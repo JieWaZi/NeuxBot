@@ -3,8 +3,8 @@ package chats
 import (
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

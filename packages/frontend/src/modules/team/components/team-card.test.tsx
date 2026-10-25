@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
 
-import type { GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail as ChannelDetail } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as ChannelDetail } from "@/shared/api/generated/types.gen";
 import {
   useSceneWorkspace,
   WorkspaceProvider,

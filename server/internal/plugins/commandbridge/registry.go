@@ -2,7 +2,7 @@ package commandbridge
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"sync"
 )
 

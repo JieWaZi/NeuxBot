@@ -3,8 +3,8 @@ package knowledge
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"slices"
 )
 

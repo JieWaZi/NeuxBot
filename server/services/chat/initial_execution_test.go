@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
 func TestReadExecutionOutcomeRecoversLegacyAndLastMatchingInvocation(t *testing.T) {

@@ -1,8 +1,8 @@
 import type {
-  GithubComJieWaZiNeuxAllyServerApisProjectsProjectResource,
-  GithubComJieWaZiNeuxAllyServerApisProjectsProjectSourceResource,
+  GithubComJieWaZiNeuxBotServerApisProjectsProjectResource,
+  GithubComJieWaZiNeuxBotServerApisProjectsProjectSourceResource,
 } from "@/shared/api/generated/types.gen";
 
-export type Project = GithubComJieWaZiNeuxAllyServerApisProjectsProjectResource;
+export type Project = GithubComJieWaZiNeuxBotServerApisProjectsProjectResource;
 export type ProjectSource =
-  GithubComJieWaZiNeuxAllyServerApisProjectsProjectSourceResource;
+  GithubComJieWaZiNeuxBotServerApisProjectsProjectSourceResource;

@@ -4,25 +4,25 @@ package execution
 import (
 	"context"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chatstorage"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
-	"github.com/JieWaZi/NeuxAlly/server/internal/projectsource"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/aiaccount"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/plugininstallation"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 )
 
 // Service 是当前 Chat API 与未来 Channel、Schedule、IM 共用的执行接口。
@@ -197,7 +197,7 @@ type Config struct {
 	PluginLauncher string
 	// RuntimeEnvironments 读取执行准备使用的 Runtime 探测快照。
 	RuntimeEnvironments runtimeEnvironmentReader
-	// SkillDataDirectory 是 NeuxAlly 受管技能版本所在的应用数据目录。
+	// SkillDataDirectory 是 NeuxBot 受管技能版本所在的应用数据目录。
 	SkillDataDirectory string
 	// StorageDirectory 是 Chat 与 Team 聚合目录共同使用的应用数据根目录。
 	StorageDirectory string

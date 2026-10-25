@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FileText } from "lucide-react";
 import { lazy, Suspense, useMemo, useState } from "react";
 
-import type { GithubComJieWaZiNeuxAllyServerApisSkillsSkillResourceEntry as SkillResourceEntry } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisSkillsSkillResourceEntry as SkillResourceEntry } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import {

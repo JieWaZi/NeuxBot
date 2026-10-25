@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // boardAttentionFact 补充通知需要的原验收围栏和人工输入期限，不持久化派生状态。

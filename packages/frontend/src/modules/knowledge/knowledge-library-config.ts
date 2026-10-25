@@ -1,4 +1,4 @@
-import type { GithubComJieWaZiNeuxAllyServerApisKnowledgeLibrary as LibraryDTO } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisKnowledgeLibrary as LibraryDTO } from "@/shared/api/generated/types.gen";
 import type {
   ExtractionGranularity,
   LibraryChunkingConfig,

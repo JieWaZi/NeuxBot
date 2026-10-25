@@ -5,14 +5,14 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability/contract"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcommand"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	channeltool "github.com/JieWaZi/NeuxAlly/server/internal/teamcapability"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func (s *service) agentTeamBindings(endpoint, leaseID string) []agentcapability.Binding {

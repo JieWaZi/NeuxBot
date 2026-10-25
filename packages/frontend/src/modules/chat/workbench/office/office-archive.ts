@@ -1,4 +1,4 @@
-import { workspaceSingleFileBytesLimit } from "@neuxally/platform-contracts/workspace-byte-limits";
+import { workspaceSingleFileBytesLimit } from "@neuxbot/platform-contracts/workspace-byte-limits";
 import { unzipSync } from "fflate";
 import { OfficePreviewError } from "./office-preview-error";
 

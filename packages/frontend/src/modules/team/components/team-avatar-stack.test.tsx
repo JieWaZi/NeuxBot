@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import "@/shared/i18n";
-import type { GithubComJieWaZiNeuxAllyServerApisChannelsChannelMemberDetail as ChannelMember } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelMemberDetail as ChannelMember } from "@/shared/api/generated/types.gen";
 
 import {
   FRAME_SIZE_PX,

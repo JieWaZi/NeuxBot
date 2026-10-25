@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
 // ParticipantMessageInput 描述由其他业务域投递进 Chat、但不触发 Runtime 的参与者消息。

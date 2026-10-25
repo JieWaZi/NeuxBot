@@ -5,7 +5,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // operationKey 标识同步调用链已经持有的团队保护，不能跨 goroutine 传递持锁 Context。

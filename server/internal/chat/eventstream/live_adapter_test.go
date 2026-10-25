@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 )
 
 func TestLiveAdapterAppliesRuntimeEventWithBoundMessageScope(t *testing.T) {

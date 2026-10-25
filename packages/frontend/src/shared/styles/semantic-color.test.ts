@@ -166,7 +166,7 @@ function contrast(
 }
 
 describe("语义主题", () => {
-  it("使用 NeuxAlly 主题绿统一亮暗主题与控件交互强调色", () => {
+  it("使用 NeuxBot 主题绿统一亮暗主题与控件交互强调色", () => {
     expect(themeStyles).toContain(
       "--ref-ally-green-light: oklch(84.92% 0.127 150);",
     );

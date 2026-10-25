@@ -11,18 +11,18 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinrolepreset"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chatstorage"
-	"github.com/JieWaZi/NeuxAlly/server/internal/profile"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	"github.com/JieWaZi/NeuxAlly/server/internal/workspace"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -33,7 +33,7 @@ func TestDeleteWakerRejectsDefaultWaker(t *testing.T) {
 	_, err := (&DeleteWaker{
 		WakerID: builtinrolepreset.PersonalAssistantWakerID,
 		Body: DeleteWakerRequest{
-			ConfirmationName: "NeuxAlly",
+			ConfirmationName: "NeuxBot",
 		},
 	}).Output(ctx)
 	if !errors.Is(err, status_error.DefaultWakerCannotDelete) {

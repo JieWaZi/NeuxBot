@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
 // TestListEventsAfterLatestDoesNotBuildHistoricalSnapshots 验证游标前只恢复状态，分配量不因中间快照按平方增长。

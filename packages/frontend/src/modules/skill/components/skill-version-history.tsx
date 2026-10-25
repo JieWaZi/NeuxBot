@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsSkillVersion as ApiSkillVersion } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsSkillVersion as ApiSkillVersion } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
 import { DetailSection } from "@/shared/ui/detail-section";
 

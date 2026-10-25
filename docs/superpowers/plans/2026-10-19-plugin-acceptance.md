@@ -9,7 +9,7 @@
 - 删除旧扫描、外部准备 HTTP 路由及聊天四项系统插件操作，系统 Skill 引导当前智能体按原生方式管理聊天中的插件请求。
 - 系统新增安装、显式版本切换复验配置目录中的真实归档及内容摘要。包内 provenance 或旧资源 SourceKey 不能单独作为来源证明。当前目录不再提供的历史版本不能新增安装，既有伙伴固定关系保留；真实目录及归档缓存可离线复验。
 - Codex、Claude Code 原生插件由各自 CLI 管理，不同步到系统资源、伙伴安装或统一授权状态；自有插件继续以执行级原生格式附加。
-- 插件仓库双语 README 与维护指南明确自有库、原生环境和授权职责。GitHub 仓库已更名为 NeuxAlly-Plugins。统一来源规范、JSON schema、英文修改说明及官网本地图标已纳入正式 [v0.1.0](https://github.com/JieWaZi/NeuxAlly-Plugins/releases/tag/v0.1.0)，main、tag 与目录 sourceCommit 均为 `ec4463db8a428301d629e58db906978a1aae2ad4`。按用户要求强制覆盖同一 tag 与自有目录、两个完整 ZIP、两个公开资料文件、校验文件；保留原有 14 个固定程序和许可资源，先更新 ZIP、公开资料与校验文件，再更新目录，正式 latest 继续使用 v0.1.0。
+- 插件仓库双语 README 与维护指南明确自有库、原生环境和授权职责。GitHub 仓库已更名为 neux-plugins。统一来源规范、JSON schema、英文修改说明及官网本地图标已纳入正式 [v0.1.0](https://github.com/JieWaZi/neux-plugins/releases/tag/v0.1.0)，main、tag 与目录 sourceCommit 均为 `ec4463db8a428301d629e58db906978a1aae2ad4`。按用户要求强制覆盖同一 tag 与自有目录、两个完整 ZIP、两个公开资料文件、校验文件；保留原有 14 个固定程序和许可资源，先更新 ZIP、公开资料与校验文件，再更新目录，正式 latest 继续使用 v0.1.0。
 - 应用在当前功能分支工作区实施；代码复审与提交只包含插件相关改动，保留无关工作流讨论文档。
 
 ## 接口验收
@@ -52,7 +52,7 @@
 
 临时原生 home、无真实模型请求的实际 CLI 探针：
 
-- Codex `0.161.0`：API 模型账号和原生模型账号两种模式均成功初始化；`skills/list` 同时发现外部 fixture 插件及 NeuxAlly 本轮附加插件。
+- Codex `0.161.0`：API 模型账号和原生模型账号两种模式均成功初始化；`skills/list` 同时发现外部 fixture 插件及 NeuxBot 本轮附加插件。
 - Claude Code `2.1.159`：`--settings` 模型覆盖下仍发现原生注册的 fixture 插件；通过管理入口禁用后，外部同一 CLI 立即读取到禁用状态，再启用成功。随后经真实 CLI 管理入口从本地 marketplace 添加并安装，在外部列表中无错误，实际初始化同时返回外部 `outside-probe` 与自有 `managed-probe`，模型凭据来源为本轮 API 环境。
 - 原生管理入口持久写入共享 home、其余命令保留当前执行环境、模型秘密清理、外部启停引起能力重建、受限执行不挂载外部包，由定向自动化覆盖。
 

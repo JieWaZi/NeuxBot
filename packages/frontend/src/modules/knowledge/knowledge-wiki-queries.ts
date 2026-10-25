@@ -1,14 +1,14 @@
 import { queryOptions } from "@tanstack/react-query";
 import { knowledgeAdapter } from "@/shared/api/knowledge";
 import type {
-  GithubComJieWaZiNeuxAllyServerApisKnowledgePage as WikiPage,
-  GithubComJieWaZiNeuxAllyServerApisKnowledgePageDirectoryEntry as WikiPageEntry,
-  GithubComJieWaZiNeuxAllyServerApisKnowledgeTheme as WikiTheme,
+  GithubComJieWaZiNeuxBotServerApisKnowledgePage as WikiPage,
+  GithubComJieWaZiNeuxBotServerApisKnowledgePageDirectoryEntry as WikiPageEntry,
+  GithubComJieWaZiNeuxBotServerApisKnowledgeTheme as WikiTheme,
 } from "@/shared/api/generated/types.gen";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import { i18n } from "@/shared/i18n";
 import { ApiError } from "@/shared/api/errors";
-import type { GithubComJieWaZiNeuxAllyServerApisKnowledgeRevision as WikiRevision } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisKnowledgeRevision as WikiRevision } from "@/shared/api/generated/types.gen";
 import { knowledgeKeys } from "./knowledge-queries";
 import type { ResourceRef } from "./knowledge-transfer";
 export type { WikiPage, WikiPageEntry, WikiTheme };

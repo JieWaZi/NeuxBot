@@ -1,4 +1,4 @@
-import type { GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeReasoningOption as RuntimeReasoningOption } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption as RuntimeReasoningOption } from "@/shared/api/generated/types.gen";
 
 const unrankedReasoningIds = new Set([
   "enabled",

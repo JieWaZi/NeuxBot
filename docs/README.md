@@ -1,4 +1,4 @@
-# NeuxAlly 文档
+# NeuxBot 文档
 
 文档描述当前实现与开发约定。使用者从指南开始，贡献者先阅读根目录 CONTRIBUTING.md、AGENTS.md 与 CONTEXT.md。
 
@@ -14,11 +14,11 @@
 
 ## 开发约定
 
-- [NeuxAlly 后端工程开发约定](development/backend-cn.md)
+- [NeuxBot 后端工程开发约定](development/backend-cn.md)
 - [构建与发布](development/build-and-release-cn.md)
 - [文档约定](development/documentation-cn.md)
-- [NeuxAlly 前端工程开发约定](development/frontend-cn.md)
-- [NeuxAlly UI 标准](development/ui-cn.md)
+- [NeuxBot 前端工程开发约定](development/frontend-cn.md)
+- [NeuxBot UI 标准](development/ui-cn.md)
 
 ## 架构说明
 

@@ -69,7 +69,7 @@ vi.mock("../api/skill-queries", () => ({
         skill: {
           id: "skill-builtin",
           name: "内置技能",
-          description: "NeuxAlly 内置能力",
+          description: "NeuxBot 内置能力",
           scope: "public",
           source: "builtin",
           builtIn: true,

@@ -9,7 +9,7 @@ Keep the selected Runtime permission policy. In a read-only sandbox, use its nat
 ## Answer from existing knowledge
 
 This workflow adapts WeKnora's `progressive_rag_agent`, `wiki_researcher` and
-runtime grounding guidance to the current NeuxAlly CLI contracts. It applies to
+runtime grounding guidance to the current NeuxBot CLI contracts. It applies to
 ordinary companions as well as the Wiki researcher. Research depth follows the task
 and missing evidence, without a fixed number of searches, pages or link hops.
 

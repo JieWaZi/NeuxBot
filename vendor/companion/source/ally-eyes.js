@@ -1,4 +1,4 @@
-/* NeuxAlly-owned eye grammar: the user's 20 × 33 ivory-character oval is the root.
+/* NeuxBot-owned eye grammar: the user's 20 × 33 ivory-character oval is the root.
  * Variants preserve rounded silhouettes, eye spacing and highlight room. */
 (() => {
   function oval(cx,mirror,{width=20,height=33,lid=0,slope=0,tilt=0,lift=0}={}){

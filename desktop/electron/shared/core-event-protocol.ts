@@ -1,1 +1,1 @@
-export * from "@neuxally/platform-contracts/core-event-protocol";
+export * from "@neuxbot/platform-contracts/core-event-protocol";

@@ -17,7 +17,7 @@ import {
   resolveFileReference,
 } from "@/shared/workspace/file-reference";
 import { AssistantText } from "../../components/chat-message-content";
-import { workspaceSingleFileBytesLimit } from "@neuxally/platform-contracts/workspace-byte-limits";
+import { workspaceSingleFileBytesLimit } from "@neuxbot/platform-contracts/workspace-byte-limits";
 import { markdownPreviewSource } from "./markdown-frontmatter";
 import { localImagePath, rewriteLocalImageUrls } from "./markdown-local-images";
 

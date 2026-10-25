@@ -311,7 +311,7 @@ describe("chat projection", () => {
     ).toEqual(["one.txt", "two.txt"]);
   });
 
-  it("把 NeuxAlly 终态映射为 assistant-ui 消息状态", () => {
+  it("把 NeuxBot 终态映射为 assistant-ui 消息状态", () => {
     const completed = toThreadMessage({
       id: "assistant-1",
       role: "assistant",

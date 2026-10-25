@@ -1,8 +1,8 @@
 package chats
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

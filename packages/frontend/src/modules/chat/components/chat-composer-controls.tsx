@@ -8,10 +8,10 @@ import { ChevronDown, Folder } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import type {
-  GithubComJieWaZiNeuxAllyServerApisProjectsProjectResource as ProjectResource,
-  GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption as RuntimeOption,
-  GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeModelOption as RuntimeModelOption,
-  GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeReasoningOption as RuntimeReasoningOption,
+  GithubComJieWaZiNeuxBotServerApisProjectsProjectResource as ProjectResource,
+  GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption as RuntimeOption,
+  GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption as RuntimeModelOption,
+  GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption as RuntimeReasoningOption,
 } from "@/shared/api/generated/types.gen";
 import {
   hasPlatformService,

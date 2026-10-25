@@ -3,7 +3,7 @@ package dsl
 import (
 	"fmt"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/dop251/goja/ast"
 	"github.com/dop251/goja/token"
 )

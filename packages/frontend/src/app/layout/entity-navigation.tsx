@@ -43,7 +43,7 @@ import { useTranslation } from "react-i18next";
 
 import { TeamAvatarStack } from "@/modules/team";
 import type { Waker } from "@/modules/waker";
-import type { GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail as ChannelDetail } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as ChannelDetail } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
 import { Avatar } from "@/shared/ui/avatar";
 import { wakerCompanionActivity } from "@/shared/companion/activity";

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/google/uuid"
 )
 

@@ -1,8 +1,8 @@
 package integration_knowledge
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/apis/middleware"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

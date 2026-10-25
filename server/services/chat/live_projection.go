@@ -3,8 +3,8 @@ package chat
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
 // catchUpLiveProjection 只追平权威日志尾部，不执行启动恢复的中断取消。

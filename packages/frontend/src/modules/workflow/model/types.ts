@@ -1,14 +1,14 @@
 export type {
-  GithubComJieWaZiNeuxAllyServerRepositoriesControllersWorkflowNodeCount as WorkflowNodeCount,
-  GithubComJieWaZiNeuxAllyServerInternalWorkflowDslManifest as Manifest,
-  GithubComJieWaZiNeuxAllyServerInternalWorkflowDslNode as WorkflowNode,
-  GithubComJieWaZiNeuxAllyServerInternalWorkflowDslPhase as WorkflowPhase,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRun as WorkflowRun,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowNodeInstance as WorkflowInstance,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowHumanRequest as HumanRequest,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition as WorkflowDefinition,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowRevision as WorkflowRevision,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowExecutionDefaults as ExecutionDefaults,
+  GithubComJieWaZiNeuxBotServerRepositoriesControllersWorkflowNodeCount as WorkflowNodeCount,
+  GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest as Manifest,
+  GithubComJieWaZiNeuxBotServerInternalWorkflowDslNode as WorkflowNode,
+  GithubComJieWaZiNeuxBotServerInternalWorkflowDslPhase as WorkflowPhase,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun as WorkflowRun,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowNodeInstance as WorkflowInstance,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest as HumanRequest,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition as WorkflowDefinition,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRevision as WorkflowRevision,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults as ExecutionDefaults,
 } from "@/shared/api/generated/types.gen";
 
 export function record(value: unknown): Record<string, unknown> | undefined {

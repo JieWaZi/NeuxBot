@@ -15,8 +15,8 @@ import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
-  GithubComJieWaZiNeuxAllyServerApisSkillsCreateSkillVersionRequest as CreateSkillVersionRequest,
-  GithubComJieWaZiNeuxAllyServerApisSkillsSkillResourceOperation as SkillResourceOperation,
+  GithubComJieWaZiNeuxBotServerApisSkillsCreateSkillVersionRequest as CreateSkillVersionRequest,
+  GithubComJieWaZiNeuxBotServerApisSkillsSkillResourceOperation as SkillResourceOperation,
 } from "@/shared/api/generated/types.gen";
 import { saveBlob } from "@/shared/platform";
 import { Button } from "@/shared/ui/button";

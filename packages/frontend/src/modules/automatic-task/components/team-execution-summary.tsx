@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
-import type { GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail as Team } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as Team } from "@/shared/api/generated/types.gen";
 import { runtimeDisplayName } from "@/shared/lib/runtime-display-name";
 import {
   permissionLevelOf,

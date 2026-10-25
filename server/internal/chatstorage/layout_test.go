@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/workspace"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 )
 
 func TestLayoutSeparatesTeamMemberCWDAndSharesProjects(t *testing.T) {

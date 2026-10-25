@@ -5,11 +5,11 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/JieWaZi/NeuxAlly/server/apis/mcp"
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/global"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/authorization"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/apis/mcp"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // connectorDiagnostic 是一次已脱敏真实探测的进程内记录，不创建独立连接器或持久化凭据。

@@ -4,8 +4,8 @@ import type {
   TerminalSnapshot,
   TerminalOutputEvent,
   TerminalExitEvent,
-} from "@neuxally/platform-contracts/resources";
-import type { TerminalService } from "@neuxally/platform-contracts/services";
+} from "@neuxbot/platform-contracts/resources";
+import type { TerminalService } from "@neuxbot/platform-contracts/services";
 import { startTerminal, closeTerminal } from "@/shared/api/generated/sdk.gen";
 
 const snapshotSchema = z.object({

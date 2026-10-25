@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 )
 
 func TestMemberFrontmatterKeepsBoundedPublicProjection(t *testing.T) {

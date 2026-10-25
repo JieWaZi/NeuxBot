@@ -3,9 +3,9 @@ package execution
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	chatservice "github.com/JieWaZi/NeuxAlly/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // ForkChat 把冻结执行配置交给 Runtime；Chat 仍独占历史、幂等和发布事务。

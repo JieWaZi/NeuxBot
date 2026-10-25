@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 )
 
 func TestEffectTimeoutByExecutionType(t *testing.T) {

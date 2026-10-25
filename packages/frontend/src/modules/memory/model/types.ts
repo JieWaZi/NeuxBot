@@ -1,10 +1,10 @@
 import type {
-  GithubComJieWaZiNeuxAllyServerApisMemoryMemoryResource,
-  GithubComJieWaZiNeuxAllyServerApisMemoryMemoryStatusResource,
+  GithubComJieWaZiNeuxBotServerApisMemoryMemoryResource,
+  GithubComJieWaZiNeuxBotServerApisMemoryMemoryStatusResource,
 } from "@/shared/api/generated/types.gen";
 
 export type MemoryResource =
-  GithubComJieWaZiNeuxAllyServerApisMemoryMemoryResource;
+  GithubComJieWaZiNeuxBotServerApisMemoryMemoryResource;
 export type MemoryStatusResource =
-  GithubComJieWaZiNeuxAllyServerApisMemoryMemoryStatusResource;
+  GithubComJieWaZiNeuxBotServerApisMemoryMemoryStatusResource;
 export type MemoryScope = "partner" | "project";

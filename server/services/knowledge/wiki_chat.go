@@ -5,12 +5,12 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 )
 
 // maintenanceChatLink 只读取已有操作锚点，普通聊天不新增维护范围事实。

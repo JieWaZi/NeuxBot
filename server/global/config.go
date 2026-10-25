@@ -1,4 +1,4 @@
-// Package global 负责 NeuxAlly Core 的进程级配置与组件装配。
+// Package global 负责 NeuxBot Core 的进程级配置与组件装配。
 package global
 
 import (
@@ -6,9 +6,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/authorization"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/commandbridge"
-	"github.com/JieWaZi/NeuxAlly/server/services/plugininstallation"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
+	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,36 +17,36 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinrolepreset"
-	"github.com/JieWaZi/NeuxAlly/server/internal/builtinwaker"
-	integrationapi "github.com/JieWaZi/NeuxAlly/server/internal/integration"
-	knowledgebridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/memory"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/catalog"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/feishu"
-	"github.com/JieWaZi/NeuxAlly/server/internal/plugins/github"
-	"github.com/JieWaZi/NeuxAlly/server/internal/runtimes"
-	managedskills "github.com/JieWaZi/NeuxAlly/server/internal/skills"
-	builtinskills "github.com/JieWaZi/NeuxAlly/server/internal/skills/builtin"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/aiaccount"
-	channelservice "github.com/JieWaZi/NeuxAlly/server/services/channel"
-	"github.com/JieWaZi/NeuxAlly/server/services/chat"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
-	imservice "github.com/JieWaZi/NeuxAlly/server/services/im"
-	knowledgeservice "github.com/JieWaZi/NeuxAlly/server/services/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/services/notification"
-	"github.com/JieWaZi/NeuxAlly/server/services/runtimeenvironment"
-	"github.com/JieWaZi/NeuxAlly/server/services/schedule"
-	"github.com/JieWaZi/NeuxAlly/server/services/workflow"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/internal/builtinwaker"
+	integrationapi "github.com/JieWaZi/NeuxBot/server/internal/integration"
+	knowledgebridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/memory"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/feishu"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/github"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
+	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/services/chat"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
+	imservice "github.com/JieWaZi/NeuxBot/server/services/im"
+	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/services/notification"
+	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
+	"github.com/JieWaZi/NeuxBot/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -148,7 +148,7 @@ var (
 	MemoryService *memory.Service
 )
 
-// Configuration 保存 NeuxAlly Core 的本地运行配置。
+// Configuration 保存 NeuxBot Core 的本地运行配置。
 type Configuration struct {
 	// Server 配置 ginx 的回环 HTTP 服务。
 	Server conf.Server `yaml:"server"`
@@ -280,7 +280,7 @@ func Load(ctx context.Context, configuration *Configuration, handlerFactory sche
 	return runLoadSequence(
 		func() {
 			if err := Close(); err != nil {
-				logx.Errorf("rollback NeuxAlly Core initialization failed: error=%v", err)
+				logx.Errorf("rollback NeuxBot Core initialization failed: error=%v", err)
 			}
 		},
 		func() error { return loadDB(ctx, configuration) },

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acp "github.com/coder/acp-go-sdk"
 )
 
@@ -71,7 +71,7 @@ func TestACPFailureCodeUsesStandardErrorsAndProviderEvidence(t *testing.T) {
 		name string
 		// err 是 ACP 或 Provider 返回的错误。
 		err error
-		// expected 是 NeuxAlly 保持的稳定失败码。
+		// expected 是 NeuxBot 保持的稳定失败码。
 		expected FailureCode
 	}{
 		{name: "cancelled", err: acp.NewRequestCancelled(nil), expected: FailureCodeContextCanceled},

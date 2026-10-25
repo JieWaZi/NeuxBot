@@ -23,8 +23,8 @@ import {
   updateRuntimeEnvironmentMutation,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 import type {
-  GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeOption as RuntimeOption,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsAiAccount as AIAccount,
+  GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption as RuntimeOption,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount as AIAccount,
 } from "@/shared/api/generated/types.gen";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
 import { ExecutionConfigurationFields } from "@/shared/ui/execution-configuration-fields";

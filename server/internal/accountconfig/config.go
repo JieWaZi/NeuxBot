@@ -11,9 +11,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
 // Spec 是配置生成需要的最小账号快照。
@@ -135,7 +135,7 @@ func Prepare(workspace string, spec Spec) (map[string]string, error) {
 	switch spec.RuntimeID {
 	case constants.RuntimeIDCodex:
 		filename = "config.toml"
-		content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\ndisable_response_storage = true\n[model_providers.custom]\nname = \"NeuxAlly\"\nbase_url = %s\nwire_api = \"responses\"\nrequires_openai_auth = true\n", strconv.Quote(spec.Model), strconv.Quote(spec.BaseURL)))
+		content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\ndisable_response_storage = true\n[model_providers.custom]\nname = \"NeuxBot\"\nbase_url = %s\nwire_api = \"responses\"\nrequires_openai_auth = true\n", strconv.Quote(spec.Model), strconv.Quote(spec.BaseURL)))
 		if spec.Model != "" {
 			catalog, err := codexCatalog(spec)
 			if err != nil {
@@ -148,7 +148,7 @@ func Prepare(workspace string, spec Spec) (map[string]string, error) {
 			if isOfficialDeepSeekEndpoint(spec.BaseURL) {
 				content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\nmodel_catalog_json = %s\npreferred_auth_method = \"apikey\"\nforced_login_method = \"api\"\ndisable_response_storage = true\n[model_providers.custom]\nname = \"DeepSeek\"\nbase_url = %s\nwire_api = \"responses\"\nexperimental_bearer_token = %s\n", strconv.Quote(spec.Model), strconv.Quote(catalogPath), strconv.Quote(spec.BaseURL), strconv.Quote(spec.APIKey)))
 			} else {
-				content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\nmodel_catalog_json = %s\ndisable_response_storage = true\n[model_providers.custom]\nname = \"NeuxAlly\"\nbase_url = %s\nwire_api = \"responses\"\nrequires_openai_auth = true\n", strconv.Quote(spec.Model), strconv.Quote(catalogPath), strconv.Quote(spec.BaseURL)))
+				content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\nmodel_catalog_json = %s\ndisable_response_storage = true\n[model_providers.custom]\nname = \"NeuxBot\"\nbase_url = %s\nwire_api = \"responses\"\nrequires_openai_auth = true\n", strconv.Quote(spec.Model), strconv.Quote(catalogPath), strconv.Quote(spec.BaseURL)))
 			}
 		}
 		auth, _ := json.Marshal(map[string]string{"OPENAI_API_KEY": spec.APIKey})
@@ -184,7 +184,7 @@ func Prepare(workspace string, spec Spec) (map[string]string, error) {
 			return nil, status_error.AIAccountConfigurationInvalid
 		}
 		filename = "models.json"
-		content, _ = json.Marshal(map[string]any{"providers": map[string]any{"ally": map[string]any{"name": "NeuxAlly", "baseUrl": spec.BaseURL, "api": string(spec.Protocol), "apiKey": spec.APIKey, "models": []map[string]string{{"id": spec.Model}}}}})
+		content, _ = json.Marshal(map[string]any{"providers": map[string]any{"ally": map[string]any{"name": "NeuxBot", "baseUrl": spec.BaseURL, "api": string(spec.Protocol), "apiKey": spec.APIKey, "models": []map[string]string{{"id": spec.Model}}}}})
 		env["ACP_GO_PI_PREFERRED_PROVIDER"] = "ally"
 	case constants.RuntimeIDKimi:
 		if strings.TrimSpace(spec.Model) == "" {

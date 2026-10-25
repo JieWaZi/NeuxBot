@@ -14,7 +14,7 @@ type PptxPreviewProps = {
   title: string;
 };
 
-/** OFFICE PptxView 的按需渲染、分页与清理，读文件改走 NeuxAlly Chat scope。 */
+/** OFFICE PptxView 的按需渲染、分页与清理，读文件改走 NeuxBot Chat scope。 */
 export function PptxPreview({
   chatId,
   rootPath,

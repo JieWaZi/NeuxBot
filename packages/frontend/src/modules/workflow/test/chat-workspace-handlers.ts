@@ -7,7 +7,7 @@ export function chatWorkspaceHandlers(origin: string) {
   return [
     http.get(`${api}/wakers`, () =>
       HttpResponse.json({
-        resources: [{ id: PERSONAL_ASSISTANT_WAKER_ID, name: "NeuxAlly" }],
+        resources: [{ id: PERSONAL_ASSISTANT_WAKER_ID, name: "NeuxBot" }],
       }),
     ),
     http.get(`${api}/wakers/:wakerId/projects`, () =>

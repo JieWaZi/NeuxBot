@@ -66,7 +66,7 @@ func TestCloneGitSourceChecksOutCommitRef(t *testing.T) {
 		t.Fatal(err)
 	}
 	commit, err := worktree.Commit("initial", &git.CommitOptions{Author: &object.Signature{
-		Name: "NeuxAlly Test", Email: "ally@example.test", When: time.Unix(1, 0),
+		Name: "NeuxBot Test", Email: "ally@example.test", When: time.Unix(1, 0),
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -114,7 +114,7 @@ func TestCloneGitSourceFallsBackFromBranchToTag(t *testing.T) {
 		t.Fatal(err)
 	}
 	commit, err := worktree.Commit("tagged", &git.CommitOptions{Author: &object.Signature{
-		Name: "NeuxAlly Test", Email: "ally@example.test", When: time.Unix(2, 0),
+		Name: "NeuxBot Test", Email: "ally@example.test", When: time.Unix(2, 0),
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -200,7 +200,7 @@ func TestStageImportAllowsSymlinkInCompleteGitCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := worktree.Commit("unsafe tree", &git.CommitOptions{Author: &object.Signature{
-		Name: "NeuxAlly Test", Email: "ally@example.test", When: time.Unix(3, 0),
+		Name: "NeuxBot Test", Email: "ally@example.test", When: time.Unix(3, 0),
 	}}); err != nil {
 		t.Fatal(err)
 	}

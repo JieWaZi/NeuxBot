@@ -24,7 +24,7 @@ const EmbeddedChat = lazy(async () => ({
 
 // React StrictMode and a hidden/reshown tab may both try to create the same
 // child. The request identity lives on the tab, and the in-flight operation is
-// shared in this renderer. NeuxAlly Core remains the authority for idempotency.
+// shared in this renderer. NeuxBot Core remains the authority for idempotency.
 const inFlightForks = new Map<string, Promise<string>>();
 
 type SideChatWorkbenchViewProps = {

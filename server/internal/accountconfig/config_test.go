@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 func TestNativeConfigurationUsesWorkspaceAndNativeShape(t *testing.T) {

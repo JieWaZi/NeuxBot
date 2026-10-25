@@ -15,9 +15,9 @@ import {
   withLocalErrorMutation,
 } from "@/shared/api/local-error-surface";
 import type {
-  GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail as ChannelDetail,
-  GithubComJieWaZiNeuxAllyServerApisChannelsChannelInput as ChannelInput,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsWaker as Waker,
+  GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as ChannelDetail,
+  GithubComJieWaZiNeuxBotServerApisChannelsChannelInput as ChannelInput,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsWaker as Waker,
 } from "@/shared/api/generated/types.gen";
 import { Avatar } from "@/shared/ui/avatar";
 import { Button } from "@/shared/ui/button";

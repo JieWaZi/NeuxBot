@@ -3,8 +3,8 @@ package builtinrolepreset
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // ControllerCatalog 使用 Repository Controller 实现内置角色预设目录端口。

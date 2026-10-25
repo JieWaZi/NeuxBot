@@ -142,4 +142,4 @@ Spec 的包、安装、配置、执行、引用、UI、来源与分发要求分�
 
 代码与自动化验收按本计划交付。需要用户明确同意的真实界面和飞书业务验收保持待验，具体边界见 [验收记录](../specs/2026-10-17-plugin-resources-acceptance.md)。
 
-交付分支已推送；[MR #2](https://github.com/JieWaZi/NeuxAlly/pull/2) 目标为 main，以草稿保留真实外部验收门槛。独立 worktree 保留用于继续验收和处理反馈。
+交付分支已推送；[MR #2](https://github.com/JieWaZi/NeuxBot/pull/2) 目标为 main，以草稿保留真实外部验收门槛。独立 worktree 保留用于继续验收和处理反馈。

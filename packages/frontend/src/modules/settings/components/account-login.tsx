@@ -7,7 +7,7 @@ import {
   startAiAccountLoginMutation,
   listAiAccountsQueryKey,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
-import type { GithubComJieWaZiNeuxAllyServerServicesAiaccountLogin as Login } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerServicesAiaccountLogin as Login } from "@/shared/api/generated/types.gen";
 import { openExternalURL } from "@/shared/platform";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";

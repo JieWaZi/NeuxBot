@@ -2,8 +2,8 @@
 package role_presets
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 )
 
 // 角色预设请求

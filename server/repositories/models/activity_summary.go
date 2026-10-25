@@ -1,7 +1,7 @@
-// Package models 定义 NeuxAlly 的 GORM 持久化模型。
+// Package models 定义 NeuxBot 的 GORM 持久化模型。
 package models
 
-import "github.com/JieWaZi/NeuxAlly/server/constants"
+import "github.com/JieWaZi/NeuxBot/server/constants"
 
 // ActivitySummary 是列表查询聚合出的只读活动计数。
 type ActivitySummary struct {

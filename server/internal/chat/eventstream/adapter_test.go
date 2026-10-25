@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	eventlog "github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
 // TestReplayAfterRestoresPrefixWithoutKeepingSnapshots 验证游标前恢复状态，但只为游标后事实保留公开事件。

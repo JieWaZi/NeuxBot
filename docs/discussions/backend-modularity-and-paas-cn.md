@@ -132,7 +132,7 @@ Chat Service 的生产导入没有直接指向知识库或工作流 Service，�
 
 ## 4. 借鉴 DeepSeek Harness，采用 Go 的实现方式
 
-DeepSeek Harness 官方架构把模型、工具、会话和循环等实现作为可组合插件，通过 profile/bundle 装配。其 Cordis 机制包括声明依赖、类型化事件及可释放的注册效果。这些是架构参考，不要求 NeuxAlly 迁移 TypeScript 或采用相同运行时。[官方架构](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md)、[Cordis 说明](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cordis-primer.md)。
+DeepSeek Harness 官方架构把模型、工具、会话和循环等实现作为可组合插件，通过 profile/bundle 装配。其 Cordis 机制包括声明依赖、类型化事件及可释放的注册效果。这些是架构参考，不要求 NeuxBot 迁移 TypeScript 或采用相同运行时。[官方架构](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md)、[Cordis 说明](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cordis-primer.md)。
 
 它的工具管线还区分扩展拦截与单向收紧的策略约束；作用域注册把可见性和释放生命周期关联起来。[工具合同](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/tools.md)、[作用域合同](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/scope.md)。
 

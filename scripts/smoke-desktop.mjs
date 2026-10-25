@@ -11,7 +11,7 @@ const bundle =
     ? path.join(
         release,
         process.arch === "arm64" ? "mac-arm64" : "mac",
-        "NeuxAlly.app",
+        "NeuxBot.app",
       )
     : path.join(
         release,
@@ -23,8 +23,8 @@ const resources =
     : path.join(bundle, "resources");
 const executable =
   process.platform === "darwin"
-    ? path.join(bundle, "Contents/MacOS/NeuxAlly")
-    : path.join(bundle, "NeuxAlly.exe");
+    ? path.join(bundle, "Contents/MacOS/NeuxBot")
+    : path.join(bundle, "NeuxBot.exe");
 execFileSync(
   executable,
   [

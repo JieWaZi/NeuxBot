@@ -1,6 +1,6 @@
 # 知识核心与宿主接入
 
-知识内容由独立 `neux-knowledge` 核心维护。NeuxAlly 保存连接和库模型偏好，资料整理通过 Runtime 的独立文本生成接口调用 CLI。后台整理任务不创建伙伴、Chat 或 Execution，不写聊天 JSONL；用户主动发起的 Wiki 修订复用普通 Chat 与 Execution。知识库列表与各库详情使用独立标签页，详情按后端、连接与库身份区分；同一库的文档、Wiki 和图谱复用该详情标签。库内左侧通过知识、摘要、原件分段导航切换内容，原件列表在左侧仅显示文件图标与名称，长名称截断并可悬停查看完整名称；右侧展示 Wiki 或所选原件正文；图谱由顶部标题右侧操作进入。详情顶部只展示知识库名称与同行操作，保留创建、文档上传与手动整理。
+知识内容由独立 `neux-knowledge` 核心维护。NeuxBot 保存连接和库模型偏好，资料整理通过 Runtime 的独立文本生成接口调用 CLI。后台整理任务不创建伙伴、Chat 或 Execution，不写聊天 JSONL；用户主动发起的 Wiki 修订复用普通 Chat 与 Execution。知识库列表与各库详情使用独立标签页，详情按后端、连接与库身份区分；同一库的文档、Wiki 和图谱复用该详情标签。库内左侧通过知识、摘要、原件分段导航切换内容，原件列表在左侧仅显示文件图标与名称，长名称截断并可悬停查看完整名称；右侧展示 Wiki 或所选原件正文；图谱由顶部标题右侧操作进入。详情顶部只展示知识库名称与同行操作，保留创建、文档上传与手动整理。
 
 ## 统一操作适配
 
@@ -166,7 +166,7 @@ Claude 使用已支持的原生参数关闭工具；Codex仍保留原生权限/�
 
 ## 独立核心交付
 
-核心在独立 [neux-knowledge 仓库](https://github.com/JieWaZi/neux-knowledge) 开发，模块路径为 `github.com/JieWaZi/neux-knowledge`。NeuxAlly 通过 `server/go.mod` 和 `server/go.sum` 固定已发布版本，由 Go 下载和校验模块，不在宿主仓库保存核心源码副本或维护同步脚本。
+核心在独立 [neux-knowledge 仓库](https://github.com/JieWaZi/neux-knowledge) 开发，模块路径为 `github.com/JieWaZi/neux-knowledge`。NeuxBot 通过 `server/go.mod` 和 `server/go.sum` 固定已发布版本，由 Go 下载和校验模块，不在宿主仓库保存核心源码副本或维护同步脚本。
 
 本地联合开发可在宿主根目录执行 `go work init ./server`，再执行 `go work edit -replace=github.com/JieWaZi/neux-knowledge=/path/to/neux-knowledge`，通过未提交的 `go.work` 使用本地核心。发布与干净检出使用模块版本；提交前使用 `GOWORK=off` 验证，避免本地 workspace 掩盖未发布版本或依赖缺失。
 

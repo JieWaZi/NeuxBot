@@ -1,4 +1,4 @@
-/* NeuxAlly 傀儡。完整静态身体与风格配色；眼睛共用 48 点闭环，方便逐点混合。 */
+/* NeuxBot 傀儡。完整静态身体与风格配色；眼睛共用 48 点闭环，方便逐点混合。 */
 (() => {
   const NS = 'http://www.w3.org/2000/svg';
   const eyeScale=1.25;
@@ -31,7 +31,7 @@
   for(const pair of Object.values(rings))pair.forEach((ring,k)=>{const cx=k?149:91;for(const point of ring){point[0]=cx+(point[0]-cx)*eyeScale;point[1]=104+(point[1]-104)*eyeScale;}});
   window.AllyEyeRings=rings;
 
-  window.NeuxAlly.createPuppet=function(container,opts){
+  window.NeuxBot.createPuppet=function(container,opts){
     const id='ally'+uid++,ch={eyeFamily:rings,defaultEyeRing:rings.calm},material=window.AllyBody.resolve(opts.style);
     const svg=node('svg',{viewBox:'0 0 240 240','aria-hidden':'true',overflow:'visible','pointer-events':'none'},container);
     const defs=node('defs',{},svg);
@@ -58,7 +58,7 @@
     const sleepTrail=node('g',{'class':'ally-sleep-trail','pointer-events':'none'},svg);
     const zzz=Array.from({length:4},(_,i)=>{const n=node('text',{'font-family':'Georgia,serif','font-weight':600,'font-size':22+i*6,fill:'var(--companion-effect-deep)',opacity:0},sleepTrail);n.textContent='z';return n;});
     let idle=true,lastNow=0,clock=0,emotion=opts.emotion||'02',reduced=false;
-    const idleEyes=window.NeuxAlly.createIdleEyes();
+    const idleEyes=window.NeuxBot.createIdleEyes();
     const actionPlayer=window.AllyActionEngine.createPlayer();
     let free=true,attentionUntil=0,stateStart=0,stateRevision=0;
     let sparks=[];

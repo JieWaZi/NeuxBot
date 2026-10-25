@@ -2,8 +2,8 @@ import { ChevronRight, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import type { GithubComJieWaZiNeuxAllyServerApisSkillsWakerSkillResponse } from "@/shared/api/generated/types.gen";
-import type { GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 
 import {
@@ -13,9 +13,9 @@ import {
 import { WakerAccentSection } from "./waker-accent-block";
 
 type WakerSkillResponse =
-  GithubComJieWaZiNeuxAllyServerApisSkillsWakerSkillResponse;
+  GithubComJieWaZiNeuxBotServerApisSkillsWakerSkillResponse;
 type WakerConnectorResponse =
-  GithubComJieWaZiNeuxAllyServerApisMcpConnectorResponse;
+  GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse;
 
 type WakerSkillsToolsSectionProps = {
   wakerId: string;

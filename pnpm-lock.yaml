@@ -34,13 +34,13 @@ importers:
       '@git-diff-view/file':
         specifier: 0.1.7
         version: 0.1.7
-      '@neuxally/frontend':
+      '@neuxbot/frontend':
         specifier: workspace:*
         version: link:../packages/frontend
-      '@neuxally/platform-contracts':
+      '@neuxbot/platform-contracts':
         specifier: workspace:*
         version: link:../packages/platform-contracts
-      '@neuxally/terminal-runtime':
+      '@neuxbot/terminal-runtime':
         specifier: workspace:*
         version: link:../packages/terminal-runtime
       '@testing-library/jest-dom':
@@ -250,7 +250,7 @@ importers:
       '@ncdai/react-wheel-picker':
         specifier: 1.2.2
         version: 1.2.2(patch_hash=130e78bbd51826cb5c60ed0b8c8c59bd9d06640ac425c6887e82b15f601051f8)(react@19.2.8)
-      '@neuxally/platform-contracts':
+      '@neuxbot/platform-contracts':
         specifier: workspace:*
         version: link:../platform-contracts
       '@radix-ui/react-checkbox':
@@ -515,7 +515,7 @@ importers:
 
   packages/terminal-runtime:
     dependencies:
-      '@neuxally/platform-contracts':
+      '@neuxbot/platform-contracts':
         specifier: workspace:*
         version: link:../platform-contracts
       '@xterm/addon-serialize':
@@ -540,10 +540,10 @@ importers:
 
   web:
     dependencies:
-      '@neuxally/frontend':
+      '@neuxbot/frontend':
         specifier: workspace:*
         version: link:../packages/frontend
-      '@neuxally/platform-contracts':
+      '@neuxbot/platform-contracts':
         specifier: workspace:*
         version: link:../packages/platform-contracts
       react:

@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
-// CleanupTemporaryArtifacts 删除上一个 NeuxAlly 进程留下的导入和版本 staging。
+// CleanupTemporaryArtifacts 删除上一个 NeuxBot 进程留下的导入和版本 staging。
 func CleanupTemporaryArtifacts(dataDirectory string) error {
 	dataDirectory = strings.TrimSpace(dataDirectory)
 	if dataDirectory == "" {

@@ -512,7 +512,7 @@ it.each([false, true])(
     server.use(
       http.get(`${remote}/capabilities`, () =>
         HttpResponse.json({
-          serviceKind: supported ? "neuxally" : "weknora",
+          serviceKind: supported ? "neuxbot" : "weknora",
           operations: { read: true, sourcePurge: supported, rebuild: false },
           details: {
             sourcePurge: {
@@ -589,7 +589,7 @@ it.each([
     server.use(
       http.get(`${remote}/capabilities`, () =>
         HttpResponse.json({
-          serviceKind: "neuxally",
+          serviceKind: "neuxbot",
           operations: { read: true, sourcePurge: enabled, rebuild: enabled },
           details: {
             sourcePurge: { supported: true, permission, condition },

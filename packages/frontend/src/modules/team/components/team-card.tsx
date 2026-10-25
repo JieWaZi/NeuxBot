@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import type { GithubComJieWaZiNeuxAllyServerApisChannelsChannelDetail as ChannelDetail } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisChannelsChannelDetail as ChannelDetail } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,

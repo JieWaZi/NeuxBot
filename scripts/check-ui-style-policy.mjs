@@ -20,7 +20,7 @@ const rules = [
     name: "非语义字号",
     pattern: /\btext-(?:xs|sm|base|lg|xl|[2-9]xl)\b/g,
     guidance:
-      "使用 NeuxAlly 语义字号 Token，不直接使用 Tailwind 默认字号层级。",
+      "使用 NeuxBot 语义字号 Token，不直接使用 Tailwind 默认字号层级。",
   },
   {
     name: "任意行高",

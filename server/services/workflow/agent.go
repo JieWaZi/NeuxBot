@@ -9,17 +9,17 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability/contract"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcommand"
-	"github.com/JieWaZi/NeuxAlly/server/internal/logx"
-	"github.com/JieWaZi/NeuxAlly/server/internal/notification/events"
-	workflowtool "github.com/JieWaZi/NeuxAlly/server/internal/workflow/capability"
-	workflowdsl "github.com/JieWaZi/NeuxAlly/server/internal/workflow/dsl"
-	workflowfiles "github.com/JieWaZi/NeuxAlly/server/internal/workflow/files"
-	workflowstate "github.com/JieWaZi/NeuxAlly/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 )
 
 // AgentBindings 只签发当前服务端场景具有的操作，不接受调用方声明场景或身份。

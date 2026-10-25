@@ -2,7 +2,7 @@ package knowledge
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"testing"
 )

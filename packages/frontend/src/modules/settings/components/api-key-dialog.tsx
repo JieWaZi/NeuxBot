@@ -20,7 +20,7 @@ import {
 } from "@/shared/api/generated/sdk.gen";
 import type {
   CreateApiKeyResponse,
-  GithubComJieWaZiNeuxAllyServerRepositoriesModelsIntegrationKey as APIKey,
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsIntegrationKey as APIKey,
 } from "@/shared/api/generated/types.gen";
 import {
   withLocalErrorSurface,

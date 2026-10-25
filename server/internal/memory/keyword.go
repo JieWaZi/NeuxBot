@@ -2,12 +2,12 @@ package memory
 
 import (
 	"context"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"math"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
 // keywordSearch 在未配置 Embedding 时提供关键词召回。

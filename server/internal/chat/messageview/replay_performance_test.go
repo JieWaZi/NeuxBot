@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
 // TestReplayMessagesToolUpdatesAllocateLinearly 防止工具更新重放反复解析历史，导致分配量按平方增长。

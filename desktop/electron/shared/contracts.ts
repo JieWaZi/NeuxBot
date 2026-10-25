@@ -1,8 +1,8 @@
-import type { GlobalEventDelivery } from "@neuxally/platform-contracts/core-event-protocol";
+import type { GlobalEventDelivery } from "@neuxbot/platform-contracts/core-event-protocol";
 import type {
   FileDropEvent,
   BrowserNavigationEvent,
-} from "@neuxally/platform-contracts/resources";
+} from "@neuxbot/platform-contracts/resources";
 export type {
   FileDropEvent,
   WorkspaceFileEntry,
@@ -36,7 +36,7 @@ export type {
   TerminalSnapshot,
   TerminalOutputEvent,
   TerminalExitEvent,
-} from "@neuxally/platform-contracts/resources";
+} from "@neuxbot/platform-contracts/resources";
 export type CoreConnection = { baseUrl: string; token: string };
 
 import type {
@@ -44,7 +44,7 @@ import type {
   WorkspaceCommands,
   BrowserCommands,
   EventsCommands,
-} from "@neuxally/platform-contracts/services";
+} from "@neuxbot/platform-contracts/services";
 export type DesktopCommands = HostCommands &
   Pick<WorkspaceCommands, "open_workspace_file"> &
   BrowserCommands &

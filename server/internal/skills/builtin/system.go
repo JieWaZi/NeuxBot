@@ -6,9 +6,9 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	managedskills "github.com/JieWaZi/NeuxAlly/server/internal/skills"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 )
 
 func systemDefinition() (definition, error) {

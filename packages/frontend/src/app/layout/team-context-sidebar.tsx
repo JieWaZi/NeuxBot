@@ -41,7 +41,7 @@ import {
 } from "@/shared/api/local-error-surface";
 import { TeamConfirmationDialog } from "@/modules/team/components/team-confirmation-dialog";
 import { projectTeamMembers } from "@/modules/team/model/team-member-projection";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsChannelThread as ChannelThread } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThread as ChannelThread } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import {

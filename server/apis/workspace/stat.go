@@ -1,8 +1,8 @@
 package workspace
 
 import (
-	"github.com/JieWaZi/NeuxAlly/server/apis/middleware"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )

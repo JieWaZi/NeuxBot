@@ -3,12 +3,12 @@ package schedule
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/util"
-	workflowinput "github.com/JieWaZi/NeuxAlly/server/internal/workflow/input"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/controllers"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowinput "github.com/JieWaZi/NeuxBot/server/internal/workflow/input"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // TaskView 展示配置和运行概览，不暴露密钥摘要。

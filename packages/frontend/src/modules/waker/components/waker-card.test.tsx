@@ -35,7 +35,7 @@ describe("WakerCard", () => {
           waker={{
             ...waker,
             id: PERSONAL_ASSISTANT_WAKER_ID,
-            name: "NeuxAlly",
+            name: "NeuxBot",
             roleName: "私人助理",
           }}
         />

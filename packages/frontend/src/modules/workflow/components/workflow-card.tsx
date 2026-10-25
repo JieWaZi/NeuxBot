@@ -2,7 +2,7 @@ import { MoreHorizontal, Pencil, Trash2, Workflow } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import type { GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 import { Card, CardBody, CardFooter } from "@/shared/ui/card";
 import {
@@ -18,7 +18,7 @@ import { WorkflowDeleteDialog } from "./workflow-delete-dialog";
 export function WorkflowCard({
   definition,
 }: {
-  definition: GithubComJieWaZiNeuxAllyServerRepositoriesModelsWorkflowDefinition;
+  definition: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition;
 }) {
   const { t } = useTranslation("workflow");
   const active = useRouteSceneActive();

@@ -1,4 +1,4 @@
-import type { GithubComJieWaZiNeuxAllyServerApisProjectsProjectResource as ProjectResource } from "@/shared/api/generated/types.gen";
+import type { GithubComJieWaZiNeuxBotServerApisProjectsProjectResource as ProjectResource } from "@/shared/api/generated/types.gen";
 
 /** 解析用于 Git 查询与分支切换的项目源目录，默认目录排在最前。 */
 export function resolveGitWorkspaceDirectories(input: {

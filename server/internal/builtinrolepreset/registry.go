@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 )
 
 // WakerSeed 描述空库 bootstrap 时需要写入的默认伙伴。

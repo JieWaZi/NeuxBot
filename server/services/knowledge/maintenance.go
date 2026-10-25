@@ -6,12 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/internal/agentcapability"
-	bridge "github.com/JieWaZi/NeuxAlly/server/internal/knowledge"
-	"github.com/JieWaZi/NeuxAlly/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
-	"github.com/JieWaZi/NeuxAlly/server/services/execution"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/JieWaZi/neux-knowledge/core"
 )
 

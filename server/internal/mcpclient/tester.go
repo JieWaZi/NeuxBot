@@ -1,4 +1,4 @@
-// Package mcpclient 提供 NeuxAlly 主进程使用的 MCP 协议客户端能力。
+// Package mcpclient 提供 NeuxBot 主进程使用的 MCP 协议客户端能力。
 package mcpclient
 
 import (
@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/JieWaZi/NeuxAlly/server/constants"
-	"github.com/JieWaZi/NeuxAlly/server/constants/status_error"
-	"github.com/JieWaZi/NeuxAlly/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -92,7 +92,7 @@ func testConnection(ctx context.Context, connector models.MCPConnector, director
 	}
 	client := mcp.NewClient(&mcp.Implementation{
 		Name:    "ally",
-		Title:   "NeuxAlly",
+		Title:   "NeuxBot",
 		Version: "1",
 	}, nil)
 	session, err := client.Connect(testContext, transport, nil)

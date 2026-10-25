@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type {
-  GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeModelOption as RuntimeModelOption,
-  GithubComJieWaZiNeuxAllyServerApisRuntimeOptionsRuntimeReasoningOption as RuntimeReasoningOption,
+  GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption as RuntimeModelOption,
+  GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption as RuntimeReasoningOption,
 } from "@/shared/api/generated/types.gen";
 import { readLayoutMotionTokens } from "@/shared/lib/ui-motion-tokens";
 import { consumeOverlayWheelScroll } from "@/shared/lib/overlay-scroll-wheel";
