@@ -3,16 +3,19 @@ package messageview
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 )
 
 // MessageViewBuilder 将权威日志记录逐条折叠为跨 Runtime 的消息展示快照。
 type MessageViewBuilder struct {
+	// publicOnly 只维护安全展示状态，不保留供分叉和文件详情使用的 Runtime 原始事件或 Diff。
+	publicOnly bool
 	// agentCommands 保存当前执行中由 Core 确认的命令事实，不能从工具输出建立。
 	agentCommands map[string]map[string]eventlog.AgentCommandData
 	// agentMatches 防止同一命令回执在多个原生工具行上重复变成业务活动。
@@ -27,10 +30,16 @@ type MessageViewBuilder struct {
 	messageIndexes map[string]int
 	// executionMessages 保存执行标识到 Assistant 消息标识的映射。
 	executionMessages map[string]string
-	// toolIndexes 保存每条消息内工具调用标识到展示部件下标的映射。
+	// toolIndexes 按消息与调用复合身份定位工具展示部件。
 	toolIndexes map[string]map[string]int
+	// toolStates 只保留当前工具的安全展示事实，不保留输入正文、输出或历史参数。
+	toolStates map[string]map[string]*toolProjectionState
+	// latestToolKeys 为缺少 Invocation 的旧审批事实定位最近的原生工具身份。
+	latestToolKeys map[string]map[string]string
 	// approvalResults 保存可能早于工具展示事件到达的审批结果。
 	approvalResults map[string]map[string]ToolApprovalResult
+	// textBuilders 保存正文和展示段的唯一可编辑文本缓冲；消息字段只引用不可变前缀视图。
+	textBuilders map[string]map[string]*strings.Builder
 	// pendingTextIndexes 保存尚未确定为过程说明或最终正文的文本部件下标。
 	pendingTextIndexes map[string][]int
 	// provisionalTextIndexes 保存工具仍在运行时暂归入过程区的尾部文本下标。
@@ -51,6 +60,9 @@ func ReplayPublicMessages(records []eventlog.Record) ([]Message, error) {
 
 func replayMessages(records []eventlog.Record, public bool) ([]Message, error) {
 	builder := NewMessageViewBuilder()
+	if public {
+		builder = NewPublicMessageViewBuilder()
+	}
 	for _, record := range records {
 		if _, err := builder.Apply(record); err != nil {
 			return nil, err
@@ -68,11 +80,21 @@ func NewMessageViewBuilder() *MessageViewBuilder {
 		messageIndexes:         make(map[string]int),
 		executionMessages:      make(map[string]string),
 		toolIndexes:            make(map[string]map[string]int),
+		toolStates:             make(map[string]map[string]*toolProjectionState),
+		latestToolKeys:         make(map[string]map[string]string),
 		approvalResults:        make(map[string]map[string]ToolApprovalResult),
+		textBuilders:           make(map[string]map[string]*strings.Builder),
 		pendingTextIndexes:     make(map[string][]int),
 		provisionalTextIndexes: make(map[string][]int),
 		failureMessages:        make(map[string]string),
 	}
+}
+
+// NewPublicMessageViewBuilder 建立只维护安全公开投影的增量构建器，避免流式工具参数长期驻留。
+func NewPublicMessageViewBuilder() *MessageViewBuilder {
+	builder := NewMessageViewBuilder()
+	builder.publicOnly = true
+	return builder
 }
 
 // Apply 应用一条权威记录，并返回发生公开快照变化的消息标识。
@@ -86,7 +108,9 @@ func (p *MessageViewBuilder) Apply(record eventlog.Record) (string, error) {
 			return "", status_error.ChatLogCorrupted
 		}
 		message := inherited.Message
-		message.FileChangeDiffs = inherited.Diffs
+		if !p.publicOnly {
+			message.FileChangeDiffs = inherited.Diffs
+		}
 		message.ID = record.MessageID
 		message.CreatedSequence = record.Sequence
 		message.Revision = record.Sequence
@@ -151,11 +175,17 @@ func (p *MessageViewBuilder) applyApprovalResolved(record eventlog.Record) (stri
 		results = make(map[string]ToolApprovalResult)
 		p.approvalResults[record.ExecutionID] = results
 	}
-	results[resolved.ToolCallID] = result
-
 	messageID := p.executionMessages[record.ExecutionID]
+	key := toolProjectionKey(record.InvocationID, resolved.ToolCallID)
+	if record.InvocationID == "" {
+		key = p.latestToolKeys[messageID][resolved.ToolCallID]
+		if key == "" {
+			key = resolved.ToolCallID
+		}
+	}
+	results[key] = result
 	messageIndex, messageExists := p.messageIndexes[messageID]
-	toolIndex, toolExists := p.toolIndexes[messageID][resolved.ToolCallID]
+	toolIndex, toolExists := p.toolIndexes[messageID][key]
 	if !messageExists || !toolExists {
 		return "", nil
 	}
@@ -166,7 +196,7 @@ func (p *MessageViewBuilder) applyApprovalResolved(record eventlog.Record) (stri
 	return message.ID, nil
 }
 
-// Messages 返回与构建器内部状态隔离的完整消息快照。
+// Messages 返回与构建器内部状态隔离的消息快照；公开构建器不提供私有 Runtime 事件与 Diff。
 func (p *MessageViewBuilder) Messages() []Message {
 	return p.snapshotMessages(false)
 }
@@ -181,15 +211,15 @@ func (p *MessageViewBuilder) snapshotMessages(public bool) []Message {
 
 // snapshotMessage 在读取边界派生文件视图，避免每条事件都重扫此前的工具历史。
 func (p *MessageViewBuilder) snapshotMessage(message Message, public bool) Message {
-	if len(message.RuntimeEvents) > 0 {
+	if len(message.RuntimeEvents) > 0 || p.publicOnly && len(p.toolIndexes[message.ID]) > 0 {
 		message.FileChanges = messageFileChanges(message.DisplayParts)
-		if !public {
+		if !public && !p.publicOnly {
 			message.FileChangeDiffs = messageFileChangeDiffs(
 				message.RuntimeEvents, message.DisplayParts, message.FileChanges, p.workspacePathScope(),
 			)
 		}
 	}
-	// 继承消息没有 Runtime 事件，直接保留权威继承快照中的摘要和私有 Diff。
+	// 继承消息没有 Runtime 事件或增量工具索引，直接保留权威继承快照中的文件摘要。
 	return cloneMessage(message, public)
 }
 
@@ -367,9 +397,12 @@ func (p *MessageViewBuilder) applyRuntimeContent(
 		RecordedAt:   record.RecordedAt,
 		InvocationID: record.InvocationID,
 		Type:         contentType,
-		Data:         append(json.RawMessage(nil), data...),
+		Data:         data,
 	}
-	message.RuntimeEvents = append(message.RuntimeEvents, event)
+	if !p.publicOnly {
+		event.Data = append(json.RawMessage(nil), data...)
+		message.RuntimeEvents = append(message.RuntimeEvents, event)
+	}
 	if err := p.applyDisplayEvent(message, event); err != nil {
 		return err
 	}
@@ -457,7 +490,7 @@ func (p *MessageViewBuilder) applyDisplayEvent(message *Message, event MessageRu
 		p.applyCommentaryDelta(message, data)
 	case "thinking_delta":
 		p.applyThinkingDelta(message, data)
-	case "tool_use":
+	case constants.RuntimeEventTypeToolUse, constants.RuntimeEventTypeToolInputSnapshot, constants.RuntimeEventTypeToolUpdate:
 		p.applyToolUse(message, event, data)
 	case "tool_result":
 		p.applyToolResult(message, event, data)
@@ -468,7 +501,7 @@ func (p *MessageViewBuilder) applyDisplayEvent(message *Message, event MessageRu
 // applyTextDelta 暂存工具执行期间的尾部文本，直到后续事件能确定其展示语义。
 func (p *MessageViewBuilder) applyTextDelta(message *Message, data map[string]interface{}) {
 	text, _ := data["text"].(string)
-	message.Content += text
+	message.Content = p.appendTextValue(message.ID, "", message.Content, text)
 	if p.hasRunningTool(message) {
 		p.appendProvisionalText(message, text)
 		return
@@ -479,7 +512,7 @@ func (p *MessageViewBuilder) applyTextDelta(message *Message, data map[string]in
 // applyCommentaryDelta 将 Runtime 明确标记的过程说明直接写入过程展示区。
 func (p *MessageViewBuilder) applyCommentaryDelta(message *Message, data map[string]interface{}) {
 	text, _ := data["text"].(string)
-	message.Content += text
+	message.Content = p.appendTextValue(message.ID, "", message.Content, text)
 	p.appendText(message, constants.MessageDisplayPartProcessCommentary, text, false)
 }
 
@@ -494,67 +527,65 @@ func (p *MessageViewBuilder) applyThinkingDelta(message *Message, data map[strin
 	)
 }
 
-// applyToolUse 建立或补全工具展示部件，不暴露原始工具输入。
-func (p *MessageViewBuilder) applyToolUse(
-	message *Message,
-	event MessageRuntimeEvent,
-	data map[string]interface{},
-) {
+// applyToolUse 按当前工具事实重新派生展示，不把部分参数的早期推断固化为最终动作。
+func (p *MessageViewBuilder) applyToolUse(message *Message, event MessageRuntimeEvent, data map[string]interface{}) {
 	p.classifyPendingText(message)
-	toolID := displayToolID(data, event)
-	toolLabel, toolLoadingLabel := buildToolPhrase(data, p.workspacePathScope())
-	indexes := p.toolDisplayIndexes(message.ID)
-	if index, exists := indexes[toolID]; exists {
-		part := &message.DisplayParts[index]
-		newAction := displayToolAction(data)
-		newCategory := displayToolCategoryForData(data)
-		if part.ToolAction == constants.MessageToolActionOther &&
-			newAction != constants.MessageToolActionOther {
-			part.ToolAction = newAction
-		}
-		if part.ToolCategory == constants.MessageToolCategoryOther &&
-			newCategory != constants.MessageToolCategoryOther {
-			part.ToolCategory = newCategory
-		}
-		part.ToolLabel, part.ToolLoadingLabel = mergeToolPhrase(
-			part.ToolLabel,
-			part.ToolLoadingLabel,
-			toolLabel,
-			toolLoadingLabel,
-		)
-		part.ToolSafeSummary = mergeToolSafeSummary(
-			part.ToolSafeSummary,
-			buildToolSafeSummary(data, p.workspacePathScope()),
-		)
-		p.applyPendingApprovalResult(message, part, toolID)
-		return
-	}
-	indexes[toolID] = len(message.DisplayParts)
-	message.DisplayParts = append(message.DisplayParts, MessageDisplayPart{
-		ID:               toolID,
-		Type:             constants.MessageDisplayPartTool,
-		ToolCallID:       toolID,
-		ToolCategory:     displayToolCategoryForData(data),
-		ToolAction:       displayToolAction(data),
-		ToolLabel:        toolLabel,
-		ToolLoadingLabel: toolLoadingLabel,
-		ToolStatus:       constants.MessageToolStatusRunning,
-		ToolSafeSummary:  buildToolSafeSummary(data, p.workspacePathScope()),
-	})
-	p.applyPendingApprovalResult(message, &message.DisplayParts[len(message.DisplayParts)-1], toolID)
+	part, state := p.toolPart(message, event, data)
+	state.apply(data, p.workspacePathScope())
+	p.projectToolPart(message.ExecutionID, part, state)
+	p.applyPendingApprovalResult(message, part, part.ID)
 }
 
-// applyPendingApprovalResult 把先于工具展示事件到达的审批结果补到工具部件。
-func (p *MessageViewBuilder) applyPendingApprovalResult(
-	message *Message,
-	part *MessageDisplayPart,
-	toolID string,
-) {
-	result, exists := p.approvalResults[message.ExecutionID][toolID]
-	if !exists {
-		return
+// toolPart 使用 Invocation 与原生工具身份定位部件，公开 ToolCallID 仍供审批和原生定位使用。
+func (p *MessageViewBuilder) toolPart(message *Message, event MessageRuntimeEvent, data map[string]interface{}) (*MessageDisplayPart, *toolProjectionState) {
+	nativeID := displayToolID(data, event)
+	key := toolProjectionKey(event.InvocationID, nativeID)
+	indexes := p.toolDisplayIndexes(message.ID)
+	if p.toolStates[message.ID] == nil {
+		p.toolStates[message.ID] = make(map[string]*toolProjectionState)
 	}
-	part.ToolApprovalResult = cloneToolApprovalResult(result)
+	if p.latestToolKeys[message.ID] == nil {
+		p.latestToolKeys[message.ID] = make(map[string]string)
+	}
+	p.latestToolKeys[message.ID][nativeID] = key
+	state := p.toolStates[message.ID][key]
+	if state == nil {
+		state = &toolProjectionState{fields: make(map[string]interface{})}
+		p.toolStates[message.ID][key] = state
+	}
+	if index, exists := indexes[key]; exists {
+		return &message.DisplayParts[index], state
+	}
+	p.classifyPendingText(message)
+	indexes[key] = len(message.DisplayParts)
+	message.DisplayParts = append(message.DisplayParts, MessageDisplayPart{ID: key, Type: constants.MessageDisplayPartTool, ToolCallID: nativeID, ToolStatus: constants.MessageToolStatusRunning})
+	return &message.DisplayParts[len(message.DisplayParts)-1], state
+}
+
+// projectToolPart 仅使用当前的有界展示事实，省略字段由状态保留，显式空值由新事实清除。
+func (p *MessageViewBuilder) projectToolPart(executionID string, part *MessageDisplayPart, state *toolProjectionState) {
+	data := state.projectionData()
+	part.ToolCategory = displayToolCategoryForData(data)
+	part.ToolAction = displayToolAction(data)
+	part.ToolLabel, part.ToolLoadingLabel = buildToolPhrase(data, p.workspacePathScope())
+	part.ToolSafeSummary = mergeToolSafeSummary(buildToolSafeSummary(data, p.workspacePathScope()), state.contentSummary)
+	p.applyCommandCaption(executionID, state.commandID, part)
+}
+
+// applyPendingApprovalResult 把先于工具展示事件到达的审批结果补到对应调用。
+func (p *MessageViewBuilder) applyPendingApprovalResult(message *Message, part *MessageDisplayPart, key string) {
+	results := p.approvalResults[message.ExecutionID]
+	result, exists := results[key]
+	if !exists {
+		result, exists = results[part.ToolCallID]
+		if exists {
+			delete(results, part.ToolCallID)
+			results[key] = result
+		}
+	}
+	if exists {
+		part.ToolApprovalResult = cloneToolApprovalResult(result)
+	}
 }
 
 // cloneToolApprovalResult 返回与构建器内部状态隔离的审批结果。
@@ -563,57 +594,17 @@ func cloneToolApprovalResult(result ToolApprovalResult) *ToolApprovalResult {
 	return &clone
 }
 
-// applyToolResult 更新已有工具部件；缺失 tool_use 时建立安全的兜底部件。
-func (p *MessageViewBuilder) applyToolResult(
-	message *Message,
-	event MessageRuntimeEvent,
-	data map[string]interface{},
-) {
-	toolID := displayToolID(data, event)
-	status := displayToolResultStatus(data)
-	indexes := p.toolDisplayIndexes(message.ID)
-	if index, exists := indexes[toolID]; exists {
-		part := &message.DisplayParts[index]
-		part.ToolStatus = status
-		p.enrichToolResult(part, data)
-		p.matchAgentCommand(message.ExecutionID, part, data)
-		if !p.hasRunningTool(message) {
-			p.releaseProvisionalText(message)
-		}
-		return
+// applyToolResult 在同一调用的当前事实基础上提交终态；结果不携带的输入和 Diff 继续保留。
+func (p *MessageViewBuilder) applyToolResult(message *Message, event MessageRuntimeEvent, data map[string]interface{}) {
+	part, state := p.toolPart(message, event, data)
+	state.apply(data, p.workspacePathScope())
+	p.projectToolPart(message.ExecutionID, part, state)
+	part.ToolStatus = displayToolResultStatus(data)
+	p.applyPendingApprovalResult(message, part, part.ID)
+	p.matchAgentCommand(message.ExecutionID, part, data)
+	if !p.hasRunningTool(message) {
+		p.releaseProvisionalText(message)
 	}
-	p.classifyPendingText(message)
-	indexes[toolID] = len(message.DisplayParts)
-	message.DisplayParts = append(message.DisplayParts, MessageDisplayPart{
-		ID:              toolID,
-		Type:            constants.MessageDisplayPartTool,
-		ToolCallID:      toolID,
-		ToolCategory:    constants.MessageToolCategoryOther,
-		ToolAction:      constants.MessageToolActionOther,
-		ToolStatus:      status,
-		ToolSafeSummary: buildToolSafeSummary(data, p.workspacePathScope()),
-	})
-	p.matchAgentCommand(message.ExecutionID, &message.DisplayParts[len(message.DisplayParts)-1], data)
-}
-
-// enrichToolResult 用结果中更完整的工具结构补强短语和安全摘要。
-func (p *MessageViewBuilder) enrichToolResult(
-	part *MessageDisplayPart,
-	data map[string]interface{},
-) {
-	if toolResultCarriesToolShape(data) {
-		toolLabel, toolLoadingLabel := buildToolPhrase(data, p.workspacePathScope())
-		part.ToolLabel, part.ToolLoadingLabel = mergeToolPhrase(
-			part.ToolLabel,
-			part.ToolLoadingLabel,
-			toolLabel,
-			toolLoadingLabel,
-		)
-	}
-	part.ToolSafeSummary = mergeToolSafeSummary(
-		part.ToolSafeSummary,
-		buildToolSafeSummary(data, p.workspacePathScope()),
-	)
 }
 
 // toolDisplayIndexes 返回消息私有的工具调用索引，并在首次使用时初始化。
@@ -662,7 +653,8 @@ func (p *MessageViewBuilder) appendText(
 	}
 	lastIndex := len(message.DisplayParts) - 1
 	if lastIndex >= 0 && message.DisplayParts[lastIndex].Type == partType {
-		message.DisplayParts[lastIndex].Text += value
+		part := &message.DisplayParts[lastIndex]
+		part.Text = p.appendTextValue(message.ID, part.ID, part.Text, value)
 		return
 	}
 	message.DisplayParts = append(message.DisplayParts, MessageDisplayPart{
@@ -673,6 +665,27 @@ func (p *MessageViewBuilder) appendText(
 	if pending {
 		p.pendingTextIndexes[message.ID] = append(p.pendingTextIndexes[message.ID], len(message.DisplayParts)-1)
 	}
+}
+
+// appendTextValue 只追加新的字节；空 partID 表示正文，其他键对应稳定展示段身份。
+// Builder.String 返回不可变前缀视图，后续追加不会改写旧公开快照已经引用的字节。
+func (p *MessageViewBuilder) appendTextValue(messageID, partID, current, value string) string {
+	if value == "" {
+		return current
+	}
+	builders := p.textBuilders[messageID]
+	if builders == nil {
+		builders = make(map[string]*strings.Builder)
+		p.textBuilders[messageID] = builders
+	}
+	builder := builders[partID]
+	if builder == nil {
+		builder = &strings.Builder{}
+		builder.WriteString(current)
+		builders[partID] = builder
+	}
+	builder.WriteString(value)
+	return builder.String()
 }
 
 // classifyPendingText 在出现推理或工具边界时，将此前正文候选确定为过程说明。
@@ -699,7 +712,8 @@ func (p *MessageViewBuilder) appendProvisionalText(message *Message, value strin
 	indexes := p.provisionalTextIndexes[message.ID]
 	lastIndex := len(message.DisplayParts) - 1
 	if len(indexes) > 0 && indexes[len(indexes)-1] == lastIndex {
-		message.DisplayParts[lastIndex].Text += value
+		part := &message.DisplayParts[lastIndex]
+		part.Text = p.appendTextValue(message.ID, part.ID, part.Text, value)
 		return
 	}
 	message.DisplayParts = append(message.DisplayParts, MessageDisplayPart{
@@ -730,15 +744,6 @@ func (p *MessageViewBuilder) hasRunningTool(message *Message) bool {
 		}
 	}
 	return false
-}
-
-// toolResultCarriesToolShape 判断工具结果载荷是否携带可安全重算短语的工具结构。
-func toolResultCarriesToolShape(data map[string]interface{}) bool {
-	if firstDisplayString(data, "name", "toolName", "tool_name") != "" {
-		return true
-	}
-	resultType := firstDisplayString(data, "type")
-	return resultType != "" && resultType != "tool_result"
 }
 
 // displayPartID 为同一消息内展示部件生成稳定标识。

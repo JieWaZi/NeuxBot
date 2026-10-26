@@ -12,7 +12,7 @@ import (
 func hostDiagnostic(err error) (string, string) {
 	code, message := "unknown", "知识整理未完成，请检查模型服务后重试。"
 	if errors.Is(err, context.Canceled) {
-		return "interrupted", "宿主已停止等待，恢复时将先核对知识任务检查点。"
+		return "interrupted", "本次知识整理已中断，请重试。"
 	}
 	var coded interface{ Code() int64 }
 	if errors.As(err, &coded) {

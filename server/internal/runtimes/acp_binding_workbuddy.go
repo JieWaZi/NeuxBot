@@ -7,7 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acpworkbuddy "github.com/JieWaZi/acp-go/pkg/workbuddy"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // workBuddyACPRuntimeBinding 组合原生 ACP 模型、问答、MCP 和每次执行的权限边界。

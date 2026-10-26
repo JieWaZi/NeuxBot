@@ -25,6 +25,7 @@ import {
 } from "./knowledge-organize-start";
 import { useCopy } from "./use-extended-copy";
 import { useDocumentCopy } from "./use-document-copy";
+import { useWikiCopy } from "./use-wiki-copy";
 import {
   readOrganizePreferences,
   saveOrganizePreferences,
@@ -36,12 +37,16 @@ export function KnowledgeOrganizeDialogContent(props: Props) {
   const retainedDraft = props.intent?.get().draft;
   const sources = useQuery({
     ...organizableSourcesOptions(props.library.ref),
-    enabled: !props.rebuild && !retainedDraft,
+    enabled: !props.maintenance && !props.rebuild && !retainedDraft,
   });
-  const available = props.rebuild
-    ? props.library.sources.filter((source) => props.batch.includes(source.id))
-    : (retainedDraft?.sources ??
-      (!sources.isFetching && !sources.error ? sources.data : undefined));
+  const available = props.maintenance
+    ? []
+    : props.rebuild
+      ? props.library.sources.filter((source) =>
+          props.batch.includes(source.id),
+        )
+      : (retainedDraft?.sources ??
+        (!sources.isFetching && !sources.error ? sources.data : undefined));
   if (!defaults.data || !available)
     return (
       <>
@@ -75,6 +80,7 @@ function LoadedOrganizeDialog({
   defaults,
   intent: retained,
   rebuild = false,
+  maintenance = false,
   sources,
 }: Props & {
   defaults: GetLibraryExecutionDefaultsResponse;
@@ -82,6 +88,7 @@ function LoadedOrganizeDialog({
 }) {
   const t = useCopy();
   const doc = useDocumentCopy();
+  const wiki = useWikiCopy();
   const [preferences] = useState(() => readOrganizePreferences(library.ref));
   const [localIntent] = useState(createKnowledgeOrganizeIntent);
   const intent = retained ?? localIntent;
@@ -89,7 +96,7 @@ function LoadedOrganizeDialog({
     const value = intent.get().draft ?? {
       sources,
       batch: rebuild ? [...batch] : sources.map((source) => source.id),
-      requirements: preferences.requirements ?? "",
+      requirements: maintenance ? "" : (preferences.requirements ?? ""),
     };
     intent.update({ draft: value });
     return value;
@@ -98,7 +105,7 @@ function LoadedOrganizeDialog({
     const next = { ...draft, ...patch };
     intent.update({ draft: next });
     setDraft(next);
-    if (patch.requirements !== undefined)
+    if (patch.requirements !== undefined && !maintenance)
       saveOrganizePreferences(library.ref, {
         requirements: patch.requirements,
       });
@@ -111,7 +118,7 @@ function LoadedOrganizeDialog({
   );
   const execution = useExecutionSelection({
     value: { ...selection, reasoning: selection.reasoning ?? "" },
-    requiredCapability: "isolated_text_generation",
+    requiredCapability: maintenance ? undefined : "isolated_text_generation",
     reasoningDefault: "minimum",
   });
   const start = useMutation({
@@ -123,16 +130,23 @@ function LoadedOrganizeDialog({
         intent,
         perform: operation.perform,
         message: [
-          rebuild ? doc("rebuildMessage") : t("organizeInitialMessage"),
+          maintenance
+            ? wiki("libraryMaintenanceDraft")
+            : rebuild
+              ? doc("rebuildMessage")
+              : t("organizeInitialMessage"),
           ...(draft.requirements.trim()
             ? [
-                t("organizeRequirementsMessage", {
-                  requirements: draft.requirements.trim(),
-                }),
+                maintenance
+                  ? draft.requirements.trim()
+                  : t("organizeRequirementsMessage", {
+                      requirements: draft.requirements.trim(),
+                    }),
               ]
             : []),
         ].join("\n\n"),
         rebuild,
+        maintenance,
         notAcceptedMessage: t("organizeTaskNotAccepted"),
       }).execute(),
     onSuccess: onAccepted,
@@ -147,7 +161,12 @@ function LoadedOrganizeDialog({
             {doc("rebuildHelp")}
           </p>
         )}
-        {!rebuild && (
+        {maintenance && (
+          <p className="type-body text-content-secondary">
+            {wiki("libraryMaintenanceContext", { title: library.name })}
+          </p>
+        )}
+        {!rebuild && !maintenance && (
           <Field label={t("organizeFiles")} hint={t("organizeFilesHelp")}>
             <SearchableMultiSelect
               size="md"
@@ -179,12 +198,28 @@ function LoadedOrganizeDialog({
           helpHidden
         />
         <Field
-          label={t("organizeRequirements")}
-          hint={t("organizeRequirementsHelp")}
+          label={
+            maintenance
+              ? wiki("maintenanceRequirements")
+              : t("organizeRequirements")
+          }
+          hint={
+            maintenance
+              ? wiki("maintenanceRequirementsHelp")
+              : t("organizeRequirementsHelp")
+          }
         >
           <Textarea
-            aria-label={t("organizeRequirements")}
-            placeholder={t("organizeRequirementsPlaceholder")}
+            aria-label={
+              maintenance
+                ? wiki("maintenanceRequirements")
+                : t("organizeRequirements")
+            }
+            placeholder={
+              maintenance
+                ? wiki("maintenanceRequirementsPlaceholder")
+                : t("organizeRequirementsPlaceholder")
+            }
             value={draft.requirements}
             onChange={(event) =>
               changeDraft({ requirements: event.target.value })
@@ -201,7 +236,7 @@ function LoadedOrganizeDialog({
         <Button
           disabled={
             start.isPending ||
-            !draft.batch.length ||
+            (!maintenance && !draft.batch.length) ||
             (!execution.valid && !frozen) ||
             library.kind !== "general" ||
             library.storage !== "local"

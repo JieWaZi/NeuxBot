@@ -240,7 +240,7 @@ function OpenProjectFormDialog({
                 <Button
                   type="button"
                   size="sm"
-                  variant="secondary"
+                  variant="plain"
                   className="ml-auto"
                   onClick={() => void addSource()}
                 >

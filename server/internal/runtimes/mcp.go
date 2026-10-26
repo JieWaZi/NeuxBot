@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // BaseRuntimeIDs 返回连接器兼容矩阵使用的基础 Runtime 列表，顺序稳定便于 UI 展示。

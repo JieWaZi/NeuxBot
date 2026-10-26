@@ -50,6 +50,10 @@ const (
 	EventTypeThinkingDelta = constants.RuntimeEventTypeThinkingDelta
 	// EventTypeToolUse 表示 Runtime 请求执行一个工具。
 	EventTypeToolUse = constants.RuntimeEventTypeToolUse
+	// EventTypeToolInputSnapshot 表示同一工具调用的累计参数状态，不表示再次执行。
+	EventTypeToolInputSnapshot = constants.RuntimeEventTypeToolInputSnapshot
+	// EventTypeToolUpdate 表示同一工具调用的非终态执行进度、正文或差异更新，不表示再次请求执行。
+	EventTypeToolUpdate = constants.RuntimeEventTypeToolUpdate
 	// EventTypeToolResult 表示一个工具调用已经返回。
 	EventTypeToolResult = constants.RuntimeEventTypeToolResult
 	// EventTypeUsage 表示 Runtime 报告统一的 Turn Token 与 Session 上下文用量。
@@ -354,6 +358,8 @@ type ApprovalLocation struct {
 
 // ApprovalRequest 是 Runtime 交给 Host 的安全工具审批请求。
 type ApprovalRequest struct {
+	// InvocationID 是发起请求的 Runtime 调用身份，仅用于宿主内部事实归属。
+	InvocationID string `json:"-"`
 	// ToolCallID 是 ACP Session 内对应工具调用的稳定标识。
 	ToolCallID string
 	// Title 是 ACP Agent 提供的安全操作标题。
@@ -386,6 +392,8 @@ type ApprovalHandler interface {
 
 // ElicitationRequest 保存 Host 需要展示的一次结构化用户输入。
 type ElicitationRequest struct {
+	// InvocationID 是发起请求的 Runtime 调用身份，仅用于宿主内部事实归属。
+	InvocationID string `json:"-"`
 	// Mode 是 form 或 url。
 	Mode string
 	// Message 是 Agent 提供的用户可见说明。

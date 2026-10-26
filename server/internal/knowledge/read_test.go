@@ -103,6 +103,48 @@ func TestReadPageAcceptsExactlyOneIdentityAndResolvesSlug(t *testing.T) {
 	}
 }
 
+func TestPageListReturnsDirectoryMetadataAndKeepsBodyForExplicitRead(t *testing.T) {
+	e, lib, page, _, _ := readFixture(t)
+	ref := LocalRef(lib.ID)
+	for _, query := range []string{"", "Read"} {
+		data, err := (LocalReadProvider{Engine: e}).ExtendedRead(context.Background(), ref, "knowledge.pages.list", map[string]any{"query": query, "offset": 0, "limit": 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := json.Marshal(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, forbidden := range []string{`"content"`, `"evidence"`, `"chunk_refs"`, `"in_links"`, `"out_links"`} {
+			if strings.Contains(string(raw), forbidden) {
+				t.Fatalf("list leaked detail field %s", forbidden)
+			}
+		}
+		if !strings.Contains(string(raw), page.ID) || data["total"] != int64(1) || data["nextOffset"] != 1 || data["hasMore"] != false {
+			t.Fatalf("lost directory identity or pagination: %s", raw)
+		}
+	}
+	got, err := (LocalReadProvider{Engine: e}).Page(context.Background(), ref, page.ID, "")
+	if err != nil || got.Content != page.Content {
+		t.Fatalf("explicit body read changed: %v", err)
+	}
+}
+
+func TestDirectoryReadParametersBoundNativeToolOutput(t *testing.T) {
+	for operation, limits := range map[string][2]int{"knowledge.pages.list": {10, 20}, "knowledge.index.get": {5, 10}} {
+		defaults, err := readParams(operation, map[string]any{})
+		if err != nil || defaults["limit"] != limits[0] {
+			t.Fatalf("%s default limit=%v err=%v", operation, defaults["limit"], err)
+		}
+		if _, err := readParams(operation, map[string]any{"limit": limits[1]}); err != nil {
+			t.Fatalf("%s maximum rejected: %v", operation, err)
+		}
+		if _, err := readParams(operation, map[string]any{"limit": limits[1] + 1}); !errors.Is(err, status_error.KnowledgeInvalid) {
+			t.Fatalf("%s oversized response accepted: %v", operation, err)
+		}
+	}
+}
+
 func TestExtendedReadsUsePersistentContentAndRejectCrossLibraryJobs(t *testing.T) {
 	e, lib, page, source, job := readFixture(t)
 	ref := LocalRef(lib.ID)

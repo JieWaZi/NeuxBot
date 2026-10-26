@@ -27,7 +27,7 @@ type handoffSink struct {
 // Accept 只接收最终回复的文本增量，其他过程事件不进入交接内容。
 func (sink *handoffSink) Accept(_ context.Context, event runtimes.Event) error {
 	switch event.Type {
-	case runtimes.EventTypeToolUse:
+	case runtimes.EventTypeToolUse, runtimes.EventTypeToolInputSnapshot, runtimes.EventTypeToolUpdate:
 		sink.rejected = true
 		return status_error.RuntimeHandoffInvalid
 	case runtimes.EventTypeTextDelta:

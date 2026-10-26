@@ -35,7 +35,9 @@ func outputSchema(id string) map[string]any {
 		return object("ref", "library")
 	case "knowledge.sources.list":
 		return object("ref", "items", "total", "versioning")
-	case "knowledge.pages.list", "knowledge.revisions.list", "knowledge.jobs.list":
+	case "knowledge.pages.list":
+		return object("ref", "items", "total", "offset", "nextOffset", "hasMore")
+	case "knowledge.revisions.list", "knowledge.jobs.list":
 		return object("ref", "items", "total")
 	case "knowledge.sources.read":
 		return object("ref", "source", "items", "total", "offset", "nextOffset", "hasMore", "truncated")
@@ -49,6 +51,8 @@ func outputSchema(id string) map[string]any {
 		return object("ref", "job")
 	case "knowledge.audit.get":
 		return object("ref", "audit")
+	case "knowledge.wiki.auto-fix":
+		return object("ref", "receipt", "fixed", "audit")
 	case "knowledge.activity.list":
 		return object("ref", "items", "nextCursor")
 	case "knowledge.export.get":

@@ -1,8 +1,4 @@
-import {
-  PageAction,
-  PageActionLabel,
-  ResourcePageSurface,
-} from "@/shared/ui/resource-page";
+import { PageAction, ResourcePageSurface } from "@/shared/ui/resource-page";
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircle, Pencil } from "lucide-react";
 import { useState } from "react";
@@ -151,9 +147,6 @@ export function WakerDetailPage() {
                       onClick={() => setEditing(true)}
                     >
                       <Pencil />
-                      <PageActionLabel>
-                        {t("detail.editProfile")}
-                      </PageActionLabel>
                     </PageAction>
                     <PageAction
                       asChild
@@ -165,9 +158,6 @@ export function WakerDetailPage() {
                         aria-label={t("detail.startChat")}
                       >
                         <MessageCircle />
-                        <PageActionLabel>
-                          {t("detail.startChat")}
-                        </PageActionLabel>
                       </Link>
                     </PageAction>
                   </>

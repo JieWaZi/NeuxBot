@@ -453,6 +453,8 @@ func (v StatusError) Key() string {
 		return "AIAccountLoginFailed"
 	case RuntimeHandoffInvalid:
 		return "RuntimeHandoffInvalid"
+	case RuntimeEventQueueOverflow:
+		return "RuntimeEventQueueOverflow"
 	case AutomaticTaskServiceInvalid:
 		return "AutomaticTaskServiceInvalid"
 	case AutomaticTaskTokenGenerationFailed:
@@ -760,6 +762,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			AIAccountWorkspaceError:              "failed to prepare isolated AI account configuration",
 			AIAccountLoginFailed:                 "account sign-in failed; sign in again",
 			RuntimeHandoffInvalid:                "handoff content is invalid; continue with recent conversation",
+			RuntimeEventQueueOverflow:            "runtime event queue overflow; execution stopped, please retry",
 			AutomaticTaskServiceInvalid:          "automatic task service configuration is invalid",
 			AutomaticTaskTokenGenerationFailed:   "failed to generate an automatic task token",
 			AutomaticTaskAPIUnavailable:          "failed to listen on the local task endpoint; check port availability",
@@ -1004,6 +1007,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			AIAccountWorkspaceError:              "无法准备 AI 账号隔离配置",
 			AIAccountLoginFailed:                 "账号登录失败，请重新登录",
 			RuntimeHandoffInvalid:                "交接内容无效，请改用近期对话继续",
+			RuntimeEventQueueOverflow:            "Runtime 事件积压超过上限，执行已停止，请重试",
 			AutomaticTaskServiceInvalid:          "自动任务服务配置不合法",
 			AutomaticTaskTokenGenerationFailed:   "无法生成自动任务调用密钥",
 			AutomaticTaskAPIUnavailable:          "无法监听本机任务入口，请检查端口占用",

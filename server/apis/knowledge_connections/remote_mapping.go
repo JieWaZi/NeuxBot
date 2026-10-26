@@ -56,7 +56,7 @@ func customReceipt(v *core.Receipt) knowledge.Receipt {
 	return knowledge.Receipt{RequestID: v.RequestID, ResourceID: v.ResourceID, LibraryID: v.LibraryID, JobID: v.JobID, Version: v.Version, State: v.State, PageIDs: v.PageIDs}
 }
 func customJob(v *core.Job) knowledge.Job {
-	return knowledge.Job{Diagnostic: v.Diagnostic, ID: v.ID, LibraryID: v.LibraryID, RequestID: v.RequestID, State: v.State, Attempt: v.Attempt, Version: v.Version, SourceVersionIDs: v.SourceVersionIDs, CancelRequested: v.CancelRequested, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return knowledge.Job{Maintenance: core.IsMaintenanceJob(v), AttemptStartedAt: v.AttemptStartedAt, Diagnostic: v.Diagnostic, ID: v.ID, LibraryID: v.LibraryID, RequestID: v.RequestID, State: v.State, Attempt: v.Attempt, Version: v.Version, SourceVersionIDs: v.SourceVersionIDs, CancelRequested: v.CancelRequested, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 func remotePagination(p knowledge.Pagination) (int, int) {
 	limit := p.Limit

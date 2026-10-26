@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 func TestACPRequestPermissionCancelsWhenSessionIsMissing(t *testing.T) {

@@ -6,6 +6,7 @@ import {
 import type { ResourceRef } from "./knowledge-transfer";
 import {
   knowledgeKeys,
+  jobsOptions,
   librariesOptions,
   libraryOptions,
   sourceDirectoryOptions,
@@ -16,7 +17,6 @@ import type { LibraryLocation } from "./knowledge-model";
 export function useKnowledgeWorkspaceQueries({
   ref,
   detail,
-  documentsVisible = true,
   active,
   listOffset,
   librarySearch = "",
@@ -25,7 +25,6 @@ export function useKnowledgeWorkspaceQueries({
 }: {
   ref: ResourceRef;
   detail: boolean;
-  documentsVisible?: boolean;
   active: boolean;
   listOffset: number;
   librarySearch?: string;
@@ -52,20 +51,10 @@ export function useKnowledgeWorkspaceQueries({
     enabled: active && detail && adapter.supportsServiceDetection,
   });
   const jobs = useQuery({
-    queryKey: knowledgeKeys.jobs(ref),
-    queryFn: async ({ signal }) =>
-      (
-        await knowledgeAdapter(ref).listJobs({
-          path: { libraryId: ref.knowledgeBaseId },
-          query: { offset: 0, limit: 1 },
-          signal,
-          throwOnError: true,
-        })
-      ).data,
+    ...jobsOptions(ref),
     enabled:
       active &&
       detail &&
-      documentsVisible &&
       adapter.supportsJobs &&
       (!adapter.supportsServiceDetection ||
         capabilities.data?.uploadMode === "separate"),

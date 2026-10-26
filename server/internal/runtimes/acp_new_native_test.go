@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // TestNewNativeRuntimeRegistry 验证运行时可发现且交付真实指令与技能目录，不伪造模型目录。

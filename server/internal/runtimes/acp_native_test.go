@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // TestUnifiedPermissionAuditProjection 验证所有 Runtime 的统一工具投影保留自动审查事实。

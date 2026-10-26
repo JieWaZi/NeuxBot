@@ -11,7 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acpcursor "github.com/JieWaZi/acp-go/pkg/cursor"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // cursorACPRuntimeBinding 组合 Cursor 的聊天独占进程与参数化模型策略。
@@ -141,10 +141,7 @@ func cursorStateDirectory(request acpRunRequest) string {
 
 // cursorACPAgentScope 为聊天身份与授权范围生成进程隔离键。
 func cursorACPAgentScope(request acpRunRequest) string {
-	identity := "invocation:" + request.InvocationID
-	if request.Request.Session.Mode == SessionModeResume {
-		identity = "session:" + request.Request.Session.ID
-	}
+	identity := sessionACPAgentScope(request)
 	scope, _ := json.Marshal([]any{
 		request.Request.Workspace,
 		request.Request.Policy.Execution,

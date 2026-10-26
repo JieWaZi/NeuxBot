@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -97,6 +98,9 @@ function fixtures(total = 0) {
     ),
     http.get("http://ally.test/api/v1/knowledge/libraries/kb/activity", () =>
       HttpResponse.json({ data: [], nextCursor: 0 }),
+    ),
+    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () =>
+      HttpResponse.json({ items: [], activeJob: null, total: 0 }),
     ),
   );
 }
@@ -451,6 +455,66 @@ it("活动游标加载和刷新读取真实条目，任务与Wiki对象不泄露
   await waitFor(() => expect(cursors).toEqual(["", "30", ""]));
   expect(screen.queryByText("总数 3")).not.toBeInTheDocument();
   expect(screen.queryByText("do-not-show-full-id")).not.toBeInTheDocument();
+});
+
+it("Wiki维护活动区分任务范围和实际变更，接纳与失败不冒充页面已整理", async () => {
+  fixtures();
+  const user = userEvent.setup();
+  server.use(
+    http.get("http://ally.test/api/v1/knowledge/libraries/kb/activity", () =>
+      HttpResponse.json({
+        data: [
+          {
+            id: 3,
+            targetType: "wiki_maintenance_task",
+            action: "wiki.maintenance",
+            outcome: "accepted",
+            details: { scope: "existing_wiki" },
+          },
+          {
+            id: 2,
+            targetType: "wiki_maintenance_task",
+            action: "wiki.maintenance",
+            outcome: "failed",
+            details: { scope: "existing_wiki", changed_pages: 0 },
+          },
+          {
+            id: 1,
+            targetType: "wiki_maintenance_task",
+            action: "wiki.maintenance",
+            outcome: "success",
+            details: { scope: "existing_wiki", changed_pages: 2, total: 0 },
+          },
+        ],
+        nextCursor: 0,
+      }),
+    ),
+  );
+  harness();
+  await screen.findByRole("textbox", { name: "名称" });
+  await user.click(screen.getByRole("button", { name: "活动记录" }));
+  const table = await screen.findByRole("table", { name: "活动记录" });
+  await waitFor(() =>
+    expect(within(table).getAllByText("整理 Wiki 任务")).toHaveLength(3),
+  );
+  const [accepted, failed, completed] = within(table)
+    .getAllByRole("row")
+    .slice(1);
+  expect(accepted && within(accepted).getByText("已接纳")).toBeVisible();
+  expect(
+    accepted && within(accepted).getByText("范围：已有 Wiki"),
+  ).toBeVisible();
+  expect(accepted && within(accepted).queryByText(/实际变更/)).toBeNull();
+  expect(failed && within(failed).getByText("失败")).toBeVisible();
+  expect(
+    failed && within(failed).getByText("范围：已有 Wiki · 实际变更 0 页"),
+  ).toBeVisible();
+  expect(completed && within(completed).getByText("成功")).toBeVisible();
+  expect(
+    completed && within(completed).getByText("范围：已有 Wiki · 实际变更 2 页"),
+  ).toBeVisible();
+  expect(within(table).queryByText("更新 Wiki 内容")).toBeNull();
+  expect(within(table).queryByText("总数 0")).toBeNull();
 });
 
 it("非空库补独立服务只锁已有模型，空密钥保留且用返回libraryVersion作为真实基线", async () => {

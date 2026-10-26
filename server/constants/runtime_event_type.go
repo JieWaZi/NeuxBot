@@ -22,6 +22,10 @@ const (
 	RuntimeEventTypeThinkingDelta RuntimeEventType = "thinking_delta"
 	// RuntimeEventTypeToolUse 表示 Runtime 请求执行一个工具。
 	RuntimeEventTypeToolUse RuntimeEventType = "tool_use"
+	// RuntimeEventTypeToolInputSnapshot 表示同一工具调用的累计参数状态，不表示再次执行。
+	RuntimeEventTypeToolInputSnapshot RuntimeEventType = "tool_input_snapshot"
+	// RuntimeEventTypeToolUpdate 表示同一工具调用的非终态执行进度、正文或差异更新，不表示再次请求执行。
+	RuntimeEventTypeToolUpdate RuntimeEventType = "tool_update"
 	// RuntimeEventTypeToolResult 表示一个工具调用已经返回。
 	RuntimeEventTypeToolResult RuntimeEventType = "tool_result"
 	// RuntimeEventTypeUsage 表示 Runtime 报告统一的 Turn Token 与 Session 上下文用量。

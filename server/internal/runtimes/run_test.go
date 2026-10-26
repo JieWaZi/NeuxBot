@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // countingACPRunner 记录发送链路是否错误触发 ACP 配置探测。

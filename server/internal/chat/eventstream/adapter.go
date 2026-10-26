@@ -59,7 +59,7 @@ type Adapter struct {
 // NewAdapter 创建一个空的前端事件适配器。
 func NewAdapter() *Adapter {
 	return &Adapter{
-		messageView:      messageview.NewMessageViewBuilder(),
+		messageView:      messageview.NewPublicMessageViewBuilder(),
 		events:           make([]PublicEvent, 0),
 		messageRevisions: make(map[string]int64),
 		retainEvents:     true,

@@ -100,7 +100,7 @@ export function KnowledgeRemoteOrganize(props: KnowledgeOrganizeDialogProps) {
         throw cause;
       }
     },
-    onSuccess: props.onAccepted,
+    onSuccess: () => props.onAccepted(),
     retry: false,
   });
   const frozen = Boolean(intent.get().remoteCommand);

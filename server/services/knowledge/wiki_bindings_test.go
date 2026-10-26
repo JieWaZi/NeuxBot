@@ -66,6 +66,85 @@ func TestWikiBindingsReplaceWithAgentHistoryAndReplay(t *testing.T) {
 	}
 }
 
+func TestLibraryMaintenancePagePlacementPreservesOmittedFolderAndManualProtection(t *testing.T) {
+	s, lib := newServiceFixture(t)
+	ctx := context.Background()
+	folder, err := s.config.Engine.WriteTheme(ctx, core.WriteThemeInput{RequestID: "folder", LibraryID: lib.ID, StructureVersion: lib.StructureVersion, Theme: core.Theme{Name: "归并后的目录"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib, _ = s.config.Engine.GetLibrary(ctx, lib.ID)
+	created, err := s.config.Engine.WriteAgentPage(ctx, core.WritePageInput{RequestID: "page", LibraryID: lib.ID, StructureVersion: lib.StructureVersion, Page: core.Page{Slug: "concept/topic", Title: "主题", PageType: "concept", Content: "保留正文"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	chat := models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}
+	s.config.Chats = selectedChat{chat: chat}
+	bindings, err := s.LibraryMaintenanceBindings(ctx, chat, bridge.LocalRef(lib.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var write agentcapability.Binding
+	for _, binding := range bindings {
+		if binding.Operation == "knowledge.pages.write" {
+			write = binding
+		}
+	}
+	if write.Call == nil {
+		t.Fatal("library page revision binding missing")
+	}
+	for _, step := range []struct {
+		name   string  // 本次目录操作的稳定身份。
+		folder *string // 省略保留，空值表示移至根目录。
+		want   string  // 预期持久目录身份。
+	}{
+		{name: "move", folder: &folder.ResourceID, want: folder.ResourceID},
+		{name: "preserve", want: folder.ResourceID},
+		{name: "root", folder: new(string), want: ""},
+	} {
+		page, _ := s.config.Engine.GetPage(ctx, lib.ID, created.ResourceID)
+		currentLibrary, _ := s.config.Engine.GetLibrary(ctx, lib.ID)
+		params := map[string]any{"libraryId": lib.ID, "pageId": page.ID, "expectedVersion": page.Version, "expectedUpdatedAt": page.UpdatedAt.Format(time.RFC3339Nano), "structureVersion": currentLibrary.StructureVersion, "slug": page.Slug, "title": page.Title, "summary": page.Summary, "content": page.Content, "pageType": page.PageType}
+		if step.folder != nil {
+			params["folderId"] = *step.folder
+		}
+		if _, err := write.Call(ctx, agentcapability.Request{RequestID: step.name, Params: params}); err != nil {
+			t.Fatalf("%s: %v", step.name, err)
+		}
+		page, _ = s.config.Engine.GetPage(ctx, lib.ID, page.ID)
+		if page.FolderID != step.want || page.Content != "保留正文" {
+			t.Fatalf("%s changed placement incorrectly: %+v", step.name, page)
+		}
+	}
+	page, _ := s.config.Engine.GetPage(ctx, lib.ID, created.ResourceID)
+	currentLibrary, _ := s.config.Engine.GetLibrary(ctx, lib.ID)
+	params := map[string]any{"libraryId": lib.ID, "pageId": page.ID, "expectedVersion": page.Version, "expectedUpdatedAt": page.UpdatedAt.Format(time.RFC3339Nano), "structureVersion": currentLibrary.StructureVersion, "slug": page.Slug, "title": page.Title, "summary": page.Summary, "content": page.Content, "pageType": page.PageType, "folderId": folder.ResourceID}
+	singlePage, err := s.MaintenanceBindings(ctx, chat, bridge.LocalRef(lib.ID), page.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range singlePage {
+		if binding.Operation == "knowledge.wiki.auto-fix" {
+			t.Fatal("single-page scope acquired library AutoFix")
+		}
+		if binding.Operation == "knowledge.pages.write" {
+			if _, err := binding.Call(ctx, agentcapability.Request{RequestID: "single-page-move", Params: params}); !errors.Is(err, status_error.KnowledgeForbidden) {
+				t.Fatalf("single-page scope changed navigation: %v", err)
+			}
+		}
+	}
+	page.ManualPlacement = true
+	if _, err := s.config.Engine.WritePage(ctx, core.WritePageInput{RequestID: "manual-placement", LibraryID: lib.ID, ExpectedVersion: page.Version, StructureVersion: currentLibrary.StructureVersion, Page: *page}); err != nil {
+		t.Fatal(err)
+	}
+	page, _ = s.config.Engine.GetPage(ctx, lib.ID, page.ID)
+	currentLibrary, _ = s.config.Engine.GetLibrary(ctx, lib.ID)
+	params["expectedVersion"], params["expectedUpdatedAt"], params["structureVersion"] = page.Version, page.UpdatedAt.Format(time.RFC3339Nano), currentLibrary.StructureVersion
+	if _, err := write.Call(ctx, agentcapability.Request{RequestID: "manual-page-move", Params: params}); err == nil {
+		t.Fatal("whole-library agent overwrote manual placement")
+	}
+}
+
 func TestWikiMaintenanceCannotCreateAnotherPageByOmittingPageID(t *testing.T) {
 	s, lib := newServiceFixture(t)
 	ctx := context.Background()

@@ -6,7 +6,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acppi "github.com/JieWaZi/acp-go/pkg/pi"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // piACPRuntimeBinding 组合 Pi 自身的思考目录与产品策略。

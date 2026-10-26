@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // fakeCodexACPAgent 提供完整双向 ACP 行为，不启动真实 Codex。
@@ -454,7 +454,7 @@ func TestCodexACPIntermediateDiffUpdateEmitsToolRefinement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mapNotification() error = %v", err)
 	}
-	if len(events) != 1 || events[0].Type != EventTypeToolUse {
+	if len(events) != 1 || events[0].Type != EventTypeToolUpdate {
 		t.Fatalf("events = %#v", events)
 	}
 	var payload map[string]any
@@ -663,13 +663,9 @@ func TestCodexACPBackendMapsRuntimeContractAndReusesAgent(t *testing.T) {
 	}
 	fakeAgent.mutex.Lock()
 	closed := fakeAgent.closed
-	closeSessionCalls := fakeAgent.closeSessionCalls
 	fakeAgent.mutex.Unlock()
 	if !closed {
 		t.Fatal("embedded Agent was not closed")
-	}
-	if closeSessionCalls != 1 {
-		t.Fatalf("closeSessionCalls = %d, want 1", closeSessionCalls)
 	}
 }
 

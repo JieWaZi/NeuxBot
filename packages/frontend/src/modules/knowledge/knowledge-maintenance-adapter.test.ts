@@ -25,58 +25,47 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 it.each([remote, { ...remote, backend: "weknora" }])(
-  "远端维护聊天不支持时明确拒绝且不回退本机 $backend",
+  "远端Wiki维护不支持时明确拒绝且不回退本机 $backend",
   async (ref) => {
     await expect(
-      knowledgeAdapter(ref).sendMaintenanceMessage({
+      knowledgeAdapter(ref).maintainWiki({
         path: { libraryId: "kb" },
         body: {
           requestId: "maintenance",
-          pageId: "one",
-          expectedVersion: 3,
-          text: "核查来源",
+          message: "核查来源",
           runtimeId: "codex",
-          permissionLevel: "default",
         },
       }),
     ).rejects.toMatchObject({ status: 501 });
   },
 );
 
-it("本机维护聊天固定库身份并传递普通执行接纳结果", async () => {
+it("本机Wiki维护固定库身份并返回独立知识任务回执", async () => {
   const bodies: unknown[] = [];
   server.use(
-    http.post(`${root}/maintenance-chats`, async ({ request }) => {
+    http.post(`${root}/maintain`, async ({ request }) => {
       bodies.push(await request.json());
       return HttpResponse.json({
-        chat: { id: "chat" },
-        execution: { id: "execution" },
+        receipt: { jobId: "wiki-job", state: "accepted" },
       });
     }),
   );
-  const result = await knowledgeAdapter(local).sendMaintenanceMessage({
+  const result = await knowledgeAdapter(local).maintainWiki({
     path: { libraryId: "other" },
     body: {
       requestId: "maintenance",
-      pageId: "one",
-      expectedVersion: 3,
-      text: "核查来源",
+      message: "核查来源",
       runtimeId: "codex",
-      permissionLevel: "default",
     },
   });
   expect(result.data).toMatchObject({
-    chat: { id: "chat" },
-    execution: { id: "execution" },
+    receipt: { jobId: "wiki-job", state: "accepted" },
   });
   expect(bodies).toEqual([
     {
       requestId: "maintenance",
-      pageId: "one",
-      expectedVersion: 3,
-      text: "核查来源",
+      message: "核查来源",
       runtimeId: "codex",
-      permissionLevel: "default",
     },
   ]);
 });

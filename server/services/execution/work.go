@@ -718,8 +718,8 @@ func (m *service) startMessage(
 		runRequest.Instructions = append(runRequest.Instructions, runtimes.Instruction{Name: "shared-github-account.md", Content: "GitHub 插件通过官方 MCP 使用资源库管理的共享账号。身份或权限错误应保留原始错误，并提示用户在资源库的插件详情中处理共享认证；账号变更由资源库完成。"})
 	}
 	runRequest.Message.Text += pluginSelectionHint(pluginResources.selected)
-	agentFacts := &agentCommandFacts{}
-	agentActivate, capabilityRelease, agentSettle, err := m.prepareAgent(&runRequest, state.chat, executionID, request.toolCapabilities, request.allowedAgentDomains, agentFacts, request.automaticRunID)
+	messageFacts := &executionMessageFacts{}
+	agentActivate, capabilityRelease, agentSettle, err := m.prepareAgent(&runRequest, state.chat, executionID, request.toolCapabilities, request.allowedAgentDomains, messageFacts, request.automaticRunID)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
@@ -741,7 +741,7 @@ func (m *service) startMessage(
 	plan := messageExecution{
 		pluginRelease:     pluginResources.release,
 		plugins:           pluginResources.selected,
-		agentFacts:        agentFacts,
+		messageFacts:      messageFacts,
 		agentActivate:     agentActivate,
 		agentSettle:       agentSettle,
 		accountRelease:    accountRelease,

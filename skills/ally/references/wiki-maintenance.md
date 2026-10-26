@@ -1,6 +1,6 @@
 # Wiki maintenance
 
-Adapted from Tencent/WeKnora `8776a2d92d11ad3e76865d51cf3192e37e2a9976`,
+Adapted from Tencent/WeKnora `2c0d8384398ca756ee414eef01b71caf91e2caa6`,
 `config/prompt_templates/agent_system_prompt.yaml`, `wiki_fixer`.
 The repair workflow is retained; tool names and version/provenance contracts
 are adapted to NeuxBot's existing `allycli`. The upstream MIT license is
@@ -9,6 +9,34 @@ retained in the repository's THIRD_PARTY_NOTICES.md.
 Investigate reported Wiki problems and carry out the repairs requested by
 the user. Discover the actually authorized commands with `capabilities`,
 and use `describe` for exact inputs. Use the supplied CLI executable path.
+
+For an explicitly requested whole-library maintenance run, first read the
+current library, directory and `knowledge audit get`. When advertised, use
+`knowledge wiki auto-fix` with the current structureVersion and a stable
+request ID to apply the upstream deterministic repairs. Inspect its receipt
+and remaining audit findings. This operation is not available to a single-page
+revision chat.
+
+Continue with the same repair workflow below for issues that require judgment.
+Page listing returns directory metadata only (default 10, at most 20 per call).
+Use the returned nextOffset while hasMore is true; the total is the matching
+page count, not the number inspected. The grouped index is only a preview
+(default 5 per group). Read page bodies separately with pages get.
+If a native tool spills a response to a file, prefer repeating the knowledge
+read with a smaller limit or narrower query to keep the model context bounded.
+Inspect all pages relevant to the requested scope,
+read candidate bodies and verify their sources before consolidating duplicates.
+Preserve distinct versions and scopes. Retain each unique fact and its source
+on the canonical page, repair incoming references, and archive a redundant page
+only after verifying that its useful content has been preserved. Reuse existing
+page, revision and directory tools; do not re-import sources, start ingestion
+jobs or regenerate the entire library as a substitute for maintenance. Report
+the actual scope covered and unresolved work; acceptance is not completion.
+For folder consolidation, list the actual directories and preserve their IDs.
+An authorized whole-library `knowledge pages write` may set folderId to an
+existing directory (or an empty string for root); omission preserves placement.
+Move the affected pages before removing an empty redundant directory. Respect
+manually protected placement and report a conflict instead of overwriting it.
 
 1. Read the current target page with `knowledge pages get`.
    Use the user's requested correction to guide the investigation.

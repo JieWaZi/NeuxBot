@@ -3,6 +3,15 @@ package constants
 // KnowledgeLibraryScanBatchSize 限制目录搜索与活动任务恢复每批读取的库元数据。
 const KnowledgeLibraryScanBatchSize = 100
 
+// KnowledgeWikiMaintainOperation 表示维护已有 Wiki，不触发原件整理。
+const KnowledgeWikiMaintainOperation = "maintain"
+
+// KnowledgeLibraryMaintenanceChatOperation 固定用户明确授权的全库维护聊天范围。
+const KnowledgeLibraryMaintenanceChatOperation = "wiki.library-maintenance.chat"
+
+// KnowledgeAutomaticMaintenanceChatOperation 固定周期维护聊天所属的原自动运行。
+const KnowledgeAutomaticMaintenanceChatOperation = "wiki.automatic-maintenance.chat"
+
 // RuntimeUserInputMCPServerName 是运行时受管问答服务的稳定协议名称。
 const RuntimeUserInputMCPServerName = "acp_go_user_input"
 
@@ -721,6 +730,12 @@ const (
 
 // KnowledgeMCPMaxRequestBytes 限制 MCP 请求和显式原件字节的传输体积。
 const KnowledgeMCPMaxRequestBytes = 16 << 20
+
+// KnowledgeCLIPageListLimit 限制模型单次目录读取，正文通过单页工具按需获取。
+const KnowledgeCLIPageListLimit = 20
+
+// KnowledgeCLIIndexGroupLimit 限制模型单次索引各类型的预览条目。
+const KnowledgeCLIIndexGroupLimit = 10
 
 // KnowledgeRetryAuthorityOperation 标记依核心重试回执生效的宿主授权候选。
 const KnowledgeRetryAuthorityOperation = "job.retry.authority"

@@ -19,12 +19,17 @@ import (
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/JieWaZi/neux-knowledge/httpapi"
 	"github.com/JieWaZi/neux-knowledge/rules"
+	"strconv"
 	"sync"
 	"time"
 )
 
 // Config 连接独立知识核心与模型服务；聊天端口仅用于用户主动的普通知识对话。
 type Config struct {
+	// RunMaintenance 直接运行独立 ACP 维护会话，不创建伙伴、Chat 或 Execution。
+	RunMaintenance func(context.Context, models.LibraryExecutionDefaults, MaintenanceInvocation) (string, error)
+	// ResolveMaintenanceModel 校验带工具的 ACP 模型选择，不要求纯文本隔离能力。
+	ResolveMaintenanceModel func(context.Context, models.LibraryExecutionDefaults) (models.LibraryExecutionDefaults, error)
 	// ResolveModel 验证并冻结独立模型选择，不接纳聊天或执行。
 	ResolveModel func(context.Context, models.LibraryExecutionDefaults) (models.LibraryExecutionDefaults, error)
 	// Generator 为冻结选择创建纯文本模型服务，不拥有知识任务调度。
@@ -86,7 +91,7 @@ func New(config Config) *Service {
 	return &Service{config: config, running: map[string]int{}, restart: map[string]models.KnowledgeTaskConfiguration{}}
 }
 
-// Start 先恢复跨库回执引用；只恢复已接纳任务的检查点，不重建任务。
+// Start 先恢复跨库回执引用，将重启中断的执行结算为失败，再接续尚未执行的排队任务。
 func (s *Service) Start(ctx context.Context) error {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 	links, err := s.config.References.ListPendingOperations(ctx)
@@ -111,18 +116,18 @@ func (s *Service) Start(ctx context.Context) error {
 		}
 
 	}
-	return s.recoverJobs(ctx)
+	return s.recoverJobs(ctx, true)
 }
 
 // recoverJobs 按核心库分页读取每库唯一队首，完成历史不进入宿主恢复候选。
-func (s *Service) recoverJobs(ctx context.Context) error {
+func (s *Service) recoverJobs(ctx context.Context, startup bool) error {
 	for offset := 0; ; offset += constants.KnowledgeLibraryScanBatchSize {
 		libraries, total, err := s.config.Engine.ListLibraries(ctx, offset, constants.KnowledgeLibraryScanBatchSize)
 		if err != nil {
 			return bridge.MapError(err)
 		}
 		for _, library := range libraries {
-			if err := s.recoverLibrary(ctx, library.ID, ""); err != nil {
+			if err := s.recoverLibrary(ctx, library.ID, "", startup); err != nil {
 				return err
 			}
 		}
@@ -133,7 +138,7 @@ func (s *Service) recoverJobs(ctx context.Context) error {
 }
 
 // recoverLibrary 只从核心队首恢复原接纳身份和冻结配置；忽略刚退出但尚未结算的同一任务。
-func (s *Service) recoverLibrary(ctx context.Context, library, previousJob string) error {
+func (s *Service) recoverLibrary(ctx context.Context, library, previousJob string, startup bool) error {
 	if ctx.Err() != nil {
 		return nil
 	}
@@ -159,6 +164,26 @@ func (s *Service) recoverLibrary(ctx context.Context, library, previousJob strin
 	}
 	if origin.Operation != "job.accept" || origin.Backend != "local" || origin.ConnectionID != "local" || origin.KnowledgeBaseID != job.LibraryID || origin.ResourceID != job.ID || origin.ConfigurationID == "" {
 		return status_error.KnowledgeInvalid
+	}
+	// 已保存的取消屏障不再需要模型配置；旧进程已退出，可以直接收束并释放队首。
+	if startup && job.CancelRequested {
+		if _, err := s.config.Engine.CancelOrganize(ctx, core.JobActionInput{RequestID: "knowledge-cancel-recovery/" + job.ID + "/" + strconv.Itoa(job.Attempt), JobID: job.ID, ExpectedVersion: job.Version}); err != nil {
+			return bridge.MapError(err)
+		}
+		s.emitTaskChanged(job.ID, job.LibraryID)
+		return s.recoverLibrary(ctx, library, job.ID, false)
+	}
+	// 旧进程的模型调用已经丢失；先释放核心占用，不依赖模型配置或远端授权闸门恢复。
+	if startup && job.State == "processing" && !job.CancelRequested {
+		code, diagnostic := hostDiagnostic(context.Canceled)
+		if _, err := s.config.Engine.FailOrganize(ctx, job.ID, job.Attempt, diagnostic); err != nil {
+			return bridge.MapError(err)
+		}
+		s.emitTaskChanged(job.ID, job.LibraryID)
+		if err := s.config.References.SetHostDiagnostic(ctx, job.RequestID, "idle", code, diagnostic); err != nil {
+			return err
+		}
+		return s.recoverLibrary(ctx, library, job.ID, false)
 	}
 	session, err := s.jobConfiguration(ctx, job, origin.ConfigurationID)
 	if err != nil {
@@ -190,6 +215,8 @@ func (s *Service) Close() {
 
 // OrganizeCommand 是两个真实入口共用的明确整理请求。
 type OrganizeCommand struct {
+	// Maintenance 维护已有 Wiki，不选择或重新处理原件。
+	Maintenance bool `json:"maintenance,omitempty"`
 	// Rebuild 显式重建所选原件，省略时保留已处理来源的跳过语义与旧请求摘要。
 	Rebuild bool `json:"rebuild,omitempty"`
 
@@ -213,6 +240,9 @@ type OrganizeCommand struct {
 
 // Organize 接纳并后台驱动明确范围，普通上传不调用它。
 func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Receipt, models.KnowledgeTaskConfiguration, error) {
+	if in.Maintenance && (in.Rebuild || len(in.SourceVersionIDs) != 0 || in.Configuration.RemoteSubject != "") {
+		return nil, in.Configuration, status_error.KnowledgeInvalid
+	}
 	if in.Rebuild && len(in.SourceVersionIDs) == 0 {
 		return nil, in.Configuration, status_error.KnowledgeInvalid
 	}
@@ -284,16 +314,20 @@ func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Recei
 		return nil, in.Configuration, err
 	}
 	if !frozenConfiguration {
-		if s.config.ResolveModel == nil {
+		resolve := s.config.ResolveModel
+		if in.Maintenance && s.config.ResolveMaintenanceModel != nil {
+			resolve = s.config.ResolveMaintenanceModel
+		}
+		if resolve == nil {
 			return nil, in.Configuration, status_error.KnowledgeUnsupported
 		}
-		selected, err := s.config.ResolveModel(ctx, models.LibraryExecutionDefaults{RuntimeID: in.Configuration.RuntimeID, AccountID: in.Configuration.AccountID, Model: in.Configuration.Model, Reasoning: in.Configuration.Reasoning})
+		selected, err := resolve(ctx, models.LibraryExecutionDefaults{RuntimeID: in.Configuration.RuntimeID, AccountID: in.Configuration.AccountID, Model: in.Configuration.Model, Reasoning: in.Configuration.Reasoning})
 		if err != nil {
 			return nil, in.Configuration, err
 		}
 		in.Configuration.RuntimeID, in.Configuration.AccountID, in.Configuration.Model, in.Configuration.Reasoning = selected.RuntimeID, selected.AccountID, selected.Model, selected.Reasoning
 	}
-	if len(in.SourceVersionIDs) == 0 && !in.ExplicitSources {
+	if !in.Maintenance && len(in.SourceVersionIDs) == 0 && !in.ExplicitSources {
 		in.SourceVersionIDs, err = s.pendingSourceHeads(ctx, in.LibraryID)
 		if err != nil {
 			return nil, in.Configuration, err
@@ -306,7 +340,7 @@ func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Recei
 		return nil, in.Configuration, status_error.KnowledgeUnsupported
 	}
 	embeddingFingerprint := ""
-	if lib.IndexingStrategy.VectorEnabled {
+	if lib.IndexingStrategy.VectorEnabled && !in.Maintenance {
 		if s.config.FreezeEmbedder == nil {
 			return nil, in.Configuration, status_error.KnowledgeUnsupported
 		}
@@ -317,6 +351,9 @@ func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Recei
 		embeddingFingerprint = frozen.Fingerprint
 	}
 	snapshot := core.PermissionSnapshot{PolicyVersion: lib.PolicyVersion, Scope: []string{}, Operations: []string{"organize"}}
+	if in.Maintenance {
+		snapshot.Operations = []string{constants.KnowledgeWikiMaintainOperation}
+	}
 	if in.Configuration.RemoteSubject != "" {
 		var recovery httpapi.RecoveryIdentity
 		if err := json.Unmarshal(in.Configuration.RemoteAuthorization, &recovery); err != nil {
@@ -337,7 +374,7 @@ func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Recei
 	}
 
 	configDigest := core.OrganizeConfigDigest(lib, bundle.SHA256)
-	receipt, err := s.config.Engine.AcceptJob(ctx, core.AcceptJobInput{Rebuild: in.Rebuild, RequestID: in.RequestID, LibraryID: in.LibraryID, ExpectedVersion: lib.Version, StructureVersion: lib.StructureVersion, SourceVersionIDs: in.SourceVersionIDs, Permission: snapshot, RulesVersion: bundle.Version, ConfigDigest: configDigest, EmbeddingFingerprint: embeddingFingerprint})
+	receipt, err := s.config.Engine.AcceptJob(ctx, core.AcceptJobInput{Maintenance: in.Maintenance, Rebuild: in.Rebuild, RequestID: in.RequestID, LibraryID: in.LibraryID, ExpectedVersion: lib.Version, StructureVersion: lib.StructureVersion, SourceVersionIDs: in.SourceVersionIDs, Permission: snapshot, RulesVersion: bundle.Version, ConfigDigest: configDigest, EmbeddingFingerprint: embeddingFingerprint})
 	release()
 	if err != nil {
 		// 同键竞争者可能已接纳，导致本次默认范围投影为无新增；宿主已校验原始输入摘要，只恢复原回执。
@@ -428,7 +465,7 @@ func (s *Service) drive(jobID string, session models.KnowledgeTaskConfiguration)
 			s.mutex.Unlock()
 			if restart {
 				s.drive(jobID, next)
-			} else if err := s.recoverLibrary(s.ctx, job.LibraryID, jobID); err != nil {
+			} else if err := s.recoverLibrary(s.ctx, job.LibraryID, jobID, false); err != nil {
 				logx.Errorf("knowledge queue recovery failed: library_id=%s error=%v", job.LibraryID, err)
 			}
 		}()
@@ -441,6 +478,12 @@ func (s *Service) drive(jobID string, session models.KnowledgeTaskConfiguration)
 		if job.CancelRequested {
 			_, err = s.config.Engine.CancelOrganize(attempt.ctx, core.JobActionInput{RequestID: "knowledge-cancel-recovery/" + job.ID, JobID: job.ID, ExpectedVersion: job.Version})
 			if err != nil {
+				s.recordTaskFailure(job, err)
+			}
+			return
+		}
+		if core.IsMaintenanceJob(job) {
+			if err := s.runWikiMaintenance(attempt.ctx, job, session); err != nil {
 				s.recordTaskFailure(job, err)
 			}
 			return
@@ -582,7 +625,14 @@ func (s *Service) AgentBindings(ctx context.Context, chat models.Chat) []agentca
 		return deniedKnowledgeReads(err)
 	}
 	if maintenance != nil {
-		bindings, err := s.MaintenanceBindings(ctx, chat, bridge.ResourceRef{Backend: maintenance.Backend, ConnectionID: maintenance.ConnectionID, KnowledgeBaseID: maintenance.KnowledgeBaseID}, maintenance.ResourceID)
+		if maintenance.Operation == constants.KnowledgeAutomaticMaintenanceChatOperation {
+			return s.AutomaticBindings(ctx, chat, maintenance.ResourceID)
+		}
+		ref := bridge.ResourceRef{Backend: maintenance.Backend, ConnectionID: maintenance.ConnectionID, KnowledgeBaseID: maintenance.KnowledgeBaseID}
+		bindings, err := s.MaintenanceBindings(ctx, chat, ref, maintenance.ResourceID)
+		if maintenance.Operation == constants.KnowledgeLibraryMaintenanceChatOperation {
+			bindings, err = s.LibraryMaintenanceBindings(ctx, chat, ref)
+		}
 		if err != nil {
 			return deniedKnowledgeReads(err)
 		}
@@ -630,7 +680,7 @@ func (s *Service) SetRemoteGuard(guard func(context.Context, json.RawMessage) (f
 	if s.ctx == nil {
 		return nil
 	}
-	return s.recoverJobs(s.ctx)
+	return s.recoverJobs(s.ctx, false)
 }
 
 // remotePublicationGuard 统一按原授权来源选择闸门，并告知恢复者对应依赖是否已经装配。

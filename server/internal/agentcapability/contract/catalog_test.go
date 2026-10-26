@@ -64,6 +64,26 @@ func TestKnowledgeStartAcceptsChatSelectionAndRejectsInvalidAttachmentIndexes(t 
 	}
 }
 
+func TestWikiAutoFixRequiresCurrentLibraryStructure(t *testing.T) {
+
+	op, ok := Find("knowledge.wiki.auto-fix")
+	if !ok {
+		t.Fatal("whole-library maintenance cannot discover the upstream auto-fix operation")
+	}
+	if err := op.Validate(map[string]any{"libraryId": "kb", "structureVersion": 3}); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []map[string]any{
+		{"libraryId": "kb"},
+		{"libraryId": "kb", "structureVersion": 0},
+		{"libraryId": "kb", "structureVersion": 3, "pageId": "another-page"},
+	} {
+		if op.Validate(invalid) == nil {
+			t.Fatalf("invalid maintenance target accepted: %v", invalid)
+		}
+	}
+}
+
 func TestMemoryScopeContractsDistinguishSearchAndOwnership(t *testing.T) {
 	search, _ := Find("memory.entries.search")
 	create, _ := Find("memory.entries.create")

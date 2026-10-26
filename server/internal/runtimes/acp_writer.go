@@ -5,7 +5,7 @@ import (
 	"io"
 	"sync"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // acpPromptWriter 在不重写 ACP framing 的前提下观察 Prompt 写入成功边界。

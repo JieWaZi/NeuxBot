@@ -11,6 +11,18 @@ import (
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
+func TestReplayDoesNotRetainPrivateRuntimeHistory(t *testing.T) {
+	adapter, err := Replay(fixtureRecords(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range adapter.messageView.Messages() {
+		if len(message.RuntimeEvents) != 0 || len(message.FileChangeDiffs) != 0 {
+			t.Fatal("public event replay retained private runtime history")
+		}
+	}
+}
+
 // TestReplayAfterRestoresPrefixWithoutKeepingSnapshots 验证游标前恢复状态，但只为游标后事实保留公开事件。
 func TestReplayAfterRestoresPrefixWithoutKeepingSnapshots(t *testing.T) {
 	records := fixtureRecords(t)

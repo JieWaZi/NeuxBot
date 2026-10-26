@@ -72,7 +72,7 @@ Chat Service 的生产导入没有直接指向知识库或工作流 Service，�
 
 ### 3.3 领域用例按入口数量拆散：优先级高
 
-[Wiki 修订入口](../../server/apis/knowledge/send_maintenance_message.go) 自己计算 Chat/Execution 身份、检查页面版本、保存操作锚点、绑定工具、设置只读权限和追加指令；知识 Service 另行实现维护校验与工具提交。
+[Wiki 整理入口](../../server/apis/knowledge/maintain_wiki.go) 接纳独立知识任务；[知识 Service](../../server/services/knowledge/direct_maintenance.go) 复用任务队列、范围校验和知识工具，通过独立 ACP 执行维护。该流程不创建 Chat 或 Execution。
 
 [工作流创作入口](../../server/apis/workflows/send_creation_message.go) 自己持有创作锁、编排事务、处理幂等回执和执行接纳。它通过 [dependencies.go](../../server/apis/workflows/dependencies.go) 获得 Repository、共享状态和取消适配。
 
@@ -628,7 +628,7 @@ NeuxBot Backend
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | Chat 接纳  | [submission_receipt_test.go](../../server/services/execution/submission_receipt_test.go)、[intent_guard_test.go](../../server/services/execution/intent_guard_test.go)                                                                            | 重复接纳返回原身份；不同输入冲突；首发、续聊、重试都不能绕过必需策略            |
 | 插件与身份 | [plugins_test.go](../../server/services/execution/plugins_test.go)、[plugin_authentication_test.go](../../server/services/execution/plugin_authentication_test.go)                                                                                | 固定版本/配置；共享身份与内容租约；精确端点注入；准备失败不泄露或遗留占用       |
-| Wiki 维护  | [send_maintenance_message_test.go](../../server/apis/knowledge/send_maintenance_message_test.go)                                                                                                                                                  | 只读工作区、单库单页、原执行终态与普通续聊限制保持一致                          |
+| Wiki 维护  | [direct_maintenance_test.go](../../server/services/knowledge/direct_maintenance_test.go)                                                                                                                                                          | 独立 ACP、同库工具授权、真实报告及任务尝试边界保持一致                          |
 | 知识整理   | [published_guard_test.go](../../server/services/knowledge/published_guard_test.go)、[recovery_regression_test.go](../../server/services/knowledge/recovery_regression_test.go)                                                                    | 迟到生成与重启不恢复被撤销权限；冻结配置与队列范围不变化；不创建 Chat/Execution |
 | 工作流     | [authoring_test.go](../../server/services/workflow/authoring_test.go)、[terminal_receipt_test.go](../../server/services/workflow/terminal_receipt_test.go)、[recovery_commands_test.go](../../server/apis/workflows/recovery_commands_test.go)    | 原版本固定、重复命令对账、旧能力失效、终态不被迟到回执改写                      |
 | API 集成   | [authorization_test.go](../../server/services/integration/authorization_test.go)、[invocation_test.go](../../server/services/integration/invocation_test.go)、[published_router_test.go](../../server/apis/integrations/published_router_test.go) | 认证/授权/提交重检分离；撤权顺序保持；只发布登记路由                            |

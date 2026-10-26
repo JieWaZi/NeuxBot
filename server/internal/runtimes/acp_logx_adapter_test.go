@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 	ginxlogx "github.com/shrewx/ginx/pkg/logx"
 	"github.com/sirupsen/logrus"
 )

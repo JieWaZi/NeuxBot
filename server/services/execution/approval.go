@@ -23,6 +23,10 @@ type pendingApproval struct {
 	chatID string
 	// executionID 是审批所属活跃执行标识。
 	executionID string
+	// messageFacts 交接本交互已提交的消息事实，不在协调器锁内调用 Sink。
+	messageFacts *executionMessageFacts
+	// invocationID 冻结发起交互的 Runtime 调用，不能由处理响应时的最新调用替代。
+	invocationID string
 	// requested 是已经安全归一化并进入权威日志的审批内容。
 	requested eventlog.ApprovalRequestedData
 	// requestedAt 是请求进入权威日志的 Unix 毫秒时间。
@@ -47,6 +51,8 @@ type approvalCoordinator struct {
 
 // executionApprovalHandler 把固定 Chat/Execution 身份绑定到审批协调器。
 type executionApprovalHandler struct {
+	// messageFacts 是当前执行唯一实时投影的已提交事实端口。
+	messageFacts *executionMessageFacts
 	// coordinator 是进程级审批协调器。
 	coordinator *approvalCoordinator
 	// chatID 是当前 Runtime 调用所属 Chat 标识。
@@ -68,12 +74,17 @@ func newApprovalCoordinator(journal chatservice.Journal) *approvalCoordinator {
 func (c *approvalCoordinator) handler(
 	chatID string,
 	executionID string,
+	facts ...*executionMessageFacts,
 ) runtimes.ApprovalHandler {
-	return &executionApprovalHandler{
+	bound := &executionApprovalHandler{
 		coordinator: c,
 		chatID:      chatID,
 		executionID: executionID,
 	}
+	if len(facts) > 0 {
+		bound.messageFacts = facts[0]
+	}
+	return bound
 }
 
 // Request 把 Runtime 请求交给绑定执行的审批协调器。
@@ -84,7 +95,7 @@ func (h *executionApprovalHandler) Request(
 	if h == nil || h.coordinator == nil {
 		return runtimes.ApprovalDecision{Cancelled: true}, nil
 	}
-	return h.coordinator.request(ctx, h.chatID, h.executionID, request)
+	return h.coordinator.request(ctx, h.chatID, h.executionID, request, h.messageFacts)
 }
 
 // ResolveApproval 处理前端提交的一次审批选择。
@@ -111,6 +122,7 @@ func (c *approvalCoordinator) request(
 	chatID string,
 	executionID string,
 	request runtimes.ApprovalRequest,
+	facts *executionMessageFacts,
 ) (runtimes.ApprovalDecision, error) {
 	if ctx == nil || strings.TrimSpace(chatID) == "" ||
 		strings.TrimSpace(executionID) == "" {
@@ -118,22 +130,26 @@ func (c *approvalCoordinator) request(
 	}
 	requested := approvalEventData(util.New(), request)
 	pending := &pendingApproval{
-		chatID:      chatID,
-		executionID: executionID,
-		requested:   requested,
-		response:    make(chan runtimes.ApprovalDecision, 1),
+		messageFacts: facts,
+		invocationID: request.InvocationID,
+		chatID:       chatID,
+		executionID:  executionID,
+		requested:    requested,
+		response:     make(chan runtimes.ApprovalDecision, 1),
 	}
 
 	c.commitMutex.Lock()
 	record, err := c.journal.AppendApprovalFact(chatID, eventlog.AppendInput{
-		Type:        constants.ChatEventTypeApprovalRequested,
-		ExecutionID: executionID,
-		Data:        marshalData(requested),
+		Type:         constants.ChatEventTypeApprovalRequested,
+		ExecutionID:  executionID,
+		InvocationID: pending.invocationID,
+		Data:         marshalData(requested),
 	})
 	if err != nil {
 		c.commitMutex.Unlock()
 		return runtimes.ApprovalDecision{Cancelled: true}, err
 	}
+	pending.messageFacts.push(record)
 	c.mutex.Lock()
 	pending.requestedAt = record.RecordedAt
 	c.byID[requested.ApprovalID] = pending
@@ -315,15 +331,17 @@ func (c *approvalCoordinator) commitResolution(
 	record, err := c.journal.AppendApprovalFact(
 		pending.chatID,
 		eventlog.AppendInput{
-			Type:        constants.ChatEventTypeApprovalResolved,
-			ExecutionID: pending.executionID,
-			Data:        marshalData(resolved),
+			Type:         constants.ChatEventTypeApprovalResolved,
+			ExecutionID:  pending.executionID,
+			InvocationID: pending.invocationID,
+			Data:         marshalData(resolved),
 		},
 	)
 	if err != nil {
 		return err
 	}
 
+	pending.messageFacts.push(record)
 	c.mutex.Lock()
 	delete(c.byID, pending.requested.ApprovalID)
 	order := c.orderByChat[pending.chatID]

@@ -10,7 +10,7 @@ import (
 	acpgrok "github.com/JieWaZi/acp-go/pkg/grok"
 	"github.com/JieWaZi/acp-go/pkg/nativeacp"
 	acpopencode "github.com/JieWaZi/acp-go/pkg/opencode"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // managedNativeBinding 由适配器冻结权限，每次调用重建进程并通过原生历史恢复。

@@ -3,6 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TaskFormDialog } from "./task-dialogs";
+import { KnowledgeMaintenanceScheduleDialog } from "./knowledge-maintenance-schedule-dialog";
 import { ApiError } from "@/shared/api/errors";
 import type * as AutomaticTaskSDK from "@/shared/api/generated/sdk.gen";
 import "@/shared/i18n";
@@ -107,6 +108,171 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+it("知识库周期入口预填每周维护计划且保存前不创建任务", async () => {
+  const user = userEvent.setup();
+  const closed = vi.fn();
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <KnowledgeMaintenanceScheduleDialog
+        open
+        onOpenChange={closed}
+        libraryId="kb-selected"
+        libraryName="华为知识库"
+      />
+    </QueryClientProvider>,
+  );
+  await vi.dynamicImportSettled();
+  expect(await screen.findByLabelText("任务名称")).toHaveValue(
+    "华为知识库 · 定期整理",
+  );
+  expect(create).not.toHaveBeenCalled();
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
+  );
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+  expect(create.mock.calls[0]?.[0]).toMatchObject({
+    path: { wakerId: "7387cbf3f0d842c58d89e274f298216a" },
+    body: {
+      trigger: "schedule",
+      enabled: true,
+      knowledge: { knowledgeBaseId: "kb-selected", operation: "maintain" },
+      schedule: {
+        kind: "weekly",
+        timezone: "Asia/Shanghai",
+        weekday: 1,
+        hour: 9,
+        minute: 0,
+      },
+    },
+  });
+  expect(closed).toHaveBeenCalledWith(false);
+});
+
+it("周期 Wiki 维护只保存当前库授权并禁止切换执行目标和目录", async () => {
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <TaskFormDialog
+        open
+        wakerId="waker-1"
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        initialConfiguration={{
+          name: "华为知识库 · 定期整理",
+          instruction: "核查并维护现有 Wiki，保留来源和有效内容。",
+          knowledge: {
+            backend: "local",
+            connectionId: "local",
+            knowledgeBaseId: "kb-huawei",
+            operation: "maintain",
+          },
+          schedule: {
+            kind: "weekly",
+            timezone: "Asia/Shanghai",
+            weekday: 1,
+            hour: 9,
+            minute: 0,
+          },
+        }}
+      />
+    </QueryClientProvider>,
+  );
+  await vi.dynamicImportSettled();
+  expect(await screen.findByLabelText("任务名称")).toHaveValue(
+    "华为知识库 · 定期整理",
+  );
+  expect(screen.queryByRole("radio", { name: "团队" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("radio", { name: "工作流" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "本地目录" }),
+  ).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
+  );
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+  expect(create.mock.calls[0]?.[0]).toMatchObject({
+    path: { wakerId: "waker-1" },
+    body: {
+      targetKind: "waker",
+      knowledge: {
+        backend: "local",
+        connectionId: "local",
+        knowledgeBaseId: "kb-huawei",
+        operation: "maintain",
+      },
+      schedule: {
+        kind: "weekly",
+        timezone: "Asia/Shanghai",
+        weekday: 1,
+        hour: 9,
+        minute: 0,
+      },
+      projectId: "",
+      workingDirectory: "",
+      workspaceReadOnly: true,
+    },
+  });
+});
+
+it("编辑已有 Wiki 维护计划保留原库授权而不退化为普通聊天任务", async () => {
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <TaskFormDialog
+        open
+        wakerId="waker-1"
+        onOpenChange={vi.fn()}
+        onSaved={vi.fn()}
+        task={{
+          id: "task-maintenance",
+          revision: 2,
+          wakerId: "waker-1",
+          name: "维护计划",
+          instruction: "维护现有知识",
+          runtimeId: "codex",
+          trigger: "schedule",
+          schedule: { kind: "weekly", weekday: 1, hour: 9, minute: 0 },
+          knowledge: {
+            backend: "local",
+            connectionId: "local",
+            knowledgeBaseId: "kb-original",
+            operation: "maintain",
+          },
+        }}
+      />
+    </QueryClientProvider>,
+  );
+  await vi.dynamicImportSettled();
+  await screen.findByLabelText("任务名称");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "保存" })).toBeEnabled(),
+  );
+  await user.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+  expect(update.mock.calls[0]?.[0].body.knowledge).toEqual({
+    backend: "local",
+    connectionId: "local",
+    knowledgeBaseId: "kb-original",
+    operation: "maintain",
+  });
+});
 
 it("新建 API 任务冻结智能体、模型、账号和授权目录，并提供集成 Key 指引", async () => {
   const user = userEvent.setup();

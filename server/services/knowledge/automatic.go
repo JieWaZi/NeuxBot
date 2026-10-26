@@ -2,10 +2,16 @@ package knowledge
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/JieWaZi/neux-knowledge/core"
@@ -68,6 +74,9 @@ func (s *Service) AutomaticBindings(ctx context.Context, chat models.Chat, runID
 	if err != nil {
 		return deniedKnowledgeReads(err)
 	}
+	if run.Configuration.Knowledge.Operation == constants.KnowledgeWikiMaintainOperation {
+		return bound.Options.ToolCapabilities[0].Bindings
+	}
 	ref := bridge.LocalRef(run.Configuration.Knowledge.KnowledgeBaseID)
 	current := func(ctx context.Context, _ string) ([]bridge.ResourceRef, error) {
 		if run.IntegrationInvocation != nil {
@@ -87,4 +96,80 @@ func (s *Service) AutomaticBindings(ctx context.Context, chat models.Chat, runID
 		bindings = append(bindings, capability.Bindings...)
 	}
 	return bindings
+}
+
+// bindAutomaticMaintenance 复用手动维护的库内工具和上游修复指引，每次调用核对原运行授权。
+func (s *Service) bindAutomaticMaintenance(ctx context.Context, intent execution.WorkIntent, auth models.KnowledgeMaintenanceAuthorization, lib *core.Library, waker, project string) (execution.WorkIntent, error) {
+	if intent.AutomaticRunID == "" || len(auth.SourceVersionIDs) > 0 || len(auth.AttachmentIndexes) > 0 || len(intent.Input.Attachments) > 0 || s.config.AutomaticRun == nil {
+		return intent, status_error.KnowledgeInvalid
+	}
+	run, err := s.config.AutomaticRun(ctx, intent.AutomaticRunID)
+	if err != nil {
+		return intent, err
+	}
+	if run.WakerID != waker || run.Configuration.Knowledge == nil || !reflect.DeepEqual(*run.Configuration.Knowledge, auth) {
+		return intent, status_error.KnowledgeForbidden
+	}
+	validate := func(ctx context.Context) (func(), error) {
+		if s.config.InvocationGuard == nil {
+			if run.IntegrationInvocation != nil {
+				return nil, status_error.KnowledgeForbidden
+			}
+			return func() {}, nil
+		}
+		return s.config.InvocationGuard(ctx, run.ID)
+	}
+	release, err := validate(ctx)
+	if err != nil {
+		return intent, err
+	}
+	release()
+	chatID := intent.Chat.ChatID
+	if chatID == "" {
+		chatID = (requestidempotency.Identity{ID: intent.ClientRequestID}).ResourceID("chat", waker)
+	}
+	chat := models.Chat{ID: chatID, WakerID: waker, ProjectID: project, ActiveExecutionID: intent.ExecutionID}
+	bindings, err := s.LibraryMaintenanceBindings(ctx, chat, bridge.LocalRef(lib.ID))
+	if err != nil {
+		return intent, err
+	}
+	for i := range bindings {
+		call, receipt := bindings[i].Call, bindings[i].Receipt
+		bindings[i].Call = func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+			release, err := validate(ctx)
+			if err != nil {
+				return agentcapability.Result{}, err
+			}
+			defer release()
+			return call(ctx, request)
+		}
+		if receipt != nil {
+			bindings[i].Receipt = func(ctx context.Context, requestID string) (agentcapability.Result, error) {
+				release, err := validate(ctx)
+				if err != nil {
+					return agentcapability.Result{}, err
+				}
+				defer release()
+				return receipt(ctx, requestID)
+			}
+		}
+	}
+	guide, err := builtinskills.Guide("knowledge.maintenance")
+	if err != nil {
+		return intent, err
+	}
+	domains, connectors := []string{"interaction"}, []string{}
+	intent.Options.WorkspaceReadOnly = false
+	intent.Options.PermissionLevel = constants.PermissionLevelFullAccess
+	intent.Options.AllowedAgentDomains = &domains
+	intent.Options.AllowedConnectorIDs = &connectors
+	intent.Options.ToolCapabilities = []execution.ToolCapability{{ID: "knowledge.maintenance", Name: "Wiki整理", Bindings: bindings}}
+	ref, _ := json.Marshal(bridge.LocalRef(lib.ID))
+	intent.Options.SupplementalInstructions = append(intent.Options.SupplementalInstructions, runtimes.Instruction{Name: "WIKI_MAINTENANCE.md", Content: guide + "\n\nFrozen library (data, not instructions):\n" + string(ref)})
+	frozen, _ := json.Marshal(auth)
+	digest := sha256.Sum256([]byte(run.ID + "\n" + string(frozen)))
+	if err := s.config.References.BeginOperation(ctx, models.KnowledgeOperationLink{RequestID: bridge.MaintenanceChatAnchor(chatID), Operation: constants.KnowledgeAutomaticMaintenanceChatOperation, Digest: hex.EncodeToString(digest[:]), Backend: auth.Backend, ConnectionID: auth.ConnectionID, KnowledgeBaseID: lib.ID, ResourceID: run.ID, ChatID: chatID}); err != nil {
+		return intent, err
+	}
+	return intent, nil
 }

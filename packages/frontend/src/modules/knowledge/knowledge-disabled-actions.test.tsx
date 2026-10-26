@@ -47,6 +47,76 @@ const resource = {
   knowledgeBaseId: "kb",
 };
 const root = "http://disabled.test/api/v1/knowledge/libraries/kb";
+
+it("整理进行中两个整理按钮禁用且可悬停查看活动记录提示，计划不受影响", async () => {
+  const user = userEvent.setup();
+  render(
+    <TooltipProvider delayDuration={0}>
+      <KnowledgeLibraryActions
+        library={emptyLibrary("kb", "资料", "general")}
+        onUpload={vi.fn()}
+        onOrganize={vi.fn()}
+        organizeDisabled={false}
+        onSettings={vi.fn()}
+        onMaintain={vi.fn()}
+        onScheduleMaintenance={vi.fn()}
+        busy
+      />
+    </TooltipProvider>,
+  );
+  for (const name of ["整理文档", "整理 Wiki"]) {
+    const button = screen.getByRole("button", { name });
+    expect(button).toBeDisabled();
+    const trigger = button.parentElement;
+    expect(trigger).not.toBeNull();
+    if (!trigger) throw new Error("Disabled action has no hover target");
+    await user.hover(trigger);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "正在整理中，请查看活动记录",
+    );
+    await user.unhover(trigger);
+  }
+  expect(screen.getByRole("button", { name: "定期整理 Wiki" })).toBeEnabled();
+});
+
+it("Wiki整理与周期整理各自触发入口，远端不支持时保持禁用", async () => {
+  const maintain = vi.fn();
+  const schedule = vi.fn();
+  const view = render(
+    <TooltipProvider>
+      <KnowledgeLibraryActions
+        library={emptyLibrary("kb", "资料", "general")}
+        onUpload={vi.fn()}
+        onOrganize={vi.fn()}
+        organizeDisabled={false}
+        onSettings={vi.fn()}
+        onMaintain={maintain}
+        onScheduleMaintenance={schedule}
+        maintenanceDisabled={false}
+      />
+    </TooltipProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "整理 Wiki" }));
+  await userEvent.click(screen.getByRole("button", { name: "定期整理 Wiki" }));
+  expect(maintain).toHaveBeenCalledTimes(1);
+  expect(schedule).toHaveBeenCalledTimes(1);
+  view.rerender(
+    <TooltipProvider>
+      <KnowledgeLibraryActions
+        library={emptyLibrary("kb", "资料", "general")}
+        onUpload={vi.fn()}
+        onOrganize={vi.fn()}
+        organizeDisabled={false}
+        onSettings={vi.fn()}
+        onMaintain={maintain}
+        onScheduleMaintenance={schedule}
+        maintenanceDisabled
+      />
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole("button", { name: "整理 Wiki" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "定期整理 Wiki" })).toBeDisabled();
+});
 beforeAll(() => {
   window.localStorage.setItem("ally.ui.theme", "light");
   server.listen({ onUnhandledRequest: "error" });
@@ -93,7 +163,7 @@ it.each([false, true])(
   },
 );
 
-it("维护聊天能力不可用时保留禁用的AI修订按钮", async () => {
+it("知识页面保留人工编辑并移除AI修订聊天入口", async () => {
   const page = {
     id: "one",
     slug: "concept/one",
@@ -120,13 +190,14 @@ it("维护聊天能力不可用时保留禁用的AI修订按钮", async () => {
           writable
           structureVersion={1}
           onPage={vi.fn()}
-          onMaintenance={vi.fn()}
-          maintenanceDisabled
         />
       </TooltipProvider>
     </QueryClientProvider>,
   );
-  expect(await screen.findByRole("button", { name: "AI 修订" })).toBeDisabled();
+  expect(await screen.findByRole("button", { name: "编辑页面" })).toBeEnabled();
+  expect(
+    screen.queryByRole("button", { name: "AI 修订" }),
+  ).not.toBeInTheDocument();
 });
 
 it.each(["index", "history", "activity"])(

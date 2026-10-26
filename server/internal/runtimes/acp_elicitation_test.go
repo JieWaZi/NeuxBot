@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // recordingElicitationHandler 记录请求实际被路由到的 Session。

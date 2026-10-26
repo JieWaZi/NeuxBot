@@ -82,14 +82,18 @@ func (c *elicitationCoordinator) finishQuestions(chatID, executionID string) {
 	c.mutex.Unlock()
 }
 
-func (m *service) questionBindings(chatID, executionID string) []agentcapability.Binding {
+func (m *service) questionBindings(chatID, executionID string, facts ...*executionMessageFacts) []agentcapability.Binding {
+	var messageFacts *executionMessageFacts
+	if len(facts) > 0 {
+		messageFacts = facts[0]
+	}
 	questionID := func(requestID string) string { return agentIdentity(executionID + ":question:" + requestID)[:32] }
 	read := func(id string) (map[string]any, error) {
 		return m.elicitations.questionSnapshot(chatID, executionID, id)
 	}
 	bindings := []agentcapability.Binding{{Operation: "interaction.questions.create", Call: func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
 		id := questionID(request.RequestID)
-		result, replayed, err := m.elicitations.createQuestion(ctx, chatID, executionID, id, request)
+		result, replayed, err := m.elicitations.createQuestion(ctx, chatID, executionID, id, request, messageFacts)
 		return agentcapability.Result{CommandID: id, Replayed: replayed, Data: result}, err
 	}, Receipt: func(_ context.Context, requestID string) (agentcapability.Result, error) {
 		id := questionID(requestID)
@@ -143,7 +147,11 @@ func (c *elicitationCoordinator) questionSnapshot(chatID, executionID, questionI
 	return result, nil
 }
 
-func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, executionID, id string, request agentcapability.Request) (map[string]any, bool, error) {
+func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, executionID, id string, request agentcapability.Request, facts ...*executionMessageFacts) (map[string]any, bool, error) {
+	var messageFacts *executionMessageFacts
+	if len(facts) > 0 {
+		messageFacts = facts[0]
+	}
 	var input struct {
 		// Message 是用户可以理解的决定说明。
 		Message string `json:"message"`
@@ -206,12 +214,13 @@ func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, exe
 		return nil, false, status_error.AgentInputInvalid
 	}
 	requested := eventlog.ElicitationRequestedData{ElicitationID: id, CommandRequestID: request.RequestID, CommandDigest: hash, AllowSkip: &input.AllowSkip, Mode: "form", Message: input.Message, RequestedSchema: encoded}
-	record, err := c.journal.AppendElicitationFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationRequested, ExecutionID: executionID, Data: marshalData(requested)})
+	record, err := c.journal.AppendElicitationFact(chatID, eventlog.AppendInput{Type: constants.ChatEventTypeElicitationRequested, ExecutionID: executionID, InvocationID: messageFacts.invocation(), Data: marshalData(requested)})
 	if err != nil {
 		return nil, false, err
 	}
+	messageFacts.push(record)
 	c.mutex.Lock()
-	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, requested: requested, requestedAt: record.RecordedAt, response: make(chan runtimes.ElicitationDecision, 1)}
+	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, messageFacts: messageFacts, invocationID: record.InvocationID, requested: requested, requestedAt: record.RecordedAt, response: make(chan runtimes.ElicitationDecision, 1)}
 	c.orderByChat[chatID] = append(c.orderByChat[chatID], id)
 	c.signalInputLocked(executionID)
 	c.mutex.Unlock()

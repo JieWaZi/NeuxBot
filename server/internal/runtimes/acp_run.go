@@ -16,7 +16,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 const (
@@ -125,6 +125,8 @@ func (agent *embeddedACPAgent) run(
 		time.Since(invocationStartedAt).Milliseconds(),
 	)
 
+	promptContext, cancelPrompt := context.WithCancel(ctx)
+	defer cancelPrompt()
 	bridge := newACPBridge(
 		sessionID,
 		request.InvocationID,
@@ -135,12 +137,15 @@ func (agent *embeddedACPAgent) run(
 		request.Prepared.defaults.EventDelivery,
 	)
 	bridge.runtimeID = request.Request.Target.RuntimeID
+	bridge.cancelPrompt = cancelPrompt
+	bridge.promptDone = promptContext.Done()
 	bridge.timingStartedAt = invocationStartedAt
 	bridge.approvalHandler = request.Request.ApprovalHandler
 	bridge.elicitationHandler = request.Request.ElicitationHandler
 	bridge.userInputState = request.Request.UserInputState
 	if request.Text != nil {
 		bridge.rejectTextInteraction = request.Text.reject
+		bridge.textCollector = request.Text.collector
 	}
 	if err := agent.client.register(bridge); err != nil {
 		return acpFailedResult(request, constants.RuntimeACPFailureStageSessionActive, err)
@@ -154,8 +159,6 @@ func (agent *embeddedACPAgent) run(
 
 	promptWritten, cleanupPromptWriter := agent.promptWriter.observe(string(sessionID))
 	defer cleanupPromptWriter()
-	promptContext, cancelPrompt := context.WithCancel(ctx)
-	defer cancelPrompt()
 	watchContext, cancelWatch := context.WithCancel(context.WithoutCancel(ctx))
 	defer cancelWatch()
 	go bridge.watchInactivity(
@@ -195,8 +198,8 @@ func (agent *embeddedACPAgent) run(
 					result.err,
 				)
 			}
-			return acpFailedResult(
-				request,
+			return acpFailedBridgeResult(
+				request, bridge,
 				constants.RuntimeACPFailureStagePromptWrite,
 				writeErr,
 			)
@@ -214,8 +217,8 @@ func (agent *embeddedACPAgent) run(
 					result.err,
 				)
 			}
-			return acpFailedResult(
-				request,
+			return acpFailedBridgeResult(
+				request, bridge,
 				constants.RuntimeACPFailureStageInitialDelivery,
 				err,
 			)
@@ -226,13 +229,13 @@ func (agent *embeddedACPAgent) run(
 		if result.err == nil {
 			if err := startACPBridge(ctx, request, bridge); err != nil {
 				agent.client.unregister(bridge)
-				return acpFailedResult(request, constants.RuntimeACPFailureStageInitialDelivery, err)
+				return acpFailedBridgeResult(request, bridge, constants.RuntimeACPFailureStageInitialDelivery, err)
 			}
 			started = true
 			break
 		}
 		agent.client.unregister(bridge)
-		return acpFailedResult(request, constants.RuntimeACPFailureStagePromptWrite, result.err)
+		return acpFailedBridgeResult(request, bridge, constants.RuntimeACPFailureStagePromptWrite, result.err)
 	case <-ctx.Done():
 		cancelPrompt()
 		result = <-promptResult
@@ -263,8 +266,8 @@ func (agent *embeddedACPAgent) run(
 					result.err,
 				)
 			}
-			return acpFailedResult(
-				request,
+			return acpFailedBridgeResult(
+				request, bridge,
 				constants.RuntimeACPFailureStagePrompt,
 				runtimeContextStatus(ctx.Err()),
 			)
@@ -288,8 +291,21 @@ func (agent *embeddedACPAgent) run(
 		time.Since(invocationStartedAt).Milliseconds(),
 		result.err != nil,
 	)
+	if errors.Is(agent.connection.Err(), acp.ErrNotificationQueueLimit) {
+		bridge.setFailure(status_error.RuntimeEventQueueOverflow)
+	}
+	// Prompt 终止已知后先冻结原因；队列仍可有界排空，后续交付超时只能作为次要诊断。
+	if ctx.Err() != nil {
+		bridge.recordPrimaryCause(runtimeContextStatus(ctx.Err()), constants.RuntimeACPFailureStagePrompt)
+	} else if result.err != nil {
+		bridge.recordPrimaryCause(result.err, constants.RuntimeACPFailureStagePrompt)
+	} else if result.response.StopReason == acp.StopReasonCancelled {
+		bridge.recordPrimaryCause(status_error.OperationCanceled, constants.RuntimeACPFailureStagePrompt)
+	}
 
-	if result.response.Usage != nil {
+	if result.response.Usage != nil && bridge.textCollector != nil {
+		bridge.textCollector.collectUsage(*result.response.Usage)
+	} else if result.response.Usage != nil {
 		usageEvent, usageErr := acpPromptUsageEvent(*result.response.Usage)
 		if usageErr != nil {
 			bridge.setFailure(usageErr)
@@ -338,6 +354,18 @@ func (agent *embeddedACPAgent) run(
 	return final
 }
 
+// acpFailedBridgeResult 在启动屏障前也保留触发 Prompt 取消的首个交付失败。
+func acpFailedBridgeResult(request acpRunRequest, bridge *acpBridge, stage string, err error) Result {
+	if cause := bridge.currentFailure(); cause != nil {
+		code, known := ErrorCode(cause)
+		if !known {
+			code = FailureCodeEventDelivery
+		}
+		return acpFailedResult(request, failureStageForCode(code), cause)
+	}
+	return acpFailedResult(request, stage, err)
+}
+
 // logACPPromptFailure 统一记录提示阶段的 Runtime 与会话上下文。
 func logACPPromptFailure(message string, request acpRunRequest, sessionID acp.SessionId, err error) {
 	logx.Errorf(
@@ -354,14 +382,16 @@ func (agent *embeddedACPAgent) supportsPersistentSessions() bool {
 	return agent.binding.supportsPersistent(agent.initializeResponse.AgentCapabilities)
 }
 
-// startACPBridge 先交付首事件，再启动已缓存更新的唯一消费者。
+// startACPBridge 为普通聊天先交付首事件，再启动消费者；纯文本只复用消费者收尾。
 func startACPBridge(
 	ctx context.Context,
 	request acpRunRequest,
 	bridge *acpBridge,
 ) error {
-	if err := deliverACPInvocationStarted(ctx, request); err != nil {
-		return err
+	if request.Text == nil {
+		if err := deliverACPInvocationStarted(ctx, request); err != nil {
+			return err
+		}
 	}
 	go bridge.run(context.WithoutCancel(ctx))
 	bridge.activateDelivery()
@@ -543,31 +573,6 @@ func (agent *embeddedACPAgent) closeSession(
 	return err
 }
 
-// closeSessions 在 Agent 退出前关闭全部仍存活的原生 Session。
-func (agent *embeddedACPAgent) closeSessions(ctx context.Context) error {
-	agent.sessionMutex.Lock()
-	sessionIDs := make([]acp.SessionId, 0, len(agent.sessions))
-	for sessionID := range agent.sessions {
-		sessionIDs = append(sessionIDs, sessionID)
-	}
-	agent.sessions = make(map[acp.SessionId]string)
-	agent.sessionModes = make(map[acp.SessionId]*acp.SessionModeState)
-	agent.sessionDefaultModels = make(map[acp.SessionId]acp.SessionConfigValueId)
-	agent.sessionModels = make(map[acp.SessionId]acp.SessionConfigValueId)
-	agent.sessionDefaultReasoning = nil
-	agent.sessionMutex.Unlock()
-	var closeErr error
-	for _, sessionID := range sessionIDs {
-		if _, err := agent.connection.CloseSession(
-			ctx,
-			acp.CloseSessionRequest{SessionId: sessionID},
-		); err != nil {
-			closeErr = errors.Join(closeErr, err)
-		}
-	}
-	return closeErr
-}
-
 // configureSession 先应用模型和推理强度，最后应用用户冻结的权限选择。
 func (agent *embeddedACPAgent) configureSession(
 	ctx context.Context,
@@ -717,40 +722,48 @@ func acpResult(
 			[]Diagnostic(nil),
 			request.Prepared.detection.Diagnostics...,
 		),
-		SideEffects: bridge.sideEffects,
+		SideEffects: bridge.sideEffectSnapshot(),
 	}
-	if deliveryErr != nil {
-		code := FailureCodeEventDelivery
-		if classified, ok := ErrorCode(deliveryErr); ok {
-			code = classified
-		} else if errors.Is(deliveryErr, context.DeadlineExceeded) {
-			code = constants.RuntimeFailureCodeRequestTimeout
-		} else if errors.Is(deliveryErr, context.Canceled) {
-			code = FailureCodeContextCanceled
+	primaryCause, primaryStage := bridge.primaryCauseSnapshot()
+	if primaryCause == nil {
+		switch {
+		case deliveryErr != nil:
+			primaryCause = deliveryErr
+		case prompt.err != nil:
+			primaryCause, primaryStage = prompt.err, constants.RuntimeACPFailureStagePrompt
+		case prompt.response.StopReason == acp.StopReasonCancelled:
+			primaryCause, primaryStage = status_error.OperationCanceled, constants.RuntimeACPFailureStagePrompt
 		}
-		result.Failure = newFailureFromError(
-			code,
-			failureStageForCode(code),
-			deliveryErr,
-		)
-	} else if sessionCloseErr != nil {
-		result.Failure = newFailureFromError(
-			FailureCodeRuntimeUnavailable,
-			constants.RuntimeACPFailureStageSessionClose,
-			sessionCloseErr,
-		)
-	} else if prompt.err != nil {
-		code := bridge.binding.failureCode(prompt.err)
-		result.Failure = newFailureFromError(code, constants.RuntimeACPFailureStagePrompt, prompt.err)
-	} else if prompt.response.StopReason == acp.StopReasonCancelled {
-		result.Failure = newFailure(
-			FailureCodeContextCanceled,
-			constants.RuntimeACPFailureStagePrompt,
-			bridge.binding.displayName+" ACP Prompt was cancelled",
-		)
+	}
+	if primaryCause != nil {
+		code := bridge.binding.failureCode(primaryCause)
+		if primaryStage == "" {
+			code = FailureCodeEventDelivery
+			if classified, ok := ErrorCode(primaryCause); ok {
+				code = classified
+			} else if errors.Is(primaryCause, context.DeadlineExceeded) {
+				code = constants.RuntimeFailureCodeRequestTimeout
+			} else if errors.Is(primaryCause, context.Canceled) {
+				code = FailureCodeContextCanceled
+			}
+			primaryStage = failureStageForCode(code)
+		}
+		result.Failure = newFailureFromError(code, primaryStage, primaryCause)
+	}
+	if deliveryErr != nil && !errors.Is(deliveryErr, primaryCause) {
+		result.Diagnostics = append(result.Diagnostics, Diagnostic{Code: "event_delivery_after_termination", Level: DiagnosticLevelWarning, Message: FailureDisplayMessage(deliveryErr)})
+	}
+	if sessionCloseErr != nil {
+		if result.Failure == nil {
+			result.Failure = newFailureFromError(FailureCodeRuntimeUnavailable, constants.RuntimeACPFailureStageSessionClose, sessionCloseErr)
+		} else {
+			result.Diagnostics = append(result.Diagnostics, Diagnostic{
+				Code: "session_close_failed", Level: DiagnosticLevelWarning, Message: FailureDisplayMessage(sessionCloseErr),
+			})
+		}
 	}
 	result.Session.State = finalSessionState(result.Session, result.Failure)
-	result.SideEffects = bridge.sideEffects
+	result.SideEffects = bridge.sideEffectSnapshot()
 	if result.Failure != nil {
 		result.ExitCode = -1
 		result.Failure.SessionState = result.Session.State
@@ -759,8 +772,13 @@ func acpResult(
 	return result
 }
 
-// acpPromptUsageEvent 转换 PromptResponse 的完整 Turn Usage。
+// acpPromptUsageEvent 为普通聊天生成 PromptResponse 的完整 Turn Usage 事件。
 func acpPromptUsageEvent(usage acp.Usage) (Event, error) {
+	return newEvent(EventTypeUsage, UsageData{Turn: acpPromptTurnUsage(usage)})
+}
+
+// acpPromptTurnUsage 为聊天与最终文本结果统一转换 PromptResponse 的完整累计用量。
+func acpPromptTurnUsage(usage acp.Usage) *TurnUsageData {
 	turn := &TurnUsageData{
 		InputTokens:  int64(usage.InputTokens),
 		OutputTokens: int64(usage.OutputTokens),
@@ -774,7 +792,7 @@ func acpPromptUsageEvent(usage acp.Usage) (Event, error) {
 	if usage.ThoughtTokens != nil {
 		turn.ReasoningOutputTokens = int64(*usage.ThoughtTokens)
 	}
-	return newEvent(EventTypeUsage, UsageData{Turn: turn})
+	return turn
 }
 
 // acpPromptBlocks 构造文本和可用本地图片内容。

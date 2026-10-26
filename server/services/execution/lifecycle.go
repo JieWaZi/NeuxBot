@@ -198,8 +198,8 @@ func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, 
 
 // messageExecution 保存 Chat 已解析的一次 Runtime 调用及其业务身份。
 type messageExecution struct {
-	// agentFacts 交付同一执行已提交的命令事实，保证实时与重放一致。
-	agentFacts *agentCommandFacts
+	// messageFacts 交付同一执行已提交的交互与命令事实，保证实时与重放一致。
+	messageFacts *executionMessageFacts
 	// agentActivate 在执行接纳后激活短期 CLI 身份。
 	agentActivate func()
 	// agentSettle 记录该次调用返回的可靠原生会话身份。
@@ -262,18 +262,20 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 		plan.request.ApprovalHandler = m.approvals.handler(
 			chat.ID,
 			execution.ID,
+			plan.messageFacts,
 		)
 	}
 	plan.request.ElicitationHandler = m.elicitations.handler(
 		chat.ID,
 		execution.ID,
+		plan.messageFacts,
 	)
 
 	runtimeSink := &runtimeEventSink{
-		agentFacts:  plan.agentFacts,
-		journal:     m.journal,
-		chatID:      chat.ID,
-		executionID: execution.ID,
+		messageFacts: plan.messageFacts,
+		journal:      m.journal,
+		chatID:       chat.ID,
+		executionID:  execution.ID,
 	}
 	sink := &chatRuntimeSink{
 		runtime: runtimeSink,
@@ -300,11 +302,15 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 			return nil
 		},
 	}
+	plan.messageFacts.start(runtimeSink.scheduleMessageFacts)
+	defer plan.messageFacts.stopDelivery()
 	result := m.runtime.Run(ctx, plan.request, sink)
 	if plan.capabilityRelease != nil {
 		plan.capabilityRelease()
 	}
 	m.elicitations.finishQuestions(chat.ID, execution.ID)
+	// worker 退出后再 Flush，禁止交互事实的迟到唤醒越过执行终态。
+	plan.messageFacts.stopDelivery()
 	if plan.agentSettle != nil {
 		plan.agentSettle(result)
 	}
@@ -400,6 +406,7 @@ func (s *chatRuntimeSink) Accept(
 			return status_error.BadRequest
 		}
 		s.invocationID = started.InvocationID
+		s.runtime.messageFacts.setInvocation(started.InvocationID)
 		if s.accepted {
 			return nil
 		}

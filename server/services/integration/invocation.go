@@ -47,8 +47,11 @@ func (s *Service) acquireInvocationGuardLocked(ctx context.Context, runID string
 
 // coversKnowledge 只允许当前任务继续覆盖原冻结授权；改名或未来模型选择不构成撤权。
 func coversKnowledge(current, frozen *models.KnowledgeMaintenanceAuthorization) bool {
-	if current == nil || frozen == nil || frozen.Backend != "local" || frozen.ConnectionID != "local" || frozen.KnowledgeBaseID == "" || frozen.Operation != "organize" || current.Backend != frozen.Backend || current.ConnectionID != frozen.ConnectionID || current.KnowledgeBaseID != frozen.KnowledgeBaseID || current.Operation != frozen.Operation {
+	if current == nil || frozen == nil || frozen.Backend != "local" || frozen.ConnectionID != "local" || frozen.KnowledgeBaseID == "" || (frozen.Operation != "organize" && frozen.Operation != constants.KnowledgeWikiMaintainOperation) || current.Backend != frozen.Backend || current.ConnectionID != frozen.ConnectionID || current.KnowledgeBaseID != frozen.KnowledgeBaseID || current.Operation != frozen.Operation {
 		return false
+	}
+	if frozen.Operation == constants.KnowledgeWikiMaintainOperation {
+		return len(current.SourceVersionIDs) == 0 && len(frozen.SourceVersionIDs) == 0 && len(current.AttachmentIndexes) == 0 && len(frozen.AttachmentIndexes) == 0
 	}
 	// 空来源原本表示在接纳时冻结 pending；当前收窄到显式来源时不能重解释该原授权。
 	if len(current.SourceVersionIDs) > 0 {

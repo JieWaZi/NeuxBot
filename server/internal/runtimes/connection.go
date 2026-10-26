@@ -28,7 +28,7 @@ func (sink *connectionTestSink) Accept(_ context.Context, event Event) error {
 	switch event.Type {
 	case EventTypeTextDelta:
 		sink.visibleOutput = true
-	case EventTypeToolUse:
+	case EventTypeToolUse, EventTypeToolInputSnapshot, EventTypeToolUpdate:
 		sink.toolUse = true
 	}
 	return nil

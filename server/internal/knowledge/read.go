@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/neux-knowledge/core"
@@ -171,6 +172,14 @@ func readParams(operation string, input map[string]any) (map[string]any, error) 
 	}
 	if _, ok := params["limit"]; !ok {
 		params["limit"] = 50
+		if operation == "knowledge.pages.list" {
+			params["limit"] = 10
+		} else if operation == "knowledge.index.get" {
+			params["limit"] = 5
+		}
+	}
+	if (operation == "knowledge.pages.list" && number(params, "limit") > constants.KnowledgeCLIPageListLimit) || (operation == "knowledge.index.get" && number(params, "limit") > constants.KnowledgeCLIIndexGroupLimit) {
+		return nil, status_error.KnowledgeInvalid
 	}
 	for _, field := range []string{"query", "state", "sort", "chunkId", "sourceVersionId", "pageId", "jobId", "cursor", "action", "outcome", "actorUserId", "pageType", "themeId"} {
 		if v, ok := params[field]; ok {

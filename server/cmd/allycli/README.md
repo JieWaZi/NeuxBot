@@ -76,6 +76,7 @@ Windows 使用当前 Shell 的环境变量语法及应用提供的 `allycli.exe`
 | `knowledge.jobs.list` | 分页读取整理任务，区分接纳和真实终态。 | `read` | `immediate` |
 | `knowledge.jobs.get` | 查询指定整理任务的实际状态、结果和失败事实。 | `read` | `immediate` |
 | `knowledge.audit.get` | 复用既有孤儿页、断链、短正文和失效来源只读检查。 | `read` | `immediate` |
+| `knowledge.wiki.auto-fix`     | 在明确授权的全库维护中执行上游确定性修复，并返回修复回执及剩余问题。                   | `mutation` | `immediate` |
 | `knowledge.activity.list` | 按实际游标和条件读取知识库活动。 | `read` | `immediate` |
 | `knowledge.export.get` | 获取一致快照中的Markdown导出；副本修改不回写知识库。 | `read` | `immediate` |
 | `knowledge.pages.write` | 以Agent来源创建或整页修订Wiki，保留有效证据与人工保护。 | `mutation` | `immediate` |

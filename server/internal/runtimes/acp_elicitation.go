@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 const (
@@ -24,6 +24,7 @@ func (bridge *acpBridge) createElicitation(
 	}
 	bridge.setElicitationPending(1)
 	defer bridge.setElicitationPending(-1)
+	normalized.InvocationID = bridge.invocationID
 	decision, err := bridge.elicitationHandler.Request(ctx, normalized)
 	if err != nil || decision.Cancelled {
 		return acp.NewUnstableCreateElicitationResponseCancel()

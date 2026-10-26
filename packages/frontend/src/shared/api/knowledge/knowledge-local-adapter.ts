@@ -42,7 +42,7 @@ export function localKnowledgeAdapter(ref: ResourceRef) {
       "localConfiguration",
       "activity",
       "graph",
-      "maintenanceChat",
+      "wikiMaintenance",
     ];
     return {
       operations: Object.fromEntries(keys.map((key) => [key, true])),
@@ -139,9 +139,8 @@ export function localKnowledgeAdapter(ref: ResourceRef) {
       api.resumeJob<true>(scope(options)),
     retryJob: (options: KnowledgeOptions<typeof api.retryJob>) =>
       api.retryJob<true>(scope(options)),
-    sendMaintenanceMessage: (
-      options: KnowledgeOptions<typeof api.sendMaintenanceMessage>,
-    ) => api.sendMaintenanceMessage<true>(scope(options)),
+    maintainWiki: (options: KnowledgeOptions<typeof api.maintainWiki>) =>
+      api.maintainWiki<true>(scope(options)),
     listPageDirectory: (
       options: KnowledgeOptions<typeof api.listPageDirectory>,
     ) => api.listPageDirectory<true>(scope(options)),

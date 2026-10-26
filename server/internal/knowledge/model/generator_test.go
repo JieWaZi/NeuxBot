@@ -24,6 +24,9 @@ func TestGeneratorUsesDirectTextAndReleasesEveryAccountLease(t *testing.T) {
 		return runtimes.RuntimeTarget{RuntimeID: "codex", AccountID: "account"}, runtimes.DetectionResult{}, func() { released++ }, nil
 	}, Runtime: runtimeFunc(func(_ context.Context, request runtimes.TextRequest) runtimes.TextResult {
 		calls++
+		if request.PermissionLevel != runtimes.PermissionLevelFullAccess {
+			t.Fatalf("knowledge generator did not request native full access: %+v", request)
+		}
 		if request.Reasoning != "high" || request.Thinking || request.Model != "model-a" || request.MaxTokens != 32768 || request.Temperature != .3 || len(request.Messages) != 2 {
 			t.Fatalf("request=%+v", request)
 		}

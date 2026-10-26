@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // TestConnectorCompatibilityMatchesUpstreamTransports 锁住各 Runtime 的 upstream MCP 边界。

@@ -10,7 +10,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/acp-go/pkg/acpserver"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 	"github.com/google/uuid"
 )
 
@@ -493,11 +493,31 @@ func newEmbeddedACPAgent(
 	serveContext, cancelServe := context.WithCancel(context.WithoutCancel(ctx))
 	client := newACPClient(binding)
 	promptWriter := newACPPromptWriter(clientToAgentWriter)
-	connection := acp.NewClientSideConnection(
+	closers := []io.Closer{clientToAgentReader, clientToAgentWriter, agentToClientReader, agentToClientWriter}
+	connection, err := acp.NewClientSideConnectionWithOptions(
 		client,
 		promptWriter,
 		agentToClientReader,
+		acp.ConnectionOptions{
+			Context:                   serveContext,
+			NotificationQueueCapacity: acpUpdateQueueCapacity,
+			NotificationQueueBytes:    acpUpdateQueueBytes,
+			CloseTransport: func() error {
+				var closeErr error
+				for _, closer := range closers {
+					closeErr = errors.Join(closeErr, closer.Close())
+				}
+				return closeErr
+			},
+		},
 	)
+	if err != nil {
+		cancelServe()
+		for _, closer := range closers {
+			_ = closer.Close()
+		}
+		return nil, err
+	}
 	return &embeddedACPAgent{
 		diagnosticContext:    ctx,
 		executable:           config.Executable,
@@ -512,13 +532,8 @@ func newEmbeddedACPAgent(
 		sessionDefaultModels: make(map[acp.SessionId]acp.SessionConfigValueId),
 		sessionModels:        make(map[acp.SessionId]acp.SessionConfigValueId),
 		cancelServe:          cancelServe,
-		closers: []io.Closer{
-			clientToAgentReader,
-			clientToAgentWriter,
-			agentToClientReader,
-			agentToClientWriter,
-		},
-		serveDone: make(chan error, 1),
+		closers:              closers,
+		serveDone:            make(chan error, 1),
 	}, nil
 }
 
@@ -568,11 +583,10 @@ func (agent *embeddedACPAgent) Close(ctx context.Context) error {
 	agent.closeOnce.Do(func() {
 		defer flushACPStderr(agent.diagnosticContext)
 		failed := false
-		if err := agent.closeSessions(ctx); err != nil {
-			acpAdapterLogger(agent.diagnosticContext).Error("close live ACP sessions failed", "error", err)
-			failed = true
-		}
+		// 连接所有者先解除读写背压，Adapter.Close 负责回收仍存活的原生 Session。
+		// 此时不能再发送依赖同一拥塞连接的 closeSession 请求。
 		agent.cancelServe()
+		agent.connection.Close()
 		for _, closer := range agent.closers {
 			if err := closer.Close(); err != nil {
 				acpAdapterLogger(agent.diagnosticContext).Error("close ACP in-memory transport failed", "error", err)

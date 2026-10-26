@@ -15,42 +15,11 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
-	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
-
-// agentCommandFacts 将已持久化命令事实交给同执行实时投影，无需轮询日志。
-type agentCommandFacts struct {
-	// mutex 保护命令提交与 Runtime 增量并发交付。
-	mutex sync.Mutex
-	// pending 只保留实时投影尚未消费的权威事实。
-	pending []eventlog.Record
-}
-
-func (f *agentCommandFacts) record(ctx context.Context, journal chatservice.Journal, chatID, executionID string, op contract.Operation, result agentcapability.Result) error {
-	records, err := journal.AppendExecutionFacts(ctx, chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeAgentCommandCommitted, ExecutionID: executionID, Data: marshalData(eventlog.AgentCommandData{CommandID: result.CommandID, Operation: op.ID, Completion: op.Completion})}})
-	if err == nil && f != nil {
-		f.mutex.Lock()
-		f.pending = append(f.pending, records...)
-		f.mutex.Unlock()
-	}
-	return err
-}
-
-func (f *agentCommandFacts) take() []eventlog.Record {
-	if f == nil {
-		return nil
-	}
-	f.mutex.Lock()
-	defer f.mutex.Unlock()
-	result := f.pending
-	f.pending = nil
-	return result
-}
 
 // agentSessionSlot 对应一个真实原生会话与其独占连接文件目录。
 type agentSessionSlot struct {
@@ -73,7 +42,7 @@ func agentIdentity(value string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, facts *agentCommandFacts, automaticRunIDs ...string) (func(), func(), func(runtimes.Result), error) {
+func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, facts *executionMessageFacts, automaticRunIDs ...string) (func(), func(), func(runtimes.Result), error) {
 	if m.agent == nil {
 		return nil, nil, nil, nil
 	}
@@ -135,7 +104,7 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 		}
 	}
 	if allowedDomains == nil || slices.Contains(*allowedDomains, "interaction") {
-		bindings = append(bindings, m.questionBindings(chat.ID, executionID)...)
+		bindings = append(bindings, m.questionBindings(chat.ID, executionID, facts)...)
 	}
 	for _, capability := range capabilities {
 		bindings = append(bindings, capability.Bindings...)

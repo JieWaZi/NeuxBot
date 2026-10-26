@@ -181,7 +181,9 @@ function toolPartOf(part: MessageDisplayPart): ToolCallMessagePart {
   const status = toolStatusOf(part.toolStatus);
   return {
     type: "tool-call",
-    toolCallId: part.toolCallId ?? "unknown",
+    // 展示片段身份已包含调用范围，原生工具标识可能在重试时重复。
+    // 审批与问答仍直接使用各自请求携带的原生 toolCallId。
+    toolCallId: part.id || part.toolCallId || "unknown",
     toolName: toolCategoryOf(part.toolCategory),
     args: {
       category: toolCategoryOf(part.toolCategory),

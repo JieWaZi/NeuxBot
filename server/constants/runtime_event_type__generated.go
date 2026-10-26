@@ -36,8 +36,12 @@ func (v RuntimeEventType) String() string {
 		return "thinking_delta"
 	case RuntimeEventTypeThinkingStart:
 		return "thinking_start"
+	case RuntimeEventTypeToolInputSnapshot:
+		return "tool_input_snapshot"
 	case RuntimeEventTypeToolResult:
 		return "tool_result"
+	case RuntimeEventTypeToolUpdate:
+		return "tool_update"
 	case RuntimeEventTypeToolUse:
 		return "tool_use"
 	case RuntimeEventTypeUsage:
@@ -70,8 +74,12 @@ func (v RuntimeEventType) Label() string {
 		return "RuntimeEventTypeThinkingDelta 表示可见思考内容增量。"
 	case RuntimeEventTypeThinkingStart:
 		return "RuntimeEventTypeThinkingStart 表示一次可见思考阶段开始。"
+	case RuntimeEventTypeToolInputSnapshot:
+		return "RuntimeEventTypeToolInputSnapshot 表示同一工具调用的累计参数状态，不表示再次执行。"
 	case RuntimeEventTypeToolResult:
 		return "RuntimeEventTypeToolResult 表示一个工具调用已经返回。"
+	case RuntimeEventTypeToolUpdate:
+		return "RuntimeEventTypeToolUpdate 表示同一工具调用的非终态执行进度、正文或差异更新，不表示再次请求执行。"
 	case RuntimeEventTypeToolUse:
 		return "RuntimeEventTypeToolUse 表示 Runtime 请求执行一个工具。"
 	case RuntimeEventTypeUsage:
@@ -81,7 +89,7 @@ func (v RuntimeEventType) Label() string {
 }
 
 func (v RuntimeEventType) Values() []enum.Enum {
-	return []enum.Enum{RuntimeEventTypeUnspecified, RuntimeEventTypeCommentaryDelta, RuntimeEventTypeDiagnostic, RuntimeEventTypeError, RuntimeEventTypeInvocationStarted, RuntimeEventTypeRaw, RuntimeEventTypeSession, RuntimeEventTypeStatus, RuntimeEventTypeTextDelta, RuntimeEventTypeThinkingDelta, RuntimeEventTypeThinkingStart, RuntimeEventTypeToolResult, RuntimeEventTypeToolUse, RuntimeEventTypeUsage}
+	return []enum.Enum{RuntimeEventTypeUnspecified, RuntimeEventTypeCommentaryDelta, RuntimeEventTypeDiagnostic, RuntimeEventTypeError, RuntimeEventTypeInvocationStarted, RuntimeEventTypeRaw, RuntimeEventTypeSession, RuntimeEventTypeStatus, RuntimeEventTypeTextDelta, RuntimeEventTypeThinkingDelta, RuntimeEventTypeThinkingStart, RuntimeEventTypeToolInputSnapshot, RuntimeEventTypeToolResult, RuntimeEventTypeToolUpdate, RuntimeEventTypeToolUse, RuntimeEventTypeUsage}
 }
 
 func (v RuntimeEventType) Type() string {
@@ -90,7 +98,7 @@ func (v RuntimeEventType) Type() string {
 
 func (v RuntimeEventType) MarshalText() ([]byte, error) {
 	switch v {
-	case RuntimeEventTypeUnspecified, RuntimeEventTypeCommentaryDelta, RuntimeEventTypeDiagnostic, RuntimeEventTypeError, RuntimeEventTypeInvocationStarted, RuntimeEventTypeRaw, RuntimeEventTypeSession, RuntimeEventTypeStatus, RuntimeEventTypeTextDelta, RuntimeEventTypeThinkingDelta, RuntimeEventTypeThinkingStart, RuntimeEventTypeToolResult, RuntimeEventTypeToolUse, RuntimeEventTypeUsage:
+	case RuntimeEventTypeUnspecified, RuntimeEventTypeCommentaryDelta, RuntimeEventTypeDiagnostic, RuntimeEventTypeError, RuntimeEventTypeInvocationStarted, RuntimeEventTypeRaw, RuntimeEventTypeSession, RuntimeEventTypeStatus, RuntimeEventTypeTextDelta, RuntimeEventTypeThinkingDelta, RuntimeEventTypeThinkingStart, RuntimeEventTypeToolInputSnapshot, RuntimeEventTypeToolResult, RuntimeEventTypeToolUpdate, RuntimeEventTypeToolUse, RuntimeEventTypeUsage:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -121,8 +129,12 @@ func (v *RuntimeEventType) UnmarshalText(text []byte) error {
 		*v = RuntimeEventTypeThinkingDelta
 	case RuntimeEventTypeThinkingStart.String():
 		*v = RuntimeEventTypeThinkingStart
+	case RuntimeEventTypeToolInputSnapshot.String():
+		*v = RuntimeEventTypeToolInputSnapshot
 	case RuntimeEventTypeToolResult.String():
 		*v = RuntimeEventTypeToolResult
+	case RuntimeEventTypeToolUpdate.String():
+		*v = RuntimeEventTypeToolUpdate
 	case RuntimeEventTypeToolUse.String():
 		*v = RuntimeEventTypeToolUse
 	case RuntimeEventTypeUsage.String():

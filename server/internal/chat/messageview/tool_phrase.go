@@ -98,6 +98,9 @@ func buildToolPhrase(data map[string]interface{}, scope workspacePathScope) (str
 	case "tasklist":
 		return completedAndLoadingPhrase("查看任务列表")
 	case "todowrite":
+		if count, ok := firstNestedDisplayValue(data, "displayTodoCount").(int); ok {
+			return completedAndLoadingPhrase(fmt.Sprintf("更新待办 %d 项", count))
+		}
 		if todos, ok := firstNestedDisplayValue(data, "todos").([]interface{}); ok {
 			return completedAndLoadingPhrase(fmt.Sprintf("更新待办 %d 项", len(todos)))
 		}
@@ -411,7 +414,7 @@ func firstMeaningfulToolValue(data map[string]interface{}) string {
 			}
 		}
 	}
-	return ""
+	return firstNestedDisplayString(data, "displayFallbackValue")
 }
 
 // firstNestedDisplayValue 兼容顶层、input、args 和 arguments 四种 Runtime 载荷结构。
@@ -484,31 +487,6 @@ func toolActionLabel(action constants.MessageToolAction) string {
 // completedAndLoadingPhrase 从同一动作短语生成完成态与进行态文案。
 func completedAndLoadingPhrase(label string) (string, string) {
 	return label, "正在" + label + "…"
-}
-
-// mergeToolPhrase 单调合并工具短语，bare update 不得降级 richer 标签。
-func mergeToolPhrase(existingLabel, existingLoading, incomingLabel, incomingLoading string) (string, string) {
-	if incomingLabel == "" {
-		return existingLabel, existingLoading
-	}
-	if existingLabel == "" {
-		return incomingLabel, incomingLoading
-	}
-	genericMCPLabel := toolActionLabel(constants.MessageToolActionCallService)
-	if existingLabel == genericMCPLabel && incomingLabel != genericMCPLabel {
-		return incomingLabel, incomingLoading
-	}
-	if incomingLabel == genericMCPLabel && existingLabel != genericMCPLabel {
-		return existingLabel, existingLoading
-	}
-	if incomingLabel == toolActionLabel(constants.MessageToolActionOther) &&
-		existingLabel != incomingLabel {
-		return existingLabel, existingLoading
-	}
-	if len([]rune(incomingLabel)) > len([]rune(existingLabel)) {
-		return incomingLabel, incomingLoading
-	}
-	return existingLabel, existingLoading
 }
 
 // toolPhraseWithTarget 在缺少安全目标时退回不带参数的动作短语。

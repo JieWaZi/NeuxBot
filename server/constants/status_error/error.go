@@ -595,6 +595,9 @@ const (
 	// @errZH 交接内容无效，请改用近期对话继续
 	// @errEN handoff content is invalid; continue with recent conversation
 	RuntimeHandoffInvalid
+	// @errZH Runtime 事件积压超过上限，执行已停止，请重试
+	// @errEN runtime event queue overflow; execution stopped, please retry
+	RuntimeEventQueueOverflow
 )
 
 const (

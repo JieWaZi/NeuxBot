@@ -346,3 +346,92 @@ func TestRecoveryWaitsForMatchingAuthorizationOrigin(t *testing.T) {
 		})
 	}
 }
+
+func TestStartFailsInterruptedDocumentAndWikiJobs(t *testing.T) {
+	for _, maintenance := range []bool{false, true} {
+		t.Run(fmt.Sprintf("maintenance-%t", maintenance), func(t *testing.T) {
+			s, lib := newServiceFixture(t)
+			ctx := context.Background()
+			var job *core.Job
+			if maintenance {
+				receipt, _, err := s.Organize(ctx, OrganizeCommand{RequestID: "wiki-job", LibraryID: lib.ID, Maintenance: true})
+				if err != nil {
+					t.Fatal(err)
+				}
+				job, err = s.config.Engine.GetJob(ctx, receipt.JobID)
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				job = regressionJob(t, s, lib)
+			}
+			job, ready, err := s.config.Engine.ActivateQueuedJob(ctx, job.ID)
+			if err != nil || !ready || job.State != "processing" {
+				t.Fatalf("job did not start before interruption: %+v %v", job, err)
+			}
+			// 新宿主没有旧模型调用；启动不能把原执行重新接回模型服务。
+			var calls atomic.Int64
+			s.config.Generator = func(ctx context.Context, _ models.LibraryExecutionDefaults) (core.Generator, error) {
+				calls.Add(1)
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
+			s.config.RunMaintenance = func(ctx context.Context, _ models.LibraryExecutionDefaults, _ MaintenanceInvocation) (string, error) {
+				calls.Add(1)
+				<-ctx.Done()
+				return "", ctx.Err()
+			}
+			restarted := New(s.config)
+			t.Cleanup(restarted.Close)
+			if err := restarted.Start(ctx); err != nil {
+				t.Fatal(err)
+			}
+			current, err := s.config.Engine.GetJob(ctx, job.ID)
+			if err != nil || current.State != "failed" || current.Diagnostic == "" {
+				t.Fatalf("interrupted job was not settled: %+v %v", current, err)
+			}
+			if calls.Load() != 0 {
+				t.Fatal("startup reran the interrupted model call")
+			}
+			active, err := s.config.Engine.GetActiveJob(ctx, lib.ID)
+			if err != nil || active != nil {
+				t.Fatalf("interrupted job still blocks library actions: %+v %v", active, err)
+			}
+			for _, id := range job.SourceVersionIDs {
+				source, err := s.config.Engine.GetSource(ctx, lib.ID, id)
+				if err != nil || source.State != "failed" {
+					t.Fatalf("interrupted source remains busy: %+v %v", source, err)
+				}
+			}
+			if maintenance {
+				stages, err := s.config.Engine.ListStages(ctx, job.ID)
+				if err != nil || len(stages) != 1 || stages[0].State != "finished" || stages[0].Outcome != "failed" {
+					t.Fatalf("interrupted Wiki stage remains running: %+v %v", stages, err)
+				}
+			}
+			if _, err := restarted.Retry(ctx, "retry-interrupted", current.ID, current.Version); err != nil {
+				t.Fatalf("interrupted job cannot be retried: %v", err)
+			}
+		})
+	}
+}
+
+func TestStartSettlesInterruptedJobBeforeConfigurationRecovery(t *testing.T) {
+	s, lib := newServiceFixture(t)
+	ctx := context.Background()
+	job := regressionJob(t, s, lib)
+	if _, ready, err := s.config.Engine.ActivateQueuedJob(ctx, job.ID); err != nil || !ready {
+		t.Fatalf("activate: ready=%t error=%v", ready, err)
+	}
+	// 旧任务配置不可恢复，也必须释放中断任务的占用。
+	s.config.References = startupConfigurationReferences{KnowledgeController: s.config.References, configurationError: status_error.KnowledgeNotFound}
+	restarted := New(s.config)
+	t.Cleanup(restarted.Close)
+	if err := restarted.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	current, err := s.config.Engine.GetJob(ctx, job.ID)
+	if err != nil || current.State != "failed" {
+		t.Fatalf("missing configuration left interrupted job active: %+v %v", current, err)
+	}
+}

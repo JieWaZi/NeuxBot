@@ -1885,7 +1885,7 @@ export type GithubComJieWaZiNeuxBotServerApisKnowledgeJob = {
      */
     attempt?: number;
     /**
-     * 尝试开始时间
+     * 本次接纳时间
      */
     attemptStartedAt?: number;
     /**
@@ -1921,6 +1921,10 @@ export type GithubComJieWaZiNeuxBotServerApisKnowledgeJob = {
      */
     libraryId?: string;
     /**
+     * Wiki维护
+     */
+    maintenance?: boolean;
+    /**
      * 请求标识
      */
     requestId?: string;
@@ -1948,6 +1952,10 @@ export type GithubComJieWaZiNeuxBotServerApisKnowledgeJob = {
 export type GithubComJieWaZiNeuxBotServerApisKnowledgeJobDetail = {
     configuration?: GithubComJieWaZiNeuxBotServerApisKnowledgeTaskConfiguration & unknown;
     job?: GithubComJieWaZiNeuxBotServerApisKnowledgeJob & unknown;
+    /**
+     * 整理报告
+     */
+    report?: string;
 };
 
 /**
@@ -2174,30 +2182,21 @@ export type GithubComJieWaZiNeuxBotServerApisKnowledgeLibraryList = {
 };
 
 /**
- * Wiki修订消息
+ * 整理Wiki请求
  */
-export type GithubComJieWaZiNeuxBotServerApisKnowledgeMaintenanceMessageInput = {
+export type GithubComJieWaZiNeuxBotServerApisKnowledgeMaintainWikiInput = {
     /**
      * 账号标识
      */
     accountId?: string;
     /**
-     * 聊天标识
+     * 整理要求
      */
-    chatId?: string;
+    message?: string;
     /**
-     * 页面版本
-     */
-    expectedVersion?: number;
-    /**
-     * 模型名称
+     * 模型
      */
     model?: string;
-    /**
-     * 页面标识
-     */
-    pageId: string;
-    permissionLevel: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
      * 推理强度
      */
@@ -2207,13 +2206,9 @@ export type GithubComJieWaZiNeuxBotServerApisKnowledgeMaintenanceMessageInput = 
      */
     requestId: string;
     /**
-     * 智能体标识
+     * 智能体
      */
-    runtimeId: string;
-    /**
-     * 修改要求
-     */
-    text: string;
+    runtimeId?: string;
 };
 
 /**
@@ -7229,29 +7224,30 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
 
 /**
  * MessageDisplayPart 是聊天接口返回的最小跨 Runtime 展示部件。
+ * 工具展示身份包含 Runtime 调用作用域；原生工具标识用于审批与原生定位。
  */
 export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart = {
     /**
-     * ID 是部件在同一消息多次增量快照之间保持不变的标识。
+     * 展示片段标识
      */
     id?: string;
     /**
-     * Text 是文本或思考部件的连续可见内容。
+     * 片段正文
      */
     text?: string;
     toolAction?: GithubComJieWaZiNeuxBotServerConstantsMessageToolAction & unknown;
     toolApprovalResult?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolApprovalResult & unknown;
     /**
-     * ToolCallID 是工具调用和结果配对使用的稳定标识。
+     * 原生工具标识
      */
     toolCallId?: string;
     toolCategory?: GithubComJieWaZiNeuxBotServerConstantsMessageToolCategory & unknown;
     /**
-     * ToolLabel 是工具完成态使用的简短语义短语。
+     * 工具完成文案
      */
     toolLabel?: string;
     /**
-     * ToolLoadingLabel 是工具运行态使用的简短语义短语。
+     * 工具运行文案
      */
     toolLoadingLabel?: string;
     toolSafeSummary?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolSafeSummary & unknown;
@@ -14033,6 +14029,7 @@ export type ReadErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -14358,6 +14355,7 @@ export type CommandErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -14864,6 +14862,7 @@ export type StartAiAccountLoginErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -15198,6 +15197,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -15730,6 +15730,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -15809,6 +15810,7 @@ export type CreateWorkflowAutomaticTaskErrors = {
      * * `[BadRequest][40000000001]`
      * * `[ChannelLeadInvalid][40000000019]`
      * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[KnowledgeInvalid][40000009501]`
      * * `[WorkflowCapabilityUnsupported][40000003003]`
      * * `[WorkflowResourceInvalid][40000003004]`
      * * `[WorkflowSchemaInvalid][40000003002]`
@@ -16145,6 +16147,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -16475,6 +16478,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -18445,6 +18449,7 @@ export type StreamEventsErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -19475,6 +19480,7 @@ export type UpdateMcpServiceErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -19899,6 +19905,7 @@ export type UpdateApiServiceErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -25772,8 +25779,8 @@ export type RetryJobResponses = {
 
 export type RetryJobResponse = RetryJobResponses[keyof RetryJobResponses];
 
-export type SendMaintenanceMessageData = {
-    body: GithubComJieWaZiNeuxBotServerApisKnowledgeMaintenanceMessageInput & unknown;
+export type MaintainWikiData = {
+    body: GithubComJieWaZiNeuxBotServerApisKnowledgeMaintainWikiInput & unknown;
     path: {
         /**
          * 知识库标识
@@ -25781,10 +25788,10 @@ export type SendMaintenanceMessageData = {
         libraryId: string;
     };
     query?: never;
-    url: '/api/v1/knowledge/libraries/{libraryId}/maintenance-chats';
+    url: '/api/v1/knowledge/libraries/{libraryId}/maintain';
 };
 
-export type SendMaintenanceMessageErrors = {
+export type MaintainWikiErrors = {
     /**
      * >
      * * `[AgentInputInvalid][40000009001]`
@@ -25831,7 +25838,6 @@ export type SendMaintenanceMessageErrors = {
     422: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[InternalServerError][50000000001]`
      * * `[KnowledgeStorageError][50000009501]`
      * * `[SkillUnavailable][50000000008]`
      *
@@ -25858,13 +25864,13 @@ export type SendMaintenanceMessageErrors = {
     504: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
-export type SendMaintenanceMessageError = SendMaintenanceMessageErrors[keyof SendMaintenanceMessageErrors];
+export type MaintainWikiError = MaintainWikiErrors[keyof MaintainWikiErrors];
 
-export type SendMaintenanceMessageResponses = {
-    200: GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution;
+export type MaintainWikiResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisKnowledgeOrganizeResponse;
 };
 
-export type SendMaintenanceMessageResponse = SendMaintenanceMessageResponses[keyof SendMaintenanceMessageResponses];
+export type MaintainWikiResponse = MaintainWikiResponses[keyof MaintainWikiResponses];
 
 export type ExportLibraryMarkdownData = {
     body?: never;
@@ -25955,13 +25961,22 @@ export type OrganizeData = {
 export type OrganizeErrors = {
     /**
      * >
+     * * `[AgentInputInvalid][40000009001]`
      * * `[BadRequest][40000000001]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[SkillContentInvalid][40000000013]`
      *
      */
     400: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
@@ -25991,15 +26006,29 @@ export type OrganizeErrors = {
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
+     * * `[SkillUnavailable][50000000008]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
     503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type OrganizeError = OrganizeErrors[keyof OrganizeErrors];
@@ -28607,6 +28636,7 @@ export type ListPluginsErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -29172,6 +29202,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -29728,6 +29759,7 @@ export type GetPluginErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -30694,6 +30726,7 @@ export type InstallPluginErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -32022,6 +32055,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -32740,6 +32774,7 @@ export type ListAutomaticTasksErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -32824,6 +32859,7 @@ export type CreateAutomaticTaskErrors = {
      * * `[BadRequest][40000000001]`
      * * `[ChannelLeadInvalid][40000000019]`
      * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[KnowledgeInvalid][40000009501]`
      * * `[WorkflowCapabilityUnsupported][40000003003]`
      * * `[WorkflowResourceInvalid][40000003004]`
      * * `[WorkflowSchemaInvalid][40000003002]`
@@ -33136,6 +33172,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -33499,6 +33536,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -33833,6 +33871,7 @@ export type GetAutomaticTaskErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -33921,6 +33960,7 @@ export type UpdateAutomaticTaskErrors = {
      * * `[BadRequest][40000000001]`
      * * `[ChannelLeadInvalid][40000000019]`
      * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[KnowledgeInvalid][40000009501]`
      * * `[WorkflowCapabilityUnsupported][40000003003]`
      * * `[WorkflowResourceInvalid][40000003004]`
      * * `[WorkflowSchemaInvalid][40000003002]`
@@ -33991,6 +34031,7 @@ export type SetAutomaticTaskEnabledErrors = {
      * * `[BadRequest][40000000001]`
      * * `[ChannelLeadInvalid][40000000019]`
      * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[KnowledgeInvalid][40000009501]`
      * * `[WorkflowCapabilityUnsupported][40000003003]`
      * * `[WorkflowResourceInvalid][40000003004]`
      * * `[WorkflowSchemaInvalid][40000003002]`
@@ -34316,6 +34357,7 @@ export type ListAutomaticRunsErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -34650,6 +34692,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -35518,6 +35561,7 @@ export type ListWakerPluginsErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -37079,6 +37123,7 @@ export type DeleteWorkflowErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -37552,6 +37597,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -38581,6 +38627,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[RuntimeConfigurationInvalid][50000000040]`
      * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
      * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
      * * `[RuntimeExecutionFailed][50000000045]`
      * * `[RuntimeHandoffInvalid][50000000049]`
      * * `[RuntimeInactivityTimeout][50000000013]`
@@ -39069,6 +39116,7 @@ export type SaveWorkflowTriggersErrors = {
      * * `[BadRequest][40000000001]`
      * * `[ChannelLeadInvalid][40000000019]`
      * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[KnowledgeInvalid][40000009501]`
      * * `[WorkflowCapabilityUnsupported][40000003003]`
      * * `[WorkflowResourceInvalid][40000003004]`
      * * `[WorkflowSchemaInvalid][40000003002]`

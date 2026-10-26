@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // TestClaudeACPBackendMapsRuntimeContract 验证 Claude 只通过共享 ACP Backend 执行。

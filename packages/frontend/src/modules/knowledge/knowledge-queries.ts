@@ -34,11 +34,32 @@ export const knowledgeKeys = {
   jobs: (ref: ResourceRef) => [...knowledgeKeys.resource(ref), "jobs"] as const,
   job: (ref: ResourceRef, id: string) =>
     [...knowledgeKeys.resource(ref), "job", id] as const,
+  activity: (ref: ResourceRef, action = "", outcome = "") =>
+    [...knowledgeKeys.resource(ref), "activity", action, outcome] as const,
   libraries: (offset = 0, location = "all", search = "") =>
     ["knowledge", "libraries", location, offset, search] as const,
   resource: (ref: ResourceRef) =>
     ["knowledge", ref.backend, ref.connectionId, ref.knowledgeBaseId] as const,
 };
+
+/** 当前占用库的任务与最近任务共用同一有界查询，不从分页结果推测活跃状态。 */
+export function jobsOptions(ref: ResourceRef) {
+  return queryOptions({
+    queryKey: knowledgeKeys.jobs(ref),
+    queryFn: async ({ signal }) =>
+      (
+        await knowledgeAdapter(ref).listJobs(
+          withLocalErrorSurface({
+            path: { libraryId: ref.knowledgeBaseId },
+            query: { offset: 0, limit: 1 },
+            signal,
+            throwOnError: true,
+          }),
+        )
+      ).data,
+  });
+}
+
 export function librariesOptions(
   offset: number,
   location: LibraryLocation = "all",

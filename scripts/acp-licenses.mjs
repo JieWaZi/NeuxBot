@@ -5,7 +5,7 @@ import path from "node:path";
 // 许可从实际引用的模块版本收集，不随源码副本或开发机本地路径交付。
 export async function copyACPLicenses(root, destination) {
   const modules = [
-    ["github.com/coder/acp-go-sdk", "acp-go-sdk", ["LICENSE"]],
+    ["github.com/JieWaZi/acp-go/sdk", "acp-go-sdk", ["LICENSE"]],
     [
       "github.com/JieWaZi/acp-go",
       "acp-go",

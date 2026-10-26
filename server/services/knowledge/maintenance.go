@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
@@ -38,6 +39,9 @@ func (s *Service) BindIntent(ctx context.Context, intent execution.WorkIntent, a
 	}
 	if err := s.validateTarget(ctx, waker, project, lib); err != nil {
 		return intent, err
+	}
+	if auth.Operation == constants.KnowledgeWikiMaintainOperation {
+		return s.bindAutomaticMaintenance(ctx, intent, auth, lib, waker, project)
 	}
 	validateTarget := func(ctx context.Context) error {
 		current, err := s.config.Engine.GetLibrary(ctx, lib.ID)

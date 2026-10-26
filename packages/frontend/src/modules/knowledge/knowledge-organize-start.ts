@@ -28,6 +28,7 @@ export function createKnowledgeOrganizeStart({
   message,
   notAcceptedMessage,
   rebuild = false,
+  maintenance = false,
 }: {
   library: Library;
   batch: string[];
@@ -37,6 +38,7 @@ export function createKnowledgeOrganizeStart({
   message: string;
   notAcceptedMessage?: string;
   rebuild?: boolean;
+  maintenance?: boolean;
 }): KnowledgeOrganizeStart {
   const retained = intent.get().start;
   if (retained) return retained;
@@ -48,25 +50,39 @@ export function createKnowledgeOrganizeStart({
     try {
       let accepted: OrganizeResponse = {};
       await perform(
-        `${rebuild ? "rebuild" : "organize"}:${library.id}:${intent.id}`,
+        `${maintenance ? "maintain" : rebuild ? "rebuild" : "organize"}:${library.id}:${intent.id}`,
         async (requestId) => {
-          const response = await knowledgeAdapter(library.ref).organize({
-            path: { libraryId: library.id },
-            body: {
-              requestId,
-              ...(rebuild ? { rebuild: true } : {}),
-              sourceVersionIds: [...batch],
-              runtimeId: chosen.runtimeId,
-              accountId: chosen.accountId,
-              model: chosen.model,
-              reasoning: chosen.reasoning,
-              message,
-            },
-            throwOnError: true,
-          });
+          const adapter = knowledgeAdapter(library.ref);
+          const response = maintenance
+            ? await adapter.maintainWiki({
+                path: { libraryId: library.id },
+                body: {
+                  requestId,
+                  runtimeId: chosen.runtimeId,
+                  accountId: chosen.accountId,
+                  model: chosen.model,
+                  reasoning: chosen.reasoning,
+                  message,
+                },
+                throwOnError: true,
+              })
+            : await adapter.organize({
+                path: { libraryId: library.id },
+                body: {
+                  requestId,
+                  ...(rebuild ? { rebuild: true } : {}),
+                  sourceVersionIds: [...batch],
+                  runtimeId: chosen.runtimeId,
+                  accountId: chosen.accountId,
+                  model: chosen.model,
+                  reasoning: chosen.reasoning,
+                  message,
+                },
+                throwOnError: true,
+              });
           accepted = response.data;
           if (
-            (rebuild || !accepted.noop) &&
+            (maintenance || rebuild || !accepted.noop) &&
             (!accepted.receipt?.jobId ||
               accepted.receipt.resourceId !== accepted.receipt.jobId ||
               accepted.receipt.requestId !== requestId ||

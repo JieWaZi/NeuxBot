@@ -5,7 +5,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acpkimi "github.com/JieWaZi/acp-go/pkg/kimi"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // kimiACPRuntimeBinding 组合 Kimi 自身的旧版兼容与产品策略。

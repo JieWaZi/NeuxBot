@@ -2,14 +2,12 @@ module github.com/JieWaZi/NeuxBot/server
 
 go 1.25.8
 
-replace github.com/coder/acp-go-sdk => github.com/JieWaZi/acp-go/sdk v0.0.0-20261026082128-5f43bcd9dae8
-
 require (
 	github.com/BurntSushi/toml v1.5.0
-	github.com/JieWaZi/acp-go v0.0.0-20261026082649-c944d6aa621f
-	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261023091500-82c296bfb0b3
-	github.com/coder/acp-go-sdk v0.13.5
+	github.com/JieWaZi/acp-go v0.0.0-20261026093330-a72373139f77
+	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261026093548-30dd388b6902
 	github.com/dop251/goja v0.0.0-20261002135814-104bc28c3abd
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-git/go-git/v5 v5.16.3
 	github.com/google/jsonschema-go v0.4.3
@@ -31,7 +29,6 @@ require (
 )
 
 require (
-	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-courier/codegen v1.1.2 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
 )
@@ -39,6 +36,7 @@ require (
 require (
 	dario.cat/mergo v1.0.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/JieWaZi/acp-go/sdk v0.0.0-20261026093029-d283676c207f
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/armon/go-metrics v0.3.10 // indirect
@@ -81,7 +79,7 @@ require (
 	github.com/go-sql-driver/mysql v1.8.1 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect
-	github.com/gofrs/flock v0.13.0 // indirect
+	github.com/gofrs/flock v0.13.0
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/pprof v0.0.0-20230207041349-798e818bf904 // indirect

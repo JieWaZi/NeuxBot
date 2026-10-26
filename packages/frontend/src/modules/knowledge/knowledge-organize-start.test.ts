@@ -225,3 +225,43 @@ it("普通整理的无新增回执保留成功语义", async () => {
   const start = createStart();
   await expect(start.execute()).resolves.toEqual({ noop: true });
 });
+
+it("Wiki维护使用独立任务入口，不提交原件范围或伙伴权限", async () => {
+  const requests: Record<string, unknown>[] = [];
+  server.use(
+    http.post(
+      "http://ally.test/api/v1/knowledge/libraries/kb/maintain",
+      async ({ request }) => {
+        requests.push((await request.json()) as Record<string, unknown>);
+        return HttpResponse.json({ receipt: acceptedJobReceipt });
+      },
+    ),
+  );
+  const start = createKnowledgeOrganizeStart({
+    library: emptyLibrary("kb", "库", "general"),
+    batch: ["must-not-rebuild"],
+    selection: {
+      runtimeId: "codex",
+      accountId: "system",
+      model: "model",
+      permissionLevel: "full-access",
+    },
+    intent: createKnowledgeOrganizeIntent(),
+    perform: async (_key, action) => {
+      await action("accepted-request");
+    },
+    message: "核查现有页面并归并重复内容",
+    maintenance: true,
+  });
+  await start.execute();
+  await start.execute();
+  expect(requests).toEqual([
+    {
+      requestId: "accepted-request",
+      runtimeId: "codex",
+      accountId: "system",
+      model: "model",
+      message: "核查现有页面并归并重复内容",
+    },
+  ]);
+});

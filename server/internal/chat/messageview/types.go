@@ -92,28 +92,29 @@ type MessageRunMetrics struct {
 }
 
 // MessageDisplayPart 是聊天接口返回的最小跨 Runtime 展示部件。
+// 工具展示身份包含 Runtime 调用作用域；原生工具标识用于审批与原生定位。
 type MessageDisplayPart struct {
-	// ID 是部件在同一消息多次增量快照之间保持不变的标识。
+	// 展示片段标识
 	ID string `json:"id"`
-	// Type 是 text、process_commentary、reasoning 或 tool 四种稳定展示类型之一。
+	// 片段类型
 	Type constants.MessageDisplayPartType `json:"type"`
-	// Text 是文本或思考部件的连续可见内容。
+	// 片段正文
 	Text string `json:"text,omitempty"`
-	// ToolCallID 是工具调用和结果配对使用的稳定标识。
+	// 原生工具标识
 	ToolCallID string `json:"toolCallId,omitempty"`
-	// ToolCategory 是跨 Runtime 统一的工具展示类别。
+	// 工具类别
 	ToolCategory constants.MessageToolCategory `json:"toolCategory,omitempty"`
-	// ToolAction 是从结构化工具事实派生的安全语义动作。
+	// 工具动作
 	ToolAction constants.MessageToolAction `json:"toolAction,omitempty"`
-	// ToolLabel 是工具完成态使用的简短语义短语。
+	// 工具完成文案
 	ToolLabel string `json:"toolLabel,omitempty"`
-	// ToolLoadingLabel 是工具运行态使用的简短语义短语。
+	// 工具运行文案
 	ToolLoadingLabel string `json:"toolLoadingLabel,omitempty"`
-	// ToolStatus 是 running、completed 或 failed 工具展示状态。
+	// 工具状态
 	ToolStatus constants.MessageToolStatus `json:"toolStatus,omitempty"`
-	// ToolSafeSummary 是从结构化字段派生出的受限展示摘要。
+	// 工具安全摘要
 	ToolSafeSummary *ToolSafeSummary `json:"toolSafeSummary,omitempty"`
-	// ToolApprovalResult 是用户对该工具调用作出的安全审批结果。
+	// 工具审批结果
 	ToolApprovalResult *ToolApprovalResult `json:"toolApprovalResult,omitempty"`
 }
 

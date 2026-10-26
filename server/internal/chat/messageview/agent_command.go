@@ -41,16 +41,32 @@ func (p *MessageViewBuilder) matchAgentCommand(executionID string, part *Message
 	if !exists || fact.Operation != op || response["ok"] != true {
 		return
 	}
-	if matched := p.agentMatches[executionID][id]; matched != "" && matched != part.ToolCallID {
+	if matched := p.agentMatches[executionID][id]; matched != "" && matched != part.ID {
 		return
 	}
-	operation, exists := contract.Find(op)
+	p.agentMatches[executionID][id] = part.ID
+	if state := p.toolStates[executionID][part.ID]; state != nil {
+		state.commandID = id
+	}
+	p.applyCommandCaption(executionID, id, part)
+}
+
+// applyCommandCaption 始终从已确认的 Core 命令事实派生业务标签，不信任原生元数据覆盖。
+func (p *MessageViewBuilder) applyCommandCaption(executionID, commandID string, part *MessageDisplayPart) {
+	if commandID == "" || part.ToolStatus == constants.MessageToolStatusFailed {
+		return
+	}
+	fact, exists := p.agentCommands[executionID][commandID]
+	if !exists {
+		return
+	}
+	operation, exists := contract.Find(fact.Operation)
 	if !exists || operation.DisplayLabel() == "" {
 		return
 	}
-	p.agentMatches[executionID][id] = part.ToolCallID
 	part.ToolLabel, part.ToolLoadingLabel = completedAndLoadingPhrase(operation.DisplayLabel())
 	part.ToolCategory, part.ToolAction, part.ToolSafeSummary = constants.MessageToolCategoryOther, constants.MessageToolActionOther, nil
+
 }
 
 // commandReceipt 只读取单个 JSON stdout 的回执身份，不把工具文本当成完成证据。

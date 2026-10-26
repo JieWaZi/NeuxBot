@@ -80,7 +80,7 @@ func messageFileChangeDiffs(
 		if part.Type == constants.MessageDisplayPartTool &&
 			part.ToolCategory == constants.MessageToolCategoryFileModify &&
 			part.ToolStatus != constants.MessageToolStatusFailed {
-			allowedTools[part.ToolCallID] = struct{}{}
+			allowedTools[part.ID] = struct{}{}
 		}
 	}
 	allowedPaths := make(map[string]struct{}, len(summaries))
@@ -91,21 +91,21 @@ func messageFileChangeDiffs(
 	toolIndexes := make(map[string]int)
 	toolSnapshots := make([]toolFileDiffSnapshot, 0)
 	for _, event := range events {
-		if event.Type != "tool_use" && event.Type != "tool_result" {
+		if event.Type != constants.RuntimeEventTypeToolUse && event.Type != constants.RuntimeEventTypeToolInputSnapshot && event.Type != constants.RuntimeEventTypeToolUpdate && event.Type != constants.RuntimeEventTypeToolResult {
 			continue
 		}
 		var data map[string]interface{}
 		if err := json.Unmarshal(event.Data, &data); err != nil {
 			continue
 		}
-		toolID := displayToolID(data, event)
+		toolID := toolProjectionKey(event.InvocationID, displayToolID(data, event))
 		if _, ok := allowedTools[toolID]; !ok {
 			continue
 		}
-		diffs := standardACPFileDiffContents(data, scope)
-		if len(diffs) == 0 {
+		if _, present := data["content"]; !present {
 			continue
 		}
+		diffs := standardACPFileDiffContents(data, scope)
 		if index, exists := toolIndexes[toolID]; exists {
 			toolSnapshots[index].diffs = diffs
 			continue

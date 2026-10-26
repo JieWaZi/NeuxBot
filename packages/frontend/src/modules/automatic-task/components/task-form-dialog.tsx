@@ -118,11 +118,13 @@ i18n.addResourceBundle(
 
 export function TaskForm({
   task,
+  initialConfiguration,
   wakerId,
   onSaved,
   onCancel,
 }: {
   task?: TaskView;
+  initialConfiguration?: Partial<TaskConfiguration>;
   wakerId: string;
   onSaved: (value: SavedTask) => void;
   onCancel: () => void;
@@ -141,6 +143,7 @@ export function TaskForm({
           workflowInputRevisionId: task.workflowInputRevisionId,
           workflowInputBindings: task.workflowInputBindings,
           workspaceReadOnly: task.workspaceReadOnly,
+          knowledge: task.knowledge,
           instruction: task.instruction,
           runtimeId: task.runtimeId,
           trigger: task.trigger,
@@ -179,8 +182,10 @@ export function TaskForm({
             dayOfMonth: 1,
             cron: "0 9 * * *",
           },
+          ...initialConfiguration,
         },
   );
+  const maintenance = config.knowledge?.operation === "maintain";
   const [scope, setScope] = useState<"project" | "directory">(
     task?.workingDirectory ? "directory" : "project",
   );
@@ -208,7 +213,8 @@ export function TaskForm({
       path: { wakerId: selectedWakerId },
       query: { pageNum: 1, pageSize: 100 },
     }),
-    enabled: executorKind !== "workflow" && Boolean(selectedWakerId),
+    enabled:
+      !maintenance && executorKind !== "workflow" && Boolean(selectedWakerId),
   });
   const workflows = useTaskWorkflows(executorKind === "workflow");
   const policy =
@@ -298,6 +304,9 @@ export function TaskForm({
             projectId: scope === "project" ? config.projectId : "",
             workingDirectory:
               scope === "directory" ? config.workingDirectory : "",
+            ...(maintenance
+              ? { projectId: "", workingDirectory: "", workspaceReadOnly: true }
+              : {}),
           };
     try {
       const saved =
@@ -439,136 +448,142 @@ export function TaskForm({
             ) : null}
           </div>
         </Card>
-        <div className="grid gap-3">
-          <Field label={t("executor")} required>
-            <SegmentedControl
-              ariaLabel={t("executorKind")}
-              value={executorKind}
-              options={[
-                {
-                  value: "waker",
-                  label: t("partnerExecutor"),
-                  icon: <UserRound />,
-                },
-                {
-                  value: "workflow",
-                  label: t("workflowExecutor"),
-                  icon: <Waypoints />,
-                },
-                {
-                  value: "team",
-                  label: t("teamExecutor"),
-                  icon: <UsersRound />,
-                },
-              ]}
-              onValueChange={(value) => {
-                setExecutorKind(value);
-                set({
-                  executorWakerId: "",
-                  channelId: "",
-                  projectId: "",
-                  memberConfigs: [],
-                  workflowId: "",
-                  workflowRevisionId: "",
-                  workflowInputRevisionId: "",
-                  workflowInputBindings: {},
-                });
-              }}
-            />
-          </Field>
-          {executorKind === "workflow" ? (
-            select(
-              t("workflowExecutor"),
-              config.workflowId || "",
-              (workflows.data ?? [])
-                .filter((item) => item.currentRevisionId)
-                .map((item) => ({ id: item.id, name: item.title })),
-              (workflowId) =>
-                set({
-                  workflowId,
-                  workflowRevisionId: "",
-                  workflowInputRevisionId: "",
-                  workflowInputBindings: {},
-                }),
-              t("chooseWorkflow"),
-            )
-          ) : (
-            <Select
-              value={
-                (executorKind === "team"
-                  ? config.channelId
-                  : config.executorWakerId) || ""
-              }
-              disabled={pending || executors.isPending}
-              onValueChange={(value) => {
-                if (value)
-                  set(
-                    executorKind === "team"
-                      ? {
-                          channelId: value,
-                          executorWakerId: "",
-                          projectId: "",
-                          memberConfigs: [],
-                        }
-                      : {
-                          executorWakerId: value,
-                          channelId: "",
-                          projectId: "",
-                        },
-                  );
-              }}
-            >
-              <SelectTrigger aria-label={t("executor")} aria-required>
-                <SelectValue
-                  placeholder={t(
-                    executorKind === "team" ? "chooseTeam" : "choosePartner",
-                  )}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {executorKind === "team"
-                  ? executors.data?.teams.map((item) =>
-                      item.channel?.id ? (
-                        <SelectItem
-                          key={item.channel.id}
-                          value={item.channel.id}
-                        >
-                          <span className="flex items-center gap-2">
-                            <TeamAvatarStack
-                              animated={false}
-                              members={item.members || []}
-                              size="xs"
-                            />
-                            {item.channel.name}
-                          </span>
-                        </SelectItem>
-                      ) : null,
-                    )
-                  : executors.data?.wakers.map((item) =>
-                      item.id ? (
-                        <SelectItem key={item.id} value={item.id}>
-                          <span className="flex items-center gap-2">
-                            <Avatar
-                              name={item.name || ""}
-                              src={item.avatar}
-                              size="xs"
-                              interactive={false}
-                              animated={false}
-                            />
-                            {item.name}
-                          </span>
-                        </SelectItem>
-                      ) : null,
+        {!maintenance ? (
+          <div className="grid gap-3">
+            <Field label={t("executor")} required>
+              <SegmentedControl
+                ariaLabel={t("executorKind")}
+                value={executorKind}
+                options={[
+                  {
+                    value: "waker",
+                    label: t("partnerExecutor"),
+                    icon: <UserRound />,
+                  },
+                  {
+                    value: "workflow",
+                    label: t("workflowExecutor"),
+                    icon: <Waypoints />,
+                  },
+                  {
+                    value: "team",
+                    label: t("teamExecutor"),
+                    icon: <UsersRound />,
+                  },
+                ]}
+                onValueChange={(value) => {
+                  setExecutorKind(value);
+                  set({
+                    executorWakerId: "",
+                    channelId: "",
+                    projectId: "",
+                    memberConfigs: [],
+                    workflowId: "",
+                    workflowRevisionId: "",
+                    workflowInputRevisionId: "",
+                    workflowInputBindings: {},
+                  });
+                }}
+              />
+            </Field>
+            {executorKind === "workflow" ? (
+              select(
+                t("workflowExecutor"),
+                config.workflowId || "",
+                (workflows.data ?? [])
+                  .filter((item) => item.currentRevisionId)
+                  .map((item) => ({ id: item.id, name: item.title })),
+                (workflowId) =>
+                  set({
+                    workflowId,
+                    workflowRevisionId: "",
+                    workflowInputRevisionId: "",
+                    workflowInputBindings: {},
+                  }),
+                t("chooseWorkflow"),
+              )
+            ) : (
+              <Select
+                value={
+                  (executorKind === "team"
+                    ? config.channelId
+                    : config.executorWakerId) || ""
+                }
+                disabled={pending || executors.isPending}
+                onValueChange={(value) => {
+                  if (value)
+                    set(
+                      executorKind === "team"
+                        ? {
+                            channelId: value,
+                            executorWakerId: "",
+                            projectId: "",
+                            memberConfigs: [],
+                          }
+                        : {
+                            executorWakerId: value,
+                            channelId: "",
+                            projectId: "",
+                          },
+                    );
+                }}
+              >
+                <SelectTrigger aria-label={t("executor")} aria-required>
+                  <SelectValue
+                    placeholder={t(
+                      executorKind === "team" ? "chooseTeam" : "choosePartner",
                     )}
-              </SelectContent>
-            </Select>
-          )}
-          {executors.error ? (
-            <p role="alert" className="text-destructive type-ui">
-              {localApiErrorMessage(executors.error, t("actionFailed"))}
-            </p>
-          ) : null}
-        </div>
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {executorKind === "team"
+                    ? executors.data?.teams.map((item) =>
+                        item.channel?.id ? (
+                          <SelectItem
+                            key={item.channel.id}
+                            value={item.channel.id}
+                          >
+                            <span className="flex items-center gap-2">
+                              <TeamAvatarStack
+                                animated={false}
+                                members={item.members || []}
+                                size="xs"
+                              />
+                              {item.channel.name}
+                            </span>
+                          </SelectItem>
+                        ) : null,
+                      )
+                    : executors.data?.wakers.map((item) =>
+                        item.id ? (
+                          <SelectItem key={item.id} value={item.id}>
+                            <span className="flex items-center gap-2">
+                              <Avatar
+                                name={item.name || ""}
+                                src={item.avatar}
+                                size="xs"
+                                interactive={false}
+                                animated={false}
+                              />
+                              {item.name}
+                            </span>
+                          </SelectItem>
+                        ) : null,
+                      )}
+                </SelectContent>
+              </Select>
+            )}
+            {executors.error ? (
+              <p role="alert" className="text-destructive type-ui">
+                {localApiErrorMessage(executors.error, t("actionFailed"))}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <p className="text-content-secondary type-ui">
+            {t("wikiMaintenanceScope")}
+          </p>
+        )}
         {executorKind === "workflow" ? (
           <div className="grid gap-4">
             {task?.workflowInputRevisionId &&
@@ -706,7 +721,7 @@ export function TaskForm({
           </Field>
         )}
 
-        {executorKind !== "workflow" ? (
+        {executorKind !== "workflow" && !maintenance ? (
           <div className="grid gap-3">
             <Field label={t("workspace")}>
               <SegmentedControl

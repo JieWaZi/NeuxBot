@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // acpAdapterConfig 保存所有 acp-go Runtime Adapter 共用的启动事实。
@@ -241,6 +241,14 @@ func nativeACPRuntimeBinding() acpRuntimeBinding {
 		return request.Request.Workspace.Path + "\x00" + request.InvocationID
 	}
 	return binding
+}
+
+// sessionACPAgentScope 将可热复用的连接绑定到唯一原生会话，新建前临时使用调用身份。
+func sessionACPAgentScope(request acpRunRequest) string {
+	if request.Request.Session.Mode == SessionModeResume {
+		return "session:" + request.Request.Session.ID
+	}
+	return "invocation:" + request.InvocationID
 }
 
 // selectedSkillCommandPrompt 按 Adapter 原生命令前缀构造有序 Skill 选择。

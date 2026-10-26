@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 func TestClassifyRuntimeErrorTextUsesStableACPFailureCodes(t *testing.T) {

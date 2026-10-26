@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 const (
@@ -44,6 +44,8 @@ func (bridge *acpBridge) requestPermission(
 	}
 	bridge.setApprovalPending(1)
 	defer bridge.setApprovalPending(-1)
+	// 权限回调可先于 invocation_started 交付，归属必须取自本 Bridge 而非宿主最新状态。
+	normalized.InvocationID = bridge.invocationID
 	decision, err := bridge.approvalHandler.Request(ctx, normalized)
 	if err != nil || decision.Cancelled || strings.TrimSpace(decision.OptionID) == "" {
 		return acp.RequestPermissionResponse{

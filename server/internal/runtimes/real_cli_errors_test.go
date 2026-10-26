@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // realCLIFailureCapture 是真实 CLI 连接本机故障接口后采集的 ACP 终态。

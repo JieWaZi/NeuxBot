@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"slices"
@@ -12,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 type approvalHandlerFunc func(context.Context, ApprovalRequest) (ApprovalDecision, error)
@@ -246,7 +247,7 @@ func TestACPProjectionKeepsToolProgressWithoutContent(t *testing.T) {
 			RawOutput:  map[string]any{"elapsedTimeSeconds": 1.5},
 		}},
 	})
-	if err != nil || len(events) != 1 || events[0].Type != EventTypeToolUse {
+	if err != nil || len(events) != 1 || events[0].Type != EventTypeToolUpdate {
 		t.Fatalf("events = %#v, err = %v", events, err)
 	}
 	var payload map[string]any
@@ -965,8 +966,11 @@ func TestACPRuntimeReusesLiveSessionAcrossInvocations(t *testing.T) {
 			agent.mutex.Lock()
 			closeCalls = agent.closeSessionCalls
 			agent.mutex.Unlock()
-			if closeCalls != 1 {
-				t.Fatalf("after Close: close=%d, want 1", closeCalls)
+			agent.mutex.Lock()
+			closed := agent.closed
+			agent.mutex.Unlock()
+			if !closed {
+				t.Fatal("backend Close did not release the session-owning Adapter")
 			}
 		})
 	}
@@ -1029,8 +1033,11 @@ func TestACPRuntimeReopensLiveSessionWhenMCPChanges(t *testing.T) {
 			agent.mutex.Lock()
 			closeCalls = agent.closeSessionCalls
 			agent.mutex.Unlock()
-			if closeCalls != 2 {
-				t.Fatalf("close=%d after backend close, want 2", closeCalls)
+			agent.mutex.Lock()
+			closed := agent.closed
+			agent.mutex.Unlock()
+			if !closed {
+				t.Fatal("backend Close did not release the reopened session-owning Adapter")
 			}
 		})
 	}
@@ -1086,10 +1093,19 @@ func TestACPRuntimeConcurrentSessionsStayIsolated(t *testing.T) {
 				selectedConfigs: make(map[acp.SessionConfigId]acp.SessionConfigValueId),
 				simplePrompt:    true,
 			}
+			var factoryMutex sync.Mutex
+			factoryCalls := 0
 			replaceACPAgentFactory(backend, test.runtimeID, func(
 				context.Context,
 				acpAdapterConfig,
 			) (acp.Agent, error) {
+				if test.runtimeID == RuntimeIDClaude {
+					factoryMutex.Lock()
+					factoryCalls++
+					index := factoryCalls
+					factoryMutex.Unlock()
+					return &fakeCodexACPAgent{sessionID: acp.SessionId(fmt.Sprintf("claude-session-%d", index)), selectedConfigs: make(map[acp.SessionConfigId]acp.SessionConfigValueId), simplePrompt: true}, nil
+				}
 				return agent, nil
 			})
 			t.Cleanup(func() { _ = backend.Close(context.Background()) })
@@ -1105,7 +1121,7 @@ func TestACPRuntimeConcurrentSessionsStayIsolated(t *testing.T) {
 						test.runtimeID,
 						SessionDirective{Mode: SessionModeNew},
 					)
-					request.InvocationID = test.runtimeID + "-concurrent"
+					request.InvocationID = fmt.Sprintf("%s-concurrent-%d", test.runtimeID, resultIndex)
 					results[resultIndex] = backend.Run(context.Background(), request)
 				}(index)
 			}
@@ -1136,10 +1152,15 @@ func TestACPRuntimeCancellationLeavesNextInvocationUsable(t *testing.T) {
 				blockPrompt:     true,
 				promptStarted:   make(chan struct{}),
 			}
+			createdAgent := false
 			replaceACPAgentFactory(backend, test.runtimeID, func(
 				context.Context,
 				acpAdapterConfig,
 			) (acp.Agent, error) {
+				if createdAgent && test.runtimeID == RuntimeIDClaude {
+					return &fakeCodexACPAgent{sessionID: acp.SessionId(test.runtimeID + "-next"), selectedConfigs: make(map[acp.SessionConfigId]acp.SessionConfigValueId), simplePrompt: true}, nil
+				}
+				createdAgent = true
 				return agent, nil
 			})
 			t.Cleanup(func() { _ = backend.Close(context.Background()) })
@@ -1224,7 +1245,7 @@ func assertACPProjectionCapabilities(t *testing.T, events []Event) {
 			wants["text"] = true
 		case EventTypeThinkingDelta:
 			wants["reasoning"] = true
-		case EventTypeToolUse, EventTypeToolResult:
+		case EventTypeToolUse, EventTypeToolInputSnapshot, EventTypeToolUpdate, EventTypeToolResult:
 			var payload map[string]any
 			if err := json.Unmarshal(event.Data, &payload); err != nil {
 				t.Fatal(err)

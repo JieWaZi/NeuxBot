@@ -71,7 +71,7 @@ func TestDefaultOrganizeOnlyQueuesUnoccupiedSources(t *testing.T) {
 	}
 }
 
-func TestQueuedServiceShutdownAndRecoveryPreserveOrderAndConfiguration(t *testing.T) {
+func TestQueuedServiceRestartFailsInterruptedJobAndRunsNextWithFrozenConfiguration(t *testing.T) {
 	s, lib := newServiceFixture(t)
 	ctx := context.Background()
 	jobs := make([]*core.Receipt, 0, 2)
@@ -88,13 +88,20 @@ func TestQueuedServiceShutdownAndRecoveryPreserveOrderAndConfiguration(t *testin
 	}
 	for round := 0; round < 2; round++ {
 		model := &blockedKnowledgeModel{entered: make(chan core.GenerateRequest, 2), stopped: make(chan struct{})}
-		s.config.Generator = func(context.Context, models.LibraryExecutionDefaults) (core.Generator, error) { return model, nil }
+		expectedModel := []string{"first-model", "second-model"}[round]
+		s.config.Generator = func(_ context.Context, selected models.LibraryExecutionDefaults) (core.Generator, error) {
+			if selected.Model != expectedModel {
+				t.Errorf("queue selected model %q, want %q", selected.Model, expectedModel)
+			}
+			return model, nil
+		}
+		t.Cleanup(s.Close)
 		if err := s.Start(ctx); err != nil {
 			t.Fatal(err)
 		}
 		select {
 		case request := <-model.entered:
-			if request.JobID != jobs[0].JobID {
+			if request.JobID != jobs[round].JobID {
 				t.Fatal("later job overtook running task", request.JobID)
 			}
 		case <-time.After(5 * time.Second):
@@ -103,8 +110,11 @@ func TestQueuedServiceShutdownAndRecoveryPreserveOrderAndConfiguration(t *testin
 		s.Close()
 		first, _ := s.config.Engine.GetJob(ctx, jobs[0].JobID)
 		second, _ := s.config.Engine.GetJob(ctx, jobs[1].JobID)
-		if first.State != "processing" || second.State != "queued" {
+		if round == 0 && (first.State != "processing" || second.State != "queued") {
 			t.Fatal("shutdown changed persistent queue", first, second)
+		}
+		if round == 1 && (first.State != "failed" || second.State != "processing") {
+			t.Fatal("restart did not fail interrupted work and advance queue", first, second)
 		}
 		config, err := s.config.References.GetTaskConfiguration(ctx, "second-job")
 		if err != nil || config.Model != "second-model" || config.Message != "second要求" {
@@ -236,5 +246,30 @@ func TestRecoveryContinuesAfterCancellationBarrier(t *testing.T) {
 	next, _ := s.config.Engine.GetJob(ctx, second.JobID)
 	if cancelled.State != "cancelled" || next.State != "failed" {
 		t.Fatal(cancelled, next)
+	}
+}
+
+func TestRecoverySettlesCancellationWithoutModelConfiguration(t *testing.T) {
+	s, lib, path, _ := newServiceFixtureWithDB(t)
+	ctx := context.Background()
+	job := regressionJob(t, s, lib)
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec("UPDATE knowledge_jobs SET cancel_requested=1,state='cancel_requested' WHERE id=?", job.ID); err != nil {
+		t.Fatal(err)
+	}
+	// 取消已经持久化，收束它不应再依赖已丢失的模型配置。
+	s.config.References = startupConfigurationReferences{KnowledgeController: s.config.References, configurationError: status_error.KnowledgeNotFound}
+	defer s.Close()
+	if err := s.Start(ctx); err != nil {
+		t.Fatalf("saved cancellation was blocked by model configuration: %v", err)
+	}
+	s.workers.Wait()
+	current, err := s.config.Engine.GetJob(ctx, job.ID)
+	if err != nil || current.State != "cancelled" {
+		t.Fatalf("saved cancellation did not settle: %+v %v", current, err)
 	}
 }

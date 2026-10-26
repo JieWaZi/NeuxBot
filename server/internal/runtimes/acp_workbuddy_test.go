@@ -6,7 +6,7 @@ import (
 	"slices"
 	"testing"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // TestWorkBuddyRegistryAndPermissions 验证自动注册、原生文件、三档权限和只读模式均使用真实目录。

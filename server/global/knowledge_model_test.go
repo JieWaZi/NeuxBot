@@ -62,6 +62,9 @@ func TestKnowledgeModelRejectsUnsupportedTextCapability(t *testing.T) {
 	if _, err := resolveKnowledgeModel(ctx, models.LibraryExecutionDefaults{RuntimeID: constants.RuntimeIDPi}); !errors.Is(err, status_error.RuntimePolicyUnsupported) {
 		t.Fatalf("unverified model accepted: %v", err)
 	}
+	if _, err := resolveKnowledgeMaintenanceModel(ctx, models.LibraryExecutionDefaults{RuntimeID: constants.RuntimeIDPi}); err != nil {
+		t.Fatalf("tool-capable maintenance inherited the pure-text restriction: %v", err)
+	}
 }
 
 func TestKnowledgeUnknownCapabilityAcceptsValidManagedAccount(t *testing.T) {

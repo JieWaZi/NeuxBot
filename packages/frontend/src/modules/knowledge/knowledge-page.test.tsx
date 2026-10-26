@@ -308,6 +308,90 @@ function fixtures() {
   );
 }
 
+it("整理Wiki接纳后关闭配置弹窗，不打开结果或伙伴聊天", async () => {
+  fixtures();
+  const requests: Record<string, unknown>[] = [];
+  server.use(
+    http.post(
+      "http://ally.test/api/v1/knowledge/libraries/kb/maintain",
+      async ({ request }) => {
+        const body = (await request.json()) as Record<string, unknown>;
+        requests.push(body);
+        return HttpResponse.json({ receipt: acceptedReceipt(body) });
+      },
+    ),
+    http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs/job", () =>
+      HttpResponse.json({
+        job: { id: "job", libraryId: "kb", state: "completed" },
+        report: "已核查来源并归并重复页面。",
+      }),
+    ),
+  );
+  const user = userEvent.setup();
+  show("/knowledge/kb");
+  const maintain = await screen.findByRole("button", { name: "整理 Wiki" });
+  await waitFor(() => expect(maintain).toBeEnabled());
+  await user.click(maintain);
+  const dialog = await screen.findByRole("dialog");
+  await within(dialog).findByRole("combobox", { name: "模型" });
+  expect(
+    within(dialog).queryByRole("button", { name: /已选 .*个文件/ }),
+  ).not.toBeInTheDocument();
+  expect(
+    within(dialog).queryByRole("combobox", { name: "伙伴" }),
+  ).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      within(dialog).getByRole("button", { name: "开始整理" }),
+    ).toBeEnabled(),
+  );
+  await user.click(within(dialog).getByRole("button", { name: "开始整理" }));
+  await waitFor(() => expect(requests).toHaveLength(1));
+  await vi.dynamicImportSettled();
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.queryByText("已核查来源并归并重复页面。"),
+  ).not.toBeInTheDocument();
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({ runtimeId: "codex", model: "model" });
+  expect(requests[0]).not.toHaveProperty("sourceVersionIds");
+  expect(requests[0]).not.toHaveProperty("wakerId");
+  expect(requests[0]).not.toHaveProperty("permissionLevel");
+  expect(
+    screen.queryByRole("button", { name: "发送消息" }),
+  ).not.toBeInTheDocument();
+});
+
+it.each([
+  { view: "wiki", state: "queued" },
+  { view: "graph", state: "processing" },
+  { view: "raw", state: "cancel_requested" },
+])(
+  "$view 页读取 $state 任务后禁用两种整理，未来计划仍可配置",
+  async ({ view, state }) => {
+    fixtures();
+    let reads = 0;
+    server.use(
+      http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () => {
+        reads++;
+        return HttpResponse.json({
+          items: [{ id: "active", libraryId: "kb", state }],
+          activeJob: { id: "active", libraryId: "kb", state },
+          total: 1,
+        });
+      }),
+    );
+    show(`/knowledge/kb?view=${view}`);
+    await waitFor(() => expect(reads).toBeGreaterThan(0));
+    expect(screen.getByRole("button", { name: "整理文档" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "整理 Wiki" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "定期整理 Wiki" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "上传资料" })).toBeEnabled();
+  },
+);
+
 it("知识库只保留标题与同行操作，搜索仅在左侧原件目录", async () => {
   fixtures();
   const job = {
@@ -335,7 +419,14 @@ it("知识库只保留标题与同行操作，搜索仅在左侧原件目录", a
     within(actions)
       .getAllByRole("button")
       .map((action) => action.getAttribute("aria-label")),
-  ).toEqual(["图谱", "设置", "整理文档", "上传资料"]);
+  ).toEqual([
+    "图谱",
+    "设置",
+    "整理文档",
+    "定期整理 Wiki",
+    "整理 Wiki",
+    "上传资料",
+  ]);
   expect(
     within(actions).getByRole("button", { name: "设置" }),
   ).toHaveTextContent("");
@@ -657,7 +748,7 @@ it.each(["network", "partial500"])(
   },
 );
 
-it("后台运行允许上传和提交其他文件，不请求任务详情", async () => {
+it("后台运行允许上传但禁用新的整理，不请求任务详情", async () => {
   fixtures();
   let detailReads = 0;
   server.use(
@@ -680,7 +771,7 @@ it("后台运行允许上传和提交其他文件，不请求任务详情", asyn
   await vi.dynamicImportSettled();
   await screen.findByText("原始资料.md", {}, { timeout: 4000 });
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "整理文档" })).toBeEnabled(),
+    expect(screen.getByRole("button", { name: "整理文档" })).toBeDisabled(),
   );
   expect(screen.queryByText("正在整理")).not.toBeInTheDocument();
   expect(detailReads).toBe(0);
@@ -811,7 +902,7 @@ it.each(["failed", "cancelled"] as const)(
   },
 );
 
-it("真实运行中的任务不阻止整理其他失败来源", async () => {
+it("真实运行中的任务也阻止从其他失败来源发起整理", async () => {
   fixtures();
   server.use(
     http.get("http://ally.test/api/v1/knowledge/libraries/kb/sources", () =>
@@ -831,7 +922,7 @@ it("真实运行中的任务不阻止整理其他失败来源", async () => {
   show();
   await screen.findByText("原始资料.md");
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "整理文档" })).toBeEnabled(),
+    expect(screen.getByRole("button", { name: "整理文档" })).toBeDisabled(),
   );
 });
 
@@ -1229,19 +1320,22 @@ it("后台接纳中关闭重开配置复用同一个待定请求，不取消任�
   ).not.toBeInTheDocument();
 });
 
-it("已有任务排队时仍可上传并仅提交其他待处理文件", async () => {
+it("旧任务排队时禁用整理，结束后仅提交其他待处理文件", async () => {
   fixtures();
+  let queued = true;
   server.use(
     http.get("http://ally.test/api/v1/knowledge/libraries/kb/jobs", () =>
       HttpResponse.json({
         items: [{ id: "newer-completed", libraryId: "kb", state: "completed" }],
         total: 2,
-        activeJob: {
-          id: "old-retry",
-          libraryId: "kb",
-          state: "queued",
-          attempt: 2,
-        },
+        activeJob: queued
+          ? {
+              id: "old-retry",
+              libraryId: "kb",
+              state: "queued",
+              attempt: 2,
+            }
+          : undefined,
       }),
     ),
   );
@@ -1284,14 +1378,21 @@ it("已有任务排队时仍可上传并仅提交其他待处理文件", async (
     ),
   );
   const user = userEvent.setup();
-  show();
+  const queryClient = show();
   await screen.findByRole("button", { name: "设置" });
   await vi.dynamicImportSettled();
   await screen.findByText("原始资料.md", {}, { timeout: 4000 });
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "整理文档" })).toBeEnabled(),
+    expect(screen.getByRole("button", { name: "整理文档" })).toBeDisabled(),
   );
   expect(screen.getByRole("button", { name: "上传资料" })).toBeEnabled();
+  queued = false;
+  await queryClient.invalidateQueries({
+    queryKey: ["knowledge", "local", "local", "kb", "jobs"],
+  });
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "整理文档" })).toBeEnabled(),
+  );
   await user.click(screen.getByRole("button", { name: "整理文档" }));
   const dialog = await screen.findByRole("dialog");
   await vi.dynamicImportSettled();

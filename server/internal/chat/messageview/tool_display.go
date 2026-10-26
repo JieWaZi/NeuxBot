@@ -145,6 +145,9 @@ func displayToolAction(data map[string]interface{}) constants.MessageToolAction 
 	case "skill":
 		return constants.MessageToolActionUseSkill
 	case "bash", "shell", "command", "command_execution", "exec":
+		if action := firstNestedDisplayString(data, "displayCommandAction"); action != "" {
+			return constants.MessageToolAction(action)
+		}
 		return displayCommandAction(firstNestedDisplayString(data, "command"))
 	default:
 		if strings.HasPrefix(normalized, "mcp__") || strings.Contains(normalized, "mcp") {

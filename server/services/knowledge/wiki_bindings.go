@@ -40,6 +40,7 @@ type wikiCommand struct {
 	NewSlug           string   `json:"newSlug"`           // 新页面地址。
 	RevisionVersion   int      `json:"revisionVersion"`   // 要恢复的历史版本。
 	ThemeID           string   `json:"themeId"`           // 目录身份。
+	FolderID          *string  `json:"folderId"`          // 可选页面所属目录；省略保留，空值移至根目录。
 	Name              string   `json:"name"`              // 目录名称。
 	ParentID          string   `json:"parentId"`          // 上级目录。
 	Delete            bool     `json:"delete"`            // 明确删除空目录。
@@ -441,6 +442,12 @@ func (s *Service) applyWikiCommand(ctx context.Context, op, id string, in wikiCo
 		p.PageType = in.PageType
 		p.Aliases = in.Aliases
 		p.LastEditorID = actor
+		if in.FolderID != nil {
+			if pageOnly != "" && *in.FolderID != p.FolderID {
+				return nil, status_error.KnowledgeForbidden
+			}
+			p.FolderID = *in.FolderID
+		}
 		if in.SourceVersionIDs != nil {
 			prior := p.Evidence.Sources
 			p.Evidence.Sources = nil

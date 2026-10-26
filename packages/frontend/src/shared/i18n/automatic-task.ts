@@ -1,4 +1,9 @@
 export const automaticTaskZh = {
+  wikiMaintenanceName: "{{name}} · 定期整理",
+  wikiMaintenanceScope:
+    "只维护已选知识库的现有 Wiki。每次运行保留来源和历史，不导入原件或访问本地目录。保存后可在自动任务中查看运行结果、修改计划或停用。",
+  wikiMaintenanceInstruction:
+    "核查当前知识库已有 Wiki，依据原件确认问题，修复失效链接与引用，归并确属同一知识的重复页并更新入链，整理同义目录。保留有效内容、人工维护内容、来源和历史；不同版本或适用范围不能直接混合。不要重新导入原件或重新生成全库。最后报告实际更新、归并、归档及未解决的问题。",
   apiIntegrationHint:
     "在设置的「发布集成 → API 集成」创建 API Key，并明确授权本任务的调用或结果读取。示例中的 API_KEY 使用该集成密钥。",
   taskID: "任务 ID",
@@ -199,6 +204,11 @@ export const automaticTaskZh = {
 } as const;
 
 export const automaticTaskEn = {
+  wikiMaintenanceName: "{{name}} · Scheduled maintenance",
+  wikiMaintenanceScope:
+    "Maintain only the selected library's existing Wiki. Preserve sources and history without importing originals or accessing local directories. After saving, review runs, edit the schedule, or disable it in Automatic Tasks.",
+  wikiMaintenanceInstruction:
+    "Inspect existing Wiki pages in the selected library. Verify issues against original sources, repair broken links and references, consolidate pages about the same knowledge and update incoming links, and organize synonymous directories. Preserve valid content, manual edits, sources, and history. Keep distinct versions and applicability separate. Do not import originals or regenerate the library. Report actual updates, consolidations, archived pages, and unresolved issues.",
   apiIntegrationHint:
     "Create an API Key in Settings → Publishing & integrations → API integration and grant this task invoke or result access. Use that key as API_KEY in the examples.",
   taskID: "Task ID",

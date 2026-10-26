@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // cursorThinkingAgent 模拟原生模型目录和配置生效回执。

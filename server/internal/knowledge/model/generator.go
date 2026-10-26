@@ -57,7 +57,8 @@ func (generator *Generator) Generate(ctx context.Context, input core.GenerateReq
 	}
 	result := generator.config.Runtime.GenerateText(ctx, runtimes.TextRequest{
 		Target: target, Detection: detection, Model: generator.config.Model,
-		Messages: messages, Reasoning: generator.config.Reasoning, Thinking: input.Thinking, MaxTokens: input.MaxTokens, Temperature: input.Temperature,
+		PermissionLevel: runtimes.PermissionLevelFullAccess,
+		Messages:        messages, Reasoning: generator.config.Reasoning, Thinking: input.Thinking, MaxTokens: input.MaxTokens, Temperature: input.Temperature,
 	})
 	if generator.config.Observe != nil {
 		generator.config.Observe(ctx, input, result)

@@ -9,7 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // acpCatalogOptions 返回 ACP 探测得到的模型与推理目录副本，不再注入 Default 占位项。

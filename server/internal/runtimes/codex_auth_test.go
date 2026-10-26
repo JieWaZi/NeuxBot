@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 func TestCodexCredentialAgentPreservesNativeAdapterInterfaces(t *testing.T) {

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { Skeleton } from "@/shared/ui/skeleton";
-import type { SavedTask, TaskView } from "../model/types";
+import type { SavedTask, TaskConfiguration, TaskView } from "../model/types";
 
 const TaskForm = lazy(() =>
   import("./task-form-dialog").then((module) => ({ default: module.TaskForm })),
@@ -38,12 +38,14 @@ export function TaskFormDialog({
   onSaved,
   wakerId = "",
   task,
+  initialConfiguration,
 }: {
   open: boolean;
   onOpenChange: (value: boolean) => void;
   onSaved: (value: SavedTask) => void;
   wakerId?: string;
   task?: TaskView;
+  initialConfiguration?: Partial<TaskConfiguration>;
 }) {
   const { t } = useTranslation("automaticTask");
   const close = () => onOpenChange(false);
@@ -59,6 +61,7 @@ export function TaskFormDialog({
             <TaskForm
               key={task?.id || "create"}
               task={task}
+              initialConfiguration={initialConfiguration}
               wakerId={wakerId}
               onSaved={onSaved}
               onCancel={close}

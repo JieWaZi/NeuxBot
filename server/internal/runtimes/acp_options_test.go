@@ -2,7 +2,7 @@ package runtimes
 
 import (
 	"context"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 	"testing"
 )
 

@@ -8,7 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // FailureDisplayMessage 从 Go 错误链或 ACP 结构化错误中读取最内层原因。
@@ -65,6 +65,8 @@ func ErrorCode(err error) (FailureCode, bool) {
 		return FailureCodeInvalidRequest, true
 	case errors.Is(err, status_error.RuntimeUnavailable):
 		return FailureCodeRuntimeUnavailable, true
+	case errors.Is(err, status_error.RuntimeEventQueueOverflow):
+		return FailureCodeEventDelivery, true
 	case errors.Is(err, status_error.SkillUnavailable):
 		return FailureCodeUnsupportedCapability, true
 	case errors.Is(err, status_error.RuntimePolicyUnsupported):

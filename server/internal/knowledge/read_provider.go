@@ -299,7 +299,7 @@ func (p LocalReadProvider) ExtendedRead(ctx context.Context, ref ResourceRef, op
 		var rows []*core.Page
 		var total int64
 		rows, total, err = p.Pages(ctx, ref, pageReadQuery(params))
-		return map[string]any{"items": rows, "total": total}, err
+		return pageListMetadata(rows, total, offset), err
 	case "knowledge.themes.list":
 		var rows []*core.Theme
 		rows, err = p.Engine.ListThemes(ctx, ref.KnowledgeBaseID)
@@ -358,7 +358,7 @@ func (p RemoteReadProvider) ExtendedRead(ctx context.Context, ref ResourceRef, o
 	}
 	if operation == "knowledge.pages.list" {
 		rows, total, err := p.Pages(ctx, ref, pageReadQuery(params))
-		return map[string]any{"items": rows, "total": total}, err
+		return pageListMetadata(rows, total, number(params, "offset")), err
 	}
 	if operation == "knowledge.sources.list" && p.Custom == nil && p.Official != nil {
 		offset, limit := number(params, "offset"), number(params, "limit")
@@ -449,6 +449,16 @@ func (p RemoteReadProvider) ExtendedRead(ctx context.Context, ref ResourceRef, o
 func activityParams(params map[string]any) core.ActivityQuery {
 	cursor, _ := params["afterId"].(uint64)
 	return core.ActivityQuery{AfterID: cursor, Limit: number(params, "limit"), Action: core.AuditAction(stringParam(params, "action")), Outcome: core.AuditOutcome(stringParam(params, "outcome")), ActorUserID: stringParam(params, "actorUserId")}
+}
+
+// pageListMetadata 复用目录条目合同；正文与证据只通过单页读取交付，避免 CLI 列表淹没上下文。
+func pageListMetadata(rows []*core.Page, total int64, offset int) map[string]any {
+	items := make([]core.PageDirectoryEntry, 0, len(rows))
+	for _, page := range rows {
+		items = append(items, core.PageDirectoryEntry{ID: page.ID, KnowledgeBaseID: page.KnowledgeBaseID, Slug: page.Slug, Title: page.Title, PageType: page.PageType, Summary: page.Summary, FolderID: page.FolderID, CategoryPath: page.CategoryPath, SortOrder: page.SortOrder, Version: page.Version})
+	}
+	next := offset + len(items)
+	return map[string]any{"items": items, "total": total, "offset": offset, "nextOffset": next, "hasMore": int64(next) < total}
 }
 
 func pageReadQuery(params map[string]any) core.PageQuery {

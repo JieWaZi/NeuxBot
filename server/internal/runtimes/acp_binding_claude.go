@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	acpclaude "github.com/JieWaZi/acp-go/pkg/claude"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 const (
@@ -20,6 +20,9 @@ func claudeACPRuntimeBinding() acpRuntimeBinding {
 	binding := standardACPRuntimeBinding()
 	binding.baseRuntimeID = RuntimeIDClaude
 	binding.displayName = "Claude"
+	// Claude 原本已为每个 Session 启动独立 CLI；连接采用相同所有权且沿用热恢复。
+	binding.retainedProcess = true
+	binding.agentScope = sessionACPAgentScope
 	binding.executableLogKey = "claude_binary"
 	binding.modelConfigID = claudeACPModelConfigID
 	binding.reasoningConfigID = claudeACPReasoningConfigID

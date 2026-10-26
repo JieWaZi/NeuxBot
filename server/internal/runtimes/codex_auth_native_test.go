@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // TestOfficialCodexRefreshUsesHostBroker 只使用合成凭据检查真实 CLI 的刷新协议；所有外部网络均禁用。

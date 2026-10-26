@@ -11,6 +11,28 @@ import (
 	"testing"
 )
 
+func TestIntegrationMaintenanceGrantCannotChangeLibraryOrOperation(t *testing.T) {
+	frozen := &models.KnowledgeMaintenanceAuthorization{Backend: "local", ConnectionID: "local", KnowledgeBaseID: "library", Operation: "maintain"}
+	current := *frozen
+	if !coversKnowledge(&current, frozen) {
+		t.Fatal("unchanged explicit maintenance authority rejected")
+	}
+	current.Operation = "organize"
+	if coversKnowledge(&current, frozen) {
+		t.Fatal("source organization was substituted for Wiki maintenance")
+	}
+	current = *frozen
+	current.KnowledgeBaseID = "another-library"
+	if coversKnowledge(&current, frozen) {
+		t.Fatal("maintenance target changed to another library")
+	}
+	current = *frozen
+	current.SourceVersionIDs = []string{"source"}
+	if coversKnowledge(&current, frozen) {
+		t.Fatal("maintenance authority silently acquired source selection")
+	}
+}
+
 func TestIntegrationAutomaticTaskKnowledgeScopeAndRevocation(t *testing.T) {
 	s, keys, key := integrationFixture(t)
 	ctx := context.Background()

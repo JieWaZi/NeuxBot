@@ -3659,7 +3659,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n* `[KnowledgeInvalid][40000009501]`\n",
+            "description": ">\n* `[AgentInputInvalid][40000009001]`\n* `[BadRequest][40000000001]`\n* `[KnowledgeInvalid][40000009501]`\n* `[SkillContentInvalid][40000000013]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -3668,12 +3668,14 @@
               }
             },
             "x-status-errors": [
+              "[AgentInputInvalid][40000009001]",
               "[BadRequest][40000000001]",
-              "[KnowledgeInvalid][40000009501]"
+              "[KnowledgeInvalid][40000009501]",
+              "[SkillContentInvalid][40000000013]"
             ]
           },
           "401": {
-            "description": ">\n* `[IntegrationUnauthorized][40100009601]`\n",
+            "description": ">\n* `[IntegrationUnauthorized][40100009601]`\n* `[KnowledgeRemoteUnauthorized][40100009501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -3682,11 +3684,12 @@
               }
             },
             "x-status-errors": [
-              "[IntegrationUnauthorized][40100009601]"
+              "[IntegrationUnauthorized][40100009601]",
+              "[KnowledgeRemoteUnauthorized][40100009501]"
             ]
           },
           "403": {
-            "description": ">\n* `[KnowledgeForbidden][40300009501]`\n",
+            "description": ">\n* `[AgentOperationForbidden][40300009001]`\n* `[KnowledgeForbidden][40300009501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -3695,6 +3698,7 @@
               }
             },
             "x-status-errors": [
+              "[AgentOperationForbidden][40300009001]",
               "[KnowledgeForbidden][40300009501]"
             ]
           },
@@ -3742,7 +3746,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n",
+            "description": ">\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[SkillUnavailable][50000000008]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -3752,7 +3756,22 @@
             },
             "x-status-errors": [
               "[InternalServerError][50000000001]",
-              "[KnowledgeStorageError][50000009501]"
+              "[KnowledgeStorageError][50000009501]",
+              "[SkillUnavailable][50000000008]"
+            ]
+          },
+          "502": {
+            "description": ">\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[KnowledgeRemoteIncompatible][50200009502]",
+              "[KnowledgeRemoteUnreachable][50200009501]"
             ]
           },
           "503": {
@@ -3766,6 +3785,19 @@
             },
             "x-status-errors": [
               "[DatabaseBusy][50300001001]"
+            ]
+          },
+          "504": {
+            "description": ">\n* `[KnowledgeRemoteOutcomeUnknown][50400009501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[KnowledgeRemoteOutcomeUnknown][50400009501]"
             ]
           }
         },
@@ -3828,7 +3860,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n* `[KnowledgeInvalid][40000009501]`\n",
+            "description": ">\n* `[AgentInputInvalid][40000009001]`\n* `[BadRequest][40000000001]`\n* `[KnowledgeInvalid][40000009501]`\n* `[SkillContentInvalid][40000000013]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -3837,12 +3869,14 @@
               }
             },
             "x-status-errors": [
+              "[AgentInputInvalid][40000009001]",
               "[BadRequest][40000000001]",
-              "[KnowledgeInvalid][40000009501]"
+              "[KnowledgeInvalid][40000009501]",
+              "[SkillContentInvalid][40000000013]"
             ]
           },
           "401": {
-            "description": ">\n* `[IntegrationUnauthorized][40100009601]`\n",
+            "description": ">\n* `[IntegrationUnauthorized][40100009601]`\n* `[KnowledgeRemoteUnauthorized][40100009501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -3851,11 +3885,12 @@
               }
             },
             "x-status-errors": [
-              "[IntegrationUnauthorized][40100009601]"
+              "[IntegrationUnauthorized][40100009601]",
+              "[KnowledgeRemoteUnauthorized][40100009501]"
             ]
           },
           "403": {
-            "description": ">\n* `[KnowledgeForbidden][40300009501]`\n",
+            "description": ">\n* `[AgentOperationForbidden][40300009001]`\n* `[KnowledgeForbidden][40300009501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -3864,6 +3899,7 @@
               }
             },
             "x-status-errors": [
+              "[AgentOperationForbidden][40300009001]",
               "[KnowledgeForbidden][40300009501]"
             ]
           },
@@ -3911,7 +3947,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n",
+            "description": ">\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[SkillUnavailable][50000000008]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -3921,7 +3957,22 @@
             },
             "x-status-errors": [
               "[InternalServerError][50000000001]",
-              "[KnowledgeStorageError][50000009501]"
+              "[KnowledgeStorageError][50000009501]",
+              "[SkillUnavailable][50000000008]"
+            ]
+          },
+          "502": {
+            "description": ">\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[KnowledgeRemoteIncompatible][50200009502]",
+              "[KnowledgeRemoteUnreachable][50200009501]"
             ]
           },
           "503": {
@@ -3935,6 +3986,19 @@
             },
             "x-status-errors": [
               "[DatabaseBusy][50300001001]"
+            ]
+          },
+          "504": {
+            "description": ">\n* `[KnowledgeRemoteOutcomeUnknown][50400009501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[KnowledgeRemoteOutcomeUnknown][50400009501]"
             ]
           }
         },
@@ -4965,7 +5029,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5023,6 +5087,7 @@
               "[RuntimeConfigurationInvalid][50000000040]",
               "[RuntimeEnvironmentServiceUnavailable][50000000035]",
               "[RuntimeEventEncodingFailed][50000000039]",
+              "[RuntimeEventQueueOverflow][50000000050]",
               "[RuntimeExecutionFailed][50000000045]",
               "[RuntimeHandoffInvalid][50000000049]",
               "[RuntimeInactivityTimeout][50000000013]",
@@ -5419,7 +5484,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5477,6 +5542,7 @@
               "[RuntimeConfigurationInvalid][50000000040]",
               "[RuntimeEnvironmentServiceUnavailable][50000000035]",
               "[RuntimeEventEncodingFailed][50000000039]",
+              "[RuntimeEventQueueOverflow][50000000050]",
               "[RuntimeExecutionFailed][50000000045]",
               "[RuntimeHandoffInvalid][50000000049]",
               "[RuntimeInactivityTimeout][50000000013]",
@@ -5873,7 +5939,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -5931,6 +5997,7 @@
               "[RuntimeConfigurationInvalid][50000000040]",
               "[RuntimeEnvironmentServiceUnavailable][50000000035]",
               "[RuntimeEventEncodingFailed][50000000039]",
+              "[RuntimeEventQueueOverflow][50000000050]",
               "[RuntimeExecutionFailed][50000000045]",
               "[RuntimeHandoffInvalid][50000000049]",
               "[RuntimeInactivityTimeout][50000000013]",
@@ -6429,7 +6496,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -6487,6 +6554,7 @@
               "[RuntimeConfigurationInvalid][50000000040]",
               "[RuntimeEnvironmentServiceUnavailable][50000000035]",
               "[RuntimeEventEncodingFailed][50000000039]",
+              "[RuntimeEventQueueOverflow][50000000050]",
               "[RuntimeExecutionFailed][50000000045]",
               "[RuntimeHandoffInvalid][50000000049]",
               "[RuntimeInactivityTimeout][50000000013]",

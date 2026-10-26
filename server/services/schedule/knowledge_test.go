@@ -34,6 +34,22 @@ func TestAutomaticKnowledgeDoesNotSilentlyIgnoreTeamOrWorkflowAuthorization(t *t
 	}
 }
 
+func TestAutomaticMaintenanceRejectsSourceSelectionsBeforeSaving(t *testing.T) {
+	for name, auth := range map[string]models.KnowledgeMaintenanceAuthorization{
+		"source selection":     {Backend: "local", ConnectionID: "local", KnowledgeBaseID: "library", Operation: "maintain", SourceVersionIDs: []string{"source"}},
+		"attachment selection": {Backend: "local", ConnectionID: "local", KnowledgeBaseID: "library", Operation: "maintain", AttachmentIndexes: []int{0}},
+		"remote":               {Backend: "custom", ConnectionID: "remote", KnowledgeBaseID: "library", Operation: "maintain"},
+		"missing library":      {Backend: "local", ConnectionID: "local", Operation: "maintain"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := New(Config{}).saveConfiguration(context.Background(), "waker", "", 0, models.AutomaticTaskConfiguration{Knowledge: &auth}, false)
+			if !errors.Is(err, status_error.KnowledgeInvalid) {
+				t.Fatalf("invalid maintenance scope reached persistence: %v", err)
+			}
+		})
+	}
+}
+
 // knowledgeScheduleExecutions 只替代真实模型边界，调用已经签发的实际知识能力。
 type knowledgeScheduleExecutions struct {
 	// Service 保持知识服务配置端口形状，未装配方法不得调用。

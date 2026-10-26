@@ -4,7 +4,7 @@ import {
 } from "@/shared/api/knowledge/knowledge-adapter-types";
 import { KnowledgeLibrarySettings } from "./knowledge-library-settings";
 import { CreateLibrary } from "./knowledge-library-dialogs";
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { KnowledgeWikiCommands } from "./knowledge-wiki-command";
@@ -83,6 +83,12 @@ const KnowledgeGraphView = lazy(() =>
   })),
 );
 
+const KnowledgeMaintenanceScheduleDialog = lazy(() =>
+  import("@/modules/automatic-task").then((module) => ({
+    default: module.KnowledgeMaintenanceScheduleDialog,
+  })),
+);
+
 function reading(query: {
   isPending: boolean;
   isFetching: boolean;
@@ -152,7 +158,6 @@ export function KnowledgePage() {
     useKnowledgeWorkspaceQueries({
       ref,
       detail,
-      documentsVisible: route.view === "raw",
       active,
       listOffset,
       librarySearch,
@@ -188,7 +193,14 @@ export function KnowledgePage() {
   const writes = useKnowledgeWrites(ref);
   const [modal, setModal] = useState<{
     kind:
-      "create" | "remote-add" | "upload" | "organize" | "rebuild" | "settings";
+      | "create"
+      | "remote-add"
+      | "upload"
+      | "organize"
+      | "rebuild"
+      | "maintain"
+      | "settings"
+      | "maintenance-schedule";
     scope: string;
     batch?: string[];
     uploadContext?: KnowledgeUploadContext;
@@ -199,7 +211,6 @@ export function KnowledgePage() {
     () => new Map<string, KnowledgeOrganizeIntent>(),
   );
   const [createLoaded, setCreateLoaded] = useState(false);
-  const [maintenance, setMaintenance] = useState<ReactNode>();
   const [wikiCommands] = useState<KnowledgeWikiCommands>(() => new Map());
   const [editorControllers] = useState(
     () => new Map<string, KnowledgeEditorController>(),
@@ -323,6 +334,14 @@ export function KnowledgePage() {
   const recoveringOrganize = Boolean(
     retainedOrganize?.start || retainedOrganize?.remoteCommand,
   );
+  const recoveringMaintenance = Boolean(
+    organizeIntents.get(`${identity}:maintain`)?.get().start,
+  );
+  const maintenanceUnavailable =
+    !library ||
+    ref.backend !== "local" ||
+    (adapter.supportsServiceDetection &&
+      !hasKnowledgeCapability(capabilities.data, "wikiMaintenance"));
   function openOrganize() {
     if (!organizeIntents.has(identity))
       organizeIntents.set(identity, createKnowledgeOrganizeIntent());
@@ -339,6 +358,7 @@ export function KnowledgePage() {
   const libraryActions = (
     <KnowledgeLibraryActions
       library={library}
+      busy={busy}
       onGraph={() => changeView(route.view === "graph" ? "wiki" : "graph")}
       graphActive={route.view === "graph"}
       graphDisabled={
@@ -369,9 +389,30 @@ export function KnowledgePage() {
           (jobs.isLoading || Boolean(jobs.error) || sources.isPending))
       }
       onOrganize={() => {
-        // 原冻结请求通过 Adapter 对账；当前能力和任务状态只约束新接纳。
+        if (busy) return;
+        // 结果未知时仍沿原身份核对；已知活跃任务统一等待活动记录。
         if (recoveringOrganize) openOrganize();
         else void openAction("organize", openOrganize);
+      }}
+      maintenanceDisabled={
+        maintenanceUnavailable ||
+        (!recoveringMaintenance && (jobs.isLoading || Boolean(jobs.error)))
+      }
+      scheduleMaintenanceDisabled={maintenanceUnavailable}
+      onMaintain={() => {
+        if (!library || ref.backend !== "local" || busy) return;
+        void openAction("wikiMaintenance", () => {
+          const key = `${identity}:maintain`;
+          if (!organizeIntents.has(key))
+            organizeIntents.set(key, createKnowledgeOrganizeIntent());
+          setModal({ kind: "maintain", scope: identity });
+        });
+      }}
+      onScheduleMaintenance={() => {
+        if (!library || ref.backend !== "local") return;
+        void openAction("wikiMaintenance", () =>
+          setModal({ kind: "maintenance-schedule", scope: identity }),
+        );
       }}
     />
   );
@@ -473,13 +514,6 @@ export function KnowledgePage() {
               ) : undefined
             }
             commands={wikiCommands}
-            onMaintenance={(page) =>
-              void openAction("maintenanceChat", async () => {
-                const module =
-                  await import("./knowledge-wiki-maintenance-chat");
-                setMaintenance(module.renderWikiMaintenance(ref, page));
-              })
-            }
             pageId={params.get("page") ?? ""}
             onPage={(id, tab) => {
               const query = new URLSearchParams(params);
@@ -494,10 +528,6 @@ export function KnowledgePage() {
               (!adapter.supportsServiceDetection ||
                 hasKnowledgeCapability(capabilities.data, "write"))
             }
-            maintenanceDisabled={
-              adapter.supportsServiceDetection &&
-              !hasKnowledgeCapability(capabilities.data, "maintenanceChat")
-            }
             structureVersion={libraryQuery.data?.structureVersion ?? 0}
           />
         </Suspense>
@@ -506,7 +536,6 @@ export function KnowledgePage() {
   );
   return (
     <>
-      {maintenance}
       {detail ? (
         <ResourcePageSurface
           contentLayout="pane"
@@ -714,24 +743,48 @@ export function KnowledgePage() {
         />
       )}
 
+      {library && currentModal?.kind === "maintenance-schedule" && (
+        <Suspense fallback={null}>
+          <KnowledgeMaintenanceScheduleDialog
+            key={identity}
+            open={active}
+            onOpenChange={(open) => {
+              if (!open) setModal(undefined);
+            }}
+            libraryId={ref.knowledgeBaseId}
+            libraryName={library.name}
+            onSaved={(value) => {
+              setModal(undefined);
+              if (value.taskId) navigate(`/automatic-tasks/${value.taskId}`);
+            }}
+          />
+        </Suspense>
+      )}
+
       {library &&
         (currentModal?.kind === "organize" ||
-          currentModal?.kind === "rebuild") && (
+          currentModal?.kind === "rebuild" ||
+          currentModal?.kind === "maintain") && (
           <KnowledgeOrganizeDialog
             library={library}
             rebuild={currentModal.kind === "rebuild"}
+            maintenance={currentModal.kind === "maintain"}
             batch={currentModal.batch ?? []}
             operation={writes.organize}
             intent={organizeIntents.get(
-              currentModal.kind === "rebuild"
-                ? `${identity}:rebuild:${JSON.stringify(currentModal.batch ?? [])}`
-                : identity,
+              currentModal.kind === "maintain"
+                ? `${identity}:maintain`
+                : currentModal.kind === "rebuild"
+                  ? `${identity}:rebuild:${JSON.stringify(currentModal.batch ?? [])}`
+                  : identity,
             )}
             onClose={() => {
               const key =
-                currentModal.kind === "rebuild"
-                  ? `${identity}:rebuild:${JSON.stringify(currentModal.batch ?? [])}`
-                  : identity;
+                currentModal.kind === "maintain"
+                  ? `${identity}:maintain`
+                  : currentModal.kind === "rebuild"
+                    ? `${identity}:rebuild:${JSON.stringify(currentModal.batch ?? [])}`
+                    : identity;
               // 普通取消舍弃草稿；已提交请求保留原范围与要求，供待定结果核验。
               if (
                 !organizeIntents.get(key)?.get().start &&
@@ -742,12 +795,16 @@ export function KnowledgePage() {
             }}
             onAccepted={() => {
               organizeIntents.delete(
-                currentModal.kind === "rebuild"
-                  ? `${identity}:rebuild:${JSON.stringify(currentModal.batch ?? [])}`
-                  : identity,
+                currentModal.kind === "maintain"
+                  ? `${identity}:maintain`
+                  : currentModal.kind === "rebuild"
+                    ? `${identity}:rebuild:${JSON.stringify(currentModal.batch ?? [])}`
+                    : identity,
               );
               setModal((current) =>
-                (current?.kind === "organize" || current?.kind === "rebuild") &&
+                (current?.kind === "organize" ||
+                  current?.kind === "rebuild" ||
+                  current?.kind === "maintain") &&
                 current.kind === currentModal.kind &&
                 current.scope === identity &&
                 JSON.stringify(current.batch ?? []) ===

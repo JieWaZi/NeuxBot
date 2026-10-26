@@ -45,3 +45,30 @@ func TestNewLiveAdapterRejectsMissingTargetMessage(t *testing.T) {
 		t.Fatal("NewLiveAdapter() error = nil, want missing target error")
 	}
 }
+
+// TestLiveAdapterDiscardsPrivateRuntimeHistory 覆盖实时公开投影不会累积历史工具参数。
+func TestLiveAdapterDiscardsPrivateRuntimeHistory(t *testing.T) {
+	t.Parallel()
+	adapter, err := NewLiveAdapter(fixtureRecords(t), "execution-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range 100 {
+		payload, err := json.Marshal(map[string]any{
+			"toolCallId": "write-1", "name": "Write",
+			"input": map[string]any{"file_path": "/workspace/project/note.md", "content": strings.Repeat("private body", index+1)},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		event, _, err := adapter.Apply("invocation-2", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: payload})
+		if err != nil || event.Message == nil || len(event.Message.DisplayParts) == 0 {
+			t.Fatalf("live update %d: event=%+v error=%v", index, event, err)
+		}
+	}
+	for _, message := range adapter.messageView.Messages() {
+		if len(message.RuntimeEvents) != 0 || len(message.FileChangeDiffs) != 0 {
+			t.Fatalf("live projection retained private history: runtime events=%d diffs=%d", len(message.RuntimeEvents), len(message.FileChangeDiffs))
+		}
+	}
+}

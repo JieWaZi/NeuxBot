@@ -105,7 +105,7 @@ type KnowledgeMaintenanceAuthorization struct {
 	// 知识库标识
 	KnowledgeBaseID string `json:"knowledgeBaseId" validate:"required"`
 	// 维护操作
-	Operation string `json:"operation" validate:"required,oneof=organize"`
+	Operation string `json:"operation" validate:"required,oneof=organize maintain"`
 	// 附件序号
 	AttachmentIndexes []int `json:"attachmentIndexes" validate:"max=100"`
 	// 来源版本

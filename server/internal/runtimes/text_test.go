@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // textACPAgent 按真实配置回执确认每次模型和推理选择。
@@ -116,6 +116,220 @@ func TestGenerateTextRejectsToolsAndDiscardsPartialText(t *testing.T) {
 	}
 }
 
+// TestGenerateTextFullAccessUsesNativeModeAndRetainsTextContract 验证显式完全访问到达原生模式，文本端口仍拒绝工具结果。
+func TestGenerateTextFullAccessUsesNativeModeAndRetainsTextContract(t *testing.T) {
+	fixtureHome := t.TempDir()
+	t.Setenv("CODEX_HOME", fixtureHome)
+	if err := os.WriteFile(filepath.Join(fixtureHome, "auth.json"), []byte(`{"access_token":"fixture"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, unexpectedTool := range []bool{false, true} {
+		name := "text response"
+		if unexpectedTool {
+			name = "unexpected tool"
+		}
+		t.Run(name, func(t *testing.T) {
+			sdk, err := New(Config{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer sdk.Close(context.Background())
+			updates := []acp.SessionUpdate{acp.UpdateAgentMessageText("answer")}
+			if unexpectedTool {
+				updates = append(updates, acp.StartToolCall("unexpected", "Read", acp.WithStartKind(acp.ToolKindRead)))
+			}
+			agent := &textACPAgent{&fakeCodexACPAgent{selectedConfigs: map[acp.SessionConfigId]acp.SessionConfigValueId{}, configOptions: textTestOptions("none", "high"), scriptedUpdates: updates, scriptedResponse: &acp.PromptResponse{StopReason: acp.StopReasonEndTurn}}}
+			replaceACPAgentFactory(sdk.acp.(*acpBackend), RuntimeIDCodex, func(context.Context, acpAdapterConfig) (acp.Agent, error) { return agent, nil })
+			binary, _ := os.Executable()
+			request := TextRequest{Target: RuntimeTarget{RuntimeID: RuntimeIDCodex}, Detection: readyTextDetectionForRun(t, sdk, RuntimeIDCodex, binary), PermissionLevel: PermissionLevelFullAccess, Model: "model-a", Messages: []TextMessage{{Role: "user", Content: "source"}}}
+			result := sdk.GenerateText(context.Background(), request)
+			if agent.selectedMode != "agent-full-access" {
+				t.Fatalf("explicit full access remained read-only: mode=%q result=%+v", agent.selectedMode, result)
+			}
+			if len(agent.newSessionRequest.McpServers) != 0 || len(agent.newSessionRequest.AdditionalDirectories) != 0 || !agent.closed {
+				t.Fatalf("text contract mounted resources or leaked session: request=%+v closed=%v", agent.newSessionRequest, agent.closed)
+			}
+			for _, limitation := range result.Limitations {
+				if strings.Contains(limitation, "read-only mode") {
+					t.Fatalf("diagnostic misrepresents explicit full access: %q", limitation)
+				}
+			}
+			if unexpectedTool {
+				if result.Failure == nil || result.Failure.Code != FailureCodePolicyUnsupported || result.Text != "" {
+					t.Fatalf("tool result escaped pure text contract: %+v", result)
+				}
+			} else if result.Failure != nil || result.Text != "answer" || result.StopReason != "end_turn" {
+				t.Fatalf("native text result changed: %+v", result)
+			}
+		})
+	}
+}
+
+// textEventSpyBackend 观察文本调用是否误入聊天统一事件通道，仍执行真实 ACP 生命周期。
+type textEventSpyBackend struct {
+	// acpRunner 是实际执行会话和协议收尾的后端。
+	acpRunner
+	// events 只记录意外进入聊天通道的事件。
+	events *recordingSink
+}
+
+func (backend *textEventSpyBackend) Run(ctx context.Context, request acpRunRequest) Result {
+	request.Sink = &textEventSpySink{next: request.Sink, events: backend.events}
+	return backend.acpRunner.Run(ctx, request)
+}
+
+// textEventSpySink 保留原接收器行为，同时记录所有进入聊天通道的事件。
+type textEventSpySink struct {
+	// next 是调用方原有的接收器，纯文本快速路径允许为空。
+	next EventSink
+	// events 保存本次观察到的统一事件。
+	events *recordingSink
+}
+
+func (sink *textEventSpySink) Accept(ctx context.Context, event Event) error {
+	if err := sink.events.Accept(ctx, event); err != nil {
+		return err
+	}
+	if sink.next != nil {
+		return sink.next.Accept(ctx, event)
+	}
+	return nil
+}
+
+// TestGenerateTextCollectsFinalResultWithoutCanonicalEvents 防止 Wiki 文本和思考片段进入聊天事件队列。
+func TestGenerateTextCollectsFinalResultWithoutCanonicalEvents(t *testing.T) {
+	fixtureHome := t.TempDir()
+	t.Setenv("CODEX_HOME", fixtureHome)
+	if err := os.WriteFile(filepath.Join(fixtureHome, "auth.json"), []byte(`{"access_token":"fixture"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sdk, err := New(Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sdk.Close(context.Background())
+	updates := []acp.SessionUpdate{}
+	for range 600 {
+		updates = append(updates,
+			acp.UpdateAgentMessageText("正文\n"),
+			acp.UpdateAgentThoughtText("内部推理"),
+			acp.SessionUpdate{AgentMessageChunk: &acp.SessionUpdateAgentMessageChunk{Meta: map[string]any{"codex": map[string]any{"phase": "commentary"}}, Content: acp.TextBlock("过程说明")}},
+			acp.SessionUpdate{UsageUpdate: &acp.SessionUsageUpdate{Used: 100, Size: 200000}},
+		)
+	}
+	agent := &textACPAgent{&fakeCodexACPAgent{
+		selectedConfigs: map[acp.SessionConfigId]acp.SessionConfigValueId{}, configOptions: textTestOptions("none"), scriptedUpdates: updates,
+		scriptedResponse: &acp.PromptResponse{StopReason: acp.StopReasonMaxTokens, Usage: &acp.Usage{InputTokens: 12, OutputTokens: 7, CachedReadTokens: acp.Ptr(4), CachedWriteTokens: acp.Ptr(3), ThoughtTokens: acp.Ptr(2)}},
+	}}
+	backend := sdk.acp.(*acpBackend)
+	replaceACPAgentFactory(backend, RuntimeIDCodex, func(context.Context, acpAdapterConfig) (acp.Agent, error) { return agent, nil })
+	spy := &textEventSpyBackend{acpRunner: backend, events: &recordingSink{}}
+	sdk.acp = spy
+	binary, _ := os.Executable()
+	result := sdk.GenerateText(context.Background(), TextRequest{
+		Target: RuntimeTarget{RuntimeID: RuntimeIDCodex}, Detection: readyTextDetectionForRun(t, sdk, RuntimeIDCodex, binary),
+		Model: "model-a", Messages: []TextMessage{{Role: "user", Content: "source"}},
+	})
+	if result.Failure != nil || result.Text != strings.Repeat("正文\n", 600) || result.StopReason != "max_tokens" {
+		t.Fatalf("final text lost or mixed with process output: result=%+v", result)
+	}
+	wantUsage := &TurnUsageData{InputTokens: 12, OutputTokens: 7, CacheReadTokens: 4, CacheCreationTokens: 3, ReasoningOutputTokens: 2}
+	if !reflect.DeepEqual(result.Usage, wantUsage) {
+		t.Fatalf("final usage=%+v, want %+v", result.Usage, wantUsage)
+	}
+	if len(spy.events.events) != 0 {
+		t.Fatalf("text-only generation emitted %d canonical events", len(spy.events.events))
+	}
+	if !agent.closed || agent.closeSessionCalls != 1 {
+		t.Fatalf("text process/session not reclaimed: closed=%v sessionCloses=%d", agent.closed, agent.closeSessionCalls)
+	}
+}
+
+// TestTextACPUpdatesBypassDeliveryQueue 验证大量正文和过程更新不占用聊天队列，并继续作为超时活动。
+func TestTextACPUpdatesBypassDeliveryQueue(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	collector := &textCollector{cancel: cancel}
+	bridge := newACPBridge("session", "text", nil, Workspace{}, ExecutionPolicy{}, codexACPRuntimeBinding(), time.Second)
+	bridge.textCollector = collector
+	bridge.rejectTextInteraction = collector.reject
+	client := newACPClient()
+	if err := client.register(bridge); err != nil {
+		t.Fatal(err)
+	}
+	defer client.unregister(bridge)
+	updates := []acp.SessionUpdate{
+		acp.UpdateAgentMessageText("正文"),
+		acp.UpdateAgentThoughtText("推理"),
+		{AgentMessageChunk: &acp.SessionUpdateAgentMessageChunk{Meta: map[string]any{"codex": map[string]any{"phase": "commentary"}}, Content: acp.TextBlock("过程")}},
+		{UsageUpdate: &acp.SessionUsageUpdate{Used: 200, Size: 200000}},
+	}
+	for range 600 {
+		for _, update := range updates {
+			if err := client.SessionUpdate(ctx, acp.SessionNotification{SessionId: "session", Update: update}); err != nil {
+				t.Fatal(err)
+			}
+			if queued := len(bridge.updates); queued != 0 {
+				t.Fatalf("pure text update entered chat delivery queue: queued=%d", queued)
+			}
+			select {
+			case <-bridge.activity:
+			default:
+				t.Fatal("ignored process update did not refresh ACP activity")
+			}
+		}
+	}
+	if collector.text.String() != strings.Repeat("正文", 600) || collector.usage != nil || collector.rejected || ctx.Err() != nil {
+		t.Fatalf("text collector changed result semantics: text=%q usage=%+v rejected=%v err=%v", collector.text.String(), collector.usage, collector.rejected, ctx.Err())
+	}
+}
+
+// TestTextACPRejectsToolsPlansAndInteractions 验证快速路径仍拒绝所有已观察到的工具与用户交互。
+func TestTextACPRejectsToolsPlansAndInteractions(t *testing.T) {
+	for _, name := range []string{"tool", "tool update", "plan", "permission", "elicitation"} {
+		t.Run(name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			collector := &textCollector{cancel: cancel}
+			bridge := newACPBridge("session", "text", nil, Workspace{}, ExecutionPolicy{}, codexACPRuntimeBinding(), time.Second)
+			bridge.textCollector = collector
+			bridge.rejectTextInteraction = collector.reject
+			client := newACPClient()
+			if err := client.register(bridge); err != nil {
+				t.Fatal(err)
+			}
+			defer client.unregister(bridge)
+			switch name {
+			case "permission":
+				response, err := client.RequestPermission(ctx, acp.RequestPermissionRequest{SessionId: "session"})
+				if err != nil || response.Outcome.Cancelled == nil {
+					t.Fatalf("permission response=%+v err=%v", response, err)
+				}
+			case "elicitation":
+				request := acp.NewUnstableCreateElicitationRequestForm(acp.UnstableElicitationSchema{Type: acp.UnstableElicitationSchemaTypeObject, Properties: map[string]any{}})
+				request.Form.Meta = map[string]any{"sessionId": "session"}
+				response, err := client.UnstableCreateElicitation(ctx, request)
+				if err != nil || response.Cancel == nil {
+					t.Fatalf("elicitation response=%+v err=%v", response, err)
+				}
+			default:
+				update := acp.StartToolCall("unexpected", "Read")
+				if name == "tool update" {
+					update = acp.UpdateToolCall("unexpected", acp.WithUpdateStatus(acp.ToolCallStatusCompleted))
+				} else if name == "plan" {
+					update = acp.UpdatePlan(acp.PlanEntry{Content: "Plan", Priority: acp.PlanEntryPriorityMedium, Status: acp.PlanEntryStatusPending})
+				}
+				if err := client.SessionUpdate(ctx, acp.SessionNotification{SessionId: "session", Update: update}); err != status_error.RuntimePolicyUnsupported {
+					t.Fatalf("unexpected update err=%v", err)
+				}
+			}
+			if !collector.rejected || ctx.Err() == nil || len(bridge.updates) != 0 {
+				t.Fatalf("interaction escaped text isolation: rejected=%v err=%v queued=%d", collector.rejected, ctx.Err(), len(bridge.updates))
+			}
+		})
+	}
+}
+
 func TestTextReasoningNeverCallsLowDisabled(t *testing.T) {
 	for _, test := range []struct {
 		// options 是模型实际声明的推理选项。
@@ -138,6 +352,73 @@ func TestTextClaudeLaunchDisablesToolsAndPersistence(t *testing.T) {
 	want := []string{"--existing", "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", "--settings", `{"disableAllHooks":true}`}
 	if !disabled || !reflect.DeepEqual(actual.PrefixArgs, want) {
 		t.Fatalf("args=%q disabled=%v", actual.PrefixArgs, disabled)
+	}
+}
+
+// textWorkBuddyACPAgent 提供原生只读模式，用真实 ACP 流程检查文本调用的启动边界。
+type textWorkBuddyACPAgent struct {
+	// textACPAgent 复用配置回执和脚本化会话更新，不启动真实 CLI。
+	*textACPAgent
+}
+
+func (agent *textWorkBuddyACPAgent) NewSession(ctx context.Context, request acp.NewSessionRequest) (acp.NewSessionResponse, error) {
+	response, err := agent.textACPAgent.NewSession(ctx, request)
+	response.Modes = &acp.SessionModeState{AvailableModes: []acp.SessionMode{{Id: "default", Name: "Default"}, {Id: "plan", Name: "Plan"}}}
+	return response, err
+}
+
+// TestGenerateTextWorkBuddyLaunchDisablesTools 验证禁用参数到达 WorkBuddy 工厂，意外工具仍使整次生成失败。
+func TestGenerateTextWorkBuddyLaunchDisablesTools(t *testing.T) {
+	for _, unexpectedTool := range []bool{false, true} {
+		name := "text response"
+		if unexpectedTool {
+			name = "unexpected tool"
+		}
+		t.Run(name, func(t *testing.T) {
+			sdk, err := New(Config{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer sdk.Close(context.Background())
+			updates := []acp.SessionUpdate{acp.UpdateAgentMessageText("answer")}
+			if unexpectedTool {
+				updates = append(updates, acp.StartToolCall("unexpected", "Read", acp.WithStartKind(acp.ToolKindRead)))
+			}
+			agent := &textWorkBuddyACPAgent{&textACPAgent{&fakeCodexACPAgent{
+				selectedConfigs: map[acp.SessionConfigId]acp.SessionConfigValueId{}, configOptions: textTestOptions(),
+				scriptedUpdates: updates, scriptedResponse: &acp.PromptResponse{StopReason: acp.StopReasonEndTurn},
+			}}}
+			var launch acpAdapterConfig
+			replaceACPAgentFactory(sdk.acp.(*acpBackend), RuntimeIDWorkBuddy, func(_ context.Context, config acpAdapterConfig) (acp.Agent, error) {
+				launch = config
+				return agent, nil
+			})
+			binary, _ := os.Executable()
+			result := sdk.GenerateText(context.Background(), TextRequest{
+				Target:    RuntimeTarget{RuntimeID: RuntimeIDWorkBuddy, Isolated: true, ConfigHome: t.TempDir()},
+				Detection: readyTextDetectionForRun(t, sdk, RuntimeIDWorkBuddy, binary), Model: "model-a",
+				Messages: []TextMessage{{Role: "user", Content: "source"}},
+			})
+			want := []string{"--tools", "", "--strict-mcp-config", "--no-session-persistence", "--settings", `{"disableAllHooks":true}`}
+			if !launch.TextOnly || !reflect.DeepEqual(launch.PrefixArgs, want) || !result.ToolsDisabled {
+				t.Fatalf("WorkBuddy text isolation missing: args=%q textOnly=%v result=%+v", launch.PrefixArgs, launch.TextOnly, result)
+			}
+			if unexpectedTool {
+				if result.Failure == nil || result.Failure.Code != FailureCodePolicyUnsupported || result.Text != "" {
+					t.Fatalf("unexpected tool escaped text isolation: %+v", result)
+				}
+			} else if result.Failure != nil || result.Text != "answer" {
+				t.Fatalf("text generation failed: %+v", result)
+			}
+			if agent.selectedMode != "plan" || len(agent.newSessionRequest.McpServers) != 0 || !agent.closed {
+				t.Fatalf("text session isolation or cleanup failed: mode=%q MCP=%v closed=%v", agent.selectedMode, agent.newSessionRequest.McpServers, agent.closed)
+			}
+			for _, limitation := range result.Limitations {
+				if strings.HasPrefix(limitation, "native_tools_not_fully_disabled:") || strings.HasPrefix(limitation, "native_session_persistence_not_disabled:") {
+					t.Fatalf("obsolete WorkBuddy limitation: %q", limitation)
+				}
+			}
+		})
 	}
 }
 

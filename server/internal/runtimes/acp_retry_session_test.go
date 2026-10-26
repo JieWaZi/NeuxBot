@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // TestACPTransientFailureKeepsResumableSessionAcrossCLIs 验证五种 CLI 的无输出拒绝均保留可续接句柄，重试不新建会话。

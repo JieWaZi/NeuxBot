@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // TestQoderRegistryAndPermissions 覆盖原生目录、传输、严格权限菜单与前置参数保护。

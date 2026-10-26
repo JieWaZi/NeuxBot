@@ -11,7 +11,9 @@ import (
 
 // 知识任务
 type Job struct {
-	// 尝试开始时间
+	// Wiki维护
+	Maintenance bool `json:"maintenance"`
+	// 本次接纳时间
 	AttemptStartedAt int64 `json:"attemptStartedAt,omitempty"`
 
 	// 任务说明
@@ -46,7 +48,7 @@ type Job struct {
 }
 
 func jobDTO(v *core.Job) Job {
-	return Job{AttemptStartedAt: v.AttemptStartedAt, Diagnostic: v.Diagnostic, ID: v.ID, LibraryID: v.LibraryID, RequestID: v.RequestID, State: v.State, Attempt: v.Attempt, Version: v.Version, SourceVersionIDs: v.SourceVersionIDs, CancelRequested: v.CancelRequested, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
+	return Job{Maintenance: core.IsMaintenanceJob(v), AttemptStartedAt: v.AttemptStartedAt, Diagnostic: v.Diagnostic, ID: v.ID, LibraryID: v.LibraryID, RequestID: v.RequestID, State: v.State, Attempt: v.Attempt, Version: v.Version, SourceVersionIDs: v.SourceVersionIDs, CancelRequested: v.CancelRequested, CreatedAt: v.CreatedAt, UpdatedAt: v.UpdatedAt}
 }
 
 func jobHostDTO(ctx context.Context, v *core.Job) (Job, error) {

@@ -2,16 +2,16 @@ package runtimes
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"sync"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
@@ -23,12 +23,14 @@ type TextMessage struct {
 	Content string
 }
 
-// TextRequest 只包含模型输入与账号启动事实，不接受工具、工作区或业务身份。
+// TextRequest 包含本次模型输入、账号启动事实与显式执行权限，不接受工具、工作区或业务身份。
 type TextRequest struct {
 	// Target 是已经准备账号租约的 Runtime 启动配置。
 	Target RuntimeTarget
 	// Detection 是有效 Runtime 探测快照。
 	Detection DetectionResult
+	// PermissionLevel 是本次调用明确授权的原生权限；空值沿用默认权限和只读工作区。
+	PermissionLevel PermissionLevel
 	// Model 是本次需要实际选择的原生模型标识。
 	Model string
 	// Messages 是本次完整消息，续写也必须由调用方明确提供。
@@ -73,6 +75,8 @@ type textInvocation struct {
 	result *TextResult
 	// reject 在任何工具或交互请求发生时取消整次生成。
 	reject func()
+	// collector 直接累计 ACP 正文与最终用量，不生成聊天事件。
+	collector *textCollector
 }
 
 // GenerateText 复用 ACP 的账号、模型、进程和取消能力，独立创建并关闭一次模型会话。
@@ -102,10 +106,14 @@ func (sdk *SDK) GenerateText(ctx context.Context, input TextRequest) TextResult 
 		return output
 	}
 	defer os.RemoveAll(workspace)
+	permission := input.PermissionLevel
+	if permission == "" {
+		permission = PermissionLevelDefault
+	}
 	request := RunRequest{
 		Target: input.Target, Detection: input.Detection,
 		Workspace: Workspace{Path: workspace}, Session: SessionDirective{Mode: SessionModeNew},
-		Policy: RunPolicy{Model: input.Model, Reasoning: strings.TrimSpace(input.Reasoning), Execution: ExecutionPolicy{PermissionLevel: PermissionLevelDefault, WorkspaceReadOnly: true}},
+		Policy: RunPolicy{Model: input.Model, Reasoning: strings.TrimSpace(input.Reasoning), Execution: ExecutionPolicy{PermissionLevel: permission, WorkspaceReadOnly: permission == PermissionLevelDefault}},
 	}
 	request.Target.CloseAfterRun = true
 	prepared, err := sdk.prepareFromDetection(prepareRequestForRun(sdk, request), input.Detection)
@@ -156,12 +164,20 @@ func (sdk *SDK) GenerateText(ctx context.Context, input TextRequest) TextResult 
 	}
 	_, output.ToolsDisabled = textAdapterConfig(acpAdapterConfig{}, prepared.definition.baseRuntimeID)
 	if !output.ToolsDisabled {
-		output.Limitations = append(output.Limitations, "native_tools_not_fully_disabled: isolated empty workspace, read-only mode, no host tools or MCP; any observed tool fails generation")
+		if request.Policy.Execution.WorkspaceReadOnly {
+			output.Limitations = append(output.Limitations, "native_tools_not_fully_disabled: isolated empty workspace, read-only mode, no host tools or MCP; any observed tool fails generation")
+		} else {
+			output.Limitations = append(output.Limitations, "native_tools_not_fully_disabled: isolated empty workspace, requested native permission mode, no host tools or MCP; any observed tool fails generation")
+		}
 	}
 	if !input.Target.Isolated && prepared.definition.baseRuntimeID != RuntimeIDCodex {
-		output.Limitations = append(output.Limitations, "system_account_native_config_retained: global instructions and configured MCP may load; host does not mount external resources")
+		if prepared.definition.baseRuntimeID == RuntimeIDWorkBuddy {
+			output.Limitations = append(output.Limitations, "system_account_native_config_retained: global instructions may load; strict MCP configuration excludes native MCP sources")
+		} else {
+			output.Limitations = append(output.Limitations, "system_account_native_config_retained: global instructions and configured MCP may load; host does not mount external resources")
+		}
 	}
-	if prepared.definition.baseRuntimeID != RuntimeIDClaude {
+	if prepared.definition.baseRuntimeID != RuntimeIDClaude && prepared.definition.baseRuntimeID != RuntimeIDWorkBuddy {
 		output.Limitations = append(output.Limitations, "native_session_persistence_not_disabled: session is fresh and closed, CLI may retain its own logs")
 	}
 	if input.MaxTokens != 0 {
@@ -172,24 +188,24 @@ func (sdk *SDK) GenerateText(ctx context.Context, input TextRequest) TextResult 
 	}
 	callContext, cancel := context.WithCancel(ctx)
 	defer cancel()
-	sink := &textSink{cancel: cancel}
+	collector := &textCollector{cancel: cancel}
 	result := sdk.acp.Run(callContext, acpRunRequest{
 		InvocationID: util.New(), Prepared: prepared, Request: request,
-		Prompt: prompt, Sink: sink, EphemeralSession: true,
-		Text: &textInvocation{thinking: input.Thinking, result: &output, reject: sink.reject},
+		Prompt: prompt, EphemeralSession: true,
+		Text: &textInvocation{thinking: input.Thinking, result: &output, reject: collector.reject, collector: collector},
 	})
 	output.StopReason, output.Failure = result.StopReason, result.Failure
 	if err = persistCredentials(); err != nil {
 		output.Failure = failedRunError("text_credentials", err).Failure
 	}
-	sink.mutex.Lock()
-	defer sink.mutex.Unlock()
-	output.Usage = sink.usage
-	if sink.rejected {
+	collector.mutex.Lock()
+	defer collector.mutex.Unlock()
+	output.Usage = collector.usage
+	if collector.rejected {
 		output.Failure = newFailure(FailureCodePolicyUnsupported, "text_tools", "pure text generation attempted a tool or interactive request")
 	}
 	if output.Failure == nil {
-		output.Text = sink.text.String()
+		output.Text = collector.text.String()
 	}
 	return output
 }
@@ -203,13 +219,13 @@ func compileTextMessages(messages []TextMessage) string {
 	return builder.String()
 }
 
-// textSink 仅收集最终正文和真实用量，禁止工具与交互进入模型结果。
-type textSink struct {
-	// mutex 保护取消回调与串行事件消费之间的状态。
+// textCollector 直接收集 ACP 正文与最终用量，不经过聊天事件映射或交付队列。
+type textCollector struct {
+	// mutex 保护 ACP 更新、最终用量和取消回调之间的状态。
 	mutex sync.Mutex
 	// text 累积模型正文，不收集过程或思考内容。
 	text strings.Builder
-	// usage 保存最近一次累计回合用量。
+	// usage 保存 Prompt 终态的完整累计回合用量，未知时为空。
 	usage *TurnUsageData
 	// rejected 标记已经发生的禁止交互。
 	rejected bool
@@ -217,41 +233,35 @@ type textSink struct {
 	cancel context.CancelFunc
 }
 
-func (sink *textSink) reject() {
-	sink.mutex.Lock()
-	sink.rejected = true
-	sink.mutex.Unlock()
-	sink.cancel()
+func (collector *textCollector) reject() {
+	collector.mutex.Lock()
+	collector.rejected = true
+	collector.mutex.Unlock()
+	collector.cancel()
 }
 
-func (sink *textSink) Accept(_ context.Context, event Event) error {
-	if event.Type == EventTypeToolUse || event.Type == EventTypeToolResult {
-		sink.reject()
-		return status_error.RuntimePolicyUnsupported
+// collectUpdate 仅保留最终答复正文；思考、过程说明和中间用量没有知识生成结果语义。
+func (collector *textCollector) collectUpdate(update acp.SessionUpdate, binding acpRuntimeBinding) {
+	chunk := update.AgentMessageChunk
+	if chunk == nil || binding.messagePhase(chunk.Meta) == constants.RuntimeACPMessagePhaseCommentary {
+		return
 	}
-	sink.mutex.Lock()
-	defer sink.mutex.Unlock()
-	switch event.Type {
-	case EventTypeTextDelta:
-		var payload struct {
-			// Text 是 ACP Agent 返回的正文片段。
-			Text string `json:"text"`
-		}
-		if err := json.Unmarshal(event.Data, &payload); err != nil {
-			return err
-		}
-		sink.text.WriteString(payload.Text)
-	case EventTypeUsage:
-		var payload UsageData
-		if err := json.Unmarshal(event.Data, &payload); err != nil {
-			return err
-		}
-		if payload.Turn != nil {
-			copy := *payload.Turn
-			sink.usage = &copy
-		}
+	text := acpText(chunk.Content)
+	if text == "" {
+		return
 	}
-	return nil
+	collector.mutex.Lock()
+	defer collector.mutex.Unlock()
+	if !collector.rejected {
+		collector.text.WriteString(text)
+	}
+}
+
+// collectUsage 只接收 Prompt 终态的完整累计用量，不把上下文快照误作回合用量。
+func (collector *textCollector) collectUsage(usage acp.Usage) {
+	collector.mutex.Lock()
+	defer collector.mutex.Unlock()
+	collector.usage = acpPromptTurnUsage(usage)
 }
 
 // textAdapterConfig 使用已验证的原生参数关闭工具；其他 Runtime 保留真实能力限制。
@@ -260,6 +270,11 @@ func textAdapterConfig(config acpAdapterConfig, baseRuntimeID string) (acpAdapte
 	switch baseRuntimeID {
 	case RuntimeIDClaude:
 		config.PrefixArgs = append(config.PrefixArgs, "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", "--settings", `{"disableAllHooks":true}`)
+		return config, true
+	case RuntimeIDWorkBuddy:
+		// CodeBuddy 公开 CLI 契约支持空工具白名单、严格 MCP、关闭持久化与 disableAllHooks。
+		// 参数随独占文本进程传入，不改写账号配置；仍保留意外工具与交互的拒绝兜底。
+		config.PrefixArgs = append(config.PrefixArgs, "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--settings", `{"disableAllHooks":true}`)
 		return config, true
 	case RuntimeIDCodex:
 		config.PrefixArgs = append(config.PrefixArgs, "-c", `web_search="disabled"`, "-c", "features.shell_tool=false")

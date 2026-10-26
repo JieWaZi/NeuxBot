@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
@@ -94,7 +97,7 @@ func TestRuntimeEventSinkPublishesCompleteLiveSnapshotBeforePersistence(t *testi
 	}
 
 	var lastLive *messageview.Message
-	for range 2 {
+	for lastLive == nil || lastLive.Content != "你好！" {
 		select {
 		case event := <-live:
 			if !event.Transient || event.Sequence != 0 || event.Message == nil {
@@ -102,7 +105,7 @@ func TestRuntimeEventSinkPublishesCompleteLiveSnapshotBeforePersistence(t *testi
 			}
 			lastLive = event.Message
 		case <-time.After(time.Second):
-			t.Fatal("live snapshot was not published immediately")
+			t.Fatal("latest live snapshot was not published within the display window")
 		}
 	}
 	records, err := store.ReadAll(chatID)
@@ -303,6 +306,170 @@ func TestRuntimeEventSinkPersistsToolMessagesAndKeepsOnlyLatestUsage(t *testing.
 	if len(messages) != 1 || messages[0].RunMetrics == nil ||
 		messages[0].RunMetrics.OutputTokens != 12 {
 		t.Fatalf("replayed usage = %+v", messages)
+	}
+}
+
+func TestRuntimeEventSinkDoesNotPersistEveryPartialToolInput(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "cdcdababcdcdababcdcdababcdcdabab"
+	if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, live := newRuntimeEventSinkForTest(store, chatID)
+	send := func(kind runtimes.EventType, data map[string]any) *messageview.Message {
+		t.Helper()
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: marshalData(data)}); err != nil {
+			t.Fatal(err)
+		}
+		if kind == runtimes.EventTypeToolInputSnapshot {
+			return nil
+		}
+		revision := sink.MessageRevision()
+		for {
+			event := <-live
+			if event.Message != nil && event.Message.Revision == revision {
+				return event.Message
+			}
+		}
+	}
+	send(runtimes.EventTypeToolUse, map[string]any{"toolCallId": "write-1", "name": "write_file", "kind": "edit", "input": map[string]any{"path": "notes.md"}})
+	for i := range 1000 {
+		send(runtimes.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "write-1", "input": map[string]any{"path": "notes.md", "content": fmt.Sprintf("body-%d", i)}})
+	}
+	records, err := store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 4 {
+		t.Fatalf("records while tool input is streaming = %d, want 3 initial facts and one tool start", len(records))
+	}
+	lastLive := send(runtimes.EventTypeToolResult, map[string]any{"toolCallId": "write-1", "status": "completed"})
+	if err := sink.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	records, err = store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 6 {
+		t.Fatalf("records after complete tool = %d, want start, latest input, result", len(records))
+	}
+	var stored eventlog.RuntimeMessageData
+	if err := json.Unmarshal(records[4].Data, &stored); err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(stored.Content[0].Data, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["input"].(map[string]any)["content"] != "body-999" {
+		t.Fatalf("persisted final input = %#v", payload)
+	}
+	messages, err := messageview.ReplayPublicMessages(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || !reflect.DeepEqual(messages[0].DisplayParts, lastLive.DisplayParts) || messages[0].Revision != lastLive.Revision {
+		t.Fatalf("live/replay mismatch: live=%+v persisted=%+v", lastLive, messages)
+	}
+}
+
+func TestRuntimeEventSinkPreservesToolOutputUpdates(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "cdcdababcdcdababcdcdababcdcdabac"
+	if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, live := newRuntimeEventSinkForTest(store, chatID)
+	for _, payload := range []map[string]any{
+		{"toolCallId": "shell", "name": "bash", "input": map[string]any{"command": "example"}},
+		{"toolCallId": "shell", "rawOutput": "first output"},
+		{"toolCallId": "shell", "rawOutput": "second output"},
+	} {
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(payload)}); err != nil {
+			t.Fatal(err)
+		}
+		<-live
+	}
+	if err := sink.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	records, err := store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) != 6 {
+		t.Fatalf("records = %d, want both execution output updates preserved", len(records))
+	}
+}
+
+func TestRuntimeEventSinkBatchesToolUpdatesWithoutLosingContent(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "cdcdababcdcdababcdcdababcdcdabad"
+	if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, live := newRuntimeEventSinkForTest(store, chatID)
+	send := func(kind runtimes.EventType, data map[string]any) {
+		t.Helper()
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: marshalData(data)}); err != nil {
+			t.Fatal(err)
+		}
+		if kind == runtimes.EventTypeToolUpdate {
+			return
+		}
+		revision := sink.MessageRevision()
+		for event := range live {
+			if event.Message != nil && event.Message.Revision == revision {
+				break
+			}
+		}
+	}
+	send(runtimes.EventTypeToolUse, map[string]any{"toolCallId": "tool", "sessionUpdate": "tool_call", "status": "in_progress", "input": map[string]any{}})
+	for i := range 300 {
+		send(runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "tool", "sessionUpdate": "tool_call_update", "rawInput": map[string]any{"value": i}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": fmt.Sprintf("chunk-%d", i)}}}})
+	}
+	send(runtimes.EventTypeToolResult, map[string]any{"toolCallId": "tool", "status": "completed"})
+	records, err := store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(records) > 10 {
+		t.Fatalf("%d records for 300 updates, want bounded batches instead of per-update writes", len(records))
+	}
+	index := 0
+	for _, record := range records[3:] {
+		var message eventlog.RuntimeMessageData
+		if err := json.Unmarshal(record.Data, &message); err != nil {
+			t.Fatal(err)
+		}
+		for _, content := range message.Content {
+			var payload map[string]any
+			if err := json.Unmarshal(content.Data, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if payload["sessionUpdate"] != "tool_call_update" {
+				continue
+			}
+			blocks := payload["content"].([]any)
+			text := blocks[0].(map[string]any)["content"].(map[string]any)["text"]
+			if text != fmt.Sprintf("chunk-%d", index) {
+				t.Fatalf("content[%d]=%v", index, text)
+			}
+			index++
+		}
+	}
+	if index != 300 {
+		t.Fatalf("preserved %d chunks, want all 300", index)
 	}
 }
 
@@ -511,7 +678,7 @@ func TestCommandFactsKeepLiveAndDurableToolCaptionsEqual(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
-	sink.agentFacts = &agentCommandFacts{}
+	sink.messageFacts = &executionMessageFacts{}
 	send := func(kind runtimes.EventType, data map[string]any) {
 		t.Helper()
 		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: marshalData(data)}); err != nil {
@@ -520,7 +687,7 @@ func TestCommandFactsKeepLiveAndDurableToolCaptionsEqual(t *testing.T) {
 	}
 	send(runtimes.EventTypeToolUse, map[string]any{"id": "tool", "name": "bash", "input": map[string]any{"command": "allycli workflow source save --input source.json"}})
 	op, _ := contract.Find("workflow.source.save")
-	if err := sink.agentFacts.record(context.Background(), sink.journal, chatID, "execution-1", op, agentcapability.Result{CommandID: "receipt"}); err != nil {
+	if err := sink.messageFacts.record(context.Background(), sink.journal, chatID, "execution-1", op, agentcapability.Result{CommandID: "receipt"}); err != nil {
 		t.Fatal(err)
 	}
 	send(runtimes.EventTypeToolResult, map[string]any{"tool_use_id": "tool", "output": `{"protocolVersion":1,"ok":true,"commandId":"receipt","operation":"workflow.source.save"}`, "is_error": false})
@@ -590,4 +757,160 @@ func TestRuntimeEventSinkInitializesOnlyCurrentExecution(t *testing.T) {
 // LoadExecutionChat 不参与 Runtime 事件聚合测试。
 func (j *runtimeEventTestJournal) LoadExecutionChat(context.Context, string) (models.Chat, error) {
 	panic("unexpected LoadExecutionChat call")
+}
+
+// TestRuntimePendingTextAllocatesLinearly 防止完整消息聚合对每个短片段重复解码和编码已经累积的全文。
+func TestRuntimePendingTextAllocatesLinearly(t *testing.T) {
+	measure := func(count int) uint64 {
+		store, err := eventlog.NewStore(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		chatID := "67676767676767676767676767676767"
+		if _, err = store.Create(chatID, activeChatInputs()); err != nil {
+			t.Fatal(err)
+		}
+		sink, _ := newRuntimeEventSinkForTest(store, chatID)
+		event := runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: []byte(`{"text":"abcdefgh"}`)}
+		runtime.GC()
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		for index := 0; index < count; index++ {
+			if err = sink.appendAssistantContentLocked("invocation-1", event, int64(index+4)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err = sink.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		runtime.ReadMemStats(&after)
+		records, err := store.ReadAll(chatID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		messages, err := messageview.ReplayPublicMessages(records)
+		if err != nil || len(messages) != 1 || messages[0].Content != strings.Repeat("abcdefgh", count) {
+			t.Fatalf("aggregated text differs: messages=%d err=%v", len(messages), err)
+		}
+		return after.TotalAlloc - before.TotalAlloc
+	}
+	small, large := measure(1000), measure(2000)
+	if float64(large) > float64(small)*2.8 {
+		t.Fatalf("doubling text chunks allocated %d -> %d bytes (%.2fx), want <= 2.8x", small, large, float64(large)/float64(small))
+	}
+}
+
+// BenchmarkRuntimePendingTextChunks 覆盖完整消息聚合的短片段规模；临时日志准备与结果读取不计入测量。
+func BenchmarkRuntimePendingTextChunks(b *testing.B) {
+	event := runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: []byte(`{"text":"abcdefgh"}`)}
+	for _, count := range []int{1000, 10000, 20000} {
+		b.Run(fmt.Sprintf("chunks=%d", count), func(b *testing.B) {
+			b.ReportAllocs()
+			for iteration := 0; iteration < b.N; iteration++ {
+				b.StopTimer()
+				store, err := eventlog.NewStore(b.TempDir())
+				if err != nil {
+					b.Fatal(err)
+				}
+				chatID := "68686868686868686868686868686868"
+				if _, err = store.Create(chatID, activeChatInputs()); err != nil {
+					b.Fatal(err)
+				}
+				sink, _ := newRuntimeEventSinkForTest(store, chatID)
+				b.StartTimer()
+				for index := 0; index < count; index++ {
+					if err = sink.appendAssistantContentLocked("invocation-1", event, int64(index+4)); err != nil {
+						b.Fatal(err)
+					}
+				}
+				if err = sink.Flush(); err != nil {
+					b.Fatal(err)
+				}
+				b.StopTimer()
+				records, err := store.ReadAll(chatID)
+				if err != nil {
+					b.Fatal(err)
+				}
+				messages, err := messageview.ReplayPublicMessages(records)
+				if err != nil || len(messages) != 1 || messages[0].Content != strings.Repeat("abcdefgh", count) {
+					b.Fatalf("aggregated text differs: messages=%d err=%v", len(messages), err)
+				}
+				b.StartTimer()
+			}
+		})
+	}
+}
+
+// TestRuntimeTextSegmentsKeepOrderAcrossToolAndCancel 验证已解码文本聚合仍保留语义段、工具边界和取消前已经收到的全部内容。
+func TestRuntimeTextSegmentsKeepOrderAcrossToolAndCancel(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "69696969696969696969696969696969"
+	if _, err = store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, _ := newRuntimeEventSinkForTest(store, chatID)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, event := range []runtimes.Event{
+		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"前"}`)},
+		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"文"}`)},
+		{Type: runtimes.EventTypeCommentaryDelta, Data: json.RawMessage(`{"text":"过"}`)},
+		{Type: runtimes.EventTypeCommentaryDelta, Data: json.RawMessage(`{"text":"程"}`)},
+		{Type: runtimes.EventTypeThinkingStart, Data: json.RawMessage(`{}`)},
+		{Type: runtimes.EventTypeThinkingDelta, Data: json.RawMessage(`{"text":"推"}`)},
+		{Type: runtimes.EventTypeThinkingDelta, Data: json.RawMessage(`{"text":"理"}`)},
+		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"结"}`)},
+		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"果"}`)},
+		{Type: runtimes.EventTypeToolUse, Data: json.RawMessage(`{"toolCallId":"read-1","name":"read"}`)},
+		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"尾"}`)},
+		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"部"}`)},
+	} {
+		if err = sink.acceptInvocation(ctx, "invocation-1", event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cancel()
+	if err = sink.acceptInvocation(ctx, "invocation-1", runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"迟到"}`)}); err != status_error.OperationCanceled {
+		t.Fatalf("late canceled chunk accepted: %v", err)
+	}
+	if err = sink.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	records, err := store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var contents []eventlog.RuntimeMessageContent
+	for _, record := range records {
+		if record.Type != constants.ChatEventTypeAssistantMessage {
+			continue
+		}
+		var data eventlog.RuntimeMessageData
+		if err = json.Unmarshal(record.Data, &data); err != nil {
+			t.Fatal(err)
+		}
+		contents = append(contents, data.Content...)
+	}
+	wantTypes := []runtimes.EventType{runtimes.EventTypeTextDelta, runtimes.EventTypeCommentaryDelta, runtimes.EventTypeThinkingStart, runtimes.EventTypeThinkingDelta, runtimes.EventTypeTextDelta, runtimes.EventTypeToolUse, runtimes.EventTypeTextDelta}
+	wantText := []string{"前文", "过程", "", "推理", "结果", "", "尾部"}
+	if len(contents) != len(wantTypes) {
+		t.Fatalf("content boundary count=%d, want %d", len(contents), len(wantTypes))
+	}
+	for index, content := range contents {
+		var payload map[string]any
+		if err = json.Unmarshal(content.Data, &payload); err != nil {
+			t.Fatal(err)
+		}
+		text, _ := payload["text"].(string)
+		if content.Type != wantTypes[index] || text != wantText[index] {
+			t.Fatalf("segment %d=%s/%q, want %s/%q", index, content.Type, text, wantTypes[index], wantText[index])
+		}
+	}
+	messages, err := messageview.ReplayPublicMessages(records)
+	if err != nil || len(messages) != 1 || messages[0].Content != "前文过程结果尾部" {
+		t.Fatalf("canceled text differs: messages=%+v err=%v", messages, err)
+	}
 }

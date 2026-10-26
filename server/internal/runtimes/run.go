@@ -130,6 +130,8 @@ func (s publicEventSink) Accept(ctx context.Context, event Event) error {
 		EventTypeThinkingStart,
 		EventTypeThinkingDelta,
 		EventTypeToolUse,
+		EventTypeToolInputSnapshot,
+		EventTypeToolUpdate,
 		EventTypeToolResult,
 		EventTypeUsage:
 		return s.sink.Accept(ctx, event)

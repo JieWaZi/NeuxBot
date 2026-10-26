@@ -140,8 +140,8 @@ export function remoteKnowledgeAdapter(ref: ResourceRef) {
       official
         ? Promise.resolve().then(knowledgeUnsupported)
         : api.getRemoteJob<true>(scope(options)),
-    sendMaintenanceMessage: async (
-      _options: KnowledgeOptions<typeof api.sendMaintenanceMessage>,
+    maintainWiki: async (
+      _options: KnowledgeOptions<typeof api.maintainWiki>,
     ) => {
       _options.signal?.throwIfAborted();
       return knowledgeUnsupported();

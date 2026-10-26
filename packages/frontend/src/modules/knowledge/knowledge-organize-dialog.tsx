@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { knowledgeAdapter } from "@/shared/api/knowledge";
+import type { GithubComJieWaZiNeuxBotServerApisKnowledgeOrganizeResponse as OrganizeResponse } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { KnowledgeWikiContentLoading } from "./knowledge-loading";
@@ -7,6 +8,7 @@ import type { Library } from "./knowledge-model";
 import type { useKnowledgeWrites } from "./knowledge-writes";
 import type { KnowledgeOrganizeIntent } from "./knowledge-organize-intent";
 import { useCopy } from "./use-copy";
+import { useWikiCopy } from "./use-wiki-copy";
 export {
   createKnowledgeOrganizeIntent,
   type KnowledgeOrganizeIntent,
@@ -26,13 +28,15 @@ export type KnowledgeOrganizeDialogProps = {
   batch: string[];
   operation: ReturnType<typeof useKnowledgeWrites>["organize"];
   onClose: () => void;
-  onAccepted: () => void;
+  onAccepted: (result?: OrganizeResponse) => void;
   intent?: KnowledgeOrganizeIntent;
   rebuild?: boolean;
+  maintenance?: boolean;
 };
 /** 弹窗外壳跨分包、读取配置和编辑保持同一实例。 */
 export function KnowledgeOrganizeDialog(props: KnowledgeOrganizeDialogProps) {
   const t = useCopy();
+  const wiki = useWikiCopy();
   const Content = knowledgeAdapter(props.library.ref).localConfiguration
     ? LocalContent
     : RemoteContent;
@@ -43,7 +47,13 @@ export function KnowledgeOrganizeDialog(props: KnowledgeOrganizeDialogProps) {
         if (!open) props.onClose();
       }}
     >
-      <DialogContent title={t(props.rebuild ? "rebuildKnowledge" : "organize")}>
+      <DialogContent
+        title={
+          props.maintenance
+            ? wiki("organizeWiki")
+            : t(props.rebuild ? "rebuildKnowledge" : "organize")
+        }
+      >
         <Suspense
           fallback={
             <>

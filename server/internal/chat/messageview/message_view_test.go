@@ -545,6 +545,75 @@ func TestMessageSnapshotsKeepDiffRefinementsAndIsolation(t *testing.T) {
 	}
 }
 
+// TestPublicMessageViewDiscardsRuntimeHistoryPreservingDisplay 覆盖参数流不驻留原始载荷且文件摘要即时可见。
+func TestPublicMessageViewDiscardsRuntimeHistoryPreservingDisplay(t *testing.T) {
+	t.Parallel()
+	public := NewPublicMessageViewBuilder()
+	full := NewMessageViewBuilder()
+	apply := func(record eventlog.Record) {
+		t.Helper()
+		for _, builder := range []*MessageViewBuilder{public, full} {
+			if _, err := builder.Apply(record); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if len(public.messages) == 0 {
+			return
+		}
+		if len(public.messages[0].RuntimeEvents) != 0 {
+			t.Fatal("public builder retained raw runtime inputs")
+		}
+		if got, want := public.PublicMessage("execution-1"), full.PublicMessage("execution-1"); !reflect.DeepEqual(got, want) {
+			t.Fatalf("public/full display diverged at sequence %d: got=%+v want=%+v", record.Sequence, got, want)
+		}
+	}
+	apply(chatCreatedRecord(1, "/workspace"))
+	apply(executionCreatedRecord(2, "execution-1"))
+	for index := range 100 {
+		apply(runtimeRecord(int64(index+3), "execution-1", "execution-1", "invocation-1", "tool_use", map[string]any{
+			"toolCallId": "write-1", "name": "file_modify",
+			"input":   map[string]any{"path": "/workspace/main.go", "content": strings.Repeat("private input", index+1)},
+			"content": []any{map[string]any{"type": "diff", "path": "/workspace/main.go", "oldText": "a\n", "newText": "b\nc\n"}},
+		}))
+	}
+	wantFiles := []ToolFileChangeSummary{{Path: "main.go", AddedLines: 2, DeletedLines: 1}}
+	if got := public.PublicMessage("execution-1").FileChanges; !reflect.DeepEqual(got, wantFiles) {
+		t.Fatalf("streaming file summaries = %+v, want %+v", got, wantFiles)
+	}
+	apply(runtimeRecord(103, "execution-1", "execution-1", "invocation-1", "tool_result", map[string]any{"toolCallId": "write-1", "status": "completed"}))
+	private := full.Messages()[0]
+	if len(private.RuntimeEvents) != 101 || !reflect.DeepEqual(private.FileChangeDiffs, []MessageFileChangeDiff{{Path: "main.go", OldContent: "a\n", NewContent: "b\nc\n"}}) {
+		t.Fatalf("default full projection lost diff support: events=%d diffs=%+v", len(private.RuntimeEvents), private.FileChangeDiffs)
+	}
+	if snapshot := public.Messages()[0]; len(snapshot.RuntimeEvents) != 0 || len(snapshot.FileChangeDiffs) != 0 {
+		t.Fatal("public-only snapshots retained private runtime events or diffs")
+	}
+}
+
+// TestPublicMessageViewPreservesInheritedFiles 覆盖公开增量投影保留继承摘要并释放私有差异。
+func TestPublicMessageViewPreservesInheritedFiles(t *testing.T) {
+	t.Parallel()
+	data, err := eventlog.MarshalData(InheritedMessage{
+		SourceMessageID: "source-message",
+		Message:         Message{Role: constants.MessageRoleAssistant, Content: "已更新文件", FileChanges: []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}}},
+		Diffs:           []MessageFileChangeDiff{{Path: "main.go", NewContent: "private content\n"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	builder := NewPublicMessageViewBuilder()
+	if _, err := builder.Apply(eventlog.Record{Sequence: 1, MessageID: "inherited-1", Type: constants.ChatEventTypeMessageInherited, Data: data}); err != nil {
+		t.Fatal(err)
+	}
+	message := builder.Messages()[0]
+	if !reflect.DeepEqual(message.FileChanges, []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}}) || message.Content != "已更新文件" {
+		t.Fatalf("inherited public snapshot lost display: %+v", message)
+	}
+	if len(builder.messages[0].FileChangeDiffs) != 0 {
+		t.Fatal("public-only inherited message retained private diff content")
+	}
+}
+
 // TestReplayPublicMessagesPreservesInheritedFiles 验证公开历史与分叉内部历史使用相同展示事实。
 func TestReplayPublicMessagesPreservesInheritedFiles(t *testing.T) {
 	t.Parallel()
@@ -1405,28 +1474,6 @@ func TestReplayMessagesPreservesRichToolLabelOnBareACPUpdate(t *testing.T) {
 	}
 }
 
-// TestMergeToolPhrasePreservesRicherLabelOnBareUpdate 验证 mergeToolPhrase 的单调合并规则。
-func TestMergeToolPhrasePreservesRicherLabelOnBareUpdate(t *testing.T) {
-	t.Parallel()
-
-	label, loading := mergeToolPhrase("搜索记忆", "正在搜索记忆…", "执行操作", "正在执行操作…")
-	if label != "搜索记忆" || loading != "正在搜索记忆…" {
-		t.Fatalf("mergeToolPhrase() = (%q, %q), want richer existing label", label, loading)
-	}
-	label, loading = mergeToolPhrase("", "", "读取 main.go", "正在读取 main.go…")
-	if label != "读取 main.go" {
-		t.Fatalf("empty existing label = %q, want incoming label", label)
-	}
-	label, _ = mergeToolPhrase("执行 ls", "正在执行 ls…", "运行前端完整检查", "正在运行前端完整检查…")
-	if label != "运行前端完整检查" {
-		t.Fatalf("longer incoming label = %q", label)
-	}
-	label, loading = mergeToolPhrase("调用外部服务", "正在调用外部服务…", "搜索记忆", "正在搜索记忆…")
-	if label != "搜索记忆" || loading != "正在搜索记忆…" {
-		t.Fatalf("generic MCP label = (%q, %q), want richer builtin label", label, loading)
-	}
-}
-
 // TestReplayMessagesDisplaysNormalizedACPWebImageAndSkill 验证 ACP 标准事实覆盖网页、图片和技能展示。
 func TestReplayMessagesDisplaysNormalizedACPWebImageAndSkill(t *testing.T) {
 	t.Parallel()
@@ -1606,5 +1653,73 @@ func TestCommandFailureUsesNativeExitMetadata(t *testing.T) {
 	}
 	if displayToolResultStatus(map[string]interface{}{"status": "completed", "rawOutput": map[string]interface{}{"metadata": map[string]interface{}{"exit": float64(0)}}}) != constants.MessageToolStatusCompleted {
 		t.Fatal("成功命令被标为失败")
+	}
+}
+
+// TestMessageViewTextSnapshotsStayImmutableAfterAppend 验证同一文本缓冲的后续追加不改变已经公开的旧正文和展示段。
+func TestMessageViewTextSnapshotsStayImmutableAfterAppend(t *testing.T) {
+	builder := NewPublicMessageViewBuilder()
+	if _, err := builder.Apply(executionCreatedRecord(1, "execution-1")); err != nil {
+		t.Fatal(err)
+	}
+	apply := func(sequence int64, kind constants.RuntimeEventType, value map[string]any) {
+		t.Helper()
+		if _, err := builder.Apply(runtimeRecord(sequence, "execution-1", "execution-1", "invocation-1", kind, value)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	apply(2, constants.RuntimeEventTypeTextDelta, map[string]any{"text": "one"})
+	first := builder.PublicMessage("execution-1")
+	apply(3, constants.RuntimeEventTypeTextDelta, map[string]any{"text": "two"})
+	second := builder.PublicMessage("execution-1")
+	apply(4, constants.RuntimeEventTypeTextDelta, map[string]any{"text": strings.Repeat("x", 10000)})
+	apply(5, constants.RuntimeEventTypeThinkingDelta, map[string]any{"text": "reason"})
+	reasoning := builder.PublicMessage("execution-1")
+	apply(6, constants.RuntimeEventTypeThinkingDelta, map[string]any{"text": "ing"})
+	apply(7, constants.RuntimeEventTypeToolUse, map[string]any{"toolCallId": "tool-1", "name": "read"})
+	apply(8, constants.RuntimeEventTypeTextDelta, map[string]any{"text": "tail"})
+	trailing := builder.PublicMessage("execution-1")
+	apply(9, constants.RuntimeEventTypeTextDelta, map[string]any{"text": "text"})
+	apply(10, constants.RuntimeEventTypeToolResult, map[string]any{"toolCallId": "tool-1", "status": "completed"})
+	if first.Content != "one" || first.DisplayParts[0].Text != "one" || first.DisplayParts[0].Type != constants.MessageDisplayPartText {
+		t.Fatalf("first snapshot changed: %+v", first)
+	}
+	if second.Content != "onetwo" || second.DisplayParts[0].Text != "onetwo" {
+		t.Fatalf("second snapshot changed: %+v", second)
+	}
+	if reasoning.DisplayParts[1].Text != "reason" {
+		t.Fatalf("reasoning snapshot changed: %+v", reasoning)
+	}
+	if trailing.DisplayParts[3].Text != "tail" || trailing.DisplayParts[3].Type != constants.MessageDisplayPartProcessCommentary {
+		t.Fatalf("provisional snapshot changed: %+v", trailing)
+	}
+	final := builder.PublicMessage("execution-1")
+	if final.DisplayParts[1].Text != "reasoning" || final.DisplayParts[3].Text != "tailtext" || final.DisplayParts[3].Type != constants.MessageDisplayPartText {
+		t.Fatalf("new text or final classification lost: %+v", final)
+	}
+}
+
+// TestMessageViewTextAppendsToInheritedSeed 验证继承快照的既有正文和展示段可以继续追加且原快照不变。
+func TestMessageViewTextAppendsToInheritedSeed(t *testing.T) {
+	builder := NewPublicMessageViewBuilder()
+	inherited, err := eventlog.MarshalData(InheritedMessage{Message: Message{Content: "seed", DisplayParts: []MessageDisplayPart{{ID: "seed-part", Type: constants.MessageDisplayPartText, Text: "seed"}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = builder.Apply(eventlog.Record{Sequence: 1, Type: constants.ChatEventTypeMessageInherited, MessageID: "execution-1", Data: inherited}); err != nil {
+		t.Fatal(err)
+	}
+	before := builder.PublicMessage("execution-1")
+	for sequence := int64(2); sequence <= 3; sequence++ {
+		if _, err = builder.Apply(runtimeRecord(sequence, "execution-1", "execution-1", "invocation-1", constants.RuntimeEventTypeTextDelta, map[string]any{"text": "+"})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	after := builder.PublicMessage("execution-1")
+	if before.Content != "seed" || before.DisplayParts[0].Text != "seed" {
+		t.Fatalf("inherited snapshot changed: %+v", before)
+	}
+	if after.Content != "seed++" || len(after.DisplayParts) != 1 || after.DisplayParts[0].Text != "seed++" || after.DisplayParts[0].ID != "seed-part" {
+		t.Fatalf("inherited text seed lost: %+v", after)
 	}
 }

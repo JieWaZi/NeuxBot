@@ -8,7 +8,7 @@ import {
 import { trackHorizontalDrag } from "@/shared/lib/horizontal-drag";
 import { VerticalResizeHandle } from "@/shared/ui/vertical-resize-handle";
 import { useQuery } from "@tanstack/react-query";
-import { History, Pencil, Trash2, Sparkles } from "lucide-react";
+import { History, Pencil, Trash2 } from "lucide-react";
 import { defaultRemarkPlugins } from "streamdown";
 import {
   remarkWikiLinks,
@@ -62,10 +62,8 @@ export function KnowledgeWikiView({
   pageId,
   onPage,
   writable,
-  maintenanceDisabled = false,
   structureVersion,
   commands: sharedCommands,
-  onMaintenance,
   content,
   directoryTab,
   onDirectoryTab,
@@ -79,10 +77,8 @@ export function KnowledgeWikiView({
   pageId: string;
   onPage: (id: string, tab?: string) => void;
   writable: boolean;
-  maintenanceDisabled?: boolean;
   structureVersion: number;
   commands?: KnowledgeWikiCommands;
-  onMaintenance: (page: WikiPage) => void;
   content?: ReactNode;
   directoryTab?: string;
   onDirectoryTab?: (tab: string) => void;
@@ -97,8 +93,6 @@ export function KnowledgeWikiView({
   const [localCommands] = useState<KnowledgeWikiCommands>(() => new Map());
   const commands = sharedCommands ?? localCommands;
   const keyFor = (operation: string) => `${resourceKey(resource)}:${operation}`;
-  const beginMaintenance = (targetPage: WikiPage) =>
-    void act("maintenanceChat", () => onMaintenance(targetPage));
   const [folderAction, setFolderAction] = useState<{
     kind: "rename" | "delete";
     folder: WikiTheme;
@@ -238,14 +232,6 @@ export function KnowledgeWikiView({
   const currentPage = page.data;
   const pageActions = currentPage?.id ? (
     <>
-      {editable && (
-        <IconAction
-          icon={Sparkles}
-          label={t("aiRevise")}
-          disabled={maintenanceDisabled}
-          onClick={() => beginMaintenance(currentPage)}
-        />
-      )}
       {editable && (
         <IconAction
           icon={Pencil}

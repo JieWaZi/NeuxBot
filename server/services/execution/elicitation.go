@@ -26,6 +26,10 @@ type pendingElicitation struct {
 	chatID string
 	// executionID 是结构化输入所属活跃执行标识。
 	executionID string
+	// messageFacts 交接本交互已提交的消息事实，不在协调器锁内调用 Sink。
+	messageFacts *executionMessageFacts
+	// invocationID 冻结发起交互的 Runtime 调用，不能由处理响应时的最新调用替代。
+	invocationID string
 	// requested 是已经安全归一化并进入权威日志的输入内容。
 	requested eventlog.ElicitationRequestedData
 	// requestedAt 是请求进入权威日志的 Unix 毫秒时间。
@@ -54,6 +58,8 @@ type elicitationCoordinator struct {
 
 // executionElicitationHandler 把固定 Chat/Execution 身份绑定到结构化输入协调器。
 type executionElicitationHandler struct {
+	// messageFacts 是当前执行唯一实时投影的已提交事实端口。
+	messageFacts *executionMessageFacts
 	// coordinator 是进程级结构化输入协调器。
 	coordinator *elicitationCoordinator
 	// chatID 是当前 Runtime 调用所属 Chat 标识。
@@ -80,12 +86,17 @@ func newElicitationCoordinator(journal chatservice.Journal, hub ...*events.Hub) 
 func (c *elicitationCoordinator) handler(
 	chatID string,
 	executionID string,
+	facts ...*executionMessageFacts,
 ) runtimes.ElicitationHandler {
-	return &executionElicitationHandler{
+	bound := &executionElicitationHandler{
 		coordinator: c,
 		chatID:      chatID,
 		executionID: executionID,
 	}
+	if len(facts) > 0 {
+		bound.messageFacts = facts[0]
+	}
+	return bound
 }
 
 // Request 把 Runtime 请求交给绑定执行的结构化输入协调器。
@@ -96,7 +107,7 @@ func (h *executionElicitationHandler) Request(
 	if h == nil || h.coordinator == nil {
 		return runtimes.ElicitationDecision{Cancelled: true}, nil
 	}
-	return h.coordinator.request(ctx, h.chatID, h.executionID, request)
+	return h.coordinator.request(ctx, h.chatID, h.executionID, request, h.messageFacts)
 }
 
 // ResolveElicitation 处理前端提交的一次结构化用户输入。
@@ -126,6 +137,7 @@ func (c *elicitationCoordinator) request(
 	chatID string,
 	executionID string,
 	request runtimes.ElicitationRequest,
+	facts *executionMessageFacts,
 ) (runtimes.ElicitationDecision, error) {
 	if ctx == nil || strings.TrimSpace(chatID) == "" ||
 		strings.TrimSpace(executionID) == "" {
@@ -133,22 +145,26 @@ func (c *elicitationCoordinator) request(
 	}
 	requested := elicitationEventData(util.New(), request)
 	pending := &pendingElicitation{
-		chatID:      chatID,
-		executionID: executionID,
-		requested:   requested,
-		response:    make(chan runtimes.ElicitationDecision, 1),
+		messageFacts: facts,
+		invocationID: request.InvocationID,
+		chatID:       chatID,
+		executionID:  executionID,
+		requested:    requested,
+		response:     make(chan runtimes.ElicitationDecision, 1),
 	}
 
 	c.commitMutex.Lock()
 	record, err := c.journal.AppendElicitationFact(chatID, eventlog.AppendInput{
-		Type:        constants.ChatEventTypeElicitationRequested,
-		ExecutionID: executionID,
-		Data:        marshalData(requested),
+		Type:         constants.ChatEventTypeElicitationRequested,
+		ExecutionID:  executionID,
+		InvocationID: pending.invocationID,
+		Data:         marshalData(requested),
 	})
 	if err != nil {
 		c.commitMutex.Unlock()
 		return runtimes.ElicitationDecision{Cancelled: true}, err
 	}
+	pending.messageFacts.push(record)
 	c.mutex.Lock()
 	pending.requestedAt = record.RecordedAt
 	c.byID[requested.ElicitationID] = pending
@@ -353,15 +369,17 @@ func (c *elicitationCoordinator) commitResolution(
 	record, err := c.journal.AppendElicitationFact(
 		pending.chatID,
 		eventlog.AppendInput{
-			Type:        constants.ChatEventTypeElicitationResolved,
-			ExecutionID: pending.executionID,
-			Data:        marshalData(resolved),
+			Type:         constants.ChatEventTypeElicitationResolved,
+			ExecutionID:  pending.executionID,
+			InvocationID: pending.invocationID,
+			Data:         marshalData(resolved),
 		},
 	)
 	if err != nil {
 		return err
 	}
 
+	pending.messageFacts.push(record)
 	c.mutex.Lock()
 	delete(c.byID, pending.requested.ElicitationID)
 	c.signalInputLocked(pending.executionID)

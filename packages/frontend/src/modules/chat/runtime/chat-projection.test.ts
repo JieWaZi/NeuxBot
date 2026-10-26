@@ -10,6 +10,47 @@ import {
 import type { ChatEvent } from "@/shared/api/events";
 
 describe("chat projection", () => {
+  it("同一消息中复用原生工具标识的不同调用保留独立展示身份", () => {
+    const projected = toThreadMessage({
+      id: "assistant-retried",
+      role: "assistant",
+      status: "running",
+      displayParts: [
+        {
+          id: "invocation-one:call-1",
+          type: "tool",
+          toolCallId: "call-1",
+          toolStatus: "completed",
+          toolCategory: "file_read",
+          toolAction: "read_file",
+          toolSafeSummary: { path: "one.go" },
+        },
+        {
+          id: "invocation-two:call-1",
+          type: "tool",
+          toolCallId: "call-1",
+          toolStatus: "running",
+          toolCategory: "file_read",
+          toolAction: "read_file",
+          toolSafeSummary: { path: "two.go" },
+        },
+      ],
+    });
+
+    expect(projected.content).toMatchObject([
+      {
+        type: "tool-call",
+        toolCallId: "invocation-one:call-1",
+        args: { status: "completed", safeSummary: { path: "one.go" } },
+      },
+      {
+        type: "tool-call",
+        toolCallId: "invocation-two:call-1",
+        args: { status: "running", safeSummary: { path: "two.go" } },
+      },
+    ]);
+  });
+
   it("技能活动在 API 消息转换后仍保留独立类别与动作", () => {
     const projected = toThreadMessage({
       id: "skill-message",

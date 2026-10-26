@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { ChevronDown, ListFilter, RefreshCw } from "lucide-react";
 import { knowledgeAdapter } from "@/shared/api/knowledge";
 import type { ListLibraryActivityResponse } from "@/shared/api/generated/types.gen";
@@ -21,7 +25,11 @@ import {
   DropdownMenuRadioItem,
 } from "@/shared/ui/dropdown-menu";
 import { IconAction, SectionTitle } from "./knowledge-controls";
-import { knowledgeKeys } from "./knowledge-queries";
+import { jobsOptions, knowledgeKeys } from "./knowledge-queries";
+import { KnowledgeCurrentActivity } from "./knowledge-current-activity";
+import { KnowledgeActivityTaskResult } from "./knowledge-activity-task-result";
+import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
+import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import type { Library } from "./knowledge-model";
 import { useCopy } from "./use-extended-copy";
 
@@ -35,6 +43,7 @@ const actions = [
   ["knowledge.reparse_started", "activityOrganizeStarted"],
   ["knowledge.parse_canceled", "activityOrganizeCancelled"],
   ["wiki.content_changed", "activityWikiChanged"],
+  ["wiki.maintenance", "activityWikiMaintenance"],
 ] as const;
 const outcomes = [
   ["accepted", "activityAccepted"],
@@ -63,37 +72,41 @@ function details(entry: Entry): Record<string, unknown> {
     : {};
 }
 
-/** 沿上游活动的服务端过滤与游标语义，展示真实持久记录，不从 Job 合成活动。 */
+/** 历史沿用服务端过滤与游标；当前任务单独读取既有快照，不合成审计记录。 */
 export function KnowledgeLibraryActivity({ library }: { library: Library }) {
   const t = useCopy();
   const client = useQueryClient();
+  const active = useRouteSceneActive();
   const [action, setAction] = useState("");
   const [outcome, setOutcome] = useState("");
-  const key = [
-    ...knowledgeKeys.resource(library.ref),
-    "activity",
-    action,
-    outcome,
-  ];
+  const key = knowledgeKeys.activity(library.ref, action, outcome);
+  const local = knowledgeAdapter(library.ref).localConfiguration;
+  const jobs = useQuery({
+    ...jobsOptions(library.ref),
+    enabled: local && active,
+  });
   const query = useInfiniteQuery({
     queryKey: key,
     initialPageParam: 0,
     queryFn: async ({ pageParam, signal }) =>
       (
-        await knowledgeAdapter(library.ref).listLibraryActivity({
-          path: { libraryId: library.id },
-          query: {
-            afterId: pageParam || undefined,
-            limit: 10,
-            action: action || undefined,
-            outcome: outcome || undefined,
-          },
-          signal,
-          throwOnError: true,
-        })
+        await knowledgeAdapter(library.ref).listLibraryActivity(
+          withLocalErrorSurface({
+            path: { libraryId: library.id },
+            query: {
+              afterId: pageParam || undefined,
+              limit: 10,
+              action: action || undefined,
+              outcome: outcome || undefined,
+            },
+            signal,
+            throwOnError: true,
+          }),
+        )
       ).data,
     getNextPageParam: (last) => last.nextCursor || undefined,
     staleTime: 0,
+    enabled: active,
   });
   const rows = query.data?.pages.flatMap((page) => page.data ?? []) ?? [];
   const actionLabel = (value: string) => {
@@ -139,13 +152,26 @@ export function KnowledgeLibraryActivity({ library }: { library: Library }) {
         <IconAction
           icon={RefreshCw}
           label={t("refreshActivity")}
-          disabled={query.isFetching}
-          onClick={() =>
-            void client.resetQueries({ queryKey: key, exact: true })
-          }
+          disabled={query.isFetching || jobs.isFetching}
+          onClick={() => {
+            void client.resetQueries({ queryKey: key, exact: true });
+            if (local) void jobs.refetch();
+          }}
         />
       </div>
       <p className="type-caption text-content-secondary">{t("activityHelp")}</p>
+      {local && (
+        <KnowledgeCurrentActivity
+          job={jobs.data?.activeJob}
+          pending={jobs.isPending}
+          error={Boolean(jobs.error)}
+        />
+      )}
+      {query.error && (
+        <p role="alert" className="type-caption text-destructive">
+          {t("activityLoadFailed")}
+        </p>
+      )}
       <Table aria-label={t("activitySection")} className="min-w-xl table-fixed">
         <colgroup>
           <col className="w-28" />
@@ -186,34 +212,78 @@ export function KnowledgeLibraryActivity({ library }: { library: Library }) {
         <TableBody>
           {rows.map((entry) => {
             const meta = details(entry);
-            const title =
-              typeof meta.title === "string" && meta.title.trim()
-                ? meta.title
-                : typeof meta.name === "string" && meta.name.trim()
-                  ? meta.name
-                  : entry.targetType === "knowledge_base"
-                    ? library.name
-                    : entry.targetType === "knowledge"
-                      ? t("activityDocument")
-                      : entry.targetType === "knowledge_task"
-                        ? t("activityTask")
-                        : entry.targetType === "wiki"
-                          ? t("activityWiki")
-                          : entry.targetType === "wiki_page"
-                            ? t("activityWikiPage")
-                            : t("activityTargetUnknown");
-            const counts = (["count", "total"] as const).flatMap((key) => {
+            const maintenance = entry.targetType === "wiki_maintenance_task";
+            const wiki =
+              entry.targetType === "wiki" || entry.targetType === "wiki_page";
+            const titles = [
+              ...new Set(
+                [
+                  meta.title,
+                  ...(Array.isArray(meta.titles) ? meta.titles : []),
+                  meta.name,
+                ]
+                  .filter(
+                    (value): value is string =>
+                      typeof value === "string" && Boolean(value.trim()),
+                  )
+                  .map((value) => value.trim()),
+              ),
+            ].slice(0, 3);
+            const changed =
+              typeof meta.count === "number" &&
+              Number.isSafeInteger(meta.count) &&
+              meta.count >= 0
+                ? meta.count
+                : undefined;
+            const title = maintenance
+              ? t("activityWikiMaintenanceTask")
+              : titles.length > 0
+                ? wiki && changed !== undefined && changed > titles.length
+                  ? t("activityPageTitles", {
+                      titles: titles.join("、"),
+                      count: changed,
+                    })
+                  : titles.join("、")
+                : entry.targetType === "knowledge_base"
+                  ? library.name
+                  : entry.targetType === "knowledge"
+                    ? t("activityDocument")
+                    : entry.targetType === "knowledge_task"
+                      ? t("activityTask")
+                      : entry.targetType === "wiki"
+                        ? t("activityWiki")
+                        : entry.targetType === "wiki_page"
+                          ? t("activityWikiPage")
+                          : t("activityTargetUnknown");
+            const counts = (
+              maintenance ? ["changed_pages"] : ["count", "total"]
+            ).flatMap((key) => {
               const count = meta[key];
               return typeof count === "number" &&
                 Number.isSafeInteger(count) &&
                 count >= 0
                 ? [
-                    t(key === "count" ? "activityCount" : "activityTotal", {
-                      count,
-                    }),
+                    t(
+                      key === "changed_pages"
+                        ? "activityChangedPages"
+                        : wiki && key === "count"
+                          ? "activityChangedPages"
+                          : entry.targetType === "knowledge_task" &&
+                              key === "total"
+                            ? "activityDocumentScope"
+                            : key === "count"
+                              ? "activityCount"
+                              : "activityTotal",
+                      {
+                        count,
+                      },
+                    ),
                   ]
                 : [];
             });
+            if (maintenance && meta.scope === "existing_wiki") {
+              counts.unshift(t("activityExistingWikiScope"));
+            }
             const date = entry.createdAt
               ? new Date(entry.createdAt)
               : undefined;
@@ -245,6 +315,20 @@ export function KnowledgeLibraryActivity({ library }: { library: Library }) {
                       {counts.join(" · ")}
                     </span>
                   )}
+                  {(maintenance || entry.targetType === "knowledge_task") &&
+                    entry.targetId &&
+                    ["success", "failed", "partial", "canceled"].includes(
+                      entry.outcome ?? "",
+                    ) &&
+                    typeof meta.attempt === "number" &&
+                    Number.isSafeInteger(meta.attempt) &&
+                    meta.attempt > 0 && (
+                      <KnowledgeActivityTaskResult
+                        resource={library.ref}
+                        jobId={entry.targetId}
+                        attempt={meta.attempt}
+                      />
+                    )}
                 </TableCell>
                 <TableCell className="break-words">{actor}</TableCell>
                 <TableCell>

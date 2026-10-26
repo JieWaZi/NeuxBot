@@ -55,6 +55,9 @@ func (s *Service) saveConfiguration(ctx context.Context, wakerID, id string, rev
 	if config.Knowledge != nil && kind != constants.AutomaticTaskTargetKindWaker {
 		return SavedTask{}, status_error.KnowledgeUnsupported
 	}
+	if auth := config.Knowledge; auth != nil && (auth.Backend != "local" || auth.ConnectionID != "local" || auth.KnowledgeBaseID == "" || (auth.Operation != "organize" && auth.Operation != constants.KnowledgeWikiMaintainOperation) || auth.Operation == constants.KnowledgeWikiMaintainOperation && (len(auth.SourceVersionIDs) != 0 || len(auth.AttachmentIndexes) != 0)) {
+		return SavedTask{}, status_error.KnowledgeInvalid
+	}
 	config.TargetKind = kind
 	if kind != constants.AutomaticTaskTargetKindWorkflow && (config.WorkflowRevisionPolicy != "" || config.WorkflowRevisionID != "" || len(config.WorkflowInputBindings) != 0 || config.WorkflowInputRevisionID != "") {
 		return SavedTask{}, status_error.BadRequest

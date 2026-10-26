@@ -10,12 +10,15 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	acp "github.com/coder/acp-go-sdk"
+	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
-const acpUpdateQueueCapacity = 256
+const (
+	acpUpdateQueueCapacity = 256
+	acpUpdateQueueBytes    = 16 * 1024 * 1024
+)
 
-var errACPUpdateQueueFull = status_error.RuntimeUnavailable
+var errACPUpdateQueueFull = status_error.RuntimeEventQueueOverflow
 
 // acpClient 实现 ACP Client 回调，并按 Session 路由当前 Invocation。
 type acpClient struct {
@@ -31,6 +34,8 @@ type acpClient struct {
 type acpBridge struct {
 	// rejectTextInteraction 在纯模型调用观察到工具或交互时立即取消，不执行宿主能力。
 	rejectTextInteraction func()
+	// textCollector 为纯模型调用直接收集正文，所有 Session Update 均不进入聊天事件队列。
+	textCollector *textCollector
 	// sessionID 是当前调用使用的 ACP Session 标识。
 	sessionID acp.SessionId
 	// invocationID 是 Runtime 统一事件绑定的调用标识。
@@ -43,7 +48,7 @@ type acpBridge struct {
 	firstUpdateOnce sync.Once
 	// firstDeliveryOnce 保证首条标准 Runtime 事件交付只记录一次。
 	firstDeliveryOnce sync.Once
-	// sink 接收跨 Runtime 统一事件。
+	// sink 接收普通聊天的跨 Runtime 统一事件，纯文本调用不使用。
 	sink EventSink
 	// workspace 保存权限判断使用的完整授权目录。
 	workspace Workspace
@@ -60,7 +65,29 @@ type acpBridge struct {
 	// eventDeliveryTimeout 限制一次 Runtime Event Sink 调用。
 	eventDeliveryTimeout time.Duration
 	// updates 是有界且保持 ACP 到达顺序的交付队列。
-	updates chan acpDelivery
+	updates chan *acpDelivery
+	// queueMutex 保护尚未被消费者取走的队尾快照。
+	queueMutex sync.Mutex
+	// queuedBytes 限制仍在队列中等待交付的载荷字节，不包括当前 Sink 调用。
+	queuedBytes int
+	// queueChanged 在消费者取走项目后唤醒条数或字节预算等待者，受 queueMutex 保护。
+	queueChanged chan struct{}
+	// enqueueMutex 保持多个生产者的入队顺序，等待空位时不占用消费者的快照锁。
+	enqueueMutex sync.Mutex
+	// queueClosed 只在 enqueueMutex 下访问，禁止已关闭队列继续接收直接生产者。
+	queueClosed bool
+	// routeMutex 保护回调引用接纳与路由关闭之间的原子屏障。
+	routeMutex sync.Mutex
+	// routeClosed 禁止已移除的 Bridge 再取得新回调引用。
+	routeClosed bool
+	// routeReferences 等待已取得引用的通知完成后再关闭发送队列。
+	routeReferences sync.WaitGroup
+	// promptDone 让正在等待预算的回调立即响应本次 Prompt 的取消。
+	promptDone <-chan struct{}
+	// lastQueued 指向可合并的队尾，已开始交付的项目不能再修改。
+	lastQueued *acpDelivery
+	// cancelPrompt 在首次交付失败后停止原生调用，避免后台继续产生不可展示的副作用。
+	cancelPrompt context.CancelFunc
 	// activity 合并 ACP Session Update 和共享模块主动插入的事件活动。
 	activity chan struct{}
 	// approvalActivity 通知无活动监视器审批或结构化输入等待状态已经变化。
@@ -75,13 +102,25 @@ type acpBridge struct {
 	activate chan struct{}
 	// done 在交付 goroutine 退出后关闭。
 	done chan struct{}
+	// deliveryContext 在排空窗口结束时阻止消费者继续接纳队列内容。
+	deliveryContext context.Context
+	// cancelDelivery 取消当前 Sink 的协作式 Context；同步文件 I/O 仍由持久化所有者收尾。
+	cancelDelivery context.CancelFunc
 	// activateOnce 保证启动屏障只关闭一次。
 	activateOnce sync.Once
-	// failureMutex 保护 failure。
+	// failureMutex 保护交付失败与调用终止首因快照。
 	failureMutex sync.RWMutex
 	// failure 保存 Sink、Context 或映射失败。
 	failure error
-	// sideEffects 只由交付 goroutine更新，并在 done 后读取。
+	// primaryCause 保存最先已知的调用终止原因，独立于是否需要停止事件交付。
+	primaryCause error
+	// primaryStage 为空表示首因为交付失败；非空时保存 Prompt 等已知终止阶段。
+	primaryStage string
+	// failureSignal 在首个失败时关闭，唤醒等待队列空位的生产者。
+	failureSignal chan struct{}
+	// stateMutex 保护事件映射与终态读取之间的副作用快照。
+	stateMutex sync.RWMutex
+	// sideEffects 由交付 goroutine 更新，超时收尾通过 stateMutex 读取稳定副本。
 	sideEffects SideEffectSummary
 	// thinkingStarted 防止同一 Invocation 重复发送 thinking_start。
 	thinkingStarted bool
@@ -99,6 +138,8 @@ type acpBridge struct {
 
 // acpDelivery 保存一条原始 ACP 更新或已归一化 Runtime 事件集合。
 type acpDelivery struct {
+	// bytes 是该项目在有界队列中占用的序列化载荷字节。
+	bytes int
 	// notification 是 Agent 发出的 Session Update。
 	notification *acp.SessionNotification
 	// events 是 Runtime 主动插入的预检或终态 Usage 事件。
@@ -124,6 +165,7 @@ func newACPBridge(
 	binding acpRuntimeBinding,
 	eventDeliveryTimeout time.Duration,
 ) *acpBridge {
+	deliveryContext, cancelDelivery := context.WithCancel(context.Background())
 	return &acpBridge{
 		sessionID:            sessionID,
 		invocationID:         invocationID,
@@ -132,11 +174,15 @@ func newACPBridge(
 		policy:               policy,
 		binding:              binding,
 		eventDeliveryTimeout: eventDeliveryTimeout,
-		updates:              make(chan acpDelivery, acpUpdateQueueCapacity),
+		updates:              make(chan *acpDelivery, acpUpdateQueueCapacity),
+		queueChanged:         make(chan struct{}),
 		activity:             make(chan struct{}, 1),
 		approvalActivity:     make(chan struct{}, 1),
 		activate:             make(chan struct{}),
 		done:                 make(chan struct{}),
+		deliveryContext:      deliveryContext,
+		cancelDelivery:       cancelDelivery,
+		failureSignal:        make(chan struct{}),
 		startedTools:         make(map[acp.ToolCallId]struct{}),
 		completedTools:       make(map[acp.ToolCallId]struct{}),
 	}
@@ -159,31 +205,54 @@ func (client *acpClient) unregister(bridge *acpBridge) {
 	if client.bridges[bridge.sessionID] == bridge {
 		delete(client.bridges, bridge.sessionID)
 	}
+	bridge.routeMutex.Lock()
+	bridge.routeClosed = true
+	bridge.routeMutex.Unlock()
 	client.mutex.Unlock()
+	bridge.routeReferences.Wait()
 }
 
-// SessionUpdate 把 Agent 更新写入匹配 Session 的有界队列。
+// SessionUpdate 将文本调用直接收集为结果，普通聊天更新写入匹配 Session 的有界队列。
 func (client *acpClient) SessionUpdate(
 	_ context.Context,
 	notification acp.SessionNotification,
 ) error {
 	client.mutex.RLock()
 	bridge := client.bridges[notification.SessionId]
-	if bridge == nil {
+	if bridge == nil || !bridge.beginDelivery() {
 		client.mutex.RUnlock()
+		return nil
+	}
+	client.mutex.RUnlock()
+	defer bridge.routeReferences.Done()
+	// 首次失败已保存并取消 Prompt；排空迟到通知，避免每条 Token 重复报告同一错误。
+	if bridge.currentFailure() != nil {
 		return nil
 	}
 	bridge.observeFirstUpdate()
 	if bridge.rejectTextInteraction != nil && (notification.Update.ToolCall != nil || notification.Update.ToolCallUpdate != nil || notification.Update.Plan != nil) {
 		bridge.rejectTextInteraction()
 		bridge.setFailure(status_error.RuntimePolicyUnsupported)
-		client.mutex.RUnlock()
 		return status_error.RuntimePolicyUnsupported
 	}
+	if bridge.textCollector != nil {
+		bridge.signalActivity()
+		bridge.textCollector.collectUpdate(notification.Update, bridge.binding)
+		return nil
+	}
 	clone := notification
-	err := bridge.enqueue(acpDelivery{notification: &clone})
-	client.mutex.RUnlock()
-	return err
+	return bridge.enqueue(acpDelivery{notification: &clone})
+}
+
+// beginDelivery 在路由锁仍有效时取得一次回调引用；移除路由后不能再增加引用。
+func (bridge *acpBridge) beginDelivery() bool {
+	bridge.routeMutex.Lock()
+	defer bridge.routeMutex.Unlock()
+	if bridge.routeClosed {
+		return false
+	}
+	bridge.routeReferences.Add(1)
+	return true
 }
 
 // RequestPermission 把 ACP 请求归一化后交给当前 Invocation 的审批端口。
@@ -294,19 +363,164 @@ func (*acpClient) WaitForTerminalExit(
 	return acp.WaitForTerminalExitResponse{}, acp.NewMethodNotFound("terminal/wait_for_exit")
 }
 
-// enqueue 非阻塞写入有界队列，避免 Agent 通知 goroutine 被慢 Sink 卡住。
+// enqueue 合并安全输入快照，并以有界背压吸收短暂突发；持续堵塞才终止调用。
 func (bridge *acpBridge) enqueue(delivery acpDelivery) error {
-	if err := bridge.currentFailure(); err != nil {
+	bridge.enqueueMutex.Lock()
+	defer bridge.enqueueMutex.Unlock()
+	if bridge.rejectTextInteraction != nil {
+		for _, event := range delivery.events {
+			switch event.Type {
+			case EventTypeToolUse, EventTypeToolInputSnapshot, EventTypeToolUpdate, EventTypeToolResult:
+				// 内部已归一化事件同样服从文本隔离，不能绕过 SessionUpdate 检查进入空聊天 Sink。
+				bridge.rejectTextInteraction()
+				bridge.setFailure(status_error.RuntimePolicyUnsupported)
+				return status_error.RuntimePolicyUnsupported
+			}
+		}
+	}
+	if bridge.queueClosed {
+		return status_error.OperationCanceled
+	}
+	bytes, err := acpDeliveryBytes(delivery)
+	if err != nil {
 		return err
 	}
-	select {
-	case bridge.updates <- delivery:
-		bridge.signalActivity()
-		return nil
-	default:
+	delivery.bytes = bytes
+	if bytes > acpUpdateQueueBytes {
 		bridge.setFailure(errACPUpdateQueueFull)
 		return errACPUpdateQueueFull
 	}
+	timer := time.NewTimer(bridge.eventDeliveryTimeout)
+	defer timer.Stop()
+	for {
+		bridge.queueMutex.Lock()
+		if err := bridge.currentFailure(); err != nil {
+			bridge.queueMutex.Unlock()
+			return err
+		}
+		if bridge.lastQueued != nil {
+			candidate := *bridge.lastQueued
+			if bridge.mergeQueuedACPToolUpdate(&candidate, delivery) {
+				mergedBytes, mergeErr := acpDeliveryBytes(candidate)
+				if mergeErr != nil {
+					bridge.queueMutex.Unlock()
+					return mergeErr
+				}
+				if bridge.queuedBytes-bridge.lastQueued.bytes+mergedBytes <= acpUpdateQueueBytes {
+					bridge.queuedBytes += mergedBytes - bridge.lastQueued.bytes
+					candidate.bytes = mergedBytes
+					*bridge.lastQueued = candidate
+					bridge.queueMutex.Unlock()
+					bridge.signalActivity()
+					return nil
+				}
+			}
+		}
+		if bridge.queuedBytes+bytes <= acpUpdateQueueBytes {
+			select {
+			case bridge.updates <- &delivery:
+				bridge.queuedBytes += bytes
+				bridge.lastQueued = &delivery
+				bridge.queueMutex.Unlock()
+				bridge.signalActivity()
+				return nil
+			default:
+			}
+		}
+		changed := bridge.queueChanged
+		bridge.queueMutex.Unlock()
+		// 所有等待都在快照锁之外，消费者总能取走事件并归还预算。
+		select {
+		case <-changed:
+		case <-bridge.failureSignal:
+			return bridge.currentFailure()
+		case <-bridge.done:
+			if cause := bridge.currentFailure(); cause != nil {
+				return cause
+			}
+			return status_error.OperationCanceled
+		case <-bridge.promptDone:
+			return status_error.OperationCanceled
+		case <-timer.C:
+			bridge.setFailure(errACPUpdateQueueFull)
+			return errACPUpdateQueueFull
+		}
+	}
+}
+
+// acpDeliveryBytes 计量等待队列持有的规范载荷，不保留额外序列化副本。
+func acpDeliveryBytes(delivery acpDelivery) (int, error) {
+	if delivery.notification != nil {
+		encoded, err := json.Marshal(delivery.notification)
+		if err != nil {
+			return 0, status_error.RuntimeEventEncodingFailed
+		}
+		return len(encoded), nil
+	}
+	bytes := 0
+	for _, event := range delivery.events {
+		bytes += len(event.Type) + len(event.Data)
+	}
+	return bytes, nil
+}
+
+// mergeQueuedACPToolUpdate 合并同工具相邻的非终态替换快照；正文、其他工具和终态都是顺序屏障。
+func (bridge *acpBridge) mergeQueuedACPToolUpdate(previous *acpDelivery, incoming acpDelivery) bool {
+	if previous.notification == nil || incoming.notification == nil || previous.notification.SessionId != incoming.notification.SessionId {
+		return false
+	}
+	old := previous.notification.Update.ToolCallUpdate
+	next := incoming.notification.Update.ToolCallUpdate
+	if old == nil || next == nil || old.ToolCallId != next.ToolCallId {
+		return false
+	}
+	// 只合并已经确认的累计参数状态；工具正文、执行输出、Diff 与终态必须保持每条交付。
+	if !bridge.isToolInputSnapshot(old) || !bridge.isToolInputSnapshot(next) {
+		return false
+	}
+	if old.Status != nil && next.Status != nil && *old.Status != *next.Status {
+		return false
+	}
+	// ACP 更新字段表示替换，省略表示保留；不拼接累积参数或内容，也不修改调用方持有的通知。
+	merged := *old
+	if next.Meta != nil {
+		merged.Meta = next.Meta
+	}
+	if next.Content != nil {
+		merged.Content = next.Content
+	}
+	if next.Kind != nil {
+		merged.Kind = next.Kind
+	}
+	if next.Locations != nil {
+		merged.Locations = next.Locations
+	}
+	if next.RawInput != nil {
+		merged.RawInput = next.RawInput
+	}
+	if next.RawOutput != nil {
+		merged.RawOutput = next.RawOutput
+	}
+	if next.Status != nil {
+		merged.Status = next.Status
+	}
+	if next.Title != nil {
+		merged.Title = next.Title
+	}
+	notification := *previous.notification
+	notification.Update.ToolCallUpdate = &merged
+	previous.notification = &notification
+	return true
+}
+
+// isToolInputSnapshot 将累计参数状态与工具执行正文、进度和结果区分。
+func (bridge *acpBridge) isToolInputSnapshot(update *acp.SessionToolCallUpdate) bool {
+	if update == nil || update.RawInput == nil || update.RawOutput != nil ||
+		update.Content != nil || len(update.Meta) > 0 ||
+		(update.Status != nil && *update.Status != acp.ToolCallStatusPending) {
+		return false
+	}
+	return true
 }
 
 // signalActivity 非阻塞记录一次 ACP 或共享模块事件活动。
@@ -415,6 +629,12 @@ func (bridge *acpBridge) setElicitationPending(delta int) {
 // run 等待权威启动屏障，再按序映射并交付全部更新。
 func (bridge *acpBridge) run(ctx context.Context) {
 	defer close(bridge.done)
+	// 排空取消沿 Context 父子关系同步传播，closeDelivery 返回后不能再接纳下一条事件。
+	runContext, cancelRun := context.WithCancel(bridge.deliveryContext)
+	stopCancel := context.AfterFunc(ctx, cancelRun)
+	defer stopCancel()
+	defer cancelRun()
+	ctx = runContext
 	select {
 	case <-bridge.activate:
 	case <-ctx.Done():
@@ -422,12 +642,25 @@ func (bridge *acpBridge) run(ctx context.Context) {
 		return
 	}
 	for {
+		if ctx.Err() != nil {
+			bridge.setFailure(ctx.Err())
+			return
+		}
 		select {
 		case delivery, ok := <-bridge.updates:
 			if !ok {
 				return
 			}
-			if err := bridge.deliver(ctx, delivery); err != nil {
+			bridge.queueMutex.Lock()
+			accepted := *delivery
+			bridge.queuedBytes -= accepted.bytes
+			close(bridge.queueChanged)
+			bridge.queueChanged = make(chan struct{})
+			if bridge.lastQueued == delivery {
+				bridge.lastQueued = nil
+			}
+			bridge.queueMutex.Unlock()
+			if err := bridge.deliver(ctx, accepted); err != nil {
 				bridge.setFailure(err)
 				return
 			}
@@ -445,13 +678,18 @@ func (bridge *acpBridge) deliver(
 ) error {
 	events := delivery.events
 	if delivery.notification != nil {
+		bridge.stateMutex.Lock()
 		mapped, err := bridge.mapNotification(*delivery.notification)
+		bridge.stateMutex.Unlock()
 		if err != nil {
 			return err
 		}
 		events = mapped
 	}
 	for _, event := range events {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		completed, err := bridge.completeUsageEvent(event)
 		if err != nil {
 			return err
@@ -533,13 +771,27 @@ func (bridge *acpBridge) activateDelivery() {
 
 // closeDelivery 关闭唯一发送队列并等待全部已接收更新完成。
 func (bridge *acpBridge) closeDelivery(ctx context.Context) error {
-	close(bridge.updates)
+	defer bridge.cancelDelivery()
+	bridge.enqueueMutex.Lock()
+	if !bridge.queueClosed {
+		bridge.queueClosed = true
+		close(bridge.updates)
+	}
+	bridge.enqueueMutex.Unlock()
 	select {
 	case <-bridge.done:
 		return bridge.currentFailure()
 	case <-ctx.Done():
-		return runtimeContextStatus(ctx.Err())
+		bridge.setFailure(runtimeContextStatus(ctx.Err()))
+		return bridge.currentFailure()
 	}
+}
+
+// sideEffectSnapshot 在消费者排空超时后仍能安全取得已经观察到的副作用事实。
+func (bridge *acpBridge) sideEffectSnapshot() SideEffectSummary {
+	bridge.stateMutex.RLock()
+	defer bridge.stateMutex.RUnlock()
+	return bridge.sideEffects
 }
 
 // setFailure 保存首次交付失败。
@@ -548,10 +800,40 @@ func (bridge *acpBridge) setFailure(err error) {
 		return
 	}
 	bridge.failureMutex.Lock()
+	first := bridge.failure == nil
 	if bridge.failure == nil {
 		bridge.failure = err
+		if bridge.primaryCause == nil {
+			bridge.primaryCause = err
+		}
+		close(bridge.failureSignal)
 	}
 	bridge.failureMutex.Unlock()
+	if first {
+		logx.Errorf("ACP event delivery stopped: runtime_id=%s invocation_id=%s session_id=%s error=%v", bridge.runtimeID, bridge.invocationID, bridge.sessionID, err)
+		if bridge.cancelPrompt != nil {
+			bridge.cancelPrompt()
+		}
+	}
+}
+
+// recordPrimaryCause 冻结已知终止原因，不停止消费者，也不丢弃已经接纳的队列内容。
+func (bridge *acpBridge) recordPrimaryCause(err error, stage string) {
+	if err == nil {
+		return
+	}
+	bridge.failureMutex.Lock()
+	defer bridge.failureMutex.Unlock()
+	if bridge.primaryCause == nil {
+		bridge.primaryCause, bridge.primaryStage = err, stage
+	}
+}
+
+// primaryCauseSnapshot 返回首因及其阶段，后续排空或会话清理不能覆盖它。
+func (bridge *acpBridge) primaryCauseSnapshot() (error, string) {
+	bridge.failureMutex.RLock()
+	defer bridge.failureMutex.RUnlock()
+	return bridge.primaryCause, bridge.primaryStage
 }
 
 // currentFailure 返回当前失败快照。
@@ -636,7 +918,13 @@ func (bridge *acpBridge) mapNotification(
 			if err != nil {
 				return nil, err
 			}
-			event, err := newEvent(EventTypeToolUse, payload)
+			eventType := EventTypeToolUpdate
+			// 非终态更新可能缺失开始通知，保守记录工具尝试，但不据此推断文件已写入。
+			bridge.sideEffects.ToolUse = true
+			if bridge.isToolInputSnapshot(update.ToolCallUpdate) {
+				eventType = EventTypeToolInputSnapshot
+			}
+			event, err := newEvent(eventType, payload)
 			return []Event{event}, err
 		}
 		if _, exists := bridge.completedTools[update.ToolCallUpdate.ToolCallId]; exists {
@@ -674,7 +962,7 @@ func (bridge *acpBridge) mapNotification(
 // acpToolCallUpdateHasVisibleChange 判断非终态更新是否携带产品可展示的标准 ACP 字段。
 func acpToolCallUpdateHasVisibleChange(update *acp.SessionToolCallUpdate) bool {
 	return update != nil && (update.Status != nil || update.Title != nil || update.Kind != nil ||
-		len(update.Content) > 0 || len(update.Locations) > 0 ||
+		update.Content != nil || update.Locations != nil ||
 		update.RawInput != nil || update.RawOutput != nil || len(update.Meta) > 0)
 }
 
@@ -765,6 +1053,15 @@ func acpToolPayload(value any, binding acpRuntimeBinding) (map[string]any, error
 	var payload map[string]any
 	if err := json.Unmarshal(encoded, &payload); err != nil {
 		return nil, status_error.RuntimeUnavailable
+	}
+	// 更新中的显式空集合用于清除旧内容；省略字段才表示沿用前值。
+	if update, ok := value.(*acp.SessionToolCallUpdate); ok {
+		if update.Content != nil && len(update.Content) == 0 {
+			payload["content"] = []any{}
+		}
+		if update.Locations != nil && len(update.Locations) == 0 {
+			payload["locations"] = []any{}
+		}
 	}
 	if rawInput, ok := payload["rawInput"].(map[string]any); ok {
 		if _, exists := payload["input"]; !exists {
