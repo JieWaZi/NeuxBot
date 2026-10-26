@@ -33,19 +33,16 @@ type Device struct {
 	ExpiresAt int64
 }
 
-// Driver 只解释一个官方提供者的进程与配置契约。
+// Driver 解释包内桥接的共享身份契约。
 type Driver interface {
-	Binary() string
-	Environment() map[string]string
-	Configure(context.Context, string, string) error
 	Logout(context.Context) error
 	Status(context.Context, bool) (Account, error)
 	Login(context.Context, []string, func(Device) error) error
 }
 
-// Config 装配实际官方边界和不包含凭据的变更通知。
+// Config 装配实际协议边界和不包含凭据的变更通知。
 type Config struct {
-	// Driver 是官方进程与配置适配器。
+	// Driver 是包内共享身份协议适配器。
 	Driver Driver
 	// Scopes 是该提供者的最小权限。
 	Scopes []string
@@ -112,8 +109,6 @@ func (a *Authorizer) Close() {
 	a.mu.Unlock()
 	a.workers.Wait()
 }
-func (a *Authorizer) Binary() string                 { return a.driver().Binary() }
-func (a *Authorizer) Environment() map[string]string { return a.driver().Environment() }
 
 // RequiredScopes 合并提供者及插件权限，保持稳定顺序且不跨提供者追加权限。
 func (a *Authorizer) RequiredScopes(requested ...string) []string {
@@ -178,16 +173,6 @@ func (a *Authorizer) clearSummary(checked bool) {
 	}
 }
 
-// AuthorizeServer 仅由确实需要远程凭据的适配器提供，令牌不能进入共享配置或快照。
-func (a *Authorizer) AuthorizeServer(ctx context.Context, address string) (map[string]string, error) {
-	if driver, ok := a.driver().(interface {
-		AuthorizeServer(context.Context, string) (map[string]string, error)
-	}); ok {
-		return driver.AuthorizeServer(ctx, address)
-	}
-	return map[string]string{}, nil
-}
-
 func (a *Authorizer) Acquire(uses ...Usage) (func(), error) {
 	a.mu.Lock()
 	if a.deviceRunning || a.resetting {
@@ -223,19 +208,6 @@ func (a *Authorizer) Usages() []Usage {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ExecutionID < result[j].ExecutionID })
 	return result
-}
-func (a *Authorizer) Configure(ctx context.Context, id, secret string) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.active > 0 || a.deviceRunning || a.resetting {
-		return status_error.PluginBusy
-	}
-	if err := a.driver().Configure(ctx, id, secret); err != nil {
-		return err
-	}
-	a.clearSummary(false)
-	a.session = Session{Account: Account{Scopes: []string{}}}
-	return nil
 }
 func (a *Authorizer) Logout(ctx context.Context) error {
 	a.mu.Lock()

@@ -66,9 +66,6 @@ export const pluginZh = {
   privacy: "隐私政策",
   terms: "服务条款",
   installedPartners: "已安装",
-  scanLogin: "扫码连接飞书",
-  setupScanHelp:
-    "首次连接请先扫码完成飞书应用设置，再扫码授权账号。无需填写应用凭据。",
 
   missingScopesHelp:
     "当前账号缺少插件所需权限，请重新授权。所需权限会自动申请。",
@@ -123,11 +120,6 @@ export const pluginZh = {
   succeeded: "安装成功",
   partialFailure: "部分安装未完成，可重试失败项。",
   authentication: "账号连接",
-  accountHelp: "通过飞书扫码连接。安装此插件的伙伴会复用这次授权。",
-  githubAccountHelp:
-    "通过 GitHub 官方页面连接。安装此插件的伙伴会复用这次授权。",
-  githubWaiting: "在 GitHub 官方页面输入验证码并确认授权。",
-  githubScopeHelp: "仓库访问还受 GitHub 账号权限、组织 SSO 和仓库策略限制。",
   showQR: "显示二维码",
   scanTitle: "扫码授权",
   deviceCodeHelp: "在授权页面输入此一次性验证码：",
@@ -137,7 +129,6 @@ export const pluginZh = {
   localWaitUntil: "本机等待至 {{time}}",
   login: "连接账号",
   logout: "断开连接",
-  authWaiting: "请使用飞书扫码完成授权。",
   openAuth: "打开授权页面",
   authFailed: "认证未完成，可重新发起。",
   authExpired: "授权已过期，请重新发起。",
@@ -146,7 +137,6 @@ export const pluginZh = {
   authRefresh: "重新检查认证",
   cancelAuth: "取消本次认证",
   sharedIdentity: "已连接：{{name}}",
-  scopeHelp: "实际可用能力还取决于飞书应用权限、租户策略和资源权限。",
   update: "更新全部伙伴",
   updateAvailable: "可更新",
   updateNamed: "更新 {{name}}",
@@ -254,9 +244,6 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   privacy: "Privacy policy",
   terms: "Terms of service",
   installedPartners: "Installed",
-  scanLogin: "Connect Feishu with QR code",
-  setupScanHelp:
-    "On first connection, scan to set up the Feishu app, then scan to authorize your account. No app credentials to enter.",
 
   missingScopesHelp:
     "This account is missing permissions required by the plugin. Authorize again to request them automatically.",
@@ -312,13 +299,6 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   succeeded: "Installed successfully",
   partialFailure: "Some installations failed. You can retry those partners.",
   authentication: "Account connection",
-  accountHelp:
-    "Connect by scanning with Feishu. Partners using this plugin reuse this authorization.",
-  githubAccountHelp:
-    "Connect on GitHub’s official page. Partners using this plugin reuse this authorization.",
-  githubWaiting: "Enter the code on GitHub’s official page and authorize.",
-  githubScopeHelp:
-    "Repository access also depends on GitHub permissions, organization SSO, and repository policies.",
   showQR: "Show QR code",
   scanTitle: "Scan to authorize",
   deviceCodeHelp: "Enter this one-time code on the authorization page:",
@@ -328,7 +308,6 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   localWaitUntil: "Local wait ends at {{time}}",
   login: "Connect account",
   logout: "Disconnect",
-  authWaiting: "Scan with Feishu or open the original authorization link.",
   openAuth: "Open authorization page",
   authFailed: "Authorization did not complete. Try again.",
   authExpired: "This authorization expired. Start again.",
@@ -337,8 +316,6 @@ export const pluginEn: { [K in keyof typeof pluginZh]: string } = {
   authRefresh: "Check authorization again",
   cancelAuth: "Cancel this authorization",
   sharedIdentity: "Connected: {{name}}",
-  scopeHelp:
-    "Available operations also depend on app permissions, tenant policy and resource access.",
   update: "Update all partners",
   updateAvailable: "Update available",
   updateNamed: "Update {{name}}",

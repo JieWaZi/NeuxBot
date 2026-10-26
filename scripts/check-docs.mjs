@@ -1,31 +1,43 @@
-import { readdir, readFile, access } from "node:fs/promises";
+import { lstat, readFile, access } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const ignored = new Set([
-  ".git",
-  "node_modules",
-  ".scratch",
-  ".agents",
-  "dist",
-  "dist-electron",
-  "release",
-  "binaries",
-  "coverage",
-]);
-async function markdownFiles(directory) {
-  const files = [];
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    if (ignored.has(entry.name)) continue;
-    const target = path.join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...(await markdownFiles(target)));
-    else if (entry.isFile() && entry.name.endsWith(".md")) files.push(target);
+// 文档边界与 Git 一致：保留已跟踪文档，并检查尚未暂存的公开文档；忽略本机产物。
+const candidates = new Set(
+  execFileSync(
+    "git",
+    [
+      "ls-files",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "-z",
+      "--",
+      "*.md",
+    ],
+    {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
+    },
+  )
+    .split("\0")
+    .filter(Boolean),
+);
+const files = [];
+for (const relative of [...candidates].sort()) {
+  const target = path.join(root, relative);
+  try {
+    if ((await lstat(target)).isFile()) files.push(target);
+  } catch (error) {
+    // 待提交删除仍在 Git 索引中，不再属于当前公开文档。
+    if (error.code !== "ENOENT") throw error;
   }
-  return files;
 }
 const failures = [];
-for (const file of await markdownFiles(root)) {
+for (const file of files) {
   const text = await readFile(file, "utf8");
   const relative = path.relative(root, file);
   if (/\/Users\/[\w.-]+\//.test(text))

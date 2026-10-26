@@ -93,7 +93,9 @@ func detailFromState(ctx context.Context, resource models.Plugin, state models.P
 	result.ResolvedVersionID = version.ID
 	extension, err := packageplugin.ClientExtension(version.Package)
 	if err != nil {
-		return result, err
+		// 旧版本仍可查看与移除；无效声明只能作为阻塞原因，不能取得执行能力。
+		result.Blockers = append(result.Blockers, errorKey(err))
+		return result, nil
 	}
 	result.ComponentIDs = map[string]string{}
 	for _, skill := range version.Package.Skills {
@@ -119,7 +121,7 @@ func errorKey(err error) string {
 }
 func stagedRoot() string { return filepath.Join(global.Config.DataDirectory, "plugins", "staging") }
 func installationService() *plugininstallation.Service {
-	return plugininstallation.New(plugininstallation.Config{Contents: global.PluginContents, DataDirectory: global.Config.DataDirectory, Authorizers: global.PluginAuthorizations, Bridges: global.PluginBridges, BridgeEnvironment: global.PluginBridgeEnvironment})
+	return plugininstallation.New(plugininstallation.Config{Contents: global.PluginContents, DataDirectory: global.Config.DataDirectory, Bridges: global.PluginBridges, BridgeEnvironment: global.PluginBridgeEnvironment})
 }
 
 func listPluginResources(ctx context.Context, waker, query string, page, size int, installedOnly bool) (ListPluginsResponse, error) {

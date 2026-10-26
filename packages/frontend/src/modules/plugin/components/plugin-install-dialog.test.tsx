@@ -219,8 +219,15 @@ describe("plugin installation", () => {
     fixture.detail.installations = [
       { wakerId: "p1", versionId: "version-1", enabled: true },
     ];
-    Object.assign(fixture.detail.versions[0]?.package.manifest ?? {}, {
-      extensions: { "com.ally": { provider: "feishu" } },
+    Object.assign(fixture.detail.versions[0]?.package ?? {}, {
+      integration: {
+        authentication: {
+          strategy: "plugin-command",
+          protocol: "neuxally-auth/1",
+          command: "node",
+          args: ["./.neuxally/auth/authorize.mjs"],
+        },
+      },
     });
     const close = show(vi.fn(), true);
     const authorize = await screen.findByRole("button", { name: "授权" });
@@ -289,8 +296,15 @@ describe("plugin installation", () => {
   it("selects partners before authorization and installs them after the completion event", async () => {
     fixture.detail.ready = false;
     for (const version of fixture.detail.versions)
-      Object.assign(version.package.manifest, {
-        extensions: { "com.ally": { provider: "feishu" } },
+      Object.assign(version.package, {
+        integration: {
+          authentication: {
+            strategy: "plugin-command",
+            protocol: "neuxally-auth/1",
+            command: "node",
+            args: ["./.neuxally/auth/authorize.mjs"],
+          },
+        },
       });
     show();
     fireEvent.click(await screen.findByRole("button", { name: "选择伙伴" }));
@@ -319,8 +333,15 @@ describe("plugin installation", () => {
   it("never installs after the authorization dialog is closed", async () => {
     fixture.detail.ready = false;
     for (const version of fixture.detail.versions)
-      Object.assign(version.package.manifest, {
-        extensions: { "com.ally": { provider: "feishu" } },
+      Object.assign(version.package, {
+        integration: {
+          authentication: {
+            strategy: "plugin-command",
+            protocol: "neuxally-auth/1",
+            command: "node",
+            args: ["./.neuxally/auth/authorize.mjs"],
+          },
+        },
       });
     show();
     fireEvent.click(await screen.findByRole("button", { name: "选择伙伴" }));
@@ -339,8 +360,15 @@ describe("plugin installation", () => {
   });
   it("continues from the verified completion callback without waiting for another push", async () => {
     fixture.detail.ready = false;
-    Object.assign(fixture.detail.versions[0]?.package.manifest ?? {}, {
-      extensions: { "com.ally": { provider: "feishu" } },
+    Object.assign(fixture.detail.versions[0]?.package ?? {}, {
+      integration: {
+        authentication: {
+          strategy: "plugin-command",
+          protocol: "neuxally-auth/1",
+          command: "node",
+          args: ["./.neuxally/auth/authorize.mjs"],
+        },
+      },
     });
     show();
     fireEvent.click(await screen.findByRole("button", { name: "选择伙伴" }));
@@ -372,8 +400,15 @@ it("uses the shared localized summary in installation and authorization panels",
 
 async function beginWaitingInstallation(client?: QueryClient) {
   fixture.detail.ready = false;
-  Object.assign(fixture.detail.versions[0]?.package.manifest ?? {}, {
-    extensions: { "com.ally": { provider: "feishu" } },
+  Object.assign(fixture.detail.versions[0]?.package ?? {}, {
+    integration: {
+      authentication: {
+        strategy: "plugin-command",
+        protocol: "neuxally-auth/1",
+        command: "node",
+        args: ["./.neuxally/auth/authorize.mjs"],
+      },
+    },
   });
   const close = show(vi.fn(), false, client);
   fireEvent.click(await screen.findByRole("button", { name: "选择伙伴" }));

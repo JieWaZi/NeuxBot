@@ -18,8 +18,6 @@ type connectorDiagnostic struct {
 	Connector mcp.ConnectorResource
 	// Revision 固定探测使用的共享配置修订。
 	Revision int64
-	// Provider 只标识旧版共享授权来源。
-	Provider string
 	// BridgeDigest 固定本次使用的声明式身份桥接。
 	BridgeDigest string
 	// AccountID 固定核验后的公开账号身份。
@@ -74,12 +72,10 @@ func (s *connectorDiagnosticStore) apply(ctx context.Context, ctxVersion models.
 		return err
 	}
 	valid := entry.Revision == config.Revision
-	if entry.Provider != "" || entry.BridgeDigest != "" {
+	if entry.BridgeDigest != "" {
 		account := authorization.Account{}
-		if entry.BridgeDigest != "" && global.PluginBridges != nil {
+		if global.PluginBridges != nil {
 			account = global.PluginBridges.CachedAccount(ctxVersion.PluginID, entry.BridgeDigest)
-		} else if auth := global.PluginAuthorizations[entry.Provider]; auth != nil {
-			account = auth.CachedAccount()
 		}
 		valid = valid && account.Available && account.ID == entry.AccountID && slices.Equal(account.Scopes, entry.Scopes)
 	}

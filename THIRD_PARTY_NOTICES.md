@@ -278,65 +278,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## 飞书办公插件与官方 CLI
+## 运行时安装的插件
 
-适用范围：`plugin-sources/neux-plugins.bundle` 内固定插件源与构建产物 `plugins/`。技能和原生程序来源于 [larksuite/cli](https://github.com/larksuite/cli)，固定版本 `v1.0.98`，源码提交 `ac81f5056ab88f37d581d25916f3dab85abfca76`。发布资产 URL、SHA-256、平台和来源提交由 [来源锁](plugin-sources/source.lock.json) 固定，生成的包和程序同时分发原始许可证与 provenance。
-
-原作者为 Lark Suite CLI contributors；NeuxBot contributors 维护插件清单、共享授权适配和本地分发，不代表飞书官方。官方技能目录、相对引用、脚本和规则保持原样；本插件的首版主要验收路径是文档、多维表格、日程和任务，完整官方辅助技能用于保留引用依赖。
-
-```text
-MIT License
-
-Copyright (c) 2026 Lark Technologies Pte. Ltd.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-## GitHub 插件与官方 CLI
-
-GitHub 官方 CLI 来源于 [cli/cli](https://github.com/cli/cli)，固定版本 `v2.102.0`，源码提交 `fc4b137cdef0a6bd28fd461b7cf9c84a5812a8cd`。程序按固定源码归档和 Go 1.27.1 工具链构建。NeuxBot 在底层钥匙串 Set/Get/Delete 的 service 加 neuxally: 前缀，隔离官方配置及迁移对机器原有 gh 身份的访问，构建版本为 2.102.0-neuxally.1。该程序是官方源码的隔离构建，不是未修改的官方发布二进制。归档、补丁和隔离回归的 SHA-256 由 [来源锁](plugin-sources/source.lock.json) 固定；原始许可证随程序和插件源分发。
-
-GitHub MCP 使用 [github/github-mcp-server](https://github.com/github/github-mcp-server) 提供的官方远程服务 `https://api.githubcopilot.com/mcp/`，本项目不复制该服务程序，也不固定其远端部署版本。插件清单与共享认证适配由 NeuxBot contributors 编写，操作能力直接来自官方 MCP。
-
-```text
-MIT License
-
-Copyright (c) 2019 GitHub Inc.
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+插件包及其供应商程序依赖由独立 [neux-plugins](https://github.com/JieWaZi/neux-plugins) 仓库维护并分发。NeuxBot 安装包只交付通用插件宿主，不内置飞书或 GitHub CLI、官方技能副本或插件归档。安装时保留实际插件包的许可证、来源与修改记录；包内第三方组成以该固定版本随附的 LICENSE、NOTICE 和 provenance 为准。
 
 ## ledongthuc/pdf 文本阅读校验
 
@@ -461,7 +405,6 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ### 独立知识核心
 
 知识库使用 [neux-knowledge](https://github.com/JieWaZi/neux-knowledge)，采用 MIT 许可。完整许可与第三方声明由该模块维护，构建时从所引用的模块版本复制并随安装包交付，见 [LICENSE](https://github.com/JieWaZi/neux-knowledge/blob/v0.1.0/LICENSE) 和 [THIRD_PARTY_NOTICES.md](https://github.com/JieWaZi/neux-knowledge/blob/v0.1.0/THIRD_PARTY_NOTICES.md)。
-
 
 ## 企业微信 IM 协议参考
 

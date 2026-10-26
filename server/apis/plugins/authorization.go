@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"slices"
-	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -14,17 +13,17 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func pluginAuthorizer(ctx context.Context, id, waker string, selectedVersion ...string) (*authorization.Authorizer, packageplugin.Extension, error) {
+func pluginAuthorizer(ctx context.Context, id, waker string, selectedVersion ...string) (*authorization.Authorizer, *packageplugin.Authentication, error) {
 	resource, err := visiblePlugin(ctx, id, waker)
 	if err != nil {
-		return nil, packageplugin.Extension{}, err
+		return nil, nil, err
 	}
 	versions, err := global.PluginControllerManager.Versions(ctx, resource.ID)
 	if err != nil {
-		return nil, packageplugin.Extension{}, err
+		return nil, nil, err
 	}
 	if len(versions) == 0 {
-		return nil, packageplugin.Extension{}, status_error.PluginNotFound
+		return nil, nil, status_error.PluginNotFound
 	}
 	version := versions[0]
 	if len(selectedVersion) > 0 && selectedVersion[0] != "" {
@@ -37,21 +36,17 @@ func pluginAuthorizer(ctx context.Context, id, waker string, selectedVersion ...
 			}
 		}
 		if !found {
-			return nil, packageplugin.Extension{}, status_error.PluginVersionConflict
+			return nil, nil, status_error.PluginVersionConflict
 		}
+	}
+	if _, err := packageplugin.ClientExtension(version.Package); err != nil {
+		return nil, nil, err
 	}
 	if declaration := version.Package.Integration.Authentication; declaration != nil {
 		auth, _, err := installationService().Bridge(version)
-		return auth, packageplugin.Extension{Provider: "plugin-command", Scopes: declaration.Scopes}, err
+		return auth, declaration, err
 	}
-	extension, err := packageplugin.ClientExtension(version.Package)
-	if err != nil {
-		return nil, extension, err
-	}
-	if global.PluginAuthorizations[extension.Provider] == nil {
-		return nil, extension, status_error.PluginNotReady
-	}
-	return global.PluginAuthorizations[extension.Provider], extension, nil
+	return nil, nil, status_error.PluginNotReady
 }
 func publishProviderChange(provider string) {
 	if global.EventHub != nil {
@@ -62,10 +57,7 @@ func publishProviderChange(provider string) {
 // removePluginReferences 为伙伴卸载和资源删除复用最后身份引用的清理边界。
 // CLI 清理在事务外完成；清理失败保留关系，使同一操作可以安全重试。
 func removePluginReferences(ctx context.Context, plugin, waker string, versions []models.PluginVersion, validate, remove func(context.Context) error) error {
-	providers, err := providerNames(versions)
-	if err != nil {
-		return err
-	}
+	providers := providerNames(versions)
 	guards := map[string]*authorization.ReferenceGuard{}
 	defer func() {
 		for _, guard := range guards {
@@ -73,17 +65,21 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 		}
 	}()
 	for _, provider := range providers {
-		auth := global.PluginAuthorizations[provider]
-		if strings.HasPrefix(provider, "plugin:") {
-			for _, version := range versions {
-				if "plugin:"+version.PluginID == provider {
-					var bridgeErr error
-					auth, _, bridgeErr = installationService().Bridge(version)
-					if bridgeErr != nil {
-						return bridgeErr
-					}
-					break
+		var auth *authorization.Authorizer
+		for _, version := range versions {
+			if version.Package.Integration.Authentication == nil {
+				continue
+			}
+			if _, err := packageplugin.ClientExtension(version.Package); err != nil {
+				continue
+			}
+			if "plugin:"+version.PluginID == provider {
+				var bridgeErr error
+				auth, _, bridgeErr = installationService().Bridge(version)
+				if bridgeErr != nil {
+					return bridgeErr
 				}
+				break
 			}
 		}
 		if auth != nil {
@@ -95,7 +91,7 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 		}
 	}
 	remaining := []string{}
-	err = global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+	err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
 		if err := validate(txctx); err != nil {
 			return err
 		}
@@ -106,8 +102,8 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 		if err != nil {
 			return err
 		}
-		remaining, err = providerNames(retained)
-		return err
+		remaining = providerNames(retained)
+		return nil
 	})
 	if err != nil {
 		return err
@@ -134,24 +130,20 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 	})
 }
 
-func providerNames(versions []models.PluginVersion) ([]string, error) {
+func providerNames(versions []models.PluginVersion) []string {
 	providers := []string{}
 	for _, version := range versions {
+		// 无效旧声明无法再取得桥接，清理不能重新启动已移除的供应商认证。
+		if _, err := packageplugin.ClientExtension(version.Package); err != nil {
+			continue
+		}
 		if version.Package.Integration.Authentication != nil {
 			identity := "plugin:" + version.PluginID
 			if !slices.Contains(providers, identity) {
 				providers = append(providers, identity)
 			}
-			continue
-		}
-		extension, err := packageplugin.ClientExtension(version.Package)
-		if err != nil {
-			return nil, err
-		}
-		if extension.Provider != "" && !slices.Contains(providers, extension.Provider) {
-			providers = append(providers, extension.Provider)
 		}
 	}
 	slices.Sort(providers)
-	return providers, nil
+	return providers
 }

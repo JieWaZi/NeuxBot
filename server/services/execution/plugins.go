@@ -32,7 +32,7 @@ type preparedPlugins struct {
 	skills []runtimes.Skill
 	// connectors 是经过配置和传输能力检查的派生连接器。
 	connectors []models.MCPConnector
-	// environment 是官方 CLI 所需的显式共享 profile 和私有程序目录。
+	// environment 是包内桥接及原生目标交付的私有进程变量。
 	environment map[string]string
 	// snapshots 记录实际交付组件与版本事实。
 	snapshots []plugins.Snapshot
@@ -63,13 +63,6 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 	for _, item := range request.pluginSnapshots {
 		wanted[item.ID] = item
 	}
-	// 每个提供者在本轮中只验证一次，凭据始终留在当前内存投射。
-	providerAccounts := map[string]authorization.Account{}
-	providerErrors := map[string]error{}
-	providerChecked := map[string]bool{}
-	providerHeaders := map[string]map[string]string{}
-	providerReleases := map[string]func(){}
-	providerUsed := map[string]bool{}
 	found := map[string]bool{}
 	releases := []func(){}
 	var once sync.Once
@@ -128,13 +121,6 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 		}
 		if version.Package.RequiresTrust() && version.TrustedAt == 0 {
 			readyErr = status_error.MCPConnectorTrustRequired
-		}
-		if extension.Provider == constants.PluginProviderFeishu && request.allowedConnectorIDs != nil {
-			readyErr = status_error.PluginForbidden
-		}
-
-		if readyErr == nil {
-			readyErr = plugins.ValidateProviderServers(extension, version.Package)
 		}
 		if readyErr != nil {
 			if required {
@@ -222,45 +208,6 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 			continue
 		}
 		snapshot := plugins.Snapshot{TargetDigest: targetDigest, TargetVersion: version.Package.Manifest.Version, Delivery: constants.PluginDeliveryProjection, LoadStage: constants.PluginLoadStagePrepared, ID: id, Name: state.Plugin.Name, VersionID: version.ID, Version: version.Version, ConfigurationRevision: state.Configuration.Revision, ComponentIDs: []string{}}
-
-		if extension.Provider != "" {
-			auth := m.pluginAuthorizers[extension.Provider]
-			statusErr := error(nil)
-			if auth == nil {
-				statusErr = status_error.PluginNotReady
-			} else {
-				if !providerChecked[extension.Provider] {
-					providerChecked[extension.Provider] = true
-					retained, leaseErr := auth.Acquire(usage...)
-					if leaseErr != nil {
-						providerErrors[extension.Provider] = leaseErr
-					} else {
-						releases = append(releases, retained)
-						providerReleases[extension.Provider] = retained
-						providerAccounts[extension.Provider], providerErrors[extension.Provider] = auth.Status(ctx, true)
-					}
-				}
-				account := providerAccounts[extension.Provider]
-				statusErr = providerErrors[extension.Provider]
-				if statusErr == nil && !account.Available {
-					statusErr = status_error.PluginNotReady
-				}
-				for _, scope := range extension.Scopes {
-					if !auth.ScopeGranted(account.Scopes, scope) {
-						statusErr = status_error.PluginNotReady
-					}
-				}
-				if statusErr == nil && isRetryResource && prior.ProviderAccountID != account.ID {
-					statusErr = status_error.PluginConfigurationConflict
-				}
-			}
-			if statusErr != nil {
-				if required {
-					return result, statusErr
-				}
-				continue
-			}
-		}
 		authenticationBindings := plugins.TargetAuthenticationBindings(logicalVersion.Package, cli)
 		if declaration := logicalVersion.Package.Integration.Authentication; declaration != nil && len(declaration.Bindings) > 0 && len(authenticationBindings) == 0 {
 			// 显式绑定同时限定授权目标；不匹配时不能降级为无范围的旧桥接解析。
@@ -326,7 +273,7 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 			bridgeRelease = retained
 			snapshot.ProviderAccountID = account.ID
 		}
-		nativeEligible := nativePluginVersionSupported(cli, detection.Version) && request.allowedConnectorIDs == nil && request.allowedAgentDomains == nil && extension.Provider == "" && len(extension.Bindings) == 0 && len(targetExtension.Bindings) == 0 && (len(extension.Config) == 0 || version.Package.Format != constants.PluginFormatPortable) && (bridge == nil || len(version.Package.Servers) == 0 || len(authenticationBindings) > 0)
+		nativeEligible := nativePluginVersionSupported(cli, detection.Version) && request.allowedConnectorIDs == nil && request.allowedAgentDomains == nil && len(extension.Bindings) == 0 && len(targetExtension.Bindings) == 0 && (len(extension.Config) == 0 || version.Package.Format != constants.PluginFormatPortable) && (bridge == nil || len(version.Package.Servers) == 0 || len(authenticationBindings) > 0)
 		candidateSkills := []runtimes.Skill{}
 		candidateConnectors := []models.MCPConnector{}
 		available := map[string]bool{}
@@ -375,32 +322,6 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 				for name, value := range resolved.Server.Env {
 					connector.Environment = append(connector.Environment, models.MCPSecretDefinition{Name: name, Value: value, Configured: true})
 				}
-			}
-
-			if extension.Provider == constants.PluginProviderGitHub {
-				headers, checked := providerHeaders[extension.Provider]
-				if !checked {
-					headers, err = m.pluginAuthorizers[extension.Provider].AuthorizeServer(ctx, resolved.Server.URL)
-					if err != nil {
-						if required {
-							return result, err
-						}
-						continue
-					}
-					providerHeaders[extension.Provider] = headers
-				}
-				if resolved.Server.Headers == nil {
-					resolved.Server.Headers = map[string]string{}
-				}
-				for key := range resolved.Server.Headers {
-					if strings.EqualFold(key, "Authorization") || strings.HasPrefix(strings.ToLower(key), "x-mcp-") {
-						delete(resolved.Server.Headers, key)
-					}
-				}
-				for key, value := range headers {
-					resolved.Server.Headers[key] = value
-				}
-				resolved.Server.Headers["X-MCP-Toolsets"] = constants.GitHubMCPToolsets
 			}
 			for name, value := range resolved.Server.Headers {
 				connector.Headers = append(connector.Headers, models.MCPSecretDefinition{Name: name, Value: value, Configured: true})
@@ -555,27 +476,6 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 			}
 		}
 
-		if extension.Provider != "" {
-			auth := m.pluginAuthorizers[extension.Provider]
-			account := providerAccounts[extension.Provider]
-			snapshot.ProviderAccountID = account.ID
-			providerUsed[extension.Provider] = true
-			if extension.Provider != constants.PluginProviderGitHub {
-				for key, value := range auth.Environment() {
-					result.environment[key] = value
-				}
-			}
-			result.environment["NEUXALLY_"+strings.ToUpper(extension.Provider)+"_IDENTITY"] = account.AppID + ":" + account.ID
-			if extension.Provider != constants.PluginProviderGitHub {
-				directory := filepath.Dir(auth.Binary())
-				if result.environment["PATH"] == "" {
-					result.environment["PATH"] = directory
-				} else if !slices.Contains(filepath.SplitList(result.environment["PATH"]), directory) {
-					result.environment["PATH"] += string(os.PathListSeparator) + directory
-				}
-			}
-		}
-
 		if candidateNative != nil {
 			result.native = append(result.native, *candidateNative)
 		}
@@ -609,11 +509,6 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 	for id := range wanted {
 		if !found[id] {
 			return result, status_error.PluginNotReady
-		}
-	}
-	for provider, release := range providerReleases {
-		if !providerUsed[provider] {
-			release()
 		}
 	}
 	succeeded = true

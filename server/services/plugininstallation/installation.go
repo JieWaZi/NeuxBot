@@ -9,7 +9,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	"os"
 	"path/filepath"
 	"slices"
 )
@@ -24,8 +23,6 @@ type Config struct {
 	Bridges *commandbridge.Registry
 	// BridgeEnvironment 固定受信程序资产环境。
 	BridgeEnvironment []string
-	// Authorizers 复用旧版受保护身份。
-	Authorizers map[string]*authorization.Authorizer
 }
 
 // Service 不持有第二份安装状态。
@@ -36,20 +33,6 @@ type Service struct {
 
 // New 只装配，不启动外部工作。
 func New(config Config) *Service { return &Service{config: config} }
-
-// providerSnapshotKey 限定同一安装用例中的身份核验缓存。
-type providerSnapshotKey struct {
-	// Provider 是已核验的身份来源。
-	Provider string
-}
-
-// providerSnapshot 保存同一调用中的一次核验结果。
-type providerSnapshot struct {
-	// Account 是公开账号摘要。
-	Account authorization.Account
-	// Err 是稳定的边界错误。
-	Err error
-}
 
 // Readiness 核验已信任版本、共享配置和真实账号范围。
 func (s *Service) Readiness(ctx context.Context, version models.PluginVersion, config models.PluginConfiguration, verify bool) (authorization.Account, error) {
@@ -71,9 +54,6 @@ func (s *Service) readiness(ctx context.Context, version models.PluginVersion, c
 	}
 	extension, err := packageplugin.ClientExtension(version.Package)
 	if err != nil {
-		return account, err
-	}
-	if err := packageplugin.ValidateProviderServers(extension, version.Package); err != nil {
 		return account, err
 	}
 	available := map[string]bool{}
@@ -114,35 +94,6 @@ func (s *Service) readiness(ctx context.Context, version models.PluginVersion, c
 		}
 		return account, nil
 	}
-	if extension.Provider != "" {
-		if s.config.Authorizers[extension.Provider] == nil {
-			return account, status_error.PluginNotReady
-		}
-		if !summary {
-			if _, err := os.Stat(s.config.Authorizers[extension.Provider].Binary()); err != nil {
-				return account, status_error.PluginNotReady
-			}
-		}
-		if summary {
-			account = s.config.Authorizers[extension.Provider].CachedAccount()
-		} else if snapshot, ok := ctx.Value(providerSnapshotKey{Provider: extension.Provider}).(providerSnapshot); ok && !verify {
-			account, err = snapshot.Account, snapshot.Err
-		} else {
-			account, err = s.config.Authorizers[extension.Provider].Status(ctx, verify)
-		}
-		if err != nil {
-			return account, err
-		}
-		if !account.Available {
-			return account, status_error.PluginNotReady
-		}
-		for _, scope := range extension.Scopes {
-			if !s.config.Authorizers[extension.Provider].ScopeGranted(account.Scopes, scope) {
-				return account, status_error.PluginNotReady
-			}
-		}
-
-	}
 	return account, nil
 }
 
@@ -160,7 +111,6 @@ func (s *Service) PrepareVersions(ctx context.Context, versions []models.PluginV
 			release()
 		}
 	}()
-	providers := map[string]bool{}
 	for _, version := range versions {
 		root, err := packageplugin.ContentPath(s.config.DataDirectory, version.ContentPath)
 		if err != nil {
@@ -182,27 +132,6 @@ func (s *Service) PrepareVersions(ctx context.Context, versions []models.PluginV
 				return nil, err
 			}
 			releases = append(releases, retained)
-		}
-		extension, err := packageplugin.ClientExtension(version.Package)
-		if err != nil {
-			return nil, err
-		}
-		if extension.Provider != "" {
-			providers[extension.Provider] = true
-		}
-	}
-	for provider := range providers {
-		if auth := s.config.Authorizers[provider]; auth != nil {
-			retained, err := auth.Acquire()
-			if err != nil {
-				return nil, err
-			}
-			releases = append(releases, retained)
-			account, err := auth.Status(ctx, true)
-			if err != nil {
-				return nil, err
-			}
-			ctx = context.WithValue(ctx, providerSnapshotKey{Provider: provider}, providerSnapshot{Account: account})
 		}
 	}
 	for _, version := range versions {
@@ -235,6 +164,9 @@ func (s *Service) BridgeLease(version models.PluginVersion, uses ...authorizatio
 }
 
 func (s *Service) bridge(version models.PluginVersion, acquire bool, uses ...authorization.Usage) (*authorization.Authorizer, *commandbridge.Driver, func(), error) {
+	if _, err := packageplugin.ClientExtension(version.Package); err != nil {
+		return nil, nil, nil, err
+	}
 	if version.TrustedAt == 0 {
 		return nil, nil, nil, status_error.MCPConnectorTrustRequired
 	}

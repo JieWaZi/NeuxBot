@@ -15,6 +15,14 @@ const pkg: PluginCatalogEntry["package"] = {
     description: "旧版摘要",
     version: "1.0.1",
   },
+  integration: {
+    authentication: {
+      strategy: "plugin-command",
+      protocol: "neuxally-auth/1",
+      command: "node",
+      args: ["./.neuxally/auth/authorize.mjs"],
+    },
+  },
   skills: [],
   servers: [{ key: "github", url: "https://api.githubcopilot.com/mcp/" }],
   readme: "旧版构建与隔离细节",
@@ -43,6 +51,34 @@ it("recognizes authorization declarations without a provider allowlist", () => {
     false,
   );
 });
+
+it.each(["feishu", "github"])(
+  "does not offer authorization for the unsupported legacy %s provider",
+  (provider) => {
+    const legacy: PluginCatalogEntry["package"] = JSON.parse(
+      `{"manifest":{"extensions":{"com.ally":{"provider":"${provider}"}}}}`,
+    );
+    expect(pluginHasAuthorization(legacy)).toBe(false);
+    expect(
+      pluginNeedsAuthorization(legacy, {
+        installations: [{ wakerId: "w1" }],
+        account: { available: false, checkedAt: 123 },
+      }),
+    ).toBe(false);
+  },
+);
+
+it.each([
+  { strategy: "other-command", protocol: "neuxally-auth/1" },
+  { strategy: "plugin-command", protocol: "neuxally-auth/2" },
+])(
+  "does not offer unsupported authorization declarations (%j)",
+  (authentication) => {
+    expect(pluginHasAuthorization({ integration: { authentication } })).toBe(
+      false,
+    );
+  },
+);
 
 it("keeps third-party and mismatching snapshots on their own documentation", () => {
   expect(pluginExplanation(pkg)).toBe(pkg.readme);

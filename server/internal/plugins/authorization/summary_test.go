@@ -98,10 +98,4 @@ func TestOlderConcurrentStatusCannotOverwriteNewerSummary(t *testing.T) {
 	if got := auth.CachedAccount(); got.Available || got.ID != "new" {
 		t.Fatal("old status overwrote new identity summary", got)
 	}
-	if err := auth.Configure(context.Background(), "app", "secret"); err != nil {
-		t.Fatal(err)
-	}
-	if got := auth.CachedAccount(); got.CheckedAt != 0 || got.ID != "" {
-		t.Fatal("changed configuration retained identity summary", got)
-	}
 }

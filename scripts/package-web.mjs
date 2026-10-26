@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { allyCoreLdflags } from "./go-ldflags.mjs";
 import { copyACPLicenses } from "./acp-licenses.mjs";
 import "./builtin-skills.mjs";
-import { prepareCatalog, prepareProvider } from "./plugin-resources.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const targets = {
@@ -44,8 +43,6 @@ await cp(
   path.join(output, "terminal-runtime"),
   { recursive: true },
 );
-await prepareCatalog(path.join(output, "plugins"));
-await prepareProvider(path.join(output, "plugins"), `${goos}-${goarch}`);
 for (const name of ["ally-core", "allycli"]) {
   const destination = path.join(
     output,

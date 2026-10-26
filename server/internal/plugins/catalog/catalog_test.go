@@ -12,26 +12,6 @@ import (
 	"testing"
 )
 
-func TestCatalogLoadsRealBundledFeishu(t *testing.T) {
-	source := filepath.Join("..", "..", "..", "..", "..", "desktop", "resources", "plugins")
-	if _, err := os.Stat(filepath.Join(source, "catalog.json")); os.IsNotExist(err) {
-		t.Skip("运行 pnpm plugins:prepare 后验证真实目录")
-	}
-	entries, err := List(source)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(entries) != 1 || entries[0].Key != "feishu-office" || len(entries[0].Package.Skills) < 5 {
-		t.Fatalf("real catalog incomplete: %+v", entries)
-	}
-	if _, err := Resolve(source, "../outside"); err == nil {
-		t.Fatal("accepted traversal key")
-	}
-	if _, err := Resolve(source, "feishu-office"); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestCatalogRejectsChangedZIP(t *testing.T) {
 	root := t.TempDir()
 	directory := filepath.Join(root, "catalog")

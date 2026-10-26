@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -21,7 +22,7 @@ type GetPluginAuthorization struct {
 // Path 返回共享授权查询入口。
 func (*GetPluginAuthorization) Path() string { return "/:pluginId/authorization" }
 
-// Output 读取官方 CLI 身份，不复制凭据。
+// Output 通过包内桥接读取共享身份，不复制凭据。
 func (o *GetPluginAuthorization) Output(ctx *gin.Context) (interface{}, error) {
 	auth, extension, err := pluginAuthorizer(ctx, o.PluginID, o.WakerID, o.VersionID)
 	if err != nil {
@@ -41,5 +42,5 @@ func (o *GetPluginAuthorization) Output(ctx *gin.Context) (interface{}, error) {
 	if len(missing) > 0 {
 		account.Available = false
 	}
-	return PluginAuthorizationResponse{Provider: extension.Provider, RequiredScopes: required, MissingScopes: missing, ActiveUses: auth.Usages(), Account: account, Session: auth.Snapshot()}, nil
+	return PluginAuthorizationResponse{Provider: constants.PluginAuthCommandStrategy, RequiredScopes: required, MissingScopes: missing, ActiveUses: auth.Usages(), Account: account, Session: auth.Snapshot()}, nil
 }

@@ -8,13 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/feishu"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/github"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/shrewx/ginx"
-	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -22,7 +18,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -306,7 +301,7 @@ func TestSupplementalAuthorizationScopesMustBeExplicitIdentifiers(t *testing.T) 
 }
 
 func TestVersionSwitchRejectsUnreadyTargetsWithoutChangingInstallation(t *testing.T) {
-	for _, kind := range []string{"missing-component", "changed-content", "unavailable-account"} {
+	for _, kind := range []string{"missing-component", "changed-content"} {
 		t.Run(kind, func(t *testing.T) {
 			ctx := pluginAPIContext(t)
 			prepare := func(id, version, extension string) PluginDetailResponse {
@@ -333,8 +328,6 @@ func TestVersionSwitchRejectsUnreadyTargetsWithoutChangingInstallation(t *testin
 			extension := `{}`
 			if kind == "missing-component" {
 				extension = `{"requiredComponents":["missing"]}`
-			} else if kind == "unavailable-account" {
-				extension = `{"provider":"feishu"}`
 			}
 			next := prepare(old.Plugin.ID, "2.0.0", extension)
 			var target models.PluginVersion
@@ -368,111 +361,6 @@ func TestVersionSwitchRejectsUnreadyTargetsWithoutChangingInstallation(t *testin
 				t.Errorf("failed switch changed config: %+v %v", config, err)
 			}
 		})
-	}
-}
-
-// 防止授权范围被飞书固定值污染，并验证 GitHub 登录前后使用同一个安装准入。
-func TestGitHubAuthorizationAndInstallationReadiness(t *testing.T) {
-	ctx := pluginAPIContext(t)
-	previous := global.PluginAuthorizations
-	t.Cleanup(func() { global.PluginAuthorizations = previous })
-	profile := t.TempDir()
-	binary := filepath.Join(t.TempDir(), "gh")
-	if err := os.WriteFile(binary, []byte("fixture"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	ready := false
-	githubChecks := 0
-	auth := github.New(github.Config{Binary: binary, ProfileDirectory: profile, Run: func(_ context.Context, args []string, _ string, out, _ io.Writer) error {
-		githubChecks++
-		_, _ = fmt.Fprintf(out, `{"hosts":{"github.com":[{"state":%q,"active":true,"host":"github.com","login":"octocat","tokenSource":%q,"scopes":"repo, read:org, gist","gitProtocol":"https"}]}}`, map[bool]string{true: "success", false: "error"}[ready], filepath.Join(profile, "hosts.yml"))
-		return nil
-	}})
-	global.PluginAuthorizations = map[string]*authorization.Authorizer{"github": auth}
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, "skills", "github"), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "skills", "github", "SKILL.md"), []byte("---\nname: github\ndescription: GitHub operations\n---\nUse official GitHub tools."), 0600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"github","version":"1.0.0","extensions":{"com.ally":{"provider":"github","scopes":["repo"]}}}`), 0600); err != nil {
-		t.Fatal(err)
-	}
-	stage, err := packageplugin.Stage(t.TempDir(), root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	value, err := (&GetPluginAuthorization{PluginID: detail.Plugin.ID}).Output(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := value.(PluginAuthorizationResponse)
-	if state.Provider != "github" || len(state.RequiredScopes) != 3 || slices.Contains(state.RequiredScopes, "offline_access") || !state.Account.Configured || state.Account.Available {
-		t.Fatalf("wrong github auth: %+v", state)
-	}
-	request := &InstallPlugin{PluginID: detail.Plugin.ID, Body: InstallPluginRequest{VersionID: detail.ResolvedVersionID, WakerIDs: []string{"w1", "w2"}}}
-	if _, err := request.Output(ctx); !errors.Is(err, status_error.PluginNotReady) {
-		t.Fatalf("installed before auth: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(profile, "hosts.yml"), []byte("github.com: {}\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	ready = true
-	installed, err := request.Output(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	results := installed.(InstallPluginResponse).Results
-	if len(results) != 2 || !results[0].Installed || !results[1].Installed {
-		t.Fatalf("shared install: %+v", results)
-	}
-
-	feishuProfile := t.TempDir()
-	if err := os.WriteFile(filepath.Join(feishuProfile, "config.json"), []byte("{}"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	feishuChecks := 0
-	global.PluginAuthorizations["feishu"] = feishu.New(feishu.Config{Binary: binary, ProfileDirectory: feishuProfile, Run: func(context.Context, []string, string) ([]byte, error) {
-		feishuChecks++
-		return []byte(`{"appId":"app","identities":{"user":{"available":true,"openId":"feishu-user","scope":"offline_access"}}}`), nil
-	}})
-	manifest, err := os.ReadFile(filepath.Join(root, "plugin.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(strings.ReplaceAll(string(manifest), `"github"`, `"feishu"`)), 0600); err != nil {
-		t.Fatal(err)
-	}
-	stage, err = packageplugin.Stage(t.TempDir(), root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := prepareCatalogFixture(t, ctx, stage, "", "", true); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := global.PluginAuthorizations["feishu"].Status(ctx, true); err != nil {
-		t.Fatal(err)
-	}
-	githubChecks = 0
-	feishuChecks = 0
-	listed, err := listPluginResources(ctx, "", "", 1, 50, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(listed.Resources) != 2 || githubChecks != 0 || feishuChecks != 0 {
-		t.Fatalf("ordinary list executed provider status: github=%d feishu=%d list=%+v", githubChecks, feishuChecks, listed)
-	}
-	identities := map[string]string{}
-	for _, resource := range listed.Resources {
-		identities[resource.Account.ID] = resource.Plugin.ID
-	}
-	if identities["octocat"] == "" || identities["feishu-user"] == "" {
-		t.Fatalf("provider identity leaked between resources: %+v", identities)
 	}
 }
 

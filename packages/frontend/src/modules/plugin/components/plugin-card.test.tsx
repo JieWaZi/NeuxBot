@@ -81,8 +81,15 @@ it.each([
       manifest: { name: "office" },
       presentation: { displayName: "飞书办公" },
     };
-    Object.assign(pkg.manifest ?? {}, {
-      extensions: { "com.ally": { provider: "feishu" } },
+    Object.assign(pkg, {
+      integration: {
+        authentication: {
+          strategy: "plugin-command",
+          protocol: "neuxally-auth/1",
+          command: "node",
+          args: ["./.neuxally/auth/authorize.mjs"],
+        },
+      },
     });
     const detail: PluginDetail = {
       installations: installed
@@ -161,4 +168,28 @@ it("uses the resolved installed version for a global card instead of a prepared 
     </MemoryRouter>,
   );
   expect(screen.getByText("已安装内容")).toBeVisible();
+});
+
+it("does not offer reauthorization for an unavailable legacy provider", () => {
+  const legacy: PluginCatalogEntry["package"] = JSON.parse(
+    '{"manifest":{"extensions":{"com.ally":{"provider":"feishu"}}}}',
+  );
+  render(
+    <MemoryRouter>
+      <PluginCard
+        catalog={{ key: "legacy", package: legacy }}
+        detail={{
+          plugin: { id: "p", name: "旧插件" },
+          installations: [{ wakerId: "w1", versionId: "v1" }],
+          account: { available: false, checkedAt: 123 },
+          versions: [{ id: "v1", package: legacy }],
+        }}
+        onInstall={vi.fn()}
+      />
+    </MemoryRouter>,
+  );
+  expect(
+    screen.queryByRole("button", { name: "授权 旧插件" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "安装 旧插件" })).toBeVisible();
 });

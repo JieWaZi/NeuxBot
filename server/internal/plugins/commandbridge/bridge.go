@@ -78,15 +78,6 @@ var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 // New 不启动进程；调用沿显式Context管理。
 func New(config Config) *Driver { return &Driver{config: config} }
 
-// Binary 返回已固定的桥接程序。
-func (d *Driver) Binary() string { return d.config.Command }
-
-// Environment 不把组件秘密提升到共享Runtime环境。
-func (d *Driver) Environment() map[string]string { return map[string]string{} }
-
-// Configure 不接收供应商专有账号字段。
-func (d *Driver) Configure(context.Context, string, string) error { return status_error.PluginNotReady }
-
 // Initialize 由同一个auth/start桥接负责多阶段初始化。
 func (d *Driver) Initialize(context.Context, func(authorization.Device) error) error { return nil }
 

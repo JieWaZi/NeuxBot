@@ -207,7 +207,7 @@ func (c *pluginController) InstalledVersionsExcept(ctx context.Context, plugin, 
 		installed = installed.Where("plugin_id <> ? OR waker_id <> ?", plugin, waker)
 	}
 	versions := []models.PluginVersion{}
-	if err := db.Select("id", "package").Where("id IN (?)", installed).Find(&versions).Error; err != nil {
+	if err := db.Select("id", "plugin_id", "package").Where("id IN (?)", installed).Find(&versions).Error; err != nil {
 		return nil, databaseError("remaining_plugin_installation_versions", plugin, err)
 	}
 	return versions, nil

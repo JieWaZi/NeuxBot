@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const mib = 1024 * 1024;
 const budgets = {
   application: 450 * mib,
-  // 与 macOS 共用资源预算，包含固定飞书与 GitHub 程序；各平台仍以实测报告约束。
+  // 与 macOS 共用资源预算，各平台以实际构建报告约束。
   resources: 215 * mib,
   installer: 170 * mib,
 };

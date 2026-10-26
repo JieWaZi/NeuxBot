@@ -41,16 +41,12 @@ type ConfigurationBinding struct {
 	Value string `json:"value"`
 }
 
-// Extension 定义客户端自己的配置与提供者声明，不改变标准发现规则。
+// Extension 定义客户端共享配置，不改变标准发现规则。
 type Extension struct {
 	// DisplayName 是初始产品展示名。
 	DisplayName string `json:"displayName,omitempty"`
-	// Provider 是客户端明确支持的授权适配。
-	Provider string `json:"provider,omitempty"`
 	// Config 是该版本支持的配置字段。
 	Config []ConfigurationField `json:"config"`
-	// Scopes 是该版本明确要求的提供者权限。
-	Scopes []string `json:"scopes"`
 	// Bindings 是客户端明确管理的共享配置绑定。
 	Bindings []ConfigurationBinding `json:"bindings"`
 	// RequiredComponents 是必须可用的组件键。
@@ -59,7 +55,7 @@ type Extension struct {
 
 // ClientExtension 读取本机配置和 MCP 占位变量，并汇总原生目标的可选共享配置。
 func ClientExtension(pkg Package) (Extension, error) {
-	result := Extension{Config: []ConfigurationField{}, Scopes: []string{}, Bindings: []ConfigurationBinding{}, RequiredComponents: []string{}}
+	result := Extension{Config: []ConfigurationField{}, Bindings: []ConfigurationBinding{}, RequiredComponents: []string{}}
 	if value, ok := pkg.Manifest.Extensions[constants.PluginExtensionNamespace]; ok {
 		if !validClientExtension(value) || json.Unmarshal(value, &result) != nil {
 			return result, status_error.PluginManifestInvalid
@@ -231,7 +227,14 @@ func validClientExtension(value json.RawMessage) bool {
 	if json.Unmarshal(value, &fields) != nil || fields == nil {
 		return false
 	}
-	for _, key := range []string{"displayName", "provider"} {
+	// 旧宿主供应商适配已经移至独立插件包，拒绝声明以免静默丢失认证。
+	if raw, exists := fields["provider"]; exists {
+		var provider string
+		if !validString(raw) || json.Unmarshal(raw, &provider) != nil || provider != "" {
+			return false
+		}
+	}
+	for _, key := range []string{"displayName"} {
 		if raw, ok := fields[key]; ok && !validString(raw) {
 			return false
 		}
@@ -263,19 +266,6 @@ func validClientExtension(value json.RawMessage) bool {
 		}
 	}
 	return true
-}
-
-// ValidateProviderServers 限制受管身份可交付的服务，安装和执行采用同一规则。
-func ValidateProviderServers(extension Extension, pkg Package) error {
-	if extension.Provider != constants.PluginProviderGitHub {
-		return nil
-	}
-	for _, server := range pkg.Servers {
-		if server.Type != "streamable-http" || server.URL != constants.GitHubMCPURL {
-			return status_error.PluginForbidden
-		}
-	}
-	return nil
 }
 
 // selfHeaderAuthenticationCovered 只豁免所有自身运行目标都由桥接接管的同一位置。

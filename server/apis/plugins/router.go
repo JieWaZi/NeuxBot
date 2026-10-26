@@ -27,7 +27,6 @@ func init() {
 	Router.Register(&UpdatePlugin{})
 	Router.Register(&DeletePlugin{})
 	Router.Register(&GetPluginAuthorization{})
-	Router.Register(&ConfigurePluginAuthorization{})
 	Router.Register(&StartPluginAuthorization{})
 	Router.Register(&CancelPluginAuthorization{})
 	Router.Register(&LogoutPluginAuthorization{})

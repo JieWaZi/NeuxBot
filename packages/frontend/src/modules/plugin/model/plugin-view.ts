@@ -41,33 +41,24 @@ export function pluginExplanation(
 export function resourceCategory(value: string | null): ResourceCategory {
   return value === "skills" || value === "connectors" ? value : "plugins";
 }
-/** 扩展只影响客户端设置，不重写标准组件。 */
-export function pluginProvider(version: PluginVersion | undefined): string {
-  const extension = version?.package?.manifest?.extensions?.["com.ally"];
-  return extension &&
-    typeof extension === "object" &&
-    "provider" in extension &&
-    typeof extension.provider === "string"
-    ? extension.provider
-    : "";
-}
-
-/** 新包按授权声明接入，旧包沿原有扩展读取，不维护供应商名单。 */
+/** 仅宿主支持的包内桥接声明提供共享授权。 */
 export function pluginHasAuthorization(
   pkg: PluginCatalogEntry["package"],
 ): boolean {
-  return Boolean(
-    pkg?.integration?.authentication?.strategy ||
-    pluginProvider({ package: pkg }),
+  const authentication = pkg?.integration?.authentication;
+  return (
+    authentication?.strategy === "plugin-command" &&
+    authentication.protocol === "neuxally-auth/1"
   );
 }
 
 /** 仅已存在实际安装且共享身份明确失效时，目录操作才是重新授权。 */
 export function pluginNeedsAuthorization(
-  _pkg: PluginCatalogEntry["package"],
+  pkg: PluginCatalogEntry["package"],
   detail?: PluginDetail,
 ): boolean {
   return Boolean(
+    pluginHasAuthorization(pkg) &&
     detail?.installations?.length &&
     Boolean(detail.account?.checkedAt) &&
     detail.account?.available === false,

@@ -16,15 +16,9 @@ importers:
       esbuild:
         specifier: 0.28.2
         version: 0.28.2
-      fflate:
-        specifier: 0.8.3
-        version: 0.8.3
       prettier:
         specifier: 3.9.6
         version: 3.9.6
-      zod:
-        specifier: 4.4.3
-        version: 4.4.3
 
   desktop:
     devDependencies:

@@ -13,7 +13,7 @@ import "@/shared/i18n";
 import { PluginAuthPanel } from "./plugin-auth-panel";
 const fixture = vi.hoisted(() => ({
   status: {
-    provider: "feishu",
+    provider: "plugin-command",
     account: {
       configured: true,
       available: true,
@@ -39,9 +39,6 @@ const fixture = vi.hoisted(() => ({
     missingScopes: [] as string[],
   },
   login: vi.fn<(input: unknown) => Promise<unknown>>().mockResolvedValue({}),
-  configure: vi
-    .fn<(input: unknown) => Promise<unknown>>()
-    .mockResolvedValue({}),
   cancel: vi.fn().mockResolvedValue({}),
   open: vi.fn().mockResolvedValue(undefined),
   submit: vi.fn(),
@@ -70,9 +67,6 @@ vi.mock("../api/plugin-queries", () => ({
     },
   }),
   startPluginAuthorizationMutation: () => ({ mutationFn: fixture.login }),
-  configurePluginAuthorizationMutation: () => ({
-    mutationFn: fixture.configure,
-  }),
   cancelPluginAuthorizationMutation: () => ({ mutationFn: fixture.cancel }),
   logoutPluginAuthorizationMutation: () => ({ mutationFn: vi.fn() }),
   invalidatePluginQueries: async (client: QueryClient) =>
@@ -84,11 +78,9 @@ beforeEach(() => {
   fixture.submit.mockClear();
   fixture.statusError = null;
   fixture.statusWait = null;
-  fixture.configure.mockClear();
   fixture.open.mockClear();
   fixture.status.activeUses = [];
   fixture.status.missingScopes = [];
-  fixture.status.provider = "feishu";
   fixture.status.account.available = true;
   fixture.status.account.configured = true;
   fixture.status.session.userCode = "";
@@ -161,7 +153,6 @@ describe("shared plugin authorization", () => {
   );
 
   it("shows a plugin-declared setup notice only for its current waiting challenge", async () => {
-    fixture.status.provider = "declared-provider";
     fixture.status.account.available = false;
     fixture.status.session.notice = {
       messages: {
@@ -288,11 +279,9 @@ describe("shared plugin authorization", () => {
       }),
     );
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(fixture.configure).not.toHaveBeenCalled();
     expect(fixture.submit).not.toHaveBeenCalled();
   });
   it("shows a connected account without asking users to connect or enter permissions again", async () => {
-    fixture.status.provider = "github";
     fixture.status.session.state = "ready";
     show();
     expect(await screen.findByText("已连接：用户")).toBeVisible();
@@ -327,7 +316,7 @@ describe("shared plugin authorization", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "断开连接" })).toBeDisabled();
   });
-  it("starts first-time Feishu setup through QR authorization without app credentials", async () => {
+  it("starts first-time plugin setup through authorization without app credentials", async () => {
     fixture.status.account.configured = false;
     fixture.status.account.available = false;
     fixture.status.session.state = "idle";
@@ -338,12 +327,10 @@ describe("shared plugin authorization", () => {
     expect(
       screen.queryByLabelText("飞书应用 App Secret"),
     ).not.toBeInTheDocument();
-    expect(fixture.configure).not.toHaveBeenCalled();
   });
 });
 
-it("keeps GitHub code and inline QR while waiting, then removes both after ready", async () => {
-  fixture.status.provider = "github";
+it("keeps device code and inline QR while waiting, then removes both after ready", async () => {
   fixture.status.account.available = false;
   fixture.status.session.userCode = "ABCD-EFGH";
   fixture.status.session.actions.push({
@@ -376,9 +363,8 @@ it("keeps GitHub code and inline QR while waiting, then removes both after ready
   expect(screen.queryByText("ABCD-EFGH")).not.toBeInTheDocument();
 });
 
-it("copies the GitHub device code and reports clipboard failures locally", async () => {
+it("copies the device code and reports clipboard failures locally", async () => {
   const user = userEvent.setup();
-  fixture.status.provider = "github";
   fixture.status.session.userCode = "ABCD-EFGH";
   fixture.status.session.actions.push({
     type: "copy-code",
@@ -401,7 +387,6 @@ it("copies the GitHub device code and reports clipboard failures locally", async
 });
 
 it("uses declared actions for an unknown plugin and never turns a browser URL into a QR", async () => {
-  fixture.status.provider = "new-provider";
   fixture.status.account.available = false;
   fixture.status.session.actions = [
     {
@@ -422,7 +407,6 @@ it("uses declared actions for an unknown plugin and never turns a browser URL in
 });
 
 it("replaces a challenge and removes all actions after cancellation", async () => {
-  fixture.status.provider = "new-provider";
   fixture.status.account.available = false;
   fixture.status.session.actions = [
     { type: "show-qr", value: "custom://first" },

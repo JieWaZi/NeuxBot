@@ -3760,20 +3760,6 @@ export type GithubComJieWaZiNeuxBotServerApisPluginsAuthorizationScopeRequest = 
 };
 
 /**
- * 飞书配置请求
- */
-export type GithubComJieWaZiNeuxBotServerApisPluginsConfigureAuthorizationRequest = {
-    /**
-     * 应用标识
-     */
-    appId: string;
-    /**
-     * 应用密钥
-     */
-    appSecret: string;
-};
-
-/**
  * 插件删除请求
  */
 export type GithubComJieWaZiNeuxBotServerApisPluginsDeletePluginRequest = {
@@ -30070,72 +30056,6 @@ export type StartPluginAuthorizationResponses = {
 };
 
 export type StartPluginAuthorizationResponse = StartPluginAuthorizationResponses[keyof StartPluginAuthorizationResponses];
-
-export type ConfigurePluginAuthorizationData = {
-    body: GithubComJieWaZiNeuxBotServerApisPluginsConfigureAuthorizationRequest & unknown;
-    path: {
-        /**
-         * 插件标识
-         */
-        pluginId: string;
-    };
-    query?: {
-        /**
-         * 所选版本
-         */
-        versionId?: string;
-        /**
-         * 所属伙伴
-         */
-        wakerId?: string;
-    };
-    url: '/api/v1/plugins/{pluginId}/authorization/configuration';
-};
-
-export type ConfigurePluginAuthorizationErrors = {
-    /**
-     * >
-     * * `[PluginContentInvalid][40000006502]`
-     * * `[PluginManifestInvalid][40000006501]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginForbidden][40300006501]`
-     *
-     */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginNotFound][40400006501]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[MCPConnectorTrustRequired][40900000013]`
-     * * `[PluginBusy][40900006505]`
-     * * `[PluginNotReady][40900006503]`
-     * * `[PluginVersionConflict][40900006501]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[PluginStorageError][50000006501]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type ConfigurePluginAuthorizationError = ConfigurePluginAuthorizationErrors[keyof ConfigurePluginAuthorizationErrors];
-
-export type ConfigurePluginAuthorizationResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type ConfigurePluginAuthorizationResponse = ConfigurePluginAuthorizationResponses[keyof ConfigurePluginAuthorizationResponses];
 
 export type CancelPluginAuthorizationData = {
     body?: never;

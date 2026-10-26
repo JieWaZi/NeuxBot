@@ -1,58 +1,59 @@
+# 系统与编辑器本机文件
 .DS_Store
 .idea/
 .vscode/
 
-desktop/node_modules/
+# JavaScript 依赖、缓存与诊断
 node_modules/
 .pnpm-store/
+.cache/
+.vite/
+*.tsbuildinfo
+*.log
+*.log.*
 pnpm-debug.log*
-desktop/dist/
-desktop/coverage/
 
-server/.ally/
-server/bin/
-server/coverage.out
-server/**/*.db
-server/**/*.db-shm
-server/**/*.db-wal
-server/**/*.log
-
+# 本机配置与开发过程记录
 .env
 .env.*
 !.env.example
-
 .agents
 .scratch/
 .superpowers/
+.openbitfun/
+.claude/settings.local.json
+.codex/sessions/
+.codex/log/
+prototypes/
+generated_images/
 
+# 前端与桌面构建产物
+desktop/dist/
+desktop/dist-native/
 desktop/dist-electron/
 desktop/release/
 desktop/binaries/
-prototypes
+web/dist/
+web/release/
+web/.runtime/
+packages/*/dist/
+coverage/
 
-desktop/.scratch/
-server/.scratch/
-generated_images/
-
-# 固定插件源生成的本地分发产物
-desktop/resources/plugins/
-server/plugins/
+# Core 本机运行与测试产物
+server/.ally/
+server/bin/
+server/coverage.out
+server/coverage.html
+server/**/*.db
+server/**/*.db-shm
+server/**/*.db-wal
 
 # 本地跨仓库 Go 联合开发
 go.work
 go.work.sum
 
-# 从 Go 模块复制的许可分发文件
+# 从依赖生成的运行资源与许可分发文件
+resources/terminal-runtime/
 desktop/resources/licenses/neux-knowledge/
 desktop/resources/licenses/acp-go/
 desktop/resources/licenses/acp-go-sdk/
-
-# Shared application and Web build outputs
-web/dist/
-web/coverage/
-web/release/
-packages/frontend/coverage/
-packages/frontend/dist/
-
-# Core-managed PTY runtime is rebuilt for each packaging target.
-resources/terminal-runtime/

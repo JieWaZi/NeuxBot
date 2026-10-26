@@ -135,10 +135,7 @@ func TestPluginSkillHistoryOnlyIncludesSameComponentKey(t *testing.T) {
 
 func TestCatalogSkillVerifiesArchiveAndReleasesTemporarySnapshot(t *testing.T) {
 	ctx := pluginAPIContext(t)
-	previous := global.Config.PluginResourcesDirectory
-	global.Config.PluginResourcesDirectory = t.TempDir()
-	t.Cleanup(func() { global.Config.PluginResourcesDirectory = previous })
-	root := global.Config.PluginResourcesDirectory
+	root := t.TempDir()
 	t.Setenv("ALLY_PLUGIN_CATALOG_URL", root)
 	if err := os.MkdirAll(filepath.Join(root, "catalog"), 0o700); err != nil {
 		t.Fatal(err)

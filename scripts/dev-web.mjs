@@ -6,7 +6,6 @@ import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { startWeb } from "./start-web.mjs";
 import "./builtin-skills.mjs";
-import { prepareCatalog, prepareProvider } from "./plugin-resources.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const directory = path.join(root, "web/.runtime");
@@ -21,11 +20,6 @@ execFileSync("pnpm", ["terminal:build"], {
   stdio: "inherit",
   shell: process.platform === "win32",
 });
-await prepareCatalog(path.join(directory, "plugins"));
-await prepareProvider(
-  path.join(directory, "plugins"),
-  `${process.platform}-${process.arch}`,
-);
 for (const name of ["ally-core", "allycli"]) {
   execFileSync(
     "go",

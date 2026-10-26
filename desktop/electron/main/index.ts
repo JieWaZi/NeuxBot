@@ -166,9 +166,6 @@ else {
         dataDir,
         env: {
           ...process.env,
-          ALLY_PLUGIN_RESOURCES_DIR: app.isPackaged
-            ? path.join(process.resourcesPath, "plugins")
-            : path.join(__dirname, "../resources/plugins"),
           ALLY_TERMINAL_RUNTIME_PATH: app.isPackaged
             ? path.join(process.resourcesPath, "terminal-runtime", "worker.cjs")
             : path.join(

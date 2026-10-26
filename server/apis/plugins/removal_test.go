@@ -2,10 +2,14 @@ package plugins
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,12 +20,12 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/global"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/feishu"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/gin-gonic/gin"
 )
 
 type removalAuthFixture struct {
-	// auth 是使用真实飞书驱动与替换进程边界的共享身份。
+	// auth 是使用真实授权管理器与替换协议边界的共享身份。
 	auth *authorization.Authorizer
 	// available 模拟官方本机授权事实。
 	available atomic.Bool
@@ -37,52 +41,59 @@ type removalAuthFixture struct {
 	logoutError error
 }
 
+// removalDriver 只替换外部协议，授权管理器、版本绑定和引用清理使用真实实现。
+type removalDriver struct {
+	// fixture 是受控的外部账号状态。
+	fixture *removalAuthFixture
+}
+
+func (d removalDriver) Status(context.Context, bool) (authorization.Account, error) {
+	return authorization.Account{Configured: true, Available: d.fixture.available.Load(), ID: "fixture-user", Scopes: []string{"read"}}, nil
+}
+func (d removalDriver) Logout(context.Context) error {
+	if d.fixture.logoutError != nil {
+		return d.fixture.logoutError
+	}
+	d.fixture.logouts.Add(1)
+	d.fixture.available.Store(false)
+	return nil
+}
+func (d removalDriver) Login(ctx context.Context, _ []string, report func(authorization.Device) error) error {
+	if err := report(authorization.Device{VerificationURL: "https://example.com/device", ExpiresAt: time.Now().Add(time.Minute).UnixMilli()}); err != nil {
+		return err
+	}
+	<-ctx.Done()
+	close(d.fixture.cancelled)
+	<-d.fixture.allowExit
+	return ctx.Err()
+}
 func removalAuth(t *testing.T, logoutError error) *removalAuthFixture {
 	t.Helper()
 	f := &removalAuthFixture{cancelled: make(chan struct{}), allowExit: make(chan struct{}), logoutError: logoutError}
 	f.available.Store(true)
-	profile, binary := t.TempDir(), filepath.Join(t.TempDir(), "lark-cli")
-	for name, content := range map[string]string{filepath.Join(profile, "config.json"): "{}", binary: "fixture"} {
-		if err := os.WriteFile(name, []byte(content), 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	f.auth = feishu.New(feishu.Config{ProfileDirectory: profile, Binary: binary, Run: func(ctx context.Context, args []string, _ string) ([]byte, error) {
-		joined := strings.Join(args, " ")
-		switch {
-		case joined == "auth logout":
-			if f.logoutError != nil {
-				return nil, f.logoutError
-			}
-			f.logouts.Add(1)
-			f.available.Store(false)
-			return []byte(`{}`), nil
-		case strings.Contains(joined, "--no-wait"):
-			return []byte(`{"verification_url":"https://example.com/device","device_code":"private","expires_in":300}`), nil
-		case strings.Contains(joined, "--device-code"):
-			<-ctx.Done()
-			close(f.cancelled)
-			<-f.allowExit
-			return nil, ctx.Err()
-		default:
-			return []byte(fmt.Sprintf(`{"appId":"fixture-app","identities":{"user":{"available":%t,"verified":true,"openId":"fixture-user","scope":"offline_access"}}}`, f.available.Load())), nil
-		}
-	}})
-	f.auth.Open(context.Background())
-	previous := global.PluginAuthorizations
-	global.PluginAuthorizations = map[string]*authorization.Authorizer{"feishu": f.auth}
+	previous := global.PluginBridges
+	global.PluginBridges = commandbridge.NewRegistry(context.Background(), nil)
 	t.Cleanup(func() {
 		f.release.Do(func() { close(f.allowExit) })
-		f.auth.Close()
-		global.PluginAuthorizations = previous
+		global.PluginBridges.Close()
+		global.PluginBridges = previous
 	})
 	return f
 }
 
-func removalPlugin(t *testing.T, ctx *gin.Context, name string) PluginDetailResponse {
+func removalPlugin(t *testing.T, ctx *gin.Context, name string, fixture *removalAuthFixture) PluginDetailResponse {
 	t.Helper()
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"`+name+`","version":"1.0.0","extensions":{"com.ally":{"provider":"feishu"}}}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "plugin.json"), []byte(`{"$schema":"https://agent-plugins.org/schemas/1.0.0/plugin.schema.json","name":"`+name+`","version":"1.0.0"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".neuxally"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".neuxally/integration.json"), []byte(`{"authentication":{"strategy":"plugin-command","protocol":"neuxally-auth/1","command":"./auth","scopes":["read"]}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "auth"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	stage, err := packageplugin.Stage(stagedRoot(), root)
@@ -91,6 +102,17 @@ func removalPlugin(t *testing.T, ctx *gin.Context, name string) PluginDetailResp
 	}
 	detail, err := prepareCatalogFixture(t, ctx, stage, "", "", true)
 	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := global.PluginControllerManager.Version(ctx, detail.ResolvedVersionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.auth, _, err = installationService().Bridge(version)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.auth.ReplaceDriver(removalDriver{fixture: fixture}); err != nil {
 		t.Fatal(err)
 	}
 	return detail
@@ -112,7 +134,7 @@ func installRemovalPlugin(t *testing.T, ctx *gin.Context, detail PluginDetailRes
 func TestLastPluginUninstallClearsAuthorizationAndRequiresLoginAgain(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	f := removalAuth(t, nil)
-	detail := removalPlugin(t, ctx, "office")
+	detail := removalPlugin(t, ctx, "office", f)
 	installRemovalPlugin(t, ctx, detail, "w1")
 	if _, err := (&UninstallWakerPlugin{WakerID: "w1", PluginID: detail.Plugin.ID}).Output(ctx); err != nil {
 		t.Fatal(err)
@@ -128,9 +150,8 @@ func TestLastPluginUninstallClearsAuthorizationAndRequiresLoginAgain(t *testing.
 func TestProviderAuthorizationSurvivesOtherPartnersAndActiveWorkBlocksLastUninstall(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	f := removalAuth(t, nil)
-	first, other := removalPlugin(t, ctx, "office-a"), removalPlugin(t, ctx, "office-b")
-	installRemovalPlugin(t, ctx, first, "w1", "w2")
-	installRemovalPlugin(t, ctx, other, "w2")
+	other := removalPlugin(t, ctx, "office", f)
+	installRemovalPlugin(t, ctx, other, "w1", "w2")
 	if err := global.PluginControllerManager.SetEnabled(ctx, "w2", other.Plugin.ID, false); err != nil {
 		t.Fatal(err)
 	}
@@ -139,10 +160,7 @@ func TestProviderAuthorizationSurvivesOtherPartnersAndActiveWorkBlocksLastUninst
 		t.Fatal(err)
 	}
 	defer release()
-	if _, err := (&UninstallWakerPlugin{WakerID: "w1", PluginID: first.Plugin.ID}).Output(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := (&UninstallWakerPlugin{WakerID: "w2", PluginID: first.Plugin.ID}).Output(ctx); err != nil {
+	if _, err := (&UninstallWakerPlugin{WakerID: "w1", PluginID: other.Plugin.ID}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if f.logouts.Load() != 0 || !f.available.Load() {
@@ -167,7 +185,7 @@ func TestProviderAuthorizationSurvivesOtherPartnersAndActiveWorkBlocksLastUninst
 func TestDeletingOrphanProviderCancelsAndWaitsForDeviceBeforeClearing(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	f := removalAuth(t, nil)
-	detail := removalPlugin(t, ctx, "orphan-office")
+	detail := removalPlugin(t, ctx, "orphan-office", f)
 	if _, err := f.auth.Login(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +234,7 @@ func TestDeletingOrphanProviderCancelsAndWaitsForDeviceBeforeClearing(t *testing
 func TestFailedAuthorizationCleanupRetainsInstallation(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	f := removalAuth(t, status_error.PluginStorageError)
-	detail := removalPlugin(t, ctx, "retry-office")
+	detail := removalPlugin(t, ctx, "retry-office", f)
 	installRemovalPlugin(t, ctx, detail, "w1")
 	if _, err := (&UninstallWakerPlugin{WakerID: "w1", PluginID: detail.Plugin.ID}).Output(ctx); !errors.Is(err, status_error.PluginStorageError) {
 		t.Fatalf("cleanup failure hidden: %v", err)
@@ -227,42 +245,77 @@ func TestFailedAuthorizationCleanupRetainsInstallation(t *testing.T) {
 	}
 }
 
-func TestDeleteProviderResourcePreservesOtherPartnersAndChecksConfirmationBeforeLogout(t *testing.T) {
+func TestDeletePluginChecksConfirmationAndActiveLeaseBeforeLogout(t *testing.T) {
 	ctx := pluginAPIContext(t)
 	f := removalAuth(t, nil)
-	first, other := removalPlugin(t, ctx, "delete-office-a"), removalPlugin(t, ctx, "delete-office-b")
-	installRemovalPlugin(t, ctx, first, "w1")
-	installRemovalPlugin(t, ctx, other, "w2")
-	if _, err := (&DeletePlugin{PluginID: first.Plugin.ID, Body: DeletePluginRequest{Confirmed: true}}).Output(ctx); !errors.Is(err, status_error.PluginVersionConflict) {
+	detail := removalPlugin(t, ctx, "delete-office", f)
+	installRemovalPlugin(t, ctx, detail, "w1")
+	// 无效历史版本排在最新位置时，清理仍应使用实际可用桥接，不能被旧声明阻塞。
+	if _, err := global.PluginControllerManager.PutVersion(ctx, models.PluginVersion{ID: "unsupported-history", PluginID: detail.Plugin.ID, Version: "2", Digest: strings.Repeat("b", 64), CreatedAt: time.Now().Add(time.Minute).UnixMilli(), Package: packageplugin.Package{Manifest: packageplugin.Manifest{Extensions: map[string]json.RawMessage{constants.PluginExtensionNamespace: json.RawMessage(`{"provider":"github"}`)}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&DeletePlugin{PluginID: detail.Plugin.ID, Body: DeletePluginRequest{Confirmed: true}}).Output(ctx); !errors.Is(err, status_error.PluginVersionConflict) {
 		t.Fatalf("stale confirmation accepted: %v", err)
 	}
 	if f.logouts.Load() != 0 {
-		t.Fatal("stale confirmation cleared authorization")
+		t.Fatal("stale confirmation cleared identity")
 	}
-	release, err := f.auth.Acquire(authorization.Usage{WakerID: "w2", ExecutionID: "other-running"})
+	release, err := f.auth.Acquire(authorization.Usage{WakerID: "w1", ExecutionID: "running"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer release()
-	firstBody := DeletePluginRequest{Confirmed: true, Installations: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: first.ResolvedVersionID}}}
-	if _, err := (&DeletePlugin{PluginID: first.Plugin.ID, Body: firstBody}).Output(ctx); err != nil {
-		t.Fatal(err)
+	body := DeletePluginRequest{Confirmed: true, Installations: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: detail.ResolvedVersionID}}}
+	if _, err := (&DeletePlugin{PluginID: detail.Plugin.ID, Body: body}).Output(ctx); !errors.Is(err, status_error.PluginBusy) {
+		t.Fatalf("active work did not protect deletion: %v", err)
 	}
-	if !f.available.Load() || f.logouts.Load() != 0 {
-		t.Fatal("other partner lost authorization after resource deletion")
-	}
-	otherBody := DeletePluginRequest{Confirmed: true, Installations: []VersionSwitch{{WakerID: "w2", ExpectedVersionID: other.ResolvedVersionID}}}
-	if _, err := (&DeletePlugin{PluginID: other.Plugin.ID, Body: otherBody}).Output(ctx); !errors.Is(err, status_error.PluginBusy) {
-		t.Fatalf("active work did not protect resource deletion: %v", err)
-	}
-	if _, err := global.PluginControllerManager.Get(ctx, other.Plugin.ID); err != nil || f.logouts.Load() != 0 {
+	if _, err := global.PluginControllerManager.Get(ctx, detail.Plugin.ID); err != nil || f.logouts.Load() != 0 {
 		t.Fatalf("busy deletion changed facts: %v", err)
 	}
 	release()
-	if _, err := (&DeletePlugin{PluginID: other.Plugin.ID, Body: otherBody}).Output(ctx); err != nil {
+	if _, err := (&DeletePlugin{PluginID: detail.Plugin.ID, Body: body}).Output(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if f.available.Load() || f.logouts.Load() != 1 {
-		t.Fatal("last resource deletion retained shared authorization")
+		t.Fatal("deletion retained shared identity")
+	}
+}
+
+// 已持久化的旧声明仍可移除，删除不启动已经不受支持的授权入口。
+func TestLegacyProviderResourcesCanBeUninstalledAndDeleted(t *testing.T) {
+	for _, withBridge := range []bool{false, true} {
+		t.Run(fmt.Sprint(withBridge), func(t *testing.T) {
+			ctx := pluginAPIContext(t)
+			store := global.PluginControllerManager
+			if err := store.Create(ctx, models.Plugin{ID: "legacy", Name: "legacy", SourceKey: "legacy"}); err != nil {
+				t.Fatal(err)
+			}
+			pkg := packageplugin.Package{Manifest: packageplugin.Manifest{Extensions: map[string]json.RawMessage{constants.PluginExtensionNamespace: json.RawMessage(`{"provider":"github"}`)}}}
+			if withBridge {
+				pkg.Integration.Authentication = &packageplugin.Authentication{Strategy: constants.PluginAuthCommandStrategy, Protocol: constants.PluginAuthProtocol, Command: "./unsupported-entry"}
+			}
+			if _, err := store.PutVersion(ctx, models.PluginVersion{ID: "legacy-v1", PluginID: "legacy", Version: "1", Digest: strings.Repeat("a", 64), Package: pkg, TrustedAt: 1}); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.Install(ctx, models.WakerPlugin{PluginID: "legacy", VersionID: "legacy-v1", WakerID: "w1", Enabled: true}); err != nil {
+				t.Fatal(err)
+			}
+			listed, err := listPluginResources(ctx, "", "", 1, 50, false)
+			if err != nil || len(listed.Resources) != 1 || listed.Resources[0].Ready || !slices.Contains(listed.Resources[0].Blockers, status_error.PluginManifestInvalid.Key()) {
+				t.Fatalf("legacy resource cannot be inspected for removal: %+v %v", listed, err)
+			}
+			if _, err := (&GetPluginAuthorization{PluginID: "legacy"}).Output(ctx); !errors.Is(err, status_error.PluginManifestInvalid) {
+				t.Fatalf("legacy auth was accepted: %v", err)
+			}
+			if _, err := (&UninstallWakerPlugin{PluginID: "legacy", WakerID: "w1"}).Output(ctx); err != nil {
+				t.Fatalf("legacy resource cannot be uninstalled: %v", err)
+			}
+			if _, err := (&DeletePlugin{PluginID: "legacy", Body: DeletePluginRequest{Confirmed: true}}).Output(ctx); err != nil {
+				t.Fatalf("legacy resource cannot be deleted: %v", err)
+			}
+			if _, err := store.Get(ctx, "legacy"); !errors.Is(err, status_error.PluginNotFound) {
+				t.Fatalf("legacy resource retained: %v", err)
+			}
+		})
 	}
 }

@@ -36,7 +36,6 @@ export function webRuntimeEnvironment(directory, inherited = process.env) {
       "bin",
       process.platform === "win32" ? "allycli.exe" : "allycli",
     ),
-    ALLY_PLUGIN_RESOURCES_DIR: path.join(directory, "plugins"),
     ALLY_TERMINAL_RUNTIME_PATH: path.join(
       directory,
       "terminal-runtime",

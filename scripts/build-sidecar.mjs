@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url";
 import { allyCoreLdflags } from "./go-ldflags.mjs";
 import { copyACPLicenses } from "./acp-licenses.mjs";
 import "./builtin-skills.mjs";
-import { prepareCatalog, prepareProvider } from "./plugin-resources.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const requested = process.argv[2];
@@ -47,14 +46,6 @@ const targets = {
 const targetName = requested ?? nativeTarget;
 const target = targets[targetName];
 if (!target) throw new Error(`不支持的桌面目标：${targetName}`);
-
-const pluginOutput = path.join(root, "desktop/resources/plugins");
-await prepareCatalog(pluginOutput);
-await rm(path.join(pluginOutput, "providers"), {
-  recursive: true,
-  force: true,
-});
-await prepareProvider(pluginOutput, `${target.goos}-${target.goarch}`);
 
 const outputDirectory = path.join(root, "desktop/binaries");
 const output = path.join(outputDirectory, target.file);

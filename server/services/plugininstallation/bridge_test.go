@@ -2,6 +2,7 @@ package plugininstallation
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -64,5 +65,31 @@ func TestBridgeLeaseDistinguishesNativeEntrypointsInsideSameSnapshot(t *testing.
 	defer nextRelease()
 	if first == second {
 		t.Fatal("same snapshot reused another target entrypoint")
+	}
+}
+
+func TestBridgeRejectsLegacyProviderBeforeCreatingAuthentication(t *testing.T) {
+	data, source := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(source, "auth"), []byte("#!/bin/sh\nexit 0\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := plugins.ContentDigest(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := plugins.CopyContent(filepath.Join(data, "plugins/content"), source, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	relative, _ := filepath.Rel(data, root)
+	registry := commandbridge.NewRegistry(context.Background(), nil)
+	defer registry.Close()
+	service := New(Config{DataDirectory: data, Bridges: registry})
+	version := models.PluginVersion{PluginID: "legacy", Digest: digest, ContentPath: relative, TrustedAt: 1, Package: plugins.Package{Manifest: plugins.Manifest{Extensions: map[string]json.RawMessage{constants.PluginExtensionNamespace: json.RawMessage(`{"provider":"github"}`)}}, Integration: plugins.Integration{Authentication: &plugins.Authentication{Strategy: constants.PluginAuthCommandStrategy, Protocol: constants.PluginAuthProtocol, Command: "./auth"}}}}
+	if _, _, err := service.Bridge(version); !errors.Is(err, status_error.PluginManifestInvalid) {
+		t.Fatalf("bridge accepted legacy provider: %v", err)
+	}
+	if _, _, _, err := service.BridgeLease(version); !errors.Is(err, status_error.PluginManifestInvalid) {
+		t.Fatalf("lease accepted legacy provider: %v", err)
 	}
 }

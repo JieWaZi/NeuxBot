@@ -207,7 +207,15 @@ it("keeps draft settings and the original optimistic revision after a failed ato
 it("waits for account readiness but never auto-submits after authorization", async () => {
   let current = { ...target(), ready: false, account: { available: false } };
   const pkg = current.versions?.[0]?.package;
-  if (pkg) pkg.integration = { authentication: { strategy: "plugin-command" } };
+  if (pkg)
+    pkg.integration = {
+      authentication: {
+        strategy: "plugin-command",
+        protocol: "neuxally-auth/1",
+        command: "node",
+        args: ["./.neuxally/auth/authorize.mjs"],
+      },
+    };
   fixture.prepare.mockResolvedValue(current);
   fixture.read.mockImplementation(async (id?: string) =>
     structuredClone(id ? current : installed),
@@ -278,7 +286,12 @@ it.each([false, true])(
     const detail = target();
     if (detail.versions?.[0]?.package)
       detail.versions[0].package.integration = {
-        authentication: { strategy: "plugin-command" },
+        authentication: {
+          strategy: "plugin-command",
+          protocol: "neuxally-auth/1",
+          command: "node",
+          args: ["./.neuxally/auth/authorize.mjs"],
+        },
       };
     fixture.prepare.mockResolvedValue(detail);
     fixture.read.mockResolvedValue(detail);
@@ -316,7 +329,12 @@ it("updates with new required draft settings and an already connected account ev
   };
   if (detail.versions?.[0]?.package)
     detail.versions[0].package.integration = {
-      authentication: { strategy: "plugin-command" },
+      authentication: {
+        strategy: "plugin-command",
+        protocol: "neuxally-auth/1",
+        command: "node",
+        args: ["./.neuxally/auth/authorize.mjs"],
+      },
     };
   fixture.prepare.mockResolvedValue(detail);
   fixture.read.mockResolvedValue(detail);
@@ -349,7 +367,12 @@ it("cancels a newly started authorization whose response arrives after the updat
   const detail = target();
   if (detail.versions?.[0]?.package)
     detail.versions[0].package.integration = {
-      authentication: { strategy: "plugin-command" },
+      authentication: {
+        strategy: "plugin-command",
+        protocol: "neuxally-auth/1",
+        command: "node",
+        args: ["./.neuxally/auth/authorize.mjs"],
+      },
     };
   fixture.prepare.mockResolvedValue(detail);
   fixture.read.mockResolvedValue(detail);
@@ -381,7 +404,12 @@ it("does not cancel another owner's existing waiting authorization when the dial
   const detail = target();
   if (detail.versions?.[0]?.package)
     detail.versions[0].package.integration = {
-      authentication: { strategy: "plugin-command" },
+      authentication: {
+        strategy: "plugin-command",
+        protocol: "neuxally-auth/1",
+        command: "node",
+        args: ["./.neuxally/auth/authorize.mjs"],
+      },
     };
   fixture.prepare.mockResolvedValue(detail);
   fixture.read.mockResolvedValue(detail);

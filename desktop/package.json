@@ -86,13 +86,6 @@
         ]
       },
       {
-        "from": "resources/plugins",
-        "to": "plugins",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
         "from": "binaries",
         "to": "bin",
         "filter": [

@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 	"net/http"
@@ -29,8 +28,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/feishu"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/github"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
@@ -124,8 +121,6 @@ var (
 	ChannelThreadControllerManager controllers.ChannelThreadController
 	// ChannelTaskControllerManager 提供全局团队任务板和投递队列接口。
 	ChannelTaskControllerManager controllers.ChannelTaskController
-	// PluginAuthorizations 是各提供者唯一的共享身份、授权等待与工作占用装配。
-	PluginAuthorizations map[string]*authorization.Authorizer
 	// PluginControllerManager 保存插件资源、版本、共享配置和伙伴安装。
 	PluginControllerManager controllers.PluginController
 	// SkillControllerManager 提供全局技能包、版本和伙伴关系持久化接口。
@@ -160,8 +155,6 @@ type Configuration struct {
 	WorkflowPythonExecutable string `yaml:"workflowPythonExecutable"`
 	// DataDirectory 保存数据库、技能、独立账号数据及程序配置。
 	DataDirectory string `yaml:"-"`
-	// PluginResourcesDirectory 是构建交付的本地插件与固定程序目录。
-	PluginResourcesDirectory string `yaml:"-"`
 	// ManagedFilesDirectory 保存 Chat、Team、工作流和 IM 的受管文件，默认位于用户主目录。
 	ManagedFilesDirectory string `yaml:"-"`
 }
@@ -238,16 +231,6 @@ func Prepare(configuration *Configuration) error {
 			}
 			configuration.DataDirectory = temporaryDataDirectory
 		}
-	}
-	if configuration.PluginResourcesDirectory == "" {
-		configuration.PluginResourcesDirectory = strings.TrimSpace(os.Getenv("ALLY_PLUGIN_RESOURCES_DIR"))
-	}
-	if configuration.PluginResourcesDirectory == "" {
-		executable, err := os.Executable()
-		if err != nil {
-			return mapCoreError("resolve_plugin_resources", status_error.CoreDataDirectoryError, err)
-		}
-		configuration.PluginResourcesDirectory = filepath.Join(filepath.Dir(executable), "..", "plugins")
 	}
 	managedDirectory := strings.TrimSpace(os.Getenv("ALLY_MANAGED_FILES_DIR"))
 	if managedDirectory == "" {
@@ -356,26 +339,6 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 		}
 	})
 	PluginContents = plugins.NewContentStore(configuration.DataDirectory, func() ([]string, error) { return PluginControllerManager.ContentReferences(context.Background()) })
-	providerPath := func(provider, version, binary string) string {
-		if runtime.GOOS == "windows" {
-			binary += ".exe"
-		}
-		return filepath.Join(configuration.PluginResourcesDirectory, "providers", provider, version, runtime.GOOS+"-"+runtime.GOARCH, binary)
-	}
-	changed := func(provider string) func(authorization.Session) {
-		return func(authorization.Session) {
-			if EventHub != nil {
-				_ = events.Emit(EventHub, constants.PluginEventTopic, "plugins.changed", events.Resource{Kind: "global"}, map[string]string{"provider": provider})
-			}
-		}
-	}
-	PluginAuthorizations = map[string]*authorization.Authorizer{
-		constants.PluginProviderFeishu: feishu.New(feishu.Config{Binary: providerPath(constants.PluginProviderFeishu, constants.FeishuCLIVersion, "lark-cli"), ProfileDirectory: filepath.Join(configuration.DataDirectory, "plugins", "providers", constants.PluginProviderFeishu), Changed: changed(constants.PluginProviderFeishu)}),
-		constants.PluginProviderGitHub: github.New(github.Config{Binary: providerPath(constants.PluginProviderGitHub, constants.GitHubCLIVersion, "gh"), ProfileDirectory: filepath.Join(configuration.DataDirectory, "plugins", "providers", constants.PluginProviderGitHub), Changed: changed(constants.PluginProviderGitHub)}),
-	}
-	for _, auth := range PluginAuthorizations {
-		auth.Open(ctx)
-	}
 	PluginBridgeEnvironment = os.Environ()
 	PluginBridges = commandbridge.NewRegistry(ctx, func(id string) {
 		if EventHub != nil {
@@ -555,8 +518,8 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Profiles:            ProfileDocumentControllerManager,
 		Projects:            ProjectControllerManager,
 		Skills:              SkillControllerManager,
-		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Authorizers: PluginAuthorizations, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment}),
-		PluginContents:      PluginContents, Plugins: PluginControllerManager, PluginAuthorizers: PluginAuthorizations, PluginLauncher: coreExecutablePath(),
+		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment}),
+		PluginContents:      PluginContents, Plugins: PluginControllerManager, PluginLauncher: coreExecutablePath(),
 		Connectors:          MCPConnectorControllerManager,
 		RuntimeEnvironments: RuntimeEnvironmentControllerManager,
 		SkillDataDirectory:  configuration.DataDirectory,
@@ -702,10 +665,6 @@ func Close() error {
 		ExecutionService.Close()
 		ExecutionService = nil
 	}
-	for _, auth := range PluginAuthorizations {
-		auth.Close()
-	}
-	PluginAuthorizations = nil
 	if PluginBridges != nil {
 		PluginBridges.Close()
 		PluginBridges = nil

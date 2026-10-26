@@ -224,45 +224,6 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 				}
 			}
 		}
-	} else if extension.Provider != "" {
-		auth := global.PluginAuthorizations[extension.Provider]
-		if auth == nil {
-			return nil, ginx.WithStack(status_error.PluginNotReady)
-		}
-		release, err := auth.Acquire()
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		defer release()
-		account, err := auth.Status(ctx, true)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		if !account.Available {
-			return nil, ginx.WithStack(status_error.PluginNotReady)
-		}
-		for _, scope := range extension.Scopes {
-			if !auth.ScopeGranted(account.Scopes, scope) {
-				return nil, ginx.WithStack(status_error.PluginNotReady)
-			}
-		}
-		if err := packageplugin.ValidateProviderServers(extension, pkg); err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		diagnostic.Provider, diagnostic.AccountID, diagnostic.Scopes = extension.Provider, account.ID, slices.Clone(account.Scopes)
-		headers, err := auth.AuthorizeServer(ctx, connector.URL)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		if extension.Provider == constants.PluginProviderGitHub {
-			connector.Headers = slices.DeleteFunc(connector.Headers, func(d models.MCPSecretDefinition) bool {
-				return strings.EqualFold(d.Name, "Authorization") || strings.HasPrefix(strings.ToLower(d.Name), "x-mcp-")
-			})
-			headers["X-MCP-Toolsets"] = constants.GitHubMCPToolsets
-		}
-		for name, value := range headers {
-			connector.Headers = append(connector.Headers, models.MCPSecretDefinition{Name: name, Value: value, Configured: true})
-		}
 	}
 	probe := mcpclient.TestInDirectory(ctx, connector, resolved.WorkingDirectory)
 	// 配置或伙伴版本变化后，迟到的结果不能覆盖当前详情。

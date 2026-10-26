@@ -4,7 +4,6 @@ package execution
 import (
 	"context"
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -129,8 +128,6 @@ type service struct {
 	pluginContents *plugins.ContentStore
 	// pluginController 读取插件安装的原子资源快照。
 	pluginController controllers.PluginController
-	// pluginAuthorizers 保护各提供者共享身份的使用期间。
-	pluginAuthorizers map[string]*authorization.Authorizer
 	// pluginLauncher 是受管 Core 可执行文件的绝对位置。
 	pluginLauncher string
 	// runtimeEnvironments 读取已经启用且探测可用的 Runtime 条目。
@@ -191,8 +188,6 @@ type Config struct {
 	PluginContents *plugins.ContentStore
 	// Plugins 读取插件资源和安装。
 	Plugins controllers.PluginController
-	// PluginAuthorizers 提供各官方账号的共享租约。
-	PluginAuthorizers map[string]*authorization.Authorizer
 	// PluginLauncher 提供保持 MCP 工作目录的 Core 程序。
 	PluginLauncher string
 	// RuntimeEnvironments 读取执行准备使用的 Runtime 探测快照。
@@ -279,7 +274,7 @@ func New(config Config) (Core, error) {
 		skillController:      config.Skills,
 		pluginContents:       config.PluginContents,
 		pluginInstallations:  config.PluginInstallations,
-		pluginController:     config.Plugins, pluginAuthorizers: config.PluginAuthorizers, pluginLauncher: config.PluginLauncher,
+		pluginController:     config.Plugins, pluginLauncher: config.PluginLauncher,
 		connectorController: config.Connectors,
 		runtimeEnvironments: config.RuntimeEnvironments,
 		skillDataDirectory:  strings.TrimSpace(config.SkillDataDirectory),

@@ -15,10 +15,7 @@ type noticeDriver struct {
 	run func(context.Context, func(Device) error) error
 }
 
-func (*noticeDriver) Binary() string                                  { return "test-bridge" }
-func (*noticeDriver) Environment() map[string]string                  { return map[string]string{} }
-func (*noticeDriver) Configure(context.Context, string, string) error { return nil }
-func (*noticeDriver) Logout(context.Context) error                    { return nil }
+func (*noticeDriver) Logout(context.Context) error { return nil }
 func (*noticeDriver) Status(context.Context, bool) (Account, error) {
 	return Account{Configured: true, Available: true, Scopes: []string{}}, nil
 }

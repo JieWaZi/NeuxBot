@@ -648,22 +648,8 @@ const (
 )
 
 const (
-	// PluginProviderFeishu 表示固定飞书官方 CLI 适配。
-	PluginProviderFeishu = "feishu"
 	// PluginEventTopic 是插件资源唯一状态事件主题。
 	PluginEventTopic = "plugins"
-	// PluginProviderGitHub 表示固定 GitHub 官方 CLI 与远程 MCP 适配。
-	PluginProviderGitHub = "github"
-	// GitHubCLIVersion 是固定 GitHub 官方程序版本。
-	GitHubCLIVersion = "2.102.0"
-	// GitHubCLIBuildVersion 标识包含应用钥匙串隔离补丁的固定构建。
-	GitHubCLIBuildVersion = "2.102.0-neuxally.1"
-	// GitHubMCPURL 是允许共享身份交付的精确官方服务地址。
-	GitHubMCPURL = "https://api.githubcopilot.com/mcp/"
-	// GitHubMCPToolsets 限定首版官方工具范围。
-	GitHubMCPToolsets = "context,repos,issues,pull_requests,users"
-	// FeishuCLIVersion 是首批固定飞书程序版本。
-	FeishuCLIVersion = "1.0.98"
 )
 
 // PluginStdioMode 是 Core 内部的原生 MCP 工作目录子进程模式。

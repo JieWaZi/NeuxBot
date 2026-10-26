@@ -169,14 +169,6 @@ type PluginEnabledRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
-// 飞书配置请求
-type ConfigureAuthorizationRequest struct {
-	// 应用标识
-	AppID string `json:"appId" validate:"required"`
-	// 应用密钥
-	AppSecret string `json:"appSecret" validate:"required"`
-}
-
 // AuthorizationScopeRequest 描述用户明确请求的补充权限。
 type AuthorizationScopeRequest struct {
 	// 补充权限

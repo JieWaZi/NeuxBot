@@ -96,7 +96,14 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
           package: {
             manifest: {
               name: "office",
-              extensions: { "com.ally": { provider: "feishu" } },
+            },
+            integration: {
+              authentication: {
+                strategy: "plugin-command",
+                protocol: "neuxally-auth/1",
+                command: "node",
+                args: ["./.neuxally/auth/authorize.mjs"],
+              },
             },
             presentation: { displayName: fixture.displayName },
           },
