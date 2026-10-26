@@ -4,11 +4,13 @@ import { createRoot, type Root } from "react-dom/client";
 import { StartupScreen, type StartupStage } from "@/app/startup-screen";
 import { prepareWelcomeAssets } from "@/app/welcome/welcome-brand";
 import { logger } from "@/shared/diagnostics/logger";
+import { observeReactPerformanceMeasures } from "@/shared/diagnostics/react-performance-measures";
 import { initializeApi } from "@/shared/api/runtime";
 import { i18n } from "@/shared/i18n";
 import { initializeTheme, ThemeProvider } from "@/shared/theme";
 
 let activeRoot: Root | undefined;
+let stopPerformanceMeasures: (() => void) | undefined;
 
 export function startApplication(): void {
   initializeTheme();
@@ -21,6 +23,8 @@ export function startApplication(): void {
   noteStartup("entry");
   const container = document.getElementById("root");
   if (!container) throw new Error("缺少应用挂载节点");
+  stopPerformanceMeasures?.();
+  stopPerformanceMeasures = observeReactPerformanceMeasures();
   const root = createRoot(container);
   activeRoot = root;
 
@@ -118,6 +122,8 @@ export function startApplication(): void {
 export async function resetApplicationSession(): Promise<void> {
   activeRoot?.unmount();
   activeRoot = undefined;
+  stopPerformanceMeasures?.();
+  stopPerformanceMeasures = undefined;
   const [{ appQueryClient }, { resetGlobalEvents }, { resetApiConnection }] =
     await Promise.all([
       import("@/app/providers"),

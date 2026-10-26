@@ -14,7 +14,18 @@ const connection = vi.hoisted(() => ({
   assets: vi.fn<() => Promise<void>>(),
   assetsPrepared: vi.fn<() => void>(),
 }));
-vi.mock("@/shared/api/runtime", () => ({ initializeApi: connection.connect }));
+const performanceCleanup = vi.hoisted(() => ({
+  start: vi.fn<() => () => void>(),
+  stop: vi.fn(),
+}));
+vi.mock("@/shared/diagnostics/react-performance-measures", () => ({
+  observeReactPerformanceMeasures: performanceCleanup.start,
+}));
+vi.mock("@/shared/api/runtime", () => ({
+  initializeApi: connection.connect,
+  resetApiConnection: vi.fn(),
+}));
+vi.mock("@/shared/api/global-events", () => ({ resetGlobalEvents: vi.fn() }));
 vi.mock("@/app/welcome/startup-gate", () => ({
   StartupGate: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -45,7 +56,11 @@ vi.mock("react-router-dom", () => ({
 }));
 vi.mock("@/app/providers", () => ({
   AppProviders: ({ children }: { children: React.ReactNode }) => children,
-  appQueryClient: { prefetchQuery: connection.prepare },
+  appQueryClient: {
+    prefetchQuery: connection.prepare,
+    cancelQueries: vi.fn().mockResolvedValue(undefined),
+    clear: vi.fn(),
+  },
 }));
 vi.mock("@/app/error-boundary", () => ({
   ErrorBoundary: ({ children }: { children: React.ReactNode }) => children,
@@ -102,6 +117,7 @@ it("桌面首帧样式的浏览器地址落在 Vite 根目录内，并加载共�
 });
 
 it("等待服务时显示进度，失败显示原因，重试成功后自动进入工作台", async () => {
+  performanceCleanup.start.mockReturnValue(performanceCleanup.stop);
   connection.assets.mockResolvedValue(undefined);
   connection.assets.mockImplementationOnce(
     () =>
@@ -127,6 +143,7 @@ it("等待服务时显示进度，失败显示原因，重试成功后自动进�
   await act(async () => {
     (await import("../start")).startApplication();
   });
+  expect(performanceCleanup.start).toHaveBeenCalledOnce();
   expect(connection.connect).toHaveBeenCalledTimes(1);
   expect(connection.assets).toHaveBeenCalledOnce();
   expect(connection.workspaceLoaded).not.toHaveBeenCalled();
@@ -153,4 +170,9 @@ it("等待服务时显示进度，失败显示原因，重试成功后自动进�
   await act(async () => connection.prepared());
   expect(await screen.findByText("工作台已就绪")).toBeVisible();
   expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+  expect(performanceCleanup.start).toHaveBeenCalledOnce();
+  await act(async () => {
+    await (await import("../start")).resetApplicationSession();
+  });
+  expect(performanceCleanup.stop).toHaveBeenCalledOnce();
 });
