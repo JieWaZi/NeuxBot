@@ -2,9 +2,11 @@ module github.com/JieWaZi/NeuxBot/server
 
 go 1.25.8
 
+replace github.com/coder/acp-go-sdk => github.com/JieWaZi/acp-go/sdk v0.0.0-20261026082128-5f43bcd9dae8
+
 require (
 	github.com/BurntSushi/toml v1.5.0
-	github.com/JieWaZi/acp-go v0.0.0-20261015060857-ff51cfbfe5fb
+	github.com/JieWaZi/acp-go v0.0.0-20261026082649-c944d6aa621f
 	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261023091500-82c296bfb0b3
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/dop251/goja v0.0.0-20261002135814-104bc28c3abd

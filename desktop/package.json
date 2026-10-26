@@ -127,6 +127,14 @@
         ]
       },
       {
+        "from": "resources/licenses/acp-go-sdk",
+        "to": "licenses/acp-go-sdk"
+      },
+      {
+        "from": "resources/licenses/acp-go",
+        "to": "licenses/acp-go"
+      },
+      {
         "from": "../resources/terminal-runtime/worker.cjs",
         "to": "terminal-runtime/worker.cjs"
       },

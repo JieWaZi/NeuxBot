@@ -44,6 +44,8 @@ go.work.sum
 
 # 从 Go 模块复制的许可分发文件
 desktop/resources/licenses/neux-knowledge/
+desktop/resources/licenses/acp-go/
+desktop/resources/licenses/acp-go-sdk/
 
 # Shared application and Web build outputs
 web/dist/

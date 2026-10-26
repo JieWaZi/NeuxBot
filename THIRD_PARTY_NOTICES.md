@@ -2,6 +2,14 @@
 
 NeuxBot 自有代码与文档采用根目录 [MIT License](LICENSE)。以下版权及许可适用于对应的第三方组成，集中保存在本文件，并随安装包分发。
 
+## ACP Go SDK
+
+Go 模块 `github.com/coder/acp-go-sdk` 使用 [acp-go/sdk 维护版本](https://github.com/JieWaZi/acp-go/tree/5f43bcd9dae8/sdk)，基于 coder/acp-go-sdk v0.13.5。Copyright 2025 Coder Technologies, Inc.，采用 Apache License 2.0；完整 [LICENSE](https://github.com/JieWaZi/acp-go/blob/5f43bcd9dae8/sdk/LICENSE) 随安装包保存在 `licenses/acp-go-sdk/LICENSE`。
+
+## ACP Adapter 中的第三方移植
+
+acp-go 是项目自有适配器仓库。其自动审查、Pi 与 Cursor 移植组件保留各自的原有许可及 NOTICE，打包从实际 Go 依赖版本复制到 `licenses/acp-go/`，包括 `pkg/autoreview/UPSTREAM-LICENSE`、`pkg/pi/UPSTREAM-LICENSE` 和 `pkg/cursor/licenses/` 下的三份许可与 NOTICE，不将这些移植组件推定为统一许可。
+
 ## Dock 组件
 
 适用范围：packages/frontend/src/shared/ui/dock.tsx。

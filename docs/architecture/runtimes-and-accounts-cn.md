@@ -10,6 +10,8 @@ internal/runtimes 提供数据库无关的探测、能力与执行适配。它�
 
 ACP initialize 不声明尚无请求合同的原生 Schema 输出能力；宿主能力接收结构化候选与原生 Schema 输出分别判断。
 
+ACP SDK 与原生 stdio Adapter 的修复统一在 acp-go 仓库维护，宿主只通过 `server/go.mod` 引用固定版本，不保存源码副本。SDK 位于该仓库的独立 `sdk` 子模块，保留原协议类型，通过版本化 Go replace 与 Adapter 使用同一份类型；本地 replace 只用于联合开发验证。通知队列显式启用条数、字节预算和独立传输关闭所有者，生成协议类型保持原样。响应之前的通知屏障仍由 SDK 维护，不在业务层另写 JSON-RPC 排序。Claude 连接沿已有每 Session CLI 归属保持独占和热复用。Codex 保留共享 app-server 的热复用与既有进程数量；同连接上的其他会话可能短暂等待背压，当前会话超时或取消不能使它们失败。独立所有者取消直接关闭 Pipe 解除阻塞，不依赖拥塞连接发送关闭请求。桌面和 Web 打包从实际依赖模块目录复制原有许可及 NOTICE。
+
 软件能力通过系统 `ally` Skill 交付。Core 将同包技能资源和当前平台的受管 CLI 一起准备到不可变目录，入口为 `scripts/allycli`（Windows 为 `scripts/allycli.exe`），知识指南为同目录下的 `references/knowledge.md`。CLI 字节与执行位参与内容摘要，程序更新后生成对应的新目录。执行指令提供 `SKILL.md`、CLI 和知识指南的明确绝对路径；`ALLYCLI_BINARY_PATH` 与进程 `PATH` 指向 Skill 内入口。智能体从 Skill 所在目录解析资源，无需搜索工作区或全局安装目录。
 
 Qoder 与 Qoder CN 的项目技能目录均为 `.qoder/skills`；两者分别使用 `QODER_CONFIG_DIR`、`QODERCN_CONFIG_DIR` 用户配置根。安装探测同时检查 PATH 和官方用户级原生程序位置；不主动扫描仅用于桌面命令分发的 `entry` 目录。
