@@ -35,7 +35,9 @@
 
 尚不支持的贡献、历史 Seed、附件、额外目录、热续聊及冷恢复准确拒绝，模型和推理配置必须经公开配置目录及回执验证。单连接只接受一次 Prompt，避免无回合身份的迟到 ACP 通知串入后续调用。
 
-Driver 保留公开 MessageID 与已知 phase。没有最终证据时不拼接全部正文猜测答案，不读取厂商私有协议补事实。当前固定 acp-go 在部分非流式完整消息中会把缺失的原生 phase 默认为 final_answer，因此公开 ACP phase 也不能替代原生最终性验收；后续需在独立 acp-go 收敛该行为或补足证据。真实 CLI、账号、配置隔离、禁工具和其他 CLI 的验收仍是后续生产切换门槛。内核的 FakeDriver 测试、公开 ACP 本地传输测试都不能替代这些验收。
+Driver 保留公开 MessageID 和消息完成边界；只有 `_meta.codex.phaseVerified=true` 的 `final_answer` 才作为原生最终阶段证据。`messageCompleted=true` 只说明消息正文结束，不能单独证明最终答案。明确的 commentary、partial_answer 和 plan 不成为最终候选；缺少证明时报告 output_unavailable，不拼接全部正文猜测。固定 acp-go `2f0ad2051741` 尚不提供该证明标记，因此真实 Codex 的严格输出当前不可用；独立仓库修正必须发布并固定版本后才能解除这一限制。
+
+真实 CLI 的验收方法与当前阻塞见 [Codex 验收计划](../../docs/discussions/agent-runtime-codex-validation-plan-cn.md)。内核 FakeDriver、公开 ACP 本地传输和虚构 Provider 的测试不替代真实账号/模型质量验收，配置隔离与禁工具也必须分别通过。
 
 原生关闭通过公开 `Agent.Close` 执行。Runtime 的重试不代表原生实现必然可恢复：当前固定版本 Codex 的 Close 使用一次性释放并保留首次错误，因此该错误再次返回时仍保留租约并报告清理未完成，不能伪造释放成功。原生关闭语义的后续改进继续归独立 acp-go。
 
@@ -58,3 +60,11 @@ GOWORK=off go test -race ./runtime ./internal/engine ./driver/acp
 ```
 
 工程保护值及性能测量边界见实施计划。测试不使用产品数据库、不操作用户工作区，不代表真实模型或生产功能已验收。
+
+真实 Codex 验收显式启用，连接本地虚构 Provider，不使用用户账号。将变量设为本机已安装 CLI 的绝对路径，再在本模块运行：
+
+```sh
+GOWORK=off go test ./driver/acp -run '^TestNativeCodex' -count=1 -timeout=180s -v
+```
+
+变量名为 `NEUX_RUNTIME_CODEX_CLI`，未设置时这些测试跳过。验收测试会检查实际工具定义、被污染配置的 MCP 是否启动，以及原生最终阶段；它们是切换门槛，当前固定依赖和 CLI 的已知失败不能当作已通过或静默忽略。

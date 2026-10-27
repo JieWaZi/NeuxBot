@@ -15,12 +15,11 @@ type Collector struct {
 	phase       c.MessagePhase  // phase 是当前消息已知阶段。
 	verified    bool            // verified 是驱动等价完成证明。
 	complete    bool            // complete 是消息完成边界。
-	text        strings.Builder // text 以摊销线性开销追加正文。
+	text        strings.Builder // text 有界保留当前正文，允许完成边界重新分类。
 	seen        map[string]bool // seen 防止交错分片被误当作完整答案。
-	final       c.Output        // final 是最近明确最终候选。
-	fallback    c.Output        // fallback 是明确标注未验证的当前正文。
-	finalID     string          // finalID 标识已验证候选所属消息，防止撤销无关答案。
-	fallbackID  string          // fallbackID 标识未验证候选所属消息。
+	final       c.Output        // final 是前序消息中最近的明确最终候选。
+	fallback    c.Output        // fallback 是前序消息中最近的未验证候选。
+	discarded   bool            // discarded 表示当前非最终正文超过保留预算，无法再恢复完整答案。
 	exceeded    bool            // exceeded 表示正文预算耗尽。
 	invalid     bool            // invalid 表示消息身份契约损坏。
 }
@@ -50,6 +49,7 @@ func (co *Collector) Accept(m c.AssistantMessage) error {
 		co.phase = c.PhaseUnknown
 		co.verified = false
 		co.complete = false
+		co.discarded = false
 		co.text.Reset()
 	}
 	if co.complete && m.Delta != "" {
@@ -57,57 +57,52 @@ func (co *Collector) Accept(m c.AssistantMessage) error {
 		return &c.Fault{Code: c.FaultProtocol, Stage: "output", Message: "text arrived after message completion"}
 	}
 	if m.Phase != "" && m.Phase != c.PhaseUnknown {
-		if co.phase != c.PhaseUnknown && co.phase != m.Phase {
+		if co.phase != c.PhaseUnknown && co.phase != m.Phase && !m.Complete {
 			co.invalid = true
 			return &c.Fault{Code: c.FaultProtocol, Stage: "output", Message: "assistant phase changed incompatibly"}
 		}
 		co.phase = m.Phase
 	}
-	if co.phase == c.PhaseCommentary {
-		if co.fallbackID == co.currentID {
-			co.fallback = c.Output{}
-			co.fallbackID = ""
-		}
-		if co.finalID == co.currentID {
-			co.final = c.Output{}
-			co.finalID = ""
-		}
+	co.verified = co.verified || m.CompletionVerified
+	co.complete = co.complete || m.Complete
+	if co.discarded || len(m.Delta) > co.maxBytes-co.text.Len() {
 		co.text.Reset()
-		co.complete = co.complete || m.Complete
-		return nil
-	}
-	if len(m.Delta) > co.maxBytes-co.text.Len() {
+		if co.phase == c.PhaseCommentary {
+			// 过程正文不能耗尽最终输出预算；只记录此消息已无法完整恢复。
+			co.discarded = true
+			return nil
+		}
 		co.exceeded = true
-		co.text.Reset()
 		co.final = c.Output{}
 		co.fallback = c.Output{}
-		co.finalID = ""
-		co.fallbackID = ""
 		return &c.Fault{Code: c.FaultLimit, Stage: "output", Message: "final answer budget exceeded"}
 	}
 	co.text.WriteString(m.Delta)
-	co.verified = co.verified || m.CompletionVerified
-	co.complete = co.complete || m.Complete
-	co.snapshot()
 	return nil
 }
 
 func (co *Collector) snapshot() {
-	if co.currentID == "" || co.phase == c.PhaseCommentary {
+	value := co.candidate()
+	if value.Reliability == "" {
 		return
 	}
+	co.fallback = c.Output{Text: value.Text, Reliability: c.ReliabilityUnverified}
+	if value.Reliability != c.ReliabilityUnverified {
+		co.final = value
+	}
+}
+
+func (co *Collector) candidate() c.Output {
+	if co.currentID == "" || co.phase == c.PhaseCommentary || co.discarded {
+		return c.Output{}
+	}
 	value := c.Output{Text: co.text.String(), Reliability: c.ReliabilityUnverified}
-	co.fallback = value
-	co.fallbackID = co.currentID
 	if co.phase == c.PhaseFinal {
 		value.Reliability = c.ReliabilityVerifiedPhase
-		co.final = value
-		co.finalID = co.currentID
 	} else if co.verified && co.complete {
 		value.Reliability = c.ReliabilityVerifiedCompletion
-		co.final = value
-		co.finalID = co.currentID
 	}
+	return value
 }
 
 // Finish 仅在原生终态允许时提供最终答案，执行状态由 Engine 独立保留。
@@ -124,9 +119,17 @@ func (co *Collector) Finish(stop c.StopReason) c.Output {
 	if stop != c.StopEndTurn && stop != c.StopMaxTokens {
 		return c.Output{Status: c.OutputUnavailable, Reliability: c.ReliabilityUnverified}
 	}
+	// 当前消息在完成边界仍可撤销，不能覆盖前序消息的候选。
+	current := co.candidate()
 	result := co.final
+	if current.Reliability != "" && current.Reliability != c.ReliabilityUnverified {
+		result = current
+	}
 	if result.Reliability == "" && co.policy == c.OutputBestEffort {
-		result = co.fallback
+		result = current
+		if result.Reliability == "" {
+			result = co.fallback
+		}
 	}
 	if result.Reliability == "" {
 		return c.Output{Status: c.OutputUnavailable, Reliability: c.ReliabilityUnverified}

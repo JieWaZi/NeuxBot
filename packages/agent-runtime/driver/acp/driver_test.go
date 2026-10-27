@@ -125,7 +125,7 @@ func TestPromptDeliveryAndMetadata(t *testing.T) {
 		}{{"progress", "commentary", "working"}, {"answer", "final_answer", "result"}, {"unknown", "", "unverified"}} {
 			var meta map[string]any
 			if sample.phase != "" {
-				meta = map[string]any{"codex": map[string]any{"phase": sample.phase}}
+				meta = map[string]any{"codex": map[string]any{"phase": sample.phase, "phaseVerified": true}}
 			}
 			if err := a.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: p.SessionId, Update: sdk.SessionUpdate{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: &sample.id, Meta: meta, Content: sdk.TextBlock(sample.text)}}}); err != nil {
 				return sdk.PromptResponse{}, err

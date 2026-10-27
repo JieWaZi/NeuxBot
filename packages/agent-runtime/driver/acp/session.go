@@ -208,12 +208,19 @@ func (s *session) SessionUpdate(ctx context.Context, n sdk.SessionNotification) 
 	}
 	if c := n.Update.AgentMessageChunk; c != nil {
 		phase := contract.PhaseUnknown
+		complete := false
 		if meta, ok := c.Meta["codex"].(map[string]any); ok {
+			phaseVerified, _ := meta["phaseVerified"].(bool)
+			complete, _ = meta["messageCompleted"].(bool)
 			switch meta["phase"] {
-			case "commentary":
+			case "commentary", "partial_answer":
+				// 明确的过程与局部回答均不能进入 best_effort 最终候选。
 				phase = contract.PhaseCommentary
 			case "final_answer":
-				phase = contract.PhaseFinal
+				// 旧适配器可能猜测 final；只有原生阶段证明才可升级最终性。
+				if phaseVerified {
+					phase = contract.PhaseFinal
+				}
 			}
 		}
 		id := ""
@@ -224,7 +231,7 @@ func (s *session) SessionUpdate(ctx context.Context, n sdk.SessionNotification) 
 		if c.Content.Text != nil {
 			text = c.Content.Text.Text
 		}
-		return s.deliver(contract.DriverEvent{Kind: contract.EventAssistantMessage, Message: &contract.AssistantMessage{MessageID: id, Phase: phase, Delta: text}})
+		return s.deliver(contract.DriverEvent{Kind: contract.EventAssistantMessage, Message: &contract.AssistantMessage{MessageID: id, Phase: phase, Delta: text, Complete: complete}})
 	}
 	if usage := n.Update.UsageUpdate; usage != nil {
 		if usage.Used < 0 {

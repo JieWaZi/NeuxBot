@@ -18,7 +18,7 @@ func TestRuntimeConsumesACPToolProgress(t *testing.T) {
 		updates := []sdk.SessionUpdate{
 			sdk.StartToolCall("tool-1", "Read file", sdk.WithStartStatus(sdk.ToolCallStatusInProgress)),
 			sdk.UpdateToolCall("tool-1", sdk.WithUpdateStatus(sdk.ToolCallStatusCompleted)),
-			{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: &id, Meta: map[string]any{"codex": map[string]any{"phase": "final_answer"}}, Content: sdk.TextBlock("done")}},
+			{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: &id, Meta: map[string]any{"codex": map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": true}}, Content: sdk.TextBlock("done")}},
 		}
 		for _, update := range updates {
 			if err := agent.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: p.SessionId, Update: update}); err != nil {
@@ -84,7 +84,7 @@ func TestRuntimeConsumesACPRequestCancellation(t *testing.T) {
 		cancelPermission()
 		<-permissionDone
 		id := "final"
-		err := agent.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: p.SessionId, Update: sdk.SessionUpdate{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: &id, Meta: map[string]any{"codex": map[string]any{"phase": "final_answer"}}, Content: sdk.TextBlock("continued")}}})
+		err := agent.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: p.SessionId, Update: sdk.SessionUpdate{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: &id, Meta: map[string]any{"codex": map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": true}}, Content: sdk.TextBlock("continued")}}})
 		return sdk.PromptResponse{StopReason: sdk.StopReasonEndTurn}, err
 	}
 	driver := newDriver(t, agent)
@@ -112,5 +112,97 @@ func TestRuntimeConsumesACPRequestCancellation(t *testing.T) {
 	result := runtime.Run(ctx, contract.ExecutionSpec{Profile: contract.Profile{DriverID: driver.ID()}, Input: contract.Input{Text: "continue after approval is withdrawn"}, Workspace: contract.WorkspaceScope{Root: root}, Policies: contract.Policies{NativeConfig: contract.NativeConfigInherit, Tools: contract.ToolPolicy{Mode: contract.ToolsAllowAll}, Interaction: contract.InteractionInteractive}}, contract.RunOptions{InteractionHandler: handler})
 	if result.Status != contract.StatusCompleted || result.Fault != nil || result.DeliveryFault != nil || result.Output.Text != "continued" {
 		t.Fatalf("single request cancellation damaged turn: %+v", result)
+	}
+}
+
+// TestRuntimeConsumesACPMessageEvidence 捕获伪 final、迟到阶段和消息完成被误用为最终证明的错误。
+func TestRuntimeConsumesACPMessageEvidence(t *testing.T) {
+	chunk := func(id, text string, meta map[string]any) sdk.SessionUpdateAgentMessageChunk {
+		return sdk.SessionUpdateAgentMessageChunk{MessageId: &id, Content: sdk.TextBlock(text), Meta: map[string]any{"codex": meta}}
+	}
+	cases := []struct {
+		name        string                               // name 标识需要保护的公开协议行为。
+		chunks      []sdk.SessionUpdateAgentMessageChunk // chunks 是按原生顺序到达的公开 ACP 消息。
+		policy      contract.OutputPolicy                // policy 是本次执行的最终证据要求。
+		status      contract.OutputStatus                // status 是独立推导的输出状态。
+		text        string                               // text 是独立推导的最终正文。
+		reliability contract.Reliability                 // reliability 是预期采用的最终证据。
+		phase       contract.MessagePhase                // phase 是最后一条规范消息的预期阶段。
+		complete    bool                                 // complete 是最后一条消息是否携带真实完成边界。
+	}{
+		{name: "legacy final has no proof", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "not proven", map[string]any{"phase": "final_answer"})}, policy: contract.OutputStrict, status: contract.OutputUnavailable, reliability: contract.ReliabilityUnverified, phase: contract.PhaseUnknown},
+		{name: "false final proof", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "not proven", map[string]any{"phase": "final_answer", "phaseVerified": false, "messageCompleted": true})}, policy: contract.OutputStrict, status: contract.OutputUnavailable, reliability: contract.ReliabilityUnverified, phase: contract.PhaseUnknown, complete: true},
+		{name: "wrong final proof type", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "not proven", map[string]any{"phase": "final_answer", "phaseVerified": "true"})}, policy: contract.OutputStrict, status: contract.OutputUnavailable, reliability: contract.ReliabilityUnverified, phase: contract.PhaseUnknown},
+		{name: "wrong phase type", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "not proven", map[string]any{"phase": 1, "phaseVerified": true})}, policy: contract.OutputStrict, status: contract.OutputUnavailable, reliability: contract.ReliabilityUnverified, phase: contract.PhaseUnknown},
+		{name: "completion without phase", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "not proven", map[string]any{"phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputStrict, status: contract.OutputUnavailable, reliability: contract.ReliabilityUnverified, phase: contract.PhaseUnknown, complete: true},
+		{name: "completion stays unverified in best effort", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "unverified", map[string]any{"messageCompleted": true})}, policy: contract.OutputBestEffort, status: contract.OutputAvailable, text: "unverified", reliability: contract.ReliabilityUnverified, phase: contract.PhaseUnknown, complete: true},
+		{name: "verified final", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "answer", map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputStrict, status: contract.OutputAvailable, text: "answer", reliability: contract.ReliabilityVerifiedPhase, phase: contract.PhaseFinal, complete: true},
+		{name: "late final keeps body and completion", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "answer", nil), chunk("a", "", map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputStrict, status: contract.OutputAvailable, text: "answer", reliability: contract.ReliabilityVerifiedPhase, phase: contract.PhaseFinal, complete: true},
+		{name: "partial never becomes best effort", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "partial body", map[string]any{"phase": "partial_answer", "phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputBestEffort, status: contract.OutputUnavailable, reliability: contract.ReliabilityUnverified, phase: contract.PhaseCommentary, complete: true},
+		{name: "late partial revokes best effort", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "partial body", nil), chunk("a", "", map[string]any{"phase": "partial_answer", "phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputBestEffort, status: contract.OutputUnavailable, reliability: contract.ReliabilityUnverified, phase: contract.PhaseCommentary, complete: true},
+		{name: "unverified partial remains nonfinal", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "partial body", map[string]any{"phase": "partial_answer"})}, policy: contract.OutputBestEffort, status: contract.OutputUnavailable, reliability: contract.ReliabilityUnverified, phase: contract.PhaseCommentary},
+		{name: "historical plan is nonfinal", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("plan", "working plan", map[string]any{"phase": "commentary", "phaseVerified": false})}, policy: contract.OutputBestEffort, status: contract.OutputUnavailable, reliability: contract.ReliabilityUnverified, phase: contract.PhaseCommentary},
+		{name: "late partial keeps unrelated final", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "answer", map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": true}), chunk("b", "partial body", nil), chunk("b", "", map[string]any{"phase": "partial_answer", "phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputBestEffort, status: contract.OutputAvailable, text: "answer", reliability: contract.ReliabilityVerifiedPhase, phase: contract.PhaseCommentary, complete: true},
+		{name: "verified empty final", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "", map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputStrict, status: contract.OutputEmpty, reliability: contract.ReliabilityVerifiedPhase, phase: contract.PhaseFinal, complete: true},
+		{name: "wrong completion type is not a boundary", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "answer", map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": "true"})}, policy: contract.OutputStrict, status: contract.OutputAvailable, text: "answer", reliability: contract.ReliabilityVerifiedPhase, phase: contract.PhaseFinal},
+		{name: "completed final overrides started commentary", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "answer", map[string]any{"phase": "commentary", "phaseVerified": true}), chunk("a", "", map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputStrict, status: contract.OutputAvailable, text: "answer", reliability: contract.ReliabilityVerifiedPhase, phase: contract.PhaseFinal, complete: true},
+		{name: "completed final overrides started partial", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "answer", map[string]any{"phase": "partial_answer", "phaseVerified": true}), chunk("a", "", map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputStrict, status: contract.OutputAvailable, text: "answer", reliability: contract.ReliabilityVerifiedPhase, phase: contract.PhaseFinal, complete: true},
+		{name: "completed commentary retracts started final", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "process", map[string]any{"phase": "final_answer", "phaseVerified": true}), chunk("a", "", map[string]any{"phase": "commentary", "phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputBestEffort, status: contract.OutputUnavailable, reliability: contract.ReliabilityUnverified, phase: contract.PhaseCommentary, complete: true},
+		{name: "completed partial preserves unrelated final", chunks: []sdk.SessionUpdateAgentMessageChunk{chunk("a", "answer", map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": true}), chunk("b", "process", map[string]any{"phase": "final_answer", "phaseVerified": true}), chunk("b", "", map[string]any{"phase": "partial_answer", "phaseVerified": true, "messageCompleted": true})}, policy: contract.OutputBestEffort, status: contract.OutputAvailable, text: "answer", reliability: contract.ReliabilityVerifiedPhase, phase: contract.PhaseCommentary, complete: true},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			agent := newFixtureAgent()
+			agent.prompt = func(ctx context.Context, p sdk.PromptRequest) (sdk.PromptResponse, error) {
+				for _, message := range tt.chunks {
+					if err := agent.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: p.SessionId, Update: sdk.SessionUpdate{AgentMessageChunk: &message}}); err != nil {
+						return sdk.PromptResponse{}, err
+					}
+				}
+				return sdk.PromptResponse{StopReason: sdk.StopReasonEndTurn}, nil
+			}
+			driver := newDriver(t, agent)
+			root := t.TempDir()
+			runtime, err := agentruntime.New(agentruntime.Config{Drivers: []contract.Driver{driver}, Grants: contract.Grants{Directories: []string{root}, AllowAllTools: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			defer func() {
+				if err := runtime.Close(ctx); err != nil {
+					t.Error(err)
+				}
+			}()
+			if err := runtime.Start(ctx); err != nil {
+				t.Fatal(err)
+			}
+			var messages []contract.AssistantMessage
+			observer := contract.ObserverFunc(func(_ context.Context, event contract.Event) error {
+				if event.DriverEvent.Message != nil {
+					messages = append(messages, *event.DriverEvent.Message)
+				}
+				return nil
+			})
+			result := runtime.Run(ctx, contract.ExecutionSpec{Profile: contract.Profile{DriverID: driver.ID()}, Input: contract.Input{Text: "answer"}, Workspace: contract.WorkspaceScope{Root: root}, Policies: contract.Policies{NativeConfig: contract.NativeConfigInherit, Tools: contract.ToolPolicy{Mode: contract.ToolsAllowAll}, Output: tt.policy}}, contract.RunOptions{Observer: observer})
+			if result.Status != contract.StatusCompleted || result.StopReason != contract.StopEndTurn || result.Fault != nil || result.DeliveryFault != nil || result.CleanupFault != nil {
+				t.Fatalf("message evidence damaged execution: %+v", result)
+			}
+			if result.Output.Status != tt.status || result.Output.Text != tt.text || result.Output.Reliability != tt.reliability {
+				t.Errorf("output=%+v, want status=%s text=%q reliability=%s", result.Output, tt.status, tt.text, tt.reliability)
+			}
+			if len(messages) != len(tt.chunks) {
+				t.Fatalf("message boundaries lost: %+v", messages)
+			}
+			for i, message := range messages {
+				if message.MessageID != *tt.chunks[i].MessageId || message.CompletionVerified {
+					t.Errorf("identity or final proof changed: %+v", message)
+				}
+			}
+			last := messages[len(messages)-1]
+			if last.Phase != tt.phase || last.Complete != tt.complete {
+				t.Errorf("last message=%+v, want phase=%s complete=%v", last, tt.phase, tt.complete)
+			}
+		})
 	}
 }
