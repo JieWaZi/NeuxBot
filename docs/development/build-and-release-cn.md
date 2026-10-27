@@ -14,6 +14,8 @@
 
 Core 使用 CGO_ENABLED=0、-trimpath 和 -s -w。Renderer 由 Vite 编译，主进程与 preload 由 esbuild 编译，node-pty 保留原生运行依赖。系统技能、Pi Bridge（源在 `packages/pi-bridge`，生成到 `resources/pi-bridge`）、终端 worker（源在 `packages/terminal-runtime`，构建到 `resources/terminal-runtime`）、工作流 SDK 与呈现目录必须和生成源一致。
 
+CI 在 Windows 上编译真实 sidecar，并使用与安装包共用的 `scripts/smoke-core.mjs` 验证启动、认证健康检查和退出。启动失败会输出有界、令牌脱敏的 Core 诊断；数据与受管文件均使用临时目录。该检查纳入 CI 汇总，在创建发布标签前发现平台启动问题；安装包阶段仍单独校验打包资源和运行时。
+
 API 生成器从锁定 ginx 模块的临时源码副本构建，应用 `scripts/patches/ginx-openapi-recursive-errors.patch` 并先验证递归错误图回归。补丁以反向依赖传播补全调用环的错误闭包，避免生成结果受接口扫描顺序影响；不改写模块缓存或运行时依赖。上游版本变化导致补丁无法应用或回归失败时，生成立即停止，已有契约保持不变；生成结果仍由 `pnpm api:check` 完整比较。
 
 插件包、授权桥接与程序依赖由独立 [neux-plugins](https://github.com/JieWaZi/neux-plugins) 仓库构建和发布。Core 通过 HTTP 目录读取元数据，安装时按目录摘要下载包；应用开发和打包不下载、编译或内置供应商 CLI，也不生成插件安装 ZIP 或来源副本。目录、安装、配置与授权边界见 [插件资源](../architecture/plugin-resources-cn.md)。
