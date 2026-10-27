@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/global"
+	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/gin-gonic/gin"
@@ -122,15 +123,15 @@ func TestMaintenanceReportExcludesOtherAttemptsAndStages(t *testing.T) {
 		{JobID: "other", JobAttempt: 2, Kind: "wiki_maintenance", State: "finished", Outcome: "succeeded", ResultText: "其他任务报告"},
 		{JobID: "maintenance", JobAttempt: 2, Kind: "wiki_maintenance", State: "finished", Outcome: "failed", ResultText: "失败尝试残留"},
 	}
-	if got := maintenanceReportForAttempt(job, stages); got != "" {
+	if got := bridge.MaintenanceReportForAttempt(job, stages); got != "" {
 		t.Fatalf("泄露非当前成功报告: %q", got)
 	}
 	stages = append(stages, &core.Stage{JobID: "maintenance", JobAttempt: 2, Kind: "wiki_maintenance", State: "finished", Outcome: "succeeded", ResultText: "本次实际报告"})
-	if got := maintenanceReportForAttempt(job, stages); got != "本次实际报告" {
+	if got := bridge.MaintenanceReportForAttempt(job, stages); got != "本次实际报告" {
 		t.Fatalf("当前报告=%q", got)
 	}
 	job.State = "processing"
-	if got := maintenanceReportForAttempt(job, stages); got != "" {
+	if got := bridge.MaintenanceReportForAttempt(job, stages); got != "" {
 		t.Fatalf("未完成维护提前公开报告: %q", got)
 	}
 }

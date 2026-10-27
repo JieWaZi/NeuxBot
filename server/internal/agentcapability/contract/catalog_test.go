@@ -84,6 +84,27 @@ func TestWikiAutoFixRequiresCurrentLibraryStructure(t *testing.T) {
 	}
 }
 
+func TestWikiMaintainAcceptsTaskRequirementsWithoutSourceOrModelOverrides(t *testing.T) {
+	op, ok := Find("knowledge.wiki.maintain")
+	if !ok {
+		t.Fatal("missing Wiki maintenance task command")
+	}
+	if op.Completion != constants.AgentCLICompletionAccepted {
+		t.Fatal("maintenance must report task admission")
+	}
+	if err := op.Validate(map[string]any{"libraryId": "kb", "message": "Merge duplicates, preserve source citations"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, extra := range []string{"attachmentIndexes", "sourceVersionIds", "runtimeId", "accountId", "model", "reasoning"} {
+		if op.Validate(map[string]any{"libraryId": "kb", extra: "override"}) == nil {
+			t.Fatalf("accepted forbidden override: %s", extra)
+		}
+	}
+	if op.Validate(map[string]any{}) == nil {
+		t.Fatal("accepted missing library")
+	}
+}
+
 func TestMemoryScopeContractsDistinguishSearchAndOwnership(t *testing.T) {
 	search, _ := Find("memory.entries.search")
 	create, _ := Find("memory.entries.create")

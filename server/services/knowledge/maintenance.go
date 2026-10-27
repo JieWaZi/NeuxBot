@@ -85,7 +85,7 @@ func (s *Service) BindIntent(ctx context.Context, intent execution.WorkIntent, a
 		}
 
 		// 先核对原冻结授权，再展开 pending，不能把模型指定目标当自动任务授权。
-		session, err := s.automaticSession(ctx, intent, originalAuthorization, lib, models.KnowledgeTaskConfiguration{KnowledgeBaseID: lib.ID, RuntimeID: intent.Options.RuntimeID, AccountID: intent.Options.AccountID, Model: intent.Options.Model})
+		session, err := s.automaticSession(ctx, intent, originalAuthorization, lib, models.KnowledgeTaskConfiguration{KnowledgeBaseID: lib.ID, RuntimeID: intent.Options.RuntimeID, AccountID: intent.Options.AccountID, Model: intent.Options.Model, Reasoning: intent.Options.Reasoning})
 		if err != nil {
 			return intent, err
 		}
@@ -165,12 +165,19 @@ type chatOrganizeInput struct {
 	AttachmentIndexes []int `json:"attachmentIndexes"`
 	// SourceVersionIDs 是用户明确限定的已有来源版本。
 	SourceVersionIDs []string `json:"sourceVersionIds"`
-	// Message 是用户本次整理要求，不回写知识库长期配置。
+	// Message 是伙伴补充的发现与整理要求；服务端另行保留用户原始要求。
 	Message string `json:"message"`
 }
 
-// chatOrganizeBinding 为普通对话提供整理入口，复用精确维护及后台任务接纳。
-func (s *Service) chatOrganizeBinding(ctx context.Context, chat models.Chat, refs []bridge.ResourceRef) agentcapability.Binding {
+// chatJobBinding 为普通对话提供知识任务入口，复用手动整理、维护及持久回执。
+func (s *Service) chatJobBinding(ctx context.Context, chat models.Chat, refs []bridge.ResourceRef, operation string) agentcapability.Binding {
+	maintenance := operation == "knowledge.wiki.maintain"
+	anchorOperation := constants.KnowledgeChatOrganizeOperation
+	namespace := "knowledge-chat-job"
+	if maintenance {
+		anchorOperation = constants.KnowledgeChatMaintenanceOperation
+		namespace = constants.KnowledgeChatMaintenanceOperation
+	}
 	libraries := map[string]bool{}
 	for _, ref := range refs {
 		if ref.Backend != "local" || ref.ConnectionID != "local" {
@@ -199,7 +206,7 @@ func (s *Service) chatOrganizeBinding(ctx context.Context, chat models.Chat, ref
 		return nil
 	}
 	identity := func(id string) string {
-		return (requestidempotency.Identity{ID: id}).ResourceID("knowledge-chat-job", chat.ID, chat.ActiveExecutionID)
+		return (requestidempotency.Identity{ID: id}).ResourceID(namespace, chat.ID, chat.ActiveExecutionID)
 	}
 	receipt := func(ctx context.Context, id string) (agentcapability.Result, error) {
 		r, err := s.config.Engine.GetReceipt(ctx, identity(id))
@@ -228,13 +235,16 @@ func (s *Service) chatOrganizeBinding(ctx context.Context, chat models.Chat, ref
 		}
 		return agentcapability.Result{CommandID: id, Replayed: true, Data: map[string]any{"receipt": r, "noop": r.State == "no-op"}}, nil
 	}
-	return agentcapability.Binding{Operation: "knowledge.jobs.start", Receipt: receipt, Call: func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+	return agentcapability.Binding{Operation: operation, Receipt: receipt, Call: func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
 		raw, err := json.Marshal(r.Params)
 		if err != nil {
 			return agentcapability.Result{}, status_error.KnowledgeInvalid
 		}
 		var in chatOrganizeInput
 		if json.Unmarshal(raw, &in) != nil || in.LibraryID == "" || r.RequestID == "" {
+			return agentcapability.Result{}, status_error.KnowledgeInvalid
+		}
+		if maintenance && (len(in.AttachmentIndexes) != 0 || len(in.SourceVersionIDs) != 0) {
 			return agentcapability.Result{}, status_error.KnowledgeInvalid
 		}
 		if in.Backend == "" {
@@ -252,7 +262,7 @@ func (s *Service) chatOrganizeBinding(ctx context.Context, chat models.Chat, ref
 		// 输入锚点固定原请求选择；核心回执使用执行范围身份，避免跨聊天碰撞。
 		digest := sha256.Sum256(raw)
 		key := identity(r.RequestID)
-		if err := s.config.References.BeginOperation(ctx, models.KnowledgeOperationLink{RequestID: key + "/input", Operation: "chat.organize", Digest: hex.EncodeToString(digest[:]), Backend: "local", ConnectionID: "local", KnowledgeBaseID: in.LibraryID, ChatID: chat.ID, ExecutionID: chat.ActiveExecutionID}); err != nil {
+		if err := s.config.References.BeginOperation(ctx, models.KnowledgeOperationLink{RequestID: key + "/input", Operation: anchorOperation, Digest: hex.EncodeToString(digest[:]), Backend: "local", ConnectionID: "local", KnowledgeBaseID: in.LibraryID, ChatID: chat.ID, ExecutionID: chat.ActiveExecutionID}); err != nil {
 			return agentcapability.Result{}, err
 		}
 		if old, err := receipt(ctx, r.RequestID); err == nil {
@@ -272,12 +282,29 @@ func (s *Service) chatOrganizeBinding(ctx context.Context, chat models.Chat, ref
 			if message.ID != active.UserMessageID {
 				continue
 			}
-			if in.Message == "" {
-				in.Message = message.Content
+			// 原始要求由权威消息读取，不能被模型提交的摘要或补充发现替换。
+			requirements := message.Content
+			if in.Message != "" && in.Message != message.Content {
+				requirements += "\n\nCompanion findings and additional requirements (within the user's requested scope):\n" + in.Message
+			}
+			configuration := models.KnowledgeTaskConfiguration{RuntimeID: active.RuntimeID, AccountID: active.AccountID, Model: active.Model, Reasoning: active.Reasoning}
+			// Chat 的空账号已解析为系统登录；知识入口的空账号却会重选默认值。
+			if configuration.AccountID == "" {
+				configuration.AccountID = constants.AiAccountSystemID
+			}
+			if maintenance {
+				accepted, _, err := s.Organize(ctx, OrganizeCommand{RequestID: key, LibraryID: in.LibraryID, Maintenance: true, Configuration: configuration, Message: requirements})
+				if err != nil {
+					return agentcapability.Result{}, err
+				}
+				if err := s.config.References.CompleteOperation(ctx, key+"/input", accepted.LibraryID, accepted.ResourceID, accepted.JobID); err != nil {
+					return agentcapability.Result{}, err
+				}
+				return agentcapability.Result{CommandID: r.RequestID, Data: map[string]any{"receipt": accepted, "noop": false}}, nil
 			}
 			attachments := make([]execution.AttachmentInput, len(message.Attachments))
-			// 普通聊天只提供消息与授权身份，模型选择由知识库独立默认配置解析。
-			intent := execution.WorkIntent{ExecutionID: chat.ActiveExecutionID, Chat: execution.ChatTarget{ChatID: chat.ID}, Input: execution.WorkInput{Content: in.Message, Attachments: attachments}}
+			// 聊天只提交业务选择，本轮执行配置由服务端冻结，不接受模型覆盖。
+			intent := execution.WorkIntent{ExecutionID: chat.ActiveExecutionID, Chat: execution.ChatTarget{ChatID: chat.ID}, Input: execution.WorkInput{Content: requirements, Attachments: attachments}, Options: execution.WorkOptions{RuntimeID: configuration.RuntimeID, AccountID: configuration.AccountID, Model: configuration.Model, Reasoning: configuration.Reasoning}}
 			bound, err := s.BindIntent(ctx, intent, models.KnowledgeMaintenanceAuthorization{Backend: in.Backend, ConnectionID: in.ConnectionID, KnowledgeBaseID: in.LibraryID, Operation: "organize", AttachmentIndexes: in.AttachmentIndexes, SourceVersionIDs: in.SourceVersionIDs})
 			if err != nil {
 				return agentcapability.Result{}, err

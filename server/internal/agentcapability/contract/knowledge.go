@@ -25,6 +25,7 @@ func knowledgeMaintenanceOperations() []Operation {
 	}
 	page := []Field{text("pageId", true), number("expectedVersion", 1, true), number("structureVersion", 1, true)}
 	return []Operation{
+		operation("knowledge.wiki.maintain", "Start an independent existing-Wiki maintenance task using the same scoped tools and injected workflow as manual maintenance. Message adds findings and requirements; the host preserves the original user request and inherits this execution's model configuration. Do not use document ingestion for Wiki maintenance.", constants.AgentCLIEffectMutation, constants.AgentCLICompletionAccepted, "knowledge", text("libraryId", true), text("backend", false), text("connectionId", false), text("message", false)),
 		read("knowledge.libraries.get", "Read current library configuration and version guards."),
 		read("knowledge.sources.list", "List persistent document sources in the frozen library.", append(paging, text("query", false), text("state", false), text("sort", false))...),
 		read("knowledge.sources.read", "Read saved source chunks with evidence locators; offset/limit paginate chunks and truncated marks the bounded text response. Does not run parsing or a model.", append(paging, text("sourceVersionId", true), text("query", false), text("chunkId", false))...),

@@ -93,7 +93,7 @@ func SystemDirectory(dataDirectory, binaryPath string) (string, error) {
 
 // Guide 返回与实际系统技能完全相同的单个按需指南。
 func Guide(id string) (string, error) {
-	files := map[string]string{"knowledge.maintenance": "wiki-maintenance.md", "knowledge": "knowledge.md", "im.delivery": "im-delivery.md", "workflow.authoring": "workflow-authoring.md", "workflow.execution": "workflow-execution.md", "workflow.results": "workflow-results.md", "workflow.output-delivery": "output-delivery.md", "workflow.api-retrieval": "api-retrieval.md", "team.lead": "team-lead.md", "team.member": "team-member.md", "memory": "memory.md", "interaction.questions": "user-questions.md"}
+	files := map[string]string{"knowledge.maintenance": "wiki-maintenance.md", "knowledge": "wiki-guide.md", "im.delivery": "im-delivery.md", "workflow.authoring": "workflow-authoring.md", "workflow.execution": "workflow-execution.md", "workflow.results": "workflow-results.md", "workflow.output-delivery": "output-delivery.md", "workflow.api-retrieval": "api-retrieval.md", "team.lead": "team-lead.md", "team.member": "team-member.md", "memory": "memory.md", "interaction.questions": "user-questions.md"}
 	name, ok := files[id]
 	if !ok {
 		return "", status_error.AgentOperationForbidden

@@ -32,7 +32,7 @@ ACP SDK 与原生 stdio Adapter 的修复统一在 acp-go 仓库维护，宿主�
 
 独立文本生成只返回最终正文、停止原因、用量与实际能力诊断。CLI 的正文片段直接由本次调用的收集器汇总，思考、过程与中间用量不进入聊天事件队列、消息投影或持久化；忽略过程内容仍更新活动时间。意外工具与交互继续拒绝，取消、超时及进程收尾复用 Runtime 生命周期。
 
-软件能力通过系统 `ally` Skill 交付。Core 将同包技能资源和当前平台的受管 CLI 一起准备到不可变目录，入口为 `scripts/allycli`（Windows 为 `scripts/allycli.exe`），知识指南为同目录下的 `references/knowledge.md`。CLI 字节与执行位参与内容摘要，程序更新后生成对应的新目录。执行指令提供 `SKILL.md`、CLI 和知识指南的明确绝对路径；`ALLYCLI_BINARY_PATH` 与进程 `PATH` 指向 Skill 内入口。智能体从 Skill 所在目录解析资源，无需搜索工作区或全局安装目录。
+软件能力通过系统 `ally` Skill 交付。Core 将同包技能资源和当前平台的受管 CLI 一起准备到不可变目录，入口为 `scripts/allycli`（Windows 为 `scripts/allycli.exe`），知识指南为同目录下的 `references/wiki-guide.md`。CLI 字节与执行位参与内容摘要，程序更新后生成对应的新目录。执行指令提供 `SKILL.md`、CLI 和知识指南的明确绝对路径；`ALLYCLI_BINARY_PATH` 与进程 `PATH` 指向 Skill 内入口。智能体从 Skill 所在目录解析资源，无需搜索工作区或全局安装目录。
 
 Qoder 与 Qoder CN 的项目技能目录均为 `.qoder/skills`；两者分别使用 `QODER_CONFIG_DIR`、`QODERCN_CONFIG_DIR` 用户配置根。安装探测同时检查 PATH 和官方用户级原生程序位置；不主动扫描仅用于桌面命令分发的 `entry` 目录。
 

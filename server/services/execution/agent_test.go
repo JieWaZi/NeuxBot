@@ -68,7 +68,7 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	if request.Target.Environment[constants.AgentCLIBinaryEnvironment] != skillCLI {
 		t.Fatalf("CLI must be directly available inside the advertised skill: got %q, want %q", request.Target.Environment[constants.AgentCLIBinaryEnvironment], skillCLI)
 	}
-	if _, err := os.ReadFile(filepath.Join(request.Skills[0].Path, "references", "knowledge.md")); err != nil {
+	if _, err := os.ReadFile(filepath.Join(request.Skills[0].Path, "references", "wiki-guide.md")); err != nil {
 		t.Fatalf("knowledge reference missing beside SKILL.md: %v", err)
 	}
 	for _, directory := range []string{"system-skills", "agent-contexts"} {
@@ -196,7 +196,7 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 	if err := json.Unmarshal(output, &response); err != nil || !response.OK {
 		t.Fatalf("skill-local capabilities failed: %s (%v)", output, err)
 	}
-	if _, err := os.ReadFile(filepath.Join(request.Skills[0].Path, "references", "knowledge.md")); err != nil {
+	if _, err := os.ReadFile(filepath.Join(request.Skills[0].Path, "references", "wiki-guide.md")); err != nil {
 		t.Fatalf("skill-local knowledge reference unavailable: %v", err)
 	}
 }

@@ -330,6 +330,13 @@ func (p LocalReadProvider) ExtendedRead(ctx context.Context, ref ResourceRef, op
 			return nil, status_error.KnowledgeNotFound
 		}
 		data = map[string]any{"job": v}
+		if err == nil && core.IsMaintenanceJob(v) && v.State == "completed" {
+			var stages []*core.Stage
+			stages, err = p.Engine.ListStages(ctx, v.ID)
+			if err == nil {
+				data["report"] = MaintenanceReportForAttempt(v, stages)
+			}
+		}
 	case "knowledge.audit.get":
 		var v *core.LintReport
 		v, err = p.Engine.LintLibrary(ctx, ref.KnowledgeBaseID)
@@ -348,6 +355,19 @@ func (p LocalReadProvider) ExtendedRead(ctx context.Context, ref ResourceRef, op
 		return nil, status_error.KnowledgeUnsupported
 	}
 	return data, MapError(err)
+}
+
+// MaintenanceReportForAttempt 为 HTTP 和 CLI 共用当前成功维护报告的读取边界。
+func MaintenanceReportForAttempt(job *core.Job, stages []*core.Stage) string {
+	if job == nil || !core.IsMaintenanceJob(job) || job.State != "completed" {
+		return ""
+	}
+	for _, stage := range stages {
+		if stage != nil && stage.JobID == job.ID && stage.JobAttempt == job.Attempt && stage.Kind == "wiki_maintenance" && stage.State == "finished" && stage.Outcome == "succeeded" {
+			return stage.ResultText
+		}
+	}
+	return ""
 }
 
 // ExtendedRead 只调用自有远端已存在的读取合同；官方未适配操作准确拒绝。

@@ -29,7 +29,7 @@ func TestSystemSkillVersionsCLIAndRejectsTampering(t *testing.T) {
 	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0) {
 		t.Fatalf("CLI is not a standalone executable: %v %v", info, err)
 	}
-	guide, err := os.ReadFile(filepath.Join(first, "references", "knowledge.md"))
+	guide, err := os.ReadFile(filepath.Join(first, "references", "wiki-guide.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

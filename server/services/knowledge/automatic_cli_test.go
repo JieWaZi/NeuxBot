@@ -132,8 +132,9 @@ func TestAutomaticMaintenanceCLIUsesAuthorizedTools(t *testing.T) {
 		}
 	}
 	guide := success("", "guide", "knowledge.maintenance")
-	guideJSON, _ := json.Marshal(guide.Data)
-	if !bytes.Contains(guideJSON, []byte("knowledge wiki auto-fix")) {
+	guideData, ok := guide.Data.(map[string]any)
+	sharedGuide, err := builtinskills.Guide("knowledge.maintenance")
+	if err != nil || sharedGuide == "" || !ok || guideData["content"] != sharedGuide {
 		t.Fatal("maintenance capability does not expose its executable guide")
 	}
 	success("", "knowledge", "pages", "list", "--library-id", library.ID, "--limit", "10")

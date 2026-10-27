@@ -333,9 +333,9 @@ func TestLinkOrCopyRuntimeSkillFallsBackForExistingTarget(t *testing.T) {
 func TestRuntimeSkillPreservesExecutableAndKnowledgeReference(t *testing.T) {
 	source := t.TempDir()
 	resources := map[string]string{
-		"SKILL.md":                "# Skill\nRead references/knowledge.md and run scripts/allycli.",
-		"references/knowledge.md": "Knowledge reference fixture",
-		"scripts/allycli":         "CLI fixture",
+		"SKILL.md":                 "# Skill\nRead references/wiki-guide.md and run scripts/allycli.",
+		"references/wiki-guide.md": "Knowledge reference fixture",
+		"scripts/allycli":          "CLI fixture",
 	}
 	for name, content := range resources {
 		path := filepath.Join(source, filepath.FromSlash(name))

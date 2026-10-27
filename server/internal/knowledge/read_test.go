@@ -188,6 +188,51 @@ func TestExtendedReadsUsePersistentContentAndRejectCrossLibraryJobs(t *testing.T
 	}
 }
 
+func TestJobReadReturnsDurableMaintenanceReportOnlyAfterCompletion(t *testing.T) {
+	e, _, _, _, original := readFixture(t)
+	ctx := context.Background()
+	created, err := e.CreateLibrary(ctx, core.CreateLibraryInput{RequestID: "maintained-library", Name: "Maintenance", Kind: "general", WikiLanguage: "zh-CN"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	lib, err := e.GetLibrary(ctx, created.ResourceID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted, err := e.AcceptJob(ctx, core.AcceptJobInput{Maintenance: true, RequestID: "maintenance", LibraryID: lib.ID, ExpectedVersion: lib.Version, StructureVersion: lib.StructureVersion, Permission: core.PermissionSnapshot{PolicyVersion: lib.PolicyVersion, Operations: []string{"maintain"}}, RulesVersion: "fixer", ConfigDigest: "config"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref := LocalRef(lib.ID)
+	bindings := ReadBindings(e, FreezeScope("", []ResourceRef{ref}), func(context.Context, string) ([]ResourceRef, error) { return []ResourceRef{ref}, nil })
+	params := map[string]any{"libraryId": lib.ID, "jobId": accepted.JobID}
+	read, err := callRead(t, bindings, "knowledge.jobs.get", params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if read.Data.(map[string]any)["report"] != nil {
+		t.Fatal("queued job returned a report")
+	}
+	active, ready, err := e.ActivateQueuedJob(ctx, accepted.JobID)
+	if err != nil || !ready {
+		t.Fatalf("activate: %v %v", ready, err)
+	}
+	if _, err := e.CompleteMaintenanceJob(ctx, core.JobActionInput{RequestID: "complete", JobID: active.ID, ExpectedVersion: active.Version}, "归并两页，保留不同版本和原件引用。"); err != nil {
+		t.Fatal(err)
+	}
+	read, err = callRead(t, bindings, "knowledge.jobs.get", params)
+	if err != nil || read.Data.(map[string]any)["report"] != "归并两页，保留不同版本和原件引用。" {
+		t.Fatalf("missing durable report: %+v %v", read, err)
+	}
+	if _, exists := read.Data.(map[string]any)["stages"]; exists {
+		t.Fatal("job read leaked raw stages")
+	}
+	params["jobId"] = original.ID
+	if _, err := callRead(t, bindings, "knowledge.jobs.get", params); !errors.Is(err, status_error.KnowledgeNotFound) {
+		t.Fatalf("cross-library report leaked: %v", err)
+	}
+}
+
 func TestCustomExtendedReadsUseRealHTTPAuthority(t *testing.T) {
 	e, lib, page, source, job := readFixture(t)
 	policy, err := httpapi.NewPolicyStore(httpapi.SecurityConfig{Tokens: map[string]httpapi.Principal{"token": {Subject: "reader", Libraries: map[string]httpapi.LibraryGrant{lib.ID: {PolicyVersion: lib.PolicyVersion, Operations: []string{"read", "write"}}}}}})

@@ -75,6 +75,7 @@ Windows 使用当前 Shell 的环境变量语法及应用提供的 `allycli.exe`
 | `knowledge.revisions.get` | 读取具体历史正文与证据。 | `read` | `immediate` |
 | `knowledge.jobs.list` | 分页读取整理任务，区分接纳和真实终态。 | `read` | `immediate` |
 | `knowledge.jobs.get` | 查询指定整理任务的实际状态、结果和失败事实。 | `read` | `immediate` |
+| `knowledge.wiki.maintain` | 提交已有 Wiki 后台维护，复用手动维护流程和提示词；冻结本轮模型配置并保留用户原话及伙伴补充要求。 | `mutation` | `accepted` |
 | `knowledge.audit.get` | 复用既有孤儿页、断链、短正文和失效来源只读检查。 | `read` | `immediate` |
 | `knowledge.wiki.auto-fix`     | 在明确授权的全库维护中执行上游确定性修复，并返回修复回执及剩余问题。                   | `mutation` | `immediate` |
 | `knowledge.activity.list` | 按实际游标和条件读取知识库活动。 | `read` | `immediate` |
@@ -197,7 +198,7 @@ Windows 使用当前 Shell 的环境变量语法及应用提供的 `allycli.exe`
 
 | 场景 | 指南 |
 | --- | --- |
-| 知识检索、整理与Wiki维护 | [knowledge](../../../skills/ally/references/knowledge.md)、[knowledge.maintenance](../../../skills/ally/references/wiki-maintenance.md) |
+| 知识检索、整理与Wiki维护 | [knowledge](../../../skills/ally/references/wiki-guide.md)、[knowledge.maintenance](../../../skills/ally/references/wiki-maintenance.md) |
 | 消息和文件交付 | [im.delivery](../../../skills/ally/references/im-delivery.md) |
 | 工作流创作与运行 | [workflow.authoring](../../../skills/ally/references/workflow-authoring.md)、[workflow.execution](../../../skills/ally/references/workflow-execution.md) |
 | 工作流结果、交付与 API 查询 | [workflow.results](../../../skills/ally/references/workflow-results.md)、[workflow.output-delivery](../../../skills/ally/references/output-delivery.md)、[workflow.api-retrieval](../../../skills/ally/references/api-retrieval.md) |

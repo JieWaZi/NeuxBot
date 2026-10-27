@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -85,7 +86,7 @@ type selectedChat struct {
 	chat models.Chat
 	// message 保存当前执行的用户消息。
 	message messageview.Message
-	// execution 保存本轮实际身份，知识任务应使用独立库模型配置。
+	// execution 保存本轮实际身份和知识任务继承的模型配置。
 	execution models.Execution
 }
 
@@ -122,7 +123,7 @@ func TestOrdinaryChatStartsOnlyRequestedAttachmentWithoutComposerAuthorization(t
 			{Name: "first.md", Path: "first.md", Managed: true},
 			{Name: "second.md", Path: "second.md", MediaType: "text/markdown", Managed: true},
 		}},
-		execution: models.Execution{ID: "execution", UserMessageID: "user-message", RuntimeID: constants.RuntimeIDCodex, Model: "chosen-model", PermissionLevel: constants.PermissionLevelFullAccess},
+		execution: models.Execution{ID: "execution", UserMessageID: "user-message", RuntimeID: constants.RuntimeIDCodex, AccountID: "chat-account", Model: "chosen-model", Reasoning: "high", PermissionLevel: constants.PermissionLevelFullAccess},
 	}
 	s.config.Chats = current
 	var start agentcapability.Binding
@@ -153,8 +154,8 @@ func TestOrdinaryChatStartsOnlyRequestedAttachmentWithoutComposerAuthorization(t
 		t.Fatal(err)
 	}
 	session, err := s.config.References.GetTaskConfiguration(ctx, link.ConfigurationID)
-	if err != nil || session.RuntimeID != constants.RuntimeIDClaude || session.AccountID != "knowledge-account" || session.Model != "knowledge-model" || session.Message != "按主题提炼" {
-		t.Fatalf("knowledge configuration inherited chat settings: %+v err=%v", session, err)
+	if err != nil || session.RuntimeID != constants.RuntimeIDCodex || session.AccountID != "chat-account" || session.Model != "chosen-model" || session.Reasoning != "high" || !strings.Contains(session.Message, "只整理第二份附件") || !strings.Contains(session.Message, "按主题提炼") {
+		t.Fatalf("knowledge task lost chat selection or original requirements: %+v err=%v", session, err)
 	}
 	for _, recover := range []func() (agentcapability.Result, error){
 		func() (agentcapability.Result, error) { return start.Call(ctx, request) },
@@ -172,6 +173,37 @@ func TestOrdinaryChatStartsOnlyRequestedAttachmentWithoutComposerAuthorization(t
 	_, total, err := s.config.Engine.ListSources(ctx, lib.ID, 0, 50)
 	if err != nil || total != 2 {
 		t.Fatalf("unexpected imports: total=%d err=%v", total, err)
+	}
+}
+
+func TestChatKnowledgeTasksPreserveSystemAccountInsteadOfResolvingAnotherDefault(t *testing.T) {
+	for _, operation := range []string{"knowledge.jobs.start", "knowledge.wiki.maintain"} {
+		t.Run(operation, func(t *testing.T) {
+			s, lib := newServiceFixture(t)
+			ctx := context.Background()
+			current := selectedChat{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}, message: messageview.Message{ID: "message", Content: "按要求处理知识库"}, execution: models.Execution{ID: "execution", UserMessageID: "message", RuntimeID: "codex", Model: "chat-model"}}
+			s.config.Chats = current
+			for _, b := range s.AgentBindings(ctx, current.chat) {
+				if b.Operation != operation {
+					continue
+				}
+				result, err := b.Call(ctx, agentcapability.Request{RequestID: "system-account", Params: map[string]any{"libraryId": lib.ID}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				receipt := result.Data.(map[string]any)["receipt"].(*core.Receipt)
+				link, err := s.config.References.GetOperation(ctx, receipt.RequestID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				configuration, err := s.config.References.GetTaskConfiguration(ctx, link.ConfigurationID)
+				if err != nil || configuration.AccountID != constants.AiAccountSystemID {
+					t.Fatalf("system account became unspecified: %+v %v", configuration, err)
+				}
+				return
+			}
+			t.Fatal("missing task operation")
+		})
 	}
 }
 

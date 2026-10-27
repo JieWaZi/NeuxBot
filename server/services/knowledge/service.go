@@ -659,7 +659,7 @@ func (s *Service) AgentBindings(ctx context.Context, chat models.Chat) []agentca
 		}
 	}
 	if chat.ID != "" && chat.WakerID != "" && chat.ActiveExecutionID != "" {
-		bindings = append(bindings, s.chatOrganizeBinding(ctx, chat, refs))
+		bindings = append(bindings, s.chatJobBinding(ctx, chat, refs, "knowledge.jobs.start"), s.chatJobBinding(ctx, chat, refs, "knowledge.wiki.maintain"))
 		bindings = append(bindings, s.wikiBindings(ctx, chat, refs, provider, "")...)
 	}
 	return bindings

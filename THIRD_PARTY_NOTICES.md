@@ -366,6 +366,10 @@ THIS SOFTWARE.
 
 `packages/frontend/src/modules/knowledge/knowledge-graph-layout.ts` 中的初始布局、连通社区、主题名称、标签避让与轮廓几何及对应测试迁自 [Tencent/WeKnora 固定提交](https://github.com/Tencent/WeKnora/tree/8776a2d92d11ad3e76865d51cf3192e37e2a9976) 的 `frontend/src/views/knowledge/wiki/wikiGraphLayout.ts`。宿主适配节点尺寸和显式引用校验；运行中的力导向与绘制由第三方引擎负责。WeKnora 的 MIT 许可与版权见本节下方声明。
 
+### WeKnora 知识检索与 Wiki 维护指南
+
+`skills/ally/references/wiki-guide.md` 的检索流程参考 WeKnora 的 `progressive_rag_agent` 与 `wiki_researcher`。`skills/ally/references/wiki-maintenance.md` 的维护流程迁自 [Tencent/WeKnora 固定提交](https://github.com/Tencent/WeKnora/tree/2c0d8384398ca756ee414eef01b71caf91e2caa6) 的 `config/prompt_templates/agent_system_prompt.yaml` 中的 `wiki_fixer`。命令、版本和来源证据约束适配 NeuxBot 的 `allycli` 合同。WeKnora 的 MIT 许可与版权见本节下方声明。
+
 ### WeKnora 集成凭据与授权
 
 应用内集成凭据及路由授权迁自 [Tencent/WeKnora 固定提交](https://github.com/Tencent/WeKnora/tree/8776a2d92d11ad3e76865d51cf3192e37e2a9976)：`internal/application/service/tenant_api_key.go` 的随机凭据、摘要与 ID 归一化迁入 `server/internal/integration/key.go`；能力和资源集合规则来自 `internal/types/tenant_api_key.go`，在 `server/internal/integration/authorization.go` 适配空范围拒绝及独立整理授权。对应创建格式、授权、轮换和到期行为由宿主测试保留。未迁入上游第三方数据库、队列和前端依赖。

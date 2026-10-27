@@ -51,7 +51,7 @@ func (o *GetJob) Output(ctx *gin.Context) (interface{}, error) {
 		if err != nil {
 			return nil, bridge.MapError(err)
 		}
-		out.Report = maintenanceReportForAttempt(j, stages)
+		out.Report = bridge.MaintenanceReportForAttempt(j, stages)
 	}
 	link, err := global.KnowledgeControllerManager.GetOperation(ctx, j.RequestID)
 	if err != nil {
@@ -70,17 +70,4 @@ func (o *GetJob) Output(ctx *gin.Context) (interface{}, error) {
 	out.Configuration = taskConfigurationDTO(configuration)
 
 	return out, nil
-}
-
-// maintenanceReportForAttempt 只公开当前维护尝试的真实成功报告，不返回原始阶段明细。
-func maintenanceReportForAttempt(job *core.Job, stages []*core.Stage) string {
-	if !core.IsMaintenanceJob(job) || job.State != "completed" {
-		return ""
-	}
-	for _, stage := range stages {
-		if stage != nil && stage.JobID == job.ID && stage.JobAttempt == job.Attempt && stage.Kind == "wiki_maintenance" && stage.State == "finished" && stage.Outcome == "succeeded" {
-			return stage.ResultText
-		}
-	}
-	return ""
 }

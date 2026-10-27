@@ -663,6 +663,9 @@ const KnowledgeSourceStateProcessing = "processing"
 
 // KnowledgeChatOrganizeOperation 标识普通聊天整理请求的持久输入锚点。
 const KnowledgeChatOrganizeOperation = "chat.organize"
+
+// KnowledgeChatMaintenanceOperation 标识普通聊天提交的已有 Wiki 维护请求。
+const KnowledgeChatMaintenanceOperation = "chat.wiki.maintain"
 const (
 	// PluginLocaleEnglish 是插件英文展示与默认文档语言。
 	PluginLocaleEnglish = "en"

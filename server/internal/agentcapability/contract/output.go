@@ -21,7 +21,7 @@ func outputSchema(id string) map[string]any {
 		return object("items", "total", "pageNum", "pageSize", "nextCursor")
 	case "im.deliveries.create", "im.deliveries.get":
 		return object("deliveryId", "state", "errorCode", "partsSent", "createdAt")
-	case "knowledge.jobs.start":
+	case "knowledge.jobs.start", "knowledge.wiki.maintain":
 		return object("receipt", "noop")
 	case "knowledge.libraries.list":
 		return object("items", "total")
@@ -48,7 +48,7 @@ func outputSchema(id string) map[string]any {
 	case "knowledge.revisions.get":
 		return object("ref", "revision")
 	case "knowledge.jobs.get":
-		return object("ref", "job")
+		return object("ref", "job", "report")
 	case "knowledge.audit.get":
 		return object("ref", "audit")
 	case "knowledge.wiki.auto-fix":
