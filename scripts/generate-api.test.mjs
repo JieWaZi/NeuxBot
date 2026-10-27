@@ -21,6 +21,8 @@ test("API generation uses the locked tool version and removes temporary tools", 
     for (const directory of [
       "bin",
       "scripts",
+      "scripts/patches",
+      "locked-source",
       "server/constants/status_error",
       "server/cmd/ally-core",
     ])
@@ -29,6 +31,14 @@ test("API generation uses the locked tool version and removes temporary tools", 
       new URL("./generate-api.sh", import.meta.url),
       path.join(root, "scripts/generate-api.sh"),
     );
+    await copyFile(
+      new URL("./patches/ginx-openapi-recursive-errors.patch", import.meta.url),
+      path.join(root, "scripts/patches/ginx-openapi-recursive-errors.patch"),
+    );
+    const source = path.join(root, "locked-source");
+    await writeFile(path.join(source, "fixture.txt"), "locked module source", {
+      mode: 0o444,
+    });
     await writeFile(
       path.join(root, "server/constants/fixture__generated.go"),
       "fixture",
@@ -44,7 +54,10 @@ test("API generation uses the locked tool version and removes temporary tools", 
 set -eu
 printf '%s|%s|%s\\n' "$*" "${"${GOBIN:-}"}" "${"${GOTOOLCHAIN:-}"}" >> "$ALLY_GENERATOR_TEST_LOG"
 case "$1" in
-  list) printf 'v1.2.7-locked\\n' ;;
+  list)
+    if [ "$4" = '{{.Dir}}' ]; then printf '%s\\n' "$ALLY_GENERATOR_TEST_SOURCE";
+    else printf 'v1.2.7-locked\\n'; fi
+    ;;
   env) printf 'go1.25.8\\n' ;;
   install)
     if [ "${"${ALLY_GENERATOR_TEST_FAIL:-}"}" = 1 ]; then exit 7; fi
@@ -59,6 +72,15 @@ esac
 `,
       { mode: 0o700 },
     );
+    await writeFile(
+      path.join(root, "bin/git"),
+      `#!/bin/sh
+set -eu
+printf 'git %s|%s\\n' "$*" "$(pwd)" >> "$ALLY_GENERATOR_TEST_LOG"
+if [ "$2" != --check ]; then printf 'patched source' > fixture.txt; fi
+`,
+      { mode: 0o700 },
+    );
     for (const command of ["gofmt", "node", "pnpm"])
       await writeFile(path.join(root, "bin", command), "#!/bin/sh\nexit 0\n", {
         mode: 0o700,
@@ -67,6 +89,7 @@ esac
       ...process.env,
       PATH: `${path.join(root, "bin")}${path.delimiter}${process.env.PATH}`,
       ALLY_GENERATOR_TEST_LOG: log,
+      ALLY_GENERATOR_TEST_SOURCE: source,
     };
     const run = spawnSync("sh", ["scripts/generate-api.sh"], {
       cwd: root,
@@ -78,11 +101,28 @@ esac
     const install = calls.find((line) => line.startsWith("install "));
     assert.ok(install, "the generator must build its own locked tool");
     const [command, directory, toolchain] = install.split("|");
-    assert.equal(
-      command,
-      "install github.com/shrewx/ginx/pkg/toolx@v1.2.7-locked",
-    );
+    assert.equal(command, "install -mod=readonly ./pkg/toolx");
     assert.equal(toolchain, "go1.25.8");
+    assert.ok(
+      calls.some((line) =>
+        line.startsWith("mod download github.com/shrewx/ginx@v1.2.7-locked|"),
+      ),
+    );
+    assert.ok(
+      calls.some((line) =>
+        line.startsWith(
+          "test -mod=readonly ./pkg/openapi -run ^TestStatusErrorsRecursiveClosure$|",
+        ),
+      ),
+    );
+    assert.equal(
+      calls.filter((line) => line.startsWith("git apply")).length,
+      2,
+    );
+    assert.equal(
+      await readFile(path.join(source, "fixture.txt"), "utf8"),
+      "locked module source",
+    );
     assert.equal(
       calls.filter((line) => line === path.join(directory, "toolx")).length,
       3,

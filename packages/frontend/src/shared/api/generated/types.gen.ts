@@ -25636,13 +25636,22 @@ export type ResumeJobData = {
 export type ResumeJobErrors = {
     /**
      * >
+     * * `[AgentInputInvalid][40000009001]`
      * * `[BadRequest][40000000001]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[SkillContentInvalid][40000000013]`
      *
      */
     400: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
@@ -25672,15 +25681,29 @@ export type ResumeJobErrors = {
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
+     * * `[SkillUnavailable][50000000008]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
     503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type ResumeJobError = ResumeJobErrors[keyof ResumeJobErrors];
@@ -25710,13 +25733,22 @@ export type RetryJobData = {
 export type RetryJobErrors = {
     /**
      * >
+     * * `[AgentInputInvalid][40000009001]`
      * * `[BadRequest][40000000001]`
      * * `[KnowledgeInvalid][40000009501]`
+     * * `[SkillContentInvalid][40000000013]`
      *
      */
     400: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
      * * `[KnowledgeForbidden][40300009501]`
      *
      */
@@ -25746,15 +25778,29 @@ export type RetryJobErrors = {
     /**
      * >
      * * `[KnowledgeStorageError][50000009501]`
+     * * `[SkillUnavailable][50000000008]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
      * * `[DatabaseBusy][50300001001]`
      *
      */
     503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type RetryJobError = RetryJobErrors[keyof RetryJobErrors];

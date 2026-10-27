@@ -65,7 +65,9 @@ func TestKimiSubscriptionUsesIndependentNativeHomes(t *testing.T) {
 		if login.UserCode != "ABCD-EFGH" {
 			t.Fatal("native device code was not returned")
 		}
-		for attempt := 0; attempt < 20; attempt++ {
+		// 原生退出与凭据落库异步完成，不能用固定 200ms 约束满载构建机。
+		deadline := time.Now().Add(3 * time.Second)
+		for time.Now().Before(deadline) {
 			login, err = service.GetLogin(context.Background(), id, login.ID)
 			if err != nil {
 				t.Fatal(err)

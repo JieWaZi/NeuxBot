@@ -436,7 +436,134 @@ it.each(globalOperations)(
   },
 );
 
-it.each(["activity", "preview", "preview-detail"])(
+it.each(["activity", "jobs"])(
+  "%s 读取失败就地提示，刷新完成后恢复且不重复全局提示",
+  async (failedQuery) => {
+    let failed = true;
+    const reads = { activity: 0, jobs: 0 };
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    server.use(
+      http.get(`${operationRoot}/jobs`, () => {
+        reads.jobs++;
+        return failed && failedQuery === "jobs"
+          ? HttpResponse.json(
+              { key: "KnowledgeForbidden", message: "任务读取失败" },
+              { status: 403 },
+            )
+          : HttpResponse.json({ items: [], total: 0 });
+      }),
+      http.get(`${operationRoot}/activity`, () => {
+        reads.activity++;
+        return failed && failedQuery === "activity"
+          ? HttpResponse.json(
+              { key: "KnowledgeForbidden", message: "附属读取失败" },
+              { status: 403 },
+            )
+          : HttpResponse.json({ data: [], nextCursor: 0 });
+      }),
+    );
+    const { result, unmount } = renderHook(useErrorNotices);
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <KnowledgeLibraryActivity library={localLibrary} />
+        </TooltipProvider>
+      </QueryClientProvider>,
+    );
+    try {
+      expect(await screen.findByRole("alert")).toBeVisible();
+      expect(result.current).toHaveLength(0);
+      failed = false;
+      await userEvent.click(screen.getByRole("button", { name: /刷新/ }));
+      const key =
+        failedQuery === "jobs"
+          ? knowledgeKeys.jobs(localLibrary.ref)
+          : knowledgeKeys.activity(localLibrary.ref);
+      await waitFor(() =>
+        expect(queryClient.getQueryState(key)?.status).toBe("success"),
+      );
+      expect(reads[failedQuery as keyof typeof reads]).toBe(2);
+      await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+      expect(result.current).toHaveLength(0);
+    } finally {
+      view.unmount();
+      unmount();
+      queryClient.clear();
+    }
+  },
+);
+
+it("任务查询共用缓存，关闭活动后读取失败仍提示全局错误", async () => {
+  let failed = false;
+  let jobReads = 0;
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  server.use(
+    http.get(operationRoot, () =>
+      HttpResponse.json({ id: "kb", name: "知识库" }),
+    ),
+    http.get(`${operationRoot}/sources`, () =>
+      HttpResponse.json({ items: [], total: 0 }),
+    ),
+    http.get(`${operationRoot}/jobs`, () => {
+      jobReads++;
+      return failed
+        ? HttpResponse.json(
+            { key: "KnowledgeForbidden", message: "任务摘要读取失败" },
+            { status: 403 },
+          )
+        : HttpResponse.json({ items: [], total: 0 });
+    }),
+    http.get(`${operationRoot}/activity`, () =>
+      HttpResponse.json({ data: [], nextCursor: 0 }),
+    ),
+  );
+  const content = (activity: boolean) => (
+    <QueryClientProvider client={queryClient}>
+      <WorkspaceJobs />
+      {activity && (
+        <TooltipProvider>
+          <KnowledgeLibraryActivity library={localLibrary} />
+        </TooltipProvider>
+      )}
+    </QueryClientProvider>
+  );
+  const view = render(content(true));
+  try {
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryState(knowledgeKeys.jobs(localLibrary.ref))?.status,
+      ).toBe("success"),
+    );
+    expect(jobReads).toBe(1);
+    view.rerender(content(false));
+    failed = true;
+    await act(async () => {
+      await queryClient.invalidateQueries({
+        queryKey: knowledgeKeys.jobs(localLibrary.ref),
+        exact: true,
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText("全局错误数")).toHaveTextContent("1"),
+    );
+    expect(jobReads).toBe(2);
+    expect(
+      queryClient.getQueryCache().findAll({
+        queryKey: knowledgeKeys.jobs(localLibrary.ref),
+        exact: true,
+      }),
+    ).toHaveLength(1);
+  } finally {
+    view.unmount();
+    queryClient.clear();
+  }
+});
+
+it.each(["preview", "preview-detail"])(
   "%s 无区域错误消费时保留全局提示",
   async (kind) => {
     const queryClient = new QueryClient({
@@ -444,7 +571,7 @@ it.each(["activity", "preview", "preview-detail"])(
     });
     server.use(
       http.get(
-        `${operationRoot}/${kind === "activity" ? "activity" : kind === "preview-detail" ? "sources/version" : "source-purges/preview"}`,
+        `${operationRoot}/${kind === "preview-detail" ? "sources/version" : "source-purges/preview"}`,
         () =>
           HttpResponse.json(
             { key: "KnowledgeForbidden", message: "附属读取失败" },
@@ -456,25 +583,21 @@ it.each(["activity", "preview", "preview-detail"])(
     const view = render(
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
-          {kind === "activity" ? (
-            <KnowledgeLibraryActivity library={localLibrary} />
-          ) : (
-            <KnowledgeSourceDelete
-              library={localLibrary}
-              source={{
-                id: "version",
-                sourceId: kind === "preview-detail" ? undefined : "source",
-                name: "资料.md",
-                size: "1 KB",
-                state: "processed",
-                diagnostic: "",
-                date: "",
-              }}
-              remove={createSourceDeleter()}
-              onClose={() => {}}
-              onDeleted={async () => {}}
-            />
-          )}
+          <KnowledgeSourceDelete
+            library={localLibrary}
+            source={{
+              id: "version",
+              sourceId: kind === "preview-detail" ? undefined : "source",
+              name: "资料.md",
+              size: "1 KB",
+              state: "processed",
+              diagnostic: "",
+              date: "",
+            }}
+            remove={createSourceDeleter()}
+            onClose={() => {}}
+            onDeleted={async () => {}}
+          />
         </TooltipProvider>
       </QueryClientProvider>,
     );

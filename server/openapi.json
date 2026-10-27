@@ -22591,7 +22591,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n* `[KnowledgeInvalid][40000009501]`\n",
+            "description": ">\n* `[AgentInputInvalid][40000009001]`\n* `[BadRequest][40000000001]`\n* `[KnowledgeInvalid][40000009501]`\n* `[SkillContentInvalid][40000000013]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -22600,12 +22600,27 @@
               }
             },
             "x-status-errors": [
+              "[AgentInputInvalid][40000009001]",
               "[BadRequest][40000000001]",
-              "[KnowledgeInvalid][40000009501]"
+              "[KnowledgeInvalid][40000009501]",
+              "[SkillContentInvalid][40000000013]"
+            ]
+          },
+          "401": {
+            "description": ">\n* `[KnowledgeRemoteUnauthorized][40100009501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[KnowledgeRemoteUnauthorized][40100009501]"
             ]
           },
           "403": {
-            "description": ">\n* `[KnowledgeForbidden][40300009501]`\n",
+            "description": ">\n* `[AgentOperationForbidden][40300009001]`\n* `[KnowledgeForbidden][40300009501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -22614,6 +22629,7 @@
               }
             },
             "x-status-errors": [
+              "[AgentOperationForbidden][40300009001]",
               "[KnowledgeForbidden][40300009501]"
             ]
           },
@@ -22661,7 +22677,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[KnowledgeStorageError][50000009501]`\n",
+            "description": ">\n* `[KnowledgeStorageError][50000009501]`\n* `[SkillUnavailable][50000000008]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -22670,7 +22686,22 @@
               }
             },
             "x-status-errors": [
-              "[KnowledgeStorageError][50000009501]"
+              "[KnowledgeStorageError][50000009501]",
+              "[SkillUnavailable][50000000008]"
+            ]
+          },
+          "502": {
+            "description": ">\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[KnowledgeRemoteIncompatible][50200009502]",
+              "[KnowledgeRemoteUnreachable][50200009501]"
             ]
           },
           "503": {
@@ -22684,6 +22715,19 @@
             },
             "x-status-errors": [
               "[DatabaseBusy][50300001001]"
+            ]
+          },
+          "504": {
+            "description": ">\n* `[KnowledgeRemoteOutcomeUnknown][50400009501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[KnowledgeRemoteOutcomeUnknown][50400009501]"
             ]
           }
         }
@@ -22757,7 +22801,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n* `[KnowledgeInvalid][40000009501]`\n",
+            "description": ">\n* `[AgentInputInvalid][40000009001]`\n* `[BadRequest][40000000001]`\n* `[KnowledgeInvalid][40000009501]`\n* `[SkillContentInvalid][40000000013]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -22766,12 +22810,27 @@
               }
             },
             "x-status-errors": [
+              "[AgentInputInvalid][40000009001]",
               "[BadRequest][40000000001]",
-              "[KnowledgeInvalid][40000009501]"
+              "[KnowledgeInvalid][40000009501]",
+              "[SkillContentInvalid][40000000013]"
+            ]
+          },
+          "401": {
+            "description": ">\n* `[KnowledgeRemoteUnauthorized][40100009501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[KnowledgeRemoteUnauthorized][40100009501]"
             ]
           },
           "403": {
-            "description": ">\n* `[KnowledgeForbidden][40300009501]`\n",
+            "description": ">\n* `[AgentOperationForbidden][40300009001]`\n* `[KnowledgeForbidden][40300009501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -22780,6 +22839,7 @@
               }
             },
             "x-status-errors": [
+              "[AgentOperationForbidden][40300009001]",
               "[KnowledgeForbidden][40300009501]"
             ]
           },
@@ -22827,7 +22887,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[KnowledgeStorageError][50000009501]`\n",
+            "description": ">\n* `[KnowledgeStorageError][50000009501]`\n* `[SkillUnavailable][50000000008]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -22836,7 +22896,22 @@
               }
             },
             "x-status-errors": [
-              "[KnowledgeStorageError][50000009501]"
+              "[KnowledgeStorageError][50000009501]",
+              "[SkillUnavailable][50000000008]"
+            ]
+          },
+          "502": {
+            "description": ">\n* `[KnowledgeRemoteIncompatible][50200009502]`\n* `[KnowledgeRemoteUnreachable][50200009501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[KnowledgeRemoteIncompatible][50200009502]",
+              "[KnowledgeRemoteUnreachable][50200009501]"
             ]
           },
           "503": {
@@ -22850,6 +22925,19 @@
             },
             "x-status-errors": [
               "[DatabaseBusy][50300001001]"
+            ]
+          },
+          "504": {
+            "description": ">\n* `[KnowledgeRemoteOutcomeUnknown][50400009501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[KnowledgeRemoteOutcomeUnknown][50400009501]"
             ]
           }
         }

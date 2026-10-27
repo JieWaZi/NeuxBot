@@ -22,7 +22,8 @@ func TestPublishedUnifiedClientRoundTripPreservesVersionsAndPagination(t *testin
 		t.Fatal(library, err)
 	}
 	for _, id := range []string{"source-a", "source-b"} {
-		receipt, err := c.ImportSource(t.Context(), core.ImportSourceInput{RequestID: id, LibraryID: lib.ID, Filename: id + ".md", Bytes: []byte("# 原件")})
+		// 分页使用不同内容的原件；同库同内容同类型会正常判重复用。
+		receipt, err := c.ImportSource(t.Context(), core.ImportSourceInput{RequestID: id, LibraryID: lib.ID, Filename: id + ".md", Bytes: []byte("# 原件\n" + id)})
 		if err != nil || receipt.RequestID != id || receipt.State != "saved" {
 			t.Fatal(receipt, err)
 		}

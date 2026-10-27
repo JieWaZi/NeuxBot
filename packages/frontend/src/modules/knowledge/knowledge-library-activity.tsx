@@ -82,7 +82,7 @@ export function KnowledgeLibraryActivity({ library }: { library: Library }) {
   const key = knowledgeKeys.activity(library.ref, action, outcome);
   const local = knowledgeAdapter(library.ref).localConfiguration;
   const jobs = useQuery({
-    ...jobsOptions(library.ref),
+    ...jobsOptions(library.ref, { localErrorSurface: true }),
     enabled: local && active,
   });
   const query = useInfiniteQuery({

@@ -14,6 +14,8 @@
 
 Core 使用 CGO_ENABLED=0、-trimpath 和 -s -w。Renderer 由 Vite 编译，主进程与 preload 由 esbuild 编译，node-pty 保留原生运行依赖。系统技能、Pi Bridge（源在 `packages/pi-bridge`，生成到 `resources/pi-bridge`）、终端 worker（源在 `packages/terminal-runtime`，构建到 `resources/terminal-runtime`）、工作流 SDK 与呈现目录必须和生成源一致。
 
+API 生成器从锁定 ginx 模块的临时源码副本构建，应用 `scripts/patches/ginx-openapi-recursive-errors.patch` 并先验证递归错误图回归。补丁以反向依赖传播补全调用环的错误闭包，避免生成结果受接口扫描顺序影响；不改写模块缓存或运行时依赖。上游版本变化导致补丁无法应用或回归失败时，生成立即停止，已有契约保持不变；生成结果仍由 `pnpm api:check` 完整比较。
+
 插件包、授权桥接与程序依赖由独立 [neux-plugins](https://github.com/JieWaZi/neux-plugins) 仓库构建和发布。Core 通过 HTTP 目录读取元数据，安装时按目录摘要下载包；应用开发和打包不下载、编译或内置供应商 CLI，也不生成插件安装 ZIP 或来源副本。目录、安装、配置与授权边界见 [插件资源](../architecture/plugin-resources-cn.md)。
 
 已由 Vite 或 esbuild 打包的 JavaScript 依赖放在开发依赖中，安装包仅额外携带 node-pty 及其必要依赖。node-pty 只保留当前平台与架构的预编译文件；本机编译目录仅保留 Release 的原生模块、动态库、可执行文件及 ConPTY 运行文件，排除调试符号、静态库、对象目录和构建元数据。node-addon-api 只保留包信息与许可，不携带编译期头文件和工具。electron-builder 固定使用 `--publish never`，产物由独立发布任务统一上传，打包任务无需 GitHub 发布令牌。

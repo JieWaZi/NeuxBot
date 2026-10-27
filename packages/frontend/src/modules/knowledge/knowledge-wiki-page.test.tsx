@@ -460,10 +460,11 @@ it("没有持久索引时从真实页面目录提供索引，不误报空库", a
     await screen.findByRole("heading", { name: "页面正文" }),
   ).toBeVisible();
 });
-it("Wiki 直链读取原件计数但不启动整理任务查询，搜索保留匹配页面的祖先目录", async () => {
+it("Wiki 直链读取原件和任务快照但不写入，搜索保留祖先目录", async () => {
   show("?view=wiki");
   let sources = 0;
   let jobs = 0;
+  let writes = 0;
   server.use(
     http.get(`${root}/sources`, () => {
       sources++;
@@ -472,6 +473,10 @@ it("Wiki 直链读取原件计数但不启动整理任务查询，搜索保留�
     http.get(`${root}/jobs`, () => {
       jobs++;
       return HttpResponse.json({ items: [], total: 0 });
+    }),
+    http.post(`${root}/*`, () => {
+      writes++;
+      return HttpResponse.json({}, { status: 400 });
     }),
   );
   await screen.findByRole("heading", { name: "Wiki Index" });
@@ -485,7 +490,9 @@ it("Wiki 直链读取原件计数但不启动整理任务查询，搜索保留�
     screen.queryByRole("treeitem", { name: "空目录" }),
   ).not.toBeInTheDocument();
   expect(sources).toBe(1);
-  expect(jobs).toBe(0);
+  // 页头维护操作需要任务快照；Wiki 阅读和搜索不能自动提交整理。
+  expect(jobs).toBe(1);
+  expect(writes).toBe(0);
 });
 it("创建页面成功后定位后端返回的真实页面", async () => {
   show("?view=wiki");

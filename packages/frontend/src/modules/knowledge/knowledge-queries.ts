@@ -42,21 +42,26 @@ export const knowledgeKeys = {
     ["knowledge", ref.backend, ref.connectionId, ref.knowledgeBaseId] as const,
 };
 
-/** 当前占用库的任务与最近任务共用同一有界查询，不从分页结果推测活跃状态。 */
-export function jobsOptions(ref: ResourceRef) {
+/** 当前任务共用一份缓存；没有就地错误和恢复入口的调用方保留全局提示。 */
+export function jobsOptions(
+  ref: ResourceRef,
+  { localErrorSurface = false }: { localErrorSurface?: boolean } = {},
+) {
   return queryOptions({
     queryKey: knowledgeKeys.jobs(ref),
-    queryFn: async ({ signal }) =>
-      (
+    queryFn: async ({ signal }) => {
+      const request = {
+        path: { libraryId: ref.knowledgeBaseId },
+        query: { offset: 0, limit: 1 },
+        signal,
+        throwOnError: true as const,
+      };
+      return (
         await knowledgeAdapter(ref).listJobs(
-          withLocalErrorSurface({
-            path: { libraryId: ref.knowledgeBaseId },
-            query: { offset: 0, limit: 1 },
-            signal,
-            throwOnError: true,
-          }),
+          localErrorSurface ? withLocalErrorSurface(request) : request,
         )
-      ).data,
+      ).data;
+    },
   });
 }
 

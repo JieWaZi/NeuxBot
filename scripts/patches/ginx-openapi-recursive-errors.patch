@@ -1,0 +1,212 @@
+--- a/pkg/openapi/status_err_scanner.go
++++ b/pkg/openapi/status_err_scanner.go
+@@ -19,6 +19,7 @@
+ 		pkg:              pkg,
+ 		statusErrorTypes: map[*types.Named][]*statuserror.StatusErr{},
+ 		errorsUsed:       map[*types.Func][]*statuserror.StatusErr{},
++		callers:          map[*types.Func]map[*types.Func]struct{}{},
+ 	}
+ 
+ 	statusErrorScanner.init()
+@@ -27,15 +28,18 @@
+ }
+ 
+ type StatusErrScanner struct {
+-	StatusErrType    *types.Named
+-	pkg              *packagesx.Package
+-	statusErrorTypes map[*types.Named][]*statuserror.StatusErr
+-	errorsUsed       map[*types.Func][]*statuserror.StatusErr
++	StatusErrType    *types.Named                              // 已解析的状态错误类型。
++	pkg              *packagesx.Package                        // 本次生成加载的完整包图。
++	statusErrorTypes map[*types.Named][]*statuserror.StatusErr // 命名类型声明的直接错误。
++	errorsUsed       map[*types.Func][]*statuserror.StatusErr  // 函数的单调错误集合，最外层返回前完成闭包。
++	callers          map[*types.Func]map[*types.Func]struct{}  // 被调函数到调用者的反向依赖。
++	pending          []*types.Func                             // 本次递归扫描中新发现的函数。
++	scanDepth        int                                       // 仍在进行的递归层数。
+ }
+ 
+ var statusErrPkgPath = reflect.TypeOf(statuserror.StatusErr{}).PkgPath()
+ 
+-func (scanner *StatusErrScanner) StatusErrorsInFunc(typeFunc *types.Func) []*statuserror.StatusErr {
++func (scanner *StatusErrScanner) StatusErrorsInFunc(typeFunc *types.Func) (result []*statuserror.StatusErr) {
+ 	if typeFunc == nil {
+ 		return nil
+ 	}
+@@ -45,6 +49,16 @@
+ 	}
+ 
+ 	scanner.errorsUsed[typeFunc] = []*statuserror.StatusErr{}
++	scanner.scanDepth++
++	defer func() {
++		// 子扫描可能由上层 AST 恢复；递归深度仍须成对退出。
++		scanner.scanDepth--
++		if scanner.scanDepth == 0 {
++			scanner.propagateStatusErrors()
++		}
++		result = scanner.errorsUsed[typeFunc]
++	}()
++	scanner.pending = append(scanner.pending, typeFunc)
+ 
+ 	pkg := packagesx.NewPackage(scanner.pkg.Pkg(typeFunc.Pkg().Path()))
+ 
+@@ -113,6 +127,10 @@
+ 							}
+ 							if obj != nil {
+ 								if nextTypeFunc, ok := obj.(*types.Func); ok && nextTypeFunc != nil && nextTypeFunc != typeFunc && nextTypeFunc.Pkg() != nil {
++									if scanner.callers[nextTypeFunc] == nil {
++										scanner.callers[nextTypeFunc] = map[*types.Func]struct{}{}
++									}
++									scanner.callers[nextTypeFunc][typeFunc] = struct{}{}
+ 									scanner.appendStateErrs(typeFunc, scanner.StatusErrorsInFunc(nextTypeFunc)...)
+ 								}
+ 							}
+@@ -132,6 +150,31 @@
+ 	}
+ 
+ 	return scanner.errorsUsed[typeFunc]
++}
++
++// propagateStatusErrors 按反向依赖传播至固定点，递归环中的半成品不会成为最终缓存。
++func (scanner *StatusErrScanner) propagateStatusErrors() {
++	queue := scanner.pending
++	scanner.pending = nil
++	queued := make(map[*types.Func]bool, len(queue))
++	for _, fn := range queue {
++		queued[fn] = true
++	}
++	for head := 0; head < len(queue); head++ {
++		callee := queue[head]
++		queued[callee] = false
++		if len(scanner.errorsUsed[callee]) == 0 {
++			continue
++		}
++		for caller := range scanner.callers[callee] {
++			before := len(scanner.errorsUsed[caller])
++			scanner.appendStateErrs(caller, scanner.errorsUsed[callee]...)
++			if len(scanner.errorsUsed[caller]) > before && !queued[caller] {
++				queue = append(queue, caller)
++				queued[caller] = true
++			}
++		}
++	}
+ }
+ 
+ func (scanner *StatusErrScanner) mayAddStateErrorByObject(typeFunc *types.Func, obj types.Object) {
+@@ -166,6 +209,9 @@
+ 	}
+ 
+ 	sort.Slice(next, func(i, j int) bool {
++		if next[i].Code() == next[j].Code() {
++			return next[i].K < next[j].K
++		}
+ 		return next[i].Code() < next[j].Code()
+ 	})
+ 
+--- /dev/null
++++ b/pkg/openapi/status_err_scanner_cycle_test.go
+@@ -0,0 +1,75 @@
++package openapi
++
++import (
++	"go/token"
++	"go/types"
++	"reflect"
++	"testing"
++
++	"github.com/go-courier/packagesx"
++)
++
++func TestStatusErrorsRecursiveClosure(t *testing.T) {
++	pkg, err := packagesx.Load("./testdata/status_err_cycle")
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, order := range [][]string{{"A", "B", "C", "Outer"}, {"C", "B", "A", "Outer"}, {"Outer", "B", "C", "A"}} {
++		scanner := NewStatusErrScanner(pkg)
++		for _, name := range order {
++			fn := pkg.Types.Scope().Lookup(name).(*types.Func)
++			got := []string{}
++			for _, status := range scanner.StatusErrorsInFunc(fn) {
++				got = append(got, status.K)
++			}
++			if !reflect.DeepEqual(got, []string{"CycleA", "CycleB", "CycleC"}) {
++				t.Fatalf("order %v function %s lost recursive errors: %v", order, name, got)
++			}
++		}
++		for _, name := range []string{"EmptyA", "EmptyB"} {
++			fn := pkg.Types.Scope().Lookup(name).(*types.Func)
++			if got := scanner.StatusErrorsInFunc(fn); len(got) != 0 {
++				t.Fatalf("empty cycle produced errors: %v", got)
++			}
++		}
++	}
++	for _, order := range [][]string{{"PairA", "PairB"}, {"PairB", "PairA"}} {
++		scanner := NewStatusErrScanner(pkg)
++		for _, name := range order {
++			fn := pkg.Types.Scope().Lookup(name).(*types.Func)
++			got := []string{}
++			for _, status := range scanner.StatusErrorsInFunc(fn) {
++				got = append(got, status.K)
++			}
++			if !reflect.DeepEqual(got, []string{"PairA", "PairB"}) {
++				t.Fatalf("pair order %v function %s: %v", order, name, got)
++			}
++		}
++	}
++	scanner := NewStatusErrScanner(pkg)
++	func() {
++		defer func() {
++			if recover() == nil {
++				t.Fatal("unloaded package must exercise the scan panic boundary")
++			}
++		}()
++		scanner.StatusErrorsInFunc(types.NewFunc(token.NoPos, types.NewPackage("unloaded", "unloaded"), "Missing", nil))
++	}()
++	for _, name := range []string{"A", "B", "C"} {
++		fn := pkg.Types.Scope().Lookup(name).(*types.Func)
++		got := []string{}
++		for _, status := range scanner.StatusErrorsInFunc(fn) {
++			got = append(got, status.K)
++		}
++		if !reflect.DeepEqual(got, []string{"CycleA", "CycleB", "CycleC"}) {
++			t.Fatalf("recovered scan poisoned function %s: %v", name, got)
++		}
++	}
++	got := []string{}
++	for _, status := range scanner.StatusErrorsInFunc(pkg.Types.Scope().Lookup("EqualCode").(*types.Func)) {
++		got = append(got, status.K)
++	}
++	if !reflect.DeepEqual(got, []string{"EqualA", "EqualZ"}) {
++		t.Fatalf("equal-code order is unstable: %v", got)
++	}
++}
+--- /dev/null
++++ b/pkg/openapi/testdata/status_err_cycle/cycle.go
+@@ -0,0 +1,27 @@
++package cycle
++
++import _ "github.com/shrewx/ginx/pkg/statuserror"
++
++// @err[CycleA][40000000001][cycle A]
++func A() { B() }
++
++// @err[CycleB][40300000001][cycle B]
++func B() { C() }
++
++// @err[CycleC][40400000001][cycle C]
++func C() { A() }
++
++func Outer() { B() }
++
++func EmptyA() { EmptyB() }
++func EmptyB() { EmptyA() }
++
++// @err[PairA][40000000001][pair A]
++func PairA() { PairB() }
++
++// @err[PairB][40300000001][pair B]
++func PairB() { PairA() }
++
++// @err[EqualZ][40000000001][equal Z]
++// @err[EqualA][40000000001][equal A]
++func EqualCode() {}
