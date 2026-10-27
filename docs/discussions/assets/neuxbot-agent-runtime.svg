@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1050" viewBox="0 0 1200 1050" role="img" aria-labelledby="title desc">
+<title id="title">NeuxBot Agent Runtime 目标架构</title><desc id="desc">业务宿主通过 Invoke 和 Run 调用独立 Runtime。共享内核编译计划、管理会话及运行，使用宿主提供的资源凭据交互端口，通过 ACP Driver 调用独立 acp-go。事件与最终结果返回调用方。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7886aa"/></marker></defs>
+<style>text{font-family:"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#17283b}.muted{fill:#65758b}.blue{fill:#5556ce}.teal{fill:#137c63}.orange{fill:#b95d21}</style>
+<rect width="1200" height="1050" fill="#fff"/>
+<text x="40" y="46" font-size="28" font-weight="650" class="" text-anchor="start">NeuxBot · Agent Runtime</text>
+<text x="40" y="76" font-size="16" font-weight="400" class="muted" text-anchor="start">目标内部边界  /  packages/agent-runtime · 独立 Go module · 当前嵌入 Go Core</text>
+<rect x="40" y="111" width="760" height="103" rx="12" fill="#f1f1ff" stroke="#8587eb" stroke-width="1.4"/>
+<text x="64" y="144" font-size="22" font-weight="650" class="" text-anchor="start">业务调用方</text>
+<text x="64" y="177" font-size="18" font-weight="400" class="" text-anchor="start">Chat / Execution  ·  Team / Workflow  ·  Knowledge / Memory</text>
+<text x="64" y="200" font-size="14" font-weight="400" class="muted" text-anchor="start">决定工作规则、授权范围、上下文和结果归属</text>
+<path d="M226 214 L226 278" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="245" y="251" font-size="14" font-weight="400" class="muted" text-anchor="start">请求 + 冻结配置</text>
+<path d="M618 278 L618 214" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="638" y="251" font-size="14" font-weight="400" class="muted" text-anchor="start">结果 / 事件</text>
+<rect x="40" y="278" width="760" height="487" rx="12" fill="#fff7ef" stroke="#e4a673" stroke-width="1.4"/>
+<text x="64" y="315" font-size="23" font-weight="650" class="" text-anchor="start">Agent Runtime</text>
+<text x="776" y="315" font-size="15" font-weight="400" class="orange" text-anchor="end">调用与会话生命周期</text>
+<rect x="64" y="337" width="712" height="73" rx="9" fill="#fff" stroke="#ecc4a4" stroke-width="1.4"/>
+<text x="420" y="367" font-size="19" font-weight="600" class="" text-anchor="middle">调用接口</text>
+<text x="420" y="392" font-size="16" font-weight="400" class="muted" text-anchor="middle">Invoke：一次调用     Run：可交互、可恢复的会话调用</text>
+<path d="M420 410 L420 443" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<rect x="64" y="443" width="712" height="129" rx="9" fill="#ffefdf" stroke="#e4a673" stroke-width="1.4"/>
+<text x="87" y="474" font-size="19" font-weight="600" class="" text-anchor="start">共享执行内核</text>
+<text x="87" y="508" font-size="18" font-weight="550" class="" text-anchor="start">计划编译</text>
+<text x="87" y="538" font-size="14" font-weight="400" class="muted" text-anchor="start">校验 · 合并 · 冻结</text>
+<text x="321" y="508" font-size="18" font-weight="550" class="" text-anchor="start">会话管理</text>
+<text x="321" y="538" font-size="14" font-weight="400" class="muted" text-anchor="start">互斥 · 复用 · 恢复</text>
+<text x="555" y="508" font-size="18" font-weight="550" class="" text-anchor="start">运行控制</text>
+<text x="555" y="538" font-size="14" font-weight="400" class="muted" text-anchor="start">取消 · 租约 · 终态</text>
+<rect x="64" y="595" width="712" height="66" rx="9" fill="#fff" stroke="#ecc4a4" stroke-width="1.4"/>
+<text x="420" y="622" font-size="19" font-weight="600" class="" text-anchor="middle">事件与结果</text>
+<text x="420" y="646" font-size="16" font-weight="400" class="muted" text-anchor="middle">规范事件 · 有界传递 · 可靠最终输出 · 技术检查点</text>
+<rect x="64" y="689" width="712" height="51" rx="9" fill="#fff" stroke="#ecc4a4" stroke-width="1.4"/>
+<text x="420" y="721" font-size="18" font-weight="550" class="" text-anchor="middle">ACP Driver  ·  能力声明与协议映射</text>
+<path d="M420 572 L420 593" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<path d="M420 689 L420 663" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<rect x="855" y="278" width="305" height="487" rx="12" fill="#effaf6" stroke="#66bea6" stroke-width="1.4"/>
+<text x="879" y="315" font-size="23" font-weight="650" class="" text-anchor="start">宿主边界</text>
+<text x="879" y="345" font-size="14" font-weight="400" class="muted" text-anchor="start">业务侧实现，Runtime 通过端口使用</text>
+<rect x="879" y="370" width="257" height="83" rx="9" fill="#fff" stroke="#adddcc" stroke-width="1.4"/>
+<text x="1007.5" y="399" font-size="18" font-weight="600" class="" text-anchor="middle">资源与凭据</text>
+<text x="1007.5" y="424" font-size="14" font-weight="400" class="muted" text-anchor="middle">配置物化 · 授权租约</text>
+<rect x="879" y="478" width="257" height="83" rx="9" fill="#fff" stroke="#adddcc" stroke-width="1.4"/>
+<text x="1007.5" y="507" font-size="18" font-weight="600" class="" text-anchor="middle">审批与输入</text>
+<text x="1007.5" y="532" font-size="14" font-weight="400" class="muted" text-anchor="middle">业务判定 · 用户决定</text>
+<rect x="879" y="586" width="257" height="83" rx="9" fill="#fff" stroke="#adddcc" stroke-width="1.4"/>
+<text x="1007.5" y="615" font-size="18" font-weight="600" class="" text-anchor="middle">事件与结果接收</text>
+<text x="1007.5" y="640" font-size="14" font-weight="400" class="muted" text-anchor="middle">持久化 · 实时投影 · 成果提交</text>
+<text x="1007" y="717" font-size="14" font-weight="400" class="teal" text-anchor="middle">当前：由 Local Host 绑定实现</text>
+<path d="M800 507 L855 507" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="827" y="486" font-size="13" font-weight="400" class="muted" text-anchor="middle">端口</text>
+<path d="M800 628 L855 628" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<path d="M64 508 L53 508 L53 714 L64 714" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<path d="M420 765 L420 804" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<rect x="40" y="804" width="760" height="73" rx="12" fill="#f1f5fb" stroke="#a7b9d0" stroke-width="1.4"/>
+<text x="420" y="835" font-size="21" font-weight="650" class="" text-anchor="middle">acp-go  /  sdk</text>
+<text x="420" y="861" font-size="16" font-weight="400" class="muted" text-anchor="middle">独立仓库 · 固定版本依赖 · 原生协议 / 传输 / 进程</text>
+<path d="M420 877 L420 910" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<rect x="40" y="910" width="760" height="59" rx="12" fill="#fff" stroke="#c4cfdd" stroke-width="1.4"/>
+<text x="420" y="946" font-size="19" font-weight="550" class="" text-anchor="middle">Codex  ·  Claude  ·  其他 Agent 后端</text>
+<text x="855" y="837" font-size="17" font-weight="600" class="" text-anchor="start">未来执行位置的变化</text>
+<text x="855" y="865" font-size="15" font-weight="400" class="muted" text-anchor="start">由宿主与部署装配承接；</text>
+<text x="855" y="892" font-size="15" font-weight="400" class="muted" text-anchor="start">不变成另一种 Agent Driver。</text>
+<text x="40" y="1009" font-size="16" font-weight="400" class="muted" text-anchor="start">一个 Runtime 可管理多个会话与工作区；产品历史和业务状态仍由宿主领域保存。</text>
+</svg>

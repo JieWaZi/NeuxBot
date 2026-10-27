@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1060" viewBox="0 0 1200 1060" role="img" aria-labelledby="title desc">
+<title id="title">NeuxBot 项目目标架构</title><desc id="desc">逻辑架构提案。入口连接工作编排与能力管理；工作编排使用能力供给并发起 Agent 执行；执行经授权调用能力和业务工具。各领域通过基础支撑持有自己的数据。当前在本机装配，未来可改变部署形态。</desc>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#7886aa"/></marker></defs>
+<style>text{font-family:"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#17283b}.muted{fill:#65758b}.blue{fill:#5556ce}.teal{fill:#137c63}.orange{fill:#b95d21}</style>
+<rect width="1200" height="1060" fill="#fff"/>
+<text x="40" y="46" font-size="28" font-weight="650" class="" text-anchor="start">NeuxBot · 项目架构</text>
+<text x="40" y="76" font-size="16" font-weight="400" class="muted" text-anchor="start">目标职责图  /  当前以本地模块化单体落地</text>
+<rect x="40" y="111" width="236" height="76" rx="9" fill="#fff" stroke="#d3ddea" stroke-width="1.4"/>
+<text x="158.0" y="140" font-size="18" font-weight="600" class="" text-anchor="middle">交互入口</text>
+<text x="158.0" y="165" font-size="14" font-weight="400" class="muted" text-anchor="middle">Desktop · Web</text>
+<rect x="302" y="111" width="236" height="76" rx="9" fill="#fff" stroke="#d3ddea" stroke-width="1.4"/>
+<text x="420.0" y="140" font-size="18" font-weight="600" class="" text-anchor="middle">集成入口</text>
+<text x="420.0" y="165" font-size="14" font-weight="400" class="muted" text-anchor="middle">IM · CLI / API</text>
+<rect x="564" y="111" width="236" height="76" rx="9" fill="#fff" stroke="#d3ddea" stroke-width="1.4"/>
+<text x="682.0" y="140" font-size="18" font-weight="600" class="" text-anchor="middle">自动触发</text>
+<text x="682.0" y="165" font-size="14" font-weight="400" class="muted" text-anchor="middle">定时 · 自动任务</text>
+<path d="M158 187 L158 217" stroke="#7886aa" fill="none"/>
+<path d="M158 217 L682 217" stroke="#7886aa" fill="none"/>
+<path d="M420 187 L420 217" stroke="#7886aa" fill="none"/>
+<path d="M682 187 L682 217" stroke="#7886aa" fill="none"/>
+<path d="M420 217 L420 255" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="444" y="241" font-size="14" font-weight="400" class="muted" text-anchor="start">发起工作 / 查询状态</text>
+<path d="M682 217 L1000 217 L1000 255" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="875" y="205" font-size="14" font-weight="400" class="muted" text-anchor="start">配置与内容管理</text>
+<rect x="40" y="255" width="760" height="234" rx="12" fill="#f1f1ff" stroke="#8587eb" stroke-width="1.4"/>
+<text x="64" y="290" font-size="23" font-weight="650" class="" text-anchor="start">工作编排</text>
+<text x="64" y="317" font-size="16" font-weight="400" class="muted" text-anchor="start">决定做什么、如何协作，并保存工作的业务状态</text>
+<rect x="64" y="337" width="220" height="76" rx="9" fill="#fff" stroke="#c7c8fa" stroke-width="1.4"/>
+<text x="174.0" y="366" font-size="18" font-weight="600" class="" text-anchor="middle">伙伴与项目</text>
+<text x="174.0" y="391" font-size="14" font-weight="400" class="muted" text-anchor="middle">身份 · 档案 · 工作范围</text>
+<rect x="310" y="337" width="220" height="76" rx="9" fill="#fff" stroke="#c7c8fa" stroke-width="1.4"/>
+<text x="420.0" y="366" font-size="18" font-weight="600" class="" text-anchor="middle">对话与协作</text>
+<text x="420.0" y="391" font-size="14" font-weight="400" class="muted" text-anchor="middle">Chat · 团队</text>
+<rect x="556" y="337" width="220" height="76" rx="9" fill="#fff" stroke="#c7c8fa" stroke-width="1.4"/>
+<text x="666.0" y="366" font-size="18" font-weight="600" class="" text-anchor="middle">流程与任务</text>
+<text x="666.0" y="391" font-size="14" font-weight="400" class="muted" text-anchor="middle">Workflow · 自动任务</text>
+<text x="420" y="456" font-size="17" font-weight="500" class="blue" text-anchor="middle">工作接纳  ·  执行策略  ·  业务状态  ·  成果提交</text>
+<rect x="855" y="255" width="305" height="605" rx="12" fill="#effaf6" stroke="#66bea6" stroke-width="1.4"/>
+<text x="879" y="291" font-size="23" font-weight="650" class="" text-anchor="start">能力供给</text>
+<text x="879" y="319" font-size="16" font-weight="400" class="muted" text-anchor="start">管理可复用的内容与资源</text>
+<rect x="879" y="343" width="257" height="82" rx="9" fill="#fff" stroke="#adddcc" stroke-width="1.4"/>
+<text x="1007.5" y="372" font-size="18" font-weight="600" class="" text-anchor="middle">知识与记忆</text>
+<text x="1007.5" y="397" font-size="14" font-weight="400" class="muted" text-anchor="middle">检索 · 整理 · 长期信息</text>
+<rect x="879" y="446" width="257" height="82" rx="9" fill="#fff" stroke="#adddcc" stroke-width="1.4"/>
+<text x="1007.5" y="475" font-size="18" font-weight="600" class="" text-anchor="middle">插件与连接</text>
+<text x="1007.5" y="500" font-size="14" font-weight="400" class="muted" text-anchor="middle">Plugin · Skill · MCP</text>
+<rect x="879" y="549" width="257" height="82" rx="9" fill="#fff" stroke="#adddcc" stroke-width="1.4"/>
+<text x="1007.5" y="578" font-size="18" font-weight="600" class="" text-anchor="middle">模型配置与账号</text>
+<text x="1007.5" y="603" font-size="14" font-weight="400" class="muted" text-anchor="middle">配置选择 · 凭据授权</text>
+<rect x="879" y="652" width="257" height="82" rx="9" fill="#fff" stroke="#adddcc" stroke-width="1.4"/>
+<text x="1007.5" y="681" font-size="18" font-weight="600" class="" text-anchor="middle">文件与成果</text>
+<text x="1007.5" y="706" font-size="14" font-weight="400" class="muted" text-anchor="middle">资源身份 · 访问 · 版本</text>
+<text x="1007" y="780" font-size="15" font-weight="400" class="teal" text-anchor="middle">内容与资源各有所属领域</text>
+<text x="1007" y="809" font-size="15" font-weight="400" class="teal" text-anchor="middle">向工作和执行提供受限能力</text>
+<path d="M800 374 L855 374" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="828" y="354" font-size="13" font-weight="400" class="muted" text-anchor="middle">配置</text>
+<text x="828" y="398" font-size="13" font-weight="400" class="muted" text-anchor="middle">授权</text>
+<path d="M232 489 L232 574" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="216" y="530" font-size="14" font-weight="400" class="muted" text-anchor="end">执行请求</text>
+<path d="M568 574 L568 489" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)"/>
+<text x="586" y="530" font-size="14" font-weight="400" class="muted" text-anchor="start">事件与结果</text>
+<path d="M72 574 L72 489" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)" stroke-dasharray="5 5"/>
+<text x="85" y="554" font-size="13" font-weight="400" class="muted" text-anchor="start">受限业务工具</text>
+<rect x="40" y="574" width="760" height="286" rx="12" fill="#fff7ef" stroke="#e4a673" stroke-width="1.4"/>
+<text x="64" y="610" font-size="23" font-weight="650" class="" text-anchor="start">Agent 执行</text>
+<text x="64" y="637" font-size="16" font-weight="400" class="muted" text-anchor="start">将一次已授权的工作，交给具体的 Agent 和运行环境</text>
+<rect x="64" y="659" width="334" height="82" rx="9" fill="#fff" stroke="#ecc4a4" stroke-width="1.4"/>
+<text x="231.0" y="688" font-size="18" font-weight="600" class="" text-anchor="middle">Agent Runtime</text>
+<text x="231.0" y="713" font-size="14" font-weight="400" class="muted" text-anchor="middle">调用 · 会话 · 交互 · 取消</text>
+<rect x="422" y="659" width="354" height="82" rx="9" fill="#fff" stroke="#ecc4a4" stroke-width="1.4"/>
+<text x="599.0" y="688" font-size="18" font-weight="600" class="" text-anchor="middle">执行工作区</text>
+<text x="599.0" y="713" font-size="14" font-weight="400" class="muted" text-anchor="middle">指令 · 附件 · 挂载 · 工具范围</text>
+<path d="M398 699 L422 699" stroke="#e4a673" fill="none"/>
+<rect x="64" y="765" width="712" height="64" rx="9" fill="#fff" stroke="#ecc4a4" stroke-width="1.4"/>
+<text x="420" y="793" font-size="18" font-weight="550" class="" text-anchor="middle">acp-go  →  Codex / Claude / 其他 Agent</text>
+<text x="420" y="816" font-size="14" font-weight="400" class="muted" text-anchor="middle">独立维护与版本引用；适配原生协议与进程</text>
+<path d="M800 699 L855 699" fill="none" stroke="#7886aa" stroke-width="1.7" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+<text x="828" y="677" font-size="13" font-weight="400" class="muted" text-anchor="middle">调用</text>
+<text x="828" y="723" font-size="13" font-weight="400" class="muted" text-anchor="middle">挂载</text>
+<rect x="40" y="901" width="1120" height="71" rx="12" fill="#f6f8fb" stroke="#cdd7e4" stroke-width="1.4"/>
+<text x="64" y="932" font-size="19" font-weight="650" class="" text-anchor="start">基础支撑</text>
+<text x="194" y="932" font-size="17" font-weight="400" class="" text-anchor="start">领域存储  ·  受管文件  ·  凭据保管  ·  事件交付  ·  生命周期</text>
+<text x="194" y="956" font-size="14" font-weight="400" class="muted" text-anchor="start">为各模块提供实现；业务数据、权限与状态仍由所属领域负责</text>
+<text x="40" y="1009" font-size="16" font-weight="550" class="" text-anchor="start">现在：桌面 / 本机 Web + 一个 Go Core + 本机执行</text>
+<text x="40" y="1037" font-size="15" font-weight="400" class="muted" text-anchor="start">未来：企业私有部署 / PaaS 改变身份、存储与执行装配，复用同一产品内核</text>
+</svg>

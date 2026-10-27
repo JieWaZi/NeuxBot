@@ -8,15 +8,27 @@
 
 NeuxBot 的目标是：**同一套产品领域内核，按个人或企业的需求装配；业务、执行环境、Agent 引擎分别变化。**当前保持模块化单体和本地执行，先解决功能扩展时的依赖、所有权和生命周期问题。
 
-项目架构分为五个职责层次：
+项目围绕三个核心职责组织：**工作编排决定做什么，能力供给提供可用资源，Agent 执行完成具体调用。**入口负责交互与触发，基础支撑承接存储、文件、凭据保管和事件交付。
 
-1. **客户端与入口**：共享 React 产品界面，Desktop/Web 宿主，以及 IM、自动任务、集成 API 等入口。
-2. **产品领域**：伙伴、项目、聊天、伙伴协作、工作流、知识、记忆和资源；拥有业务规则、状态与成果。
-3. **共享应用机制**：可信调用身份、授权范围、执行接纳、资源解析、业务能力调用、提交后事件交付。复用已有机制，不另建万能框架。
-4. **执行宿主与 Agent Runtime**：宿主连接实际环境和业务资源；Runtime 负责一次 Agent 调用、会话、工具交互和技术结果。
-5. **基础设施**：存储、受管文件、凭据、原生进程和外部服务；通过所属模块的明确边界使用。
+![NeuxBot 项目目标架构](assets/neuxbot-project-architecture.svg)
 
-这些层次是职责和依赖边界，当前仍装配在一个 Go Core 中。企业版未来增加组织治理和服务部署，PaaS 再增加租户运营与执行容量治理，不复制另一套 Chat、Workflow 或 Knowledge。
+图中大框是逻辑职责，内框是已有产品概念及目标边界，不表示独立服务。当前工作编排、能力供给和 Runtime 仍装配在本机 Go Core；acp-go 适配的原生 CLI 是独立进程。图只画主要协作，基础支撑服务于所有模块，未逐条画出依赖。
+
+| 主要职责 | 核心问题 | 包含什么 | 拥有什么 |
+| --- | --- | --- | --- |
+| 工作编排 | 为谁做什么，怎样组织工作？ | 伙伴与项目、Chat、团队、Workflow、自动任务 | 工作定义、业务规则、工作状态与成果归属 |
+| 能力供给 | 做这项工作可以使用什么？ | 知识、记忆、插件、技能、连接器、模型配置与账号、文件资源 | 各自内容、版本、配置与使用授权 |
+| Agent 执行 | 在什么环境里，如何完成一次 Agent 调用？ | Agent Runtime、执行工作区、Agent 适配 | 技术会话、调用生命周期、交互等待、资源租约 |
+| 产品入口 | 从哪里发起、观察和处理工作？ | Desktop/Web、IM、CLI/API、定时触发 | 交互与接入状态，调用已有领域用例 |
+| 基础支撑 | 状态与资源如何保存和交付？ | 领域存储、文件存储、秘密保管、事件通道、生命周期 | 技术实现及其生命周期，不另建业务事实 |
+
+**三个核心职责是协作关系，不是所有请求必须依次穿过的流水线。**用户可以直接管理知识、账号和插件；检索和普通配置操作不经过 Agent。知识整理等能力内部如果确实需要生成，也可直接调用 Runtime，其内容状态仍由 Knowledge 拥有。团队与工作流的确定性步骤同样不需要 Agent。
+
+例如“让一个团队结合项目和知识库完成分析”：入口把请求交给团队领域；团队决定分工与工作范围；资源领域解析本次可用的知识、插件和账号；执行侧准备工作区并调用 Agent；工具操作回到所属领域逐次检查权限；结果返回后由团队与 Chat 提交业务状态，界面通过事件和查询呈现结果。Runtime 不决定团队任务是否验收完成。
+
+产品事实始终归所属领域：Chat 保存消息，Workflow 保存流程状态，Knowledge 保存知识内容；文件资源保存成果文件及其访问身份，成果的业务含义仍归原工作领域。右侧“能力供给”不意味着把所有模块合并成一个通用服务，底部“基础支撑”也不意味着共享数据表。
+
+个人版、企业版和 PaaS 复用这些产品职责，差异体现在身份与共享策略、应用装配、存储和执行位置。未来企业治理覆盖入口、领域读写、能力使用、执行与事件访问；它不是今天要新增的独立业务层。
 
 本轮不做 Runtime HTTP，不引入远程 worker、Kubernetes、组织表、租户字段或计费系统；不考虑旧数据和旧会话兼容。`packages/agent-runtime` 是独立 Go module；acp-go 保持独立仓库维护。详细执行契约与分批替换见 [Agent Runtime Spec](agent-runtime-refactor-spec-cn.md)。
 
@@ -38,9 +50,9 @@ NAP 的 “一个 Workspace 对应一个 Agent，多个 Session 共享文件系�
 
 不直接采用其多服务拓扑、PostgreSQL、Kubernetes、常驻 Workspace 容器或远程浏览器服务。它们以后是否必要，由真实部署、负载、隔离和产品需求决定；本轮不为了图形相似增加服务。
 
-## 3. 当前架构与目标架构
+## 3. 从项目骨架落到现有代码
 
-### 3.1 当前运行形态
+### 3.1 当前运行形态（代码视图）
 
 当前已实现共享 React、Desktop/Web 宿主、Go Core、CLI 适配和各业务模块。下图表示当前关系，不表示已经支持企业远程接入。
 
@@ -73,73 +85,21 @@ flowchart TB
 
 目前的扩展压力主要集中在 Execution 装配、global 闭包、资源授权和路径/进程生命周期。业务功能已较完整，重构应围绕这些实际边界展开，而不是按数据表重新拆分服务。
 
-### 3.2 项目目标总览
+### 3.2 目标职责如何落到源码
 
-下图是逻辑架构。框表示模块所有者；浅色治理框是未来扩展，当前不实现。
+项目总图见第 1 节。源码层面保持以下映射，不把架构图直接翻译为一排新目录或进程：
 
-```mermaid
-flowchart TB
-    subgraph Entry[客户端与接入]
-        UI[共享产品 UI：Desktop / Web]
-        Trigger[IM / 定时触发 / 集成 API]
-        Shell[客户端宿主：窗口、上传、系统交互]
-        UI --- Shell
-    end
-    subgraph App[产品应用内核：当前同一 Go Core]
-        Ingress[入口适配：认证、参数、领域命令]
-        Config[工作配置：伙伴、档案、项目]
-        Work[工作领域：Chat、伙伴协作、Workflow]
-        Content[内容领域：Knowledge、Memory]
-        Resource[资源领域：Plugin、Skill、Connector、AI Account]
-        Read[查询、历史、通知、工作看板]
-        Execution[业务执行：接纳、冻结、取消、成果提交]
-        Capability[能力调用：逐次授权、领域调用、回执]
-        Governance[未来：成员、共享策略、审计、配额]
-        Ingress --> Config
-        Ingress --> Work
-        Ingress --> Content
-        Ingress --> Resource
-        Ingress --> Read
-        Work --> Execution
-        Config --> Execution
-        Resource --> Execution
-        Capability --> Work
-        Capability --> Content
-        Governance -.-> Ingress
-        Governance -.-> Capability
-    end
-    subgraph Run[执行边界：当前本地装配]
-        Host[Local ExecutionHost / runtimehost]
-        Runtime[独立 Agent Runtime：Invoke / Run / Session]
-        Driver[ACP Driver]
-        Host --> Runtime
-        Runtime --> Driver
-    end
-    UI --> Ingress
-    Trigger --> Ingress
-    Execution --> Host
-    Content -->|独立生成与维护| Host
-    Resource -->|资源与凭据提供端口| Host
-    Runtime -->|Observer / 技术结果| Execution
-    Driver --> ACP[独立维护的 acp-go / sdk]
-    ACP --> Native[CLI / 原生 Agent]
-    Native -->|ally / 受限业务工具| Capability
-    Work -->|已提交事实| Read
-    Content -->|已提交事实| Read
-    Work --> Storage[所属领域的存储端口]
-    Content --> Storage
-    Config --> Storage
-    Resource --> Storage
-    Execution --> Storage
-    Storage --> Local[当前：SQLite、Journal、受管文件及独立内容存储]
-    Storage -.-> Future[未来按领域选择服务端存储实现]
-    classDef future fill:#f1f5f9,stroke:#94a3b8,stroke-dasharray:5 5,color:#475569
-    class Governance,Future future
-```
+| 目标职责 | 当前主要位置 | 重构重点 |
+| --- | --- | --- |
+| 产品入口 | `packages/frontend`、`desktop`、`web`、`server/apis`、IM/自动任务模块 | 呈现、宿主和触发适配调用相同领域用例 |
+| 工作编排 | Chat、Channel、Workflow、伙伴/项目与 Execution 的所属模块 | 业务状态归本域，Execution 收敛共享的工作接纳与执行接入 |
+| 能力供给 | Knowledge、Memory、插件/技能/连接器、AI Account、文件资源模块 | 资源定义与授权归本域，通过明确端口供工作与 Agent 使用 |
+| Agent 执行 | 新 `packages/agent-runtime`、`server/internal/runtimehost`，外部 acp-go | 抽离执行内核，环境装配留宿主，原生协议与进程留 acp-go |
+| 基础支撑 | 各领域存储实现、受管文件、事件交付与组合根 | 技术实现可独立演进，领域事实保持单一所有者 |
 
-上图是运行时协作关系，源码依赖通过消费者定义的窄端口倒置：Runtime 不导入 Capability 业务实现或 Execution；宿主绑定回调/Observer。内容领域的独立 Invoke 结果返回原 Knowledge 调用方，不强制绕过 Chat 再创建一个 Execution。
+依赖通过消费者定义的窄端口连接：Runtime 不导入 Chat、Workflow、Knowledge、产品数据库或 Execution；宿主绑定资源、交互与结果接收实现。业务工具仍由现有 agentcapability/ally 连接所属领域，不能转移到 Runtime 内执行业务 CRUD。
 
-普通 CRUD、查询、知识检索和工作流中的确定性步骤不经过 Runtime。只有确实需要 Agent 的步骤调用 Invoke/Run，避免把整个产品塞进 Agent 生命周期。
+内容领域的独立 Invoke 结果返回原 Knowledge 调用方，不为统一入口而强制创建 Chat 或工作流。主图表达模块协作，具体调用合同由 Runtime Spec 定义。
 
 ### 3.3 模块与权威事实
 
@@ -161,44 +121,11 @@ flowchart TB
 
 ### 4.1 Runtime 内部及外部边界
 
-```mermaid
-flowchart TB
-    subgraph Product[NeuxBot 宿主]
-        Caller[Execution / Knowledge 调用方]
-        Host[Local ExecutionHost：绑定实现与运行环境]
-        Providers[资源、凭据、交互端口实现]
-        Consumer[Journal / 实时投影 / 独立结果消费者]
-        Caller --> Host
-        Providers -.-> Host
-    end
-    subgraph Module[packages/agent-runtime]
-        SDK[SDK：Invoke / Run / Cancel / Session / Fork]
-        Plan[Planner：能力校验、贡献合并、不可变计划]
-        Engine[Engine：调用状态机与唯一终态]
-        Session[Session：回合互斥、热连接、恢复检查点]
-        Lease[资源租约：Acquire / 有界 Release]
-        Interact[审批 / 用户输入路由]
-        Event[规范事件与有界背压]
-        Output[FinalCollector：可靠最终输出]
-        Driver[driver/acp：公开协议转换与薄 binding]
-        SDK --> Plan
-        Plan --> Engine
-        Engine --> Session
-        Engine --> Lease
-        Engine --> Interact
-        Engine --> Driver
-        Driver --> Event
-        Event --> Output
-    end
-    Host --> SDK
-    Lease -.-> Providers
-    Interact -.-> Providers
-    Event --> Consumer
-    Output --> Caller
-    Session -->|检查点交由宿主持久化| Consumer
-    Driver --> ACP[独立 acp-go / sdk]
-    ACP --> Native[原生 CLI / Agent 协议与进程]
-```
+![NeuxBot Agent Runtime 目标架构](assets/neuxbot-agent-runtime.svg)
+
+Runtime 内部收敛为四个部分：**调用接口、共享执行内核、事件与结果、Agent Driver**。右侧宿主边界提供资源、凭据、业务审批和结果接收；下方 acp-go 独立维护原生适配。图中“共享执行内核”包含计划编译、Session 管理和调用状态机，具体接口不进入项目总图。
+
+调用侧经接口进入执行内核，内核驱动 Driver 并管理会话；Driver 的规范事件与内核终态交给结果处理；实时事件、最终结果和检查点按各自合同返回宿主。内部控制与输出是不同路径，不能把“事件与结果”理解为启动 Driver 的前置步骤。
 
 Invoke 与 Run 共享内核。Invoke 使用临时会话、显式工具策略和最终结果消费者；Run 支持恢复、交互和 Observer。知识纯生成可以显式禁止工具，后台维护可以允许限定工具；不能以“是否显示过程”推断工具权限。
 
