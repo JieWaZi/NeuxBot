@@ -103,13 +103,9 @@ function teamThreadGroupOf(
       label: projectName || labels.unnamedProject,
     };
   }
-  const directory = thread.additionalWorkingDirectories?.[0]?.trim();
   return {
-    key: `folder:${directory || projectName || labels.temporaryFolder}`,
-    label:
-      projectName ||
-      directory?.split(/[\\/]/).filter(Boolean).at(-1) ||
-      labels.temporaryFolder,
+    key: "folder:temporary",
+    label: labels.temporaryFolder,
   };
 }
 
@@ -316,8 +312,12 @@ export function TeamChatTree({
   const groups = useMemo(
     () =>
       groupTeamThreads(threads, {
-        temporaryFolder: t("chatNavigation.temporaryFolder"),
-        unnamedProject: t("chatNavigation.unnamedProject"),
+        temporaryFolder: t("conversationGroups.temporaryDirectory", {
+          ns: "common",
+        }),
+        unnamedProject: t("conversationGroups.unnamedProject", {
+          ns: "common",
+        }),
       }),
     [t, threads],
   );
@@ -328,8 +328,12 @@ export function TeamChatTree({
   const activeThread = activeThreadQuery.data?.thread;
   const activeGroupKey = activeThread
     ? teamThreadGroupOf(activeThread, {
-        temporaryFolder: t("chatNavigation.temporaryFolder"),
-        unnamedProject: t("chatNavigation.unnamedProject"),
+        temporaryFolder: t("conversationGroups.temporaryDirectory", {
+          ns: "common",
+        }),
+        unnamedProject: t("conversationGroups.unnamedProject", {
+          ns: "common",
+        }),
       }).key
     : "";
   const autoExpanded = useRef("");

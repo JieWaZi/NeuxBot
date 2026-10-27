@@ -18,6 +18,10 @@ const resources = {
     automaticTask: automaticTaskZh,
     workflow: workflowZh,
     common: {
+      conversationGroups: {
+        temporaryDirectory: "默认",
+        unnamedProject: "未命名项目",
+      },
       detailState: {
         loading: "正在载入详情…",
         failed: "详情读取失败，请重试。",
@@ -1472,6 +1476,8 @@ const resources = {
           other: "执行操作",
         },
       },
+      completedProcess: "查看过程",
+      completedProcessDuration: "用时 {{duration}}",
       collapseProcess: "收起",
       expandReasoning: "展开思考",
       collapseReasoning: "收起",
@@ -2124,6 +2130,10 @@ const resources = {
     automaticTask: automaticTaskEn,
     workflow: workflowEn,
     common: {
+      conversationGroups: {
+        temporaryDirectory: "Default",
+        unnamedProject: "Unnamed project",
+      },
       executionSelection: {
         runtime: "Agent",
         account: "Account",
@@ -2165,6 +2175,8 @@ const resources = {
       },
     },
     chat: {
+      completedProcess: "View process",
+      completedProcessDuration: "Took {{duration}}",
       defaultWorkspace: "Default",
       terminal: "Terminal",
       terminalExited: "Terminal exited",

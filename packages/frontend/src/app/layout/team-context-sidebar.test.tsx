@@ -5,7 +5,7 @@ import { useState } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import "@/shared/i18n";
+import { i18n } from "@/shared/i18n";
 
 import type { PartnerNavigationPreferences } from "./partner-navigation-preferences";
 import { TeamChatTree, TeamMemberMenu } from "./team-context-sidebar";
@@ -105,6 +105,18 @@ vi.mock("@/modules/team/api/channel-queries", () => ({
     queryFn: async () => ({
       resources: [
         {
+          id: "thread-temp-a",
+          projectName: "workspace",
+          additionalWorkingDirectories: ["/managed/a/workspace"],
+          title: "临时团队甲",
+        },
+        {
+          id: "thread-temp-b",
+          additionalWorkingDirectories: ["C:\\managed\\b\\workspace"],
+          title: "临时团队乙",
+        },
+        { id: "thread-temp-empty", title: "无路径团队" },
+        {
           id: "thread-1",
           projectId: "project-1",
           projectName: "NeuxBot",
@@ -171,6 +183,37 @@ function WorkspaceState({ scopeKey = "team:team-1:thread-1" }) {
 
 describe("团队导航菜单", () => {
   beforeEach(() => fixture.remove.mockClear());
+
+  it.each([
+    ["zh-CN", "默认"],
+    ["en-US", "Default"],
+  ])("%s 团队临时会话共用一个分组", async (language, label) => {
+    await i18n.changeLanguage(language);
+    try {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter>
+            <SidebarHarness view="chats" threadId={null} />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+      const group = await screen.findByRole("button", { name: label });
+      expect(screen.getAllByRole("button", { name: label })).toHaveLength(1);
+      expect(screen.getByText("临时团队甲")).toBeVisible();
+      expect(screen.getByText("临时团队乙")).toBeVisible();
+      expect(screen.getByText("无路径团队")).toBeVisible();
+      await userEvent.setup().click(group);
+      expect(screen.queryByText("临时团队甲")).toBeNull();
+      expect(screen.queryByText("临时团队乙")).toBeNull();
+      expect(screen.queryByText("无路径团队")).toBeNull();
+      expect(screen.getByText("研发会话")).toBeVisible();
+    } finally {
+      await i18n.changeLanguage("zh-CN");
+    }
+  });
 
   it("确认后永久删除当前团队会话并返回团队草稿", async () => {
     const queryClient = new QueryClient({

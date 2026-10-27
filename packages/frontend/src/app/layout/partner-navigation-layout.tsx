@@ -130,33 +130,34 @@ function waitingInteraction(value: unknown) {
   );
 }
 
-function chatGroupOf(chat: Chat): Omit<ChatGroup, "chats"> {
+function chatGroupOf(
+  chat: Chat,
+  labels: { temporaryDirectory: string; unnamedProject: string },
+): Omit<ChatGroup, "chats"> {
   const projectId = chat.projectId?.trim();
   const projectName = chat.projectName?.trim();
   if (projectId) {
     return {
       key: `project:${projectId}`,
-      label: projectName || "未命名项目",
+      label: projectName || labels.unnamedProject,
       type: "project",
     };
   }
-  const directory = chat.additionalWorkingDirectories?.[0]?.trim();
-  const label =
-    projectName ||
-    directory?.split(/[\\/]/).filter(Boolean).at(-1) ||
-    "临时文件夹";
   return {
-    key: `folder:${directory || label}`,
-    label,
+    key: "folder:temporary",
+    label: labels.temporaryDirectory,
     type: "folder",
   };
 }
 
-function groupChats(chats: readonly Chat[]): ChatGroup[] {
+function groupChats(
+  chats: readonly Chat[],
+  labels: { temporaryDirectory: string; unnamedProject: string },
+): ChatGroup[] {
   const groups = new Map<string, ChatGroup>();
   for (const chat of chats) {
     if (!chat.id) continue;
-    const group = chatGroupOf(chat);
+    const group = chatGroupOf(chat, labels);
     const current = groups.get(group.key);
     if (current) current.chats.push(chat);
     else groups.set(group.key, { ...group, chats: [chat] });
@@ -785,7 +786,14 @@ function PartnerChatTree({
     () => chatsQuery.data?.pages.flatMap((page) => page.resources ?? []) ?? [],
     [chatsQuery.data],
   );
-  const groups = useMemo(() => groupChats(chats), [chats]);
+  const groups = useMemo(
+    () =>
+      groupChats(chats, {
+        temporaryDirectory: t("conversationGroups.temporaryDirectory"),
+        unnamedProject: t("conversationGroups.unnamedProject"),
+      }),
+    [chats, t],
+  );
   const collapsedGroups = new Set(
     preferences.collapsedGroups[selectedPartnerId] ?? [],
   );
@@ -795,7 +803,12 @@ function PartnerChatTree({
     title: string;
   }>();
   const activeChat = chats.find((item) => item.id === activeChatId);
-  const activeGroupKey = activeChat ? chatGroupOf(activeChat).key : "";
+  const activeGroupKey = activeChat
+    ? chatGroupOf(activeChat, {
+        temporaryDirectory: t("conversationGroups.temporaryDirectory"),
+        unnamedProject: t("conversationGroups.unnamedProject"),
+      }).key
+    : "";
   const autoExpanded = useRef("");
   useEffect(() => {
     if (!activeChatId || !activeGroupKey) return;

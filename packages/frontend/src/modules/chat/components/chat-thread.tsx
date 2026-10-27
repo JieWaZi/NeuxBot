@@ -765,23 +765,104 @@ function groupChatPart(part: PartState) {
   return [];
 }
 
+// 完成后只折叠过程片段，最终正文继续由原有消息 Part 渲染和标记已读。
+function isChatProcessPart(part: { type: string; name?: string }) {
+  return (
+    part.type === "reasoning" ||
+    part.type === "tool-call" ||
+    (part.type === "data" && part.name === CHAT_PROCESS_COMMENTARY_PART)
+  );
+}
+
+function groupCompletedChatPart(part: PartState) {
+  if (isChatProcessPart(part)) {
+    return ["group-completed-process", ...groupChatPart(part)] as const;
+  }
+  return [];
+}
+
+function CompletedWorkProcess({
+  children,
+  showUsageMetrics,
+}: {
+  children: ReactNode;
+  showUsageMetrics: boolean;
+}) {
+  const { t } = useTranslation("chat");
+  const rawMetrics = useAuiState(
+    (state) => state.message.metadata.custom?.runMetrics,
+  );
+  const metrics = runMetricsOf(rawMetrics);
+  const durationMs = metrics?.durationMs;
+  const [open, setOpen] = useState(false);
+  const contentId = useId();
+  const label =
+    durationMs !== undefined
+      ? t("completedProcessDuration", {
+          duration: formatRunDuration(durationMs),
+        })
+      : t("completedProcess");
+  const trigger = (
+    <button
+      type="button"
+      className="text-muted-foreground hover:text-foreground type-label min-h-control-sm inline-flex items-center gap-1 py-1 text-left transition-colors"
+      aria-expanded={open}
+      aria-controls={contentId}
+      onClick={() => setOpen((current) => !current)}
+    >
+      <span>{label}</span>
+      <ChevronRight
+        className={cn(
+          "size-icon-xs transition-transform motion-reduce:transition-none",
+          open && "rotate-90",
+        )}
+        aria-hidden="true"
+      />
+    </button>
+  );
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      {metrics && showUsageMetrics ? (
+        <RunMetricsTooltip metrics={metrics}>{trigger}</RunMetricsTooltip>
+      ) : (
+        trigger
+      )}
+      <CollapsibleContent id={contentId} inert={!open} aria-hidden={!open}>
+        <div className="space-y-4 pt-2">{children}</div>
+      </CollapsibleContent>
+      <hr className="border-border/60 mt-2 border-0 border-t" />
+    </Collapsible>
+  );
+}
+
 function ChatMessageParts({
   onOpenFileChange,
+  showUsageMetrics,
 }: {
   onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
+  showUsageMetrics: boolean;
 }) {
   const messageId = useAuiState((state) => state.message.id);
   const isTerminal = useAuiState(
     (state) => state.message.metadata.custom?.isTerminal === true,
   );
+  const completed = useAuiState(
+    (state) => state.message.status?.type === "complete",
+  );
   return (
     <div className="space-y-4">
       <MessagePrimitive.GroupedParts
-        groupBy={groupChatPart}
+        groupBy={completed ? groupCompletedChatPart : groupChatPart}
         indicator="no-text"
       >
         {({ part, children }) => {
           switch (part.type) {
+            case "group-completed-process":
+              return (
+                <CompletedWorkProcess showUsageMetrics={showUsageMetrics}>
+                  {children}
+                </CompletedWorkProcess>
+              );
             case "group-work-process":
               return (
                 <WorkProcess
@@ -898,7 +979,13 @@ export function AgentRunningIndicator() {
   );
 }
 
-export function RunMetricsBadge({ metrics }: { metrics: ChatRunMetrics }) {
+function RunMetricsTooltip({
+  metrics,
+  children,
+}: {
+  metrics: ChatRunMetrics;
+  children: ReactNode;
+}) {
   const { t } = useTranslation("chat");
   const durationMs = metrics.durationMs ?? 0;
   const rows = [
@@ -943,15 +1030,7 @@ export function RunMetricsBadge({ metrics }: { metrics: ChatRunMetrics }) {
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          className="text-muted-foreground hover:text-foreground type-body py-1 font-normal tabular-nums transition-colors"
-          aria-label={t("runMetrics.details")}
-        >
-          {formatRunDuration(durationMs)}
-        </button>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
       <TooltipContent side="top">
         <dl className="space-y-1">
           {rows.map(([label, value]) => (
@@ -963,6 +1042,21 @@ export function RunMetricsBadge({ metrics }: { metrics: ChatRunMetrics }) {
         </dl>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+export function RunMetricsBadge({ metrics }: { metrics: ChatRunMetrics }) {
+  const { t } = useTranslation("chat");
+  return (
+    <RunMetricsTooltip metrics={metrics}>
+      <button
+        type="button"
+        className="text-muted-foreground hover:text-foreground type-body py-1 font-normal tabular-nums transition-colors"
+        aria-label={t("runMetrics.details")}
+      >
+        {formatRunDuration(metrics.durationMs ?? 0)}
+      </button>
+    </RunMetricsTooltip>
   );
 }
 
@@ -979,11 +1073,17 @@ export function MessageRunStatus({
     (state) => state.message.metadata.custom.runMetrics,
   );
   const runMetrics = runMetricsOf(rawRunMetrics);
+  const hasCompletedProcess = useAuiState(
+    (state) =>
+      state.message.status?.type === "complete" &&
+      state.message.content.some(isChatProcessPart),
+  );
 
   if (status?.type === "running") {
     return isCurrentToolProcess ? null : <AgentRunningIndicator />;
   }
-  if (!runMetrics?.durationMs) return null;
+  // 完成后的过程入口承载唯一耗时及用量详情，纯正文与失败消息仍保留底部入口。
+  if (hasCompletedProcess || !runMetrics?.durationMs) return null;
   return showUsageDetails ? (
     <RunMetricsBadge metrics={runMetrics} />
   ) : (
@@ -1417,7 +1517,10 @@ export function AssistantMessage({
           <MessageTimestamp />
         </div>
         <div className="mt-2 min-w-0">
-          <ChatMessageParts onOpenFileChange={openFileChange} />
+          <ChatMessageParts
+            onOpenFileChange={openFileChange}
+            showUsageMetrics={showUsageMetrics}
+          />
           <ChatMessageContribution messageId={messageID} />
         </div>
         <AuiIf

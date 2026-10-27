@@ -9,7 +9,7 @@ import type * as ChatModule from "@/modules/chat";
 import type { Waker } from "@/modules/waker";
 import { FloatingChat } from "@/modules/chat/components/floating-chat";
 import { SettingsContextSidebar } from "@/modules/settings/components/settings-context-sidebar";
-import "@/shared/i18n";
+import { i18n } from "@/shared/i18n";
 import { WorkspaceProvider } from "@/shared/workspace/workspace-context";
 import { PartnerNavigationLayout } from "./partner-navigation-layout";
 import type { PartnerNavigationPreferences } from "./partner-navigation-preferences";
@@ -31,6 +31,23 @@ vi.mock("@/modules/chat", async (importOriginal) => ({
                 projectName: "项目甲",
                 title: "项目会话",
                 updatedAt: Date.now(),
+                wakerId,
+              },
+              {
+                additionalWorkingDirectories: ["/managed/chat-a/workspace"],
+                projectName: "workspace",
+                id: "chat-temp-a",
+                title: "临时会话甲",
+                updatedAt: 2,
+                wakerId,
+              },
+              {
+                additionalWorkingDirectories: [
+                  "C:\\managed\\chat-b\\workspace",
+                ],
+                id: "chat-temp-b",
+                title: "临时会话乙",
+                updatedAt: 1,
                 wakerId,
               },
               {
@@ -556,6 +573,31 @@ describe("PartnerNavigationLayout", () => {
     expect(screen.getByText("主内容")).toBeVisible();
   });
 
+  it.each([
+    ["zh-CN", "默认"],
+    ["en-US", "Default"],
+  ])("%s 将不同临时路径合并为一个可折叠分组", async (language, label) => {
+    await i18n.changeLanguage(language);
+    try {
+      const user = userEvent.setup();
+      renderLayout();
+      await user.click(screen.getByRole("button", { name: "展开全局侧栏" }));
+      await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+      const group = await screen.findByRole("button", { name: label });
+      expect(screen.getAllByRole("button", { name: label })).toHaveLength(1);
+      expect(screen.getByText("临时会话甲")).toBeVisible();
+      expect(screen.getByText("临时会话乙")).toBeVisible();
+      expect(screen.getByText("临时会话")).toBeVisible();
+      await user.click(group);
+      expect(screen.queryByText("临时会话甲")).toBeNull();
+      expect(screen.queryByText("临时会话乙")).toBeNull();
+      expect(screen.queryByText("临时会话")).toBeNull();
+      expect(screen.getByText("项目会话")).toBeVisible();
+    } finally {
+      await i18n.changeLanguage("zh-CN");
+    }
+  });
+
   it("伙伴菜单不包含会话，并从右下角浮层按来源查看会话", async () => {
     const user = userEvent.setup();
     renderLayout();
@@ -608,7 +650,7 @@ describe("PartnerNavigationLayout", () => {
     );
     const projectGroup = await screen.findByRole("button", { name: "项目甲" });
     expect(projectGroup).toBeVisible();
-    expect(screen.getByRole("button", { name: "临时目录" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "默认" })).toBeVisible();
     expect(screen.getAllByText("项目会话")).toHaveLength(1);
     expect(screen.getByText("临时会话")).toBeVisible();
     expect(
