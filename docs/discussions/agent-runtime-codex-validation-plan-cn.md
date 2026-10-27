@@ -12,7 +12,7 @@
 
 ## 当前决策与门槛
 
-保持 Codex 优先；知识宿主接入已实现并完成本地依赖组合验证，等待外部修复发布固定。Chat 和其他未迁入口保留旧实现，不删除仍有调用者的旧职责。
+保持 Codex 优先；知识宿主接入已实现，两个独立修复已推送并固定真实版本，已完成公开依赖组合验证。Chat 和其他未迁入口保留旧实现，不删除仍有调用者的旧职责。
 
 此前按“全部禁工具”设计的探针已删除；正常工具循环属于 CLI 自身行为。真实 CLI 连接本地虚构 Provider 的验证不使用真实账号，也不能替代 OAuth/平台/真实模型验收。
 
@@ -79,10 +79,10 @@
 | --- | --- | --- |
 | 输入 | 任务系统输入和用户原文到达真实 CLI 模型请求 | 不注入产品 AGENTS.md、Skill 或 MCP |
 | 工具循环 | 真实 CLI 执行测试 shell，工具结果进入第二次模型请求，最终只返回指定回答 | 同一 CLI 回合内正常执行，宿主没有重放 |
-| 最终输出证据 | 明确 final 及完成时重分类 final 可用，commentary/partial/缺 phase 不被采纳 | 原生最终性 5 个场景通过，依赖修正尚未发布 |
-| 当前固定依赖 | `2f0ad2051741` 不提供阶段来源证明 | 新内核报告 output_unavailable，不宣称当前组合支持严格生成 |
+| 最终输出证据 | 明确 final 及完成时重分类 final 可用，commentary/partial/缺 phase 不被采纳 | 原生最终性 5 个场景通过，已使用公开固定依赖复验 |
+| 当前固定依赖 | acp-go `3a7c512df7a1`、neux-knowledge `1fc1fd660983` | 原生最终性与结构化禁止重试均已接入 |
 
-独立 acp-go 本地修复为 `3a7c512`，分支 `codex/runtime-finality`，未发布。组合验证通过临时 modfile 引用它及知识核心重试修复 `1fc1fd6`（`codex/runtime-result-retry`）。server 已增加同仓 Runtime 的相对模块引用，并按真实依赖图固定到已发布的 acp-go `2f0ad2051741`；未提交绝对路径替换或不可获取的依赖版本。
+独立 acp-go 修复 `3a7c512` 已推送到 `codex/runtime-finality`，知识核心修复 `1fc1fd6` 已推送到 `codex/runtime-result-retry`。实际固定版本分别为 `v0.0.0-20261027080232-3a7c512df7a1` 与 `v0.1.2-0.20261027090513-1fc1fd660983`；同仓 Runtime 使用相对模块引用，无临时绝对替换。
 
 复现入口是 `packages/agent-runtime/driver/acp/codex_native_test.go`。设置 `NEUX_RUNTIME_CODEX_CLI` 为 CLI 绝对路径后，在独立模块运行：
 
@@ -96,6 +96,6 @@ GOWORK=off go test ./driver/acp -run '^TestNativeCodex' -count=1 -timeout=180s -
 
 阶段 B 的实现已删除旧 Codex 文本配置净化路径、TextOnly/禁工具耦合及 isolated_text_generation 前后端筛选。Codex 知识入口改为独立 Runtime；其他 CLI 通过既有执行实现返回最后结果，Chat 和 Wiki 维护保留原执行路径。宿主负责所选账号、原生进程退出与租约回收，不管理 CLI 自身工具或 MCP 加载。
 
-验证覆盖真实 CLI 工具循环及五种输出阶段、宿主路由/取消/清理不重放、账号共享租约与回收、未迁 CLI 及维护回归；七项前端选择测试、定向格式、文档与生成契约检查通过。服务模块经过正常 go.mod 的 readonly 编译检查；涉及最终性及禁止重试的行为验收仍使用本地外部修复。
+验证覆盖真实 CLI 工具循环及五种输出阶段、宿主路由/取消/清理不重放、账号共享租约与回收、未迁 CLI 及维护回归；七项前端选择测试、定向格式、文档与生成契约检查通过。服务模块经过正常 go.mod 的 readonly 编译检查；真实 Codex 工具循环及五种输出阶段、宿主和结果适配测试已使用公开固定依赖复验通过。
 
-远端依赖尚未发布，因此不能宣称阶段 B 已完成可交付切换。acp-go 开发分支推送被自动审批拒绝，等待用户明确授权发布两个独立修复后固定真实版本。真实账号刷新、真实模型质量及其他平台尚未验收。
+阶段 B 的 Codex 知识结果调用接入已完成。后续先执行[全 CLI 接入计划](agent-runtime-all-cli-plan-cn.md)，再推进其他业务入口。真实账号刷新、真实模型质量及其他平台尚未验收。

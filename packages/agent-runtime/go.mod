@@ -3,7 +3,7 @@ module github.com/JieWaZi/NeuxBot/agent-runtime
 go 1.25.8
 
 require (
-	github.com/JieWaZi/acp-go v0.0.0-20261027005717-2f0ad2051741
+	github.com/JieWaZi/acp-go v0.0.0-20261027080232-3a7c512df7a1
 	github.com/JieWaZi/acp-go/sdk v0.0.0-20261026093029-d283676c207f
 )
 

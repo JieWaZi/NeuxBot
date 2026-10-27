@@ -1,5 +1,5 @@
-github.com/JieWaZi/acp-go v0.0.0-20261027005717-2f0ad2051741 h1:5VeqdS+MexHkWX+QdqK1UePvvbf7JJNciDKdZUrzN7Q=
-github.com/JieWaZi/acp-go v0.0.0-20261027005717-2f0ad2051741/go.mod h1:8MkAHtWdkBWoIIE0YcATk9tMeT2RU4TOBc7zMdG2PXU=
+github.com/JieWaZi/acp-go v0.0.0-20261027080232-3a7c512df7a1 h1:Zxt79eyBMvymKoYowamxjzsmA5Grsox7mrdrFY3eWbM=
+github.com/JieWaZi/acp-go v0.0.0-20261027080232-3a7c512df7a1/go.mod h1:8MkAHtWdkBWoIIE0YcATk9tMeT2RU4TOBc7zMdG2PXU=
 github.com/JieWaZi/acp-go/sdk v0.0.0-20261026093029-d283676c207f h1:isuES04rUQmRGm7ZrztG+u96kFEDpNbS7yJTkxLXshs=
 github.com/JieWaZi/acp-go/sdk v0.0.0-20261026093029-d283676c207f/go.mod h1:aQk0P6nQDXtO7H+lL1YOZbq5nlbxzUSR1x9n469tOfk=
 github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
