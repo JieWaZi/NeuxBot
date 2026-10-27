@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/agent-runtime/contract"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	sdk "github.com/JieWaZi/acp-go/sdk"
 )
 
@@ -33,16 +34,19 @@ type session struct {
 
 // turnState 保存本轮交付、取消和故障，不保存累计正文。
 type turnState struct {
-	request        contract.TurnRequest // request 提供有效调用与修订身份。
-	sink           contract.DriverSink  // sink 是本轮同步有界交付端口。
-	ctx            context.Context      // ctx 控制交付及原生 Prompt。
-	cancel         context.CancelFunc   // cancel 在交付失败时停止本轮。
-	err            error                // err 保存首个交付或交互错误。
-	interactionSeq uint64               // interactionSeq 为同一工具的多次审批分配独立请求身份。
-	activity       chan struct{}        // activity 合并原生更新与交互状态变化，供无活动监视器重置。
-	pendingInput   int                  // pendingInput 统计等待中的交互，不将人工等待误判为原生静默。
-	contextKnown   bool                 // contextKnown 表示已经收到公开上下文快照。
-	contextTokens  int64                // contextTokens 是最后一次公开ACP上下文快照，不累计回合用量。
+	request            contract.TurnRequest  // request 提供有效调用与修订身份。
+	sink               contract.DriverSink   // sink 是本轮同步有界交付端口。
+	ctx                context.Context       // ctx 控制交付及原生 Prompt。
+	cancel             context.CancelFunc    // cancel 在交付失败时停止本轮。
+	err                error                 // err 保存首个交付或交互错误。
+	interactionSeq     uint64                // interactionSeq 为同一工具的多次审批分配独立请求身份。
+	activity           chan struct{}         // activity 合并原生更新与交互状态变化，供无活动监视器重置。
+	pendingInput       int                   // pendingInput 统计等待中的交互，不将人工等待误判为原生静默。
+	contextKnown       bool                  // contextKnown 表示已经收到公开上下文快照。
+	contextTokens      int64                 // contextTokens 是最后一次公开ACP上下文快照，不累计回合用量。
+	lastMessageID      string                // lastMessageID 是排空通知后最后出现的助手身份。
+	lastPhase          contract.MessagePhase // lastPhase 保留该消息已知阶段，避免空边界抹掉过程分类。
+	completionEligible bool                  // completionEligible 只在最后正文之后没有工具、思考或过程消息时成立。
 }
 
 var _ contract.DriverSession = (*session)(nil)
@@ -85,6 +89,14 @@ func (s *session) Prompt(ctx context.Context, r contract.TurnRequest, sink contr
 	if err != nil {
 		cancel()
 		s.stop()
+	}
+	if err == nil && (response.StopReason == sdk.StopReasonEndTurn || response.StopReason == sdk.StopReasonMaxTokens || response.StopReason == sdk.StopReasonMaxTurnRequests) && s.owner.completionPolicy == CompletionLastAssistant {
+		s.mu.Lock()
+		id, eligible := turn.lastMessageID, turn.completionEligible && turn.lastPhase == contract.PhaseUnknown && turn.err == nil
+		s.mu.Unlock()
+		if eligible {
+			_ = s.deliver(contract.DriverEvent{Kind: contract.EventAssistantMessage, Message: &contract.AssistantMessage{MessageID: id, Phase: contract.PhaseUnknown, Complete: true, CompletionVerified: true}})
+		}
 	}
 	s.deliveryMu.Lock()
 	s.mu.Lock()
@@ -201,6 +213,23 @@ func (s *session) deliver(event contract.DriverEvent) error {
 	if err := turn.ctx.Err(); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	if message := event.Message; message != nil {
+		if message.MessageID != turn.lastMessageID {
+			turn.lastMessageID, turn.lastPhase, turn.completionEligible = message.MessageID, contract.PhaseUnknown, false
+		}
+		if message.Phase != "" && message.Phase != contract.PhaseUnknown {
+			turn.lastPhase = message.Phase
+		}
+		if turn.lastPhase != contract.PhaseUnknown || message.MessageID == "" {
+			turn.completionEligible = false
+		} else if message.Delta != "" {
+			turn.completionEligible = true
+		}
+	} else if event.Kind == contract.EventTool || event.Kind == contract.EventThinking {
+		turn.completionEligible = false
+	}
+	s.mu.Unlock()
 	err := turn.sink.Accept(turn.ctx, event)
 	if err != nil {
 		err = fault(contract.FaultDelivery, "delivery", "ACP event delivery failed", err)
@@ -229,18 +258,13 @@ func (s *session) SessionUpdate(ctx context.Context, n sdk.SessionNotification) 
 	if c := n.Update.AgentMessageChunk; c != nil {
 		phase := contract.PhaseUnknown
 		complete := false
-		if meta, ok := c.Meta["codex"].(map[string]any); ok {
-			phaseVerified, _ := meta["phaseVerified"].(bool)
-			complete, _ = meta["messageCompleted"].(bool)
-			switch meta["phase"] {
-			case "commentary", "partial_answer":
-				// 明确的过程与局部回答均不能进入 best_effort 最终候选。
+		if info, ok := acpmeta.ReadMessageInfo(c.Meta); ok {
+			complete = info.Complete
+			switch info.Phase {
+			case acpmeta.MessagePhaseCommentary:
 				phase = contract.PhaseCommentary
-			case "final_answer":
-				// 旧适配器可能猜测 final；只有原生阶段证明才可升级最终性。
-				if phaseVerified {
-					phase = contract.PhaseFinal
-				}
+			case acpmeta.MessagePhaseFinal:
+				phase = contract.PhaseFinal
 			}
 		}
 		id := ""
@@ -342,7 +366,7 @@ func permissionCancelled() sdk.RequestPermissionResponse {
 }
 
 // configure 只把原生目录和每次写入回执中的当前值当作实际配置。
-func (s *session) configure(ctx context.Context, options []sdk.SessionConfigOption, profile contract.Profile) error {
+func (s *session) configure(ctx context.Context, options []sdk.SessionConfigOption, modes *sdk.SessionModeState, profile contract.Profile) error {
 	selectValue := func(category sdk.SessionConfigOptionCategory, value string) error {
 		if value == "" {
 			return nil
@@ -362,8 +386,53 @@ func (s *session) configure(ctx context.Context, options []sdk.SessionConfigOpti
 		options = response.ConfigOptions
 		return nil
 	}
-	if err := selectValue(sdk.SessionConfigOptionCategoryMode, profile.NativeMode); err != nil {
-		return err
+	mode := profile.NativeMode
+	if mode == "" && len(s.owner.modeCandidates) > 0 {
+		for _, candidate := range s.owner.modeCandidates {
+			if option := categoryOption(options, sdk.SessionConfigOptionCategoryMode); option != nil && containsValue(option.Options, candidate) {
+				mode = candidate
+				break
+			}
+			if modes != nil {
+				for _, advertised := range modes.AvailableModes {
+					if string(advertised.Id) == candidate {
+						mode = candidate
+						break
+					}
+				}
+			}
+			if mode != "" {
+				break
+			}
+		}
+		if fallback := s.owner.singleModeFallback; mode == "" && fallback != "" && modes != nil && len(modes.AvailableModes) == 1 && string(modes.AvailableModes[0].Id) == fallback {
+			mode = fallback
+		}
+		if mode == "" {
+			return fault(contract.FaultUnsupported, "configure", "ACP permission mode is not advertised", nil)
+		}
+	}
+	modeViaConfig := false
+	if mode != "" {
+		if categoryOption(options, sdk.SessionConfigOptionCategoryMode) != nil {
+			if err := selectValue(sdk.SessionConfigOptionCategoryMode, mode); err != nil {
+				return err
+			}
+			modeViaConfig = true
+		} else {
+			advertised := false
+			if modes != nil {
+				for _, available := range modes.AvailableModes {
+					advertised = advertised || string(available.Id) == mode
+				}
+			}
+			if !advertised {
+				return fault(contract.FaultUnsupported, "configure", "ACP permission mode is not advertised", nil)
+			}
+			if _, err := s.client.SetSessionMode(ctx, sdk.SetSessionModeRequest{SessionId: s.nativeID, ModeId: sdk.SessionModeId(mode)}); err != nil {
+				return fault(contract.FaultPreparation, "configure", "ACP permission mode selection failed", err)
+			}
+		}
 	}
 	if err := selectValue(sdk.SessionConfigOptionCategoryModel, profile.Model); err != nil {
 		return err
@@ -382,8 +451,17 @@ func (s *session) configure(ctx context.Context, options []sdk.SessionConfigOpti
 		}
 		return ""
 	}
+	if profile.Model != "" && actual(sdk.SessionConfigOptionCategoryModel) != profile.Model {
+		return fault(contract.FaultProtocol, "configure", "ACP later configuration reverted the requested model", nil)
+	}
+	if modeViaConfig && actual(sdk.SessionConfigOptionCategoryMode) != mode {
+		return fault(contract.FaultProtocol, "configure", "ACP later configuration reverted the requested permission mode", nil)
+	}
+	if mode == "" {
+		mode = actual(sdk.SessionConfigOptionCategoryMode)
+	}
 	s.configuration = contract.Configuration{
-		ActualMode:        actual(sdk.SessionConfigOptionCategoryMode),
+		ActualMode:        mode,
 		ActualModel:       actual(sdk.SessionConfigOptionCategoryModel),
 		ActualReasoning:   actual(sdk.SessionConfigOptionCategoryThoughtLevel),
 		ReasoningFallback: fallback,
@@ -393,6 +471,18 @@ func (s *session) configure(ctx context.Context, options []sdk.SessionConfigOpti
 }
 
 func categoryOption(options []sdk.SessionConfigOption, category sdk.SessionConfigOptionCategory) *sdk.SessionConfigOptionSelect {
+	// Claude 的 fast 选项也标为 model；标准模型身份优先，避免把模型写成开关。
+	preferred := ""
+	if category == sdk.SessionConfigOptionCategoryModel {
+		preferred = "model"
+	}
+	if preferred != "" {
+		for _, option := range options {
+			if c := option.Select; c != nil && string(c.Id) == preferred {
+				return c
+			}
+		}
+	}
 	for _, option := range options {
 		if c := option.Select; c != nil && c.Category != nil && *c.Category == category {
 			return c

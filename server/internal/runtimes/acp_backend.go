@@ -81,8 +81,6 @@ type acpRunRequest struct {
 	Sink EventSink
 	// EphemeralSession 表示本次隔离调用完成后必须立即关闭原生 Session。
 	EphemeralSession bool
-	// Text 仅在无状态模型生成时启用独占进程、配置确认和工具拒绝。
-	Text *textInvocation
 }
 
 // acpBackend 按 Runtime 启动指纹复用内嵌 ACP Agent。

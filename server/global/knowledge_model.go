@@ -146,7 +146,7 @@ func prepareKnowledgeRuntime(ctx context.Context, selection models.LibraryExecut
 
 // newKnowledgeRuntimeHost 只在产品边界读取环境和账号，独立 Runtime 不导入业务对象。
 func newKnowledgeRuntimeHost() *runtimehost.Host {
-	return runtimehost.New(runtimehost.Config{Legacy: RuntimeSDK, Resolve: func(ctx context.Context, input runtimehost.TextRequest) (runtimehost.Environment, error) {
+	return runtimehost.New(runtimehost.Config{Launch: RuntimeSDK.PrepareLaunch, Resolve: func(ctx context.Context, input runtimehost.TextRequest) (runtimehost.Environment, error) {
 		environment, err := RuntimeEnvironmentControllerManager.Get(ctx, input.RuntimeID)
 		if err != nil {
 			return runtimehost.Environment{}, err

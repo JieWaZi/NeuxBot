@@ -47,6 +47,30 @@ func (sdk *SDK) Runtimes() []RuntimeSummary {
 	return definitionSummaries(sdk.definitions)
 }
 
+// LaunchFacts 是已有探测与账号准备共同确认的原生启动事实，不创建协议连接。
+type LaunchFacts struct {
+	// BaseRuntimeID 决定公开适配器的协议类型。
+	BaseRuntimeID string
+	// Executable 是有效探测已经解析的真实程序路径。
+	Executable string
+	// PrefixArgs 是 Profile 与启动覆盖合并后的前置参数。
+	PrefixArgs []string
+	// Environment 是账号隔离、Profile 覆盖与工具路径补充后的完整环境。
+	Environment []string
+}
+
+// PrepareLaunch 复用既有启动准备规则，仅输出事实，不执行探测、会话或模型请求。
+func (sdk *SDK) PrepareLaunch(target RuntimeTarget, detection DetectionResult) (LaunchFacts, error) {
+	if sdk == nil {
+		return LaunchFacts{}, status_error.RuntimeUnavailable
+	}
+	prepared, err := sdk.prepareFromDetection(prepareRequestForRun(sdk, RunRequest{Target: target}), detection)
+	if err != nil {
+		return LaunchFacts{}, err
+	}
+	return LaunchFacts{BaseRuntimeID: prepared.definition.baseRuntimeID, Executable: prepared.detection.ResolvedBinary, PrefixArgs: cloneStrings(prepared.definition.prefixArgs), Environment: prepared.environment.list()}, nil
+}
+
 // preparedRuntime 保存同一次探测得到且可直接启动的不可变运行信息。
 type preparedRuntime struct {
 	// definition 保存已经解析 Profile 的有效 Runtime Definition。

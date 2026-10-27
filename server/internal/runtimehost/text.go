@@ -19,7 +19,6 @@ import (
 	agentruntime "github.com/JieWaZi/NeuxBot/agent-runtime/runtime"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimeauth"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
@@ -96,20 +95,14 @@ type Environment struct {
 	Detection runtimes.DetectionResult
 }
 
-// Legacy 保留尚未迁移的 CLI 的唯一执行实现。
-type Legacy interface {
-	// GenerateText 执行未迁移 CLI 的既有临时会话。
-	GenerateText(context.Context, runtimes.TextRequest) runtimes.TextResult
-}
-
 // Config 注入产品权威端口，构造时不启动进程。
 type Config struct {
 	// Resolve 在执行前解析明确的环境路由。
 	Resolve func(context.Context, TextRequest) (Environment, error)
 	// Prepare 取得共享账号租约；关闭失败必须允许再次调用。
 	Prepare func(context.Context, TextRequest, Environment, string) (runtimes.RuntimeTarget, func(context.Context) error, error)
-	// Legacy 是未迁移智能体的既有实现。
-	Legacy Legacy
+	// Launch 复用 Runtime Registry、Profile、账号隔离与工具路径规则生成启动事实。
+	Launch func(runtimes.RuntimeTarget, runtimes.DetectionResult) (runtimes.LaunchFacts, error)
 	// Driver 允许行为测试替换原生协议边界。
 	Driver func(Environment, acpdriver.Factory) (c.Driver, error)
 }
@@ -184,7 +177,7 @@ func (h *Host) GenerateText(ctx context.Context, input TextRequest) (TextResult,
 	if ctx == nil {
 		return TextResult{}, status_error.BadRequest
 	}
-	if h == nil || h.config.Resolve == nil || h.config.Prepare == nil {
+	if h == nil || h.config.Resolve == nil || h.config.Prepare == nil || h.config.Launch == nil {
 		return TextResult{}, status_error.RuntimeUnavailable
 	}
 	h.mutex.Lock()
@@ -203,7 +196,8 @@ func (h *Host) GenerateText(ctx context.Context, input TextRequest) (TextResult,
 	if err != nil {
 		return TextResult{}, err
 	}
-	if environment.BaseRuntimeID == "" {
+	descriptor, exists := runtimeDescriptors[environment.BaseRuntimeID]
+	if !exists {
 		return TextResult{}, status_error.RuntimeUnavailable
 	}
 	workspace, err := os.MkdirTemp("", "neux-runtime-model-")
@@ -211,50 +205,22 @@ func (h *Host) GenerateText(ctx context.Context, input TextRequest) (TextResult,
 		logx.Errorf("create model workspace failed: error=%v", err)
 		return TextResult{}, status_error.RuntimeUnavailable
 	}
-	if environment.BaseRuntimeID != runtimes.RuntimeIDCodex {
-		defer os.RemoveAll(workspace)
-		return h.legacy(ctx, input, environment, workspace)
-	}
-	return h.codex(ctx, input, environment, workspace)
+	return h.execute(ctx, input, environment, workspace, descriptor)
 }
 
-func (h *Host) legacy(ctx context.Context, input TextRequest, env Environment, workspace string) (TextResult, error) {
-	if h.config.Legacy == nil {
-		return TextResult{}, status_error.RuntimeUnavailable
-	}
-	target, closeLease, err := h.config.Prepare(ctx, input, env, workspace)
-	if err != nil {
-		return TextResult{}, err
-	}
-	if closeLease != nil {
-		defer func() {
-			if err := closeLease(context.WithoutCancel(ctx)); err != nil {
-				logx.Errorf("close legacy model account failed: error=%v", err)
-			}
-		}()
-	}
-	messages := make([]runtimes.TextMessage, len(input.Messages))
-	for i, message := range input.Messages {
-		messages[i] = runtimes.TextMessage{Role: message.Role, Content: message.Content}
-	}
-	result := h.config.Legacy.GenerateText(ctx, runtimes.TextRequest{Target: target, Detection: env.Detection, PermissionLevel: runtimes.PermissionLevelFullAccess, Model: input.Model, Reasoning: input.Reasoning, Thinking: input.Thinking, MaxTokens: input.MaxTokens, Temperature: input.Temperature, Messages: messages})
-	output := TextResult{Text: result.Text, StopReason: result.StopReason, ActualReasoning: result.ActualReasoning, ThinkingDisabled: result.ThinkingDisabled, ReasoningFallback: result.ReasoningFallback, Limitations: result.Limitations}
-	if result.Usage != nil {
-		output.Usage = &Usage{InputTokens: result.Usage.InputTokens, OutputTokens: result.Usage.OutputTokens, CacheReadTokens: result.Usage.CacheReadTokens, CacheCreationTokens: result.Usage.CacheCreationTokens}
-	}
-	if result.Failure != nil {
-		output.Text = ""
-		// 旧 SDK 的结果收集路径没有完整副作用证据，实际调用后的失败保守禁止重放。
-		return output, status_error.WithoutRetry(legacyFailure(result.Failure))
-	}
-	return output, nil
-}
-
-func (h *Host) codex(ctx context.Context, input TextRequest, env Environment, workspace string) (TextResult, error) {
+func (h *Host) execute(ctx context.Context, input TextRequest, env Environment, workspace string, descriptor runtimeDescriptor) (TextResult, error) {
 	prompt, instructions, limitations, err := compileMessages(input.Messages)
 	if err != nil {
 		_ = os.RemoveAll(workspace)
 		return TextResult{}, err
+	}
+	if env.BaseRuntimeID != runtimes.RuntimeIDCodex && len(instructions) > 0 {
+		var serialized strings.Builder
+		for _, message := range input.Messages {
+			fmt.Fprintf(&serialized, "<message role=%q>\n%s\n</message>\n", message.Role, message.Content)
+		}
+		prompt, instructions = serialized.String(), nil
+		limitations = append(limitations, "native_system_role_unavailable: task messages serialized into one user text input")
 	}
 	credentials := &credentialProvider{host: h, input: input, environment: env, workspace: workspace, instructions: instructions}
 	factory := func(factoryContext context.Context, request c.OpenRequest) (acp.Agent, error) {
@@ -264,7 +230,7 @@ func (h *Host) codex(ctx context.Context, input TextRequest, env Environment, wo
 	if h.config.Driver != nil {
 		driver, err = h.config.Driver(env, factory)
 	} else {
-		driver, err = acpdriver.New(acpdriver.Config{ID: input.RuntimeID, Factory: factory})
+		driver, err = acpdriver.New(acpdriver.Config{ID: input.RuntimeID, Factory: factory, CompletionPolicy: descriptor.completion, ModeCandidates: descriptor.modes, SingleModeFallback: descriptor.singleModeFallback})
 	}
 	if err != nil {
 		_ = os.RemoveAll(workspace)
@@ -282,7 +248,8 @@ func (h *Host) codex(ctx context.Context, input TextRequest, env Environment, wo
 		return TextResult{}, mapFault(err)
 	}
 	thinking := input.Thinking
-	result := engine.Invoke(ctx, c.ExecutionSpec{Profile: c.Profile{DriverID: input.RuntimeID, Model: input.Model, Reasoning: input.Reasoning, Thinking: &thinking, NativeMode: "agent-full-access", CredentialRef: input.AccountID + ":" + input.RuntimeID}, Input: c.Input{Text: prompt}, Session: c.SessionDirective{Mode: c.SessionNew}, Workspace: c.WorkspaceScope{Root: workspace}, Policies: c.Policies{Tools: c.ToolPolicy{Mode: c.ToolsAllowAll}, NativeConfig: c.NativeConfigInherit, Interaction: c.InteractionUnattended, Output: c.OutputStrict}})
+	model := nativeModelID(env.BaseRuntimeID, input.AccountID, input.Model)
+	result := engine.Invoke(ctx, c.ExecutionSpec{Profile: c.Profile{DriverID: input.RuntimeID, Model: model, Reasoning: input.Reasoning, Thinking: &thinking, CredentialRef: input.AccountID + ":" + input.RuntimeID}, Input: c.Input{Text: prompt}, Session: c.SessionDirective{Mode: c.SessionNew}, Workspace: c.WorkspaceScope{Root: workspace}, Policies: c.Policies{Tools: c.ToolPolicy{Mode: c.ToolsAllowAll}, NativeConfig: c.NativeConfigInherit, Interaction: c.InteractionUnattended, Output: c.OutputStrict}})
 	h.mutex.Lock()
 	h.owners[engine] = struct{}{}
 	h.mutex.Unlock()
@@ -294,6 +261,12 @@ func (h *Host) codex(ctx context.Context, input TextRequest, env Environment, wo
 	}
 	h.closeOwner(engine)
 	output := TextResult{StopReason: string(result.StopReason), ActualReasoning: result.Configuration.ActualReasoning, ThinkingDisabled: result.Configuration.ThinkingDisabled, ReasoningFallback: result.Configuration.ReasoningFallback, Limitations: limitations}
+	if env.BaseRuntimeID != runtimes.RuntimeIDCodex && !credentials.target.Isolated {
+		output.Limitations = append(output.Limitations, "system_account_native_config_retained: global instructions and configured MCP may load; host does not mount external resources")
+	}
+	if env.BaseRuntimeID != runtimes.RuntimeIDClaude && env.BaseRuntimeID != runtimes.RuntimeIDWorkBuddy {
+		output.Limitations = append(output.Limitations, "native_session_persistence_not_disabled: session is fresh and closed, CLI may retain its own logs")
+	}
 	if input.MaxTokens != 0 {
 		output.Limitations = append(output.Limitations, "max_tokens_not_configurable_via_acp")
 	}
@@ -404,6 +377,8 @@ type credentialProvider struct {
 	workspace string
 	// target 在取得账号租约后冻结。
 	target runtimes.RuntimeTarget
+	// launch 是 SDK 解析完成后不可变的二进制、前缀和环境事实。
+	launch runtimes.LaunchFacts
 	// closeLease 只在原生进程成功关闭后回收认证投射。
 	closeLease func(context.Context) error
 	// broker 是本次唯一 OAuth 刷新入口。
@@ -426,21 +401,18 @@ func (p *credentialProvider) Acquire(ctx context.Context, _ c.CredentialRequest)
 		return p, err
 	}
 	p.target, p.closeLease = target, release
-	base := os.Environ()
-	if target.Isolated {
-		base = accountconfig.Environment(base)
+	p.launch, err = p.host.config.Launch(target, p.environment.Detection)
+	if err != nil {
+		return p, err
 	}
-	p.values = make(map[string]string, len(base)+len(target.Environment))
-	for _, pair := range base {
+	if p.launch.BaseRuntimeID != p.environment.BaseRuntimeID {
+		return p, status_error.RuntimeConfigurationInvalid
+	}
+	p.values = make(map[string]string, len(p.launch.Environment))
+	for _, pair := range p.launch.Environment {
 		if key, value, ok := strings.Cut(pair, "="); ok {
 			p.values[key] = value
 		}
-	}
-	if target.ConfigHome != "" {
-		p.values["CODEX_HOME"] = target.ConfigHome
-	}
-	for key, value := range target.Environment {
-		p.values[key] = value
 	}
 	return p, nil
 }
@@ -480,6 +452,9 @@ func (p *credentialProvider) Close(ctx context.Context) error {
 
 func (p *credentialProvider) agent(ctx context.Context, request c.OpenRequest) (acp.Agent, error) {
 	values := request.Credential.Environment
+	if p.environment.BaseRuntimeID != runtimes.RuntimeIDCodex {
+		return p.nativeAgent(ctx, request, values)
+	}
 	refresh := p.target.RefreshCredentials
 	if refresh == nil {
 		var err error
@@ -500,7 +475,7 @@ func (p *credentialProvider) agent(ctx context.Context, request c.OpenRequest) (
 		}
 		values[runtimeauth.CodexRefreshURLVariable] = p.broker.URL()
 	}
-	args := append([]string(nil), p.target.PrefixArgs...)
+	args := append([]string(nil), p.launch.PrefixArgs...)
 	if len(p.instructions) > 0 {
 		path := filepath.Join(p.workspace, "model-instructions.md")
 		if err := os.WriteFile(path, []byte(strings.Join(p.instructions, "\n\n")), 0600); err != nil {
@@ -509,7 +484,7 @@ func (p *credentialProvider) agent(ctx context.Context, request c.OpenRequest) (
 		}
 		args = append(args, "-c", "model_instructions_file="+strconv.Quote(path))
 	}
-	return acpcodex.NewAgent(ctx, acpcodex.Config{Logger: slog.Default(), CodexPath: p.target.Binary, PrefixArgs: args, Environment: environmentList(values)})
+	return acpcodex.NewAgent(ctx, acpcodex.Config{Logger: slog.Default(), CodexPath: p.launch.Executable, PrefixArgs: args, Environment: environmentList(values)})
 }
 
 func environmentList(values map[string]string) []string {
@@ -574,28 +549,4 @@ func mapFault(err error) error {
 		}
 	}
 	return status_error.RuntimeExecutionFailed.WithParams(map[string]interface{}{"Detail": err.Error()})
-}
-
-func legacyFailure(failure *runtimes.Failure) error {
-	switch failure.Code {
-	case constants.RuntimeFailureCodeRequestTimeout:
-		return status_error.OperationTimeout
-	case runtimes.FailureCodeContextCanceled:
-		return status_error.OperationCanceled
-	case runtimes.FailureCodePolicyUnsupported:
-		return status_error.RuntimePolicyUnsupported
-	case runtimes.FailureCodeAuthRequired:
-		return status_error.RuntimeAuthRequired
-	case runtimes.FailureCodeProtocolIncompatible:
-		return status_error.RuntimeProtocolIncompatible
-	case runtimes.FailureCodeInactivityTimeout:
-		return status_error.RuntimeInactivityTimeout
-	case runtimes.FailureCodeRuntimeUnavailable:
-		return status_error.RuntimeUnavailable
-	}
-	detail := failure.DisplayMessage
-	if detail == "" {
-		detail = failure.Message
-	}
-	return status_error.RuntimeExecutionFailed.WithParams(map[string]interface{}{"Detail": detail})
 }

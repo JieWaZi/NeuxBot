@@ -243,7 +243,7 @@ func TestInvokePreservesConfirmedConfigurationAndUsage(t *testing.T) {
 	}
 	a.prompt = func(ctx context.Context, p sdk.PromptRequest) (sdk.PromptResponse, error) {
 		id := "final"
-		err := a.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: p.SessionId, Update: sdk.SessionUpdate{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: &id, Meta: map[string]any{"codex": map[string]any{"phase": "final_answer", "phaseVerified": true, "messageCompleted": true}}, Content: sdk.TextBlock("done")}}})
+		err := a.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: p.SessionId, Update: sdk.SessionUpdate{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: &id, Meta: map[string]any{"acp-go/message": map[string]any{"phase": "final", "source": "native_phase", "complete": true}}, Content: sdk.TextBlock("done")}}})
 		read := 7
 		return sdk.PromptResponse{StopReason: sdk.StopReasonEndTurn, Usage: &sdk.Usage{InputTokens: 11, OutputTokens: 5, CachedReadTokens: &read}}, err
 	}

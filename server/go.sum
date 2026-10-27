@@ -6,8 +6,8 @@ github.com/BurntSushi/toml v1.1.0/go.mod h1:CxXYINrC8qIiEnFrOxCa7Jy5BFHlXnUU2pbi
 github.com/BurntSushi/toml v1.5.0 h1:W5quZX/G/csjUnuI8SUYlsHs9M38FC7znL0lIO+DvMg=
 github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
-github.com/JieWaZi/acp-go v0.0.0-20261027080232-3a7c512df7a1 h1:Zxt79eyBMvymKoYowamxjzsmA5Grsox7mrdrFY3eWbM=
-github.com/JieWaZi/acp-go v0.0.0-20261027080232-3a7c512df7a1/go.mod h1:8MkAHtWdkBWoIIE0YcATk9tMeT2RU4TOBc7zMdG2PXU=
+github.com/JieWaZi/acp-go v0.0.0-20261027103018-620eb1772f72 h1:zQdteexEDkPyzTFfd9Tgi8h9lX6/tPC5cp+e6f8YK38=
+github.com/JieWaZi/acp-go v0.0.0-20261027103018-620eb1772f72/go.mod h1:8MkAHtWdkBWoIIE0YcATk9tMeT2RU4TOBc7zMdG2PXU=
 github.com/JieWaZi/acp-go/sdk v0.0.0-20261026093029-d283676c207f h1:isuES04rUQmRGm7ZrztG+u96kFEDpNbS7yJTkxLXshs=
 github.com/JieWaZi/acp-go/sdk v0.0.0-20261026093029-d283676c207f/go.mod h1:aQk0P6nQDXtO7H+lL1YOZbq5nlbxzUSR1x9n469tOfk=
 github.com/JieWaZi/neux-knowledge v0.1.2-0.20261027090513-1fc1fd660983 h1:c0AhW4UqS7T1bc6djZqnamAMiU3zw5Z9e+3vm5rSZGw=

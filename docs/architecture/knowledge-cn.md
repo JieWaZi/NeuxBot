@@ -172,11 +172,11 @@ CLI 页面列表只返回目录元数据，不混入正文、证据和链关系�
 
 来源正文读取使用已保存分块，按来源版本、块身份和位置分页，有界截断明确返回，不触发重解析或模型。写入冻结可见通用库、连接版本、库策略与活跃执行，每次调用重新授权；修改必须携带相应页面或目录版本。未知远端写入只查询原请求回执，核对操作与目标身份后才确认完成；明确拒绝持久保存并按原错误重放，不被转为未知。任务接纳与完成分开，CLI 通过任务读取观察真实终态。没有实际远端协议的操作明确不支持，不读取本机同 ID 内容。
 
-知识生成通过 `runtimehost.GenerateText` 启动独立 CLI 会话，传入本次完整消息，只向知识核心返回最终回答。Codex 接入独立 `packages/agent-runtime`；尚未迁移的 CLI 继续使用原执行实现，路由在执行前确定，执行失败后不切换实现或重新提交。独立依赖的集成状态见[阶段 B 验收记录](../discussions/agent-runtime-codex-validation-plan-cn.md)。
+知识生成通过 `runtimehost.GenerateText` 启动独立 CLI 会话，传入本次完整消息，只向知识核心返回最终回答。现有 11 类 CLI 及其 Profile 均通过独立 `packages/agent-runtime` 执行，旧 GenerateText 与结果收集分支已删除。工厂在执行前按真实 BaseRuntimeID 确定，执行失败后不切换实现或重新提交。独立依赖的集成状态见[阶段 B 验收记录](../discussions/agent-runtime-codex-validation-plan-cn.md)。
 
 宿主不主动注入 AGENTS.md、Skill 或 MCP，不增加工具禁用、原生配置净化或全局配置合并。CLI 如何加载原生配置和调用工具由 CLI 自身处理；工具活动不作为生成失败条件，也不进入知识正文。每次使用独立临时工作目录，不创建产品 Chat、Execution 或聊天日志；这不表示 CLI 不保存自己的会话记录。
 
-Codex 的任务 system 输入通过原生 `model_instructions_file` 传入，单条 user 原文直接发送；多条 user/assistant 输入保留角色与顺序，以明确标记的文本表示，不能宣称安装了原生 assistant 历史。选择的程序、账号、模型与推理配置保持一致；不再用 `isolated_text_generation` 筛选知识模型。
+Codex 的任务 system 输入通过原生 `model_instructions_file` 传入，单条 user 原文直接发送；其他 CLI 沿公开协议传递任务输入。不支持原生角色注入时，多条消息按角色与顺序进行明确文本表达并报告限制，不能宣称安装了原生 assistant 历史。选择的程序、账号、模型与推理配置保持一致；不再用 `isolated_text_generation` 筛选知识模型。
 
 账号继续使用已有配置投射和共享执行租约，OAuth 刷新复用同一凭据权威。账号准备、刷新与回收受短期协调保护，模型执行不持有整轮独占锁。原生进程停止后才回收认证投射与临时目录；清理失败保留原所有者并仅重试关闭。已取得的最终结果不因清理失败而重新生成；已提交调用后的失败向知识核心传递明确的禁止自动重试标记，避免重复工具副作用。
 

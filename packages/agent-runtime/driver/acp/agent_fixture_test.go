@@ -21,6 +21,8 @@ type fixtureAgent struct {
 	prompt func(context.Context, sdk.PromptRequest) (sdk.PromptResponse, error)
 	// configure 可检查模型参数是否通过公开配置接口应用。
 	configure func(context.Context, sdk.SetSessionConfigOptionRequest) (sdk.SetSessionConfigOptionResponse, error)
+	// configureMode 控制标准模式目录的切换回执。
+	configureMode func(context.Context, sdk.SetSessionModeRequest) (sdk.SetSessionModeResponse, error)
 	// closeNative 控制每次公开Close的实际执行与重试结果。
 	closeNative func(context.Context) error
 	// closeErr 控制原生资源释放失败。
@@ -112,6 +114,9 @@ func (a *fixtureAgent) ResumeSession(context.Context, sdk.ResumeSessionRequest) 
 }
 
 // SetSessionMode 拒绝测试未声明的原生模式切换。
-func (a *fixtureAgent) SetSessionMode(context.Context, sdk.SetSessionModeRequest) (sdk.SetSessionModeResponse, error) {
+func (a *fixtureAgent) SetSessionMode(ctx context.Context, request sdk.SetSessionModeRequest) (sdk.SetSessionModeResponse, error) {
+	if a.configureMode != nil {
+		return a.configureMode(ctx, request)
+	}
 	return sdk.SetSessionModeResponse{}, sdk.NewMethodNotFound(sdk.AgentMethodSessionSetMode)
 }

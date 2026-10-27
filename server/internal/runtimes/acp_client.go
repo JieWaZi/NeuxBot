@@ -32,8 +32,6 @@ type acpClient struct {
 
 // acpBridge 串行交付一个 Invocation 的 ACP 更新和 Runtime 事件。
 type acpBridge struct {
-	// textCollector 为纯模型调用直接收集正文，所有 Session Update 均不进入聊天事件队列。
-	textCollector *textCollector
 	// sessionID 是当前调用使用的 ACP Session 标识。
 	sessionID acp.SessionId
 	// invocationID 是 Runtime 统一事件绑定的调用标识。
@@ -229,11 +227,6 @@ func (client *acpClient) SessionUpdate(
 	}
 	bridge.observeFirstUpdate()
 
-	if bridge.textCollector != nil {
-		bridge.signalActivity()
-		bridge.textCollector.collectUpdate(notification.Update, bridge.binding)
-		return nil
-	}
 	clone := notification
 	return bridge.enqueue(acpDelivery{notification: &clone})
 }

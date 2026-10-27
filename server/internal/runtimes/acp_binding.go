@@ -166,7 +166,7 @@ func acpAdapterConfigForRequest(
 		Environment:        request.Prepared.environment.list(),
 		WorkingDirectory:   request.Request.Workspace.Path,
 		PermissionMode:     string(request.Request.Policy.Execution.PermissionLevel),
-		UserInput:          request.Text == nil,
+		UserInput:          true,
 	}
 	config.NativePluginDirectories = cloneStrings(request.Request.Target.NativePluginDirectories)
 	config.CodexPluginConfiguration = maps.Clone(request.Request.Target.CodexPluginConfiguration)
@@ -194,9 +194,6 @@ func acpAgentKeyForBinding(request acpRunRequest, binding acpRuntimeBinding) str
 	workspace := ""
 	if binding.agentScope != nil {
 		workspace = binding.agentScope(request)
-	}
-	if request.Text != nil {
-		workspace += "\x00text\x00" + request.InvocationID
 	}
 	return request.Request.Target.RuntimeID + "\x00" +
 		request.Prepared.detection.ResolvedBinary + "\x00" +

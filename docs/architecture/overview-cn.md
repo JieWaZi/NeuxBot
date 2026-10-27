@@ -36,6 +36,8 @@ flowchart LR
 | desktop/src / desktop/electron | 原生入口、窗口、preload、系统能力与嵌入浏览器 |
 | web/src                        | 本机会话生命周期与浏览器宿主                  |
 | packages/platform-contracts    | 中立能力接口和事件协议                        |
+| packages/agent-runtime         | 独立调用、会话、最终结果与公开 ACP 驱动       |
+| server/internal/runtimehost    | CLI 启动事实、账号租约与结果调用装配          |
 | packages/terminal-runtime      | Core 管理的 PTY 与终端屏幕运行时              |
 | server/apis                    | HTTP Operator、校验及单入口用例               |
 | server/services                | 多入口复用业务与后台生命周期                  |

@@ -11,7 +11,7 @@
 - `internal/plan`：配置冻结、有效权限与三个摘要。请求输入变化不会改变静态上下文摘要。
 - `internal/engine`：Invoke/Run 共用的接纳、会话互斥、取消、事件交付和资源生命周期。
 - `internal/output`：按消息身份收集有界最终候选；没有最终证据就报告不可用。
-- `driver/acp`：通过公开 ACP SDK、acpserver 和独立 acp-go 的 Codex 适配创建连接，不复制原生协议或进程实现。
+- `driver/acp`：通过公开 ACP SDK、acpserver 和独立 acp-go 的各 CLI 适配创建连接，不复制原生协议或进程实现。
 
 依赖方向为 `runtime → engine → contract/plan/output`；`driver/acp → contract + 外部 ACP`。宿主在组合根构造 Driver 和资源端口并注入 Runtime，内核不导入具体 Driver。
 
@@ -27,21 +27,23 @@
 
 执行状态、输出状态、交付故障、清理故障分别记录。原生调用完成但缺少最终消息证据时，执行仍是 completed，输出为 output_unavailable；清理失败不能将已经执行的事实抹掉。宿主据此决定业务终态，不能自动换引擎重跑。
 
-## ACP 首个切片的限制
+## ACP 结果调用与边界
 
-当前 Codex Driver 只支持新建、单次 Prompt 的独占连接。明确选择 `inherit_native` 与 `allow_all` 且宿主授予相应权限时，才能进入实际 ACP 调用；请求不支持的隔离或禁工具策略时准确返回 unsupported。知识入口只启动独立 CLI 会话、传入任务输入并消费最终结果，不主动注入 AGENTS.md、Skill 或 MCP，不接管原生工具和配置加载。
+当前共享 ACP Driver 为各 CLI 创建新建、单次 Prompt 的独占连接。明确选择 `inherit_native` 与 `allow_all` 且宿主授予相应权限时，才能进入实际 ACP 调用；请求不支持的隔离或禁工具策略时准确返回 unsupported。知识入口只启动独立 CLI 会话、传入任务输入并消费最终结果，不主动注入 AGENTS.md、Skill 或 MCP，不接管原生工具和配置加载。
 
 这一策略不证明操作系统目录沙箱。工作目录是原生 cwd，权限和原生工具仍取决于明确继承的环境；禁止把 cwd 或路径前缀称为安全隔离。
 
 尚不支持的贡献、历史 Seed、附件、额外目录、热续聊及冷恢复准确拒绝，模型、推理及所选原生权限模式经公开配置目录及回执验证。单连接只接受一次 Prompt，避免无回合身份的迟到 ACP 通知串入后续调用。
 
-Driver 保留公开 MessageID 和消息完成边界；只有 `_meta.codex.phaseVerified=true` 的 `final_answer` 才作为原生最终阶段证据。`messageCompleted=true` 只说明消息正文结束，不能单独证明最终答案。明确的 commentary、partial_answer 和 plan 不成为最终候选；缺少证明时报告 output_unavailable，不拼接全部正文猜测。固定 acp-go `3a7c512df7a1` 已提供该证明；真实 Codex 最终阶段与工具循环已通过本机假 Provider 验证。
+Driver 读取 acp-go 的公开 `MessageId` 与 `acp-go/message` 事实。Codex 使用 `CompletionNativePhase`，只有真实原生 final 阶段可成为严格结果；缺 phase、commentary、partial_answer 和 plan 不升级为答案。其余 CLI 使用 `CompletionLastAssistant`：外层公开 Prompt 成功返回且通知排空后，只确认最后有效助手消息，后续工具、思考或过程活动使旧候选失效。原生阶段证明与回合完成证明分别标记为 `verified_phase`、`verified_driver_completion`，不混为原生 final。
 
-真实 CLI 的验收方法与当前阻塞见 [Codex 验收计划](../../docs/discussions/agent-runtime-codex-validation-plan-cn.md)。内核 FakeDriver、公开 ACP 本地传输和虚构 Provider 的测试不替代真实账号/模型质量验收，知识迁移验证独立调用及最终结果，不以配置隔离或禁用全部工具为门槛。
+原生消息身份及缺失身份的有界分段投影由独立 acp-go 维护；宿主不解码厂商协议。长度结束、错误、取消及清理失败仍分别处理。模型、推理和所选权限按各 CLI 的真实目录配置，Pi 思考模式不作为权限模式，Claude fast 选项不作为模型目录。
+
+真实 CLI 的验收方法与当前覆盖见[全 CLI 接入计划](../../docs/discussions/agent-runtime-all-cli-plan-cn.md)。内核 FakeDriver、公开 ACP 本地传输和虚构 Provider 的测试不替代真实账号/模型质量验收，知识迁移验证独立调用及最终结果，不以配置隔离或禁用全部工具为门槛。
 
 原生关闭通过公开 `Agent.Close` 执行。Runtime 的重试不代表原生实现必然可恢复：当前固定版本 Codex 的 Close 使用一次性释放并保留首次错误，因此该错误再次返回时仍保留租约并报告清理未完成，不能伪造释放成功。原生关闭语义的后续改进继续归独立 acp-go。
 
-Codex 知识宿主接入位于 `server/internal/runtimehost`，账号复用 `runtimeauth` 与原账号服务；已固定公开依赖，其他 CLI 的统一接入继续按阶段推进。冷恢复、原生分叉、安装探测、空闲会话淘汰及其他入口按后续批次实现。
+全部现有 CLI 的知识宿主位于 `server/internal/runtimehost`，启动事实复用 `SDK.PrepareLaunch`，账号复用原服务，Codex 刷新复用 `runtimeauth`；旧知识 GenerateText 执行链已删除。冷恢复、原生分叉、安装探测、空闲会话淘汰及其他入口按后续批次实现。
 
 ## 验证
 
@@ -67,4 +69,6 @@ GOWORK=off go test -race ./runtime ./internal/engine ./driver/acp
 GOWORK=off go test ./driver/acp -run '^TestNativeCodex' -count=1 -timeout=180s -v
 ```
 
-变量名为 `NEUX_RUNTIME_CODEX_CLI`，未设置时这些测试跳过。测试验证任务输入、真实工具循环后的最终结果及原生最终阶段，不检查工具清单或 MCP 加载。Codex 0.163.0 与公开固定 acp-go `3a7c512` 组合的原生最终性证据为 5/5，实际工具循环后最终回答也通过。
+变量名为 `NEUX_RUNTIME_CODEX_CLI`，未设置时这些测试跳过。测试验证任务输入、真实工具循环后的最终结果及原生最终阶段，不检查工具清单或 MCP 加载。Codex 0.163.0 与公开固定 acp-go `620eb17` 组合的原生最终性证据为 5/5，实际工具循环后最终回答也通过。
+
+各 CLI 的实际运行覆盖和原生认证边界见[全 CLI 接入计划](../../docs/discussions/agent-runtime-all-cli-plan-cn.md)。

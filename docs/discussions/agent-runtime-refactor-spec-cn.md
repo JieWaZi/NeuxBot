@@ -28,7 +28,7 @@
 | 当前入口或模块 | 已有事实 | 本次处理 |
 | --- | --- | --- |
 | `internal/runtimes/sdk.go`、`run.go`、`acp_*` | SDK、共用 ACP 后端、CLI binding、进程复用、取消、事件交付已存在 | 复用职责和测试，不重写原生协议 |
-| `internal/runtimes/text.go` | GenerateText 使用临时工作区与临时会话；工具或交互触发拒绝；正文收集排除 commentary 后拼接 | 迁入同一内核的显式策略，补最终输出语义；不能只改名为 Invoke |
+| `internal/runtimehost/text.go` | 知识结果调用使用独立 Runtime；旧 GenerateText 已删除 | 只消费最终结果，允许原生 CLI 中间调用工具；由适配器提供消息身份与完成事实 |
 | `internal/knowledge/model/generator.go` | 知识模型生成独立于 Chat；每次准备账号租约 | 第一批业务迁移，只消费最终结果，保留用量、推理配置诊断 |
 | `internal/knowledge/model/maintenance.go` | 独立 Wiki 维护使用 Run、临时工作区和库内授权，不创建 Chat | 独立迁入允许工具的 Invoke，保留真实操作成功判定 |
 | `services/knowledge/maintenance.go`、`automatic.go` | 页面 AI 修订、自动维护还会装配 Chat/Execution 和限定工具 | 随所属 Chat 入口迁移，不因名字包含“知识”就改成无历史 Invoke |
@@ -154,7 +154,7 @@ NativeConfigPolicy 明确区分 `explicit_only` 与 `inherit_native`：前者只
 
 最终答案必须来自经过验证的消息阶段、边界或 Driver 明确的等价完成语义。当前 ACP 事件转换主要输出 TextDelta/CommentaryDelta，须保留可获得的 MessageID、Phase 和边界；若 acp-go 丢失这些事实，在 acp-go 处理，Engine 不解析厂商私有载荷。缺失能力不能用“全部非 commentary 正文拼接”伪装满足严格最终回答。
 
-严格输出是新 Invoke 默认。尚未验证的 CLI 保持旧入口；迁移 Run 可保留原产品显示流，但结果明确标注输出可靠程度。FinalCollector 只保存有界候选和必要消息状态，不缓存完整过程；拒绝、长度终止、取消、空输出和超限分别报告。迟到工具结果不能误清空最终候选，终态须排空已经接收的事件后收敛。
+严格输出是新 Invoke 默认。现有 CLI 的知识结果调用统一接入新入口，真实 CLI 验收覆盖独立记录；迁移 Run 可保留原产品显示流，但结果明确标注输出可靠程度。FinalCollector 只保存有界候选和必要消息状态，不缓存完整过程；拒绝、长度终止、取消、空输出和超限分别报告。迟到工具结果不能误清空最终候选，终态须排空已经接收的事件后收敛。
 
 ### 4.4 Run 的交付边界
 
@@ -332,9 +332,9 @@ Core 退出顺序为：停止业务接纳与生产者 → 取消/等待调用并
 | C：工具型结果任务 | Instructions/Skills/MCP 贡献、工作范围和无人值守交互 | 独立 Wiki MaintenanceRunner | 多次工具循环后的最终答案、库内授权、撤销、副作用未知与清理 |
 | D：交互聊天 | 宿主 Observer、审批、热/冷会话、检查点、隐藏交接、历史准备优化 | 新普通 Chat 的已验收组合 | 连续回合、历史规模、实时/重放一致、原生分叉和重试安全测试 |
 | E：复用入口 | 团队、工作流、自动任务、IM、Chat 型知识维护 | 每个入口独立启用，从新 Session 开始 | 每类业务端到端契约；跨入口取消/报告/交付正确；无旧会话接管 |
-| F：收敛 | 完成剩余 CLI；清理旧后端、过渡路由与废弃类型 | 全部已支持组合 | 无 legacy 活动调用，原连接已关闭，调用方和打包都已迁移 |
+| F：收敛 | 清理剩余旧后端、过渡路由与废弃类型 | 全部已支持组合 | 无 legacy 活动调用，原连接已关闭，调用方和打包都已迁移 |
 
-每批允许按 CLI 分多次交付。不能以 Codex 通过推定 Claude、Cursor、Pi 或其他 binding 通过，也不能为了完成删除任务取消尚未迁移的现有支持。
+B 批后先完成全部现有 CLI 的统一结果调用接入，再推进其他业务入口；详见[全 CLI 接入计划](agent-runtime-all-cli-plan-cn.md)。不能以 Codex 通过推定其他 CLI 的真实运行通过，缺少程序或账号配置的验收边界单独记录。
 
 早期允许把本仓库旧 Runtime 的实现和测试复制到新目录后解耦，原路径继续服务未切换功能；这不包括复制 acp-go 源码。过渡不能形成长期双内核。记录旧到新职责映射和必要修复的同步点；某职责调用方全部迁移后直接删除旧入口和废弃类型，不为旧调用方式保留兼容门面。
 
@@ -371,7 +371,7 @@ Spec 的批准只确定目标架构和迁移边界；每批实施仍以当时可
 ## 11. 代码与规范依据
 
 - [领域词汇](../../CONTEXT.md)、[当前架构](../architecture/overview-cn.md)、[后端约定](../development/backend-cn.md)、[文档约定](../development/documentation-cn.md)。
-- [Runtime SDK](../../server/internal/runtimes/sdk.go)、[Run](../../server/internal/runtimes/run.go)、[GenerateText](../../server/internal/runtimes/text.go)、[ACP 后端](../../server/internal/runtimes/acp_backend.go)、[ACP 事件](../../server/internal/runtimes/acp_client.go)、[原生分叉](../../server/internal/runtimes/fork.go)、[架构检查](../../server/internal/runtimes/acp_architecture_test.go)。
+- [Runtime SDK](../../server/internal/runtimes/sdk.go)、[Run](../../server/internal/runtimes/run.go)、[结果调用宿主](../../server/internal/runtimehost/text.go)、[ACP 后端](../../server/internal/runtimes/acp_backend.go)、[ACP 事件](../../server/internal/runtimes/acp_client.go)、[原生分叉](../../server/internal/runtimes/fork.go)、[架构检查](../../server/internal/runtimes/acp_architecture_test.go)。
 - [执行装配](../../server/services/execution/work.go)、[执行生命周期](../../server/services/execution/lifecycle.go)、[产品事件消费](../../server/services/execution/runtime_events.go)、[业务消息事实](../../server/services/execution/message_facts.go)、[近期历史](../../server/services/execution/recent_history.go)、[隐藏交接](../../server/services/execution/handoff.go)、[失败重试](../../server/services/execution/retry.go)。
 - [Chat Journal](../../server/services/chat/journal.go)、[Chat 历史读取](../../server/services/chat/chat.go)、[Runtime 持久探测配置](../../server/repositories/models/runtime_environment.go)、[历史限制](../../server/constants/common.go)。
 - [知识生成](../../server/internal/knowledge/model/generator.go)、[独立知识维护](../../server/internal/knowledge/model/maintenance.go)、[知识模型装配](../../server/global/knowledge_model.go)、[Chat 型知识维护](../../server/services/knowledge/maintenance.go)、[自动知识维护](../../server/services/knowledge/automatic.go)。

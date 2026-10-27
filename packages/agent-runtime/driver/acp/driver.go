@@ -19,25 +19,41 @@ const defaultCleanupTimeout = 5 * time.Second
 // Factory 仅在通过策略校验后创建公开 ACP Agent；凭据由该启动边界消费。
 type Factory func(context.Context, contract.OpenRequest) (sdk.Agent, error)
 
+// CompletionPolicy 声明宿主允许采用的最终回答证明来源。
+type CompletionPolicy string
+
+const (
+	// CompletionNativePhase 仅接收公开适配器验证的原生最终阶段。
+	CompletionNativePhase CompletionPolicy = "native_phase"
+	// CompletionLastAssistant 在成功 Prompt 排空通知后验证最后一个有效助手片段；长度终态仍输出截断状态。
+	CompletionLastAssistant CompletionPolicy = "last_assistant"
+)
+
 // Config 显式配置一个 ACP Driver，不在构造时启动原生进程。
 type Config struct {
-	ID             string        // ID 是宿主注册的稳定驱动身份。
-	Factory        Factory       // Factory 创建独占原生 Agent。
-	CleanupTimeout time.Duration // CleanupTimeout 是关闭连接与 Adapter 的独立期限。
+	ID                 string           // ID 是宿主注册的稳定驱动身份。
+	Factory            Factory          // Factory 创建独占原生 Agent。
+	CleanupTimeout     time.Duration    // CleanupTimeout 是关闭连接与 Adapter 的独立期限。
+	CompletionPolicy   CompletionPolicy // CompletionPolicy 决定是否允许 ACP 回合结束证明。
+	ModeCandidates     []string         // ModeCandidates 按优先级选择原生实际声明的权限模式；为空则只使用 Profile.NativeMode。
+	SingleModeFallback string           // SingleModeFallback 只允许旧 CLI 的唯一模式，不能覆盖多模式目录。
 }
 
 // Driver 拥有已打开连接和准备过程；首批不声明未经验证的配置或工具隔离。
 type Driver struct {
-	id             string                // id 是固定驱动身份。
-	factory        Factory               // factory 是唯一原生创建端口。
-	cleanupTimeout time.Duration         // cleanupTimeout 是释放资源期限。
-	ctx            context.Context       // ctx 取消尚未完成的原生准备。
-	cancel         context.CancelFunc    // cancel 在关闭时停止接纳后的准备工作。
-	mu             sync.Mutex            // mu 保护关闭、准备计数及连接集合。
-	closed         bool                  // closed 阻止关闭后的新建连接。
-	pending        int                   // pending 统计尚未返回的 Open。
-	sessions       map[*session]struct{} // sessions 保存仍由 Driver 拥有的连接。
-	changed        chan struct{}         // changed 在准备计数或原生所有者集合变化时唤醒关闭等待。
+	id                 string                // id 是固定驱动身份。
+	factory            Factory               // factory 是唯一原生创建端口。
+	cleanupTimeout     time.Duration         // cleanupTimeout 是释放资源期限。
+	ctx                context.Context       // ctx 取消尚未完成的原生准备。
+	cancel             context.CancelFunc    // cancel 在关闭时停止接纳后的准备工作。
+	mu                 sync.Mutex            // mu 保护关闭、准备计数及连接集合。
+	closed             bool                  // closed 阻止关闭后的新建连接。
+	pending            int                   // pending 统计尚未返回的 Open。
+	sessions           map[*session]struct{} // sessions 保存仍由 Driver 拥有的连接。
+	changed            chan struct{}         // changed 在准备计数或原生所有者集合变化时唤醒关闭等待。
+	completionPolicy   CompletionPolicy      // completionPolicy 是冻结的结果证明策略。
+	modeCandidates     []string              // modeCandidates 是冻结的原生模式候选。
+	singleModeFallback string                // singleModeFallback 保留旧 CLI 唯一模式的明确兼容值。
 }
 
 var _ contract.Driver = (*Driver)(nil)
@@ -50,8 +66,14 @@ func New(config Config) (*Driver, error) {
 	if config.CleanupTimeout == 0 {
 		config.CleanupTimeout = defaultCleanupTimeout
 	}
+	if config.CompletionPolicy == "" {
+		config.CompletionPolicy = CompletionNativePhase
+	}
+	if config.CompletionPolicy != CompletionNativePhase && config.CompletionPolicy != CompletionLastAssistant {
+		return nil, fault(contract.FaultInvalidSpec, "configure", "ACP completion policy is unsupported", nil)
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Driver{id: config.ID, factory: config.Factory, cleanupTimeout: config.CleanupTimeout, ctx: ctx, cancel: cancel, sessions: make(map[*session]struct{}), changed: make(chan struct{})}, nil
+	return &Driver{id: config.ID, factory: config.Factory, cleanupTimeout: config.CleanupTimeout, completionPolicy: config.CompletionPolicy, modeCandidates: append([]string(nil), config.ModeCandidates...), singleModeFallback: config.SingleModeFallback, ctx: ctx, cancel: cancel, sessions: make(map[*session]struct{}), changed: make(chan struct{})}, nil
 }
 
 // ID 返回宿主配置的驱动身份。
@@ -59,7 +81,7 @@ func (d *Driver) ID() string { return d.id }
 
 // Capabilities 只公布首切片已实现的公共传输能力；单次连接不支持热恢复。
 func (d *Driver) Capabilities() contract.DriverCapabilities {
-	return contract.DriverCapabilities{Version: "acp-go/2f0ad2051741+sdk/d283676c207f"}
+	return contract.DriverCapabilities{Version: "acp-message-v1"}
 }
 
 // Open 先拒绝未支持的策略和贡献，再创建并初始化独占 ACP 连接。
@@ -157,7 +179,7 @@ func (d *Driver) Open(ctx context.Context, r contract.OpenRequest) (contract.Dri
 		return fail(fault(contract.FaultProtocol, "new_session", "ACP session identity is missing", nil))
 	}
 	s.nativeID = response.SessionId
-	if err = s.configure(openCtx, response.ConfigOptions, r.Profile); err != nil {
+	if err = s.configure(openCtx, response.ConfigOptions, response.Modes, r.Profile); err != nil {
 		return fail(err)
 	}
 	if err = openCtx.Err(); err != nil {

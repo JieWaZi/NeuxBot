@@ -107,12 +107,7 @@ func (agent *embeddedACPAgent) run(
 		cancelClose()
 	}()
 	sessionConfigStartedAt := time.Now()
-	var configErr error
-	if request.Text != nil {
-		configErr = agent.configureTextSession(ctx, sessionID, &request, openedSession.configOptions)
-	} else {
-		configErr = agent.configureSession(ctx, sessionID, request.Request)
-	}
+	configErr := agent.configureSession(ctx, sessionID, request.Request)
 	if configErr != nil {
 		return acpFailedResult(request, constants.RuntimeACPFailureStageSessionConfig, configErr)
 	}
@@ -143,9 +138,6 @@ func (agent *embeddedACPAgent) run(
 	bridge.approvalHandler = request.Request.ApprovalHandler
 	bridge.elicitationHandler = request.Request.ElicitationHandler
 	bridge.userInputState = request.Request.UserInputState
-	if request.Text != nil {
-		bridge.textCollector = request.Text.collector
-	}
 	if err := agent.client.register(bridge); err != nil {
 		return acpFailedResult(request, constants.RuntimeACPFailureStageSessionActive, err)
 	}
@@ -302,9 +294,7 @@ func (agent *embeddedACPAgent) run(
 		bridge.recordPrimaryCause(status_error.OperationCanceled, constants.RuntimeACPFailureStagePrompt)
 	}
 
-	if result.response.Usage != nil && bridge.textCollector != nil {
-		bridge.textCollector.collectUsage(*result.response.Usage)
-	} else if result.response.Usage != nil {
+	if result.response.Usage != nil {
 		usageEvent, usageErr := acpPromptUsageEvent(*result.response.Usage)
 		if usageErr != nil {
 			bridge.setFailure(usageErr)
@@ -381,16 +371,14 @@ func (agent *embeddedACPAgent) supportsPersistentSessions() bool {
 	return agent.binding.supportsPersistent(agent.initializeResponse.AgentCapabilities)
 }
 
-// startACPBridge 为普通聊天先交付首事件，再启动消费者；纯文本只复用消费者收尾。
+// startACPBridge 先交付执行开始，再启动消费者。
 func startACPBridge(
 	ctx context.Context,
 	request acpRunRequest,
 	bridge *acpBridge,
 ) error {
-	if request.Text == nil {
-		if err := deliverACPInvocationStarted(ctx, request); err != nil {
-			return err
-		}
+	if err := deliverACPInvocationStarted(ctx, request); err != nil {
+		return err
 	}
 	go bridge.run(context.WithoutCancel(ctx))
 	bridge.activateDelivery()

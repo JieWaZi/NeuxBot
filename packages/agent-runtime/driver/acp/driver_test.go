@@ -122,10 +122,10 @@ func TestPromptDeliveryAndMetadata(t *testing.T) {
 			id    string // id 是公开消息身份。
 			phase string // phase 是公开元数据阶段。
 			text  string // text 是片段正文。
-		}{{"progress", "commentary", "working"}, {"answer", "final_answer", "result"}, {"unknown", "", "unverified"}} {
+		}{{"progress", "commentary", "working"}, {"answer", "final", "result"}, {"unknown", "", "unverified"}} {
 			var meta map[string]any
 			if sample.phase != "" {
-				meta = map[string]any{"codex": map[string]any{"phase": sample.phase, "phaseVerified": true}}
+				meta = map[string]any{"acp-go/message": map[string]any{"phase": sample.phase, "source": "native_phase", "complete": false}}
 			}
 			if err := a.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: p.SessionId, Update: sdk.SessionUpdate{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: &sample.id, Meta: meta, Content: sdk.TextBlock(sample.text)}}}); err != nil {
 				return sdk.PromptResponse{}, err

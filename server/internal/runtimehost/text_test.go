@@ -11,26 +11,9 @@ import (
 
 	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	acpdriver "github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp"
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 )
-
-// legacyFixture 统计未迁移实现调用，禁止把执行失败重新路由。
-type legacyFixture struct {
-	// calls 是旧实现实际接到的调用数。
-	calls int
-	// failure 模拟旧 CLI 已经执行工具后返回的原生故障。
-	failure *runtimes.Failure
-}
-
-func (f *legacyFixture) GenerateText(context.Context, runtimes.TextRequest) runtimes.TextResult {
-	f.calls++
-	if f.failure != nil {
-		return runtimes.TextResult{Text: "tool ran before failure", Failure: f.failure}
-	}
-	return runtimes.TextResult{Text: "legacy-final", StopReason: "end_turn"}
-}
 
 // driverFixture 提供可控制最终消息和资源关闭的技术边界。
 type driverFixture struct {
@@ -48,6 +31,8 @@ type driverFixture struct {
 	failure *c.Fault
 	// entered 通知已经真正提交 Prompt。
 	entered chan struct{}
+	// input 保存真正交付的本次任务文本。
+	input string
 }
 
 func (d *driverFixture) ID() string { return d.id }
@@ -67,6 +52,7 @@ func (d *driverFixture) Close(context.Context) error {
 }
 func (d *driverFixture) Prompt(ctx context.Context, request c.TurnRequest, sink c.DriverSink) c.DriverResult {
 	d.promptCalls++
+	d.input = request.Input.Text
 	_ = sink.Accept(ctx, c.DriverEvent{Kind: c.EventPromptAccepted})
 	if d.entered != nil {
 		close(d.entered)
@@ -82,29 +68,30 @@ func (d *driverFixture) Prompt(ctx context.Context, request c.TurnRequest, sink 
 	return c.DriverResult{Status: c.StatusCompleted, StopReason: c.StopMaxTokens, Usage: c.Usage{Known: true, InputTokens: 3, CachedReadTokens: 5, OutputTokens: 7}, Configuration: c.Configuration{ActualReasoning: "low", ReasoningFallback: "thinking_off_unsupported"}}
 }
 
-func hostFixture(t *testing.T, base string, d *driverFixture) (*Host, *legacyFixture, *int) {
+func hostFixture(t *testing.T, base string, d *driverFixture) (*Host, *int) {
 	t.Helper()
-	legacy := &legacyFixture{}
 	released := new(int)
-	host := New(Config{Legacy: legacy, Resolve: func(context.Context, TextRequest) (Environment, error) {
+	host := New(Config{Resolve: func(context.Context, TextRequest) (Environment, error) {
 		return Environment{BaseRuntimeID: base, Target: runtimes.RuntimeTarget{RuntimeID: d.id, Binary: "/selected/codex", PrefixArgs: []string{"--profile", "selected"}, ConfigHome: "/selected/home"}}, nil
 	}, Prepare: func(_ context.Context, _ TextRequest, env Environment, _ string) (runtimes.RuntimeTarget, func(context.Context) error, error) {
 		target := env.Target
 		target.Isolated = true
 		target.Environment = map[string]string{"CODEX_HOME": "/managed/home", "OPENAI_API_KEY": "selected-account"}
 		return target, func(context.Context) error { *released++; return nil }, nil
+	}, Launch: func(target runtimes.RuntimeTarget, _ runtimes.DetectionResult) (runtimes.LaunchFacts, error) {
+		return runtimes.LaunchFacts{BaseRuntimeID: base, Executable: target.Binary, PrefixArgs: target.PrefixArgs, Environment: environmentList(target.Environment)}, nil
 	}, Driver: func(Environment, acpdriver.Factory) (c.Driver, error) { return d, nil }})
-	return host, legacy, released
+	return host, released
 }
 
 func TestCodexProfileFinalSurvivesCleanupAndNeverReplays(t *testing.T) {
 	driver := &driverFixture{id: "custom-codex"}
-	host, legacy, released := hostFixture(t, runtimes.RuntimeIDCodex, driver)
+	host, released := hostFixture(t, runtimes.RuntimeIDCodex, driver)
 	result, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, AccountID: "account", Model: "chosen-model", Reasoning: "high", Messages: []Message{{Role: "system", Content: "task rules"}, {Role: "user", Content: "exact input"}}})
-	if err != nil || result.Text != "trusted final" || result.StopReason != "max_tokens" || result.Usage == nil || result.Usage.CacheReadTokens != 5 || legacy.calls != 0 || driver.promptCalls != 1 || *released != 0 {
-		t.Fatalf("result=%+v err=%v legacy=%d prompt=%d release=%d", result, err, legacy.calls, driver.promptCalls, *released)
+	if err != nil || result.Text != "trusted final" || result.StopReason != "max_tokens" || result.Usage == nil || result.Usage.CacheReadTokens != 5 || driver.promptCalls != 1 || *released != 0 {
+		t.Fatalf("result=%+v err=%v prompt=%d release=%d", result, err, driver.promptCalls, *released)
 	}
-	if driver.opened.Profile.NativeMode != "agent-full-access" || driver.opened.Profile.Model != "chosen-model" || driver.opened.Policies.Tools.Mode != c.ToolsAllowAll || len(driver.opened.Contributions.Instructions) != 0 || len(driver.opened.Contributions.MCP) != 0 || driver.opened.Credential.Environment["OPENAI_API_KEY"] != "selected-account" {
+	if driver.opened.Profile.Model != "chosen-model" || driver.opened.Policies.Tools.Mode != c.ToolsAllowAll || len(driver.opened.Contributions.Instructions) != 0 || len(driver.opened.Contributions.MCP) != 0 || driver.opened.Credential.Environment["OPENAI_API_KEY"] != "selected-account" {
 		t.Fatalf("open=%+v", driver.opened)
 	}
 	if _, err := os.Stat(driver.opened.Workspace.Root); err != nil {
@@ -124,32 +111,53 @@ func TestCodexProfileFinalSurvivesCleanupAndNeverReplays(t *testing.T) {
 
 func TestExecutedFailureCarriesNoRetryAndNeverFallsBack(t *testing.T) {
 	driver := &driverFixture{id: "custom-codex", allowClose: true, failure: &c.Fault{Code: c.FaultDriver, Stage: "prompt", Message: "connection timeout", Cause: context.DeadlineExceeded}}
-	host, legacy, _ := hostFixture(t, runtimes.RuntimeIDCodex, driver)
+	host, _ := hostFixture(t, runtimes.RuntimeIDCodex, driver)
 	defer host.Close(context.Background())
 	result, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, Messages: []Message{{Role: "user", Content: "input"}}})
 	var policy interface{ Retryable() bool }
-	if !errors.Is(err, status_error.OperationTimeout) || !errors.As(err, &policy) || policy.Retryable() || result.Text != "" || legacy.calls != 0 || driver.promptCalls != 1 {
+	if !errors.Is(err, status_error.OperationTimeout) || !errors.As(err, &policy) || policy.Retryable() || result.Text != "" || driver.promptCalls != 1 {
 		t.Fatalf("result=%+v err=%v", result, err)
 	}
 }
 
-func TestUnmigratedCLIUsesLegacyOnce(t *testing.T) {
-	driver := &driverFixture{id: "claude"}
-	host, legacy, released := hostFixture(t, runtimes.RuntimeIDClaude, driver)
-	result, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, Messages: []Message{{Role: "user", Content: "input"}}})
-	if err != nil || result.Text != "legacy-final" || legacy.calls != 1 || driver.promptCalls != 0 || *released != 1 {
-		t.Fatalf("result=%+v err=%v", result, err)
+func TestAllCLIProfilesUseOneHostAndReleaseWithoutReplay(t *testing.T) {
+	for _, base := range []string{"codex", "claude", "kimi", "cursor", "pi", "opencode", "gemini", "grok", "workbuddy", "qoder", "qoder-cn"} {
+		t.Run(base, func(t *testing.T) {
+			driver := &driverFixture{id: "profile-" + base, allowClose: true}
+			host, released := hostFixture(t, base, driver)
+			defer host.Close(context.Background())
+			result, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, Messages: []Message{{Role: "system", Content: "task rules"}, {Role: "user", Content: "input"}}})
+			if err != nil || result.Text != "trusted final" || driver.promptCalls != 1 || *released != 1 {
+				t.Fatalf("result=%+v err=%v calls=%d released=%d", result, err, driver.promptCalls, *released)
+			}
+			if base != "codex" && !strings.Contains(driver.opened.Profile.DriverID, base) {
+				t.Fatalf("profile lost: %+v", driver.opened)
+			}
+			if base != "codex" && (!strings.Contains(driver.input, "task rules") || !strings.Contains(driver.input, "input")) {
+				t.Fatalf("task messages lost: %q", driver.input)
+			}
+		})
 	}
 }
 
-func TestLegacyFailureAfterDispatchCannotRetryOrReplay(t *testing.T) {
-	driver := &driverFixture{id: "claude"}
-	host, legacy, released := hostFixture(t, runtimes.RuntimeIDClaude, driver)
-	legacy.failure = &runtimes.Failure{Code: constants.RuntimeFailureCodeRequestTimeout, Message: "tool completed, provider connection timed out"}
-	result, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, Messages: []Message{{Role: "user", Content: "run native tool"}}})
-	var policy interface{ Retryable() bool }
-	if !errors.Is(err, status_error.OperationTimeout) || !errors.As(err, &policy) || policy.Retryable() || result.Text != "" || legacy.calls != 1 || driver.promptCalls != 0 || *released != 1 {
-		t.Fatalf("result=%+v err=%v calls=%d released=%d", result, err, legacy.calls, *released)
+// TestOpenCodeManagedModelKeepsSystemAndAccountNamespaces 防止系统模型误加受管前缀或账号模型漏选服务商。
+func TestOpenCodeManagedModelKeepsSystemAndAccountNamespaces(t *testing.T) {
+	for _, tt := range []struct {
+		account string // account 是本次已冻结的账号身份。
+		want    string // want 是必须送给原生 OpenCode 的完整模型身份。
+	}{{"", "model-a"}, {"selected-account", "ally/model-a"}} {
+		driver := &driverFixture{id: "opencode-profile", allowClose: true}
+		host, _ := hostFixture(t, runtimes.RuntimeIDOpenCode, driver)
+		_, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, AccountID: tt.account, Model: "model-a", Messages: []Message{{Role: "user", Content: "input"}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if driver.opened.Profile.Model != tt.want {
+			t.Fatalf("account=%q native model=%q want=%q", tt.account, driver.opened.Profile.Model, tt.want)
+		}
+		if err := host.Close(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -166,7 +174,7 @@ func TestTaskMessagesPreserveOriginalSystemAndSoleUser(t *testing.T) {
 
 func TestHostCloseCancelsActiveInvocation(t *testing.T) {
 	driver := &driverFixture{id: "custom-codex", allowClose: true, entered: make(chan struct{})}
-	host, _, released := hostFixture(t, runtimes.RuntimeIDCodex, driver)
+	host, released := hostFixture(t, runtimes.RuntimeIDCodex, driver)
 	finished := make(chan error, 1)
 	go func() {
 		_, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, Messages: []Message{{Role: "user", Content: "input"}}})
