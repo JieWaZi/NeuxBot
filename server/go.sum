@@ -14,6 +14,8 @@ github.com/JieWaZi/neux-knowledge v0.1.2-0.20261026093548-30dd388b6902 h1:rPj+ci
 github.com/JieWaZi/neux-knowledge v0.1.2-0.20261026093548-30dd388b6902/go.mod h1:0wi+ybWUxSndtQiiJz+Siwixf2nHdceb+DYL5Axm0Tw=
 github.com/JieWaZi/neux-knowledge v0.1.2-0.20261027014823-d5f73bd666d9 h1:R6kGFVKJ7KGeHAF9eN7IGxBwmwVIHDoJxPUeytL+nGU=
 github.com/JieWaZi/neux-knowledge v0.1.2-0.20261027014823-d5f73bd666d9/go.mod h1:0wi+ybWUxSndtQiiJz+Siwixf2nHdceb+DYL5Axm0Tw=
+github.com/JieWaZi/neux-knowledge v0.1.2-0.20261027035636-f8e055756af3 h1:qfaipoxuY9v58hjYAars4jB8umeYUVoWAh8Pn3uK/tg=
+github.com/JieWaZi/neux-knowledge v0.1.2-0.20261027035636-f8e055756af3/go.mod h1:0wi+ybWUxSndtQiiJz+Siwixf2nHdceb+DYL5Axm0Tw=
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Microsoft/go-winio v0.5.2/go.mod h1:WpS1mjBmmwHBEWmogvA2mj8546UReBk4v8QkMxJ6pZY=
