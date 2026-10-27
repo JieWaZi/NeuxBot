@@ -28,6 +28,51 @@ const routeSceneForLocation = (location: RouteSceneLocation) =>
 const settingsSceneTab = () => createSettingsSceneTab(labels.settings);
 
 describe("应用 Scene 模型", () => {
+  it("关闭其他保留右键目标，工作台目标同时保留所属会话", () => {
+    const next = appSceneReducer(
+      {
+        activeTabId: "settings",
+        tabs: [
+          {
+            id: "chat",
+            kind: "route",
+            label: "会话",
+            closeable: true,
+            lastUsed: 1,
+          },
+          {
+            id: "file",
+            kind: "workspace",
+            ownerTabId: "chat",
+            workspaceTabId: "file-1",
+            label: "文件",
+            closeable: true,
+            lastUsed: 2,
+          },
+          {
+            id: "settings",
+            kind: "settings",
+            label: "设置",
+            closeable: true,
+            lastUsed: 3,
+          },
+          {
+            id: "other-file",
+            kind: "workspace",
+            ownerTabId: "chat",
+            workspaceTabId: "file-2",
+            label: "另一个文件",
+            closeable: true,
+            lastUsed: 4,
+          },
+        ],
+      },
+      { type: "close-others", tabId: "file" },
+    );
+    expect(next.tabs.map((tab) => tab.id)).toEqual(["chat", "file"]);
+    expect(next.activeTabId).toBe("file");
+  });
+
   it("工作流列表复用资源库标签，工作流编辑仍有独立标签", () => {
     const library = routeSceneForLocation({
       pathname: "/resources",

@@ -93,6 +93,43 @@ export function AppSceneWorkspaceProvider({
       const next = appSceneReducer(current, command);
       setSnapshot(next);
 
+      if (command.type === "close-others") {
+        for (const tab of current.tabs) {
+          if (
+            tab.kind !== "workspace" ||
+            !tab.workspaceTabId ||
+            next.tabs.some((retained) => retained.id === tab.id)
+          )
+            continue;
+          // 宿主保留时通过原有关闭入口释放子页签；宿主移除时由卸载清理。
+          if (
+            tab.ownerTabId &&
+            next.tabs.some((retained) => retained.id === tab.ownerTabId)
+          ) {
+            workspaceContributionsRef.current
+              .get(tab.ownerTabId)
+              ?.onClose(tab.workspaceTabId);
+          }
+        }
+        const target = next.tabs.find((tab) => tab.id === next.activeTabId);
+        if (
+          target?.kind === "workspace" &&
+          target.ownerTabId &&
+          target.workspaceTabId
+        ) {
+          workspaceContributionsRef.current
+            .get(target.ownerTabId)
+            ?.onSelect(target.workspaceTabId);
+        } else if (target?.kind === "route") {
+          const contribution = workspaceContributionsRef.current.get(target.id);
+          if (contribution)
+            contribution.onSelect(contribution.primaryWorkspaceTabId);
+        }
+        if (target?.href && target.href !== `${pathname}${search}`)
+          navigate(target.href);
+        return;
+      }
+
       if (command.type === "select") {
         const target = next.tabs.find((tab) => tab.id === command.tabId);
         if (target?.kind === "workspace") {

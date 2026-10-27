@@ -20,6 +20,12 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/shared/ui/context-menu";
 import { OverflowText } from "@/shared/ui/overflow-text";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useSceneChromeActions } from "@/shared/ui/scene-chrome-actions";
@@ -47,6 +53,7 @@ type SceneTabStripProps = {
   tabs: readonly SceneTab[];
   onSelect: (tabId: string) => void;
   onClose: (tabId: string) => void;
+  onCloseOthers?: (tabId: string) => void;
   onReorder?: (sourceTabId: string, targetTabId: string) => void;
   leading?: ReactNode;
   paneActions?: ReactNode;
@@ -60,6 +67,7 @@ export function SceneTabStrip({
   className,
   leading,
   onClose,
+  onCloseOthers,
   onReorder,
   onSelect,
   paneActions,
@@ -321,13 +329,35 @@ export function SceneTabStrip({
               ) : null}
             </div>
           );
-          return tab.notFound ? (
+          const triggerContent = onCloseOthers ? (
+            <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
+          ) : (
+            content
+          );
+          const tabContent = tab.notFound ? (
             <Tooltip key={tab.id}>
-              <TooltipTrigger asChild>{content}</TooltipTrigger>
+              <TooltipTrigger asChild>{triggerContent}</TooltipTrigger>
               <TooltipContent>{t("sceneTabs.notFound")}</TooltipContent>
             </Tooltip>
           ) : (
-            content
+            triggerContent
+          );
+          return onCloseOthers ? (
+            <ContextMenu key={tab.id}>
+              {tabContent}
+              <ContextMenuContent>
+                <ContextMenuItem
+                  disabled={
+                    !tabs.some((item) => item.id !== tab.id && item.closeable)
+                  }
+                  onSelect={() => onCloseOthers(tab.id)}
+                >
+                  {t("sceneTabs.closeOthers")}
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          ) : (
+            tabContent
           );
         })}
       </div>

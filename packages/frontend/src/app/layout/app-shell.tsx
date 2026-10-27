@@ -640,6 +640,10 @@ function AppShellContent({
                   }
                   appScenes.dispatch({ type: "close", tabId });
                 }}
+                onCloseOthers={(tabId) => {
+                  setSceneNavigationVisible(tabId === "settings");
+                  appScenes.dispatch({ type: "close-others", tabId });
+                }}
                 onSelect={(tabId) => {
                   if (tabId === "settings" && !settingsOpen) {
                     settingsPreviousCollapsedRef.current =

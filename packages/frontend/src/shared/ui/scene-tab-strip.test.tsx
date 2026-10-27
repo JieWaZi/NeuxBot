@@ -1,9 +1,9 @@
 import { useLayoutEffect } from "react";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import "@/shared/i18n";
+import { i18n } from "@/shared/i18n";
 import {
   SceneChromePortalProvider,
   useSceneChromeAccessoryWidthSetter,
@@ -21,6 +21,59 @@ function AccessoryWidth({ side = "right" }: { side?: "left" | "right" }) {
 }
 
 describe("SceneTabStrip", () => {
+  it.each([
+    ["zh-CN", "关闭其他页签"],
+    ["en-US", "Close other tabs"],
+  ])("%s 右键保留目标页签并提供批量关闭入口", async (language, othersLabel) => {
+    await i18n.changeLanguage(language);
+    try {
+      const onCloseOthers = vi.fn();
+      const onSelect = vi.fn();
+      render(
+        <SceneTabStrip
+          activeTabId="chat"
+          ariaLabel="场景标签"
+          onClose={() => {}}
+          onCloseOthers={onCloseOthers}
+          onSelect={onSelect}
+          tabs={[
+            { id: "chat", label: "对话", closeable: true },
+            { id: "settings", label: "设置", closeable: true },
+          ]}
+        />,
+      );
+      const tab = screen.getByRole("tab", { name: "设置" });
+      fireEvent.contextMenu(tab);
+      await userEvent
+        .setup()
+        .click(await screen.findByRole("menuitem", { name: othersLabel }));
+      expect(onCloseOthers).toHaveBeenCalledExactlyOnceWith("settings");
+      expect(onSelect).not.toHaveBeenCalled();
+    } finally {
+      await i18n.changeLanguage("zh-CN");
+    }
+  });
+
+  it("无可关闭页签时禁用菜单操作，Shift+F10 支持键盘打开", async () => {
+    render(
+      <SceneTabStrip
+        activeTabId="fixed"
+        ariaLabel="场景标签"
+        onClose={() => {}}
+        onCloseOthers={() => {}}
+        onSelect={() => {}}
+        tabs={[{ id: "fixed", label: "固定页签" }]}
+      />,
+    );
+    const user = userEvent.setup();
+    screen.getByRole("tab", { name: "固定页签" }).focus();
+    await user.keyboard("{Shift>}{F10}{/Shift}");
+    expect(screen.queryByRole("menuitem", { name: "关闭全部" })).toBeNull();
+    expect(
+      await screen.findByRole("menuitem", { name: "关闭其他页签" }),
+    ).toHaveAttribute("aria-disabled", "true");
+  });
+
   it("失效标签在未选中时保留淡红背景、感叹号与悬停提示，并可关闭", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();

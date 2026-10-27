@@ -232,6 +232,7 @@ const resources = {
       unknownError: "操作未完成，请稍后重试",
       pageLoading: "正在载入页面",
       sceneTabs: {
+        closeOthers: "关闭其他页签",
         notFound: "数据可能已被删除，请关闭该页面",
         chat: "会话",
         detail: "详情",
@@ -2171,6 +2172,7 @@ const resources = {
       serviceConnectionFailed:
         "Cannot connect to the local service right now. Check the connection.",
       sceneTabs: {
+        closeOthers: "Close other tabs",
         notFound: "The data may have been deleted. Please close this page.",
       },
     },
