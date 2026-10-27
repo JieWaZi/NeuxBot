@@ -28,6 +28,31 @@ const routeSceneForLocation = (location: RouteSceneLocation) =>
 const settingsSceneTab = () => createSettingsSceneTab(labels.settings);
 
 describe("应用 Scene 模型", () => {
+  it("页签重命名在路由刷新及自动标题更新后保留，不修改原始标题", () => {
+    let snapshot = initialAppSceneSnapshot({
+      id: "chat:a",
+      label: "原始标题",
+      kind: "route",
+      closeable: true,
+    });
+    snapshot = appSceneReducer(snapshot, {
+      type: "rename-tab",
+      tabId: "chat:a",
+      label: "我的页签",
+    });
+    snapshot = appSceneReducer(snapshot, {
+      type: "open",
+      tab: { id: "chat:a", label: "刷新标题", kind: "route", closeable: true },
+    });
+    snapshot = appSceneReducer(snapshot, {
+      type: "rename",
+      tabId: "chat:a",
+      label: "会话自动标题",
+    });
+    expect(snapshot.tabs[0]?.customLabel).toBe("我的页签");
+    expect(snapshot.tabs[0]?.label).toBe("会话自动标题");
+  });
+
   it("关闭其他保留右键目标，工作台目标同时保留所属会话", () => {
     const next = appSceneReducer(
       {

@@ -232,6 +232,11 @@ const resources = {
       unknownError: "操作未完成，请稍后重试",
       pageLoading: "正在载入页面",
       sceneTabs: {
+        rename: "重命名",
+        renameTitle: "重命名页签",
+        nameLabel: "页签名称",
+        namePlaceholder: "输入页签名称",
+        renameHint: "仅修改当前页签的显示名称。",
         closeOthers: "关闭其他页签",
         notFound: "数据可能已被删除，请关闭该页面",
         chat: "会话",
@@ -2131,6 +2136,8 @@ const resources = {
     automaticTask: automaticTaskEn,
     workflow: workflowEn,
     common: {
+      save: "Save",
+      cancel: "Cancel",
       conversationGroups: {
         temporaryDirectory: "Default",
         unnamedProject: "Unnamed project",
@@ -2172,6 +2179,11 @@ const resources = {
       serviceConnectionFailed:
         "Cannot connect to the local service right now. Check the connection.",
       sceneTabs: {
+        rename: "Rename",
+        renameTitle: "Rename tab",
+        nameLabel: "Tab name",
+        namePlaceholder: "Enter a tab name",
+        renameHint: "Only changes the display name of this tab.",
         closeOthers: "Close other tabs",
         notFound: "The data may have been deleted. Please close this page.",
       },

@@ -640,6 +640,9 @@ function AppShellContent({
                   }
                   appScenes.dispatch({ type: "close", tabId });
                 }}
+                onRename={(tabId, label) => {
+                  appScenes.dispatch({ type: "rename-tab", tabId, label });
+                }}
                 onCloseOthers={(tabId) => {
                   setSceneNavigationVisible(tabId === "settings");
                   appScenes.dispatch({ type: "close-others", tabId });
@@ -652,7 +655,10 @@ function AppShellContent({
                   setSceneNavigationVisible(tabId === "settings");
                   appScenes.dispatch({ type: "select", tabId });
                 }}
-                tabs={appScenes.snapshot.tabs}
+                tabs={appScenes.snapshot.tabs.map((tab) => ({
+                  ...tab,
+                  label: tab.customLabel ?? tab.label,
+                }))}
                 trailing={
                   (showChatChromeActions ||
                     /^\/workflows\/[^/]+(?:\/runs\/[^/]+)?$/.test(

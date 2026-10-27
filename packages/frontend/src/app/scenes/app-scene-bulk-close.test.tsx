@@ -56,9 +56,15 @@ function Tabs({
       <SceneTabStrip
         activeTabId={snapshot.activeTabId ?? ""}
         ariaLabel="场景标签"
-        tabs={snapshot.tabs}
+        tabs={snapshot.tabs.map((tab) => ({
+          ...tab,
+          label: tab.customLabel ?? tab.label,
+        }))}
         onSelect={(tabId) => dispatch({ type: "select", tabId })}
         onClose={(tabId) => dispatch({ type: "close", tabId })}
+        onRename={(tabId, label) =>
+          dispatch({ type: "rename-tab", tabId, label })
+        }
         onCloseOthers={(tabId) => dispatch({ type: "close-others", tabId })}
       />
     </>
@@ -81,6 +87,25 @@ function renderTabs() {
 }
 
 describe("页签批量关闭", () => {
+  it("右键重命名只修改目标页签，切换后仍保留名称", async () => {
+    renderTabs();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "打开设置" }));
+    fireEvent.contextMenu(screen.getByRole("tab", { name: "设置" }));
+    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    await user.click(screen.getByRole("menuitem", { name: "重命名" }));
+    const input = await screen.findByRole("textbox", { name: "页签名称" });
+    await user.clear(input);
+    await user.type(input, "偏好配置{Enter}");
+    expect(screen.getByRole("tab", { name: "偏好配置" })).toBeVisible();
+    await user.click(screen.getByRole("tab", { name: "文件甲" }));
+    await user.click(screen.getByRole("tab", { name: "偏好配置" }));
+    expect(screen.getByRole("tab", { name: "偏好配置" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
   it("关闭其他激活右键目标，调用被关闭工作台页签的原清理入口", async () => {
     const { onCloseFile, onSelectFile, navigate } = renderTabs();
     const user = userEvent.setup();

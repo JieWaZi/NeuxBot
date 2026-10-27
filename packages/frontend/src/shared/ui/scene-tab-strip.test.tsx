@@ -22,37 +22,57 @@ function AccessoryWidth({ side = "right" }: { side?: "left" | "right" }) {
 
 describe("SceneTabStrip", () => {
   it.each([
-    ["zh-CN", "关闭其他页签"],
-    ["en-US", "Close other tabs"],
-  ])("%s 右键保留目标页签并提供批量关闭入口", async (language, othersLabel) => {
-    await i18n.changeLanguage(language);
-    try {
-      const onCloseOthers = vi.fn();
-      const onSelect = vi.fn();
-      render(
-        <SceneTabStrip
-          activeTabId="chat"
-          ariaLabel="场景标签"
-          onClose={() => {}}
-          onCloseOthers={onCloseOthers}
-          onSelect={onSelect}
-          tabs={[
-            { id: "chat", label: "对话", closeable: true },
-            { id: "settings", label: "设置", closeable: true },
-          ]}
-        />,
-      );
-      const tab = screen.getByRole("tab", { name: "设置" });
-      fireEvent.contextMenu(tab);
-      await userEvent
-        .setup()
-        .click(await screen.findByRole("menuitem", { name: othersLabel }));
-      expect(onCloseOthers).toHaveBeenCalledExactlyOnceWith("settings");
-      expect(onSelect).not.toHaveBeenCalled();
-    } finally {
-      await i18n.changeLanguage("zh-CN");
-    }
-  });
+    ["zh-CN", "重命名", "关闭其他页签", "页签名称", "保存"],
+    ["en-US", "Rename", "Close other tabs", "Tab name", "Save"],
+  ])(
+    "%s 右键保留目标页签并提供批量关闭入口",
+    async (language, renameLabel, othersLabel, nameLabel, saveLabel) => {
+      await i18n.changeLanguage(language);
+      try {
+        const onRename = vi.fn();
+        const onCloseOthers = vi.fn();
+        const onSelect = vi.fn();
+        render(
+          <SceneTabStrip
+            activeTabId="chat"
+            ariaLabel="场景标签"
+            onClose={() => {}}
+            onRename={onRename}
+            onCloseOthers={onCloseOthers}
+            onSelect={onSelect}
+            tabs={[
+              { id: "chat", label: "对话", closeable: true },
+              { id: "settings", label: "设置", closeable: true },
+            ]}
+          />,
+        );
+        const tab = screen.getByRole("tab", { name: "设置" });
+        fireEvent.contextMenu(tab);
+        await userEvent
+          .setup()
+          .click(await screen.findByRole("menuitem", { name: othersLabel }));
+        expect(onCloseOthers).toHaveBeenCalledExactlyOnceWith("settings");
+        expect(onSelect).not.toHaveBeenCalled();
+        fireEvent.contextMenu(tab);
+        await userEvent
+          .setup()
+          .click(await screen.findByRole("menuitem", { name: renameLabel }));
+        const input = await screen.findByRole("textbox", { name: nameLabel });
+        const user = userEvent.setup();
+        await user.clear(input);
+        expect(screen.getByRole("button", { name: saveLabel })).toBeDisabled();
+        await user.type(input, "  自定义页签  ");
+        await user.click(screen.getByRole("button", { name: saveLabel }));
+        expect(onRename).toHaveBeenCalledExactlyOnceWith(
+          "settings",
+          "自定义页签",
+        );
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      } finally {
+        await i18n.changeLanguage("zh-CN");
+      }
+    },
+  );
 
   it("无可关闭页签时禁用菜单操作，Shift+F10 支持键盘打开", async () => {
     render(
@@ -60,6 +80,7 @@ describe("SceneTabStrip", () => {
         activeTabId="fixed"
         ariaLabel="场景标签"
         onClose={() => {}}
+        onRename={() => {}}
         onCloseOthers={() => {}}
         onSelect={() => {}}
         tabs={[{ id: "fixed", label: "固定页签" }]}
@@ -68,9 +89,12 @@ describe("SceneTabStrip", () => {
     const user = userEvent.setup();
     screen.getByRole("tab", { name: "固定页签" }).focus();
     await user.keyboard("{Shift>}{F10}{/Shift}");
+    expect(
+      await screen.findByRole("menuitem", { name: "重命名" }),
+    ).not.toHaveAttribute("aria-disabled", "true");
     expect(screen.queryByRole("menuitem", { name: "关闭全部" })).toBeNull();
     expect(
-      await screen.findByRole("menuitem", { name: "关闭其他页签" }),
+      screen.getByRole("menuitem", { name: "关闭其他页签" }),
     ).toHaveAttribute("aria-disabled", "true");
   });
 
