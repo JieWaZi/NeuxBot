@@ -6,6 +6,7 @@ export {
   chatMessagesKey,
   evictDeletedChatsFromCache,
   getChatOptions,
+  listChatsOptions,
   listWakerChatsOptions,
 } from "./api/chat-queries";
 export type { ChatRightPanel } from "./components/chat-right-panel-host";

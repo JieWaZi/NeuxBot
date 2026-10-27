@@ -108,19 +108,43 @@ vi.mock("@/modules/im", () => ({
 
 const storage = new Map<string, string>();
 
+const latestChatFixture = vi.hoisted(() => ({ historyBlocked: false }));
+
 vi.mock("@/modules/chat", () => ({
+  listChatsOptions: ({
+    query,
+  }: {
+    query: { wakerId: string; limit: number };
+  }) => ({
+    queryKey: ["chats", "latest", query.wakerId],
+    queryFn: async () => {
+      if (query.limit !== 1) throw new Error("最近会话只请求一条");
+      return {
+        resources: [
+          {
+            id: `${query.wakerId}-latest`,
+            title: "最新会话",
+            wakerId: query.wakerId,
+          },
+        ],
+      };
+    },
+  }),
   chatListInfiniteOptions: (wakerId: string) => ({
     getNextPageParam: () => undefined,
     initialPageParam: undefined,
-    queryFn: async () => ({
-      resources: [
-        {
-          id: `${wakerId}-latest`,
-          title: `${wakerId} 最新会话`,
-          wakerId,
-        },
-      ],
-    }),
+    queryFn: async () => {
+      if (latestChatFixture.historyBlocked) await new Promise(() => {});
+      return {
+        resources: [
+          {
+            id: `${wakerId}-latest`,
+            title: `${wakerId} 最新会话`,
+            wakerId,
+          },
+        ],
+      };
+    },
     queryKey: ["chats", "list", wakerId],
   }),
   getChatOptions: ({ path }: { path: { chatId: string } }) => ({
@@ -535,6 +559,7 @@ describe("AppShell 伙伴导航", () => {
   beforeEach(() => {
     vi.useRealTimers();
     storage.clear();
+    latestChatFixture.historyBlocked = false;
     teamHistoryRender.mockClear();
     railActivityFixture.team = "running";
     railActivityFixture.waker = "running";
@@ -664,6 +689,16 @@ describe("AppShell 伙伴导航", () => {
   it("资源 Scene 不显示聊天的新会话加号", () => {
     renderShell("/wakers/waker-1/memory");
     expect(screen.queryByRole("button", { name: "新建会话" })).toBeNull();
+  });
+
+  it("历史列表请求未完成时，单击伙伴独立查询最近一条会话", async () => {
+    latestChatFixture.historyBlocked = true;
+    const user = userEvent.setup();
+    renderShell("/wakers/waker-1/projects/project-a");
+    await user.click(await screen.findByRole("button", { name: "伙伴二" }));
+    expect(
+      await screen.findByText("/chats/waker-2-latest?wakerId=waker-2"),
+    ).toBeVisible();
   });
 
   it("最近会话 URL 未变化时，单击伙伴仍切回会话页签", async () => {

@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import type { ChatRightPanel } from "@/modules/chat";
-import { chatListInfiniteOptions, getChatOptions } from "@/modules/chat";
+import { listChatsOptions, getChatOptions } from "@/modules/chat";
 import {
   SettingsContextSidebar,
   SettingsScene,
@@ -372,10 +372,13 @@ function AppShellContent({
     }));
     setChatRightPanel(undefined);
     void queryClient
-      .fetchInfiniteQuery(chatListInfiniteOptions(partnerId))
+      .fetchQuery({
+        ...listChatsOptions({ query: { wakerId: partnerId, limit: 1 } }),
+        staleTime: 0,
+      })
       .then((data) => {
         if (entitySelectionRequestRef.current !== request) return;
-        const latestChatId = data.pages[0]?.resources?.[0]?.id;
+        const latestChatId = data.resources?.[0]?.id;
         navigate(
           latestChatId
             ? chatHref(latestChatId, partnerId)
