@@ -4,6 +4,8 @@
 >
 > 代码基线：2026-10-27，提交 `49250f9` 与编写时工作区。知识维护、账号依赖等存在并行未提交修改；本文依据已读取源码描述，实施每批迁移前重新核对差异。
 
+项目层次、个人/企业形态与未来部署边界见[项目架构与产品形态 Spec](project-architecture-and-editions-spec-cn.md)。本文只细化 Agent Runtime 子系统；当前仍采用桌面模块化单体，不建设企业平台。
+
 ## 1. 目标与范围
 
 将基础 Agent 执行能力放入 `packages/agent-runtime`，形成不依赖 `server` 的 Go module。NeuxBot 通过宿主适配注入账号、工作范围、指令、技能、MCP 和业务工具。新模块先独立构建、验证，再按功能和 CLI 组合替换调用方，最后移除旧执行实现。
@@ -132,7 +134,7 @@ NativeConfigPolicy 明确区分 `explicit_only` 与 `inherit_native`：前者只
 
 宿主把业务配置转换为 ExecutionSpec；请求描述与函数端口分离。ExecutionSpec 只包含固定 Profile、输入、授权工作范围、能力绑定、工具/交互/输出策略和 Limits，不能包含数据库对象、明文凭据或任意业务回调。
 
-启动时显式注册 Driver、CapabilityModule、ResourceProvider、CredentialProvider；注册表校验后冻结。CapabilityModule 只产生类型化贡献，不启动 CLI、调用业务服务或申请权限。Planner 检查模块依赖、资源冲突及 Driver 必需能力，生成不可变计划；Engine 再获取租约和物化资源。
+启动时显式构造 Driver 与内置能力，注入 ResourceProvider、CredentialProvider 等窄端口；仅对真实需要按标识选择的实现建立只读映射，并在启动前完成校验。首期不建立通用插件管理或多套 Provider 注册框架。CapabilityModule 只产生类型化贡献，不启动 CLI、调用业务服务或申请权限。Planner 检查实际能力依赖、资源冲突及 Driver 必需能力，生成不可变计划；Engine 再获取租约和物化资源。
 
 权限取请求与宿主授权的有效交集；能力只声明需求，不能扩权。必需资源缺失立即失败，可选缺失须明确声明。指令、Skill 和 MCP 合并顺序确定，同名不同内容默认冲突。插件安装关系、分享授权、版本选择和 ally 业务工具仍由原领域负责，不能整体迁入通用 capability。
 
