@@ -57,7 +57,7 @@ func outputSchema(id string) map[string]any {
 		return object("ref", "items", "nextCursor")
 	case "knowledge.export.get":
 		return object("ref", "export")
-	case "knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.revisions.restore", "knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry":
+	case "knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.pages.purge", "knowledge.revisions.restore", "knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry":
 		return object("ref", "receipt")
 	case "workflow.source.get":
 		return object("workflowId", "revisionId", "currentRevisionId", "source", "sourceDigest", "sdkVersion")

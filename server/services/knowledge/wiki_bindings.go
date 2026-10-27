@@ -21,34 +21,37 @@ import (
 
 // wikiCommand 只转换已经通过唯一命令 Schema 校验的维护参数，授权仍由服务端冻结。
 type wikiCommand struct {
-	LibraryID         string   `json:"libraryId"`         // 目标知识库。
-	Backend           string   `json:"backend"`           // 服务协议。
-	ConnectionID      string   `json:"connectionId"`      // 冻结连接。
-	PageID            string   `json:"pageId"`            // 稳定页面身份。
-	ExpectedVersion   int      `json:"expectedVersion"`   // 已读取的页面版本。
-	ExpectedUpdatedAt string   `json:"expectedUpdatedAt"` // 整页改写时读取到的 RFC3339 更新时间。
-	StructureVersion  int64    `json:"structureVersion"`  // 已读取的目录版本。
-	Slug              string   `json:"slug"`              // 页面可读地址。
-	Title             string   `json:"title"`             // 页面标题。
-	Summary           string   `json:"summary"`           // 页面简介。
-	Content           string   `json:"content"`           // 完整正文。
-	PageType          string   `json:"pageType"`          // 页面类型。
-	Aliases           []string `json:"aliases"`           // 页面别名。
-	SourceVersionIDs  []string `json:"sourceVersionIds"`  // 真实来源版本集合。
-	OldText           string   `json:"oldText"`           // 精确匹配的原文。
-	NewText           string   `json:"newText"`           // 替换后的原文。
-	NewSlug           string   `json:"newSlug"`           // 新页面地址。
-	RevisionVersion   int      `json:"revisionVersion"`   // 要恢复的历史版本。
-	ThemeID           string   `json:"themeId"`           // 目录身份。
-	FolderID          *string  `json:"folderId"`          // 可选页面所属目录；省略保留，空值移至根目录。
-	Name              string   `json:"name"`              // 目录名称。
-	ParentID          string   `json:"parentId"`          // 上级目录。
-	Delete            bool     `json:"delete"`            // 明确删除空目录。
-	Filename          string   `json:"filename"`          // 导入文件名。
-	MIME              string   `json:"mime"`              // 原件媒体类型。
-	Bytes             []byte   `json:"bytes"`             // JSON 中明确提供的原件字节。
-	SourceID          string   `json:"sourceId"`          // 替换原件时的稳定来源身份。
-	JobID             string   `json:"jobId"`             // 原整理任务身份。
+	LibraryID                  string   `json:"libraryId"`                  // 目标知识库。
+	Backend                    string   `json:"backend"`                    // 服务协议。
+	ConnectionID               string   `json:"connectionId"`               // 冻结连接。
+	PageID                     string   `json:"pageId"`                     // 稳定页面身份。
+	ExpectedVersion            int      `json:"expectedVersion"`            // 已读取的页面版本。
+	ExpectedUpdatedAt          string   `json:"expectedUpdatedAt"`          // 整页改写时读取到的 RFC3339 更新时间。
+	CanonicalPageID            string   `json:"canonicalPageId"`            // 归并后保留的规范页身份。
+	CanonicalExpectedVersion   int      `json:"canonicalExpectedVersion"`   // 已核实的规范页版本。
+	CanonicalExpectedUpdatedAt string   `json:"canonicalExpectedUpdatedAt"` // 已核实的规范页 RFC3339 更新时间。
+	StructureVersion           int64    `json:"structureVersion"`           // 已读取的目录版本。
+	Slug                       string   `json:"slug"`                       // 页面可读地址。
+	Title                      string   `json:"title"`                      // 页面标题。
+	Summary                    string   `json:"summary"`                    // 页面简介。
+	Content                    string   `json:"content"`                    // 完整正文。
+	PageType                   string   `json:"pageType"`                   // 页面类型。
+	Aliases                    []string `json:"aliases"`                    // 页面别名。
+	SourceVersionIDs           []string `json:"sourceVersionIds"`           // 真实来源版本集合。
+	OldText                    string   `json:"oldText"`                    // 精确匹配的原文。
+	NewText                    string   `json:"newText"`                    // 替换后的原文。
+	NewSlug                    string   `json:"newSlug"`                    // 新页面地址。
+	RevisionVersion            int      `json:"revisionVersion"`            // 要恢复的历史版本。
+	ThemeID                    string   `json:"themeId"`                    // 目录身份。
+	FolderID                   *string  `json:"folderId"`                   // 可选页面所属目录；省略保留，空值移至根目录。
+	Name                       string   `json:"name"`                       // 目录名称。
+	ParentID                   string   `json:"parentId"`                   // 上级目录。
+	Delete                     bool     `json:"delete"`                     // 明确删除空目录。
+	Filename                   string   `json:"filename"`                   // 导入文件名。
+	MIME                       string   `json:"mime"`                       // 原件媒体类型。
+	Bytes                      []byte   `json:"bytes"`                      // JSON 中明确提供的原件字节。
+	SourceID                   string   `json:"sourceId"`                   // 替换原件时的稳定来源身份。
+	JobID                      string   `json:"jobId"`                      // 原整理任务身份。
 }
 
 func (in wikiCommand) ref() bridge.ResourceRef {
@@ -152,9 +155,9 @@ type wikiAccess struct {
 // wikiWriteBindings 被内部执行和发布入口共同使用，不在传输层复制知识写入逻辑。
 func (s *Service) wikiWriteBindings(access wikiAccess) []agentcapability.Binding {
 	result := []agentcapability.Binding{}
-	for _, operation := range []string{"knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.revisions.restore", "knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry"} {
+	for _, operation := range []string{"knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.pages.purge", "knowledge.revisions.restore", "knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry"} {
 		op := operation
-		if access.pageOnly != "" && slices.Contains([]string{"knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry"}, op) {
+		if access.pageOnly != "" && slices.Contains([]string{"knowledge.pages.purge", "knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry"}, op) {
 			continue
 		}
 		binding := agentcapability.Binding{Operation: op}
@@ -164,6 +167,11 @@ func (s *Service) wikiWriteBindings(access wikiAccess) []agentcapability.Binding
 				return agentcapability.Result{}, err
 			}
 			ref := in.ref()
+			if op == "knowledge.pages.purge" || in.CanonicalPageID != "" {
+				if err := bridge.RequireLocal(ref); err != nil {
+					return agentcapability.Result{}, err
+				}
+			}
 			if access.guard != nil && op != "knowledge.jobs.retry" {
 				release, err := access.guard(ctx, op, ref)
 				if err != nil {
@@ -364,7 +372,7 @@ func wikiBoundaryError(err error, client *remote.Custom) error {
 func validateWikiReceipt(receipt *core.Receipt, op, requestID, libraryID string, in wikiCommand, savedResourceID string) error {
 	operations := map[string]string{
 		"knowledge.pages.write": "page.agent-write", "knowledge.pages.replace": "page.replace-text",
-		"knowledge.pages.rename": "page.rename", "knowledge.pages.delete": "page.delete",
+		"knowledge.pages.rename": "page.rename", "knowledge.pages.delete": "page.delete", "knowledge.pages.purge": "page.purge",
 		"knowledge.revisions.restore": "page.restore", "knowledge.themes.write": "theme.write",
 		"knowledge.sources.import": "source.import", "knowledge.jobs.retry": "job.retry",
 	}
@@ -397,7 +405,7 @@ func wikiReceiptTarget(link models.KnowledgeOperationLink) string {
 
 func wikiTargetResource(op string, in wikiCommand) string {
 	switch op {
-	case "knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.revisions.restore":
+	case "knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.pages.purge", "knowledge.revisions.restore":
 		return in.PageID
 	case "knowledge.themes.write":
 		return in.ThemeID
@@ -498,11 +506,16 @@ func (s *Service) applyWikiCommand(ctx context.Context, op, id string, in wikiCo
 		}
 		return s.config.Engine.RenamePage(ctx, input)
 	case "knowledge.pages.delete":
-		input := core.DeletePageInput{RequestID: id, LibraryID: lib.ID, PageID: in.PageID, ExpectedVersion: in.ExpectedVersion, StructureVersion: in.StructureVersion, ExpectedPolicyVersion: lib.PolicyVersion}
+		input := core.DeletePageInput{RequestID: id, LibraryID: lib.ID, PageID: in.PageID, ExpectedVersion: in.ExpectedVersion, StructureVersion: in.StructureVersion, ExpectedPolicyVersion: lib.PolicyVersion, ExpectedUpdatedAt: in.ExpectedUpdatedAt, CanonicalPageID: in.CanonicalPageID, CanonicalExpectedVersion: in.CanonicalExpectedVersion, CanonicalExpectedUpdatedAt: in.CanonicalExpectedUpdatedAt}
 		if c != nil {
 			return c.DeletePage(ctx, input)
 		}
 		return s.config.Engine.DeletePage(ctx, input)
+	case "knowledge.pages.purge":
+		if c != nil || pageOnly != "" {
+			return nil, status_error.KnowledgeUnsupported
+		}
+		return s.config.Engine.PurgePage(ctx, core.PurgePageInput{RequestID: id, LibraryID: lib.ID, PageID: in.PageID, ExpectedVersion: in.ExpectedVersion, ExpectedUpdatedAt: in.ExpectedUpdatedAt, StructureVersion: in.StructureVersion, ExpectedPolicyVersion: lib.PolicyVersion, CanonicalPageID: in.CanonicalPageID, CanonicalExpectedVersion: in.CanonicalExpectedVersion, CanonicalExpectedUpdatedAt: in.CanonicalExpectedUpdatedAt})
 	case "knowledge.revisions.restore":
 		input := core.RestorePageInput{RequestID: id, LibraryID: lib.ID, PageID: in.PageID, ExpectedVersion: in.ExpectedVersion, RevisionVersion: in.RevisionVersion, StructureVersion: in.StructureVersion}
 		if c != nil {

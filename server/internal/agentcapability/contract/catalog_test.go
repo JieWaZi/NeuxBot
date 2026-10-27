@@ -84,6 +84,51 @@ func TestWikiAutoFixRequiresCurrentLibraryStructure(t *testing.T) {
 	}
 }
 
+func TestKnowledgeJobWaitRequiresScopedJobAndBoundedTimeout(t *testing.T) {
+	op, ok := Find("knowledge.jobs.wait")
+	if !ok {
+		t.Fatal("missing knowledge task observation")
+	}
+	if op.Effect != constants.AgentCLIEffectRead || op.Completion != constants.AgentCLICompletionImmediate {
+		t.Fatal("waiting must only observe the existing task")
+	}
+	if err := op.Validate(map[string]any{"libraryId": "kb", "jobId": "job", "timeoutMs": 60000}); err != nil {
+		t.Fatal(err)
+	}
+	for _, params := range []map[string]any{
+		{"libraryId": "kb"}, {"jobId": "job"},
+		{"libraryId": "kb", "jobId": "job", "timeoutMs": 0},
+		{"libraryId": "kb", "jobId": "job", "timeoutMs": 60001},
+		{"libraryId": "kb", "jobId": "job", "model": "override"},
+	} {
+		if op.Validate(params) == nil {
+			t.Fatalf("invalid wait accepted: %v", params)
+		}
+	}
+}
+
+func TestWikiPurgeRequiresCanonicalAndExactReadGuards(t *testing.T) {
+	op, ok := Find("knowledge.pages.purge")
+	if !ok {
+		t.Fatal("missing permanent deletion for archived duplicate pages")
+	}
+	valid := map[string]any{"libraryId": "kb", "pageId": "duplicate", "expectedVersion": 2, "expectedUpdatedAt": "2026-01-01T00:00:00Z", "structureVersion": 3, "canonicalPageId": "canonical", "canonicalExpectedVersion": 4, "canonicalExpectedUpdatedAt": "2026-01-01T00:01:00Z"}
+	if err := op.Validate(valid); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"libraryId", "pageId", "expectedVersion", "expectedUpdatedAt", "structureVersion", "canonicalPageId", "canonicalExpectedVersion", "canonicalExpectedUpdatedAt"} {
+		input := make(map[string]any, len(valid))
+		for key, value := range valid {
+			if key != field {
+				input[key] = value
+			}
+		}
+		if op.Validate(input) == nil {
+			t.Fatalf("purge accepted missing guard: %s", field)
+		}
+	}
+}
+
 func TestWikiMaintainAcceptsTaskRequirementsWithoutSourceOrModelOverrides(t *testing.T) {
 	op, ok := Find("knowledge.wiki.maintain")
 	if !ok {

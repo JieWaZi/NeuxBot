@@ -44,6 +44,24 @@ func retryFixture(t *testing.T) (*Service, *core.Library, *integrationservice.Se
 	}
 	return s, lib, authority, keys, raws
 }
+
+func TestPublishedKnowledgeDoesNotGrantInternalPermanentCleanup(t *testing.T) {
+	s, _, authority, _, _ := retryFixture(t)
+	ctx := context.Background()
+	identity, err := authority.Authenticate(ctx, "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bindings, err := s.PublishedBindings(ctx, authority, identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, binding := range bindings {
+		if binding.Operation == "knowledge.pages.purge" {
+			t.Fatal("existing external Key silently gained permanent Wiki cleanup")
+		}
+	}
+}
 func acceptFailedJob(t *testing.T, s *Service, lib *core.Library, request string, source string, session models.KnowledgeTaskConfiguration) (*core.Job, OrganizeCommand) {
 	t.Helper()
 	ctx := context.Background()

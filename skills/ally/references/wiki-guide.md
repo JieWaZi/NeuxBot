@@ -82,8 +82,9 @@ For ingestion followed by Wiki maintenance, track two task receipts. Inspect
 the ingestion job and source outcomes before submitting dependent maintenance;
 after ingestion succeeds, limit maintenance to the requested related content.
 A failed or unfinished ingestion does not complete either the dependent step
-or the combined request. If observation ends first, report the pending task
-identity and the maintenance step still to be submitted.
+or the combined request. Continue the task-results loop through ingestion and
+then through the admitted maintenance task. If the user stops or access is
+lost, report the task identity and the dependent step still to be submitted.
 
 ## Knowledge task results
 
@@ -92,12 +93,33 @@ reasoning. They do not inherit the companion's profile, history or other tools;
 manual actions retain their selected configuration. Do not create generation
 chats, claim individual pipeline stages or submit candidate files.
 
-Use the accepted receipt's job ID and actual library reference with `knowledge
-jobs get`. For ingestion, `noop` means no eligible documents were selected.
-Completed maintenance includes its saved `report`; distinguish actual repairs,
-coverage and unresolved issues. Use bounded observation and report pending work
-instead of keeping the chat turn alive with indefinite polling. Retry only
-when requested and supported by the real job state and advertised contract.
+Keep the chat turn active until the admitted task reaches a terminal state:
+
+1. Retain the accepted receipt's job ID and complete library reference. For
+   ingestion, `noop` means no eligible documents were selected and no wait is
+   needed. A missing or uncertain receipt requires recovery with its original
+   request identity rather than another submission.
+2. Use the advertised `knowledge jobs wait` with that same job and library.
+   Each call observes for at most 60 seconds. If `completed` is false, continue
+   waiting on the same task. An expired observation window is not a reason to
+   end the chat, restart the task or ask the user whether to keep waiting.
+   Brief progress updates may explain actual state while waiting.
+3. When `completed` is true, inspect `resource.job.state`: completed,
+   partial_failed, failed and cancelled are distinct terminal outcomes. The
+   returned `resource` contains the same job data as `knowledge jobs get`;
+   successful maintenance also includes the saved `report`. Use `jobs get`
+   to reconcile a lost response or inspect the current state before resuming.
+4. Give the final chat summary from the durable results: actual scope and
+   coverage, pages changed, duplicate groups and their canonical destinations,
+   archival/permanent deletion, directory/link changes, and unresolved issues
+   with reasons. Include page or revision identities where useful. For ingestion, check source
+   outcomes too. A successful task can still have unresolved content problems.
+
+If the user stops, or access/runtime failure prevents further observation,
+report the known state, job identity and interrupted steps accurately. Stopping
+observation does not cancel the background task. Retry failed work only when
+requested and supported by its real state and advertised contract. An absent
+maintenance report is a result gap to disclose, not evidence of zero changes.
 
 ## Read existing knowledge
 

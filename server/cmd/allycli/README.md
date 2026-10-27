@@ -75,6 +75,7 @@ Windows 使用当前 Shell 的环境变量语法及应用提供的 `allycli.exe`
 | `knowledge.revisions.get` | 读取具体历史正文与证据。 | `read` | `immediate` |
 | `knowledge.jobs.list` | 分页读取整理任务，区分接纳和真实终态。 | `read` | `immediate` |
 | `knowledge.jobs.get` | 查询指定整理任务的实际状态、结果和失败事实。 | `read` | `immediate` |
+| `knowledge.jobs.wait` | 有界监听本地原任务，返回终态及已保存报告；窗口超时后继续等待同一任务。 | `read` | `immediate` |
 | `knowledge.wiki.maintain` | 提交已有 Wiki 后台维护，复用手动维护流程和提示词；冻结本轮模型配置并保留用户原话及伙伴补充要求。 | `mutation` | `accepted` |
 | `knowledge.audit.get` | 复用既有孤儿页、断链、短正文和失效来源只读检查。 | `read` | `immediate` |
 | `knowledge.wiki.auto-fix`     | 在明确授权的全库维护中执行上游确定性修复，并返回修复回执及剩余问题。                   | `mutation` | `immediate` |
@@ -83,7 +84,8 @@ Windows 使用当前 Shell 的环境变量语法及应用提供的 `allycli.exe`
 | `knowledge.pages.write` | 以Agent来源创建或整页修订Wiki，保留有效证据与人工保护。 | `mutation` | `immediate` |
 | `knowledge.pages.replace` | 按当前正文精确替换全部匹配内容，保留其他内容和版本历史。 | `mutation` | `immediate` |
 | `knowledge.pages.rename` | 原子更新页面slug与入链，保留稳定页面身份和历史。 | `mutation` | `immediate` |
-| `knowledge.pages.delete` | 按明确删除要求归档页面并清理入链，保留历史。 | `mutation` | `immediate` |
+| `knowledge.pages.delete` | 归档页面并保留历史；本地归并提供规范页及两端版本和更新时间守卫时，原子更新入链到规范页。 | `mutation` | `immediate` |
+| `knowledge.pages.purge` | 永久删除本地已归档重复页及其历史，核对规范页和两端守卫并迁移剩余引用，保留原件和操作回执。 | `mutation` | `immediate` |
 | `knowledge.revisions.restore` | 将历史内容恢复成新版本，保留当前目录位置。 | `mutation` | `immediate` |
 | `knowledge.themes.write` | 新建或调整目录，或按明确要求删除空目录。 | `mutation` | `immediate` |
 | `knowledge.sources.import` | 导入明确提供的原件字节，不自动启动整理；JSON字节字段为base64。 | `mutation` | `immediate` |
@@ -190,7 +192,7 @@ Windows 使用当前 Shell 的环境变量语法及应用提供的 `allycli.exe`
 
 - 本文不是全系统管理权限清单。伙伴、项目、插件、账号和自动任务等应用管理界面，不会因为存在 HTTP API 就自动变成 CLI 能力。
 - 页面修订要求当前可写范围及真实版本；整页写入保留人工保护，明确删除内容优先用精确替换。来源字节和原文分块仍由独立核心保存。
-- `knowledge.jobs.start` 和 `knowledge.jobs.retry` 的接纳回执不证明 Wiki 已发布；用 `knowledge.jobs.get` 查询原任务的真实结果。当前没有知识任务专用 `wait`，不要把超时或接纳当成完成。
+- 知识任务的接纳回执不证明 Wiki 已发布。聊天通过 `knowledge.jobs.wait` 监听本地原任务，每次最多 60 秒；`completed: false` 时继续等待同一任务，终态后再按真实结果总结。`completed: true` 包括失败和取消，须检查 `resource.job.state`；成功的 Wiki 维护同时返回 `resource.report`。`knowledge.jobs.get` 用于核对状态与恢复丢失响应。
 - 本地、自有远端和官方 WeKnora 的实际能力不同。明确返回不支持或权限不足时，不回退同名本地库或更换凭据。
 - `allycli` 不提供任意 HTTP 透传、连接文件编辑、执行上下文自助续期或通过数据库路径扩大范围的入口。
 

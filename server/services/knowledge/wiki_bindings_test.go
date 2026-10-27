@@ -124,6 +124,9 @@ func TestLibraryMaintenancePagePlacementPreservesOmittedFolderAndManualProtectio
 		t.Fatal(err)
 	}
 	for _, binding := range singlePage {
+		if binding.Operation == "knowledge.pages.purge" {
+			t.Fatal("single-page correction acquired permanent duplicate cleanup")
+		}
 		if binding.Operation == "knowledge.wiki.auto-fix" {
 			t.Fatal("single-page scope acquired library AutoFix")
 		}

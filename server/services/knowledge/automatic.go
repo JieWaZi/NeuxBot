@@ -92,6 +92,12 @@ func (s *Service) AutomaticBindings(ctx context.Context, chat models.Chat, runID
 		return []bridge.ResourceRef{ref}, nil
 	}
 	bindings := bridge.ProviderReadBindings(bridge.LocalReadProvider{Engine: s.config.Engine, FreezeEmbedder: s.config.FreezeEmbedder}, bridge.FreezeScope(chat.ProjectID, []bridge.ResourceRef{ref}), current)
+	for _, binding := range bindings {
+		if binding.Operation == "knowledge.jobs.get" {
+			bindings = append(bindings, s.jobWaitBinding(binding))
+			break
+		}
+	}
 	for _, capability := range bound.Options.ToolCapabilities {
 		bindings = append(bindings, capability.Bindings...)
 	}

@@ -120,7 +120,7 @@ func TestAutomaticMaintenanceCLIUsesAuthorizedTools(t *testing.T) {
 	}
 	capabilities := success("", "capabilities")
 	encoded, _ := json.Marshal(capabilities.Data)
-	for _, operation := range []string{"knowledge.wiki.auto-fix", "knowledge.pages.get", "knowledge.pages.list", "knowledge.sources.read", "knowledge.pages.write", "knowledge.themes.write"} {
+	for _, operation := range []string{"knowledge.wiki.auto-fix", "knowledge.pages.get", "knowledge.pages.list", "knowledge.sources.read", "knowledge.pages.write", "knowledge.pages.purge", "knowledge.themes.write"} {
 		if !bytes.Contains(encoded, []byte(`"`+operation+`"`)) {
 			t.Fatalf("maintenance cannot discover %s", operation)
 		}
@@ -172,6 +172,47 @@ func TestAutomaticMaintenanceCLIUsesAuthorizedTools(t *testing.T) {
 	updated, err := s.config.Engine.GetPage(ctx, library.ID, page.ID)
 	if err != nil || updated.Content != updatedContent || updated.FolderID != folderResult.Receipt.ResourceID || len(updated.Evidence.Sources) != 1 {
 		t.Fatalf("CLI did not update actual page, placement and evidence: %+v %v", updated, err)
+	}
+	currentLibrary, _ = s.config.Engine.GetLibrary(ctx, library.ID)
+	canonicalReceipt, err := s.config.Engine.WriteAgentPage(ctx, core.WritePageInput{RequestID: "canonical", LibraryID: library.ID, StructureVersion: currentLibrary.StructureVersion, Page: core.Page{Slug: "concept/canonical-time", Title: "规范时间管理", PageType: "concept", Content: updated.Content, Evidence: updated.Evidence}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, _ := s.config.Engine.GetPage(ctx, library.ID, canonicalReceipt.ResourceID)
+	consolidationInput := func(target *core.Page) string {
+		t.Helper()
+		current, err := s.config.Engine.GetLibrary(ctx, library.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		input, _ := json.Marshal(map[string]any{"libraryId": library.ID, "pageId": target.ID, "expectedVersion": target.Version, "expectedUpdatedAt": target.UpdatedAt.Format(time.RFC3339Nano), "structureVersion": current.StructureVersion, "canonicalPageId": canonical.ID, "canonicalExpectedVersion": canonical.Version, "canonicalExpectedUpdatedAt": canonical.UpdatedAt.Format(time.RFC3339Nano)})
+		return string(input)
+	}
+	success(consolidationInput(updated), "knowledge", "pages", "delete", "--input", "-", "--request-id", "archive-duplicate")
+	archived, err := s.config.Engine.GetPage(ctx, library.ID, updated.ID)
+	if err != nil || archived.Status != "archived" {
+		t.Fatalf("duplicate was not archived: %+v %v", archived, err)
+	}
+	purgeInput := consolidationInput(archived)
+	dropNextWriteResponse = true
+	_, unknown = cli(purgeInput, "knowledge", "pages", "purge", "--input", "-", "--request-id", "purge-duplicate")
+	if unknown.Error == nil || unknown.Error.Code != status_error.AgentCommandOutcomeUnknown.Key() {
+		t.Fatalf("lost permanent deletion response did not preserve uncertainty: %+v", unknown)
+	}
+	success("", "receipts", "get", "--operation", "knowledge.pages.purge", "--request-id", "purge-duplicate")
+	success(purgeInput, "knowledge", "pages", "purge", "--input", "-", "--request-id", "purge-duplicate")
+	if _, err := s.config.Engine.GetPage(ctx, library.ID, updated.ID); err == nil {
+		t.Fatal("permanently deleted duplicate is still readable")
+	}
+	if _, err := s.config.Engine.GetRevision(ctx, library.ID, updated.ID, 1); err == nil {
+		t.Fatal("duplicate revision was retained after permanent deletion")
+	}
+	kept, err := s.config.Engine.GetPage(ctx, library.ID, canonical.ID)
+	if err != nil || kept.Content != updatedContent || len(kept.Evidence.Sources) != 1 {
+		t.Fatalf("canonical content or evidence was lost: %+v %v", kept, err)
+	}
+	if _, err := s.config.Engine.GetSource(ctx, library.ID, source.ID); err != nil {
+		t.Fatal("duplicate cleanup removed its original document", err)
 	}
 	code, denied := cli("", "knowledge", "pages", "list", "--library-id", "another-library")
 	if code == 0 || denied.Error == nil || denied.Error.Code != status_error.KnowledgeForbidden.Key() {

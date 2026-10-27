@@ -10,11 +10,50 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/JieWaZi/neux-knowledge/core"
 )
+
+// jobWaitBinding 复用已授权的任务读取与知识事件；等待期间不持有策略锁或取消后台工作。
+func (s *Service) jobWaitBinding(get agentcapability.Binding) agentcapability.Binding {
+	return agentcapability.Binding{Operation: "knowledge.jobs.wait", Call: func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+		var input wikiCommand
+		if err := agentcapability.DecodeParams(request.Params, &input); err != nil {
+			return agentcapability.Result{}, err
+		}
+		ref := input.ref()
+		if err := bridge.RequireLocal(ref); err != nil {
+			return agentcapability.Result{}, err
+		}
+		hub := s.config.Events
+		if hub == nil {
+			return agentcapability.Result{}, status_error.AgentConnectionUnavailable
+		}
+		readRequest := agentcapability.Request{Operation: get.Operation, Params: map[string]any{"libraryId": input.LibraryID, "backend": ref.Backend, "connectionId": ref.ConnectionID, "jobId": input.JobID}}
+		return agentcapability.Observe(ctx, request.Params, func() events.Subscription {
+			return hub.Subscribe("knowledge", events.Resource{Kind: "knowledge_library", ID: ref.KnowledgeBaseID, ParentID: "local"})
+		}, func(ctx context.Context) (any, bool, error) {
+			result, err := get.Call(ctx, readRequest)
+			if err != nil {
+				return nil, false, err
+			}
+			data, _ := result.Data.(map[string]any)
+			job, _ := data["job"].(*core.Job)
+			if job == nil {
+				return nil, false, status_error.AgentConnectionUnavailable
+			}
+			switch job.State {
+			case "completed", "partial_failed", "failed", "cancelled":
+				return data, true, nil
+			default:
+				return data, false, nil
+			}
+		})
+	}}
+}
 
 // BindIntent 将已授权自动任务或普通聊天 CLI 的目标绑定到精确整理操作。
 func (s *Service) BindIntent(ctx context.Context, intent execution.WorkIntent, auth models.KnowledgeMaintenanceAuthorization) (execution.WorkIntent, error) {

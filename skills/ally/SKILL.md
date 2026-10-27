@@ -24,6 +24,7 @@ maintenance task.
 | Consolidate existing Wiki pages/directories or maintain a library | [Maintain existing Wiki](references/wiki-guide.md#maintain-existing-wiki) |
 | A precise page correction, or execution inside an existing maintenance task | [Wiki maintenance and page revision](references/wiki-maintenance.md) |
 | Ingestion followed by Wiki maintenance | [Combined requests](references/wiki-guide.md#combined-requests) |
+| Observe an admitted knowledge task and deliver its final summary | [Knowledge task results](references/wiki-guide.md#knowledge-task-results) |
 
 For other domains, read the relevant guide advertised by the current capability.
 
@@ -56,9 +57,11 @@ Do not search global installations or install a replacement CLI.
 
 An accepted task or candidate submission is not final success. Follow its
 `nextStep` and read the actual resource with `get` or a bounded advertised
-`wait`. A timeout stops observation, not the work. Report pending, failed and
-uncertain outcomes accurately. Submit through an advertised workflow/team
-result operation when required; chat text is not that submission receipt.
+`wait`. A timeout ends one observation window and leaves the work running;
+follow the relevant guide's observation loop before giving the final response.
+Report terminal, interrupted and uncertain outcomes accurately. Submit through
+an advertised workflow/team result operation when required; chat text is not
+that submission receipt.
 
 For plugin requests, use the current agent's native plugin/authentication
 mechanisms within the user's request. Distinguish native installation from

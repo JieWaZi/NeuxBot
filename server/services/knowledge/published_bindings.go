@@ -132,7 +132,12 @@ func (s *Service) PublishedBindings(ctx context.Context, authority *integrations
 			}
 		}
 	}
-	bindings = append(bindings, writes...)
+	for _, binding := range writes {
+		// 永久重复页清理只供内部维护执行，既有发布 Key 不自动获得这项能力。
+		if binding.Operation != "knowledge.pages.purge" {
+			bindings = append(bindings, binding)
+		}
+	}
 	bindings = append(bindings, agentcapability.Binding{Operation: "knowledge.jobs.start", Call: func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
 		var in struct {
 			LibraryID         string   `json:"libraryId"`         // 明确本地库。

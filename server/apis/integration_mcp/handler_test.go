@@ -178,6 +178,9 @@ func TestSDKHTTPAllKnowledgeContractsAndSharedWrites(t *testing.T) {
 		t.Fatal(len(tools.Tools), len(operations))
 	}
 	for _, tool := range tools.Tools {
+		if tool.Name == "knowledge_pages_purge" || tool.Name == "knowledge_jobs_wait" {
+			t.Fatal("external MCP exposed an internal maintenance-only operation")
+		}
 		op, ok := contract.Find(strings.ReplaceAll(tool.Name, "_", "."))
 		if !ok || !strings.HasPrefix(op.ID, "knowledge.") {
 			t.Fatal(tool.Name)

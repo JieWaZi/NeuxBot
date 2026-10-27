@@ -5,7 +5,7 @@ go 1.25.8
 require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/JieWaZi/acp-go v0.0.0-20261026093330-a72373139f77
-	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261026093548-30dd388b6902
+	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261027014823-d5f73bd666d9
 	github.com/dop251/goja v0.0.0-20261002135814-104bc28c3abd
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/fswatcher/fswatcher v0.1.0

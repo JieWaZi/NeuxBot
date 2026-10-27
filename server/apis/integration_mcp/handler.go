@@ -151,11 +151,11 @@ func toolFailure(op contract.Operation, err error) agentcapability.Response {
 	return value
 }
 
-// knowledgeOperations 从同源命令目录发现全部知识工具，不维护第二份操作名单。
+// knowledgeOperations 从同源命令目录发现发布工具，内部永久清理不扩展既有 Key 权限。
 func knowledgeOperations() []contract.Operation {
 	out := []contract.Operation{}
 	for _, op := range contract.Operations() {
-		if strings.HasPrefix(op.ID, "knowledge.") {
+		if strings.HasPrefix(op.ID, "knowledge.") && op.ID != "knowledge.pages.purge" && op.ID != "knowledge.jobs.wait" {
 			out = append(out, op)
 		}
 	}
