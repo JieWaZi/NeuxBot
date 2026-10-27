@@ -80,13 +80,20 @@ export function ScopedGitChanges({
   const roots = [...new Set([rootPath, ...sourceRoots].filter(Boolean))];
   const statuses = useQuery({
     queryKey: ["scoped-git-status", scopeChatId, roots],
-    queryFn: () => {
+    queryFn: async () => {
       if (!scopeChatId) throw new Error(t("workspace.git.scopeUnavailable"));
-      return Promise.all(
+      const results = await Promise.allSettled(
         roots.map(async (root) => ({
           root,
           status: await getScopedGitStatus(scopeChatId, root),
         })),
+      );
+      // 一个根失败也要等待其他根结束，避免重试时再次排队仍在读取的仓库。
+      for (const result of results) {
+        if (result.status === "rejected") throw result.reason;
+      }
+      return results.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
       );
     },
     enabled: Boolean(active && scopeChatId && roots.length),
@@ -107,6 +114,12 @@ export function ScopedGitChanges({
     repositories.find((item) => item.path === chosen) ??
     repositories.find((item) => item.root === preferredRoot) ??
     repositories[0];
+  // 发现仓库时已经读取默认仓库快照，详情直接复用，避免同一轮重复执行 Git。
+  const discovered = statuses.data?.find(
+    (item) => item.root === selected?.root,
+  )?.status;
+  const selectedStatus =
+    discovered?.root === selected?.path ? discovered : undefined;
   const detail = useQuery({
     queryKey: [
       "scoped-git-detail",
@@ -119,7 +132,7 @@ export function ScopedGitChanges({
         throw new Error(t("workspace.git.repositoryUnavailable"));
       return getScopedGitStatus(scopeChatId, selected.root, selected.path);
     },
-    enabled: Boolean(active && scopeChatId && selected),
+    enabled: Boolean(active && scopeChatId && selected && !selectedStatus),
   });
   const workspaceEvents = useWorkspaceQueryEvents(
     scopeChatId,
@@ -133,7 +146,7 @@ export function ScopedGitChanges({
     ],
     active,
   );
-  const status = detail.data;
+  const status = selectedStatus ?? detail.data;
   const visibleSelection = status?.entries.some(
     (entry) => entry.path === selection?.path,
   )
@@ -214,7 +227,7 @@ export function ScopedGitChanges({
       if (result !== false) {
         if (committed) setMessage("");
         await Promise.all([
-          detail.refetch(),
+          ...(selectedStatus ? [] : [detail.refetch()]),
           statuses.refetch(),
           ...(mode === "history" ? [history.refetch()] : []),
           ...(visibleSelection ? [preview.refetch()] : []),
@@ -253,9 +266,9 @@ export function ScopedGitChanges({
         title={workspaceEvents.error?.message ?? t("workspace.noGitRepository")}
       />
     );
-  if (detail.isPending)
+  if (!selectedStatus && detail.isPending)
     return <GitState title={t("workspace.changesLoading")} loading />;
-  if (detail.isError || !status)
+  if ((!selectedStatus && detail.isError) || !status)
     return <GitState title={t("workspace.changesLoadError")} />;
 
   const hasPreview =
@@ -347,7 +360,10 @@ export function ScopedGitChanges({
           variant="ghost"
           onClick={() => {
             workspaceEvents.retry();
-            void Promise.all([statuses.refetch(), detail.refetch()]);
+            void Promise.all([
+              statuses.refetch(),
+              ...(selectedStatus ? [] : [detail.refetch()]),
+            ]);
           }}
         >
           <RefreshCw />

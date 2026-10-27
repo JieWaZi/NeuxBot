@@ -211,3 +211,236 @@ it("Core 物理连接恢复后重新核验并注册原生观察，最后消费�
   expect(registry.signals.get("/workspace")?.aborted).toBe(true);
   expect(registry.recovery).toBeUndefined();
 });
+
+it("跨任务到达的密集文件事件合并为一次刷新，空闲后不继续请求", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  const request = vi.fn(async () => "status");
+  function Consumer() {
+    useWorkspaceQueryEvents("chat", ["/workspace"], ["workspace-directory"]);
+    useQuery({
+      queryKey: ["workspace-directory", "chat", "/workspace", "/workspace"],
+      queryFn: request,
+    });
+    return null;
+  }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <Consumer />
+      <Consumer />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(observe).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  // 等待首次订阅的 ready 对账结束后，再模拟编辑器分批写入。
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+  const initial = request.mock.calls.length;
+  vi.useFakeTimers();
+  try {
+    for (let sequence = 1; sequence <= 20; sequence++) {
+      await act(async () => {
+        registry.callbacks.get("/workspace")?.({
+          subscriptionId: "/workspace",
+          sequence,
+          resource: null,
+          state: "changed",
+        });
+        await vi.advanceTimersByTimeAsync(5);
+      });
+    }
+    expect(request).toHaveBeenCalledTimes(initial);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+    expect(request).toHaveBeenCalledTimes(initial + 1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(request).toHaveBeenCalledTimes(initial + 1);
+  } finally {
+    view.unmount();
+    client.clear();
+    vi.useRealTimers();
+  }
+});
+
+it("已有缓存的刷新未完成时不重发请求，期间多次变化结束后只补读一次", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  const key = ["workspace-directory", "chat", "/workspace", "/workspace"];
+  client.setQueryData(key, "cached");
+  let finish: ((value: string) => void) | undefined;
+  const request = vi.fn(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  function Consumer() {
+    useWorkspaceQueryEvents("chat", ["/workspace"], ["workspace-directory"]);
+    const query = useQuery({ queryKey: key, queryFn: request });
+    return <span>{query.data}</span>;
+  }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <Consumer />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+  vi.useFakeTimers();
+  try {
+    for (let sequence = 1; sequence <= 4; sequence++) {
+      await act(async () => {
+        registry.callbacks.get("/workspace")?.({
+          subscriptionId: "/workspace",
+          sequence,
+          resource: null,
+          state: "changed",
+        });
+        await vi.advanceTimersByTimeAsync(300);
+      });
+    }
+    expect(request).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finish?.("old");
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      finish?.("current");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByText("current")).toBeVisible();
+    expect(request).toHaveBeenCalledTimes(2);
+  } finally {
+    view.unmount();
+    client.clear();
+    vi.useRealTimers();
+  }
+});
+
+it("Git 连续变化时任意两次自动刷新间隔至少一秒", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+  });
+  const starts: number[] = [];
+  const request = vi.fn(async () => {
+    starts.push(Date.now());
+    return "git";
+  });
+  function Consumer() {
+    useWorkspaceQueryEvents("chat", ["/workspace"], ["scoped-git-detail"]);
+    useQuery({
+      queryKey: ["scoped-git-detail", "chat", "/workspace"],
+      queryFn: request,
+    });
+    return null;
+  }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <Consumer />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(observe).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1300));
+  });
+  starts.length = 0;
+  vi.useFakeTimers();
+  try {
+    for (let sequence = 1; sequence <= 60; sequence++) {
+      await act(async () => {
+        registry.callbacks.get("/workspace")?.({
+          subscriptionId: "/workspace",
+          sequence,
+          resource: null,
+          state: "changed",
+        });
+        await vi.advanceTimersByTimeAsync(50);
+      });
+    }
+    expect(starts.length).toBeGreaterThan(0);
+    expect(starts.length).toBeLessThanOrEqual(3);
+    for (let index = 1; index < starts.length; index++) {
+      expect(
+        (starts[index] ?? 0) - (starts[index - 1] ?? 0),
+      ).toBeGreaterThanOrEqual(1000);
+    }
+  } finally {
+    view.unmount();
+    client.clear();
+    vi.useRealTimers();
+  }
+});
+
+it("Git 慢请求期间不并发，结束后的补读同样等待至少一秒", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  let finish: ((value: string) => void) | undefined;
+  const request = vi.fn(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  function Consumer() {
+    useWorkspaceQueryEvents("chat", ["/workspace"], ["scoped-git-detail"]);
+    useQuery({
+      queryKey: ["scoped-git-detail", "chat", "/workspace"],
+      queryFn: request,
+    });
+    return null;
+  }
+  const view = render(
+    <QueryClientProvider client={client}>
+      <Consumer />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(observe).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+  vi.useFakeTimers();
+  try {
+    for (let sequence = 1; sequence <= 4; sequence++) {
+      await act(async () => {
+        registry.callbacks.get("/workspace")?.({
+          subscriptionId: "/workspace",
+          sequence,
+          resource: null,
+          state: "changed",
+        });
+        await vi.advanceTimersByTimeAsync(300);
+      });
+    }
+    expect(request).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finish?.("old");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(999);
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      finish?.("current");
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(request).toHaveBeenCalledTimes(2);
+  } finally {
+    view.unmount();
+    client.clear();
+    vi.useRealTimers();
+  }
+});

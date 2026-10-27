@@ -8,6 +8,7 @@ require (
 	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261026093548-30dd388b6902
 	github.com/dop251/goja v0.0.0-20261002135814-104bc28c3abd
 	github.com/fsnotify/fsnotify v1.9.0
+	github.com/fswatcher/fswatcher v0.1.0
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-git/go-git/v5 v5.16.3
 	github.com/google/jsonschema-go v0.4.3
@@ -22,13 +23,14 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/shrewx/ginx v1.2.7-0.20260801090805-290a56f47cbc
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/mod v0.34.0
-	golang.org/x/sys v0.43.0
+	golang.org/x/mod v0.35.0
+	golang.org/x/sys v0.44.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.1
 )
 
 require (
+	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/go-courier/codegen v1.1.2 // indirect
 	github.com/julienschmidt/httprouter v1.3.0 // indirect
 )
@@ -150,12 +152,12 @@ require (
 	golang.org/x/arch v0.22.0 // indirect
 	golang.org/x/crypto v0.50.0 // indirect
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
-	golang.org/x/net v0.52.0 // indirect
+	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.43.0 // indirect
+	golang.org/x/tools v0.44.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

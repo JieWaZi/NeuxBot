@@ -24,7 +24,7 @@ flowchart LR
 - 伙伴、项目、插件、技能、连接器、账号和记忆各自维护其业务事实。
 - 工作看板与通知读取原领域状态，不复制执行生命周期。
 
-前端服务器事实由 TanStack Query 管理，资源事件用于增量更新或精确失效。Native 通过 Electron 主进程、Web 通过浏览器各自持有一条 Core 全局 WebSocket；文件与 Git 的 fsnotify 事件复用该连接。PTY 字节流使用专用受认证连接。普通业务操作继续使用 REST。
+前端服务器事实由 TanStack Query 管理，资源事件用于增量更新或精确失效。Native 通过 Electron 主进程、Web 通过浏览器各自持有一条 Core 全局 WebSocket；文件与 Git 的原生文件事件复用该连接。PTY 字节流使用专用受认证连接。普通业务操作继续使用 REST。
 
 ## 代码导航
 

@@ -94,8 +94,71 @@ const invalidations = new WeakMap<QueryClient, InvalidationBatch>();
 
 type CompletionBatch = { keys: Set<string>; stop: () => void };
 const completions = new WeakMap<QueryClient, CompletionBatch>();
+const refreshTimers = new WeakMap<
+  QueryClient,
+  Map<string, ReturnType<typeof setTimeout>>
+>();
 
-/** 首次读取尚未结束时记录真实变化，完成后再对账一次，避免首次无数据查询吞掉失效信号。 */
+/** Git 的失效和慢请求补读共用入口；完成后至少一秒才允许下一次自动读取。 */
+function refreshWorkspaceQuery(queryClient: QueryClient, queryHash: string) {
+  const query = queryClient.getQueryCache().get(queryHash);
+  if (!query) return;
+  const invalidate = (read: boolean) =>
+    queryClient.invalidateQueries(
+      {
+        queryKey: query.queryKey,
+        exact: true,
+        refetchType:
+          read && document.visibilityState === "visible" ? "active" : "none",
+      },
+      { cancelRefetch: false },
+    );
+  if (query.state.fetchStatus === "fetching") {
+    reconcileAfterPendingQuery(queryClient, queryHash);
+    void invalidate(false);
+    return;
+  }
+  const prefix = String(query.queryKey[0]);
+  const isGit =
+    prefix.startsWith("scoped-git-") || prefix === "chat-summary-git-changes";
+  const delay = isGit
+    ? Math.max(
+        0,
+        Math.max(query.state.dataUpdatedAt, query.state.errorUpdatedAt) +
+          1000 -
+          Date.now(),
+      )
+    : 0;
+  let timers = refreshTimers.get(queryClient);
+  if (delay > 0) {
+    if (!timers) {
+      timers = new Map();
+      refreshTimers.set(queryClient, timers);
+    }
+    if (!timers.has(queryHash)) {
+      const current = timers;
+      current.set(
+        queryHash,
+        setTimeout(() => {
+          current.delete(queryHash);
+          if (!current.size) refreshTimers.delete(queryClient);
+          refreshWorkspaceQuery(queryClient, queryHash);
+        }, delay),
+      );
+    }
+    void invalidate(false);
+    return;
+  }
+  const timer = timers?.get(queryHash);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    timers?.delete(queryHash);
+    if (!timers?.size) refreshTimers.delete(queryClient);
+  }
+  void invalidate(true);
+}
+
+/** 读取期间的变化只排队一次，完成后补读，避免取消 Query 后底层 Git 请求仍并发执行。 */
 function reconcileAfterPendingQuery(
   queryClient: QueryClient,
   queryHash: string,
@@ -117,19 +180,14 @@ function reconcileAfterPendingQuery(
           completions.delete(queryClient);
         }
         if (event.type !== "removed")
-          void queryClient.invalidateQueries({
-            queryKey: event.query.queryKey,
-            exact: true,
-            refetchType:
-              document.visibilityState === "visible" ? "active" : "none",
-          });
+          refreshWorkspaceQuery(queryClient, event.query.queryHash);
       }
     });
   }
   batch.keys.add(queryHash);
 }
 
-/** 同一次文件事件的多个视图合并失效，避免对同一个成果 Query 重复取消和重发请求。 */
+/** 跨任务的密集文件事件和多个视图在有界时间窗内合并，不因连续写入无限推迟刷新。 */
 function invalidateWorkspaceQueries(
   queryClient: QueryClient,
   root: string,
@@ -141,7 +199,7 @@ function invalidateWorkspaceQueries(
     batch = { scopes: new Map() };
     invalidations.set(queryClient, batch);
     const current = batch;
-    queueMicrotask(() => {
+    setTimeout(() => {
       invalidations.delete(queryClient);
       const affected = (query: { queryKey: readonly unknown[] }) =>
         [...current.scopes.values()].some(
@@ -161,17 +219,9 @@ function invalidateWorkspaceQueries(
       for (const query of queryClient
         .getQueryCache()
         .findAll({ predicate: affected })) {
-        if (
-          query.state.fetchStatus === "fetching" &&
-          query.state.data === undefined
-        )
-          reconcileAfterPendingQuery(queryClient, query.queryHash);
+        refreshWorkspaceQuery(queryClient, query.queryHash);
       }
-      void queryClient.invalidateQueries({
-        refetchType: document.visibilityState === "visible" ? "active" : "none",
-        predicate: affected,
-      });
-    });
+    }, 250);
   }
   const key = `${root}\0${relativePath ?? ""}`;
   const affected = batch.scopes.get(key) ?? {
@@ -192,7 +242,7 @@ export function useWorkspaceQueryEvents(
   relativePath?: string,
 ) {
   const queryClient = useQueryClient();
-  const [error, setError] = useState<Error>();
+  const [errors, setErrors] = useState(new Map<string, Error>());
   const [generation, setGeneration] = useState(0);
   const [visible, setVisible] = useState(
     document.visibilityState === "visible",
@@ -234,14 +284,19 @@ export function useWorkspaceQueryEvents(
             event.state === "failed" ||
             event.state === "recovering"
           ) {
-            setError(
+            const error =
               event instanceof Error
                 ? event
-                : new Error(i18n.t("common:workspaceUpdatesUnavailable")),
-            );
+                : new Error(i18n.t("common:workspaceUpdatesUnavailable"));
+            setErrors((current) => new Map(current).set(root, error));
             return;
           }
-          setError(undefined);
+          setErrors((current) => {
+            if (!current.has(root)) return current;
+            const next = new Map(current);
+            next.delete(root);
+            return next;
+          });
           // ready 后也对账一次，覆盖首次 Query 与注册观察之间发生的文件修改。
           refresh(root);
         },
@@ -262,7 +317,10 @@ export function useWorkspaceQueryEvents(
     visible,
   ]);
   return {
-    error: active ? error : undefined,
+    error: active
+      ? roots.map((root) => errors.get(root)).find(Boolean)
+      : undefined,
+    errors,
     retry: () => {
       for (const root of rootKey.split("\0")) {
         const subscription = subscriptions.get(

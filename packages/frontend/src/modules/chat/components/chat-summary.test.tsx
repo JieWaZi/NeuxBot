@@ -109,3 +109,33 @@ it("摘要按目录展示修改、只预览会话文件，并把完整列表交�
   await user.click(screen.getByRole("button", { name: "成员一" }));
   expect(onMemberOpened).toHaveBeenCalledOnce();
 });
+
+it("一个项目读取失败不会遮蔽其他项目的 Git 状态和会话文件", async () => {
+  getWorkspaceGitChanges.mockRejectedValueOnce(
+    new Error("repository unavailable"),
+  );
+  const user = userEvent.setup();
+  render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      <ChatSummary
+        chatId="chat-2"
+        chatFiles={[]}
+        gitRoots={["/projects/one", "/projects/two"]}
+        workspaceDirectory="/workspace"
+        onViewAllFiles={vi.fn()}
+        onOpenFile={vi.fn()}
+        onOpenChanges={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: "查看摘要" }));
+  expect(await screen.findByText("+4")).toBeVisible();
+  expect(
+    await screen.findByRole("button", { name: "second.txt" }),
+  ).toBeVisible();
+  expect(screen.getAllByText("Git 文件改动暂时无法读取")).toHaveLength(1);
+});

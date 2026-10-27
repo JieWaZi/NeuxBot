@@ -101,6 +101,24 @@ vi.mock("@git-diff-view/react", () => ({
 }));
 
 describe("ScopedGitChanges", () => {
+  it("默认仓库复用发现时的状态快照，不再重复请求同一仓库", async () => {
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <ScopedGitChanges
+          query=""
+          rootPath="/tmp/ally"
+          scopeChatId={"a".repeat(32)}
+        />
+      </QueryClientProvider>,
+    );
+    await screen.findByText("src/main.ts");
+    expect(getScopedGitStatus).toHaveBeenCalledTimes(1);
+  });
+
   beforeEach(() => {
     gitState.xy = " M";
     gitState.untracked = false;
@@ -178,7 +196,6 @@ describe("ScopedGitChanges", () => {
     expect(main.querySelector(".max-h-96")).toBeNull();
     expect(getScopedGitStatus).toHaveBeenCalledWith(
       "a".repeat(32),
-      "/tmp/ally",
       "/tmp/ally",
     );
     expect(getScopedGitDiff).toHaveBeenCalledWith(

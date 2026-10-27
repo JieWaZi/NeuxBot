@@ -2,9 +2,11 @@ package workspacefiles
 
 import (
 	"context"
+	"fmt"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -127,5 +129,142 @@ func TestDirectoryMutationCannotRemoveAccountParent(t *testing.T) {
 	}
 	if _, err := m.RenameDirectory("web:one", s.ID, "", "runtime", "moved"); err != status_error.WorkspacePathInvalid {
 		t.Fatalf("account parent rename: %v", err)
+	}
+}
+
+func TestWatchLargeDirectoryUsesBoundedDescriptors(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("macOS 递归监听的文件描述符回归")
+	}
+	m, scope, root := fixture(t)
+	for index := range 512 {
+		if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("file-%d.txt", index)), []byte("old"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	count := func() int {
+		t.Helper()
+		directory, err := os.Open("/dev/fd")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer directory.Close()
+		files, err := directory.Readdirnames(-1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(files)
+	}
+	before := count()
+	_, events, stop, err := m.Watch(context.Background(), "web:one", scope.ID, "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	if growth := count() - before; growth > 64 {
+		t.Fatalf("512 个文件导致监听新增 %d 个描述符，应与文件数无关", growth)
+	}
+	if err := os.WriteFile(filepath.Join(root, "file-256.txt"), []byte("new"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-events:
+		if event.State != "changed" && event.State != "recovering" {
+			t.Fatal(event)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("已有文件内容修改未触发变化")
+	}
+	stop()
+	if growth := count() - before; growth > 32 {
+		t.Fatalf("停止观察后仍额外保留 %d 个描述符", growth)
+	}
+}
+
+func TestWatchSharesPhysicalPathAcrossScopesAndReleasesLastSubscriber(t *testing.T) {
+	m, first, root := fixture(t)
+	second, err := m.Open("web:two", root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, stopFirst, err := m.Watch(context.Background(), "web:one", first.ID, "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stopFirst()
+	_, changes, stopSecond, err := m.Watch(context.Background(), "web:two", second.ID, "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stopSecond()
+	physicalCount := func() int {
+		m.watchMu.Lock()
+		defer m.watchMu.Unlock()
+		return len(m.watches)
+	}
+	if count := physicalCount(); count != 1 {
+		t.Fatalf("同一真实目录创建了 %d 份物理监听", count)
+	}
+	if _, _, _, err := m.Watch(context.Background(), "web:one", second.ID, "", "", true); err != status_error.WorkspaceScopeInvalid {
+		t.Fatalf("共享监听绕过授权: %v", err)
+	}
+	stopFirst()
+	if physicalCount() != 1 {
+		t.Fatal("一个消费者退出提前释放了共享监听")
+	}
+	if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte("still observed"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-changes:
+		if event.State != "changed" && event.State != "recovering" {
+			t.Fatal(event)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("剩余消费者未收到变化")
+	}
+	stopSecond()
+	if physicalCount() != 0 {
+		t.Fatal("最后一个消费者退出后仍保留物理监听")
+	}
+}
+
+func TestWatchSlowConsumerReceivesLatestSnapshotWithoutFalseRecovery(t *testing.T) {
+	m, scope, root := fixture(t)
+	_, events, stop, err := m.Watch(context.Background(), "web:one", scope.ID, "note.txt", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte("first"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// 暂停消费，让监听只积压一个失效信号，而不是逐次快照。
+	time.Sleep(50 * time.Millisecond)
+	for index := range 20 {
+		if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte(fmt.Sprintf("latest-%d", index)), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	expected, _, err := m.Read("web:one", scope.ID, "", "note.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.NewTimer(3 * time.Second)
+	defer deadline.Stop()
+	sequence := uint64(1)
+	for {
+		select {
+		case event := <-events:
+			if event.State != "changed" || event.Sequence != sequence+1 {
+				t.Fatalf("慢消费者产生了错误恢复状态或序号跳跃: %+v", event)
+			}
+			sequence = event.Sequence
+			if event.Resource != nil && event.Resource.Version == expected.Version {
+				return
+			}
+		case <-deadline.C:
+			t.Fatal("未读到最后一次文件变化的快照")
+		}
 	}
 }

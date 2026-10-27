@@ -1,5 +1,5 @@
 import { useWorkspaceQueryEvents } from "@/shared/api/workspace-events";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { FileDiff, FileText, ListTree, Waypoints } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -44,16 +44,12 @@ export function ChatSummary({
   const { t } = useTranslation("chat");
   const [open, setOpen] = useState(false);
   const roots = [...new Set(gitRoots.filter(Boolean))];
-  const changes = useQuery({
-    queryKey: ["chat-summary-git-changes", chatId, roots],
-    queryFn: () =>
-      Promise.all(
-        roots.map(async (root) => ({
-          root,
-          changes: await getWorkspaceGitChanges(root),
-        })),
-      ),
-    enabled: open && roots.length > 0,
+  const changes = useQueries({
+    queries: roots.map((root) => ({
+      queryKey: ["chat-summary-git-changes", chatId, root],
+      queryFn: () => getWorkspaceGitChanges(root),
+      enabled: open,
+    })),
   });
   const generatedFiles = useQuery({
     queryKey: ["chat-workspace-files", chatId, workspaceDirectory],
@@ -63,10 +59,16 @@ export function ChatSummary({
     },
     enabled: open && Boolean(chatId && workspaceDirectory),
   });
+  const gitEvents = useWorkspaceQueryEvents(
+    chatId,
+    roots,
+    ["chat-summary-git-changes"],
+    open,
+  );
   const workspaceEvents = useWorkspaceQueryEvents(
     chatId,
-    [...roots, workspaceDirectory],
-    ["chat-summary-git-changes", "chat-workspace-files"],
+    [workspaceDirectory],
+    ["chat-workspace-files"],
     open,
   );
   const files = workspaceFilesWithGenerated(
@@ -93,14 +95,13 @@ export function ChatSummary({
           <section className="min-w-0" aria-label={t("summary.projectChanges")}>
             {roots.length ? (
               <div className="grid min-w-0 gap-3">
-                {roots.map((root) => {
+                {roots.map((root, index) => {
                   const name =
                     directoryLabel ??
                     root.split(/[\\/]/).filter(Boolean).at(-1) ??
                     root;
-                  const status = changes.data?.find(
-                    (item) => item.root === root,
-                  )?.changes;
+                  const result = changes[index];
+                  const status = result?.data;
                   return (
                     <div key={root} className="grid gap-2">
                       <h2
@@ -126,11 +127,11 @@ export function ChatSummary({
                         <span className="text-content-primary min-w-0 flex-1 text-left">
                           {t("summary.changes")}
                         </span>
-                        {changes.isPending ? (
+                        {result?.isPending ? (
                           <span className="text-muted-foreground type-ui font-normal">
                             {t("workspace.changesLoading")}
                           </span>
-                        ) : changes.isError || workspaceEvents.error ? (
+                        ) : result?.isError || gitEvents.errors.has(root) ? (
                           <span className="text-destructive type-ui font-normal">
                             {t("workspace.changesLoadError")}
                           </span>

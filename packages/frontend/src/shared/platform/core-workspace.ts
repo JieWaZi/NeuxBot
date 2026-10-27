@@ -180,6 +180,62 @@ export function createCoreWorkspaceServices(
   const known = new Map<string, WorkspaceResourceScope>();
   const reads = new Map<string, AbortController>();
   const watches = new Map<string, () => void>();
+  const gitReads = new Map<
+    string,
+    {
+      tail: Promise<void>;
+      finishedAt: number;
+      queued: number;
+      cleanup?: ReturnType<typeof setTimeout>;
+    }
+  >();
+
+  // 相同 Git 读取共用串行门，包括状态、Diff、历史的重连、重新激活和失败重试。
+  // 这里只保存请求生命周期，不缓存第二份 Git 事实；每次仍由 Core 独立授权。
+  function readGit<T>(identity: readonly unknown[], read: () => Promise<T>) {
+    const key = JSON.stringify(identity);
+    let gate = gitReads.get(key);
+    if (!gate) {
+      gate = { tail: Promise.resolve(), finishedAt: 0, queued: 0 };
+      gitReads.set(key, gate);
+    }
+    const current = gate;
+    current.queued++;
+    if (current.cleanup !== undefined) clearTimeout(current.cleanup);
+    const result = current.tail.then(async () => {
+      const delay = current.finishedAt + 1000 - Date.now();
+      if (delay > 0)
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+      try {
+        return await read();
+      } finally {
+        current.finishedAt = Date.now();
+      }
+    });
+    current.tail = result.then(
+      () => {},
+      () => {},
+    );
+    void current.tail.then(() => {
+      current.queued--;
+      if (!current.queued) {
+        current.cleanup = setTimeout(() => {
+          if (!current.queued) gitReads.delete(key);
+        }, 1000);
+      }
+    });
+    return result;
+  }
+  function readGitStatus(query: {
+    scopeId: string;
+    root: string;
+    repository?: string;
+  }) {
+    return readGit(["status", query.repository || query.root], async () => {
+      const { data } = await api.gitStatus({ query, throwOnError: true });
+      return gitStatusSchema.parse(data);
+    });
+  }
   const listeners = new Set<(event: WorkspaceResourceChangeEvent) => void>();
   registerCoreConnectionRecovery(() => {
     scopes.clear();
@@ -538,39 +594,60 @@ export function createCoreWorkspaceServices(
   }
   const git: GitService = {
     async scoped_git_status(args) {
-      const { data } = await api.gitStatus({
-        query: await gitArgs(args),
-        throwOnError: true,
-      });
-      return gitStatusSchema.parse(data);
+      return readGitStatus(await gitArgs(args));
     },
     async scoped_git_diff(args) {
-      const { data } = await api.gitDiff({
-        query: { ...args, ...(await gitArgs(args)) },
-        throwOnError: true,
-      });
-      return data.content ?? "";
+      return readGit(
+        ["diff", args.repository || args.root, args.relativePath, args.staged],
+        async () => {
+          const { data } = await api.gitDiff({
+            query: { ...args, ...(await gitArgs(args)) },
+            throwOnError: true,
+          });
+          return data.content ?? "";
+        },
+      );
     },
     async scoped_git_log(args) {
-      const { data } = await api.gitLog({
-        query: { ...args, ...(await gitArgs(args)) },
-        throwOnError: true,
-      });
-      return gitLogSchema.parse(data);
+      return readGit(
+        ["log", args.repository || args.root, args.count, args.skip],
+        async () => {
+          const { data } = await api.gitLog({
+            query: { ...args, ...(await gitArgs(args)) },
+            throwOnError: true,
+          });
+          return gitLogSchema.parse(data);
+        },
+      );
     },
     async scoped_git_show(args) {
-      const { data } = await api.gitShow({
-        query: { ...args, ...(await gitArgs(args)) },
-        throwOnError: true,
-      });
-      return data.content ?? null;
+      return readGit(
+        [
+          "show",
+          args.repository || args.root,
+          args.revision,
+          args.relativePath,
+        ],
+        async () => {
+          const { data } = await api.gitShow({
+            query: { ...args, ...(await gitArgs(args)) },
+            throwOnError: true,
+          });
+          return data.content ?? null;
+        },
+      );
     },
     async scoped_git_commit_diff(args) {
-      const { data } = await api.gitCommitDiff({
-        query: { ...args, ...(await gitArgs(args)) },
-        throwOnError: true,
-      });
-      return data.content ?? "";
+      return readGit(
+        ["commit-diff", args.repository || args.root, args.hash],
+        async () => {
+          const { data } = await api.gitCommitDiff({
+            query: { ...args, ...(await gitArgs(args)) },
+            throwOnError: true,
+          });
+          return data.content ?? "";
+        },
+      );
     },
     async scoped_git_stage(args) {
       await api.gitStage({
@@ -615,11 +692,7 @@ export function createCoreWorkspaceServices(
     },
     async get_workspace_git_changes({ root }): Promise<WorkspaceGitChanges> {
       const current = await draftScope(root);
-      const { data: response } = await api.gitStatus({
-        query: { scopeId: current.id, root },
-        throwOnError: true,
-      });
-      const data = gitStatusSchema.parse(response);
+      const data = await readGitStatus({ scopeId: current.id, root });
       const files = (data.entries ?? []).map((entry) => ({
         path: entry.path,
         name: basename(entry.path),
@@ -643,12 +716,14 @@ export function createCoreWorkspaceServices(
       };
     },
     async list_workspace_git_branches({ root }) {
-      const current = await draftScope(root);
-      const { data } = await api.gitBranches({
-        query: { scopeId: current.id, root },
-        throwOnError: true,
+      return readGit(["branches", root], async () => {
+        const current = await draftScope(root);
+        const { data } = await api.gitBranches({
+          query: { scopeId: current.id, root },
+          throwOnError: true,
+        });
+        return branchesSchema.parse(data);
       });
-      return branchesSchema.parse(data);
     },
     async preview_workspace_git_checkout({ root, branch }) {
       const current = await draftScope(root);
@@ -677,11 +752,7 @@ export function createCoreWorkspaceServices(
       const seen = new Set<string>();
       for (const root of roots) {
         const current = await draftScope(root);
-        const { data: response } = await api.gitStatus({
-          query: { scopeId: current.id, root },
-          throwOnError: true,
-        });
-        const data = gitStatusSchema.parse(response);
+        const data = await readGitStatus({ scopeId: current.id, root });
         for (const gitRoot of data.repositories ?? []) {
           if (seen.has(gitRoot)) continue;
           seen.add(gitRoot);
@@ -697,10 +768,12 @@ export function createCoreWorkspaceServices(
     },
     async read_workspace_diff({ root, relativePath }) {
       const current = await draftScope(root);
-      const { data } = await api.gitShow({
-        query: { scopeId: current.id, root, revision: "HEAD", relativePath },
-        throwOnError: true,
-      });
+      const { data } = await readGit(["show", root, "HEAD", relativePath], () =>
+        api.gitShow({
+          query: { scopeId: current.id, root, revision: "HEAD", relativePath },
+          throwOnError: true,
+        }),
+      );
       const file = await workspace.stat_workspace_resource({
         scopeId: current.id,
         root,

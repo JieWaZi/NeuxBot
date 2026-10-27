@@ -34,6 +34,10 @@ type Manager struct {
 	scopes map[string]Scope
 	// mutations 防止本服务的检查与写入交错。
 	mutations sync.Mutex
+	// watchMu 保护物理监听的引用计数与信号分发，不阻塞授权句柄查询。
+	watchMu sync.Mutex
+	// watches 按已核验的真实路径共享底层资源，不保存文件内容。
+	watches map[physicalWatchKey]*physicalWatch
 }
 
 // New 创建不启动后台任务的工作区文件管理器。

@@ -12,10 +12,15 @@ vi.mock("@/shared/api/global-events", () => ({
 }));
 vi.mock("@/shared/api/generated/sdk.gen", () => ({
   openScope: vi.fn(),
+  openDraftScope: vi.fn(),
   readFile: vi.fn(),
   statFile: vi.fn(),
   deleteFile: vi.fn(),
   gitStatus: vi.fn(),
+  gitDiff: vi.fn(),
+  gitLog: vi.fn(),
+  gitShow: vi.fn(),
+  gitCommitDiff: vi.fn(),
   resolveReference: vi.fn(),
 }));
 beforeEach(() => vi.resetAllMocks());
@@ -132,3 +137,132 @@ describe("Core 文件和 Git 适配", () => {
     ).rejects.toThrow();
   });
 });
+
+it("Git 实际状态请求跨摘要和详情串行，完成后至少一秒再读取", async () => {
+  vi.useFakeTimers();
+  try {
+    vi.mocked(api.openScope).mockResolvedValue({ data: scope } as never);
+    vi.mocked(api.openDraftScope).mockResolvedValue({ data: scope } as never);
+    const status = {
+      isRepo: true,
+      root: "/workspace",
+      repositories: ["/workspace"],
+      entries: [],
+    };
+    let finish: ((value: never) => void) | undefined;
+    vi.mocked(api.gitStatus)
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue({ data: status } as never);
+    const { git } = createCoreWorkspaceServices(platform().host);
+    const first = git.scoped_git_status({ chatId: "chat", root: "/workspace" });
+    await vi.advanceTimersByTimeAsync(0);
+    const second = git.get_workspace_git_changes({ root: "/workspace" });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(api.gitStatus).toHaveBeenCalledTimes(1);
+    finish?.({ data: status } as never);
+    await first;
+    await vi.advanceTimersByTimeAsync(999);
+    expect(api.gitStatus).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await second;
+    expect(api.gitStatus).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it("Git 实际请求失败后重连或重试同样等待一秒", async () => {
+  vi.useFakeTimers();
+  try {
+    vi.mocked(api.openScope).mockResolvedValue({ data: scope } as never);
+    vi.mocked(api.openDraftScope).mockResolvedValue({ data: scope } as never);
+    vi.mocked(api.gitStatus)
+      .mockRejectedValueOnce(new Error("failed"))
+      .mockResolvedValue({
+        data: {
+          isRepo: true,
+          root: "/workspace",
+          repositories: ["/workspace"],
+          entries: [],
+        },
+      } as never);
+    const { git } = createCoreWorkspaceServices(platform().host);
+    await expect(
+      git.scoped_git_status({ chatId: "chat", root: "/workspace" }),
+    ).rejects.toThrow("failed");
+    const retry = git.scoped_git_status({ chatId: "chat", root: "/workspace" });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(api.gitStatus).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await retry;
+    expect(api.gitStatus).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it.each(["diff", "log", "show", "commit-diff"] as const)(
+  "Git %s 实际读取也受统一串行和一秒间隔约束",
+  async (kind) => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(api.openScope).mockResolvedValue({ data: scope } as never);
+      vi.mocked(api.gitDiff).mockResolvedValue({
+        data: { content: "patch" },
+      } as never);
+      vi.mocked(api.gitLog).mockResolvedValue({ data: [] } as never);
+      vi.mocked(api.gitShow).mockResolvedValue({
+        data: { content: "content" },
+      } as never);
+      vi.mocked(api.gitCommitDiff).mockResolvedValue({
+        data: { content: "patch" },
+      } as never);
+      const { git } = createCoreWorkspaceServices(platform().host);
+      const args = {
+        chatId: "chat",
+        root: "/workspace",
+        repository: "/workspace",
+      };
+      const read = () => {
+        switch (kind) {
+          case "diff":
+            return git.scoped_git_diff({
+              ...args,
+              relativePath: "a.txt",
+              staged: false,
+            });
+          case "log":
+            return git.scoped_git_log({ ...args, count: 10, skip: 0 });
+          case "show":
+            return git.scoped_git_show({
+              ...args,
+              relativePath: "a.txt",
+              revision: "HEAD",
+            });
+          case "commit-diff":
+            return git.scoped_git_commit_diff({ ...args, hash: "1234567" });
+        }
+      };
+      const request = {
+        diff: api.gitDiff,
+        log: api.gitLog,
+        show: api.gitShow,
+        "commit-diff": api.gitCommitDiff,
+      }[kind];
+      await read();
+      const second = read();
+      await vi.advanceTimersByTimeAsync(999);
+      expect(request).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await second;
+      expect(request).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
