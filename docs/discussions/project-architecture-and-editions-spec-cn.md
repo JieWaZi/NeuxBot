@@ -1,6 +1,6 @@
 # NeuxBot 项目架构与产品形态 Spec
 
-> 状态：目标架构提案，未实施。现阶段面向桌面个人版；企业私有部署与 PaaS 用于检查扩展边界，不是本轮建设任务。
+> 状态：目标架构；独立 Agent Runtime 首批实现已建立，产品整体分层和入口迁移仍按实施计划推进。现阶段面向桌面个人版；企业私有部署与 PaaS 用于检查扩展边界，不是本轮建设任务。
 >
 > 本地依据：2026-10-27 的 `103ff8f` 与读取时工作区。参考：Neutree Agent Platform `5f5d4a0d155eb081702d6bd17623ce8ea0e78b12`。源码核对属于静态分析，不表示多用户、远程执行或性能验收已经通过。
 
@@ -30,7 +30,7 @@ NeuxBot 的目标是：**同一套产品领域内核，按个人或企业的需�
 
 个人版、企业版和 PaaS 复用这些产品职责，差异体现在身份与共享策略、应用装配、存储和执行位置。未来企业治理覆盖入口、领域读写、能力使用、执行与事件访问；它不是今天要新增的独立业务层。
 
-本轮不做 Runtime HTTP，不引入远程 worker、Kubernetes、组织表、租户字段或计费系统；不考虑旧数据和旧会话兼容。`packages/agent-runtime` 是独立 Go module；acp-go 保持独立仓库维护。详细执行契约与分批替换见 [Agent Runtime Spec](agent-runtime-refactor-spec-cn.md)。
+本轮不做 Runtime HTTP，不引入远程 worker、Kubernetes、组织表、租户字段或计费系统；不考虑旧数据和旧会话兼容。`packages/agent-runtime` 是独立 Go module；acp-go 保持独立仓库维护。详细执行契约见 [Agent Runtime Spec](agent-runtime-refactor-spec-cn.md)，目录、依赖和逐批功能影响见[实施计划](agent-runtime-implementation-plan-cn.md)。
 
 ## 2. 借鉴 agent-platform 的什么
 

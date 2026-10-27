@@ -102,16 +102,19 @@ Engine 不导入具体 Driver。宿主构造 Driver 并注入 Runtime；Driver �
 
 本批先完成 A，并实现 B 所需的 ACP 协议边界和测试基础。Codex 当前全量禁工具能力尚未证明，故不能宣称 B 已切生产。后续 B–F 按上表门槛继续；不把未验证的输出或安全策略包装为支持。
 
-首批工程保护默认值：32 个活动调用、64 个打开 Session、最终正文 1 MiB、单事件 1 MiB、清理 5 秒；允许显式配置并校验。这是保护值，不是性能验收结论。ACP 队列基线 256 项/16 MiB，不叠加无界事件队列。
+本批四项开发任务已完成并通过各自及跨模块独立评审。验证包含新模块真实依赖检查、vet、定向测试与 race、Core＋公开 ACP 传输组合回归和文档检查；未运行全仓验证或真实 CLI/账号验收。上述完成状态仅对应本节任务，阶段 B–F 的产品迁移尚未实施。
+
+首批工程保护默认值：32 个活动调用及最多 32 个待用调用标识、64 个打开 Session、最终正文 1 MiB、单事件 1 MiB、整轮 16384 个事件/64 MiB、观察交付 5 秒、人工交互等待 5 分钟、清理 5 秒；允许显式配置并校验。这是保护值，不是性能验收结论。ACP 队列基线 256 项/16 MiB，不叠加无界事件队列。
 
 共同接口方向：
 
 ```go
-// 以下为接口签名；完整字段由 Task 1 的 contract API 检查点固定。
+// 以下为接口签名；完整字段以 Task 1 发布的 contract 文件为共同来源。
 runtime.New(Config) (*Runtime, error)
 Runtime.Start(context.Context) error
 Runtime.Invoke(context.Context, contract.ExecutionSpec) contract.Result
 Runtime.Run(context.Context, contract.ExecutionSpec, contract.RunOptions) contract.Result
+Runtime.NewInvocationID() (string, error)
 Runtime.Cancel(string) bool
 Runtime.CloseSession(context.Context, string) error
 Runtime.Close(context.Context) error
@@ -128,7 +131,7 @@ type DriverSession interface {
 }
 ```
 
-ExecutionSpec 只含 Profile、Input、SessionDirective、Workspace、明确策略和限制/资源身份；RunOptions 持有 Observer/交互端口。SessionDirective 区分 New/Resume 和 Seed；Result 分开执行状态、输出状态/可靠性、交付故障、用量/副作用与技术会话身份。事件保留 PromptAccepted、MessageID、Phase、文本和工具事实。首次未实现的 Fork/Detect/冷恢复不伪造支持。
+ExecutionSpec 只含 Profile、Input、SessionDirective、Workspace、明确策略和限制/资源身份；RunOptions 持有 Observer/交互端口。SessionDirective 区分 New/Resume 和 Seed；Result 分开执行状态、输出状态/可靠性、交付故障、用量/副作用与技术会话身份。事件保留 PromptAccepted、MessageID、Phase、文本和工具事实。调用标识由 Runtime 自动生成，或由宿主提前调用 NewInvocationID 申请；未启动预留数量有界，Cancel 可释放预留，用过的标识不重新接纳，不保存无界已完成标识集。首次未实现的 Fork/Detect/冷恢复不伪造支持。
 
 ### Task 1: 独立契约和共享内核（Sol 6.1 xhigh）
 
@@ -136,11 +139,11 @@ ExecutionSpec 只含 Profile、Input、SessionDirective、Workspace、明确策�
 
 **Interfaces:** 生产上述公共 API、Driver/Session 契约；只消费标准库和注入端口。Task 2 消费 contract。实现者先发布 API 检查点，后续字段变更由协调者统一。
 
-- [ ] 先固定 contract，并通知协调者与 Task 2。可执行接口由此成为两个实现的唯一共同来源。
-- [ ] 写失败测试：无 final 证据/多消息/工具后 final/超限；Invoke 临时回收；Resume 仅增量且拒绝 Seed；同 Session 重入与跨 Session 并行；摘要稳定/权限不扩张；Observer 失败不重跑；准备失败逆序释放；取消和 Close 竞争。
-- [ ] 记录 RED；实现 plan/output/engine/runtime：深冻结、资源唯一所有、生命周期有界、单一结果与诚实输出。不得调用旧 SDK。
-- [ ] gofmt；模块内 `GOWORK=off go test ./contract ./runtime ./internal/plan ./internal/engine ./internal/output`；并发包定向 race；基准记录分配，不冒充全性能验收。
-- [ ] 自查全部字段注释、依赖和错误边界；写报告，由协调者提交和派评审。
+- [x] 先固定 contract，并通知协调者与 Task 2。可执行接口由此成为两个实现的唯一共同来源。
+- [x] 写失败测试：无 final 证据/多消息/工具后 final/超限；Invoke 临时回收；Resume 仅增量且拒绝 Seed；同 Session 重入与跨 Session 并行；摘要稳定/权限不扩张；Observer 失败不重跑；准备失败逆序释放；取消和 Close 竞争；关闭失败保留使用者依赖并可重试，不重复已成功释放项；单项交互撤销不取消健康整轮。
+- [x] 记录 RED；实现 plan/output/engine/runtime：深冻结、资源唯一所有、生命周期有界、单一结果与诚实输出。不得调用旧 SDK。
+- [x] gofmt；模块内 `GOWORK=off go test ./contract ./runtime ./internal/plan ./internal/engine ./internal/output`；并发包定向 race；基准记录分配，不冒充全性能验收。
+- [x] 自查全部字段注释、依赖和错误边界；写报告，由协调者提交和派评审。
 
 ### Task 2: ACP Driver 首切片（Sol 6.1 xhigh）
 
@@ -148,30 +151,30 @@ ExecutionSpec 只含 Profile、Input、SessionDirective、Workspace、明确策�
 
 **Interfaces:** 消费 Task 1 contract；生产可注入公开 ACP Agent 工厂的 Driver，实现 Open/Prompt/Close。模块依赖 `acp-go v0.0.0-20261027005717-2f0ad2051741`、`sdk v0.0.0-20261026093029-d283676c207f`。
 
-- [ ] 接口发布前准备公开 ACP 测试情景与文件组织，发布后只按 contract 实现，不造第二套接口。
-- [ ] 写失败测试：真实 Prompt 交付后开始；MessageID/Phase 保留；缺 phase 不猜测；取消/排空/重复关闭；不支持的 explicit_only/deny_all 原生准备前拒绝；迟到事件隔离。
-- [ ] 实现公开 SDK + acpserver 连接与首个 Codex 工厂，原生协议/进程继续归 acp-go；不搬全部 binding。不支持的模型/策略不能静默忽略。
-- [ ] 通过公开 ACP Fake Agent 与实际本地传输验证 Driver；执行 gofmt、`GOWORK=off go test ./driver/acp` 和对应 race。
-- [ ] 记录未经真实 CLI 验收的能力；不修改 server 生产装配。报告后协调者提交/评审。
+- [x] 接口发布前准备公开 ACP 测试情景与文件组织，发布后只按 contract 实现，不造第二套接口。
+- [x] 写失败测试：真实 Prompt 交付后开始；MessageID/Phase 保留；缺 phase 不猜测；取消/排空/重复关闭；不支持的 explicit_only/deny_all 原生准备前拒绝；迟到事件隔离。
+- [x] 实现公开 SDK + acpserver 连接与首个 Codex 工厂，原生协议/进程继续归 acp-go；不搬全部 binding。不支持的模型/策略不能静默忽略。
+- [x] 通过公开 ACP Fake Agent 与实际本地传输验证 Driver；执行 gofmt、`GOWORK=off go test ./driver/acp` 和对应 race。
+- [x] 记录未经真实 CLI 验收的能力；不修改 server 生产装配。报告后协调者提交/评审。
 
 ### Task 3: 独立模块工程检查（Terra 6.1，简单任务）
 
 **Files:** `scripts/check-agent-runtime.mjs`、`scripts/check-agent-runtime.test.mjs`、`.github/workflows/ci.yml`。不改 Go、依赖、宿主入口。
 
-**Interfaces:** 命令 `node scripts/check-agent-runtime.mjs`，在 `GOWORK=off` 下用 `go list -deps -json` 检查实际依赖，拒绝直接或间接 server 导入；仅对新模块实际包执行显式列表 vet/test。
+**Interfaces:** 命令 `node scripts/check-agent-runtime.mjs`，在 `GOWORK=off` 下用 `go list -deps -test -f '{{.ImportPath}}'` 检查实际依赖，拒绝直接或间接 server 导入；仅对新模块实际包执行显式列表 vet/test。
 
-- [ ] 写失败测试，用临时微型 Go module 证明合法输入通过、间接 server 依赖拒绝、Go 命令失败非零；不做源码字符串断言。
-- [ ] 实现命令，不依赖根 go.work；不存在的模块准确失败，不悄悄跳过。
-- [ ] 既有 Go CI 加独立检查及新模块 cache key，不重写原工作流。
-- [ ] Node 定向测试；模块就绪后跑真实检查。B 接入 server/go.mod 后才做实际打包验收，此任务不虚称已接生产。
-- [ ] 自查和报告，由协调者提交/评审。
+- [x] 写失败测试，用临时微型 Go module 证明合法输入通过、间接 server 依赖拒绝、Go 命令失败非零；不做源码字符串断言。
+- [x] 实现命令，不依赖根 go.work；不存在的模块准确失败，不悄悄跳过。
+- [x] 既有 Go CI 加独立检查及新模块 cache key，不重写原工作流。
+- [x] Node 定向测试；模块就绪后跑真实检查。B 接入 server/go.mod 后才做实际打包验收，此任务不虚称已接生产。
+- [x] 自查和报告，由协调者提交/评审。
 
 ### Task 4: 集成与独立评审（协调者）
 
 **Files:** 本计划、设计/开发说明；只做必要集成。
 
-- [ ] 写明独立模块的技术 Fault 适用边界，不放宽 server 规则。
-- [ ] 固定依赖，记录实际支持/限制和删除清单。
-- [ ] 三项各自评审 spec 符合性与质量；修复后复核。
-- [ ] 独立模块检查、直接影响的既有 Runtime/知识基线、文档检查；不跑全仓。
-- [ ] Sol 6.1 xhigh 做最终跨模块评审；报告交付和未切入口，保留隔离分支供下一批继续。
+- [x] 写明独立模块的技术 Fault 适用边界，不放宽 server 规则。
+- [x] 固定依赖，记录实际支持/限制和删除清单。
+- [x] 三项各自评审 spec 符合性与质量；修复后复核。
+- [x] 独立模块检查、直接影响的既有 Runtime/知识基线、文档检查；不跑全仓。
+- [x] Sol 6.1 xhigh 做最终跨模块评审；报告交付和未切入口，保留隔离分支供下一批继续。

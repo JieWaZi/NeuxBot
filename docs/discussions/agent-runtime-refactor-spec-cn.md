@@ -1,8 +1,10 @@
 # 独立 Agent Runtime 重构 Spec
 
-> 状态：待实施设计，不代表当前能力。范围：独立目录、嵌入式 Go module、分批替换现有调用方；不建设 Runtime HTTP 服务。
+> 状态：完整目标设计；独立模块已建立，现有产品入口尚未切换。实际能力以模块说明和验证为准。范围：独立目录、嵌入式 Go module、分批替换现有调用方；不建设 Runtime HTTP 服务。
 >
 > 代码基线：2026-10-27，提交 `49250f9` 与编写时工作区。知识维护、账号依赖等存在并行未提交修改；本文依据已读取源码描述，实施每批迁移前重新核对差异。
+
+分阶段目录、依赖、功能影响和开发任务见[实施计划](agent-runtime-implementation-plan-cn.md)；独立模块的实际实现及限制见[模块说明](../../packages/agent-runtime/README.md)。本 Spec 保留完整目标，不能据此推定所有阶段已经实现。
 
 项目层次、个人/企业形态与未来部署边界见[项目架构与产品形态 Spec](project-architecture-and-editions-spec-cn.md)。本文只细化 Agent Runtime 子系统；当前仍采用桌面模块化单体，不建设企业平台。
 
