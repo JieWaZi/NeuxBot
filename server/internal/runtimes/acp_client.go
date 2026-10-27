@@ -32,8 +32,6 @@ type acpClient struct {
 
 // acpBridge 串行交付一个 Invocation 的 ACP 更新和 Runtime 事件。
 type acpBridge struct {
-	// rejectTextInteraction 在纯模型调用观察到工具或交互时立即取消，不执行宿主能力。
-	rejectTextInteraction func()
 	// textCollector 为纯模型调用直接收集正文，所有 Session Update 均不进入聊天事件队列。
 	textCollector *textCollector
 	// sessionID 是当前调用使用的 ACP Session 标识。
@@ -230,11 +228,7 @@ func (client *acpClient) SessionUpdate(
 		return nil
 	}
 	bridge.observeFirstUpdate()
-	if bridge.rejectTextInteraction != nil && (notification.Update.ToolCall != nil || notification.Update.ToolCallUpdate != nil || notification.Update.Plan != nil) {
-		bridge.rejectTextInteraction()
-		bridge.setFailure(status_error.RuntimePolicyUnsupported)
-		return status_error.RuntimePolicyUnsupported
-	}
+
 	if bridge.textCollector != nil {
 		bridge.signalActivity()
 		bridge.textCollector.collectUpdate(notification.Update, bridge.binding)
@@ -268,10 +262,7 @@ func (client *acpClient) RequestPermission(
 			Outcome: acp.NewRequestPermissionOutcomeCancelled(),
 		}, nil
 	}
-	if bridge.rejectTextInteraction != nil {
-		bridge.rejectTextInteraction()
-		return acp.RequestPermissionResponse{Outcome: acp.NewRequestPermissionOutcomeCancelled()}, nil
-	}
+
 	return bridge.requestPermission(ctx, request), nil
 }
 
@@ -292,10 +283,7 @@ func (client *acpClient) UnstableCreateElicitation(
 		)
 		return acp.NewUnstableCreateElicitationResponseCancel(), nil
 	}
-	if bridge.rejectTextInteraction != nil {
-		bridge.rejectTextInteraction()
-		return acp.NewUnstableCreateElicitationResponseCancel(), nil
-	}
+
 	return bridge.createElicitation(ctx, request), nil
 }
 
@@ -367,17 +355,7 @@ func (*acpClient) WaitForTerminalExit(
 func (bridge *acpBridge) enqueue(delivery acpDelivery) error {
 	bridge.enqueueMutex.Lock()
 	defer bridge.enqueueMutex.Unlock()
-	if bridge.rejectTextInteraction != nil {
-		for _, event := range delivery.events {
-			switch event.Type {
-			case EventTypeToolUse, EventTypeToolInputSnapshot, EventTypeToolUpdate, EventTypeToolResult:
-				// 内部已归一化事件同样服从文本隔离，不能绕过 SessionUpdate 检查进入空聊天 Sink。
-				bridge.rejectTextInteraction()
-				bridge.setFailure(status_error.RuntimePolicyUnsupported)
-				return status_error.RuntimePolicyUnsupported
-			}
-		}
-	}
+
 	if bridge.queueClosed {
 		return status_error.OperationCanceled
 	}

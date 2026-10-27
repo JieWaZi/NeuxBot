@@ -22,8 +22,6 @@ func (v RuntimeCapability) String() string {
 		return "dynamic_models"
 	case RuntimeCapabilityImagePath:
 		return "image_path"
-	case RuntimeCapabilityIsolatedTextGeneration:
-		return "isolated_text_generation"
 	case RuntimeCapabilityMCPSSE:
 		return "mcp_sse"
 	case RuntimeCapabilityMCPStreamableHTTP:
@@ -52,8 +50,6 @@ func (v RuntimeCapability) Label() string {
 		return "RuntimeCapabilityDynamicModels 表示本次探测取得了动态模型列表。"
 	case RuntimeCapabilityImagePath:
 		return "RuntimeCapabilityImagePath 表示 Runtime 支持通过本地路径原生提交图片。"
-	case RuntimeCapabilityIsolatedTextGeneration:
-		return "RuntimeCapabilityIsolatedTextGeneration 表示真实会话已确认可配置隔离文本生成策略。"
 	case RuntimeCapabilityMCPSSE:
 		return "RuntimeCapabilityMCPSSE 表示 ACP Agent 声明支持旧版 SSE MCP。"
 	case RuntimeCapabilityMCPStreamableHTTP:
@@ -73,7 +69,7 @@ func (v RuntimeCapability) Label() string {
 }
 
 func (v RuntimeCapability) Values() []enum.Enum {
-	return []enum.Enum{RuntimeCapabilityUnspecified, RuntimeCapabilityAddDirectory, RuntimeCapabilityDynamicModels, RuntimeCapabilityImagePath, RuntimeCapabilityIsolatedTextGeneration, RuntimeCapabilityMCPSSE, RuntimeCapabilityMCPStreamableHTTP, RuntimeCapabilityPartialMessages, RuntimeCapabilityResumeSession, RuntimeCapabilitySkillDirectory, RuntimeCapabilityStreamingUserMessages, RuntimeCapabilityStructuredOutput}
+	return []enum.Enum{RuntimeCapabilityUnspecified, RuntimeCapabilityAddDirectory, RuntimeCapabilityDynamicModels, RuntimeCapabilityImagePath, RuntimeCapabilityMCPSSE, RuntimeCapabilityMCPStreamableHTTP, RuntimeCapabilityPartialMessages, RuntimeCapabilityResumeSession, RuntimeCapabilitySkillDirectory, RuntimeCapabilityStreamingUserMessages, RuntimeCapabilityStructuredOutput}
 }
 
 func (v RuntimeCapability) Type() string {
@@ -82,7 +78,7 @@ func (v RuntimeCapability) Type() string {
 
 func (v RuntimeCapability) MarshalText() ([]byte, error) {
 	switch v {
-	case RuntimeCapabilityUnspecified, RuntimeCapabilityAddDirectory, RuntimeCapabilityDynamicModels, RuntimeCapabilityImagePath, RuntimeCapabilityIsolatedTextGeneration, RuntimeCapabilityMCPSSE, RuntimeCapabilityMCPStreamableHTTP, RuntimeCapabilityPartialMessages, RuntimeCapabilityResumeSession, RuntimeCapabilitySkillDirectory, RuntimeCapabilityStreamingUserMessages, RuntimeCapabilityStructuredOutput:
+	case RuntimeCapabilityUnspecified, RuntimeCapabilityAddDirectory, RuntimeCapabilityDynamicModels, RuntimeCapabilityImagePath, RuntimeCapabilityMCPSSE, RuntimeCapabilityMCPStreamableHTTP, RuntimeCapabilityPartialMessages, RuntimeCapabilityResumeSession, RuntimeCapabilitySkillDirectory, RuntimeCapabilityStreamingUserMessages, RuntimeCapabilityStructuredOutput:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -99,8 +95,6 @@ func (v *RuntimeCapability) UnmarshalText(text []byte) error {
 		*v = RuntimeCapabilityDynamicModels
 	case RuntimeCapabilityImagePath.String():
 		*v = RuntimeCapabilityImagePath
-	case RuntimeCapabilityIsolatedTextGeneration.String():
-		*v = RuntimeCapabilityIsolatedTextGeneration
 	case RuntimeCapabilityMCPSSE.String():
 		*v = RuntimeCapabilityMCPSSE
 	case RuntimeCapabilityMCPStreamableHTTP.String():

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,60 +22,39 @@ import (
 	agentruntime "github.com/JieWaZi/NeuxBot/agent-runtime/runtime"
 )
 
-// nativeCodexObservation 保留真实CLI请求和实际内核结果，不使用账号或项目内容。
+// nativeCodexObservation 保留真实CLI的模型请求和最终结果，不检查其原生配置与工具清单。
 type nativeCodexObservation struct {
-	payload             map[string]any  // payload 是本地Provider实际收到的模型请求。
-	result              contract.Result // result 是真实Runtime与公开ACP连接返回的结果。
-	inheritedMCPStarted bool            // inheritedMCPStarted 表示继承配置中的MCP命令实际执行。
+	requests []map[string]any // requests 保存同一回合的模型请求，工具循环不是宿主重放。
+	result   contract.Result  // result 是真实Runtime与公开ACP连接返回的结果。
 }
 
-// TestNativeCodexConfigurationIsolation 检查候选启动配置下的真实请求，不能单独证明禁工具。
-func TestNativeCodexConfigurationIsolation(t *testing.T) {
-	got := runNativeCodexFixture(t, "final_answer")
-	if got.inheritedMCPStarted {
-		t.Error("native CLI executed MCP from inherited project configuration")
+// TestNativeCodexToolThenFinal 验证真实CLI执行工具后继续模型回合，仅返回最终回答。
+func TestNativeCodexToolThenFinal(t *testing.T) {
+	got := runNativeCodexFixture(t, "tool_then_final")
+	if len(got.requests) != 2 {
+		t.Fatalf("model requests = %d, want tool loop then final", len(got.requests))
 	}
-	encoded, err := json.Marshal(got.payload)
-	if err != nil {
-		t.Fatal(err)
+	if !got.result.Effects.ToolActivity {
+		t.Error("native tool activity was not recorded")
 	}
-	for _, marker := range []string{"GLOBAL_POISON", "PROJECT_POISON", "SKILL_POISON", "MCP_POISON", "CATALOG_POISON"} {
-		if strings.Contains(string(encoded), marker) {
-			t.Errorf("native configuration leaked %s", marker)
+	toolOutputFound := false
+	items, _ := got.requests[1]["input"].([]any)
+	for _, raw := range items {
+		item, _ := raw.(map[string]any)
+		if item["type"] != "function_call_output" || item["call_id"] != "call_fixture" {
+			continue
 		}
-	}
-	if got.payload["instructions"] != "EXPLICIT_SYSTEM_FIXTURE" && !nativeCodexExactMessage(got.payload["input"], "developer", "EXPLICIT_SYSTEM_FIXTURE") {
-		t.Errorf("explicit instructions changed: %v", got.payload["instructions"])
-	}
-	if !nativeCodexExactMessage(got.payload["input"], "user", "EXACT_USER_FIXTURE") {
-		t.Error("native input lost user text")
-	}
-	if got.result.Status != contract.StatusCompleted || got.result.Fault != nil || got.result.CleanupFault != nil {
-		t.Fatalf("native execution failed: %+v", got.result)
-	}
-}
-
-// TestNativeCodexDenyAllGate 是生产切换门槛；声明任何工具都失败，事后取消不能使它通过。
-func TestNativeCodexDenyAllGate(t *testing.T) {
-	got := runNativeCodexFixture(t, "final_answer")
-	tools, ok := got.payload["tools"].([]any)
-	if !ok {
-		t.Fatalf("provider request has no verifiable tools array: %T", got.payload["tools"])
-	}
-	var names []string
-	for _, raw := range tools {
-		tool, ok := raw.(map[string]any)
-		if !ok {
-			t.Fatalf("invalid tool definition: %T", raw)
+		encoded, err := json.Marshal(item["output"])
+		if err != nil {
+			t.Fatal(err)
 		}
-		name, _ := tool["name"].(string)
-		if name == "" {
-			name, _ = tool["type"].(string)
-		}
-		names = append(names, name)
+		toolOutputFound = strings.Contains(string(encoded), "TOOL_FIXTURE_OK")
 	}
-	if len(tools) != 0 {
-		t.Fatalf("deny_all not satisfied; native tool declarations: %v", names)
+	if !toolOutputFound {
+		t.Error("executed tool output did not reach the follow-up model request")
+	}
+	if got.result.Status != contract.StatusCompleted || got.result.Fault != nil || got.result.CleanupFault != nil || got.result.Output.Text != "FINAL_FIXTURE_OK" || got.result.Output.Reliability != contract.ReliabilityVerifiedPhase {
+		t.Fatalf("tool loop did not yield final-only result: %+v", got.result)
 	}
 }
 
@@ -115,6 +95,11 @@ func runNativeCodexFixture(t *testing.T, phase string) nativeCodexObservation {
 	defer cancel()
 	root := t.TempDir()
 	home, nativeHome, workspace := filepath.Join(root, "home"), filepath.Join(root, "native"), filepath.Join(root, "workspace")
+	for _, directory := range []string{home, workspace} {
+		if err := os.MkdirAll(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
 	write := func(path, content string) {
 		t.Helper()
 		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -124,17 +109,8 @@ func runNativeCodexFixture(t *testing.T, phase string) nativeCodexObservation {
 			t.Fatal(err)
 		}
 	}
-	write(filepath.Join(home, ".codex", "config.toml"), "developer_instructions = \"GLOBAL_POISON\"\n")
-	write(filepath.Join(home, ".codex", "AGENTS.md"), "GLOBAL_POISON")
-	write(filepath.Join(home, ".agents", "skills", "poison", "SKILL.md"), "---\nname: poison\ndescription: SKILL_POISON\n---\nSKILL_POISON")
-	write(filepath.Join(workspace, "AGENTS.md"), "PROJECT_POISON")
-	mcpMarker := filepath.Join(root, "mcp-started")
-	mcpArgs, err := json.Marshal([]string{"-c", "printf MCP_POISON > \"$1\"", "fixture", mcpMarker})
-	if err != nil {
-		t.Fatal(err)
-	}
-	write(filepath.Join(workspace, ".codex", "config.toml"), "developer_instructions = \"PROJECT_POISON\"\n[mcp_servers.poison]\ncommand = \"/bin/sh\"\nargs = "+string(mcpArgs)+"\n")
 	requests := make(chan map[string]any, 4)
+	var requestCount atomic.Int32
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost || r.URL.Path != "/v1/responses" {
 			t.Errorf("unexpected fixture route: %s %s", r.Method, r.URL.Path)
@@ -155,10 +131,33 @@ func runNativeCodexFixture(t *testing.T, phase string) nativeCodexObservation {
 		default:
 			t.Error("unexpected repeated model requests")
 		}
-		writeNativeCodexResponse(w, phase)
+		if phase == "tool_then_final" && requestCount.Add(1) == 1 {
+			name := ""
+			definitions, _ := payload["tools"].([]any)
+			for _, raw := range definitions {
+				tool, _ := raw.(map[string]any)
+				candidate, _ := tool["name"].(string)
+				if candidate == "shell_command" || candidate == "exec_command" {
+					name = candidate
+					break
+				}
+			}
+			if name == "" {
+				t.Error("native fixture did not advertise a shell tool")
+				writeNativeCodexResponse(w, "final_answer")
+				return
+			}
+			writeNativeCodexToolResponse(w, name)
+		} else {
+			responsePhase := phase
+			if phase == "tool_then_final" {
+				responsePhase = "final_answer"
+			}
+			writeNativeCodexResponse(w, responsePhase)
+		}
 	}))
 	defer provider.Close()
-	catalog := `{"models":[{"slug":"fixture-model","display_name":"fixture-model","description":"fixture","base_instructions":"CATALOG_POISON","visibility":"list","priority":1,"supported_in_api":true,"context_window":32768,"max_context_window":32768,"effective_context_window_percent":95,"input_modalities":["text"],"supports_reasoning_summaries":false,"supports_parallel_tool_calls":false,"support_verbosity":false,"shell_type":"shell_command","experimental_supported_tools":[],"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low","description":"low"}],"default_reasoning_summary":"none","truncation_policy":{"mode":"bytes","limit":10000}}]}`
+	catalog := `{"models":[{"slug":"fixture-model","display_name":"fixture-model","description":"fixture","base_instructions":"Fixture model instructions.","visibility":"list","priority":1,"supported_in_api":true,"context_window":32768,"max_context_window":32768,"effective_context_window_percent":95,"input_modalities":["text"],"supports_reasoning_summaries":false,"supports_parallel_tool_calls":false,"support_verbosity":false,"shell_type":"shell_command","experimental_supported_tools":[],"default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low","description":"low"}],"default_reasoning_summary":"none","truncation_policy":{"mode":"bytes","limit":10000}}]}`
 	write(filepath.Join(nativeHome, "models.json"), catalog)
 	write(filepath.Join(nativeHome, "instructions.md"), "EXPLICIT_SYSTEM_FIXTURE")
 	config := "model = \"fixture-model\"\nmodel_provider = \"fixture\"\nmodel_catalog_json = " + strconv.Quote(filepath.Join(nativeHome, "models.json")) + "\n[model_providers.fixture]\nname = \"fixture\"\nwire_api = \"responses\"\nbase_url = " + strconv.Quote(provider.URL+"/v1") + "\nenv_key = \"NEUX_FIXTURE_API_KEY\"\n"
@@ -178,10 +177,8 @@ func runNativeCodexFixture(t *testing.T, phase string) nativeCodexObservation {
 		t.Fatalf("native CLI version probe failed: %v", err)
 	}
 	t.Logf("native CLI: %s", strings.TrimSpace(string(versionOutput)))
-	args := []string{"-c", "project_doc_max_bytes=0", "-c", "skills.bundled.enabled=false", "-c", "skills.include_instructions=false", "-c", `developer_instructions=""`, "-c", `web_search="disabled"`, "-c", "model_instructions_file=" + strconv.Quote(filepath.Join(nativeHome, "instructions.md"))}
-	for _, feature := range []string{"shell_tool", "hooks", "plugins", "apps", "memories", "multi_agent", "browser_use", "computer_use", "image_generation", "view_image", "skill_search", "goals", "default_mode_request_user_input", "collaboration_modes"} {
-		args = append(args, "-c", "features."+feature+"=false")
-	}
+	// 仅给fixture选择假Provider和明确系统输入；保留原生工具及配置加载。
+	args := []string{"-c", "model_instructions_file=" + strconv.Quote(filepath.Join(nativeHome, "instructions.md"))}
 	d, err := driver.NewCodex(driver.CodexConfig{CodexPath: launcher, PrefixArgs: args, Environment: environment, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
@@ -200,19 +197,57 @@ func runNativeCodexFixture(t *testing.T, phase string) nativeCodexObservation {
 	if err := rt.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
-	// 显式允许观察候选配置的原生行为；此调用绝不声明已经支持deny_all或生产隔离。
-	result := rt.Invoke(ctx, contract.ExecutionSpec{Profile: contract.Profile{DriverID: d.ID(), Model: "fixture-model"}, Input: contract.Input{Text: "EXACT_USER_FIXTURE"}, Workspace: contract.WorkspaceScope{Root: workspace}, Policies: contract.Policies{NativeConfig: contract.NativeConfigInherit, Tools: contract.ToolPolicy{Mode: contract.ToolsAllowAll}}})
+	// 输出收集策略与工具、原生配置策略独立；真实工具循环保持启用。
+	result := rt.Invoke(ctx, contract.ExecutionSpec{Profile: contract.Profile{DriverID: d.ID(), Model: "fixture-model", NativeMode: "agent-full-access"}, Input: contract.Input{Text: "EXACT_USER_FIXTURE"}, Workspace: contract.WorkspaceScope{Root: workspace}, Policies: contract.Policies{NativeConfig: contract.NativeConfigInherit, Tools: contract.ToolPolicy{Mode: contract.ToolsAllowAll}}})
 	select {
 	case payload := <-requests:
-		if len(requests) != 0 {
-			t.Error("native prompt unexpectedly repeated the model request")
+		observed := []map[string]any{payload}
+		for len(requests) > 0 {
+			observed = append(observed, <-requests)
 		}
-		_, markerErr := os.Stat(mcpMarker)
-		return nativeCodexObservation{payload: payload, result: result, inheritedMCPStarted: markerErr == nil}
+		expected := 1
+		if phase == "tool_then_final" {
+			expected = 2
+		}
+		if len(observed) != expected {
+			t.Errorf("model requests = %d, want %d", len(observed), expected)
+		}
+		if payload["instructions"] != "EXPLICIT_SYSTEM_FIXTURE" && !nativeCodexExactMessage(payload["input"], "developer", "EXPLICIT_SYSTEM_FIXTURE") {
+			t.Error("task instructions were not delivered")
+		}
+		if !nativeCodexExactMessage(payload["input"], "user", "EXACT_USER_FIXTURE") {
+			t.Error("native input lost user text")
+		}
+		return nativeCodexObservation{requests: observed, result: result}
 	default:
 		t.Fatalf("native CLI did not reach fixture: %+v", result)
 	}
 	return nativeCodexObservation{}
+}
+
+// writeNativeCodexToolResponse 提供一次无外部副作用的shell调用，随后由CLI继续请求最终结果。
+func writeNativeCodexToolResponse(w http.ResponseWriter, name string) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	args := map[string]any{"command": "printf TOOL_FIXTURE_OK"}
+	if name == "exec_command" {
+		args = map[string]any{"cmd": "printf TOOL_FIXTURE_OK"}
+	}
+	arguments, _ := json.Marshal(args)
+	commentary := map[string]any{"id": "msg_process", "type": "message", "role": "assistant", "phase": "commentary", "status": "completed", "content": []any{map[string]any{"type": "output_text", "text": "INTERMEDIATE_FIXTURE", "annotations": []any{}}}}
+	tool := map[string]any{"id": "fc_fixture", "type": "function_call", "call_id": "call_fixture", "name": name, "arguments": string(arguments), "status": "completed"}
+	events := []map[string]any{
+		{"type": "response.created", "response": map[string]any{"id": "resp_tool", "object": "response", "status": "in_progress", "output": []any{}}},
+		{"type": "response.output_item.added", "output_index": 0, "item": commentary},
+		{"type": "response.output_item.done", "output_index": 0, "item": commentary},
+		{"type": "response.output_item.added", "output_index": 1, "item": tool},
+		{"type": "response.output_item.done", "output_index": 1, "item": tool},
+		{"type": "response.completed", "response": map[string]any{"id": "resp_tool", "object": "response", "status": "completed", "output": []any{commentary, tool}, "usage": map[string]any{"input_tokens": 2, "output_tokens": 3, "total_tokens": 5}}},
+	}
+	for sequence, event := range events {
+		event["sequence_number"] = sequence
+		encoded, _ := json.Marshal(event)
+		_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event["type"], encoded)
+	}
 }
 
 // writeNativeCodexResponse 发送完整Responses事件，phase只来自本次明确测试输入。

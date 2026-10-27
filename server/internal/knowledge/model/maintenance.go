@@ -221,3 +221,29 @@ func (collector *maintenanceCollector) result() string {
 	defer collector.mutex.Unlock()
 	return collector.text.String()
 }
+
+// modelFailure 保留现有稳定错误类别及可展示的原生错误，不通过聊天执行翻译。
+func modelFailure(failure *runtimes.Failure) error {
+	switch failure.Code {
+	case runtimes.FailureCodeContextCanceled:
+		return status_error.OperationCanceled
+	case constants.RuntimeFailureCodeRequestTimeout:
+		return status_error.OperationTimeout
+	case runtimes.FailureCodePolicyUnsupported:
+		return status_error.RuntimePolicyUnsupported
+	case runtimes.FailureCodeAuthRequired:
+		return status_error.RuntimeAuthRequired
+	case runtimes.FailureCodeProtocolIncompatible:
+		return status_error.RuntimeProtocolIncompatible
+	case runtimes.FailureCodeInactivityTimeout:
+		return status_error.RuntimeInactivityTimeout
+	case runtimes.FailureCodeRuntimeUnavailable:
+		return status_error.RuntimeUnavailable
+	default:
+		detail := failure.DisplayMessage
+		if detail == "" {
+			detail = failure.Message
+		}
+		return status_error.RuntimeExecutionFailed.WithParams(map[string]interface{}{"Detail": detail})
+	}
+}

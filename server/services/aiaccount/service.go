@@ -196,20 +196,39 @@ func (s *Service) ValidateSelection(ctx context.Context, id, runtimeID, model, r
 
 // Prepare 冻结账号配置并取得共享执行租约，Runtime 退出后回收本次投射。
 func (s *Service) Prepare(ctx context.Context, id, runtimeID, workspace, model string) (runtimes.RuntimeTarget, func(), error) {
-	return s.prepareWithLease(ctx, id, runtimeID, workspace, model, false)
+	target, closeLease, err := s.prepareWithLease(ctx, id, runtimeID, workspace, model, false, false)
+	return target, legacyRelease(ctx, closeLease), err
 }
 
 // PrepareQueued 为后台模型调用等待账号租约；等待可取消，取得后仍沿既有认证投射与回收流程。
 func (s *Service) PrepareQueued(ctx context.Context, id, runtimeID, workspace, model string) (runtimes.RuntimeTarget, func(), error) {
-	return s.prepareWithLease(ctx, id, runtimeID, workspace, model, true)
+	target, closeLease, err := s.prepareWithLease(ctx, id, runtimeID, workspace, model, true, false)
+	return target, legacyRelease(ctx, closeLease), err
+}
+
+// PrepareQueuedLease 为独立 Runtime 返回可报告、可重试的认证回收租约。
+func (s *Service) PrepareQueuedLease(ctx context.Context, id, runtimeID, workspace, model string) (runtimes.RuntimeTarget, func(context.Context) error, error) {
+	return s.prepareWithLease(ctx, id, runtimeID, workspace, model, true, true)
+}
+
+func legacyRelease(ctx context.Context, closeLease func(context.Context) error) func() {
+	if closeLease == nil {
+		return nil
+	}
+	return func() {
+		if err := closeLease(context.WithoutCancel(ctx)); err != nil {
+			logx.Errorf("recover account CLI credentials failed: error=%v", err)
+		}
+	}
 }
 
 // PrepareProbe 让只读能力探测等待账号设置修改，与普通执行共享账号。
 func (s *Service) PrepareProbe(ctx context.Context, id, runtimeID, workspace, model string) (runtimes.RuntimeTarget, func(), error) {
-	return s.prepareWithLease(ctx, id, runtimeID, workspace, model, true)
+	target, closeLease, err := s.prepareWithLease(ctx, id, runtimeID, workspace, model, true, false)
+	return target, legacyRelease(ctx, closeLease), err
 }
 
-func (s *Service) prepareWithLease(ctx context.Context, id, runtimeID, workspace, model string, wait bool) (runtimes.RuntimeTarget, func(), error) {
+func (s *Service) prepareWithLease(ctx context.Context, id, runtimeID, workspace, model string, wait, retainFailedClose bool) (runtimes.RuntimeTarget, func(context.Context) error, error) {
 	account, err := s.accounts.Get(ctx, id)
 	if err != nil {
 		return runtimes.RuntimeTarget{}, nil, err
@@ -254,16 +273,26 @@ func (s *Service) prepareWithLease(ctx context.Context, id, runtimeID, workspace
 		}
 	}
 	unlock()
-	var once sync.Once
-	return target, func() {
-		once.Do(func() {
-			if seed != "" {
-				if err := s.backfillProjection(context.WithoutCancel(ctx), account.ID, filepath.Join(accountconfig.Home(workspace, runtimeID), "auth.json"), seed); err != nil {
-					logx.Errorf("recover account CLI credentials failed: account_id=%s error=%v", account.ID, err)
+	var mutex sync.Mutex
+	closed := false
+	return target, func(closeContext context.Context) error {
+		mutex.Lock()
+		defer mutex.Unlock()
+		if closed {
+			return nil
+		}
+		if seed != "" {
+			if err := s.backfillProjection(closeContext, account.ID, filepath.Join(accountconfig.Home(workspace, runtimeID), "auth.json"), seed); err != nil {
+				if !retainFailedClose {
+					release()
+					closed = true
 				}
+				return err
 			}
-			release()
-		})
+		}
+		release()
+		closed = true
+		return nil
 	}, nil
 }
 

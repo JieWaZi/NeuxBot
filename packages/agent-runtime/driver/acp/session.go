@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	sdk "github.com/JieWaZi/acp-go/sdk"
@@ -18,6 +19,7 @@ type session struct {
 	closeGate      chan struct{}             // closeGate 串行化可取消的原生Close尝试。
 	nativeClosed   bool                      // nativeClosed 只在公开Close成功后置位，受closeGate保护。
 	client         *sdk.ClientSideConnection // client 是唯一客户端协议连接。
+	configuration  contract.Configuration    // configuration 保存准备时确认的模型、权限和推理配置。
 	nativeID       sdk.SessionId             // nativeID 是原生会话返回的真实身份。
 	serveCancel    context.CancelFunc        // serveCancel 通知 acpserver 结束并释放 Agent。
 	closeTransport func() error              // closeTransport 中断本连接拥有的全部管道。
@@ -37,6 +39,9 @@ type turnState struct {
 	cancel         context.CancelFunc   // cancel 在交付失败时停止本轮。
 	err            error                // err 保存首个交付或交互错误。
 	interactionSeq uint64               // interactionSeq 为同一工具的多次审批分配独立请求身份。
+	activity       chan struct{}        // activity 合并原生更新与交互状态变化，供无活动监视器重置。
+	pendingInput   int                  // pendingInput 统计等待中的交互，不将人工等待误判为原生静默。
+	contextKnown   bool                 // contextKnown 表示已经收到公开上下文快照。
 	contextTokens  int64                // contextTokens 是最后一次公开ACP上下文快照，不累计回合用量。
 }
 
@@ -46,7 +51,7 @@ var _ sdk.Client = (*session)(nil)
 // Prompt 只发送本轮文本，响应返回前依赖 SDK 水位排空通知；最终资源关闭由宿主调用 Close。
 func (s *session) Prompt(ctx context.Context, r contract.TurnRequest, sink contract.DriverSink) contract.DriverResult {
 	failed := func(f *contract.Fault) contract.DriverResult {
-		return contract.DriverResult{Status: contract.StatusFailed, StopReason: contract.StopFailed, Fault: f}
+		return contract.DriverResult{Status: contract.StatusFailed, StopReason: contract.StopFailed, Fault: f, Configuration: s.configuration}
 	}
 	if sink == nil || strings.TrimSpace(r.Input.Text) == "" {
 		return failed(fault(contract.FaultInvalidSpec, "prompt", "ACP prompt requires text and a sink", nil))
@@ -61,10 +66,13 @@ func (s *session) Prompt(ctx context.Context, r contract.TurnRequest, sink contr
 	}
 	s.spent = true
 	turnCtx, cancel := context.WithCancel(ctx)
-	turn := &turnState{request: r, sink: sink, ctx: turnCtx, cancel: cancel}
+	turn := &turnState{request: r, sink: sink, ctx: turnCtx, cancel: cancel, activity: make(chan struct{}, 1)}
 	s.turn = turn
 	s.mu.Unlock()
 	defer cancel()
+	watchDone := make(chan struct{})
+	go func() { defer close(watchDone); s.watchInactivity(turn, r.Limits.InactivityTimeout) }()
+	defer func() { cancel(); <-watchDone }()
 	abort := context.AfterFunc(turnCtx, s.stop)
 	defer abort()
 	response, err := s.client.Prompt(turnCtx, sdk.PromptRequest{SessionId: s.nativeID, Prompt: []sdk.ContentBlock{sdk.TextBlock(r.Input.Text)}})
@@ -82,6 +90,7 @@ func (s *session) Prompt(ctx context.Context, r contract.TurnRequest, sink contr
 	s.mu.Lock()
 	deliveryErr := turn.err
 	contextTokens := turn.contextTokens
+	contextKnown := turn.contextKnown
 	s.turn = nil
 	s.mu.Unlock()
 	s.deliveryMu.Unlock()
@@ -97,12 +106,12 @@ func (s *session) Prompt(ctx context.Context, r contract.TurnRequest, sink contr
 		return failed(f)
 	}
 	if err != nil && cancellationCause != nil {
-		return contract.DriverResult{Status: contract.StatusCancelled, StopReason: contract.StopCancelled, Fault: fault(contract.FaultCancelled, "prompt", "ACP prompt cancelled", cancellationCause)}
+		return contract.DriverResult{Status: contract.StatusCancelled, StopReason: contract.StopCancelled, Fault: fault(contract.FaultCancelled, "prompt", "ACP prompt cancelled", cancellationCause), Configuration: s.configuration}
 	}
 	if err != nil {
 		return failed(fault(contract.FaultDriver, "prompt", "ACP prompt failed", err))
 	}
-	result := contract.DriverResult{Status: contract.StatusCompleted, NativeHandle: string(s.nativeID), Usage: contract.Usage{ContextTokens: contextTokens}}
+	result := contract.DriverResult{Status: contract.StatusCompleted, NativeHandle: string(s.nativeID), Usage: contract.Usage{ContextKnown: contextKnown, ContextTokens: contextTokens}, Configuration: s.configuration}
 	switch response.StopReason {
 	case sdk.StopReasonEndTurn:
 		result.StopReason = contract.StopEndTurn
@@ -116,9 +125,19 @@ func (s *session) Prompt(ctx context.Context, r contract.TurnRequest, sink contr
 	default:
 		return failed(fault(contract.FaultProtocol, "prompt", "ACP stop reason is unsupported", nil))
 	}
-	if response.Usage != nil {
-		result.Usage.InputTokens = int64(response.Usage.InputTokens)
-		result.Usage.OutputTokens = int64(response.Usage.OutputTokens)
+	if usage := response.Usage; usage != nil {
+		if usage.InputTokens < 0 || usage.OutputTokens < 0 || usage.CachedReadTokens != nil && *usage.CachedReadTokens < 0 || usage.CachedWriteTokens != nil && *usage.CachedWriteTokens < 0 {
+			return failed(fault(contract.FaultProtocol, "usage", "ACP prompt usage contains negative tokens", nil))
+		}
+		result.Usage.Known = true
+		result.Usage.InputTokens = int64(usage.InputTokens)
+		result.Usage.OutputTokens = int64(usage.OutputTokens)
+		if usage.CachedReadTokens != nil {
+			result.Usage.CachedReadTokens = int64(*usage.CachedReadTokens)
+		}
+		if usage.CachedWriteTokens != nil {
+			result.Usage.CachedWriteTokens = int64(*usage.CachedWriteTokens)
+		}
 	}
 	return result
 }
@@ -206,6 +225,7 @@ func (s *session) SessionUpdate(ctx context.Context, n sdk.SessionNotification) 
 	if turn == nil || n.SessionId != s.nativeID {
 		return nil
 	}
+	s.markActivity(turn)
 	if c := n.Update.AgentMessageChunk; c != nil {
 		phase := contract.PhaseUnknown
 		complete := false
@@ -243,9 +263,10 @@ func (s *session) SessionUpdate(ctx context.Context, n sdk.SessionNotification) 
 		s.mu.Lock()
 		if s.turn != nil {
 			s.turn.contextTokens = int64(usage.Used)
+			s.turn.contextKnown = true
 		}
 		s.mu.Unlock()
-		return s.deliver(contract.DriverEvent{Kind: contract.EventUsage, Usage: &contract.Usage{ContextTokens: int64(usage.Used)}})
+		return s.deliver(contract.DriverEvent{Kind: contract.EventUsage, Usage: &contract.Usage{ContextKnown: true, ContextTokens: int64(usage.Used)}})
 	}
 	if c := n.Update.AgentThoughtChunk; c != nil {
 		if c.Content.Text != nil {
@@ -284,6 +305,8 @@ func (s *session) RequestPermission(ctx context.Context, p sdk.RequestPermission
 	if turn == nil || p.SessionId != s.nativeID || ctx.Err() != nil || turn.ctx.Err() != nil {
 		return permissionCancelled(), nil
 	}
+	s.setPendingInput(turn, 1)
+	defer s.setPendingInput(turn, -1)
 	interactionCtx, cancel := context.WithCancel(turn.ctx)
 	defer cancel()
 	stop := context.AfterFunc(ctx, cancel)
@@ -318,41 +341,156 @@ func permissionCancelled() sdk.RequestPermissionResponse {
 	return sdk.RequestPermissionResponse{Outcome: sdk.RequestPermissionOutcome{Cancelled: &sdk.RequestPermissionOutcomeCancelled{}}}
 }
 
+// configure 只把原生目录和每次写入回执中的当前值当作实际配置。
 func (s *session) configure(ctx context.Context, options []sdk.SessionConfigOption, profile contract.Profile) error {
-	for _, selection := range []struct {
-		category sdk.SessionConfigOptionCategory // category 标识公开配置类别。
-		value    string                          // value 是本次明确请求值。
-	}{{sdk.SessionConfigOptionCategoryModel, profile.Model}, {sdk.SessionConfigOptionCategoryThoughtLevel, profile.Reasoning}} {
-		if selection.value == "" {
-			continue
+	selectValue := func(category sdk.SessionConfigOptionCategory, value string) error {
+		if value == "" {
+			return nil
 		}
-		var selected *sdk.SessionConfigOptionSelect
-		for _, option := range options {
-			if c := option.Select; c != nil && c.Category != nil && *c.Category == selection.category {
-				selected = c
-				break
-			}
+		selected := categoryOption(options, category)
+		if selected == nil || !containsValue(selected.Options, value) {
+			return fault(contract.FaultUnsupported, "configure", "ACP requested configuration is not advertised", nil)
 		}
-		if selected == nil || !containsValue(selected.Options, selection.value) {
-			return fault(contract.FaultUnsupported, "configure", "ACP requested model or reasoning is not advertised", nil)
-		}
-		response, err := s.client.SetSessionConfigOption(ctx, sdk.SetSessionConfigOptionRequest{ValueId: &sdk.SetSessionConfigOptionValueId{SessionId: s.nativeID, ConfigId: selected.Id, Value: sdk.SessionConfigValueId(selection.value)}})
+		response, err := s.client.SetSessionConfigOption(ctx, sdk.SetSessionConfigOptionRequest{ValueId: &sdk.SetSessionConfigOptionValueId{SessionId: s.nativeID, ConfigId: selected.Id, Value: sdk.SessionConfigValueId(value)}})
 		if err != nil {
 			return fault(contract.FaultPreparation, "configure", "ACP configuration selection failed", err)
 		}
-		confirmed := false
-		for _, option := range response.ConfigOptions {
-			if option.Select != nil && option.Select.Id == selected.Id && string(option.Select.CurrentValue) == selection.value {
-				confirmed = true
-			}
-		}
-		if !confirmed {
+		confirmed := categoryOption(response.ConfigOptions, category)
+		if confirmed == nil || confirmed.Id != selected.Id || string(confirmed.CurrentValue) != value {
 			return fault(contract.FaultProtocol, "configure", "ACP configuration selection was not confirmed", nil)
 		}
 		options = response.ConfigOptions
+		return nil
+	}
+	if err := selectValue(sdk.SessionConfigOptionCategoryMode, profile.NativeMode); err != nil {
+		return err
+	}
+	if err := selectValue(sdk.SessionConfigOptionCategoryModel, profile.Model); err != nil {
+		return err
+	}
+	reasoning := profile.Reasoning
+	fallback := ""
+	if reasoning == "" && profile.Thinking != nil && !*profile.Thinking {
+		reasoning, fallback = minimumReasoning(categoryOption(options, sdk.SessionConfigOptionCategoryThoughtLevel))
+	}
+	if err := selectValue(sdk.SessionConfigOptionCategoryThoughtLevel, reasoning); err != nil {
+		return err
+	}
+	actual := func(category sdk.SessionConfigOptionCategory) string {
+		if option := categoryOption(options, category); option != nil {
+			return string(option.CurrentValue)
+		}
+		return ""
+	}
+	s.configuration = contract.Configuration{
+		ActualMode:        actual(sdk.SessionConfigOptionCategoryMode),
+		ActualModel:       actual(sdk.SessionConfigOptionCategoryModel),
+		ActualReasoning:   actual(sdk.SessionConfigOptionCategoryThoughtLevel),
+		ReasoningFallback: fallback,
+	}
+	s.configuration.ThinkingDisabled = reasoningDisabled(s.configuration.ActualReasoning)
+	return nil
+}
+
+func categoryOption(options []sdk.SessionConfigOption, category sdk.SessionConfigOptionCategory) *sdk.SessionConfigOptionSelect {
+	for _, option := range options {
+		if c := option.Select; c != nil && c.Category != nil && *c.Category == category {
+			return c
+		}
 	}
 	return nil
 }
+
+func reasoningDisabled(value string) bool {
+	return strings.EqualFold(value, "none") || strings.EqualFold(value, "off") || strings.EqualFold(value, "disabled")
+}
+
+// minimumReasoning 使用当前模型公布的真实取值，不把低强度推理宣称为关闭。
+func minimumReasoning(option *sdk.SessionConfigOptionSelect) (string, string) {
+	if option == nil {
+		return "", "reasoning_not_configurable"
+	}
+	var values []string
+	if option.Options.Ungrouped != nil {
+		for _, value := range *option.Options.Ungrouped {
+			values = append(values, string(value.Value))
+		}
+	}
+	if option.Options.Grouped != nil {
+		for _, group := range *option.Options.Grouped {
+			for _, value := range group.Options {
+				values = append(values, string(value.Value))
+			}
+		}
+	}
+	for _, wanted := range []string{"none", "off", "disabled", "minimal", "min", "low", "medium", "high", "max", "xhigh"} {
+		for _, value := range values {
+			if strings.EqualFold(value, wanted) {
+				if reasoningDisabled(value) {
+					return value, ""
+				}
+				return value, "thinking_off_unsupported: selected " + value
+			}
+		}
+	}
+	if len(values) > 0 {
+		return values[0], "thinking_off_unsupported: selected " + values[0]
+	}
+	return "", "thinking_off_unsupported: retained native default " + string(option.CurrentValue)
+}
+
+// markActivity 不持有交付锁，原生过程更新即使不对外投射也刷新无活动计时器。
+func (s *session) markActivity(turn *turnState) {
+	select {
+	case turn.activity <- struct{}{}:
+	default:
+	}
+}
+
+func (s *session) setPendingInput(turn *turnState, delta int) {
+	s.mu.Lock()
+	turn.pendingInput += delta
+	s.mu.Unlock()
+	s.markActivity(turn)
+}
+
+// watchInactivity 将原生静默、调用取消和人工交互等待分别处理。
+func (s *session) watchInactivity(turn *turnState, timeout time.Duration) {
+	if timeout <= 0 {
+		return
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	for {
+		select {
+		case <-turn.ctx.Done():
+			return
+		case <-turn.activity:
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
+				}
+			}
+			s.mu.Lock()
+			pending := turn.pendingInput > 0
+			s.mu.Unlock()
+			if !pending {
+				timer.Reset(timeout)
+			}
+		case <-timer.C:
+			s.mu.Lock()
+			pending := turn.pendingInput > 0
+			s.mu.Unlock()
+			if pending {
+				continue
+			}
+			s.failTurn(turn, fault(contract.FaultInactivityTimeout, "inactivity_watchdog", "ACP prompt exceeded inactivity timeout", nil))
+			return
+		}
+	}
+}
+
 func containsValue(options sdk.SessionConfigSelectOptions, value string) bool {
 	if options.Ungrouped != nil {
 		for _, option := range *options.Ungrouped {

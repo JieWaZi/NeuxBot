@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimeauth"
 	acpcodex "github.com/JieWaZi/acp-go/pkg/codex"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
@@ -43,25 +44,25 @@ func codexACPRuntimeBinding() acpRuntimeBinding {
 		sourceAuth := ""
 		if refresh == nil {
 			var err error
-			sourceAuth, err = codexAuthPathForEnvironment(config.Environment)
+			sourceAuth, err = runtimeauth.CodexAuthPathForEnvironment(config.Environment)
 			if err != nil {
 				return nil, err
 			}
-			refresh, err = codexFileRefresh(sourceAuth, nil)
+			refresh, err = runtimeauth.CodexFileRefresh(sourceAuth, nil)
 			if err != nil {
 				return nil, err
 			}
 		}
-		var broker *codexRefreshBroker
+		var broker *runtimeauth.CodexRefreshBroker
 		if refresh != nil {
 			var err error
-			broker, err = newCodexRefreshBroker(refresh)
+			broker, err = runtimeauth.NewCodexRefreshBroker(refresh)
 			if err != nil {
 				return nil, err
 			}
-			environment, err := buildEnvironment(config.Environment, map[string]string{codexRefreshURLVariable: broker.url})
+			environment, err := buildEnvironment(config.Environment, map[string]string{runtimeauth.CodexRefreshURLVariable: broker.URL()})
 			if err != nil {
-				broker.Close()
+				broker.Close(context.Background())
 				return nil, err
 			}
 			config.Environment = environment.list()
@@ -84,7 +85,7 @@ func codexACPRuntimeBinding() acpRuntimeBinding {
 		})
 		if err != nil {
 			if broker != nil {
-				broker.Close()
+				broker.Close(context.Background())
 			}
 			return nil, err
 		}

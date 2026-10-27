@@ -6901,7 +6901,6 @@ export type GithubComJieWaZiNeuxBotServerConstantsRolePresetSource = '' | 'syste
  * * `add_directory` - RuntimeCapabilityAddDirectory 表示 Runtime 支持声明附加工作目录。
  * * `dynamic_models` - RuntimeCapabilityDynamicModels 表示本次探测取得了动态模型列表。
  * * `image_path` - RuntimeCapabilityImagePath 表示 Runtime 支持通过本地路径原生提交图片。
- * * `isolated_text_generation` - RuntimeCapabilityIsolatedTextGeneration 表示真实会话已确认可配置隔离文本生成策略。
  * * `mcp_sse` - RuntimeCapabilityMCPSSE 表示 ACP Agent 声明支持旧版 SSE MCP。
  * * `mcp_streamable_http` - RuntimeCapabilityMCPStreamableHTTP 表示 ACP Agent 声明支持 Streamable HTTP MCP。
  * * `partial_messages` - RuntimeCapabilityPartialMessages 表示 Runtime 支持更细粒度的流式消息。
@@ -6911,7 +6910,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsRolePresetSource = '' | 'syste
  * * `structured_output` - RuntimeCapabilityStructuredOutput 表示 Runtime 支持要求的结构化输出格式。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability = '' | 'add_directory' | 'dynamic_models' | 'image_path' | 'isolated_text_generation' | 'mcp_sse' | 'mcp_streamable_http' | 'partial_messages' | 'resume_session' | 'skill_directory' | 'streaming_user_messages' | 'structured_output';
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability = '' | 'add_directory' | 'dynamic_models' | 'image_path' | 'mcp_sse' | 'mcp_streamable_http' | 'partial_messages' | 'resume_session' | 'skill_directory' | 'streaming_user_messages' | 'structured_output';
 
 /**
  * >

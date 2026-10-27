@@ -474,9 +474,9 @@ func newEmbeddedACPAgent(
 
 	clientToAgentReader, clientToAgentWriter := io.Pipe()
 	agentToClientReader, agentToClientWriter := io.Pipe()
-	newServer := acpserver.NewWithUserInput
-	if config.TextOnly {
-		newServer = acpserver.New
+	newServer := acpserver.New
+	if config.UserInput {
+		newServer = acpserver.NewWithUserInput
 	}
 	server, err := newServer(
 		agent,

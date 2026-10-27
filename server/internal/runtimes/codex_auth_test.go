@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimeauth"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
@@ -37,7 +38,7 @@ func TestCodexCredentialAgentPreservesNativeAdapterInterfaces(t *testing.T) {
 
 func TestCodexRefreshBrokerRoutesRefreshAndCloses(t *testing.T) {
 	var calls atomic.Int32
-	broker, err := newCodexRefreshBroker(func(ctx context.Context, previous string) (codexoauth.Tokens, error) {
+	broker, err := runtimeauth.NewCodexRefreshBroker(func(ctx context.Context, previous string) (codexoauth.Tokens, error) {
 		calls.Add(1)
 		if previous != "old" {
 			t.Errorf("错误旧令牌")
@@ -47,8 +48,8 @@ func TestCodexRefreshBrokerRoutesRefreshAndCloses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer broker.Close()
-	wrong, err := http.Post(broker.url+"wrong", "application/json", bytes.NewBufferString(`{"grant_type":"refresh_token","refresh_token":"old"}`))
+	defer broker.Close(context.Background())
+	wrong, err := http.Post(broker.URL()+"wrong", "application/json", bytes.NewBufferString(`{"grant_type":"refresh_token","refresh_token":"old"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +58,7 @@ func TestCodexRefreshBrokerRoutesRefreshAndCloses(t *testing.T) {
 		t.Fatal("错误能力路径访问了凭据")
 	}
 	for _, denied := range []bool{true, false} {
-		request, _ := http.NewRequest(http.MethodPost, broker.url, bytes.NewBufferString(`{"grant_type":"refresh_token","refresh_token":"old"}`))
+		request, _ := http.NewRequest(http.MethodPost, broker.URL(), bytes.NewBufferString(`{"grant_type":"refresh_token","refresh_token":"old"}`))
 		request.Header.Set("Content-Type", "application/json")
 		if denied {
 			request.Header.Set("Origin", "https://example.invalid")
@@ -80,8 +81,8 @@ func TestCodexRefreshBrokerRoutesRefreshAndCloses(t *testing.T) {
 			t.Fatalf("刷新回执错误: status=%d error=%v", response.StatusCode, err)
 		}
 	}
-	broker.Close()
-	if response, err := http.Post(broker.url, "application/json", bytes.NewBufferString(`{}`)); err == nil {
+	broker.Close(context.Background())
+	if response, err := http.Post(broker.URL(), "application/json", bytes.NewBufferString(`{}`)); err == nil {
 		response.Body.Close()
 		t.Fatal("关闭后仍接受刷新请求")
 	}
@@ -89,7 +90,7 @@ func TestCodexRefreshBrokerRoutesRefreshAndCloses(t *testing.T) {
 
 func TestCodexRefreshBrokerCancelsActiveCredentialRequest(t *testing.T) {
 	started, finished := make(chan struct{}), make(chan struct{})
-	broker, err := newCodexRefreshBroker(func(ctx context.Context, _ string) (codexoauth.Tokens, error) {
+	broker, err := runtimeauth.NewCodexRefreshBroker(func(ctx context.Context, _ string) (codexoauth.Tokens, error) {
 		close(started)
 		<-ctx.Done()
 		close(finished)
@@ -98,10 +99,10 @@ func TestCodexRefreshBrokerCancelsActiveCredentialRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer broker.Close()
+	defer broker.Close(context.Background())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, broker.url, bytes.NewBufferString(`{"grant_type":"refresh_token","refresh_token":"old"}`))
+	request, _ := http.NewRequestWithContext(ctx, http.MethodPost, broker.URL(), bytes.NewBufferString(`{"grant_type":"refresh_token","refresh_token":"old"}`))
 	done := make(chan error, 1)
 	go func() {
 		response, err := http.DefaultClient.Do(request)
@@ -133,7 +134,7 @@ func TestCodexRefreshBrokerCancelsActiveCredentialRequest(t *testing.T) {
 
 func TestCodexRefreshBrokerCloseWaitsForCredentialPersistence(t *testing.T) {
 	started, cancelled, persist, finished := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
-	broker, err := newCodexRefreshBroker(func(ctx context.Context, _ string) (codexoauth.Tokens, error) {
+	broker, err := runtimeauth.NewCodexRefreshBroker(func(ctx context.Context, _ string) (codexoauth.Tokens, error) {
 		close(started)
 		<-ctx.Done()
 		close(cancelled)
@@ -144,9 +145,9 @@ func TestCodexRefreshBrokerCloseWaitsForCredentialPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer broker.Close()
+	defer broker.Close(context.Background())
 	go func() {
-		response, err := http.Post(broker.url, "application/json", bytes.NewBufferString(`{"grant_type":"refresh_token","refresh_token":"old"}`))
+		response, err := http.Post(broker.URL(), "application/json", bytes.NewBufferString(`{"grant_type":"refresh_token","refresh_token":"old"}`))
 		if err == nil {
 			response.Body.Close()
 		}
@@ -157,7 +158,7 @@ func TestCodexRefreshBrokerCloseWaitsForCredentialPersistence(t *testing.T) {
 		t.Fatal("刷新未开始")
 	}
 	closed := make(chan struct{})
-	go func() { broker.Close(); close(closed) }()
+	go func() { broker.Close(context.Background()); close(closed) }()
 	select {
 	case <-cancelled:
 	case <-time.After(time.Second):
@@ -204,11 +205,11 @@ func TestCodexFileRefreshRepairsDelayedNativeWriteWithoutReusingRotatedToken(t *
 	defer endpoint.Close()
 	client := codexoauth.New()
 	client.Origin = endpoint.URL
-	first, err := codexFileRefresh(path, client)
+	first, err := runtimeauth.CodexFileRefresh(path, client)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := codexFileRefresh(path, client)
+	second, err := runtimeauth.CodexFileRefresh(path, client)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func spec() c.ExecutionSpec {
@@ -122,5 +123,59 @@ func TestSeedBudgetAcceptsBoundaryAndCountsUTF8Bytes(t *testing.T) {
 	in.Session.Seed[1].Text = "中"
 	if _, err := Compile(in, caps, grants, c.Limits{}); err == nil {
 		t.Fatal("UTF-8 bytes expanded beyond seed limit")
+	}
+}
+
+// TestThinkingAndNativeModeFreezeInStaticContext 防止可变偏好指针改写已接纳计划或原生权限变化错误复用上下文。
+func TestThinkingAndNativeModeFreezeInStaticContext(t *testing.T) {
+	off := false
+	input := spec()
+	input.Profile.Thinking = &off
+	input.Profile.NativeMode = "agent-full-access"
+	caps := c.DriverCapabilities{ExplicitConfig: true, ToolAllowList: true}
+	grants := c.Grants{Directories: []string{"/allowed"}, Tools: []string{"read"}}
+	compiled, err := Compile(input, caps, grants, c.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	off = true
+	if *compiled.Spec().Profile.Thinking {
+		t.Fatal("accepted preference changed through caller pointer")
+	}
+	snapshot := compiled.Spec()
+	*snapshot.Profile.Thinking = true
+	if *compiled.Spec().Profile.Thinking {
+		t.Fatal("getter exposed preference pointer")
+	}
+	changed, err := Compile(input, caps, grants, c.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.ContextDigest() == compiled.ContextDigest() {
+		t.Fatal("thinking change kept static context compatible")
+	}
+	input.Profile.Thinking = nil
+	input.Profile.NativeMode = "agent"
+	changed, err = Compile(input, caps, grants, c.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed.ContextDigest() == compiled.ContextDigest() {
+		t.Fatal("native mode change kept static context compatible")
+	}
+}
+
+// TestInactivityBudgetNormalization 防止独立无活动预算丢失、负数被接受或显式设置被默认值覆盖。
+func TestInactivityBudgetNormalization(t *testing.T) {
+	inherited, err := NormalizeLimits(c.Limits{}, DefaultLimits())
+	if err != nil || inherited.InactivityTimeout <= 0 {
+		t.Fatalf("missing inactivity default: %+v %v", inherited, err)
+	}
+	explicit, err := NormalizeLimits(c.Limits{InactivityTimeout: time.Second}, DefaultLimits())
+	if err != nil || explicit.InactivityTimeout != time.Second {
+		t.Fatalf("overrode explicit inactivity budget: %+v %v", explicit, err)
+	}
+	if _, err := NormalizeLimits(c.Limits{InactivityTimeout: -time.Second}, DefaultLimits()); err == nil {
+		t.Fatal("negative inactivity timeout accepted")
 	}
 }

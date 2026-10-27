@@ -328,24 +328,6 @@ func TestConnectionTestSinkObservesToolInputSnapshot(t *testing.T) {
 }
 
 // TestACPBridgeRejectsInternalToolsDuringTextGeneration 覆盖内部 canonical 工具事件不能绕过文本调用隔离。
-func TestACPBridgeRejectsInternalToolsDuringTextGeneration(t *testing.T) {
-	for _, kind := range []EventType{EventTypeToolUse, EventTypeToolInputSnapshot, EventTypeToolUpdate, EventTypeToolResult} {
-		t.Run(string(kind), func(t *testing.T) {
-			bridge := newACPBridge("session", "invocation", nil, Workspace{}, ExecutionPolicy{}, standardACPRuntimeBinding(), time.Second)
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			collector := &textCollector{cancel: cancel}
-			bridge.textCollector = collector
-			bridge.rejectTextInteraction = collector.reject
-			if err := bridge.enqueue(acpDelivery{events: []Event{{Type: kind}}}); !errors.Is(err, status_error.RuntimePolicyUnsupported) {
-				t.Fatalf("enqueue tool = %v, want text isolation failure", err)
-			}
-			if ctx.Err() == nil || !collector.rejected || len(bridge.updates) != 0 || !errors.Is(bridge.currentFailure(), status_error.RuntimePolicyUnsupported) {
-				t.Fatal("text tool rejection did not cancel generation before queue delivery")
-			}
-		})
-	}
-}
 
 // TestACPBridgeInputSnapshotPreventsUnsafeReplay 覆盖缺少开始事件时也保守记录工具尝试，不推断文件已经写入。
 func TestACPBridgeInputSnapshotPreventsUnsafeReplay(t *testing.T) {

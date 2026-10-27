@@ -2,7 +2,6 @@ package runtimes
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	acp "github.com/JieWaZi/acp-go/sdk"
-	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
 // TextMessage 是单次无状态生成的显式消息，不关联聊天或原生会话。
@@ -53,7 +51,7 @@ type TextResult struct {
 	StopReason string
 	// Usage 是原生协议报告的累计回合用量，未知时为空。
 	Usage *TurnUsageData
-	// Failure 是原生调用或隔离约束的稳定失败。
+	// Failure 是原生调用的稳定失败。
 	Failure *Failure
 	// ActualReasoning 是配置回执确认的实际推理选项。
 	ActualReasoning string
@@ -61,20 +59,16 @@ type TextResult struct {
 	ThinkingDisabled bool
 	// ReasoningFallback 解释无法完全满足关闭推理时采用的真实降级。
 	ReasoningFallback string
-	// ToolsDisabled 表示原生启动配置确实关闭全部工具；只读隔离不等于关闭工具。
-	ToolsDisabled bool
-	// Limitations 记录协议无法准确表达的生成控制及隔离边界。
+	// Limitations 记录协议无法准确表达的生成控制及原生配置边界。
 	Limitations []string
 }
 
-// textInvocation 是一次模型调用的私有配置与拒绝交互端口。
+// textInvocation 是一次模型调用的私有配置与结果收集端口。
 type textInvocation struct {
 	// thinking 是调用方期望的推理模式。
 	thinking bool
 	// result 接收会话真实配置诊断，仅由配置阶段写入。
 	result *TextResult
-	// reject 在任何工具或交互请求发生时取消整次生成。
-	reject func()
 	// collector 直接累计 ACP 正文与最终用量，不生成聊天事件。
 	collector *textCollector
 }
@@ -90,10 +84,7 @@ func (sdk *SDK) GenerateText(ctx context.Context, input TextRequest) TextResult 
 		output.Failure = failedRunError("text_validate", err).Failure
 		return output
 	}
-	if supported, known := input.Detection.Capabilities[CapabilityIsolatedTextGeneration]; known && !supported {
-		output.Failure = newFailure(FailureCodePolicyUnsupported, "text_capability", "runtime detection does not support isolated text generation")
-		return output
-	}
+
 	for _, message := range input.Messages {
 		if message.Role != "system" && message.Role != "user" && message.Role != "assistant" {
 			output.Failure = newFailure(FailureCodeInvalidRequest, "text_validate", "unsupported message role")
@@ -125,57 +116,9 @@ func (sdk *SDK) GenerateText(ctx context.Context, input TextRequest) TextResult 
 		return output
 	}
 	prompt := compileTextMessages(input.Messages)
-	persistCredentials := func() error { return nil }
-	if prepared.definition.baseRuntimeID == RuntimeIDCodex {
-		if request.Target.RefreshCredentials == nil {
-			request.Target.RefreshCredentials, err = codexRefreshForEnvironment(prepared.environment.list())
-			if err != nil {
-				output.Failure = failedRunError("text_credentials", err).Failure
-				return output
-			}
-		}
-		prompt, persistCredentials, err = prepareCodexText(&prepared, workspace, input.Messages)
-		if err != nil {
-			output.Failure = failedRunError("text_isolation", err).Failure
-			var configurationError *statuserror.StatusErr
-			if errors.As(err, &configurationError) {
-				output.Failure.DisplayMessage, _ = configurationError.Params["Detail"].(string)
-			}
-			return output
-		}
-		for _, message := range input.Messages {
-			if message.Role == "assistant" {
-				output.Limitations = append(output.Limitations, "assistant_history_serialized_as_text: ACP cannot install native assistant history")
-				break
-			}
-		}
-		hasSystem := false
-		for _, message := range input.Messages {
-			if message.Role == "system" && strings.TrimSpace(message.Content) != "" {
-				hasSystem = true
-			}
-		}
-		if !hasSystem {
-			output.Limitations = append(output.Limitations, "native_base_instruction_shim: Codex requires a nonempty base instruction; user-only calls use a neutral response instruction")
-		}
-		output.Limitations = append(output.Limitations, "native_agent_protocol_context_retained: provided system rules replace Codex base instructions; native permission/session metadata may remain")
-	} else {
-		output.Limitations = append(output.Limitations, "native_message_roles_unavailable: ACP serializes system/user/assistant roles into one user text input")
-	}
-	_, output.ToolsDisabled = textAdapterConfig(acpAdapterConfig{}, prepared.definition.baseRuntimeID)
-	if !output.ToolsDisabled {
-		if request.Policy.Execution.WorkspaceReadOnly {
-			output.Limitations = append(output.Limitations, "native_tools_not_fully_disabled: isolated empty workspace, read-only mode, no host tools or MCP; any observed tool fails generation")
-		} else {
-			output.Limitations = append(output.Limitations, "native_tools_not_fully_disabled: isolated empty workspace, requested native permission mode, no host tools or MCP; any observed tool fails generation")
-		}
-	}
+	output.Limitations = append(output.Limitations, "native_message_roles_unavailable: ACP serializes system/user/assistant roles into one user text input")
 	if !input.Target.Isolated && prepared.definition.baseRuntimeID != RuntimeIDCodex {
-		if prepared.definition.baseRuntimeID == RuntimeIDWorkBuddy {
-			output.Limitations = append(output.Limitations, "system_account_native_config_retained: global instructions may load; strict MCP configuration excludes native MCP sources")
-		} else {
-			output.Limitations = append(output.Limitations, "system_account_native_config_retained: global instructions and configured MCP may load; host does not mount external resources")
-		}
+		output.Limitations = append(output.Limitations, "system_account_native_config_retained: global instructions and configured MCP may load; host does not mount external resources")
 	}
 	if prepared.definition.baseRuntimeID != RuntimeIDClaude && prepared.definition.baseRuntimeID != RuntimeIDWorkBuddy {
 		output.Limitations = append(output.Limitations, "native_session_persistence_not_disabled: session is fresh and closed, CLI may retain its own logs")
@@ -188,22 +131,16 @@ func (sdk *SDK) GenerateText(ctx context.Context, input TextRequest) TextResult 
 	}
 	callContext, cancel := context.WithCancel(ctx)
 	defer cancel()
-	collector := &textCollector{cancel: cancel}
+	collector := &textCollector{}
 	result := sdk.acp.Run(callContext, acpRunRequest{
 		InvocationID: util.New(), Prepared: prepared, Request: request,
 		Prompt: prompt, EphemeralSession: true,
-		Text: &textInvocation{thinking: input.Thinking, result: &output, reject: collector.reject, collector: collector},
+		Text: &textInvocation{thinking: input.Thinking, result: &output, collector: collector},
 	})
 	output.StopReason, output.Failure = result.StopReason, result.Failure
-	if err = persistCredentials(); err != nil {
-		output.Failure = failedRunError("text_credentials", err).Failure
-	}
 	collector.mutex.Lock()
 	defer collector.mutex.Unlock()
 	output.Usage = collector.usage
-	if collector.rejected {
-		output.Failure = newFailure(FailureCodePolicyUnsupported, "text_tools", "pure text generation attempted a tool or interactive request")
-	}
 	if output.Failure == nil {
 		output.Text = collector.text.String()
 	}
@@ -221,23 +158,14 @@ func compileTextMessages(messages []TextMessage) string {
 
 // textCollector 直接收集 ACP 正文与最终用量，不经过聊天事件映射或交付队列。
 type textCollector struct {
-	// mutex 保护 ACP 更新、最终用量和取消回调之间的状态。
+	// mutex 保护 ACP 更新和最终用量之间的状态。
 	mutex sync.Mutex
 	// text 累积模型正文，不收集过程或思考内容。
 	text strings.Builder
+	// messageID 保留当前最终候选身份，新消息不会拼接旧工具前正文。
+	messageID string
 	// usage 保存 Prompt 终态的完整累计回合用量，未知时为空。
 	usage *TurnUsageData
-	// rejected 标记已经发生的禁止交互。
-	rejected bool
-	// cancel 取消独占模型调用并触发 ACP 进程收尾。
-	cancel context.CancelFunc
-}
-
-func (collector *textCollector) reject() {
-	collector.mutex.Lock()
-	collector.rejected = true
-	collector.mutex.Unlock()
-	collector.cancel()
 }
 
 // collectUpdate 仅保留最终答复正文；思考、过程说明和中间用量没有知识生成结果语义。
@@ -247,14 +175,13 @@ func (collector *textCollector) collectUpdate(update acp.SessionUpdate, binding 
 		return
 	}
 	text := acpText(chunk.Content)
-	if text == "" {
-		return
-	}
 	collector.mutex.Lock()
 	defer collector.mutex.Unlock()
-	if !collector.rejected {
-		collector.text.WriteString(text)
+	if chunk.MessageId != nil && *chunk.MessageId != "" && *chunk.MessageId != collector.messageID {
+		collector.messageID = *chunk.MessageId
+		collector.text.Reset()
 	}
+	collector.text.WriteString(text)
 }
 
 // collectUsage 只接收 Prompt 终态的完整累计用量，不把上下文快照误作回合用量。
@@ -262,28 +189,6 @@ func (collector *textCollector) collectUsage(usage acp.Usage) {
 	collector.mutex.Lock()
 	defer collector.mutex.Unlock()
 	collector.usage = acpPromptTurnUsage(usage)
-}
-
-// textAdapterConfig 使用已验证的原生参数关闭工具；其他 Runtime 保留真实能力限制。
-func textAdapterConfig(config acpAdapterConfig, baseRuntimeID string) (acpAdapterConfig, bool) {
-	config.PrefixArgs = append([]string(nil), config.PrefixArgs...)
-	switch baseRuntimeID {
-	case RuntimeIDClaude:
-		config.PrefixArgs = append(config.PrefixArgs, "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", "--settings", `{"disableAllHooks":true}`)
-		return config, true
-	case RuntimeIDWorkBuddy:
-		// CodeBuddy 公开 CLI 契约支持空工具白名单、严格 MCP、关闭持久化与 disableAllHooks。
-		// 参数随独占文本进程传入，不改写账号配置；仍保留意外工具与交互的拒绝兜底。
-		config.PrefixArgs = append(config.PrefixArgs, "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--settings", `{"disableAllHooks":true}`)
-		return config, true
-	case RuntimeIDCodex:
-		config.PrefixArgs = append(config.PrefixArgs, "-c", `web_search="disabled"`, "-c", "features.shell_tool=false")
-		// 这些开关由当前官方 CLI 的 features list 确认；不把其组合解释成全部工具已关闭。
-		for _, feature := range []string{"hooks", "plugins", "apps", "memories", "multi_agent", "browser_use", "computer_use", "image_generation", "view_image", "skill_search"} {
-			config.PrefixArgs = append(config.PrefixArgs, "-c", "features."+feature+"=false")
-		}
-	}
-	return config, false
 }
 
 // textReasoningSelection 只把模型当前声明的关闭选项当作关闭，否则记录真实低强度或默认降级。

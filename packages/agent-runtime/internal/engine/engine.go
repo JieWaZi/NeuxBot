@@ -196,12 +196,13 @@ func (e *Engine) Execute(ctx context.Context, spec c.ExecutionSpec, options c.Ru
 		}
 	}
 	sink := newSink(call, frozen, options, e.config.CleanupTimeout)
-	raw := sess.driver.Prompt(call.ctx, c.TurnRequest{Invocation: call.ref, Input: frozen.Input}, sink)
+	raw := sess.driver.Prompt(call.ctx, c.TurnRequest{Invocation: call.ref, Input: frozen.Input, Limits: frozen.Limits}, sink)
 	delivery, effects, streamFault := sink.finish()
 	result.Status = raw.Status
 	result.StopReason = raw.StopReason
 	result.Fault = raw.Fault
 	result.Usage = raw.Usage
+	result.Configuration = raw.Configuration
 	result.DeliveryFault = delivery
 	result.Effects = effects
 	if streamFault != nil && result.Fault == nil {

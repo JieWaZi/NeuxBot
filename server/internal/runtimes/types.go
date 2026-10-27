@@ -211,8 +211,6 @@ const (
 type Capability = constants.RuntimeCapability
 
 const (
-	// CapabilityIsolatedTextGeneration 表示探测会话已确认隔离文本生成策略可配置。
-	CapabilityIsolatedTextGeneration = constants.RuntimeCapabilityIsolatedTextGeneration
 	// CapabilityStructuredOutput 表示 Runtime 支持要求的结构化输出格式。
 	CapabilityStructuredOutput = constants.RuntimeCapabilityStructuredOutput
 	// CapabilityResumeSession 表示 Runtime 支持恢复原生 Session。

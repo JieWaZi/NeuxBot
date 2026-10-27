@@ -624,9 +624,19 @@ func TestCodexACPBackendMapsRuntimeContractAndReusesAgent(t *testing.T) {
 		t.Fatalf("first Result = %#v", result)
 	}
 	if adapterConfig.Executable != "/fake/codex" ||
+		!adapterConfig.UserInput ||
 		!reflect.DeepEqual(adapterConfig.PrefixArgs, []string{"--profile", "team"}) ||
 		!reflect.DeepEqual(adapterConfig.Environment, []string{"CODEX_HOME=/custom/codex-home"}) {
 		t.Fatalf("Codex Adapter Config = %#v", adapterConfig)
+	}
+	hasQuestionBridge := false
+	for _, server := range fakeAgent.newSessionRequest.McpServers {
+		if server.Http != nil && server.Http.Meta["acp-go/user-input"] == true {
+			hasQuestionBridge = true
+		}
+	}
+	if !hasQuestionBridge {
+		t.Fatal("ordinary chat lost its host question bridge")
 	}
 	assertCodexACPEvents(t, request.Sink.(*recordingSink).events)
 	if !result.SideEffects.VisibleOutput || !result.SideEffects.ReasoningOutput ||

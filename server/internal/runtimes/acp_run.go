@@ -144,7 +144,6 @@ func (agent *embeddedACPAgent) run(
 	bridge.elicitationHandler = request.Request.ElicitationHandler
 	bridge.userInputState = request.Request.UserInputState
 	if request.Text != nil {
-		bridge.rejectTextInteraction = request.Text.reject
 		bridge.textCollector = request.Text.collector
 	}
 	if err := agent.client.register(bridge); err != nil {

@@ -29,19 +29,19 @@
 
 ## ACP 首个切片的限制
 
-当前 Codex Driver 只支持新建、单次 Prompt 的独占连接。明确选择 `inherit_native` 与 `allow_all` 且宿主授予相应权限时，才能进入实际 ACP 调用；默认严格 Invoke 的隔离/禁工具能力尚未满足，准确返回 unsupported。
+当前 Codex Driver 只支持新建、单次 Prompt 的独占连接。明确选择 `inherit_native` 与 `allow_all` 且宿主授予相应权限时，才能进入实际 ACP 调用；请求不支持的隔离或禁工具策略时准确返回 unsupported。知识入口只启动独立 CLI 会话、传入任务输入并消费最终结果，不主动注入 AGENTS.md、Skill 或 MCP，不接管原生工具和配置加载。
 
 这一策略不证明操作系统目录沙箱。工作目录是原生 cwd，权限和原生工具仍取决于明确继承的环境；禁止把 cwd 或路径前缀称为安全隔离。
 
-尚不支持的贡献、历史 Seed、附件、额外目录、热续聊及冷恢复准确拒绝，模型和推理配置必须经公开配置目录及回执验证。单连接只接受一次 Prompt，避免无回合身份的迟到 ACP 通知串入后续调用。
+尚不支持的贡献、历史 Seed、附件、额外目录、热续聊及冷恢复准确拒绝，模型、推理及所选原生权限模式经公开配置目录及回执验证。单连接只接受一次 Prompt，避免无回合身份的迟到 ACP 通知串入后续调用。
 
 Driver 保留公开 MessageID 和消息完成边界；只有 `_meta.codex.phaseVerified=true` 的 `final_answer` 才作为原生最终阶段证据。`messageCompleted=true` 只说明消息正文结束，不能单独证明最终答案。明确的 commentary、partial_answer 和 plan 不成为最终候选；缺少证明时报告 output_unavailable，不拼接全部正文猜测。固定 acp-go `2f0ad2051741` 尚不提供该证明标记，因此真实 Codex 的严格输出当前不可用；独立仓库修正必须发布并固定版本后才能解除这一限制。
 
-真实 CLI 的验收方法与当前阻塞见 [Codex 验收计划](../../docs/discussions/agent-runtime-codex-validation-plan-cn.md)。内核 FakeDriver、公开 ACP 本地传输和虚构 Provider 的测试不替代真实账号/模型质量验收，配置隔离与禁工具也必须分别通过。
+真实 CLI 的验收方法与当前阻塞见 [Codex 验收计划](../../docs/discussions/agent-runtime-codex-validation-plan-cn.md)。内核 FakeDriver、公开 ACP 本地传输和虚构 Provider 的测试不替代真实账号/模型质量验收，知识迁移验证独立调用及最终结果，不以配置隔离或禁用全部工具为门槛。
 
 原生关闭通过公开 `Agent.Close` 执行。Runtime 的重试不代表原生实现必然可恢复：当前固定版本 Codex 的 Close 使用一次性释放并保留首次错误，因此该错误再次返回时仍保留租约并报告清理未完成，不能伪造释放成功。原生关闭语义的后续改进继续归独立 acp-go。
 
-冷恢复、原生分叉、安装探测、空闲会话淘汰，以及产品账号/技能/知识和 Chat 宿主接入按后续批次实现；不预建没有实际行为的公开 API。
+Codex 知识宿主接入位于 `server/internal/runtimehost`，账号复用 `runtimeauth` 与原账号服务；当前等待外部修复的可获取固定版本。冷恢复、原生分叉、安装探测、空闲会话淘汰及其他入口按后续批次实现。
 
 ## 验证
 
@@ -67,4 +67,4 @@ GOWORK=off go test -race ./runtime ./internal/engine ./driver/acp
 GOWORK=off go test ./driver/acp -run '^TestNativeCodex' -count=1 -timeout=180s -v
 ```
 
-变量名为 `NEUX_RUNTIME_CODEX_CLI`，未设置时这些测试跳过。验收测试会检查实际工具定义、被污染配置的 MCP 是否启动，以及原生最终阶段；它们是切换门槛，当前固定依赖和 CLI 的已知失败不能当作已通过或静默忽略。
+变量名为 `NEUX_RUNTIME_CODEX_CLI`，未设置时这些测试跳过。测试验证任务输入、真实工具循环后的最终结果及原生最终阶段，不检查工具清单或 MCP 加载。Codex 0.163.0 与本地外部 acp-go `3a7c512` 组合的原生最终性证据为 5/5；当前固定依赖仍缺少该修正。

@@ -28,6 +28,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
@@ -129,6 +130,8 @@ var (
 	MCPConnectorControllerManager controllers.MCPConnectorController
 	// RuntimeSDK 提供 CLI Runtime 的探测、协议调用和进程治理。
 	RuntimeSDK *runtimes.SDK
+	// KnowledgeRuntimeHost 拥有知识结果调用及失败清理租约。
+	KnowledgeRuntimeHost *runtimehost.Host
 	// RuntimeEnvironmentControllerManager 提供设备级 Runtime 环境持久化接口。
 	RuntimeEnvironmentControllerManager controllers.RuntimeEnvironmentController
 	// RuntimeEnvironmentService 提供 Runtime 环境初始化和探测生命周期。
@@ -441,6 +444,8 @@ func loadRuntime(ctx context.Context) error {
 		return mapCoreError("initialize_runtime_sdk", status_error.CoreRuntimeInitializationFailed, err)
 	}
 	RuntimeSDK = sdk
+	KnowledgeRuntimeHost = newKnowledgeRuntimeHost()
+	KnowledgeRuntimeHost.Start(ctx)
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
 		Accounts:                  AIAccountService,
 		AccountWorkspaceDirectory: filepath.Join(Config.DataDirectory, "account-workspaces"),
@@ -676,6 +681,16 @@ func Close() error {
 	if RuntimeEnvironmentService != nil {
 		RuntimeEnvironmentService.Close()
 		RuntimeEnvironmentService = nil
+	}
+	if KnowledgeRuntimeHost != nil {
+		closeContext, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := KnowledgeRuntimeHost.Close(closeContext); err != nil {
+			cancelClose()
+			return mapCoreError("close_knowledge_runtime_host", status_error.CoreShutdownFailed, err)
+		} else {
+			KnowledgeRuntimeHost = nil
+		}
+		cancelClose()
 	}
 	if AIAccountService != nil {
 		AIAccountService.Close()

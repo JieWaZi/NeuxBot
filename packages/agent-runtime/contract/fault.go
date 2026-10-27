@@ -18,6 +18,7 @@ const (
 	FaultDelivery            FaultCode = "delivery_failed"      // FaultDelivery 表示观察交付失败。
 	FaultLimit               FaultCode = "limit_exceeded"       // FaultLimit 表示事件预算耗尽。
 	FaultInteractionRequired FaultCode = "interaction_required" // FaultInteractionRequired 表示需要人工输入。
+	FaultInactivityTimeout   FaultCode = "inactivity_timeout"   // FaultInactivityTimeout 表示原生调用超过无活动期限。
 	FaultCancelled           FaultCode = "cancelled"            // FaultCancelled 表示调用取消。
 	FaultCleanup             FaultCode = "cleanup_failed"       // FaultCleanup 表示释放失败。
 	FaultProtocol            FaultCode = "protocol_error"       // FaultProtocol 表示驱动契约损坏。

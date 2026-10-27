@@ -40,7 +40,6 @@ func (agent *embeddedACPAgent) detectOptions(
 		closeContext, cancelClose := context.WithTimeout(context.WithoutCancel(ctx), acpDeliveryDrainTimeout)
 		defer cancelClose()
 		if _, closeErr := agent.connection.CloseSession(closeContext, acp.CloseSessionRequest{SessionId: response.SessionId}); closeErr != nil {
-			delete(catalog.Capabilities, CapabilityIsolatedTextGeneration)
 			logx.Errorf("close ACP option detection session failed: session_id=%s error=%v", response.SessionId, closeErr)
 			if detectionErr == nil {
 				detectionErr = status_error.RuntimeUnavailable
@@ -77,22 +76,6 @@ func (agent *embeddedACPAgent) detectOptions(
 	catalog.DefaultModel = options.DefaultModel
 	catalog.DefaultReasoning = options.DefaultReasoning
 	catalog.PermissionLevels = options.PermissionLevels
-	// 能力来自本次临时会话的实际配置；不能从 ready、厂商名称或旧缓存推断。
-	// 模式配置失败只限制隔离生成，不改变普通聊天的模型目录和就绪事实。
-	if detectionErr == nil {
-		mode, modeErr := agent.binding.modeID(ExecutionPolicy{PermissionLevel: PermissionLevelDefault, WorkspaceReadOnly: true}, response.Modes)
-		if modeErr == nil && mode != "" {
-			_, modeErr = agent.connection.SetSessionMode(ctx, acp.SetSessionModeRequest{SessionId: response.SessionId, ModeId: mode})
-		}
-		if modeErr == nil {
-			catalog.Capabilities[CapabilityIsolatedTextGeneration] = true
-		} else {
-			switch acpFailureCode(modeErr) {
-			case FailureCodeProtocolIncompatible, FailureCodePolicyUnsupported, FailureCodeInvalidRequest:
-				catalog.Capabilities[CapabilityIsolatedTextGeneration] = false
-			}
-		}
-	}
 	return catalog, detectionErr
 }
 

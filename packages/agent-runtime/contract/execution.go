@@ -14,7 +14,9 @@ type InvocationRef struct {
 type Profile struct {
 	DriverID             string // DriverID 选择已注入的驱动。
 	Model                string // Model 是明确请求的模型。
-	Reasoning            string // Reasoning 是明确请求的推理配置。
+	Reasoning            string // Reasoning 是明确请求的推理配置，优先于 Thinking。
+	Thinking             *bool  // Thinking 为 false 时选择原生关闭或最低推理档；nil 保留原生默认。
+	NativeMode           string // NativeMode 是请求的原生权限模式，必须由驱动验证回执。
 	CredentialRef        string // CredentialRef 由宿主凭据端口解析。
 	Subject              string // Subject 标识凭据所属主体。
 	CredentialGeneration string // CredentialGeneration 区分凭据代际。
@@ -160,6 +162,7 @@ type Limits struct {
 	MaxTotalEventBytes int           // MaxTotalEventBytes 是本轮事件累计字节上限。
 	DeliveryTimeout    time.Duration // DeliveryTimeout 是一次观察与交互交付期限。
 	InteractionTimeout time.Duration // InteractionTimeout 是等待人工交互的独立期限。
+	InactivityTimeout  time.Duration // InactivityTimeout 是 Prompt 无原生活动且无待处理交互时的最长等待。
 }
 
 // ExecutionSpec 只包含描述值，不持有函数或明文凭据。
@@ -232,9 +235,22 @@ type Output struct {
 
 // Usage 区分本轮用量和最后上下文快照。
 type Usage struct {
-	InputTokens   int64 // InputTokens 是本轮所有模型请求的输入用量。
-	OutputTokens  int64 // OutputTokens 是本轮输出用量。
-	ContextTokens int64 // ContextTokens 是最后一次模型请求的上下文快照。
+	Known             bool  // Known 表示本轮原生用量已报告，false 时不能把零值作为真实用量。
+	InputTokens       int64 // InputTokens 是协议报告的本轮输入部分；缓存组成按对应字段保留。
+	OutputTokens      int64 // OutputTokens 是本轮输出用量。
+	CachedReadTokens  int64 // CachedReadTokens 是本轮缓存读取的输入用量。
+	CachedWriteTokens int64 // CachedWriteTokens 是本轮缓存写入的输入用量。
+	ContextKnown      bool  // ContextKnown 表示最后上下文快照已报告。
+	ContextTokens     int64 // ContextTokens 是最后一次模型请求的上下文快照，不累计回合用量。
+}
+
+// Configuration 保存原生目录或配置写入回执确认的实际选择。
+type Configuration struct {
+	ActualModel       string // ActualModel 是原生确认的模型。
+	ActualReasoning   string // ActualReasoning 是原生确认的推理档位。
+	ActualMode        string // ActualMode 是原生确认的权限模式。
+	ThinkingDisabled  bool   // ThinkingDisabled 只在确认的原生档位明确关闭推理时为 true。
+	ReasoningFallback string // ReasoningFallback 记录无法关闭推理时的实际降级。
 }
 
 // Effects 保留已发生的事实，不能用于隐式重试。
@@ -254,6 +270,7 @@ type Result struct {
 	DeliveryFault *Fault             // DeliveryFault 是观察交付故障。
 	CleanupFault  *Fault             // CleanupFault 是资源释放故障。
 	Usage         Usage              // Usage 是真实驱动用量。
+	Configuration Configuration      // Configuration 是原生确认的技术选择。
 	Effects       Effects            // Effects 是真实执行和副作用证据。
 	Checkpoint    *SessionCheckpoint // Checkpoint 只在具有真实恢复能力时生成。
 }

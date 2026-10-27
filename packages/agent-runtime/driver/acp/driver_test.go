@@ -213,14 +213,21 @@ func TestPromptWaitsForReceivedNotification(t *testing.T) {
 	}
 }
 
-// TestCancellationAndLateEvents 捕获取消后交付、重复释放和无回合身份连接复用的错误。
+// TestCancellationAndLateEvents 捕获取消时丢失已确认配置、取消后交付、重复释放和连接复用的错误。
 func TestCancellationAndLateEvents(t *testing.T) {
 	a := newFixtureAgent()
+	a.newSession = func(context.Context, sdk.NewSessionRequest) (sdk.NewSessionResponse, error) {
+		return sdk.NewSessionResponse{SessionId: "native-session", ConfigOptions: []sdk.SessionConfigOption{
+			selectionOption(sdk.SessionConfigOptionCategoryMode, "mode", "agent-full-access", "agent-full-access"),
+			selectionOption(sdk.SessionConfigOptionCategoryModel, "model", "selected-model", "selected-model"),
+			selectionOption(sdk.SessionConfigOptionCategoryThoughtLevel, "reasoning", "off", "off"),
+		}}, nil
+	}
 	started := make(chan struct{})
 	a.prompt = func(ctx context.Context, p sdk.PromptRequest) (sdk.PromptResponse, error) {
 		close(started)
 		<-ctx.Done()
-		return sdk.PromptResponse{StopReason: sdk.StopReasonCancelled}, nil
+		return sdk.PromptResponse{}, ctx.Err()
 	}
 	d := newDriver(t, a)
 	s, err := d.Open(context.Background(), openRequest(t))
@@ -241,6 +248,10 @@ func TestCancellationAndLateEvents(t *testing.T) {
 	case r := <-done:
 		if r.Status != contract.StatusCancelled {
 			t.Fatalf("cancel %#v", r)
+		}
+		want := contract.Configuration{ActualMode: "agent-full-access", ActualModel: "selected-model", ActualReasoning: "off", ThinkingDisabled: true}
+		if r.Configuration != want {
+			t.Fatalf("cancel lost confirmed configuration: got %+v, want %+v", r.Configuration, want)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("cancel blocked")

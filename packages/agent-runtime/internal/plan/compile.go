@@ -35,12 +35,12 @@ func (p Plan) SecurityScopeKey() string { return p.securityScopeKey }
 
 // DefaultLimits 返回首批工程保护值，累计预算不等同于 ACP 排队预算。
 func DefaultLimits() c.Limits {
-	return c.Limits{MaxOutputBytes: 1 << 20, MaxEventBytes: 1 << 20, MaxEvents: 16384, MaxTotalEventBytes: 64 << 20, DeliveryTimeout: 5 * time.Second, InteractionTimeout: 5 * time.Minute}
+	return c.Limits{MaxOutputBytes: 1 << 20, MaxEventBytes: 1 << 20, MaxEvents: 16384, MaxTotalEventBytes: 64 << 20, DeliveryTimeout: 5 * time.Second, InteractionTimeout: 5 * time.Minute, InactivityTimeout: 10 * time.Minute}
 }
 
 // NormalizeLimits 补全零值并拒绝负值。
 func NormalizeLimits(v, defaults c.Limits) (c.Limits, error) {
-	if v.MaxOutputBytes < 0 || v.MaxEventBytes < 0 || v.MaxEvents < 0 || v.MaxTotalEventBytes < 0 || v.DeliveryTimeout < 0 || v.InteractionTimeout < 0 {
+	if v.MaxOutputBytes < 0 || v.MaxEventBytes < 0 || v.MaxEvents < 0 || v.MaxTotalEventBytes < 0 || v.DeliveryTimeout < 0 || v.InteractionTimeout < 0 || v.InactivityTimeout < 0 {
 		return v, bad("negative execution budget")
 	}
 	if v.MaxOutputBytes == 0 {
@@ -60,6 +60,9 @@ func NormalizeLimits(v, defaults c.Limits) (c.Limits, error) {
 	}
 	if v.InteractionTimeout == 0 {
 		v.InteractionTimeout = defaults.InteractionTimeout
+	}
+	if v.InactivityTimeout == 0 {
+		v.InactivityTimeout = defaults.InactivityTimeout
 	}
 	if v.MaxOutputBytes > v.MaxTotalEventBytes || v.MaxEventBytes > v.MaxTotalEventBytes {
 		return v, bad("event and output budgets exceed total event budget")
@@ -211,11 +214,13 @@ func Compile(input c.ExecutionSpec, caps c.DriverCapabilities, grants c.Grants, 
 		Version       string               // Version 是驱动实现版本。
 		Model         string               // Model 是模型选择。
 		Reasoning     string               // Reasoning 是推理选择。
+		Thinking      *bool                // Thinking 是未明确指定推理档位时的偏好。
+		NativeMode    string               // NativeMode 是原生权限模式选择。
 		Workspace     c.WorkspaceScope     // Workspace 是有效工作范围。
 		Contributions c.Contributions      // Contributions 是固定贡献。
 		Tools         c.ToolPolicy         // Tools 是有效工具策略。
 		Native        c.NativeConfigPolicy // Native 是原生配置策略。
-	}{s.Profile.DriverID, caps.Version, s.Profile.Model, s.Profile.Reasoning, s.Workspace, s.Contributions, s.Policies.Tools, s.Policies.NativeConfig}
+	}{s.Profile.DriverID, caps.Version, s.Profile.Model, s.Profile.Reasoning, s.Profile.Thinking, s.Profile.NativeMode, s.Workspace, s.Contributions, s.Policies.Tools, s.Policies.NativeConfig}
 	security := struct {
 		Profile   c.Profile            // Profile 保存账号主体与凭据代际。
 		Workspace c.WorkspaceScope     // Workspace 是有效工作范围。
@@ -331,6 +336,10 @@ func canonicalPath(path string) (string, error) {
 }
 
 func clone(v c.ExecutionSpec) c.ExecutionSpec {
+	if v.Profile.Thinking != nil {
+		thinking := *v.Profile.Thinking
+		v.Profile.Thinking = &thinking
+	}
 	v.Input.Attachments = slices.Clone(v.Input.Attachments)
 	v.Session.Seed = slices.Clone(v.Session.Seed)
 	if v.Session.Checkpoint != nil {

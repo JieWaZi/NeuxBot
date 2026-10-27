@@ -37,6 +37,7 @@ type OpenRequest struct {
 type TurnRequest struct {
 	Invocation InvocationRef // Invocation 是有效调用及修订。
 	Input      Input         // Input 是本轮新增输入。
+	Limits     Limits        // Limits 是本次调用已经规范化的预算。
 }
 
 // DriverSession 拥有一个热原生会话；Prompt 返回前必须停止本轮生产并排空已接收事件。
@@ -48,11 +49,12 @@ type DriverSession interface {
 
 // DriverResult 保存原生执行终态，不猜测业务成功。
 type DriverResult struct {
-	Status       ExecutionStatus // Status 是真实技术执行状态。
-	StopReason   StopReason      // StopReason 是原生结束原因。
-	Usage        Usage           // Usage 是本轮用量。
-	Fault        *Fault          // Fault 是驱动故障。
-	NativeHandle string          // NativeHandle 是可用原生句柄，不证明冷恢复已支持。
+	Status        ExecutionStatus // Status 是真实技术执行状态。
+	StopReason    StopReason      // StopReason 是原生结束原因。
+	Usage         Usage           // Usage 是本轮用量。
+	Configuration Configuration   // Configuration 是原生确认的技术选择。
+	Fault         *Fault          // Fault 是驱动故障。
+	NativeHandle  string          // NativeHandle 是可用原生句柄，不证明冷恢复已支持。
 }
 
 // DriverSink 提供同步有界事实交付和独立交互端口。

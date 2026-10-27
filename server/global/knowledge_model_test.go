@@ -31,7 +31,7 @@ func TestKnowledgeModelSelectionDoesNotRequireExecutionServiceOrPartner(t *testi
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	ExecutionService = nil
 	defer func() { RuntimeEnvironmentControllerManager = previousRuntime; ExecutionService = previousExecution }()
-	environment := models.RuntimeEnvironment{ID: "runtime", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, DefaultModel: "known-model", Detection: runtimes.DetectionResult{State: runtimes.DetectionStateReady, Capabilities: runtimes.CapabilitySet{runtimes.CapabilityIsolatedTextGeneration: true}, Models: []runtimes.ModelOption{{ID: "known-model"}}}}
+	environment := models.RuntimeEnvironment{ID: "runtime", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, DefaultModel: "known-model", Detection: runtimes.DetectionResult{State: runtimes.DetectionStateReady, Models: []runtimes.ModelOption{{ID: "known-model"}}}}
 	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +44,7 @@ func TestKnowledgeModelSelectionDoesNotRequireExecutionServiceOrPartner(t *testi
 	}
 }
 
-func TestKnowledgeModelRejectsUnsupportedTextCapability(t *testing.T) {
+func TestKnowledgeModelAcceptsRunnableCLIWithoutIsolationCapability(t *testing.T) {
 	ctx := context.Background()
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "unsupported.db"), Migrate: true})
 	if err != nil {
@@ -55,12 +55,12 @@ func TestKnowledgeModelRejectsUnsupportedTextCapability(t *testing.T) {
 	previous := RuntimeEnvironmentControllerManager
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	defer func() { RuntimeEnvironmentControllerManager = previous }()
-	environment := models.RuntimeEnvironment{ID: "unverified", RuntimeID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, Enabled: true, Detection: runtimes.DetectionResult{State: runtimes.DetectionStateReady, Capabilities: runtimes.CapabilitySet{runtimes.CapabilityIsolatedTextGeneration: false}}}
+	environment := models.RuntimeEnvironment{ID: "unverified", RuntimeID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, Enabled: true, Detection: runtimes.DetectionResult{State: runtimes.DetectionStateReady}}
 	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolveKnowledgeModel(ctx, models.LibraryExecutionDefaults{RuntimeID: constants.RuntimeIDPi}); !errors.Is(err, status_error.RuntimePolicyUnsupported) {
-		t.Fatalf("unverified model accepted: %v", err)
+	if _, err := resolveKnowledgeModel(ctx, models.LibraryExecutionDefaults{RuntimeID: constants.RuntimeIDPi}); err != nil {
+		t.Fatalf("runnable model rejected: %v", err)
 	}
 	if _, err := resolveKnowledgeMaintenanceModel(ctx, models.LibraryExecutionDefaults{RuntimeID: constants.RuntimeIDPi}); err != nil {
 		t.Fatalf("tool-capable maintenance inherited the pure-text restriction: %v", err)
@@ -101,9 +101,10 @@ func TestKnowledgeGenerationWaitsForSubscriptionLeaseAndCanBeCancelled(t *testin
 	}
 	sqlDB, _ := database.DB.DB()
 	defer sqlDB.Close()
-	previousRuntime, previousAccounts, previousSDK := RuntimeEnvironmentControllerManager, AIAccountService, RuntimeSDK
+	previousRuntime, previousAccounts, previousSDK, previousHost := RuntimeEnvironmentControllerManager, AIAccountService, RuntimeSDK, KnowledgeRuntimeHost
 	defer func() {
 		RuntimeEnvironmentControllerManager, AIAccountService, RuntimeSDK = previousRuntime, previousAccounts, previousSDK
+		KnowledgeRuntimeHost = previousHost
 	}()
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	accounts := controllers.NewAIAccountController(database.DB)
@@ -115,6 +116,8 @@ func TestKnowledgeGenerationWaitsForSubscriptionLeaseAndCanBeCancelled(t *testin
 		t.Fatal(err)
 	}
 	defer RuntimeSDK.Close(ctx)
+	KnowledgeRuntimeHost = newKnowledgeRuntimeHost()
+	defer KnowledgeRuntimeHost.Close(ctx)
 	account := models.AIAccount{ID: "queued-subscription", Name: "fixture", AuthMode: constants.AccountAuthModeSubscription, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}}}
 	if err := accounts.Create(ctx, account, "not-read-before-lease-is-acquired"); err != nil {
 		t.Fatal(err)
@@ -148,7 +151,7 @@ func TestKnowledgeGenerationWaitsForSubscriptionLeaseAndCanBeCancelled(t *testin
 	cancel()
 	select {
 	case err := <-finished:
-		if !errors.Is(err, context.Canceled) {
+		if !errors.Is(err, status_error.OperationCanceled) {
 			t.Fatalf("等待取消没有保留真实原因: %v", err)
 		}
 	case <-time.After(time.Second):

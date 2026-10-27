@@ -36,8 +36,8 @@ type acpAdapterConfig struct {
 	StateDirectory string
 	// PermissionMode 是本次原生进程冻结的执行权限。
 	PermissionMode string
-	// TextOnly 表示本次不安装问答 MCP，只提供无状态模型生成。
-	TextOnly bool
+	// UserInput 表示本次拥有宿主问答交付通道，独立结果收集调用不安装该桥。
+	UserInput bool
 }
 
 // acpAgentFactory 从统一启动事实创建一个标准 ACP Agent。
@@ -166,6 +166,7 @@ func acpAdapterConfigForRequest(
 		Environment:        request.Prepared.environment.list(),
 		WorkingDirectory:   request.Request.Workspace.Path,
 		PermissionMode:     string(request.Request.Policy.Execution.PermissionLevel),
+		UserInput:          request.Text == nil,
 	}
 	config.NativePluginDirectories = cloneStrings(request.Request.Target.NativePluginDirectories)
 	config.CodexPluginConfiguration = maps.Clone(request.Request.Target.CodexPluginConfiguration)
@@ -173,10 +174,7 @@ func acpAdapterConfigForRequest(
 	if binding.stateDirectory != nil {
 		config.StateDirectory = binding.stateDirectory(request)
 	}
-	if request.Text != nil {
-		config.TextOnly = true
-		config, _ = textAdapterConfig(config, binding.baseRuntimeID)
-	}
+
 	return config
 }
 
