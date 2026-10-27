@@ -1,7 +1,7 @@
 {
   "name": "neuxbot",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "packageManager": "pnpm@10.34.4",
   "scripts": {
     "dev": "pnpm dev:web",
