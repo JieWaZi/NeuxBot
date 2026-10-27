@@ -5,6 +5,7 @@ import {
 } from "./settings-route";
 
 export type RouteSceneLocation = {
+  key?: string;
   pathname: string;
   search: string;
 };

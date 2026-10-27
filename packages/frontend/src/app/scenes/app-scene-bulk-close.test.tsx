@@ -128,3 +128,34 @@ describe("页签批量关闭", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 });
+
+it("同一 URL 的新导航激活主会话，并同步工作台回到主页签", async () => {
+  const { navigate, onCloseFile, onSelectFile, rerender } = renderTabs();
+  await userEvent.setup().click(screen.getByRole("tab", { name: "文件甲" }));
+  expect(screen.getByRole("tab", { name: "文件甲" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  onSelectFile.mockClear();
+  rerender(
+    <AppSceneWorkspaceProvider
+      location={{
+        pathname: "/chats/one",
+        search: "",
+        key: "repeat-navigation",
+      }}
+      navigate={navigate}
+    >
+      <Tabs onCloseFile={onCloseFile} onSelectFile={onSelectFile} />
+    </AppSceneWorkspaceProvider>,
+  );
+  expect(onSelectFile).toHaveBeenCalledExactlyOnceWith("main");
+  expect(screen.getByRole("tab", { name: "文件甲" })).toHaveAttribute(
+    "aria-selected",
+    "false",
+  );
+  expect(screen.getByRole("tab", { name: "会话" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});

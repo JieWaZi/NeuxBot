@@ -34,7 +34,7 @@ export function AppSceneWorkspaceProvider({
   navigate: (href: string) => void;
 }) {
   const { t } = useTranslation("common");
-  const { pathname, search } = location;
+  const { pathname, search, key: navigationKey } = location;
   const labels = useMemo<RouteSceneLabels>(
     () => ({
       knowledge: t("knowledge:knowledge"),
@@ -76,12 +76,24 @@ export function AppSceneWorkspaceProvider({
     new Map<string, AppWorkspaceContribution>(),
   );
 
+  const previousNavigation = useRef({ pathname, search, navigationKey });
   useLayoutEffect(() => {
+    const previous = previousNavigation.current;
+    const returningToSameRoute =
+      previous.pathname === pathname &&
+      previous.search === search &&
+      previous.navigationKey !== navigationKey;
+    previousNavigation.current = { pathname, search, navigationKey };
+    // 同一 URL 的显式导航也代表返回主会话，不能继续停留在工作台子页签。
+    if (returningToSameRoute) {
+      const contribution = workspaceContributionsRef.current.get(routeScene.id);
+      contribution?.onSelect(contribution.primaryWorkspaceTabId);
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSnapshot((current) =>
       appSceneReducer(current, { type: "open", tab: routeScene }),
     );
-  }, [routeScene]);
+  }, [navigationKey, pathname, routeScene, search]);
 
   const dispatch = useCallback(
     (command: AppSceneCommand) => {

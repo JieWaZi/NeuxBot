@@ -109,7 +109,11 @@ export function AppShell({
     <NotificationNavigationProvider resolveHref={notificationHref}>
       <WorkspaceProvider>
         <AppSceneWorkspaceProvider
-          location={{ pathname: location.pathname, search: location.search }}
+          location={{
+            pathname: location.pathname,
+            search: location.search,
+            key: location.key,
+          }}
           navigate={(href) => navigate(href, { flushSync: true })}
         >
           <AppShellContent RouteScene={RouteScene} />
