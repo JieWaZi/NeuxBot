@@ -66,9 +66,9 @@ func newDriver(t *testing.T, a *fixtureAgent) *driver.Driver {
 	return d
 }
 
-// TestUnsupportedPolicyNeverPreparesNative 捕获安全策略或静态贡献被静默忽略的错误。
+// TestUnsupportedPolicyNeverPreparesNative 捕获安全策略或未支持资源被静默忽略的错误。
 func TestUnsupportedPolicyNeverPreparesNative(t *testing.T) {
-	for _, policy := range []string{"explicit_only", "deny_all", "allow_list", "instructions", "skills", "mcp", "seed", "resume"} {
+	for _, policy := range []string{"explicit_only", "deny_all", "allow_list", "mcp", "directories", "seed", "resume"} {
 		t.Run(policy, func(t *testing.T) {
 			var prepared atomic.Bool
 			d, err := driver.New(driver.Config{ID: "fixture", Factory: func(context.Context, contract.OpenRequest) (sdk.Agent, error) {
@@ -87,10 +87,8 @@ func TestUnsupportedPolicyNeverPreparesNative(t *testing.T) {
 				r.Policies.Tools.Mode = contract.ToolsDenyAll
 			case "allow_list":
 				r.Policies.Tools = contract.ToolPolicy{Mode: contract.ToolsAllowList, Allow: []string{"read"}}
-			case "instructions":
-				r.Contributions.Instructions = []contract.Instruction{{Name: "system", Text: "system"}}
-			case "skills":
-				r.Contributions.Skills = []contract.Skill{{Name: "skill"}}
+			case "directories":
+				r.Workspace.Directories = []string{t.TempDir()}
 			case "mcp":
 				r.Contributions.MCP = []contract.MCP{{Name: "mcp"}}
 			case "seed":

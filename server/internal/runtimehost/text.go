@@ -174,6 +174,14 @@ func (h *Host) Start(ctx context.Context) {
 
 // GenerateText 按 BaseRuntimeID 选择一次实现；任何已执行故障均不会切换或重放。
 func (h *Host) GenerateText(ctx context.Context, input TextRequest) (TextResult, error) {
+	return h.invoke(ctx, input, c.Contributions{}, nil)
+}
+
+// invoke 为文本生成和显式工具任务共用接纳、账号、原生执行与资源所有权。
+func (h *Host) invoke(ctx context.Context, input TextRequest, contributions c.Contributions, resources TaskResources) (TextResult, error) {
+	if resources != nil {
+		defer resources.Revoke()
+	}
 	if ctx == nil {
 		return TextResult{}, status_error.BadRequest
 	}
@@ -192,6 +200,10 @@ func (h *Host) GenerateText(ctx context.Context, input TextRequest) (TextResult,
 	ctx, cancel := context.WithCancel(ctx)
 	stop := context.AfterFunc(h.root, cancel)
 	defer func() { stop(); cancel() }()
+	if resources != nil {
+		stopRevocation := context.AfterFunc(ctx, resources.Revoke)
+		defer func() { stopRevocation(); resources.Revoke() }()
+	}
 	environment, err := h.config.Resolve(ctx, input)
 	if err != nil {
 		return TextResult{}, err
@@ -205,10 +217,16 @@ func (h *Host) GenerateText(ctx context.Context, input TextRequest) (TextResult,
 		logx.Errorf("create model workspace failed: error=%v", err)
 		return TextResult{}, status_error.RuntimeUnavailable
 	}
-	return h.execute(ctx, input, environment, workspace, descriptor)
+	resolved, err := filepath.EvalSymlinks(workspace)
+	if err != nil {
+		_ = os.RemoveAll(workspace)
+		logx.Errorf("resolve model workspace failed: error=%v", err)
+		return TextResult{}, status_error.RuntimeUnavailable
+	}
+	return h.execute(ctx, input, environment, resolved, descriptor, contributions, resources)
 }
 
-func (h *Host) execute(ctx context.Context, input TextRequest, env Environment, workspace string, descriptor runtimeDescriptor) (TextResult, error) {
+func (h *Host) execute(ctx context.Context, input TextRequest, env Environment, workspace string, descriptor runtimeDescriptor, contributions c.Contributions, resources TaskResources) (TextResult, error) {
 	prompt, instructions, limitations, err := compileMessages(input.Messages)
 	if err != nil {
 		_ = os.RemoveAll(workspace)
@@ -236,7 +254,10 @@ func (h *Host) execute(ctx context.Context, input TextRequest, env Environment, 
 		_ = os.RemoveAll(workspace)
 		return TextResult{}, mapFault(err)
 	}
-	engine, err := agentruntime.New(agentruntime.Config{Drivers: []c.Driver{driver}, Credentials: credentials, Grants: c.Grants{Directories: []string{workspace}, AllowAllTools: true}})
+	if resources != nil {
+		driver = &taskDriver{Driver: driver, resources: resources}
+	}
+	engine, err := agentruntime.New(agentruntime.Config{Drivers: []c.Driver{driver}, Credentials: credentials, Resources: resources, Grants: c.Grants{Directories: []string{workspace}, AllowAllTools: true}})
 	if err != nil {
 		_ = driver.Close(ctx)
 		_ = os.RemoveAll(workspace)
@@ -249,7 +270,7 @@ func (h *Host) execute(ctx context.Context, input TextRequest, env Environment, 
 	}
 	thinking := input.Thinking
 	model := nativeModelID(env.BaseRuntimeID, input.AccountID, input.Model)
-	result := engine.Invoke(ctx, c.ExecutionSpec{Profile: c.Profile{DriverID: input.RuntimeID, Model: model, Reasoning: input.Reasoning, Thinking: &thinking, CredentialRef: input.AccountID + ":" + input.RuntimeID}, Input: c.Input{Text: prompt}, Session: c.SessionDirective{Mode: c.SessionNew}, Workspace: c.WorkspaceScope{Root: workspace}, Policies: c.Policies{Tools: c.ToolPolicy{Mode: c.ToolsAllowAll}, NativeConfig: c.NativeConfigInherit, Interaction: c.InteractionUnattended, Output: c.OutputStrict}})
+	result := engine.Invoke(ctx, c.ExecutionSpec{Profile: c.Profile{DriverID: input.RuntimeID, Model: model, Reasoning: input.Reasoning, Thinking: &thinking, CredentialRef: input.AccountID + ":" + input.RuntimeID}, Input: c.Input{Text: prompt}, Session: c.SessionDirective{Mode: c.SessionNew}, Workspace: c.WorkspaceScope{Root: workspace}, Contributions: contributions, Policies: c.Policies{Tools: c.ToolPolicy{Mode: c.ToolsAllowAll}, NativeConfig: c.NativeConfigInherit, Interaction: c.InteractionUnattended, Output: c.OutputStrict}})
 	h.mutex.Lock()
 	h.owners[engine] = struct{}{}
 	h.mutex.Unlock()
@@ -261,7 +282,7 @@ func (h *Host) execute(ctx context.Context, input TextRequest, env Environment, 
 	}
 	h.closeOwner(engine)
 	output := TextResult{StopReason: string(result.StopReason), ActualReasoning: result.Configuration.ActualReasoning, ThinkingDisabled: result.Configuration.ThinkingDisabled, ReasoningFallback: result.Configuration.ReasoningFallback, Limitations: limitations}
-	if env.BaseRuntimeID != runtimes.RuntimeIDCodex && !credentials.target.Isolated {
+	if env.BaseRuntimeID != runtimes.RuntimeIDCodex && !credentials.target.Isolated && resources == nil {
 		output.Limitations = append(output.Limitations, "system_account_native_config_retained: global instructions and configured MCP may load; host does not mount external resources")
 	}
 	if env.BaseRuntimeID != runtimes.RuntimeIDClaude && env.BaseRuntimeID != runtimes.RuntimeIDWorkBuddy {
@@ -426,6 +447,7 @@ func (p *credentialProvider) Close(ctx context.Context) error {
 		if err := p.broker.Close(ctx); err != nil {
 			return err
 		}
+		p.broker = nil
 	}
 	if p.sourceAuth != "" {
 		unlock, err := runtimeauth.CodexFileCredentialGate(p.sourceAuth).Lock(ctx)
@@ -437,11 +459,13 @@ func (p *credentialProvider) Close(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		p.sourceAuth = ""
 	}
 	if p.closeLease != nil {
 		if err := p.closeLease(ctx); err != nil {
 			return err
 		}
+		p.closeLease = nil
 	}
 	if err := os.RemoveAll(p.workspace); err != nil {
 		logx.Errorf("remove model workspace failed: error=%v", err)
@@ -510,7 +534,7 @@ func mapFault(err error) error {
 	if errors.Is(err, context.DeadlineExceeded) {
 		return status_error.OperationTimeout
 	}
-	var business *statuserror.StatusErr
+	var business statuserror.CommonError
 	if errors.As(err, &business) {
 		return business
 	}

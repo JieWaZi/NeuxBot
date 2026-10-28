@@ -21,6 +21,7 @@ type session struct {
 	nativeClosed   bool                      // nativeClosed 只在公开Close成功后置位，受closeGate保护。
 	client         *sdk.ClientSideConnection // client 是唯一客户端协议连接。
 	configuration  contract.Configuration    // configuration 保存准备时确认的模型、权限和推理配置。
+	initialPrefix  string                    // initialPrefix 是创建原生使用者前冻结的首次普通文本贡献。
 	nativeID       sdk.SessionId             // nativeID 是原生会话返回的真实身份。
 	serveCancel    context.CancelFunc        // serveCancel 通知 acpserver 结束并释放 Agent。
 	closeTransport func() error              // closeTransport 中断本连接拥有的全部管道。
@@ -52,7 +53,7 @@ type turnState struct {
 var _ contract.DriverSession = (*session)(nil)
 var _ sdk.Client = (*session)(nil)
 
-// Prompt 只发送本轮文本，响应返回前依赖 SDK 水位排空通知；最终资源关闭由宿主调用 Close。
+// Prompt 发送冻结的首次贡献及本轮文本，响应返回前依赖 SDK 水位排空通知；最终资源关闭由宿主调用 Close。
 func (s *session) Prompt(ctx context.Context, r contract.TurnRequest, sink contract.DriverSink) contract.DriverResult {
 	failed := func(f *contract.Fault) contract.DriverResult {
 		return contract.DriverResult{Status: contract.StatusFailed, StopReason: contract.StopFailed, Fault: f, Configuration: s.configuration}
@@ -79,7 +80,7 @@ func (s *session) Prompt(ctx context.Context, r contract.TurnRequest, sink contr
 	defer func() { cancel(); <-watchDone }()
 	abort := context.AfterFunc(turnCtx, s.stop)
 	defer abort()
-	response, err := s.client.Prompt(turnCtx, sdk.PromptRequest{SessionId: s.nativeID, Prompt: []sdk.ContentBlock{sdk.TextBlock(r.Input.Text)}})
+	response, err := s.client.Prompt(turnCtx, sdk.PromptRequest{SessionId: s.nativeID, Prompt: []sdk.ContentBlock{sdk.TextBlock(s.initialPrefix + r.Input.Text)}})
 	// 在驱动自己的收尾取消前固定已有根因，避免把普通原生错误改成 cancelled。
 	s.mu.Lock()
 	cancellationCause := context.Cause(turnCtx)

@@ -91,6 +91,10 @@ func (d *Driver) Open(ctx context.Context, r contract.OpenRequest) (contract.Dri
 	if err := validateOpen(r); err != nil {
 		return nil, err
 	}
+	prefix, err := contributionPrefix(r.Contributions, r.Resources)
+	if err != nil {
+		return nil, err
+	}
 	d.mu.Lock()
 	if d.closed {
 		d.mu.Unlock()
@@ -111,7 +115,7 @@ func (d *Driver) Open(ctx context.Context, r contract.OpenRequest) (contract.Dri
 		return nil, fault(contract.FaultPreparation, "open", "ACP agent creation failed", err)
 	}
 	// 从取得原生使用者起保留可关闭对象，即使工厂同时返回准备错误也不丢弃依赖所有权。
-	s := &session{owner: d, native: agent, done: make(chan struct{}), closeGate: make(chan struct{}, 1)}
+	s := &session{owner: d, native: agent, initialPrefix: prefix, done: make(chan struct{}), closeGate: make(chan struct{}, 1)}
 	partial := func(cause error) (contract.DriverSession, error) {
 		s.spent = true
 		close(s.done)
@@ -252,8 +256,8 @@ func validateOpen(r contract.OpenRequest) error {
 	if r.Session.Mode != contract.SessionNew || len(r.Session.Seed) > 0 || r.Session.Checkpoint != nil {
 		return fault(contract.FaultUnsupported, "session", "ACP resume and history seeding are not supported", nil)
 	}
-	if len(r.Contributions.Instructions) > 0 || len(r.Contributions.Skills) > 0 || len(r.Contributions.MCP) > 0 || len(r.Resources) > 0 || len(r.Workspace.Directories) > 0 {
-		return fault(contract.FaultUnsupported, "resources", "ACP static contributions and additional workspace roots are not supported", nil)
+	if len(r.Contributions.MCP) > 0 || len(r.Workspace.Directories) > 0 {
+		return fault(contract.FaultUnsupported, "resources", "ACP MCP contributions and additional workspace roots are not supported", nil)
 	}
 	if !filepath.IsAbs(r.Workspace.Root) {
 		return fault(contract.FaultInvalidSpec, "workspace", "ACP working directory must be absolute", nil)

@@ -2,14 +2,12 @@ package global
 
 import (
 	"context"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	knowledgemodel "github.com/JieWaZi/NeuxBot/server/internal/knowledge/model"
-	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -86,62 +84,20 @@ func newKnowledgeModelGenerator(_ context.Context, selection models.LibraryExecu
 	return knowledgemodel.New(knowledgemodel.Config{Runtime: KnowledgeRuntimeHost, RuntimeID: selection.RuntimeID, AccountID: selection.AccountID, Model: selection.Model, Reasoning: selection.Reasoning}), nil
 }
 
-// runKnowledgeMaintenance 复用 ACP SDK、账号租约及同包 CLI 执行独立 Wiki 维护。
+// runKnowledgeMaintenance 通过共享 Runtime 宿主和单任务 CLI 授权执行独立 Wiki 维护。
 func runKnowledgeMaintenance(ctx context.Context, selection models.LibraryExecutionDefaults, input knowledgeservice.MaintenanceInvocation) (string, error) {
 	selected, err := resolveKnowledgeMaintenanceModel(ctx, selection)
 	if err != nil {
 		return "", err
 	}
 	runner := knowledgemodel.NewMaintenanceRunner(knowledgemodel.MaintenanceConfig{
-		Runtime: RuntimeSDK, Registry: AgentCapabilities,
-		Binary:   agentBinaryPath(),
-		Endpoint: "http://127.0.0.1:" + strconv.Itoa(Config.Server.Port) + constants.AgentCLIPath,
-		Model:    selected.Model, Reasoning: selected.Reasoning,
-		Prepare: func(ctx context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
-			return prepareKnowledgeRuntime(ctx, selected)
-		},
+		Runtime: KnowledgeRuntimeHost, Registry: AgentCapabilities,
+		Binary:    agentBinaryPath(),
+		Endpoint:  "http://127.0.0.1:" + strconv.Itoa(Config.Server.Port) + constants.AgentCLIPath,
+		RuntimeID: selected.RuntimeID, AccountID: selected.AccountID,
+		Model: selected.Model, Reasoning: selected.Reasoning,
 	})
 	return runner.Run(ctx, knowledgemodel.MaintenanceRequest{JobID: input.JobID, Bindings: input.Bindings, Instructions: input.Instructions, Message: input.Message, Validate: input.Validate})
-}
-
-// prepareKnowledgeRuntime 对独立文本生成及工具维护使用相同的可取消账号租约。
-func prepareKnowledgeRuntime(ctx context.Context, selection models.LibraryExecutionDefaults) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
-	if RuntimeSDK == nil || RuntimeEnvironmentControllerManager == nil {
-		return runtimes.RuntimeTarget{}, runtimes.DetectionResult{}, nil, status_error.RuntimeUnavailable
-	}
-	environment, err := RuntimeEnvironmentControllerManager.Get(ctx, selection.RuntimeID)
-	if err != nil {
-		return runtimes.RuntimeTarget{}, runtimes.DetectionResult{}, nil, err
-	}
-	if !environment.Enabled || environment.Detection.State != runtimes.DetectionStateReady {
-		return runtimes.RuntimeTarget{}, runtimes.DetectionResult{}, nil, status_error.RuntimeUnavailable
-	}
-	target := runtimes.RuntimeTarget{RuntimeID: selection.RuntimeID, Binary: environment.Binary, PrefixArgs: append([]string(nil), environment.PrefixArgs...), ConfigHome: environment.ConfigHome, CloseAfterRun: true}
-	cleanup := func() {}
-	if selection.AccountID != "" && selection.AccountID != constants.AiAccountSystemID {
-		directory, err := os.MkdirTemp("", "neux-knowledge-account-")
-		if err != nil {
-			logx.Errorf("prepare knowledge model account workspace failed: error=%v", err)
-			return target, environment.Detection, nil, status_error.KnowledgeStorageError
-		}
-		prepared, release, err := AIAccountService.PrepareQueued(ctx, selection.AccountID, environment.BaseRuntimeID, directory, selection.Model)
-		if err != nil {
-			_ = os.RemoveAll(directory)
-			return target, environment.Detection, nil, err
-		}
-		target.AccountID, target.Environment, target.Isolated = prepared.AccountID, prepared.Environment, prepared.Isolated
-		target.RefreshCredentials = prepared.RefreshCredentials
-		if prepared.ConfigHome != "" {
-			target.ConfigHome = prepared.ConfigHome
-		}
-		cleanup = func() {
-			release()
-			if err := os.RemoveAll(directory); err != nil {
-				logx.Errorf("remove knowledge model account workspace failed: error=%v", err)
-			}
-		}
-	}
-	return target, environment.Detection, cleanup, nil
 }
 
 // newKnowledgeRuntimeHost 只在产品边界读取环境和账号，独立 Runtime 不导入业务对象。

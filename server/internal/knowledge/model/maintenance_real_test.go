@@ -11,6 +11,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 )
 
@@ -48,23 +49,9 @@ func TestRealWikiMaintenanceReadsSkillAndCallsCLI(t *testing.T) {
 	endpoint := httptest.NewServer(registry)
 	defer endpoint.Close()
 	var calls atomic.Int32
-	runner := NewMaintenanceRunner(MaintenanceConfig{
-		Runtime: maintenanceRuntimeFunc(func(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
-			t.Logf("native policy: runtime=%s permission=%s workspaceReadOnly=%t", runtimeID, request.Policy.Execution.PermissionLevel, request.Policy.Execution.WorkspaceReadOnly)
-			result := sdk.Run(ctx, request, sink)
-			if result.Failure != nil {
-				t.Logf("native terminal: runtime=%s version=%s code=%s stage=%s reason=%.300s", runtimeID, detection.Version, result.Failure.Code, result.Failure.Stage, result.Failure.DisplayMessage)
-			} else {
-				t.Logf("native terminal: runtime=%s version=%s stop=%s protocolHealthy=%t", runtimeID, detection.Version, result.StopReason, result.ProtocolHealthy)
-			}
-			return result
-		}), Registry: registry, Binary: binary,
-		Endpoint: endpoint.URL + constants.AgentCLIPath,
-		Model:    model, Reasoning: reasoning,
-		Prepare: func(context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
-			return runtimes.RuntimeTarget{RuntimeID: runtimeID, Binary: detection.ResolvedBinary}, detection, nil, nil
-		},
-	})
+	host := maintenanceTransportHost(runtimeID, detection, sdk)
+	defer host.Close(context.Background())
+	runner := NewMaintenanceRunner(MaintenanceConfig{Runtime: host, Registry: registry, Binary: binary, Endpoint: endpoint.URL + constants.AgentCLIPath, RuntimeID: runtimeID, Model: model, Reasoning: reasoning})
 	input := MaintenanceRequest{
 		JobID:        "readonly-maintenance-transport-check",
 		Instructions: "This is a read-only transport verification, with one synthetic library named transport-check. Only knowledge.audit.get is authorized. Do not read any other local files, access other services, modify files, or attempt any writes.",
@@ -83,4 +70,17 @@ func TestRealWikiMaintenanceReadsSkillAndCallsCLI(t *testing.T) {
 		t.Fatalf("synthetic maintenance transport failed: calls=%d err=%v report=%q", calls.Load(), err, report)
 	}
 	t.Logf("real %s skill + CLI transport passed, version=%s calls=%d", runtimeID, detection.Version, calls.Load())
+}
+
+// maintenanceTransportHost 仅供显式真实验收复用共享原生启动边界，不调用旧 Run 引擎。
+func maintenanceTransportHost(runtimeID string, detection runtimes.DetectionResult, sdk *runtimes.SDK) *runtimehost.Host {
+	return runtimehost.New(runtimehost.Config{
+		Launch: sdk.PrepareLaunch,
+		Resolve: func(context.Context, runtimehost.TextRequest) (runtimehost.Environment, error) {
+			return runtimehost.Environment{BaseRuntimeID: runtimeID, Detection: detection, Target: runtimes.RuntimeTarget{RuntimeID: runtimeID, Binary: detection.ResolvedBinary, CloseAfterRun: true}}, nil
+		},
+		Prepare: func(_ context.Context, _ runtimehost.TextRequest, environment runtimehost.Environment, _ string) (runtimes.RuntimeTarget, func(context.Context) error, error) {
+			return environment.Target, func(context.Context) error { return nil }, nil
+		},
+	})
 }

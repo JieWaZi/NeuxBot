@@ -2,7 +2,7 @@
 
 独立的嵌入式 Go 执行模块，负责调用、技术会话、交互、输出与资源租约。它不拥有 Chat、伙伴、团队、Workflow、知识内容或产品数据库，不提供 Runtime HTTP 服务。
 
-完整目标和后续切换见[实施计划](../../docs/discussions/agent-runtime-implementation-plan-cn.md)。本模块的存在不表示 NeuxBot 生产入口已经切换。
+完整目标和后续切换见[实施计划](../../docs/discussions/agent-runtime-implementation-plan-cn.md)。知识生成与独立 Wiki 维护已通过宿主接入本模块；其他生产入口按计划逐批切换。
 
 ## 当前边界
 
@@ -29,11 +29,11 @@
 
 ## ACP 结果调用与边界
 
-当前共享 ACP Driver 为各 CLI 创建新建、单次 Prompt 的独占连接。明确选择 `inherit_native` 与 `allow_all` 且宿主授予相应权限时，才能进入实际 ACP 调用；请求不支持的隔离或禁工具策略时准确返回 unsupported。知识入口只启动独立 CLI 会话、传入任务输入并消费最终结果，不主动注入 AGENTS.md、Skill 或 MCP，不接管原生工具和配置加载。
+当前共享 ACP Driver 为各 CLI 创建新建、单次 Prompt 的独占连接。明确选择 `inherit_native` 与 `allow_all` 且宿主授予相应权限时，才能进入实际 ACP 调用；请求不支持的隔离或禁工具策略时准确返回 unsupported。知识纯生成入口只启动独立 CLI 会话、传入任务输入并消费最终结果，不主动注入 AGENTS.md、Skill 或 MCP，不接管原生工具和配置加载。
 
 这一策略不证明操作系统目录沙箱。工作目录是原生 cwd，权限和原生工具仍取决于明确继承的环境；禁止把 cwd 或路径前缀称为安全隔离。
 
-尚不支持的贡献、历史 Seed、附件、额外目录、热续聊及冷恢复准确拒绝，模型、推理及所选原生权限模式经公开配置目录及回执验证。单连接只接受一次 Prompt，避免无回合身份的迟到 ACP 通知串入后续调用。
+当前支持显式 Instructions 与 Skills：以冻结的指令和技能目录引用构造首次 Prompt 前缀，作为普通任务文本传入，不宣称原生 system role；技能正文不复制进 Prompt，资源文件由宿主租约拥有。无贡献时保持输入原文。静态前缀的构建上限为 1 MiB，与输出和事件预算分别控制。MCP 贡献、历史 Seed、附件、额外目录、热续聊及冷恢复准确拒绝，模型、推理及所选原生权限模式经公开配置目录及回执验证。单连接只接受一次 Prompt，避免无回合身份的迟到 ACP 通知串入后续调用。
 
 Driver 读取 acp-go 的公开 `MessageId` 与 `acp-go/message` 事实。Codex 使用 `CompletionNativePhase`，只有真实原生 final 阶段可成为严格结果；缺 phase、commentary、partial_answer 和 plan 不升级为答案。其余 CLI 使用 `CompletionLastAssistant`：外层公开 Prompt 成功返回且通知排空后，只确认最后有效助手消息，后续工具、思考或过程活动使旧候选失效。原生阶段证明与回合完成证明分别标记为 `verified_phase`、`verified_driver_completion`，不混为原生 final。
 
@@ -43,7 +43,7 @@ Driver 读取 acp-go 的公开 `MessageId` 与 `acp-go/message` 事实。Codex �
 
 原生关闭通过公开 `Agent.Close` 执行。Runtime 的重试不代表原生实现必然可恢复：当前固定版本 Codex 的 Close 使用一次性释放并保留首次错误，因此该错误再次返回时仍保留租约并报告清理未完成，不能伪造释放成功。原生关闭语义的后续改进继续归独立 acp-go。
 
-全部现有 CLI 的知识宿主位于 `server/internal/runtimehost`，启动事实复用 `SDK.PrepareLaunch`，账号复用原服务，Codex 刷新复用 `runtimeauth`；旧知识 GenerateText 执行链已删除。冷恢复、原生分叉、安装探测、空闲会话淘汰及其他入口按后续批次实现。
+全部现有 CLI 的知识宿主位于 `server/internal/runtimehost`，启动事实复用 `SDK.PrepareLaunch`，账号复用原服务，Codex 刷新复用 `runtimeauth`。纯生成与工具任务共用调用内核；维护领域授权在调用完成或取消时撤销，资源继续由内核保护到原生关闭成功。旧知识 GenerateText 与独立维护 Run 装配、专用文本收集器已删除。冷恢复、原生分叉、安装探测、空闲会话淘汰及其他入口按后续批次实现。
 
 ## 验证
 
