@@ -19,7 +19,7 @@ import (
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
-// ChatConfig 注入普通聊天所需的启动事实、目录资源与独立原生分叉能力。
+// ChatConfig 注入聊天与编排共用的启动事实、目录资源及独立原生分叉能力。
 type ChatConfig struct {
 	// PrepareWorkspace 只物化受管原生指令与技能，不提交输入或创建进程。
 	PrepareWorkspace func(runtimes.RunRequest) error
@@ -33,7 +33,7 @@ type ChatConfig struct {
 	Driver func(Environment, acpdriver.Factory) (c.Driver, error)
 }
 
-// ChatHost 将普通聊天的技术调用接入独立模块；Chat仍拥有消息日志与业务执行。
+// ChatHost 将所有产生聊天日志的技术调用接入独立模块；业务入口仍拥有各自编排。
 // 同一工作区的输入由Execution的单Chat占用串行化，mutex只保护跨Chat集合与退出。
 type ChatHost struct {
 	// config 保存应用注入的静态端口。
@@ -58,7 +58,7 @@ type chatSession struct {
 	nativeID string
 }
 
-// NewChat 创建不启动进程与后台线程的普通聊天宿主。
+// NewChat 创建不启动进程与后台线程的共享聊天执行宿主。
 func NewChat(config ChatConfig) *ChatHost {
 	return &ChatHost{config: config, sessions: make(map[string]*chatSession)}
 }
@@ -71,7 +71,7 @@ func (h *ChatHost) Runtimes() []runtimes.RuntimeSummary {
 	return h.config.Runtimes()
 }
 
-// ForkSession 只调用独立原生分叉端口，不提交模型输入。
+// ForkSession 调用独立原生分叉端口；源会话由业务预检关闭，不提交模型输入。
 func (h *ChatHost) ForkSession(ctx context.Context, r runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error) {
 	if h.config.Fork == nil {
 		return runtimes.ForkSessionResult{}, status_error.RuntimePolicyUnsupported

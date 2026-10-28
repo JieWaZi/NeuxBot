@@ -43,7 +43,10 @@ func (r *retryTestRuntime) ForkSession(ctx context.Context, request runtimes.For
 	return (&fakeRuntime{}).ForkSession(ctx, request)
 }
 
-func (r *retryTestRuntime) Run(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
+func (r *retryTestRuntime) RunWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+	if release != nil {
+		defer func() { _ = release(context.WithoutCancel(ctx)) }()
+	}
 	r.mutex.Lock()
 	r.requests = append(r.requests, request)
 	result, output, tool := r.result, r.output, r.tool
@@ -66,6 +69,14 @@ func (r *retryTestRuntime) Run(ctx context.Context, request runtimes.RunRequest,
 	result.Session.Mode = request.Session.Mode
 	return result
 }
+
+// RunSummaryWithLease 通过同一测试宿主执行隐藏会话交接并结束资源使用。
+func (r *retryTestRuntime) RunSummaryWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+	return r.RunWithLease(ctx, request, sink, release)
+}
+
+// CloseWorkspace 的同步测试消费者已经退出，无需另行持有工作区资源。
+func (r *retryTestRuntime) CloseWorkspace(context.Context, string) error { return nil }
 
 // retryableTestResult 构造无输出、无工具且保留可靠会话的限流终态。
 func retryableTestResult() runtimes.Result {

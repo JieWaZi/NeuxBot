@@ -11,20 +11,22 @@ flowchart LR
   Desktop -->|统一 WS| Events[Core 事件分发]
   Core --> Chat[Chat 与团队及工作流]
   Chat --> Execution[Execution]
-  Execution -->|普通 Chat| ChatHost[ChatHost]
-  Execution -->|尚未迁移的编排入口| Runtime[Runtime 适配]
-  Runtime --> CLI[本机智能体]
+  Execution --> ChatHost[ChatHost：日志与交互宿主]
   Core --> Knowledge[知识生成与独立 Wiki 维护]
   Knowledge --> Host[runtimehost]
   Host --> AgentRuntime[独立 Agent Runtime]
   ChatHost --> AgentRuntime
-  AgentRuntime --> CLI
+  AgentRuntime --> CLI[本机智能体]
+  Core --> Environment[CLI 目录、探测与启动准备]
+  ChatHost -.-> Environment
+  Host -.-> Environment
   Core --> Store[SQLite 与权威日志及受管文件]
 ```
 
 ## 所有权
 
 - Chat 保存消息权威日志与原生会话关联；Execution 管理接纳、执行、取消和失败恢复。
+- 普通聊天、团队、工作流、自动任务和 IM 共用 Execution 的单一 Runtime 端口；领域能力通过既有授权与资源端口注入，执行内核不识别业务类型。
 - Channel 管理团队成员、任务与协作；Workflow 管理源码版本、编译产物和运行状态。
 - 自动任务和 IM 管理触发、授权及交付关系，复用已有执行入口。
 - 伙伴、项目、插件、技能、连接器、账号和记忆各自维护其业务事实。
@@ -44,6 +46,7 @@ flowchart LR
 | packages/platform-contracts    | 中立能力接口和事件协议                        |
 | packages/agent-runtime         | 独立调用、会话、最终结果与公开 ACP 驱动       |
 | server/internal/runtimehost    | CLI 启动事实、账号租约、Chat 与独立任务装配   |
+| server/internal/runtimes       | CLI 目录、探测、启动资源准备与原生分叉       |
 | packages/terminal-runtime      | Core 管理的 PTY 与终端屏幕运行时              |
 | server/apis                    | HTTP Operator、校验及单入口用例               |
 | server/services                | 多入口复用业务与后台生命周期                  |

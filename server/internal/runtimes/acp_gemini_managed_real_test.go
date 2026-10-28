@@ -107,26 +107,5 @@ func TestOfficialGeminiManagedDetection(t *testing.T) {
 	if !selected {
 		t.Fatal("selected native model missing")
 	}
-	request := RunRequest{Target: RuntimeTarget{RuntimeID: RuntimeIDGemini, Binary: node, PrefixArgs: []string{cli}, Environment: environment, AccountID: "official-fixture", Isolated: true, CloseAfterRun: true}, Detection: result, Workspace: Workspace{Path: workspace, Managed: true}, Session: SessionDirective{Mode: SessionModeNew}, Policy: RunPolicy{Model: "gemini-3.8-flash", Reasoning: "low", Execution: ExecutionPolicy{PermissionLevel: PermissionLevelFullAccess}}}
-	for index, level := range []PermissionLevel{PermissionLevelFullAccess, PermissionLevelDefault, PermissionLevelAuto} {
-		request.Policy.Execution.PermissionLevel = level
-		request.Message.Text = fmt.Sprintf("Local turn %d", index+1)
-		sink := &recordingSink{}
-		run := sdk.Run(ctx, request, sink)
-		if run.Failure != nil || !strings.Contains(sink.textOutput(), "Local fixture answer") {
-			t.Fatalf("official turn %d: %+v output=%q", index+1, run, sink.textOutput())
-		}
-		request.Session = SessionDirective{Mode: SessionModeResume, ID: run.Session.OutputID}
-	}
-	requestMutex.Lock()
-	defer requestMutex.Unlock()
-	if len(prompts) != 3 || !strings.Contains(prompts[2], "Local turn 1") || !strings.Contains(prompts[2], "Local turn 2") {
-		t.Fatalf("persistent native history lost: %v", prompts)
-	}
-	for _, body := range prompts {
-		if !strings.Contains(body, `"thinkingLevel":"LOW"`) {
-			t.Fatalf("actual thinking wire value missing: %s", body)
-		}
-	}
-	t.Log("PASS official managed ready/catalog + three owned-process turns, full-access → default → auto, persisted native history, exact LOW wire value, loopback credentials only")
+
 }

@@ -4,8 +4,7 @@ import (
 	"context"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+
 	acpgemini "github.com/JieWaZi/acp-go/pkg/gemini"
 	acpgrok "github.com/JieWaZi/acp-go/pkg/grok"
 	"github.com/JieWaZi/acp-go/pkg/nativeacp"
@@ -13,7 +12,7 @@ import (
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
-// managedNativeBinding 由适配器冻结权限，每次调用重建进程并通过原生历史恢复。
+// managedNativeBinding 声明受管原生工厂与产品权限目录。
 func managedNativeBinding(id, name string) acpRuntimeBinding {
 	binding := nativeACPRuntimeBinding()
 	binding.nativeVersionMetadataOnly = true
@@ -23,22 +22,12 @@ func managedNativeBinding(id, name string) acpRuntimeBinding {
 	binding.permissionLevels = func([]acp.SessionConfigOption, []acp.SessionMode) []PermissionLevel {
 		return []PermissionLevel{PermissionLevelDefault, PermissionLevelAuto, PermissionLevelFullAccess}
 	}
-	binding.modeID = func(ExecutionPolicy, *acp.SessionModeState) (acp.SessionModeId, error) {
-		return "", nil
-	}
-	binding.validateSelection = cursorValidateSelection
 	return binding
 }
 
-// openCodeACPRuntimeBinding 只在受管账号边界转换真实 provider/model ID。
+// openCodeACPRuntimeBinding 准备 OpenCode 原生管理工厂。
 func openCodeACPRuntimeBinding() acpRuntimeBinding {
 	binding := managedNativeBinding(RuntimeIDOpenCode, "OpenCode")
-	binding.resolveSelections = func(_ *embeddedACPAgent, _ acp.SessionId, request RunRequest) RunRequest {
-		if request.Target.Isolated && request.Target.AccountID != "" {
-			request.Policy.Model = accountconfig.NativeModelID(RuntimeIDOpenCode, request.Policy.Model)
-		}
-		return request
-	}
 	binding.newAgent = func(ctx context.Context, config acpAdapterConfig) (acp.Agent, error) {
 		return acpopencode.NewAgent(ctx, acpopencode.Config{Logger: acpAdapterLogger(ctx), OpenCodePath: config.Executable, PrefixArgs: cloneStrings(config.PrefixArgs), Environment: cloneStrings(config.Environment), WorkingDirectory: config.WorkingDirectory, PermissionMode: config.PermissionMode})
 	}
@@ -48,16 +37,7 @@ func openCodeACPRuntimeBinding() acpRuntimeBinding {
 // geminiACPRuntimeBinding 使用账号受管根保存 owned-child 的稳定身份和原生历史。
 func geminiACPRuntimeBinding() acpRuntimeBinding {
 	binding := managedNativeBinding(RuntimeIDGemini, "Gemini CLI")
-	binding.stateDirectory = func(request acpRunRequest) string { return request.Prepared.environment.get("GEMINI_CLI_HOME") }
-	binding.modeID = func(policy ExecutionPolicy, _ *acp.SessionModeState) (acp.SessionModeId, error) {
-		if policy.WorkspaceReadOnly {
-			return "default", nil
-		}
-		if policy.PermissionLevel == PermissionLevelFullAccess {
-			return "yolo", nil
-		}
-		return "default", nil
-	}
+	binding.stateDirectory = func(prepared preparedRuntime, _ Workspace) string { return prepared.environment.get("GEMINI_CLI_HOME") }
 	binding.newAgent = func(ctx context.Context, config acpAdapterConfig) (acp.Agent, error) {
 		return acpgemini.NewAgent(ctx, acpgemini.Config{Logger: acpAdapterLogger(ctx), GeminiPath: config.Executable, PrefixArgs: cloneStrings(config.PrefixArgs), Environment: cloneStrings(config.Environment), WorkingDirectory: config.WorkingDirectory, StateDirectory: config.StateDirectory, PermissionMode: config.PermissionMode})
 	}
@@ -80,7 +60,6 @@ func qoderACPRuntimeBinding() acpRuntimeBinding {
 	binding.baseRuntimeID = RuntimeIDQoder
 	binding.displayName = "Qoder"
 	binding.supportsMCPTransport = allMCPTransports
-	binding.validateSelection = cursorValidateSelection
 	binding.permissionLevels = func(options []acp.SessionConfigOption, modes []acp.SessionMode) []PermissionLevel {
 		available := acpAvailableModeIDs(options, modes)
 		levels := []PermissionLevel{}
@@ -94,26 +73,6 @@ func qoderACPRuntimeBinding() acpRuntimeBinding {
 			levels = append(levels, PermissionLevelFullAccess)
 		}
 		return levels
-	}
-	binding.modeID = func(policy ExecutionPolicy, modes *acp.SessionModeState) (acp.SessionModeId, error) {
-		// 只读不能借用权限菜单中的其他模式；缺少目录时不猜测执行权限。
-		if policy.WorkspaceReadOnly || modes == nil {
-			return "", status_error.RuntimeProtocolIncompatible
-		}
-		candidates := []string{constants.RuntimeQoderDefaultModeID}
-		if policy.PermissionLevel == PermissionLevelFullAccess {
-			candidates = []string{constants.RuntimeQoderYoloModeID, constants.RuntimeQoderBypassModeID}
-		} else if policy.PermissionLevel == PermissionLevelAuto {
-			candidates = []string{constants.RuntimeQoderAutoModeID}
-		}
-		for _, candidate := range candidates {
-			for _, mode := range modes.AvailableModes {
-				if string(mode.Id) == candidate {
-					return mode.Id, nil
-				}
-			}
-		}
-		return "", status_error.RuntimeProtocolIncompatible
 	}
 	binding.newAgent = func(ctx context.Context, config acpAdapterConfig) (acp.Agent, error) {
 		return nativeacp.NewAgent(ctx, nativeacp.Config{

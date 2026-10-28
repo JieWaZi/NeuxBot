@@ -5,39 +5,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
+
 	"testing"
 )
 
-// runAllyPiRPCFixture 验证 NeuxBot 经 Go 适配器只发送 Pi 原生 RPC，且恢复时刷新 MCP。
+// runAllyPiRPCFixture 提供 Pi 能力探测使用的原生 RPC，不允许模型回合。
 func runAllyPiRPCFixture(t *testing.T) {
-	cwd, _ := os.Getwd()
 	file := filepath.Join(os.Getenv("PI_CODING_AGENT_DIR"), "sessions", "fixture.jsonl")
-	extension, loaded := "", false
-	for i, arg := range os.Args {
-		if i+1 < len(os.Args) {
-			if arg == "--extension" {
-				extension = os.Args[i+1]
-			}
-			if arg == "--session" {
-				file = os.Args[i+1]
-				loaded = true
-			}
-		}
-	}
-	snapshot, err := os.ReadFile(extension)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat("AGENTS.md"); err == nil {
-		expected := "Bearer first"
-		if loaded {
-			expected = "Bearer refreshed"
-		}
-		if !strings.Contains(string(snapshot), expected) || !strings.Contains(string(snapshot), "ally_control") {
-			t.Fatal("stale or missing MCP snapshot")
-		}
-	}
 	model, reasoning := "model-a", "low"
 	write := func(value any) {
 		if err := json.NewEncoder(os.Stdout).Encode(value); err != nil {
@@ -69,25 +43,7 @@ func runAllyPiRPCFixture(t *testing.T) {
 		case "set_thinking_level":
 			reasoning = command["level"].(string)
 		case "prompt":
-			message := command["message"].(string)
-			if strings.Contains(message, "恢复后的当前问题") &&
-				(strings.Contains(message, "Chat history:") ||
-					strings.Contains(message, "历史问题") ||
-					strings.Contains(message, "历史回答")) {
-				t.Fatal("Pi resume repeated chat history")
-			}
-			skill, skillErr := os.ReadFile(filepath.Join(".pi", "skills", "review", "SKILL.md"))
-			instructions, instructionErr := os.ReadFile("AGENTS.md")
-			if skillErr != nil || instructionErr != nil || !strings.Contains(string(skill), "Review marker") || !strings.Contains(string(instructions), "Instruction marker") || !strings.Contains(message, "/skill:review") {
-				t.Fatal("missing Pi runtime files or selected skill")
-			}
-			_ = os.MkdirAll(filepath.Dir(file), 0700)
-			header, _ := json.Marshal(map[string]any{"type": "session", "id": "pi-native-session", "cwd": cwd})
-			_ = os.WriteFile(file, append(header, '\n'), 0600)
-			write(map[string]any{"type": "message_update", "assistantMessageEvent": map[string]any{"type": "text_delta", "delta": "provider/" + model + ":" + reasoning}})
-			write(map[string]any{"type": "message_end", "message": map[string]any{"role": "assistant", "stopReason": "stop", "usage": map[string]any{"input": 7, "output": 5, "cacheRead": 3, "cacheWrite": 2}}})
-			write(map[string]any{"type": "extension_ui_request", "method": "setStatus", "statusKey": "acp-go.context-usage", "statusText": `{"tokens":123,"contextWindow":100000}`})
-			write(map[string]any{"type": "agent_settled"})
+			t.Fatal("capability detection must not submit a model Prompt")
 		case "abort":
 		default:
 			t.Fatalf("not a supported Pi RPC command: %v", command)

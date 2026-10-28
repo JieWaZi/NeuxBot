@@ -1,7 +1,7 @@
 package runtimes
 
 import (
-	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -28,10 +28,6 @@ func BaseRuntimeIDs() []string {
 type mcpPreparation struct {
 	// compatible 是经过校验且可以注入当前 Runtime 的连接器。
 	compatible []Connector
-	// events 是连接器因 Runtime 不兼容而未注入时的用户可见说明。
-	events []Event
-	// selected 是已兼容注入且被用户在当前消息中明确引用的连接器。
-	selected []Connector
 }
 
 // ConnectorCompatibility 返回一个基础 Runtime 是否支持指定 MCP 传输方式。
@@ -88,8 +84,6 @@ func prepareMCPConnectorSet(
 	supported func(ConnectorTransport) bool,
 ) (mcpPreparation, error) {
 	compatible := make([]Connector, 0, len(connectors))
-	selected := make([]Connector, 0, len(connectors))
-	events := []Event{}
 	seenIDs := make(map[string]struct{}, len(connectors))
 	seenRuntimeKeys := make(map[string]struct{}, len(connectors))
 	for _, connector := range connectors {
@@ -107,32 +101,16 @@ func prepareMCPConnectorSet(
 		}
 		seenRuntimeKeys[connector.RuntimeKey] = struct{}{}
 		if !supported(connector.Transport) {
-			event, err := newEvent(EventTypeCommentaryDelta, map[string]any{
-				"text": fmt.Sprintf(
-					"连接器“%s”未注入：当前 Runtime 不支持 %s 传输。\n",
-					connector.Name,
-					connector.Transport,
-				),
-			})
-			if err != nil {
-				return mcpPreparation{}, err
-			}
-			events = append(events, event)
 			continue
 		}
 		if err := validateConnector(connector); err != nil {
 			return mcpPreparation{}, err
 		}
 		compatible = append(compatible, connector)
-		if connector.Selected {
-			selected = append(selected, connector)
-		}
 	}
 
 	return mcpPreparation{
 		compatible: compatible,
-		events:     events,
-		selected:   selected,
 	}, nil
 }
 
@@ -176,26 +154,67 @@ func validRuntimeConnectorKey(value string) bool {
 	}) == -1
 }
 
-// applySelectedConnectorHint 把当前回合显式引用的连接器表达为不含凭据的使用提示。
-func applySelectedConnectorHint(message string, connectors []Connector) string {
-	if len(connectors) == 0 {
-		return message
-	}
-	var builder strings.Builder
-	builder.WriteString(message)
-	if message != "" {
-		builder.WriteString("\n\n")
-	}
-	builder.WriteString(
-		"Use these explicitly referenced MCP connectors for this request when relevant:\n",
-	)
+// acpMCPServers 转换经过兼容性校验的 Connector。
+func acpMCPServers(
+	connectors []Connector,
+) ([]acp.McpServer, error) {
+	servers := make([]acp.McpServer, 0, len(connectors))
 	for _, connector := range connectors {
-		fmt.Fprintf(
-			&builder,
-			"- %s (%s)\n",
-			connector.RuntimeKey,
-			connector.Name,
-		)
+		switch connector.Transport {
+		case ConnectorTransportStdio:
+			environmentKeys := make([]string, 0, len(connector.Environment))
+			for key := range connector.Environment {
+				environmentKeys = append(environmentKeys, key)
+			}
+			sort.Strings(environmentKeys)
+			environment := make([]acp.EnvVariable, 0, len(environmentKeys))
+			for _, key := range environmentKeys {
+				environment = append(environment, acp.EnvVariable{
+					Name:  key,
+					Value: connector.Environment[key],
+				})
+			}
+			servers = append(servers, acp.McpServer{
+				Stdio: &acp.McpServerStdio{
+					Name:    connector.RuntimeKey,
+					Command: connector.Command,
+					Args:    append([]string{}, connector.Arguments...),
+					Env:     environment,
+				},
+			})
+		case ConnectorTransportStreamableHTTP:
+			servers = append(servers, acp.McpServer{
+				Http: &acp.McpServerHttpInline{
+					Name:    connector.RuntimeKey,
+					Url:     connector.URL,
+					Headers: acpHTTPHeaders(connector.Headers),
+				},
+			})
+		case ConnectorTransportSSE:
+			servers = append(servers, acp.McpServer{
+				Sse: &acp.McpServerSseInline{
+					Name:    connector.RuntimeKey,
+					Url:     connector.URL,
+					Headers: acpHTTPHeaders(connector.Headers),
+				},
+			})
+		default:
+			return nil, status_error.SkillUnavailable
+		}
 	}
-	return strings.TrimSuffix(builder.String(), "\n")
+	return servers, nil
+}
+
+// acpHTTPHeaders 把 Connector header 转为顺序稳定的 ACP 列表。
+func acpHTTPHeaders(values map[string]string) []acp.HttpHeader {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	headers := make([]acp.HttpHeader, 0, len(keys))
+	for _, key := range keys {
+		headers = append(headers, acp.HttpHeader{Name: key, Value: values[key]})
+	}
+	return headers
 }

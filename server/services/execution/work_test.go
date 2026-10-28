@@ -16,6 +16,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -241,6 +242,16 @@ func (r *fakeRuntime) ForkSession(context.Context, runtimes.ForkSessionRequest) 
 	panic("unexpected ForkSession call")
 }
 
+// RunSummaryWithLease 通过同一测试宿主执行隐藏会话交接并结束资源使用。
+func (r *fakeRuntime) RunSummaryWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink,
+	release func(context.Context) error,
+) runtimes.Result {
+	return r.RunWithLease(ctx, request, sink, release)
+}
+
+// CloseWorkspace 的同步测试消费者已经退出，无需另行持有工作区资源。
+func (r *fakeRuntime) CloseWorkspace(context.Context, string) error { return nil }
+
 // gatedRuntime 在测试允许前不接受 Invocation，用于验证派发前接纳语义。
 type gatedRuntime struct {
 	// fakeRuntime 提供固定 Runtime 摘要。
@@ -251,12 +262,16 @@ type gatedRuntime struct {
 	proceed chan struct{}
 }
 
-// Run 等待测试门闩，然后交付唯一启动事件并正常结束。
-func (r *gatedRuntime) Run(
+// RunWithLease 等待测试门闩，然后交付启动事件并在结束后释放资源。
+func (r *gatedRuntime) RunWithLease(
 	ctx context.Context,
 	request runtimes.RunRequest,
 	sink runtimes.EventSink,
+	release func(context.Context) error,
 ) runtimes.Result {
+	if release != nil {
+		defer func() { _ = release(context.WithoutCancel(ctx)) }()
+	}
 	close(r.entered)
 	select {
 	case <-ctx.Done():
@@ -394,12 +409,16 @@ func (r *fakeRuntime) Runtimes() []runtimes.RuntimeSummary {
 	}}
 }
 
-// Run 模拟首条输入交付、增量事件和 Runtime 终态。
-func (r *fakeRuntime) Run(
+// RunWithLease 模拟完整同步消费者，在退出后释放资源。
+func (r *fakeRuntime) RunWithLease(
 	ctx context.Context,
 	request runtimes.RunRequest,
 	sink runtimes.EventSink,
+	release func(context.Context) error,
 ) runtimes.Result {
+	if release != nil {
+		defer func() { _ = release(context.WithoutCancel(ctx)) }()
+	}
 	r.requests = append(r.requests, request)
 	if r.failureStage != "" {
 		return runtimes.Result{ExitCode: -1, Failure: &runtimes.Failure{
@@ -474,8 +493,13 @@ func (r *cancelableRuntime) Runtimes() []runtimes.RuntimeSummary {
 	return (&fakeRuntime{}).Runtimes()
 }
 
-// Run 先确认首条输入已经交付，再等待 Context 取消。
-func (r *cancelableRuntime) Run(ctx context.Context, _ runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
+// RunWithLease 确认输入后等待取消，消费者结束后释放资源。
+func (r *cancelableRuntime) RunWithLease(ctx context.Context, _ runtimes.RunRequest, sink runtimes.EventSink,
+	release func(context.Context) error,
+) runtimes.Result {
+	if release != nil {
+		defer func() { _ = release(context.WithoutCancel(ctx)) }()
+	}
 	started, _ := json.Marshal(runtimes.InvocationStartedData{InvocationID: "cancelable-invocation"})
 	if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeInvocationStarted, Data: started}); err != nil {
 		return runtimes.Result{ExitCode: -1, Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery, Message: err.Error()}}
@@ -489,6 +513,16 @@ func (r *cancelableRuntime) Run(ctx context.Context, _ runtimes.RunRequest, sink
 		Transience: runtimes.FailureTransiencePermanent,
 	}}
 }
+
+// RunSummaryWithLease 通过同一测试宿主执行隐藏会话交接并结束资源使用。
+func (r *cancelableRuntime) RunSummaryWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink,
+	release func(context.Context) error,
+) runtimes.Result {
+	return r.RunWithLease(ctx, request, sink, release)
+}
+
+// CloseWorkspace 的同步测试消费者已经退出，无需另行持有工作区资源。
+func (r *cancelableRuntime) CloseWorkspace(context.Context, string) error { return nil }
 
 func TestSendMessagePreStartFailureLeavesNoAuthoritativeMessageOrExecution(
 	t *testing.T,
@@ -1181,10 +1215,78 @@ func TestSendMessagePersistsSessionAndResumesAfterModelChange(t *testing.T) {
 type forkContinuationRuntime struct {
 	// fakeRuntime 提供会话执行及结构化请求记录。
 	fakeRuntime
+	// forks 记录唯一宿主收到的冻结原生分叉请求。
+	forks []runtimes.ForkSessionRequest
+	// closed 记录原生派发前要求释放的源工作区。
+	closed []string
+	// closeError 模拟源工作区消费者尚未退出。
+	closeError error
+	// forkError 模拟原生分叉已经派发但未取得可靠结果。
+	forkError error
 }
 
-func (r *forkContinuationRuntime) ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error) {
+func (r *forkContinuationRuntime) ForkSession(_ context.Context, request runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error) {
+	r.forks = append(r.forks, request)
+	if request.ReconcileOnly {
+		return runtimes.ForkSessionResult{}, status_error.ChatForkIndeterminate
+	}
+	if r.forkError != nil {
+		return runtimes.ForkSessionResult{}, r.forkError
+	}
 	return runtimes.ForkSessionResult{SessionID: "fork-child-session"}, nil
+}
+
+// CloseWorkspace 记录源消费者关闭尝试，失败不进入原生分叉派发。
+func (r *forkContinuationRuntime) CloseWorkspace(_ context.Context, directory string) error {
+	r.closed = append(r.closed, directory)
+	return r.closeError
+}
+
+// TestForkClosesSourceBeforeNativeDispatch 验证关闭失败可重试，已派发的不确定结果只允许对账。
+func TestForkClosesSourceBeforeNativeDispatch(t *testing.T) {
+	ctx := context.Background()
+	runtime := &forkContinuationRuntime{fakeRuntime: fakeRuntime{result: runtimes.Result{Session: runtimes.SessionResult{OutputID: "parent-session", State: runtimes.SessionStateCreated, ForkMode: "turn", ForkPosition: "parent-turn"}}}}
+	environment, _ := (readyRuntimeEnvironmentReader{}).Get(ctx, runtimes.RuntimeIDCodex)
+	environment.BaseRuntimeID = runtimes.RuntimeIDCodex
+	manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{runtimeEnvironments: configurationEnvironmentReader{environment: environment}})
+	first, err := manager.sendTestMessage(ctx, testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	core := manager.execution.(*service)
+	input := chatservice.ForkInput{ChatID: first.Chat.ID, ExecutionID: first.Execution.ID, ClientRequestID: "close-before-dispatch"}
+	runtime.closeError = status_error.RuntimeShutdownFailed
+	if _, err = core.ForkChat(ctx, input); !errors.Is(err, status_error.RuntimeShutdownFailed) {
+		t.Fatalf("close failure=%v", err)
+	}
+	operation, exists, err := chatstorage.ReadForkOperation(core.storage.ForkDirectory(input.ChatID, input.ClientRequestID))
+	if err != nil || !exists || operation.NativeStarted || len(runtime.forks) != 0 || len(runtime.closed) != 1 || runtime.closed[0] != runtime.requests[0].Workspace.Path {
+		t.Fatalf("close failure crossed native boundary: operation=%+v forks=%+v closed=%v error=%v", operation, runtime.forks, runtime.closed, err)
+	}
+	runtime.closeError = nil
+	child, err := core.ForkChat(ctx, input)
+	if err != nil || child == "" || len(runtime.forks) != 1 || runtime.forks[0].ReconcileOnly || len(runtime.closed) != 2 {
+		t.Fatalf("safe retry=%s forks=%+v closed=%v error=%v", child, runtime.forks, runtime.closed, err)
+	}
+	same, err := core.ForkChat(ctx, input)
+	if err != nil || same != child || len(runtime.forks) != 1 || len(runtime.closed) != 2 {
+		t.Fatalf("published retry=%s error=%v", same, err)
+	}
+
+	input.ClientRequestID = "uncertain-dispatch"
+	runtime.forkError = context.DeadlineExceeded
+	if _, err = core.ForkChat(ctx, input); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("native dispatch failure=%v", err)
+	}
+	operation, exists, err = chatstorage.ReadForkOperation(core.storage.ForkDirectory(input.ChatID, input.ClientRequestID))
+	if err != nil || !exists || !operation.NativeStarted || len(runtime.forks) != 2 || runtime.forks[1].ReconcileOnly || len(runtime.closed) != 3 {
+		t.Fatalf("native dispatch was not durable: operation=%+v forks=%+v closed=%v error=%v", operation, runtime.forks, runtime.closed, err)
+	}
+	runtime.closeError = status_error.RuntimeShutdownFailed
+	if _, err = core.ForkChat(ctx, input); !errors.Is(err, status_error.ChatForkIndeterminate) || len(runtime.forks) != 3 || !runtime.forks[2].ReconcileOnly || len(runtime.closed) != 3 {
+		t.Fatalf("uncertain retry replayed or rechecked source: forks=%+v closed=%v error=%v", runtime.forks, runtime.closed, err)
+	}
 }
 
 func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
@@ -1202,6 +1304,9 @@ func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
 			child, err := manager.execution.ForkChat(context.Background(), chatservice.ForkInput{ChatID: first.Chat.ID, ExecutionID: first.Execution.ID, ClientRequestID: "fork-scope"})
 			if err != nil {
 				t.Fatal(err)
+			}
+			if len(runtime.forks) != 1 || runtime.forks[0].SourceSessionID != "parent-session" || runtime.forks[0].Position != "parent-turn" || runtime.forks[0].Run.Target.RuntimeID != runtimes.RuntimeIDCodex {
+				t.Fatalf("fork lost frozen native boundary: %+v", runtime.forks)
 			}
 			if changed {
 				home := runtime.requests[0].Target.ConfigHome
@@ -1274,12 +1379,7 @@ func TestSendMessageMergesSupplementalInstructionsBeforeToolCapabilities(t *test
 	if len(runtime.requests[0].Connectors) != 0 {
 		t.Fatalf("internal team tool must be mounted without a user selection hint: %+v", runtime.requests[0].Connectors)
 	}
-	if len(runtime.requests[0].Policy.Execution.TrustedControlTools) != 0 {
-		t.Fatalf(
-			"writable execution unexpectedly trusted internal tools: %+v",
-			runtime.requests[0].Policy.Execution.TrustedControlTools,
-		)
-	}
+
 }
 
 func TestSendMessageReadsCurrentProfileAndProjectInstructions(t *testing.T) {
@@ -1575,47 +1675,65 @@ func TestSendMessageContainsRuntimeFailureAndReleasesChat(t *testing.T) {
 }
 
 func TestCancelExecutionEndsRuntimeAndReleasesChat(t *testing.T) {
-	runtime := &cancelableRuntime{
-		started: make(chan struct{}),
-	}
-	manager := newMessageTestService(
-		t,
-		t.TempDir(),
-		runtime,
-	)
-	result, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		},
-		Message: userMessage{Text: "等待取消"},
-		Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex},
-	})
-	if err != nil {
-		t.Fatalf("sendTestMessage() error = %v", err)
-	}
-	select {
-	case <-runtime.started:
-	case <-time.After(time.Second):
-		t.Fatal("Runtime did not start")
-	}
-	if err := manager.execution.Cancel(result.Chat.ID); err != nil {
-		t.Fatalf("CancelExecution() error = %v", err)
-	}
-	waitForChatTerminal(t, manager, result.Chat.ID)
-	history, err := manager.chats.ReadMessageHistory(
-		context.Background(),
-		result.Chat.ID,
-		0,
-		10,
-	)
-	if err != nil {
-		t.Fatalf("ReadMessageHistory() error = %v", err)
-	}
-	assistant := history.Resources[len(history.Resources)-1]
-	if assistant.Status != constants.ExecutionStatusCanceled ||
-		assistant.ErrorCode != string(runtimes.FailureCodeContextCanceled) {
-		t.Fatalf("assistant terminal = %+v, want canceled", assistant)
+	for _, scope := range []string{"ordinary", "team"} {
+		t.Run(scope, func(t *testing.T) {
+			runtime := &cancelableRuntime{
+				started: make(chan struct{}),
+			}
+			manager := newMessageTestService(
+				t,
+				t.TempDir(),
+				runtime,
+			)
+			request := testMessageInput{
+				NewChat: &testChatInput{
+					WakerID:          "waker-1",
+					WorkingDirectory: t.TempDir(),
+				},
+				Message: userMessage{Text: "等待取消"},
+				Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex},
+			}
+			if scope == "team" {
+				group, err := manager.execution.PrepareChatGroup(context.Background(), PrepareChatGroupIntent{ThreadID: "cancel-thread", Title: "团队取消", ProvisioningID: "cancel-provision", Scope: CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Members: []PrepareChatMember{{ChatID: "11111111111111111111111111111111", WakerID: "waker-1", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				request.NewChat = nil
+				request.ChatID = group.Chats[0].ID
+			}
+			result, err := manager.sendTestMessage(context.Background(), request)
+			if err != nil {
+				t.Fatalf("sendTestMessage() error = %v", err)
+			}
+			select {
+			case <-runtime.started:
+			case <-time.After(time.Second):
+				t.Fatal("Runtime did not start")
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			if err := manager.execution.CancelExecutionAndWait(ctx, result.Chat.ID, result.Execution.ID); err != nil {
+				t.Fatalf("CancelExecution() error = %v", err)
+			}
+			waitForChatTerminal(t, manager, result.Chat.ID)
+			history, err := manager.chats.ReadMessageHistory(
+				context.Background(),
+				result.Chat.ID,
+				0,
+				10,
+			)
+			if err != nil {
+				t.Fatalf("ReadMessageHistory() error = %v", err)
+			}
+			assistant := history.Resources[len(history.Resources)-1]
+			if assistant.Status != constants.ExecutionStatusCanceled ||
+				assistant.ErrorCode != string(runtimes.FailureCodeContextCanceled) {
+				t.Fatalf("assistant terminal = %+v, want canceled", assistant)
+			}
+			if err := manager.execution.CancelExecutionAndWait(ctx, result.Chat.ID, result.Execution.ID); err != nil {
+				t.Fatalf("duplicate cancel: %v", err)
+			}
+		})
 	}
 }
 
@@ -1896,7 +2014,7 @@ type messageTestOptions struct {
 
 // TestChatColdConfigurationChangeUsesJournalFacts 验证宿主重启后仍按权威配置选择会话。
 func TestChatColdConfigurationChangeUsesJournalFacts(t *testing.T) {
-	manager := &service{chatRuntime: &fakeRuntime{}}
+	manager := &service{runtime: &fakeRuntime{}}
 	state := messageChat{
 		chat: models.Chat{ID: "chat", LastRuntimeID: "codex", LastModel: "old", LastReasoning: "high", LastPermissionLevel: constants.PermissionLevelAuto},
 		previousMessages: []messageview.Message{
@@ -1906,21 +2024,31 @@ func TestChatColdConfigurationChangeUsesJournalFacts(t *testing.T) {
 		runtimeSessions: map[string]models.RuntimeSession{"codex": {SessionID: "native", LastExecutionID: "boundary"}},
 	}
 	changes := map[string]func(*runtimeSelection){
+		"runtime":    func(r *runtimeSelection) { r.RuntimeID = "custom-codex" },
 		"model":      func(r *runtimeSelection) { r.Model = "new" },
 		"reasoning":  func(r *runtimeSelection) { r.Reasoning = "low" },
 		"permission": func(r *runtimeSelection) { r.PermissionLevel = constants.PermissionLevelFullAccess },
+		"account":    func(r *runtimeSelection) { r.AccountID = "managed-account" },
 	}
-	for name, change := range changes {
-		t.Run(name, func(t *testing.T) {
-			pending := pendingMessage{runner: manager.chatRuntime, runtime: runtimeSelection{RuntimeID: "codex", Model: "old", Reasoning: "high", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}}
-			unchanged := manager.buildRunRequest(state, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-			if unchanged.Session.Mode != runtimes.SessionModeResume {
-				t.Fatalf("unchanged=%+v", unchanged.Session)
+	for _, scope := range []string{"ordinary", "team"} {
+		t.Run(scope, func(t *testing.T) {
+			current := state
+			if scope == "team" {
+				current.threadWorkspaceID = "team-workspace"
 			}
-			change(&pending.runtime)
-			changed := manager.buildRunRequest(state, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-			if changed.Session.Mode != runtimes.SessionModeNew || len(changed.History) == 0 {
-				t.Fatalf("changed=%+v history=%+v", changed.Session, changed.History)
+			for name, change := range changes {
+				t.Run(name, func(t *testing.T) {
+					pending := pendingMessage{runtime: runtimeSelection{RuntimeID: "codex", Model: "old", Reasoning: "high", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}}
+					unchanged := manager.buildRunRequest(current, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
+					if unchanged.Session.Mode != runtimes.SessionModeResume || unchanged.Session.ID != "native" {
+						t.Fatalf("unchanged=%+v", unchanged.Session)
+					}
+					change(&pending.runtime)
+					changed := manager.buildRunRequest(current, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
+					if changed.Session.Mode != runtimes.SessionModeNew || changed.Session.ID != "" || len(changed.History) == 0 {
+						t.Fatalf("changed=%+v history=%+v", changed.Session, changed.History)
+					}
+				})
 			}
 		})
 	}

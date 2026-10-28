@@ -25,20 +25,6 @@ func codexACPRuntimeBinding() acpRuntimeBinding {
 	binding.executableLogKey = "codex_binary"
 	binding.modelConfigID = codexACPModelConfigID
 	binding.reasoningConfigID = codexACPReasoningConfigID
-	binding.elicitationSessionPaths = append(binding.elicitationSessionPaths, []string{"codex", "sessionId"})
-	binding.modeID = func(policy ExecutionPolicy, _ *acp.SessionModeState) (acp.SessionModeId, error) {
-		if policy.WorkspaceReadOnly || policy.PermissionLevel == PermissionLevelDefault {
-			return "read-only", nil
-		}
-		if policy.PermissionLevel == PermissionLevelFullAccess {
-			return "agent-full-access", nil
-		}
-		return "agent", nil
-	}
-	binding.selectedSkillPrompt = func(prompt string, selections []skillSelection) string {
-		return selectedSkillCommandPrompt("$", prompt, selections)
-	}
-	binding.messagePhase = codexACPMessagePhase
 	binding.newAgent = func(ctx context.Context, config acpAdapterConfig) (acp.Agent, error) {
 		refresh := config.RefreshCredentials
 		sourceAuth := ""
@@ -95,11 +81,4 @@ func codexACPRuntimeBinding() acpRuntimeBinding {
 		return agent, nil
 	}
 	return binding
-}
-
-// codexACPMessagePhase 读取 acp-go 保留的 Codex 消息阶段。
-func codexACPMessagePhase(meta map[string]any) string {
-	codexMeta, _ := meta[constants.RuntimeACPMetaKeyCodex].(map[string]any)
-	phase, _ := codexMeta[constants.RuntimeACPMetaKeyPhase].(string)
-	return phase
 }

@@ -29,7 +29,7 @@ func runtimeFailureRetryable(result runtimes.Result) bool {
 }
 
 // retryExecution 保留失败事实，按父执行派生唯一子执行，重复请求只返回同一个结果。
-func (m *service) retryExecution(ctx context.Context, chatID, executionID string, selected ...runtimeRunner) (AcceptedExecution, error) {
+func (m *service) retryExecution(ctx context.Context, chatID, executionID string) (AcceptedExecution, error) {
 	if chatID == "" || executionID == "" {
 		return AcceptedExecution{}, status_error.BadRequest
 	}
@@ -67,12 +67,7 @@ func (m *service) retryExecution(ctx context.Context, chatID, executionID string
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
-	runner := m.runtime
-	if len(selected) > 0 {
-		runner = selected[0]
-	}
 	request := pendingMessage{automaticRunID: previous.AutomaticRunID,
-		runner:            runner,
 		chatID:            chatID,
 		executionID:       retryID,
 		parentExecutionID: executionID,

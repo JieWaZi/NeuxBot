@@ -4,7 +4,6 @@ import (
 	"context"
 	"strings"
 
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acppi "github.com/JieWaZi/acp-go/pkg/pi"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
@@ -18,15 +17,6 @@ func piACPRuntimeBinding() acpRuntimeBinding {
 		return []PermissionLevel{PermissionLevelDefault, PermissionLevelAuto, PermissionLevelFullAccess}
 	}
 	binding.supportsMCPTransport = allMCPTransports
-	binding.selectedSkillPrompt = func(prompt string, selections []skillSelection) string {
-		return selectedSkillCommandPrompt("/skill:", prompt, selections)
-	}
-	binding.modeID = func(policy ExecutionPolicy, _ *acp.SessionModeState) (acp.SessionModeId, error) {
-		if policy.WorkspaceReadOnly {
-			return "", status_error.RuntimeProtocolIncompatible
-		}
-		return "", nil
-	}
 	binding.newAgent = func(ctx context.Context, config acpAdapterConfig) (acp.Agent, error) {
 		modulePath := ""
 		for _, entry := range config.Environment {

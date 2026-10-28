@@ -2,7 +2,7 @@
 
 独立的嵌入式 Go 执行模块，负责调用、技术会话、交互、输出与资源租约。它不拥有 Chat、伙伴、团队、Workflow、知识内容或产品数据库，不提供 Runtime HTTP 服务。
 
-完整目标和后续切换见[实施计划](../../docs/discussions/agent-runtime-implementation-plan-cn.md)。知识生成、独立 Wiki 维护和普通 Chat 通过各自宿主接入本模块；其他编排入口按计划逐批切换。
+完整目标和后续收敛见[实施计划](../../docs/discussions/agent-runtime-implementation-plan-cn.md)。知识生成与独立 Wiki 维护通过独立任务宿主接入；普通 Chat、团队、工作流、自动任务和 IM 通过共用 Execution 与 Chat 日志宿主接入本模块。
 
 ## 当前边界
 

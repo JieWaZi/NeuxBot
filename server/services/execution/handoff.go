@@ -104,11 +104,6 @@ func (m *service) summarizeCurrentSession(
 			},
 		},
 	}
-	runner := request.runner
-	if runner == nil {
-		runner = m.runtime
-	}
-	var accountRelease func()
 	var accountLease func(context.Context) error
 	if accountID := state.chat.LastAccountID; accountID != "" {
 		if m.accounts == nil {
@@ -116,16 +111,10 @@ func (m *service) summarizeCurrentSession(
 		}
 		var target runtimes.RuntimeTarget
 		var err error
-		if owned, ok := runner.(interface {
-			CloseWorkspace(context.Context, string) error
-		}); ok {
-			if err = owned.CloseWorkspace(ctx, run.Workspace.Path); err != nil {
-				return "", false
-			}
-			target, accountLease, err = m.accounts.PrepareQueuedLease(ctx, accountID, environment.BaseRuntimeID, run.Workspace.Path, model)
-		} else {
-			target, accountRelease, err = m.accounts.Prepare(ctx, accountID, environment.BaseRuntimeID, run.Workspace.Path, model)
+		if err = m.runtime.CloseWorkspace(ctx, run.Workspace.Path); err != nil {
+			return "", false
 		}
+		target, accountLease, err = m.accounts.PrepareQueuedLease(ctx, accountID, environment.BaseRuntimeID, run.Workspace.Path, model)
 		if err != nil {
 			return "", false
 		}
@@ -137,25 +126,7 @@ func (m *service) summarizeCurrentSession(
 		run.Target.ConfigHome = ""
 	}
 	sink := &handoffSink{}
-	var result runtimes.Result
-	if owned, ok := runner.(interface {
-		RunSummaryWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
-	}); ok {
-		result = owned.RunSummaryWithLease(ctx, run, sink, func(closeContext context.Context) error {
-			if accountLease != nil {
-				return accountLease(closeContext)
-			}
-			if accountRelease != nil {
-				accountRelease()
-			}
-			return nil
-		})
-	} else {
-		if accountRelease != nil {
-			defer accountRelease()
-		}
-		result = runner.Run(ctx, run, sink)
-	}
+	result := m.runtime.RunSummaryWithLease(ctx, run, sink, accountLease)
 	if result.Failure != nil || sink.rejected {
 		return "", false
 	}

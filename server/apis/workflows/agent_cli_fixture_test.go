@@ -40,6 +40,11 @@ func runCLITestSuite(m *testing.M) int {
 }
 
 func fixtureCLI(ctx context.Context, request runtimes.RunRequest, arguments []string, input map[string]any) (map[string]any, error) {
+	return fixtureCLIEnvironment(ctx, request.Workspace.Path, request.Target.Environment, arguments, input)
+}
+
+// fixtureCLIEnvironment 让外部 Driver 使用真实启动环境访问同一 allycli 授权入口。
+func fixtureCLIEnvironment(ctx context.Context, directory string, environment map[string]string, arguments []string, input map[string]any) (map[string]any, error) {
 	args := append([]string(nil), arguments...)
 	var body []byte
 	if input != nil {
@@ -47,8 +52,8 @@ func fixtureCLI(ctx context.Context, request runtimes.RunRequest, arguments []st
 		args = append(args, "--input", "-")
 	}
 	command := exec.CommandContext(ctx, fixtureCLIBinary, args...)
-	command.Dir = request.Workspace.Path
-	command.Env = append(os.Environ(), constants.AgentCLIContextEnvironment+"="+request.Target.Environment[constants.AgentCLIContextEnvironment])
+	command.Dir = directory
+	command.Env = append(os.Environ(), constants.AgentCLIContextEnvironment+"="+environment[constants.AgentCLIContextEnvironment])
 	command.Stdin = bytes.NewReader(body)
 	var output, failure bytes.Buffer
 	command.Stdout, command.Stderr = &output, &failure

@@ -1,49 +1,14 @@
 package runtimes
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
-
-const (
-	defaultEventDeliveryTimeout = 30 * time.Second
-	defaultInactivityTimeout    = 10 * time.Minute
-	maxInactivityTimeout        = 24 * time.Hour
-)
-
-// newEvent 把稳定产品事件载荷编码为 Runtime Event。
-func newEvent(eventType EventType, payload any) (Event, error) {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return Event{}, status_error.RuntimeEventEncodingFailed
-	}
-	return Event{Type: eventType, Data: data}, nil
-}
-
-// normalizeDefaults 填充并校验 ACP Client 的资源保护默认值。
-func normalizeDefaults(source Defaults) (Defaults, error) {
-	defaults := source
-	if defaults.Inactivity == 0 {
-		defaults.Inactivity = defaultInactivityTimeout
-	}
-	if defaults.EventDelivery == 0 {
-		defaults.EventDelivery = defaultEventDeliveryTimeout
-	}
-	if defaults.EventDelivery <= 0 {
-		return Defaults{}, status_error.BadRequest
-	}
-	if defaults.Inactivity < 0 || defaults.Inactivity > maxInactivityTimeout {
-		return Defaults{}, status_error.BadRequest
-	}
-	return defaults, nil
-}
 
 // validateWorkspace 规范化 Runtime 工作目录与额外授权目录。
 func validateWorkspace(workspace Workspace) (Workspace, error) {
@@ -152,60 +117,5 @@ func validateExecutionPolicy(policy ExecutionPolicy) error {
 	if !constants.SelectablePermissionLevel(policy.PermissionLevel) {
 		return status_error.BadRequest
 	}
-	seen := make(map[string]struct{}, len(policy.TrustedControlTools))
-	for _, tool := range policy.TrustedControlTools {
-		server := strings.TrimSpace(tool.Server)
-		name := strings.TrimSpace(tool.Tool)
-		if server == "" || name == "" || len(tool.Actions) == 0 {
-			return status_error.BadRequest
-		}
-		key := server + "\x00" + name
-		if _, exists := seen[key]; exists {
-			return status_error.BadRequest
-		}
-		seen[key] = struct{}{}
-		actions := make(map[string]struct{}, len(tool.Actions))
-		for _, action := range tool.Actions {
-			action = strings.TrimSpace(action)
-			if action == "" {
-				return status_error.BadRequest
-			}
-			if _, exists := actions[action]; exists {
-				return status_error.BadRequest
-			}
-			actions[action] = struct{}{}
-		}
-	}
 	return nil
-}
-
-// newFailure 创建带稳定瞬时性分类的 Runtime 失败。
-func newFailure(code FailureCode, stage string, message string) *Failure {
-	return &Failure{
-		Code:       code,
-		Stage:      stage,
-		Message:    message,
-		Transience: failureTransience(code),
-	}
-}
-
-// newFailureFromError 保留完整诊断，并在错误链仍可访问时提取展示原因。
-func newFailureFromError(code FailureCode, stage string, err error) *Failure {
-	failure := newFailure(code, stage, err.Error())
-	failure.DisplayMessage = FailureDisplayMessage(err)
-	return failure
-}
-
-// finalSessionState 根据标准 ACP Session 输入、输出与失败确定终态。
-func finalSessionState(session SessionResult, failure *Failure) SessionState {
-	if failure != nil && failure.Code == FailureCodeSessionNotFound {
-		return SessionStateMissing
-	}
-	if session.OutputID == "" {
-		return SessionStateUnknown
-	}
-	if session.Mode == SessionModeResume {
-		return SessionStateResumed
-	}
-	return SessionStateCreated
 }

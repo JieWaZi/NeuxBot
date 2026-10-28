@@ -150,7 +150,6 @@ func (sdk *SDK) Detect(
 			definition:  definition,
 			detection:   result,
 			environment: environment,
-			defaults:    sdk.defaults,
 		},
 		WorkingDirectory: probeDirectory,
 	})

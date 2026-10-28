@@ -26,7 +26,7 @@ func TestPrepareRuntimeFilesLayersVirtualTeamInstructionsIntoRuntimeFile(t *test
 	}
 	teamContent := "协作优先级\n\n# Team: 测试团队"
 	capabilityContent := constants.ChannelTasksMCPCapabilityInstructions
-	_, err = sdk.prepareRuntimeFiles(
+	err = sdk.prepareRuntimeFiles(
 		DetectionResult{Runtime: codex},
 		Workspace{Path: workspacePath, Managed: true},
 		[]Instruction{
@@ -94,7 +94,7 @@ func TestPrepareRuntimeFilesRemovesStaleTeamMD(t *testing.T) {
 			break
 		}
 	}
-	_, err = sdk.prepareRuntimeFiles(
+	err = sdk.prepareRuntimeFiles(
 		DetectionResult{Runtime: codex},
 		Workspace{Path: workspacePath, Managed: true},
 		[]Instruction{{Name: "IDENTITY.md", Content: "solo chat"}},
@@ -122,7 +122,7 @@ func TestPrepareRuntimeInstructionsStayStableAcrossTurns(t *testing.T) {
 			instructions := []Instruction{{Name: "IDENTITY.md", Content: "稳定伙伴档案"}}
 			var first []byte
 			for turn := range 2 {
-				if _, prepareErr := sdk.prepareRuntimeFiles(
+				if prepareErr := sdk.prepareRuntimeFiles(
 					DetectionResult{Runtime: runtime},
 					workspace,
 					instructions,
@@ -165,7 +165,7 @@ func TestPrepareRuntimeFilesLinksCurrentSkills(t *testing.T) {
 			codex = runtime
 		}
 	}
-	files, err := sdk.prepareRuntimeFiles(
+	err = sdk.prepareRuntimeFiles(
 		DetectionResult{
 			Runtime:      codex,
 			Capabilities: CapabilitySet{CapabilitySkillDirectory: true},
@@ -177,7 +177,7 @@ func TestPrepareRuntimeFilesLinksCurrentSkills(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prepareRuntimeFiles() error = %v", err)
 	}
-	target := filepath.Join(files.skillDirectory, "review")
+	target := filepath.Join(runtimeSkillRoot(DetectionResult{Runtime: codex}, workspacePath), "review")
 	info, err := os.Lstat(target)
 	if err != nil {
 		t.Fatalf("lstat linked skill: %v", err)
@@ -194,9 +194,7 @@ func TestPrepareRuntimeFilesLinksCurrentSkills(t *testing.T) {
 	if err != nil || string(content) != "# Review" {
 		t.Fatalf("materialized skill = %q, %v", content, err)
 	}
-	if len(files.selectedSkills) != 1 || files.selectedSkills[0].path != filepath.Join(target, "SKILL.md") {
-		t.Fatalf("selected skills = %#v", files.selectedSkills)
-	}
+
 }
 
 func TestPrepareRuntimeFilesReplacesPreviousSkillVersionOnNextCall(t *testing.T) {
@@ -220,7 +218,7 @@ func TestPrepareRuntimeFilesReplacesPreviousSkillVersionOnNextCall(t *testing.T)
 		if err := os.WriteFile(filepath.Join(source, "SKILL.md"), []byte(version), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		files, err := sdk.prepareRuntimeFiles(
+		err = sdk.prepareRuntimeFiles(
 			DetectionResult{Runtime: runtime, Capabilities: CapabilitySet{CapabilitySkillDirectory: true}},
 			Workspace{Path: workspacePath, Managed: true}, nil,
 			[]Skill{{Name: "review", Path: source, Selected: true}},
@@ -228,7 +226,7 @@ func TestPrepareRuntimeFilesReplacesPreviousSkillVersionOnNextCall(t *testing.T)
 		if err != nil {
 			t.Fatal(err)
 		}
-		content, err := os.ReadFile(filepath.Join(files.skillDirectory, "review", "SKILL.md"))
+		content, err := os.ReadFile(filepath.Join(runtimeSkillRoot(DetectionResult{Runtime: runtime}, workspacePath), "review", "SKILL.md"))
 		if err != nil || string(content) != version {
 			t.Fatalf("Runtime kept stale skill: got %q want %q error=%v", content, version, err)
 		}
@@ -257,7 +255,7 @@ func TestPrepareRuntimeFilesWritesProjectRoutingForCodexAndClaude(t *testing.T) 
 					break
 				}
 			}
-			_, err := sdk.prepareRuntimeFiles(
+			err := sdk.prepareRuntimeFiles(
 				DetectionResult{Runtime: summary},
 				Workspace{
 					Path:    workspacePath,
@@ -369,22 +367,5 @@ func TestRuntimeSkillPreservesExecutableAndKnowledgeReference(t *testing.T) {
 				t.Fatalf("skill CLI lost execution permission: %v", err)
 			}
 		})
-	}
-}
-
-func TestRuntimeFilesUsesClaudeNativeACPSelection(t *testing.T) {
-	files := runtimeFiles{
-		skillDirectory: "/workspace/.claude/skills",
-		selectedSkills: []skillSelection{{
-			name: "review",
-			path: "/workspace/.claude/skills/review/SKILL.md",
-		}},
-	}
-	message := claudeACPRuntimeBinding().selectedSkillPrompt(
-		"检查实现",
-		files.selectedSkills,
-	)
-	if message != "/review\n\n检查实现" {
-		t.Fatalf("Claude ACP message = %q", message)
 	}
 }

@@ -11,26 +11,9 @@ import (
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 )
 
-// skillSelection 保存 Runtime 协议需要显式传递的已选技能。
-type skillSelection struct {
-	// name 是 Runtime 协议使用的技能名称。
-	name string
-	// path 是 Runtime 协议使用的 SKILL.md 绝对路径。
-	path string
-}
-
-// runtimeFiles 保存启动 Runtime 时需要的技能目录信息。
-type runtimeFiles struct {
-	// skillDirectory 是当前 Runtime 可以读取的技能根目录。
-	skillDirectory string
-	// selectedSkills 是当前消息明确选择的技能。
-	selectedSkills []skillSelection
-}
-
 // PrepareWorkspace 为注入的执行宿主物化原生指令与技能，不创建进程或提交输入。
 func (sdk *SDK) PrepareWorkspace(request RunRequest) error {
-	_, err := sdk.prepareRuntimeFiles(request.Detection, request.Workspace, request.Instructions, request.Skills)
-	return err
+	return sdk.prepareRuntimeFiles(request.Detection, request.Workspace, request.Instructions, request.Skills)
 }
 
 // prepareRuntimeFiles 把当前指令和技能准备成所选 Runtime 能直接读取的文件。
@@ -39,50 +22,40 @@ func (sdk *SDK) prepareRuntimeFiles(
 	workspace Workspace,
 	instructions []Instruction,
 	skills []Skill,
-) (runtimeFiles, error) {
+) error {
 	if !workspace.Managed || workspace.Path == "" {
 		if len(skills) > 0 {
-			return runtimeFiles{}, status_error.BadRequest
+			return status_error.BadRequest
 		}
-		return runtimeFiles{}, nil
+		return nil
 	}
 	if err := sdk.writeRuntimeInstructions(detection, workspace, instructions); err != nil {
-		return runtimeFiles{}, err
+		return err
 	}
 	if err := sdk.clearRuntimeSkillDirectories(detection, workspace.Path); err != nil {
-		return runtimeFiles{}, err
+		return err
 	}
 	if len(skills) == 0 {
-		return runtimeFiles{}, nil
+		return nil
 	}
 	if err := validateRuntimeSkillSupport(detection); err != nil {
-		return runtimeFiles{}, err
+		return err
 	}
 	if err := validateRuntimeSkills(skills); err != nil {
-		return runtimeFiles{}, err
+		return err
 	}
 
 	root := runtimeSkillRoot(detection, workspace.Path)
 	if err := os.MkdirAll(root, 0o700); err != nil {
-		return runtimeFiles{}, status_error.SkillUnavailable
+		return status_error.SkillUnavailable
 	}
-	selected := make([]skillSelection, 0, len(skills))
 	for _, skill := range skills {
 		target := runtimeSkillPath(root, skill.Name)
 		if err := linkOrCopyRuntimeSkill(skill.Path, target); err != nil {
-			return runtimeFiles{}, status_error.SkillUnavailable
-		}
-		if skill.Selected {
-			selected = append(selected, skillSelection{
-				name: skill.Name,
-				path: filepath.Join(target, "SKILL.md"),
-			})
+			return status_error.SkillUnavailable
 		}
 	}
-	return runtimeFiles{
-		skillDirectory: root,
-		selectedSkills: selected,
-	}, nil
+	return nil
 }
 
 // runtimeSkillRoot 使用运行时注册信息声明的项目级 Skill 目录。

@@ -174,7 +174,7 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 	}
 	defer revoke()
 	activate()
-	if len(request.Connectors) != 0 || len(request.Policy.Execution.TrustedControlTools) != 0 {
+	if len(request.Connectors) != 0 {
 		t.Fatalf("knowledge grant added a retired MCP transport: %+v", request.Connectors)
 	}
 	if request.Target.Environment[constants.AgentCLIContextEnvironment] == "" || !request.Policy.Execution.WorkspaceReadOnly {

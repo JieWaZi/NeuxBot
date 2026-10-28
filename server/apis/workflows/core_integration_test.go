@@ -29,7 +29,7 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-// fixtureRuntime 只替代模型协议边界，仍经过完整 Core、JSONL、MCP、SQLite 与真实文件。
+// fixtureRuntime 替代完整运行端口，验证业务 Core、JSONL、CLI 授权、SQLite 与真实文件；独立 Runtime 另做组合验收。
 type fixtureRuntime struct {
 	// service 提供当前进程的真实效果查询。
 	service *workflowFixture
@@ -119,12 +119,23 @@ func (r *fixtureRuntime) Run(ctx context.Context, request runtimes.RunRequest, s
 type fixtureEnvironment struct{}
 
 func (fixtureEnvironment) Get(context.Context, string) (models.RuntimeEnvironment, error) {
-	// Runtime.Run 已由测试替身接管，仅用测试进程满足 Core 的可执行路径校验。
+	// 外部模型由测试替身接管，仅用测试进程满足真实 Core 的可执行路径校验。
 	binary, err := os.Executable()
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
-	return models.RuntimeEnvironment{RuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "fixture", Detection: runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}, State: runtimes.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true}, Models: []runtimes.ModelOption{{ID: "fixture", Name: "fixture", PermissionLevels: []runtimes.PermissionLevel{runtimes.PermissionLevelDefault, runtimes.PermissionLevelFullAccess}}}}}, nil
+	sdk, err := runtimes.New(runtimes.Config{})
+	if err != nil {
+		return models.RuntimeEnvironment{}, err
+	}
+	var summary runtimes.RuntimeSummary
+	for _, registered := range sdk.Runtimes() {
+		if registered.ID == "codex" {
+			summary = registered
+			break
+		}
+	}
+	return models.RuntimeEnvironment{RuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "fixture", Detection: runtimes.DetectionResult{Runtime: summary, State: runtimes.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true, runtimes.CapabilitySkillDirectory: true}, Models: []runtimes.ModelOption{{ID: "fixture", Name: "fixture", PermissionLevels: []runtimes.PermissionLevel{runtimes.PermissionLevelDefault, runtimes.PermissionLevelFullAccess}}}}}, nil
 }
 
 func openCoreWorkflowFixture(t *testing.T, directory string, runtime *fixtureRuntime) (*workflowFixture, func()) {
@@ -133,7 +144,7 @@ func openCoreWorkflowFixture(t *testing.T, directory string, runtime *fixtureRun
 	return s, close
 }
 
-// coreTestRuntime 仅抽象模型运行边界，真实 smoke 使用生产 SDK。
+// coreTestRuntime 允许既有业务替身或真实宿主接入同一业务 fixture。
 type coreTestRuntime interface {
 	// ForkSession 复用实际会话分叉协议。
 	ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error)
@@ -142,6 +153,37 @@ type coreTestRuntime interface {
 	// Run 通过协议交付模型执行事件。
 	Run(context.Context, runtimes.RunRequest, runtimes.EventSink) runtimes.Result
 }
+
+// coreExecutionRuntime 与执行核心共用明确的资源生命周期；真实 Host 直接实现此接口。
+type coreExecutionRuntime interface {
+	// ForkSession 是原生分叉端口。
+	ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error)
+	// Runtimes 是原生目录约定。
+	Runtimes() []runtimes.RuntimeSummary
+	// RunWithLease 直到外部消费者退出才释放租约。
+	RunWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
+	// RunSummaryWithLease 提供同一宿主的隐藏摘要能力。
+	RunSummaryWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
+	// CloseWorkspace 释放原生会话所有者。
+	CloseWorkspace(context.Context, string) error
+}
+
+// coreRuntimeStub 仅给既有业务层单测显式声明同步替身的释放边界；组合测试直接使用真实 Host。
+type coreRuntimeStub struct {
+	// coreTestRuntime 保留最外层替身的 Run，避免嵌入基类吞掉派生业务行为。
+	coreTestRuntime
+}
+
+func (r coreRuntimeStub) RunWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+	if release != nil {
+		defer release(context.WithoutCancel(ctx))
+	}
+	return r.coreTestRuntime.Run(ctx, request, sink)
+}
+func (r coreRuntimeStub) RunSummaryWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+	return r.RunWithLease(ctx, request, sink, release)
+}
+func (coreRuntimeStub) CloseWorkspace(context.Context, string) error { return nil }
 
 // coreTestEnvironment 是运行配置的唯一探测查询接缝。
 type coreTestEnvironment interface {
@@ -200,8 +242,12 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime coreTestRunti
 	if err := chats.Start(ctx); err != nil {
 		t.Fatal(err)
 	}
+	runner, ok := runtime.(coreExecutionRuntime)
+	if !ok {
+		runner = coreRuntimeStub{coreTestRuntime: runtime}
+	}
 	core, err := execution.New(execution.Config{
-		Runtime: runtime, Journal: chats, DormantChats: chats,
+		Runtime: runner, Journal: chats, DormantChats: chats,
 		Agent: registry, AgentEndpoint: endpoint.URL + constants.AgentCLIPath, AgentBinary: fixtureCLIBinary, Events: hub,
 		Wakers: wakers, Profiles: profiles, Projects: projects,
 		Skills: skills, SkillDataDirectory: directory,
@@ -222,6 +268,11 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime coreTestRunti
 		once.Do(func() {
 			s.Close()
 			core.Close()
+			if owner, ok := runtime.(interface{ Close(context.Context) error }); ok {
+				if err := owner.Close(context.Background()); err != nil {
+					t.Error(err)
+				}
+			}
 			registry.Close()
 			endpoint.Close()
 			hub.Close()

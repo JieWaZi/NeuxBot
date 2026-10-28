@@ -189,35 +189,98 @@ func containsAny(value string, candidates ...string) bool {
 	return false
 }
 
-// failureStageForCode 返回 FailureCode 对应的默认失败阶段名。
-func failureStageForCode(code FailureCode) string {
-	if code == FailureCodeInactivityTimeout {
-		return constants.RuntimeACPFailureStageInactivityWatchdog
+// ClassifyFailure 复用原生故障分类，供执行宿主映射统一业务错误。
+func ClassifyFailure(runtimeID string, err error) FailureCode {
+	if runtimeID == RuntimeIDCursor {
+		return cursorACPFailureCode(err)
 	}
-	return constants.RuntimeACPFailureStageEventDelivery
+	return acpFailureCode(err)
 }
 
-func failureTransience(code FailureCode) FailureTransience {
-	switch code {
-	case FailureCodeRateLimited,
-		FailureCodeUpstreamUnavailable:
-		return FailureTransienceTransient
-	case FailureCodeQuotaExhausted,
-		FailureCodeSessionNotFound,
-		FailureCodeAuthRequired,
-		FailureCodePlanUpgradeRequired,
-		FailureCodeModelUnavailable,
-		FailureCodeRuntimeNotFound,
-		FailureCodeRuntimeUnavailable,
-		FailureCodeRuntimeIncompatible,
-		FailureCodePolicyUnsupported,
-		FailureCodeInvalidRequest,
-		FailureCodeUnsupportedCapability,
-		FailureCodeInvocationClosed,
-		FailureCodeFrameTooLarge,
-		FailureCodeProtocolIncompatible:
-		return FailureTransiencePermanent
+// acpFailureCode 提升 ACP 标准错误，其余错误按 Context 或 Runtime 分类。
+func acpFailureCode(err error) FailureCode {
+	if code, ok := ErrorCode(err); ok {
+		return code
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return constants.RuntimeFailureCodeRequestTimeout
+	}
+	if errors.Is(err, context.Canceled) {
+		return FailureCodeContextCanceled
+	}
+	var requestError *acp.RequestError
+	if errors.As(err, &requestError) {
+		if code := acpProviderFailureCode(requestError.Data); code != "" {
+			return code
+		}
+		if code := classifyRuntimeErrorText(err.Error()); code != "" {
+			return code
+		}
+		if code := classifyRuntimeErrorText(acpRequestErrorMessage(requestError.Data)); code != "" {
+			return code
+		}
+		switch requestError.Code {
+		case -32800:
+			return FailureCodeContextCanceled
+		case -32002:
+			return FailureCodeSessionNotFound
+		case -32000:
+			return FailureCodeAuthRequired
+		case -32602:
+			return FailureCodeInvalidRequest
+		case -32601:
+			return FailureCodeProtocolIncompatible
+		}
+	}
+	if code := classifyRuntimeErrorText(err.Error()); code != "" {
+		return code
+	}
+	return constants.RuntimeFailureCodeExecutionFailed
+}
+
+// acpRequestErrorMessage 提取 ACP Invalid params 等错误中的可读说明。
+func acpRequestErrorMessage(data any) string {
+	metadata, ok := data.(map[string]any)
+	if !ok {
+		return ""
+	}
+	message, _ := metadata["message"].(string)
+	return message
+}
+
+// acpProviderFailureCode 读取 Runtime Adapter 依据 upstream 发布的开放错误类别。
+func acpProviderFailureCode(data any) FailureCode {
+	metadata, ok := data.(map[string]any)
+	if !ok {
+		return ""
+	}
+	errorKind, _ := metadata[constants.RuntimeACPMetaKeyErrorKind].(string)
+	switch errorKind {
+	case constants.RuntimeACPProviderErrorKindNetworkError:
+		return constants.RuntimeFailureCodeNetworkError
+	case constants.RuntimeACPProviderErrorKindTimeout:
+		return constants.RuntimeFailureCodeRequestTimeout
+	case constants.RuntimeACPProviderErrorKindContextTooLarge:
+		return constants.RuntimeFailureCodeContextTooLarge
+	case constants.RuntimeACPProviderErrorKindAuthenticationFailed,
+		constants.RuntimeACPProviderErrorKindOAuthOrgNotAllowed:
+		return FailureCodeAuthRequired
+	case constants.RuntimeACPProviderErrorKindPlanUpgradeRequired:
+		return FailureCodePlanUpgradeRequired
+	case constants.RuntimeACPProviderErrorKindQuotaExhausted:
+		return FailureCodeQuotaExhausted
+	case constants.RuntimeACPProviderErrorKindBillingError:
+		return FailureCodeQuotaExhausted
+	case constants.RuntimeACPProviderErrorKindRateLimit:
+		return FailureCodeRateLimited
+	case constants.RuntimeACPProviderErrorKindOverloaded,
+		constants.RuntimeACPProviderErrorKindServerError:
+		return FailureCodeUpstreamUnavailable
+	case constants.RuntimeACPProviderErrorKindModelNotFound:
+		return FailureCodeModelUnavailable
+	case constants.RuntimeACPProviderErrorKindInvalidRequest:
+		return FailureCodeInvalidRequest
 	default:
-		return FailureTransienceUnknown
+		return ""
 	}
 }

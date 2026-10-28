@@ -19,6 +19,12 @@ func TestRuntimePackageOwnsNoPrivateExecutionProtocolOrProcessLauncher(t *testin
 	directory := filepath.Dir(currentFile)
 	for _, forbidden := range []string{
 		"invocation.go",
+		"run.go",
+		"connection.go",
+		"acp_run.go",
+		"acp_writer.go",
+		"acp_permission.go",
+		"acp_elicitation.go",
 		"process.go",
 		"protocol.go",
 		"event_queue.go",
@@ -60,15 +66,6 @@ func TestRuntimePackageOwnsNoPrivateExecutionProtocolOrProcessLauncher(t *testin
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-
-	runSource, err := os.ReadFile(filepath.Join(directory, "run.go"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(runSource), "sdk.acp.Run") ||
-		strings.Contains(string(runSource), "prepared.start") {
-		t.Fatal("Runtime.Run is not locked to the shared ACP module")
 	}
 
 	entries, err := os.ReadDir(directory)

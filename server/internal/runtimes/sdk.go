@@ -2,39 +2,34 @@ package runtimes
 
 import (
 	"context"
+	"os"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 )
 
-// SDK 是并发安全且构造后不可变的 Runtime 深模块门面。
+// SDK 提供智能体探测、启动准备、工作区物化与原生分叉。
 type SDK struct {
 	// definitions 保存已经合并 Local Profile 的只读 Runtime Definition。
 	definitions map[string]runtimeDefinition
-	// defaults 保存构造时规范化的 Invocation 默认限制。
-	defaults Defaults
-	// acp 是 Codex 与 Claude 调用统一使用的内嵌 ACP Client Runtime Module。
-	acp acpRunner
+	// acp 只接纳探测和分叉所需的短生命周期管理操作。
+	acp acpManager
 }
 
 // New 校验显式配置并构造一个不启动 goroutine 的 Runtime SDK。
 func New(config Config) (*SDK, error) {
-	defaults, err := normalizeDefaults(config.Defaults)
-	if err != nil {
-		return nil, err
-	}
 	definitions, err := newRegistry(config.Profiles)
 	if err != nil {
 		return nil, err
 	}
 	return &SDK{
 		definitions: definitions,
-		defaults:    defaults,
 		acp:         newACPBackend(),
 	}, nil
 }
 
-// Close 释放 SDK 持有的长期 ACP Agent，并对 nil SDK 保持幂等。
+// Close 停止接纳新的探测和分叉；各管理操作负责关闭自己的 ACP 连接。
 func (sdk *SDK) Close(ctx context.Context) error {
 	if sdk == nil || sdk.acp == nil {
 		return nil
@@ -64,7 +59,7 @@ func (sdk *SDK) PrepareLaunch(target RuntimeTarget, detection DetectionResult) (
 	if sdk == nil {
 		return LaunchFacts{}, status_error.RuntimeUnavailable
 	}
-	prepared, err := sdk.prepareFromDetection(prepareRequestForRun(sdk, RunRequest{Target: target}), detection)
+	prepared, err := sdk.prepareFromDetection(sdk.prepareRequestForTarget(target), detection)
 	if err != nil {
 		return LaunchFacts{}, err
 	}
@@ -79,27 +74,6 @@ type preparedRuntime struct {
 	detection DetectionResult
 	// environment 保存探测和后续启动共享的显式环境快照。
 	environment environmentSnapshot
-	// defaults 保存 SDK 构造时冻结的 Invocation 默认限制。
-	defaults Defaults
-}
-
-// detectionResult 返回准备结果对应的探测结论副本。
-func (prepared preparedRuntime) detectionResult() DetectionResult {
-	result := prepared.detection
-	result.Models = cloneModels(result.Models)
-	result.ReasoningOptions = cloneReasoningOptions(result.ReasoningOptions)
-	result.Capabilities = cloneCapabilitySet(result.Capabilities)
-	result.Diagnostics = append([]Diagnostic(nil), result.Diagnostics...)
-	return result
-}
-
-// prepare 探测 Runtime 并在必要能力满足时返回可直接启动的包内快照。
-func (sdk *SDK) prepare(
-	ctx context.Context,
-	request DetectRequest,
-) (preparedRuntime, error) {
-	detection := sdk.Detect(ctx, request)
-	return sdk.prepareFromDetection(request, detection)
 }
 
 // prepareFromDetection 使用调用方已经持久化的探测快照准备 Runtime，不执行新的探测。
@@ -140,7 +114,6 @@ func (sdk *SDK) prepareFromDetection(
 		definition:  definition,
 		detection:   detection,
 		environment: environment,
-		defaults:    sdk.defaults,
 	}, nil
 }
 
@@ -173,4 +146,32 @@ func cloneRuntimeSummary(summary RuntimeSummary) RuntimeSummary {
 	clone.Models = cloneModels(summary.Models)
 	clone.ReasoningOptions = append([]ReasoningOption(nil), summary.ReasoningOptions...)
 	return clone
+}
+
+// prepareRequestForTarget 合并所选账号隔离、Profile 与显式启动覆盖。
+func (sdk *SDK) prepareRequestForTarget(target RuntimeTarget) DetectRequest {
+	environment := make(map[string]string)
+	if definition, exists := sdk.definitions[target.RuntimeID]; exists &&
+		target.ConfigHome != "" &&
+		definition.configHomeEnvironmentVariable != "" {
+		environment[definition.configHomeEnvironmentVariable] = target.ConfigHome
+	}
+	for key, value := range target.Environment {
+		environment[key] = value
+	}
+	baseEnvironment := os.Environ()
+	if target.Isolated {
+		baseEnvironment = accountconfig.Environment(baseEnvironment)
+	}
+	homeDirectory, _ := os.UserHomeDir()
+	return DetectRequest{
+		RuntimeID:       target.RuntimeID,
+		BaseEnvironment: baseEnvironment,
+		HomeDirectory:   homeDirectory,
+		LaunchOverride: LaunchOverride{
+			Binary:      target.Binary,
+			PrefixArgs:  append([]string(nil), target.PrefixArgs...),
+			Environment: environment,
+		},
+	}
 }

@@ -37,7 +37,7 @@ func (agent *embeddedACPAgent) detectOptions(
 	}
 
 	defer func() {
-		closeContext, cancelClose := context.WithTimeout(context.WithoutCancel(ctx), acpDeliveryDrainTimeout)
+		closeContext, cancelClose := context.WithTimeout(context.WithoutCancel(ctx), acpManagementCloseTimeout)
 		defer cancelClose()
 		if _, closeErr := agent.connection.CloseSession(closeContext, acp.CloseSessionRequest{SessionId: response.SessionId}); closeErr != nil {
 			logx.Errorf("close ACP option detection session failed: session_id=%s error=%v", response.SessionId, closeErr)
@@ -341,14 +341,6 @@ func hasAnyMode(available map[string]struct{}, ids ...string) bool {
 	return false
 }
 
-// rememberSessionModes 在持有 sessionMutex 时记录会话声明，供权限配置使用。
-func (agent *embeddedACPAgent) rememberSessionModes(id acp.SessionId, modes *acp.SessionModeState) {
-	if agent.sessionModes == nil {
-		agent.sessionModes = make(map[acp.SessionId]*acp.SessionModeState)
-	}
-	agent.sessionModes[id] = modes
-}
-
 // acpReasoningOptions 读取当前 Adapter 推理配置中的平铺选项。
 func acpReasoningOptions(
 	options []acp.SessionConfigOption,
@@ -407,4 +399,14 @@ func acpSelectValues(
 		result = append(result, group.Options...)
 	}
 	return result
+}
+
+// acpConfigCurrentValue 读取 Agent 确认的配置值，避免将本地选择误当作生效结果。
+func acpConfigCurrentValue(options []acp.SessionConfigOption, id acp.SessionConfigId) acp.SessionConfigValueId {
+	for _, option := range options {
+		if option.Select != nil && option.Select.Id == id {
+			return option.Select.CurrentValue
+		}
+	}
+	return ""
 }

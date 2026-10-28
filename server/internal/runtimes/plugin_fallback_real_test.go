@@ -61,7 +61,7 @@ func TestGeminiPluginFallbackDiscovery(t *testing.T) {
 	if err := os.MkdirAll(workspace, 0700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := sdk.prepareRuntimeFiles(DetectionResult{Runtime: runtime, State: DetectionStateReady, Capabilities: CapabilitySet{CapabilitySkillDirectory: true}}, Workspace{Path: workspace, Managed: true}, nil, skills); err != nil {
+	if err := sdk.prepareRuntimeFiles(DetectionResult{Runtime: runtime, State: DetectionStateReady, Capabilities: CapabilitySet{CapabilitySkillDirectory: true}}, Workspace{Path: workspace, Managed: true}, nil, skills); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(workspace, ".gemini/skills/native-probe/references/rules.md")); err != nil {

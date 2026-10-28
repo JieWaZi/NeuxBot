@@ -50,7 +50,10 @@ type approvalFactRuntime struct {
 	finish chan struct{}
 }
 
-func (r *approvalFactRuntime) Run(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
+func (r *approvalFactRuntime) RunWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+	if release != nil {
+		defer func() { _ = release(context.WithoutCancel(ctx)) }()
+	}
 	invocationID := "approval-fact-invocation"
 	send := func(kind runtimes.EventType, data any) {
 		_ = sink.Accept(ctx, runtimes.Event{Type: kind, Data: marshalData(data)})

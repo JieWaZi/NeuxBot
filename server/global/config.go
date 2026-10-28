@@ -132,7 +132,7 @@ var (
 	RuntimeSDK *runtimes.SDK
 	// KnowledgeRuntimeHost 拥有知识结果调用及失败清理租约。
 	KnowledgeRuntimeHost *runtimehost.Host
-	// ChatRuntimeHost 拥有普通聊天的原生会话及其账号、能力资源租约。
+	// ChatRuntimeHost 拥有全部聊天及编排执行的原生会话和账号、能力资源租约。
 	ChatRuntimeHost *runtimehost.ChatHost
 	// RuntimeEnvironmentControllerManager 提供设备级 Runtime 环境持久化接口。
 	RuntimeEnvironmentControllerManager controllers.RuntimeEnvironmentController
@@ -519,8 +519,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			return bindings
 		},
 		Accounts:            AIAccountService,
-		Runtime:             RuntimeSDK,
-		ChatRuntime:         ChatRuntimeHost,
+		Runtime:             ChatRuntimeHost,
 		Journal:             chatModule,
 		DormantChats:        chatModule,
 		Wakers:              WakerControllerManager,

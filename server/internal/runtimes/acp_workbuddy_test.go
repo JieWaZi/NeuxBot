@@ -3,82 +3,11 @@ package runtimes
 import (
 	"context"
 	"reflect"
-	"slices"
+
 	"testing"
 
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
-
-// TestWorkBuddyRegistryAndPermissions 验证自动注册、原生文件、三档权限和只读模式均使用真实目录。
-func TestWorkBuddyRegistryAndPermissions(t *testing.T) {
-	definitions, err := newRegistry(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	definition := definitions[RuntimeIDWorkBuddy]
-	if definition.name != "WorkBuddy" || definition.instructionFileName != "CODEBUDDY.md" || definition.skillDirectoryName != ".codebuddy" || definition.configHomeEnvironmentVariable != "CODEBUDDY_CONFIG_DIR" || !reflect.DeepEqual(definition.binaryCandidates, []string{"codebuddy", "cbc"}) || len(definition.models) != 0 {
-		t.Fatalf("incorrect native definition: %+v", definition)
-	}
-	if !slices.Contains(BaseRuntimeIDs(), RuntimeIDWorkBuddy) {
-		t.Fatal("connector matrix omitted WorkBuddy")
-	}
-	binding := defaultACPRuntimeBindings()[RuntimeIDWorkBuddy]
-	if binding.newAgent == nil || !binding.nativeProcess || binding.retainedProcess {
-		t.Fatal("WorkBuddy process must be isolated per invocation")
-	}
-	modes := &acp.SessionModeState{AvailableModes: []acp.SessionMode{{Id: "default"}, {Id: "auto"}, {Id: "bypassPermissions"}, {Id: "plan"}}}
-	if !reflect.DeepEqual(binding.permissionLevels(nil, modes.AvailableModes), []PermissionLevel{PermissionLevelDefault, PermissionLevelAuto, PermissionLevelFullAccess}) {
-		t.Fatal("native permission levels were not preserved")
-	}
-	for _, test := range []struct {
-		// policy 是本次产品执行策略。
-		policy ExecutionPolicy
-		// want 是上游真实模式标识。
-		want acp.SessionModeId
-	}{{ExecutionPolicy{PermissionLevel: PermissionLevelDefault}, "default"}, {ExecutionPolicy{PermissionLevel: PermissionLevelAuto}, "auto"}, {ExecutionPolicy{PermissionLevel: PermissionLevelFullAccess}, "bypassPermissions"}, {ExecutionPolicy{WorkspaceReadOnly: true}, "plan"}} {
-		got, err := binding.modeID(test.policy, modes)
-		if err != nil || got != test.want {
-			t.Fatalf("mode: %q %v", got, err)
-		}
-		if _, err := binding.modeID(test.policy, nil); err == nil {
-			t.Fatal("invented a mode absent from the native catalog")
-		}
-	}
-	for _, transport := range []ConnectorTransport{ConnectorTransportStdio, ConnectorTransportStreamableHTTP, ConnectorTransportSSE} {
-		if supported, _ := ConnectorCompatibility(RuntimeIDWorkBuddy, transport); !supported {
-			t.Fatalf("missing transport: %s", transport)
-		}
-	}
-	for _, flag := range []string{"--acp-transport=http", "--permission-mode=fullAccess", "--resume=old", "--model=other", "--mcp-config=other", "--system-prompt=other", "--multitask"} {
-		if LaunchOverrideArgumentsAllowed(RuntimeIDWorkBuddy, []string{flag}) {
-			t.Fatalf("managed argument override accepted: %s", flag)
-		}
-	}
-}
-
-// TestWorkBuddyRecreatesPermissionOnResume 验证续聊的权限变化进入新的原生进程，不复用上次完全访问。
-func TestWorkBuddyRecreatesPermissionOnResume(t *testing.T) {
-	backend := newACPBackend()
-	defer backend.Close(context.Background())
-	permissions := []string{}
-	replaceACPAgentFactory(backend, RuntimeIDWorkBuddy, func(_ context.Context, config acpAdapterConfig) (acp.Agent, error) {
-		permissions = append(permissions, config.PermissionMode)
-		return &workBuddyFixtureAgent{fakeCodexACPAgent: &fakeCodexACPAgent{sessionID: "workbuddy", selectedConfigs: make(map[acp.SessionConfigId]acp.SessionConfigValueId), simplePrompt: true}}, nil
-	})
-	request := matrixACPRunRequest(t, RuntimeIDWorkBuddy, SessionDirective{Mode: SessionModeNew})
-	for _, level := range []PermissionLevel{PermissionLevelFullAccess, PermissionLevelDefault, PermissionLevelAuto} {
-		request.Request.Policy.Execution.PermissionLevel = level
-		// 使用标准测试目录中全部模式，避免把其他 CLI 的模式当成 WorkBuddy 能力。
-		result := backend.Run(context.Background(), request)
-		if result.Failure != nil {
-			t.Fatalf("%s: %+v", level, result)
-		}
-		request.Request.Session = SessionDirective{Mode: SessionModeResume, ID: result.Session.OutputID}
-	}
-	if !reflect.DeepEqual(permissions, []string{"full-access", "default", "auto"}) {
-		t.Fatalf("stale constructor permission: %v", permissions)
-	}
-}
 
 // TestWorkBuddyFreeModelCatalog 验证免费标记只来自当前零积分声明，不影响模型选择或其他智能体。
 func TestWorkBuddyFreeModelCatalog(t *testing.T) {
@@ -306,9 +235,32 @@ func (agent *workBuddyFixtureAgent) NewSession(ctx context.Context, request acp.
 	return response, err
 }
 
-// ResumeSession 恢复后同样返回当前有效的权限菜单。
-func (agent *workBuddyFixtureAgent) ResumeSession(ctx context.Context, request acp.ResumeSessionRequest) (acp.ResumeSessionResponse, error) {
-	response, err := agent.fakeCodexACPAgent.ResumeSession(ctx, request)
-	response.Modes = &acp.SessionModeState{AvailableModes: []acp.SessionMode{{Id: "default", Name: "Default"}, {Id: "auto", Name: "Auto"}, {Id: "bypassPermissions", Name: "Bypass"}}}
-	return response, err
+// TestWorkBuddyRegistryAndPermissionCatalog 只验证仍被探测及安装使用的声明。
+func TestWorkBuddyRegistryAndPermissionCatalog(t *testing.T) {
+	definitions, err := newRegistry(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	definition := definitions[RuntimeIDWorkBuddy]
+	if definition.name != "WorkBuddy" || definition.instructionFileName != "CODEBUDDY.md" || definition.skillDirectoryName != ".codebuddy" || definition.configHomeEnvironmentVariable != "CODEBUDDY_CONFIG_DIR" || !reflect.DeepEqual(definition.binaryCandidates, []string{"codebuddy", "cbc"}) || len(definition.models) != 0 {
+		t.Fatalf("native definition: %+v", definition)
+	}
+	binding := defaultACPRuntimeBindings()[RuntimeIDWorkBuddy]
+	if binding.newAgent == nil || !binding.nativeProcess {
+		t.Fatal("missing native factory")
+	}
+	modes := []acp.SessionMode{{Id: "default"}, {Id: "auto"}, {Id: "bypassPermissions"}, {Id: "plan"}}
+	if got := binding.permissionLevels(nil, modes); !reflect.DeepEqual(got, []PermissionLevel{PermissionLevelDefault, PermissionLevelAuto, PermissionLevelFullAccess}) {
+		t.Fatalf("native permission catalog: %v", got)
+	}
+	for _, transport := range []ConnectorTransport{ConnectorTransportStdio, ConnectorTransportStreamableHTTP, ConnectorTransportSSE} {
+		if ok, _ := ConnectorCompatibility(RuntimeIDWorkBuddy, transport); !ok {
+			t.Fatalf("missing transport: %s", transport)
+		}
+	}
+	for _, flag := range []string{"--acp-transport=http", "--permission-mode=fullAccess", "--resume=old", "--model=other", "--mcp-config=other", "--system-prompt=other", "--multitask"} {
+		if LaunchOverrideArgumentsAllowed(RuntimeIDWorkBuddy, []string{flag}) {
+			t.Fatalf("managed argument override: %s", flag)
+		}
+	}
 }

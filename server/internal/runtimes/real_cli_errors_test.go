@@ -1,7 +1,6 @@
 package runtimes
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"testing"
@@ -31,8 +30,8 @@ type realCLIFailureCapture struct {
 	ExpectedCode FailureCode `json:"expectedCode"`
 }
 
-// TestRealCLIFailureCapturesThroughRuntime 用真实输出回放 Runtime，不以理想化 errorKind 代替原始结构。
-func TestRealCLIFailureCapturesThroughRuntime(t *testing.T) {
+// TestRealCLIFailureCapturesThroughClassifier 用真实输出回放公开故障分类，不以理想化 errorKind 代替原始结构。
+func TestRealCLIFailureCapturesThroughClassifier(t *testing.T) {
 	data, err := os.ReadFile("testdata/real_cli_errors.json")
 	if err != nil {
 		t.Fatal(err)
@@ -48,21 +47,8 @@ func TestRealCLIFailureCapturesThroughRuntime(t *testing.T) {
 			if capture.RequestCount == 0 || capture.Version == "" || capture.Error == nil || capture.AssistantText != "" {
 				t.Fatalf("缺少真实失败证据：%+v", capture)
 			}
-			backend := newACPBackend()
-			agent := &fakeCodexACPAgent{sessionID: acp.SessionId(capture.CLI + "-captured-session"), selectedConfigs: make(map[acp.SessionConfigId]acp.SessionConfigValueId)}
-			if capture.Stage == "session/new" {
-				agent.newSessionError = capture.Error
-			} else {
-				agent.promptError = capture.Error
-			}
-			replaceACPAgentFactory(backend, capture.CLI, func(context.Context, acpAdapterConfig) (acp.Agent, error) { return agent, nil })
-			t.Cleanup(func() { _ = backend.Close(context.Background()) })
-			result := backend.Run(context.Background(), matrixACPRunRequest(t, capture.CLI, SessionDirective{Mode: SessionModeNew}))
-			if result.Failure == nil || result.Failure.Code != capture.ExpectedCode {
-				t.Fatalf("Runtime = %+v, want %s", result, capture.ExpectedCode)
-			}
-			if result.SideEffects.Any() {
-				t.Fatalf("错误被投影为可见输出：%+v", result.SideEffects)
+			if code := ClassifyFailure(capture.CLI, capture.Error); code != capture.ExpectedCode {
+				t.Fatalf("ClassifyFailure = %s, want %s", code, capture.ExpectedCode)
 			}
 		})
 	}

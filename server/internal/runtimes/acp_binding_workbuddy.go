@@ -5,12 +5,12 @@ import (
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+
 	acpworkbuddy "github.com/JieWaZi/acp-go/pkg/workbuddy"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
-// workBuddyACPRuntimeBinding 组合原生 ACP 模型、问答、MCP 和每次执行的权限边界。
+// workBuddyACPRuntimeBinding 准备原生管理工厂并解释模型和权限目录。
 func workBuddyACPRuntimeBinding() acpRuntimeBinding {
 	binding := nativeACPRuntimeBinding()
 	binding.baseRuntimeID = RuntimeIDWorkBuddy
@@ -35,25 +35,6 @@ func workBuddyACPRuntimeBinding() acpRuntimeBinding {
 		}
 		return levels
 	}
-	binding.modeID = func(policy ExecutionPolicy, modes *acp.SessionModeState) (acp.SessionModeId, error) {
-		mode := acp.SessionModeId("default")
-		if policy.WorkspaceReadOnly {
-			mode = "plan"
-		} else if policy.PermissionLevel == PermissionLevelFullAccess {
-			mode = "bypassPermissions"
-		} else if policy.PermissionLevel == PermissionLevelAuto {
-			mode = "auto"
-		}
-		if modes != nil {
-			for _, available := range modes.AvailableModes {
-				if available.Id == mode {
-					return mode, nil
-				}
-			}
-		}
-		return "", status_error.RuntimeProtocolIncompatible
-	}
-	binding.validateSelection = cursorValidateSelection
 	binding.newAgent = func(ctx context.Context, config acpAdapterConfig) (acp.Agent, error) {
 		return acpworkbuddy.NewAgent(ctx, acpworkbuddy.Config{
 			Logger: acpAdapterLogger(ctx), WorkBuddyPath: config.Executable,

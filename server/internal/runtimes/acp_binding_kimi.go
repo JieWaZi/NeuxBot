@@ -3,7 +3,6 @@ package runtimes
 import (
 	"context"
 
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	acpkimi "github.com/JieWaZi/acp-go/pkg/kimi"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
@@ -13,11 +12,7 @@ func kimiACPRuntimeBinding() acpRuntimeBinding {
 	binding := nativeACPRuntimeBinding()
 	binding.baseRuntimeID = RuntimeIDKimi
 	binding.displayName = "Kimi"
-	binding.selectedSkillPrompt = func(prompt string, selections []skillSelection) string {
-		return selectedSkillCommandPrompt("/skill:", prompt, selections)
-	}
 	binding.permissionLevels = kimiACPPermissionLevels
-	binding.modeID = kimiACPMode
 	binding.newAgent = func(ctx context.Context, config acpAdapterConfig) (acp.Agent, error) {
 		return acpkimi.NewAgent(ctx, acpkimi.Config{
 			Logger:           acpAdapterLogger(ctx),
@@ -58,24 +53,4 @@ func kimiACPPermissionLevels(options []acp.SessionConfigOption, modes []acp.Sess
 // isKimiLegacyDefaultMode 识别只能沿用 CLI 本地权限配置的旧版 Kimi。
 func isKimiLegacyDefaultMode(modes []acp.SessionMode) bool {
 	return len(modes) == 1 && modes[0].Id == "default"
-}
-
-// kimiACPMode 兼容 Python Kimi 仅提供 default 的旧模式目录。
-func kimiACPMode(policy ExecutionPolicy, modes *acp.SessionModeState) (acp.SessionModeId, error) {
-	if modes != nil && isKimiLegacyDefaultMode(modes.AvailableModes) {
-		if policy.WorkspaceReadOnly {
-			return "", status_error.RuntimeProtocolIncompatible
-		}
-		return "default", nil
-	}
-	if policy.WorkspaceReadOnly {
-		return "plan", nil
-	}
-	if policy.PermissionLevel == PermissionLevelFullAccess {
-		return "yolo", nil
-	}
-	if policy.PermissionLevel == PermissionLevelAuto {
-		return "auto", nil
-	}
-	return "default", nil
 }

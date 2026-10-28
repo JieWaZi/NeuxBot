@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
@@ -45,7 +46,7 @@ func (sdk *SDK) ForkSession(ctx context.Context, request ForkSessionRequest) (re
 	if err := validateExecutionPolicy(request.Run.Policy.Execution); err != nil {
 		return ForkSessionResult{}, err
 	}
-	prepared, err := sdk.prepareFromDetection(prepareRequestForRun(sdk, request.Run), request.Run.Detection)
+	prepared, err := sdk.prepareFromDetection(sdk.prepareRequestForTarget(request.Run.Target), request.Run.Detection)
 	if err != nil {
 		return ForkSessionResult{}, err
 	}
@@ -54,34 +55,34 @@ func (sdk *SDK) ForkSession(ctx context.Context, request ForkSessionRequest) (re
 		return ForkSessionResult{}, err
 	}
 	request.Run.Workspace = workspace
-	backend, ok := sdk.acp.(interface {
-		ForkSession(context.Context, acpRunRequest, ForkSessionRequest) (ForkSessionResult, error)
-	})
-	if !ok {
+	if sdk.acp == nil {
 		return ForkSessionResult{}, status_error.RuntimeUnavailable
 	}
-	return backend.ForkSession(ctx, acpRunRequest{Prepared: prepared, Request: request.Run}, request)
+	return sdk.acp.ForkSession(ctx, prepared, request)
 }
 
 // ForkSession 把统一输入映射到 ACP session/fork，厂商细节全部由适配器承担。
-func (backend *acpBackend) ForkSession(ctx context.Context, run acpRunRequest, request ForkSessionRequest) (ForkSessionResult, error) {
-	sourceRun := run
-	sourceRun.Request.Workspace.Path = request.SourceWorkspace
-	sourceRun.Request.Session = SessionDirective{Mode: SessionModeResume, ID: request.SourceSessionID}
-	binding, bindingErr := backend.binding(run.Prepared.definition.baseRuntimeID)
-	if bindingErr != nil {
-		return ForkSessionResult{}, bindingErr
-	}
-	if binding.retainedProcess {
-		backend.retireRetainedScope(ctx, sourceRun, binding)
-	}
-	agent, err := backend.agent(ctx, sourceRun)
+func (backend *acpBackend) ForkSession(ctx context.Context, prepared preparedRuntime, request ForkSessionRequest) (ForkSessionResult, error) {
+	binding, err := backend.binding(prepared.definition.baseRuntimeID)
 	if err != nil {
 		return ForkSessionResult{}, err
 	}
-	if agent.binding.nativeProcess {
-		defer backend.invalidate(context.WithoutCancel(ctx), acpAgentKeyForBinding(sourceRun, agent.binding), agent)
+	source := request.Run
+	source.Workspace.Path = request.SourceWorkspace
+	agent, err := newEmbeddedACPAgent(ctx, acpAdapterConfigForManagement(prepared, source, binding), binding)
+	if err != nil {
+		return ForkSessionResult{}, err
 	}
+	if err := agent.Start(ctx); err != nil {
+		return ForkSessionResult{}, err
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), acpManagementCloseTimeout)
+		defer cancel()
+		if err := agent.Close(cleanup); err != nil {
+			logx.Errorf("close native fork agent failed: runtime_id=%s error=%v", request.Run.Target.RuntimeID, err)
+		}
+	}()
 	mode := acpmeta.ForkMode(agent.initializeResponse.Meta)
 	if agent.initializeResponse.AgentCapabilities.SessionCapabilities.Fork == nil || mode == acpmeta.ForkUnsupported || (request.Position != "" && mode != acpmeta.ForkTurn) {
 		return ForkSessionResult{}, status_error.RuntimePolicyUnsupported
@@ -90,7 +91,7 @@ func (backend *acpBackend) ForkSession(ctx context.Context, run acpRunRequest, r
 	if err != nil {
 		return ForkSessionResult{}, err
 	}
-	servers, err := acpMCPServers(agent.binding, mcp.compatible)
+	servers, err := acpMCPServers(mcp.compatible)
 	if err != nil {
 		return ForkSessionResult{}, err
 	}
@@ -117,7 +118,7 @@ func (backend *acpBackend) ForkSession(ctx context.Context, run acpRunRequest, r
 		return ForkSessionResult{}, status_error.RuntimeUnavailable
 	}
 	if !agent.binding.nativeProcess && agent.initializeResponse.AgentCapabilities.SessionCapabilities.Close != nil {
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), acpDeliveryDrainTimeout)
+		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), acpManagementCloseTimeout)
 		defer cancel()
 		if _, closeErr := agent.connection.CloseSession(cleanup, acp.CloseSessionRequest{SessionId: response.SessionId}); closeErr != nil {
 			logx.Errorf("close fork management session failed: runtime_id=%s error=%v", request.Run.Target.RuntimeID, closeErr)
@@ -136,10 +137,11 @@ func normalizeForkError(request ForkSessionRequest, err error) error {
 		return err
 	}
 	logx.Errorf("native fork failed: runtime_id=%s reconcile_only=%t error=%v", request.Run.Target.RuntimeID, request.ReconcileOnly, err)
-	if request.ReconcileOnly || errors.Is(err, acpmeta.ErrForkUnconfirmed) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+	code := acpFailureCode(err)
+	if request.ReconcileOnly || errors.Is(err, acpmeta.ErrForkUnconfirmed) || code == FailureCodeContextCanceled || code == constants.RuntimeFailureCodeRequestTimeout {
 		return status_error.ChatForkIndeterminate
 	}
-	switch acpFailureCode(err) {
+	switch code {
 	case FailureCodeSessionNotFound:
 		return status_error.RuntimeSessionNotFound
 	case FailureCodeAuthRequired:

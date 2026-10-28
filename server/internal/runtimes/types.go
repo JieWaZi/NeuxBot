@@ -1,10 +1,9 @@
-// Package runtimes 提供不依赖业务持久化的 ACP Agent 运行时 SDK。
+// Package runtimes 提供智能体探测、启动准备、工作区物化与原生管理能力。
 package runtimes
 
 import (
 	"context"
 	"encoding/json"
-	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
@@ -72,16 +71,6 @@ const (
 type Config struct {
 	// Profiles 保存由调用方提供且仅存在于当前 SDK 实例中的本地 Profile。
 	Profiles []ProfileSpec
-	// Defaults 保存 Invocation 阶段限制和事件队列默认值。
-	Defaults Defaults
-}
-
-// Defaults 保存 SDK 构造后不可变的 ACP Client 资源保护限制。
-type Defaults struct {
-	// Inactivity 是 ACP Prompt 没有 Session Update 时允许等待的最长时间。
-	Inactivity time.Duration
-	// EventDelivery 是 Event Sink 单次交付超时。
-	EventDelivery time.Duration
 }
 
 // CredentialRefresh 把凭据更新交给宿主权威，适配器只在原生认证请求时调用。
@@ -641,20 +630,8 @@ type SessionDirective struct {
 type ExecutionPolicy struct {
 	// PermissionLevel 是调用方冻结的跨 Runtime 产品权限等级。
 	PermissionLevel PermissionLevel
-	// WorkspaceReadOnly 表示 Runtime 只能读取工作区；除内部控制面精确白名单外的审批必须取消。
+	// WorkspaceReadOnly 表示宿主要求智能体只读取工作区。
 	WorkspaceReadOnly bool
-	// TrustedControlTools 是入口已授权、允许免用户确认的内部控制面 MCP 精确白名单。
-	TrustedControlTools []TrustedControlTool
-}
-
-// TrustedControlTool 描述由上层内部能力签发、仍需服务端二次授权的 MCP 调用范围。
-type TrustedControlTool struct {
-	// Server 是 Runtime 原生 MCP 配置中的精确服务键。
-	Server string
-	// Tool 是允许调用的唯一 MCP 工具名。
-	Tool string
-	// Actions 是该工具 arguments.action 允许使用的精确值集合。
-	Actions []string
 }
 
 // SessionResult 保存一次调用输入和输出的原生 Session 事实。

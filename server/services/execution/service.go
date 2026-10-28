@@ -24,7 +24,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 )
 
-// Service 是当前 Chat API 与未来 Channel、Schedule、IM 共用的执行接口。
+// Service 是 Chat、团队、工作流、自动任务和 IM 共用的执行接口。
 type Service interface {
 	// ForkChat 在统一执行环境内建立普通会话的原生分支。
 	ForkChat(context.Context, chatservice.ForkInput) (string, error)
@@ -32,8 +32,6 @@ type Service interface {
 	Open(ctx context.Context) error
 	// Close 取消全部 Runtime 执行并等待持久化收尾。
 	Close()
-	// StartChat 通过普通聊天的独立 Runtime 执行；团队成员仍采用团队执行边界。
-	StartChat(ctx context.Context, intent WorkIntent) (AcceptedExecution, error)
 	// Start 校验并执行一个入口无关的工作意图。
 	Start(ctx context.Context, intent WorkIntent) (AcceptedExecution, error)
 	// ValidateConfiguration 校验 Runtime、模型、推理强度和权限组合可以用于下一次执行。
@@ -108,8 +106,6 @@ type service struct {
 	acquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// accounts 为执行冻结账号并生成隔离配置。
 	accounts *aiaccount.Service
-	// chatRuntime 拥有普通聊天的独立调用、会话与资源租约。
-	chatRuntime runtimeRunner
 	// runtime 执行一次结构化 Agent 调用并交付归一化事件。
 	runtime runtimeRunner
 	// journal 读写 Chat 权威事实、窄投影和 committed SSE。
@@ -170,8 +166,6 @@ type Config struct {
 	AcquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// Accounts 管理受管账号的使用租约和配置投射。
 	Accounts *aiaccount.Service
-	// ChatRuntime 提供普通聊天的独立执行；未设置时沿用 Runtime。
-	ChatRuntime runtimeRunner
 	// Runtime 执行一次完整 Agent 调用并提供工作区投影声明。
 	Runtime runtimeRunner
 	// Journal 读写 Chat 权威事实和可重建投影。
@@ -229,8 +223,12 @@ type runtimeRunner interface {
 	ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error)
 	// Runtimes 返回工作区投影所需的 Runtime 摘要。
 	Runtimes() []runtimes.RuntimeSummary
-	// Run 阻塞执行一次调用，并按发生顺序交付统一事件。
-	Run(context.Context, runtimes.RunRequest, runtimes.EventSink) runtimes.Result
+	// RunWithLease 执行一次调用，原生消费者退出后才释放账号和插件资源。
+	RunWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
+	// RunSummaryWithLease 在现有原生会话生成隐藏交接，并在消费者退出后释放资源。
+	RunSummaryWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
+	// CloseWorkspace 在改写账号或共享工作区配置前关闭仍持有资源的原生消费者。
+	CloseWorkspace(context.Context, string) error
 }
 
 // New 校验配置并创建尚未绑定进程生命周期的 Execution Core。
@@ -272,7 +270,6 @@ func New(config Config) (Core, error) {
 		accounts:             config.Accounts,
 		acquireTeamChatInput: config.AcquireTeamChatInput,
 		runtime:              config.Runtime,
-		chatRuntime:          config.ChatRuntime,
 		journal:              config.Journal,
 		dormantChats:         config.DormantChats,
 		wakerController:      config.Wakers,

@@ -10,16 +10,6 @@ import (
 
 // ForkChat 把冻结执行配置交给 Runtime；Chat 仍独占历史、幂等和发布事务。
 func (m *service) ForkChat(ctx context.Context, input chatservice.ForkInput) (string, error) {
-	runner := m.runtime
-	if m.chatRuntime != nil {
-		state, err := m.journal.LoadExecutionContext(ctx, input.ChatID)
-		if err != nil {
-			return "", err
-		}
-		if state.ThreadWorkspaceID == "" {
-			runner = m.chatRuntime
-		}
-	}
 	var prepared runtimes.ForkSessionRequest
 	var preparedReady bool
 	buildRequest := func(ctx context.Context, input chatservice.NativeForkInput) (runtimes.ForkSessionRequest, error) {
@@ -46,8 +36,15 @@ func (m *service) ForkChat(ctx context.Context, input chatservice.ForkInput) (st
 		Preflight: func(ctx context.Context, input chatservice.NativeForkInput) error {
 			var err error
 			prepared, err = buildRequest(ctx, input)
-			preparedReady = err == nil
-			return err
+			if err != nil {
+				return err
+			}
+			// 先释放源消费者，再由 Chat 持久化原生派发边界；关闭失败仍可按同一请求安全重试。
+			if err = m.runtime.CloseWorkspace(ctx, prepared.SourceWorkspace); err != nil {
+				return err
+			}
+			preparedReady = true
+			return nil
 		},
 		Execute: func(ctx context.Context, input chatservice.NativeForkInput) (string, error) {
 			request := prepared
@@ -59,7 +56,7 @@ func (m *service) ForkChat(ctx context.Context, input chatservice.ForkInput) (st
 				}
 			}
 			request.ReconcileOnly = input.ReconcileOnly
-			result, err := runner.ForkSession(ctx, request)
+			result, err := m.runtime.ForkSession(ctx, request)
 			return result.SessionID, err
 		},
 	})

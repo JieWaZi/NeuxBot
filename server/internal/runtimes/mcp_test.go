@@ -2,7 +2,7 @@ package runtimes
 
 import (
 	"errors"
-	"strings"
+
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -72,54 +72,6 @@ func TestDetectedConnectorTransportSupportedUsesCapabilitySnapshot(t *testing.T)
 	}
 	if DetectedConnectorTransportSupported(detection, ConnectorTransportSSE) {
 		t.Fatal("runtime gained undeclared SSE transport")
-	}
-}
-
-func TestPrepareACPMCPConnectorsFiltersUnsupportedTransportWithoutSecrets(t *testing.T) {
-	prepared, err := prepareACPMCPConnectors(acp.McpCapabilities{Http: true}, []Connector{
-		{
-			ID:          "stdio-id",
-			Name:        "本地服务",
-			RuntimeKey:  "ally_local_service_a1b2c3d4",
-			Selected:    true,
-			Transport:   ConnectorTransportStdio,
-			Command:     "server",
-			Environment: map[string]string{"TOKEN": "secret-value"},
-		},
-		{
-			ID:         "sse-id",
-			Name:       "旧版服务",
-			RuntimeKey: "ally_legacy_service_c9d0e1f2",
-			Transport:  ConnectorTransportSSE,
-			URL:        "https://example.com/sse",
-		},
-	})
-	if err != nil {
-		t.Fatalf("prepare ACP connectors: %v", err)
-	}
-	if len(prepared.compatible) != 1 || len(prepared.selected) != 1 ||
-		prepared.selected[0].RuntimeKey != "ally_local_service_a1b2c3d4" {
-		t.Fatalf("prepared connectors = %+v", prepared)
-	}
-	if len(prepared.events) != 1 || prepared.events[0].Type != EventTypeCommentaryDelta {
-		t.Fatalf("events = %+v, want one compatibility commentary", prepared.events)
-	}
-	if strings.Contains(string(prepared.events[0].Data), "secret") {
-		t.Fatalf("compatibility event leaked secret: %s", prepared.events[0].Data)
-	}
-}
-
-func TestApplySelectedConnectorHintAddsOnlyCurrentTurnSelection(t *testing.T) {
-	message := applySelectedConnectorHint("检查页面", []Connector{{
-		Name:       "浏览器自动化",
-		RuntimeKey: "ally_liu_lan_qi_a1b2c3d4",
-	}})
-	if !strings.Contains(message, "检查页面") ||
-		!strings.Contains(message, "ally_liu_lan_qi_a1b2c3d4 (浏览器自动化)") {
-		t.Fatalf("selected connector message = %q", message)
-	}
-	if unchanged := applySelectedConnectorHint("继续", nil); unchanged != "继续" {
-		t.Fatalf("unselected connector message = %q", unchanged)
 	}
 }
 
