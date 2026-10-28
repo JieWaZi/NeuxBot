@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { ChatMessagePluginReferences } from "./chat-plugin-reference";
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
 import type { ChatResultSource } from "@/shared/api/notification-presentation";
@@ -186,6 +187,7 @@ type ChatThreadProps = {
   composerSettings?: ReactNode;
   composerActions?: ReactNode;
   composerEffects?: ReactNode;
+  inlineComposerContext?: ReactNode;
   renderComposerContextStrip?: () => ReactNode;
   composerSkills?: ChatSkillOption[];
   composerSkillsError?: boolean;
@@ -241,6 +243,7 @@ type ChatThreadProps = {
   pendingApprovals?: PendingApproval[];
   approvalSubmissionState?: ApprovalSubmissionState;
   onResolveApproval?: (approvalId: string, optionId: string) => void;
+  elicitationOutlet?: HTMLElement | null;
   pendingElicitations?: PendingElicitation[];
   elicitationSubmissionState?: ElicitationSubmissionState;
   onResolveElicitation?: (
@@ -1704,6 +1707,7 @@ const Composer = memo(function Composer({
   settings,
   actions,
   effects,
+  inlineContext,
   renderContextStrip,
   skills,
   skillsError,
@@ -1737,6 +1741,7 @@ const Composer = memo(function Composer({
   pendingApprovals,
   approvalSubmissionState,
   onResolveApproval,
+  elicitationOutlet,
   pendingElicitations = [],
   elicitationSubmissionState = "idle",
   onResolveElicitation = () => undefined,
@@ -1751,6 +1756,7 @@ const Composer = memo(function Composer({
   settings?: ReactNode;
   actions?: ReactNode;
   effects?: ReactNode;
+  inlineContext?: ReactNode;
   renderContextStrip?: () => ReactNode;
   skills: ChatSkillOption[];
   skillsError: boolean;
@@ -1784,6 +1790,7 @@ const Composer = memo(function Composer({
   pendingApprovals: PendingApproval[];
   approvalSubmissionState: ApprovalSubmissionState;
   onResolveApproval: (approvalId: string, optionId: string) => void;
+  elicitationOutlet?: HTMLElement | null;
   pendingElicitations: PendingElicitation[];
   elicitationSubmissionState: ElicitationSubmissionState;
   onResolveElicitation: (
@@ -1933,12 +1940,24 @@ const Composer = memo(function Composer({
           }
         >
           {currentElicitation ? (
-            <ChatElicitationCard
-              key={currentElicitation.elicitationId}
-              elicitation={currentElicitation}
-              submissionState={elicitationSubmissionState}
-              onResolve={onResolveElicitation}
-            />
+            elicitationOutlet ? (
+              createPortal(
+                <ChatElicitationCard
+                  key={currentElicitation.elicitationId}
+                  elicitation={currentElicitation}
+                  submissionState={elicitationSubmissionState}
+                  onResolve={onResolveElicitation}
+                />,
+                elicitationOutlet,
+              )
+            ) : (
+              <ChatElicitationCard
+                key={currentElicitation.elicitationId}
+                elicitation={currentElicitation}
+                submissionState={elicitationSubmissionState}
+                onResolve={onResolveElicitation}
+              />
+            )
           ) : currentApproval ? (
             <ChatApprovalCard
               approval={currentApproval}
@@ -1949,7 +1968,8 @@ const Composer = memo(function Composer({
             />
           ) : (
             <>
-              <ComposerInputBody>
+              <ComposerInputBody data-chat-composer-input-body>
+                {inlineContext}
                 <ChatComposerInput
                   autoFocus={autoFocus}
                   disabled={isWorkStopping || disabled}
@@ -2128,6 +2148,7 @@ export function ChatThread({
   composerSettings,
   composerActions,
   composerEffects,
+  inlineComposerContext,
   renderComposerContextStrip,
   composerSkills = emptyList,
   composerSkillsError = false,
@@ -2182,6 +2203,7 @@ export function ChatThread({
   pendingApprovals = emptyList,
   approvalSubmissionState = "idle",
   onResolveApproval = ignoreChange,
+  elicitationOutlet,
   pendingElicitations = emptyList,
   elicitationSubmissionState = "idle",
   onResolveElicitation = ignoreChange,
@@ -2467,6 +2489,7 @@ export function ChatThread({
                       settings={composerSettings}
                       actions={composerActions}
                       effects={composerEffects}
+                      inlineContext={inlineComposerContext}
                       renderContextStrip={renderComposerContextStrip}
                       skills={composerSkills}
                       skillsError={composerSkillsError}
@@ -2501,6 +2524,7 @@ export function ChatThread({
                       pendingApprovals={pendingApprovals}
                       approvalSubmissionState={approvalSubmissionState}
                       onResolveApproval={onResolveApproval}
+                      elicitationOutlet={elicitationOutlet}
                       pendingElicitations={pendingElicitations}
                       elicitationSubmissionState={elicitationSubmissionState}
                       onResolveElicitation={onResolveElicitation}

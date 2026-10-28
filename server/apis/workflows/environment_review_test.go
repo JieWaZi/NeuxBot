@@ -35,7 +35,7 @@ func TestF2PipelineIndependentApprovalAndReportFacts(t *testing.T) {
 	if len(state.Humans) != 1 || !strings.Contains(state.Humans[0].Prompt, "A") {
 		t.Fatal("A waited for B before requesting missing input")
 	}
-	if err := answerHuman(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: state.Humans[0].ID, RequestID: "config", Value: "配置已确认"}); err != nil {
+	if err := answerHumanFixture(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: state.Humans[0].ID, RequestID: "config", Value: "配置已确认"}); err != nil {
 		t.Fatal(err)
 	}
 	state = waitWorkflow(t, s, run.ID, func(state controllers.WorkflowRunState) bool { return len(state.Humans) == 2 })
@@ -48,7 +48,7 @@ func TestF2PipelineIndependentApprovalAndReportFacts(t *testing.T) {
 	if len(state.Humans) != 2 || approvalID == "" {
 		t.Fatal("A did not reach approval independently")
 	}
-	if err := answerHuman(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: approvalID, RequestID: "approve-A", Value: "approve"}); err != nil {
+	if err := answerHumanFixture(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: approvalID, RequestID: "approve-A", Value: "approve"}); err != nil {
 		t.Fatal(err)
 	}
 	state = waitWorkflow(t, s, run.ID, func(state controllers.WorkflowRunState) bool {
@@ -68,7 +68,7 @@ func TestF2PipelineIndependentApprovalAndReportFacts(t *testing.T) {
 	})
 	for _, human := range state.Humans {
 		if human.Status == constants.WorkflowStepStatusWaiting {
-			if err := answerHuman(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: "skip-B", Skip: true}); err != nil {
+			if err := answerHumanFixture(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: "skip-B", Skip: true}); err != nil {
 				t.Fatal(err)
 			}
 		}

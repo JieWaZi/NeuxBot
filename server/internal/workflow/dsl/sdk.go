@@ -37,7 +37,7 @@ func Registry() []PrimitiveContract {
 	return []PrimitiveContract{
 		{Name: "phase", Signature: "declare function phase(id: string): void;", HostCapability: "phase"},
 		{Name: "log", Signature: "declare function log(message: string, options?: { level?: 'info' | 'warning' | 'error' }): void;", HostCapability: "log"},
-		{Name: "worker", Signature: "declare function worker<T extends Json = string>(prompt: string, options: VisualNode & WorkerOptions): Promise<T | null>;", AwaitRequired: true, HostCapability: "worker"},
+		{Name: "worker", Signature: "declare function worker<T extends Json = string>(prompt: string, options: VisualNode & WorkerOptions): Promise<T>;", AwaitRequired: true, HostCapability: "worker"},
 		{Name: "askUser", Signature: "declare function askUser(prompt: string, options: VisualNode & HumanOptions): Promise<HumanAnswer>;", AwaitRequired: true, HostCapability: "human"},
 		{Name: "parallel", Signature: "declare function parallel<T extends Json>(tasks: Array<() => Promise<T>>, options: GroupOptions): Promise<Array<T | null>>;", AwaitRequired: true, HostCapability: "fork"},
 		{Name: "pipeline", Signature: "declare function pipeline(items: Json[], stages: Array<(previous: Json, original: Json, index: number) => Promise<Json>>, options: GroupOptions): Promise<Array<Json | null>>;", AwaitRequired: true, HostCapability: "pipeline"},
@@ -65,7 +65,8 @@ func SDKOutputs() map[string][]byte {
 		Primitives []PrimitiveContract `json:"primitives"`
 	}{constants.WorkflowSDKVersion, Registry()}, "", "  ")
 	knowledge := sdkCreationKnowledge()
-	outputs := map[string][]byte{"workflow.d.ts": []byte(declarations.String()), "registry.json": append(registry, '\n'), "creation-knowledge.md": []byte(knowledge)}
+	canvasSchema, _ := json.MarshalIndent(CanvasManifestSchema(), "", "  ")
+	outputs := map[string][]byte{"canvas-manifest.schema.json": append(canvasSchema, '\n'), "workflow.d.ts": []byte(declarations.String()), "registry.json": append(registry, '\n'), "creation-knowledge.md": []byte(knowledge)}
 	for name, data := range SDKTopicOutputs() {
 		outputs[name] = data
 	}

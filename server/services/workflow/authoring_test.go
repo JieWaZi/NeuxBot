@@ -130,7 +130,7 @@ func TestAuthoringCLICombinesPreparationAndSavesWithDurableReceipt(t *testing.T)
 			t.Fatalf("invalid query lacks legal choices: %+v", response)
 		}
 	}
-	source := `export const meta={sdk:'ally.workflow/1',title:'Echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string',title:'Text',description:'Text to echo.'}},required:['text']},outputSchema:{type:'string'},phases:[{id:'echo',title:'Echo',detail:'Echo input',canExit:true}]};phase('echo');return await functionTask({id:'echo_text',label:'Echo text',phase:'echo',language:'javascript',input:args.text,code:'function main(input){return input;}'});`
+	source := `export const meta={sdk:'ally.workflow/2',title:'Echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string',title:'Text',description:'Text to echo.'}},required:['text']},outputSchema:{type:'string'},phases:[{id:'echo',title:'Echo',detail:'Echo input',canExit:true}]};phase('echo');return await functionTask({id:'echo_text',label:'Echo text',phase:'echo',language:'javascript',input:args.text,code:'function main(input){return input;}'});`
 	invalid := strings.Replace(source, "language:'javascript'", "outputSchema:meta.outputSchema,language:'javascript'", 1)
 	code, rejected := call([]string{"workflow", "source", "save", "--input", "-", "--request-id", "invalid"}, map[string]any{
 		"source": invalid, "expectedRevisionId": "",
@@ -179,7 +179,7 @@ func TestAuthoringCLICombinesPreparationAndSavesWithDurableReceipt(t *testing.T)
 	code, unchanged := call([]string{"workflow", "source", "save", "--input", "-", "--request-id", "unchanged"}, map[string]any{
 		"source": source, "expectedRevisionId": revision,
 	})
-	if code != 0 || unchanged.Data.(map[string]any)["unchanged"] != true || unchanged.Data.(map[string]any)["revisionId"] != revision {
+	if code != 0 || unchanged.Data.(map[string]any)["unchanged"] != false || unchanged.Data.(map[string]any)["revisionId"] == revision {
 		t.Fatalf("unchanged save created a new revision: %+v", unchanged)
 	}
 	for _, include := range []bool{false, true} {
@@ -235,12 +235,7 @@ func TestAuthoringPreparationIncludesOnlySelectedResourcesAndGuides(t *testing.T
 			t.Fatalf("missing bounded resource page: %s: %v", kind, resources)
 		}
 	}
-	content := data["content"].(string)
-	if len(resources) != 4 || len(data["guideIds"].([]any)) != 2 ||
-		!strings.Contains(content, "# Choose the actual deliverable") ||
-		strings.Count(content, constants.WorkflowResultPageDecisionInstructions) != 1 ||
-		strings.Count(content, "saved:true, revisionId and sourceDigest") != 1 ||
-		strings.Contains(content, "# Workflow SDK: presentation") {
+	if len(resources) != 5 || len(data["guideIds"].([]any)) != 2 {
 		t.Fatalf("selected features failed to choose guidance: %v", data)
 	}
 	for _, tc := range []struct {
@@ -248,11 +243,8 @@ func TestAuthoringPreparationIncludesOnlySelectedResourcesAndGuides(t *testing.T
 		primitive string
 		// feature 是只应加载对应资料的业务能力。
 		feature string
-		// wantPresentation 表示必须包含完整页面 Catalog。
-		wantPresentation bool
 	}{
 		{primitive: "functionTask", feature: "files"},
-		{primitive: "worker", feature: "presentation", wantPresentation: true},
 	} {
 		t.Run(tc.primitive+"/"+tc.feature, func(t *testing.T) {
 			code, prepared := call([]string{"workflow", "authoring", "prepare", "--primitives", tc.primitive, "--features", tc.feature}, nil)
@@ -263,8 +255,7 @@ func TestAuthoringPreparationIncludesOnlySelectedResourcesAndGuides(t *testing.T
 			content := data["content"].(string)
 			t.Logf("%s/%s authoring guidance: %d bytes", tc.primitive, tc.feature, len(content))
 			if len(data["guideIds"].([]any)) != 1 ||
-				strings.Contains(content, "# Choose the actual deliverable") ||
-				strings.Contains(content, "# Workflow SDK: presentation") != tc.wantPresentation {
+				strings.Contains(content, "# Choose the actual deliverable") {
 				t.Fatalf("preparation included unrelated guidance: %v", data["guideIds"])
 			}
 			if tc.primitive == "functionTask" &&

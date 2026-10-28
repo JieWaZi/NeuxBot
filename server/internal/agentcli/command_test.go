@@ -81,7 +81,7 @@ func TestCommandsUseCurrentGrantAndSeparateOutputStreams(t *testing.T) {
 		code := Execute(context.Background(), args, IO{In: strings.NewReader(input), Out: &out, Err: &errOut, ContextFile: contextFile})
 		return code, out.String(), errOut.String()
 	}
-	code, out, errOut := run([]string{"im", "deliveries", "create", "--input", "-", "--request-id", "report-01"}, `{"targetId":"known-target","content":"report"}`)
+	code, out, errOut := run([]string{"--context", contextFile, "im", "deliveries", "create", "--input", "-", "--request-id", "report-01"}, `{"targetId":"known-target","content":"report"}`)
 	if code != 0 || errOut != "" || len(calls) != 1 || calls[0].RequestID != "report-01" || !strings.Contains(out, `"completion":"accepted"`) {
 		t.Fatalf("code=%d stdout=%s stderr=%s calls=%v", code, out, errOut, calls)
 	}

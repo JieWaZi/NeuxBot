@@ -79,7 +79,7 @@ func holdingSource(concurrency int) string {
 	if concurrency == 8 {
 		limit = "8"
 	}
-	return `export const meta={sdk:'ally.workflow/1',title:'并发预算',description:'真实派发边界',nodeResultPageOmissions:{held:'只返回并发预算测试的时序标记'},limits:{concurrency:` + limit + `},phases:[{id:'work',title:'工作',detail:'限制同时派发',canExit:true}]};const values=await parallel(args.items.map(item=>async()=>await worker(String(item),{id:'held',label:'受控等待',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})),{id:'batch',concurrency:8});return values;`
+	return `export const meta={sdk:'ally.workflow/2',title:'并发预算',description:'真实派发边界',limits:{concurrency:` + limit + `},phases:[{id:'work',title:'工作',detail:'限制同时派发',canExit:true}]};const values=await parallel(args.items.map(item=>async()=>await worker(String(item),{id:'held',label:'受控等待',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})),{id:'batch',concurrency:8});return values;`
 }
 
 func TestDeclaredRunConcurrencyAndGlobalSlotsLimitActualDispatch(t *testing.T) {
@@ -124,8 +124,8 @@ func TestLowerLoopAndInstanceBudgetsBlockFurtherEffects(t *testing.T) {
 		// source 是提交给实际编译器和 SQLite Runner 的源程序。
 		source string
 	}{
-		{"loop-limit", `export const meta={sdk:'ally.workflow/1',title:'循环预算',description:'限制循环',limits:{maxLoopSteps:2},phases:[{id:'one',title:'one',detail:'one',canExit:true}]};let n=0;for(let i=0;i<3;i++){n++;}return n;`},
-		{"instance-limit", `export const meta={sdk:'ally.workflow/1',title:'实例预算',description:'限制实例',limits:{maxInstances:1},phases:[{id:'one',title:'one',detail:'one',canExit:true}]};for(let i=0;i<2;i++){await askUser('输入',{id:'answer',label:'输入',phase:'one'});}return true;`},
+		{"loop-limit", `export const meta={sdk:'ally.workflow/2',title:'循环预算',description:'限制循环',limits:{maxLoopSteps:2},phases:[{id:'one',title:'one',detail:'one',canExit:true}]};let n=0;for(let i=0;i<3;i++){n++;}return n;`},
+		{"instance-limit", `export const meta={sdk:'ally.workflow/2',title:'实例预算',description:'限制实例',limits:{maxInstances:1},phases:[{id:'one',title:'one',detail:'one',canExit:true}]};for(let i=0;i<2;i++){await askUser('输入',{id:'answer',label:'输入',phase:'one'});}return true;`},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			s, _ := workflowTestService(t)
@@ -140,7 +140,7 @@ func TestLowerLoopAndInstanceBudgetsBlockFurtherEffects(t *testing.T) {
 				t.Fatal(err)
 			}
 			if len(state.Humans) > 0 {
-				if err := answerHuman(context.Background(), workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: state.Humans[0].ID, RequestID: "answer", Value: "continue"}); err != nil {
+				if err := answerHumanFixture(context.Background(), workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: state.Humans[0].ID, RequestID: "answer", Value: "continue"}); err != nil {
 					t.Fatal(err)
 				}
 			}

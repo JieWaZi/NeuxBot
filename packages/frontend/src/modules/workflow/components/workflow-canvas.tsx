@@ -20,6 +20,7 @@ import { cn } from "@/shared/lib/cn";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import {
   workflowCanvasLayout,
+  workflowPhaseEdges,
   workflowInputNodeWidth,
   type CanvasItem,
 } from "../model/canvas-layout";
@@ -41,7 +42,7 @@ const nodeIcons: Record<string, typeof Bot> = {
   startWorkflow: Workflow,
   joinWorkflow: Workflow,
 };
-export function NodeKind({ kind }: { kind: string }) {
+export function NodeKind({ kind, label }: { kind: string; label?: string }) {
   const { t } = useTranslation("workflow");
   const Icon = nodeIcons[kind] ?? Workflow;
   const names: Record<string, string> = {
@@ -56,7 +57,7 @@ export function NodeKind({ kind }: { kind: string }) {
   return (
     <span className="text-muted-foreground type-caption inline-flex items-center gap-1.5">
       <Icon className="size-icon-sm" aria-hidden="true" strokeWidth={1.5} />
-      {names[kind] ?? kind}
+      {label ?? names[kind] ?? kind}
     </span>
   );
 }
@@ -72,11 +73,12 @@ export function WorkflowCanvas({
   phaseEditor,
   nodeContent,
   nodeHeading,
-  nodeOutput,
   onDismiss,
   listMode = false,
   nodeCounts,
   onSelectInstance,
+  selectedTargets = [],
+  onSelectTargets,
 }: {
   active?: boolean;
   manifest: Manifest;
@@ -88,10 +90,11 @@ export function WorkflowCanvas({
     onOpenChange: (open: boolean) => void;
     content: ReactNode;
   };
+  selectedTargets?: { kind: "phase" | "node"; id: string }[];
+  onSelectTargets?: (targets: { kind: "phase" | "node"; id: string }[]) => void;
   selected?: string;
   onSelect: (node: WorkflowNode) => void;
   phaseEditor?: (phase: WorkflowPhase, close: () => void) => ReactNode;
-  nodeOutput?: (node: WorkflowNode) => ReactNode;
   nodeContent?: (node: WorkflowNode) => ReactNode;
   nodeHeading?: (node: WorkflowNode) => { title?: string; status?: string };
   onDismiss?: () => void;
@@ -121,14 +124,14 @@ export function WorkflowCanvas({
   const [view, setView] = useState({ x: 24, y: 24, scale: 1 });
   const [measuredHeight, setMeasuredHeight] = useState(360);
   const [phaseHeights, setPhaseHeights] = useState<Record<string, number>>({});
-  const phases = manifest.meta?.phases ?? [];
+  const phases = manifest.phases ?? [];
   const hasInput = Boolean(inputNode);
   const phaseLayouts = workflowCanvasLayout(manifest, hasInput);
   const lastPhase = phaseLayouts.at(-1);
   const width = lastPhase
     ? lastPhase.left + lastPhase.width + 24
     : workflowInputNodeWidth + 48;
-  const edges = manifest.displayEdges ?? [];
+  const edges = workflowPhaseEdges(manifest);
   const phaseIndex = (id?: string) =>
     phases.findIndex((phase) => phase.id === id);
   const backEdges = edges.filter(
@@ -269,7 +272,70 @@ export function WorkflowCanvas({
       };
     });
   };
+  const [selectionRect, setSelectionRect] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>();
+  const spacePan = useRef(false);
+  useEffect(() => {
+    const reset = () => {
+      spacePan.current = false;
+    };
+    window.addEventListener("blur", reset);
+    return () => window.removeEventListener("blur", reset);
+  }, []);
+  const selectionOrigin = useRef<
+    { x: number; y: number; extend: boolean } | undefined
+  >(undefined);
+  const finishSelection = () => {
+    const origin = selectionOrigin.current;
+    const box = host.current?.getBoundingClientRect();
+    if (origin && selectionRect && box && onSelectTargets) {
+      const targets = Array.from(
+        host.current?.querySelectorAll<HTMLElement>("[data-workflow-phase]") ??
+          [],
+      )
+        .filter((element) => {
+          const r = element.getBoundingClientRect();
+          return (
+            r.left < box.left + selectionRect.x + selectionRect.width &&
+            r.right > box.left + selectionRect.x &&
+            r.top < box.top + selectionRect.y + selectionRect.height &&
+            r.bottom > box.top + selectionRect.y
+          );
+        })
+        .flatMap((element) =>
+          element.dataset.workflowPhase
+            ? [{ kind: "phase" as const, id: element.dataset.workflowPhase }]
+            : [],
+        );
+      onSelectTargets(
+        origin.extend
+          ? [
+              ...selectedTargets,
+              ...targets.filter(
+                (target) =>
+                  !selectedTargets.some(
+                    (item) =>
+                      item.kind === target.kind && item.id === target.id,
+                  ),
+              ),
+            ]
+          : targets,
+      );
+    }
+    selectionOrigin.current = undefined;
+    setSelectionRect(undefined);
+  };
   const down = (event: PointerEvent<HTMLDivElement>) => {
+    // React Portal 的事件仍沿组件树冒泡；只允许真实画布 DOM 参与平移。
+    if (
+      !(event.target instanceof Node) ||
+      !event.currentTarget.contains(event.target)
+    )
+      return;
     if (
       event.target instanceof Element &&
       event.target.closest(
@@ -277,7 +343,30 @@ export function WorkflowCanvas({
       )
     )
       return;
-    if (event.button !== 0) return;
+    event.currentTarget.focus({ preventScroll: true });
+    if (
+      onSelectTargets &&
+      event.button === 0 &&
+      !event.altKey &&
+      !spacePan.current
+    ) {
+      const box = event.currentTarget.getBoundingClientRect();
+      selectionOrigin.current = {
+        x: event.clientX - box.left,
+        y: event.clientY - box.top,
+        extend: event.shiftKey,
+      };
+      setSelectionRect({
+        x: event.clientX - box.left,
+        y: event.clientY - box.top,
+        width: 0,
+        height: 0,
+      });
+      event.currentTarget.setPointerCapture(event.pointerId);
+      event.preventDefault();
+      return;
+    }
+    if (event.button !== 0 && event.button !== 1) return;
     userMoved.current = true;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragging.current = {
@@ -361,7 +450,7 @@ export function WorkflowCanvas({
   );
   const renderNode = (node: WorkflowNode) => {
     const heading = nodeHeading?.(node);
-    const title = heading?.title || node.labelTemplate || t("nodeDetails");
+    const title = heading?.title || node.label || t("nodeDetails");
     const running =
       nodeCounts?.some(
         (item) =>
@@ -374,6 +463,24 @@ export function WorkflowCanvas({
         ?.filter((item) => item.nodeId === node.id && (item.count ?? 0) > 0)
         .map((item) => item.status) ?? [],
     );
+    const targetSelected = selectedTargets.some(
+      (target) => target.kind === "node" && target.id === node.id,
+    );
+    const behavior = node.description;
+    const action =
+      node.kind === "action"
+        ? manifest.actions?.find(
+            (action) => action.id === node.execution.actionId,
+          )
+        : undefined;
+    const description =
+      typeof behavior === "string" ? behavior : action?.description;
+    const kindSurface =
+      node.kind === "worker"
+        ? "bg-accent-surface hover:bg-accent-surface"
+        : node.kind === "askUser"
+          ? "bg-status-warning-surface hover:bg-status-warning-surface"
+          : "bg-status-info-surface hover:bg-status-info-surface";
     const card = (
       <Card
         asChild
@@ -384,14 +491,16 @@ export function WorkflowCanvas({
           status === "succeeded" || status === "answered"
         }
         className={cn(
+          kindSurface,
           workflowStatusAppearance(status).surface,
+          targetSelected && "ring-accent-border ring-1",
           "data-[state=selected]:not-focus-visible:ring-0",
         )}
         data-workflow-node={node.id}
       >
         <button
           type="button"
-          aria-label={t("selectNode", { label: node.labelTemplate })}
+          aria-label={t("selectNode", { label: node.label })}
           aria-pressed={selected === node.id}
           onClick={() => {
             onSelect(node);
@@ -400,17 +509,28 @@ export function WorkflowCanvas({
             );
             if (actual?.instanceId) onSelectInstance?.(actual.instanceId);
           }}
-          className="focus-visible:ring-ring relative grid w-full min-w-0 gap-2 p-4 text-left outline-none focus-visible:ring-2"
+          className="focus-visible:ring-ring relative grid w-full min-w-0 gap-2 p-4 pr-10 text-left outline-none focus-visible:ring-2"
           onFocus={revealFocusedItem}
         >
           <span className="type-label font-medium whitespace-pre-wrap">
-            {node.labelTemplate}
+            {node.label}
           </span>
           {node.kind === "worker" ? (
-            <WorkerReference resolve={node.options?.resolve} />
+            <WorkerReference
+              resolve={node.execution.resolve}
+              showModel={false}
+            />
           ) : (
-            <NodeKind kind={node.kind ?? ""} />
+            <NodeKind
+              kind={node.kind}
+              label={action?.type === "script" ? t("localScript") : undefined}
+            />
           )}
+          {description ? (
+            <span className="text-muted-foreground type-caption line-clamp-3 whitespace-pre-wrap">
+              {description}
+            </span>
+          ) : null}
           {nodeCounts ? (
             <span className="type-caption flex flex-wrap gap-2">
               {!nodeCounts.some((item) => item.nodeId === node.id) ? (
@@ -466,9 +586,8 @@ export function WorkflowCanvas({
       <div key={node.id}>{card}</div>
     );
     return (
-      <div key={node.id}>
+      <div key={node.id} className="relative">
         {surface}
-        {nodeOutput?.(node)}
       </div>
     );
   };
@@ -477,7 +596,7 @@ export function WorkflowCanvas({
       <span className="text-muted-foreground type-caption mb-1 block">
         {t("phaseOrdinal", { ordinal: String(index + 1).padStart(2, "0") })}
       </span>
-      <span className="type-label block font-semibold">{phase.title}</span>
+      <span className="type-label block pr-8 font-semibold">{phase.title}</span>
       <span className="text-muted-foreground type-caption mt-2 line-clamp-3 block whitespace-pre-wrap">
         {phase.detail}
       </span>
@@ -587,7 +706,10 @@ export function WorkflowCanvas({
           data-workflow-phase={phase.id}
           data-workflow-layout-item
           className={cn(
-            "bg-surface-raised grid min-w-0 content-start gap-3 rounded-xl p-4",
+            "bg-surface-raised relative grid min-w-0 content-start gap-3 rounded-xl p-4",
+            selectedTargets.some(
+              (target) => target.kind === "phase" && target.id === phase.id,
+            ) && "ring-accent-border ring-1",
             adjustingPhase === phase.id && "ring-accent-border ring-1",
           )}
           style={
@@ -681,7 +803,23 @@ export function WorkflowCanvas({
       tabIndex={0}
       aria-label={t("graph")}
       onPointerDown={down}
+      onKeyUp={(event) => {
+        if (event.code === "Space") spacePan.current = false;
+      }}
       onPointerMove={(event) => {
+        if (selectionOrigin.current) {
+          const box = event.currentTarget.getBoundingClientRect();
+          const x = event.clientX - box.left,
+            y = event.clientY - box.top;
+          const origin = selectionOrigin.current;
+          setSelectionRect({
+            x: Math.min(x, origin.x),
+            y: Math.min(y, origin.y),
+            width: Math.abs(x - origin.x),
+            height: Math.abs(y - origin.y),
+          });
+          return;
+        }
         const drag = dragging.current;
         if (drag)
           setView((previous) => ({
@@ -691,13 +829,39 @@ export function WorkflowCanvas({
           }));
       }}
       onPointerUp={() => {
+        finishSelection();
         dragging.current = undefined;
       }}
       onPointerCancel={() => {
+        selectionOrigin.current = undefined;
+        setSelectionRect(undefined);
         dragging.current = undefined;
       }}
       onKeyDown={(event) => {
         if (event.target !== event.currentTarget) return;
+        if (
+          onSelectTargets &&
+          (event.ctrlKey || event.metaKey) &&
+          event.key.toLowerCase() === "a"
+        ) {
+          onSelectTargets(
+            manifest.phases.map((phase) => ({ kind: "phase", id: phase.id })),
+          );
+          event.preventDefault();
+          return;
+        }
+        if (onSelectTargets && event.key === "Escape") {
+          selectionOrigin.current = undefined;
+          setSelectionRect(undefined);
+          onSelectTargets([]);
+          event.preventDefault();
+          return;
+        }
+        if (event.code === "Space") {
+          spacePan.current = true;
+          event.preventDefault();
+          return;
+        }
         if (event.key === "+" || event.key === "=") {
           zoom(0.1);
           event.preventDefault();
@@ -730,6 +894,7 @@ export function WorkflowCanvas({
         }
       }}
       onBlur={() => {
+        spacePan.current = false;
         dragging.current = undefined;
       }}
     >
@@ -767,7 +932,7 @@ export function WorkflowCanvas({
               />
             </g>
           ) : null}
-          {(manifest.displayEdges ?? []).map((edge) => {
+          {edges.map((edge) => {
             const from = phases.findIndex((phase) => phase.id === edge.from);
             const to = phases.findIndex((phase) => phase.id === edge.to);
             if (from < 0 || to < 0) return null;
@@ -814,6 +979,18 @@ export function WorkflowCanvas({
         {input}
         {content}
       </div>
+      {selectionRect ? (
+        <div
+          aria-hidden="true"
+          className="border-accent-border bg-accent-surface pointer-events-none absolute border"
+          style={{
+            left: selectionRect.x,
+            top: selectionRect.y,
+            width: selectionRect.width,
+            height: selectionRect.height,
+          }}
+        />
+      ) : null}
       {detailsRegion}
       <CanvasViewportControls
         scale={view.scale}

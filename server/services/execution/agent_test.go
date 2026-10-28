@@ -38,7 +38,34 @@ func (j *agentTestJournal) LoadExecutionChat(context.Context, string) (models.Ch
 	return j.chat, nil
 }
 
-func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing.T) {
+func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
+	registry := agentcapability.New(nil)
+	defer registry.Close()
+	layout, err := chatstorage.NewLayout(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
+	manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, storage: layout, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	request := runtimes.RunRequest{Target: runtimes.RuntimeTarget{RuntimeID: "custom-claude"}, Detection: runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: "claude"}}, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeNew}}
+	capabilities := []ToolCapability{{ID: "workflow", Bindings: []agentcapability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, agentcapability.Request) (agentcapability.Result, error) {
+		return agentcapability.Result{}, nil
+	}}}}}
+	_, release, _, err := manager.prepareAgent(&request, journal.chat, "turn", capabilities, &[]string{}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" {
+		t.Fatalf("custom runtime lost MCP: %+v", request.Connectors)
+	}
+}
+
+func TestNativeSessionUsesImmutableExecutionContextAndRevokesCredentials(t *testing.T) {
 	registry := agentcapability.New(nil)
 	defer registry.Close()
 	endpoint := httptest.NewServer(registry)
@@ -94,10 +121,14 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	}
 	defer revokeSecond()
 	activate()
-	if secondRequest.Target.Environment[constants.AgentCLIContextEnvironment] != firstPath {
-		t.Fatal("continued native process lost its original environment file path")
+	if secondRequest.Target.Environment[constants.AgentCLIContextEnvironment] == firstPath {
+		t.Fatal("new execution reused mutable connection file")
 	}
-	second, err := agentcapability.ReadConnection(firstPath)
+	retained, err := agentcapability.ReadConnection(firstPath)
+	if err != nil || retained.Token != first.Token {
+		t.Fatal("old execution connection was overwritten")
+	}
+	second, err := agentcapability.ReadConnection(secondRequest.Target.Environment[constants.AgentCLIContextEnvironment])
 	if err != nil || second.Token == first.Token || second.GrantID == first.GrantID {
 		t.Fatalf("credential did not rotate: %v", err)
 	}

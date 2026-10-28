@@ -594,8 +594,6 @@ const (
 	BuiltinWorkflowMCPConnectorTimeoutMS = int64(30_000)
 	// WorkflowMCPToolName 是所有工作流场景共用的模型可见工具名。
 	WorkflowMCPToolName = "workflow"
-	// WorkflowResultPageDecisionInstructions 要求创作时逐个评估伙伴输出，不能省略展示决策。
-	WorkflowResultPageDecisionInstructions = "Every worker, including workers inside loops, branches and parallel groups, requires exactly one output declaration: meta.nodeResultPages[id] for composed in-app reading, meta.nodeResultFiles[id] with a readable title for actual file delivery, or meta.nodeResultPageOmissions[id] with a concrete reason for internal technical/control data without reading value or output the user explicitly declined to display. Intermediate output is not automatically exempt. File delivery uses static type:string, format:file schemas, or arrays/objects of these references, and the existing file viewer. Keep the report's prose, evidence and coverage in the actual file. Select the presentation feature only for composed pages; preparation includes its Catalog. Reuse that content and query the presentation topic only if it is missing. Revisit the declaration when the user changes the deliverable."
 	// WorkflowActionQuery 按本次能力返回知识或动作契约。
 	WorkflowActionQuery = "query"
 	// WorkflowActionSourceGet 读取绑定工作流源码。

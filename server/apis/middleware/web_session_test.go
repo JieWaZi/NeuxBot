@@ -1,12 +1,17 @@
 package middleware
 
 import (
-	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/localweb"
-	"github.com/gin-gonic/gin"
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/localweb"
+	"github.com/gin-gonic/gin"
 )
 
 func TestWebSessionCannotBypassInvalidBearerAndBindsSubject(t *testing.T) {
@@ -70,5 +75,47 @@ func TestWebCORSDoesNotAllowCredentialedCrossOrigin(t *testing.T) {
 	engine.ServeHTTP(w, r)
 	if w.Header().Get("Access-Control-Allow-Origin") != "" || w.Header().Get("Access-Control-Allow-Credentials") != "" {
 		t.Fatal("cookie CORS exposed")
+	}
+}
+
+func TestWebStaticRoutingPreservesExecutionCapabilityProtocol(t *testing.T) {
+	old := global.LocalWeb
+	web, err := localweb.New("127.0.0.1:8432", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	global.LocalWeb = web
+	t.Cleanup(func() { web.Close(); global.LocalWeb = old })
+	registry := agentcapability.New(nil)
+	defer registry.Close()
+	grant, activate, revoke, err := registry.Prepare(agentcapability.GrantSpec{ExecutionID: "workflow-turn", Validate: func(context.Context) error { return nil }, Bindings: []agentcapability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, agentcapability.Request) (agentcapability.Result, error) {
+		return agentcapability.Result{}, nil
+	}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	activate()
+	defer revoke()
+	engine := gin.New()
+	engine.Use(CORS())
+	engine.Any(constants.AgentCLIPath+"/*path", gin.WrapH(registry))
+	for _, origin := range []string{"", "http://127.0.0.1:8432"} {
+		r := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8432"+constants.AgentCLIPath+"/capabilities", nil)
+		r.RemoteAddr = "127.0.0.1:1234"
+		r.Header.Set("Authorization", "Bearer "+grant.Token)
+		r.Header.Set("Origin", origin)
+		w := httptest.NewRecorder()
+		engine.ServeHTTP(w, r)
+		var response agentcapability.Response
+		if json.Unmarshal(w.Body.Bytes(), &response) != nil || response.ProtocolVersion != constants.AgentCLIProtocolVersion {
+			t.Fatalf("execution protocol routed as static content: status=%d body=%s", w.Code, w.Body)
+		}
+		expected := http.StatusOK
+		if origin != "" {
+			expected = http.StatusUnauthorized
+		}
+		if w.Code != expected || w.Header().Get("Access-Control-Allow-Origin") != "" {
+			t.Fatalf("execution origin policy changed: %d %v", w.Code, w.Header())
+		}
 	}
 }

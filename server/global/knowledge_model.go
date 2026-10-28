@@ -2,14 +2,12 @@ package global
 
 import (
 	"context"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	knowledgemodel "github.com/JieWaZi/NeuxBot/server/internal/knowledge/model"
-	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
@@ -86,7 +84,7 @@ func newKnowledgeModelGenerator(_ context.Context, selection models.LibraryExecu
 		return nil, status_error.RuntimeUnavailable
 	}
 	return knowledgemodel.New(knowledgemodel.Config{Runtime: RuntimeSDK, Model: selection.Model, Reasoning: selection.Reasoning, Prepare: func(ctx context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
-		return prepareKnowledgeRuntime(ctx, selection)
+		return prepareModelRuntime(ctx, selection.RuntimeID, selection.AccountID, selection.Model)
 	}}), nil
 }
 
@@ -102,48 +100,8 @@ func runKnowledgeMaintenance(ctx context.Context, selection models.LibraryExecut
 		Endpoint: "http://127.0.0.1:" + strconv.Itoa(Config.Server.Port) + constants.AgentCLIPath,
 		Model:    selected.Model, Reasoning: selected.Reasoning,
 		Prepare: func(ctx context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
-			return prepareKnowledgeRuntime(ctx, selected)
+			return prepareModelRuntime(ctx, selected.RuntimeID, selected.AccountID, selected.Model)
 		},
 	})
 	return runner.Run(ctx, knowledgemodel.MaintenanceRequest{JobID: input.JobID, Bindings: input.Bindings, Instructions: input.Instructions, Message: input.Message, Validate: input.Validate})
-}
-
-// prepareKnowledgeRuntime 对独立文本生成及工具维护使用相同的可取消账号租约。
-func prepareKnowledgeRuntime(ctx context.Context, selection models.LibraryExecutionDefaults) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
-	if RuntimeSDK == nil || RuntimeEnvironmentControllerManager == nil {
-		return runtimes.RuntimeTarget{}, runtimes.DetectionResult{}, nil, status_error.RuntimeUnavailable
-	}
-	environment, err := RuntimeEnvironmentControllerManager.Get(ctx, selection.RuntimeID)
-	if err != nil {
-		return runtimes.RuntimeTarget{}, runtimes.DetectionResult{}, nil, err
-	}
-	if !environment.Enabled || environment.Detection.State != runtimes.DetectionStateReady {
-		return runtimes.RuntimeTarget{}, runtimes.DetectionResult{}, nil, status_error.RuntimeUnavailable
-	}
-	target := runtimes.RuntimeTarget{RuntimeID: selection.RuntimeID, Binary: environment.Binary, PrefixArgs: append([]string(nil), environment.PrefixArgs...), ConfigHome: environment.ConfigHome, CloseAfterRun: true}
-	cleanup := func() {}
-	if selection.AccountID != "" && selection.AccountID != constants.AiAccountSystemID {
-		directory, err := os.MkdirTemp("", "neux-knowledge-account-")
-		if err != nil {
-			logx.Errorf("prepare knowledge model account workspace failed: error=%v", err)
-			return target, environment.Detection, nil, status_error.KnowledgeStorageError
-		}
-		prepared, release, err := AIAccountService.PrepareQueued(ctx, selection.AccountID, environment.BaseRuntimeID, directory, selection.Model)
-		if err != nil {
-			_ = os.RemoveAll(directory)
-			return target, environment.Detection, nil, err
-		}
-		target.AccountID, target.Environment, target.Isolated = prepared.AccountID, prepared.Environment, prepared.Isolated
-		target.RefreshCredentials = prepared.RefreshCredentials
-		if prepared.ConfigHome != "" {
-			target.ConfigHome = prepared.ConfigHome
-		}
-		cleanup = func() {
-			release()
-			if err := os.RemoveAll(directory); err != nil {
-				logx.Errorf("remove knowledge model account workspace failed: error=%v", err)
-			}
-		}
-	}
-	return target, environment.Detection, cleanup, nil
 }

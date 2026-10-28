@@ -160,3 +160,18 @@ func (w *controlledWorker) recordedPrompts() []string {
 }
 
 func (w *controlledWorker) Cancel(context.Context, models.WorkflowEffect) error { return nil }
+
+// answerHumanFixture 为既有回归场景读取真实问题快照后提交其CAS身份。
+func answerHumanFixture(ctx context.Context, d *workflowDependencies, command AnswerHumanCommand) error {
+	state, err := d.Runs.LoadRunState(ctx, command.RunID)
+	if err == nil {
+		for _, human := range state.Humans {
+			if human.ID == command.HumanID {
+				command.QuestionVersion = human.QuestionVersion
+				command.SnapshotDigest = human.SnapshotDigest
+				break
+			}
+		}
+	}
+	return answerHuman(ctx, d, command)
+}

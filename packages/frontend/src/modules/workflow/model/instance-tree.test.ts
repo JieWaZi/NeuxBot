@@ -10,7 +10,20 @@ it("keeps actual item, iteration and repeated instances under the frozen phase o
       { id: "next", phaseId: "build", path: "root/collect/item:0/rework:2" },
       { id: "other", phaseId: "build", path: "root/collect/item:1" },
     ],
-    { meta: { phases: [{ id: "build" }, { id: "verify" }] } },
+    {
+      formatVersion: 2,
+      sdkVersion: "ally.workflow/2",
+      title: "测试工作流",
+      description: "",
+      nodes: [],
+      controls: [],
+      edges: [],
+      scripts: [],
+      phases: [
+        { title: "阶段", detail: "", id: "build" },
+        { title: "阶段", detail: "", id: "verify" },
+      ],
+    },
   );
   expect(tree.map((phase) => phase.segment)).toEqual(["build", "verify"]);
   const group = tree[0]?.children[0];

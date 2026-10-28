@@ -70,6 +70,8 @@ func operation(id, summary, effect, completion, guide string, fields ...Field) O
 		},
 	}
 	switch id {
+	case "workflow.source.save":
+		op.InputSchema["oneOf"] = []any{map[string]any{"required": []string{"source"}, "not": map[string]any{"anyOf": []any{map[string]any{"required": []string{"patches"}}, map[string]any{"required": []string{"baseSourceDigest"}}}}}, map[string]any{"required": []string{"patches", "baseSourceDigest"}, "not": map[string]any{"required": []string{"source"}}}}
 	case "knowledge.pages.get":
 		op.InputSchema["oneOf"] = []any{map[string]any{"required": []string{"pageId"}}, map[string]any{"required": []string{"slug"}}}
 	case "workflow.sdk.get":
@@ -141,13 +143,13 @@ func catalog() []Operation {
 		operation("im.targets.list", "Discover authorized message recipients.", read, immediate, "im.delivery", page...),
 		operation("im.deliveries.create", "Register a durable delivery; acceptance is not platform confirmation.", external, accepted, "im.delivery", text("targetId", true), text("content", false), list("files")),
 		operation("im.deliveries.get", "Read the actual state of an authorized delivery.", read, immediate, "im.delivery", text("deliveryId", true)),
-		operation("workflow.source.get", "Read source for the bound workflow.", read, immediate, "workflow.authoring", text("revisionId", false)),
+		operation("workflow.source.get", "Read source for the bound workflow.", read, immediate, "workflow.authoring", text("revisionId", false), text("workflowId", false)),
 		operation("workflow.authoring.prepare", "Prepare minimal authoring guidance, current source, pending annotations, needed resource pages and save contracts in one read. Select actual DSL primitives; no separate SDK discovery is needed.", read, immediate, "workflow.authoring",
 			choices("primitives", workflowcatalog.Primitives(), true),
 			choices("features", workflowcatalog.Features(), false),
 			choice("language", []string{"javascript", "python"}, false)),
 		operation("workflow.source.validate", "Optional preflight; returns diagnostics and a compact summary. Request includeManifest only when the full projection is needed.", read, immediate, "workflow.authoring", text("source", true), scalar("includeManifest", "boolean", false)),
-		operation("workflow.source.save", "Compile, validate and CAS-save complete source. A successful immediate receipt with saved, revisionId and sourceDigest is final; no read-back is required.", mutation, immediate, "workflow.authoring", text("source", true), text("expectedRevisionId", true), text("sdkVersion", false), list("resolvedAnnotationIds")),
+		operation("workflow.source.save", "Compile, validate and CAS-save source or exact patches as a new revision. Same requestId replays its receipt. A successful saved receipt is final; no separate commit is needed.", mutation, immediate, "workflow.authoring", text("source", false), text("expectedRevisionId", true), text("sdkVersion", false), text("workflowId", false), text("baseSourceDigest", false), Field{Name: "patches", Schema: map[string]any{"type": "array", "minItems": 1, "maxItems": 100, "items": map[string]any{"type": "object", "properties": map[string]any{"search": map[string]any{"type": "string", "minLength": 1}, "replace": map[string]any{"type": "string"}}, "required": []string{"search", "replace"}, "additionalProperties": false}}}, list("resolvedAnnotationIds")),
 		operation("workflow.sdk.get", "Read one authorized SDK topic or example; discovery lists exact names and primitive mappings.", read, immediate, "workflow.authoring",
 			choice("topic", append(workflowcatalog.TopicNames(), workflowcatalog.Examples()...), true),
 			Field{Name: "kind", Schema: map[string]any{

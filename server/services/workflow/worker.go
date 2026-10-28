@@ -96,6 +96,10 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	}
 	configuration := execution.ExecutionConfiguration{Resolved: true, RuntimeID: defaults.RuntimeID, AccountID: defaults.AccountID, Model: defaults.Model, Reasoning: defaults.Reasoning, PermissionLevel: defaults.PermissionLevel}
 	schema, _ := options["schema"].(map[string]any)
+	if len(schema) > 0 {
+		encoded, _ := json.Marshal(schema)
+		prompt += "\nReturn exactly one JSON value matching this schema, without Markdown fences: " + string(encoded)
+	}
 	tools := []execution.ToolCapability{}
 	if len(schema) > 0 {
 		tools = append(tools, execution.ToolCapability{ID: "workflow.result", Name: "工作流结果", Bindings: input.ResultBindings})
@@ -189,9 +193,7 @@ func (a CoreWorkerAdapter) ResolveAdmission(ctx context.Context, options map[str
 		return defaults, status_error.BadRequest
 	}
 	config := execution.ExecutionConfiguration{Resolved: resolved, RuntimeID: defaults.RuntimeID, AccountID: defaults.AccountID, Model: defaults.Model, Reasoning: defaults.Reasoning, PermissionLevel: defaults.PermissionLevel}
-	if schema, _ := options["schema"].(map[string]any); len(schema) > 0 {
-		config.RequiredConnectorTransport = constants.RuntimeConnectorTransportStreamableHTTP
-	}
+
 	if _, err := workerConnectorAllowlist(options); err != nil {
 		return defaults, err
 	}
@@ -250,6 +252,10 @@ func prepareWorkerRetry(state *controllers.WorkflowRunState, fiberIndex int, pre
 		return false
 	}
 	options := workflowstate.BoundaryOptions(previous.Boundary)
+	// 已完成的业务执行仅允许无工具格式纠正，耗尽后不能通过普通节点重试重跑业务。
+	if schema, _ := options["schema"].(map[string]any); len(schema) > 0 && previous.ExecutionStatus == constants.ExecutionStatusCompleted {
+		return false
+	}
 	retry, _ := options["retry"].(map[string]any)
 	maximum, _ := retry["maxAttempts"].(float64)
 	if retry["safety"] != "pure" || previous.AttemptGeneration >= int64(maximum) {
@@ -342,6 +348,9 @@ func (s *Service) dispatchEffect(ctx context.Context, run models.WorkflowRun, ef
 			return
 		}
 	}
+	if err == nil {
+		receipt, err = s.repairWorkerOutput(ctx, run, effect, receipt)
+	}
 	s.finishEffect(ctx, effect, receipt, err)
 }
 
@@ -405,6 +414,13 @@ func (s *Service) finishEffect(ctx context.Context, effect models.WorkflowEffect
 			options := workflowstate.BoundaryOptions(current.Boundary)
 			schema, _ := options["schema"].(map[string]any)
 			if len(schema) > 0 {
+				if current.Candidate == nil && receipt.FinalPresent {
+					var data any
+					if json.Unmarshal([]byte(receipt.Text), &data) == nil && workflowdsl.ValidateJSON(schema, data) == nil {
+						candidate := workflowdsl.JSONValue(data)
+						current.Candidate = &candidate
+					}
+				}
 				if current.Candidate == nil {
 					current.Status = constants.WorkflowStepStatusFailed
 					current.Failure = workflowstate.FailureValue(constants.WorkflowResultMissingCode)
@@ -437,6 +453,13 @@ func (s *Service) finishEffect(ctx context.Context, effect models.WorkflowEffect
 			current.Failure = workflowstate.FailureValue(code)
 		default:
 			return status_error.WorkflowStateInvalid
+		}
+		if current.Status == constants.WorkflowStepStatusSucceeded && current.Result != nil {
+			data, _ := current.Result.JSON()
+			if !workflowdsl.EvaluateSuccessCondition(data, workflowstate.BoundaryOptions(current.Boundary)["successCondition"]) {
+				current.Status = constants.WorkflowStepStatusFailed
+				current.Failure = workflowstate.FailureValue("BUSINESS_CHECK_FAILED")
+			}
 		}
 		return nil
 	})

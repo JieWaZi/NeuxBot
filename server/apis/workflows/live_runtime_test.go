@@ -173,14 +173,14 @@ func TestLiveRuntimeCreationSaveAndIndependentWorkersWriteRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := `export const meta={sdk:'ally.workflow/1',title:'真实保存与写入回读',description:'只在验收临时目录写入文本',nodeResultPageOmissions:{'write-file':'只提交协议验收临时文件的写入标记','read-file':'只提交协议验收固定字节的回读标记'},phases:[{id:'approve',title:'审批',detail:'明确批准',next:['write']},{id:'write',title:'写入',detail:'实际工具写文件',next:['verify']},{id:'verify',title:'回读',detail:'独立工具核验',canExit:true}]};
-const answer=await askUser('允许在当前验收工作目录写入 live.txt 吗？',{id:'approve-file',label:'测试审批',phase:'approve',options:[{value:'approve',label:'允许'},{value:'deny',label:'拒绝'}],defaultValue:'deny',allowSkip:true});
+	source := `export const meta={sdk:'ally.workflow/2',title:'真实保存与写入回读',description:'只在验收临时目录写入文本',phases:[{id:'approve',title:'审批',detail:'明确批准',next:['write']},{id:'write',title:'写入',detail:'实际工具写文件',next:['verify']},{id:'verify',title:'回读',detail:'独立工具核验',canExit:true}]};
+const answer=await askUser('允许在当前验收工作目录写入 live.txt 吗？',{id:'approve-file',label:'测试审批',phase:'approve',kind:'select',choices:[{value:'approve',label:'允许'},{value:'deny',label:'拒绝'}],defaultValue:'deny',allowSkip:true});
 if(answer.source!=='user'||answer.value!=='approve')return {written:false,verified:false};
 const path=flowContext.scope.workingDirectory+'/live.txt';
 const write=await worker('Use your actual filesystem tool to write exactly ALLY ALLY! to the approved workflow file '+path+'. Do not simulate the write. Submit the actual result through workflow with action result.submit and params.data.',{id:'write-file',label:'写文件',phase:'write',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object',properties:{written:{type:'boolean'}},required:['written'],additionalProperties:false}});
 const verify=await worker('Independently use an actual file read tool to read '+path+'. Verify the exact content is ALLY ALLY! and its string length is 10. Submit the actual result through workflow with action result.submit and params.data.',{id:'read-file',label:'回读核验',phase:'verify',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object',properties:{verified:{type:'boolean'},content:{type:'string'}},required:['verified','content'],additionalProperties:false}});
 return {written:write.written,verified:verify.verified,content:verify.content};`
-	creation, err := sendCreationMessage(ctx, workflowAPIDependencies(service), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "creation", Defaults: defaults, Content: "Using allycli, discover capabilities and the needed workflow SDK topics, validate the complete source below, and save it with allycli workflow source save (sdkVersion ally.workflow/1, --request-id live-source-save). Preserve the entire source exactly. No filesystem tools and no workflow execution. Your final message must be based on the actual save receipt.\n\n" + source})
+	creation, err := sendCreationMessage(ctx, workflowAPIDependencies(service), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "creation", Defaults: defaults, Content: "Using allycli, discover capabilities and the needed workflow SDK topics, validate the complete source below, and save it with allycli workflow source save (sdkVersion ally.workflow/2, --request-id live-source-save). Preserve the entire source exactly. No filesystem tools and no workflow execution. Your final message must be based on the actual save receipt.\n\n" + source})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ return {written:write.written,verified:verify.verified,content:verify.content};`
 	if _, err := os.Stat(filepath.Join(directory, "live.txt")); !os.IsNotExist(err) {
 		t.Fatal("default approval unexpectedly wrote file", err)
 	}
-	if err := answerHuman(ctx, workflowAPIDependencies(service), AnswerHumanCommand{RunID: run.ID, HumanID: state.Humans[0].ID, RequestID: "explicit-test-approval", Value: "approve"}); err != nil {
+	if err := answerHumanFixture(ctx, workflowAPIDependencies(service), AnswerHumanCommand{RunID: run.ID, HumanID: state.Humans[0].ID, RequestID: "explicit-test-approval", Value: "approve"}); err != nil {
 		t.Fatal(err)
 	}
 	state = awaitLiveWorkflow(t, service, run.ID, func(state controllers.WorkflowRunState) bool { return workflowstate.TerminalRun(state.Run.Status) })
@@ -234,7 +234,7 @@ return {written:write.written,verified:verify.verified,content:verify.content};`
 
 func saveLiveSource(t *testing.T, ctx context.Context, s *workflowFixture, definition models.WorkflowDefinition, defaults models.WorkflowExecutionDefaults, source string) (models.WorkflowRevision, string) {
 	t.Helper()
-	creation, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: util.New(), Defaults: defaults, Content: "Use allycli capabilities and the needed workflow SDK topics, validate the complete supplied source, and save exactly that source using allycli workflow source save, sdkVersion ally.workflow/1 and a stable requestId. Do not execute the workflow or edit files. Preserve every line. Base your final message on the actual save receipt.\n\n" + source})
+	creation, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: util.New(), Defaults: defaults, Content: "Use allycli capabilities and the needed workflow SDK topics, validate the complete supplied source, and save exactly that source using allycli workflow source save, sdkVersion ally.workflow/2 and a stable requestId. Do not execute the workflow or edit files. Preserve every line. Base your final message on the actual save receipt.\n\n" + source})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +300,7 @@ func sameLiveProgram(expected, actual string) bool {
 }
 
 func TestLiveSourceComparisonAllowsFormattingButRejectsBehaviorChanges(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow/1',title:'comparison',description:'formatting',phases:[{id:'main',title:'main',detail:'calculate',canExit:true}]}; let value=0; while(value<2){value++;}return value;`
+	source := `export const meta={sdk:'ally.workflow/2',title:'comparison',description:'formatting',phases:[{id:'main',title:'main',detail:'calculate',canExit:true}]}; let value=0; while(value<2){value++;}return value;`
 	formatted := strings.ReplaceAll(source, ";", ";\n")
 	if !sameLiveProgram(source, formatted) || sameLiveProgram(source, strings.Replace(source, "value<2", "value<3", 1)) {
 		t.Fatal("formatting comparison accepted changed execution behavior")
@@ -399,7 +399,7 @@ func runLiveF1(t *testing.T, creationSave bool) {
 		t.Fatal("restart changed the pending human request or frozen revision")
 	}
 	if !strings.Contains(human.Prompt, "第 3 轮") {
-		if err := answerHuman(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: "live-revise", Value: "在总结中明确标注这是临时本地验收周报；保留所有已有事实，不新增指标。"}); err != nil {
+		if err := answerHumanFixture(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: "live-revise", Value: "在总结中明确标注这是临时本地验收周报；保留所有已有事实，不新增指标。"}); err != nil {
 			t.Fatal(err)
 		}
 		state = awaitLiveWorkflow(t, s, run.ID, func(state controllers.WorkflowRunState) bool {
@@ -407,7 +407,7 @@ func runLiveF1(t *testing.T, creationSave bool) {
 		})
 		human = pending(state)
 	}
-	if err := answerHuman(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: "live-approve", Value: "approve"}); err != nil {
+	if err := answerHumanFixture(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: "live-approve", Value: "approve"}); err != nil {
 		t.Fatal(err)
 	}
 	state = awaitLiveWorkflow(t, s, run.ID, func(state controllers.WorkflowRunState) bool { return workflowstate.TerminalRun(state.Run.Status) })
@@ -543,7 +543,7 @@ func runLiveF2(t *testing.T, creationSave bool) {
 			default:
 				t.Fatalf("unexpected live F2 human node %s", node)
 			}
-			if err := answerHuman(ctx, workflowAPIDependencies(s), command); err != nil {
+			if err := answerHumanFixture(ctx, workflowAPIDependencies(s), command); err != nil {
 				t.Fatal(err)
 			}
 			answered[human.ID] = true

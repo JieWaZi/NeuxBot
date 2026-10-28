@@ -138,6 +138,8 @@ func (r *runner) run(ctx context.Context, method, path string, payload any, muta
 
 func (r *runner) root() *cobra.Command {
 	root := &cobra.Command{Use: "allycli", Short: "Use capabilities authorized for the current NeuxBot execution", SilenceErrors: true, SilenceUsage: true, CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true}}
+	root.PersistentFlags().StringVar(&r.streams.ContextFile, "context", r.streams.ContextFile, "Use this execution-specific connection file")
+	root.AddCommand(r.mcpCommand())
 	root.RunE = func(cmd *cobra.Command, _ []string) error { r.entered = true; return status_error.AgentInputInvalid }
 	root.AddCommand(&cobra.Command{Use: "version", Args: cobra.NoArgs, RunE: func(_ *cobra.Command, _ []string) error {
 		r.entered = true

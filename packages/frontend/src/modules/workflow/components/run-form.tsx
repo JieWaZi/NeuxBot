@@ -1,4 +1,3 @@
-import type { PageDefinition } from "@/shared/presentation/catalog";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -39,7 +38,7 @@ export function RunForm({
   const { t } = useTranslation("workflow");
   const formId = useId();
   const navigate = useNavigate();
-  const schema = revision.manifest?.meta?.inputSchema ?? {
+  const schema = revision.manifest?.inputSchema ?? {
     type: "object",
     properties: {},
   };
@@ -82,10 +81,6 @@ export function RunForm({
             className="grid min-h-0 gap-5 overflow-y-auto overscroll-contain px-6 pb-4"
           >
             <SchemaForm
-              inputPage={
-                revision?.manifest?.meta?.inputPage as
-                  PageDefinition | undefined
-              }
               fileWorkflowId={id}
               compact
               fieldOrder={revision.manifest?.inputPropertyOrder}

@@ -265,6 +265,12 @@ func (collector *textCollector) collectUsage(usage acp.Usage) {
 }
 
 // textAdapterConfig 使用已验证的原生参数关闭工具；其他 Runtime 保留真实能力限制。
+// SupportsToolFreeText 仅在原生启动参数可关闭全部工具时允许业务结果格式纠正。
+func SupportsToolFreeText(baseRuntimeID string) bool {
+	_, disabled := textAdapterConfig(acpAdapterConfig{}, baseRuntimeID)
+	return disabled
+}
+
 func textAdapterConfig(config acpAdapterConfig, baseRuntimeID string) (acpAdapterConfig, bool) {
 	config.PrefixArgs = append([]string(nil), config.PrefixArgs...)
 	switch baseRuntimeID {

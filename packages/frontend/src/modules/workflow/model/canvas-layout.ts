@@ -1,6 +1,6 @@
 import type { Manifest, WorkflowNode } from "./types";
 
-type ControlHint = NonNullable<Manifest["controlHints"]>[number];
+type ControlHint = NonNullable<Manifest["controls"]>[number];
 type GroupKind = "decision" | "parallel" | "pipeline" | "loop";
 export type CanvasItem =
   | { id: string; kind: "node"; node: WorkflowNode; columns: number }
@@ -24,11 +24,13 @@ export const workflowInputNodeWidth = 280;
 /** 只使用编译器提供的真实控制路径；节点标题与分组 ID 不用于猜测并发。 */
 export function workflowCanvasLayout(manifest: Manifest, includeInput = false) {
   let left = 24 + (includeInput ? workflowInputNodeWidth + 64 : 0);
-  return (manifest.meta?.phases ?? []).map((phase) => {
+  return (manifest.phases ?? []).map((phase) => {
     const nodes = (manifest.nodes ?? [])
       .filter((node) => node.phaseId === phase.id)
       .sort(
-        (a, b) => (a.range?.start?.offset ?? 0) - (b.range?.start?.offset ?? 0),
+        (a, b) =>
+          (a.sourceRange?.start?.offset ?? 0) -
+          (b.sourceRange?.start?.offset ?? 0),
       );
     const byId = new Map(nodes.map((node) => [node.id, node]));
     const displayed = new Set<string>();
@@ -42,7 +44,7 @@ export function workflowCanvasLayout(manifest: Manifest, includeInput = false) {
         }
         const branches = (hint.branches ?? [])
           .map((branch, index) => {
-            const items = project(branch.hints ?? []);
+            const items = project(branch.children ?? []);
             return {
               id: `${hint.id}:${branch.label ?? index}`,
               label: branch.label,
@@ -63,7 +65,9 @@ export function workflowCanvasLayout(manifest: Manifest, includeInput = false) {
         const sideBySide = kind === "decision" || kind === "parallel";
         return [
           {
-            id: hint.id ?? `${kind}:${hint.range?.start?.offset ?? 0}`,
+            id:
+              hint.id ??
+              `${kind}:${branches.map((branch) => branch.id).join(":")}`,
             kind,
             branches,
             columns: sideBySide
@@ -72,7 +76,7 @@ export function workflowCanvasLayout(manifest: Manifest, includeInput = false) {
           },
         ];
       });
-    const items = project(manifest.controlHints ?? []);
+    const items = project(manifest.controls ?? []);
     // 未形成控制提示的调用仍保持编译器节点的源码顺序，不推断分组。
     for (const node of nodes)
       if (node.id && !displayed.has(node.id))
@@ -83,4 +87,33 @@ export function workflowCanvasLayout(manifest: Manifest, includeInput = false) {
     left += width + 64;
     return layout;
   });
+}
+
+/** 将编译器节点依赖投影到阶段连线；阶段内部路径由 controls 表达。 */
+export function workflowPhaseEdges(manifest: Manifest) {
+  const nodes = new Map(
+    (manifest.nodes ?? []).map((node) => [node.id, node.phaseId]),
+  );
+  const unique = new Map<string, { from: string; to: string }>();
+  for (const edge of manifest.edges ?? []) {
+    const from = nodes.get(edge.from);
+    const to = nodes.get(edge.to);
+    if (from && to && from !== to) unique.set(`${from}:${to}`, { from, to });
+  }
+  return [...unique.values()];
+}
+
+export function canvasControls(
+  manifest?: Manifest,
+): NonNullable<Manifest["controls"]> {
+  const flatten = (
+    controls: NonNullable<Manifest["controls"]>,
+  ): NonNullable<Manifest["controls"]> =>
+    controls.flatMap((control) => [
+      control,
+      ...flatten(
+        control.branches?.flatMap((branch) => branch.children ?? []) ?? [],
+      ),
+    ]);
+  return flatten(manifest?.controls ?? []);
 }

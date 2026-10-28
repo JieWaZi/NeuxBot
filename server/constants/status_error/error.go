@@ -130,6 +130,12 @@ const (
 	// @errZH 工作流文件存储失败
 	// @errEN workflow file storage failed
 	WorkflowFileStorageError
+	// @errZH 工作流业务检查未通过
+	// @errEN workflow business check failed
+	WorkflowBusinessCheckFailed
+	// @errZH 工作流用户决策已超时
+	// @errEN workflow human request timed out
+	WorkflowHumanRequestTimedOut
 )
 
 const (

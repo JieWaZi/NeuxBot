@@ -30,6 +30,15 @@ For other domains, read the relevant guide advertised by the current capability.
 
 ## Discover and invoke
 
+- Prefer the injected `ally_capabilities` MCP tools. They use the same operation
+  contracts, authorization and receipts as CLI. When using CLI, include the
+  exact `--context <execution-file>` supplied for this turn; do not reuse a
+  prior turn's environment or edit connection files.
+- A bound workflow authoring conversation stays in authoring mode for short
+  corrections and follow-ups. Read the bound source without inventing an ID.
+  Requested edits must reach a successful save receipt; prose and local files
+  alone do not update the workflow or canvas. Pure questions need no save.
+
 - Run `allycli capabilities` at first use in an execution. Discover only the
   needed operations and reuse results. Read `describe <operation-id>` when its
   current contract is missing; it owns inputs, limits and completion semantics.

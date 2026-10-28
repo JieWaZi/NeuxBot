@@ -38,7 +38,7 @@ func TestWorkerRetryKeepsAttemptsAndRevokesOldResultToken(t *testing.T) {
 	s, _ := workflowTestService(t)
 	w := &retryWorker{}
 	s.worker = w
-	source := `export const meta={sdk:'ally.workflow/1',title:'重试',description:'保留尝试',nodeResultPageOmissions:{read:'只返回重试协议测试的控制值'},phases:[{id:'work',title:'工作',detail:'只读',canExit:true}]}; return await worker('read',{id:'read',label:'读取',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'string'},retry:{maxAttempts:2,safety:'pure'}});`
+	source := `export const meta={sdk:'ally.workflow/2',title:'重试',description:'保留尝试',phases:[{id:'work',title:'工作',detail:'只读',canExit:true}]}; return await worker('read',{id:'read',label:'读取',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'string'},retry:{maxAttempts:2,safety:'pure'}});`
 	definition := savedTestWorkflow(t, s, source)
 	ctx := context.Background()
 	if _, err := s.StartRun(ctx, StartRunCommand{DefinitionID: definition.ID, RequestID: "unsafe"}); workflowstate.ErrorKey(err) != status_error.WorkflowCapabilityUnsupported.Key() {

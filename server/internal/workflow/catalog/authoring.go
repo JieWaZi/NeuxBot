@@ -23,7 +23,6 @@ func Topics() []Topic {
 		{ID: "schema", Primitives: []string{}},
 		{ID: "saving", Primitives: []string{}},
 		{ID: "budgets", Primitives: []string{}},
-		{ID: "presentation", Primitives: []string{}},
 		{ID: "im", Primitives: []string{}},
 	}
 }
@@ -64,12 +63,12 @@ func Examples() []string {
 
 // ResourceKinds 返回创作资源查询实际支持的类别。
 func ResourceKinds() []string {
-	return []string{"wakers", "runtimes", "accounts", "connectors", "workflows", "projects", "functionLanguages", "toolPolicyCapabilities", "builtinActions", "imTargets"}
+	return []string{"wakers", "runtimes", "accounts", "connectors", "workflows", "projects", "functionLanguages", "scriptLanguages", "toolPolicyCapabilities", "builtinActions", "imTargets"}
 }
 
 // Features 返回需要额外资料或外部目标的创作能力。
 func Features() []string {
-	return []string{"schema", "presentation", "files", "api-retrieval", "budgets", "im"}
+	return []string{"schema", "files", "api-retrieval", "budgets", "im"}
 }
 
 // AuthoringTopics 根据声明的调用和能力组合主题，公共资料只出现一次。
@@ -82,7 +81,7 @@ func AuthoringTopics(primitives, features []string) []string {
 	}
 	for _, feature := range features {
 		switch feature {
-		case "schema", "presentation", "budgets":
+		case "schema", "budgets":
 			selected[feature] = true
 		case "im":
 			selected["action"] = true

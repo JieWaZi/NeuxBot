@@ -1,3 +1,6 @@
+import { humanAnswerLabel } from "../model/human-answer";
+import { WorkflowResult } from "./instance-details";
+import { Input } from "@/shared/ui/input";
 import { notificationPresentationProps } from "@/shared/api/notification-presentation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -41,8 +44,8 @@ export function HumanRequestCard({
   const { t, i18n } = useTranslation("workflow");
   const client = useQueryClient();
   const options = human.options ?? {};
-  const choices = Array.isArray(options.options)
-    ? options.options.flatMap((item) => {
+  const choices = Array.isArray(options.choices)
+    ? options.choices.flatMap((item) => {
         const choice = record(item);
         return choice &&
           typeof choice.value === "string" &&
@@ -51,9 +54,19 @@ export function HumanRequestCard({
           : [];
       })
     : [];
-  const multi = options.multiSelect === true;
+  const [customChoice, setCustomChoice] = useState("");
+  const [search, setSearch] = useState("");
+  const [choicePage, setChoicePage] = useState(0);
+  const filtered = choices.filter((choice) =>
+    `${choice.label} ${choice.value}`
+      .toLocaleLowerCase()
+      .includes(search.toLocaleLowerCase()),
+  );
+  const pageChoices = filtered.slice(choicePage * 20, (choicePage + 1) * 20);
+  const multi = options.kind === "multiselect";
+  const confirm = options.kind === "confirm";
   const initial = options.defaultValue;
-  const schema = record(options.schema);
+  const schema = options.kind === "form" ? record(options.schema) : undefined;
   const validity = useSchemaFormValidity();
   const [answer, setAnswer] = useState<unknown>(
     schema
@@ -62,23 +75,48 @@ export function HumanRequestCard({
         ? Array.isArray(initial)
           ? initial.filter((item) => typeof item === "string")
           : []
-        : typeof initial === "string"
-          ? initial
-          : "",
+        : confirm
+          ? typeof initial === "boolean"
+            ? initial
+            : undefined
+          : typeof initial === "string"
+            ? initial
+            : "",
   );
   const [request, setRequest] = useState<{ signature: string; id: string }>();
   const submit = useMutation(
     withLocalErrorMutation(answerWorkflowHumanMutation()),
   );
+  const snapshotReady =
+    typeof human.questionVersion === "number" &&
+    typeof human.snapshotDigest === "string";
   const send = async (skip: boolean) => {
-    const signature = jsonText({ answer, skip });
+    const questionVersion = human.questionVersion;
+    const snapshotDigest = human.snapshotDigest;
+    if (
+      typeof questionVersion !== "number" ||
+      typeof snapshotDigest !== "string"
+    )
+      return;
+    const signature = jsonText({
+      answer,
+      skip,
+      questionVersion: human.questionVersion,
+      snapshotDigest: human.snapshotDigest,
+    });
     const requestId =
       request?.signature === signature ? request.id : crypto.randomUUID();
     setRequest({ signature, id: requestId });
     try {
       await submit.mutateAsync({
         path: { id, runId, humanId: human.id ?? "" },
-        body: { requestId, value: answer, skip },
+        body: {
+          requestId,
+          value: answer,
+          skip,
+          questionVersion,
+          snapshotDigest,
+        },
       });
       await client.invalidateQueries({
         queryKey: getWorkflowRunQueryKey({ path: { id, runId } }),
@@ -104,7 +142,7 @@ export function HumanRequestCard({
             ? t("answerHelp")
             : human.source === "user"
               ? t("userSource")
-              : human.source === "skip"
+              : human.source === "user_skip"
                 ? t("skipSource")
                 : human.source === "timeout"
                   ? t("timeoutSource")
@@ -121,8 +159,57 @@ export function HumanRequestCard({
             }).format(human.deadlineAt)}
           </p>
         ) : null}
+        {waiting && choices.length > 20 ? (
+          <div className="grid gap-2">
+            <label htmlFor={`search-${human.id}`} className="type-body">
+              {t("choiceSearch")}
+            </label>
+            <Input
+              id={`search-${human.id}`}
+              placeholder={t("choiceSearch")}
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setChoicePage(0);
+              }}
+            />
+            <p className="text-muted-foreground type-caption">
+              {t("choiceSearchHelp")}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={choicePage === 0}
+                onClick={() => setChoicePage(choicePage - 1)}
+              >
+                {t("resultPage.previous")}
+              </Button>
+              <span className="type-caption">
+                {choicePage + 1} /{" "}
+                {Math.max(1, Math.ceil(filtered.length / 20))}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={(choicePage + 1) * 20 >= filtered.length}
+                onClick={() => setChoicePage(choicePage + 1)}
+              >
+                {t("resultPage.next")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
         {waiting ? (
-          schema ? (
+          confirm ? (
+            <label className="type-body flex items-center gap-2">
+              <Checkbox
+                checked={answer === true}
+                onCheckedChange={(checked) => setAnswer(checked === true)}
+              />
+              {human.prompt}
+            </label>
+          ) : schema ? (
             <SchemaForm
               compact
               schema={schema}
@@ -133,7 +220,7 @@ export function HumanRequestCard({
           ) : choices.length ? (
             multi ? (
               <div className="grid gap-2">
-                {choices.map((choice) => (
+                {pageChoices.map((choice) => (
                   <label
                     key={choice.value}
                     className="type-body flex items-center gap-2"
@@ -154,6 +241,61 @@ export function HumanRequestCard({
                     {choice.label}
                   </label>
                 ))}
+                {options.allowCustom === true ? (
+                  <div className="grid gap-2">
+                    <label htmlFor={`custom-${human.id}`} className="type-body">
+                      {t("answerCustom")}
+                    </label>
+                    <Input
+                      id={`custom-${human.id}`}
+                      placeholder={t("answerPlaceholder")}
+                      value={customChoice}
+                      onChange={(event) => setCustomChoice(event.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={!customChoice.trim()}
+                      onClick={() => {
+                        const custom = customChoice.trim();
+                        const values = Array.isArray(answer) ? answer : [];
+                        setAnswer(
+                          values.includes(custom)
+                            ? values
+                            : [...values, custom],
+                        );
+                        setCustomChoice("");
+                      }}
+                    >
+                      {t("addAnswer")}
+                    </Button>
+                    {Array.isArray(answer)
+                      ? answer
+                          .filter(
+                            (value) =>
+                              typeof value === "string" &&
+                              !choices.some((choice) => choice.value === value),
+                          )
+                          .map((value) => (
+                            <label
+                              key={value}
+                              className="type-body flex items-center gap-2"
+                            >
+                              <Checkbox
+                                checked
+                                onCheckedChange={() =>
+                                  setAnswer(
+                                    answer.filter((entry) => entry !== value),
+                                  )
+                                }
+                              />
+                              {String(value)}
+                            </label>
+                          ))
+                      : null}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="grid gap-3">
@@ -170,30 +312,34 @@ export function HumanRequestCard({
                     <SelectValue placeholder={t("answerPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {choices.map((choice) => (
+                    {pageChoices.map((choice) => (
                       <SelectItem key={choice.value} value={choice.value}>
                         {choice.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                <label
-                  htmlFor={`answer-${human.id}`}
-                  className="type-caption text-muted-foreground"
-                >
-                  {t("answerCustom")}
-                </label>
-                <Textarea
-                  id={`answer-${human.id}`}
-                  placeholder={t("answerPlaceholder")}
-                  value={
-                    typeof answer === "string" &&
-                    !choices.some((choice) => choice.value === answer)
-                      ? answer
-                      : ""
-                  }
-                  onChange={(event) => setAnswer(event.target.value)}
-                />
+                {options.allowCustom === true ? (
+                  <>
+                    <label
+                      htmlFor={`answer-${human.id}`}
+                      className="type-caption text-muted-foreground"
+                    >
+                      {t("answerCustom")}
+                    </label>
+                    <Textarea
+                      id={`answer-${human.id}`}
+                      placeholder={t("answerPlaceholder")}
+                      value={
+                        typeof answer === "string" &&
+                        !choices.some((choice) => choice.value === answer)
+                          ? answer
+                          : ""
+                      }
+                      onChange={(event) => setAnswer(event.target.value)}
+                    />
+                  </>
+                ) : null}
               </div>
             )
           ) : (
@@ -210,18 +356,28 @@ export function HumanRequestCard({
             </div>
           )
         ) : (
-          <pre className="type-body whitespace-pre-wrap">
-            {jsonText(human.value)}
-          </pre>
+          <WorkflowResult value={humanAnswerLabel(human.value, human)} />
         )}
         {waiting ? (
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
               disabled={
+                !snapshotReady ||
                 submit.isPending ||
                 !validity.valid ||
-                (!schema && !multi && answer === "")
+                (!schema && !multi && !confirm && answer === "") ||
+                (confirm && typeof answer !== "boolean") ||
+                (multi &&
+                  (!Array.isArray(answer) ||
+                    answer.length <
+                      (typeof options.minSelections === "number"
+                        ? options.minSelections
+                        : 1) ||
+                    answer.length >
+                      (typeof options.maxSelections === "number"
+                        ? options.maxSelections
+                        : choices.length)))
               }
               onClick={() => void send(false)}
             >
@@ -231,7 +387,7 @@ export function HumanRequestCard({
               <Button
                 size="sm"
                 variant="secondary"
-                disabled={submit.isPending}
+                disabled={submit.isPending || !snapshotReady}
                 onClick={() => void send(true)}
               >
                 {t("skip")}

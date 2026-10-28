@@ -1,0 +1,1220 @@
+{
+  "$defs": {
+    "ActionDeclaration": {
+      "additionalProperties": false,
+      "properties": {
+        "allowedOrigins": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "connectorIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "executable": {
+          "type": "string"
+        },
+        "handler": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "imTargetIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "inputSchema": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "interpreter": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "outputSchema": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "risk": {
+          "type": "string"
+        },
+        "scriptId": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "workingDirectory": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "description",
+        "risk",
+        "type"
+      ],
+      "type": "object"
+    },
+    "CanvasBranch": {
+      "additionalProperties": false,
+      "properties": {
+        "children": {
+          "items": {
+            "$ref": "#/$defs/CanvasControl"
+          },
+          "type": "array"
+        },
+        "label": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "children"
+      ],
+      "type": "object"
+    },
+    "CanvasControl": {
+      "additionalProperties": false,
+      "properties": {
+        "branches": {
+          "items": {
+            "$ref": "#/$defs/CanvasBranch"
+          },
+          "type": "array"
+        },
+        "conditionExpression": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "call",
+            "sequence",
+            "decision",
+            "parallel",
+            "pipeline",
+            "loop",
+            "try"
+          ],
+          "type": "string"
+        },
+        "nodeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "branches"
+      ],
+      "type": "object"
+    },
+    "CanvasEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "bindingPath": {
+          "type": "string"
+        },
+        "condition": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "control",
+            "data"
+          ],
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "from",
+        "to",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "CanvasExecutionAction": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "type": "string"
+            },
+            "actionType": {
+              "enum": [
+                "script"
+              ]
+            },
+            "scriptId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "actionId",
+            "actionType",
+            "scriptId"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "type": "string"
+            },
+            "actionType": {
+              "enum": [
+                "script"
+              ]
+            },
+            "executable": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "actionId",
+            "actionType",
+            "executable"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "type": "string"
+            },
+            "actionType": {
+              "enum": [
+                "http"
+              ]
+            },
+            "allowedOrigins": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "methods": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "actionId",
+            "actionType",
+            "allowedOrigins",
+            "methods"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "type": "string"
+            },
+            "actionType": {
+              "enum": [
+                "builtin"
+              ]
+            },
+            "handler": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "actionId",
+            "actionType",
+            "handler"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CanvasExecutionAskUser": {
+      "additionalProperties": false,
+      "properties": {
+        "allowCustom": {
+          "type": "boolean"
+        },
+        "allowSkip": {
+          "type": "boolean"
+        },
+        "kind": {
+          "enum": [
+            "text",
+            "select",
+            "multiselect",
+            "form",
+            "confirm"
+          ],
+          "type": "string"
+        },
+        "maxSelections": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "minSelections": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "onTimeout": {
+          "enum": [
+            "fail",
+            "skip",
+            "default"
+          ],
+          "type": "string"
+        },
+        "promptTemplate": {
+          "type": "string"
+        },
+        "schema": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "timeoutMs": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "CanvasExecutionFunctionTask": {
+      "additionalProperties": false,
+      "properties": {
+        "codeDigest": {
+          "type": "string"
+        },
+        "executionMode": {
+          "enum": [
+            "pure",
+            "trusted_local"
+          ],
+          "type": "string"
+        },
+        "language": {
+          "enum": [
+            "javascript",
+            "python"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "language",
+        "executionMode",
+        "codeDigest"
+      ],
+      "type": "object"
+    },
+    "CanvasExecutionInput": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "enum": [
+            "args"
+          ]
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "CanvasExecutionJoinWorkflow": {
+      "additionalProperties": false,
+      "properties": {
+        "handleExpression": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "handleExpression"
+      ],
+      "type": "object"
+    },
+    "CanvasExecutionResult": {
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "enum": [
+            "result"
+          ]
+        }
+      },
+      "required": [
+        "target"
+      ],
+      "type": "object"
+    },
+    "CanvasExecutionStartWorkflow": {
+      "additionalProperties": false,
+      "properties": {
+        "definitionId": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "joined",
+            "detached"
+          ],
+          "type": "string"
+        },
+        "revisionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "definitionId",
+        "mode"
+      ],
+      "type": "object"
+    },
+    "CanvasExecutionWorker": {
+      "additionalProperties": false,
+      "properties": {
+        "promptTemplate": {
+          "type": "string"
+        },
+        "resolve": {
+          "additionalProperties": false,
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "waker"
+              ]
+            },
+            "model": {
+              "type": "string"
+            },
+            "permissionLevel": {
+              "enum": [
+                "default",
+                "auto",
+                "full-access"
+              ],
+              "type": "string"
+            },
+            "reasoning": {
+              "type": "string"
+            },
+            "runtimeId": {
+              "type": "string"
+            },
+            "wakerId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "wakerId"
+          ],
+          "type": "object"
+        },
+        "toolPolicy": {
+          "additionalProperties": false,
+          "properties": {
+            "connectors": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "inherit"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "mode"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "connectorIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "mode": {
+                      "enum": [
+                        "allowlist"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "connectorIds"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "nativeTools": {
+              "oneOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "mode": {
+                      "enum": [
+                        "inherit"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "mode"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "capabilityIds": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "mode": {
+                      "enum": [
+                        "allowlist"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "mode",
+                    "capabilityIds"
+                  ],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": null,
+          "type": "object"
+        }
+      },
+      "required": [
+        "resolve"
+      ],
+      "type": "object"
+    },
+    "CanvasExecutionWorkflow": {
+      "additionalProperties": false,
+      "properties": {
+        "definitionId": {
+          "type": "string"
+        },
+        "mode": {
+          "enum": [
+            "joined",
+            "detached"
+          ],
+          "type": "string"
+        },
+        "revisionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "definitionId",
+        "mode"
+      ],
+      "type": "object"
+    },
+    "CanvasInput": {
+      "additionalProperties": false,
+      "properties": {
+        "dependsOn": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "expression": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "target",
+        "expression",
+        "dependsOn"
+      ],
+      "type": "object"
+    },
+    "CanvasManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/ActionDeclaration"
+          },
+          "type": "array"
+        },
+        "controls": {
+          "items": {
+            "$ref": "#/$defs/CanvasControl"
+          },
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "edges": {
+          "items": {
+            "$ref": "#/$defs/CanvasEdge"
+          },
+          "type": "array"
+        },
+        "formatVersion": {
+          "enum": [
+            2
+          ]
+        },
+        "inputPropertyOrder": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": "object"
+        },
+        "inputSchema": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "nodes": {
+          "items": {
+            "$ref": "#/$defs/CanvasNode"
+          },
+          "type": "array"
+        },
+        "outputSchema": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "phases": {
+          "items": {
+            "$ref": "#/$defs/CanvasPhase"
+          },
+          "type": "array"
+        },
+        "scripts": {
+          "items": {
+            "$ref": "#/$defs/ScriptSummary"
+          },
+          "type": "array"
+        },
+        "sdkVersion": {
+          "enum": [
+            "ally.workflow/2"
+          ]
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "description",
+        "formatVersion",
+        "sdkVersion",
+        "phases",
+        "nodes",
+        "edges",
+        "controls",
+        "scripts"
+      ],
+      "type": "object"
+    },
+    "CanvasNode": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "maxLength": 500,
+              "type": "string"
+            },
+            "execution": {
+              "$ref": "#/$defs/CanvasExecutionInput"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inputs": {
+              "items": {
+                "$ref": "#/$defs/CanvasInput"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "input"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "outputSchema": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "phaseId": {
+              "type": "string"
+            },
+            "sourceRange": {
+              "$ref": "#/$defs/SourceRange"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "inputs",
+            "execution"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "maxLength": 500,
+              "type": "string"
+            },
+            "execution": {
+              "$ref": "#/$defs/CanvasExecutionResult"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inputs": {
+              "items": {
+                "$ref": "#/$defs/CanvasInput"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "result"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "outputSchema": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "phaseId": {
+              "type": "string"
+            },
+            "sourceRange": {
+              "$ref": "#/$defs/SourceRange"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "inputs",
+            "execution"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "maxLength": 500,
+              "type": "string"
+            },
+            "execution": {
+              "$ref": "#/$defs/CanvasExecutionWorker"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inputs": {
+              "items": {
+                "$ref": "#/$defs/CanvasInput"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "worker"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "outputSchema": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "phaseId": {
+              "type": "string"
+            },
+            "sourceRange": {
+              "$ref": "#/$defs/SourceRange"
+            },
+            "successCondition": {
+              "$ref": "#/$defs/SuccessCondition"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "inputs",
+            "execution"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "maxLength": 500,
+              "type": "string"
+            },
+            "execution": {
+              "$ref": "#/$defs/CanvasExecutionAskUser"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inputs": {
+              "items": {
+                "$ref": "#/$defs/CanvasInput"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "askUser"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "outputSchema": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "phaseId": {
+              "type": "string"
+            },
+            "sourceRange": {
+              "$ref": "#/$defs/SourceRange"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "inputs",
+            "execution"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "maxLength": 500,
+              "type": "string"
+            },
+            "execution": {
+              "$ref": "#/$defs/CanvasExecutionAction"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inputs": {
+              "items": {
+                "$ref": "#/$defs/CanvasInput"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "action"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "outputSchema": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "phaseId": {
+              "type": "string"
+            },
+            "sourceRange": {
+              "$ref": "#/$defs/SourceRange"
+            },
+            "successCondition": {
+              "$ref": "#/$defs/SuccessCondition"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "inputs",
+            "execution"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "maxLength": 500,
+              "type": "string"
+            },
+            "execution": {
+              "$ref": "#/$defs/CanvasExecutionFunctionTask"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inputs": {
+              "items": {
+                "$ref": "#/$defs/CanvasInput"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "functionTask"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "outputSchema": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "phaseId": {
+              "type": "string"
+            },
+            "sourceRange": {
+              "$ref": "#/$defs/SourceRange"
+            },
+            "successCondition": {
+              "$ref": "#/$defs/SuccessCondition"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "inputs",
+            "execution"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "maxLength": 500,
+              "type": "string"
+            },
+            "execution": {
+              "$ref": "#/$defs/CanvasExecutionWorkflow"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inputs": {
+              "items": {
+                "$ref": "#/$defs/CanvasInput"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "workflow"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "outputSchema": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "phaseId": {
+              "type": "string"
+            },
+            "sourceRange": {
+              "$ref": "#/$defs/SourceRange"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "inputs",
+            "execution"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "maxLength": 500,
+              "type": "string"
+            },
+            "execution": {
+              "$ref": "#/$defs/CanvasExecutionStartWorkflow"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inputs": {
+              "items": {
+                "$ref": "#/$defs/CanvasInput"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "startWorkflow"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "outputSchema": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "phaseId": {
+              "type": "string"
+            },
+            "sourceRange": {
+              "$ref": "#/$defs/SourceRange"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "inputs",
+            "execution"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "maxLength": 500,
+              "type": "string"
+            },
+            "execution": {
+              "$ref": "#/$defs/CanvasExecutionJoinWorkflow"
+            },
+            "id": {
+              "type": "string"
+            },
+            "inputs": {
+              "items": {
+                "$ref": "#/$defs/CanvasInput"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "enum": [
+                "joinWorkflow"
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "outputSchema": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "phaseId": {
+              "type": "string"
+            },
+            "sourceRange": {
+              "$ref": "#/$defs/SourceRange"
+            }
+          },
+          "required": [
+            "id",
+            "kind",
+            "label",
+            "inputs",
+            "execution"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CanvasPhase": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "detail"
+      ],
+      "type": "object"
+    },
+    "ScriptSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "language": {
+          "enum": [
+            "python"
+          ]
+        },
+        "protocol": {
+          "enum": [
+            "json",
+            "text"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "language",
+        "protocol",
+        "digest"
+      ],
+      "type": "object"
+    },
+    "SourcePosition": {
+      "additionalProperties": false,
+      "properties": {
+        "column": {
+          "type": "integer"
+        },
+        "line": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "offset",
+        "line",
+        "column"
+      ],
+      "type": "object"
+    },
+    "SourceRange": {
+      "additionalProperties": false,
+      "properties": {
+        "end": {
+          "$ref": "#/$defs/SourcePosition"
+        },
+        "start": {
+          "$ref": "#/$defs/SourcePosition"
+        }
+      },
+      "required": [
+        "start",
+        "end"
+      ],
+      "type": "object"
+    },
+    "SuccessCondition": {
+      "additionalProperties": false,
+      "properties": {
+        "equals": {},
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "equals"
+      ],
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/CanvasManifest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}

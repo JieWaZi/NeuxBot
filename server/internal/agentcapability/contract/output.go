@@ -64,7 +64,7 @@ func outputSchema(id string) map[string]any {
 	case "workflow.source.validate":
 		return object("valid", "diagnostics", "summary", "manifest", "error")
 	case "workflow.source.save":
-		return object("saved", "definitionId", "revisionId", "ordinal", "sourceDigest", "unchanged", "replayed")
+		return object("saved", "definitionId", "revisionId", "ordinal", "sourceDigest", "manifestDigest", "unchanged", "replayed")
 	case "workflow.sdk.get":
 		return object("version", "topic", "content", "source", "guidance")
 	case "workflow.resources.list":

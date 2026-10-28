@@ -2,12 +2,14 @@
 
 Await workers, human inputs, actions and child results. Parallel returns in input order. Pipeline advances each item immediately after its own preceding stage, then joins all items in original order. A null stage result is ordinary JSON, not a failure. Explicit throw stops the failed item.
 
+Name every node label for its business purpose in the user's language. Add an optional static description (at most 500 Unicode characters) as one sentence explaining what the step does for the user. Cards and details share this description. Do not label or describe a business step using implementation terms such as Function, python or trusted_local; those belong only in technical details. Missing action descriptions may reuse meta.actions description; other nodes have no invented description.
+
 ```typescript
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type Schema = { [key: string]: Json };
-interface VisualNode { id: string; label: string; phase: string; inputs?: string[]; outputs?: string[] }
+interface VisualNode { id: string; label: string; description?: string; phase: string; inputs?: string[]; outputs?: string[]; successCondition?:{path:string;equals:Json} }
 interface ChildOptions { args?:Json; revisionId?:string; timeoutMs?:number }
-interface ChildResult { runId:string; revisionId:string; status:'succeeded'; result:Json }
+interface ChildResult { runId:string; revisionId:string; output:Json }
 /** Opaque durable handle passed only between startWorkflow and joinWorkflow. */
 declare const workflowChildHandleBrand: unique symbol;
 interface ChildHandle { readonly [workflowChildHandleBrand]: true }

@@ -34,7 +34,7 @@ type WorkflowValidationResponse struct {
 	// 编译诊断
 	Diagnostics []workflowdsl.Diagnostic `json:"diagnostics"`
 	// 源码投影
-	Manifest *workflowdsl.Manifest `json:"manifest"`
+	Manifest *workflowdsl.CanvasManifest `json:"manifest"`
 }
 
 func (*ValidateWorkflowSource) Path() string { return "/:id/validate" }
@@ -48,7 +48,8 @@ func (o *ValidateWorkflowSource) Output(ctx *gin.Context) (interface{}, error) {
 	compiled, diagnostics, err := workflowdsl.Compile(o.Body.Source)
 	response := WorkflowValidationResponse{Valid: err == nil, Diagnostics: diagnostics}
 	if err == nil {
-		response.Manifest = &compiled.Manifest
+		canvas := workflowdsl.ExportCanvas(compiled.Manifest)
+		response.Manifest = &canvas
 	}
 	return response, nil
 }

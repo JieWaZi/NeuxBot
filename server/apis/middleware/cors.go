@@ -12,6 +12,11 @@ import (
 // CORS 返回桌面 Renderer 跨源访问本地 Core 所需的响应头中间件。
 func CORS() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		// 执行能力拥有独立令牌与 Origin 校验，不能落入 Web 静态站点或浏览器 CORS。
+		if ctx.Request.URL.Path == constants.AgentCLIPath || strings.HasPrefix(ctx.Request.URL.Path, constants.AgentCLIPath+"/") {
+			ctx.Next()
+			return
+		}
 		if global.LocalWeb != nil {
 			if !strings.HasPrefix(ctx.Request.URL.Path, "/api/") && ctx.Request.URL.Path != "/api" {
 				global.LocalWeb.ServeStatic(ctx.Writer, ctx.Request)

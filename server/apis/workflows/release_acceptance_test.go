@@ -171,7 +171,7 @@ func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.
 				t.Helper()
 				state := awaitFixtureState(t, s, run.ID, func(state controllers.WorkflowRunState) bool { return pending(state, node, environment).ID != "" })
 				human := pending(state, node, environment)
-				if err := answerHuman(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: util.New(), Value: value, Skip: skip}); err != nil {
+				if err := answerHumanFixture(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: util.New(), Value: value, Skip: skip}); err != nil {
 					t.Fatal(err)
 				}
 			}

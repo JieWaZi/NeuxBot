@@ -26,7 +26,7 @@ func TestSDKQueriesReturnFocusedGeneratedGuidanceAndCompilableExamples(t *testin
 		if err != nil || strings.Contains(source, "workflow_result") {
 			t.Fatalf("invalid example %q: %v", topic, err)
 		}
-		if _, diagnostics, err := CompileForAuthoring(source); err != nil {
+		if _, diagnostics, err := Compile(source); err != nil {
 			t.Fatalf("uncompilable queried example %q: %v %+v", topic, err, diagnostics)
 		}
 	}
@@ -56,10 +56,8 @@ func TestAuthoringBundleSelectsActualPrimitivesAndDeduplicatesSharedRules(t *tes
 		strings.Contains(content, "x-ui-control") {
 		t.Fatal("simple file/function authoring loaded worker, page Catalog or advanced form controls")
 	}
-	content, err = SDKBundle(catalog.AuthoringTopics([]string{"worker"}, []string{"presentation"}))
-	if err != nil || !strings.Contains(content, "# Workflow SDK: presentation") ||
-		!strings.Contains(content, "declare function worker") {
-		t.Fatal("page authoring did not include the actual presentation Catalog")
+	if _, err := SDKTopic("presentation"); err == nil {
+		t.Fatal("removed presentation topic is still discoverable")
 	}
 	content, err = SDKBundle(catalog.AuthoringTopics([]string{"action"}, []string{"im"}))
 	if err != nil || !strings.Contains(content, "imTargetIds") || !strings.Contains(content, "im_delivery") {

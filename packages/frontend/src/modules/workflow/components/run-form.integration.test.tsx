@@ -59,27 +59,33 @@ it("运行只收集参数，区分必填与选填并沿用已保存配置", asyn
           revision={{
             id: "version-1",
             manifest: {
-              meta: {
-                title: "参数验收",
-                inputSchema: {
-                  type: "object",
-                  required: ["material"],
-                  properties: {
-                    material: {
-                      type: "string",
-                      title: "会议材料",
-                      description: "粘贴本次会议要整理的材料。",
-                      "x-ui-control": "textarea",
-                    },
-                    note: {
-                      type: "string",
-                      title: "补充说明",
-                      description: "填写需要额外关注的事项。",
-                      "x-ui-control": "input",
-                    },
+              formatVersion: 2,
+              sdkVersion: "ally.workflow/2",
+              description: "",
+              phases: [],
+              nodes: [],
+              controls: [],
+              edges: [],
+              scripts: [],
+              inputSchema: {
+                type: "object",
+                required: ["material"],
+                properties: {
+                  material: {
+                    type: "string",
+                    title: "会议材料",
+                    description: "粘贴本次会议要整理的材料。",
+                    "x-ui-control": "textarea",
+                  },
+                  note: {
+                    type: "string",
+                    title: "补充说明",
+                    description: "填写需要额外关注的事项。",
+                    "x-ui-control": "input",
                   },
                 },
               },
+              title: "参数验收",
             },
           }}
         />

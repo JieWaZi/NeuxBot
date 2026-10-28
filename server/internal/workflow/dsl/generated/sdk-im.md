@@ -5,5 +5,5 @@ When the user requests delivery to WeChat or Feishu, discover approved chats wit
 ```typescript
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
 type Schema = { [key: string]: Json };
-interface VisualNode { id: string; label: string; phase: string; inputs?: string[]; outputs?: string[] }
+interface VisualNode { id: string; label: string; description?: string; phase: string; inputs?: string[]; outputs?: string[]; successCondition?:{path:string;equals:Json} }
 ```

@@ -9,7 +9,7 @@ import (
 
 func TestEditSourceChangesOneWorkerAndPreservesExecutableExpressions(t *testing.T) {
 	source := `// 用户保留的源码注释
-export const meta={sdk:'ally.workflow/1',title:'检查',description:'检查',phases:[{id:'check',title:'检查',detail:'原说明',canExit:true}]};
+export const meta={sdk:'ally.workflow/2',title:'检查',description:'检查',phases:[{id:'check',title:'检查',detail:'原说明',canExit:true}]};
 phase('check');
 const result=await worker(` + "`检查 ${args.material}`" + `,{id:'review',phase:'check',label:'原节点',resolve:{kind:'waker',wakerId:'one'},schema:{type:'object'}});
 return result; // 不触及结果逻辑`
@@ -26,13 +26,13 @@ return result; // 不触及结果逻辑`
 	if node.LabelTemplate != "用户节点" || node.Options["resolve"].(map[string]any)["wakerId"] != "two" || node.PromptTemplate != "`复核 ${args.material}`" {
 		t.Fatalf("edit lost fields: %+v", node)
 	}
-	if !strings.HasPrefix(edited, "// 用户保留的源码注释\nexport const meta={sdk:'ally.workflow/1',title:'检查',description:'检查'") || !strings.HasSuffix(edited, "return result; // 不触及结果逻辑") || !strings.Contains(edited, "schema:{type:'object'}") {
+	if !strings.HasPrefix(edited, "// 用户保留的源码注释\nexport const meta={sdk:'ally.workflow/2',title:'检查',description:'检查'") || !strings.HasSuffix(edited, "return result; // 不触及结果逻辑") || !strings.Contains(edited, "schema:{type:'object'}") {
 		t.Fatal("editing reformatted unrelated source")
 	}
 }
 
 func TestEditConcatenatedPromptRetainsInputAndLiteralEscapes(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow/1',title:'复核',description:'复核',phases:[{id:'check',title:'检查',detail:'检查',canExit:true}]};
+	source := `export const meta={sdk:'ally.workflow/2',title:'复核',description:'复核',phases:[{id:'check',title:'检查',detail:'检查',canExit:true}]};
 phase('check');
 const result=await worker("材料：" + args.material,{id:'review',phase:'check',label:'复核',resolve:{kind:'waker',wakerId:'one'},schema:{type:'object'}});
 return result;`

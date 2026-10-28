@@ -475,6 +475,10 @@ func (v StatusError) Key() string {
 		return "WorkflowStateInvalid"
 	case WorkflowFileStorageError:
 		return "WorkflowFileStorageError"
+	case WorkflowBusinessCheckFailed:
+		return "WorkflowBusinessCheckFailed"
+	case WorkflowHumanRequestTimedOut:
+		return "WorkflowHumanRequestTimedOut"
 	case IMCredentialError:
 		return "IMCredentialError"
 	case PluginStorageError:
@@ -773,6 +777,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowTimeout:                      "workflow effect timed out",
 			WorkflowStateInvalid:                 "workflow execution state is corrupt",
 			WorkflowFileStorageError:             "workflow file storage failed",
+			WorkflowBusinessCheckFailed:          "workflow business check failed",
+			WorkflowHumanRequestTimedOut:         "workflow human request timed out",
 			IMCredentialError:                    "failed to read or save im credentials",
 			PluginStorageError:                   "plugin files could not be safely prepared or read",
 			WorkspaceStorageFailed:               "workspace storage operation failed",
@@ -1018,6 +1024,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowTimeout:                      "工作流效果超时",
 			WorkflowStateInvalid:                 "工作流内部执行状态损坏",
 			WorkflowFileStorageError:             "工作流文件存储失败",
+			WorkflowBusinessCheckFailed:          "工作流业务检查未通过",
+			WorkflowHumanRequestTimedOut:         "工作流用户决策已超时",
 			IMCredentialError:                    "无法读取或保存 IM 凭据",
 			PluginStorageError:                   "插件文件无法安全准备或读取",
 			WorkspaceStorageFailed:               "工作区文件操作失败",

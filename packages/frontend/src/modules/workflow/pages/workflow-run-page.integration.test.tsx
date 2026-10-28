@@ -80,28 +80,34 @@ beforeEach(() => {
       args: { client: "A" },
     },
     manifest: {
-      meta: {
-        title: "发布预审",
-        phases: [
-          { id: "review", title: "环境预审", detail: "客户环境的风险分析" },
-        ],
-      },
+      formatVersion: 2,
+      sdkVersion: "ally.workflow/2",
+      description: "",
+      controls: [],
+      edges: [],
+      scripts: [],
+      phases: [
+        { id: "review", title: "环境预审", detail: "客户环境的风险分析" },
+      ],
+      title: "发布预审",
       nodes: [
         {
+          execution: { resolve: { kind: "waker", wakerId: "real-waker" } },
+          inputs: [],
           id: "analyse",
-          labelTemplate: "风险分析模板",
+          label: "风险分析模板",
           kind: "worker",
           phaseId: "review",
-          options: { resolve: { kind: "waker", wakerId: "real-waker" } },
         },
         {
+          execution: { resolve: { kind: "waker", wakerId: "real-waker" } },
+          inputs: [],
           id: "unreached",
-          labelTemplate: "尚未开始的写入",
+          label: "尚未开始的写入",
           kind: "worker",
           phaseId: "review",
         },
       ],
-      groups: [{ id: "environments", kind: "pipeline" }],
     },
     instances: [instance.instance ?? {}],
     instanceCount: 1,
@@ -116,11 +122,15 @@ beforeEach(() => {
     humanRequests: [
       {
         id: "human-1",
+        questionVersion: 1,
+        snapshotDigest: "frozen",
         instanceId: "actual-1",
         status: "waiting",
         prompt: "是否批准客户 A 的风险？",
         options: {
-          options: [
+          kind: "select",
+          allowCustom: true,
+          choices: [
             { value: "approve", label: "批准" },
             { value: "deny", label: "否决" },
           ],
@@ -141,6 +151,9 @@ beforeEach(() => {
     ],
   };
   server.use(
+    http.get(`${api}/runs/:runId/node-results`, () =>
+      HttpResponse.json({ items: [], total: 0 }),
+    ),
     http.get("http://workflow.test/api/v1/wakers/real-waker", () =>
       HttpResponse.json({ id: "real-waker", name: "验收伙伴" }),
     ),
@@ -223,18 +236,24 @@ it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入�
   snapshot.humanRequests = [];
   snapshot.operationRequests = [];
   snapshot.manifest = {
+    formatVersion: 2,
+    sdkVersion: "ally.workflow/2",
+    title: "测试工作流",
+    description: "",
+    phases: [],
+    nodes: [],
+    controls: [],
+    edges: [],
+    scripts: [],
     ...snapshot.manifest,
     inputPropertyOrder: { "": ["client", "enabled", "count", "note"] },
-    meta: {
-      ...snapshot.manifest?.meta,
-      inputSchema: {
-        type: "object",
-        properties: {
-          client: { type: "string", title: "客户", default: "默认客户" },
-          enabled: { type: "boolean", title: "发送通知", default: true },
-          count: { type: "integer", title: "条目数", default: 10 },
-          note: { type: "string", title: "备注" },
-        },
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", title: "客户", default: "默认客户" },
+        enabled: { type: "boolean", title: "发送通知", default: true },
+        count: { type: "integer", title: "条目数", default: 10 },
+        note: { type: "string", title: "备注" },
       },
     },
   };
@@ -250,7 +269,7 @@ it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入�
   localStorage.setItem(
     "ally.workflow.last-run-inputs.flow-1",
     JSON.stringify({
-      schema: JSON.stringify(snapshot.manifest.meta?.inputSchema, null, 2),
+      schema: JSON.stringify(snapshot.manifest?.inputSchema, null, 2),
       args: { client: "上次保存的客户" },
     }),
   );
@@ -346,10 +365,13 @@ it("人工输入支持五种控件，预填默认值只在用户确认后提交�
     humanRequests: [
       {
         id: "human-1",
+        questionVersion: 1,
+        snapshotDigest: "frozen",
         instanceId: "actual-1",
         status: "waiting",
         prompt: "填写会议资料",
         options: {
+          kind: "form",
           schema: {
             type: "object",
             properties: {
@@ -437,7 +459,7 @@ it("画布区分未执行模板，节点展示实际执行项，SSE 刷新最终
   );
   renderRun();
   await screen.findByText("尚未开始的写入");
-  expect(await screen.findByText("验收伙伴")).toBeInTheDocument();
+  expect((await screen.findAllByText("验收伙伴")).length).toBeGreaterThan(0);
   expect(screen.getByText("未执行")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "选择 风险分析模板" }));
   expect(
@@ -468,11 +490,9 @@ it("画布区分未执行模板，节点展示实际执行项，SSE 刷新最终
   act(() => subscription.refresh?.());
   await user.click(screen.getByRole("link", { name: "查看执行结果" }));
   expect(
-    await screen.findByRole("dialog", { name: "执行详情 · 发布预审" }),
+    await screen.findByRole("dialog", { name: "运行详情 · 发布预审" }),
   ).toBeInTheDocument();
-  await waitFor(() =>
-    expect(screen.getByText(/"decision": "不予发布"/)).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.getByText("不予发布")).toBeInTheDocument());
   expect(
     screen.queryByRole("button", { name: "停止运行" }),
   ).not.toBeInTheDocument();

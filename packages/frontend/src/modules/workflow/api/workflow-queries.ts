@@ -21,7 +21,6 @@ export {
   getWorkflowRunQueryKey,
   getWorkflowInstanceOptions,
   getWorkflowInstanceQueryKey,
-  getWorkflowArtifactOptions,
   cancelWorkflowRunMutation,
   answerWorkflowHumanMutation,
   sendWorkflowCreationMessageMutation,

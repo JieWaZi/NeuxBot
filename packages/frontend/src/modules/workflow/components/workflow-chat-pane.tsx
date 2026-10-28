@@ -1,4 +1,7 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { SendWorkflowCreationMessageData } from "@/shared/api/generated/types.gen";
+import { Button } from "@/shared/ui/button";
+import { X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   RetainedChatPageContent,
@@ -13,8 +16,13 @@ import {
   sendWorkflowCreationMessageMutation,
   createWorkflowMutation,
   refreshWorkflow,
+  getWorkflowRunOptions,
 } from "../api/workflow-queries";
 import type { ExecutionDefaults } from "../model/types";
+
+type CanvasReference = NonNullable<
+  SendWorkflowCreationMessageData["body"]["canvasReferences"]
+>[number] & { kind: "phase" | "node"; id: string; revisionId: string };
 
 /** 工作流只负责 scoped 发送；对话界面完整复用普通 Chat。 */
 export function WorkflowChatPane({
@@ -30,6 +38,12 @@ export function WorkflowChatPane({
   onNewChat,
   wakerId,
   draft,
+  optimizeRunId,
+  canvasReferences = [],
+  canvasReferenceLabels = {},
+  onRemoveCanvasReference,
+  onCanvasReferencesSent,
+  onRemoveRunReference,
   emptyState,
   isHistoryLoading = false,
   onConfigurationChange,
@@ -48,6 +62,12 @@ export function WorkflowChatPane({
   onNewChat: () => void;
   wakerId?: string;
   draft?: string;
+  optimizeRunId?: string;
+  canvasReferences?: CanvasReference[];
+  canvasReferenceLabels?: Record<string, string>;
+  onRemoveCanvasReference?: (target: CanvasReference) => void;
+  onCanvasReferencesSent?: () => void;
+  onRemoveRunReference?: () => void;
   emptyState?: ChatWorkspaceEntry["emptyState"];
   isHistoryLoading?: boolean;
   onConfigurationChange?: (defaults: ExecutionDefaults | undefined) => void;
@@ -71,6 +91,18 @@ export function WorkflowChatPane({
     chatId: string;
   }>();
   const active = useRouteSceneActive();
+  const reference = useQuery({
+    ...getWorkflowRunOptions({ path: { id, runId: optimizeRunId ?? "" } }),
+    enabled: active && Boolean(optimizeRunId) && id !== "new",
+  });
+  const sourceRun = reference.data?.run;
+  const runReference =
+    optimizeRunId && sourceRun?.id === optimizeRunId
+      ? {
+          runId: optimizeRunId,
+          revisionId: sourceRun.revisionId,
+        }
+      : undefined;
   const scopeKey = session?.chatId
     ? `chat:${session.chatId}`
     : `draft:workflow:${draftScopeId}:${conversationKey ?? "default"}`;
@@ -107,7 +139,9 @@ export function WorkflowChatPane({
         wakerId: wakerId || PERSONAL_ASSISTANT_WAKER_ID,
         defaults: session?.defaults,
         directoryLabel: t("defaultDirectory"),
-        mainContent,
+        mainContent: mainContent
+          ? { ...mainContent, questionsOnCanvas: true }
+          : undefined,
         canvasInput: id === "new" && !firstMessageSubmitted,
         showSummary: false,
         history,
@@ -128,6 +162,57 @@ export function WorkflowChatPane({
             onCreated?.(createdDefinition.current);
         },
         draft,
+        isSendDisabled: Boolean(optimizeRunId && !runReference),
+        composerContext: (
+          <>
+            {canvasReferences.length ? (
+              <div className="flex flex-wrap gap-2">
+                {canvasReferences.map((reference) => (
+                  <span
+                    key={`${reference.kind}:${reference.id}`}
+                    className="bg-accent-surface type-caption rounded-control inline-flex max-w-full items-center gap-1 pl-2"
+                  >
+                    <span className="min-w-0 truncate">
+                      {canvasReferenceLabels[
+                        `${reference.kind}:${reference.id}`
+                      ] ?? reference.id}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("removeReference", {
+                        label:
+                          canvasReferenceLabels[
+                            `${reference.kind}:${reference.id}`
+                          ] ?? reference.id,
+                      })}
+                      onClick={() => onRemoveCanvasReference?.(reference)}
+                    >
+                      <X />
+                    </Button>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+            {optimizeRunId ? (
+              <div className="bg-surface-module type-caption flex items-center gap-2 px-3 py-2">
+                <span className="min-w-0 flex-1 truncate">
+                  {t("optimizeRunDraft", { runId: optimizeRunId })}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={t("close")}
+                  onClick={onRemoveRunReference}
+                >
+                  <X />
+                </Button>
+              </div>
+            ) : undefined}
+          </>
+        ),
         emptyState,
         isHistoryLoading,
         onRefresh: refresh,
@@ -160,6 +245,10 @@ export function WorkflowChatPane({
             ...input,
             sessionId: session?.id,
             content: text,
+            runReference,
+            canvasReferences: canvasReferences.length
+              ? canvasReferences
+              : undefined,
             defaults: {
               runtimeId,
               accountId,
@@ -185,6 +274,7 @@ export function WorkflowChatPane({
             acceptedSessions.current.set(accepted.chatId, accepted.id);
           if (requests.current.get(scopeKey) === request)
             requests.current.delete(scopeKey);
+          onCanvasReferencesSent?.();
           // 接纳回执已确定聊天身份；详情由原 Chat 查询加载，读取故障不能改写发送结果。
           return {
             chat: { id: accepted.chatId },

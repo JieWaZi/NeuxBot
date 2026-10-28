@@ -2,19 +2,19 @@
 
 ## 职责
 
-系统 ally 技能教授任务方法，allycli 负责发现、参数和调用，Core 负责身份、授权、领域规则与真实回执。技能与命令名称是当前技术契约，产品名称为 NeuxBot。
+系统 ally 技能教授任务方法，内部 MCP 与 allycli 共用能力发现、参数和调用契约，Core 负责身份、授权、领域规则与真实回执。技能与命令名称是当前技术契约，产品名称为 NeuxBot。
 
 server/internal/agentcapability/contract 是命令 Schema 与解析的共同来源，agentcapability 负责执行授权和有界观察，agentcli 提供客户端。记忆、IM、团队、工作流与知识业务状态仍由各自领域拥有。所有领域的当前命令、完成语义和调用示例统一见 [allycli README](../../server/cmd/allycli/README.md)。
 
 ## 授权与请求
 
-受管执行得到绑定当前 Execution 的精确能力上下文。能力发现只报告当前可用范围，不能因知道其他命令而扩大授权。上下文失效、身份不匹配或范围不足时拒绝调用。
+受管执行得到绑定当前 Execution 的精确能力上下文。连接文件按 Grant 建立不可变路径，不覆盖原会话文件；CLI 使用宿主提供的 --context 路径。工作流在支持 stdio 的 Runtime 中注入 allycli mcp serve 薄桥，启动时只读取一次原 Grant，按同一目录发布获准操作，转发既有 Core 入口，不另开监听。能力发现只报告当前可用范围，不能因知道其他命令而扩大授权。上下文失效、身份不匹配或范围不足时拒绝调用。
 
 写命令使用稳定 request-id，保存内容摘要和领域回执。同键同内容重放原回执，同键异内容冲突；响应不确定时查询收据，避免生成新请求重复副作用。
 
 返回区分同步完成、耐久接纳与候选提交。查询或有限 wait 的超时不改变业务状态；真正完成以所属资源终态为准。
 
-外部 Agent 通过发布服务的 HTTP MCP 调用同源知识合同；内部 allycli 使用 Execution 身份，MCP 使用现有 API Key。两者共享知识操作、版本检查和回执逻辑，入口分别注入授权上下文。MCP 不发布其他领域的内部命令；接入、能力映射和后台撤权边界见 [知识库](knowledge-cn.md#api-集成与指定库接入)。
+外部 Agent 通过发布服务的 HTTP MCP 调用同源知识合同；内部 CLI/stdio MCP 使用 Execution 身份，外部 HTTP MCP 使用现有 API Key。两者共享知识操作、版本检查和回执逻辑，入口分别注入授权上下文。外部 HTTP MCP 不发布其他领域的内部命令；接入、能力映射和后台撤权边界见 [知识库](knowledge-cn.md#api-集成与指定库接入)。
 
 ## 知识分发
 

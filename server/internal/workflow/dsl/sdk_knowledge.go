@@ -2,6 +2,7 @@ package dsl
 
 import (
 	"embed"
+	"fmt"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/workflow/catalog"
@@ -38,7 +39,7 @@ func sdkSections() []sdkSection {
 				"This is a restricted DSL, not a full JavaScript VM. Assignment and captures copy " +
 				"values; do not write outer mutable captures from parallel tasks. Strings use Unicode " +
 				"code points. Regular expressions use the RE2 common subset (g/i/m/u). Date is frozen " +
-				"to run start. Put general JavaScript or Python into functionTask.",
+				"to run start. Math.random is unavailable in orchestration. Put general JavaScript or Python into functionTask.",
 		},
 		{
 			id:     "function",
@@ -77,7 +78,7 @@ func sdkSections() []sdkSection {
 				"contents. Final file values must be paths to real files created inside " +
 				"flowContext.scope.workingDirectory; the user and automatic task API can download these" +
 				" files. Return actual paths rather than base64 data or made-up download URLs. Ordinary" +
-				" strings are never inferred to be file outputs. Schema presentation supports " +
+				" strings are never inferred to be file outputs. Input form controls support " +
 				"x-ui-control: input or textarea for strings, radio or select for scalar enum, switch " +
 				"or checkbox for booleans, and checkboxes for arrays whose items.enum lists the allowed" +
 				" values. x-ui-labels supplies user-facing choice labels in enum order. These " +
@@ -187,8 +188,8 @@ func sdkSections() []sdkSection {
 			content: "source save compiles and validates complete source, checks policies and " +
 				"expectedRevisionId, then commits an immutable revision and its receipt together. Use " +
 				"--source for the UTF-8 file and a stable --request-id. A successful immediate receipt " +
-				"with saved:true, revisionId and sourceDigest proves saving; unchanged:true means the " +
-				"current revision already has that exact source. No source get is needed after success." +
+				"with saved:true, revisionId and sourceDigest proves saving. Explicit saves create a new immutable " +
+				"revision, including unchanged source; replaying the same request returns the original receipt." +
 				" If the response is lost, query receipts get for the original operation/request ID. " +
 				"Read current source again on revision conflict. Saving does not prove a real run or " +
 				"external delivery succeeded.",
@@ -206,7 +207,13 @@ func sdkSections() []sdkSection {
 				"required steps and allow for loops, batches and branches. The compiler rejects budgets" +
 				" below a provable minimum path, but dynamic paths may require more.",
 		},
-		{id: "worker-delivery", topics: []string{"worker"}, content: constants.WorkflowResultPageDecisionInstructions},
+		{id: "business-node-description", topics: []string{"overview", "worker", "human", "action", "function", "workflow"}, content: fmt.Sprintf("Name every node label for its business purpose in the user's language. Add an optional static description (at most %d Unicode characters) as one sentence explaining what the step does for the user. Cards and details share this description. Do not label or describe a business step using implementation terms such as Function, python or trusted_local; those belong only in technical details. Missing action descriptions may reuse meta.actions description; other nodes have no invented description.", constants.WorkflowNodeDescriptionMaxRunes)},
+		{id: "worker-results", topics: []string{"worker"}, content: "Workers return final text without schema, or matching JSON directly with schema. There is no data/content/analysis wrapper; values can be read by later nodes and the final return."},
+		{id: "scripts", topics: []string{"overview", "action"}, content: "V2 exports static meta and optional scripts. Each script has language:python, protocol:json or text, and complete code as a string or interpolation-free String.raw template. Code bytes are frozen in the revision. A script action references scriptId. The host writes the complete input JSON value to stdin (missing input is null, false/0/empty string remain values). JSON stdout must contain exactly one value; stderr is logs. Text stdout is returned as a string. No automatic pip install. Script actions return {data,durationMs,process}."},
+		{id: "human-v2", topics: []string{"human"}, content: "Use explicit kind:text/select/multiselect/form/confirm. choices may be a dynamic {value,label} array from a prior node or a candidate fileRef; the host freezes the evaluated snapshot. kind:form requires schema and excludes choices. allowCustom defaults false; allowSkip defaults false. Multiselect defaults minSelections:1 and maxSelections to candidate count; explicit minSelections:0 allows empty selection. HumanAnswer contains questionId,status,source,value?. Defaults only prefill. onTimeout defaults fail; explicit skip returns timed_out without value, default returns timed_out with validated defaultValue. Confirm can never auto-approve via timeout/default. Cancellation throws. Cache replay preserves original status/value and references the original answer."},
+		{id: "business-check", topics: []string{"action", "function", "worker"}, content: "successCondition:{path,equals} checks the validated business value: action.data, direct worker JSON/text, or functionTask result. path is a JSON Pointer; equals is a literal JSON value. Failed checks throw BUSINESS_CHECK_FAILED. Ordinary false and null are data without an explicit check."},
+		{id: "host-budgets-v2", topics: []string{"budgets", "action", "human"}, content: fmt.Sprintf("Host budgets from the shared contract: source %d bytes; node business output %d bytes; inline human choices %d items and %d bytes; script action deadline at most %d ms. Truncated stdout is never accepted as successful JSON. Use managed file references for larger results.", constants.WorkflowSourceLimitBytes, constants.WorkflowOutputLimitBytes, constants.WorkflowHumanMaximumChoices, constants.WorkflowHumanChoicesLimitBytes, constants.WorkflowScriptMaxTimeoutMillis)},
+		{id: "groups-v2", topics: []string{"parallel", "pipeline"}, content: "Group failureMode defaults fail-fast. collect-null returns null for failed items in input order, retaining failure identity and diagnostics on original instances; ordinary JSON null is not failure."},
 	}
 }
 
@@ -222,6 +229,7 @@ type sdkDeclaration struct {
 
 func sdkDeclarations() []sdkDeclaration {
 	return []sdkDeclaration{
+		{name: "WorkflowScripts", topics: []string{"overview", "action"}, content: "type WorkflowScripts = Record<string,{language:'python';protocol:'json'|'text';code:string}>;"},
 		{
 			name:    "Json",
 			topics:  []string{},
@@ -235,8 +243,8 @@ func sdkDeclarations() []sdkDeclaration {
 		{
 			name:   "VisualNode",
 			topics: []string{},
-			content: "interface VisualNode { id: string; label: string; phase: string; inputs?: string[]; " +
-				"outputs?: string[] }",
+			content: "interface VisualNode { id: string; label: string; description?: string; phase: string; inputs?: string[]; " +
+				"outputs?: string[]; successCondition?:{path:string;equals:Json} }",
 		},
 		{
 			name:   "WakerResolve",
@@ -256,21 +264,22 @@ func sdkDeclarations() []sdkDeclaration {
 			name:   "WorkerOptions",
 			topics: []string{"worker"},
 			content: "interface WorkerOptions { resolve: WakerResolve; schema?: Schema; toolPolicy?: " +
-				"ToolPolicy; skippable?: boolean; retry?: " +
+				"ToolPolicy; retry?: " +
 				"{maxAttempts:number;safety:'pure'|'idempotent';idempotencyKey?:string} }",
 		},
 		{
 			name:   "HumanOptions",
 			topics: []string{"human"},
-			content: "interface HumanOptions { options?: Array<{value:string;label:string}>; " +
-				"multiSelect?:boolean; schema?:Schema; defaultValue?:Json; timeoutMs?:number; " +
-				"allowSkip?:boolean }",
+			content: "interface HumanOptions { kind:'text'|'select'|'multiselect'|'form'|'confirm'; " +
+				"choices?:Array<{value:string;label:string}>|{fileRef:string}; allowCustom?:boolean; " +
+				"schema?:Schema; minSelections?:number; maxSelections?:number; defaultValue?:Json; " +
+				"allowSkip?:boolean; timeoutMs?:number; onTimeout?:'fail'|'skip'|'default' }",
 		},
 		{
 			name:   "HumanAnswer",
 			topics: []string{"human"},
-			content: "interface HumanAnswer { value:Json; skipped:boolean; source:'user'|'skip'|'timeout'; " +
-				"requestId:string }",
+			content: "interface HumanAnswer { questionId:string; status:'answered'|'skipped'|'timed_out'; " +
+				"source:'user'|'user_skip'|'timeout'|'cache_replay'; value?:Json }",
 		},
 		{
 			name:   "GroupOptions",
@@ -284,10 +293,9 @@ func sdkDeclarations() []sdkDeclaration {
 			content: "interface ChildOptions { args?:Json; revisionId?:string; timeoutMs?:number }",
 		},
 		{
-			name:   "ChildResult",
-			topics: []string{"workflow"},
-			content: "interface ChildResult { runId:string; revisionId:string; status:'succeeded'; " +
-				"result:Json }",
+			name:    "ChildResult",
+			topics:  []string{"workflow"},
+			content: "interface ChildResult { runId:string; revisionId:string; output:Json }",
 		},
 		{
 			name:   "workflowChildHandleBrand",
@@ -313,6 +321,7 @@ func sdkDeclarations() []sdkDeclaration {
 			name:   "ActionResult",
 			topics: []string{"action"},
 			content: "interface ActionResult { data:Json; durationMs:number; " +
+				"process?:{exitCode:number;stdout:string;stderr:string;logsTruncated:boolean}; " +
 				"http?:{status:number;headers:Record<string,string>;body:string} }",
 		},
 		{
@@ -326,10 +335,11 @@ func sdkDeclarations() []sdkDeclaration {
 		{
 			name:   "ActionDeclaration",
 			topics: []string{"overview", "action"},
-			content: "type ActionDeclaration = {id:string;label:string;description:string;risk:'read'|'write" +
+			content: "type ActionDeclaration = {id:string;label:string;description?:string;risk:'read'|'write" +
 				"'|'external';inputSchema?:Schema;outputSchema?:Schema} & " +
 				"({type:'http';allowedOrigins:string[];methods:string[]} | " +
-				"{type:'script';executable:string;workingDirectory:'workflow_scope'} | " +
+				"{type:'script';scriptId:string;interpreter?:string;executable?:never} | " +
+				"{type:'script';executable:string;workingDirectory:'workflow_scope';scriptId?:never} | " +
 				"{type:'builtin';handler:string;connectorIds?:string[];imTargetIds?:string[]});",
 		},
 		{
@@ -343,21 +353,11 @@ func sdkDeclarations() []sdkDeclaration {
 				"number;\n}",
 		},
 		{
-			name:   "PresentationPage",
-			topics: []string{"overview", "presentation"},
-			content: "interface PresentationPage {formatVersion:1;catalogVersion:'workflow-result-v1'|'workf" +
-				"low-input-v1';title?:string;description?:string;spec:{root:string;elements:Record<stri" +
-				"ng,Json>}}",
-		},
-		{
 			name:   "WorkflowMeta",
 			topics: []string{"overview"},
-			content: "interface WorkflowMeta {nodeResultPages?:Record<string,PresentationPage>;nodeResultFil" +
-				"es?:Record<string,{title:string;description?:string}>;nodeResultPageOmissions?:Record<" +
-				"string,string>;inputPage?:PresentationPage;sdk:'ally.workflow/1';title:string;descript" +
-				"ion:string;whenToUse?:string;inputSchema?:Schema;outputSchema?:Schema;phases:Array<{id" +
-				":string;title:string;detail:string;next?:string[];canExit?:boolean}>;actions?:ActionDe" +
-				"claration[];limits?:WorkflowLimits}",
+			content: "interface WorkflowMeta {sdk:'ally.workflow/2';title:string;description:string;" +
+				"whenToUse?:string;inputSchema?:Schema;outputSchema?:Schema;phases:Array<{id:string;" +
+				"title:string;detail:string;next?:string[];canExit?:boolean}>;actions?:ActionDeclaration[];limits?:WorkflowLimits}",
 		},
 		{
 			name:    "args",
@@ -368,7 +368,7 @@ func sdkDeclarations() []sdkDeclaration {
 			name:   "flowContext",
 			topics: []string{"overview", "worker"},
 			content: "declare const flowContext: Readonly<{workflowId:string;revisionId:string;runId:string;" +
-				"workflowName:string;parentRunId:string|null;retrySourceRunId:string|null;triggerSource" +
+				"workflowName:string;runStartedAt:number;parentRunId:string|null;retrySourceRunId:string|null;triggerSource" +
 				":'manual'|'schedule'|'local_api'|'agent'|'child';scope:{projectId:string|null;workingD" +
 				"irectory:string}}>;",
 		},
@@ -395,11 +395,10 @@ func sdkCreationKnowledge() string {
 	for _, section := range sdkSections() {
 		result.WriteString(section.content + "\n\n")
 	}
-	result.WriteString(presentationKnowledge())
-	return result.String()
+	return strings.TrimRight(result.String(), "\n") + "\n"
 }
 
-// SDKBundle 自动合并选中主题的规则与声明，完整 Catalog 仅在需要页面时加入。
+// SDKBundle 自动合并选中主题的编排规则与声明。
 func SDKBundle(topics []string) (string, error) {
 	selected := map[string]bool{}
 	for _, topic := range topics {
@@ -435,9 +434,6 @@ func SDKBundle(topics []string) (string, error) {
 		}
 	}
 	result.WriteString("```\n")
-	if selected["presentation"] {
-		result.WriteString("\n" + presentationKnowledge())
-	}
 	return result.String(), nil
 }
 
@@ -445,10 +441,7 @@ func SDKBundle(topics []string) (string, error) {
 func SDKTopicOutputs() map[string][]byte {
 	outputs := map[string][]byte{}
 	for _, topic := range SDKTopics() {
-		if topic == "presentation" {
-			outputs["sdk-"+topic+".md"] = []byte(presentationKnowledge())
-			continue
-		}
+
 		content, _ := SDKBundle([]string{topic})
 		outputs["sdk-"+topic+".md"] = []byte("# Workflow SDK: " + topic + "\n\n" + content)
 	}

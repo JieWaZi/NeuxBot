@@ -32,7 +32,17 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
           result: "最终结果",
           flowContext: { triggerSource: "agent" },
         },
-        manifest: { meta: { phases: [{ id: "fetch", title: "读取评论" }] } },
+        manifest: {
+          formatVersion: 2,
+          sdkVersion: "ally.workflow/2",
+          title: "测试工作流",
+          description: "",
+          nodes: [],
+          controls: [],
+          edges: [],
+          scripts: [],
+          phases: [{ detail: "", id: "fetch", title: "读取评论" }],
+        },
         instances: [
           {
             id: "step",
@@ -56,7 +66,7 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
           kind: "functionTask",
           status: "succeeded",
           completedAt: 100,
-          input: [{ data: "真实评论输入" }],
+          input: [{ data: { input: "真实评论输入", code: "private-code" } }],
           output: "真实评论输出",
         },
       });
@@ -86,3 +96,5 @@ vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
   subscribeGlobalEvents: () => () => {},
 }));
+
+vi.mock("@/shared/api/use-query-events", () => ({ useQueryEvents: () => {} }));

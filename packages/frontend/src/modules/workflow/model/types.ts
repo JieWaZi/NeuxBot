@@ -1,13 +1,13 @@
 export type {
   GithubComJieWaZiNeuxBotServerRepositoriesControllersWorkflowNodeCount as WorkflowNodeCount,
-  GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest as Manifest,
-  GithubComJieWaZiNeuxBotServerInternalWorkflowDslNode as WorkflowNode,
-  GithubComJieWaZiNeuxBotServerInternalWorkflowDslPhase as WorkflowPhase,
+  GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest as Manifest,
+  GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasNode as WorkflowNode,
+  GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasPhase as WorkflowPhase,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun as WorkflowRun,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowNodeInstance as WorkflowInstance,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest as HumanRequest,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition as WorkflowDefinition,
-  GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRevision as WorkflowRevision,
+  GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionResponse as WorkflowRevision,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowExecutionDefaults as ExecutionDefaults,
 } from "@/shared/api/generated/types.gen";
 

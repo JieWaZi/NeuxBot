@@ -80,7 +80,7 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 		}
 		return map[string]any{"workflowId": definition.ID, "revisionId": revisionID, "currentRevisionId": definition.CurrentRevisionID, "source": source, "sourceDigest": digest, "sdkVersion": constants.WorkflowSDKVersion}, nil
 	case constants.WorkflowActionSourceValidate:
-		compiled, diagnostics, err := workflowdsl.CompileForAuthoring(input.Source)
+		compiled, diagnostics, err := workflowdsl.Compile(input.Source)
 		if err == nil {
 			err = s.validateSourcePolicies(ctx, compiled.Manifest)
 		}
@@ -94,12 +94,19 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 				"phases": len(compiled.Manifest.Meta.Phases), "sourceDigest": compiled.SourceDigest,
 			}
 			if input.IncludeManifest {
-				result["manifest"] = compiled.Manifest
+				result["manifest"] = workflowdsl.ExportCanvas(compiled.Manifest)
 			}
 		}
 		return result, nil
 	case constants.WorkflowActionSourceUpsert:
-		receipt, diagnostics, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: session.DefinitionID, RequestID: input.RequestID, ExpectedRevisionID: input.ExpectedRevisionID, Source: input.Source, SDKVersion: input.SDKVersion, CreationSessionID: session.ID, CreationExecutionID: session.ActiveExecutionID, CreationToken: scope.Token, ResolvedAnnotationIDs: input.ResolvedAnnotationIDs})
+		if input.WorkflowID != "" && input.WorkflowID != session.DefinitionID {
+			return nil, status_error.WorkflowStateConflict
+		}
+		patches := make([]SourcePatch, len(input.Patches))
+		for i, p := range input.Patches {
+			patches[i] = SourcePatch{Search: p.Search, Replace: p.Replace}
+		}
+		receipt, diagnostics, err := s.SaveSource(ctx, SaveSourceCommand{Patches: patches, BaseSourceDigest: input.BaseSourceDigest, DefinitionID: session.DefinitionID, RequestID: input.RequestID, ExpectedRevisionID: input.ExpectedRevisionID, Source: input.Source, SDKVersion: input.SDKVersion, CreationSessionID: session.ID, CreationExecutionID: session.ActiveExecutionID, CreationToken: scope.Token, ResolvedAnnotationIDs: input.ResolvedAnnotationIDs})
 		if err != nil {
 			if diagnostics == nil {
 				diagnostics = []workflowdsl.Diagnostic{}
@@ -188,10 +195,10 @@ func (s *Service) prepareAuthoring(
 		resourceKinds = append(resourceKinds, "wakers", "runtimes", "accounts")
 	}
 	if slices.Contains(input.Primitives, "action") || slices.Contains(input.Features, "im") {
-		resourceKinds = append(resourceKinds, "builtinActions")
+		resourceKinds = append(resourceKinds, "builtinActions", "scriptLanguages")
 	}
 	if input.Language == "python" {
-		resourceKinds = append(resourceKinds, "functionLanguages")
+		resourceKinds = append(resourceKinds, "functionLanguages", "scriptLanguages")
 	}
 	for _, primitive := range input.Primitives {
 		if workflowcatalog.PrimitiveTopics()[primitive] == "workflow" {
@@ -426,7 +433,9 @@ func (s *Service) resourcesCatalog(ctx context.Context, definitionID string) (ma
 	if err != nil {
 		return nil, err
 	}
-	resources := map[string]any{"builtinActions": []map[string]any{{"id": constants.IMBuiltinConnectorID, "name": "IM 交付", "toolName": constants.IMBuiltinToolName, "description": "工作流内置交付操作，经 Runner 持久效果边界直接调用，不需要安装 MCP 连接器。"}}, "sdkVersion": constants.WorkflowSDKVersion, "toolPolicyCapabilities": workflowToolPolicyCapabilities(), "functionLanguages": []map[string]any{{"language": "javascript", "available": true, "executionModes": []string{"pure"}}, {"language": "python", "available": s.pythonExecutable != "", "executionModes": []string{"trusted_local"}}}}
+	pythonPath, pythonErr := s.resolvePython(ctx)
+	resources := map[string]any{"builtinActions": []map[string]any{{"id": constants.IMBuiltinConnectorID, "name": "IM 交付", "toolName": constants.IMBuiltinToolName, "description": "工作流内置交付操作，经 Runner 持久效果边界直接调用，不需要安装 MCP 连接器。"}}, "sdkVersion": constants.WorkflowSDKVersion, "toolPolicyCapabilities": workflowToolPolicyCapabilities(), "functionLanguages": []map[string]any{{"language": "javascript", "available": true, "executionModes": []string{"pure"}}, {"language": "python", "available": pythonErr == nil, "executable": pythonPath, "executionModes": []string{"trusted_local"}}}}
+	resources["scriptLanguages"] = []map[string]any{{"language": "python", "available": pythonErr == nil, "executable": pythonPath, "protocols": []string{"json", "text"}}}
 	if s.wakers != nil {
 		wakers, err := s.wakers.List(ctx, "", 100, 0)
 		if err != nil {

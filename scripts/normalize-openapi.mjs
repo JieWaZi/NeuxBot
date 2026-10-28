@@ -12,6 +12,28 @@ if (schemas && typeof schemas === "object") {
   }
 }
 
+// Go 编译器生成封闭画布联合；toolx 的 map 类型不能表达 kind 与 execution 的关联。
+// 此处仅重定位本地引用，不另行维护节点或字段契约。
+if (schemas && typeof schemas === "object") {
+  const name = Object.keys(schemas).find((key) => key.endsWith("DslCanvasManifest"));
+  if (name) {
+    const canvas = JSON.parse(await readFile(new URL("../server/internal/workflow/dsl/generated/canvas-manifest.schema.json", import.meta.url), "utf8"));
+    const prefix = name.slice(0, -"CanvasManifest".length);
+    const relocate = (value) => {
+      if (Array.isArray(value)) return value.map(relocate);
+      if (!value || typeof value !== "object") return value;
+      return Object.fromEntries(Object.entries(value).map(([key, child]) => [key,
+        key === "$ref" && typeof child === "string" && child.startsWith("#/$defs/")
+          ? `#/components/schemas/${prefix}${child.slice("#/$defs/".length)}`
+          : relocate(child),
+      ]));
+    };
+    for (const [type, schema] of Object.entries(canvas.$defs)) {
+      schemas[`${prefix}${type}`] = relocate(schema);
+    }
+  }
+}
+
 function normalizeParameterOrder(value) {
   if (Array.isArray(value)) {
     for (const item of value) normalizeParameterOrder(item);

@@ -54,7 +54,7 @@ export function instanceTree(
     parent.instances.push(instance);
   }
   const phaseOrder = new Map(
-    manifest?.meta?.phases?.map((phase, index) => [phase.id, index]),
+    manifest?.phases?.map((phase, index) => [phase.id, index]),
   );
   return Array.from(phases.values()).sort(
     (a, b) =>

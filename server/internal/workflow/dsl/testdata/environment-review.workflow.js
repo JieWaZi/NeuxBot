@@ -1,11 +1,5 @@
 export const meta = {
-  sdk:'ally.workflow/1', title:'环境检查与审批', description:'三环境逐项检查、建议、批准后执行与独立验证；通知只生成草稿',
-  nodeResultPageOmissions:{
-    'inspect-environment':'该协议示例只返回环境检查的测试标记，不产生分析正文',
-    'recommend-environment':'该协议示例只返回建议阶段的测试标记，不产生实际建议内容',
-    'execute-environment':'该协议示例只返回执行阶段的测试标记，不交付文件或正文',
-    'verify-environment':'该协议示例只返回用于判断分支的固定验证标记'
-  },
+  sdk:'ally.workflow/2', title:'环境检查与审批', description:'三环境逐项检查、建议、批准后执行与独立验证；通知只生成草稿',
   inputSchema:{type:'object',properties:{environments:{type:'array',items:{type:'string'},default:['A','B','C']}},required:['environments']},
   phases:[{id:'inspect',title:'环境检查',detail:'每项独立检查',next:['recommend']},{id:'recommend',title:'提出建议',detail:'建议不表示已执行',next:['approve']},{id:'approve',title:'逐项审批',detail:'缺失输入和操作决定分别等待',next:['execute']},{id:'execute',title:'执行与验证',detail:'仅显式批准的项实际执行，然后独立验证',canExit:true}]
 };
@@ -16,7 +10,7 @@ const environments=await pipeline(args.environments,[
     let configuration='provided';
     if(original==='A'){
       const input=await askUser('补充 '+original+' 的缺失配置',{id:'missing-input',label:'补充配置 '+original,phase:'approve',allowSkip:true});
-      if(input.skipped || input.value==='')throw {code:'INPUT_REQUIRED',environment:original};
+      if(input.status !== 'answered' || input.value==='')throw {code:'INPUT_REQUIRED',environment:original};
       configuration=input.value;
     }
     return {inspection:previous,configuration};
@@ -26,7 +20,7 @@ const environments=await pipeline(args.environments,[
     return {inspection:previous.inspection,configuration:previous.configuration,recommendation};
   },
   async (previous,original,index)=>{
-    const decision=await askUser('批准 '+original+' 的具体建议？\n'+previous.recommendation,{id:'approve-environment',label:'审批 '+original,phase:'approve',options:[{value:'approve',label:'批准'},{value:'deny',label:'否决'}],defaultValue:'deny',allowSkip:true});
+    const decision=await askUser('批准 '+original+' 的具体建议？\n'+previous.recommendation,{id:'approve-environment',label:'审批 '+original,phase:'approve',kind:'select',choices:[{value:'approve',label:'批准'},{value:'deny',label:'否决'}],defaultValue:'deny',allowSkip:true});
     return {environment:original,inspection:previous.inspection,recommendation:previous.recommendation,decision,executed:false,verified:false};
   },
   async (previous,original,index)=>{

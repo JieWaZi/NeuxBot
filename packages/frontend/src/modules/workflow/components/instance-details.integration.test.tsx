@@ -1,10 +1,19 @@
+import type { HumanRequest } from "../model/types";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { MemoryRouter } from "react-router-dom";
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import "@/shared/i18n";
 import { client } from "@/shared/api/generated/client.gen";
 import { InstanceDetails } from "./instance-details";
@@ -90,14 +99,19 @@ beforeEach(() => {
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
-function renderInstance() {
+function renderInstance(human?: HumanRequest) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
-        <InstanceDetails id="flow" runId="run" instanceId="instance" />
+        <InstanceDetails
+          id="flow"
+          runId="run"
+          instanceId="instance"
+          human={human}
+        />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -203,9 +217,138 @@ it("结果不确定作为失败证据展示，不再要求人工核对或再次�
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "此次执行未能取得可靠结果，已按失败结束",
   );
-  expect(screen.getByText(/EFFECT_OUTCOME_UNKNOWN/)).toBeInTheDocument();
+  expect(screen.queryByText(/EFFECT_OUTCOME_UNKNOWN/)).not.toBeInTheDocument();
   expect(
     screen.queryByRole("button", { name: /核对|停止|跳过/ }),
   ).not.toBeInTheDocument();
   expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
 });
+
+it.each(["functionTask", "action"])(
+  "%s步骤仅展示业务输入，隐藏代码与动作协议",
+  async (kind) => {
+    server.use(
+      http.get(endpoint, () =>
+        HttpResponse.json({
+          instance: {
+            id: "instance",
+            kind,
+            completedAt: 1,
+            input:
+              kind === "action"
+                ? [
+                    { data: "private-action-id" },
+                    {
+                      data: {
+                        input: { project: "客户项目" },
+                        code: "private-code",
+                        language: "python",
+                        phase: "private-phase",
+                      },
+                    },
+                  ]
+                : [
+                    {
+                      data: {
+                        input: { project: "客户项目" },
+                        code: "private-code",
+                        language: "python",
+                        phase: "private-phase",
+                      },
+                    },
+                  ],
+            output:
+              kind === "action"
+                ? {
+                    data: { summary: "检查完成" },
+                    durationMs: 123,
+                    process: { pid: 999 },
+                  }
+                : { summary: "检查完成" },
+          },
+        }),
+      ),
+    );
+    renderInstance();
+    expect(await screen.findByText("客户项目")).toBeInTheDocument();
+    expect(screen.getByText("检查完成")).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        /private-code|private-action-id|private-phase|durationMs/,
+      ),
+    ).not.toBeInTheDocument();
+  },
+);
+
+it("用户决策只展示完整问题和业务回答", async () => {
+  server.use(
+    http.get(endpoint, () =>
+      HttpResponse.json({
+        instance: {
+          id: "instance",
+          kind: "askUser",
+          completedAt: 1,
+          input: [
+            { data: "请选择分析方案" },
+            {
+              data: { choices: [], snapshotDigest: "private-question-digest" },
+            },
+          ],
+          output: {
+            questionId: "private-question-id",
+            status: "answered",
+            source: "user",
+            value: "方案甲",
+          },
+        },
+      }),
+    ),
+  );
+  renderInstance();
+  expect(await screen.findByText("请选择分析方案")).toBeInTheDocument();
+  expect(screen.getByText("方案甲")).toBeInTheDocument();
+  expect(
+    screen.queryByText(/private-question|questionId|source/),
+  ).not.toBeInTheDocument();
+});
+
+vi.mock("@/shared/api/use-query-events", () => ({ useQueryEvents: () => {} }));
+
+it.each([false, true])(
+  "完成的候选回答展示冻结标签并保留未知自定义值（多选=%s）",
+  async (multi) => {
+    const value = multi ? ["beta", "custom"] : "beta";
+    server.use(
+      http.get(endpoint, () =>
+        HttpResponse.json({
+          instance: {
+            id: "instance",
+            kind: "askUser",
+            completedAt: 1,
+            output: {
+              questionId: "question",
+              status: "answered",
+              source: "user",
+              value,
+            },
+          },
+        }),
+      ),
+    );
+    renderInstance({
+      id: "question",
+      instanceId: "instance",
+      options: {
+        kind: multi ? "multiselect" : "select",
+        choices: [
+          { value: "alpha", label: "方案甲" },
+          { value: "beta", label: "方案乙" },
+        ],
+      },
+    });
+    expect(await screen.findByText("方案乙")).toBeInTheDocument();
+    expect(screen.queryByText("beta")).not.toBeInTheDocument();
+    if (multi) expect(screen.getByText("custom")).toBeInTheDocument();
+    expect(value).toEqual(multi ? ["beta", "custom"] : "beta");
+  },
+);

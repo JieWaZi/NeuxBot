@@ -74,6 +74,8 @@ export type ChatWorkspaceMainContent = {
     ReactNode | ((active: boolean, context: { scopeKey: string }) => ReactNode);
   chatExpanded?: boolean;
   resizeLabel?: string;
+  /** 将原生问题呈现在业务画布，沿用 Chat 的回答与提交状态。 */
+  questionsOnCanvas?: boolean;
 };
 
 type ChatWorkspaceSurfaceProps = {
@@ -123,6 +125,8 @@ export function ChatWorkspaceSurface({
   changesProps,
 }: ChatWorkspaceSurfaceProps) {
   const { t } = useTranslation("chat");
+  const [elicitationOutlet, setElicitationOutlet] =
+    useState<HTMLDivElement | null>(null);
   const appSceneWorkspace = useOptionalAppSceneWorkspace();
   const routeActive = useRouteSceneActive();
   const sceneActive = active && routeActive;
@@ -428,18 +432,26 @@ export function ChatWorkspaceSurface({
             resizeLabel={mainContent?.resizeLabel ?? t("workspace.resizePanel")}
             main={
               <div
-                className="h-full min-h-0 min-w-0 flex-1"
+                className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
                 data-chat-main-content={mainContent?.contentId}
                 aria-label={mainContent?.title}
                 aria-hidden={!sceneActive || fullView || Boolean(canvasInput)}
                 inert={!sceneActive || fullView || Boolean(canvasInput)}
               >
-                {typeof mainContent?.content === "function"
-                  ? mainContent.content(
-                      sceneActive && !fullView && !canvasInput,
-                      { scopeKey: identity.scopeKey },
-                    )
-                  : mainContent?.content}
+                {mainContent?.questionsOnCanvas ? (
+                  <div
+                    ref={setElicitationOutlet}
+                    className="bg-surface-module max-h-[60%] shrink-0 overflow-y-auto empty:hidden"
+                  />
+                ) : null}
+                <div className="min-h-0 flex-1">
+                  {typeof mainContent?.content === "function"
+                    ? mainContent.content(
+                        sceneActive && !fullView && !canvasInput,
+                        { scopeKey: identity.scopeKey },
+                      )
+                    : mainContent?.content}
+                </div>
               </div>
             }
             sidebar={
@@ -487,6 +499,11 @@ export function ChatWorkspaceSurface({
                     enabled={identity.messageContributions ?? false}
                   >
                     <ChatThread
+                      elicitationOutlet={
+                        mainContent?.questionsOnCanvas
+                          ? elicitationOutlet
+                          : undefined
+                      }
                       {...adapter.thread}
                       emptyStatePosition={
                         canvasInput

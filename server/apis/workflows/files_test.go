@@ -3,6 +3,7 @@ package workflows
 import (
 	"bytes"
 	"context"
+	"io"
 	"mime/multipart"
 	"net/http/httptest"
 	"path/filepath"
@@ -23,7 +24,7 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-func TestCoreFileUploadBindingAndBinaryDownload(t *testing.T) {
+func TestCoreFileUploadBindingPreservesRuntimeInput(t *testing.T) {
 	directory := t.TempDir()
 	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(directory, "files.db"), Migrate: true})
 	if err != nil {
@@ -47,7 +48,7 @@ func TestCoreFileUploadBindingAndBinaryDownload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := `export const meta={sdk:'ally.workflow/1',title:'文件',description:'交付文件',inputSchema:{type:'string',format:'file'},outputSchema:{type:'string',format:'file'},phases:[{id:'deliver',title:'交付',detail:'交付文件',canExit:true}]};phase('deliver');return args;`
+	source := `export const meta={sdk:'ally.workflow/2',title:'文件',description:'交付文件',inputSchema:{type:'string',format:'file'},outputSchema:{type:'string',format:'file'},phases:[{id:'deliver',title:'交付',detail:'交付文件',canExit:true}]};phase('deliver');return args;`
 	if _, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDKVersion: constants.WorkflowSDKVersion}); err != nil {
 		t.Fatalf("%v: %+v", err, diagnostics)
 	}
@@ -98,21 +99,25 @@ func TestCoreFileUploadBindingAndBinaryDownload(t *testing.T) {
 		case <-poll.C:
 		}
 	}
-	files, err := s.OutputFiles(ctx, run)
-	if err != nil || len(files) != 1 || !files[0].Available {
-		t.Fatalf("declared root file: %+v %v", files, err)
+
+	if run.Status != constants.WorkflowRunStatusSucceeded {
+		t.Fatal(run)
 	}
-	downloadContext, _ := gin.CreateTestContext(httptest.NewRecorder())
-	downloadContext.Request = httptest.NewRequest("GET", "/file", nil)
-	attachment, err := (&DownloadWorkflowFile{ID: definition.ID, RunID: run.ID, FileID: files[0].ID}).Output(downloadContext)
+	path, ok := run.Result.(string)
+	if !ok {
+		t.Fatalf("file input lost runtime data: %#v", run.Result)
+	}
+	file, err := workflowfiles.OpenScopeFile(run.ScopeBinding.WorkingDirectory, path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	buffer, ok := attachment.(interface{ Bytes() []byte })
-	if !ok || !bytes.Equal(buffer.Bytes(), content) {
-		t.Fatal("download altered binary content")
+	defer file.Close()
+	actual, err := io.ReadAll(file)
+	if err != nil || !bytes.Equal(actual, content) {
+		t.Fatal("runtime input changed", err)
 	}
-	if _, err := (&DownloadWorkflowFile{ID: definition.ID, RunID: run.ID, Candidate: "../private.txt"}).Output(downloadContext); err == nil {
-		t.Fatal("download escaped scope")
+	if file, err := workflowfiles.OpenScopeFile(run.ScopeBinding.WorkingDirectory, "../private.txt"); err == nil {
+		file.Close()
+		t.Fatal("input scope escaped")
 	}
 }

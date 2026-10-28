@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -109,6 +110,21 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 	for _, capability := range capabilities {
 		bindings = append(bindings, capability.Bindings...)
 	}
+	hasWorkflowCapabilities := false
+	for _, binding := range bindings {
+		if strings.HasPrefix(binding.Operation, "workflow.") {
+			hasWorkflowCapabilities = true
+			break
+		}
+	}
+	// 工具绑定是确定的场景事实，不让模型从用户短句猜测当前入口。
+	for _, binding := range bindings {
+		if binding.Operation == "workflow.source.save" {
+			appendCurrentWorkflowReferences(request)
+			request.Message.Text += "\n\n<workflow-authoring-context>This is the bound workflow authoring conversation. Short edits, corrections, and follow-up instructions still target this workflow. Use workflow_authoring_prepare or workflow_source_get to obtain the bound workflow and current revision; no workflow ID is needed for that read. Implement requested changes through workflow_source_save and its actual saved receipt. A chat description or local file alone does not update the canvas. Pure questions may be answered without a save; do not invent edits. Use existing Wakers from resources. Ask missing consequential choices through the structured question tool; they are answered on the canvas. Never report saving or checks as successful without their receipts. Read original run evidence before optimizing a referenced failure.</workflow-authoring-context>"
+			break
+		}
+	}
 	grant, activate, revoke, err := m.agent.Prepare(agentcapability.GrantSpec{ExecutionID: executionID, Bindings: bindings, FileRoots: roots, Record: func(ctx context.Context, op contract.Operation, result agentcapability.Result) error {
 		return facts.record(ctx, m.journal, chat.ID, executionID, op, result)
 	}, Validate: func(ctx context.Context) error {
@@ -130,7 +146,7 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 	if request.Session.Mode == runtimes.SessionModeNew || slot.directory == "" || slot.sessionID != request.Session.ID {
 		slot = agentSessionSlot{sessionID: request.Session.ID, directory: filepath.Join(root, "agent-contexts", key, util.New())}
 	}
-	path, err := agentcapability.WriteConnection(slot.directory, "connection.json", agentcapability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: m.agentEndpoint, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
+	path, err := agentcapability.WriteConnection(slot.directory, grant.ID+".json", agentcapability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: m.agentEndpoint, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
 	if err == nil {
 		m.agentSessions.slots[key] = slot
 	}
@@ -145,6 +161,15 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 	}
 	request.Target.Environment[constants.AgentCLIContextEnvironment] = path
 	request.Target.Environment[constants.AgentCLIBinaryEnvironment] = binary
+	// 本轮路径进入新增输入，不进入静态指令或工具描述；续聊不得沿用旧环境。
+	request.Message.Text += fmt.Sprintf("\n\n<neuxbot-execution-context>For all NeuxBot CLI calls in this turn use %q --context %q. This execution-scoped path supersedes prior-turn context; never edit or copy its contents. Prefer the ally_capabilities MCP tools when available. A successful source.save receipt is a saved workflow revision; a run start receipt is only acceptance.</neuxbot-execution-context>", binary, path)
+	baseRuntimeID := request.Detection.Runtime.BaseRuntimeID
+	if baseRuntimeID == "" {
+		baseRuntimeID = request.Target.RuntimeID
+	}
+	if supported, _ := runtimes.ConnectorCompatibility(baseRuntimeID, runtimes.ConnectorTransportStdio); supported && hasWorkflowCapabilities {
+		request.Connectors = append(request.Connectors, runtimes.Connector{ID: "neuxbot-internal-capabilities", Name: "NeuxBot", RuntimeKey: "ally_capabilities", Transport: runtimes.ConnectorTransportStdio, Command: binary, Arguments: []string{"mcp", "serve", "--context", path}})
+	}
 
 	inheritedPath := request.Target.Environment["PATH"]
 	if inheritedPath == "" {
@@ -162,4 +187,17 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 		}
 	}
 	return activate, func() { revoke(); m.elicitations.finishQuestions(chat.ID, executionID) }, settle, nil
+}
+
+// appendCurrentWorkflowReferences 将当前轮引用写入实际发送的消息，原生续聊即使不重载 Instructions 也能获得准确目标。
+// 此处运行在用户消息接纳之后，只修改 Runtime 请求，不改写 Chat 权威用户正文。
+func appendCurrentWorkflowReferences(request *runtimes.RunRequest) {
+	references := []runtimes.Instruction{}
+	for _, instruction := range request.Instructions {
+		if instruction.Name == "WORKFLOW_CANVAS_REFERENCES.md" || instruction.Name == "WORKFLOW_RUN_REFERENCE.md" {
+			references = append(references, instruction)
+		}
+	}
+	encoded, _ := json.Marshal(references)
+	request.Message.Text += "\n\n<workflow-reference-context>This is the authoritative reference context for this turn. Read the referenced revision to locate its exact stable targets before editing the current head; never infer the selected node or phase from wording alone. An empty list means this turn has no selected canvas or run references; do not silently reuse references from earlier turns. Keep internal identities out of user-facing replies.\n" + string(encoded) + "\n</workflow-reference-context>"
 }

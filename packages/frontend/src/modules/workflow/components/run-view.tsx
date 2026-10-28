@@ -1,4 +1,4 @@
-import { NodeOutputCard } from "../presentation/node-result";
+import { RetryRunDialog } from "./retry-run-dialog";
 import { useNotificationPresentation } from "@/shared/api/notification-presentation";
 import {
   keepPreviousData,
@@ -235,6 +235,9 @@ export function WorkflowRunView({
   const actions = (
     <div className="flex items-center gap-2">
       {terminal && run?.status !== "succeeded" ? (
+        <RetryRunDialog id={id} runId={runId} manifest={query.data?.manifest} />
+      ) : null}
+      {terminal && run?.status !== "succeeded" ? (
         <Button size="sm" variant="surface" asChild>
           <Link to={`/workflows/${id}?tab=canvas&optimizeRun=${runId}`}>
             <WandSparkles />
@@ -324,23 +327,6 @@ export function WorkflowRunView({
                 ),
               }}
               nodeCounts={query.data.nodeCounts ?? []}
-              nodeOutput={(node) => {
-                const page =
-                  query.data?.manifest?.meta?.nodeResultPages?.[node.id ?? ""];
-                const files =
-                  query.data?.manifest?.meta?.nodeResultFiles?.[node.id ?? ""];
-                return page || files ? (
-                  <NodeOutputCard
-                    id={id}
-                    runId={runId}
-                    nodeId={node.id ?? ""}
-                    title={files?.title ?? page?.title}
-                    files={Boolean(files)}
-                    active={active && !switching}
-                    version={query.data?.run?.version}
-                  />
-                ) : null;
-              }}
               selected={
                 active && !switching && !resultOpen
                   ? (params.get("node") ?? instance?.nodeId)
@@ -401,6 +387,9 @@ export function WorkflowRunView({
                       id={id}
                       runId={runId}
                       instanceId={instanceId}
+                      human={query.data?.humanRequests?.find(
+                        (request) => request.instanceId === instanceId,
+                      )}
                     />
                   ) : (
                     <p className="text-content-muted type-body">

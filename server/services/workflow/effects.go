@@ -1,9 +1,11 @@
 package workflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -188,7 +190,11 @@ func (s *Service) dispatchDeterministic(ctx context.Context, run models.Workflow
 	if effect.Boundary.Primitive == "functionTask" {
 		language, _ := options["language"].(string)
 		code, _ := options["code"].(string)
-		result, process, failure := workflowfunction.Execute(operationCtx, workflowfunction.Request{RequestID: effect.ID, Code: code, Input: options["input"], StartedAt: run.StartedAt, DeadlineAt: effect.DeadlineAt}, language, s.pythonExecutable, run.ScopeBinding.WorkingDirectory)
+		pythonPath, _ := run.Context["pythonExecutable"].(string)
+		if pythonPath == "" {
+			pythonPath = s.pythonExecutable
+		}
+		result, process, failure := workflowfunction.Execute(operationCtx, workflowfunction.Request{RequestID: effect.ID, Code: code, Input: options["input"], StartedAt: run.StartedAt, DeadlineAt: effect.DeadlineAt}, language, pythonPath, run.ScopeBinding.WorkingDirectory)
 		err = failure
 		value = result.Data
 		if process.Stdout != "" || process.Stderr != "" {
@@ -208,7 +214,7 @@ func (s *Service) dispatchDeterministic(ctx context.Context, run models.Workflow
 				case "http":
 					value, httpOutcomeUnknown, err = s.executeHTTP(operationCtx, run, declaration, options)
 				case "script":
-					value, err = s.executeScript(operationCtx, run, declaration, options)
+					value, err = s.executeScript(operationCtx, run, declaration, options, revision.Bundle)
 				case "builtin":
 					value, err = s.executeBuiltin(operationCtx, run, effect, revision, declaration, options)
 				default:
@@ -282,6 +288,17 @@ func (s *Service) completeDeterministic(ctx context.Context, effect models.Workf
 				return err
 			}
 		}
+		if failure == nil {
+			business := result
+			if current.Boundary.Primitive == "action" {
+				if envelope, ok := result.(map[string]any); ok {
+					business = envelope["data"]
+				}
+			}
+			if !workflowdsl.EvaluateSuccessCondition(business, workflowstate.BoundaryOptions(current.Boundary)["successCondition"]) {
+				failure = status_error.WorkflowBusinessCheckFailed
+			}
+		}
 		value := workflowdsl.JSONValue(result)
 		current.Result = &value
 		if failure != nil {
@@ -316,7 +333,7 @@ func shrinkLog(value string) string {
 	return strings.ToValidUTF8(value[:len(value)/2], "")
 }
 
-func (s *Service) executeScript(ctx context.Context, run models.WorkflowRun, declaration workflowdsl.ActionDeclaration, options map[string]any) (any, error) {
+func (s *Service) executeScript(ctx context.Context, run models.WorkflowRun, declaration workflowdsl.ActionDeclaration, options map[string]any, bundles ...workflowdsl.ProgramBundle) (any, error) {
 	if run.ScopeBinding.WorkingDirectory == "" {
 		return nil, status_error.WorkflowResourceInvalid.WithField("field", "scope.workingDirectory")
 	}
@@ -364,8 +381,47 @@ func (s *Service) executeScript(ctx context.Context, run models.WorkflowRun, dec
 			environment = append(environment, key+"="+value)
 		}
 	}
+	executable := declaration.Executable
+	protocol := ""
+	if declaration.ScriptID != "" {
+		if len(bundles) != 1 {
+			return nil, status_error.WorkflowStateInvalid
+		}
+		script, ok := bundles[0].Scripts[declaration.ScriptID]
+		if !ok || script.Language != "python" || script.Digest != workflowdsl.Digest([]byte(script.Code)) {
+			return nil, status_error.WorkflowStateInvalid
+		}
+		executable, _ = run.Context["pythonExecutable"].(string)
+		if executable == "" {
+			executable = s.pythonExecutable
+		}
+		if executable == "" {
+			executable = "python3"
+		}
+		file, err := os.CreateTemp("", "workflow-script-*.py")
+		if err != nil {
+			return nil, err
+		}
+		defer os.Remove(file.Name())
+		if _, err = file.WriteString(script.Code); err != nil {
+			file.Close()
+			return nil, err
+		}
+		if err = file.Close(); err != nil {
+			return nil, err
+		}
+		arguments = append([]string{file.Name()}, arguments...)
+		protocol = script.Protocol
+	}
+	input, err := json.Marshal(options["input"])
+	if err != nil {
+		return nil, status_error.WorkflowSchemaInvalid
+	}
 	started := time.Now()
-	process, err := workflowfunction.Command(ctx, declaration.Executable, arguments, directory, environment, nil)
+	process, err := workflowfunction.Command(ctx, executable, arguments, directory, environment, bytes.NewReader(input))
+	if process.Truncated && err == nil {
+		err = status_error.WorkflowBudgetExceeded.WithField("budget", "script_output")
+	}
 	for _, secret := range secrets {
 		if secret != "" {
 			process.Stdout = strings.ReplaceAll(process.Stdout, secret, "[redacted]")
@@ -373,7 +429,7 @@ func (s *Service) executeScript(ctx context.Context, run models.WorkflowRun, dec
 		}
 	}
 	data := any(process.Stdout)
-	if len(declaration.OutputSchema) > 0 || options["schema"] != nil {
+	if protocol == "json" || protocol == "" && (len(declaration.OutputSchema) > 0 || options["schema"] != nil) {
 		if decodeErr := json.Unmarshal([]byte(process.Stdout), &data); decodeErr != nil && err == nil {
 			logx.Errorf("decode action result failed: action_id=%s error=%v", declaration.ID, decodeErr)
 			err = status_error.WorkflowSchemaInvalid

@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { cn } from "@/shared/lib/cn";
 import type { Manifest, WorkflowInstance } from "../model/types";
 import { instanceTree, type InstanceBranch } from "../model/instance-tree";
+import { canvasControls } from "../model/canvas-layout";
 import { NodeKind } from "./workflow-canvas";
 
 export function InstanceTree({
@@ -20,8 +21,7 @@ export function InstanceTree({
   const title = (branch: InstanceBranch) => {
     if (branch.kind === "phase")
       return (
-        manifest?.meta?.phases?.find((phase) => phase.id === branch.segment)
-          ?.title ||
+        manifest?.phases?.find((phase) => phase.id === branch.segment)?.title ||
         branch.segment ||
         t("phase")
       );
@@ -32,7 +32,7 @@ export function InstanceTree({
         id: branch.segment,
         number: branch.ordinal,
       });
-    const group = manifest?.groups?.find(
+    const group = canvasControls(manifest).find(
       (group) => group.id === branch.segment,
     );
     return `${group?.kind === "pipeline" ? t("pipeline") : t("parallel")} · ${branch.segment}`;
@@ -58,7 +58,7 @@ export function InstanceTree({
           >
             <span className="flex flex-wrap items-center gap-2">
               <NodeKind kind={instance.kind ?? ""} />
-              {manifest?.groups?.some(
+              {canvasControls(manifest).some(
                 (group) =>
                   group.kind === "pipeline" &&
                   instance.path?.split("/").includes(group.id ?? ""),

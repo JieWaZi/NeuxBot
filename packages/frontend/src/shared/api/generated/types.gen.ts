@@ -5290,6 +5290,10 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkResultResponse = {
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand = {
     /**
+     * 问题版本
+     */
+    questionVersion: number;
+    /**
      * 提交标识
      */
     requestId?: string;
@@ -5297,6 +5301,10 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand = {
      * 明确跳过
      */
     skip?: boolean;
+    /**
+     * 候选摘要
+     */
+    snapshotDigest: string;
     /**
      * 真实答案
      */
@@ -5319,6 +5327,24 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerOperationCommand = {
      * 请求标识
      */
     requestId: string;
+};
+
+/**
+ * CanvasReference 固定用户选中的画布版本及业务目标。
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsCanvasReference = {
+    /**
+     * 稳定标识
+     */
+    id?: string;
+    /**
+     * 目标类型
+     */
+    kind?: string;
+    /**
+     * 引用版本
+     */
+    revisionId?: string;
 };
 
 /**
@@ -5389,6 +5415,29 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsRetryRunCommand = {
 };
 
 /**
+ * 工作流创作消息
+ * RunReference 固定本次优化所依据的原运行证据。
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsRunReference = {
+    /**
+     * 关联实例
+     */
+    instanceId?: string;
+    /**
+     * 原版本
+     */
+    revisionId?: string;
+    /**
+     * 原运行
+     */
+    runId?: string;
+    /**
+     * 可见摘要
+     */
+    summary?: string;
+};
+
+/**
  * 触发配置请求
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsSaveWorkflowTriggersCommand = {
@@ -5426,13 +5475,17 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsSavedWorkflowTriggers = {
 };
 
 /**
- * 工作流创作消息
+ * SendCreationMessageCommand 是一轮创作的可见输入与引用。
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsSendCreationMessageCommand = {
     /**
      * 消息附件
      */
     attachments?: Array<GithubComJieWaZiNeuxBotServerInternalWorkinputAttachment>;
+    /**
+     * 画布引用
+     */
+    canvasReferences?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsCanvasReference>;
     /**
      * 代码引用
      */
@@ -5459,6 +5512,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsSendCreationMessageCommand
      * 请求标识
      */
     requestId?: string;
+    runReference?: GithubComJieWaZiNeuxBotServerApisWorkflowsRunReference & unknown;
     /**
      * 创作会话
      */
@@ -5540,56 +5594,6 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowAnnotationRequest 
 };
 
 /**
- * 工作流文件预览
- */
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowArtifactResponse = {
-    /**
-     * 候选路径
-     */
-    candidate?: string;
-    /**
-     * 内容变化
-     */
-    changed?: boolean;
-    /**
-     * 检查时间
-     */
-    checkedAt?: number;
-    /**
-     * 编码内容
-     */
-    dataUrl?: string;
-    /**
-     * 内容摘要
-     */
-    digest?: string;
-    /**
-     * 媒体类型
-     */
-    mediaType?: string;
-    /**
-     * 失败原因
-     */
-    reason?: string;
-    /**
-     * 相对路径
-     */
-    relativePath?: string;
-    /**
-     * 文件大小
-     */
-    size?: number;
-    /**
-     * 文本内容
-     */
-    text?: string;
-    /**
-     * 校验通过
-     */
-    verified?: boolean;
-};
-
-/**
  * 工作流详情
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowDetailResponse = {
@@ -5602,7 +5606,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowDetailResponse = {
      */
     creationSessions?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSession>;
     definition?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition & unknown;
-    revision?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRevision & unknown;
+    revision?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionResponse & unknown;
 };
 
 /**
@@ -5687,113 +5691,51 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowListResponse = {
 };
 
 /**
- * 节点产出条目
+ * 原版本重试计划
  */
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultItem = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRetryPlan = {
     /**
-     * 实例标题
+     * 可否重试
      */
-    label?: string;
+    allowed?: boolean;
     /**
-     * 实例路径
+     * 并发版本
      */
-    path?: string;
-    reference?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference & unknown;
-    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
+    expectedVersion?: number;
+    /**
+     * 节点计划
+     */
+    items?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRetryPlanItem>;
+    /**
+     * 原版本标识
+     */
+    revisionId?: string;
+    /**
+     * 原运行标识
+     */
+    runId?: string;
 };
 
 /**
- * 节点产出引用
+ * 重试计划条目
  */
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRetryPlanItem = {
     /**
-     * 尝试标识
+     * 处理方式
      */
-    attemptId?: string;
+    action?: string;
     /**
      * 实例标识
      */
     instanceId?: string;
     /**
-     * 最终消息
-     */
-    messageId?: string;
-    /**
-     * 运行标识
-     */
-    runId?: string;
-    /**
-     * 产出标题
-     */
-    title?: string;
-    /**
-     * 工作流标识
-     */
-    workflowId?: string;
-};
-
-/**
- * 节点产出详情
- */
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultResponse = {
-    /**
-     * 尝试代际
-     */
-    attemptGeneration?: number;
-    /**
-     * 对话标识
-     */
-    chatId?: string;
-    /**
-     * 执行标识
-     */
-    executionId?: string;
-    fileView?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslFileResultDefinition & unknown;
-    /**
-     * 可用文件
-     */
-    files?: Array<GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile>;
-    /**
-     * 源码节点
+     * 节点标识
      */
     nodeId?: string;
-    page?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition & unknown;
     /**
-     * 结果存在
+     * 处理原因
      */
-    present?: boolean;
-    reference?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference & unknown;
-    /**
-     * 成功结果
-     */
-    result?: unknown;
-    /**
-     * 冻结版本
-     */
-    revisionId?: string;
-    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
-    /**
-     * 文件目录
-     */
-    workingDirectory?: string;
-};
-
-/**
- * 节点产出列表
- */
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultsResponse = {
-    /**
-     * 实例条目
-     */
-    items?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultItem>;
-    /**
-     * 后续偏移
-     */
-    nextOffset?: number;
-    /**
-     * 实例总数
-     */
-    total?: number;
+    reason?: string;
 };
 
 /**
@@ -5808,6 +5750,53 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionListRespon
      * 版本游标
      */
     nextBefore?: number;
+};
+
+/**
+ * 工作流版本详情
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionResponse = {
+    /**
+     * 编译器版本
+     */
+    compilerVersion?: string;
+    /**
+     * 保存时间
+     */
+    createdAt?: number;
+    /**
+     * 创作会话
+     */
+    creationSessionId?: string;
+    /**
+     * 工作流标识
+     */
+    definitionId?: string;
+    /**
+     * 版本标识
+     */
+    id?: string;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest & unknown;
+    /**
+     * 画布摘要
+     */
+    manifestDigest?: string;
+    /**
+     * 版本序号
+     */
+    ordinal?: number;
+    /**
+     * 恢复来源
+     */
+    restoredFromRevisionId?: string;
+    /**
+     * 契约版本
+     */
+    sdkVersion?: string;
+    /**
+     * 源码摘要
+     */
+    sourceDigest?: string;
 };
 
 /**
@@ -5849,10 +5838,6 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse 
      */
     children?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun>;
     /**
-     * 文件产物
-     */
-    files?: Array<GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile>;
-    /**
      * 人工请求
      */
     humanRequests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest>;
@@ -5864,7 +5849,11 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse 
      * 节点实例
      */
     instances?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowNodeInstance>;
-    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest & unknown;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest & unknown;
+    /**
+     * 画布摘要
+     */
+    manifestDigest?: string;
     /**
      * 后续游标
      */
@@ -5878,6 +5867,10 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse 
      */
     operationRequests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequest>;
     run?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun & unknown;
+    /**
+     * 源码摘要
+     */
+    sourceDigest?: string;
 };
 
 /**
@@ -5988,7 +5981,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowValidationResponse
      * 编译诊断
      */
     diagnostics?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslDiagnostic>;
-    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest & unknown;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest & unknown;
     /**
      * 校验通过
      */
@@ -6969,24 +6962,6 @@ export type GithubComJieWaZiNeuxBotServerConstantsWakerActivityState = 'idle' | 
  *
  */
 export type GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind = '' | 'chat' | 'team_thread' | 'workflow_run';
-
-/**
- * >
- * * `break` - WorkflowControlKindBreak 表示离开当前循环。
- * * `continue` - WorkflowControlKindContinue 表示进入下一轮循环。
- * * `decision` - WorkflowControlKindDecision 表示互斥判断，包括短路表达式。
- * * `join_workflow` - WorkflowControlKindJoinWorkflow 表示显式等待此前启动的子流程。
- * * `loop` - WorkflowControlKindLoop 表示条件或逐项循环。
- * * `node` - WorkflowControlKindNode 表示一个已有身份的宿主调用。
- * * `parallel` - WorkflowControlKindParallel 表示独立任务分发和等待全部任务结束。
- * * `pipeline` - WorkflowControlKindPipeline 表示每个输入独立按步骤推进。
- * * `return` - WorkflowControlKindReturn 表示当前主流程返回。
- * * `task_return` - WorkflowControlKindTaskReturn 表示当前任务完成，仍参加所属分组的汇合。
- * * `throw` - WorkflowControlKindThrow 表示抛出异常。
- * * `try` - WorkflowControlKindTry 表示正常路径和异常处理路径。
- *
- */
-export type GithubComJieWaZiNeuxBotServerConstantsWorkflowControlKind = 'break' | 'continue' | 'decision' | 'join_workflow' | 'loop' | 'node' | 'parallel' | 'pipeline' | 'return' | 'task_return' | 'throw' | 'try';
 
 /**
  * >
@@ -8305,69 +8280,26 @@ export type GithubComJieWaZiNeuxBotServerInternalRuntimesCapabilitySet = {
     [key: string]: boolean;
 };
 
-/**
- * ActionDeclaration 冻结确定性动作允许使用的宿主能力。
- */
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration = {
-    /**
-     * AllowedOrigins 限制 HTTP 目标源。
-     */
     allowedOrigins?: Array<string>;
-    /**
-     * ConnectorIDs 限制内置处理器可代理的连接器。
-     */
     connectorIds?: Array<string>;
-    /**
-     * Description 是业务用途说明。
-     */
-    description?: string;
-    /**
-     * Executable 固定 argv 命令的可执行文件。
-     */
+    description: string;
     executable?: string;
-    /**
-     * Handler 指向内置动作的源码处理函数。
-     */
     handler?: string;
-    /**
-     * ID 是动作稳定身份。
-     */
-    id?: string;
-    /**
-     * IMTargetIDs 声明动态 IM 投递可使用的聊天身份，固定目标另从编译程序派生。
-     */
+    id: string;
     imTargetIds?: Array<string>;
-    /**
-     * InputSchema 校验动作输入。
-     */
     inputSchema?: {
         [key: string]: unknown;
     };
-    /**
-     * Label 是用户可读名称。
-     */
-    label?: string;
-    /**
-     * Methods 限制允许的 HTTP 方法。
-     */
+    interpreter?: string;
+    label: string;
     methods?: Array<string>;
-    /**
-     * OutputSchema 校验动作输出。
-     */
     outputSchema?: {
         [key: string]: unknown;
     };
-    /**
-     * Risk 是读取、写入或外部效果的展示分类。
-     */
-    risk?: string;
-    /**
-     * Type 选择 HTTP、argv 命令或内置处理器。
-     */
-    type?: string;
-    /**
-     * WorkingDirectory 固定命令只能使用批准的流程目录。
-     */
+    risk: string;
+    scriptId?: string;
+    type: string;
     workingDirectory?: string;
 };
 
@@ -8404,58 +8336,173 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslBinding = {
     value?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
 };
 
-/**
- * ControlBranch 是控制结构内的一条静态路径或任务模板。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlBranch = {
-    /**
-     * Hints 是此路径依次执行的控制结构，空数组表示直接通过。
-     */
-    hints?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlHint>;
-    /**
-     * Label 是 true、false、body、catch、finally 或任务序号等路径语义。
-     */
-    label?: string;
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasBranch = {
+    children: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasControl>;
+    label: string;
 };
 
-/**
- * ControlHint 是固定 AST 派生的只读控制结构，分支内顺序与原始求值顺序一致。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlHint = {
-    /**
-     * Branches 保存互斥分支、独立任务、管道步骤或异常处理块。
-     */
-    branches?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlBranch>;
-    /**
-     * Concurrency 是分组声明或宿主默认的最大并发数，非分组结构省略。
-     */
-    concurrency?: number;
-    /**
-     * Condition 保留判断或迭代对象的原始源码，用于解释路径条件。
-     */
-    condition?: string;
-    /**
-     * FailureMode 是分组失败后的真实收敛策略，非分组结构省略。
-     */
-    failureMode?: string;
-    /**
-     * GroupID 关联原始 parallel 或 pipeline 的稳定身份。
-     */
-    groupId?: string;
-    /**
-     * ID 是当前 revision 内确定的控制结构身份，不用作运行实例或跨版本节点身份。
-     */
-    id?: string;
-    kind?: GithubComJieWaZiNeuxBotServerConstantsWorkflowControlKind & unknown;
-    /**
-     * NodeID 关联已有的可编辑调用模板；逻辑门本身不能编辑。
-     */
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasControl = {
+    branches: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasBranch>;
+    conditionExpression?: string;
+    id: string;
+    kind: 'call' | 'sequence' | 'decision' | 'parallel' | 'pipeline' | 'loop' | 'try';
     nodeId?: string;
-    /**
-     * PhaseID 为调用与退出指定展示阶段，复合结构由其子调用确定阶段。
-     */
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasEdge = {
+    bindingPath?: string;
+    condition?: string;
+    from: string;
+    id: string;
+    kind: 'control' | 'data';
+    to: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput = {
+    dependsOn: Array<string>;
+    expression: string;
+    target: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest = {
+    actions?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration>;
+    controls: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasControl>;
+    description: string;
+    edges: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasEdge>;
+    formatVersion: 2;
+    inputPropertyOrder?: {
+        [key: string]: Array<string>;
+    };
+    inputSchema?: {
+        [key: string]: unknown;
+    };
+    nodes: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasNode>;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phases: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasPhase>;
+    scripts: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslScriptSummary>;
+    sdkVersion: 'ally.workflow/2';
+    title: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasNode = {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionInput;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'input';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
     phaseId?: string;
-    range?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange & unknown;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionResult;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'result';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionWorker;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'worker';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+    successCondition?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSuccessCondition;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionAskUser;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'askUser';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionAction;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'action';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+    successCondition?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSuccessCondition;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionFunctionTask;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'functionTask';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+    successCondition?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSuccessCondition;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionWorkflow;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'workflow';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionStartWorkflow;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'startWorkflow';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionJoinWorkflow;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'joinWorkflow';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasPhase = {
+    detail: string;
+    id: string;
+    title: string;
 };
 
 /**
@@ -8490,49 +8537,6 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslDiagnostic = {
 };
 
 /**
- * DisplayEdge 表达阶段声明的展示连线。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslDisplayEdge = {
-    /**
-     * From 是起点阶段身份。
-     */
-    from?: string;
-    /**
-     * To 是终点阶段身份。
-     */
-    to?: string;
-};
-
-/**
- * FileResultDefinition 声明文件产出入口，文件清单由节点 Schema 和成功结果派生。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslFileResultDefinition = {
-    /**
-     * Description 是文件交付的简短说明，不复制文件正文。
-     */
-    description?: string;
-    /**
-     * Title 是产出卡片和文件查看标签的名称。
-     */
-    title?: string;
-};
-
-/**
- * Group 描述静态并行和管道调用。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslGroup = {
-    /**
-     * ID 是分组的稳定身份。
-     */
-    id?: string;
-    /**
-     * Kind 区分并行与逐项管道。
-     */
-    kind?: string;
-    range?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange & unknown;
-};
-
-/**
  * Limits 保存创作声明的运行预算。
  */
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits = {
@@ -8552,196 +8556,6 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits = {
      * TimeoutMillis 限制运行总耗时。
      */
     timeoutMs?: number;
-};
-
-/**
- * Manifest 是只读画布与详情使用的源码投影。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest = {
-    /**
-     * ControlHints 保留源码的控制结构与调用身份，不参与调度或成为第二份编辑数据。
-     */
-    controlHints?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlHint>;
-    /**
-     * DisplayEdges 是阶段间展示关系。
-     */
-    displayEdges?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslDisplayEdge>;
-    /**
-     * Groups 是并行或管道分组模板。
-     */
-    groups?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslGroup>;
-    /**
-     * InputPropertyOrder 按输入 Schema 的 JSON Pointer 保留源码属性声明顺序，仅用于只读表单布局。
-     */
-    inputPropertyOrder?: {
-        [key: string]: Array<string>;
-    };
-    meta?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslMeta & unknown;
-    /**
-     * Nodes 是按源码位置排列的调用模板。
-     */
-    nodes?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslNode>;
-};
-
-/**
- * Meta 是从纯字面量解析的原生工作流声明。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslMeta = {
-    /**
-     * Actions 是源码允许调用的确定性动作声明。
-     */
-    actions?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration>;
-    /**
-     * Description 描述工作流的业务结果。
-     */
-    description?: string;
-    inputPage?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition & unknown;
-    /**
-     * InputSchema 校验运行参数。
-     */
-    inputSchema?: {
-        [key: string]: unknown;
-    };
-    limits?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits & unknown;
-    /**
-     * NodeResultFiles 声明以真实文件交付的伙伴产出，复用宿主文件查看器。
-     */
-    nodeResultFiles?: {
-        [key: string]: GithubComJieWaZiNeuxBotServerInternalWorkflowDslFileResultDefinition;
-    };
-    /**
-     * NodeResultPageOmissions 记录逐个评估伙伴输出后无需展示页面的具体理由。
-     */
-    nodeResultPageOmissions?: {
-        [key: string]: string;
-    };
-    /**
-     * NodeResultPages 按稳定节点身份声明需要向用户展示的产出页面。
-     */
-    nodeResultPages?: {
-        [key: string]: GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition;
-    };
-    /**
-     * OutputSchema 校验最终返回值。
-     */
-    outputSchema?: {
-        [key: string]: unknown;
-    };
-    /**
-     * Phases 是稳定身份的展示阶段。
-     */
-    phases?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslPhase>;
-    /**
-     * SDK 是必须与宿主匹配的声明版本。
-     */
-    sdk?: string;
-    /**
-     * Title 是内置伙伴根据用户目标生成的工作流标题。
-     */
-    title?: string;
-    /**
-     * WhenToUse 描述适合启动此流程的场景。
-     */
-    whenToUse?: string;
-};
-
-/**
- * Node 是一个稳定的源码调用模板。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslNode = {
-    /**
-     * GroupID 是所属并行或管道模板。
-     */
-    groupId?: string;
-    /**
-     * ID 是跨版本保持的节点身份。
-     */
-    id?: string;
-    /**
-     * Kind 是 SDK primitive 名称。
-     */
-    kind?: string;
-    /**
-     * LabelTemplate 保留动态标题的原始模板。
-     */
-    labelTemplate?: string;
-    /**
-     * LoopDepth 是源码嵌套循环层数。
-     */
-    loopDepth?: number;
-    /**
-     * Options 是静态可解析的配置，不含凭据值。
-     */
-    options?: {
-        [key: string]: unknown;
-    };
-    /**
-     * PhaseID 是显式阶段引用。
-     */
-    phaseId?: string;
-    /**
-     * PromptTemplate 保留 prompt 的源码文本。
-     */
-    promptTemplate?: string;
-    range?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange & unknown;
-};
-
-/**
- * PageDefinition 冻结创作时确定的组件目录和原生 json-render Spec。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition = {
-    /**
-     * CatalogDigest 冻结编译时的组件属性契约，防止同版本目录漂移。
-     */
-    catalogDigest?: string;
-    /**
-     * CatalogVersion 是只读产出或输入组件的冻结目录版本。
-     */
-    catalogVersion?: string;
-    /**
-     * Description 是面向用户的页面说明。
-     */
-    description?: string;
-    /**
-     * FormatVersion 是宿主支持的页面文档版本。
-     */
-    formatVersion?: number;
-    /**
-     * Spec 是原生 root/elements 文档，禁止执行脚本或声明外部操作。
-     */
-    spec?: {
-        [key: string]: unknown;
-    };
-    /**
-     * Title 是页面标题。
-     */
-    title?: string;
-};
-
-/**
- * Phase 是源码声明的阶段身份与显示关系。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslPhase = {
-    /**
-     * CanExit 表示此阶段允许流程结束。
-     */
-    canExit?: boolean;
-    /**
-     * Detail 是阶段职责的完整说明。
-     */
-    detail?: string;
-    /**
-     * ID 是跨版本保持的阶段身份。
-     */
-    id?: string;
-    /**
-     * Next 是展示上的后继阶段身份。
-     */
-    next?: Array<string>;
-    /**
-     * Title 是阶段标题。
-     */
-    title?: string;
 };
 
 /**
@@ -8775,6 +8589,10 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt = {
      */
     definitionId?: string;
     /**
+     * ManifestDigest 绑定实际公开的 CanvasManifest/2 投影，与内部完整性摘要区分。
+     */
+    manifestDigest?: string;
+    /**
      * Ordinal 是用户可见版本序号。
      */
     ordinal?: number;
@@ -8791,9 +8609,16 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt = {
      */
     sourceDigest?: string;
     /**
-     * Unchanged 表示新请求的源码与当前版完全相同。
+     * Unchanged 是历史回执字段，V2 显式保存始终创建新版本，值固定为 false。
      */
     unchanged?: boolean;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslScriptSummary = {
+    digest: string;
+    id: string;
+    language: 'python';
+    protocol: 'json' | 'text';
 };
 
 /**
@@ -8820,30 +8645,20 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceEdit = {
     target?: string;
 };
 
-/**
- * SourcePosition 同时保留 UTF-8 字节位置和编辑器的 UTF-16 行列。
- */
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition = {
-    /**
-     * Column 是编辑器的一基 UTF-16 列号。
-     */
-    column?: number;
-    /**
-     * Line 是编辑器的一基行号。
-     */
-    line?: number;
-    /**
-     * Offset 是原始源码的零基 UTF-8 字节偏移。
-     */
-    offset?: number;
+    column: number;
+    line: number;
+    offset: number;
 };
 
-/**
- * SourceRange 指向原始源码中的半开范围。
- */
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange = {
-    end?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition & unknown;
-    start?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition & unknown;
+    end: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition;
+    start: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSuccessCondition = {
+    equals: unknown;
+    path: string;
 };
 
 /**
@@ -11493,6 +11308,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEffect = {
      */
     instanceId?: string;
     /**
+     * OutputRepairs 是已持久接纳的无工具输出纠正次数，重启不重置。
+     */
+    outputRepairs?: number;
+    /**
      * RunID 是所属运行。
      */
     runId?: string;
@@ -11601,9 +11420,17 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest 
      */
     prompt?: string;
     /**
+     * QuestionVersion 是当前冻结问题的乐观并发版本。
+     */
+    questionVersion?: number;
+    /**
      * RunID 是所属运行。
      */
     runId?: string;
+    /**
+     * SnapshotDigest 绑定不可变候选快照的精确内容。
+     */
+    snapshotDigest?: string;
     /**
      * Source 区分 user、skip 和 timeout。
      */
@@ -11695,6 +11522,12 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowNodeInstance 
      */
     phaseId?: string;
     /**
+     * ReusedFrom 记录同版本重试复用的原始证据身份。
+     */
+    reusedFrom?: {
+        [key: string]: unknown;
+    };
+    /**
      * RunID 是所属运行。
      */
     runId?: string;
@@ -11752,61 +11585,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequ
      */
     runId?: string;
     status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
-};
-
-/**
- * WorkflowRevision 是原始源码、投影与 Go 指令的不可变绑定。
- */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRevision = {
-    /**
-     * CompilerVersion 是保存时固定的编译器版本。
-     */
-    compilerVersion?: string;
-    /**
-     * CreatedAt 是版本提交时间的 Unix 毫秒。
-     */
-    createdAt?: number;
-    /**
-     * CreationSessionID 关联产生此版本的真实创作会话。
-     */
-    creationSessionId?: string;
-    /**
-     * DefinitionID 是所属工作流身份。
-     */
-    definitionId?: string;
-    /**
-     * ID 是不可变版本身份。
-     */
-    id?: string;
-    /**
-     * IRDigest 绑定此版本的执行指令。
-     */
-    irDigest?: string;
-    /**
-     * IRVersion 是保存时固定的持久指令格式版本。
-     */
-    irVersion?: number;
-    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest & unknown;
-    /**
-     * ManifestDigest 绑定此版本的只读投影。
-     */
-    manifestDigest?: string;
-    /**
-     * Ordinal 是所属工作流内单调增加的版本序号。
-     */
-    ordinal?: number;
-    /**
-     * RestoredFromRevisionID 记录恢复的原版本，不移动历史指针。
-     */
-    restoredFromRevisionId?: string;
-    /**
-     * SDKVersion 是创作源码的原生契约版本。
-     */
-    sdkVersion?: string;
-    /**
-     * SourceDigest 是原始源码字节摘要。
-     */
-    sourceDigest?: string;
 };
 
 /**
@@ -12573,43 +12351,21 @@ export type GithubComJieWaZiNeuxBotServerServicesScheduleTaskView = GithubComJie
 };
 
 /**
- * OutputFile 是最终输出 schema 中明确声明的可下载文件。
- */
-export type GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile = {
-    /**
-     * Available 表示文件仍存在且属于本次运行范围。
-     */
-    available?: boolean;
-    /**
-     * Field 是结果中的 JSON Pointer。
-     */
-    field?: string;
-    /**
-     * ID 是结果字段的稳定下载身份，不接受调用方指定本地路径。
-     */
-    id?: string;
-    /**
-     * MediaType 是下载类型，未知类型使用二进制流。
-     */
-    mediaType?: string;
-    /**
-     * Name 是下载文件名。
-     */
-    name?: string;
-    /**
-     * Size 是当前真实字节数。
-     */
-    size?: number;
-};
-
-/**
  * SaveSourceCommand 是源码保存和恢复共同遵守的 CAS 命令。
  */
 export type GithubComJieWaZiNeuxBotServerServicesWorkflowSaveSourceCommand = {
     /**
+     * BaseSourceDigest 是补丁对应的精确基准摘要。
+     */
+    baseSourceDigest?: string;
+    /**
      * ExpectedRevisionID 是保存前读取到的当前版本。
      */
     expectedRevisionId?: string;
+    /**
+     * Patches 是按顺序应用的唯一文本替换。
+     */
+    patches?: Array<GithubComJieWaZiNeuxBotServerServicesWorkflowSourcePatch>;
     /**
      * RequestID 是同一保存内容的幂等身份。
      */
@@ -12626,6 +12382,20 @@ export type GithubComJieWaZiNeuxBotServerServicesWorkflowSaveSourceCommand = {
      * Source 是不裁剪和不格式化的完整创作源码。
      */
     source?: string;
+};
+
+/**
+ * SourcePatch 描述一次必须唯一匹配的精确源码替换。
+ */
+export type GithubComJieWaZiNeuxBotServerServicesWorkflowSourcePatch = {
+    /**
+     * Replace 是替换后的完整字节串。
+     */
+    replace?: string;
+    /**
+     * Search 是基准源码中必须恰好出现一次的字节串。
+     */
+    search?: string;
 };
 
 /**
@@ -13753,6 +13523,96 @@ export type GithubComShrewxGinxPkgStatuserrorStatusErr = {
 
 export type TimeTime = string;
 
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionAction = {
+    actionId: string;
+    actionType: 'script';
+    scriptId: string;
+} | {
+    actionId: string;
+    actionType: 'script';
+    executable: string;
+} | {
+    actionId: string;
+    actionType: 'http';
+    allowedOrigins: Array<string>;
+    methods: Array<string>;
+} | {
+    actionId: string;
+    actionType: 'builtin';
+    handler: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionAskUser = {
+    allowCustom?: boolean;
+    allowSkip?: boolean;
+    kind: 'text' | 'select' | 'multiselect' | 'form' | 'confirm';
+    maxSelections?: number;
+    minSelections?: number;
+    onTimeout?: 'fail' | 'skip' | 'default';
+    promptTemplate?: string;
+    schema?: {
+        [key: string]: unknown;
+    };
+    timeoutMs?: number;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionFunctionTask = {
+    codeDigest: string;
+    executionMode: 'pure' | 'trusted_local';
+    language: 'javascript' | 'python';
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionInput = {
+    target: 'args';
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionJoinWorkflow = {
+    handleExpression: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionResult = {
+    target: 'result';
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionStartWorkflow = {
+    definitionId: string;
+    mode: 'joined' | 'detached';
+    revisionId?: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionWorker = {
+    promptTemplate?: string;
+    resolve: {
+        accountId?: string;
+        kind: 'waker';
+        model?: string;
+        permissionLevel?: 'default' | 'auto' | 'full-access';
+        reasoning?: string;
+        runtimeId?: string;
+        wakerId: string;
+    };
+    toolPolicy?: {
+        connectors?: {
+            mode: 'inherit';
+        } | {
+            connectorIds: Array<string>;
+            mode: 'allowlist';
+        };
+        nativeTools?: {
+            mode: 'inherit';
+        } | {
+            capabilityIds: Array<string>;
+            mode: 'allowlist';
+        };
+    };
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionWorkflow = {
+    definitionId: string;
+    mode: 'joined' | 'detached';
+    revisionId?: string;
+};
+
 export type ReadData = {
     body?: never;
     path?: never;
@@ -14026,9 +13886,11 @@ export type ReadErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -14352,9 +14214,11 @@ export type CommandErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -14859,9 +14723,11 @@ export type StartAiAccountLoginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -15194,9 +15060,11 @@ export type CancelAiAccountLoginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -15727,9 +15595,11 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -16144,9 +16014,11 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -16475,9 +16347,11 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -18446,9 +18320,11 @@ export type StreamEventsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -19477,9 +19353,11 @@ export type UpdateMcpServiceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -19902,9 +19780,11 @@ export type UpdateApiServiceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -28679,9 +28559,11 @@ export type ListPluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -29245,9 +29127,11 @@ export type PrepareCatalogPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -29802,9 +29686,11 @@ export type GetPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -30703,9 +30589,11 @@ export type InstallPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -32032,9 +31920,11 @@ export type SetAutomaticTaskApiErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -32751,9 +32641,11 @@ export type ListAutomaticTasksErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -33149,9 +33041,11 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -33513,9 +33407,11 @@ export type DeleteAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -33848,9 +33744,11 @@ export type GetAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -34334,9 +34232,11 @@ export type ListAutomaticRunsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -34669,9 +34569,11 @@ export type TriggerAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -35538,9 +35440,11 @@ export type ListWakerPluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -36791,24 +36695,6 @@ export type CreateWorkflowResponses = {
 
 export type CreateWorkflowResponse = CreateWorkflowResponses[keyof CreateWorkflowResponses];
 
-export type GetWorkflowChatResultsData = {
-    body?: never;
-    path?: never;
-    query: {
-        /**
-         * 对话标识
-         */
-        chatId: string;
-    };
-    url: '/api/v1/workflows/chat-results';
-};
-
-export type GetWorkflowChatResultsResponses = {
-    200: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference>;
-};
-
-export type GetWorkflowChatResultsResponse = GetWorkflowChatResultsResponses[keyof GetWorkflowChatResultsResponses];
-
 export type GetWorkflowSdkData = {
     body?: never;
     path?: never;
@@ -37100,9 +36986,11 @@ export type DeleteWorkflowErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -37574,9 +37462,11 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -38044,15 +37934,6 @@ export type GetWorkflowRunData = {
 export type GetWorkflowRunErrors = {
     /**
      * >
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
      * * `[WorkflowNotFound][40400003001]`
      *
      */
@@ -38066,60 +37947,6 @@ export type GetWorkflowRunResponses = {
 };
 
 export type GetWorkflowRunResponse = GetWorkflowRunResponses[keyof GetWorkflowRunResponses];
-
-export type GetWorkflowArtifactData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query: {
-        /**
-         * 先前摘要
-         */
-        expectedDigest?: string;
-        /**
-         * 候选路径
-         */
-        path: string;
-    };
-    url: '/api/v1/workflows/{id}/runs/{runId}/artifact';
-};
-
-export type GetWorkflowArtifactErrors = {
-    /**
-     * >
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileStorageError][50000003005]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type GetWorkflowArtifactError = GetWorkflowArtifactErrors[keyof GetWorkflowArtifactErrors];
-
-export type GetWorkflowArtifactResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowArtifactResponse;
-};
-
-export type GetWorkflowArtifactResponse = GetWorkflowArtifactResponses[keyof GetWorkflowArtifactResponses];
 
 export type CancelWorkflowRunData = {
     body?: never;
@@ -38165,88 +37992,6 @@ export type CancelWorkflowRunResponses = {
 };
 
 export type CancelWorkflowRunResponse = CancelWorkflowRunResponses[keyof CancelWorkflowRunResponses];
-
-export type DownloadWorkflowFileData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query?: {
-        /**
-         * 执行尝试
-         */
-        attemptId?: string;
-        /**
-         * 产物标识
-         */
-        fileId?: string;
-        /**
-         * 节点实例
-         */
-        instanceId?: string;
-        /**
-         * 文件路径
-         */
-        path?: string;
-    };
-    url: '/api/v1/workflows/{id}/runs/{runId}/file';
-};
-
-export type DownloadWorkflowFileErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type DownloadWorkflowFileError = DownloadWorkflowFileErrors[keyof DownloadWorkflowFileErrors];
-
-export type DownloadWorkflowFileResponses = {
-    200: GithubComShrewxGinxAttachment;
-};
-
-export type DownloadWorkflowFileResponse = DownloadWorkflowFileResponses[keyof DownloadWorkflowFileResponses];
 
 export type AnswerWorkflowHumanData = {
     body: GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand & unknown;
@@ -38604,9 +38349,11 @@ export type GetWorkflowInstanceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -38656,56 +38403,6 @@ export type GetWorkflowInstanceResponses = {
 };
 
 export type GetWorkflowInstanceResponse = GetWorkflowInstanceResponses[keyof GetWorkflowInstanceResponses];
-
-export type GetWorkflowNodeResultData = {
-    body?: never;
-    path: {
-        /**
-         * 尝试标识
-         */
-        attemptId: string;
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 实例标识
-         */
-        instanceId: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}/runs/{runId}/instances/{instanceId}/results/{attemptId}';
-};
-
-export type GetWorkflowNodeResultErrors = {
-    /**
-     * >
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type GetWorkflowNodeResultError = GetWorkflowNodeResultErrors[keyof GetWorkflowNodeResultErrors];
-
-export type GetWorkflowNodeResultResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultResponse;
-};
-
-export type GetWorkflowNodeResultResponse = GetWorkflowNodeResultResponses[keyof GetWorkflowNodeResultResponses];
 
 export type SkipWorkflowWorkerData = {
     body: GithubComJieWaZiNeuxBotServerApisWorkflowsSkipWorkerCommand & unknown;
@@ -38776,48 +38473,6 @@ export type SkipWorkflowWorkerResponses = {
 };
 
 export type SkipWorkflowWorkerResponse = SkipWorkflowWorkerResponses[keyof SkipWorkflowWorkerResponses];
-
-export type ListWorkflowNodeResultsData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query: {
-        /**
-         * 节点标识
-         */
-        nodeId: string;
-        /**
-         * 分页偏移
-         */
-        offset?: number;
-    };
-    url: '/api/v1/workflows/{id}/runs/{runId}/node-results';
-};
-
-export type ListWorkflowNodeResultsErrors = {
-    /**
-     * >
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type ListWorkflowNodeResultsError = ListWorkflowNodeResultsErrors[keyof ListWorkflowNodeResultsErrors];
-
-export type ListWorkflowNodeResultsResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultsResponse;
-};
-
-export type ListWorkflowNodeResultsResponse = ListWorkflowNodeResultsResponses[keyof ListWorkflowNodeResultsResponses];
 
 export type AnswerWorkflowOperationData = {
     body: GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerOperationCommand & unknown;
@@ -38953,6 +38608,39 @@ export type RetryWorkflowRunResponses = {
 };
 
 export type RetryWorkflowRunResponse = RetryWorkflowRunResponses[keyof RetryWorkflowRunResponses];
+
+export type GetWorkflowRetryPlanData = {
+    body?: never;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+        /**
+         * 原运行标识
+         */
+        runId: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/runs/{runId}/retry-plan';
+};
+
+export type GetWorkflowRetryPlanErrors = {
+    /**
+     * >
+     * * `[WorkflowNotFound][40400003001]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type GetWorkflowRetryPlanError = GetWorkflowRetryPlanErrors[keyof GetWorkflowRetryPlanErrors];
+
+export type GetWorkflowRetryPlanResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRetryPlan;
+};
+
+export type GetWorkflowRetryPlanResponse = GetWorkflowRetryPlanResponses[keyof GetWorkflowRetryPlanResponses];
 
 export type GetWorkflowSourceData = {
     body?: never;

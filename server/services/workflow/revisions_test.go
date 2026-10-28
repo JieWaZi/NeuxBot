@@ -79,7 +79,7 @@ func TestFailedSaveRollsBackRevisionPointerAndSuccessEvent(t *testing.T) {
 	}
 }
 
-func TestUnchangedSourceCreatesReceiptWithoutVersionNoise(t *testing.T) {
+func TestExplicitSaveAlwaysCreatesNewRevision(t *testing.T) {
 	s, store := workflowTestService(t)
 	ctx := context.Background()
 	definition, err := fixtureDefinition(ctx, s.store, definitionFixture{RequestID: "create", Title: "空定义"})
@@ -94,12 +94,12 @@ func TestUnchangedSourceCreatesReceiptWithoutVersionNoise(t *testing.T) {
 	save.RequestID = "save-again"
 	save.ExpectedRevisionID = first.RevisionID
 	unchanged, _, err := s.SaveSource(ctx, save)
-	if err != nil || !unchanged.Unchanged || unchanged.RevisionID != first.RevisionID {
+	if err != nil || unchanged.Unchanged || unchanged.RevisionID == first.RevisionID {
 		t.Fatalf("unchanged: %+v %v", unchanged, err)
 	}
 	history, err := store.ListRevisions(ctx, definition.ID, 0, 50)
-	if err != nil || len(history) != 1 {
-		t.Fatal("unchanged source created extra history")
+	if err != nil || len(history) != 2 {
+		t.Fatal("explicit save did not create history")
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -25,12 +24,14 @@ type GetWorkflowRun struct {
 
 // 运行详情
 type WorkflowRunDetailResponse struct {
-	// 文件产物
-	Files []workflow.OutputFile `json:"files"`
 	// 节点状态汇总
 	NodeCounts []controllers.WorkflowNodeCount `json:"nodeCounts"`
+	// 源码摘要
+	SourceDigest string `json:"sourceDigest"`
+	// 画布摘要
+	ManifestDigest string `json:"manifestDigest"`
 	// 编译清单
-	Manifest workflowdsl.Manifest `json:"manifest"`
+	Manifest workflowdsl.CanvasManifest `json:"manifest"`
 	// 子运行
 	Children []models.WorkflowRun `json:"children"`
 	// 运行信息
@@ -76,11 +77,7 @@ func (o *GetWorkflowRun) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	response := WorkflowRunDetailResponse{Run: run, Manifest: revision.Manifest, Children: children, HumanRequests: humans, OperationRequests: operations, InstanceCount: int(total), Instances: instances}
-	response.Files, err = global.WorkflowService.OutputFiles(ctx, run)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
+	response := WorkflowRunDetailResponse{SourceDigest: revision.SourceDigest, ManifestDigest: workflowdsl.CanvasDigest(workflowdsl.ExportCanvas(revision.Manifest)), Run: run, Manifest: workflowdsl.ExportCanvas(revision.Manifest), Children: children, HumanRequests: humans, OperationRequests: operations, InstanceCount: int(total), Instances: instances}
 	response.NodeCounts, err = global.WorkflowRunControllerManager.NodeCounts(ctx, o.RunID)
 	if err != nil {
 		return nil, ginx.WithStack(err)

@@ -171,7 +171,7 @@ func TestWorkflowReusesAllyAndStartsAnOrdinaryChat(t *testing.T) {
 		if request.Workspace.Path == "" {
 			t.Fatal("no managed workspace")
 		}
-		if request.Target.Environment[constants.AgentCLIContextEnvironment] == "" || len(request.Connectors) != 0 {
+		if request.Target.Environment[constants.AgentCLIContextEnvironment] == "" || len(request.Connectors) != 1 {
 			t.Fatal("workflow creation missing CLI context or retained product MCP")
 		}
 		if len(request.Skills) != 1 || request.Skills[0].Name != constants.AgentCLISkillName {

@@ -446,7 +446,11 @@ it("工作流对话仅在活跃场景处理本 Chat 的原生请求，默认不�
     </QueryClientProvider>
   );
   const view = render(content());
-  await screen.findByText("补充创作操作范围");
+  const question = await screen.findByText("补充创作操作范围");
+  expect(question.closest("[data-chat-main-content]")).toHaveAttribute(
+    "data-chat-main-content",
+    "test-canvas",
+  );
   expect(screen.queryByText("读取创作批准的工作目录")).not.toBeInTheDocument();
   expect(approvals).toEqual([]);
   expect(inputs).toEqual([]);
@@ -621,3 +625,172 @@ vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
   subscribeGlobalEvents: () => () => {},
 }));
+
+it.each([false, true])(
+  "优化引用可见且移除后发送不携带原运行（移除=%s）",
+  async (remove) => {
+    const bodies: unknown[] = [];
+    server.use(
+      http.get(`${api}/workflows/flow-1/runs/source-run`, () =>
+        HttpResponse.json({
+          run: { id: "source-run", revisionId: "source-revision" },
+        }),
+      ),
+      http.post(
+        `${api}/workflows/flow-1/creation/messages`,
+        async ({ request }) => {
+          bodies.push(await request.json());
+          return HttpResponse.json({
+            id: "created-session",
+            chatId: "result-chat",
+            acceptedExecutionId: "execution",
+            execution: { id: "execution", status: "running" },
+          });
+        },
+      ),
+      http.get(`${api}/chats/result-chat`, () =>
+        HttpResponse.json({ chat: { id: "result-chat" } }),
+      ),
+      http.get(`${api}/chats/result-chat/messages`, () =>
+        HttpResponse.json({ resources: [] }),
+      ),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    function Content() {
+      const [reference, setReference] = useState<string | undefined>(
+        "source-run",
+      );
+      return (
+        <WorkflowChatPane
+          id="flow-1"
+          conversationKey={String(remove)}
+          optimizeRunId={reference}
+          onRemoveRunReference={() => setReference(undefined)}
+          onNewChat={() => {}}
+          draft="请优化异常处理"
+          mainContent={{
+            contentId: "test-canvas",
+            title: "画布",
+            content: <div>画布</div>,
+          }}
+        />
+      );
+    }
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkbenchProvider>
+          <ChatQueueProvider>
+            <TooltipProvider>
+              <MemoryRouter>
+                <Content />
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </WorkbenchProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText(/source-run/);
+    if (remove)
+      await userEvent.click(screen.getByRole("button", { name: "关闭" }));
+    const send = await screen.findByRole("button", { name: "发送消息" });
+    await waitFor(() => expect(send).toBeEnabled());
+    await userEvent.click(send);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    if (remove) expect(bodies[0]).not.toHaveProperty("runReference");
+    else
+      expect(bodies[0]).toHaveProperty("runReference", {
+        runId: "source-run",
+        revisionId: "source-revision",
+      });
+    queryClient.clear();
+  },
+);
+
+it("阶段引用位于输入正文内部，删除后仅发送仍可见的引用", async () => {
+  const bodies: unknown[] = [];
+  server.use(
+    http.post(
+      `${api}/workflows/flow-chips/creation/messages`,
+      async ({ request }) => {
+        bodies.push(await request.json());
+        return HttpResponse.json({
+          id: "session-chips",
+          chatId: "chat-chips",
+          acceptedExecutionId: "execution-chips",
+          execution: { id: "execution-chips", status: "completed" },
+        });
+      },
+    ),
+    http.get(`${api}/chats/chat-chips`, () =>
+      HttpResponse.json({ chat: { id: "chat-chips" } }),
+    ),
+    http.get(`${api}/chats/chat-chips/messages`, () =>
+      HttpResponse.json({ resources: [] }),
+    ),
+  );
+  function Content() {
+    const [refs, setRefs] = useState([
+      { revisionId: "revision", kind: "phase" as const, id: "prepare" },
+      { revisionId: "revision", kind: "phase" as const, id: "review" },
+    ]);
+    return (
+      <WorkflowChatPane
+        id="flow-chips"
+        canvasReferences={refs}
+        canvasReferenceLabels={{
+          "phase:prepare": "准备材料",
+          "phase:review": "检查材料",
+        }}
+        onRemoveCanvasReference={(ref) =>
+          setRefs((values) => values.filter((item) => item.id !== ref.id))
+        }
+        onCanvasReferencesSent={() => setRefs([])}
+        draft="增加完整性检查"
+        onNewChat={() => {}}
+        mainContent={{
+          contentId: "chips-canvas",
+          title: "画布",
+          content: <div>流程</div>,
+        }}
+      />
+    );
+  }
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <WorkbenchProvider>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter>
+              <Content />
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </WorkbenchProvider>
+    </QueryClientProvider>,
+  );
+  const first = await screen.findByText("准备材料");
+  const body = first.closest("[data-chat-composer-input-body]");
+  expect(body).not.toBeNull();
+  expect(body?.querySelector("[contenteditable=true]")).toBeTruthy();
+  await userEvent.click(
+    screen.getByRole("button", { name: "移除准备材料引用" }),
+  );
+  expect(bodies).toEqual([]);
+  expect(screen.queryByText("准备材料")).not.toBeInTheDocument();
+  const send = screen.getByRole("button", { name: "发送消息" });
+  await waitFor(() => expect(send).toBeEnabled());
+  await userEvent.click(send);
+  await waitFor(() => expect(bodies).toHaveLength(1));
+  expect(bodies[0]).toHaveProperty("canvasReferences", [
+    { revisionId: "revision", kind: "phase", id: "review" },
+  ]);
+  client.clear();
+});

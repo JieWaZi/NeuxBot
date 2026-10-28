@@ -18,7 +18,6 @@ import { InstanceDetails, WorkflowResult } from "./instance-details";
 import { WorkflowFailure } from "./failure-details";
 import { workflowStatusAppearance } from "../model/status-presentation";
 import { cn } from "@/shared/lib/cn";
-import { WorkflowArtifacts } from "./workflow-artifacts";
 import { RunLogs } from "./run-logs";
 import { WorkflowLoadingState, WorkflowQueryError } from "./query-feedback";
 
@@ -99,7 +98,7 @@ export function RunResultDialog({
   return (
     <Dialog open={active && open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={t("executionDetail", { title: manifest?.meta?.title ?? "" })}
+        title={t("executionDetail", { title: manifest?.title ?? "" })}
         description={t("executionDetailHelp")}
         size="xl"
         layout="form"
@@ -141,24 +140,6 @@ export function RunResultDialog({
                     })}
                   </span>
                 ) : null}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto"
-                  disabled={query.hasNextPage || query.isFetching}
-                  onClick={() =>
-                    void navigator.clipboard.writeText(
-                      jsonText({
-                        run,
-                        phases: manifest?.meta?.phases,
-                        instances,
-                      }),
-                    )
-                  }
-                >
-                  <Copy />
-                  {t("copyRunRecord")}
-                </Button>
               </div>
               <p className="text-muted-foreground type-caption break-all">
                 {run.createdAt
@@ -172,9 +153,7 @@ export function RunResultDialog({
                     <dl className="grid grid-cols-1 gap-x-6 gap-y-4 @min-[36rem]/run-inputs:grid-cols-2">
                       {Object.entries(input).map(([key, value]) => {
                         const field = record(
-                          record(manifest?.meta?.inputSchema?.properties)?.[
-                            key
-                          ],
+                          record(manifest?.inputSchema?.properties)?.[key],
                         );
                         const structured =
                           value != null && typeof value === "object";
@@ -202,9 +181,7 @@ export function RunResultDialog({
                             ) : typeof value === "string" ? (
                               value
                             ) : structured ? (
-                              <pre className="type-body [overflow-wrap:anywhere] whitespace-pre-wrap">
-                                {jsonText(value)}
-                              </pre>
+                              <WorkflowResult value={value} schema={field} />
                             ) : (
                               jsonText(value)
                             )}
@@ -219,7 +196,7 @@ export function RunResultDialog({
                   </p>
                 )}
               </section>
-              {(manifest?.meta?.phases ?? []).map((phase, index) => {
+              {(manifest?.phases ?? []).map((phase, index) => {
                 const steps = instances.filter(
                   (instance) => instance.phaseId === phase.id,
                 );
@@ -274,6 +251,10 @@ export function RunResultDialog({
                                 id={id}
                                 runId={runId}
                                 instanceId={instance.id}
+                                human={data?.humanRequests?.find(
+                                  (request) =>
+                                    request.instanceId === instance.id,
+                                )}
                               />
                             </div>
                           ) : null}
@@ -316,16 +297,13 @@ export function RunResultDialog({
                     {run.failure ? (
                       <WorkflowFailure value={run.failure.data} />
                     ) : (
-                      <WorkflowResult value={run.result} />
+                      <WorkflowResult
+                        value={run.result}
+                        schema={manifest?.outputSchema}
+                      />
                     )}
                   </div>
                 )}
-                <WorkflowArtifacts
-                  files={data?.files}
-                  id={id}
-                  runId={runId}
-                  values={[run.result]}
-                />
               </section>
               <RunLogs
                 key={runId}

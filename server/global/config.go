@@ -571,7 +571,8 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	IMService = imservice.New(imservice.Config{Events: EventHub, Store: IMControllerManager, Transactions: TransactionControllerManager, Executions: ExecutionService, Chats: ChatService, Teams: ChannelService, Channels: ChannelControllerManager, Threads: ChannelThreadControllerManager, TeamTasks: ChannelTaskControllerManager, DataDirectory: configuration.ManagedFilesDirectory})
 	WorkflowState = workflowstate.New(WorkflowControllerManager, WorkflowRunControllerManager, TransactionControllerManager)
 	WorkflowService = workflow.New(workflow.Config{
-		Commands: controllers.NewAgentCommandController(DB), Events: EventHub,
+		RepairOutput: repairWorkflowOutput,
+		Commands:     controllers.NewAgentCommandController(DB), Events: EventHub,
 		State:            WorkflowState,
 		Resources:        workflowResources,
 		IMCall:           IMService.WorkflowCall,

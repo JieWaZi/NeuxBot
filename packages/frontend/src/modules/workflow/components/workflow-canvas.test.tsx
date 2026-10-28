@@ -1,3 +1,10 @@
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/shared/ui/select";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode, useState } from "react";
 import userEvent from "@testing-library/user-event";
@@ -9,47 +16,57 @@ import { installCanvasDOM } from "../test/canvas-dom";
 import { WorkflowInputNode } from "./workflow-input-node";
 
 const manifest: Manifest = {
-  meta: { phases: [{ id: "work", title: "校验", detail: "根据结果分别推进" }] },
+  formatVersion: 2,
+  sdkVersion: "ally.workflow/2",
+  title: "测试工作流",
+  description: "",
+  edges: [],
+  scripts: [],
+  phases: [{ id: "work", title: "校验", detail: "根据结果分别推进" }],
   nodes: [
     {
+      execution: { kind: "text" },
+      inputs: [],
       id: "left",
       phaseId: "work",
       kind: "askUser",
-      labelTemplate: "人工复核",
-      groupId: "fork",
-      loopDepth: 1,
+      label: "人工复核",
     },
     {
+      execution: {
+        codeDigest: "fixture",
+        executionMode: "pure",
+        language: "javascript",
+      },
+      inputs: [],
       id: "right",
       phaseId: "work",
       kind: "functionTask",
-      labelTemplate: "计算结果",
+      label: "计算结果",
     },
   ],
-  groups: [{ id: "fork", kind: "parallel" }],
-  controlHints: [
+
+  controls: [
     {
       id: "tasks",
       kind: "parallel",
-      groupId: "fork",
-      phaseId: "work",
-      concurrency: 2,
-      failureMode: "collect-null",
+
       branches: [
         {
           label: "1",
-          hints: [
-            { id: "call:left", nodeId: "left", phaseId: "work", kind: "node" },
+          children: [
+            { branches: [], id: "call:left", nodeId: "left", kind: "call" },
           ],
         },
         {
           label: "2",
-          hints: [
+          children: [
             {
+              branches: [],
               id: "call:right",
               nodeId: "right",
-              phaseId: "work",
-              kind: "node",
+
+              kind: "call",
             },
           ],
         },
@@ -340,32 +357,42 @@ it("完成、失败与待处理使用消息区语义色，混合实例不会误�
 it("shows only real cards and their sequence when a condition has no visible else branch", () => {
   const conditional: Manifest = {
     ...manifest,
-    controlHints: [
+    controls: [
       {
         id: "condition",
         kind: "decision",
-        condition: "prepared.chunks.length > 1",
+        conditionExpression: "prepared.chunks.length > 1",
         branches: [
           {
             label: "true",
-            hints: [
+            children: [
               {
                 id: "pipeline",
                 kind: "pipeline",
-                condition: "prepared.chunks",
+                conditionExpression: "prepared.chunks",
                 branches: [
                   {
                     label: "1",
-                    hints: [{ id: "call:left", kind: "node", nodeId: "left" }],
+                    children: [
+                      {
+                        branches: [],
+                        id: "call:left",
+                        kind: "call",
+                        nodeId: "left",
+                      },
+                    ],
                   },
                 ],
               },
             ],
           },
-          { label: "false", hints: [{ id: "return", kind: "return" }] },
+          {
+            label: "false",
+            children: [{ branches: [], id: "return", kind: "sequence" }],
+          },
         ],
       },
-      { id: "call:right", kind: "node", nodeId: "right" },
+      { branches: [], id: "call:right", kind: "call", nodeId: "right" },
     ],
   };
   const { container } = render(
@@ -394,4 +421,154 @@ it("shows only real cards and their sequence when a condition has no visible els
   expect(
     container.querySelectorAll('[data-workflow-connector="sequence"]'),
   ).toHaveLength(1);
+});
+
+it("下拉候选在外部Portal内点击时不会被画布平移抢走指针", async () => {
+  const restore = installCanvasDOM();
+  vi.stubGlobal("PointerEvent", MouseEvent);
+  const capture = vi.fn();
+  const pointerMethods = {
+    has: HTMLElement.prototype.hasPointerCapture,
+    set: HTMLElement.prototype.setPointerCapture,
+    release: HTMLElement.prototype.releasePointerCapture,
+  };
+  HTMLElement.prototype.hasPointerCapture = () => false;
+  HTMLElement.prototype.setPointerCapture = () => {};
+  HTMLElement.prototype.releasePointerCapture = () => {};
+  function Candidate() {
+    const [value, setValue] = useState("");
+    return (
+      <Select value={value} onValueChange={setValue}>
+        <SelectTrigger aria-label="选择候选">
+          <SelectValue placeholder="待选择" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="alpha">方案甲</SelectItem>
+          <SelectItem value="beta">方案乙</SelectItem>
+        </SelectContent>
+      </Select>
+    );
+  }
+  const view = render(
+    <WorkflowCanvas
+      manifest={manifest}
+      selected="left"
+      onSelect={() => {}}
+      nodeContent={() => <Candidate />}
+    />,
+  );
+  try {
+    const canvas = screen.getByLabelText("画布");
+    Object.defineProperty(canvas, "setPointerCapture", {
+      configurable: true,
+      value: capture,
+    });
+    await userEvent.click(screen.getByRole("combobox", { name: "选择候选" }));
+    const option = await screen.findByRole("option", { name: "方案甲" });
+    fireEvent.pointerDown(option, { button: 0, pointerId: 1 });
+    expect(capture).not.toHaveBeenCalled();
+    await userEvent.click(option);
+    expect(
+      screen.getByRole("combobox", { name: "选择候选" }),
+    ).toHaveTextContent("方案甲");
+  } finally {
+    view.unmount();
+    restore();
+    vi.unstubAllGlobals();
+    HTMLElement.prototype.hasPointerCapture = pointerMethods.has;
+    HTMLElement.prototype.setPointerCapture = pointerMethods.set;
+    HTMLElement.prototype.releasePointerCapture = pointerMethods.release;
+  }
+});
+
+it.each(["canvas", "window"])(
+  "Space在%s失焦后恢复默认矩形框选，没有节点勾选控件",
+  async (surface) => {
+    const restore = installCanvasDOM();
+    vi.stubGlobal("PointerEvent", MouseEvent);
+    const selected = vi.fn();
+    const view = render(
+      <WorkflowCanvas
+        manifest={{
+          ...manifest,
+          phases: [
+            ...manifest.phases,
+            { id: "result", title: "结果", detail: "" },
+          ],
+        }}
+        onSelect={() => {}}
+        onSelectTargets={selected}
+      />,
+    );
+    try {
+      const canvas = screen.getByLabelText("画布");
+      Object.defineProperty(canvas, "getBoundingClientRect", {
+        value: () => new DOMRect(0, 0, 1000, 700),
+      });
+      Object.defineProperty(canvas, "setPointerCapture", { value: () => {} });
+      for (const element of document.querySelectorAll<HTMLElement>(
+        "[data-workflow-phase]",
+      )) {
+        Object.defineProperty(element, "getBoundingClientRect", {
+          value: () =>
+            new DOMRect(
+              element.dataset.workflowPhase === "work" ? 100 : 450,
+              100,
+              250,
+              400,
+            ),
+        });
+      }
+      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+      fireEvent.keyDown(canvas, { key: " ", code: "Space" });
+      if (surface === "canvas") fireEvent.blur(canvas);
+      else window.dispatchEvent(new Event("blur"));
+      fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
+      fireEvent.pointerMove(canvas, { clientX: 800, clientY: 600 });
+      fireEvent.pointerUp(canvas);
+      expect(selected).toHaveBeenLastCalledWith([
+        { kind: "phase", id: "work" },
+        { kind: "phase", id: "result" },
+      ]);
+    } finally {
+      view.unmount();
+      restore();
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+it("框选中按Escape取消后松开鼠标不会重新选中阶段", () => {
+  const restore = installCanvasDOM();
+  vi.stubGlobal("PointerEvent", MouseEvent);
+  const selected = vi.fn();
+  const view = render(
+    <WorkflowCanvas
+      manifest={manifest}
+      onSelect={() => {}}
+      onSelectTargets={selected}
+    />,
+  );
+  try {
+    const canvas = screen.getByLabelText("画布");
+    Object.defineProperty(canvas, "getBoundingClientRect", {
+      value: () => new DOMRect(0, 0, 1000, 700),
+    });
+    Object.defineProperty(canvas, "setPointerCapture", { value: () => {} });
+    const phase = document.querySelector<HTMLElement>("[data-workflow-phase]");
+    if (!phase) throw new Error("missing phase");
+    Object.defineProperty(phase, "getBoundingClientRect", {
+      value: () => new DOMRect(100, 100, 250, 400),
+    });
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
+    fireEvent.pointerMove(canvas, { clientX: 800, clientY: 600 });
+    fireEvent.keyDown(canvas, { key: "Escape" });
+    expect(selected).toHaveBeenCalledExactlyOnceWith([]);
+    fireEvent.pointerUp(canvas);
+    expect(selected).toHaveBeenCalledExactlyOnceWith([]);
+  } finally {
+    view.unmount();
+    restore();
+    vi.unstubAllGlobals();
+  }
 });

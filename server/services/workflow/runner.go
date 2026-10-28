@@ -48,7 +48,10 @@ func (s *Service) Tick(ctx context.Context, id string) error {
 			if human.Status == constants.WorkflowStepStatusWaiting && human.DeadlineAt > 0 && human.DeadlineAt <= now {
 				human.Status = constants.WorkflowStepStatusTimedOut
 				human.Source = "timeout"
-				human.Value = workflowstate.HumanFallback(human.Options)
+				human.Value = nil
+				if human.Options["onTimeout"] == "default" {
+					human.Value = human.Options["defaultValue"]
+				}
 				human.AnsweredAt = &now
 				changed = true
 			}
@@ -67,9 +70,22 @@ func (s *Service) Tick(ctx context.Context, id string) error {
 			if effect.Boundary.Primitive == "askUser" && effect.Status == constants.WorkflowStepStatusPrepared {
 				for _, human := range state.Humans {
 					if human.EffectID == effect.ID && human.Status != constants.WorkflowStepStatusWaiting {
-						result := workflowdsl.JSONValue(map[string]any{"value": human.Value, "skipped": human.Source != "user", "source": human.Source, "requestId": human.ID})
+						answer := map[string]any{"questionId": human.ID, "status": string(human.Status), "source": human.Source}
+						if human.Status == constants.WorkflowStepStatusAnswered || human.Status == constants.WorkflowStepStatusTimedOut && human.Options["onTimeout"] == "default" {
+							answer["value"] = human.Value
+						}
+						result := workflowdsl.JSONValue(answer)
 						effect.Result = &result
 						effect.Status = constants.WorkflowStepStatusSucceeded
+						if human.Status == constants.WorkflowStepStatusCancelled {
+							effect.Status = constants.WorkflowStepStatusCancelled
+							effect.Failure = workflowstate.FailureValue("CANCELLED")
+						}
+						if human.Status == constants.WorkflowStepStatusTimedOut && human.Options["onTimeout"] != "skip" && human.Options["onTimeout"] != "default" {
+							effect.Status = constants.WorkflowStepStatusFailed
+							effect.Failure = workflowstate.FailureValue("HUMAN_REQUEST_TIMED_OUT")
+						}
+
 						changed = true
 					}
 				}
@@ -210,6 +226,9 @@ func (s *Service) Tick(ctx context.Context, id string) error {
 				if err := prepareEffect(revision.Bundle, revision.Manifest, &state, index, *boundary); err != nil {
 					return s.abortRunState(ctx, state, err)
 				}
+				if err := s.reuseRetryResult(ctx, &state); err != nil {
+					return err
+				}
 			}
 		}
 		if err := advanceGroups(revision.Bundle, &state); err != nil {
@@ -343,6 +362,12 @@ func prepareEffect(bundle workflowdsl.ProgramBundle, manifest workflowdsl.Manife
 		state.Operations = append(state.Operations, *operation)
 	}
 	if boundary.Primitive == "askUser" {
+		if err := freezeHumanChoices(state.Run.ScopeBinding.WorkingDirectory, options); err != nil {
+			return err
+		}
+		if err := validateHumanSnapshot(options); err != nil {
+			return err
+		}
 		prompt := ""
 		if len(boundary.Arguments) > 0 {
 			prompt, _ = boundary.Arguments[0].Data.(string)
@@ -352,7 +377,7 @@ func prepareEffect(bundle workflowdsl.ProgramBundle, manifest workflowdsl.Manife
 			deadline = now + int64(value)
 		}
 		effect.DeadlineAt = deadline
-		state.Humans = append(state.Humans, models.WorkflowHumanRequest{ID: util.New(), RunID: state.Run.ID, EffectID: id, InstanceID: instanceID, Prompt: prompt, Options: options, Status: constants.WorkflowStepStatusWaiting, DeadlineAt: deadline})
+		state.Humans = append(state.Humans, models.WorkflowHumanRequest{ID: util.New(), RunID: state.Run.ID, EffectID: id, InstanceID: instanceID, Prompt: prompt, Options: options, QuestionVersion: 1, SnapshotDigest: workflowstate.Digest(options["choices"]), Status: constants.WorkflowStepStatusWaiting, DeadlineAt: deadline})
 	}
 	state.Effects = append(state.Effects, effect)
 	state.Instances = append(state.Instances, instance)
@@ -409,7 +434,7 @@ func createGroup(bundle workflowdsl.ProgramBundle, state *controllers.WorkflowRu
 	if concurrency < 1 || concurrency > 8 {
 		return status_error.WorkflowBudgetExceeded
 	}
-	policy := constants.WorkflowGroupDefaultFailureMode
+	policy := "fail-fast"
 	if value, ok := options["failureMode"].(string); ok {
 		policy = value
 	}

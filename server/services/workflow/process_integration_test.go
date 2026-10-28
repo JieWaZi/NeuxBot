@@ -57,7 +57,7 @@ func TestWorkflowLocalProcessHelper(t *testing.T) {
 	}
 }
 func processWorkflowSource(code string) string {
-	return `export const meta={sdk:'ally.workflow/1',title:'进程验收',description:'真实隔离进程',phases:[{id:'compute',title:'计算',detail:'真实执行',canExit:true}]};phase('compute');` + code
+	return `export const meta={sdk:'ally.workflow/2',title:'进程验收',description:'真实隔离进程',phases:[{id:'compute',title:'计算',detail:'真实执行',canExit:true}]};phase('compute');` + code
 }
 func waitWorkflow(t *testing.T, s *Service, id string, condition func(controllers.WorkflowRunState) bool) controllers.WorkflowRunState {
 	t.Helper()

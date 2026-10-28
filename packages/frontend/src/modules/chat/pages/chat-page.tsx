@@ -116,6 +116,7 @@ export type ChatWorkspaceEntry = {
   directoryLabel: string;
   mainContent?: ChatWorkspaceMainContent;
   draft?: string;
+  composerContext?: ReactNode;
   emptyState?:
     | ReactNode
     | ((context: {
@@ -1182,6 +1183,7 @@ export function ChatPageContent({
       composerEffects,
       composerDraft: entry?.draft,
       renderComposerContextStrip,
+      inlineComposerContext: entry?.composerContext,
       composerSkills: enabledSkills,
       composerSkillsError: skillsQuery.isError,
       composerPlugins: enabledPlugins,

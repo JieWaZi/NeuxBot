@@ -1,73 +1,6 @@
 export const meta = {
-  sdk:'ally.workflow/1',title:'多客户环境发布预审',
+  sdk:'ally.workflow/2',title:'多客户环境发布预审',
   description:'材料补全、逐环境分析与处置、返修和人工审批、真实本地验收与报告；通知只生成草稿。',
-  nodeResultPages:{
-    'check-materials':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'材料核查',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['heading','summary','missing']},
-      heading:{type:'Heading',props:{value:'材料核查',level:'h1'}},
-      summary:{type:'Text',props:{value:{$state:'/result/summary'}}},
-      missing:{type:'Section',props:{title:'待补全字段'},children:['missing-list']},
-      'missing-list':{type:'Collection',props:{items:{$state:'/result/missingFields'},pageSize:10},children:['field']},
-      field:{type:'Text',props:{value:{$item:''}}}
-    }}},
-    'coverage-environment':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'需求覆盖',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['heading','summary','total','covered','gaps']},
-      heading:{type:'Heading',props:{value:'需求覆盖',level:'h1'}},
-      summary:{type:'Text',props:{value:{$state:'/result/summary'}}},
-      total:{type:'Metric',props:{label:'需求总数',value:{$state:'/result/total'},unit:'项'}},
-      covered:{type:'Metric',props:{label:'已覆盖',value:{$state:'/result/coveredCount'},unit:'项'}},
-      gaps:{type:'Collection',props:{items:{$state:'/result/highPriorityGaps'},pageSize:10},children:['requirement','reason']},
-      requirement:{type:'Heading',props:{value:{$item:'requirement'},level:'h2'}},
-      reason:{type:'Text',props:{value:{$item:'reason'}}}
-    }}},
-    'risk-environment':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'缺陷风险',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['heading','summary','blocking','risks']},
-      heading:{type:'Heading',props:{value:'缺陷风险',level:'h1'}},
-      summary:{type:'Text',props:{value:{$state:'/result/summary'}}},
-      blocking:{type:'KeyValue',props:{label:'存在发布阻塞',value:{$state:'/result/blocking'}}},
-      risks:{type:'Collection',props:{items:{$state:'/result/highRiskItems'},pageSize:10},children:['title','severity','impact','reason']},
-      title:{type:'Heading',props:{value:{$item:'title'},level:'h2'}},
-      severity:{type:'KeyValue',props:{label:'风险等级',value:{$item:'severity'}}},
-      impact:{type:'KeyValue',props:{label:'影响',value:{$item:'impact'}}},
-      reason:{type:'Text',props:{value:{$item:'reason'}}}
-    }}},
-    'recommend-item':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'处置建议',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['heading','action','risk','note']},
-      heading:{type:'Heading',props:{value:'处置建议',level:'h1'}},
-      action:{type:'Text',props:{value:{$state:'/result/action'}}},
-      risk:{type:'KeyValue',props:{label:'预计剩余风险',value:{$state:'/result/residualRisk'}}},
-      note:{type:'Text',props:{value:{$state:'/result/note'}}}
-    }}},
-    'revise-item':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'修订建议',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['heading','action','risk','note']},
-      heading:{type:'Heading',props:{value:'修订建议',level:'h1'}},
-      action:{type:'Text',props:{value:{$state:'/result/action'}}},
-      risk:{type:'KeyValue',props:{label:'预计剩余风险',value:{$state:'/result/residualRisk'}}},
-      note:{type:'Text',props:{value:{$state:'/result/note'}}}
-    }}},
-    'release-report':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'发布预审报告',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['decision','body']},
-      decision:{type:'KeyValue',props:{label:'报告结论',value:{$state:'/result/decision'}}},
-      body:{type:'Markdown',props:{value:{$state:'/result/markdown'}}}
-    }}},
-    'revise-report-facts':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'修订预审报告',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['decision','body']},
-      decision:{type:'KeyValue',props:{label:'报告结论',value:{$state:'/result/decision'}}},
-      body:{type:'Markdown',props:{value:{$state:'/result/markdown'}}}
-    }}},
-    'notification-draft':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'通知草稿',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['subject','body','recipients']},
-      subject:{type:'Heading',props:{value:{$state:'/result/subject'},level:'h1'}},
-      body:{type:'Text',props:{value:{$state:'/result/body'}}},
-      recipients:{type:'Section',props:{title:'建议收件角色'},children:['recipient-list']},
-      'recipient-list':{type:'Collection',props:{items:{$state:'/result/recipients'},pageSize:10},children:['recipient']},
-      recipient:{type:'Text',props:{value:{$item:''}}}
-    }}}
-  },
-  nodeResultPageOmissions:{
-    'execute-item':'只提交临时验收文件的写入标记，文件不是用户交付物；执行事实由报告汇总',
-    'verify-item':'只提交临时验收文件的布尔核验标记；实际执行和验证数量由权威报告汇总'
-  },
   inputSchema:{type:'object',required:['requirements','defects'],properties:{
     requirements:{type:'string'},defects:{type:'string'},environments:{type:'array',items:{type:'string'},default:[]},
     iterationName:{type:'string',default:''},releaseDate:{type:'string',default:''},riskThreshold:{type:'integer',minimum:1,default:1},
@@ -156,7 +89,7 @@ const results=await pipeline(envList,[
       let round=0;
       while(!resolved&&round<3){
         round++;
-        const answer=await askUser(`环境=${environment}；条目=${item.item}；建议=${item.action}；剩余风险=${item.residualRisk}；原因=${item.reason}；说明=${item.note}。只有显式批准才允许后续本地验收。也可提出修改或否决理由。`,{id:'approve-item',label:'逐项审批 '+environment+' '+item.item,phase:'approve',options:[{value:'approve',label:'批准'},{value:'deny',label:'否决'},{value:'rework',label:'返修'}],defaultValue:'deny',allowSkip:true});
+        const answer=await askUser(`环境=${environment}；条目=${item.item}；建议=${item.action}；剩余风险=${item.residualRisk}；原因=${item.reason}；说明=${item.note}。只有显式批准才允许后续本地验收。也可提出修改或否决理由。`,{id:'approve-item',label:'逐项审批 '+environment+' '+item.item,phase:'approve',kind:'select',choices:[{value:'approve',label:'批准'},{value:'deny',label:'否决'},{value:'rework',label:'返修'}],defaultValue:'deny',allowSkip:true});
         if(answer.source==='user'&&answer.value==='rework'&&round<3){
           const note=await askUser('请填写本条处置建议的具体修改意见。',{id:'rework-note',label:'返修说明 '+environment,phase:'approve',allowSkip:false});
           const old=item;

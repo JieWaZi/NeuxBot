@@ -20,7 +20,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
-	workflowfunction "github.com/JieWaZi/NeuxBot/server/internal/workflow/function"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -112,6 +111,19 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 	scope, err := s.prepareAdmission(ctx, definition, preparedRevision, command, preparedID, configurations)
 	if err != nil {
 		return models.WorkflowRun{}, err
+	}
+	pythonPath := ""
+	needsPython := len(preparedRevision.Bundle.Scripts) > 0
+	for _, node := range preparedRevision.Manifest.Nodes {
+		if node.Kind == "functionTask" && node.Options["language"] == "python" {
+			needsPython = true
+		}
+	}
+	if needsPython {
+		pythonPath, err = s.resolvePython(ctx)
+		if err != nil {
+			return models.WorkflowRun{}, err
+		}
 	}
 	s.state.Commands.Lock()
 	defer s.state.Commands.Unlock()
@@ -236,6 +248,9 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 			retryID = command.RetrySourceRunID
 		}
 		flowContext := map[string]any{"runId": id, "workflowId": definition.ID, "revisionId": revision.ID, "runStartedAt": now, "workflowName": revision.Manifest.Meta.Title, "parentRunId": parentID, "retrySourceRunId": retryID, "triggerSource": source, "scope": map[string]any{"projectId": scope.ProjectID, "workingDirectory": scope.WorkingDirectory}}
+		if pythonPath != "" {
+			flowContext["pythonExecutable"] = pythonPath
+		}
 		if command.ConsumerLeaseID != "" {
 			flowContext["consumerLeaseId"] = command.ConsumerLeaseID
 		}
@@ -425,12 +440,7 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 			if node.Options["executionMode"] != "trusted_local" || defaults.WorkspaceReadOnly {
 				return scope, status_error.WorkflowCapabilityUnsupported.WithField("capability", "python_pure_isolation")
 			}
-			if s.pythonExecutable == "" {
-				return scope, status_error.WorkflowResourceInvalid.WithField("field", "workflowPythonExecutable")
-			}
-			if err := workflowfunction.PythonVersion(ctx, s.pythonExecutable); err != nil {
-				return scope, err
-			}
+
 		}
 	}
 	return scope, nil

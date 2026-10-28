@@ -82,7 +82,6 @@ import { NodeInspector } from "../components/node-inspector";
 import { PhaseAdjustmentComposer } from "../components/phase-adjustment-composer";
 import { RunForm } from "../components/run-form";
 import { WorkflowInputNode } from "../components/workflow-input-node";
-import { ResultOpenScope } from "../presentation/node-result";
 import { WorkflowCanvas } from "../components/workflow-canvas";
 import { WorkflowCanvasPlaceholder } from "../components/workflow-canvas-placeholder";
 import { WorkflowDetailDock } from "../components/workflow-detail-dock";
@@ -197,6 +196,26 @@ export function WorkflowDetailPage() {
   );
   const [basicOpen, setBasicOpen] = useState(false);
   const [creationDraft, setCreationDraft] = useState("");
+  const [targetSelection, setTargetSelection] = useState<{
+    scope: string;
+    targets: { kind: "phase" | "node"; id: string }[];
+  }>({ scope: "", targets: [] });
+  const targetScope = `${id}:${detail.data?.revision?.id ?? ""}`;
+  const selectedTargets =
+    targetSelection.scope === targetScope ? targetSelection.targets : [];
+  const toggleTarget = (target: { kind: "phase" | "node"; id: string }) => {
+    setChatExpanded(true);
+    setTargetSelection({
+      scope: targetScope,
+      targets: selectedTargets.some(
+        (item) => item.kind === target.kind && item.id === target.id,
+      )
+        ? selectedTargets.filter(
+            (item) => item.kind !== target.kind || item.id !== target.id,
+          )
+        : [...selectedTargets, target],
+    });
+  };
   const optimizeRun = params.get("optimizeRun");
   const requestedChat = params.get("chat");
   const requestedInteraction = params.get("request");
@@ -493,6 +512,15 @@ export function WorkflowDetailPage() {
           >
             <WorkflowCanvas
               hasDock
+              selectedTargets={selectedTargets}
+              onSelectTargets={
+                !revisionId
+                  ? (targets) => {
+                      setChatExpanded(true);
+                      setTargetSelection({ scope: targetScope, targets });
+                    }
+                  : undefined
+              }
               manifest={revision.manifest}
               inputNode={
                 <WorkflowInputNode
@@ -519,7 +547,7 @@ export function WorkflowDetailPage() {
                         revisionId={revision.id ?? ""}
                         phase={phase}
                         ordinal={
-                          (revision.manifest?.meta?.phases?.findIndex(
+                          (revision.manifest?.phases?.findIndex(
                             (item) => item.id === phase.id,
                           ) ?? 0) + 1
                         }
@@ -959,6 +987,27 @@ export function WorkflowDetailPage() {
       onCreated={(definitionId) =>
         navigate(`/workflows/${definitionId}`, { replace: true })
       }
+      canvasReferences={selectedTargets.map((target) => ({
+        ...target,
+        revisionId: revision?.id ?? "",
+      }))}
+      canvasReferenceLabels={Object.fromEntries(
+        selectedTargets.map((target) => [
+          `${target.kind}:${target.id}`,
+          target.kind === "phase"
+            ? (revision?.manifest?.phases.find(
+                (phase) => phase.id === target.id,
+              )?.title ?? target.id)
+            : (revision?.manifest?.nodes.find((node) => node.id === target.id)
+                ?.label ?? target.id),
+        ]),
+      )}
+      onRemoveCanvasReference={toggleTarget}
+      onCanvasReferencesSent={() =>
+        setTargetSelection({ scope: targetScope, targets: [] })
+      }
+      optimizeRunId={params.get("optimizeRun") ?? undefined}
+      onRemoveRunReference={() => change("optimizeRun", "")}
       conversationKey={String(conversationGeneration)}
       onSession={(sessionId) => {
         setCreationDraft("");
@@ -970,14 +1019,11 @@ export function WorkflowDetailPage() {
       onFirstMessageSubmitted={() => setChatExpanded(true)}
       mainContent={{
         contentId: "workflow-canvas",
+        questionsOnCanvas: true,
         title: t("canvas"),
         chatExpanded,
         resizeLabel: t("resizeChat"),
-        content: (canvasActive, context) => (
-          <ResultOpenScope scopeKey={context?.scopeKey ?? "workflow-canvas"}>
-            {canvas(canvasActive)}
-          </ResultOpenScope>
-        ),
+        content: (canvasActive) => canvas(canvasActive),
       }}
       history={
         <WorkflowChatHistory

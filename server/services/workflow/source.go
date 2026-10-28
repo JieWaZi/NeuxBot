@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -25,6 +26,10 @@ type SaveSourceCommand struct {
 	RequestID string `json:"requestId"`
 	// ExpectedRevisionID 是保存前读取到的当前版本。
 	ExpectedRevisionID string `json:"expectedRevisionId"`
+	// BaseSourceDigest 是补丁对应的精确基准摘要。
+	BaseSourceDigest string `json:"baseSourceDigest,omitempty"`
+	// Patches 是按顺序应用的唯一文本替换。
+	Patches []SourcePatch `json:"patches,omitempty"`
 	// Source 是不裁剪和不格式化的完整创作源码。
 	Source string `json:"source"`
 	// SDKVersion 是本次创作使用的原生契约。
@@ -35,6 +40,14 @@ type SaveSourceCommand struct {
 	RestoredFromRevisionID string `json:"-"`
 	// ResolvedAnnotationIDs 是工具明确声明已经处理的批注身份。
 	ResolvedAnnotationIDs []string `json:"resolvedAnnotationIds,omitempty"`
+}
+
+// SourcePatch 描述一次必须唯一匹配的精确源码替换。
+type SourcePatch struct {
+	// Search 是基准源码中必须恰好出现一次的字节串。
+	Search string `json:"search"`
+	// Replace 是替换后的完整字节串。
+	Replace string `json:"replace"`
 }
 
 // SaveSource 同时提交源码、投影、程序、当前指针、回执与事件。
@@ -53,9 +66,33 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 		Restored string
 		// Annotations 是本次明确处理的批注。
 		Annotations []string
-	}{command.ExpectedRevisionID, command.Source, command.SDKVersion, command.RestoredFromRevisionID, command.ResolvedAnnotationIDs})
+		// Base 是补丁基准摘要。
+		Base string
+		// Patches 是精确替换载荷。
+		Patches []SourcePatch
+	}{command.ExpectedRevisionID, command.Source, command.SDKVersion, command.RestoredFromRevisionID, command.ResolvedAnnotationIDs, command.BaseSourceDigest, command.Patches})
+	if len(command.Patches) > 0 {
+		if command.Source != "" || command.BaseSourceDigest == "" || command.ExpectedRevisionID == "" {
+			return workflowdsl.SaveReceipt{}, nil, status_error.BadRequest
+		}
+		base, err := s.store.GetRevision(ctx, command.DefinitionID, command.ExpectedRevisionID)
+		if err != nil {
+			return workflowdsl.SaveReceipt{}, nil, err
+		}
+		if base.SourceDigest != command.BaseSourceDigest {
+			return workflowdsl.SaveReceipt{}, nil, status_error.WorkflowRevisionConflict
+		}
+		source := base.Source
+		for _, patch := range command.Patches {
+			if patch.Search == "" || strings.Count(source, patch.Search) != 1 {
+				return workflowdsl.SaveReceipt{}, nil, status_error.WorkflowSourceInvalid.WithField("reason", "patch_search_not_unique")
+			}
+			source = strings.Replace(source, patch.Search, patch.Replace, 1)
+		}
+		command.Source = source
+	}
 	// 编译不持有数据库事务；任何诊断都不产生版本或保存成功事件。
-	compiled, diagnostics, err := workflowdsl.CompileForAuthoring(command.Source)
+	compiled, diagnostics, err := workflowdsl.Compile(command.Source)
 	if err != nil {
 		return workflowdsl.SaveReceipt{}, diagnostics, err
 	}
@@ -103,19 +140,6 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 		if definition.CurrentRevisionID != command.ExpectedRevisionID {
 			return status_error.WorkflowRevisionConflict
 		}
-		if definition.CurrentRevisionID != "" {
-			current, err := s.store.GetRevision(ctx, definition.ID, definition.CurrentRevisionID)
-			if err != nil {
-				return err
-			}
-			if current.SourceDigest == compiled.SourceDigest && command.RestoredFromRevisionID == "" {
-				saved = workflowdsl.SaveReceipt{DefinitionID: definition.ID, RevisionID: current.ID, Ordinal: current.Ordinal, SourceDigest: current.SourceDigest, Unchanged: true}
-				if err := s.recordSourceAnnotations(ctx, command, current.ID); err != nil {
-					return err
-				}
-				return s.saveReceipt(ctx, command, digest, saved)
-			}
-		}
 		revision := models.WorkflowRevision{ID: util.New(), DefinitionID: definition.ID, Ordinal: definition.Ordinal + 1, Source: command.Source, SourceDigest: compiled.SourceDigest, ManifestDigest: compiled.ManifestDigest, IRDigest: compiled.IRDigest, SDKVersion: constants.WorkflowSDKVersion, CompilerVersion: constants.WorkflowCompilerVersion, IRVersion: constants.WorkflowIRVersion, Manifest: compiled.Manifest, Bundle: compiled.Bundle, CreationSessionID: command.CreationSessionID, RestoredFromRevisionID: command.RestoredFromRevisionID}
 		if err := s.store.CreateRevision(ctx, revision); err != nil {
 			return err
@@ -128,14 +152,14 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 		if err := s.store.UpdateHead(ctx, definition, command.ExpectedRevisionID); err != nil {
 			return err
 		}
-		saved = workflowdsl.SaveReceipt{DefinitionID: definition.ID, RevisionID: revision.ID, Ordinal: revision.Ordinal, SourceDigest: revision.SourceDigest}
+		saved = workflowdsl.SaveReceipt{DefinitionID: definition.ID, RevisionID: revision.ID, Ordinal: revision.Ordinal, SourceDigest: revision.SourceDigest, ManifestDigest: workflowdsl.CanvasDigest(workflowdsl.ExportCanvas(compiled.Manifest))}
 		if err := s.recordSourceAnnotations(ctx, command, revision.ID); err != nil {
 			return err
 		}
 		if err := s.saveReceipt(ctx, command, digest, saved); err != nil {
 			return err
 		}
-		_, err = s.store.AppendEvent(ctx, models.WorkflowEvent{StreamID: definition.ID, EventID: util.New(), Type: "workflow.revision.saved", EntityID: revision.ID, Payload: map[string]any{"definitionId": definition.ID, "revisionId": revision.ID, "ordinal": revision.Ordinal, "sourceDigest": revision.SourceDigest}})
+		_, err = s.store.AppendEvent(ctx, models.WorkflowEvent{StreamID: definition.ID, EventID: util.New(), Type: "workflow.revision.saved", EntityID: revision.ID, Payload: map[string]any{"definitionId": definition.ID, "revisionId": revision.ID, "ordinal": revision.Ordinal, "sourceDigest": revision.SourceDigest, "manifestDigest": saved.ManifestDigest}})
 		return err
 	})
 	return saved, diagnostics, err

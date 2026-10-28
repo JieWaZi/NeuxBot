@@ -324,7 +324,7 @@ func TestF1WholeCoreWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T)
 		t.Helper()
 		for _, human := range state.Humans {
 			if human.Status == constants.WorkflowStepStatusWaiting {
-				if err := answerHuman(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: util.New(), Value: value}); err != nil {
+				if err := answerHumanFixture(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: util.New(), Value: value}); err != nil {
 					t.Fatal(err)
 				}
 				return
@@ -394,7 +394,7 @@ func TestWorkerSystemControlReferenceRunsThroughCoreWithoutMissingConnector(t *t
 	runtime := &fixtureRuntime{calls: map[string]int{}}
 	s, _ := openCoreWorkflowFixture(t, directory, runtime)
 	ctx := context.Background()
-	source := `export const meta={sdk:'ally.workflow/1',title:'内部能力',description:'系统结果提交不属于业务工具白名单',nodeResultPageOmissions:{facts:'只返回 MCP 能力白名单测试的提交载荷'},phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('整理',{id:'facts',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object'},toolPolicy:{connectors:{mode:'allowlist',connectorIds:[]}}});`
+	source := `export const meta={sdk:'ally.workflow/2',title:'内部能力',description:'系统结果提交不属于业务工具白名单',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('整理',{id:'facts',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object'},toolPolicy:{connectors:{mode:'allowlist',connectorIds:[]}}});`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "system-reference", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelFullAccess}})
 	if err != nil {
