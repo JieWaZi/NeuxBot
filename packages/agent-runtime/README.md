@@ -2,7 +2,7 @@
 
 独立的嵌入式 Go 执行模块，负责调用、技术会话、交互、输出与资源租约。它不拥有 Chat、伙伴、团队、Workflow、知识内容或产品数据库，不提供 Runtime HTTP 服务。
 
-完整目标和后续切换见[实施计划](../../docs/discussions/agent-runtime-implementation-plan-cn.md)。知识生成与独立 Wiki 维护已通过宿主接入本模块；其他生产入口按计划逐批切换。
+完整目标和后续切换见[实施计划](../../docs/discussions/agent-runtime-implementation-plan-cn.md)。知识生成、独立 Wiki 维护和普通 Chat 通过各自宿主接入本模块；其他编排入口按计划逐批切换。
 
 ## 当前边界
 
@@ -23,17 +23,19 @@
 
 调用标识由 Runtime 生成。需要启动前取消时，先 `NewInvocationID` 取得有界预留，再传入请求；未使用的预留可由 `Cancel` 释放，已经消费或取消的标识不能再次提交。取消旧调用不能命中新回合。
 
+`NativeCheckpoint` 将已有真实原生句柄与宿主传入配置组合为恢复期望；它不读取原生历史，也不证明旧会话曾采用该配置。宿主依据已有会话配置事实决定恢复或新建，实际恢复能力继续由原生握手确认。
+
 宿主资源和凭据 Provider 提供租约，Runtime 是相应租约的唯一持有者。热 Session 仍使用资源时不能在回合返回处释放；临时会话和非热 Driver 在调用结束后释放。Close 先停止接纳、取消并等待活动调用，再关闭 Session/Driver。外部 Driver、Provider、Observer 与交互实现必须遵守传入 Context 的取消和期限；未完成释放要返回准确故障。原生使用者关闭失败时，Runtime 保留失败项及其依赖租约，会话维持 closing 并占容量；后续 CloseSession/Close 可重试，成功释放的项目不重复调用。不能因为出现清理错误就把仍被使用的凭据交还。
 
 执行状态、输出状态、交付故障、清理故障分别记录。原生调用完成但缺少最终消息证据时，执行仍是 completed，输出为 output_unavailable；清理失败不能将已经执行的事实抹掉。宿主据此决定业务终态，不能自动换引擎重跑。
 
 ## ACP 结果调用与边界
 
-当前共享 ACP Driver 为各 CLI 创建新建、单次 Prompt 的独占连接。明确选择 `inherit_native` 与 `allow_all` 且宿主授予相应权限时，才能进入实际 ACP 调用；请求不支持的隔离或禁工具策略时准确返回 unsupported。知识纯生成入口只启动独立 CLI 会话、传入任务输入并消费最终结果，不主动注入 AGENTS.md、Skill 或 MCP，不接管原生工具和配置加载。
+共享 ACP Driver 为各会话创建独占连接；Invoke 在单次回合后关闭，Run 可保留热会话，冷恢复按原生实际公布的 Resume/Load 能力执行。明确选择 `inherit_native` 与 `allow_all` 且宿主授予相应权限时，才能进入实际 ACP 调用；请求不支持的隔离或禁工具策略时准确返回 unsupported。知识纯生成入口只启动独立 CLI 会话、传入任务输入并消费最终结果，不主动注入 AGENTS.md、Skill 或 MCP，不接管原生工具和配置加载。
 
 这一策略不证明操作系统目录沙箱。工作目录是原生 cwd，权限和原生工具仍取决于明确继承的环境；禁止把 cwd 或路径前缀称为安全隔离。
 
-当前支持显式 Instructions 与 Skills：以冻结的指令和技能目录引用构造首次 Prompt 前缀，作为普通任务文本传入，不宣称原生 system role；技能正文不复制进 Prompt，资源文件由宿主租约拥有。无贡献时保持输入原文。静态前缀的构建上限为 1 MiB，与输出和事件预算分别控制。MCP 贡献、历史 Seed、附件、额外目录、热续聊及冷恢复准确拒绝，模型、推理及所选原生权限模式经公开配置目录及回执验证。单连接只接受一次 Prompt，避免无回合身份的迟到 ACP 通知串入后续调用。
+当前支持显式 Instructions 与 Skills：以冻结的指令和技能目录引用构造首次 Prompt 前缀，作为普通任务文本传入，不宣称原生 system role；技能正文不复制进 Prompt，资源文件由宿主租约拥有。无贡献时保持输入原文。静态前缀的构建上限为 1 MiB，与输出和事件预算分别控制。输入、能力资源、交互和输出由各自 ACP 转换模块维护；MCP 连接只通过资源租约交付，附件按原生公布能力编码。新会话只播种一次有界历史，热续聊和冷恢复只提交新增输入。模型、推理及所选原生权限模式经公开配置目录及回执验证。原生 Prompt 返回后排空已接收通知，再开放下一个回合。
 
 Driver 读取 acp-go 的公开 `MessageId` 与 `acp-go/message` 事实。Codex 使用 `CompletionNativePhase`，只有真实原生 final 阶段可成为严格结果；缺 phase、commentary、partial_answer 和 plan 不升级为答案。其余 CLI 使用 `CompletionLastAssistant`：外层公开 Prompt 成功返回且通知排空后，只确认最后有效助手消息，后续工具、思考或过程活动使旧候选失效。原生阶段证明与回合完成证明分别标记为 `verified_phase`、`verified_driver_completion`，不混为原生 final。
 
@@ -43,7 +45,7 @@ Driver 读取 acp-go 的公开 `MessageId` 与 `acp-go/message` 事实。Codex �
 
 原生关闭通过公开 `Agent.Close` 执行。Runtime 的重试不代表原生实现必然可恢复：当前固定版本 Codex 的 Close 使用一次性释放并保留首次错误，因此该错误再次返回时仍保留租约并报告清理未完成，不能伪造释放成功。原生关闭语义的后续改进继续归独立 acp-go。
 
-全部现有 CLI 的知识宿主位于 `server/internal/runtimehost`，启动事实复用 `SDK.PrepareLaunch`，账号复用原服务，Codex 刷新复用 `runtimeauth`。纯生成与工具任务共用调用内核；维护领域授权在调用完成或取消时撤销，资源继续由内核保护到原生关闭成功。旧知识 GenerateText 与独立维护 Run 装配、专用文本收集器已删除。冷恢复、原生分叉、安装探测、空闲会话淘汰及其他入口按后续批次实现。
+全部现有 CLI 的知识宿主位于 `server/internal/runtimehost`，启动事实复用 `SDK.PrepareLaunch`，账号复用原服务，Codex 刷新复用 `runtimeauth`。纯生成与工具任务共用调用内核；维护领域授权在调用完成或取消时撤销，资源继续由内核保护到原生关闭成功。旧知识 GenerateText 与独立维护 Run 装配、专用文本收集器已删除。普通 Chat 以显式端口注册原生工作区准备、启动、分叉、交互与事件消费；已物化原生指令时采用空文本前缀策略，避免重复注入。具体迁移范围见[Chat 阶段计划](../../docs/discussions/agent-runtime-chat-plan-cn.md)。
 
 ## 验证
 

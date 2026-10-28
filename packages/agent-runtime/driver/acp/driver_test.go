@@ -68,7 +68,7 @@ func newDriver(t *testing.T, a *fixtureAgent) *driver.Driver {
 
 // TestUnsupportedPolicyNeverPreparesNative 捕获安全策略或未支持资源被静默忽略的错误。
 func TestUnsupportedPolicyNeverPreparesNative(t *testing.T) {
-	for _, policy := range []string{"explicit_only", "deny_all", "allow_list", "mcp", "directories", "seed", "resume"} {
+	for _, policy := range []string{"explicit_only", "deny_all", "allow_list", "resume"} {
 		t.Run(policy, func(t *testing.T) {
 			var prepared atomic.Bool
 			d, err := driver.New(driver.Config{ID: "fixture", Factory: func(context.Context, contract.OpenRequest) (sdk.Agent, error) {
@@ -87,12 +87,6 @@ func TestUnsupportedPolicyNeverPreparesNative(t *testing.T) {
 				r.Policies.Tools.Mode = contract.ToolsDenyAll
 			case "allow_list":
 				r.Policies.Tools = contract.ToolPolicy{Mode: contract.ToolsAllowList, Allow: []string{"read"}}
-			case "directories":
-				r.Workspace.Directories = []string{t.TempDir()}
-			case "mcp":
-				r.Contributions.MCP = []contract.MCP{{Name: "mcp"}}
-			case "seed":
-				r.Session.Seed = []contract.SeedMessage{{Role: "user", Text: "earlier"}}
 			case "resume":
 				r.Session.Mode = contract.SessionResume
 			}
@@ -502,7 +496,7 @@ func TestPermissionIdentityAndToolFacts(t *testing.T) {
 			return contract.InteractionResponse{}, errors.New("permission identity reused or mismatched")
 		}
 		previous = r.ID
-		return contract.InteractionResponse{Invocation: r.Invocation, ID: r.ID, Allowed: true}, nil
+		return contract.InteractionResponse{Invocation: r.Invocation, ID: r.ID, Action: contract.InteractionAccept, OptionID: r.Approval.Options[0].ID}, nil
 	}}
 	a.prompt = func(ctx context.Context, p sdk.PromptRequest) (sdk.PromptResponse, error) {
 		if err := a.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: p.SessionId, Update: sdk.StartToolCall("tool-1", "Read file", sdk.WithStartStatus(sdk.ToolCallStatusPending))}); err != nil {
@@ -580,7 +574,7 @@ func TestPromptWaitsForInFlightPermission(t *testing.T) {
 		close(entered)
 		select {
 		case <-release:
-			return contract.InteractionResponse{Invocation: r.Invocation, ID: r.ID, Allowed: true}, nil
+			return contract.InteractionResponse{Invocation: r.Invocation, ID: r.ID, Action: contract.InteractionAccept, OptionID: r.Approval.Options[0].ID}, nil
 		case <-ctx.Done():
 			return contract.InteractionResponse{}, ctx.Err()
 		}
@@ -652,7 +646,7 @@ func TestPermissionRequestCancellationReleasesInteraction(t *testing.T) {
 				close(entered)
 				<-ctx.Done()
 				if lateApproval {
-					return contract.InteractionResponse{Invocation: r.Invocation, ID: "stale-approval", Allowed: true}, nil
+					return contract.InteractionResponse{Invocation: r.Invocation, ID: "stale-approval", Action: contract.InteractionAccept, OptionID: r.Approval.Options[0].ID}, nil
 				}
 				return contract.InteractionResponse{}, ctx.Err()
 			}}

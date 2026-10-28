@@ -24,21 +24,34 @@ type Profile struct {
 
 // Input 只保存当前回合新增输入。
 type Input struct {
-	Text        string       // Text 是本轮正文。
-	Attachments []Attachment // Attachments 是本轮附件。
+	Text           string          // Text 是本轮正文。
+	Attachments    []Attachment    // Attachments 是本轮附件。
+	CodeReferences []CodeReference // CodeReferences 是发送时固定的整文件引用或代码快照。
+	SelectedSkills []string        // SelectedSkills 是本轮明确选择的已贡献技能名称。
+	SelectedMCP    []string        // SelectedMCP 是本轮明确选择的已贡献连接名称。
 }
 
 // Attachment 引用已授权的本地附件。
 type Attachment struct {
-	Name     string // Name 是稳定显示名称。
-	Path     string // Path 是附件的绝对路径。
-	MIMEType string // MIMEType 是内容类型。
+	Name        string // Name 是稳定显示名称。
+	Path        string // Path 是附件的绝对路径。
+	DisplayPath string // DisplayPath 是模型可读的工作区路径，空值时使用 Path。
+	MIMEType    string // MIMEType 是内容类型。
+}
+
+// CodeReference 固定一次输入选择的文件位置和代码文本。
+type CodeReference struct {
+	Path      string // Path 是整文件路径或片段发送时的显示路径。
+	StartLine int    // StartLine 是片段一基起始行，整文件引用为零。
+	EndLine   int    // EndLine 是片段一基结束行，整文件引用为零。
+	Content   string // Content 是发送时的片段快照，整文件引用为空。
 }
 
 // SeedMessage 是新会话的有界历史播种内容。
 type SeedMessage struct {
-	Role string // Role 仅接受 user 或 assistant。
-	Text string // Text 是完整消息正文。
+	Role           string          // Role 仅接受 user 或 assistant。
+	Text           string          // Text 是完整消息正文。
+	CodeReferences []CodeReference // CodeReferences 是该历史消息发送时固定的内容引用。
 }
 
 // SessionMode 区分新建与恢复会话。
@@ -46,7 +59,7 @@ type SessionMode string
 
 const (
 	SessionNew    SessionMode = "new"    // SessionNew 新建会话。
-	SessionResume SessionMode = "resume" // SessionResume 恢复本引擎热会话。
+	SessionResume SessionMode = "resume" // SessionResume 使用热会话引用或冷检查点恢复会话。
 )
 
 // SessionDirective 明确会话身份和播种策略。
@@ -54,7 +67,7 @@ type SessionDirective struct {
 	Mode       SessionMode        // Mode 是本次会话操作。
 	Ref        string             // Ref 是本引擎产生的会话标识。
 	Seed       []SeedMessage      // Seed 仅 New 可用，最多 40 条、正文共 64 KiB；宿主保证完整回合及顺序。
-	Checkpoint *SessionCheckpoint // Checkpoint 表示冷恢复请求，首批明确不支持。
+	Checkpoint *SessionCheckpoint // Checkpoint 表示以无秘密的原生检查点恢复会话。
 }
 
 // SessionCheckpoint 保存无秘密的恢复事实。
@@ -75,6 +88,7 @@ type SessionCheckpoint struct {
 type WorkspaceScope struct {
 	Root        string   // Root 是主工作目录。
 	Directories []string // Directories 是额外授权目录。
+	ReadOnly    bool     // ReadOnly 要求原生工作区只读，驱动必须按已验证能力执行。
 }
 
 // Instruction 是具有稳定名称与版本的指令贡献。
@@ -235,13 +249,15 @@ type Output struct {
 
 // Usage 区分本轮用量和最后上下文快照。
 type Usage struct {
-	Known             bool  // Known 表示本轮原生用量已报告，false 时不能把零值作为真实用量。
-	InputTokens       int64 // InputTokens 是协议报告的本轮输入部分；缓存组成按对应字段保留。
-	OutputTokens      int64 // OutputTokens 是本轮输出用量。
-	CachedReadTokens  int64 // CachedReadTokens 是本轮缓存读取的输入用量。
-	CachedWriteTokens int64 // CachedWriteTokens 是本轮缓存写入的输入用量。
-	ContextKnown      bool  // ContextKnown 表示最后上下文快照已报告。
-	ContextTokens     int64 // ContextTokens 是最后一次模型请求的上下文快照，不累计回合用量。
+	Known               bool  // Known 表示本轮原生用量已报告，false 时不能把零值作为真实用量。
+	InputTokens         int64 // InputTokens 是协议报告的本轮输入部分；缓存组成按对应字段保留。
+	OutputTokens        int64 // OutputTokens 是本轮输出用量。
+	ThoughtTokens       int64 // ThoughtTokens 是原生报告的本轮推理输出用量。
+	CachedReadTokens    int64 // CachedReadTokens 是本轮缓存读取的输入用量。
+	CachedWriteTokens   int64 // CachedWriteTokens 是本轮缓存写入的输入用量。
+	ContextKnown        bool  // ContextKnown 表示最后上下文快照已报告。
+	ContextTokens       int64 // ContextTokens 是最后一次模型请求的上下文快照，不累计回合用量。
+	ContextWindowTokens int64 // ContextWindowTokens 是原生报告的上下文窗口容量，零值表示未提供。
 }
 
 // Configuration 保存原生目录或配置写入回执确认的实际选择。
@@ -260,6 +276,14 @@ type Effects struct {
 	OutcomeUnknown bool // OutcomeUnknown 表示取消或故障后副作用未知。
 }
 
+// NativeSessionInfo 聚合公开适配器实际报告的原生会话能力与位置。
+type NativeSessionInfo struct {
+	Handle       string // Handle 是原生返回的会话身份。
+	Resumable    bool   // Resumable 表示本次原生握手明确支持恢复或加载。
+	ForkMode     string // ForkMode 是公开元数据声明的原生分叉方式。
+	ForkPosition string // ForkPosition 是本轮公开回执中的原生分叉位置。
+}
+
 // Result 区分执行、输出与交付事实。
 type Result struct {
 	Invocation    InvocationRef      // Invocation 是本次调用身份。
@@ -273,4 +297,5 @@ type Result struct {
 	Configuration Configuration      // Configuration 是原生确认的技术选择。
 	Effects       Effects            // Effects 是真实执行和副作用证据。
 	Checkpoint    *SessionCheckpoint // Checkpoint 只在具有真实恢复能力时生成。
+	NativeSession NativeSessionInfo  // NativeSession 是本轮可持久化的无秘密原生事实。
 }

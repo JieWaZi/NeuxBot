@@ -11,11 +11,13 @@ flowchart LR
   Desktop -->|统一 WS| Events[Core 事件分发]
   Core --> Chat[Chat 与团队及工作流]
   Chat --> Execution[Execution]
-  Execution --> Runtime[Runtime 适配]
+  Execution -->|普通 Chat| ChatHost[ChatHost]
+  Execution -->|尚未迁移的编排入口| Runtime[Runtime 适配]
   Runtime --> CLI[本机智能体]
   Core --> Knowledge[知识生成与独立 Wiki 维护]
   Knowledge --> Host[runtimehost]
   Host --> AgentRuntime[独立 Agent Runtime]
+  ChatHost --> AgentRuntime
   AgentRuntime --> CLI
   Core --> Store[SQLite 与权威日志及受管文件]
 ```
@@ -41,7 +43,7 @@ flowchart LR
 | web/src                        | 本机会话生命周期与浏览器宿主                  |
 | packages/platform-contracts    | 中立能力接口和事件协议                        |
 | packages/agent-runtime         | 独立调用、会话、最终结果与公开 ACP 驱动       |
-| server/internal/runtimehost    | CLI 启动事实、账号租约与独立任务装配          |
+| server/internal/runtimehost    | CLI 启动事实、账号租约、Chat 与独立任务装配   |
 | packages/terminal-runtime      | Core 管理的 PTY 与终端屏幕运行时              |
 | server/apis                    | HTTP Operator、校验及单入口用例               |
 | server/services                | 多入口复用业务与后台生命周期                  |

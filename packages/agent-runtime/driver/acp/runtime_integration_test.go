@@ -50,8 +50,14 @@ func TestRuntimeConsumesACPToolProgress(t *testing.T) {
 	if result.Output.Status != contract.OutputAvailable || result.Output.Text != "done" || !result.Effects.PromptAccepted || !result.Effects.ToolActivity {
 		t.Fatalf("missing final output or effects: %+v", result)
 	}
+	if agent.closes.Load() != 0 {
+		t.Fatalf("hot native session released before owner close: %d", agent.closes.Load())
+	}
+	if err := runtime.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
 	if agent.closes.Load() != 1 {
-		t.Fatalf("non-hot native session not released: %d", agent.closes.Load())
+		t.Fatalf("native session not released after owner close: %d", agent.closes.Load())
 	}
 }
 
@@ -107,7 +113,7 @@ func TestRuntimeConsumesACPRequestCancellation(t *testing.T) {
 		close(entered)
 		<-ctx.Done()
 		// 故意在请求撤销后交回允许；内核必须丢弃这一迟到授权。
-		return contract.InteractionResponse{Invocation: request.Invocation, ID: request.ID, Allowed: true}, nil
+		return contract.InteractionResponse{Invocation: request.Invocation, ID: request.ID, Action: contract.InteractionAccept, OptionID: request.Approval.Options[0].ID}, nil
 	})
 	result := runtime.Run(ctx, contract.ExecutionSpec{Profile: contract.Profile{DriverID: driver.ID()}, Input: contract.Input{Text: "continue after approval is withdrawn"}, Workspace: contract.WorkspaceScope{Root: root}, Policies: contract.Policies{NativeConfig: contract.NativeConfigInherit, Tools: contract.ToolPolicy{Mode: contract.ToolsAllowAll}, Interaction: contract.InteractionInteractive}}, contract.RunOptions{InteractionHandler: handler})
 	if result.Status != contract.StatusCompleted || result.Fault != nil || result.DeliveryFault != nil || result.Output.Text != "continued" {

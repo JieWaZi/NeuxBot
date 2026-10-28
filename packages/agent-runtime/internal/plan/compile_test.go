@@ -68,6 +68,35 @@ func TestRejectResumeSeedAndUnknownEnforcement(t *testing.T) {
 	}
 }
 
+// TestColdCheckpointRejectsChangedScopeBeforeNativeOpen 防止冷恢复绕过原生身份与静态配置的兼容检查。
+func TestColdCheckpointRejectsChangedScopeBeforeNativeOpen(t *testing.T) {
+	in := spec()
+	capabilities := c.DriverCapabilities{Version: "v1", ExplicitConfig: true, ToolAllowList: true, ColdResume: true}
+	grants := c.Grants{Directories: []string{"/allowed"}, Tools: []string{"read"}}
+	initial, err := Compile(in, capabilities, grants, c.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint := &c.SessionCheckpoint{Version: 1, SessionID: "session", DriverID: "fake", DriverVersion: "v1", NativeHandle: "native", ContextDigest: initial.ContextDigest(), SecurityScopeKey: initial.SecurityScopeKey()}
+	in.Session = c.SessionDirective{Mode: c.SessionResume, Checkpoint: checkpoint}
+	if _, err := Compile(in, capabilities, grants, c.Limits{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, change := range []func(*c.ExecutionSpec){
+		func(in *c.ExecutionSpec) { in.Session.Ref = "hot" },
+		func(in *c.ExecutionSpec) { in.Session.Seed = []c.SeedMessage{{Role: "user", Text: "duplicate"}} },
+		func(in *c.ExecutionSpec) { in.Profile.Model = "another" },
+		func(in *c.ExecutionSpec) { in.Profile.Subject = "another" },
+		func(in *c.ExecutionSpec) { in.Workspace.ReadOnly = true },
+	} {
+		changed := clone(in)
+		change(&changed)
+		if _, err := Compile(changed, capabilities, grants, c.Limits{}); err == nil {
+			t.Fatal("changed checkpoint scope accepted")
+		}
+	}
+}
+
 func TestRejectSymlinkEscapeAndImpossibleBudgets(t *testing.T) {
 	root := t.TempDir()
 	allowed := filepath.Join(root, "allowed")
@@ -177,5 +206,15 @@ func TestInactivityBudgetNormalization(t *testing.T) {
 	}
 	if _, err := NormalizeLimits(c.Limits{InactivityTimeout: -time.Second}, DefaultLimits()); err == nil {
 		t.Fatal("negative inactivity timeout accepted")
+	}
+}
+
+// TestSeedCodeSnapshotSharesHistoricalTextBudget 防止历史代码快照绕过新会话的有界播种。
+func TestSeedCodeSnapshotSharesHistoricalTextBudget(t *testing.T) {
+	input := spec()
+	input.Session.Seed = []c.SeedMessage{{Role: "user", Text: "中", CodeReferences: []c.CodeReference{{Path: "main.go", Content: strings.Repeat("x", 64<<10)}}}}
+	_, err := Compile(input, c.DriverCapabilities{ExplicitConfig: true, ToolAllowList: true}, c.Grants{Directories: []string{"/allowed"}, Tools: []string{"read"}}, c.Limits{})
+	if err == nil {
+		t.Fatal("historical code snapshot exceeded seed text budget")
 	}
 }

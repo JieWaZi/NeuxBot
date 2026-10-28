@@ -2,11 +2,13 @@ package engine
 
 import (
 	"context"
-	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
-	"github.com/JieWaZi/NeuxBot/agent-runtime/internal/output"
+	"encoding/json"
 	"slices"
 	"sync"
 	"time"
+
+	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
+	"github.com/JieWaZi/NeuxBot/agent-runtime/internal/output"
 )
 
 type eventSink struct {
@@ -66,22 +68,36 @@ func (s *eventSink) Accept(_ context.Context, event c.DriverEvent) error {
 		return s.fail(fault(c.FaultProtocol, "event", "prompt acceptance emitted twice", nil))
 	}
 	// 按规范载荷的字符串实际字节与固定标量开销计费；事件热路径不做 JSON 编码。
-	// 32 字节是每个事件的固定预算开销，消息完成标记另计 2 字节，用量另计 24 字节。
+	// 32 字节是每个事件的固定预算开销，消息完成标记另计 2 字节，用量的七个整数与两个标记另计 58 字节。
 	size := 32 + len(event.Text) + len(event.Kind)
 	if event.Message != nil {
 		m := *event.Message
 		event.Message = &m
-		size += len(m.MessageID) + len(m.Phase) + len(m.Delta) + 2
+		var contentBytes int
+		m.Content, contentBytes = cloneContent(m.Content)
+		size += len(m.MessageID) + len(m.Phase) + len(m.Delta) + contentBytes + 2
 	}
 	if event.Tool != nil {
 		tool := *event.Tool
 		event.Tool = &tool
-		size += len(tool.ID) + len(tool.Name) + len(tool.Status) + len(tool.Text)
+		var contentBytes int
+		tool.Content, contentBytes = cloneContent(tool.Content)
+		tool.Input = slices.Clone(tool.Input)
+		tool.Output = slices.Clone(tool.Output)
+		tool.Locations = slices.Clone(tool.Locations)
+		for i, location := range tool.Locations {
+			size += len(location.Path) + 8
+			if location.Line != nil {
+				line := *location.Line
+				tool.Locations[i].Line = &line
+			}
+		}
+		size += len(tool.ID) + len(tool.Name) + len(tool.Title) + len(tool.Kind) + len(tool.Status) + len(tool.Text) + len(tool.Input) + len(tool.Output) + contentBytes
 	}
 	if event.Usage != nil {
 		usage := *event.Usage
 		event.Usage = &usage
-		size += 24
+		size += 58
 	}
 	if size > s.spec.Limits.MaxEventBytes || s.events >= s.spec.Limits.MaxEvents || size > s.spec.Limits.MaxTotalEventBytes-s.bytes {
 		return s.fail(fault(c.FaultLimit, "event", "event delivery budget exceeded", nil))
@@ -148,7 +164,7 @@ func (s *eventSink) Accept(_ context.Context, event c.DriverEvent) error {
 	return nil
 }
 func (s *eventSink) toolAllowed(name string) bool {
-	return name != "" && (s.spec.Policies.Tools.Mode == c.ToolsAllowAll || (s.spec.Policies.Tools.Mode == c.ToolsAllowList && slices.Contains(s.spec.Policies.Tools.Allow, name)))
+	return s.spec.Policies.Tools.Mode == c.ToolsAllowAll || name != "" && s.spec.Policies.Tools.Mode == c.ToolsAllowList && slices.Contains(s.spec.Policies.Tools.Allow, name)
 }
 
 // Interact 验证调用修订和一次性请求身份；无人值守输入立即结束调用。
@@ -184,7 +200,13 @@ func (s *eventSink) Interact(requestCtx context.Context, request c.InteractionRe
 		s.mu.Unlock()
 		return empty, err
 	}
-	size := 64 + len(request.ID) + len(request.Kind) + len(request.ToolName) + len(request.Prompt)
+	encoded, encodeErr := json.Marshal(request)
+	if encodeErr != nil {
+		err := s.fail(fault(c.FaultProtocol, "interaction", "interaction request is not JSON", encodeErr))
+		s.mu.Unlock()
+		return empty, err
+	}
+	size := len(encoded)
 	if err := s.reserveInteractionBudget(size); err != nil {
 		s.mu.Unlock()
 		return empty, err
@@ -195,7 +217,7 @@ func (s *eventSink) Interact(requestCtx context.Context, request c.InteractionRe
 		s.mu.Unlock()
 		return empty, err
 	}
-	response := c.InteractionResponse{Invocation: s.call.ref, ID: request.ID}
+	response := c.InteractionResponse{Invocation: s.call.ref, ID: request.ID, Action: c.InteractionCancel}
 	if request.Kind != c.InteractionApproval && request.Kind != c.InteractionInput {
 		err := s.fail(fault(c.FaultProtocol, "interaction", "unknown interaction kind", nil))
 		s.mu.Unlock()
@@ -207,7 +229,15 @@ func (s *eventSink) Interact(requestCtx context.Context, request c.InteractionRe
 	}
 	if s.spec.Policies.Interaction == c.InteractionUnattended {
 		if request.Kind == c.InteractionApproval {
-			response.Allowed = true
+			if request.Approval != nil {
+				for _, option := range request.Approval.Options {
+					if option.Kind == "allow_once" || option.Kind == "allow_always" {
+						response.Action = c.InteractionAccept
+						response.OptionID = option.ID
+						break
+					}
+				}
+			}
 			s.mu.Unlock()
 			return response, nil
 		}
@@ -262,7 +292,14 @@ func (s *eventSink) Interact(requestCtx context.Context, request c.InteractionRe
 	if response.Invocation != s.call.ref || response.ID != request.ID {
 		return empty, s.fail(fault(c.FaultProtocol, "interaction", "interaction response identity mismatch", nil))
 	}
-	if err := s.reserveInteractionBudget(64 + len(response.ID) + len(response.Text)); err != nil {
+	if response.Action != c.InteractionAccept && response.Action != c.InteractionDecline && response.Action != c.InteractionCancel {
+		return empty, s.fail(fault(c.FaultProtocol, "interaction", "unknown interaction response action", nil))
+	}
+	encoded, encodeErr = json.Marshal(response)
+	if encodeErr != nil {
+		return empty, s.fail(fault(c.FaultProtocol, "interaction", "interaction response is not JSON", encodeErr))
+	}
+	if err := s.reserveInteractionBudget(len(encoded)); err != nil {
 		return empty, err
 	}
 	return response, nil
@@ -308,4 +345,19 @@ func (s *eventSink) finish() (*c.Fault, c.Effects, *c.Fault) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.deliveryFault, s.effects, s.firstFault
+}
+
+// cloneContent 将规范内容与观察者分离，并按实际字符串字节计入本轮预算。
+func cloneContent(content []c.ContentBlock) ([]c.ContentBlock, int) {
+	result := slices.Clone(content)
+	size := 0
+	for i, block := range result {
+		size += 32 + len(block.Type) + len(block.Text) + len(block.MIMEType) + len(block.Data) + len(block.URI) + len(block.Name) + len(block.TerminalID)
+		if block.Diff != nil {
+			diff := *block.Diff
+			result[i].Diff = &diff
+			size += len(diff.Path) + len(diff.OldText) + len(diff.NewText)
+		}
+	}
+	return result, size
 }

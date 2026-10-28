@@ -53,6 +53,9 @@ func contributionPrefix(c contract.Contributions, resources []contract.ResourceB
 	}
 	bindings := make(map[string]string)
 	for _, binding := range resources {
+		if binding.MCP != nil {
+			continue
+		}
 		if len(binding.ID) > maxContributionBytes || len(binding.Path) > maxContributionBytes {
 			return "", invalid()
 		}

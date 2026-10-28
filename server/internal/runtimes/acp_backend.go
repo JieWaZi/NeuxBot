@@ -644,6 +644,14 @@ func acpFailedResult(
 	}
 }
 
+// ClassifyFailure 复用原生故障分类，供执行宿主映射统一业务错误。
+func ClassifyFailure(runtimeID string, err error) FailureCode {
+	if runtimeID == RuntimeIDCursor {
+		return cursorACPFailureCode(err)
+	}
+	return acpFailureCode(err)
+}
+
 // acpFailureCode 提升 ACP 标准错误，其余错误按 Context 或 Runtime 分类。
 func acpFailureCode(err error) FailureCode {
 	if code, ok := ErrorCode(err); ok {

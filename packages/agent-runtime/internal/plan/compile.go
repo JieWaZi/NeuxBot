@@ -82,6 +82,14 @@ func Compile(input c.ExecutionSpec, caps c.DriverCapabilities, grants c.Grants, 
 			return Plan{}, bad("seed text budget exceeded")
 		}
 		seedBytes += len(seed.Text)
+		for _, reference := range seed.CodeReferences {
+			for _, text := range []string{reference.Path, reference.Content} {
+				if len(text) > (64<<10)-seedBytes {
+					return Plan{}, bad("seed text budget exceeded")
+				}
+				seedBytes += len(text)
+			}
+		}
 	}
 	s := clone(input)
 	var err error
@@ -91,19 +99,24 @@ func Compile(input c.ExecutionSpec, caps c.DriverCapabilities, grants c.Grants, 
 	if s.Session.Mode == "" {
 		s.Session.Mode = c.SessionNew
 	}
-	if s.Session.Checkpoint != nil {
-		return Plan{}, unsupported("cold recovery is not implemented")
-	}
 	switch s.Session.Mode {
 	case c.SessionNew:
-		if s.Session.Ref != "" {
-			return Plan{}, bad("new session cannot include existing identity")
+		if s.Session.Ref != "" || s.Session.Checkpoint != nil {
+			return Plan{}, bad("new session cannot include existing identity or checkpoint")
 		}
 	case c.SessionResume:
-		if s.Session.Ref == "" || len(s.Session.Seed) > 0 {
-			return Plan{}, bad("resume requires session identity and no seed")
+		if (s.Session.Ref == "") == (s.Session.Checkpoint == nil) || len(s.Session.Seed) > 0 {
+			return Plan{}, bad("resume requires either a hot identity or a cold checkpoint without seed")
 		}
-		if !caps.HotResume {
+		if s.Session.Checkpoint != nil {
+			checkpoint := s.Session.Checkpoint
+			if !caps.ColdResume {
+				return Plan{}, unsupported("driver native resume is not implemented")
+			}
+			if checkpoint.Version != 1 || checkpoint.SessionID == "" || checkpoint.NativeHandle == "" || checkpoint.Revision == ^uint64(0) {
+				return Plan{}, bad("cold checkpoint has no supported identity, handle or revision")
+			}
+		} else if !caps.HotResume {
 			return Plan{}, unsupported("driver hot resume is not verified")
 		}
 	default:
@@ -227,7 +240,11 @@ func Compile(input c.ExecutionSpec, caps c.DriverCapabilities, grants c.Grants, 
 		Tools     c.ToolPolicy         // Tools 是有效工具授权。
 		Native    c.NativeConfigPolicy // Native 是隔离策略。
 	}{s.Profile, s.Workspace, s.Policies.Tools, s.Policies.NativeConfig}
-	return Plan{spec: s, executionDigest: digest(s), contextDigest: digest(static), securityScopeKey: digest(security)}, nil
+	p := Plan{spec: s, executionDigest: digest(s), contextDigest: digest(static), securityScopeKey: digest(security)}
+	if checkpoint := s.Session.Checkpoint; checkpoint != nil && (checkpoint.DriverID != s.Profile.DriverID || checkpoint.DriverVersion != caps.Version || checkpoint.ContextDigest != p.contextDigest || checkpoint.SecurityScopeKey != p.securityScopeKey) {
+		return Plan{}, &c.Fault{Code: c.FaultSessionMismatch, Stage: "plan", Message: "checkpoint driver, static context or security scope changed"}
+	}
+	return p, nil
 }
 
 func contributions(v *c.Contributions) error {
@@ -341,7 +358,13 @@ func clone(v c.ExecutionSpec) c.ExecutionSpec {
 		v.Profile.Thinking = &thinking
 	}
 	v.Input.Attachments = slices.Clone(v.Input.Attachments)
+	v.Input.CodeReferences = slices.Clone(v.Input.CodeReferences)
+	v.Input.SelectedSkills = slices.Clone(v.Input.SelectedSkills)
+	v.Input.SelectedMCP = slices.Clone(v.Input.SelectedMCP)
 	v.Session.Seed = slices.Clone(v.Session.Seed)
+	for index := range v.Session.Seed {
+		v.Session.Seed[index].CodeReferences = slices.Clone(v.Session.Seed[index].CodeReferences)
+	}
 	if v.Session.Checkpoint != nil {
 		checkpoint := *v.Session.Checkpoint
 		v.Session.Checkpoint = &checkpoint

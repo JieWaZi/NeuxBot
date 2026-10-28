@@ -722,7 +722,7 @@ func TestInteractionUsesIndependentDeadline(t *testing.T) {
 	handler := interactionFunc(func(ctx context.Context, req c.InteractionRequest) (c.InteractionResponse, error) {
 		select {
 		case <-time.After(10 * time.Millisecond):
-			return c.InteractionResponse{Invocation: req.Invocation, ID: req.ID, Text: "yes"}, nil
+			return c.InteractionResponse{Invocation: req.Invocation, ID: req.ID, Action: c.InteractionAccept, Content: map[string]any{"answer": "yes"}}, nil
 		case <-ctx.Done():
 			return c.InteractionResponse{}, ctx.Err()
 		}
@@ -818,7 +818,7 @@ func TestCancelledInteractionDoesNotCancelHealthyTurnOrAcceptLateReply(t *testin
 			requestCtx, cancel := context.WithCancel(ctx)
 			go func() { <-entered; cancel() }()
 			response, err := s.Interact(requestCtx, c.InteractionRequest{ID: "q", Kind: c.InteractionInput})
-			if !errors.Is(err, context.Canceled) || response.Allowed {
+			if !errors.Is(err, context.Canceled) || response.Action == c.InteractionAccept {
 				t.Errorf("revoked interaction accepted or wrongly classified: %#v %v", response, err)
 			}
 			if ctx.Err() != nil {
@@ -836,7 +836,7 @@ func TestCancelledInteractionDoesNotCancelHealthyTurnOrAcceptLateReply(t *testin
 	got := rt.Run(context.Background(), in, c.RunOptions{InteractionHandler: interactionFunc(func(ctx context.Context, req c.InteractionRequest) (c.InteractionResponse, error) {
 		close(entered)
 		<-ctx.Done()
-		return c.InteractionResponse{Invocation: req.Invocation, ID: req.ID, Allowed: true, Text: "late"}, nil
+		return c.InteractionResponse{Invocation: req.Invocation, ID: req.ID, Action: c.InteractionAccept, Content: map[string]any{"answer": "late"}}, nil
 	})})
 	if got.Status != c.StatusCompleted || got.Output.Text != "continued" {
 		t.Fatalf("healthy turn was cancelled: %#v", got)
@@ -878,7 +878,7 @@ func TestInteractionHandlerDoesNotBlockOrdinaryEvents(t *testing.T) {
 	got := rt.Run(context.Background(), in, c.RunOptions{InteractionHandler: interactionFunc(func(_ context.Context, req c.InteractionRequest) (c.InteractionResponse, error) {
 		close(entered)
 		<-release
-		return c.InteractionResponse{Invocation: req.Invocation, ID: req.ID, Text: "yes"}, nil
+		return c.InteractionResponse{Invocation: req.Invocation, ID: req.ID, Action: c.InteractionAccept, Content: map[string]any{"answer": "yes"}}, nil
 	})})
 	if got.Status != c.StatusCompleted {
 		t.Fatalf("%#v", got)

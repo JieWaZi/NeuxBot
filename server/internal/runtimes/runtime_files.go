@@ -27,6 +27,12 @@ type runtimeFiles struct {
 	selectedSkills []skillSelection
 }
 
+// PrepareWorkspace 为注入的执行宿主物化原生指令与技能，不创建进程或提交输入。
+func (sdk *SDK) PrepareWorkspace(request RunRequest) error {
+	_, err := sdk.prepareRuntimeFiles(request.Detection, request.Workspace, request.Instructions, request.Skills)
+	return err
+}
+
 // prepareRuntimeFiles 把当前指令和技能准备成所选 Runtime 能直接读取的文件。
 func (sdk *SDK) prepareRuntimeFiles(
 	detection DetectionResult,

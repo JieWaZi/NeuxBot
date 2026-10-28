@@ -132,6 +132,8 @@ var (
 	RuntimeSDK *runtimes.SDK
 	// KnowledgeRuntimeHost 拥有知识结果调用及失败清理租约。
 	KnowledgeRuntimeHost *runtimehost.Host
+	// ChatRuntimeHost 拥有普通聊天的原生会话及其账号、能力资源租约。
+	ChatRuntimeHost *runtimehost.ChatHost
 	// RuntimeEnvironmentControllerManager 提供设备级 Runtime 环境持久化接口。
 	RuntimeEnvironmentControllerManager controllers.RuntimeEnvironmentController
 	// RuntimeEnvironmentService 提供 Runtime 环境初始化和探测生命周期。
@@ -444,6 +446,7 @@ func loadRuntime(ctx context.Context) error {
 		return mapCoreError("initialize_runtime_sdk", status_error.CoreRuntimeInitializationFailed, err)
 	}
 	RuntimeSDK = sdk
+	ChatRuntimeHost = runtimehost.NewChat(runtimehost.ChatConfig{Launch: RuntimeSDK.PrepareLaunch, PrepareWorkspace: RuntimeSDK.PrepareWorkspace, Runtimes: RuntimeSDK.Runtimes, Fork: RuntimeSDK.ForkSession})
 	KnowledgeRuntimeHost = newKnowledgeRuntimeHost()
 	KnowledgeRuntimeHost.Start(ctx)
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
@@ -517,6 +520,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		},
 		Accounts:            AIAccountService,
 		Runtime:             RuntimeSDK,
+		ChatRuntime:         ChatRuntimeHost,
 		Journal:             chatModule,
 		DormantChats:        chatModule,
 		Wakers:              WakerControllerManager,
@@ -669,6 +673,15 @@ func Close() error {
 	if ExecutionService != nil {
 		ExecutionService.Close()
 		ExecutionService = nil
+	}
+	if ChatRuntimeHost != nil {
+		closeContext, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
+		err := ChatRuntimeHost.Close(closeContext)
+		cancelClose()
+		if err != nil {
+			return mapCoreError("close_chat_runtime_host", status_error.CoreShutdownFailed, err)
+		}
+		ChatRuntimeHost = nil
 	}
 	if PluginBridges != nil {
 		PluginBridges.Close()

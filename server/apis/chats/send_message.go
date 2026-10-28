@@ -46,7 +46,7 @@ func (s *SendMessage) Output(ctx *gin.Context) (interface{}, error) {
 		}
 		intent = bound
 	}
-	result, err := global.ExecutionService.Start(ctx, intent)
+	result, err := global.ExecutionService.StartChat(ctx, intent)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

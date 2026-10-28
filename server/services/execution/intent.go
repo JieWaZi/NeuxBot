@@ -157,17 +157,36 @@ type AcceptedExecution struct {
 }
 
 // Start 校验并执行一个入口无关的工作意图。
-func (m *service) Start(
-	ctx context.Context,
-	intent WorkIntent,
-) (AcceptedExecution, error) {
+func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecution, error) {
+	return m.start(ctx, intent, m.runtime)
+}
+
+// StartChat 在普通聊天入口选择独立 Runtime，团队成员按权威归属保留原执行边界。
+func (m *service) StartChat(ctx context.Context, intent WorkIntent) (AcceptedExecution, error) {
+	runner := m.chatRuntime
+	if runner == nil {
+		runner = m.runtime
+	}
+	if chatID := strings.TrimSpace(intent.Chat.ChatID); chatID != "" {
+		state, err := m.journal.LoadExecutionContext(ctx, chatID)
+		if err != nil {
+			return AcceptedExecution{}, err
+		}
+		if state.ThreadWorkspaceID != "" {
+			runner = m.runtime
+		}
+	}
+	return m.start(ctx, intent, runner)
+}
+
+func (m *service) start(ctx context.Context, intent WorkIntent, runner runtimeRunner) (AcceptedExecution, error) {
 	if m.validateIntent != nil {
 		if err := m.validateIntent(ctx, intent); err != nil {
 			return AcceptedExecution{}, err
 		}
 	}
 	if intent.RetryExecutionID != "" {
-		return m.retryExecution(ctx, strings.TrimSpace(intent.Chat.ChatID), strings.TrimSpace(intent.RetryExecutionID))
+		return m.retryExecution(ctx, strings.TrimSpace(intent.Chat.ChatID), strings.TrimSpace(intent.RetryExecutionID), runner)
 	}
 
 	inputContext := ctx
@@ -201,6 +220,7 @@ func (m *service) Start(
 		return AcceptedExecution{}, status_error.BadRequest
 	}
 	request := pendingMessage{automaticRunID: intent.AutomaticRunID,
+		runner:          runner,
 		executionID:     intent.ExecutionID,
 		submissionID:    intent.Input.SubmissionID,
 		clientRequestID: intent.ClientRequestID,

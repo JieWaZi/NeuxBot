@@ -30,6 +30,11 @@ func (r *Runtime) Start(ctx context.Context) error { return r.engine.Start(ctx) 
 // NewInvocationID 预分配可取消的唯一身份，待用身份受活动预算限制。
 func (r *Runtime) NewInvocationID() (string, error) { return r.engine.NewInvocationID() }
 
+// NativeCheckpoint 固定宿主已持有原生身份的恢复期望；后续 Run 才确认原生能力和实际配置。
+func (r *Runtime) NativeCheckpoint(spec c.ExecutionSpec, nativeHandle string) (*c.SessionCheckpoint, error) {
+	return r.engine.NativeCheckpoint(spec, nativeHandle)
+}
+
 // Invoke 使用临时新会话执行一次无人值守调用并释放所有资源。
 func (r *Runtime) Invoke(ctx context.Context, spec c.ExecutionSpec) c.Result {
 	return r.engine.Execute(ctx, spec, c.RunOptions{}, true)

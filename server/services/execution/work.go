@@ -97,6 +97,8 @@ type pendingChat struct {
 
 // pendingMessage 保存尚未被 Runtime 接受、尚未进入权威日志的输入。
 type pendingMessage struct {
+	// runner 是当前入口明确选择的技术执行所有者，不进入业务事实。
+	runner runtimeRunner
 	// automaticRunID 固定服务端编排来源，恢复和重试保持原调用链。
 	automaticRunID string
 	// submissionID 是耐久入口可选的续发请求身份。
@@ -245,6 +247,9 @@ func (m *service) startMessage(
 ) (AcceptedExecution, error) {
 	// 先完成纯输入规范化和契约校验，避免任何外部副作用发生后才拒绝请求。
 	request = normalizePendingMessage(request)
+	if request.runner == nil {
+		request.runner = m.runtime
+	}
 	if !validCodeReferences(request.message.CodeReferences) {
 		return AcceptedExecution{}, status_error.BadRequest
 	}
@@ -435,7 +440,7 @@ func (m *service) startMessage(
 		}
 	}
 	var handoffSummary string
-	if request.runtime.HistoryMode == constants.HistoryModeSummary && !state.isNew && m.runtime != nil {
+	if request.runtime.HistoryMode == constants.HistoryModeSummary && !state.isNew && request.runner != nil {
 		summaryFiles := &preparedMessageFiles{executionWorkspaceDirectory: state.workspaceDirectory}
 		handoffSummary, _ = m.summarizeCurrentSession(ctx, state, request, summaryFiles)
 		if err := ctx.Err(); err != nil {
@@ -457,7 +462,7 @@ func (m *service) startMessage(
 	}
 	defer files.rollback()
 
-	if m.runtime == nil {
+	if request.runner == nil {
 		return AcceptedExecution{}, status_error.RuntimeUnavailable
 	}
 	var enabledSkills []models.SkillWithState
@@ -514,15 +519,33 @@ func (m *service) startMessage(
 		runRequest.Message.Text = handoffRunPrompt(handoffSummary, request.message.Text)
 	}
 	var accountRelease func()
+	var accountLease func(context.Context) error
 	if request.runtime.AccountID != "" {
-		target, release, prepareErr := m.accounts.Prepare(ctx, request.runtime.AccountID, runtimeEnvironment.BaseRuntimeID, runRequest.Workspace.Path, request.runtime.Model)
+		var target runtimes.RuntimeTarget
+		var prepareErr error
+		if owned, ok := request.runner.(interface {
+			CloseWorkspace(context.Context, string) error
+		}); ok {
+			// 受管账号在同一工作区重写原生配置前，先确认旧消费者已退出。
+			if err := owned.CloseWorkspace(ctx, runRequest.Workspace.Path); err != nil {
+				return AcceptedExecution{}, err
+			}
+			target, accountLease, prepareErr = m.accounts.PrepareQueuedLease(ctx, request.runtime.AccountID, runtimeEnvironment.BaseRuntimeID, runRequest.Workspace.Path, request.runtime.Model)
+		} else {
+			target, accountRelease, prepareErr = m.accounts.Prepare(ctx, request.runtime.AccountID, runtimeEnvironment.BaseRuntimeID, runRequest.Workspace.Path, request.runtime.Model)
+		}
 		if prepareErr != nil {
 			return AcceptedExecution{}, prepareErr
 		}
-		accountRelease = release
 		defer func() {
 			if releaseReservation {
-				release()
+				if accountLease != nil {
+					if err := accountLease(context.WithoutCancel(ctx)); err != nil {
+						logx.Errorf("release unstarted chat account failed: execution_id=%s error=%v", executionID, err)
+					}
+				} else if accountRelease != nil {
+					accountRelease()
+				}
 			}
 		}()
 		runRequest.Target.AccountID = target.AccountID
@@ -731,12 +754,14 @@ func (m *service) startMessage(
 	execution.PluginResources = pluginResources.snapshots
 	started := make(chan executionStartResult, 1)
 	plan := messageExecution{
+		runner:            request.runner,
 		pluginRelease:     pluginResources.release,
 		plugins:           pluginResources.selected,
 		messageFacts:      messageFacts,
 		agentActivate:     agentActivate,
 		agentSettle:       agentSettle,
 		accountRelease:    accountRelease,
+		accountLease:      accountLease,
 		capabilityRelease: capabilityRelease,
 		request:           runRequest,
 		state:             state,
@@ -1738,6 +1763,12 @@ func (m *service) buildRunRequest(
 			Mode: runtimes.SessionModeResume,
 			ID:   session.SessionID,
 		}
+	}
+	// 重启后的普通续聊依据权威日志中的上次配置决定新建，不能让新配置替旧句柄作证明。
+	if m.chatRuntime != nil && request.runner == m.chatRuntime && state.chat.ForkSourceChatID == "" && state.chat.LastRuntimeID != "" &&
+		(state.chat.LastRuntimeID != request.runtime.RuntimeID || state.chat.LastModel != request.runtime.Model ||
+			state.chat.LastReasoning != request.runtime.Reasoning || state.chat.LastPermissionLevel != request.runtime.PermissionLevel) {
+		sessionDirective = runtimes.SessionDirective{Mode: runtimes.SessionModeNew}
 	}
 	additionalWritableDirectories := append([]string(nil), state.chat.AdditionalWorkingDirectories...)
 

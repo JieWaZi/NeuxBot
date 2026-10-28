@@ -10,6 +10,16 @@ import (
 
 // ForkChat 把冻结执行配置交给 Runtime；Chat 仍独占历史、幂等和发布事务。
 func (m *service) ForkChat(ctx context.Context, input chatservice.ForkInput) (string, error) {
+	runner := m.runtime
+	if m.chatRuntime != nil {
+		state, err := m.journal.LoadExecutionContext(ctx, input.ChatID)
+		if err != nil {
+			return "", err
+		}
+		if state.ThreadWorkspaceID == "" {
+			runner = m.chatRuntime
+		}
+	}
 	var prepared runtimes.ForkSessionRequest
 	var preparedReady bool
 	buildRequest := func(ctx context.Context, input chatservice.NativeForkInput) (runtimes.ForkSessionRequest, error) {
@@ -49,7 +59,7 @@ func (m *service) ForkChat(ctx context.Context, input chatservice.ForkInput) (st
 				}
 			}
 			request.ReconcileOnly = input.ReconcileOnly
-			result, err := m.runtime.ForkSession(ctx, request)
+			result, err := runner.ForkSession(ctx, request)
 			return result.SessionID, err
 		},
 	})

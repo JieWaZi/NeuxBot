@@ -196,7 +196,7 @@ func TestNativeActivityAndApprovalPauseInactivity(t *testing.T) {
 			sink := &recordingSink{interact: func(ctx context.Context, r contract.InteractionRequest) (contract.InteractionResponse, error) {
 				select {
 				case <-time.After(80 * time.Millisecond):
-					return contract.InteractionResponse{Invocation: r.Invocation, ID: r.ID, Allowed: true}, nil
+					return contract.InteractionResponse{Invocation: r.Invocation, ID: r.ID, Action: contract.InteractionAccept, OptionID: r.Approval.Options[0].ID}, nil
 				case <-ctx.Done():
 					return contract.InteractionResponse{}, ctx.Err()
 				}

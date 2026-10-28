@@ -22,7 +22,7 @@ func (r *RetryChatExecution) Path() string { return "/:chatId/executions/:execut
 
 // Output 由后端恢复原输入并重新校验重试资格。
 func (r *RetryChatExecution) Output(ctx *gin.Context) (interface{}, error) {
-	result, err := global.ExecutionService.Start(ctx, execution.WorkIntent{
+	result, err := global.ExecutionService.StartChat(ctx, execution.WorkIntent{
 		Chat: execution.ChatTarget{ChatID: r.ChatID}, RetryExecutionID: r.ExecutionID,
 	})
 	if err != nil {

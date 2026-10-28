@@ -198,6 +198,8 @@ func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, 
 
 // messageExecution 保存 Chat 已解析的一次 Runtime 调用及其业务身份。
 type messageExecution struct {
+	// runner 是接纳入口冻结的唯一 Runtime，不按事件或失败切换实现。
+	runner runtimeRunner
 	// messageFacts 交付同一执行已提交的交互与命令事实，保证实时与重放一致。
 	messageFacts *executionMessageFacts
 	// agentActivate 在执行接纳后激活短期 CLI 身份。
@@ -206,6 +208,8 @@ type messageExecution struct {
 	agentSettle func(runtimes.Result)
 	// capabilityRelease 在回合结束后撤销内置工具能力。
 	capabilityRelease func()
+	// accountLease 在独立 Runtime 原生消费者退出后回收认证，失败允许重试。
+	accountLease func(context.Context) error
 	// accountRelease 在 Runtime 进程结束后释放账号使用租约。
 	accountRelease func()
 	// pluginRelease 释放本轮冻结共享授权的使用租约。
@@ -247,13 +251,20 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 	if plan.precommitted && plan.agentActivate != nil {
 		plan.agentActivate()
 	}
-	if plan.pluginRelease != nil {
+	runner := plan.runner
+	if runner == nil {
+		runner = m.runtime
+	}
+	leaseRunner, transfersLease := runner.(interface {
+		RunWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
+	})
+	if !transfersLease && plan.pluginRelease != nil {
 		defer plan.pluginRelease()
 	}
 	if plan.capabilityRelease != nil {
 		defer plan.capabilityRelease()
 	}
-	if plan.accountRelease != nil {
+	if !transfersLease && plan.accountRelease != nil {
 		defer plan.accountRelease()
 	}
 	chat := plan.state.chat
@@ -304,7 +315,24 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 	}
 	plan.messageFacts.start(runtimeSink.scheduleMessageFacts)
 	defer plan.messageFacts.stopDelivery()
-	result := m.runtime.Run(ctx, plan.request, sink)
+	var result runtimes.Result
+	if transfersLease {
+		result = leaseRunner.RunWithLease(ctx, plan.request, sink, func(closeContext context.Context) error {
+			if plan.pluginRelease != nil {
+				plan.pluginRelease()
+				plan.pluginRelease = nil
+			}
+			if plan.accountLease != nil {
+				return plan.accountLease(closeContext)
+			}
+			if plan.accountRelease != nil {
+				plan.accountRelease()
+			}
+			return nil
+		})
+	} else {
+		result = runner.Run(ctx, plan.request, sink)
+	}
 	if plan.capabilityRelease != nil {
 		plan.capabilityRelease()
 	}

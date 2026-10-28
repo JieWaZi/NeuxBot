@@ -104,21 +104,31 @@ func (m *service) summarizeCurrentSession(
 			},
 		},
 	}
+	runner := request.runner
+	if runner == nil {
+		runner = m.runtime
+	}
+	var accountRelease func()
+	var accountLease func(context.Context) error
 	if accountID := state.chat.LastAccountID; accountID != "" {
 		if m.accounts == nil {
 			return "", false
 		}
-		target, release, err := m.accounts.Prepare(
-			ctx,
-			accountID,
-			environment.BaseRuntimeID,
-			files.executionWorkspaceDirectory,
-			model,
-		)
+		var target runtimes.RuntimeTarget
+		var err error
+		if owned, ok := runner.(interface {
+			CloseWorkspace(context.Context, string) error
+		}); ok {
+			if err = owned.CloseWorkspace(ctx, run.Workspace.Path); err != nil {
+				return "", false
+			}
+			target, accountLease, err = m.accounts.PrepareQueuedLease(ctx, accountID, environment.BaseRuntimeID, run.Workspace.Path, model)
+		} else {
+			target, accountRelease, err = m.accounts.Prepare(ctx, accountID, environment.BaseRuntimeID, run.Workspace.Path, model)
+		}
 		if err != nil {
 			return "", false
 		}
-		defer release()
 		run.Target.AccountID = target.AccountID
 		run.Target.RefreshCredentials = target.RefreshCredentials
 		run.Target.Environment = target.Environment
@@ -127,7 +137,25 @@ func (m *service) summarizeCurrentSession(
 		run.Target.ConfigHome = ""
 	}
 	sink := &handoffSink{}
-	result := m.runtime.Run(ctx, run, sink)
+	var result runtimes.Result
+	if owned, ok := runner.(interface {
+		RunSummaryWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
+	}); ok {
+		result = owned.RunSummaryWithLease(ctx, run, sink, func(closeContext context.Context) error {
+			if accountLease != nil {
+				return accountLease(closeContext)
+			}
+			if accountRelease != nil {
+				accountRelease()
+			}
+			return nil
+		})
+	} else {
+		if accountRelease != nil {
+			defer accountRelease()
+		}
+		result = runner.Run(ctx, run, sink)
+	}
 	if result.Failure != nil || sink.rejected {
 		return "", false
 	}

@@ -1894,6 +1894,38 @@ type messageTestOptions struct {
 	runtimeEnvironments runtimeEnvironmentReader
 }
 
+// TestChatColdConfigurationChangeUsesJournalFacts 验证宿主重启后仍按权威配置选择会话。
+func TestChatColdConfigurationChangeUsesJournalFacts(t *testing.T) {
+	manager := &service{chatRuntime: &fakeRuntime{}}
+	state := messageChat{
+		chat: models.Chat{ID: "chat", LastRuntimeID: "codex", LastModel: "old", LastReasoning: "high", LastPermissionLevel: constants.PermissionLevelAuto},
+		previousMessages: []messageview.Message{
+			{ID: "input", Role: constants.MessageRoleUser, ExecutionID: "boundary", Content: "prior input"},
+			{ID: "prior", Role: constants.MessageRoleAssistant, ExecutionID: "boundary", Status: constants.ExecutionStatusCompleted, DisplayParts: []messageview.MessageDisplayPart{{Type: constants.MessageDisplayPartText, Text: "prior result"}}},
+		},
+		runtimeSessions: map[string]models.RuntimeSession{"codex": {SessionID: "native", LastExecutionID: "boundary"}},
+	}
+	changes := map[string]func(*runtimeSelection){
+		"model":      func(r *runtimeSelection) { r.Model = "new" },
+		"reasoning":  func(r *runtimeSelection) { r.Reasoning = "low" },
+		"permission": func(r *runtimeSelection) { r.PermissionLevel = constants.PermissionLevelFullAccess },
+	}
+	for name, change := range changes {
+		t.Run(name, func(t *testing.T) {
+			pending := pendingMessage{runner: manager.chatRuntime, runtime: runtimeSelection{RuntimeID: "codex", Model: "old", Reasoning: "high", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}}
+			unchanged := manager.buildRunRequest(state, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
+			if unchanged.Session.Mode != runtimes.SessionModeResume {
+				t.Fatalf("unchanged=%+v", unchanged.Session)
+			}
+			change(&pending.runtime)
+			changed := manager.buildRunRequest(state, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
+			if changed.Session.Mode != runtimes.SessionModeNew || len(changed.History) == 0 {
+				t.Fatalf("changed=%+v history=%+v", changed.Session, changed.History)
+			}
+		})
+	}
+}
+
 // TestForkContinuationNeverSuppliesInheritedPrompt 验证子会话仅恢复独立 Session 并发送新增输入。
 func TestForkContinuationNeverSuppliesInheritedPrompt(t *testing.T) {
 	manager := &service{}

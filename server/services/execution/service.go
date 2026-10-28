@@ -32,6 +32,8 @@ type Service interface {
 	Open(ctx context.Context) error
 	// Close 取消全部 Runtime 执行并等待持久化收尾。
 	Close()
+	// StartChat 通过普通聊天的独立 Runtime 执行；团队成员仍采用团队执行边界。
+	StartChat(ctx context.Context, intent WorkIntent) (AcceptedExecution, error)
 	// Start 校验并执行一个入口无关的工作意图。
 	Start(ctx context.Context, intent WorkIntent) (AcceptedExecution, error)
 	// ValidateConfiguration 校验 Runtime、模型、推理强度和权限组合可以用于下一次执行。
@@ -106,6 +108,8 @@ type service struct {
 	acquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// accounts 为执行冻结账号并生成隔离配置。
 	accounts *aiaccount.Service
+	// chatRuntime 拥有普通聊天的独立调用、会话与资源租约。
+	chatRuntime runtimeRunner
 	// runtime 执行一次结构化 Agent 调用并交付归一化事件。
 	runtime runtimeRunner
 	// journal 读写 Chat 权威事实、窄投影和 committed SSE。
@@ -166,6 +170,8 @@ type Config struct {
 	AcquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// Accounts 管理受管账号的使用租约和配置投射。
 	Accounts *aiaccount.Service
+	// ChatRuntime 提供普通聊天的独立执行；未设置时沿用 Runtime。
+	ChatRuntime runtimeRunner
 	// Runtime 执行一次完整 Agent 调用并提供工作区投影声明。
 	Runtime runtimeRunner
 	// Journal 读写 Chat 权威事实和可重建投影。
@@ -266,6 +272,7 @@ func New(config Config) (Core, error) {
 		accounts:             config.Accounts,
 		acquireTeamChatInput: config.AcquireTeamChatInput,
 		runtime:              config.Runtime,
+		chatRuntime:          config.ChatRuntime,
 		journal:              config.Journal,
 		dormantChats:         config.DormantChats,
 		wakerController:      config.Wakers,
