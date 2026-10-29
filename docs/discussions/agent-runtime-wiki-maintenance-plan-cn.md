@@ -1,5 +1,7 @@
 # 独立 Wiki 维护 Runtime 迁移
 
+> 本文保留对应阶段的设计、实施与验证记录；涉及迁移顺序、旧路径和验收状态的叙述以当时为准。当前代码状态见[实施计划](agent-runtime-implementation-plan-cn.md)及 [CLI 收尾计划](agent-runtime-cli-plan-cn.md)，历史真实 CLI 证据不代表当前构建已验收。
+
 ## 范围
 
 将独立 `MaintenanceRunner` 接入现有全部 CLI 共用的 Runtime 宿主。知识任务仍拥有库范围、每次领域调用校验、成功操作证据和业务终态；Runtime 拥有原生会话、最终输出、取消和资源释放。普通聊天型 Wiki 修订、自动任务和其他 Chat 入口不在本批迁移。

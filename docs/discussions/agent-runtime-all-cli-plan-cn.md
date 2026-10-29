@@ -1,5 +1,7 @@
 # Agent Runtime 全 CLI 结果调用接入计划
 
+> 本文保留对应阶段的设计、实施与验证记录；涉及迁移顺序、旧路径和验收状态的叙述以当时为准。当前代码状态见[实施计划](agent-runtime-implementation-plan-cn.md)及 [CLI 收尾计划](agent-runtime-cli-plan-cn.md)，历史真实 CLI 证据不代表当前构建已验收。
+
 > 执行方式：Sol 6.1 xhigh 并行实施，Terra 6.1 处理简单清点；整阶段完成后统一 review，不逐项反复审查。
 
 **Goal:** 把现有全部 CLI 的知识结果调用接入同一个独立 Runtime，删除旧 GenerateText 执行链，避免后续业务迁移再补厂商适配。
@@ -65,7 +67,7 @@
 - [x] 汇总各 CLI 实现、协议夹具、真实 CLI 证据与剩余边界。
 - [x] 完成一次跨模块 review，一批修复发现的问题，必要回归后提交阶段结果。
 
-## 当前验收覆盖
+## 当时验收覆盖
 
 本机假 Provider 只用于验证真实 CLI 与公开 ACP 的调用、结果和取消链路；不代表真实账号、模型质量或其他平台已验收。
 

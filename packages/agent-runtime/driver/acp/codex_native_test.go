@@ -19,7 +19,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	driver "github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp"
+	"github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp/native"
 	agentruntime "github.com/JieWaZi/NeuxBot/agent-runtime/runtime"
+	sdk "github.com/JieWaZi/acp-go/sdk"
 )
 
 // nativeCodexObservation 保留真实CLI的模型请求和最终结果，不检查其原生配置与工具清单。
@@ -55,6 +57,49 @@ func TestNativeCodexToolThenFinal(t *testing.T) {
 	}
 	if got.result.Status != contract.StatusCompleted || got.result.Fault != nil || got.result.CleanupFault != nil || got.result.Output.Text != "FINAL_FIXTURE_OK" || got.result.Output.Reliability != contract.ReliabilityVerifiedPhase {
 		t.Fatalf("tool loop did not yield final-only result: %+v", got.result)
+	}
+}
+
+// TestNativeCodexSessionResume 验证两轮热续聊及关闭后的原生检查点恢复，不重建用户历史。
+func TestNativeCodexSessionResume(t *testing.T) {
+	got := runNativeCodexFixture(t, "session_resume")
+	if len(got.requests) != 3 || got.result.Status != contract.StatusCompleted || got.result.Output.Text != "FINAL_FIXTURE_OK" || got.result.Output.Reliability != contract.ReliabilityVerifiedPhase {
+		t.Fatalf("native resumed session result=%+v requests=%d", got.result, len(got.requests))
+	}
+	markers := []string{"EXACT_USER_FIXTURE", "SECOND_USER_FIXTURE", "THIRD_USER_FIXTURE"}
+	for index, request := range got.requests {
+		if request["instructions"] != "EXPLICIT_SYSTEM_FIXTURE" && !nativeCodexExactMessage(request["input"], "developer", "EXPLICIT_SYSTEM_FIXTURE") {
+			t.Fatalf("native turn %d changed static instructions", index+1)
+		}
+		for markerIndex, text := range markers {
+			count := 0
+			items, _ := request["input"].([]any)
+			for _, raw := range items {
+				item, _ := raw.(map[string]any)
+				if item["role"] != "user" {
+					continue
+				}
+				content, _ := item["content"].([]any)
+				for _, rawPart := range content {
+					part, _ := rawPart.(map[string]any)
+					if part["type"] == "input_text" && part["text"] == text {
+						count++
+					}
+				}
+			}
+			if markerIndex == index && count != 1 || markerIndex < index && count > 1 || markerIndex > index && count != 0 {
+				t.Fatalf("native turn %d user marker %d count=%d", index+1, markerIndex+1, count)
+			}
+		}
+	}
+	t.Log("native codex three turns each contain exactly one new input, no duplicated prior inputs, unchanged static instructions")
+}
+
+// TestNativeCodexCancellation 仅在真实CLI到达虚构Provider后取消，不交付未完成正文。
+func TestNativeCodexCancellation(t *testing.T) {
+	got := runNativeCodexFixture(t, "cancel")
+	if got.result.Status != contract.StatusCancelled || got.result.Output.Text != "" || got.result.Output.Status == contract.OutputAvailable || got.result.CleanupFault != nil {
+		t.Fatalf("native cancellation = %+v", got.result)
 	}
 }
 
@@ -131,6 +176,11 @@ func runNativeCodexFixture(t *testing.T, phase string) nativeCodexObservation {
 		default:
 			t.Error("unexpected repeated model requests")
 		}
+		if phase == "cancel" {
+			cancel()
+			<-r.Context().Done()
+			return
+		}
 		if phase == "tool_then_final" && requestCount.Add(1) == 1 {
 			name := ""
 			definitions, _ := payload["tools"].([]any)
@@ -150,7 +200,7 @@ func runNativeCodexFixture(t *testing.T, phase string) nativeCodexObservation {
 			writeNativeCodexToolResponse(w, name)
 		} else {
 			responsePhase := phase
-			if phase == "tool_then_final" {
+			if phase == "tool_then_final" || phase == "session_resume" {
 				responsePhase = "final_answer"
 			}
 			writeNativeCodexResponse(w, responsePhase)
@@ -179,6 +229,23 @@ func runNativeCodexFixture(t *testing.T, phase string) nativeCodexObservation {
 	t.Logf("native CLI: %s", strings.TrimSpace(string(versionOutput)))
 	// 仅给fixture选择假Provider和明确系统输入；保留原生工具及配置加载。
 	args := []string{"-c", "model_instructions_file=" + strconv.Quote(filepath.Join(nativeHome, "instructions.md"))}
+	if phase == "final_answer" {
+		management, err := driver.OpenManagement(ctx, func(ctx context.Context) (sdk.Agent, error) {
+			return native.New(ctx, native.Config{RuntimeID: "codex", Executable: launcher, PrefixArgs: args, Environment: environment, WorkingDirectory: workspace, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+		}, driver.ManagementConfig{})
+		if err != nil {
+			if management != nil {
+				_ = management.Close(context.Background())
+			}
+			t.Fatal(err)
+		}
+		probe, err := management.Probe(ctx, driver.ProbeRequest{Workspace: contract.WorkspaceScope{Root: workspace}, Model: "fixture-model"})
+		closeErr := management.Close(context.Background())
+		if err != nil || closeErr != nil || !probe.SessionReady || len(requests) != 0 {
+			t.Fatalf("native Codex management session_ready=%v prompts=%d error=%v close_error=%v", probe.SessionReady, len(requests), err, closeErr)
+		}
+		t.Logf("native codex management initialized=true session_ready=true models=%d prompts=0", len(probe.Models))
+	}
 	d, err := driver.NewCodex(driver.CodexConfig{CodexPath: launcher, PrefixArgs: args, Environment: environment, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	if err != nil {
 		t.Fatal(err)
@@ -198,7 +265,32 @@ func runNativeCodexFixture(t *testing.T, phase string) nativeCodexObservation {
 		t.Fatal(err)
 	}
 	// 输出收集策略与工具、原生配置策略独立；真实工具循环保持启用。
-	result := rt.Invoke(ctx, contract.ExecutionSpec{Profile: contract.Profile{DriverID: d.ID(), Model: "fixture-model", NativeMode: "agent-full-access"}, Input: contract.Input{Text: "EXACT_USER_FIXTURE"}, Workspace: contract.WorkspaceScope{Root: workspace}, Policies: contract.Policies{NativeConfig: contract.NativeConfigInherit, Tools: contract.ToolPolicy{Mode: contract.ToolsAllowAll}}})
+	spec := contract.ExecutionSpec{Profile: contract.Profile{DriverID: d.ID(), Model: "fixture-model", NativeMode: "agent-full-access"}, Input: contract.Input{Text: "EXACT_USER_FIXTURE"}, Workspace: contract.WorkspaceScope{Root: workspace}, Policies: contract.Policies{NativeConfig: contract.NativeConfigInherit, Tools: contract.ToolPolicy{Mode: contract.ToolsAllowAll}}}
+	var result contract.Result
+	if phase == "session_resume" {
+		first := rt.Run(ctx, spec, contract.RunOptions{})
+		if first.Status != contract.StatusCompleted || first.Checkpoint == nil || first.Checkpoint.NativeHandle == "" || first.Fault != nil || first.CleanupFault != nil {
+			t.Fatalf("native first turn has no resumable checkpoint: %+v", first)
+		}
+		spec.Input.Text = "SECOND_USER_FIXTURE"
+		spec.Session = contract.SessionDirective{Mode: contract.SessionResume, Ref: first.Invocation.SessionID}
+		second := rt.Run(ctx, spec, contract.RunOptions{})
+		if second.Status != contract.StatusCompleted || second.Checkpoint == nil || second.Checkpoint.NativeHandle != first.Checkpoint.NativeHandle || second.Invocation.SessionID != first.Invocation.SessionID || second.Invocation.Revision != 2 || second.Fault != nil || second.CleanupFault != nil {
+			t.Fatalf("native hot continuation failed: %+v", second)
+		}
+		if err := rt.CloseSession(ctx, second.Invocation.SessionID); err != nil {
+			t.Fatal(err)
+		}
+		spec.Input.Text = "THIRD_USER_FIXTURE"
+		spec.Session = contract.SessionDirective{Mode: contract.SessionResume, Checkpoint: second.Checkpoint}
+		result = rt.Run(ctx, spec, contract.RunOptions{})
+		if result.Checkpoint == nil || result.Checkpoint.NativeHandle != first.Checkpoint.NativeHandle || result.Invocation.SessionID != first.Invocation.SessionID || result.Invocation.Revision != 3 || result.Fault != nil || result.CleanupFault != nil {
+			t.Fatalf("native cold continuation failed: %+v", result)
+		}
+		t.Log("native codex hot revisions=1,2 closed=true cold_revision=3 native_handle_preserved=true")
+	} else {
+		result = rt.Invoke(ctx, spec)
+	}
 	select {
 	case payload := <-requests:
 		observed := []map[string]any{payload}
@@ -208,6 +300,9 @@ func runNativeCodexFixture(t *testing.T, phase string) nativeCodexObservation {
 		expected := 1
 		if phase == "tool_then_final" {
 			expected = 2
+		}
+		if phase == "session_resume" {
+			expected = 3
 		}
 		if len(observed) != expected {
 			t.Errorf("model requests = %d, want %d", len(observed), expected)

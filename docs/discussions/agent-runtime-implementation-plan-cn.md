@@ -102,6 +102,19 @@ Engine 不导入具体 Driver。宿主构造 Driver 并注入 Runtime；Driver �
 
 阶段 A 的任务分工保留在本节；阶段 B 已将全部已注册 CLI 的知识结果生成接入新内核，阶段 C 已迁移独立 Wiki 维护。阶段 D 的普通 Chat、伙伴入口已完成，详见 [Chat 阶段计划](agent-runtime-chat-plan-cn.md)。阶段 E 已统一编排执行入口、删除旧执行链，并完成一次阶段评审及问题修复，详见 [编排迁移计划](agent-runtime-orchestration-plan-cn.md)。阶段 F 的 CLI 管理归属已完成拆分与旧包删除，详见 [CLI 收尾计划](agent-runtime-cli-plan-cn.md)；打包与桌面生命周期的最终验收仍待后续完成；不把自动化测试等同于真实账号或生产验收。
 
+### 当前完成与验收边界
+
+| 阶段 | 代码状态与既有自动化证据 | 剩余真实验收边界 |
+| --- | --- | --- |
+| A 内核与 ACP | 已实现，定向测试、race 和依赖检查曾通过；当前真实 CLI 与 Core 启退通过 | 真实账号与跨平台组合 |
+| B 知识结果生成 | 11 类 CLI 已接入，旧 GenerateText 已删除 | 真实账号、模型及未安装 CLI 验收 |
+| C Wiki 维护 | 独立维护已迁移，授权和生命周期定向测试曾通过 | 真实维护与账号验收 |
+| D Chat | 普通 Chat 和伙伴入口已迁移；Codex 真实热续聊和检查点冷恢复通过 | 其他 CLI 续聊、真实账号、模型及界面验收 |
+| E 编排 | 执行入口统一，旧执行链删除，定向组合测试曾通过 | 真实 CLI 工作流及外部平台组合验收 |
+| F CLI 管理 | 旧 runtimes 包删除；六类 CLI 最终输出及 Probe、macOS arm64 实际 app 和 Core 生命周期通过 | 其他 CLI 原生门槛、账号刷新、可见桌面与跨平台发行验收 |
+
+当前工厂、真实 CLI 与打包验收以[运行与交付收尾](agent-runtime-release-validation-plan-cn.md)为准。历史真实 CLI 的版本与覆盖见[全 CLI 接入计划](agent-runtime-all-cli-plan-cn.md)，不能视为当前版本重新验收。知识生成以独立调用和最终结果为验收目标，配置隔离和禁用全部工具不是迁移门槛。
+
 阶段 A 四项开发任务已完成并通过各自及跨模块独立评审。验证包含新模块真实依赖检查、vet、定向测试与 race、Core＋公开 ACP 传输组合回归和文档检查；未运行全仓验证或真实账号验收。各 CLI 的实际运行证据和边界见[全 CLI 接入计划](agent-runtime-all-cli-plan-cn.md)；Codex 最终性修正见[验收计划](agent-runtime-codex-validation-plan-cn.md)。
 
 首批工程保护默认值：32 个活动调用及最多 32 个待用调用标识、64 个打开 Session、最终正文 1 MiB、单事件 1 MiB、整轮 16384 个事件/64 MiB、观察交付 5 秒、人工交互等待 5 分钟、清理 5 秒；允许显式配置并校验。这是保护值，不是性能验收结论。ACP 队列基线 256 项/16 MiB，不叠加无界事件队列。

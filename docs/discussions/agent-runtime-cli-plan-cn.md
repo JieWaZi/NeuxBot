@@ -1,5 +1,6 @@
 # CLI 管理与旧 Runtime 收尾计划
 
+> 本文记录 CLI 管理迁移阶段；其后的真实 CLI、实际打包与生命周期结果见[运行与交付收尾](agent-runtime-release-validation-plan-cn.md)。
 > 执行方式：subagent-driven-development；按用户要求并行实现，阶段末统一审查一次。
 
 **目标：** 删除 `server/internal/runtimes`，让 CLI 探测、原生分叉、启动工厂和产品宿主各有明确归属，执行内核保持不变。

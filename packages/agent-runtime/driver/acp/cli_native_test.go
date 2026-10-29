@@ -3,6 +3,7 @@ package acp_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,15 +20,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	driver "github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp"
+	"github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp/native"
 	agentruntime "github.com/JieWaZi/NeuxBot/agent-runtime/runtime"
-	"github.com/JieWaZi/acp-go/pkg/claude"
-	"github.com/JieWaZi/acp-go/pkg/cursor"
-	"github.com/JieWaZi/acp-go/pkg/gemini"
-	"github.com/JieWaZi/acp-go/pkg/kimi"
-	"github.com/JieWaZi/acp-go/pkg/nativeacp"
-	"github.com/JieWaZi/acp-go/pkg/opencode"
-	"github.com/JieWaZi/acp-go/pkg/pi"
-	"github.com/JieWaZi/acp-go/pkg/workbuddy"
 	sdk "github.com/JieWaZi/acp-go/sdk"
 )
 
@@ -56,9 +50,10 @@ func TestNativeCLIUnconfiguredStartup(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			fixture := newNativeCLIFixture(t, name, false)
 			got := fixture.invoke(t, context.Background())
-			if got.Status != contract.StatusFailed || got.Fault == nil || got.Fault.Code != contract.FaultPreparation || got.Effects.PromptAccepted || got.Output.Text != "" || got.CleanupFault != nil {
+			if got.Status != contract.StatusFailed || got.Fault == nil || got.Fault.Code != contract.FaultPreparation || got.Fault.Stage != "new_session" || got.Effects.PromptAccepted || got.Output.Text != "" || got.CleanupFault != nil {
 				t.Fatalf("unexpected unconfigured native startup result: %+v", got)
 			}
+			assertNativeCLIStartupBarrier(t, name, got.Fault.Cause)
 			fixture.mutex.Lock()
 			requests := len(fixture.requests)
 			fixture.mutex.Unlock()
@@ -90,6 +85,75 @@ func TestNativeCLICancellation(t *testing.T) {
 				t.Fatalf("native cancellation = %+v; diagnostics: %s", got, fixture.diagnostics.String())
 			}
 		})
+	}
+}
+
+// TestNativeCLIManagementProbe 验证真实管理连接经过统一工厂，读取目录期间不发送模型Prompt。
+func TestNativeCLIManagementProbe(t *testing.T) {
+	for _, name := range []string{"claude", "gemini", "opencode", "kimi", "pi", "workbuddy", "qoder", "cursor"} {
+		t.Run(name, func(t *testing.T) {
+			f := newNativeCLIFixture(t, name, false)
+			ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+			defer cancel()
+			management, err := driver.OpenManagement(ctx, f.newAgent, driver.ManagementConfig{})
+			if management != nil {
+				t.Cleanup(func() {
+					closeCtx, closeCancel := context.WithTimeout(context.Background(), 6*time.Second)
+					defer closeCancel()
+					if closeErr := management.Close(closeCtx); closeErr != nil {
+						t.Error(closeErr)
+					}
+				})
+			}
+			if err != nil {
+				t.Fatalf("native management initialization failed: %v; diagnostics: %s", err, f.diagnostics.String())
+			}
+			probe, err := management.Probe(ctx, driver.ProbeRequest{Workspace: contract.WorkspaceScope{Root: f.workspace}, Model: f.model, AllowEmptyModelCatalog: true})
+			f.mutex.Lock()
+			requests := len(f.requests)
+			f.mutex.Unlock()
+			if requests != 0 {
+				t.Fatalf("management probe sent %d model prompts", requests)
+			}
+			if name == "workbuddy" || name == "qoder" || name == "cursor" {
+				if ctx.Err() != nil || probe.SessionReady {
+					t.Fatalf("unexpected unconfigured native probe session_ready=%v context_error=%v error=%v", probe.SessionReady, ctx.Err(), err)
+				}
+				assertNativeCLIStartupBarrier(t, name, err)
+				t.Logf("native %s management initialized=true session_ready=false stopped before Prompt: %v", name, err)
+				return
+			}
+			if err != nil || !probe.SessionReady {
+				t.Fatalf("native management initialized=true session_ready=%v error=%v; diagnostics: %s", probe.SessionReady, err, f.diagnostics.String())
+			}
+			t.Logf("native %s management initialized=true session_ready=true model=%s models=%d prompts=0", name, f.model, len(probe.Models))
+		})
+	}
+}
+
+// assertNativeCLIStartupBarrier 只接受已经确认的原生门槛，拒绝取消、超时与其他协议错误。
+func assertNativeCLIStartupBarrier(t *testing.T, name string, err error) {
+	t.Helper()
+	var requestError *sdk.RequestError
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &requestError) {
+		t.Fatalf("native %s did not return the expected session barrier: %v", name, err)
+	}
+	want := sdk.NewAuthRequired(nil)
+	switch name {
+	case "workbuddy":
+	case "qoder":
+		want.Message = "Authentication required: Authentication is required."
+	case "cursor":
+		want = sdk.NewInternalError(nil)
+		data, _ := requestError.Data.(map[string]any)
+		if data["message"] != "Failed to initialize session services" {
+			t.Fatalf("native cursor returned an unexpected session error: %v", err)
+		}
+	default:
+		t.Fatalf("native %s has no accepted unconfigured session barrier", name)
+	}
+	if requestError.Code != want.Code || requestError.Message != want.Message {
+		t.Fatalf("native %s returned an unexpected session barrier: %v", name, err)
 	}
 }
 
@@ -224,6 +288,11 @@ func newNativeCLIFixture(t *testing.T, name string, hold bool) *nativeCLIFixture
 		path := filepath.Join(root, "pi")
 		add("PI_CODING_AGENT_DIR", path)
 		add("ACP_GO_PI_PREFERRED_PROVIDER", "fixture")
+		bridge := os.Getenv("NEUX_RUNTIME_PI_BRIDGE")
+		if bridge == "" || !filepath.IsAbs(bridge) {
+			t.Fatal("native Pi acceptance requires an absolute NEUX_RUNTIME_PI_BRIDGE")
+		}
+		add("PI_MCP_MODULE_PATH", bridge)
 		configuration, _ := json.Marshal(map[string]any{"providers": map[string]any{"fixture": map[string]any{"baseUrl": provider.URL, "api": "anthropic-messages", "apiKey": "fixture-key", "models": []map[string]string{{"id": f.model}}}}})
 		write(filepath.Join(path, "models.json"), string(configuration))
 	case "workbuddy":
@@ -243,7 +312,7 @@ func newNativeCLIFixture(t *testing.T, name string, hold bool) *nativeCLIFixture
 	add("NEUX_FIXTURE_CWD", f.workspace)
 	add("NEUX_FIXTURE_BINARY", binary)
 	f.binary = launcher
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, launcher, "--version")
 	command.Env = f.environment
@@ -261,32 +330,8 @@ func (f *nativeCLIFixture) invoke(t *testing.T, parent context.Context) contract
 	t.Helper()
 	ctx, cancel := context.WithTimeout(parent, 35*time.Second)
 	defer cancel()
-	logger := slog.New(slog.NewTextHandler(&f.diagnostics, nil))
 	d, err := driver.New(driver.Config{ID: f.name, CompletionPolicy: driver.CompletionLastAssistant, Factory: func(ctx context.Context, _ contract.OpenRequest) (sdk.Agent, error) {
-		switch f.name {
-		case "claude":
-			return claude.NewAgent(ctx, claude.Config{ClaudePath: f.binary, Environment: f.environment, Logger: logger})
-		case "gemini":
-			return gemini.NewAgent(ctx, gemini.Config{GeminiPath: f.binary, Environment: f.environment, WorkingDirectory: f.workspace, StateDirectory: filepath.Join(f.root, "gemini-state"), PermissionMode: "full-access", Logger: logger})
-		case "opencode":
-			return opencode.NewAgent(ctx, opencode.Config{OpenCodePath: f.binary, Environment: f.environment, WorkingDirectory: f.workspace, PermissionMode: "full-access", Logger: logger})
-		case "kimi":
-			return kimi.NewAgent(ctx, kimi.Config{KimiPath: f.binary, Environment: f.environment, WorkingDirectory: f.workspace, StateDirectory: filepath.Join(f.root, "kimi-state"), PermissionMode: "full-access", Logger: logger})
-		case "pi":
-			bridge := os.Getenv("NEUX_RUNTIME_PI_BRIDGE")
-			if bridge == "" {
-				return nil, fmt.Errorf("native Pi acceptance requires NEUX_RUNTIME_PI_BRIDGE")
-			}
-			return pi.NewAgent(ctx, pi.Config{PiPath: f.binary, Environment: f.environment, WorkingDirectory: f.workspace, PermissionMode: "full-access", MCPModulePath: bridge, Logger: logger})
-		case "workbuddy":
-			return workbuddy.NewAgent(ctx, workbuddy.Config{WorkBuddyPath: f.binary, Environment: f.environment, WorkingDirectory: f.workspace, PermissionMode: "full-access", Logger: logger})
-		case "qoder":
-			return nativeacp.NewAgent(ctx, nativeacp.Config{Command: f.binary, Args: []string{"--acp"}, VersionArgs: []string{"--version"}, RuntimeName: "qoder", PromptFIFO: true, Environment: f.environment, WorkingDirectory: f.workspace, Logger: logger})
-		case "cursor":
-			return cursor.NewAgent(ctx, cursor.Config{CursorPath: f.binary, Environment: f.environment, WorkingDirectory: f.workspace, StateDirectory: filepath.Join(f.root, "cursor-state"), PermissionMode: "full-access", Logger: logger})
-		default:
-			return nil, fmt.Errorf("unknown native fixture")
-		}
+		return f.newAgent(ctx)
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -306,6 +351,11 @@ func (f *nativeCLIFixture) invoke(t *testing.T, parent context.Context) contract
 		t.Fatal(err)
 	}
 	return rt.Invoke(ctx, contract.ExecutionSpec{Profile: contract.Profile{DriverID: f.name, Model: f.model}, Input: contract.Input{Text: "EXACT_USER_FIXTURE"}, Workspace: contract.WorkspaceScope{Root: f.workspace}, Policies: contract.Policies{NativeConfig: contract.NativeConfigInherit, Tools: contract.ToolPolicy{Mode: contract.ToolsAllowAll}}})
+}
+
+// newAgent 与执行和管理入口共享唯一原生工厂，保留各CLI状态目录与Pi桥接配置。
+func (f *nativeCLIFixture) newAgent(ctx context.Context) (sdk.Agent, error) {
+	return native.New(ctx, native.Config{RuntimeID: f.name, Executable: f.binary, Environment: f.environment, WorkingDirectory: f.workspace, StateDirectory: filepath.Join(f.root, f.name+"-state"), PermissionMode: "full-access", Logger: slog.New(slog.NewTextHandler(&f.diagnostics, nil))})
 }
 
 // assertProviderReached 确认真正的模型请求含原始用户输入，并只使用虚构Provider。
