@@ -1018,7 +1018,6 @@ export function WorkflowDetailPage() {
         setTargetSelection({ scope: targetScope, targets: [] })
       }
       optimizeRunId={params.get("optimizeRun") ?? undefined}
-      onRemoveRunReference={() => change("optimizeRun", "")}
       conversationKey={String(conversationGeneration)}
       onSession={(sessionId) => {
         setCreationDraft("");

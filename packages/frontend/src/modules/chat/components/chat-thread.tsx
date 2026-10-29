@@ -1966,95 +1966,86 @@ const Composer = memo(function Composer({
               submissionState={approvalSubmissionState}
               onResolve={onResolveApproval}
             />
-          ) : (
-            <>
-              <ComposerInputBody data-chat-composer-input-body>
-                {inlineContext}
-                <ChatComposerInput
-                  autoFocus={autoFocus}
+          ) : null}
+          {/* 待处理交互只隐藏输入区，保留当前文档、建议消费状态与发送恢复状态。 */}
+          <div hidden={Boolean(currentElicitation || currentApproval)}>
+            <ComposerInputBody data-chat-composer-input-body>
+              {inlineContext}
+              <ChatComposerInput
+                autoFocus={autoFocus}
+                disabled={
+                  isWorkStopping ||
+                  disabled ||
+                  Boolean(currentElicitation || currentApproval)
+                }
+                placeholder={t("placeholder")}
+                ariaLabel={t("messageInput")}
+                skills={skills}
+                skillsError={skillsError}
+                plugins={plugins}
+                pluginsError={pluginsError}
+                selectedPluginIds={selectedPluginIds}
+                onPluginSelectionChange={onPluginSelectionChange}
+                connectors={connectors}
+                connectorsError={connectorsError}
+                fileRoots={fileRoots}
+                fileScopePath={fileScopePath}
+                fileScopeChatId={fileScopeChatId}
+                members={members}
+                selectedSkillIds={selectedSkillIds}
+                selectedConnectorIds={selectedConnectorIds}
+                onSkillSelectionChange={onSkillSelectionChange}
+                onConnectorSelectionChange={onConnectorSelectionChange}
+                onMemberMentionChange={onMemberMentionChange}
+                onAttachmentAdd={async (path) => {
+                  await aui.composer.addAttachment(pathFile(path));
+                }}
+                onAttachmentsChange={refreshComposer}
+                onValueChange={refreshComposer}
+                onOpenFile={onOpenFile}
+                onAttachmentsRemove={async (paths) => {
+                  const removedPaths = new Set(paths);
+                  const attachments = aui.composer.getState().attachments;
+                  for (
+                    let index = attachments.length - 1;
+                    index >= 0;
+                    index--
+                  ) {
+                    const attachment = attachments[index];
+                    const sourcePath = (
+                      attachment?.file as AllyPathFile | undefined
+                    )?.allySourcePath;
+                    if (!sourcePath || !removedPaths.has(sourcePath)) continue;
+                    await aui.composer.attachment({ index }).remove();
+                  }
+                }}
+                onSend={() => {
+                  if (!prepareComposerSend()) return;
+                  aui.composer.send();
+                }}
+                codeReferenceRequest={codeReferenceRequest}
+                onCodeReferencesChange={onCodeReferencesChange}
+                draft={draft}
+                clearRevision={clearRevision}
+                restoreRevision={restoreRevision}
+                className="placeholder:text-muted-foreground type-label resize-none bg-transparent outline-none disabled:opacity-55"
+              />
+            </ComposerInputBody>
+            <div className="min-h-control-lg flex items-center justify-between gap-2 px-2 pb-2">
+              <div className="flex min-w-0 items-center gap-1">
+                <AddAttachmentButton
                   disabled={isWorkStopping || disabled}
-                  placeholder={t("placeholder")}
-                  ariaLabel={t("messageInput")}
-                  skills={skills}
-                  skillsError={skillsError}
-                  plugins={plugins}
-                  pluginsError={pluginsError}
-                  selectedPluginIds={selectedPluginIds}
-                  onPluginSelectionChange={onPluginSelectionChange}
-                  connectors={connectors}
-                  connectorsError={connectorsError}
-                  fileRoots={fileRoots}
-                  fileScopePath={fileScopePath}
-                  fileScopeChatId={fileScopeChatId}
-                  members={members}
-                  selectedSkillIds={selectedSkillIds}
-                  selectedConnectorIds={selectedConnectorIds}
-                  onSkillSelectionChange={onSkillSelectionChange}
-                  onConnectorSelectionChange={onConnectorSelectionChange}
-                  onMemberMentionChange={onMemberMentionChange}
-                  onAttachmentAdd={async (path) => {
-                    await aui.composer.addAttachment(pathFile(path));
-                  }}
                   onAttachmentsChange={refreshComposer}
-                  onValueChange={refreshComposer}
-                  onOpenFile={onOpenFile}
-                  onAttachmentsRemove={async (paths) => {
-                    const removedPaths = new Set(paths);
-                    const attachments = aui.composer.getState().attachments;
-                    for (
-                      let index = attachments.length - 1;
-                      index >= 0;
-                      index--
-                    ) {
-                      const attachment = attachments[index];
-                      const sourcePath = (
-                        attachment?.file as AllyPathFile | undefined
-                      )?.allySourcePath;
-                      if (!sourcePath || !removedPaths.has(sourcePath))
-                        continue;
-                      await aui.composer.attachment({ index }).remove();
-                    }
-                  }}
-                  onSend={() => {
-                    if (!prepareComposerSend()) return;
-                    aui.composer.send();
-                  }}
-                  codeReferenceRequest={codeReferenceRequest}
-                  onCodeReferencesChange={onCodeReferencesChange}
-                  draft={draft}
-                  clearRevision={clearRevision}
-                  restoreRevision={restoreRevision}
-                  className="placeholder:text-muted-foreground type-label resize-none bg-transparent outline-none disabled:opacity-55"
                 />
-              </ComposerInputBody>
-              <div className="min-h-control-lg flex items-center justify-between gap-2 px-2 pb-2">
-                <div className="flex min-w-0 items-center gap-1">
-                  <AddAttachmentButton
-                    disabled={isWorkStopping || disabled}
-                    onAttachmentsChange={refreshComposer}
-                  />
-                  {actions}
-                  <ComposerContextUsage
-                    metrics={contextMetrics}
-                    visible={showUsageMetrics}
-                  />
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {primaryAction === "stop" && effectiveIsRunning ? (
-                    <ComposerPrimitive.Cancel asChild>
-                      <ComposerStopButton
-                        aria-label={
-                          isWorkStopping ? t("team.stoppingWork") : t("stop")
-                        }
-                        title={
-                          isWorkStopping ? t("team.stoppingWork") : t("stop")
-                        }
-                        data-chat-primary-action="stop"
-                        loading={isWorkStopping}
-                      />
-                    </ComposerPrimitive.Cancel>
-                  ) : null}
-                  {primaryAction === "stop" && !effectiveIsRunning ? (
+                {actions}
+                <ComposerContextUsage
+                  metrics={contextMetrics}
+                  visible={showUsageMetrics}
+                />
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                {primaryAction === "stop" && effectiveIsRunning ? (
+                  <ComposerPrimitive.Cancel asChild>
                     <ComposerStopButton
                       aria-label={
                         isWorkStopping ? t("team.stoppingWork") : t("stop")
@@ -2064,37 +2055,45 @@ const Composer = memo(function Composer({
                       }
                       data-chat-primary-action="stop"
                       loading={isWorkStopping}
-                      onClick={onStopWork}
                     />
-                  ) : null}
-                  {primaryAction === "send" ? (
-                    <ComposerPrimitive.Send asChild>
-                      <ComposerSendButton
-                        aria-label={t("send")}
-                        title={t("send")}
-                        disabled={disabled || !composerCanSend}
-                        data-chat-primary-action="send"
-                        onClickCapture={prepareComposerSend}
-                      />
-                    </ComposerPrimitive.Send>
-                  ) : null}
-                  {primaryAction === "queue" ? (
-                    <ComposerPrimitive.Send asChild>
-                      <ComposerSendButton
-                        aria-label={t("addToQueue")}
-                        title={t("addToQueue")}
-                        data-chat-primary-action="send"
-                        disabled={
-                          isWorkStopping || disabled || !composerCanSend
-                        }
-                        onClickCapture={prepareComposerSend}
-                      />
-                    </ComposerPrimitive.Send>
-                  ) : null}
-                </div>
+                  </ComposerPrimitive.Cancel>
+                ) : null}
+                {primaryAction === "stop" && !effectiveIsRunning ? (
+                  <ComposerStopButton
+                    aria-label={
+                      isWorkStopping ? t("team.stoppingWork") : t("stop")
+                    }
+                    title={isWorkStopping ? t("team.stoppingWork") : t("stop")}
+                    data-chat-primary-action="stop"
+                    loading={isWorkStopping}
+                    onClick={onStopWork}
+                  />
+                ) : null}
+                {primaryAction === "send" ? (
+                  <ComposerPrimitive.Send asChild>
+                    <ComposerSendButton
+                      aria-label={t("send")}
+                      title={t("send")}
+                      disabled={disabled || !composerCanSend}
+                      data-chat-primary-action="send"
+                      onClickCapture={prepareComposerSend}
+                    />
+                  </ComposerPrimitive.Send>
+                ) : null}
+                {primaryAction === "queue" ? (
+                  <ComposerPrimitive.Send asChild>
+                    <ComposerSendButton
+                      aria-label={t("addToQueue")}
+                      title={t("addToQueue")}
+                      data-chat-primary-action="send"
+                      disabled={isWorkStopping || disabled || !composerCanSend}
+                      onClickCapture={prepareComposerSend}
+                    />
+                  </ComposerPrimitive.Send>
+                ) : null}
               </div>
-            </>
-          )}
+            </div>
+          </div>
         </ComposerSurface>
       </ComposerPrimitive.Root>
       <div

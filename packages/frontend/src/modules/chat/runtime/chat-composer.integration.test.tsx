@@ -452,6 +452,7 @@ function ChatThreadLayoutHarness({
   cancel = vi.fn(),
   onStopWork,
   pendingApprovals = [],
+  composerDraft,
   requestedInteractionId,
   send = vi.fn(),
   sendFailure = { kind: "none" },
@@ -465,6 +466,7 @@ function ChatThreadLayoutHarness({
   isSendDisabled?: boolean;
   onStopWork?: () => void;
   pendingApprovals?: ComponentProps<typeof ChatThread>["pendingApprovals"];
+  composerDraft?: string;
   requestedInteractionId?: string;
   send?: SendMessage;
   sendFailure?: ComponentProps<typeof ChatThread>["sendFailure"];
@@ -513,6 +515,7 @@ function ChatThreadLayoutHarness({
       )}
       composerSettings={<span data-testid="composer-runtime-control" />}
       composerClearRevision={clearRevision}
+      composerDraft={composerDraft}
       pendingApprovals={pendingApprovals}
       requestedInteractionId={requestedInteractionId}
       terminalEnabled={terminalEnabled}
@@ -1867,6 +1870,67 @@ describe("chat composer", () => {
       screen.queryByRole("button", { name: "停止执行" }),
     ).not.toBeInTheDocument();
   });
+
+  it.each([false, true])(
+    "审批结束后保留优化输入的当前文档，不重放初始建议（已发送=%s）",
+    async (submitted) => {
+      const send = vi.fn<SendMessage>().mockResolvedValue({
+        execution: { id: "optimization-execution", status: "completed" },
+      });
+      const content = (pending: boolean) => (
+        <ChatQueueProvider>
+          <ChatThreadLayoutHarness
+            composerDraft="请优化这次工作流运行"
+            send={send}
+            pendingApprovals={
+              pending
+                ? [
+                    {
+                      approvalId: "optimization-approval",
+                      title: "允许读取运行记录",
+                      kind: "read",
+                      options: [
+                        {
+                          id: "allow-once",
+                          name: "Allow once",
+                          kind: "allow_once",
+                        },
+                      ],
+                    },
+                  ]
+                : []
+            }
+          />
+        </ChatQueueProvider>
+      );
+      const { rerender } = render(content(false));
+      const user = userEvent.setup();
+      const input = await screen.findByRole("textbox", { name: "输入消息" });
+      await waitFor(() =>
+        expect(input).toHaveTextContent("请优化这次工作流运行"),
+      );
+      if (submitted) {
+        await user.click(input);
+        await user.keyboard("{Enter}");
+        await waitFor(() => expect(send).toHaveBeenCalledOnce());
+        await waitFor(() => expect(input).toHaveTextContent(/^$/));
+      } else {
+        await user.clear(input);
+        await user.type(input, "只调整失败后的提示 /");
+        expect(await screen.findByRole("listbox")).toBeInTheDocument();
+      }
+      rerender(content(true));
+      expect(await screen.findByText("允许读取运行记录")).toBeInTheDocument();
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("textbox", { name: "输入消息" }),
+      ).not.toBeInTheDocument();
+      rerender(content(false));
+      const restored = await screen.findByRole("textbox", { name: "输入消息" });
+      if (submitted) expect(restored).toHaveTextContent(/^$/);
+      else expect(restored).toHaveTextContent("只调整失败后的提示 /");
+    },
+  );
 
   it("多个未决审批显示到达序号而不是写死 1/N", () => {
     const { rerender } = render(

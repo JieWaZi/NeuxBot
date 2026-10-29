@@ -161,6 +161,130 @@ func TestNativeCLIDiscoveryModelSelectionAndResume(t *testing.T) {
 	}
 }
 
+// nativeQuestionAnswers 让原生协议对照使用明确的宿主用户答案。
+type nativeQuestionAnswers func(context.Context, ElicitationRequest) (ElicitationDecision, error)
+
+// Request 通过实际宿主问答端口提交测试答案。
+func (answer nativeQuestionAnswers) Request(ctx context.Context, request ElicitationRequest) (ElicitationDecision, error) {
+	return answer(ctx, request)
+}
+
+// TestWorkBuddyNativeQuestionResumesWithAnswer 验证原生问题进入宿主表单，并携带真实答案继续同一会话。
+func TestWorkBuddyNativeQuestionResumesWithAnswer(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile := ProfileSpec{
+		ID: "workbuddy-question-fixture", BaseRuntimeID: RuntimeIDWorkBuddy,
+		BinaryCandidates: []string{binary}, PrefixArgs: []string{"-test.run=^TestAllyNativeACPProcess$", "--"},
+		Environment: map[string]string{"ALLY_NATIVE_ACP_TEST": RuntimeIDWorkBuddy, "ALLY_NATIVE_ACP_QUESTION": "1"},
+	}
+	sdk, err := New(Config{Profiles: []ProfileSpec{profile}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	defer sdk.Close(context.Background())
+	detection := sdk.Detect(ctx, DetectRequest{RuntimeID: profile.ID, BaseEnvironment: os.Environ()})
+	if detection.State != DetectionStateReady {
+		t.Fatalf("detection: %+v", detection)
+	}
+	questions, approvals := 0, 0
+	request := RunRequest{
+		Target: RuntimeTarget{RuntimeID: profile.ID}, Detection: detection,
+		Workspace: Workspace{Path: t.TempDir(), Managed: true}, Message: Message{Text: "question"},
+		Session: SessionDirective{Mode: SessionModeNew},
+		Policy:  RunPolicy{Model: "provider/model-b", Reasoning: "high", Execution: ExecutionPolicy{PermissionLevel: PermissionLevelDefault}},
+		ApprovalHandler: approvalHandlerFunc(func(context.Context, ApprovalRequest) (ApprovalDecision, error) {
+			approvals++
+			return ApprovalDecision{OptionID: "allow-once"}, nil
+		}),
+		ElicitationHandler: nativeQuestionAnswers(func(_ context.Context, question ElicitationRequest) (ElicitationDecision, error) {
+			questions++
+			if question.Mode != "form" || question.RequestedSchema["properties"] == nil {
+				t.Errorf("missing answer form: %+v", question)
+			}
+			return ElicitationDecision{Accepted: true, Content: map[string]any{"question_0": "A"}}, nil
+		}),
+	}
+	for round := range 2 {
+		sink := &recordingSink{}
+		result := sdk.Run(ctx, request, sink)
+		if result.Failure != nil || sink.textOutput() != "answer:A" || questions != round+1 || approvals != 0 {
+			t.Fatalf("round %d: result=%+v output=%q questions=%d approvals=%d", round+1, result, sink.textOutput(), questions, approvals)
+		}
+		request.Session = SessionDirective{Mode: SessionModeResume, ID: result.Session.OutputID}
+	}
+}
+
+// TestWorkBuddyNativeApprovalResumesTool 验证普通工具的两种允许选项均继续产生工具结果和助手正文。
+func TestWorkBuddyNativeApprovalResumesTool(t *testing.T) {
+	for _, optionID := range []string{"allow-once", "allow-always"} {
+		t.Run(optionID, func(t *testing.T) {
+			binary, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			profile := ProfileSpec{
+				ID: "workbuddy-approval-fixture", BaseRuntimeID: RuntimeIDWorkBuddy,
+				BinaryCandidates: []string{binary}, PrefixArgs: []string{"-test.run=^TestAllyNativeACPProcess$", "--"},
+				Environment: map[string]string{"ALLY_NATIVE_ACP_TEST": RuntimeIDWorkBuddy, "ALLY_NATIVE_ACP_APPROVAL": optionID},
+			}
+			sdk, err := New(Config{Profiles: []ProfileSpec{profile}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			defer sdk.Close(context.Background())
+			detection := sdk.Detect(ctx, DetectRequest{RuntimeID: profile.ID, BaseEnvironment: os.Environ()})
+			if detection.State != DetectionStateReady {
+				t.Fatalf("detection: %+v", detection)
+			}
+			approvals := 0
+			request := RunRequest{
+				Target: RuntimeTarget{RuntimeID: profile.ID}, Detection: detection,
+				Workspace: Workspace{Path: t.TempDir(), Managed: true}, Message: Message{Text: "ordinary tool"},
+				Session: SessionDirective{Mode: SessionModeNew},
+				Policy:  RunPolicy{Model: "provider/model-b", Reasoning: "high", Execution: ExecutionPolicy{PermissionLevel: PermissionLevelDefault}},
+				ApprovalHandler: approvalHandlerFunc(func(_ context.Context, approval ApprovalRequest) (ApprovalDecision, error) {
+					approvals++
+					if approval.ToolCallID != "native-tool" || !reflect.DeepEqual(approval.Options, []ApprovalOption{
+						{ID: "allow-once", Name: "Allow once", Kind: "allow_once"},
+						{ID: "allow-always", Name: "Allow always", Kind: "allow_always"},
+					}) {
+						t.Errorf("ordinary permission changed: %+v", approval)
+					}
+					return ApprovalDecision{OptionID: optionID}, nil
+				}),
+			}
+			sink := &recordingSink{}
+			result := sdk.Run(ctx, request, sink)
+			if result.Failure != nil || result.StopReason != "end_turn" || sink.textOutput() != "continued:"+optionID || approvals != 1 {
+				t.Fatalf("approval did not resume: result=%+v output=%q approvals=%d", result, sink.textOutput(), approvals)
+			}
+			toolResultSeen := false
+			for _, event := range sink.events {
+				if event.Type == EventTypeToolResult {
+					var payload map[string]any
+					if err := json.Unmarshal(event.Data, &payload); err != nil {
+						t.Fatal(err)
+					}
+					toolResultSeen = payload["toolCallId"] == "native-tool" && payload["rawOutput"] == "ordinary-tool-completed"
+				}
+				if event.Type == EventTypeTextDelta && !toolResultSeen {
+					t.Fatal("assistant output arrived before the approved tool result")
+				}
+			}
+			if !toolResultSeen {
+				t.Fatal("approved tool result was not delivered")
+			}
+		})
+	}
+}
+
 func TestNativePermissionModesAreNotInterchangeable(t *testing.T) {
 	modes := []acp.SessionMode{{Id: "agent"}, {Id: "plan"}, {Id: "ask"}, {Id: "default"}, {Id: "auto"}, {Id: "yolo"}, {Id: "high"}}
 	for _, test := range []struct {
@@ -221,6 +345,7 @@ func TestAllyNativeACPProcess(t *testing.T) {
 	var mutex sync.Mutex
 	model, reasoning := "provider/model-a", "low"
 	mcpNames := []string{}
+	questionAnswers := make(chan map[string]any, 1)
 	options := func() []map[string]any {
 		return []map[string]any{{"id": "engine", "type": "select", "name": "Model", "category": "model", "currentValue": model, "options": []map[string]string{{"value": "provider/model-a", "name": "Model A"}, {"value": "provider/model-b", "name": "Model B"}}}, {"id": "thinking", "type": "select", "name": "Thinking", "category": "thought_level", "currentValue": reasoning, "options": []map[string]string{{"value": "low", "name": "Low"}, {"value": "high", "name": "High"}}}}
 	}
@@ -312,10 +437,61 @@ func TestAllyNativeACPProcess(t *testing.T) {
 				return nil, acp.NewInvalidParams(nil)
 			}
 			return map[string]any{}, nil
+		case "_codebuddy.ai/resolveInterruption":
+			if request["sessionId"] != "native-session" || request["toolCallId"] != "native-question" || request["decision"] != "allow" {
+				return nil, acp.NewInvalidParams(map[string]any{"message": "question answer identity changed"})
+			}
+			questionAnswers <- request
+			return map[string]any{"resolved": true}, nil
 		case "session/prompt":
 			var prompt acp.PromptRequest
 			if json.Unmarshal(data, &prompt) != nil || len(prompt.Prompt) == 0 || prompt.Prompt[0].Text == nil {
 				return nil, acp.NewInvalidParams(nil)
+			}
+			if expectedOption := os.Getenv("ALLY_NATIVE_ACP_APPROVAL"); expectedOption != "" {
+				input := map[string]any{"command": "echo ordinary-tool"}
+				_ = connection.SendNotification(ctx, "session/update", map[string]any{"sessionId": prompt.SessionId, "update": map[string]any{"sessionUpdate": "tool_call", "toolCallId": "native-tool", "title": "Run command", "kind": "execute", "status": "pending", "rawInput": input}})
+				response, permissionErr := acp.SendRequest[acp.RequestPermissionResponse](connection, ctx, "session/request_permission", acp.RequestPermissionRequest{
+					SessionId: prompt.SessionId,
+					ToolCall:  acp.ToolCallUpdate{ToolCallId: "native-tool", RawInput: input},
+					Options: []acp.PermissionOption{
+						{OptionId: "allow-once", Name: "Allow once", Kind: acp.PermissionOptionKindAllowOnce},
+						{OptionId: "allow-always", Name: "Allow always", Kind: acp.PermissionOptionKindAllowAlways},
+					},
+				})
+				if permissionErr != nil || response.Outcome.Selected == nil || string(response.Outcome.Selected.OptionId) != expectedOption {
+					return nil, acp.NewInvalidParams(map[string]any{"message": "ordinary permission selection changed"})
+				}
+				_ = connection.SendNotification(ctx, "session/update", map[string]any{"sessionId": prompt.SessionId, "update": map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "native-tool", "status": "completed", "rawOutput": "ordinary-tool-completed"}})
+				_ = connection.SendNotification(ctx, "session/update", map[string]any{"sessionId": prompt.SessionId, "update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]string{"type": "text", "text": "continued:" + expectedOption}}})
+				return map[string]any{"stopReason": "end_turn"}, nil
+			}
+			if os.Getenv("ALLY_NATIVE_ACP_QUESTION") == "1" {
+				input := map[string]any{"questions": []map[string]any{{"question": "Choose one", "options": []map[string]string{{"label": "A"}, {"label": "B"}}}}}
+				meta := map[string]any{"codebuddy.ai/toolName": "AskUserQuestion"}
+				_ = connection.SendNotification(ctx, "session/update", map[string]any{"sessionId": prompt.SessionId, "update": map[string]any{"sessionUpdate": "tool_call", "toolCallId": "native-question", "title": "AskUserQuestion", "kind": "other", "status": "pending", "rawInput": input, "_meta": meta}})
+				// 回答经独立 RPC 返回，不能持有处理该回调也需要的锁。
+				mutex.Unlock()
+				response, permissionErr := acp.SendRequest[acp.RequestPermissionResponse](connection, ctx, "session/request_permission", acp.RequestPermissionRequest{
+					SessionId: prompt.SessionId,
+					ToolCall:  acp.ToolCallUpdate{ToolCallId: "native-question", RawInput: input, Meta: meta},
+					Options:   []acp.PermissionOption{{OptionId: "allow-once", Name: "Allow once", Kind: acp.PermissionOptionKindAllowOnce}},
+				})
+				mutex.Lock()
+				if permissionErr != nil || response.Outcome.Cancelled == nil {
+					return nil, acp.NewInvalidParams(map[string]any{"message": "question used ordinary tool approval"})
+				}
+				select {
+				case submitted := <-questionAnswers:
+					answers, _ := submitted["answers"].(map[string]any)
+					if answers["Choose one"] != "A" {
+						return nil, acp.NewInvalidParams(map[string]any{"message": "question answer was not submitted"})
+					}
+				default:
+					return nil, acp.NewInvalidParams(map[string]any{"message": "question resumed before answer submission"})
+				}
+				_ = connection.SendNotification(ctx, "session/update", map[string]any{"sessionId": prompt.SessionId, "update": map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]string{"type": "text", "text": "answer:A"}}})
+				return map[string]any{"stopReason": "end_turn"}, nil
 			}
 			if strings.Contains(prompt.Prompt[0].Text.Text, "恢复后的当前问题") &&
 				(strings.Contains(prompt.Prompt[0].Text.Text, "Chat history:") ||

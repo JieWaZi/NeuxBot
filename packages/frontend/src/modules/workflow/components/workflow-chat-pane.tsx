@@ -43,7 +43,6 @@ export function WorkflowChatPane({
   canvasReferenceLabels = {},
   onRemoveCanvasReference,
   onCanvasReferencesSent,
-  onRemoveRunReference,
   emptyState,
   isHistoryLoading = false,
   onConfigurationChange,
@@ -67,7 +66,6 @@ export function WorkflowChatPane({
   canvasReferenceLabels?: Record<string, string>;
   onRemoveCanvasReference?: (target: CanvasReference) => void;
   onCanvasReferencesSent?: () => void;
-  onRemoveRunReference?: () => void;
   emptyState?: ChatWorkspaceEntry["emptyState"];
   isHistoryLoading?: boolean;
   onConfigurationChange?: (defaults: ExecutionDefaults | undefined) => void;
@@ -193,22 +191,6 @@ export function WorkflowChatPane({
                 ))}
               </div>
             ) : null}
-            {optimizeRunId ? (
-              <div className="bg-surface-module type-caption flex items-center gap-2 px-3 py-2">
-                <span className="min-w-0 flex-1 truncate">
-                  {t("optimizeRunDraft", { runId: optimizeRunId })}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t("close")}
-                  onClick={onRemoveRunReference}
-                >
-                  <X />
-                </Button>
-              </div>
-            ) : undefined}
           </>
         ),
         emptyState,

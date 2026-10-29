@@ -1017,7 +1017,10 @@ export function ChatComposerInput({
 
   useEffect(() => {
     if (!editor) return;
-    editor.setEditable(!disabled && !threadDisabled);
+    const editable = !disabled && !threadDisabled;
+    editor.setEditable(editable);
+    // 保留文档的禁用输入仍需让建议插件退出，避免浮层留在审批界面上方。
+    if (!editable) editor.view.dispatch(editor.state.tr);
   }, [disabled, editor, threadDisabled]);
 
   if (!editor) {

@@ -15,6 +15,9 @@ export function chatWorkspaceHandlers(origin: string) {
     ),
     http.get(`${api}/chats`, () => HttpResponse.json({ resources: [] })),
     http.get(`${api}/wakers/:wakerId/skills`, () => HttpResponse.json([])),
+    http.get(`${api}/wakers/:wakerId/plugins`, () =>
+      HttpResponse.json({ resources: [] }),
+    ),
     http.get(`${api}/wakers/:wakerId/connectors`, () => HttpResponse.json([])),
     http.get(`${api}/ai-accounts`, () => HttpResponse.json({ resources: [] })),
     http.get(`${api}/runtime-environments`, () =>
