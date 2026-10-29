@@ -74,8 +74,6 @@ export type ChatWorkspaceMainContent = {
     ReactNode | ((active: boolean, context: { scopeKey: string }) => ReactNode);
   chatExpanded?: boolean;
   resizeLabel?: string;
-  /** 将原生问题呈现在业务画布，沿用 Chat 的回答与提交状态。 */
-  questionsOnCanvas?: boolean;
 };
 
 type ChatWorkspaceSurfaceProps = {
@@ -125,8 +123,6 @@ export function ChatWorkspaceSurface({
   changesProps,
 }: ChatWorkspaceSurfaceProps) {
   const { t } = useTranslation("chat");
-  const [elicitationOutlet, setElicitationOutlet] =
-    useState<HTMLDivElement | null>(null);
   const appSceneWorkspace = useOptionalAppSceneWorkspace();
   const routeActive = useRouteSceneActive();
   const sceneActive = active && routeActive;
@@ -438,12 +434,6 @@ export function ChatWorkspaceSurface({
                 aria-hidden={!sceneActive || fullView || Boolean(canvasInput)}
                 inert={!sceneActive || fullView || Boolean(canvasInput)}
               >
-                {mainContent?.questionsOnCanvas ? (
-                  <div
-                    ref={setElicitationOutlet}
-                    className="bg-surface-module max-h-[60%] shrink-0 overflow-y-auto empty:hidden"
-                  />
-                ) : null}
                 <div className="min-h-0 flex-1">
                   {typeof mainContent?.content === "function"
                     ? mainContent.content(
@@ -499,11 +489,6 @@ export function ChatWorkspaceSurface({
                     enabled={identity.messageContributions ?? false}
                   >
                     <ChatThread
-                      elicitationOutlet={
-                        mainContent?.questionsOnCanvas
-                          ? elicitationOutlet
-                          : undefined
-                      }
                       {...adapter.thread}
                       emptyStatePosition={
                         canvasInput

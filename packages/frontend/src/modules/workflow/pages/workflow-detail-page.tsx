@@ -1030,7 +1030,6 @@ export function WorkflowDetailPage() {
       onFirstMessageSubmitted={() => setChatExpanded(true)}
       mainContent={{
         contentId: "workflow-canvas",
-        questionsOnCanvas: true,
         title: t("canvas"),
         chatExpanded,
         resizeLabel: t("resizeChat"),

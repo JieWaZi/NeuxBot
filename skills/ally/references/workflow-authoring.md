@@ -24,7 +24,7 @@ First verify the objects to process, counts/pagination, existing configuration, 
 | Validation and failure | How to determine business success; whether an item failure stops execution or preserves other results |
 | Delivery and effects | Return value/real files, coverage and omissions, and what will be written or sent |
 
-Clarify only unresolved choices that affect scope, external effects or delivery. Use host structured questions; authoring questions are answered beside the canvas, not turned into recurring `askUser` nodes. Do not reconfirm existing authorization. Cancellation, skipping and silence do not approve unresolved choices.
+Clarify only unresolved choices that affect scope, external effects or delivery. Use host structured questions; authoring questions appear in the chat composer, just as in ordinary partner conversations. Runtime `askUser` decisions appear on the workflow canvas. Do not turn one-time authoring clarification into recurring `askUser` nodes. Do not reconfirm existing authorization. Cancellation, skipping and silence do not approve unresolved choices.
 
 When such a choice is required to finish the requested workflow, read the [question contract](user-questions.md), submit it, and use its bounded observation loop. Continue independent investigation or a local draft while waiting. Save only after the material choice is answered, or the user explicitly authorizes a reduced scope. A pending wait result does not authorize silently replacing requested customer delivery with a file-only workflow. If the execution cannot continue waiting, report the unresolved decision and draft status without claiming the requested workflow is complete.
 

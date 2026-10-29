@@ -447,10 +447,8 @@ it("工作流对话仅在活跃场景处理本 Chat 的原生请求，默认不�
   );
   const view = render(content());
   const question = await screen.findByText("补充创作操作范围");
-  expect(question.closest("[data-chat-main-content]")).toHaveAttribute(
-    "data-chat-main-content",
-    "test-canvas",
-  );
+  expect(question.closest("[data-chat-main-content]")).toBeNull();
+  expect(question.closest("[data-chat-composer]")).toBeInTheDocument();
   expect(screen.queryByText("读取创作批准的工作目录")).not.toBeInTheDocument();
   expect(approvals).toEqual([]);
   expect(inputs).toEqual([]);

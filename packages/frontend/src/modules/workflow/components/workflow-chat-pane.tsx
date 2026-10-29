@@ -139,9 +139,7 @@ export function WorkflowChatPane({
         wakerId: wakerId || PERSONAL_ASSISTANT_WAKER_ID,
         defaults: session?.defaults,
         directoryLabel: t("defaultDirectory"),
-        mainContent: mainContent
-          ? { ...mainContent, questionsOnCanvas: true }
-          : undefined,
+        mainContent,
         canvasInput: id === "new" && !firstMessageSubmitted,
         showSummary: false,
         history,

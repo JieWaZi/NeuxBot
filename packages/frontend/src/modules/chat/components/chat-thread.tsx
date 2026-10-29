@@ -1,4 +1,3 @@
-import { createPortal } from "react-dom";
 import { ChatMessagePluginReferences } from "./chat-plugin-reference";
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
 import type { ChatResultSource } from "@/shared/api/notification-presentation";
@@ -243,7 +242,6 @@ type ChatThreadProps = {
   pendingApprovals?: PendingApproval[];
   approvalSubmissionState?: ApprovalSubmissionState;
   onResolveApproval?: (approvalId: string, optionId: string) => void;
-  elicitationOutlet?: HTMLElement | null;
   pendingElicitations?: PendingElicitation[];
   elicitationSubmissionState?: ElicitationSubmissionState;
   onResolveElicitation?: (
@@ -1741,7 +1739,6 @@ const Composer = memo(function Composer({
   pendingApprovals,
   approvalSubmissionState,
   onResolveApproval,
-  elicitationOutlet,
   pendingElicitations = [],
   elicitationSubmissionState = "idle",
   onResolveElicitation = () => undefined,
@@ -1790,7 +1787,6 @@ const Composer = memo(function Composer({
   pendingApprovals: PendingApproval[];
   approvalSubmissionState: ApprovalSubmissionState;
   onResolveApproval: (approvalId: string, optionId: string) => void;
-  elicitationOutlet?: HTMLElement | null;
   pendingElicitations: PendingElicitation[];
   elicitationSubmissionState: ElicitationSubmissionState;
   onResolveElicitation: (
@@ -1940,24 +1936,12 @@ const Composer = memo(function Composer({
           }
         >
           {currentElicitation ? (
-            elicitationOutlet ? (
-              createPortal(
-                <ChatElicitationCard
-                  key={currentElicitation.elicitationId}
-                  elicitation={currentElicitation}
-                  submissionState={elicitationSubmissionState}
-                  onResolve={onResolveElicitation}
-                />,
-                elicitationOutlet,
-              )
-            ) : (
-              <ChatElicitationCard
-                key={currentElicitation.elicitationId}
-                elicitation={currentElicitation}
-                submissionState={elicitationSubmissionState}
-                onResolve={onResolveElicitation}
-              />
-            )
+            <ChatElicitationCard
+              key={currentElicitation.elicitationId}
+              elicitation={currentElicitation}
+              submissionState={elicitationSubmissionState}
+              onResolve={onResolveElicitation}
+            />
           ) : currentApproval ? (
             <ChatApprovalCard
               approval={currentApproval}
@@ -2203,7 +2187,6 @@ export function ChatThread({
   pendingApprovals = emptyList,
   approvalSubmissionState = "idle",
   onResolveApproval = ignoreChange,
-  elicitationOutlet,
   pendingElicitations = emptyList,
   elicitationSubmissionState = "idle",
   onResolveElicitation = ignoreChange,
@@ -2524,7 +2507,6 @@ export function ChatThread({
                       pendingApprovals={pendingApprovals}
                       approvalSubmissionState={approvalSubmissionState}
                       onResolveApproval={onResolveApproval}
-                      elicitationOutlet={elicitationOutlet}
                       pendingElicitations={pendingElicitations}
                       elicitationSubmissionState={elicitationSubmissionState}
                       onResolveElicitation={onResolveElicitation}
