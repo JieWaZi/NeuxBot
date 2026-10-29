@@ -190,6 +190,7 @@ func TestWorkflowSDKTopicsAreDiscoveredAndCheckedByKind(t *testing.T) {
 	for _, params := range []map[string]any{
 		{"topic": "function"}, {"topic": "overview", "kind": "sdk"},
 		{"topic": "f0", "kind": "example"},
+		{"topic": "review", "kind": "example"},
 	} {
 		if err := op.Validate(params); err != nil {
 			t.Fatalf("advertised SDK input rejected: %v: %v", params, err)
@@ -198,6 +199,9 @@ func TestWorkflowSDKTopicsAreDiscoveredAndCheckedByKind(t *testing.T) {
 	for _, params := range []map[string]any{
 		{"topic": "functionTask"}, {"topic": "index"}, {"topic": "phase"},
 		{"topic": "f0"}, {"topic": "function", "kind": "example"},
+		{"topic": "weekly-report", "kind": "example"},
+		{"topic": "environment-review", "kind": "example"},
+		{"topic": "environment-release", "kind": "example"},
 	} {
 		if op.Validate(params) == nil {
 			t.Fatalf("invalid SDK query accepted: %v", params)

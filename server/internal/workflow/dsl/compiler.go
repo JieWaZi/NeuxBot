@@ -947,10 +947,7 @@ func (b *codeBuilder) hostCall(call *ast.CallExpression, awaited bool) *Expressi
 			prompt = c.fragment(call.ArgumentList[0])
 		}
 		if label == "" {
-			label = c.optionFragment(call, index, "label")
-			if label == "" {
-				c.fail(call, "LABEL_REQUIRED", "node label is required")
-			}
+			c.fail(call, "LABEL_REQUIRED", "node label must be a nonempty static string")
 		}
 		if name == "worker" {
 			resolve, ok := opts["resolve"].(map[string]any)
@@ -1080,7 +1077,7 @@ func (c *compiler) staticOptions(call *ast.CallExpression, index int) map[string
 				}
 			}
 			switch key {
-			case "input", "args", "url", "method", "headers", "body", "env", "label", "choices", "defaultValue":
+			case "input", "args", "url", "method", "headers", "body", "env", "choices", "defaultValue":
 			default:
 				c.fail(p.Value, "STATIC_OPTION_REQUIRED", "SDK option must be static: "+key)
 				diagnostic := &c.diagnostics[len(c.diagnostics)-1]

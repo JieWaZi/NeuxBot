@@ -1,7 +1,6 @@
 package dsl
 
 import (
-	"embed"
 	"fmt"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -9,9 +8,6 @@ import (
 	"slices"
 	"strings"
 )
-
-//go:embed testdata/f0.workflow.js testdata/weekly-report.workflow.js testdata/environment-review.workflow.js testdata/environment-release.workflow.js
-var exampleFiles embed.FS
 
 // sdkSection 显式维护每条知识的主题归属，不依赖英文段落前缀。
 type sdkSection struct {
@@ -44,9 +40,10 @@ func sdkSections() []sdkSection {
 		{
 			id:     "function",
 			topics: []string{"function"},
-			content: "Function code is a complete program, not a bare function body: JavaScript must declare" +
+			content: "functionTask code defines the main entry called by the host: JavaScript must declare" +
 				" function main(input) { return JSON; }; Python must define def main(input): and return" +
-				" a JSON value. JavaScript main must be synchronous. Do not put a top-level return in " +
+				" a JSON value. The host calls main; this is different from a script action, which runs " +
+				"the Python module directly and requires explicit JSON stdin/stdout. JavaScript main must be synchronous. Do not put a top-level return in " +
 				"the code string. Only the returned value is the Function result. Node outputSchema is " +
 				"optional. If supplied, use a JSON literal or a top-level literal constant; property " +
 				"access such as meta.outputSchema is not statically resolvable. Omit it only when " +
@@ -113,8 +110,10 @@ func sdkSections() []sdkSection {
 		{
 			id:     "results",
 			topics: []string{"worker"},
-			content: "A structured worker must call allycli workflow results submit with a stable " +
-				"--request-id and an input JSON object whose data matches its schema. A submission is " +
+			content: "A structured worker must invoke workflow.results.submit through the host-provided " +
+				"capability transport with a stable requestId and a data value matching its schema. " +
+				"When ally_capabilities MCP is injected, use workflow_results_schema and " +
+				"workflow_results_submit with their advertised schemas. A submission is " +
 				"only a candidate until its Execution succeeds. Do not rely on JSON pasted into a final" +
 				" reply. For a root file schema, data is the actual file path. Add routing or summary " +
 				"fields only for real downstream consumers.",
@@ -123,8 +122,8 @@ func sdkSections() []sdkSection {
 			id:     "im-delivery",
 			topics: []string{"im"},
 			content: "When the user requests delivery to WeChat or Feishu, discover approved chats with " +
-				"allycli workflow resources list --kind imTargets. Discover the native IM operation " +
-				"through allycli workflow resources list --kind builtinActions, tool im_delivery, " +
+				"workflow.resources.list with kind:imTargets. Discover the native IM operation " +
+				"through workflow.resources.list with kind:builtinActions, tool im_delivery, " +
 				"through a builtin action declaring its connector ID and awaiting ctx.callTool({callId," +
 				" connectorId, toolName: 'im_delivery', input: {action: 'deliveries.create', targetId, " +
 				"content, files}}). Fixed literal targetIds are derived as workflow resource " +
@@ -132,20 +131,20 @@ func sdkSections() []sdkSection {
 				"action; runtime delivery cannot use an undeclared target. Admission checks these " +
 				"targets before any node runs. This durable action waits for delivery acceptance; query" +
 				" deliveries.get to verify sent, failed or unknown status. Never invent recipients or " +
-				"connector IDs. Resource IDs come from allycli workflow resources list; never invent or" +
+				"connector IDs. Resource IDs come from workflow.resources.list; never invent or" +
 				" silently replace them. Do not send messages or publish outside an explicitly " +
 				"authorized action.",
 		},
 		{
 			id:     "evidence",
 			topics: []string{"saving"},
-			content: "When optimizing a failed run, read all allycli workflow evidence list pages, including" +
+			content: "When optimizing a failed run, read all workflow.evidence.list pages, including" +
 				" run.failure, instance failures and actionCalls. Inspect nested cause, hint, " +
 				"sourceRange and delivery receipts including partsSent and unknown status before " +
 				"proposing a repair. Preserve original call identities and never repeat an already " +
 				"completed or uncertain external operation. Read the current revision and pending " +
-				"annotations before saving. Validate complete source, fix diagnostics, then allycli " +
-				"workflow source save using expectedRevisionId and a stable requestId. At most three " +
+				"annotations before saving. Validate complete source, fix diagnostics, then invoke " +
+				"workflow.source.save using expectedRevisionId and a stable requestId. At most three " +
 				"repair attempts per turn. Only the tool save receipt proves the source is active.\n",
 		},
 		{
@@ -185,12 +184,16 @@ func sdkSections() []sdkSection {
 		{
 			id:     "saving",
 			topics: []string{"overview", "saving"},
-			content: "source save compiles and validates complete source, checks policies and " +
-				"expectedRevisionId, then commits an immutable revision and its receipt together. Use " +
-				"--source for the UTF-8 file and a stable --request-id. A successful immediate receipt " +
+			content: "workflow.source.save compiles and validates complete source, checks policies and " +
+				"expectedRevisionId, then commits an immutable revision and its receipt together. " +
+				"Use the host-provided capability transport and advertised tool schema. When " +
+				"ally_capabilities MCP is injected, call workflow_source_save with the complete source " +
+				"string or exact patches and a stable requestId; CLI file flags are not MCP inputs. " +
+				"A successful immediate receipt " +
 				"with saved:true, revisionId and sourceDigest proves saving. Explicit saves create a new immutable " +
 				"revision, including unchanged source; replaying the same request returns the original receipt." +
-				" If the response is lost, query receipts get for the original operation/request ID. " +
+				" If the response is lost, use MCP receipts_get with operation:workflow.source.save " +
+				"and the original requestId, or receipts get through a host-provided CLI fallback. " +
 				"Read current source again on revision conflict. Saving does not prove a real run or " +
 				"external delivery succeeded.",
 		},
@@ -207,9 +210,10 @@ func sdkSections() []sdkSection {
 				"required steps and allow for loops, batches and branches. The compiler rejects budgets" +
 				" below a provable minimum path, but dynamic paths may require more.",
 		},
-		{id: "business-node-description", topics: []string{"overview", "worker", "human", "action", "function", "workflow"}, content: fmt.Sprintf("Name every node label for its business purpose in the user's language. Add an optional static description (at most %d Unicode characters) as one sentence explaining what the step does for the user. Cards and details share this description. Do not label or describe a business step using implementation terms such as Function, python or trusted_local; those belong only in technical details. Missing action descriptions may reuse meta.actions description; other nodes have no invented description.", constants.WorkflowNodeDescriptionMaxRunes)},
+		{id: "business-node-description", topics: []string{"overview", "worker", "human", "action", "function", "workflow"}, content: fmt.Sprintf("Name every node label for its business purpose in the user's language. Labels, descriptions, IDs and phase references are static literals; keep per-item names and identity in node inputs, prompts and results instead of concatenating them into labels. Add an optional static description (at most %d Unicode characters) as one sentence explaining what the step does for the user. Cards and details share this description. Keep implementation terms such as Function, python or trusted_local out of business labels and descriptions. Missing action descriptions may reuse meta.actions description; other nodes have no invented description.", constants.WorkflowNodeDescriptionMaxRunes)},
 		{id: "worker-results", topics: []string{"worker"}, content: "Workers return final text without schema, or matching JSON directly with schema. There is no data/content/analysis wrapper; values can be read by later nodes and the final return."},
-		{id: "scripts", topics: []string{"overview", "action"}, content: "V2 exports static meta and optional scripts. Each script has language:python, protocol:json or text, and complete code as a string or interpolation-free String.raw template. Code bytes are frozen in the revision. A script action references scriptId. The host writes the complete input JSON value to stdin (missing input is null, false/0/empty string remain values). JSON stdout must contain exactly one value; stderr is logs. Text stdout is returned as a string. No automatic pip install. Script actions return {data,durationMs,process}."},
+		{id: "scripts", topics: []string{"overview", "action"}, content: "V2 exports static meta and optional scripts. Each script has language:python, protocol:json or text, and complete code as a string or interpolation-free String.raw template. Code bytes are frozen in the revision. A script action references scriptId. The host executes the Python module directly; it does not call main(input). A file containing only def main(input): is incomplete for a script action. Read stdin and write stdout at module entry. The host writes the complete input JSON value to stdin (missing input is null, false/0/empty string remain values). JSON stdout must contain exactly one value; stderr is logs. Text stdout is returned as a string. No automatic pip install. Script actions return {data,durationMs,process}.\n\nMinimal complete protocol: this module reads and echoes any one JSON value, including false, 0, empty string and null. Replace only the business processing when adapting it:\n\n```python\nimport json, sys\nvalue = json.load(sys.stdin)\njson.dump(value, sys.stdout, ensure_ascii=False)\n```"},
+		{id: "batch-authoring", topics: []string{"overview", "parallel", "pipeline"}, content: "For multi-item review, independent verification or partial-failure reporting, read references/workflow-patterns.md in the supplied ally skill and request workflow_sdk_get with {kind:'example',topic:'review'} before writing source. The review example is fictional and uses a placeholder Waker that must be resolved from prepared resources. Advance each item's dependent stages with pipeline; join all items only for genuine cross-item comparison or synthesis. Preserve original identities and coverage when collecting failures. Copy the protocol and dependency structure, then implement the user's actual data source and work rather than reusing the fictional output."},
 		{id: "human-v2", topics: []string{"human"}, content: "Use explicit kind:text/select/multiselect/form/confirm. choices may be a dynamic {value,label} array from a prior node or a candidate fileRef; the host freezes the evaluated snapshot. kind:form requires schema and excludes choices. allowCustom defaults false; allowSkip defaults false. Multiselect defaults minSelections:1 and maxSelections to candidate count; explicit minSelections:0 allows empty selection. HumanAnswer contains questionId,status,source,value?. Defaults only prefill. onTimeout defaults fail; explicit skip returns timed_out without value, default returns timed_out with validated defaultValue. Confirm can never auto-approve via timeout/default. Cancellation throws. Cache replay preserves original status/value and references the original answer."},
 		{id: "business-check", topics: []string{"action", "function", "worker"}, content: "successCondition:{path,equals} checks the validated business value: action.data, direct worker JSON/text, or functionTask result. path is a JSON Pointer; equals is a literal JSON value. Failed checks throw BUSINESS_CHECK_FAILED. Ordinary false and null are data without an explicit check."},
 		{id: "host-budgets-v2", topics: []string{"budgets", "action", "human"}, content: fmt.Sprintf("Host budgets from the shared contract: source %d bytes; node business output %d bytes; inline human choices %d items and %d bytes; script action deadline at most %d ms. Truncated stdout is never accepted as successful JSON. Use managed file references for larger results.", constants.WorkflowSourceLimitBytes, constants.WorkflowOutputLimitBytes, constants.WorkflowHumanMaximumChoices, constants.WorkflowHumanChoicesLimitBytes, constants.WorkflowScriptMaxTimeoutMillis)},
@@ -446,8 +450,7 @@ func SDKTopicOutputs() map[string][]byte {
 		outputs["sdk-"+topic+".md"] = []byte("# Workflow SDK: " + topic + "\n\n" + content)
 	}
 	for _, topic := range SDKExampleTopics() {
-		data, _ := exampleFiles.ReadFile("testdata/" + topic + ".workflow.js")
-		outputs["example-"+topic+".js"] = data
+		outputs["example-"+topic+".js"] = []byte(SDKArtifact("example-" + topic + ".js"))
 	}
 	return outputs
 }

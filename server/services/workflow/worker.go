@@ -98,7 +98,11 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	schema, _ := options["schema"].(map[string]any)
 	if len(schema) > 0 {
 		encoded, _ := json.Marshal(schema)
-		prompt += "\nReturn exactly one JSON value matching this schema, without Markdown fences: " + string(encoded)
+		prompt += "\n\nRead the Worker Results guide linked from the host-provided ally skill; resolve its relative link from the supplied SKILL.md directory. " +
+			"Complete the actual work, read workflow.results.schema for this attempt, then invoke workflow.results.submit with a stable requestId through the host-selected capability transport. " +
+			"When ally_capabilities MCP is injected, use workflow_results_schema and workflow_results_submit with their advertised input schemas. Otherwise follow the host-provided CLI transport and current execution context. Do not switch transports to bypass an error. " +
+			"Submit data as the actual JSON value matching this schema, without an invented wrapper or extra JSON encoding: " + string(encoded) +
+			". Final chat text is not a result submission. An accepted candidate cannot be replaced by different content; after submission succeeds, finish this execution so the host can confirm node success separately."
 	}
 	tools := []execution.ToolCapability{}
 	if len(schema) > 0 {

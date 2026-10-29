@@ -9,14 +9,26 @@ import (
 	"sort"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/workflow/catalog"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 )
 
 func main() {
 	check := flag.Bool("check", false, "compare generated files without changing them")
 	output := flag.String("output", "internal/workflow/dsl/generated", "generated artifact directory")
+	sourceRoot := flag.String("source-root", "..", "repository root containing authoritative example sources")
 	flag.Parse()
 	outputs := workflowdsl.SDKOutputs()
+	// 示例从共享目录声明的权威文件生成；运行时只读取随 Core 嵌入的生成结果。
+	for topic, source := range catalog.ExampleSources() {
+		path := filepath.Join(*sourceRoot, source)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			logx.Errorf("read authoritative SDK example failed: path=%s error=%v", path, err)
+			os.Exit(1)
+		}
+		outputs["example-"+topic+".js"] = data
+	}
 	names := []string{}
 	for name := range outputs {
 		names = append(names, name)

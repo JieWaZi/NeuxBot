@@ -25,6 +25,9 @@ maintenance task.
 | A precise page correction, or execution inside an existing maintenance task | [Wiki maintenance and page revision](references/wiki-maintenance.md) |
 | Ingestion followed by Wiki maintenance | [Combined requests](references/wiki-guide.md#combined-requests) |
 | Observe an admitted knowledge task and deliver its final summary | [Knowledge task results](references/wiki-guide.md#knowledge-task-results) |
+| Create, edit or diagnose the host-bound workflow, including short follow-ups | [Workflow authoring](references/workflow-authoring.md) |
+| Execute an explicitly authorized existing workflow | [Workflow execution](references/workflow-execution.md) |
+| Submit the current workflow worker attempt's structured output | [Worker results](references/workflow-results.md) |
 
 For other domains, read the relevant guide advertised by the current capability.
 
@@ -39,12 +42,14 @@ For other domains, read the relevant guide advertised by the current capability.
   Requested edits must reach a successful save receipt; prose and local files
   alone do not update the workflow or canvas. Pure questions need no save.
 
-- Run `allycli capabilities` at first use in an execution. Discover only the
-  needed operations and reuse results. Read `describe <operation-id>` when its
-  current contract is missing; it owns inputs, limits and completion semantics.
-- For workflow creation/editing, use `workflow authoring prepare --primitives
-  <actual DSL calls>` when advertised. Reuse its guides, SDK and save contracts.
-  Read `guide <guide-id>` only for relevant instructions not already supplied.
+- In a workflow execution with injected MCP, use its tools and input schemas
+  directly. Authoring starts with `workflow_authoring_prepare`; reuse its
+  guides, SDK and save contracts. Do not bootstrap CLI discovery alongside MCP
+  or switch transports to bypass a tool error.
+- When the host selects CLI transport, run `allycli capabilities` at first use.
+  Discover only needed operations; `describe <operation-id>` owns their inputs,
+  limits and completion semantics. Read `guide <guide-id>` only for relevant
+  guidance not already supplied. The following flag syntax applies to CLI.
 - Use short scalar flags or UTF-8 JSON through `--input <file>` / `--input -`.
   Keep long content and secrets out of shell command strings.
 - Choose a stable `--request-id` before a mutation. If its outcome is unknown,

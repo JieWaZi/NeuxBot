@@ -70,7 +70,6 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 	}
 	request.Skills = append(request.Skills, runtimes.Skill{Name: constants.AgentCLISkillName, Path: skill})
 	binary = builtinskills.CLIPath(skill)
-	request.Instructions = append(request.Instructions, runtimes.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxBot-provided operations, read the ally skill at %q. Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands. Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract.", filepath.Join(skill, "SKILL.md"), binary, filepath.Join(skill, "references", "wiki-guide.md"))})
 	roots := []string{}
 	for _, candidate := range append([]string{request.Workspace.Path}, chat.AdditionalWorkingDirectories...) {
 		if actual, err := filepath.EvalSymlinks(candidate); err == nil {
@@ -117,11 +116,22 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 			break
 		}
 	}
+	baseRuntimeID := request.Detection.Runtime.BaseRuntimeID
+	if baseRuntimeID == "" {
+		baseRuntimeID = request.Target.RuntimeID
+	}
+	supportsStdio, _ := runtimes.ConnectorCompatibility(baseRuntimeID, runtimes.ConnectorTransportStdio)
+	useMCP := hasWorkflowCapabilities && supportsStdio
+	discovery := fmt.Sprintf("Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands.", binary)
+	if useMCP {
+		discovery = "Use the injected ally_capabilities MCP tools for NeuxBot operations in this execution. Their schemas define the current inputs; use capabilities or guide only when discovery or relevant guidance is missing. Do not run CLI discovery or switch to CLI after a tool error."
+	}
+	request.Instructions = append(request.Instructions, runtimes.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxBot-provided operations, read the ally skill at %q. %s Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract.", filepath.Join(skill, "SKILL.md"), discovery, filepath.Join(skill, "references", "wiki-guide.md"))})
 	// 工具绑定是确定的场景事实，不让模型从用户短句猜测当前入口。
 	for _, binding := range bindings {
 		if binding.Operation == "workflow.source.save" {
 			appendCurrentWorkflowReferences(request)
-			request.Message.Text += "\n\n<workflow-authoring-context>This is the bound workflow authoring conversation. Short edits, corrections, and follow-up instructions still target this workflow. Use workflow_authoring_prepare or workflow_source_get to obtain the bound workflow and current revision; no workflow ID is needed for that read. Implement requested changes through workflow_source_save and its actual saved receipt. A chat description or local file alone does not update the canvas. Pure questions may be answered without a save; do not invent edits. Use existing Wakers from resources. Ask missing consequential choices through the structured question tool; they are answered on the canvas. Never report saving or checks as successful without their receipts. Read original run evidence before optimizing a referenced failure.</workflow-authoring-context>"
+			request.Message.Text += "\n\n<workflow-authoring-context>This is the bound workflow authoring conversation. Short edits, corrections, and follow-up instructions still target this workflow. Use workflow.authoring.prepare or workflow.source.get through this execution's capability transport to obtain the bound workflow and current revision; no workflow ID is needed for that read. Implement requested changes through workflow.source.save and its actual saved receipt. A chat description or local file alone does not update the canvas. Pure questions may be answered without a save; do not invent edits. Use existing Wakers from resources. Ask missing consequential choices through the structured question tool; they are answered on the canvas. Never report saving or checks as successful without their receipts. Read original run evidence before optimizing a referenced failure.</workflow-authoring-context>"
 			break
 		}
 	}
@@ -161,14 +171,12 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 	}
 	request.Target.Environment[constants.AgentCLIContextEnvironment] = path
 	request.Target.Environment[constants.AgentCLIBinaryEnvironment] = binary
-	// 本轮路径进入新增输入，不进入静态指令或工具描述；续聊不得沿用旧环境。
-	request.Message.Text += fmt.Sprintf("\n\n<neuxbot-execution-context>For all NeuxBot CLI calls in this turn use %q --context %q. This execution-scoped path supersedes prior-turn context; never edit or copy its contents. Prefer the ally_capabilities MCP tools when available. A successful source.save receipt is a saved workflow revision; a run start receipt is only acceptance.</neuxbot-execution-context>", binary, path)
-	baseRuntimeID := request.Detection.Runtime.BaseRuntimeID
-	if baseRuntimeID == "" {
-		baseRuntimeID = request.Target.RuntimeID
-	}
-	if supported, _ := runtimes.ConnectorCompatibility(baseRuntimeID, runtimes.ConnectorTransportStdio); supported && hasWorkflowCapabilities {
+	// CLI 回退的本轮路径只进入新增输入；MCP 直接绑定本轮连接，不向模型暴露连接文件。
+	if useMCP {
+		request.Message.Text += "\n\n<neuxbot-execution-context>Use the injected ally_capabilities MCP tools for NeuxBot operations in this execution. Use the advertised tool schemas and requestId for mutations. Recover uncertain outcomes with receipts_get using the original operation and requestId; do not switch to CLI or create a replacement request. Preserve actual tool errors and follow their retryAdvice. A successful workflow_source_save receipt proves saving; a run start receipt is only acceptance.</neuxbot-execution-context>"
 		request.Connectors = append(request.Connectors, runtimes.Connector{ID: "neuxbot-internal-capabilities", Name: "NeuxBot", RuntimeKey: "ally_capabilities", Transport: runtimes.ConnectorTransportStdio, Command: binary, Arguments: []string{"mcp", "serve", "--context", path}})
+	} else {
+		request.Message.Text += fmt.Sprintf("\n\n<neuxbot-execution-context>For all NeuxBot CLI calls in this turn use %q --context %q. This execution-scoped path supersedes prior-turn context; never edit or copy its contents. A successful source.save receipt is a saved workflow revision; a run start receipt is only acceptance.</neuxbot-execution-context>", binary, path)
 	}
 
 	inheritedPath := request.Target.Environment["PATH"]

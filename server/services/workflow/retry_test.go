@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -56,8 +57,13 @@ func TestWorkerRetryKeepsAttemptsAndRevokesOldResultToken(t *testing.T) {
 	}
 	resultScope := workflowtool.Scope{Key: first.ID, Token: first.AuthToken, Kind: constants.WorkflowCapabilityScopeResult}
 	query := workflowtool.Input{Action: constants.WorkflowActionQuery, Type: constants.WorkflowQueryResultSchema}
-	if result, err := s.handleTool(ctx, resultScope, query); err != nil || result["schema"].(map[string]any)["type"] != "string" {
+	result, err := s.handleTool(ctx, resultScope, query)
+	if err != nil || result["schema"].(map[string]any)["type"] != "string" {
 		t.Fatalf("current attempt schema unavailable: %+v %v", result, err)
+	}
+	guidance, _ := result["guidance"].(string)
+	if !strings.Contains(guidance, "workflow_results_submit") || strings.Contains(guidance, "allycli") {
+		t.Fatalf("result schema directs MCP workers to CLI: %s", guidance)
 	}
 	if current, _ := s.runs.GetEffect(ctx, first.ID); current.Candidate != nil {
 		t.Fatal("schema query wrote a result candidate")
@@ -97,8 +103,8 @@ func TestWorkerRetryKeepsAttemptsAndRevokesOldResultToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	dispatchPrepared(t, s, run.ID)
-	result := runTicks(t, s, run.ID, 3)
-	if result.Status != constants.WorkflowRunStatusSucceeded || result.Result != "verified" || len(w.attempts) != 2 {
-		t.Fatalf("retry result: %+v", result)
+	completed := runTicks(t, s, run.ID, 3)
+	if completed.Status != constants.WorkflowRunStatusSucceeded || completed.Result != "verified" || len(w.attempts) != 2 {
+		t.Fatalf("retry result: %+v", completed)
 	}
 }

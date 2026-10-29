@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -62,6 +63,45 @@ func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
 	defer release()
 	if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" {
 		t.Fatalf("custom runtime lost MCP: %+v", request.Connectors)
+	}
+	if !strings.Contains(request.Message.Text, "Use the injected ally_capabilities MCP tools for NeuxBot operations in this execution") || strings.Contains(request.Message.Text, "For all NeuxBot CLI calls") {
+		t.Fatalf("MCP workflow received competing CLI instructions: %s", request.Message.Text)
+	}
+	for _, instruction := range request.Instructions {
+		if instruction.Name == "软件能力" && strings.Contains(instruction.Content, "with capabilities") {
+			t.Fatalf("MCP workflow still requires CLI discovery: %s", instruction.Content)
+		}
+	}
+}
+
+func TestWorkflowResultSelectsOnlySupportedTransport(t *testing.T) {
+	for _, runtimeID := range []string{"codex", "unsupported"} {
+		t.Run(runtimeID, func(t *testing.T) {
+			registry := agentcapability.New(nil)
+			defer registry.Close()
+			binary, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
+			manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+			request := runtimes.RunRequest{Target: runtimes.RuntimeTarget{RuntimeID: runtimeID}, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeNew}}
+			capabilities := []ToolCapability{{ID: "result", Bindings: []agentcapability.Binding{{Operation: "workflow.results.schema", Call: func(context.Context, agentcapability.Request) (agentcapability.Result, error) {
+				return agentcapability.Result{}, nil
+			}}}}}
+			_, release, _, err := manager.prepareAgent(&request, journal.chat, "turn", capabilities, &[]string{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			if runtimeID == "codex" {
+				if len(request.Connectors) != 1 || !strings.Contains(request.Message.Text, "Use the injected ally_capabilities MCP tools") || strings.Contains(request.Message.Text, "For all NeuxBot CLI calls") {
+					t.Fatalf("result worker did not receive its MCP transport: %+v", request)
+				}
+			} else if len(request.Connectors) != 0 || !strings.Contains(request.Message.Text, "For all NeuxBot CLI calls") || request.Target.Environment[constants.AgentCLIContextEnvironment] == "" {
+				t.Fatalf("unsupported runtime lost its actual CLI fallback: %+v", request)
+			}
+		})
 	}
 }
 

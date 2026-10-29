@@ -58,7 +58,7 @@ type CanvasNode struct {
 	ID string `json:"id"`
 	// Kind 区分系统节点与宿主调用原语。
 	Kind string `json:"kind"`
-	// Label 是用户可读的名称或标题表达式。
+	// Label 是静态解析后供用户阅读的业务名称。
 	Label string `json:"label"`
 	// PhaseID 关联业务展示阶段，系统节点省略。
 	PhaseID string `json:"phaseId,omitempty"`

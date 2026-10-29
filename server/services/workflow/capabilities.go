@@ -704,7 +704,7 @@ func (s *Service) handleTool(ctx context.Context, scope workflowtool.Scope, inpu
 		if input.Type == constants.WorkflowQueryCapabilities {
 			return workflowtool.Capabilities(scope.Kind), nil
 		}
-		return map[string]any{"schema": schema, "nodeId": effect.Boundary.NodeID, "guidance": "Complete actual work, then call allycli workflow results submit with data matching this schema. A final reply is not a structured result. Submission remains a candidate until this execution succeeds."}, nil
+		return map[string]any{"schema": schema, "nodeId": effect.Boundary.NodeID, "guidance": "Complete actual work, then invoke workflow.results.submit through the host-provided capability transport with data matching this schema and a stable requestId. When ally_capabilities MCP is injected, use workflow_results_submit and its advertised input schema. A final reply is not a structured result. Submission remains a candidate until this execution succeeds."}, nil
 	}
 	encoded, err := json.Marshal(input.Data)
 	if err != nil || len(encoded) > constants.WorkflowOutputLimitBytes {

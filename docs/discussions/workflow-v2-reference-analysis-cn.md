@@ -294,3 +294,45 @@ flowchart LR
 打开版本历史可见当前版本、旧版本时间及恢复入口；打开触发方式配置可见定时、API、重复或一次性计划及由参数声明生成的字段。此次只查看并取消，没有更改原流程触发设置或执行恢复操作。
 
 执行记录按次显示状态、时间和基于该次运行优化入口，成功记录还能注明未执行阶段。以上是可见能力证据，不代表已测遍参考产品所有按钮或完整实现。V2 本轮优先完成用户明确的框选、引用、业务详情、动态回答和移除独立产出设计。
+
+## 9. Skill 的方法分析与本地适配
+
+E13 的正文提供的是任务组织方法与原生 Workflow 工具约束。加载它的价值，在于把“工具可调用”进一步变成“知道如何发现任务、安排依赖、验证结果和恢复”。MCP 的参数 Schema 无法替代这些判断；Skill 的描述也不能替代宿主对授权、类型、版本和副作用的强制检查。
+
+### 9.1 值得借鉴的方法
+
+| 参考方法 | 解决的问题 | NeuxBot 的适配 |
+| --- | --- | --- |
+| 先侦察，再决定编排形状 | 未查实际对象就固定分片，遗漏数据或过度拆分 | 创作时核实可见资源；实时对象由运行首步发现，以清单作为覆盖分母 |
+| 按数据依赖选择 pipeline 或 barrier | 所有对象互相等待，阶段看似整齐但吞吐低 | 单项审阅到复核用 pipeline；跨项比较、去重才汇合 |
+| 独立反证而非重复总结 | 生成者的错误被下一个节点照抄 | verifier 重读原始证据，返回支持/驳回/未确认及理由；需要盲评时先隔离结论 |
+| 覆盖审计成为数据流 | 只汇总成功项，失败和未检项静默消失 | 原清单保留身份；成功、缺失、排除和未完成都有记录 |
+| 有界迭代与累积去重 | 重复发现被否决项，直到预算耗尽 | 定义轮数、无进展退出和已见对象，按宿主实例及循环预算执行 |
+| 按 journal/实际返回恢复 | 凭聊天判断是否成功，重复执行外部效果 | 使用本产品 evidence、持久回执、原版本重试计划，先对账再修复 |
+| 静态业务元信息 | 可执行源码不能形成可读画布 | phase/title/detail 与节点 label/description 表达业务职责，技术身份只用于源码 |
+
+这些方法已重新组织为 [创作指南](../../skills/ally/references/workflow-authoring.md)、按需读取的 [编排模式](../../skills/ally/references/workflow-patterns.md) 和 [可编译示例](../../skills/ally/references/workflow-review-example.workflow.js)。未将第三方 Skill 原文复制进产品，也未将其内部工具契约冒充本产品能力。
+
+### 9.2 必须重新定义的契约
+
+| 参考语义或做法 | 本地事实与边界 |
+| --- | --- |
+| agent、原生 JavaScript 调度 | 本产品是 worker 和受限持久化 DSL；通用计算交给 functionTask，本地 Python 交给冻结的 scripts/action |
+| 并行异常自动变 null | 本产品默认 fail-fast，显式 collect-null 才收集失败；正常 null 仍是业务值，不能用 filter(Boolean) 做覆盖统计 |
+| Token 预算、CPU 推导并发上限 | 本产品使用 concurrency、maxInstances、maxLoopSteps、timeoutMs；数值与默认值以生成 SDK 为准 |
+| 任意模型、MCP 或隔离参数 | 只使用发现到的伙伴和支持的执行配置；工作目录隔离不保证共享目录并行写入安全 |
+| 通过 scriptPath/resume 恢复 | 本产品通过 expectedRevisionId、requestId、source digest 和保存回执管理版本；运行重试固定原版本，并展示复用/重做计划 |
+| 幂等声明意味着自动重试 | 当前 worker 自动重试受只读执行与 pure 条件约束，不能仅凭 idempotent 声明承诺自动恢复 |
+| 每个节点自定义结果展示 | 用户已明确删除独立产出设计；保留业务数据、真实文件和画布问题，不生成额外页面或技术详情入口 |
+
+本地权威来源为 [DSL SDK 生成规则](../../server/internal/workflow/dsl/sdk_knowledge.go)、[操作目录](../../server/internal/agentcapability/contract/catalog.go)、[worker 执行](../../server/services/workflow/worker.go) 和 [当前工作流架构](../architecture/workflows-cn.md)。方法性提示保留在 Skill，参数和硬限制保留在生成契约及执行器，避免手工维护第二套 API。
+
+### 9.3 指南投递与验证
+
+旧指南基线测试使用三个场景：候选多选后逐项审阅复核；旧版本阶段修改、保存超时及业务检查失败；要求技术卡片与独立展示页面。它能保留保存请求身份，但没有落地 pipeline/逐项容错的方法，无法解释运行重试复用；同时引用已移除的 inspector 和可选 custom pages，形成确定的文档冲突。
+
+新指南按“取事实、定契约、选编排、验证、保存与恢复”组织。已挂载 MCP 的工作流执行使用 MCP 工具及 Schema，不再同时收到强制 CLI 探测提示；其他对话不因此新增 workflow 工具，不支持 stdio 的既有传输分支保持原授权。伙伴结果指南与生成 SDK 同步使用该传输选择，已接纳的结果候选不可换内容覆盖。
+
+验证分为三层：独立 Agent 对相同场景的行为复测；示例源码的真实编译及画布依赖检查；真实 Python、SQLite 和持久 runner 的集成测试，模型边界使用替身并走正式 results submit。示例保留被证伪主张，不把 supported:false 当执行失败；单项执行故障保留 coverage 并通过显式门槛失败。允许部分成果的业务应返回 coverage，而非沿用示例的全完成门槛。
+
+上述检查只是基础验证。后续已按冻结的八例测试集运行真实 WorkBuddy 模型、MCP、Python、画布回答和伙伴结果提交，并对保存回执丢失、伙伴回执丢失、单项中断和原版本重试保留实际证据。测试发现并修正了脚本未执行、伙伴只返回聊天 JSON、管道丢失前序结果等问题；运行成功但缺少业务结论仍判失败。方法与评分见[评估方案](workflow-authoring-evaluation-cn.md)，实际发现、复测和限制见[实测报告](workflow-authoring-evaluation-results-cn.md)。这些案例不能证明真实模型必然遵守全部指令，也不等于参考产品效果达到某个百分比。

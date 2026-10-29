@@ -5,28 +5,28 @@ export const meta = {
 };
 const WAKER={kind:'waker',wakerId:'fixture',runtimeId:'fixture-runtime'};
 const environments=await pipeline(args.environments,[
-  async (previous,original,index)=>await worker(original,{id:'inspect-environment',label:'检查 '+original,phase:'inspect',resolve:WAKER}),
+  async (previous,original,index)=>await worker(original,{id:'inspect-environment',label:'检查环境',phase:'inspect',resolve:WAKER}),
   async (previous,original,index)=>{
     let configuration='provided';
     if(original==='A'){
-      const input=await askUser('补充 '+original+' 的缺失配置',{id:'missing-input',label:'补充配置 '+original,phase:'approve',allowSkip:true});
+      const input=await askUser('补充 '+original+' 的缺失配置',{id:'missing-input',label:'补充配置',phase:'approve',allowSkip:true});
       if(input.status !== 'answered' || input.value==='')throw {code:'INPUT_REQUIRED',environment:original};
       configuration=input.value;
     }
     return {inspection:previous,configuration};
   },
   async (previous,original,index)=>{
-    const recommendation=await worker(original+'-recommend',{id:'recommend-environment',label:'形成建议 '+original,phase:'recommend',resolve:WAKER});
+    const recommendation=await worker(original+'-recommend',{id:'recommend-environment',label:'形成建议',phase:'recommend',resolve:WAKER});
     return {inspection:previous.inspection,configuration:previous.configuration,recommendation};
   },
   async (previous,original,index)=>{
-    const decision=await askUser('批准 '+original+' 的具体建议？\n'+previous.recommendation,{id:'approve-environment',label:'审批 '+original,phase:'approve',kind:'select',choices:[{value:'approve',label:'批准'},{value:'deny',label:'否决'}],defaultValue:'deny',allowSkip:true});
+    const decision=await askUser('批准 '+original+' 的具体建议？\n'+previous.recommendation,{id:'approve-environment',label:'审批建议',phase:'approve',kind:'select',choices:[{value:'approve',label:'批准'},{value:'deny',label:'否决'}],defaultValue:'deny',allowSkip:true});
     return {environment:original,inspection:previous.inspection,recommendation:previous.recommendation,decision,executed:false,verified:false};
   },
   async (previous,original,index)=>{
     if(previous.decision.source!=='user' || previous.decision.value!=='approve')return previous;
-    const execution=await worker(original+'-execute',{id:'execute-environment',label:'实际执行 '+original,phase:'execute',resolve:WAKER});
-    const verification=await worker(original+'-verify',{id:'verify-environment',label:'独立验证 '+original,phase:'execute',resolve:WAKER});
+    const execution=await worker(original+'-execute',{id:'execute-environment',label:'实际执行',phase:'execute',resolve:WAKER});
+    const verification=await worker(original+'-verify',{id:'verify-environment',label:'独立验证',phase:'execute',resolve:WAKER});
     return {environment:original,inspection:previous.inspection,recommendation:previous.recommendation,decision:previous.decision,executed:true,execution,verification,verified:verification===original+'-verify-result'};
   }
 ],{id:'environment-pipeline',failureMode:'collect-null',concurrency:3});

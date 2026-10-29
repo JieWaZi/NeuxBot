@@ -1,11 +1,70 @@
 package dsl
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/workflow/catalog"
 )
+
+func TestSDKReviewExampleUsesTheSkillAuthorityAndRejectsLegacyFixtures(t *testing.T) {
+	source, err := SDKExample("review")
+	if err != nil {
+		t.Fatalf("current review example is not available through SDK: %v", err)
+	}
+	authority, err := os.ReadFile("../../../../skills/ally/references/workflow-review-example.workflow.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source != string(authority) {
+		t.Fatal("SDK example diverged from the authoritative skill source; regenerate the SDK")
+	}
+	if _, diagnostics, err := Compile(source); err != nil {
+		t.Fatalf("current SDK example cannot compile: %v %+v", err, diagnostics)
+	}
+	for _, retired := range []string{"weekly-report", "environment-review", "environment-release"} {
+		if _, err := SDKExample(retired); err == nil {
+			t.Fatalf("legacy integration fixture is still advertised as authoring guidance: %s", retired)
+		}
+	}
+}
+
+func TestSDKScriptActionPythonSnippetActuallyWritesOneJSONValue(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip(err)
+	}
+	content, err := SDKBundle([]string{"action"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, after, found := strings.Cut(content, "```python\n")
+	if !found {
+		t.Fatal("script action guidance has no complete Python stdin/stdout example")
+	}
+	code, _, found := strings.Cut(after, "```")
+	if !found {
+		t.Fatal("Python example is incomplete")
+	}
+	for _, input := range []any{nil, false, float64(0), "", map[string]any{"text": "虚构输入"}} {
+		encoded, _ := json.Marshal(input)
+		command := exec.Command(python, "-c", code)
+		command.Stdin = bytes.NewReader(encoded)
+		output, err := command.Output()
+		if err != nil {
+			t.Fatalf("SDK script failed: %v", err)
+		}
+		var got any
+		if json.Unmarshal(output, &got) != nil || !reflect.DeepEqual(got, input) {
+			t.Fatalf("SDK action did not echo exactly one JSON value: input=%#v output=%q", input, output)
+		}
+	}
+}
 
 func TestSDKQueriesReturnFocusedGeneratedGuidanceAndCompilableExamples(t *testing.T) {
 	for _, topic := range SDKTopics() {
@@ -23,7 +82,7 @@ func TestSDKQueriesReturnFocusedGeneratedGuidanceAndCompilableExamples(t *testin
 	}
 	for _, topic := range SDKExampleTopics() {
 		source, err := SDKExample(topic)
-		if err != nil || strings.Contains(source, "workflow_result") {
+		if err != nil {
 			t.Fatalf("invalid example %q: %v", topic, err)
 		}
 		if _, diagnostics, err := Compile(source); err != nil {

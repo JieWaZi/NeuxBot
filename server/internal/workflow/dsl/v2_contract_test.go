@@ -9,6 +9,64 @@ import (
 
 const v2Meta = `export const meta={sdk:'ally.workflow/2',title:'V2',description:'契约',phases:[{id:'work',title:'执行',detail:'流程'}]`
 
+func TestV2RejectsDynamicNodeLabelsBeforeCanvasProjection(t *testing.T) {
+	source := v2Meta + `};return await pipeline(args.candidates,[async(previous,candidate)=>await worker(candidate.text,{id:'review',label:'审阅 '+candidate.title,phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'reviews'});`
+	compiled, diagnostics, err := Compile(source)
+	if err == nil {
+		t.Fatalf("dynamic label leaked into saved canvas: %+v", ExportCanvas(compiled.Manifest).Nodes)
+	}
+	for _, diagnostic := range diagnostics {
+		if diagnostic.Code == "STATIC_OPTION_REQUIRED" && diagnostic.Field == "label" && diagnostic.Hint != "" {
+			return
+		}
+	}
+	t.Fatalf("missing actionable static label diagnostic: %+v", diagnostics)
+}
+
+func TestV2StaticBusinessLabelsRemainReadableInPipelines(t *testing.T) {
+	for _, label := range []string{"'审阅方案'", "BUSINESS_LABEL", "`审阅方案`"} {
+		t.Run(label, func(t *testing.T) {
+			source := v2Meta + `};const BUSINESS_LABEL='审阅方案';return await pipeline(args.candidates,[async(previous,candidate)=>await worker(candidate.text,{id:'review',label:` + label + `,phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'reviews'});`
+			compiled, diagnostics, err := Compile(source)
+			if err != nil {
+				t.Fatalf("static business label rejected: %v %+v", err, diagnostics)
+			}
+			for _, node := range ExportCanvas(compiled.Manifest).Nodes {
+				if node.ID == "review" && node.Label == "审阅方案" {
+					return
+				}
+			}
+			t.Fatal("pipeline lost its readable static business label")
+		})
+	}
+}
+
+func TestWorkflowReviewAuthoringExampleCompilesDynamicSelection(t *testing.T) {
+	data, err := os.ReadFile("../../../../skills/ally/references/workflow-review-example.workflow.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, diagnostics, err := Compile(string(data))
+	if err != nil {
+		t.Fatalf("review example: %v %+v", err, diagnostics)
+	}
+	if len(compiled.Bundle.Scripts) != 1 || len(compiled.Manifest.Groups) != 1 || compiled.Manifest.Groups[0].Kind != "pipeline" {
+		t.Fatalf("missing executable candidate discovery or item pipeline: %+v", compiled.Manifest)
+	}
+	for _, node := range compiled.Manifest.Nodes {
+		if node.ID != "choose-candidates" {
+			continue
+		}
+		for _, input := range node.Inputs {
+			if input.Target == "choices" && len(input.DependsOn) == 1 && input.DependsOn[0] == "list-candidates" {
+				return
+			}
+		}
+		t.Fatalf("selection lost real upstream candidates: %+v", node.Inputs)
+	}
+	t.Fatal("dynamic selection missing")
+}
+
 func TestV2CanvasBusinessDescription(t *testing.T) {
 	source := v2Meta + `};const value=await functionTask({id:'fn',label:'整理候选',description:'将查询结果整理为可供选择的方案',phase:'work',language:'javascript',code:'function main(){return []}'});return value;`
 	compiled, diagnostics, err := Compile(source)

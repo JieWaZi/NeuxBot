@@ -1,64 +1,82 @@
 # Workflow Authoring
 
-Turn the user's goal into an agreed workflow. Use their language for labels, input descriptions, questions and delivery.
+Turn the user's goal into a runnable, inspectable workflow that can be edited further. Source is authoritative; the canvas projects that source. Chat explanations and local drafts are not saved workflows. Use the user's language for phases, steps, questions and delivery descriptions.
 
-## Prepare once
+## 1. Continue the task and gather facts first
 
-This conversation is bound by the host to one workflow. Prefer
-`workflow_authoring_prepare` or `workflow_source_get` through MCP; the read
-needs no workflow ID. CLI fallback uses the current explicit `--context`.
-A provided workflowId is only an assertion of the same binding, never a way
-to switch authorization. Follow-up corrections remain workflow editing.
+In a host-bound authoring conversation, "add a step" or "change phase two" still refers to the current workflow. Answer pure explanations directly; requested edits require a save receipt. Selected phases, nodes and run references identify the targets of this edit, not permission to change other steps.
 
+When `ally_capabilities` MCP is mounted, use `workflow_authoring_prepare` to obtain current source, revision, annotations, relevant SDK, resource pages and save contracts. Do not probe through CLI first. Pass a `primitives` array of actual DSL calls, plus `features` and `language` only when needed. Use `workflow_source_get` for source-only reads without guessing a workflowId. Tool names may have a host prefix; use the actual tools. Use the executable and exact `--context` supplied for this turn only when the host explicitly selects CLI transport. An MCP failure does not authorize switching transport to bypass the error.
 
-Preparation includes the relevant SDK, current source/revision, pending annotations, bounded resource pages and save contracts. Reuse these results and follow returned cursors when a required item is outside the first page.
+Preparation is the working reference: inspect its returned topics and content before another SDK call. Fetch only a missing topic, not each primitive again. Follow resource cursors when needed. For batch processing, independent review or failure recovery, read [orchestration patterns](workflow-patterns.md) before writing source. For script-to-choice-to-worker flows, read the review example linked below or the advertised `review` SDK example. Partners, models and directories come from visible resources. A workflowId can only verify the binding, not switch authorization. Explain missing authoring capability as a context problem; supplying an ID cannot fix it.
 
-Choose primitives for the actual work: `worker` for reasoning, research or generation by a real partner; `action` for declared operations; `functionTask` or DSL for deterministic processing; `askUser` for business decisions genuinely needed during a run. Keep distinct responsibilities visible without imposing a minimum number of phases or decorative nodes. A cohesive task may have one phase. Never replace requested agent work with canned function output. Resolve partners and supported runtime/account/model/reasoning choices from the prepared resources. Report an unavailable required partner as a missing dependency.
+For old canvas references, read the original revision through `workflow_source_get` with revisionId, then align it with the current revision by stable identity. Preserve other saved edits; ask only when the target cannot be mapped uniquely. To diagnose a run, first read relevant pages of `workflow_evidence_list` for actual inputs, outputs, failure reasons and external operation receipts, then design the repair.
 
-Write phase titles, node labels and optional descriptions for the person using the workflow: name the business step and explain its purpose in one short sentence. Keep programming languages, execution modes, SDK names and implementation identifiers out of card copy; technical details already have a dedicated inspector. Canvas references identify the user's selected phases or nodes in a specific revision. Read those targets, reconcile with the current source, and apply the requested change without silently treating the reference as permission to alter unrelated steps.
+## 2. Define the business contract, then choose orchestration
 
-Declare behavior through `--features`: `files` for real business files, `schema` for advanced input controls, `api-retrieval` for API retrieval/credential reuse, `im` for authorized message delivery and `budgets` for explicit run limits. Declare Python with `--language python`. Basic inputs and saving are always included. Use `sdk get` only for a missing detail, with advertised topic names and primitive mappings.
+First verify the objects to process, counts/pagination, existing configuration, partners, files and external interfaces. Do not start with a fixed three-phase layout. Organize the implementation plan around these five items, reusing prior agreement and explicit delegation:
 
-## Settle material decisions
+| Item | Implementation detail |
+| --- | --- |
+| Goal and scope | Which objects to process; what completion means; what is outside this scope |
+| Inputs and decisions | Startup inputs, discoverable configuration, derived values and decisions needed during a run |
+| Phases and steps | Each step's responsibility, executor, prerequisite data, output and actual dependencies |
+| Validation and failure | How to determine business success; whether an item failure stops execution or preserves other results |
+| Delivery and effects | Return value/real files, coverage and omissions, and what will be written or sent |
 
-Reuse prior answers and explicit delegation. Investigate discoverable facts before asking. Clarify only choices that materially affect scope, phases, execution types, startup inputs, output or external effects. When available, use the advertised structured questions contract; cancellation, skipping and silence do not approve a choice. Continue independent work while awaiting answers.
+Clarify only unresolved choices that affect scope, external effects or delivery. Use host structured questions; authoring questions are answered beside the canvas, not turned into recurring `askUser` nodes. Do not reconfirm existing authorization. Cancellation, skipping and silence do not approve unresolved choices.
 
-For a new workflow or substantial redesign, give a compact plan with the outcome, phases, execution types, inputs and deliverable. Obtain agreement on unresolved material choices; an already approved plan or explicit delegation needs no repeated confirmation. A narrow edit does not reopen settled choices. Authoring questions do not become recurring `askUser` nodes.
+When such a choice is required to finish the requested workflow, read the [question contract](user-questions.md), submit it, and use its bounded observation loop. Continue independent investigation or a local draft while waiting. Save only after the material choice is answered, or the user explicitly authorizes a reduced scope. A pending wait result does not authorize silently replacing requested customer delivery with a file-only workflow. If the execution cannot continue waiting, report the unresolved decision and draft status without claiming the requested workflow is complete.
 
-## Preserve the input and delivery contract
+| Responsibility | Primitive |
+| --- | --- |
+| Reading, research, judgment, generation, independent review | `worker` calls an existing partner; fixed script commentary cannot substitute for it |
+| Declared local scripts, HTTP or built-in operations | `action`, with explicit inputs, outputs and actual read/write/external risks |
+| Deterministic calculation, transformation, deduplication, coverage statistics | Simple DSL expressions or `functionTask` |
+| Choices, missing values or confirmations that can only be resolved during this run | `askUser`, with choices from real upstream data |
+| Each object follows the same sequence of steps | `pipeline`; each item can advance as soon as its preceding step completes |
+| Independent work followed by comparison or deduplication across all results | `parallel` followed by a join; use a barrier only for actual cross-item dependencies |
 
-Inventory all needed external values. Values the user will provide or replace belong in `meta.inputSchema` and are consumed through `args`, including initial setup and secrets. Examples do not authorize hardcoding; never save secret or placeholder defaults. Omit an input only when verified authorized configuration/context, upstream derivation or an explicitly fixed requirement supplies it. Check first-run behavior without a cache. Keep protocol mechanics and internal pagination out of the form unless the user wants to control them. Requiredness must match actual missing-value behavior.
+A phase may contain multiple steps. Phases express business progress; steps express observable responsibilities. Do not impose a minimum phase count or add decorative nodes for every string transformation. See [Orchestration and validation patterns](workflow-patterns.md) for batch processing, review and recovery.
 
-When changing business data, update the prompt, schemas, downstream consumers and final return together. Remove abandoned fields and formatting steps; retain real branch/loop consumers and agreed external contracts. Do not generate separate result pages or presentation declarations. Preserve business evidence, coverage and uncertainty in the actual return value or requested file.
+## 3. Design the canvas, data and user decisions together
 
-## Save and report
+Use static `meta` and fill phase title/detail and node label/description/phase. Node labels are static readable strings such as "Review document", not expressions such as `'Review ' + candidate.title`; put per-item names in the prompt/input. Cards answer "what and why," such as "Fetch documents for review" or "Verify source evidence." Keep Function, python, trusted_local, code and internal IDs out of card copy. Descriptions are one sentence about the business task. Use stable ASCII IDs for source identity; changing a display name must not change the ID. Declare phase explicitly for concurrent nodes.
 
-Use `ally.workflow/2`: static `meta`, optional immutable Python `scripts`, and
-JS-shaped durable orchestration. `action` feeds declared input to the Python
-script's JSON stdin; its protocol determines JSON or text stdout. Use existing
-Wakers. A schema worker returns that value directly; a plain worker returns
-text. Every node has a default result view; custom pages are optional. Dynamic
-choices come from real upstream data and stable value/label pairs. Missing
-business inputs and decisions use `askUser`; authoring questions use the
-structured host question tools and appear on the canvas.
+The host generates the canvas. Do not create separate canvas JSON, HTML pages, presentation declarations or "View output" entries. Keep data required by real downstream consumers and files requested by the user; do not wrap reports again for display. When changing business output, update prompts, Schema, downstream field access and the final return together, removing fields without consumers.
 
-Save either full source or exact `{search,replace}` patches. Patches require
-`baseSourceDigest`; both forms require the current `expectedRevisionId` and a
-stable requestId. Each new successful explicit save creates a revision;
-replaying the same request returns its receipt. No prepare/commit or finish
-operation follows the receipt. Fix diagnostics in at most three local repair
-attempts, then explain the remaining specific blocker. Do not run real business
-side effects merely to prove that source validates.
+Values the user supplies or replaces at startup belong in `meta.inputSchema` and are read from `args`. Reuse verified authorized configuration, fetch live choices upstream and use `askUser` for decisions during a run. Check first-run behavior without a cache. Examples must not become fixed business data; secrets and placeholders must not become defaults.
 
-Checks must enforce their result: declare `successCondition` on the validated
-business output, or use explicit control flow. A returned false value alone
-is data, not a failed run. Never claim a check passed from process exit alone.
+Use text/select/multiselect/form/confirm questions according to the SDK. Fetch choices before asking, retain stable values and readable labels, and handle empty lists, count limits and mapping selections back to objects. `HumanAnswer` contains status/source/value: check status before consuming value. Defaults only prefill; skipping/timeouts are not user choices, and confirmation requires an explicit affirmative answer. Cancellation aborts; retry replay preserves the original answer source. Do not expose protocol details such as pagination cursors as business questions without a reason.
 
+## 4. Implement and validate critical paths
 
-Write complete source to a UTF-8 file and use the prepared save contract. A separate `source validate` is optional for preflight. Repair returned diagnostics before another save; a changed payload needs a new request ID. Reconcile a revision conflict against current source. The SDK's saving section defines the commit receipt and recovery path.
+Use `ally.workflow/2`. Main orchestration is a restricted, durable JS-shaped DSL, not full Node.js; arguments and values follow JSON semantics. Local scripts may live in Python `scripts` frozen with the revision and referenced by a script action: stdin is input JSON, JSON-protocol stdout emits exactly one value, and logs go to stderr. Read the action's `.data`. Use JavaScript `functionTask` for pure computation; its code must define synchronous `main(input)`. Do not introduce fs, Promise scheduling or external libraries into main orchestration, or mutate shared captured variables during concurrency.
 
-Compare the submitted source with the agreed goal and report any deviation. Distinguish saving, preflight/simulated tests, a real authenticated run and actual external delivery. Do not run or publish a workflow just to prove it was created without authorization. If the current execution lacks authoring capability, explain that saving needs an authorized NeuxBot workflow creation context.
+These are different entry points. A Python script action executes the entire module; defining `main(input)` alone does nothing. Its complete code must read stdin and emit stdout, for example:
 
-## Authoring execution recovery
+```python
+import json, sys
+request = json.load(sys.stdin)
+json.dump({"count": len(request["items"])}, sys.stdout)
+```
 
-Authoring capability follows the current execution and does not expire while waiting for user answers. `WorkflowAuthoringSuperseded` means a newer execution owns the capability; `WorkflowAuthoringFinished` means this execution has ended. On `retryAdvice: new_authoring_execution`, stop retrying and explain that continuation requires a new message in the workflow authoring chat. The current agent cannot renew its own authority. Closing the editor, repeating preparation, changing request IDs or bypassing the context does not restore old authority. Handle `WorkflowRevisionConflict` separately by reading current source and reconciling changes.
+If a script defines main, call it and serialize its return at module level. Python functionTask instead calls its defined main through the host. Before saving a script that only processes synthetic data, run the exact frozen code with a small JSON input and parse its stdout as one JSON value; empty stdout with exit code zero is a failure. For side-effecting scripts, do not run them without authorization; report the untested boundary rather than claim validation.
+
+Worker resolve binds an existing Waker from actual resources and reuses the selected execution configuration. Give machine-consumed results an explicit Schema and read the returned value directly. Without a Schema, the result is text; do not guess wrappers such as `{content:…}`. See [Worker results](workflow-results.md) for formal submission. Shared file paths must use authorized business directories; do not assume partner processes share a working directory.
+
+Business checks must affect control flow: use `successCondition:{path,equals}` or an explicit throw. Check `.data` for actions and the direct result for workers. A false value, null, process exit code 0 or valid Schema does not by itself mean business success. Independent review verifies evidence against original materials rather than merely repeating the first review's conclusions.
+
+Before saving, walk one concrete item from each node's actual return through all downstream field reads. A pipeline returns its last stage value; explicitly carry earlier judgments forward when the summary needs them. Test summary code with representative complete, missing-review and missing-verification values; missing required evidence must not count as completed. Also walk through first use without configuration, empty choices, unanswered/cancelled questions, single-item failures, failed checks and unknown side effects. Run a compilation preflight; safe pure scripts may be tested with small inputs. Compilation does not prove real model, authentication, network or delivery success. Do not start real business work merely to validate authoring without authorization.
+
+The [document review example](workflow-review-example.workflow.js) demonstrates multiple steps in one phase, dynamic multiselect, per-item review/verification and a coverage summary. Its materials are fictional. Before applying it, replace placeholder partner identities with actual identities from preparation and implement the user's required data source. Do not treat the demonstration as a business implementation.
+
+## 5. Save and close with evidence
+
+Save full source or exact `{search,replace}` patches. Both require current expectedRevisionId and a stable requestId; patches also require baseSourceDigest. MCP source is full text, not a local path. Long source may first be written as a UTF-8 draft, then submitted as content according to the tool contract. `workflow_source_validate` is an optional preflight; saving itself also compiles and validates.
+
+Claim the change took effect only after a formal receipt containing saved:true, revisionId and sourceDigest. Each new explicit save creates a revision even when source is unchanged. Replaying the same request returns its original receipt; do not add commit/finish. If a response is lost, call `receipts_get` with the original `operation:"workflow.source.save"` and requestId. Preserve the original payload and identity until the outcome is known. Use a new requestId for corrected source. On a revision conflict, reread and reconcile; do not overwrite someone else's saved changes.
+
+Make at most three local diagnostic repair attempts. If they still fail, report the specific blocker and save status. For `WorkflowAuthoringSuperseded` / `WorkflowAuthoringFinished` with advice new_authoring_execution, stop retrying the old execution and explain that continuation requires another message in the workflow conversation. Only the host can establish new authorization. Waiting for a user answer does not itself require refreshing identity.
+
+Finish by explaining the business change, whether saving succeeded, the validation performed and real execution/delivery still unverified. Check for omissions and deviations from the goal. Saving, run success and external delivery are separate facts.

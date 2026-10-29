@@ -166,7 +166,7 @@ type DisplayEdge struct {
 type Node struct {
 	// Description 是源码声明的业务作用说明，不从执行参数推断。
 	Description string `json:"description,omitempty"`
-	// Label 是画布展示的节点名称或表达式。
+	// Label 是静态解析后供画布展示的业务名称。
 	Label string `json:"label"`
 	// SourceRange 定位同版本原始源码。
 	SourceRange *SourceRange `json:"sourceRange,omitempty"`
@@ -184,7 +184,7 @@ type Node struct {
 	Kind string `json:"kind"`
 	// PhaseID 是显式阶段引用。
 	PhaseID string `json:"phaseId"`
-	// LabelTemplate 保留动态标题的原始模板。
+	// LabelTemplate 保存静态解析后的业务名称，不保存动态表达式。
 	LabelTemplate string `json:"labelTemplate"`
 	// PromptTemplate 保留 prompt 的源码文本。
 	PromptTemplate string `json:"promptTemplate,omitempty"`
