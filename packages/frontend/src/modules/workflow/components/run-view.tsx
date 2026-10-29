@@ -145,9 +145,14 @@ export function WorkflowRunView({
   const terminal = ["succeeded", "failed", "cancelled"].includes(
     run?.status ?? "",
   );
-  const closeDetails = () => {
+  const closeDetails = (expectedInstanceId?: string) => {
     setParams(
       (previous) => {
+        if (
+          expectedInstanceId &&
+          previous.get("instance") !== expectedInstanceId
+        )
+          return previous;
         const next = new URLSearchParams(previous);
         next.delete("instance");
         next.delete("node");
@@ -353,6 +358,10 @@ export function WorkflowRunView({
                         id={id}
                         runId={runId}
                         human={human}
+                        onAnswered={() => {
+                          if (human.id) prompted.current.add(human.id);
+                          closeDetails(human.instanceId);
+                        }}
                       />
                     ))}
                   {instanceId ? (

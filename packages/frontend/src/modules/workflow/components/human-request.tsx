@@ -36,10 +36,12 @@ export function HumanRequestCard({
   id,
   runId,
   human,
+  onAnswered,
 }: {
   id: string;
   runId: string;
   human: HumanRequest;
+  onAnswered?: () => void;
 }) {
   const { t, i18n } = useTranslation("workflow");
   const client = useQueryClient();
@@ -118,6 +120,7 @@ export function HumanRequestCard({
           snapshotDigest,
         },
       });
+      onAnswered?.();
       await client.invalidateQueries({
         queryKey: getWorkflowRunQueryKey({ path: { id, runId } }),
       });

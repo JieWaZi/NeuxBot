@@ -343,6 +343,50 @@ it("后台查询失败保留运行画布与人工输入草稿，就近重试后�
   ).toBe(input);
 });
 
+it.each(["提交答案", "跳过"])(
+  "用户%s成功后收起弹层，仍可手动查看节点详情",
+  async (action) => {
+    const user = userEvent.setup();
+    snapshot.operationRequests = [];
+    renderRun();
+    await screen.findByText("是否批准客户 A 的风险？", undefined, {
+      timeout: 5000,
+    });
+    await user.click(screen.getByRole("button", { name: action }));
+    await waitFor(() => expect(answers).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "选择 风险分析模板" }));
+    expect(
+      await screen.findByRole("dialog", { name: "客户 A 风险分析" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "提交答案" }),
+    ).not.toBeInTheDocument();
+  },
+);
+
+it("用户答案提交失败时保留弹层和答案供重试", async () => {
+  const user = userEvent.setup();
+  snapshot.operationRequests = [];
+  server.use(
+    http.post(`${api}/runs/run-1/humans/human-1/answer`, () =>
+      HttpResponse.json({ message: "提交失败" }, { status: 503 }),
+    ),
+  );
+  renderRun();
+  const input = await screen.findByRole("textbox", {
+    name: "也可以直接填写修改意见或其他回答",
+  });
+  await user.type(input, "需要补充说明");
+  await user.click(screen.getByRole("button", { name: "提交答案" }));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(input).toHaveValue("需要补充说明");
+  expect(screen.getByRole("button", { name: "提交答案" })).toBeEnabled();
+});
+
 it("默认答案不自动提交；业务跳过与操作许可分别提交真实契约", async () => {
   const user = userEvent.setup();
   renderRun();
