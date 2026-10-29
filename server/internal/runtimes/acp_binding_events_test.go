@@ -114,7 +114,7 @@ func TestACPRegisteredBindingsPreserveCommonToolEventContract(t *testing.T) {
 						starts++
 					case EventTypeToolInputSnapshot:
 						snapshots++
-						lastInput = payload["input"].(map[string]any)["content"].(string)
+						lastInput = payload["rawInput"].(map[string]any)["content"].(string)
 					case EventTypeToolUpdate:
 						if terminalSeen {
 							t.Fatal("progress arrived after terminal")

@@ -24,6 +24,7 @@ import { SkipWorkerControl } from "./recovery-controls";
 import { record } from "../model/types";
 import { WorkflowLoadingState, WorkflowQueryError } from "./query-feedback";
 import { WorkflowFailure } from "./failure-details";
+import { RunJsonValue } from "./run-json-value";
 
 export function WorkflowResult({
   value,
@@ -280,9 +281,13 @@ export function InstanceDetails({
                     : "stepInputs",
                 )}
               </h3>
-              <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-3">
-                <WorkflowResult value={businessInput} />
-              </div>
+              {instance.kind === "worker" || instance.kind === "askUser" ? (
+                <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-3">
+                  <WorkflowResult value={businessInput} />
+                </div>
+              ) : (
+                <RunJsonValue value={businessInput} />
+              )}
             </section>
           ) : null}
           {instance.completedAt ||
@@ -292,13 +297,17 @@ export function InstanceDetails({
               <h3 className="type-body font-medium">
                 {instance.failure ? t("failure") : t("output")}
               </h3>
-              <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-3">
-                {instance.failure ? (
+              {instance.failure ? (
+                <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-3">
                   <WorkflowFailure value={instance.failure.data} />
-                ) : (
-                  <WorkflowResult value={businessOutput} />
-                )}
-              </div>
+                </div>
+              ) : businessOutput == null ? (
+                <p className="text-muted-foreground type-body">
+                  {t("emptyValue")}
+                </p>
+              ) : (
+                <RunJsonValue value={businessOutput} />
+              )}
             </div>
           ) : null}
         </>

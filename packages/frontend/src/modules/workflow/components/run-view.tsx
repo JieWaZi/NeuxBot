@@ -319,12 +319,7 @@ export function WorkflowRunView({
                 open:
                   active && !switching && inputRunId === runId && !resultOpen,
                 onOpenChange: (open) => setInputRunId(open ? runId : undefined),
-                content: (
-                  <RunInputValues
-                    manifest={query.data.manifest}
-                    args={run?.args}
-                  />
-                ),
+                content: <RunInputValues args={run?.args} />,
               }}
               nodeCounts={query.data.nodeCounts ?? []}
               selected={

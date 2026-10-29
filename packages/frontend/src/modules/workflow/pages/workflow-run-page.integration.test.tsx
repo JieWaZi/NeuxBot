@@ -158,6 +158,9 @@ beforeEach(() => {
       HttpResponse.json({ id: "real-waker", name: "验收伙伴" }),
     ),
     http.get(`${api}/runs/run-1`, () => HttpResponse.json(snapshot)),
+    http.get(`${api}/events/history`, () =>
+      HttpResponse.json({ resources: [] }),
+    ),
     http.get(`${api}/runs/run-1/instances/actual-1`, () =>
       HttpResponse.json(instance),
     ),
@@ -287,7 +290,15 @@ it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入�
   expect(dialog).toHaveAttribute("data-workflow-input-details", "true");
   expect(dialog).not.toHaveClass("fixed");
   expect(document.body).not.toHaveAttribute("data-scroll-locked");
-  expect(within(dialog).getByText("本次运行备注")).toBeInTheDocument();
+  const inputJSON = dialog.querySelector("pre");
+  expect(inputJSON).not.toBeNull();
+  expect(JSON.parse(inputJSON?.textContent ?? "")).toEqual({
+    client: "实际客户",
+    enabled: false,
+    count: 0,
+    note: "本次运行备注",
+  });
+  expect(inputJSON).toHaveClass("max-h-80", "overflow-auto");
   expect(within(dialog).queryByText("默认客户")).not.toBeInTheDocument();
   expect(within(dialog).queryByText("上次保存的客户")).not.toBeInTheDocument();
   expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
@@ -492,7 +503,9 @@ it("画布区分未执行模板，节点展示实际执行项，SSE 刷新最终
   expect(
     await screen.findByRole("dialog", { name: "运行详情 · 发布预审" }),
   ).toBeInTheDocument();
-  await waitFor(() => expect(screen.getByText("不予发布")).toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByText(/"decision": "不予发布"/)).toBeInTheDocument(),
+  );
   expect(
     screen.queryByRole("button", { name: "停止运行" }),
   ).not.toBeInTheDocument();

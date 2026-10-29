@@ -7,14 +7,13 @@ import { useTranslation } from "react-i18next";
 import { getWorkflowRun } from "@/shared/api/generated/sdk.gen";
 import { Button } from "@/shared/ui/button";
 import { Badge } from "@/shared/ui/badge";
-import { Card } from "@/shared/ui/card";
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
-import { ReadOnlyField } from "@/shared/ui/read-only-field";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { getWorkflowRunQueryKey } from "../api/workflow-queries";
 import { jsonText, record } from "../model/types";
 import { runOriginKey } from "../model/run-presentation";
-import { InstanceDetails, WorkflowResult } from "./instance-details";
+import { InstanceDetails } from "./instance-details";
+import { RunJsonValue } from "./run-json-value";
 import { WorkflowFailure } from "./failure-details";
 import { workflowStatusAppearance } from "../model/status-presentation";
 import { cn } from "@/shared/lib/cn";
@@ -146,50 +145,10 @@ export function RunResultDialog({
                   ? new Date(run.createdAt).toLocaleString(i18n.language)
                   : ""}
               </p>
-              <section className="@container/run-inputs grid min-w-0 gap-3">
+              <section className="grid min-w-0 gap-3">
                 <h3 className="type-title font-semibold">{t("runInputs")}</h3>
                 {Object.keys(input).length ? (
-                  <Card asChild variant="section">
-                    <dl className="grid grid-cols-1 gap-x-6 gap-y-4 @min-[36rem]/run-inputs:grid-cols-2">
-                      {Object.entries(input).map(([key, value]) => {
-                        const field = record(
-                          record(manifest?.inputSchema?.properties)?.[key],
-                        );
-                        const structured =
-                          value != null && typeof value === "object";
-                        return (
-                          <ReadOnlyField
-                            key={key}
-                            label={
-                              typeof field?.title === "string"
-                                ? field.title
-                                : typeof field?.description === "string"
-                                  ? field.description
-                                  : key
-                            }
-                            className={cn(
-                              (structured ||
-                                (typeof value === "string" &&
-                                  value.includes("\n"))) &&
-                                "col-span-full",
-                            )}
-                          >
-                            {value == null ? (
-                              <span className="text-content-secondary">
-                                {t("emptyValue")}
-                              </span>
-                            ) : typeof value === "string" ? (
-                              value
-                            ) : structured ? (
-                              <WorkflowResult value={value} schema={field} />
-                            ) : (
-                              jsonText(value)
-                            )}
-                          </ReadOnlyField>
-                        );
-                      })}
-                    </dl>
-                  </Card>
+                  <RunJsonValue value={input} />
                 ) : (
                   <p className="text-muted-foreground type-body">
                     {t("noInputs")}
@@ -297,10 +256,7 @@ export function RunResultDialog({
                     {run.failure ? (
                       <WorkflowFailure value={run.failure.data} />
                     ) : (
-                      <WorkflowResult
-                        value={run.result}
-                        schema={manifest?.outputSchema}
-                      />
+                      <RunJsonValue value={run.result} />
                     )}
                   </div>
                 )}

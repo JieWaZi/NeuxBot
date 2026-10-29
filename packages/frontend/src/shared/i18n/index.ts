@@ -1469,6 +1469,7 @@ const resources = {
       toolActivitySummary: {
         completedPrefix: "已",
         runningPrefix: "正在",
+        interruptedPrefix: "已中断：",
         failedPrefix: "失败：",
         file: "文件",
         verb: {

@@ -29,7 +29,8 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
           id: "run",
           status: "succeeded",
           completedAt: 100,
-          result: "最终结果",
+          args: { client: "客户 A", enabled: false, nested: { count: 0 } },
+          result: { summary: "最终结果", items: ["第一项", "第二项"] },
           flowContext: { triggerSource: "agent" },
         },
         manifest: {
@@ -84,11 +85,24 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
     </QueryClientProvider>,
   );
   const summary = await screen.findByText(/整理评论结果/);
+  const inputs = screen.getByText(/"client": "客户 A"/);
+  expect(JSON.parse(inputs.textContent ?? "")).toEqual({
+    client: "客户 A",
+    enabled: false,
+    nested: { count: 0 },
+  });
+  const output = screen.getByText(/"summary": "最终结果"/);
+  expect(JSON.parse(output.textContent ?? "")).toEqual({
+    summary: "最终结果",
+    items: ["第一项", "第二项"],
+  });
+  expect(inputs.closest("pre")).toHaveClass("max-h-80", "overflow-auto");
+  expect(output.closest("pre")).toHaveClass("max-h-80", "overflow-auto");
   expect(screen.getByText("对话调用")).toBeInTheDocument();
   expect(detail).not.toHaveBeenCalled();
   await user.click(summary);
-  expect(await screen.findByText("真实评论输出")).toBeInTheDocument();
-  expect(screen.getByText("真实评论输入")).toBeInTheDocument();
+  expect(await screen.findByText('"真实评论输出"')).toBeInTheDocument();
+  expect(screen.getByText('"真实评论输入"')).toBeInTheDocument();
   expect(screen.queryByText("null")).not.toBeInTheDocument();
 });
 

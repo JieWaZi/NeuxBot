@@ -178,6 +178,21 @@ describe("chat work process", () => {
       }),
     ).toHaveAttribute("aria-expanded", "false");
   });
+
+  it("终态未收到工具结果时，折叠摘要显示中断而非已完成", () => {
+    messageState.current.content = [toolPart("command", "running")];
+    render(
+      <WorkProcess indices={[0]}>
+        <div>详细过程</div>
+      </WorkProcess>,
+    );
+    const toggle = screen.getByRole("button", { name: "已中断：执行命令" });
+    expect(toggle).toHaveAttribute("aria-busy", "false");
+    expect(toggle).not.toHaveAttribute("data-running-shimmer");
+    expect(
+      screen.queryByRole("button", { name: "已执行命令" }),
+    ).not.toBeInTheDocument();
+  });
   it("摘要按首次出现顺序合并工具类别，不展示计数和过程消息", () => {
     messageState.current = {
       id: "message-1",
@@ -580,6 +595,44 @@ describe("chat work process", () => {
       "text-destructive",
     );
   });
+
+  it.each(["error", "cancelled"] as const)(
+    "%s 终态中没有结果的工具显示中断，保留已完成工具事实",
+    (reason) => {
+      messageState.current = {
+        ...messageState.current,
+        status: { type: "incomplete", reason },
+      };
+      const props = {
+        type: "tool-call" as const,
+        toolCallId: "unfinished",
+        toolName: "Bash",
+        args: {
+          category: "command",
+          status: "running",
+          label: "执行命令",
+          loadingLabel: "正在执行命令…",
+        },
+        argsText: "{}",
+        status: { type: "running" as const },
+        addResult: vi.fn(),
+        resume: vi.fn(),
+        respondToApproval: vi.fn(),
+      } satisfies ToolCallMessagePartProps;
+      const { rerender } = render(<ToolActivityRow {...props} />);
+      expect(screen.getByText("已中断：")).toBeVisible();
+      expect(screen.queryByText("正在执行命令…")).not.toBeInTheDocument();
+      rerender(
+        <ToolActivityRow
+          {...props}
+          args={{ ...props.args, status: "completed" }}
+          result={{}}
+        />,
+      );
+      expect(screen.queryByText("已中断：")).not.toBeInTheDocument();
+      expect(screen.getByText("执行命令")).toBeVisible();
+    },
+  );
 
   it("工具行展示语义短语和安全摘要，不展示原始工具名或结果正文", () => {
     messageState.current = {

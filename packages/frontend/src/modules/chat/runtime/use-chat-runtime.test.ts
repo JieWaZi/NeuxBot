@@ -149,6 +149,101 @@ describe("useChatRuntime queue", () => {
     notices.unmount();
   });
 
+  it.each(["completed", "failed", "canceled"] as const)(
+    "断线后仅 REST %s 权威终态也能清除同次执行的运行占位",
+    async (status) => {
+      const options = runtimeOptions("chat-rest-terminal");
+      const { result, rerender } = renderHook(
+        (current: RuntimeOptions) => useChatRuntime(current),
+        { wrapper, initialProps: options },
+      );
+      act(() =>
+        subscriptionOptions.current?.onEvent({
+          type: "assistant.message",
+          sequence: 2,
+          message: {
+            id: "assistant-1",
+            role: "assistant",
+            executionId: "execution-1",
+            status: "running",
+            revision: 10,
+          },
+        }),
+      );
+      await waitFor(() => expect(projectedMessages.current).toHaveLength(1));
+      act(() => subscriptionOptions.current?.onUnavailable?.());
+      expect(result.current.isRunning).toBe(true);
+      expect(options.cancel).not.toHaveBeenCalled();
+      rerender({
+        ...options,
+        latestSequence: 3,
+        messages: [
+          {
+            id: "assistant-1",
+            role: "assistant",
+            executionId: "execution-1",
+            status,
+            revision: 9,
+          },
+        ],
+      });
+      await waitFor(() => expect(result.current.isRunning).toBe(false));
+      expect(projectedMessages.current).toEqual([
+        expect.objectContaining({
+          id: "assistant-1",
+          status: expect.objectContaining({
+            type: status === "completed" ? "complete" : "incomplete",
+          }),
+        }),
+      ]);
+    },
+  );
+
+  it("旧执行的 REST 终态不能清除新执行的实时运行占位", async () => {
+    const options = runtimeOptions("chat-new-execution");
+    const { result, rerender } = renderHook(
+      (current: RuntimeOptions) => useChatRuntime(current),
+      { wrapper, initialProps: options },
+    );
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        type: "assistant.message",
+        sequence: 2,
+        message: {
+          id: "assistant-new",
+          role: "assistant",
+          executionId: "execution-2",
+          status: "running",
+          revision: 10,
+        },
+      }),
+    );
+    await waitFor(() => expect(projectedMessages.current).toHaveLength(1));
+    rerender({
+      ...options,
+      activeExecutionId: undefined,
+      latestSequence: 3,
+      messages: [
+        {
+          id: "assistant-old",
+          role: "assistant",
+          executionId: "execution-1",
+          status: "failed",
+          revision: 11,
+        },
+      ],
+    });
+    expect(result.current.isRunning).toBe(true);
+    expect(projectedMessages.current).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "assistant-new",
+          status: { type: "running" },
+        }),
+      ]),
+    );
+  });
+
   it("隐藏会话暂停实时历史消费，重新可见时恢复原会话订阅", () => {
     const options = runtimeOptions("chat-hidden");
     const { rerender } = renderHook(

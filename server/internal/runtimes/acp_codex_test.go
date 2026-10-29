@@ -389,7 +389,7 @@ func TestCodexACPToolPayloadNormalizesStandardToolFacts(t *testing.T) {
 			if test.wantType != "" && payload["type"] != test.wantType {
 				t.Fatalf("type = %#v, want %q: %#v", payload["type"], test.wantType, payload)
 			}
-			if payload["input"] == nil {
+			if payload["rawInput"] == nil {
 				t.Fatalf("input is missing: %#v", payload)
 			}
 		})

@@ -346,9 +346,12 @@ function categoryFromTool(
     : "other";
 }
 
+type ToolActivityStatus = ChatToolArgs["status"] | "interrupted";
+
 type ToolSummaryWords = {
   completedPrefix: string;
   runningPrefix: string;
+  interruptedPrefix: string;
   file: string;
   verbs: Record<ToolCategory, string>;
 };
@@ -364,7 +367,7 @@ function isFileToolCategory(category: ToolCategory) {
 function formatToolActivitySummary(
   activities: readonly {
     category: ToolCategory;
-    status: ChatToolArgs["status"];
+    status: ToolActivityStatus;
     label?: string;
   }[],
   words: ToolSummaryWords,
@@ -375,9 +378,11 @@ function formatToolActivitySummary(
     if (!previous || previous.status !== activity.status) {
       if (previous) summary += "，";
       summary +=
-        activity.status === "running"
-          ? words.runningPrefix
-          : words.completedPrefix;
+        activity.status === "interrupted"
+          ? words.interruptedPrefix
+          : activity.status === "running"
+            ? words.runningPrefix
+            : words.completedPrefix;
     }
     summary += activity.label || words.verbs[activity.category];
     const next = activities[index + 1];
@@ -396,12 +401,14 @@ function formatToolActivitySummary(
 function statusFromTool(
   part: Pick<ToolCallMessagePart, "args" | "isError" | "result">,
   messageIsRunning: boolean,
-): ChatToolArgs["status"] {
+  messageIsTerminal: boolean,
+): ToolActivityStatus {
   const args = toolArgsOf(part.args);
   if (part.isError || args.status === "failed") return "failed";
   if (args.status === "completed" || part.result !== undefined) {
     return "completed";
   }
+  if (messageIsTerminal) return "interrupted";
   return messageIsRunning ? "running" : args.status;
 }
 
@@ -460,10 +467,13 @@ export function ToolActivityRow({
 }: ToolCallMessagePartProps) {
   const { t } = useTranslation("chat");
   const messageStatus = useAuiState((state) => state.message.status);
+  const messageIsTerminal =
+    messageStatus?.type === "complete" || messageStatus?.type === "incomplete";
   const toolArgs = toolArgsOf(args);
   const toolStatus = statusFromTool(
     { args, isError, result },
     messageStatus?.type === "running",
+    messageIsTerminal,
   );
   const Icon = toolCategoryIcons[toolArgs.category];
   const summary = toolArgs.safeSummary;
@@ -476,8 +486,6 @@ export function ToolActivityRow({
       : (toolArgs.label ?? fallbackLabel);
   const showFallbackTarget = !toolArgs.label && !toolArgs.loadingLabel;
   const files = summary?.files ?? [];
-  const messageIsTerminal =
-    messageStatus?.type === "complete" || messageStatus?.type === "incomplete";
   const compactFileModification =
     messageIsTerminal &&
     toolStatus === "completed" &&
@@ -523,6 +531,9 @@ export function ToolActivityRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 truncate">
+            {toolStatus === "interrupted" ? (
+              <span>{t("toolActivitySummary.interruptedPrefix")}</span>
+            ) : null}
             {toolStatus === "failed" ? (
               <span className="sr-only">
                 {t("toolActivitySummary.failedPrefix")}
@@ -642,13 +653,17 @@ export function WorkProcess({
   }, []);
   const activities: {
     category: ToolCategory;
-    status: ChatToolArgs["status"];
+    status: ToolActivityStatus;
     labels: string[];
   }[] = [];
   for (const tool of tools) {
     const category = categoryFromTool(tool);
     // 汇总只描述活动；失败状态留在对应工具行，不生成标题级失败总结。
-    const actualStatus = statusFromTool(tool, messageIsRunning);
+    const actualStatus = statusFromTool(
+      tool,
+      messageIsRunning,
+      messageIsTerminal,
+    );
     const status = actualStatus === "failed" ? "completed" : actualStatus;
     let activity = activities.find(
       (item) => item.category === category && item.status === status,
@@ -674,6 +689,7 @@ export function WorkProcess({
     {
       completedPrefix: t("toolActivitySummary.completedPrefix"),
       runningPrefix: t("toolActivitySummary.runningPrefix"),
+      interruptedPrefix: t("toolActivitySummary.interruptedPrefix"),
       file: t("toolActivitySummary.file"),
       verbs: {
         file_read: t("toolActivitySummary.verb.file_read"),

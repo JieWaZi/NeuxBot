@@ -270,8 +270,16 @@ it.each(["functionTask", "action"])(
       ),
     );
     renderInstance();
-    expect(await screen.findByText("客户项目")).toBeInTheDocument();
-    expect(screen.getByText("检查完成")).toBeInTheDocument();
+    const input = await screen.findByText(/"project": "客户项目"/);
+    expect(JSON.parse(input.textContent ?? "")).toEqual({
+      project: "客户项目",
+    });
+    const output = screen.getByText(/"summary": "检查完成"/);
+    expect(JSON.parse(output.textContent ?? "")).toEqual({
+      summary: "检查完成",
+    });
+    expect(input.closest("pre")).toHaveClass("max-h-80", "overflow-auto");
+    expect(output.closest("pre")).toHaveClass("max-h-80", "overflow-auto");
     expect(
       screen.queryByText(
         /private-code|private-action-id|private-phase|durationMs/,
@@ -306,7 +314,7 @@ it("用户决策只展示完整问题和业务回答", async () => {
   );
   renderInstance();
   expect(await screen.findByText("请选择分析方案")).toBeInTheDocument();
-  expect(screen.getByText("方案甲")).toBeInTheDocument();
+  expect(screen.getByText('"方案甲"')).toBeInTheDocument();
   expect(
     screen.queryByText(/private-question|questionId|source/),
   ).not.toBeInTheDocument();
@@ -346,9 +354,11 @@ it.each([false, true])(
         ],
       },
     });
-    expect(await screen.findByText("方案乙")).toBeInTheDocument();
+    const output = await screen.findByText(/"方案乙"/);
+    expect(JSON.parse(output.textContent ?? "")).toEqual(
+      multi ? ["方案乙", "custom"] : "方案乙",
+    );
     expect(screen.queryByText("beta")).not.toBeInTheDocument();
-    if (multi) expect(screen.getByText("custom")).toBeInTheDocument();
     expect(value).toEqual(multi ? ["beta", "custom"] : "beta");
   },
 );

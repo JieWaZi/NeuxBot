@@ -914,3 +914,313 @@ func TestRuntimeTextSegmentsKeepOrderAcrossToolAndCancel(t *testing.T) {
 		t.Fatalf("canceled text differs: messages=%+v err=%v", messages, err)
 	}
 }
+
+// TestRuntimeEventSinkCompactsMixedCumulativeInput 保留真实混合更新的正文、状态与元数据，跨条数和字节边界仅提交每批最新参数。
+func TestRuntimeEventSinkCompactsMixedCumulativeInput(t *testing.T) {
+	for _, test := range []struct {
+		// name 标识触发提交的批次边界。
+		name string
+		// count 是连续混合更新数量。
+		count int
+		// inputStep 是每次累计参数正文增长的字节数。
+		inputStep int
+		// progressPadding 是每次有序正文的额外字节数。
+		progressPadding int
+		// snapshots 是包含最终参数的有界提交次数。
+		snapshots int
+	}{
+		{name: "count_boundary", count: 300, inputStep: 128, snapshots: 3},
+		{name: "byte_boundary", count: 100, inputStep: 1024, progressPadding: 4096, snapshots: 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			store, err := eventlog.NewStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			chatID := "dededededededededededededededede"
+			if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+				t.Fatal(err)
+			}
+			sink, live := newRuntimeEventSinkForTest(store, chatID)
+			originalBytes := 0
+			send := func(kind runtimes.EventType, payload map[string]any) {
+				t.Helper()
+				data := marshalData(payload)
+				originalBytes += len(data)
+				if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: data}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			send(runtimes.EventTypeToolUse, map[string]any{"toolCallId": "mixed", "name": "write_file", "rawInput": map[string]any{"path": "note.md"}})
+			finalInput := ""
+			padding := strings.Repeat("p", test.progressPadding)
+			for i := range test.count {
+				finalInput = strings.Repeat("x", (i+1)*test.inputStep)
+				send(runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "mixed", "sessionUpdate": "tool_call_update", "status": "in_progress", "rawInput": map[string]any{"path": "note.md", "content": finalInput}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": fmt.Sprintf("chunk-%d", i) + padding}}}, "_meta": map[string]any{"progress": i}})
+				if i%7 == 0 {
+					send(runtimes.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "mixed", "rawInput": map[string]any{"path": "note.md", "content": finalInput}})
+				}
+			}
+			send(runtimes.EventTypeToolResult, map[string]any{"toolCallId": "mixed", "status": "completed"})
+			if err := sink.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			records, err := store.ReadAll(chatID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			totalBytes, progress, inputs := 0, 0, 0
+			latestInput := ""
+			for _, record := range records[3:] {
+				totalBytes += len(record.Data)
+				var message eventlog.RuntimeMessageData
+				if err := json.Unmarshal(record.Data, &message); err != nil {
+					t.Fatal(err)
+				}
+				for _, content := range message.Content {
+					var payload map[string]any
+					if err := json.Unmarshal(content.Data, &payload); err != nil {
+						t.Fatal(err)
+					}
+					if _, present := payload["rawInput"]; present && content.Type != runtimes.EventTypeToolUse {
+						inputs++
+						latestInput, _ = payload["rawInput"].(map[string]any)["content"].(string)
+					}
+					if content.Type != runtimes.EventTypeToolUpdate {
+						continue
+					}
+					blocks := payload["content"].([]any)
+					text := blocks[0].(map[string]any)["content"].(map[string]any)["text"]
+					if text != fmt.Sprintf("chunk-%d", progress)+padding || payload["_meta"].(map[string]any)["progress"] != float64(progress) || payload["status"] != "in_progress" {
+						t.Fatalf("ordered progress %d changed", progress)
+					}
+					progress++
+				}
+			}
+			if progress != test.count || inputs != test.snapshots || latestInput != finalInput {
+				t.Fatalf("progress=%d inputs=%d latest input length=%d", progress, inputs, len(latestInput))
+			}
+			if totalBytes >= originalBytes/5 {
+				t.Fatalf("persisted %d bytes from %d original bytes, want at least 80%% reduction", totalBytes, originalBytes)
+			}
+			t.Logf("mixed update bytes: original=%d persisted=%d reduction=%.1f%%", originalBytes, totalBytes, 100*(1-float64(totalBytes)/float64(originalBytes)))
+			assertRuntimeSinkLiveMatchesReplay(t, live, records)
+		})
+	}
+}
+
+// TestRuntimeEventSinkKeepsSnapshotMetadataInDeliveryOrder 防止后到快照的状态、名称和清空操作被早到更新覆盖。
+func TestRuntimeEventSinkKeepsSnapshotMetadataInDeliveryOrder(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "ababdededededededededededededede"
+	if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, live := newRuntimeEventSinkForTest(store, chatID)
+	for _, event := range []runtimes.Event{
+		{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read_file", "rawInput": map[string]any{"path": "old.md"}})},
+		{Type: runtimes.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "rawInput": map[string]any{"path": "old.md"}, "title": "old", "name": "read_file", "status": "in_progress", "locations": []any{map[string]any{"path": "old.md"}}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "progress"}}}})},
+		{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "rawInput": nil, "title": "new", "name": "write_file", "status": "completed", "locations": []any{}})},
+	} {
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := sink.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	records, err := store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	titles := []string{}
+	for _, record := range records[3:] {
+		var message eventlog.RuntimeMessageData
+		if err := json.Unmarshal(record.Data, &message); err != nil {
+			t.Fatal(err)
+		}
+		for _, content := range message.Content {
+			var payload map[string]any
+			if err := json.Unmarshal(content.Data, &payload); err != nil {
+				t.Fatal(err)
+			}
+			if title, ok := payload["title"].(string); ok {
+				titles = append(titles, title)
+			}
+		}
+	}
+	if !reflect.DeepEqual(titles, []string{"old", "new"}) {
+		t.Fatalf("metadata delivery order = %v, want [old new]", titles)
+	}
+	var lastLive *messageview.Message
+	for len(live) > 0 {
+		if event := <-live; event.Message != nil {
+			lastLive = event.Message
+		}
+	}
+	replay, err := messageview.ReplayPublicMessages(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lastLive == nil || len(replay) != 1 || !reflect.DeepEqual(lastLive.DisplayParts, replay[0].DisplayParts) || lastLive.Revision != replay[0].Revision {
+		t.Fatalf("metadata live/replay differ: live=%+v replay=%+v", lastLive, replay)
+	}
+}
+
+// TestRuntimeEventSinkCompactionPreservesScopeAndClears 参数清空不能丢失，也不能跨工具或 Invocation 合并。
+func TestRuntimeEventSinkCompactionPreservesScopeAndClears(t *testing.T) {
+	for _, inputKey := range []string{"rawInput", "input"} {
+		t.Run(inputKey, func(t *testing.T) {
+			store, err := eventlog.NewStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			chatID := "abcdedededededededededededededed"
+			if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+				t.Fatal(err)
+			}
+			sink, live := newRuntimeEventSinkForTest(store, chatID)
+			send := func(invocationID string, kind runtimes.EventType, payload map[string]any) {
+				t.Helper()
+				if err := sink.acceptInvocation(context.Background(), invocationID, runtimes.Event{Type: kind, Data: marshalData(payload)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			send("invocation-1", runtimes.EventTypeToolUse, map[string]any{"toolCallId": "a", "name": "file_modify", "kind": "edit", inputKey: map[string]any{"path": "a.md"}})
+			send("invocation-1", runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "a", inputKey: map[string]any{"path": "a.md", "content": "private body"}, "status": "in_progress", "content": []any{map[string]any{"type": "diff", "path": "a.md", "oldText": "old", "newText": "new"}}, "_meta": map[string]any{"progress": 1}})
+			send("invocation-1", runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "a", inputKey: nil, "content": []any{}, "locations": []any{}, "_meta": map[string]any{"progress": 2}})
+			send("invocation-1", runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "b", "name": "read_file", inputKey: map[string]any{"path": "b.md"}, "status": "in_progress", "content": []any{}, "_meta": map[string]any{"progress": 3}})
+			send("invocation-2", runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "b", "name": "read_file", inputKey: map[string]any{"path": "c.md"}, "status": "in_progress", "content": []any{}, "_meta": map[string]any{"progress": 4}})
+			send("invocation-2", runtimes.EventTypeToolResult, map[string]any{"toolCallId": "b", "status": "completed"})
+			if err := sink.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			records, err := store.ReadAll(chatID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			scopes := []string{}
+			paths := []any{}
+			progress := []float64{}
+			for _, record := range records[3:] {
+				var message eventlog.RuntimeMessageData
+				if err := json.Unmarshal(record.Data, &message); err != nil {
+					t.Fatal(err)
+				}
+				for _, content := range message.Content {
+					var payload map[string]any
+					if err := json.Unmarshal(content.Data, &payload); err != nil {
+						t.Fatal(err)
+					}
+					if value, present := payload[inputKey]; present && content.Type != runtimes.EventTypeToolUse {
+						scopes = append(scopes, record.InvocationID+":"+payload["toolCallId"].(string))
+						if input, ok := value.(map[string]any); ok {
+							paths = append(paths, input["path"])
+						} else {
+							paths = append(paths, value)
+						}
+					}
+					if content.Type == runtimes.EventTypeToolUpdate {
+						progress = append(progress, payload["_meta"].(map[string]any)["progress"].(float64))
+						if len(progress) == 2 && (len(payload["content"].([]any)) != 0 || len(payload["locations"].([]any)) != 0) {
+							t.Fatal("explicit empty content or locations lost")
+						}
+					}
+				}
+			}
+			if !reflect.DeepEqual(scopes, []string{"invocation-1:a", "invocation-1:b", "invocation-2:b"}) || !reflect.DeepEqual(paths, []any{nil, "b.md", "c.md"}) || !reflect.DeepEqual(progress, []float64{1, 2, 3, 4}) {
+				t.Fatalf("scope/clear/order changed: scopes=%v paths=%v progress=%v", scopes, paths, progress)
+			}
+			message := assertRuntimeSinkLiveMatchesReplay(t, live, records)
+			if len(message.DisplayParts) != 3 || len(message.FileChanges) != 0 || message.DisplayParts[0].ToolSafeSummary != nil {
+				t.Fatalf("cleared tool facts retained: %+v", message)
+			}
+		})
+	}
+}
+
+// assertRuntimeSinkLiveMatchesReplay 校验实时最终快照与耐久日志重放具有相同公开展示和修订号。
+func assertRuntimeSinkLiveMatchesReplay(t *testing.T, live <-chan eventstream.PublicEvent, records []eventlog.Record) *messageview.Message {
+	t.Helper()
+	var lastLive *messageview.Message
+	for len(live) > 0 {
+		if event := <-live; event.Message != nil {
+			lastLive = event.Message
+		}
+	}
+	replay, err := messageview.ReplayPublicMessages(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lastLive == nil || len(replay) != 1 || !reflect.DeepEqual(lastLive.DisplayParts, replay[0].DisplayParts) || !reflect.DeepEqual(lastLive.FileChanges, replay[0].FileChanges) || lastLive.Revision != replay[0].Revision {
+		t.Fatalf("live/replay differ: live=%+v replay=%+v", lastLive, replay)
+	}
+	return &replay[0]
+}
+
+// TestRuntimeEventSinkKeepsInputProjectionContext 参数必须在原事件身份上下文中投影，不能跨越名称变化前移或后移。
+func TestRuntimeEventSinkKeepsInputProjectionContext(t *testing.T) {
+	for _, inputKey := range []string{"rawInput", "input"} {
+		otherInputKey := "rawInput"
+		if inputKey == "rawInput" {
+			otherInputKey = "input"
+		}
+		for _, test := range []struct {
+			// name 标识身份元数据与参数的原始先后关系。
+			name string
+			// events 是真实交付顺序下的规范工具更新。
+			events []runtimes.Event
+			// wantFallback 表示自定义工具是否应保留输入中的通用摘要。
+			wantFallback bool
+		}{
+			{name: "same_mixed_event", events: []runtimes.Event{{Type: runtimes.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool", inputKey: map[string]any{"ticket": "ABC"}, "status": "in_progress", "content": []any{}, "_meta": map[string]any{"progress": 1}})}}, wantFallback: true},
+			{name: "same_snapshot_event", events: []runtimes.Event{{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool", inputKey: map[string]any{"ticket": "ABC"}})}}, wantFallback: true},
+			{name: "metadata_before_snapshot", events: []runtimes.Event{
+				{Type: runtimes.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool"})},
+				{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", inputKey: map[string]any{"ticket": "ABC"}})},
+			}, wantFallback: true},
+			{name: "snapshot_before_metadata", events: []runtimes.Event{
+				{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", inputKey: map[string]any{"ticket": "ABC"}})},
+				{Type: runtimes.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool"})},
+			}},
+			{name: "different_input_sources_across_metadata", events: []runtimes.Event{
+				{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", inputKey: map[string]any{"ticket": "ABC"}})},
+				{Type: runtimes.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool"})},
+				{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", otherInputKey: map[string]any{"ticket": "DEF"}})},
+			}},
+		} {
+			t.Run(inputKey+"/"+test.name, func(t *testing.T) {
+				store, err := eventlog.NewStore(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				chatID := "efefdededededededededededededede"
+				if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+					t.Fatal(err)
+				}
+				sink, live := newRuntimeEventSinkForTest(store, chatID)
+				events := append([]runtimes.Event{{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}}, test.events...)
+				events = append(events, runtimes.Event{Type: runtimes.EventTypeToolResult, Data: marshalData(map[string]any{"toolCallId": "tool", "status": "completed"})})
+				for _, event := range events {
+					if err := sink.acceptInvocation(context.Background(), "invocation-1", event); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := sink.Flush(); err != nil {
+					t.Fatal(err)
+				}
+				records, err := store.ReadAll(chatID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				message := assertRuntimeSinkLiveMatchesReplay(t, live, records)
+				if len(message.DisplayParts) != 1 || strings.Contains(message.DisplayParts[0].ToolLabel, "ABC") != test.wantFallback {
+					t.Fatalf("input applied in wrong identity context: %+v", message.DisplayParts)
+				}
+			})
+		}
+	}
+}

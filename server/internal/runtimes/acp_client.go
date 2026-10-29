@@ -1063,18 +1063,7 @@ func acpToolPayload(value any, binding acpRuntimeBinding) (map[string]any, error
 			payload["locations"] = []any{}
 		}
 	}
-	if rawInput, ok := payload["rawInput"].(map[string]any); ok {
-		if _, exists := payload["input"]; !exists {
-			payload["input"] = rawInput
-		}
-		for _, key := range []string{
-			"server", "tool", "arguments", "command", "cwd", "path", "query", "action",
-		} {
-			if _, exists := payload[key]; !exists && rawInput[key] != nil {
-				payload[key] = rawInput[key]
-			}
-		}
-	}
+	// rawInput 是累计参数的唯一来源；安全短语和摘要会按需读取它，不复制 input 或顶层大字段。
 	name, nativeType := acpToolIdentity(payload, binding)
 	if name != "" {
 		payload["name"] = name

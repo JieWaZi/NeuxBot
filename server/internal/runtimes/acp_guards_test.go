@@ -110,7 +110,7 @@ func TestACPBridgeCoalescesQueuedToolInputSnapshots(t *testing.T) {
 	if err := json.Unmarshal(sink.events[1].Data, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["input"].(map[string]any)["content"] != "body-999" {
+	if payload["rawInput"].(map[string]any)["content"] != "body-999" {
 		t.Fatalf("last input = %#v", payload)
 	}
 	if sink.events[1].Type != EventTypeToolInputSnapshot || sink.events[2].Type != EventTypeToolResult || sink.events[3].Type != EventTypeTextDelta {
@@ -187,7 +187,7 @@ func TestACPBridgeCoalescingPreservesFieldsAndOrder(t *testing.T) {
 	if err := json.Unmarshal(sink.events[0].Data, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["title"] != "Write file" || payload["kind"] != "edit" || payload["input"].(map[string]any)["path"] != "after.md" {
+	if payload["title"] != "Write file" || payload["kind"] != "edit" || payload["rawInput"].(map[string]any)["path"] != "after.md" {
 		t.Fatalf("merged fields = %#v", payload)
 	}
 	if first.ToolCallUpdate.RawInput.(map[string]any)["path"] != "before.md" {
@@ -265,7 +265,7 @@ func TestACPBridgeSeparatesToolInputSnapshots(t *testing.T) {
 					t.Fatalf("unstable tool identity: %+v", payload)
 				}
 				if index >= 1 && index <= 3 {
-					if (payload["content"] != nil) != (binding.baseRuntimeID == RuntimeIDWorkBuddy) || payload["input"].(map[string]any)["content"] != []string{"a", "ab", "abc"}[index-1] {
+					if (payload["content"] != nil) != (binding.baseRuntimeID == RuntimeIDWorkBuddy) || payload["rawInput"].(map[string]any)["content"] != []string{"a", "ab", "abc"}[index-1] {
 						t.Fatalf("tool update lost cumulative input or content: %+v", payload)
 					}
 				}
@@ -940,5 +940,22 @@ func TestACPBridgeCancellationStillDrainsAcceptedText(t *testing.T) {
 	result := acpResult(acpRunRequest{}, "s", acpPromptResult{err: status_error.OperationCanceled}, bridge, nil, nil)
 	if result.Failure == nil || result.Failure.Code != FailureCodeContextCanceled {
 		t.Fatalf("cancel primary cause=%+v", result.Failure)
+	}
+}
+
+// TestACPToolPayloadKeepsOneInputSource 防止累计参数复制成展示别名，保留原始参数和有序正文。
+func TestACPToolPayloadKeepsOneInputSource(t *testing.T) {
+	update := acp.UpdateToolCall("tool", acp.WithUpdateRawInput(map[string]any{"arguments": map[string]any{"body": "synthetic-body"}, "command": "synthetic-command"}), acp.WithUpdateContent([]acp.ToolCallContent{acp.ToolContent(acp.TextBlock("chunk"))}))
+	payload, err := acpToolPayload(update.ToolCallUpdate, workBuddyACPRuntimeBinding())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload["rawInput"] == nil || payload["content"] == nil {
+		t.Fatal("canonical input or ordered content missing")
+	}
+	for _, alias := range []string{"input", "arguments", "command"} {
+		if _, exists := payload[alias]; exists {
+			t.Fatalf("cumulative input duplicated in alias %s", alias)
+		}
 	}
 }

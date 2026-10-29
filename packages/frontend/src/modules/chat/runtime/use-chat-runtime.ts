@@ -393,6 +393,19 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           overlay.messages.some((message) => message.awaitingFirstHistory)
         ? localExecution.id
         : handoffMessages.find(isActiveLocalMessage)?.executionId;
+  const authoritativeTerminalExecutionIDs = useMemo(
+    () =>
+      new Set(
+        options.messages.flatMap((message) =>
+          message.role === "assistant" &&
+          message.executionId &&
+          ["completed", "failed", "canceled"].includes(message.status ?? "")
+            ? [message.executionId]
+            : [],
+        ),
+      ),
+    [options.messages],
+  );
   const localExecutionIsTerminal = Boolean(
     localExecutionID &&
     options.messages.some(
@@ -403,7 +416,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   );
   const overlayExecutionIsActive = Boolean(
     overlayMatchesScope(overlay.chatId, options.chatId, overlay.messages) &&
-    overlay.messages.some(isActiveLocalMessage),
+    overlay.messages.some(
+      (message) =>
+        isActiveLocalMessage(message) &&
+        !authoritativeTerminalExecutionIDs.has(message.executionId ?? ""),
+    ),
   );
   const pendingFirstHistory = Boolean(
     handoffMessages.some((message) => message.awaitingFirstHistory) ||
@@ -416,12 +433,28 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     messages.some((message) => message.awaitingFirstHistory) ||
     overlayExecutionIsActive ||
     (options.activeExecutionId &&
+      !authoritativeTerminalExecutionIDs.has(options.activeExecutionId) &&
       !(
         terminalExecution.chatId === options.chatId &&
         terminalExecution.executionId === options.activeExecutionId
       )) ||
     (localExecutionID && !localExecutionIsTerminal),
   );
+  useEffect(() => {
+    if (authoritativeTerminalExecutionIDs.size === 0) return;
+    // 断线时终态可仅由 REST 回补；只收敛同一次执行的旧占位，保留新执行。
+    setOverlay((current) => {
+      if (current.chatId !== options.chatId) return current;
+      const messages = current.messages.filter(
+        (message) =>
+          !isActiveLocalMessage(message) ||
+          !authoritativeTerminalExecutionIDs.has(message.executionId ?? ""),
+      );
+      return messages.length === current.messages.length
+        ? current
+        : { ...current, messages };
+    });
+  }, [authoritativeTerminalExecutionIDs, options.chatId]);
   useEffect(() => () => clearErrorNoticeActions(queueKey), [queueKey]);
 
   const retryExecution = useCallback(
