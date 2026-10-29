@@ -1,5 +1,7 @@
 # NeuxBot 开发约定
 
+Avoid unnecessary secondary labels and descriptions.Let the layout do the explaining
+
 ## 必读路由
 
 - 所有代码和开发文档修改前阅读 [CONTEXT.md](CONTEXT.md) 与 [架构总览](docs/architecture/overview-cn.md)。
