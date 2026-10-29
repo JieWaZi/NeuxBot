@@ -1,4 +1,11 @@
-import { Bot, Code2, GitBranch, MessageCircle, Workflow } from "lucide-react";
+import {
+  Bot,
+  FileCode2,
+  MousePointerClick,
+  Settings2,
+  Workflow,
+  Zap,
+} from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -12,10 +19,7 @@ import { CanvasViewportControls } from "@/shared/ui/canvas-viewport-controls";
 import { Card } from "@/shared/ui/card";
 import { Badge } from "@/shared/ui/badge";
 import { Dialog, DialogTrigger } from "@/shared/ui/dialog";
-import {
-  nodeExecutionStatus,
-  workflowStatusAppearance,
-} from "../model/status-presentation";
+import { workflowStatusAppearance } from "../model/status-presentation";
 import { cn } from "@/shared/lib/cn";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import {
@@ -35,16 +39,25 @@ import { CanvasDetail } from "./canvas-detail";
 
 const nodeIcons: Record<string, typeof Bot> = {
   worker: Bot,
-  askUser: MessageCircle,
-  functionTask: Code2,
-  action: GitBranch,
+  askUser: MousePointerClick,
+  functionTask: Settings2,
+  action: Zap,
   workflow: Workflow,
   startWorkflow: Workflow,
   joinWorkflow: Workflow,
 };
-export function NodeKind({ kind, label }: { kind: string; label?: string }) {
+export function NodeKind({
+  kind,
+  label,
+  actionType,
+}: {
+  kind: string;
+  label?: string;
+  actionType?: string;
+}) {
   const { t } = useTranslation("workflow");
-  const Icon = nodeIcons[kind] ?? Workflow;
+  const Icon =
+    actionType === "script" ? FileCode2 : (nodeIcons[kind] ?? Workflow);
   const names: Record<string, string> = {
     worker: t("kind.worker"),
     askUser: t("kind.askUser"),
@@ -458,11 +471,6 @@ export function WorkflowCanvas({
           item.status === "running" &&
           (item.count ?? 0) > 0,
       ) ?? false;
-    const status = nodeExecutionStatus(
-      nodeCounts
-        ?.filter((item) => item.nodeId === node.id && (item.count ?? 0) > 0)
-        .map((item) => item.status) ?? [],
-    );
     const targetSelected = selectedTargets.some(
       (target) => target.kind === "node" && target.id === node.id,
     );
@@ -475,24 +483,13 @@ export function WorkflowCanvas({
         : undefined;
     const description =
       typeof behavior === "string" ? behavior : action?.description;
-    const kindSurface =
-      node.kind === "worker"
-        ? "bg-accent-surface hover:bg-accent-surface"
-        : node.kind === "askUser"
-          ? "bg-status-warning-surface hover:bg-status-warning-surface"
-          : "bg-status-info-surface hover:bg-status-info-surface";
     const card = (
       <Card
         asChild
         variant="resource"
         data-state={selected === node.id ? "selected" : undefined}
         data-running-shimmer={running}
-        data-workflow-completed-flow={
-          status === "succeeded" || status === "answered"
-        }
         className={cn(
-          kindSurface,
-          workflowStatusAppearance(status).surface,
           targetSelected && "ring-accent-border ring-1",
           "data-[state=selected]:not-focus-visible:ring-0",
         )}
@@ -509,10 +506,10 @@ export function WorkflowCanvas({
             );
             if (actual?.instanceId) onSelectInstance?.(actual.instanceId);
           }}
-          className="focus-visible:ring-ring relative grid w-full min-w-0 gap-2 p-4 pr-10 text-left outline-none focus-visible:ring-2"
+          className="focus-visible:ring-ring relative grid w-full min-w-0 gap-1.5 px-3 py-2 text-left outline-none focus-visible:ring-2"
           onFocus={revealFocusedItem}
         >
-          <span className="type-label font-medium whitespace-pre-wrap">
+          <span className="type-body line-clamp-2 font-medium break-words whitespace-pre-wrap">
             {node.label}
           </span>
           {node.kind === "worker" ? (
@@ -523,11 +520,14 @@ export function WorkflowCanvas({
           ) : (
             <NodeKind
               kind={node.kind}
+              actionType={
+                node.kind === "action" ? node.execution.actionType : undefined
+              }
               label={action?.type === "script" ? t("localScript") : undefined}
             />
           )}
           {description ? (
-            <span className="text-muted-foreground type-caption line-clamp-3 whitespace-pre-wrap">
+            <span className="text-muted-foreground type-caption line-clamp-2 break-words whitespace-pre-wrap">
               {description}
             </span>
           ) : null}
@@ -596,8 +596,10 @@ export function WorkflowCanvas({
       <span className="text-muted-foreground type-caption mb-1 block">
         {t("phaseOrdinal", { ordinal: String(index + 1).padStart(2, "0") })}
       </span>
-      <span className="type-label block pr-8 font-semibold">{phase.title}</span>
-      <span className="text-muted-foreground type-caption mt-2 line-clamp-3 block whitespace-pre-wrap">
+      <span className="type-label block font-semibold break-words">
+        {phase.title}
+      </span>
+      <span className="text-muted-foreground type-caption mt-1 line-clamp-2 block break-words whitespace-pre-wrap">
         {phase.detail}
       </span>
     </>
@@ -611,7 +613,7 @@ export function WorkflowCanvas({
         preserveAspectRatio="none"
         className={cn(
           "text-border-default pointer-events-none block w-full shrink-0",
-          stretch ? "absolute inset-0 h-full" : "h-6",
+          stretch ? "absolute inset-0 h-full" : "h-4",
         )}
       >
         <path
@@ -706,7 +708,7 @@ export function WorkflowCanvas({
           data-workflow-phase={phase.id}
           data-workflow-layout-item
           className={cn(
-            "bg-surface-raised relative grid min-w-0 content-start gap-3 rounded-xl p-4",
+            "bg-surface-raised relative grid min-w-0 content-start gap-2 rounded-xl p-3",
             selectedTargets.some(
               (target) => target.kind === "phase" && target.id === phase.id,
             ) && "ring-accent-border ring-1",
@@ -728,13 +730,13 @@ export function WorkflowCanvas({
               <button
                 type="button"
                 aria-label={phase.title}
-                className="focus-visible:ring-ring rounded-control mb-3 min-w-0 text-left outline-none focus-visible:ring-2"
+                className="focus-visible:ring-ring rounded-control mb-1 min-w-0 text-left outline-none focus-visible:ring-2"
               >
                 {phaseHeader(phase, index)}
               </button>
             </DialogTrigger>
           ) : (
-            <div className="mb-3 min-w-0">{phaseHeader(phase, index)}</div>
+            <div className="mb-1 min-w-0">{phaseHeader(phase, index)}</div>
           )}
           {renderItems(items)}
         </section>

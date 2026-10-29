@@ -47,3 +47,33 @@ it("平台结果不确定时保留已发送片段并提示核对", () => {
   );
   expect(screen.queryByText(/partsSent|deliveryId/)).not.toBeInTheDocument();
 });
+
+it.each([false, true])(
+  "业务检查未通过展示原因与恢复建议，隐藏执行封套（嵌套=%s）",
+  (nested) => {
+    const failure = {
+      code: "WorkflowBusinessCheckFailed",
+      kind: "WorkflowBusinessCheckFailed",
+      result: {
+        data: { valid: false },
+        process: { exitCode: 0, stdout: "private-process-output" },
+      },
+    };
+    render(
+      <WorkflowFailure
+        value={nested ? { code: "STEP_FAILED", cause: failure } : failure}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "步骤已执行，但结果未通过业务检查",
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "请检查数据或调整检查条件后重试",
+    );
+    expect(
+      screen.queryByText(
+        /WorkflowBusinessCheckFailed|STEP_FAILED|private-process-output|stdout|exitCode/,
+      ),
+    ).not.toBeInTheDocument();
+  },
+);

@@ -1,8 +1,10 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import {
+  getWorkflowRunOptions,
   getWorkflowRetryPlanOptions,
   retryWorkflowRunMutation,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
@@ -11,6 +13,7 @@ import {
   withLocalErrorMutation,
   localApiErrorMessage,
 } from "@/shared/api/local-error-surface";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { WorkflowLoadingState, WorkflowQueryError } from "./query-feedback";
@@ -19,10 +22,12 @@ export function RetryRunDialog({
   id,
   runId,
   manifest,
+  runNumber,
 }: {
   id: string;
   runId: string;
   manifest?: Manifest;
+  runNumber?: number;
 }) {
   const { t } = useTranslation("workflow");
   const navigate = useNavigate();
@@ -34,6 +39,18 @@ export function RetryRunDialog({
     ),
     enabled: open,
   });
+  // 执行记录可能属于旧版本，标题只读取该次运行的冻结快照。
+  const source = useQuery({
+    ...getWorkflowRunOptions(
+      withLocalErrorSurface({
+        path: { id, runId },
+        query: { offset: 0 },
+        throwOnError: true,
+      }),
+    ),
+    enabled: open && !manifest,
+  });
+  const frozenManifest = manifest ?? source.data?.manifest;
   const retry = useMutation(withLocalErrorMutation(retryWorkflowRunMutation()));
   const submit = async () => {
     if (!plan.data?.allowed) return;
@@ -50,19 +67,40 @@ export function RetryRunDialog({
       /* Preserve the plan and command identity for retry. */
     }
   };
+  const trigger = (
+    <Button
+      size={runNumber === undefined ? "sm" : "icon-sm"}
+      variant={runNumber === undefined ? "surface" : "ghost"}
+      aria-label={
+        runNumber === undefined
+          ? undefined
+          : t("retryRunNumber", { number: runNumber })
+      }
+      onClick={() => {
+        retry.reset();
+        setRequestId(crypto.randomUUID());
+        setOpen(true);
+      }}
+    >
+      {runNumber === undefined ? (
+        t("rerun")
+      ) : (
+        <RotateCcw aria-hidden="true" strokeWidth={1.5} />
+      )}
+    </Button>
+  );
   return (
     <>
-      <Button
-        size="sm"
-        variant="surface"
-        onClick={() => {
-          retry.reset();
-          setRequestId(crypto.randomUUID());
-          setOpen(true);
-        }}
-      >
-        {t("rerun")}
-      </Button>
+      {runNumber === undefined ? (
+        trigger
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>{trigger}</TooltipTrigger>
+          <TooltipContent>
+            {t("retryRunNumber", { number: runNumber })}
+          </TooltipContent>
+        </Tooltip>
+      )}
       <Dialog
         open={open}
         onOpenChange={(next) => {
@@ -79,14 +117,23 @@ export function RetryRunDialog({
                 onRetry={() => void plan.refetch()}
               />
             ) : null}
-            {plan.data?.items?.map((item) => (
+            {!manifest && source.isPending ? <WorkflowLoadingState /> : null}
+            {!manifest && source.isError ? (
+              <WorkflowQueryError
+                error={source.error}
+                retrying={source.isFetching}
+                onRetry={() => void source.refetch()}
+              />
+            ) : null}
+            {plan.data?.items?.map((item, index) => (
               <div
                 key={item.instanceId}
                 className="bg-surface-module grid gap-1 rounded-lg p-3"
               >
                 <h3 className="type-body font-medium">
-                  {manifest?.nodes?.find((node) => node.id === item.nodeId)
-                    ?.label ?? item.nodeId}
+                  {frozenManifest?.nodes?.find(
+                    (node) => node.id === item.nodeId,
+                  )?.label ?? t("retryStepNumber", { number: index + 1 })}
                 </h3>
                 <p className="type-ui">
                   {item.action === "evaluate_reuse"

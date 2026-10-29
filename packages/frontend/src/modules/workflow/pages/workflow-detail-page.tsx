@@ -80,6 +80,7 @@ import { WorkflowChatPane } from "../components/workflow-chat-pane";
 import { WorkflowChatHistory } from "../components/workflow-chat-history";
 import { NodeInspector } from "../components/node-inspector";
 import { PhaseAdjustmentComposer } from "../components/phase-adjustment-composer";
+import { RetryRunDialog } from "../components/retry-run-dialog";
 import { RunForm } from "../components/run-form";
 import { WorkflowInputNode } from "../components/workflow-input-node";
 import { WorkflowCanvas } from "../components/workflow-canvas";
@@ -706,6 +707,16 @@ export function WorkflowDetailPage() {
                     </Link>
                   </Button>
                   <div className="flex items-center justify-self-end p-1">
+                    {run.id &&
+                    (run.status === "failed" || run.status === "cancelled") ? (
+                      <div className="p-1">
+                        <RetryRunDialog
+                          id={id}
+                          runId={run.id}
+                          runNumber={runItems.length - index}
+                        />
+                      </div>
+                    ) : null}
                     <div className="p-1">
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -1097,7 +1108,7 @@ export function WorkflowDetailPage() {
           key={`run-${revision.id}`}
           id={id}
           revision={revision}
-          defaults={detail.data?.creationSessions?.[0]?.defaults}
+          defaults={phaseDefaults}
           container={runInputContainer}
           onClose={() => setRunning(false)}
         />

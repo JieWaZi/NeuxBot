@@ -3,6 +3,10 @@ import { record } from "../model/types";
 
 const reasons = [
   {
+    code: "WorkflowBusinessCheckFailed",
+    key: "failureCauses.businessCheckFailed",
+  },
+  {
     code: "WorkflowIMTargetNotDeclared",
     key: "failureCauses.undeclaredTarget",
   },

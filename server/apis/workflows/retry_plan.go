@@ -1,6 +1,9 @@
 package workflows
 
 import (
+	"slices"
+	"sort"
+
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
@@ -69,7 +72,15 @@ func buildWorkflowRetryPlan(state controllers.WorkflowRunState) WorkflowRetryPla
 	if len(unknown) > 0 {
 		plan.Allowed = false
 	}
-	for _, instance := range state.Instances {
+	// 运行快照按实例身份装载；计划沿用运行详情的创建顺序，避免随机身份打乱步骤。
+	instances := slices.Clone(state.Instances)
+	sort.Slice(instances, func(i, j int) bool {
+		if instances[i].CreatedAt != instances[j].CreatedAt {
+			return instances[i].CreatedAt < instances[j].CreatedAt
+		}
+		return instances[i].ID < instances[j].ID
+	})
+	for _, instance := range instances {
 		item := WorkflowRetryPlanItem{InstanceID: instance.ID, NodeID: instance.NodeID, Action: "rerun", Reason: "重新执行并按实际操作重新授权"}
 		if instance.Status == constants.WorkflowStepStatusSucceeded && (instance.Kind == "worker" || instance.Kind == "askUser") {
 			item.Action = "evaluate_reuse"

@@ -38,7 +38,7 @@ export function WorkflowResult({
   if (typeof value === "string") return <ReadOnlyMarkdown source={value} />;
   if (Array.isArray(value))
     return (
-      <ul className="grid gap-3">
+      <ul className="grid gap-2">
         {value.map((item, index) => (
           <li key={index}>
             <WorkflowResult value={item} schema={record(schema?.items)} />
@@ -272,15 +272,15 @@ export function InstanceDetails({
         <>
           {businessInput !== undefined &&
           (instance.kind !== "askUser" || instance.completedAt) ? (
-            <section className="grid gap-3">
-              <h3 className="text-muted-foreground type-label font-medium">
+            <section className="grid gap-2">
+              <h3 className="text-muted-foreground type-body font-medium">
                 {t(
                   instance.kind === "worker" || instance.kind === "askUser"
                     ? "instruction"
                     : "stepInputs",
                 )}
               </h3>
-              <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-4">
+              <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-3">
                 <WorkflowResult value={businessInput} />
               </div>
             </section>
@@ -288,11 +288,11 @@ export function InstanceDetails({
           {instance.completedAt ||
           instance.failure ||
           instance.output != null ? (
-            <div className="grid gap-3">
-              <h3 className="type-label font-medium">
+            <div className="grid gap-2">
+              <h3 className="type-body font-medium">
                 {instance.failure ? t("failure") : t("output")}
               </h3>
-              <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-4">
+              <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-3">
                 {instance.failure ? (
                   <WorkflowFailure value={instance.failure.data} />
                 ) : (
@@ -304,8 +304,8 @@ export function InstanceDetails({
         </>
       ) : null}
       {(data?.attempts?.length ?? 0) > 1 ? (
-        <section className="grid gap-3">
-          <h3 className="type-label font-medium">{t("attemptHistory")}</h3>
+        <section className="grid gap-2">
+          <h3 className="type-body font-medium">{t("attemptHistory")}</h3>
           {data?.attempts?.map((attempt) => (
             <details
               key={attempt.id}

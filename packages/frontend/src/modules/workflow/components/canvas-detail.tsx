@@ -22,7 +22,7 @@ export function CanvasDetail({
   return (
     <DialogContent
       {...props}
-      size="lg"
+      size="sm"
       aria-label={ariaLabel}
       aria-labelledby={undefined}
       aria-describedby={undefined}

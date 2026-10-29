@@ -181,7 +181,7 @@ it("参数浮层在严格模式下挂在画布容器内，居中且不进入节�
       "left-1/2",
       "-translate-x-1/2",
       "-translate-y-1/2",
-      "max-w-[720px]",
+      "max-w-[400px]",
       "w-[calc(100%-48px)]",
       "max-h-[calc(100%-48px)]",
     );
@@ -328,12 +328,12 @@ it("shimmers only nodes with an actual running instance and stops when they fini
     />,
   );
   expect(left).toHaveAttribute("data-running-shimmer", "false");
-  expect(left).toHaveAttribute("data-workflow-completed-flow", "true");
-  expect(left).toHaveClass("bg-status-success-surface");
+  expect(left).not.toHaveAttribute("data-workflow-completed-flow");
+  expect(left).not.toHaveClass("bg-status-success-surface");
   expect(right).not.toHaveClass("bg-status-success-surface");
 });
 
-it("完成、失败与待处理使用消息区语义色，混合实例不会误显示全部完成", () => {
+it("完成、失败与待处理以状态标签表达，节点保持中性背景", () => {
   render(
     <WorkflowCanvas
       manifest={manifest}
@@ -347,9 +347,11 @@ it("完成、失败与待处理使用消息区语义色，混合实例不会误�
     />,
   );
   const waiting = screen.getByRole("button", { name: "选择 人工复核" });
-  expect(waiting).toHaveClass("bg-status-warning-surface");
-  expect(waiting).toHaveAttribute("data-workflow-completed-flow", "false");
-  expect(screen.getByRole("button", { name: "选择 计算结果" })).toHaveClass(
+  expect(waiting).not.toHaveClass("bg-status-warning-surface");
+  expect(waiting).not.toHaveAttribute("data-workflow-completed-flow");
+  expect(screen.getByText(/等待处理/)).toBeInTheDocument();
+  expect(screen.getByText(/失败/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "选择 计算结果" })).not.toHaveClass(
     "bg-status-danger-surface",
   );
 });

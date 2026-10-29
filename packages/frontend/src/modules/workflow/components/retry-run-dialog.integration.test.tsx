@@ -21,6 +21,11 @@ it.each([true, false])(
   async (allowed) => {
     const bodies: unknown[] = [];
     server.use(
+      http.get(`${origin}/api/v1/workflows/flow/runs/source`, () =>
+        HttpResponse.json({
+          manifest: { nodes: [{ id: "worker", label: "历史步骤标题" }] },
+        }),
+      ),
       http.get(`${origin}/api/v1/workflows/flow/runs/source/retry-plan`, () =>
         HttpResponse.json({
           runId: "source",
@@ -59,6 +64,8 @@ it.each([true, false])(
     await userEvent.click(screen.getByRole("button", { name: "重新运行" }));
     const dialog = screen.getByRole("dialog", { name: "原版本重试计划" });
     await within(dialog).findByText("按冻结证据核对");
+    await within(dialog).findByText("历史步骤标题");
+    expect(within(dialog).queryByText("worker")).not.toBeInTheDocument();
     const submit = within(dialog).getByRole("button", { name: "重新运行" });
     if (!allowed) {
       expect(submit).toBeDisabled();

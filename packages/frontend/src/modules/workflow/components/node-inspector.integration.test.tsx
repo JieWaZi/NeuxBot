@@ -69,3 +69,47 @@ it("计算详情保留业务修改入口，不展示代码、摘要或执行模�
     prompt: undefined,
   });
 });
+
+it("脚本详情使用可读风险标签，不泄漏翻译键或内部标识", () => {
+  render(
+    <NodeInspector
+      id="flow"
+      revisionId="revision"
+      node={{
+        id: "private-node",
+        kind: "action",
+        label: "生成报告",
+        inputs: [],
+        execution: {
+          actionId: "private-action",
+          actionType: "script",
+          scriptId: "private-script",
+        },
+      }}
+      manifest={{
+        formatVersion: 2,
+        sdkVersion: "ally.workflow/2",
+        title: "报告",
+        description: "",
+        phases: [],
+        nodes: [],
+        controls: [],
+        edges: [],
+        scripts: [],
+        actions: [
+          {
+            id: "private-action",
+            label: "生成报告",
+            description: "在本地生成报告",
+            type: "script",
+            risk: "low",
+          },
+        ],
+      }}
+    />,
+  );
+  expect(screen.getByText("操作风险 · 低")).toBeInTheDocument();
+  expect(
+    screen.queryByText(/nodeOption|private-node|private-action/),
+  ).not.toBeInTheDocument();
+});

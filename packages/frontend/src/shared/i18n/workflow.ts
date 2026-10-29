@@ -6,6 +6,8 @@ export const workflowZh = {
   failureDeliveryProgress:
     "已确认发送 {{count}} 个片段；后续处理应保留已有发送记录。",
   failureCauses: {
+    businessCheckFailed:
+      "步骤已执行，但结果未通过业务检查，后续步骤已停止。请检查数据或调整检查条件后重试。",
     undeclaredTarget:
       "发送目标未声明为工作流依赖，请通过优化工作流补充允许发送的目标范围。",
     targetUnavailable: "发送目标已不存在，请通过优化工作流重新选择获准聊天。",
@@ -90,6 +92,8 @@ export const workflowZh = {
   runWorkflow: "运行工作流 — {{title}}",
   phaseNodes: "阶段节点",
   runNumber: "第 {{number}} 次运行",
+  retryRunNumber: "重试第{{number}}次运行",
+  retryStepNumber: "步骤 {{number}}",
   instruction: "指令",
   duration: "耗时 {{seconds}} 秒",
   newChat: "新建对话",
@@ -321,14 +325,16 @@ export const workflowZh = {
   phase: "阶段",
   prompt: "Prompt",
   configuration: "执行配置",
+  runConfigurationUnavailable:
+    "没有可用的运行配置，请在设置中检查智能体和账号。",
   inputs: "输入与输出",
   schema: "结果格式",
   group: "执行组",
   loop: "循环中的节点",
   unexecuted: "未执行",
   unboundWaker: "未绑定伙伴",
-  loadingWaker: "读取伙伴 · {{id}}",
-  unresolvedWaker: "伙伴引用无法解析 · {{id}}",
+  loadingWaker: "正在读取伙伴",
+  unresolvedWaker: "无法读取伙伴资料",
   inheritedModel: "继承运行或伙伴配置",
   parallel: "并行 · 等待全部",
   pipeline: "管道 · 逐项推进",
@@ -492,6 +498,8 @@ export const workflowEn = {
   failureDeliveryProgress:
     "{{count}} parts are confirmed sent. Preserve the existing delivery receipts.",
   failureCauses: {
+    businessCheckFailed:
+      "The step ran, but its result did not pass the business check. Later steps have stopped. Check the data or adjust the check condition, then retry.",
     undeclaredTarget:
       "The delivery target is not declared as a workflow dependency. Optimize the workflow to declare the allowed target scope.",
     targetUnavailable:
@@ -588,6 +596,8 @@ export const workflowEn = {
   runWorkflow: "Run workflow — {{title}}",
   phaseNodes: "Phase nodes",
   runNumber: "Run {{number}}",
+  retryRunNumber: "Retry run {{number}}",
+  retryStepNumber: "Step {{number}}",
   instruction: "Instruction",
   duration: "Duration {{seconds}} seconds",
   newChat: "New conversation",
@@ -827,14 +837,16 @@ export const workflowEn = {
   phase: "Phase",
   prompt: "Task instructions",
   configuration: "Execution settings",
+  runConfigurationUnavailable:
+    "No available execution configuration. Check the agent and account in settings.",
   inputs: "Inputs and outputs",
   schema: "Result schema",
   group: "Execution group",
   loop: "Node in a loop",
   unexecuted: "Not executed",
   unboundWaker: "No partner bound",
-  loadingWaker: "Loading partner · {{id}}",
-  unresolvedWaker: "Unresolved partner · {{id}}",
+  loadingWaker: "Loading partner",
+  unresolvedWaker: "Partner unavailable",
   inheritedModel: "Inherit run or partner configuration",
   parallel: "Parallel · join all",
   pipeline: "Pipeline · per item",

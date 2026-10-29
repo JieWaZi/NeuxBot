@@ -110,12 +110,15 @@ export function NodeInspector({
       ) : node ? (
         <NodeKind
           kind={node.kind}
+          actionType={
+            node.kind === "action" ? node.execution.actionType : undefined
+          }
           label={action?.type === "script" ? t("localScript") : undefined}
         />
       ) : null}
       {riskLabel ? (
         <p className="type-body">
-          {t("nodeOption.risk")} · {riskLabel}
+          {t("option.risk")} · {riskLabel}
         </p>
       ) : null}
       {node?.kind === "worker" || node?.kind === "askUser" ? (

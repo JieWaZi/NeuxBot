@@ -470,3 +470,67 @@ func TestV2RejectsRemovedPresentationDesign(t *testing.T) {
 		}
 	}
 }
+
+func TestV2MultistepFixturePreservesThreeNodesPerPhase(t *testing.T) {
+	source, err := os.ReadFile("testdata/v2-multistep.workflow.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiled, diagnostics, err := Compile(string(source))
+	if err != nil {
+		t.Fatalf("multistep fixture: %v %+v", err, diagnostics)
+	}
+	if len(compiled.Manifest.Phases) != 3 {
+		t.Fatalf("phases=%d want=3", len(compiled.Manifest.Phases))
+	}
+	phases := map[string]int{"prepare": 0, "evaluate": 0, "verify": 0}
+	nodes := map[string]Node{}
+	kinds := map[string]int{}
+	for _, node := range compiled.Manifest.Nodes {
+		if node.Kind == "input" || node.Kind == "result" {
+			continue
+		}
+		if _, ok := phases[node.PhaseID]; !ok {
+			t.Fatalf("unexpected phase %q", node.PhaseID)
+		}
+		phases[node.PhaseID]++
+		kinds[node.Kind]++
+		nodes[node.ID] = node
+	}
+	for phase, count := range phases {
+		if count != 3 {
+			t.Fatalf("phase %s has %d nodes, want 3", phase, count)
+		}
+	}
+	if len(nodes) != 9 || kinds["action"] != 4 || kinds["functionTask"] != 3 || kinds["askUser"] != 1 || kinds["worker"] != 1 {
+		t.Fatalf("unexpected multistep kinds: %v", kinds)
+	}
+	dynamic := false
+	for _, input := range nodes["choose"].Inputs {
+		if input.Target == "choices" && input.Expression == "listed.data.items" && len(input.DependsOn) == 1 && input.DependsOn[0] == "list" {
+			dynamic = true
+		}
+	}
+	if !dynamic || nodes["choose"].Options["kind"] != "select" {
+		t.Fatalf("dynamic candidate selection lost: %+v", nodes["choose"])
+	}
+	resolve, _ := nodes["analyze"].Options["resolve"].(map[string]any)
+	if resolve["kind"] != "waker" || resolve["wakerId"] != "waker-example" {
+		t.Fatalf("sample worker resolution lost: %v", resolve)
+	}
+	scripts := map[string]string{"list": "candidates", "check-list": "checkCandidates", "check-analysis": "verifyAnalysis", "acceptance-gate": "retryGate"}
+	if len(compiled.Bundle.Scripts) != len(scripts) {
+		t.Fatalf("script count=%d", len(compiled.Bundle.Scripts))
+	}
+	for nodeID, scriptID := range scripts {
+		node := nodes[nodeID]
+		script, ok := compiled.Bundle.Scripts[scriptID]
+		if node.Execution["actionType"] != "script" || node.Execution["scriptId"] != scriptID || !ok || script.Language != "python" || script.Protocol != "json" {
+			t.Fatalf("script binding lost for %s: %+v", nodeID, node.Execution)
+		}
+	}
+	gate := nodes["acceptance-gate"]
+	if gate.SuccessCondition == nil || gate.SuccessCondition.Path != "/valid" || gate.SuccessCondition.Equals != true {
+		t.Fatalf("controlled failure check lost: %+v", gate.SuccessCondition)
+	}
+}

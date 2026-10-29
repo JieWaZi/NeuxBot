@@ -38,8 +38,8 @@ export function WorkerReference({
           {waker.data?.name ||
             (wakerId
               ? waker.isError
-                ? t("unresolvedWaker", { id: wakerId })
-                : t("loadingWaker", { id: wakerId })
+                ? t("unresolvedWaker")
+                : t("loadingWaker")
               : t("unboundWaker"))}
         </span>
         {showModel ? (

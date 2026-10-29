@@ -2359,3 +2359,131 @@ it("创作待办通知打开指定历史会话并展开聊天", async () => {
     screen.getByText("等待你的确认").closest('[aria-hidden="true"]'),
   ).toHaveClass("invisible");
 });
+
+it.each(["failed", "cancelled"])(
+  "执行记录行直接重试%s运行，成功和进行中记录无入口",
+  async (status) => {
+    const submitted: unknown[] = [];
+    const requested: string[] = [];
+    server.use(
+      http.get(`${origin}/api/v1/wakers/:wakerId/plugins`, () =>
+        HttpResponse.json({ resources: [] }),
+      ),
+      http.get(`${origin}/api/v1/workflows/flow/runs`, () =>
+        HttpResponse.json({
+          items: [
+            { id: "failed", status: "failed" },
+            { id: "cancelled", status: "cancelled" },
+            { id: "success", status: "succeeded" },
+            { id: "running", status: "running" },
+          ],
+        }),
+      ),
+      http.get(
+        `${origin}/api/v1/workflows/flow/runs/:runId/retry-plan`,
+        ({ params }) => {
+          requested.push(String(params.runId));
+          return HttpResponse.json({
+            runId: params.runId,
+            revisionId: "original",
+            expectedVersion: 9,
+            allowed: true,
+            items: [
+              {
+                instanceId: "old-step",
+                nodeId: "internal-node",
+                action: "rerun",
+                reason: "重新检查业务结果",
+              },
+            ],
+          });
+        },
+      ),
+      http.post(
+        `${origin}/api/v1/workflows/flow/runs/:runId/retry`,
+        async ({ request, params }) => {
+          submitted.push({ runId: params.runId, body: await request.json() });
+          return HttpResponse.json({ id: "retried" });
+        },
+      ),
+      http.get(`${origin}/api/v1/workflows/flow/runs/:runId`, ({ params }) =>
+        HttpResponse.json({
+          run: {
+            id: params.runId,
+            status: params.runId === "retried" ? "succeeded" : "failed",
+          },
+          manifest: {
+            formatVersion: 2,
+            sdkVersion: "ally.workflow/2",
+            title: "重试",
+            description: "",
+            phases: [],
+            nodes: [
+              {
+                id: "internal-node",
+                kind: "functionTask",
+                label: "历史版本审核步骤",
+                inputs: [],
+                execution: {
+                  language: "javascript",
+                  executionMode: "pure",
+                  codeDigest: "fixture",
+                },
+              },
+            ],
+            edges: [],
+            controls: [],
+            scripts: [],
+          },
+        }),
+      ),
+    );
+    function Location() {
+      return <output aria-label="当前位置">{useLocation().pathname}</output>;
+    }
+    const user = userEvent.setup();
+    renderScene("/workflows/flow?tab=runs", undefined, undefined, <Location />);
+    const history = await screen.findByRole("complementary", {
+      name: "执行记录",
+    });
+    await within(history).findByRole("button", { name: "重试第4次运行" });
+    expect(
+      within(history).getByRole("button", { name: "重试第3次运行" }),
+    ).toBeInTheDocument();
+    expect(
+      within(history).queryByRole("button", { name: "重试第2次运行" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(history).queryByRole("button", { name: "重试第1次运行" }),
+    ).not.toBeInTheDocument();
+    expect(requested).toEqual([]);
+    await user.click(
+      within(history).getByRole("button", {
+        name: status === "failed" ? "重试第4次运行" : "重试第3次运行",
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "原版本重试计划" });
+    await within(dialog).findByText("重新检查业务结果");
+    expect(requested).toEqual([status]);
+    expect(
+      await within(dialog).findByText("历史版本审核步骤"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(/internal-node|生成材料/),
+    ).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "重新运行" }));
+    await waitFor(() =>
+      expect(submitted).toEqual([
+        {
+          runId: status,
+          body: { requestId: expect.any(String), expectedVersion: 9 },
+        },
+      ]),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("当前位置")).toHaveTextContent(
+        "/workflows/flow/runs/retried",
+      ),
+    );
+  },
+);
