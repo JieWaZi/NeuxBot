@@ -36,3 +36,34 @@ A single image uses the same root file schema; a set uses file items. Let the pa
 ## Structured content with supplementary files
 
 Choose `nodeResultPages` when the user primarily reads composed structured content in NeuxBot. `FileList` may supplement it with agreed deliverables. Do not regenerate a second page containing the same report merely because a file has a path. Internal response caches, credentials and raw snapshots stay outside the delivery contract unless the user explicitly requested that data.
+
+## Command examples
+
+Use the common rules in [SKILL.md](../SKILL.md). In an authoring context, prepare
+the file/presentation contract only for the requested delivery:
+
+```sh
+allycli workflow authoring prepare --primitives worker --features files,presentation
+```
+
+Inside the actual file-producing worker, read its result schema:
+
+```sh
+allycli workflow results schema
+```
+
+For the root file schema illustrated above, create the actual report and write
+`file-result.json` with its verified path:
+
+<!-- input: file-result.json -->
+```json
+{"data":"/workspace/output/run-example/report.html"}
+```
+
+```sh
+allycli workflow results submit --input file-result.json --request-id file-result-01
+```
+
+These calls belong to different execution roles; use the role actually granted.
+For a file array/object, match the discovered schema. Requested IM delivery
+uses the complete create/get/wait sequence in [IM delivery](im-delivery.md#command-examples).
