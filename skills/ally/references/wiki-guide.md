@@ -165,3 +165,133 @@ a material gap is resolvable; otherwise explain the limitation and answer the
 supported parts. A denied resource, empty search, incomplete source and embedding
 failure are different outcomes. Re-resolve stale references through the current
 library list; other sources must remain within the user's requested scope.
+
+## Command examples
+
+Use the common executable, JSON-file and identity rules in [SKILL.md](../SKILL.md).
+Choose only the requested scenario below. Discover the real resource once:
+
+```sh
+allycli knowledge libraries list
+```
+
+A returned reference uses `knowledgeBaseId`; pass that value as `--library-id`
+or JSON `libraryId`. Copy `backend` and `connectionId` from the same reference.
+Local examples below use `--backend local`; remote resources also need their
+real `--connection-id`. Never substitute a same-named local library.
+
+### Search and read without losing candidates
+
+Run one targeted search and save the complete stdout in the current task's
+workspace. Check its exit status: on failure inspect the structured stderr and
+correct the call before parsing or drawing a retrieval conclusion.
+
+```sh
+allycli knowledge pages search --library-id library-example --backend local --query "deployment" > knowledge-search.json
+```
+
+For a successful response, use a JSON-aware reader. If `jq` is available, this
+projection preserves the actual mode, every page candidate and every chunk's
+score, retrieval path and source locator while omitting long bodies:
+
+```sh
+jq '{ok, completion, data: (.data | {ref, total, retrievalMode, items, chunks: [(.chunks // [])[] | {score, matchType, chunk: (.chunk | del(.content)), parent: (.parent | if . == null then null else del(.content) end)}]})}' knowledge-search.json
+```
+
+Read selected full chunk/parent contexts from the saved response in bounded
+batches; change the slice to inspect the remaining hits instead of rerunning
+search or cutting bytes. For example, the first two then the remaining three:
+
+```sh
+jq '.data.chunks[0:2]' knowledge-search.json
+jq '.data.chunks[2:5]' knowledge-search.json
+```
+
+If even a batch is too large, read one candidate's content in character ranges
+using a JSON-aware reader while retaining its locator and full saved response.
+If `jq` is unavailable, use the runtime's JSON parser for the same projections;
+there is no need to install a tool. Never use `head -c`/`cut` on JSON. A prefix
+may omit later candidates and `retrievalMode`, so it cannot establish complete
+hybrid results. An absent `retrievalMode` means it was not supplied, not that
+vector or hybrid retrieval succeeded. Keep the returned `matchType` for each
+hit; the presence of one vector hit alone does not prove hybrid retrieval.
+
+Read actual pages and original evidence using discovered IDs:
+
+```sh
+allycli knowledge pages get --library-id library-example --backend local --page-id page-example
+allycli knowledge pages get --library-id library-example --backend local --slug deployment-guide
+allycli knowledge sources get --library-id library-example --backend local --source-version-id source-version-example
+allycli knowledge sources read --library-id library-example --backend local --source-version-id source-version-example --chunk-id chunk-example --offset 0 --limit 5
+```
+
+Use `--page-id` or `--slug`, not both. For `sources read`, copy the persistent
+`chunk.chunkId`, not the embedding index row's `chunk.id`. Inspect `hasMore`,
+`nextOffset` and `truncated` for continued source reads. Search's `total` counts
+Wiki pages, not original-document hits. Wiki search returns up to 50 pages;
+advance `--offset` by the number of returned page items until that total is
+covered when the question requires it. Original hits appear only at offset 0;
+retain them from the first response. Page and source bodies may also be large;
+use the same save-and-project pattern.
+
+For directory navigation, source discovery and job inspection:
+
+```sh
+allycli knowledge libraries get --library-id library-example --backend local
+allycli knowledge pages list --library-id library-example --backend local --limit 10 --offset 0
+allycli knowledge sources list --library-id library-example --backend local --query "deployment" --limit 10 --offset 0
+allycli knowledge themes list --library-id library-example --backend local
+allycli knowledge index get --library-id library-example --backend local --limit 5
+allycli knowledge jobs list --library-id library-example --backend local --limit 10 --offset 0
+```
+
+### Ingest only selected attachments or originals
+
+For only the second attachment of the current message, write `ingest.json`:
+
+<!-- input: ingest.json -->
+```json
+{"libraryId":"library-example","backend":"local","attachmentIndexes":[1],"message":"Extract deployment requirements from only the selected attachment."}
+```
+
+```sh
+allycli knowledge jobs start --input ingest.json --request-id ingest-01
+```
+
+For explicitly selected existing originals, use `sourceVersionIds` instead of
+attachment indexes, with the verified immutable IDs:
+
+<!-- input: ingest-sources.json -->
+```json
+{"libraryId":"library-example","backend":"local","sourceVersionIds":["source-version-example"],"message":"Organize only the selected original."}
+```
+
+```sh
+allycli knowledge jobs start --input ingest-sources.json --request-id ingest-sources-01
+```
+
+### Submit library maintenance and observe the original job
+
+In ordinary chat, create `maintenance.json` preserving the user's actual scope:
+
+<!-- input: maintenance.json -->
+```json
+{"libraryId":"library-example","backend":"local","message":"Check duplicate deployment pages, preserve unique evidence and repair related links."}
+```
+
+```sh
+allycli knowledge wiki maintain --input maintenance.json --request-id maintenance-01
+allycli knowledge jobs wait --library-id library-example --backend local --job-id job-example --timeout 30s
+allycli knowledge jobs get --library-id library-example --backend local --job-id job-example
+allycli receipts get --operation knowledge.wiki.maintain --request-id maintenance-01
+```
+
+Use the accepted receipt's actual job ID. When `completed` is false, repeat the
+same wait, not the start command. On terminal completion inspect
+`data.resource.job.state` and the saved report; `completed: true` can also mean
+failure/cancellation. Use receipts for an uncertain submission. For an explicitly
+requested retry of a failed ingestion job, use its actual version:
+
+```sh
+allycli knowledge jobs retry --library-id library-example --backend local --job-id job-example --expected-version 1 --request-id job-retry-01
+```

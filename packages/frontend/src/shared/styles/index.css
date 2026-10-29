@@ -807,7 +807,7 @@ button:disabled {
 [data-chat-composer-stop]:hover:not(:disabled)
   [data-chat-composer-stop-indicator],
 [data-chat-composer-stop]:hover:not(:disabled) .composer-stop-indicator {
-  background: var(--button-primary-hover);
+  background: var(--button-primary-background-hover);
 }
 
 @media (prefers-reduced-motion: reduce) {

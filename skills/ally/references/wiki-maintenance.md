@@ -125,3 +125,127 @@ recommendations. Preserve the identities needed to inspect retained pages and
 their versions. Permanently deleted duplicates cannot be restored from page
 history. Running a check or finishing a task does not prove every
 content issue has been fixed.
+
+## Command examples
+
+Use the common rules in [SKILL.md](../SKILL.md) and the complete-result reading
+pattern in [knowledge](wiki-guide.md#search-and-read-without-losing-candidates).
+These examples belong to an already authorized maintenance/page-revision scope;
+ordinary chat library maintenance uses the task starter in that guide.
+
+Inspect first; all IDs and guards below must come from the actual original reads:
+
+```sh
+allycli knowledge libraries get --library-id library-example --backend local
+allycli knowledge themes list --library-id library-example --backend local
+allycli knowledge pages list --library-id library-example --backend local --limit 10 --offset 0
+allycli knowledge pages get --library-id library-example --backend local --page-id page-example
+allycli knowledge audit get --library-id library-example --backend local
+```
+
+Run the audit/auto-fix only for the requested whole-library scope. An explicitly
+authorized deterministic whole-library fix uses the current structure version:
+
+```sh
+allycli knowledge wiki auto-fix --library-id library-example --backend local --structure-version 3 --request-id wiki-fix-01
+```
+
+### Precise replacement or complete page write
+
+Copy `oldText` from the current page. `replace.json` replaces all exact matches:
+
+<!-- input: replace.json -->
+```json
+{"libraryId":"library-example","backend":"local","pageId":"page-example","expectedVersion":2,"structureVersion":3,"oldText":"Retries are unlimited.","newText":"Retries follow the configured limit."}
+```
+
+```sh
+allycli knowledge pages replace --input replace.json --request-id page-replace-01
+```
+
+For an existing page, `write-page.json` contains its complete revised content,
+original timestamp and verified source IDs. This short fictional page is a
+complete example, not a template for dropping the rest of an existing page:
+
+<!-- input: write-page.json -->
+```json
+{"libraryId":"library-example","backend":"local","pageId":"page-example","expectedVersion":2,"expectedUpdatedAt":"2026-01-01T00:00:00Z","structureVersion":3,"slug":"deployment-guide","title":"Deployment guide","summary":"Deployment retry behavior.","content":"# Deployment guide\n\nRetries follow the configured limit.\n","pageType":"concept","aliases":[],"sourceVersionIds":["source-version-example"]}
+```
+
+```sh
+allycli knowledge pages write --input write-page.json --request-id page-write-01
+allycli knowledge pages rename --library-id library-example --backend local --page-id page-example --expected-version 2 --structure-version 3 --new-slug deployment-retries --request-id page-rename-01
+```
+
+Creating a genuinely missing page uses `expectedVersion: 0`, omits `pageId`
+and `expectedUpdatedAt`, and still uses the actual current `structureVersion`.
+Re-read after each mutation before a dependent mutation; example guards are
+not a sequence to reuse unchanged.
+
+### Verified consolidation and history
+
+After verifying and saving the canonical content, write `archive-page.json`
+with the original versions/timestamps of both pages and the current structure:
+
+<!-- input: archive-page.json -->
+```json
+{"libraryId":"library-example","backend":"local","pageId":"duplicate-example","expectedVersion":2,"expectedUpdatedAt":"2026-01-01T00:00:00Z","structureVersion":3,"canonicalPageId":"canonical-example","canonicalExpectedVersion":4,"canonicalExpectedUpdatedAt":"2026-01-02T00:00:00Z"}
+```
+
+```sh
+allycli knowledge pages delete --input archive-page.json --request-id page-archive-01
+```
+
+Read the archived page and current library guards. `purge-page.json` uses those
+new target guards while retaining the content-verified canonical guards:
+
+<!-- input: purge-page.json -->
+```json
+{"libraryId":"library-example","backend":"local","pageId":"duplicate-example","expectedVersion":3,"expectedUpdatedAt":"2026-01-03T00:00:00Z","structureVersion":4,"canonicalPageId":"canonical-example","canonicalExpectedVersion":4,"canonicalExpectedUpdatedAt":"2026-01-02T00:00:00Z"}
+```
+
+```sh
+allycli knowledge pages purge --input purge-page.json --request-id page-purge-01
+allycli receipts get --operation knowledge.pages.purge --request-id page-purge-01
+allycli knowledge revisions list --library-id library-example --backend local --page-id canonical-example --limit 10 --offset 0
+allycli knowledge revisions get --library-id library-example --backend local --page-id canonical-example --version 2
+allycli knowledge revisions restore --library-id library-example --backend local --page-id canonical-example --expected-version 4 --structure-version 4 --revision-version 2 --request-id page-restore-01
+```
+
+History inspection/restoration is a separate requested action, not a step after
+purge. Restore uses current guards and creates a new revision; it cannot restore
+a purged page. Recover an unknown purge through its original receipt.
+
+### Directories, audit evidence and explicit source import
+
+Directory write can create, update or remove an authorized empty directory.
+`theme.json` illustrates updating an existing directory:
+
+<!-- input: theme.json -->
+```json
+{"libraryId":"library-example","backend":"local","themeId":"theme-example","name":"Deployment","structureVersion":3}
+```
+
+```sh
+allycli knowledge themes write --input theme.json --request-id theme-write-01
+allycli knowledge activity list --library-id library-example --backend local --limit 10
+allycli knowledge export get --library-id library-example --backend local --page-ids canonical-example > wiki-export.json
+```
+
+Omit `themeId` when creating; deletion additionally sets `delete: true` after
+verifying the directory is empty. Full page writes may use an existing
+`folderId` to move a page; omission preserves placement and `""` selects root.
+Source import is only for explicitly provided original bytes, not Wiki repair.
+`import.json` illustrates base64 for the fictional UTF-8 content `Example`:
+
+<!-- input: import.json -->
+```json
+{"libraryId":"library-example","backend":"local","filename":"example.txt","mime":"text/plain","bytes":"RXhhbXBsZQ=="}
+```
+
+```sh
+allycli knowledge sources import --input import.json --request-id source-import-01
+```
+
+Importing bytes does not start organization. Verify each actual mutation's
+receipt and affected content; preserve the earlier scope and outcome rules.

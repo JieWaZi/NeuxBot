@@ -616,6 +616,86 @@ describe("chat markdown", () => {
     getMermaid.mockRestore();
   });
 
+  it("keeps fullscreen Mermaid zoom independent of measured size and refits on resize", async () => {
+    const user = userEvent.setup();
+    let viewportWidth = 800;
+    const layoutStyles = document.createElement("style");
+    layoutStyles.textContent = ".p-4 { padding: 16px; }";
+    document.head.append(layoutStyles);
+    const resizeCallbacks = new Set<() => void>();
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(private readonly callback: () => void) {}
+        observe() {
+          resizeCallbacks.add(this.callback);
+        }
+        disconnect() {
+          resizeCallbacks.delete(this.callback);
+        }
+      },
+    );
+    const clientWidth = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockImplementation(() => viewportWidth);
+    // jsdom 没有布局引擎：模拟 SVG 受父容器 max-width 与 transform 影响后的尺寸。
+    const bounds = vi
+      .spyOn(SVGElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: SVGElement) {
+        const diagram = this.parentElement;
+        const width = Number.parseFloat(diagram?.style.width || "768");
+        const parentWidth = Number.parseFloat(
+          diagram?.parentElement?.style.width || "768",
+        );
+        const constrainedWidth = diagram?.classList.contains("max-w-full")
+          ? Math.min(width, parentWidth)
+          : width;
+        const scale = Number.parseFloat(
+          diagram?.style.transform.match(/scale\(([^)]+)\)/)?.[1] || "1",
+        );
+        return new DOMRect(
+          0,
+          0,
+          constrainedWidth * scale,
+          (constrainedWidth / 2) * scale,
+        );
+      });
+    const getMermaid = vi.spyOn(mermaid, "getMermaid").mockReturnValue({
+      initialize: vi.fn(),
+      render: vi.fn(async () => ({
+        svg: '<svg viewBox="0 0 1200 600" width="100%"></svg>',
+      })),
+    });
+    try {
+      render(<ChatMermaid code={"flowchart TD\n  A --> B"} />);
+      await user.click(await screen.findByRole("button", { name: "全屏查看" }));
+      const dialog = screen.getByRole("dialog", { name: "图形" });
+      const diagram = within(dialog).getByRole("img", {
+        name: "Mermaid diagram",
+      });
+      const canvas = diagram.parentElement;
+      expect(canvas).toHaveStyle({ width: "768px", height: "384px" });
+
+      await user.click(within(dialog).getByRole("button", { name: "缩小" }));
+      expect(canvas).toHaveStyle({ width: "576px", height: "288px" });
+      await user.click(
+        within(dialog).getByRole("button", { name: "重置缩放" }),
+      );
+      expect(canvas).toHaveStyle({ width: "768px", height: "384px" });
+
+      viewportWidth = 400;
+      act(() => resizeCallbacks.forEach((callback) => callback()));
+      expect(canvas).toHaveStyle({ width: "368px", height: "184px" });
+      await user.click(within(dialog).getByRole("button", { name: "放大" }));
+      expect(canvas).toHaveStyle({ width: "460px", height: "230px" });
+    } finally {
+      layoutStyles.remove();
+      bounds.mockRestore();
+      clientWidth.mockRestore();
+      getMermaid.mockRestore();
+    }
+  });
+
   it("copies, downloads and previews Markdown tables in the shared dialog", async () => {
     const user = userEvent.setup();
     const writeSpy = vi

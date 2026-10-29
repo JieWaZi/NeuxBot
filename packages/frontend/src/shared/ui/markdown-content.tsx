@@ -7,7 +7,9 @@ import {
   type ComponentProps,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { cn } from "@/shared/lib/cn";
 import { openExternalURL } from "@/shared/platform";
+import { markdownTableContainerClassName } from "@/shared/ui/markdown-table-styles";
 
 const Streamdown = lazy(() =>
   import("streamdown").then((module) => {
@@ -49,7 +51,12 @@ export function MarkdownContent({ content }: { content: string }) {
     );
   }
   return (
-    <div className="type-body [&_h1]:type-page-title [&_h2]:type-title [&_h3]:type-label min-w-0 space-y-3 break-words [&_code]:font-mono [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-medium [&_pre]:overflow-auto [&_pre]:font-mono [&_table]:block [&_table]:overflow-auto">
+    <div
+      className={cn(
+        "type-body [&_h1]:type-page-title [&_h2]:type-title [&_h3]:type-label w-full max-w-none min-w-0 space-y-3 break-words [&_code]:font-mono [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-medium [&_pre]:overflow-auto [&_pre]:font-mono",
+        markdownTableContainerClassName,
+      )}
+    >
       <Suspense fallback={<p className="whitespace-pre-wrap">{content}</p>}>
         <Streamdown
           mode="static"
