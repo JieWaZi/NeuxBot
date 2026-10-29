@@ -106,6 +106,10 @@ func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 			if err != nil {
 				result = agentcapability.ErrorResponse(op.ID, err)
 			}
+			// Core 的前置授权校验可能尚未解析命令；桥接已知工具身份，不改写原错误与效果状态。
+			if result.Operation == "" {
+				result.Operation = op.ID
+			}
 			return mcpResponse(result), nil
 		})
 	}

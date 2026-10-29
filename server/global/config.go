@@ -31,6 +31,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	"github.com/JieWaZi/NeuxBot/server/internal/sqlite"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -304,6 +305,9 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	database, err := dbhelper.NewDB(configuration.DB)
 	if err != nil {
 		return mapCoreError("initialize_application_database", status_error.CoreDatabaseInitializationFailed, err)
+	}
+	if err := sqlite.ProtectTransactions(database.DB); err != nil {
+		return err
 	}
 
 	EventHub = events.New()
