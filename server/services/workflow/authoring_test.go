@@ -15,7 +15,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcli"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -361,5 +363,67 @@ func TestAuthoringCapabilityFollowsExecutionAndRejectsLateSave(t *testing.T) {
 	code, response = call([]string{"workflow", "source", "get"}, nil)
 	if code == 0 || response.Error == nil || response.Error.Code != status_error.WorkflowAuthoringSuperseded.Key() {
 		t.Fatalf("旧凭证仍有权限: %+v", response)
+	}
+}
+
+// TestAuthoringWorkspaceIsBoundToWorkflow 验证准备和源码读取返回同一宿主目录，不受业务输出目录影响。
+func TestAuthoringWorkspaceIsBoundToWorkflow(t *testing.T) {
+	for _, external := range []bool{false, true} {
+		t.Run(fmt.Sprint(external), func(t *testing.T) {
+			s, _ := workflowTestService(t)
+			scope := models.WorkflowScopeBinding{}
+			if external {
+				scope.WorkingDirectory = t.TempDir()
+			}
+			definition, err := fixtureDefinition(context.Background(), s.store, definitionFixture{Title: "工作流目录", ScopeBinding: scope})
+			if err != nil {
+				t.Fatal(err)
+			}
+			call := authoringTestCLI(t, s, models.WorkflowCreationSession{ID: "creation", ActiveExecutionID: "authoring", DefinitionID: definition.ID, AuthToken: "private"})
+			expected, err := filepath.EvalSymlinks(s.dataDirectory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected = filepath.Join(expected, constants.WorkflowWorkspaceDirectoryName, definition.ID)
+			for _, operation := range []string{"workflow.authoring.prepare", "workflow.source.get"} {
+				args := []string{"workflow", "source", "get"}
+				if operation == "workflow.authoring.prepare" {
+					args = []string{"workflow", "authoring", "prepare", "--primitives", "action"}
+				}
+				code, response := call(args, nil)
+				if code != 0 {
+					t.Fatalf("%s: %+v", operation, response.Error)
+				}
+				data := response.Data.(map[string]any)
+				op, _ := contract.Find(operation)
+				if err := workflowdsl.ValidateJSON(op.OutputSchema, data); err != nil {
+					t.Fatalf("MCP output schema rejects workspace: %v", err)
+				}
+				if operation == "workflow.authoring.prepare" {
+					data = data["workflow"].(map[string]any)
+				}
+				workspace, ok := data["workspace"].(map[string]any)
+				if !ok || workspace["rootDirectory"] != expected {
+					t.Fatalf("%s must return the actual workflow workspace: %v", operation, data)
+				}
+				for field, name := range map[string]string{"scriptsDirectory": "scripts", "stateDirectory": "state", "cacheDirectory": "cache", "temporaryDirectory": "tmp", "runsDirectory": "runs"} {
+					path, ok := workspace[field].(string)
+					if !ok || path != filepath.Join(expected, name) {
+						t.Fatalf("%s: %s=%v", operation, field, workspace[field])
+					}
+					info, err := os.Stat(path)
+					if err != nil || !info.IsDir() {
+						t.Fatalf("advertised directory is unavailable: %s %v", path, err)
+					}
+				}
+				if _, has := workspace["runDirectory"]; has {
+					t.Fatal("authoring invented a run directory")
+				}
+			}
+			current, err := s.store.GetDefinition(context.Background(), definition.ID)
+			if err != nil || current.ScopeBinding != scope {
+				t.Fatalf("internal workspace replaced user business scope: %+v %v", current.ScopeBinding, err)
+			}
+		})
 	}
 }

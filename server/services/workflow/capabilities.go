@@ -22,6 +22,7 @@ import (
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowcatalog "github.com/JieWaZi/NeuxBot/server/internal/workflow/catalog"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -78,7 +79,11 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 			source = revision.Source
 			digest = revision.SourceDigest
 		}
-		return map[string]any{"workflowId": definition.ID, "revisionId": revisionID, "currentRevisionId": definition.CurrentRevisionID, "source": source, "sourceDigest": digest, "sdkVersion": constants.WorkflowSDKVersion}, nil
+		workspace, err := workflowfiles.PrepareWorkspace(s.dataDirectory, definition.ID, "")
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"workflowId": definition.ID, "revisionId": revisionID, "currentRevisionId": definition.CurrentRevisionID, "source": source, "sourceDigest": digest, "sdkVersion": constants.WorkflowSDKVersion, "workspace": workspace}, nil
 	case constants.WorkflowActionSourceValidate:
 		compiled, diagnostics, err := workflowdsl.Compile(input.Source)
 		if err == nil {

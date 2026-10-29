@@ -143,7 +143,7 @@ func memorySampleError(effectContext context.Context, err error) error {
 }
 
 // Execute 从专用认证结果通道获取一次 Function 回执。
-func Execute(ctx context.Context, request Request, language, python, directory string) (Result, ProcessResult, error) {
+func Execute(ctx context.Context, request Request, language, python, directory string, environment []string) (Result, ProcessResult, error) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return Result{}, ProcessResult{}, hostError("result_listener", err)
@@ -185,7 +185,7 @@ func Execute(ctx context.Context, request Request, language, python, directory s
 		<-receiveDone
 		return Result{}, ProcessResult{}, status_error.WorkflowCapabilityUnsupported.WithField("capability", "function_interpreter")
 	}
-	process, err := Command(ctx, executable, args, directory, SafeEnvironment(), bytes.NewReader(encoded))
+	process, err := Command(ctx, executable, args, directory, environment, bytes.NewReader(encoded))
 	listener.Close()
 	<-receiveDone
 	if err != nil {

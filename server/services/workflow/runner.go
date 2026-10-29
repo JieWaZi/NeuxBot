@@ -10,6 +10,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -362,7 +363,7 @@ func prepareEffect(bundle workflowdsl.ProgramBundle, manifest workflowdsl.Manife
 		state.Operations = append(state.Operations, *operation)
 	}
 	if boundary.Primitive == "askUser" {
-		if err := freezeHumanChoices(state.Run.ScopeBinding.WorkingDirectory, options); err != nil {
+		if err := freezeHumanChoices(state.Run, options); err != nil {
 			return err
 		}
 		if err := validateHumanSnapshot(options); err != nil {
@@ -650,7 +651,11 @@ func operationDescription(manifest workflowdsl.Manifest, run models.WorkflowRun,
 		if run.Defaults.WorkspaceReadOnly {
 			return "", nil, false, status_error.WorkflowCapabilityUnsupported.WithField("capability", "trusted_local_readonly")
 		}
-		return "运行本地受信 Python：代码可访问当前用户的文件、网络和进程。", map[string]any{"language": language, "executionMode": mode, "workingDirectory": run.ScopeBinding.WorkingDirectory, "code": options["code"], "codeDigest": workflowstate.Digest(options["code"]), "input": options["input"]}, run.Defaults.PermissionLevel != constants.PermissionLevelFullAccess, nil
+		workspace, err := workflowfiles.ParseWorkspace(run.Context["workspace"], run.DefinitionID, run.ID)
+		if err != nil {
+			return "", nil, false, err
+		}
+		return "运行本地受信 Python：代码可访问当前用户的文件、网络和进程。", map[string]any{"language": language, "executionMode": mode, "workingDirectory": workspace.RunDirectory, "code": options["code"], "codeDigest": workflowstate.Digest(options["code"]), "input": options["input"]}, run.Defaults.PermissionLevel != constants.PermissionLevelFullAccess, nil
 	}
 	if effect.Boundary.Primitive != "action" {
 		return "", nil, false, nil
@@ -665,6 +670,11 @@ func operationDescription(manifest workflowdsl.Manifest, run models.WorkflowRun,
 		if run.Defaults.WorkspaceReadOnly {
 			return "", nil, false, status_error.WorkflowCapabilityUnsupported.WithField("capability", "script_readonly_isolation")
 		}
+		workspace, err := workflowfiles.ParseWorkspace(run.Context["workspace"], run.DefinitionID, run.ID)
+		if err != nil {
+			return "", nil, false, err
+		}
+		descriptor["workingDirectory"] = workspace.RunDirectory
 		descriptor["executable"], descriptor["args"] = declaration.Executable, options["args"]
 		descriptor["secretEnv"] = options["secretEnv"]
 		descriptor["env"] = options["env"]

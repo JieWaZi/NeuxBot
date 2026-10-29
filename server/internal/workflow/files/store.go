@@ -250,17 +250,110 @@ func EnsureScopeDirectory(path string) (string, error) {
 	return value, nil
 }
 
-// PrepareManagedWorkspace 在事务外为稳定身份准备独立目录，并使用真实路径。
+// Workspace 是宿主为一个工作流规划的内部文件目录，不代表额外业务目录授权。
+type Workspace struct {
+	// RootDirectory 是工作流稳定身份对应的内部根目录。
+	RootDirectory string `json:"rootDirectory"`
+	// ScriptsDirectory 保存从不可变版本物化的脚本。
+	ScriptsDirectory string `json:"scriptsDirectory"`
+	// StateDirectory 保存工作流跨运行复用的辅助状态。
+	StateDirectory string `json:"stateDirectory"`
+	// CacheDirectory 保存工作流跨运行复用的缓存。
+	CacheDirectory string `json:"cacheDirectory"`
+	// TemporaryDirectory 保存宿主和脚本的临时文件。
+	TemporaryDirectory string `json:"temporaryDirectory"`
+	// RunsDirectory 保存按运行身份隔离的运行文件。
+	RunsDirectory string `json:"runsDirectory"`
+	// RunDirectory 是本次运行的默认工作目录，创作阶段为空。
+	RunDirectory string `json:"runDirectory,omitempty"`
+}
+
+// PrepareWorkspace 通过受管目录句柄创建私有目录，拒绝目录软链接改变文件归属。
+func PrepareWorkspace(managedRoot, workflowID, runID string) (Workspace, error) {
+	if !filepath.IsAbs(managedRoot) || !identity(workflowID) || runID != "" && !identity(runID) {
+		return Workspace{}, status_error.WorkflowResourceInvalid.WithField("field", "workspace")
+	}
+	if err := os.MkdirAll(managedRoot, 0o700); err != nil {
+		return Workspace{}, storageError("managed_workspace_root", err)
+	}
+	actual, err := EnsureScopeDirectory(managedRoot)
+	if err != nil {
+		return Workspace{}, err
+	}
+	root, err := os.OpenRoot(actual)
+	if err != nil {
+		return Workspace{}, storageError("managed_workspace_open", err)
+	}
+	defer root.Close()
+	relative := filepath.Join(constants.WorkflowWorkspaceDirectoryName, workflowID)
+	paths := []string{constants.WorkflowWorkspaceDirectoryName, relative}
+	for _, name := range []string{constants.WorkflowScriptsDirectoryName, constants.WorkflowStateDirectoryName, constants.WorkflowCacheDirectoryName, constants.WorkflowTemporaryDirectoryName, constants.WorkflowRunsDirectoryName} {
+		paths = append(paths, filepath.Join(relative, name))
+	}
+	if runID != "" {
+		paths = append(paths, filepath.Join(relative, constants.WorkflowRunsDirectoryName, runID))
+	}
+	for _, name := range paths {
+		if err := root.Mkdir(name, 0o700); err != nil && !os.IsExist(err) {
+			return Workspace{}, storageError("managed_workspace_directory", err)
+		}
+		info, err := root.Lstat(name)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return Workspace{}, status_error.WorkflowResourceInvalid.WithField("field", "workspace")
+		}
+		file, err := root.Open(name)
+		if err != nil {
+			return Workspace{}, storageError("managed_workspace_directory_open", err)
+		}
+		err = file.Chmod(0o700)
+		file.Close()
+		if err != nil {
+			return Workspace{}, storageError("managed_workspace_permissions", err)
+		}
+	}
+	return workspaceLayout(filepath.Join(actual, relative), runID), nil
+}
+
+// ParseWorkspace 只解析运行冻结目录并校验工作流、运行与完整布局，不访问或创建文件。
+func ParseWorkspace(value any, workflowID, runID string) (Workspace, error) {
+	encoded, err := json.Marshal(value)
+	var workspace Workspace
+	if err != nil || json.Unmarshal(encoded, &workspace) != nil || !identity(workflowID) || !identity(runID) || !filepath.IsAbs(workspace.RootDirectory) || filepath.Clean(workspace.RootDirectory) != workspace.RootDirectory {
+		return Workspace{}, status_error.WorkflowStateInvalid.WithField("field", "workspace")
+	}
+	directory := filepath.Join(filepath.Dir(filepath.Dir(workspace.RootDirectory)), constants.WorkflowWorkspaceDirectoryName, workflowID)
+	if workspace != workspaceLayout(directory, runID) {
+		return Workspace{}, status_error.WorkflowStateConflict.WithField("field", "workspace")
+	}
+	return workspace, nil
+}
+
+// workspaceLayout 统一宿主创建与冻结快照解析使用的目录关系。
+func workspaceLayout(directory, runID string) Workspace {
+	workspace := Workspace{RootDirectory: directory, ScriptsDirectory: filepath.Join(directory, constants.WorkflowScriptsDirectoryName), StateDirectory: filepath.Join(directory, constants.WorkflowStateDirectoryName), CacheDirectory: filepath.Join(directory, constants.WorkflowCacheDirectoryName), TemporaryDirectory: filepath.Join(directory, constants.WorkflowTemporaryDirectoryName), RunsDirectory: filepath.Join(directory, constants.WorkflowRunsDirectoryName)}
+	if runID != "" {
+		workspace.RunDirectory = filepath.Join(workspace.RunsDirectory, runID)
+	}
+	return workspace
+}
+
+// ResolveRunReference 将相对文件引用固定到所属运行目录；调用方仍须校验实际文件授权。
+func (w Workspace) ResolveRunReference(reference string) string {
+	if reference == "" || filepath.IsAbs(reference) {
+		return reference
+	}
+	return filepath.Join(w.RunDirectory, reference)
+}
+
+// Environment 给合作脚本明确的内部路径；这些变量不构成文件系统沙箱。
+func (w Workspace) Environment() []string {
+	return []string{constants.WorkflowRootEnvironment + "=" + w.RootDirectory, constants.WorkflowScriptsEnvironment + "=" + w.ScriptsDirectory, constants.WorkflowStateEnvironment + "=" + w.StateDirectory, constants.WorkflowCacheEnvironment + "=" + w.CacheDirectory, constants.WorkflowTemporaryEnvironment + "=" + w.TemporaryDirectory, constants.WorkflowRunEnvironment + "=" + w.RunDirectory, "TMPDIR=" + w.TemporaryDirectory, "TMP=" + w.TemporaryDirectory, "TEMP=" + w.TemporaryDirectory, "XDG_CACHE_HOME=" + w.CacheDirectory}
+}
+
+// PrepareManagedWorkspace 为创作入口准备工作流稳定身份的内部根目录。
 func PrepareManagedWorkspace(dataDirectory, id string) (string, error) {
-	if dataDirectory == "" {
-		return "", status_error.WorkflowResourceInvalid.WithField("field", "dataDirectory")
-	}
-	directory := filepath.Join(dataDirectory, constants.WorkflowWorkspaceDirectoryName, id)
-	if err := os.MkdirAll(directory, 0700); err != nil {
-		logx.Errorf("create workflow workspace failed: workspace_id=%s error=%v", id, err)
-		return "", status_error.WorkflowResourceInvalid
-	}
-	return EnsureScopeDirectory(directory)
+	workspace, err := PrepareWorkspace(dataDirectory, id, "")
+	return workspace.RootDirectory, err
 }
 
 // ValidateAPIInputFiles 将调用参数中的文件引用限制在本任务的受管上传中。

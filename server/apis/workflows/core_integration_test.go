@@ -372,7 +372,7 @@ func TestF1WholeCoreWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T)
 
 func assertWorkflowChatWorkspace(t *testing.T, workspace runtimes.Workspace, businessDirectory string) {
 	t.Helper()
-	if !workspace.Managed || workspace.Path == businessDirectory || len(workspace.AdditionalWritableDirectories) != 1 || workspace.AdditionalWritableDirectories[0] != businessDirectory {
+	if !workspace.Managed || workspace.Path == businessDirectory || len(workspace.AdditionalWritableDirectories) < 1 || workspace.AdditionalWritableDirectories[0] != businessDirectory {
 		t.Fatalf("workflow must use the common managed chat cwd and authorize its business directory: %+v", workspace)
 	}
 	for _, project := range workspace.ProjectDirectories {

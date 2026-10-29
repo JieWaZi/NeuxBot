@@ -11,7 +11,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -104,12 +106,16 @@ func TestMCPBridgePreservesPreDispatchValidationFailure(t *testing.T) {
 }
 
 func TestMCPBridgeUsesBoundOperationsAndFrozenGrant(t *testing.T) {
+	workspace, err := workflowfiles.PrepareWorkspace(t.TempDir(), util.New(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	registry := agentcapability.New(nil)
 	defer registry.Close()
 	calls := 0
 	grant, activate, revoke, err := registry.Prepare(agentcapability.GrantSpec{ExecutionID: "first", Validate: func(context.Context) error { return nil }, Bindings: []agentcapability.Binding{{Operation: "workflow.source.get", Call: func(_ context.Context, req agentcapability.Request) (agentcapability.Result, error) {
 		calls++
-		return agentcapability.Result{Data: map[string]any{"workflowId": "bound", "source": "source"}}, nil
+		return agentcapability.Result{Data: map[string]any{"workflowId": "bound", "source": "source", "workspace": workspace}}, nil
 	}}}})
 	if err != nil {
 		t.Fatal(err)
@@ -169,6 +175,19 @@ func TestMCPBridgeUsesBoundOperationsAndFrozenGrant(t *testing.T) {
 	result := call()
 	if result.IsError || calls != 1 {
 		t.Fatalf("call=%+v count=%d", result, calls)
+	}
+	body, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response agentcapability.Response
+	if err := json.Unmarshal(body, &response); err != nil {
+		t.Fatal(err)
+	}
+	data := response.Data.(map[string]any)
+	received, ok := data["workspace"].(map[string]any)
+	if !ok || received["rootDirectory"] != workspace.RootDirectory || received["scriptsDirectory"] != workspace.ScriptsDirectory || received["temporaryDirectory"] != workspace.TemporaryDirectory {
+		t.Fatalf("MCP lost the host-owned storage layout: %s", body)
 	}
 	revoke()
 	next, activateNext, revokeNext, err := registry.Prepare(agentcapability.GrantSpec{ExecutionID: "second", Validate: func(context.Context) error { return nil }, Bindings: []agentcapability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, agentcapability.Request) (agentcapability.Result, error) {

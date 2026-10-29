@@ -9,6 +9,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	protocol "github.com/JieWaZi/NeuxBot/server/internal/im"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
@@ -91,6 +92,17 @@ func (s *Service) WorkflowCall(ctx context.Context, run models.WorkflowRun, call
 	if err != nil {
 		return nil, status_error.IMConfigurationInvalid
 	}
+	workspace, err := workflowfiles.ParseWorkspace(run.Context["workspace"], run.DefinitionID, run.ID)
+	if err != nil {
+		return nil, err
+	}
+	roots := []string{run.ScopeBinding.WorkingDirectory}
+	if workspace.RootDirectory != run.ScopeBinding.WorkingDirectory {
+		roots = append(roots, workspace.RootDirectory)
+	}
+	for index, reference := range input.Files {
+		input.Files[index] = workspace.ResolveRunReference(reference)
+	}
 	// Runner 调用身份拥有幂等键，模型无法在重启时换键重发。
 	input.RequestID = call.ID
 	var data map[string]any
@@ -101,14 +113,14 @@ func (s *Service) WorkflowCall(ctx context.Context, run models.WorkflowRun, call
 			// 恢复已经登记的调用只核验原载荷，不把之后的权限变化写成已完成发送的失败。
 			// 未完成的投递仍由发送循环按最新授权决定是否发送下一片段。
 			var delivery models.IMDelivery
-			delivery, err = s.CreateDelivery(ctx, DeliveryRequest{RequestID: "tool:" + run.ID + ":" + call.ID, TargetID: input.TargetID, Content: input.Content, Files: input.Files, AllowedRoots: []string{run.ScopeBinding.WorkingDirectory}, WorkflowRunID: run.ID, WorkflowDefinitionID: run.DefinitionID})
+			delivery, err = s.CreateDelivery(ctx, DeliveryRequest{RequestID: "tool:" + run.ID + ":" + call.ID, TargetID: input.TargetID, Content: input.Content, Files: input.Files, AllowedRoots: roots, WorkflowRunID: run.ID, WorkflowDefinitionID: run.DefinitionID})
 			if err == nil {
 				data = DeliverySummary(delivery)
 			}
 		}
 	}
 	if err == nil && !existing {
-		data, err = s.callCapability(ctx, capabilityLease{roots: []string{run.ScopeBinding.WorkingDirectory}}, true, run.ID, run.DefinitionID, input)
+		data, err = s.callCapability(ctx, capabilityLease{roots: roots}, true, run.ID, run.DefinitionID, input)
 	}
 	if err != nil {
 		cause := map[string]any{"code": errorCode(err)}

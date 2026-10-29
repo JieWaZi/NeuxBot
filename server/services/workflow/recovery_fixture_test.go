@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -28,5 +29,5 @@ func openRecoveryWorkflow(t *testing.T, databasePath string) (*Service, func()) 
 		})
 	}
 	t.Cleanup(close)
-	return workflowTestNew(Config{Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}), close
+	return workflowTestNew(Config{DataDirectory: filepath.Dir(databasePath), Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}), close
 }

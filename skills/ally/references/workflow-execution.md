@@ -8,6 +8,8 @@ and current context. Do not switch transport to bypass an error.
 
 Use `workflow definitions list` and `workflow definitions describe` to read the actual authorized definition, revision and input/output contracts. A known ID is not permission to invoke it. Do not invent resources or widen the execution configuration.
 
+Internal workspace paths are host-owned. Runs expose `flowContext.workspace` under the workflow’s stable root, with separate `runDirectory` for each run. Scripts, state, cache and temporary files use the corresponding supplied directory fields; do not add those paths as business arguments or choose a new folder. Final files default to `runDirectory`; only an explicit user destination may use an external approved business directory.
+
 Prepare only inputs required by the selected immutable revision. A file reference must point to an actual permitted file; a path is not file content. Use the server's file contract rather than guessing types from extensions. Supply a stable request ID to `workflow runs start` and keep its receipt.
 
 Use actual authorized absolute file references. In CLI mode, relative file inputs resolve from the CLI process's current directory. Only schema-declared files are resolved and frozen; ordinary strings stay unchanged. The receipt binds the frozen file bytes: changing a file under the same request ID is a conflict. If the original file is no longer available or the start outcome is uncertain, query `receipts_get` with operation `workflow.runs.start` and the original requestId (CLI mode: `receipts get`).

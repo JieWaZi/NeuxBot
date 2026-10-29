@@ -84,8 +84,32 @@ const (
 )
 
 const (
-	// WorkflowWorkspaceDirectoryName 是作者和运行独立受管工作区的父目录。
+	// WorkflowWorkspaceDirectoryName 是工作流稳定身份对应的受管文件父目录。
 	WorkflowWorkspaceDirectoryName = "workflow-workspaces"
+	// WorkflowWorkspaceInstructionFileName 是创作与节点共用的目录约束指令名。
+	WorkflowWorkspaceInstructionFileName = "WORKFLOW_WORKSPACE.md"
+	// WorkflowScriptsDirectoryName 保存工作流草稿及版本脚本副本。
+	WorkflowScriptsDirectoryName = "scripts"
+	// WorkflowStateDirectoryName 保存工作流跨运行的配置与状态。
+	WorkflowStateDirectoryName = "state"
+	// WorkflowCacheDirectoryName 保存工作流跨运行的缓存。
+	WorkflowCacheDirectoryName = "cache"
+	// WorkflowTemporaryDirectoryName 保存工作流内部临时文件。
+	WorkflowTemporaryDirectoryName = "tmp"
+	// WorkflowRunsDirectoryName 隔离每次运行的默认业务文件。
+	WorkflowRunsDirectoryName = "runs"
+	// WorkflowRootEnvironment 向本地脚本提供工作流内部根。
+	WorkflowRootEnvironment = "ALLY_WORKFLOW_ROOT"
+	// WorkflowScriptsEnvironment 向本地脚本提供脚本副本目录。
+	WorkflowScriptsEnvironment = "ALLY_WORKFLOW_SCRIPTS_DIR"
+	// WorkflowStateEnvironment 向本地脚本提供配置与状态目录。
+	WorkflowStateEnvironment = "ALLY_WORKFLOW_STATE_DIR"
+	// WorkflowCacheEnvironment 向本地脚本提供缓存目录。
+	WorkflowCacheEnvironment = "ALLY_WORKFLOW_CACHE_DIR"
+	// WorkflowTemporaryEnvironment 向本地脚本提供临时目录。
+	WorkflowTemporaryEnvironment = "ALLY_WORKFLOW_TEMP_DIR"
+	// WorkflowRunEnvironment 向本地脚本提供本次运行目录。
+	WorkflowRunEnvironment = "ALLY_WORKFLOW_RUN_DIR"
 	// ApplicationName 是 Core 对外报告的产品名称。
 	ApplicationName = "NeuxBot"
 	// CoreDefaultHost 是桌面 Core 默认监听的回环地址。

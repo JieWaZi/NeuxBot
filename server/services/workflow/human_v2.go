@@ -5,8 +5,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
-	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"io"
 )
 
@@ -142,7 +142,7 @@ func validateHumanSnapshot(options map[string]any) error {
 }
 
 // freezeHumanChoices 将获准工作范围内候选文件读取为不可变问题快照。
-func freezeHumanChoices(directory string, options map[string]any) error {
+func freezeHumanChoices(run models.WorkflowRun, options map[string]any) error {
 	reference, ok := options["choices"].(map[string]any)
 	if !ok {
 		return nil
@@ -151,7 +151,7 @@ func freezeHumanChoices(directory string, options map[string]any) error {
 	if !ok || fileRef == "" {
 		return status_error.WorkflowSchemaInvalid.WithField("field", "choices.fileRef")
 	}
-	file, err := workflowfiles.OpenScopeFile(directory, fileRef)
+	file, err := openRunFile(run, fileRef)
 	if err != nil {
 		return err
 	}

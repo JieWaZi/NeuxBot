@@ -284,17 +284,21 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 	if err != nil {
 		return session, err
 	}
+	internalWorkspace, err := workflowfiles.PrepareWorkspace(d.DataDirectory, definition.ID, "")
+	if err != nil {
+		return session, err
+	}
+	encodedWorkspace, _ := json.Marshal(internalWorkspace)
+	contextInstructions := append([]workinput.Instruction(nil), session.ContextInstructions...)
+	contextInstructions = append(contextInstructions, workinput.Instruction{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "本工作流固定内部工作区：" + string(encodedWorkspace) + "\n脚本统一放 scriptsDirectory；长期状态放 stateDirectory；可再生成的缓存放 cacheDirectory；临时辅助文件放 temporaryDirectory。所有脚本和辅助文件都必须位于 rootDirectory 内，不得自行创建 /tmp 或 ~/xxx 等外部目录。业务成果默认留在内部工作区，运行成果默认写入对应 runDirectory。只有用户明确指定外部业务目录时，业务文件才允许写到该目录；已授权项目目录不作为脚本或辅助文件的存放位置。"})
 	target := execution.ChatTarget{ChatID: session.ChatID}
 	clientID := ""
 	if session.ChatID == "" {
 		scope := definition.ScopeBinding
 		if scope.ProjectID == "" && scope.WorkingDirectory == "" {
-			scope.WorkingDirectory, err = workflowfiles.PrepareManagedWorkspace(d.DataDirectory, definition.ID)
-			if err != nil {
-				return session, err
-			}
+			scope.WorkingDirectory = internalWorkspace.RootDirectory
 		}
-		target.Create = &execution.CreateChatSpec{HiddenFromWakerHistory: true, WakerID: session.WakerID, ProjectID: scope.ProjectID, WorkingDirectory: scope.WorkingDirectory}
+		target.Create = &execution.CreateChatSpec{HiddenFromWakerHistory: true, WakerID: session.WakerID, ProjectID: scope.ProjectID, WorkingDirectory: scope.WorkingDirectory, AdditionalWorkingDirectories: []string{internalWorkspace.RootDirectory}}
 		clientID = session.ID
 	}
 
@@ -306,7 +310,7 @@ func sendCreationMessage(ctx context.Context, d *workflowDependencies, command S
 		ExecutionID: session.ActiveExecutionID, ClientRequestID: clientID, Chat: target,
 		Input: execution.WorkInput{
 			Actor: string(constants.ChannelMessageActorUser), Content: session.Content,
-			ContextInstructions: session.ContextInstructions,
+			ContextInstructions: contextInstructions,
 			Attachments:         command.Attachments, CodeReferences: command.CodeReferences,
 			SkillIDs: command.SkillIDs, ConnectorIDs: command.ConnectorIDs, PluginIDs: command.PluginIDs,
 		},

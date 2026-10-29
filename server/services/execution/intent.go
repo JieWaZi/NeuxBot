@@ -61,6 +61,8 @@ type CreateChatSpec struct {
 	ProjectID string
 	// WorkingDirectory 是用户授权的临时目录，项目 Chat 为空。
 	WorkingDirectory string
+	// AdditionalWorkingDirectories 是宿主业务入口追加的受管目录，外部输入不能扩大工作范围。
+	AdditionalWorkingDirectories []string `json:"-"`
 }
 
 // PrepareChatGroupIntent 描述团队首发前需要成组建立的一人一个成员 Chat。
@@ -241,10 +243,11 @@ func (m *service) Start(
 	}
 	if intent.Chat.Create != nil {
 		request.create = &pendingChat{
-			hiddenFromWakerHistory: intent.Chat.Create.HiddenFromWakerHistory,
-			wakerID:                intent.Chat.Create.WakerID,
-			projectID:              intent.Chat.Create.ProjectID,
-			workingDirectory:       intent.Chat.Create.WorkingDirectory,
+			hiddenFromWakerHistory:       intent.Chat.Create.HiddenFromWakerHistory,
+			wakerID:                      intent.Chat.Create.WakerID,
+			projectID:                    intent.Chat.Create.ProjectID,
+			workingDirectory:             intent.Chat.Create.WorkingDirectory,
+			additionalWorkingDirectories: append([]string(nil), intent.Chat.Create.AdditionalWorkingDirectories...),
 		}
 	}
 	for _, instruction := range intent.Input.ContextInstructions {

@@ -70,10 +70,11 @@ func sdkSections() []sdkSection {
 				"chat. Use stable keys for code, never as the only form label. Declare file inputs and " +
 				"final file outputs as {type: 'string', format: 'file', title, description}. Arrays use" +
 				" items with this same file schema. Input forms upload files and run admission replaces" +
-				" uploaded ally-file references with real absolute paths in the approved run scope. " +
+				" uploaded ally-file references with real absolute paths in the managed workflow workspace. " +
 				"Workers must read those paths using actual tools; never treat references as file " +
-				"contents. Final file values must be paths to real files created inside " +
-				"flowContext.scope.workingDirectory; the user and automatic task API can download these" +
+				"contents. Final file values must be paths to real files created in " +
+				"flowContext.workspace.runDirectory by default, or the business destination explicitly " +
+				"selected by the user in flowContext.scope.workingDirectory; users and the API can download these" +
 				" files. Return actual paths rather than base64 data or made-up download URLs. Ordinary" +
 				" strings are never inferred to be file outputs. Input form controls support " +
 				"x-ui-control: input or textarea for strings, radio or select for scalar enum, switch " +
@@ -98,11 +99,20 @@ func sdkSections() []sdkSection {
 		},
 		{
 			id:     "workspace",
-			topics: []string{"worker"},
+			topics: []string{"overview", "worker", "action", "function"},
 			content: "Worker chats use the same managed runtime workspace and native instruction-file " +
 				"loading as ordinary chats. Their runtime working directories are isolated; the " +
 				"approved business directory is shared through project links and additional directory " +
-				"authorization. Build shared file paths from flowContext.scope.workingDirectory and " +
+				"authorization. Use flowContext.workspace for all internal paths: rootDirectory, " +
+				"scriptsDirectory, stateDirectory, cacheDirectory, temporaryDirectory, runsDirectory and " +
+				"runDirectory. Scripts/state/cache/tmp stay under the workflow root; never choose /tmp, " +
+				"a home folder or user-facing storage/cache arguments. Business files default to runDirectory; " +
+				"only a user-selected external destination uses scope.workingDirectory. Python reads " +
+				"ALLY_WORKFLOW_ROOT, ALLY_WORKFLOW_SCRIPTS_DIR, ALLY_WORKFLOW_STATE_DIR, ALLY_WORKFLOW_CACHE_DIR, " +
+				"ALLY_WORKFLOW_TEMP_DIR and ALLY_WORKFLOW_RUN_DIR from os.environ; the host fixes temporary " +
+				"and cache environment variables. Relative run-file references resolve only against their " +
+				"owner's runDirectory, never a same-named business/root file; CLI file inputs keep their " +
+				"CLI CWD semantics. Build absolute paths from these fields and " +
 				"pass those absolute paths to worker prompts and results. Never assume two workers have" +
 				" the same process working directory. Use run-specific output paths, require actual " +
 				"tools to create and read deliverable files, and verify existence and nonempty content.",
@@ -374,7 +384,8 @@ func sdkDeclarations() []sdkDeclaration {
 			content: "declare const flowContext: Readonly<{workflowId:string;revisionId:string;runId:string;" +
 				"workflowName:string;runStartedAt:number;parentRunId:string|null;retrySourceRunId:string|null;triggerSource" +
 				":'manual'|'schedule'|'local_api'|'agent'|'child';scope:{projectId:string|null;workingD" +
-				"irectory:string}}>;",
+				"irectory:string};workspace:Readonly<{rootDirectory:string;scriptsDirectory:string;" +
+				"stateDirectory:string;cacheDirectory:string;temporaryDirectory:string;runsDirectory:string;runDirectory:string}>}>;",
 		},
 	}
 }

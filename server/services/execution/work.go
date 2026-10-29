@@ -93,6 +93,8 @@ type pendingChat struct {
 	projectID string
 	// workingDirectory 是选择的临时文件夹，项目 Chat 为空。
 	workingDirectory string
+	// additionalWorkingDirectories 是宿主入口冻结的附加受管目录，不接受智能体参数扩展。
+	additionalWorkingDirectories []string
 }
 
 // pendingMessage 保存尚未被 Runtime 接受、尚未进入权威日志的输入。
@@ -211,6 +213,10 @@ func normalizePendingMessage(input pendingMessage) pendingMessage {
 	create.wakerID = strings.TrimSpace(create.wakerID)
 	create.projectID = strings.TrimSpace(create.projectID)
 	create.workingDirectory = strings.TrimSpace(create.workingDirectory)
+	create.additionalWorkingDirectories = append([]string(nil), create.additionalWorkingDirectories...)
+	for index := range create.additionalWorkingDirectories {
+		create.additionalWorkingDirectories[index] = strings.TrimSpace(create.additionalWorkingDirectories[index])
+	}
 	input.create = &create
 	return input
 }
@@ -858,6 +864,9 @@ func createRequestContent(request pendingMessage) []interface{} {
 	if request.allowedConnectorIDs != nil {
 		content = append(content, map[string]any{"allowedConnectorIds": *request.allowedConnectorIDs})
 	}
+	if len(request.create.additionalWorkingDirectories) > 0 {
+		content = append(content, map[string]any{"additionalWorkingDirectories": request.create.additionalWorkingDirectories})
+	}
 	return content
 }
 
@@ -1107,7 +1116,7 @@ func (m *service) resolveMessageChat(
 	); err != nil {
 		return messageChat{}, status_error.ChatDirectoryOwnershipInvalid
 	}
-	if input.projectID == "" && input.workingDirectory == "" {
+	if input.projectID == "" && input.workingDirectory == "" && len(resolvedWorkspace.additionalDirectories) == 0 {
 		resolvedWorkspace.additionalDirectories = []string{workspaceDirectory}
 	}
 
@@ -1143,6 +1152,36 @@ func (m *service) resolveNewChatWorkspace(
 	input pendingChat,
 	runtimeID string,
 ) (resolvedChatWorkspace, error) {
+	resolved, err := m.resolveChatWorkspaceScope(ctx, input, runtimeID)
+	if err != nil {
+		return resolvedChatWorkspace{}, err
+	}
+	usedNames := make(map[string]bool, len(resolved.projectLinks))
+	for _, link := range resolved.projectLinks {
+		usedNames[link.EntryName] = true
+	}
+	for _, directory := range input.additionalWorkingDirectories {
+		source, err := resolveWorkingDirectory(directory)
+		if err != nil {
+			return resolvedChatWorkspace{}, status_error.ProjectSourceUnavailable
+		}
+		if slices.Contains(resolved.additionalDirectories, source.Path) {
+			continue
+		}
+		entryName := filepath.Base(source.Path)
+		for suffix, base := 2, entryName; usedNames[entryName]; suffix++ {
+			entryName = fmt.Sprintf("%s-%d", base, suffix)
+		}
+		usedNames[entryName] = true
+		resolved.additionalDirectories = append(resolved.additionalDirectories, source.Path)
+		resolved.projectLinks = append(resolved.projectLinks, workspace.ProjectLink{EntryName: entryName, SourcePath: source.Path})
+		resolved.projectSources = append(resolved.projectSources, eventlog.ProjectSourceSnapshot{EntryName: entryName, SourcePath: source.Path})
+	}
+	return resolved, nil
+}
+
+// resolveChatWorkspaceScope 保留用户项目或临时目录的默认目录、归属及指令策略。
+func (m *service) resolveChatWorkspaceScope(ctx context.Context, input pendingChat, runtimeID string) (resolvedChatWorkspace, error) {
 	if m.runtime == nil {
 		return resolvedChatWorkspace{}, status_error.RuntimeUnavailable
 	}

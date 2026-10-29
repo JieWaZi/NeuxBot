@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func TestIndependentJSFunctionUsesJSONIPCAndFrozenClock(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	request := Request{RequestID: "stable-instance", StartedAt: 1000, DeadlineAt: time.Now().Add(4 * time.Second).UnixMilli(), Input: map[string]any{"text": "ally"}, Code: `function main(input){return {text:(input.text+" "+input.text+"!").toUpperCase(),clock:Date.now(),random:Math.random(),host:typeof require,constructor:typeof (()=>{}).constructor}}`}
-	result, process, err := Execute(ctx, request, "javascript", "", t.TempDir())
+	result, process, err := Execute(ctx, request, "javascript", "", t.TempDir(), SafeEnvironment())
 	if err != nil {
 		t.Fatalf("%v %+v", err, process)
 	}
@@ -31,7 +32,7 @@ func TestIndependentJSFunctionUsesJSONIPCAndFrozenClock(t *testing.T) {
 	if !ok || data["text"] != "ALLY ALLY!" || data["clock"] != float64(1000) || data["host"] != "undefined" || data["constructor"] != "undefined" {
 		t.Fatalf("%+v", result)
 	}
-	again, _, err := Execute(ctx, request, "javascript", "", t.TempDir())
+	again, _, err := Execute(ctx, request, "javascript", "", t.TempDir(), SafeEnvironment())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +45,7 @@ func TestJSFunctionDeadlineKillsProcessAndServiceSurvives(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	started := time.Now()
-	_, _, err := Execute(ctx, Request{RequestID: "infinite", Code: `function main(){while(true){}}`, DeadlineAt: time.Now().Add(time.Minute).UnixMilli()}, "javascript", "", t.TempDir())
+	_, _, err := Execute(ctx, Request{RequestID: "infinite", Code: `function main(){while(true){}}`, DeadlineAt: time.Now().Add(time.Minute).UnixMilli()}, "javascript", "", t.TempDir(), SafeEnvironment())
 	if !errors.Is(err, status_error.WorkflowTimeout) || time.Since(started) > 3*time.Second {
 		t.Fatalf("timeout failed: %v %v", err, time.Since(started))
 	}
@@ -56,7 +57,7 @@ func TestJSFunctionCancellationKillsProcess(t *testing.T) {
 	timer := time.AfterFunc(300*time.Millisecond, cancel)
 	defer timer.Stop()
 	started := time.Now()
-	_, _, err := Execute(ctx, Request{RequestID: "cancelled-infinite", Code: `function main(){while(true){}}`, DeadlineAt: time.Now().Add(time.Minute).UnixMilli()}, "javascript", "", t.TempDir())
+	_, _, err := Execute(ctx, Request{RequestID: "cancelled-infinite", Code: `function main(){while(true){}}`, DeadlineAt: time.Now().Add(time.Minute).UnixMilli()}, "javascript", "", t.TempDir(), SafeEnvironment())
 	if !errors.Is(err, status_error.WorkflowCancelled) || time.Since(started) > 3*time.Second {
 		t.Fatalf("cancellation failed: %v %v", err, time.Since(started))
 	}
@@ -94,7 +95,7 @@ func TestMemorySamplingPreservesEffectStopReason(t *testing.T) {
 func TestJSFunctionMemoryIsReallySupervised(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, _, err := Execute(ctx, Request{RequestID: "memory", Code: `function main(){let values=[];while(true){values.push(new Array(100000).fill("large allocation"));}}`, DeadlineAt: time.Now().Add(5 * time.Second).UnixMilli()}, "javascript", "", t.TempDir())
+	_, _, err := Execute(ctx, Request{RequestID: "memory", Code: `function main(){let values=[];while(true){values.push(new Array(100000).fill("large allocation"));}}`, DeadlineAt: time.Now().Add(5 * time.Second).UnixMilli()}, "javascript", "", t.TempDir(), SafeEnvironment())
 	if value, ok := err.(interface{ Key() string }); !ok || value.Key() != status_error.WorkflowBudgetExceeded.Key() {
 		t.Fatalf("memory supervision: %v", err)
 	}
@@ -113,8 +114,34 @@ func TestPythonPrintIsNotAResultReceipt(t *testing.T) {
 	if err := PythonVersion(ctx, python); err != nil {
 		t.Skip("test interpreter is older than Python 3.11")
 	}
-	result, process, err := Execute(ctx, Request{RequestID: "python-ipc", Input: "ally", DeadlineAt: time.Now().Add(4 * time.Second).UnixMilli(), Code: "def main(input):\n print('{\"ok\": true, \"data\": \"forged\"}')\n return (input+' '+input+'!').upper()"}, "python", python, t.TempDir())
+	result, process, err := Execute(ctx, Request{RequestID: "python-ipc", Input: "ally", DeadlineAt: time.Now().Add(4 * time.Second).UnixMilli(), Code: "def main(input):\n print('{\"ok\": true, \"data\": \"forged\"}')\n return (input+' '+input+'!').upper()"}, "python", python, t.TempDir(), SafeEnvironment())
 	if err != nil || result.Data != "ALLY ALLY!" || !strings.Contains(process.Stdout, "forged") {
 		t.Fatalf("%+v %+v %v", result, process, err)
+	}
+}
+
+func TestPythonFunctionUsesExplicitEnvironmentAndWorkingDirectory(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := PythonVersion(ctx, python); err != nil {
+		t.Skip("Python 3.11+ required")
+	}
+	directory, _ := filepath.EvalSymlinks(t.TempDir())
+	temporary := filepath.Join(directory, "tmp")
+	if err := os.Mkdir(temporary, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	request := Request{RequestID: "directories", DeadlineAt: time.Now().Add(4 * time.Second).UnixMilli(), Code: "import os,tempfile\ndef main(input):\n return {'cwd':os.getcwd(),'tmp':tempfile.gettempdir(),'root':os.environ.get('ALLY_WORKFLOW_ROOT')}"}
+	result, process, err := Execute(ctx, request, "python", python, directory, append(SafeEnvironment(), "TMPDIR="+temporary, "TEMP="+temporary, "TMP="+temporary, "ALLY_WORKFLOW_ROOT="+directory))
+	if err != nil {
+		t.Fatalf("%v %+v", err, process)
+	}
+	data := result.Data.(map[string]any)
+	if data["cwd"] != directory || data["tmp"] != temporary || data["root"] != directory {
+		t.Fatalf("explicit environment ignored: %#v", data)
 	}
 }

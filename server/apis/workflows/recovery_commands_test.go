@@ -39,7 +39,7 @@ func openRecoveryWorkflow(t *testing.T, databasePath string) (*workflowFixture, 
 		})
 	}
 	t.Cleanup(close)
-	return workflowTestNew(workflow.Config{Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}), close
+	return workflowTestNew(workflow.Config{Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)), DataDirectory: filepath.Dir(databasePath)}), close
 }
 
 func TestRealSideEffectRestartFailsAndPreservesEvidenceWithoutResend(t *testing.T) {

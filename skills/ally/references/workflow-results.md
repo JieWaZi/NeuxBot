@@ -4,6 +4,8 @@ Read `workflow_results_schema` through the injected MCP for the current attempt.
 
 Complete the actual work in the approved scope. Read promised files to verify existence and nonempty content; use run-specific paths so later runs cannot overwrite earlier delivery. Keep evidence and limitations in the fields required by the schema, without inventing results to make validation pass.
 
+For file results, create and verify the actual file in the host-provided workspace `runDirectory` by default. An explicit external business destination may use the approved business directory. Script and cache paths are internal implementation files, not deliverables; never submit them as the requested report.
+
 Submit with `workflow_results_submit`, passing `data` as the actual JSON value and a stable `requestId`. The value can be a string, array or object when the authoritative schema allows it; do not JSON-encode it into an extra string or invent a wrapper inside data. A file worker submits its actual file reference. Do not duplicate reports or create a separate presentation page. In host-selected CLI mode, the equivalent command is `workflow results submit --input <UTF-8-file> --request-id <stable-id>`, with a file containing {"data": <actual value>}.
 
 If the response is lost, query `receipts_get` for operation `workflow.results.submit` and the original requestId (CLI mode: `receipts get`). Preserve payload and identity while the outcome is uncertain. Correct a rejected or invalid submission with a new requestId only while the attempt is valid and no candidate has been accepted. An accepted candidate cannot be replaced by different content, even with a new requestId.

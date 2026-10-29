@@ -107,6 +107,14 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 	}
 	args := run.Args.(map[string]any)
 	frozen := args["files"].([]any)[0].(string)
+	managed, err := filepath.EvalSymlinks(s.dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	internal := filepath.Join(managed, "workflow-workspaces", definition.ID)
+	if !strings.HasPrefix(frozen, internal+string(filepath.Separator)) {
+		t.Fatalf("input snapshot escaped workflow storage: %s", frozen)
+	}
 	if body, err := os.ReadFile(frozen); err != nil || string(body) != "actual child report" || args["note"] != "report.txt" {
 		t.Fatalf("incorrect input resolution: args=%v body=%q err=%v", args, body, err)
 	}
@@ -146,7 +154,7 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 	if code != 0 || receipt.CommandID != first.CommandID {
 		t.Fatalf("receipt depended on deleted source file: %+v", receipt)
 	}
-	entries, err := os.ReadDir(s.dataDirectory)
+	entries, err := os.ReadDir(filepath.Join(internal, "tmp"))
 	if err != nil {
 		t.Fatal(err)
 	}

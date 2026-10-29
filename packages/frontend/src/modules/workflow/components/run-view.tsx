@@ -50,7 +50,6 @@ export function WorkflowRunView({
   active?: boolean;
 }) {
   const { t } = useTranslation("workflow");
-  const { t: boardText } = useTranslation("workBoard");
   const client = useQueryClient();
   const sceneActive = useRouteSceneActive();
   const active = sceneActive && visible;
@@ -190,13 +189,6 @@ export function WorkflowRunView({
   };
   const prompted = useRef(new Set<string>());
   const requestedId = params.get("request")?.split(":").at(-1);
-  const requestedGone = Boolean(
-    requestedId &&
-    run &&
-    !query.isFetching &&
-    !query.isError &&
-    ![...waiting, ...operations].some((item) => item.id === requestedId),
-  );
   useEffect(() => {
     if (!active || switching || params.has("node")) return;
     const request = requestedId
@@ -279,19 +271,6 @@ export function WorkflowRunView({
             retrying={query.isFetching}
             onRetry={() => void query.refetch()}
           />
-        ) : null}
-        {requestedGone ? (
-          <div
-            role="status"
-            className="text-content-muted type-ui flex items-center gap-3 px-5 py-3"
-          >
-            {boardText("requestGone")}
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/work-board?mode=attention">
-                {boardText("backToBoard")}
-              </Link>
-            </Button>
-          </div>
         ) : null}
         {query.data?.manifest ? (
           <div

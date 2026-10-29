@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -234,10 +236,30 @@ func TestCreationScopeManagedAndExplicitDirectory(t *testing.T) {
 			if err != nil {
 				t.Fatalf("creation admission rejected the creation form's scope: %v", err)
 			}
+			var request runtimes.RunRequest
 			select {
-			case <-runtime.requests:
+			case request = <-runtime.requests:
 			case <-ctx.Done():
 				t.Fatal(ctx.Err())
+			}
+			internalRoot := filepath.Join(directory, "workflow-workspaces", definition.ID)
+			for _, name := range []string{"scripts", "state", "cache", "tmp", "runs"} {
+				if info, err := os.Stat(filepath.Join(internalRoot, name)); err != nil || !info.IsDir() {
+					t.Fatalf("creation must prepare its internal %s directory for every business scope: %v", name, err)
+				}
+			}
+			internalRoot, err = filepath.EvalSymlinks(internalRoot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			instructionFound := false
+			for _, instruction := range request.Instructions {
+				if strings.Contains(instruction.Content, internalRoot) && strings.Contains(instruction.Content, filepath.Join(internalRoot, "scripts")) {
+					instructionFound = true
+				}
+			}
+			if !instructionFound {
+				t.Fatal("creation request did not carry the host-provided internal workspace")
 			}
 			expected := scope.WorkingDirectory
 			if managed {
@@ -275,7 +297,11 @@ func TestCreationScopeManagedAndExplicitDirectory(t *testing.T) {
 				}
 			}
 			summary, err := s.Chats.GetChatSummary(ctx, session.ChatID)
-			if err != nil || len(summary.Chat.AdditionalWorkingDirectories) != 1 || summary.Chat.AdditionalWorkingDirectories[0] != expected {
+			expectedDirectories := []string{expected}
+			if !managed {
+				expectedDirectories = append(expectedDirectories, internalRoot)
+			}
+			if err != nil || !slices.Equal(summary.Chat.AdditionalWorkingDirectories, expectedDirectories) {
 				t.Fatalf("creation scope mismatch: %+v %v", summary.Chat.AdditionalWorkingDirectories, err)
 			}
 			replayed, err := sendCreationMessage(ctx, workflowAPIDependencies(s), command)
@@ -301,7 +327,7 @@ func TestCreationScopeManagedAndExplicitDirectory(t *testing.T) {
 				t.Fatal(ctx.Err())
 			}
 			summary, err = s.Chats.GetChatSummary(ctx, continued.ChatID)
-			if err != nil || len(summary.Chat.AdditionalWorkingDirectories) != 1 || summary.Chat.AdditionalWorkingDirectories[0] != expected {
+			if err != nil || !slices.Equal(summary.Chat.AdditionalWorkingDirectories, expectedDirectories) {
 				t.Fatalf("continuation did not retain the approved directory: %v", err)
 			}
 		})
@@ -432,5 +458,36 @@ func TestCreationForwardsCompleteChatInputAndSessionTransition(t *testing.T) {
 	}
 	if len(options.ToolCapabilities) != 1 || options.ToolCapabilities[0].ID != "workflow.authoring" {
 		t.Fatal("common chat admission lost workflow-scoped tool authority")
+	}
+}
+
+func TestCreationProjectKeepsBusinessIdentityAndAddsInternalWorkspace(t *testing.T) {
+	directory := t.TempDir()
+	s, _ := openCoreWorkflowPorts(t, directory, &creationScopeRuntime{requests: make(chan runtimes.RunRequest, 1)}, fixtureEnvironment{})
+	ctx := context.Background()
+	project := models.Project{ID: util.New(), WakerID: "fixture-waker", Name: "业务项目"}
+	if err := s.Projects.Create(ctx, project); err != nil {
+		t.Fatal(err)
+	}
+	definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "project-workspace", CreationWakerID: project.WakerID, ScopeBinding: models.WorkflowScopeBinding{ProjectID: project.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	boundary := &creationInputBoundary{Service: s.Executions}
+	s.Executions = boundary
+	if _, err := sendCreationMessage(ctx, workflowAPIDependencies(s), SendCreationMessageCommand{DefinitionID: definition.ID, RequestID: "project-message", Content: "创作项目流程", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture"}}); err != nil {
+		t.Fatal(err)
+	}
+	internal := filepath.Join(directory, "workflow-workspaces", definition.ID)
+	internal, err = filepath.EvalSymlinks(internal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	create := boundary.intent.Chat.Create
+	if create.ProjectID != project.ID || create.WorkingDirectory != "" || !slices.Equal(create.AdditionalWorkingDirectories, []string{internal}) {
+		t.Fatalf("creation project scope was replaced or omitted its internal workspace: %+v", create)
+	}
+	if info, err := os.Stat(filepath.Join(internal, "scripts")); err != nil || !info.IsDir() {
+		t.Fatalf("project creation did not prepare its internal scripts directory: %v", err)
 	}
 }

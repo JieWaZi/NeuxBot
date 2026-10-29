@@ -43,3 +43,31 @@ func TestWorkflowV2ValidationCanReturnPublicManifest(t *testing.T) {
 		t.Fatalf("includeManifest output violates operation contract: %v", err)
 	}
 }
+
+// TestAuthoringOutputRequiresWorkspace 保证两种创作入口都不能漏掉固定目录契约。
+func TestAuthoringOutputRequiresWorkspace(t *testing.T) {
+	workspace := map[string]any{"rootDirectory": "/managed/workflow", "scriptsDirectory": "/managed/workflow/scripts", "stateDirectory": "/managed/workflow/state", "cacheDirectory": "/managed/workflow/cache", "temporaryDirectory": "/managed/workflow/tmp", "runsDirectory": "/managed/workflow/runs"}
+	for _, id := range []string{"workflow.source.get", "workflow.authoring.prepare"} {
+		t.Run(id, func(t *testing.T) {
+			op, _ := Find(id)
+			wrap := func(source map[string]any) map[string]any {
+				if id == "workflow.authoring.prepare" {
+					return map[string]any{"workflow": source}
+				}
+				return source
+			}
+			if err := workflowdsl.ValidateJSON(op.OutputSchema, wrap(map[string]any{"workspace": workspace})); err != nil {
+				t.Fatalf("complete workspace rejected: %v", err)
+			}
+			for name, data := range map[string]map[string]any{
+				"missing":              {},
+				"missing-workspace":    wrap(map[string]any{"workflowId": "workflow"}),
+				"incomplete-workspace": wrap(map[string]any{"workspace": map[string]any{"rootDirectory": "/managed/workflow"}}),
+			} {
+				if err := workflowdsl.ValidateJSON(op.OutputSchema, data); err == nil {
+					t.Errorf("%s accepted without a complete workspace", name)
+				}
+			}
+		})
+	}
+}

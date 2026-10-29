@@ -16,7 +16,10 @@ func outputSchema(id string) map[string]any {
 	}
 	switch id {
 	case "workflow.authoring.prepare":
-		return object("workflow", "annotations", "topics", "guideIds", "content", "resources", "operations")
+		schema := object("workflow", "annotations", "topics", "guideIds", "content", "resources", "operations")
+		schema["properties"].(map[string]any)["workflow"] = outputSchema("workflow.source.get")
+		schema["required"] = []string{"workflow"}
+		return schema
 	case "im.targets.list", "team.tasks.list", "workflow.annotations.list", "workflow.definitions.list":
 		return object("items", "total", "pageNum", "pageSize", "nextCursor")
 	case "im.deliveries.create", "im.deliveries.get":
@@ -60,7 +63,17 @@ func outputSchema(id string) map[string]any {
 	case "knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.pages.purge", "knowledge.revisions.restore", "knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry":
 		return object("ref", "receipt")
 	case "workflow.source.get":
-		return object("workflowId", "revisionId", "currentRevisionId", "source", "sourceDigest", "sdkVersion")
+		schema := object("workflowId", "revisionId", "currentRevisionId", "source", "sourceDigest", "sdkVersion", "workspace")
+		properties := schema["properties"].(map[string]any)
+		workspace := object("rootDirectory", "scriptsDirectory", "stateDirectory", "cacheDirectory", "temporaryDirectory", "runsDirectory")
+		fields := workspace["properties"].(map[string]any)
+		for name := range fields {
+			fields[name] = map[string]any{"type": "string", "minLength": 1}
+		}
+		workspace["required"] = []string{"rootDirectory", "scriptsDirectory", "stateDirectory", "cacheDirectory", "temporaryDirectory", "runsDirectory"}
+		properties["workspace"] = workspace
+		schema["required"] = []string{"workspace"}
+		return schema
 	case "workflow.source.validate":
 		return object("valid", "diagnostics", "summary", "manifest", "error")
 	case "workflow.source.save":

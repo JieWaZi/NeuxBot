@@ -32,7 +32,7 @@ func workflowTestService(t *testing.T) (*Service, controllers.WorkflowController
 		}
 	})
 	store := controllers.NewWorkflowController(database.DB)
-	return workflowTestNew(Config{Commands: controllers.NewAgentCommandController(database.DB), Store: store, CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}), store
+	return workflowTestNew(Config{DataDirectory: t.TempDir(), Commands: controllers.NewAgentCommandController(database.DB), Store: store, CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}), store
 }
 
 func workflowTestSource(t *testing.T) string {

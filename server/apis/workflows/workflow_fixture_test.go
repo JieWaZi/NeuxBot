@@ -42,7 +42,7 @@ func workflowTestService(t *testing.T) (*workflowFixture, controllers.WorkflowCo
 		}
 	})
 	store := controllers.NewWorkflowController(database.DB)
-	return workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Store: store, CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}), store
+	return workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Store: store, CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)), DataDirectory: t.TempDir()}), store
 }
 
 func workflowTestSource(t *testing.T) string {

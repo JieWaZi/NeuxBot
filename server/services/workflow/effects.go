@@ -18,6 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/mcpclient"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowfunction "github.com/JieWaZi/NeuxBot/server/internal/workflow/function"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -98,6 +99,14 @@ func (s *Service) dispatchChild(ctx context.Context, run models.WorkflowRun, eff
 			return
 		}
 	}
+	childResult := child.Result
+	if effect.Boundary.Primitive != "startWorkflow" && !timedOut && child.Status == constants.WorkflowRunStatusSucceeded {
+		childResult, err = s.freezeChildResult(ctx, run, effect, child)
+		if err != nil {
+			s.finishEffect(ctx, effect, WorkerReceipt{}, err)
+			return
+		}
+	}
 	err = s.state.MutateEffect(ctx, run.ID, effect.ID, func(ctx context.Context, _ *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
 		if workflowstate.StepTerminal(current.Status) {
 			return nil
@@ -116,7 +125,7 @@ func (s *Service) dispatchChild(ctx context.Context, run models.WorkflowRun, eff
 		}
 		switch child.Status {
 		case constants.WorkflowRunStatusSucceeded:
-			value := workflowdsl.JSONValue(map[string]any{"runId": child.ID, "revisionId": child.RevisionID, "status": "succeeded", "result": child.Result})
+			value := workflowdsl.JSONValue(map[string]any{"runId": child.ID, "revisionId": child.RevisionID, "status": "succeeded", "result": childResult})
 			current.Result = &value
 			current.Status = constants.WorkflowStepStatusSucceeded
 		case constants.WorkflowRunStatusCancelled, constants.WorkflowRunStatusFailed:
@@ -133,6 +142,33 @@ func (s *Service) dispatchChild(ctx context.Context, run models.WorkflowRun, eff
 	if err != nil && ctx.Err() == nil {
 		s.finishEffect(ctx, effect, WorkerReceipt{}, err)
 	}
+}
+
+// freezeChildResult 在状态事务外把子流程明确声明的文件复制到父流程内部目录。
+func (s *Service) freezeChildResult(ctx context.Context, parent models.WorkflowRun, effect models.WorkflowEffect, child models.WorkflowRun) (any, error) {
+	revision, err := s.store.GetRevision(ctx, child.DefinitionID, child.RevisionID)
+	if err != nil {
+		return nil, err
+	}
+	schema := revision.Manifest.Meta.OutputSchema
+	if len(workflowdsl.FileValues(schema, child.Result)) == 0 {
+		return child.Result, nil
+	}
+	parentWorkspace, err := runWorkspace(parent)
+	if err != nil {
+		return nil, err
+	}
+	childWorkspace, err := runWorkspace(child)
+	if err != nil {
+		return nil, err
+	}
+	roots := []string{childWorkspace.RootDirectory, child.ScopeBinding.WorkingDirectory}
+	return workflowdsl.MapFiles(schema, child.Result, func(pointer, reference string) (string, error) {
+		// 一个父运行可以接收多个子效果；字段身份同时绑定效果与子运行，避免成果互相覆盖。
+		identity := workflowstate.Digest([]any{effect.ID, child.ID, pointer})
+		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, childWorkspace.ResolveRunReference(reference), parentWorkspace.RootDirectory, parent.ID, identity)
+		return frozen.Path, err
+	})
 }
 
 // childResultObserved 表示失败已交给源码的 await/catch，而非无 join 的跟随任务。
@@ -188,13 +224,18 @@ func (s *Service) dispatchDeterministic(ctx context.Context, run models.Workflow
 	var httpOutcomeUnknown bool
 	var processLogs []workflowfunction.ProcessResult
 	if effect.Boundary.Primitive == "functionTask" {
+		workspace, workspaceErr := runWorkspace(run)
+		if workspaceErr != nil {
+			s.completeDeterministic(ctx, effect, nil, workspaceErr)
+			return
+		}
 		language, _ := options["language"].(string)
 		code, _ := options["code"].(string)
 		pythonPath, _ := run.Context["pythonExecutable"].(string)
 		if pythonPath == "" {
 			pythonPath = s.pythonExecutable
 		}
-		result, process, failure := workflowfunction.Execute(operationCtx, workflowfunction.Request{RequestID: effect.ID, Code: code, Input: options["input"], StartedAt: run.StartedAt, DeadlineAt: effect.DeadlineAt}, language, pythonPath, run.ScopeBinding.WorkingDirectory)
+		result, process, failure := workflowfunction.Execute(operationCtx, workflowfunction.Request{RequestID: effect.ID, Code: code, Input: options["input"], StartedAt: run.StartedAt, DeadlineAt: effect.DeadlineAt}, language, pythonPath, workspace.RunDirectory, append(workflowfunction.SafeEnvironment(), workspace.Environment()...))
 		err = failure
 		value = result.Data
 		if process.Stdout != "" || process.Stderr != "" {
@@ -334,16 +375,9 @@ func shrinkLog(value string) string {
 }
 
 func (s *Service) executeScript(ctx context.Context, run models.WorkflowRun, declaration workflowdsl.ActionDeclaration, options map[string]any, bundles ...workflowdsl.ProgramBundle) (any, error) {
-	if run.ScopeBinding.WorkingDirectory == "" {
-		return nil, status_error.WorkflowResourceInvalid.WithField("field", "scope.workingDirectory")
-	}
-	directory, err := filepath.EvalSymlinks(run.ScopeBinding.WorkingDirectory)
+	workspace, err := runWorkspace(run)
 	if err != nil {
-		logx.Errorf("resolve action cwd failed: error=%v", err)
-		return nil, status_error.WorkflowResourceInvalid
-	}
-	if directory != run.ScopeBinding.WorkingDirectory {
-		return nil, status_error.WorkflowStateConflict.WithField("field", "scope.workingDirectory")
+		return nil, err
 	}
 	arguments := []string{}
 	if values, ok := options["args"].([]any); ok {
@@ -355,7 +389,7 @@ func (s *Service) executeScript(ctx context.Context, run models.WorkflowRun, dec
 			arguments = append(arguments, argument)
 		}
 	}
-	environment := workflowfunction.SafeEnvironment()
+	environment := append(workflowfunction.SafeEnvironment(), workspace.Environment()...)
 	secrets := []string{}
 	if values, ok := options["env"].(map[string]any); ok {
 		for key, value := range values {
@@ -398,19 +432,29 @@ func (s *Service) executeScript(ctx context.Context, run models.WorkflowRun, dec
 		if executable == "" {
 			executable = "python3"
 		}
-		file, err := os.CreateTemp("", "workflow-script-*.py")
+		root, err := os.OpenRoot(workspace.RootDirectory)
 		if err != nil {
-			return nil, err
+			logx.Errorf("open workflow script workspace failed: workflow_id=%s run_id=%s error=%v", run.DefinitionID, run.ID, err)
+			return nil, status_error.WorkflowFileStorageError
 		}
-		defer os.Remove(file.Name())
+		defer root.Close()
+		name := filepath.Join(constants.WorkflowScriptsDirectoryName, script.Digest+"-"+util.New()+".py")
+		file, err := root.OpenFile(name, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+		if err != nil {
+			logx.Errorf("create frozen workflow script failed: workflow_id=%s run_id=%s error=%v", run.DefinitionID, run.ID, err)
+			return nil, status_error.WorkflowFileStorageError
+		}
+		defer root.Remove(name)
 		if _, err = file.WriteString(script.Code); err != nil {
 			file.Close()
-			return nil, err
+			logx.Errorf("write frozen workflow script failed: workflow_id=%s run_id=%s error=%v", run.DefinitionID, run.ID, err)
+			return nil, status_error.WorkflowFileStorageError
 		}
 		if err = file.Close(); err != nil {
-			return nil, err
+			logx.Errorf("close frozen workflow script failed: workflow_id=%s run_id=%s error=%v", run.DefinitionID, run.ID, err)
+			return nil, status_error.WorkflowFileStorageError
 		}
-		arguments = append([]string{file.Name()}, arguments...)
+		arguments = append([]string{filepath.Join(workspace.RootDirectory, name)}, arguments...)
 		protocol = script.Protocol
 	}
 	input, err := json.Marshal(options["input"])
@@ -418,7 +462,7 @@ func (s *Service) executeScript(ctx context.Context, run models.WorkflowRun, dec
 		return nil, status_error.WorkflowSchemaInvalid
 	}
 	started := time.Now()
-	process, err := workflowfunction.Command(ctx, executable, arguments, directory, environment, bytes.NewReader(input))
+	process, err := workflowfunction.Command(ctx, executable, arguments, workspace.RunDirectory, environment, bytes.NewReader(input))
 	if process.Truncated && err == nil {
 		err = status_error.WorkflowBudgetExceeded.WithField("budget", "script_output")
 	}
@@ -441,8 +485,13 @@ func safeEnvironmentKey(key string) bool {
 	if key == "" || strings.ContainsAny(key, "=\x00") {
 		return false
 	}
-	switch strings.ToUpper(key) {
+	normalized := strings.ToUpper(key)
+	switch normalized {
 	case "PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH", "PYTHONPATH", "NODE_OPTIONS":
+		return false
+	case "TMPDIR", "TMP", "TEMP", "XDG_CACHE_HOME":
+		return false
+	case constants.WorkflowRootEnvironment, constants.WorkflowScriptsEnvironment, constants.WorkflowStateEnvironment, constants.WorkflowCacheEnvironment, constants.WorkflowTemporaryEnvironment, constants.WorkflowRunEnvironment:
 		return false
 	}
 	return true

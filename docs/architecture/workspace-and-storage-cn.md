@@ -18,15 +18,24 @@
 | -------------------------------------------- | -------------------------------------------- |
 | `chat/<chat-id>/{log,workspace}/`            | 普通聊天权威日志、索引与执行工作区           |
 | `team/<thread-id>/{log,workspace,projects}/` | 团队日志、成员工作区与共享项目入口           |
-| `workflow-workspaces/`                       | 工作流创作与运行工作区                       |
+| `workflow-workspaces/<workflow-id>/`         | 工作流脚本、状态、缓存和运行文件的固定根目录 |
 | `workflow-files/`                            | 上传原件与 `metadata.json` 归属信息          |
 | `im/{inbox,deliveries,workspaces}/`          | IM 接收附件、交付快照和默认工作区            |
 | `forks/`、`deletions/`、`provisioning/`      | 分叉、删除和团队创建操作的持久记录与暂存文件 |
-| `workflow-input-staging-*/`                  | 工作流调用接纳前的临时输入副本               |
 
 工作区内部使用 `workspace-owner.json` 标记归属，`runtime/accounts/` 保存当前工作区独有的智能体配置及状态，`workflow-inputs/` 保存工作流冻结输入，`attachments/` 保存消息附件及生成文件。账号配置目录保持私有权限，并从桌面文件列表、预览和消息引用中排除。应用自行创建的这些目录和暂存文件不使用点前缀；智能体约定的 `.agents/`、`.claude/`、`.gemini/` 等固定名称保持不变。
 
 目录按当前布局直接读写，不执行旧目录迁移或旧名称回退。用户选择的真实项目目录与智能体自行管理的原生目录保留原位置。
+
+## 工作流目录
+
+工作流内部文件只使用 `workflow-workspaces/<workflow-id>/`。`scripts/` 保存草稿与从不可变版本物化的脚本，`state/` 保存跨运行配置和状态，`cache/` 保存缓存，`tmp/` 保存验证、进程和接纳前输入的临时文件，`runs/<run-id>/` 隔离每次运行的默认业务文件。冻结输入位于该工作流根内的 `workflow-inputs/<run-id>/`。目录由宿主创建并限制私有权限，内部软链接不能把这些目录改绑到根外。源码和版本 Bundle 仍是权威，磁盘脚本副本不能覆盖版本内容。
+
+`workflow.authoring.prepare` 的 `workflow.workspace` 与 `workflow.source.get` 的 `workspace` 返回同一真实绝对目录；`flowContext.workspace` 再提供本次 `runDirectory`。这些路径来自配置的受管根，智能体不得猜测主目录或临时目录，也不得把脚本、缓存或状态路径作为业务参数让用户填写。创作与 worker 通过本次执行指令获得相同目录约束；worker 的 Chat 技术工作区继续独立，固定工作流根作为冻结的额外授权目录。
+
+脚本与 Python 函数的进程工作目录为 `runs/<run-id>/`；宿主注入 `ALLY_WORKFLOW_ROOT`、`ALLY_WORKFLOW_SCRIPTS_DIR`、`ALLY_WORKFLOW_STATE_DIR`、`ALLY_WORKFLOW_CACHE_DIR`、`ALLY_WORKFLOW_TEMP_DIR`、`ALLY_WORKFLOW_RUN_DIR`，并固定 `TMPDIR`、`TMP`、`TEMP` 与 `XDG_CACHE_HOME`。动作不得通过环境配置覆盖保留目录变量。该机制约束宿主布局并给脚本明确存储契约；受信本地 Python 的任意绝对路径访问仍由实际 Runtime/平台权限管理。
+
+业务成果默认放本次 `runDirectory`。运行文件的相对引用只按所属运行的 `runDirectory` 解析，再校验目录授权；缺失时不查找业务目录或工作流根下的同名文件。子流程参数按父运行解析，子流程成果按子运行解析；CLI 文件输入仍按 CLI 的当前目录冻结。用户明确选择的知识同步目录、报告目录等仍属于业务输出范围；这一选择不会移动脚本、缓存和辅助状态。文件结果只允许该工作流内部根或已批准的业务范围，其他目录不能仅凭路径字符串获得权限。此布局直接用于新执行，不增加历史路径回退或迁移。
 
 ## 团队目录
 

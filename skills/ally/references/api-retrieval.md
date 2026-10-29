@@ -30,6 +30,8 @@ This is a candidate responsibility split, not a mandatory three-phase template. 
 - Never mark initial credentials “optional” solely because a cache might exist. Define and verify the actual setup path and behavior when configuration is missing.
 - Give business inputs concise labels and useful defaults. Do not introduce project, keyword, or output-format selectors without a corresponding user need.
 
+Internal storage is not a business input. Reuse `workflow.workspace` from preparation and `flowContext.workspace` during a run; Python uses the host's `ALLY_WORKFLOW_STATE_DIR` and `ALLY_WORKFLOW_CACHE_DIR`. Put persistent token/configuration state and caches there with private permissions. Do not invent `storage_dir`/`cache_dir` defaults such as `~/PingCodeWiki` or ask the user to select internal directories. If the user wants synchronized Wiki documents in a chosen folder, that folder is an explicit business output destination; keep the synchronization script, token cache and internal state in the workflow workspace.
+
 ## Evidence and failures
 
 Implement credential and token storage with appropriate local permissions, atomic updates, expiry handling, and bounded retry behavior. Verify the API's actual invalid-token response. Do not expose secrets in commands, logs, source, or downloadable artifacts. Surface missing setup, incomplete pagination, and empty matches distinctly.
