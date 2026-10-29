@@ -16,13 +16,13 @@ import (
 
 	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	acpdriver "github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp"
+	"github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp/native"
 	agentruntime "github.com/JieWaZi/NeuxBot/agent-runtime/runtime"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimeauth"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
-	acpcodex "github.com/JieWaZi/acp-go/pkg/codex"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	acp "github.com/JieWaZi/acp-go/sdk"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
@@ -90,9 +90,9 @@ type Environment struct {
 	// BaseRuntimeID 是经过注册验证的内置智能体身份。
 	BaseRuntimeID string
 	// Target 保留实际二进制、参数和配置目录。
-	Target runtimes.RuntimeTarget
+	Target runtimecontract.RuntimeTarget
 	// Detection 是当前可运行探测快照。
-	Detection runtimes.DetectionResult
+	Detection runtimecontract.DetectionResult
 }
 
 // Config 注入产品权威端口，构造时不启动进程。
@@ -100,9 +100,9 @@ type Config struct {
 	// Resolve 在执行前解析明确的环境路由。
 	Resolve func(context.Context, TextRequest) (Environment, error)
 	// Prepare 取得共享账号租约；关闭失败必须允许再次调用。
-	Prepare func(context.Context, TextRequest, Environment, string) (runtimes.RuntimeTarget, func(context.Context) error, error)
+	Prepare func(context.Context, TextRequest, Environment, string) (runtimecontract.RuntimeTarget, func(context.Context) error, error)
 	// Launch 复用 Runtime Registry、Profile、账号隔离与工具路径规则生成启动事实。
-	Launch func(runtimes.RuntimeTarget, runtimes.DetectionResult) (runtimes.LaunchFacts, error)
+	Launch func(runtimecontract.RuntimeTarget, runtimecontract.DetectionResult) (runtimecontract.LaunchFacts, error)
 	// Driver 允许行为测试替换原生协议边界。
 	Driver func(Environment, acpdriver.Factory) (c.Driver, error)
 }
@@ -232,7 +232,7 @@ func (h *Host) execute(ctx context.Context, input TextRequest, env Environment, 
 		_ = os.RemoveAll(workspace)
 		return TextResult{}, err
 	}
-	if env.BaseRuntimeID != runtimes.RuntimeIDCodex && len(instructions) > 0 {
+	if env.BaseRuntimeID != runtimecontract.RuntimeIDCodex && len(instructions) > 0 {
 		var serialized strings.Builder
 		for _, message := range input.Messages {
 			fmt.Fprintf(&serialized, "<message role=%q>\n%s\n</message>\n", message.Role, message.Content)
@@ -282,10 +282,10 @@ func (h *Host) execute(ctx context.Context, input TextRequest, env Environment, 
 	}
 	h.closeOwner(engine)
 	output := TextResult{StopReason: string(result.StopReason), ActualReasoning: result.Configuration.ActualReasoning, ThinkingDisabled: result.Configuration.ThinkingDisabled, ReasoningFallback: result.Configuration.ReasoningFallback, Limitations: limitations}
-	if env.BaseRuntimeID != runtimes.RuntimeIDCodex && !credentials.target.Isolated && resources == nil {
+	if env.BaseRuntimeID != runtimecontract.RuntimeIDCodex && !credentials.target.Isolated && resources == nil {
 		output.Limitations = append(output.Limitations, "system_account_native_config_retained: global instructions and configured MCP may load; host does not mount external resources")
 	}
-	if env.BaseRuntimeID != runtimes.RuntimeIDClaude && env.BaseRuntimeID != runtimes.RuntimeIDWorkBuddy {
+	if env.BaseRuntimeID != runtimecontract.RuntimeIDClaude && env.BaseRuntimeID != runtimecontract.RuntimeIDWorkBuddy {
 		output.Limitations = append(output.Limitations, "native_session_persistence_not_disabled: session is fresh and closed, CLI may retain its own logs")
 	}
 	if input.MaxTokens != 0 {
@@ -397,9 +397,9 @@ type credentialProvider struct {
 	// workspace 随认证租约在原生进程退出与回收成功后删除。
 	workspace string
 	// target 在取得账号租约后冻结。
-	target runtimes.RuntimeTarget
+	target runtimecontract.RuntimeTarget
 	// launch 是 SDK 解析完成后不可变的二进制、前缀和环境事实。
-	launch runtimes.LaunchFacts
+	launch runtimecontract.LaunchFacts
 	// closeLease 只在原生进程成功关闭后回收认证投射。
 	closeLease func(context.Context) error
 	// broker 是本次唯一 OAuth 刷新入口。
@@ -476,7 +476,7 @@ func (p *credentialProvider) Close(ctx context.Context) error {
 
 func (p *credentialProvider) agent(ctx context.Context, request c.OpenRequest) (acp.Agent, error) {
 	values := request.Credential.Environment
-	if p.environment.BaseRuntimeID != runtimes.RuntimeIDCodex {
+	if p.environment.BaseRuntimeID != runtimecontract.RuntimeIDCodex {
 		return p.nativeAgent(ctx, request, values)
 	}
 	refresh := p.target.RefreshCredentials
@@ -508,7 +508,7 @@ func (p *credentialProvider) agent(ctx context.Context, request c.OpenRequest) (
 		}
 		args = append(args, "-c", "model_instructions_file="+strconv.Quote(path))
 	}
-	return acpcodex.NewAgent(ctx, acpcodex.Config{Logger: slog.Default(), CodexPath: p.launch.Executable, PrefixArgs: args, Environment: environmentList(values)})
+	return native.New(ctx, native.Config{RuntimeID: p.environment.BaseRuntimeID, Logger: slog.Default(), Executable: p.launch.Executable, PrefixArgs: args, Environment: environmentList(values)})
 }
 
 func environmentList(values map[string]string) []string {

@@ -12,7 +12,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 // fixtureCLIBinary 是本测试进程从当前源码构建的真实可执行文件。
@@ -39,7 +39,7 @@ func runCLITestSuite(m *testing.M) int {
 	return code
 }
 
-func fixtureCLI(ctx context.Context, request runtimes.RunRequest, arguments []string, input map[string]any) (map[string]any, error) {
+func fixtureCLI(ctx context.Context, request runtimecontract.RunRequest, arguments []string, input map[string]any) (map[string]any, error) {
 	return fixtureCLIEnvironment(ctx, request.Workspace.Path, request.Target.Environment, arguments, input)
 }
 

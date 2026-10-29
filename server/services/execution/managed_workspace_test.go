@@ -6,14 +6,14 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 func TestFirstSendWithoutDirectoryCreatesPerChatWorkspaceAndContinuationKeepsIt(t *testing.T) {
 	runtime := &fakeRuntime{}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
 	ctx := context.Background()
-	input := testMessageInput{ClientRequestID: "managed-first", NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "使用会话临时目录"}, Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex}}
+	input := testMessageInput{ClientRequestID: "managed-first", NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "使用会话临时目录"}, Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex}}
 	first, err := manager.sendTestMessage(ctx, input)
 	if err != nil {
 		t.Fatal(err)

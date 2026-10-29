@@ -1,6 +1,8 @@
 package model
 
 import (
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+
 	"context"
 	"net/http/httptest"
 	"os"
@@ -12,7 +14,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 // TestRealWikiMaintenanceReadsSkillAndCallsCLI 核验真实原生会话能读取技能并执行只读知识命令，不访问生产知识内容。
@@ -26,22 +28,22 @@ func TestRealWikiMaintenanceReadsSkillAndCallsCLI(t *testing.T) {
 	}
 	runtimeID := os.Getenv("ALLY_WIKI_RUNTIME")
 	if runtimeID == "" {
-		runtimeID = runtimes.RuntimeIDWorkBuddy
+		runtimeID = runtimecontract.RuntimeIDWorkBuddy
 	}
 	model := os.Getenv("ALLY_WIKI_MODEL")
-	if model == "" && runtimeID == runtimes.RuntimeIDWorkBuddy {
+	if model == "" && runtimeID == runtimecontract.RuntimeIDWorkBuddy {
 		model = "deepseek-v4.1-flash"
 	}
 	reasoning := os.Getenv("ALLY_WIKI_REASONING")
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := catalog.New(catalog.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sdk.Close(context.Background())
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	detection := sdk.Detect(ctx, runtimes.DetectRequest{RuntimeID: runtimeID, BaseEnvironment: os.Environ()})
-	if detection.State != runtimes.DetectionStateReady {
+	detection := sdk.Detect(ctx, runtimecontract.DetectRequest{RuntimeID: runtimeID, BaseEnvironment: os.Environ()})
+	if detection.State != runtimecontract.DetectionStateReady {
 		t.Fatalf("%s detection failed: %+v", runtimeID, detection.Diagnostics)
 	}
 	registry := agentcapability.New(nil)
@@ -73,13 +75,13 @@ func TestRealWikiMaintenanceReadsSkillAndCallsCLI(t *testing.T) {
 }
 
 // maintenanceTransportHost 仅供显式真实验收复用共享原生启动边界，不调用旧 Run 引擎。
-func maintenanceTransportHost(runtimeID string, detection runtimes.DetectionResult, sdk *runtimes.SDK) *runtimehost.Host {
+func maintenanceTransportHost(runtimeID string, detection runtimecontract.DetectionResult, sdk *catalog.Catalog) *runtimehost.Host {
 	return runtimehost.New(runtimehost.Config{
 		Launch: sdk.PrepareLaunch,
 		Resolve: func(context.Context, runtimehost.TextRequest) (runtimehost.Environment, error) {
-			return runtimehost.Environment{BaseRuntimeID: runtimeID, Detection: detection, Target: runtimes.RuntimeTarget{RuntimeID: runtimeID, Binary: detection.ResolvedBinary, CloseAfterRun: true}}, nil
+			return runtimehost.Environment{BaseRuntimeID: runtimeID, Detection: detection, Target: runtimecontract.RuntimeTarget{RuntimeID: runtimeID, Binary: detection.ResolvedBinary, CloseAfterRun: true}}, nil
 		},
-		Prepare: func(_ context.Context, _ runtimehost.TextRequest, environment runtimehost.Environment, _ string) (runtimes.RuntimeTarget, func(context.Context) error, error) {
+		Prepare: func(_ context.Context, _ runtimehost.TextRequest, environment runtimehost.Environment, _ string) (runtimecontract.RuntimeTarget, func(context.Context) error, error) {
 			return environment.Target, func(context.Context) error { return nil }, nil
 		},
 	})

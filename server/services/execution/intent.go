@@ -8,7 +8,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -139,7 +139,7 @@ type WorkOptions struct {
 	// AllowedConnectorIDs 是入口冻结的 MCP 白名单；nil 继承伙伴，空白名单排除全部伙伴 MCP。
 	AllowedConnectorIDs *[]string
 	// SupplementalInstructions 是业务层追加的虚拟上下文文件（如 TEAM.md）。
-	SupplementalInstructions []runtimes.Instruction
+	SupplementalInstructions []runtimecontract.Instruction
 	// HistoryMessageIDsToOmit 是本次输入已完整包含、无需再从权威历史重放的消息标识。
 	HistoryMessageIDsToOmit []string
 }
@@ -232,7 +232,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		allowedAgentDomains:     cloneConnectorAllowlist(intent.Options.AllowedAgentDomains),
 		historyMessageIDsToOmit: append([]string(nil), intent.Options.HistoryMessageIDsToOmit...),
 		supplementalInstructions: append(
-			[]runtimes.Instruction(nil),
+			[]runtimecontract.Instruction(nil),
 			intent.Options.SupplementalInstructions...,
 		),
 	}
@@ -245,7 +245,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		}
 	}
 	for _, instruction := range intent.Input.ContextInstructions {
-		request.supplementalInstructions = append(request.supplementalInstructions, runtimes.Instruction{Name: instruction.Name, Content: instruction.Content})
+		request.supplementalInstructions = append(request.supplementalInstructions, runtimecontract.Instruction{Name: instruction.Name, Content: instruction.Content})
 	}
 	return m.startMessage(ctx, request)
 }

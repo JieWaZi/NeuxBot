@@ -1,6 +1,10 @@
 package automatic_tasks
 
 import (
+	workspace "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/workspace"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,7 +21,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -97,11 +101,11 @@ func (integrationEnvironment) Get(context.Context, string) (models.RuntimeEnviro
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := catalog.New(catalog.Config{})
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
-	var summary runtimes.RuntimeSummary
+	var summary runtimecontract.RuntimeSummary
 	for _, registered := range sdk.Runtimes() {
 		if registered.ID == "codex" {
 			summary = registered
@@ -109,8 +113,8 @@ func (integrationEnvironment) Get(context.Context, string) (models.RuntimeEnviro
 		}
 	}
 	return models.RuntimeEnvironment{RuntimeID: "codex", BaseRuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "model", DefaultAccountID: "another-default-account",
-		Detection: runtimes.DetectionResult{Runtime: summary, State: runtimes.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true, runtimes.CapabilitySkillDirectory: true},
-			Models: []runtimes.ModelOption{{ID: "model", PermissionLevels: []runtimes.PermissionLevel{runtimes.PermissionLevelDefault, runtimes.PermissionLevelAuto, runtimes.PermissionLevelFullAccess}}}}}, nil
+		Detection: runtimecontract.DetectionResult{Runtime: summary, State: runtimecontract.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimecontract.CapabilitySet{runtimecontract.CapabilityMCPStreamableHTTP: true, runtimecontract.CapabilitySkillDirectory: true},
+			Models: []runtimecontract.ModelOption{{ID: "model", PermissionLevels: []runtimecontract.PermissionLevel{runtimecontract.PermissionLevelDefault, runtimecontract.PermissionLevelAuto, runtimecontract.PermissionLevelFullAccess}}}}}, nil
 }
 
 func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
@@ -150,11 +154,11 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 	}
 	t.Cleanup(chats.Close)
 	runtime := &integrationRuntime{requests: make(chan integrationPrompt, 4), finish: make(chan struct{}, 1)}
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := catalog.New(catalog.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: sdk.PrepareWorkspace, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: sdk.ForkSession,
+	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: workspace.New(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: sdk.ForkSession,
 		Driver: func(runtimehost.Environment, acpdriver.Factory) (c.Driver, error) { return runtime, nil }})
 	t.Cleanup(func() {
 		if err := host.Close(context.Background()); err != nil {

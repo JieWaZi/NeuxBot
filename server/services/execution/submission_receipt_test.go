@@ -7,7 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 )
@@ -16,12 +16,12 @@ func TestContinuationSubmissionReceiptSurvivesJournalReloadAndRejectsChangedInpu
 	runtime := &fakeRuntime{}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
 	ctx := context.Background()
-	first, err := manager.execution.Start(ctx, WorkIntent{ClientRequestID: "first", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "开始"}, Options: WorkOptions{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
+	first, err := manager.execution.Start(ctx, WorkIntent{ClientRequestID: "first", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "开始"}, Options: WorkOptions{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
 	if err != nil {
 		t.Fatal(err)
 	}
 	waitForChatTerminal(t, manager, first.Chat.ID)
-	intent := WorkIntent{ExecutionID: util.New(), Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", SubmissionID: "platform-message", Content: "整理结果"}, Options: WorkOptions{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+	intent := WorkIntent{ExecutionID: util.New(), Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", SubmissionID: "platform-message", Content: "整理结果"}, Options: WorkOptions{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 	accepted, err := manager.execution.Start(ctx, intent)
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestContextInstructionsStayOutOfUserMessageAndTitle(t *testing.T) {
 		ClientRequestID: "context-only", ExecutionID: util.New(),
 		Chat:      ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},
 		Input:     WorkInput{Actor: "user", Content: "你是谁", ContextInstructions: []workinput.Instruction{{Name: "DELIVERY.md", Content: "结果自动发送到已批准的接收方。"}}},
-		Options:   WorkOptions{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+		Options:   WorkOptions{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
 		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
 	})
 	if err != nil {

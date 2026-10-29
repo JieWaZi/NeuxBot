@@ -8,7 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -18,9 +18,12 @@ type capabilityDetector struct {
 	called chan struct{}
 }
 
-func (d capabilityDetector) Detect(context.Context, runtimes.DetectRequest) runtimes.DetectionResult {
+func (d capabilityDetector) Detect(_ context.Context, request runtimecontract.DetectRequest) runtimecontract.DetectionResult {
+	if request.ReleaseResources != nil {
+		defer request.ReleaseResources()
+	}
 	close(d.called)
-	return runtimes.DetectionResult{State: runtimes.DetectionStateReady}
+	return runtimecontract.DetectionResult{State: runtimecontract.DetectionStateReady}
 }
 
 func TestCapabilityQueryWaitsForAccountMutationAndCanBeCancelled(t *testing.T) {

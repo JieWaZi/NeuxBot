@@ -12,7 +12,7 @@ import (
 	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	acpdriver "github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 // driverFixture 提供可控制最终消息和资源关闭的技术边界。
@@ -72,21 +72,21 @@ func hostFixture(t *testing.T, base string, d *driverFixture) (*Host, *int) {
 	t.Helper()
 	released := new(int)
 	host := New(Config{Resolve: func(context.Context, TextRequest) (Environment, error) {
-		return Environment{BaseRuntimeID: base, Target: runtimes.RuntimeTarget{RuntimeID: d.id, Binary: "/selected/codex", PrefixArgs: []string{"--profile", "selected"}, ConfigHome: "/selected/home"}}, nil
-	}, Prepare: func(_ context.Context, _ TextRequest, env Environment, _ string) (runtimes.RuntimeTarget, func(context.Context) error, error) {
+		return Environment{BaseRuntimeID: base, Target: runtimecontract.RuntimeTarget{RuntimeID: d.id, Binary: "/selected/codex", PrefixArgs: []string{"--profile", "selected"}, ConfigHome: "/selected/home"}}, nil
+	}, Prepare: func(_ context.Context, _ TextRequest, env Environment, _ string) (runtimecontract.RuntimeTarget, func(context.Context) error, error) {
 		target := env.Target
 		target.Isolated = true
 		target.Environment = map[string]string{"CODEX_HOME": "/managed/home", "OPENAI_API_KEY": "selected-account"}
 		return target, func(context.Context) error { *released++; return nil }, nil
-	}, Launch: func(target runtimes.RuntimeTarget, _ runtimes.DetectionResult) (runtimes.LaunchFacts, error) {
-		return runtimes.LaunchFacts{BaseRuntimeID: base, Executable: target.Binary, PrefixArgs: target.PrefixArgs, Environment: environmentList(target.Environment)}, nil
+	}, Launch: func(target runtimecontract.RuntimeTarget, _ runtimecontract.DetectionResult) (runtimecontract.LaunchFacts, error) {
+		return runtimecontract.LaunchFacts{BaseRuntimeID: base, Executable: target.Binary, PrefixArgs: target.PrefixArgs, Environment: environmentList(target.Environment)}, nil
 	}, Driver: func(Environment, acpdriver.Factory) (c.Driver, error) { return d, nil }})
 	return host, released
 }
 
 func TestCodexProfileFinalSurvivesCleanupAndNeverReplays(t *testing.T) {
 	driver := &driverFixture{id: "custom-codex"}
-	host, released := hostFixture(t, runtimes.RuntimeIDCodex, driver)
+	host, released := hostFixture(t, runtimecontract.RuntimeIDCodex, driver)
 	result, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, AccountID: "account", Model: "chosen-model", Reasoning: "high", Messages: []Message{{Role: "system", Content: "task rules"}, {Role: "user", Content: "exact input"}}})
 	if err != nil || result.Text != "trusted final" || result.StopReason != "max_tokens" || result.Usage == nil || result.Usage.CacheReadTokens != 5 || driver.promptCalls != 1 || *released != 0 {
 		t.Fatalf("result=%+v err=%v prompt=%d release=%d", result, err, driver.promptCalls, *released)
@@ -111,7 +111,7 @@ func TestCodexProfileFinalSurvivesCleanupAndNeverReplays(t *testing.T) {
 
 func TestExecutedFailureCarriesNoRetryAndNeverFallsBack(t *testing.T) {
 	driver := &driverFixture{id: "custom-codex", allowClose: true, failure: &c.Fault{Code: c.FaultDriver, Stage: "prompt", Message: "connection timeout", Cause: context.DeadlineExceeded}}
-	host, _ := hostFixture(t, runtimes.RuntimeIDCodex, driver)
+	host, _ := hostFixture(t, runtimecontract.RuntimeIDCodex, driver)
 	defer host.Close(context.Background())
 	result, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, Messages: []Message{{Role: "user", Content: "input"}}})
 	var policy interface{ Retryable() bool }
@@ -147,7 +147,7 @@ func TestOpenCodeManagedModelKeepsSystemAndAccountNamespaces(t *testing.T) {
 		want    string // want 是必须送给原生 OpenCode 的完整模型身份。
 	}{{"", "model-a"}, {"selected-account", "ally/model-a"}} {
 		driver := &driverFixture{id: "opencode-profile", allowClose: true}
-		host, _ := hostFixture(t, runtimes.RuntimeIDOpenCode, driver)
+		host, _ := hostFixture(t, runtimecontract.RuntimeIDOpenCode, driver)
 		_, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, AccountID: tt.account, Model: "model-a", Messages: []Message{{Role: "user", Content: "input"}}})
 		if err != nil {
 			t.Fatal(err)
@@ -174,7 +174,7 @@ func TestTaskMessagesPreserveOriginalSystemAndSoleUser(t *testing.T) {
 
 func TestHostCloseCancelsActiveInvocation(t *testing.T) {
 	driver := &driverFixture{id: "custom-codex", allowClose: true, entered: make(chan struct{})}
-	host, released := hostFixture(t, runtimes.RuntimeIDCodex, driver)
+	host, released := hostFixture(t, runtimecontract.RuntimeIDCodex, driver)
 	finished := make(chan error, 1)
 	go func() {
 		_, err := host.GenerateText(context.Background(), TextRequest{RuntimeID: driver.id, Messages: []Message{{Role: "user", Content: "input"}}})

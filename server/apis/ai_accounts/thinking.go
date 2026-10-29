@@ -7,7 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -85,17 +85,17 @@ func (a *GetAIAccountThinking) Output(ctx *gin.Context) (interface{}, error) {
 		}
 	} else {
 		// API Key 与账号私有原生模型不能借用系统账号的能力快照。
-		result, err = global.AIAccountService.DetectModel(ctx.Request.Context(), global.RuntimeSDK, account.ID, environment, a.Model)
+		result, err = global.AIAccountService.DetectModel(ctx.Request.Context(), global.RuntimeCatalog, account.ID, environment, a.Model)
 		if err != nil {
 			return nil, ginx.WithStack(err)
 		}
 	}
 	response := GetAIAccountThinkingResponse{Options: []AccountThinkingOption{}}
-	if result.State != runtimes.DetectionStateReady {
+	if result.State != runtimecontract.DetectionStateReady {
 		return response, nil
 	}
 	for _, diagnostic := range result.Diagnostics {
-		if diagnostic.Code == runtimes.DiagnosticCodeACPOptionsUnavailable && !(useSavedDirectory && persistedModelDirectoryAvailable(result)) {
+		if diagnostic.Code == runtimecontract.DiagnosticCodeACPOptionsUnavailable && !(useSavedDirectory && persistedModelDirectoryAvailable(result)) {
 			return response, nil
 		}
 	}

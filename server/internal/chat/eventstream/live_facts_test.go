@@ -6,7 +6,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 func TestLiveFactsKeepRevisionMonotonicAndRejectOtherScopes(t *testing.T) {
@@ -15,7 +15,7 @@ func TestLiveFactsKeepRevisionMonotonicAndRejectOtherScopes(t *testing.T) {
 		t.Fatal(err)
 	}
 	tool, _ := json.Marshal(map[string]any{"toolCallId": "live-tool", "name": "read"})
-	if _, err := adapter.ApplyState("new-invocation", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: tool}); err != nil {
+	if _, err := adapter.ApplyState("new-invocation", runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: tool}); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := eventlog.MarshalData(eventlog.ApprovalResolvedData{ToolCallID: "live-tool", Result: constants.ApprovalResultSelected})
@@ -27,7 +27,7 @@ func TestLiveFactsKeepRevisionMonotonicAndRejectOtherScopes(t *testing.T) {
 	if changed, err := adapter.ApplyFact(fact); err != nil || changed || adapter.MessageRevision() != approvedRevision {
 		t.Fatalf("duplicate fact changed live revision: %v %v", changed, err)
 	}
-	revision, err := adapter.ApplyState("new-invocation", runtimes.Event{Type: runtimes.EventTypeToolInputSnapshot, Data: tool})
+	revision, err := adapter.ApplyState("new-invocation", runtimecontract.Event{Type: runtimecontract.EventTypeToolInputSnapshot, Data: tool})
 	if err != nil || revision <= approvedRevision {
 		t.Fatalf("next Runtime revision=%d <= approved revision=%d, error=%v", revision, approvedRevision, err)
 	}

@@ -16,7 +16,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -220,13 +220,13 @@ type dormantChatCreator interface {
 // runtimeRunner 是 Execution Core 对 Runtime 深模块的最小消费接口。
 type runtimeRunner interface {
 	// ForkSession 使用冻结运行配置创建独立原生会话。
-	ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error)
+	ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error)
 	// Runtimes 返回工作区投影所需的 Runtime 摘要。
-	Runtimes() []runtimes.RuntimeSummary
+	Runtimes() []runtimecontract.RuntimeSummary
 	// RunWithLease 执行一次调用，原生消费者退出后才释放账号和插件资源。
-	RunWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
+	RunWithLease(context.Context, runtimecontract.RunRequest, runtimecontract.EventSink, func(context.Context) error) runtimecontract.Result
 	// RunSummaryWithLease 在现有原生会话生成隐藏交接，并在消费者退出后释放资源。
-	RunSummaryWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
+	RunSummaryWithLease(context.Context, runtimecontract.RunRequest, runtimecontract.EventSink, func(context.Context) error) runtimecontract.Result
 	// CloseWorkspace 在改写账号或共享工作区配置前关闭仍持有资源的原生消费者。
 	CloseWorkspace(context.Context, string) error
 }

@@ -16,7 +16,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 // TestStartUsesOneRuntimeForChatAndTeam 验证普通输入、团队直接输入和团队调度复用同一宿主，并保留聚合接纳。
@@ -24,7 +24,7 @@ func TestStartUsesOneRuntimeForChatAndTeam(t *testing.T) {
 	runtime := &fakeRuntime{}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
 	core := manager.execution.(*service)
-	ordinary, err := core.Start(context.Background(), WorkIntent{ClientRequestID: "ordinary", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "ordinary"}, Options: WorkOptions{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto}})
+	ordinary, err := core.Start(context.Background(), WorkIntent{ClientRequestID: "ordinary", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "ordinary"}, Options: WorkOptions{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,18 +76,18 @@ type leasedChatRuntime struct {
 	closeError     bool                        // closeError 表示已有原生消费者尚未退出。
 }
 
-func (r *leasedChatRuntime) RunWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+func (r *leasedChatRuntime) RunWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
 	r.release = release
 	return r.accountRuntime.RunWithLease(ctx, request, sink, nil)
 }
 
 // RunSummaryWithLease 先结束旧消费者，再同步完成隐藏交接及其资源释放。
-func (r *leasedChatRuntime) RunSummaryWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+func (r *leasedChatRuntime) RunSummaryWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
 	if err := r.CloseWorkspace(ctx, request.Workspace.Path); err != nil {
 		if release != nil {
 			_ = release(context.WithoutCancel(ctx))
 		}
-		return runtimes.Result{Failure: &runtimes.Failure{Code: runtimes.FailureCodeProcessExited, Message: err.Error()}}
+		return runtimecontract.Result{Failure: &runtimecontract.Failure{Code: runtimecontract.FailureCodeProcessExited, Message: err.Error()}}
 	}
 	return r.accountRuntime.RunSummaryWithLease(ctx, request, sink, release)
 }
@@ -153,7 +153,7 @@ func TestStartManagedAccountWaitsForNativeCloseBeforeRewritingProjection(t *test
 			if len(runtime.requests) != 1 || !runtime.requests[0].Target.CloseAfterRun || runtime.release == nil {
 				t.Fatalf("target=%+v lease=%v", runtime.requests, runtime.release != nil)
 			}
-			authPath := filepath.Join(accountconfig.Home(runtime.requests[0].Workspace.Path, runtimes.RuntimeIDCodex), "auth.json")
+			authPath := filepath.Join(accountconfig.Home(runtime.requests[0].Workspace.Path, runtimecontract.RuntimeIDCodex), "auth.json")
 			before, err := os.ReadFile(authPath)
 			if err != nil {
 				t.Fatal(err)

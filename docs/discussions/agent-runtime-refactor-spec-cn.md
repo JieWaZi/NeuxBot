@@ -27,7 +27,7 @@
 
 | 当前入口或模块 | 已有事实 | 本次处理 |
 | --- | --- | --- |
-| `internal/runtimes/sdk.go`、`run.go`、`acp_*` | SDK、共用 ACP 后端、CLI binding、进程复用、取消、事件交付已存在 | 复用职责和测试，不重写原生协议 |
+| `packages/agent-runtime`、`internal/runtimehost` | 独立执行内核、ACP 驱动和宿主装配 | 原生协议和进程交给 acp-go |
 | `internal/runtimehost/text.go` | 知识结果调用使用独立 Runtime；旧 GenerateText 已删除 | 只消费最终结果，允许原生 CLI 中间调用工具；由适配器提供消息身份与完成事实 |
 | `internal/knowledge/model/generator.go` | 知识模型生成独立于 Chat；每次准备账号租约 | 第一批业务迁移，只消费最终结果，保留用量、推理配置诊断 |
 | `internal/knowledge/model/maintenance.go` | 独立 Wiki 维护使用 Run、临时工作区和库内授权，不创建 Chat | 独立迁入允许工具的 Invoke，保留真实操作成功判定 |
@@ -35,10 +35,10 @@
 | `services/execution/work.go` | 组合工作范围、账号、插件、技能、MCP、历史、原生会话 | 保留业务解析，逐步把技术装配交给宿主适配 |
 | `services/execution/runtime_events.go`、`message_facts.go` | 同一规范事件生成实时投影和完整消息日志，并接收已提交业务事实 | 保留一套产品消费者，迁移不引入第二个投影器 |
 | `services/execution/recent_history.go`、`handoff.go` | 新会话使用有界近期回合或隐藏交接；恢复会话只发新输入 | 明确历史与原生上下文边界，单独验证历史性能 |
-| `services/execution/fork.go`、`internal/runtimes/fork.go` | 原生分叉携带位置、工作区及回执，不通过重放历史模拟 | 纳入正式能力和迁移门槛 |
+| `services/execution/fork.go`、`driver/acp/management.go` | 原生分叉携带位置、工作区及回执，不通过重放历史模拟 | 纳入正式能力和迁移门槛 |
 | `services/runtimeenvironment`、`services/aiaccount` | 探测持久化、账号选择、排队、认证刷新、通知 | 保持业务权威；向新模块提供端口 |
 
-当前 `runtimes` 直接导入 `server/constants`、`status_error`、`accountconfig`、`codexoauth`、`skills`、`logx` 等。新目录不能继续通过这些导入依赖原项目。现有 `RuntimeEnvironment.Detection` 还持久化旧 Runtime 类型；切换时改用新契约重新探测生成，不编写旧 JSON 的兼容解码器。
+宿主负责产品依赖与探测事实，独立模块不依赖 server。RuntimeEnvironment.Detection 使用宿主契约保存探测结果。
 
 本 Spec 覆盖原生分叉、隐藏交接、知识不同执行路径及历史全量读取问题；独立服务、远程断线、结果查询体系和历史兼容不进入目标架构。
 
@@ -110,7 +110,7 @@ SessionCheckpoint 至少包含格式版本、引擎归属、SessionRef、Driver/
 
 ### 4.1 公开能力
 
-首期提供同步 `Invoke`、`Run`，以及 `Cancel`、`CloseSession`、`ForkSession`、`Detect` 和模块生命周期操作。新会话可在第一次 Run 中延迟建立。调用结果包含 InvocationRef，宿主也可在启动前预分配它用于取消关联。没有后台 Submit/Get/Subscribe 服务或完成结果 TTL 查询接口。
+模块提供同步 `Invoke`、`Run`，以及 `Cancel`、`CloseSession` 和模块生命周期操作。Probe 和 Fork 由独立 ACP Management 提供，不进入执行引擎。新会话可在第一次 Run 中延迟建立。调用结果包含 InvocationRef，宿主也可在启动前预分配它用于取消关联。没有后台 Submit/Get/Subscribe 服务或完成结果 TTL 查询接口。
 
 | 维度 | Invoke | Run |
 | --- | --- | --- |
@@ -371,7 +371,7 @@ Spec 的批准只确定目标架构和迁移边界；每批实施仍以当时可
 ## 11. 代码与规范依据
 
 - [领域词汇](../../CONTEXT.md)、[当前架构](../architecture/overview-cn.md)、[后端约定](../development/backend-cn.md)、[文档约定](../development/documentation-cn.md)。
-- [CLI 目录与探测](../../server/internal/runtimes/sdk.go)、[聊天执行宿主](../../server/internal/runtimehost/chat.go)、[结果调用宿主](../../server/internal/runtimehost/text.go)、[独立执行内核](../../packages/agent-runtime/internal/engine/engine.go)、[公开 ACP 驱动](../../packages/agent-runtime/driver/acp/driver.go)、[原生分叉](../../server/internal/runtimes/fork.go)、[架构检查](../../server/internal/runtimes/acp_architecture_test.go)。
+- [宿主装配](../../server/internal/runtimehost/chat.go)、[聊天执行宿主](../../server/internal/runtimehost/chat.go)、[结果调用宿主](../../server/internal/runtimehost/text.go)、[独立执行内核](../../packages/agent-runtime/internal/engine/engine.go)、[公开 ACP 驱动](../../packages/agent-runtime/driver/acp/driver.go)、[ACP 管理操作](../../packages/agent-runtime/driver/acp/management.go)。
 - [执行装配](../../server/services/execution/work.go)、[执行生命周期](../../server/services/execution/lifecycle.go)、[产品事件消费](../../server/services/execution/runtime_events.go)、[业务消息事实](../../server/services/execution/message_facts.go)、[近期历史](../../server/services/execution/recent_history.go)、[隐藏交接](../../server/services/execution/handoff.go)、[失败重试](../../server/services/execution/retry.go)。
 - [Chat Journal](../../server/services/chat/journal.go)、[Chat 历史读取](../../server/services/chat/chat.go)、[Runtime 持久探测配置](../../server/repositories/models/runtime_environment.go)、[历史限制](../../server/constants/common.go)。
 - [知识生成](../../server/internal/knowledge/model/generator.go)、[独立知识维护](../../server/internal/knowledge/model/maintenance.go)、[知识模型装配](../../server/global/knowledge_model.go)、[Chat 型知识维护](../../server/services/knowledge/maintenance.go)、[自动知识维护](../../server/services/knowledge/automatic.go)。

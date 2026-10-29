@@ -14,7 +14,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -54,7 +54,7 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "first"}}
 	programDirectory := t.TempDir()
 	manager := &service{agent: registry, agentEndpoint: endpoint.URL + constants.AgentCLIPath, agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, storage: layout, skillDataDirectory: programDirectory, elicitations: newElicitationCoordinator(journal)}
-	request := runtimes.RunRequest{Target: runtimes.RuntimeTarget{RuntimeID: "codex", AccountID: "account"}, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeNew}}
+	request := runtimecontract.RunRequest{Target: runtimecontract.RuntimeTarget{RuntimeID: "codex", AccountID: "account"}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}}
 	activate, revoke, settle, err := manager.prepareAgent(&request, journal.chat, "first", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -84,10 +84,10 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	settle(runtimes.Result{Session: runtimes.SessionResult{OutputID: "native", State: runtimes.SessionStateCreated}})
+	settle(runtimecontract.Result{Session: runtimecontract.SessionResult{OutputID: "native", State: runtimecontract.SessionStateCreated}})
 	revoke()
 	journal.chat.ActiveExecutionID = "second"
-	secondRequest := runtimes.RunRequest{Target: request.Target, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeResume, ID: "native"}}
+	secondRequest := runtimecontract.RunRequest{Target: request.Target, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: "native"}}
 	activate, revokeSecond, _, err := manager.prepareAgent(&secondRequest, journal.chat, "second", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -127,7 +127,7 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	if journal.contextReads != 0 {
 		t.Fatalf("capability validation loaded full message context %d times", journal.contextReads)
 	}
-	newRequest := runtimes.RunRequest{Target: request.Target, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeNew}}
+	newRequest := runtimecontract.RunRequest{Target: request.Target, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}}
 	_, revokeNew, _, err := manager.prepareAgent(&newRequest, journal.chat, "second", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +167,7 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 		}
 		bindings = append(bindings, b)
 	}
-	request := runtimes.RunRequest{Target: runtimes.RuntimeTarget{RuntimeID: "codex"}, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeNew}, Policy: runtimes.RunPolicy{Execution: runtimes.ExecutionPolicy{WorkspaceReadOnly: true}}}
+	request := runtimecontract.RunRequest{Target: runtimecontract.RuntimeTarget{RuntimeID: "codex"}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}, Policy: runtimecontract.RunPolicy{Execution: runtimecontract.ExecutionPolicy{WorkspaceReadOnly: true}}}
 	activate, revoke, _, err := manager.prepareAgent(&request, journal.chat, "execution", []ToolCapability{{ID: "knowledge.organize", Bindings: bindings}}, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)

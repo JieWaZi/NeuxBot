@@ -9,7 +9,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	knowledgemodel "github.com/JieWaZi/NeuxBot/server/internal/knowledge/model"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
 	"github.com/JieWaZi/neux-knowledge/core"
@@ -37,7 +37,7 @@ func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExec
 	if err != nil {
 		return selection, err
 	}
-	if !environment.Enabled || environment.Detection.State != runtimes.DetectionStateReady {
+	if !environment.Enabled || environment.Detection.State != runtimecontract.DetectionStateReady {
 		return selection, status_error.RuntimeUnavailable
 	}
 	if selection.AccountID == "" {
@@ -64,7 +64,7 @@ func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExec
 		if selection.Model == "" {
 			selection.Model = environment.DefaultModel
 		}
-		available := runtimes.AvailableModels(environment.Detection, environment.CustomModels)
+		available := runtimecontract.AvailableModels(environment.Detection, environment.CustomModels)
 		found := len(available) == 0
 		for _, model := range available {
 			found = found || model.ID == selection.Model
@@ -78,7 +78,7 @@ func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExec
 
 // newKnowledgeModelGenerator 每个模型调用单独准备账号租约，调用结束后回收配置目录。
 func newKnowledgeModelGenerator(_ context.Context, selection models.LibraryExecutionDefaults) (core.Generator, error) {
-	if RuntimeSDK == nil || RuntimeEnvironmentControllerManager == nil || KnowledgeRuntimeHost == nil {
+	if RuntimeCatalog == nil || RuntimeEnvironmentControllerManager == nil || KnowledgeRuntimeHost == nil {
 		return nil, status_error.RuntimeUnavailable
 	}
 	return knowledgemodel.New(knowledgemodel.Config{Runtime: KnowledgeRuntimeHost, RuntimeID: selection.RuntimeID, AccountID: selection.AccountID, Model: selection.Model, Reasoning: selection.Reasoning}), nil
@@ -102,20 +102,20 @@ func runKnowledgeMaintenance(ctx context.Context, selection models.LibraryExecut
 
 // newKnowledgeRuntimeHost 只在产品边界读取环境和账号，独立 Runtime 不导入业务对象。
 func newKnowledgeRuntimeHost() *runtimehost.Host {
-	return runtimehost.New(runtimehost.Config{Launch: RuntimeSDK.PrepareLaunch, Resolve: func(ctx context.Context, input runtimehost.TextRequest) (runtimehost.Environment, error) {
+	return runtimehost.New(runtimehost.Config{Launch: RuntimeCatalog.PrepareLaunch, Resolve: func(ctx context.Context, input runtimehost.TextRequest) (runtimehost.Environment, error) {
 		environment, err := RuntimeEnvironmentControllerManager.Get(ctx, input.RuntimeID)
 		if err != nil {
 			return runtimehost.Environment{}, err
 		}
-		if !environment.Enabled || environment.Detection.State != runtimes.DetectionStateReady {
+		if !environment.Enabled || environment.Detection.State != runtimecontract.DetectionStateReady {
 			return runtimehost.Environment{}, status_error.RuntimeUnavailable
 		}
 		binary := environment.Binary
 		if binary == "" {
 			binary = environment.Detection.ResolvedBinary
 		}
-		return runtimehost.Environment{BaseRuntimeID: environment.BaseRuntimeID, Detection: environment.Detection, Target: runtimes.RuntimeTarget{RuntimeID: input.RuntimeID, Binary: binary, PrefixArgs: append([]string(nil), environment.PrefixArgs...), ConfigHome: environment.ConfigHome, CloseAfterRun: true}}, nil
-	}, Prepare: func(ctx context.Context, input runtimehost.TextRequest, environment runtimehost.Environment, workspace string) (runtimes.RuntimeTarget, func(context.Context) error, error) {
+		return runtimehost.Environment{BaseRuntimeID: environment.BaseRuntimeID, Detection: environment.Detection, Target: runtimecontract.RuntimeTarget{RuntimeID: input.RuntimeID, Binary: binary, PrefixArgs: append([]string(nil), environment.PrefixArgs...), ConfigHome: environment.ConfigHome, CloseAfterRun: true}}, nil
+	}, Prepare: func(ctx context.Context, input runtimehost.TextRequest, environment runtimehost.Environment, workspace string) (runtimecontract.RuntimeTarget, func(context.Context) error, error) {
 		target := environment.Target
 		if input.AccountID == "" || input.AccountID == constants.AiAccountSystemID {
 			return target, func(context.Context) error { return nil }, nil

@@ -6,7 +6,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -101,7 +101,7 @@ func TestBuildRunRequestStartsNewSessionWithinSameChat(t *testing.T) {
 		message: userMessage{Text: "next question"},
 		runtime: runtimeSelection{RuntimeID: "codex", AccountID: "new-account", HistoryTurns: 1},
 	}, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-	if request.Session.Mode != runtimes.SessionModeNew || len(request.History) != 2 ||
+	if request.Session.Mode != runtimecontract.SessionModeNew || len(request.History) != 2 ||
 		request.History[0].Content != "recent question" || request.History[1].Content != "recent answer" {
 		t.Fatalf("new session request = %+v", request)
 	}

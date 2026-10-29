@@ -7,51 +7,51 @@ import (
 
 	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 // chatObserver 把同一技术调用的规范事实交付给既有实时与持久消费者。
 type chatObserver struct {
 	// sink 是业务执行唯一的有序事件入口。
-	sink runtimes.EventSink
+	sink runtimecontract.EventSink
 	// effects 保留失败重试判断需要的已观察副作用。
-	effects runtimes.SideEffectSummary
+	effects runtimecontract.SideEffectSummary
 	// thinkingStarted 保证每轮只产生一次已有思考开始事实。
 	thinkingStarted bool
 }
 
-func (o *chatObserver) emit(ctx context.Context, kind runtimes.EventType, payload any) error {
+func (o *chatObserver) emit(ctx context.Context, kind runtimecontract.EventType, payload any) error {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
-	return o.sink.Accept(ctx, runtimes.Event{Type: kind, Data: data})
+	return o.sink.Accept(ctx, runtimecontract.Event{Type: kind, Data: data})
 }
 func (o *chatObserver) Accept(ctx context.Context, event c.Event) error {
 	fact := event.DriverEvent
 	switch fact.Kind {
 	case c.EventPromptAccepted:
-		return o.emit(ctx, runtimes.EventTypeInvocationStarted, runtimes.InvocationStartedData{InvocationID: event.Invocation.ID})
+		return o.emit(ctx, runtimecontract.EventTypeInvocationStarted, runtimecontract.InvocationStartedData{InvocationID: event.Invocation.ID})
 	case c.EventAssistantMessage:
 		if fact.Message == nil || fact.Message.Delta == "" {
 			return nil
 		}
 		o.effects.VisibleOutput = true
-		kind := runtimes.EventTypeTextDelta
+		kind := runtimecontract.EventTypeTextDelta
 		if fact.Message.Phase == c.PhaseCommentary {
-			kind = runtimes.EventTypeCommentaryDelta
+			kind = runtimecontract.EventTypeCommentaryDelta
 		}
 		return o.emit(ctx, kind, map[string]any{"text": fact.Message.Delta})
 	case c.EventThinking:
 		o.effects.ReasoningOutput = true
 		if !o.thinkingStarted {
 			o.thinkingStarted = true
-			if err := o.emit(ctx, runtimes.EventTypeThinkingStart, map[string]any{}); err != nil {
+			if err := o.emit(ctx, runtimecontract.EventTypeThinkingStart, map[string]any{}); err != nil {
 				return err
 			}
 		}
 		if fact.Text != "" {
-			return o.emit(ctx, runtimes.EventTypeThinkingDelta, map[string]any{"text": fact.Text})
+			return o.emit(ctx, runtimecontract.EventTypeThinkingDelta, map[string]any{"text": fact.Text})
 		}
 	case c.EventTool:
 		if fact.Tool == nil {
@@ -142,45 +142,45 @@ func (o *chatObserver) Accept(ctx context.Context, event c.Event) error {
 			payload["content"] = content
 		}
 		terminal := tool.Status == "completed" || tool.Status == "failed"
-		kind := runtimes.EventTypeToolUse
+		kind := runtimecontract.EventTypeToolUse
 		if tool.Update {
-			kind = runtimes.EventTypeToolUpdate
+			kind = runtimecontract.EventTypeToolUpdate
 			if terminal {
-				kind = runtimes.EventTypeToolResult
+				kind = runtimecontract.EventTypeToolResult
 			} else if tool.Input != nil && tool.Content == nil && tool.Output == nil {
-				kind = runtimes.EventTypeToolInputSnapshot
+				kind = runtimecontract.EventTypeToolInputSnapshot
 			}
 		}
 		if err := o.emit(ctx, kind, payload); err != nil {
 			return err
 		}
 		if !tool.Update && terminal {
-			return o.emit(ctx, runtimes.EventTypeToolResult, payload)
+			return o.emit(ctx, runtimecontract.EventTypeToolResult, payload)
 		}
 	case c.EventUsage:
 		if fact.Usage != nil {
-			return o.emit(ctx, runtimes.EventTypeUsage, chatUsage(*fact.Usage))
+			return o.emit(ctx, runtimecontract.EventTypeUsage, chatUsage(*fact.Usage))
 		}
 	}
 	return nil
 }
-func chatUsage(usage c.Usage) runtimes.UsageData {
-	data := runtimes.UsageData{}
+func chatUsage(usage c.Usage) runtimecontract.UsageData {
+	data := runtimecontract.UsageData{}
 	if usage.Known {
-		data.Turn = &runtimes.TurnUsageData{InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens, CacheReadTokens: usage.CachedReadTokens, CacheCreationTokens: usage.CachedWriteTokens, ReasoningOutputTokens: usage.ThoughtTokens}
+		data.Turn = &runtimecontract.TurnUsageData{InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens, CacheReadTokens: usage.CachedReadTokens, CacheCreationTokens: usage.CachedWriteTokens, ReasoningOutputTokens: usage.ThoughtTokens}
 	}
 	if usage.ContextKnown {
-		data.Context = &runtimes.ContextUsageData{UsedTokens: usage.ContextTokens, WindowTokens: usage.ContextWindowTokens}
+		data.Context = &runtimecontract.ContextUsageData{UsedTokens: usage.ContextTokens, WindowTokens: usage.ContextWindowTokens}
 	}
 	return data
 }
 
-func chatResult(request runtimes.RunRequest, result c.Result, observer *chatObserver) runtimes.Result {
-	output := runtimes.Result{ExitCode: 0, StopReason: string(result.StopReason), ProtocolHealthy: result.Effects.PromptAccepted, SideEffects: observer.effects, Diagnostics: request.Detection.Diagnostics, Session: runtimes.SessionResult{Mode: request.Session.Mode, InputID: request.Session.ID, OutputID: result.NativeSession.Handle, ForkMode: result.NativeSession.ForkMode, ForkPosition: result.NativeSession.ForkPosition, State: runtimes.SessionStateUnknown}, Facts: runtimes.InvocationFacts{InvocationID: result.Invocation.ID, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: request.Detection.Runtime.BaseRuntimeID, Binary: request.Detection.ResolvedBinary, Version: request.Detection.Version, Model: result.Configuration.ActualModel, Reasoning: result.Configuration.ActualReasoning, Policy: request.Policy.Execution, PrefixArgs: append([]string(nil), request.Target.PrefixArgs...), ConfigHome: request.Target.ConfigHome, Capabilities: request.Detection.Capabilities}}
+func chatResult(request runtimecontract.RunRequest, result c.Result, observer *chatObserver) runtimecontract.Result {
+	output := runtimecontract.Result{ExitCode: 0, StopReason: string(result.StopReason), ProtocolHealthy: result.Effects.PromptAccepted, SideEffects: observer.effects, Diagnostics: request.Detection.Diagnostics, Session: runtimecontract.SessionResult{Mode: request.Session.Mode, InputID: request.Session.ID, OutputID: result.NativeSession.Handle, ForkMode: result.NativeSession.ForkMode, ForkPosition: result.NativeSession.ForkPosition, State: runtimecontract.SessionStateUnknown}, Facts: runtimecontract.InvocationFacts{InvocationID: result.Invocation.ID, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: request.Detection.Runtime.BaseRuntimeID, Binary: request.Detection.ResolvedBinary, Version: request.Detection.Version, Model: result.Configuration.ActualModel, Reasoning: result.Configuration.ActualReasoning, Policy: request.Policy.Execution, PrefixArgs: append([]string(nil), request.Target.PrefixArgs...), ConfigHome: request.Target.ConfigHome, Capabilities: request.Detection.Capabilities}}
 	if output.Session.OutputID != "" {
-		output.Session.State = runtimes.SessionStateCreated
-		if request.Session.Mode == runtimes.SessionModeResume {
-			output.Session.State = runtimes.SessionStateResumed
+		output.Session.State = runtimecontract.SessionStateCreated
+		if request.Session.Mode == runtimecontract.SessionModeResume {
+			output.Session.State = runtimecontract.SessionStateResumed
 		}
 	}
 	switch result.StopReason {
@@ -201,40 +201,40 @@ func chatResult(request runtimes.RunRequest, result c.Result, observer *chatObse
 	}
 	if fault != nil {
 		output.ExitCode = -1
-		code := runtimes.ClassifyFailure(request.Detection.Runtime.BaseRuntimeID, fault)
+		code := runtimecontract.ClassifyFailure(request.Detection.Runtime.BaseRuntimeID, fault)
 		stage := constants.RuntimeACPFailureStagePrompt
 		switch fault.Code {
 		case c.FaultSessionMissing:
-			code = runtimes.FailureCodeSessionNotFound
-			output.Session.State = runtimes.SessionStateMissing
+			code = runtimecontract.FailureCodeSessionNotFound
+			output.Session.State = runtimecontract.SessionStateMissing
 		case c.FaultInvalidSpec:
-			code = runtimes.FailureCodeInvalidRequest
+			code = runtimecontract.FailureCodeInvalidRequest
 		case c.FaultUnsupported:
-			code = runtimes.FailureCodeUnsupportedCapability
+			code = runtimecontract.FailureCodeUnsupportedCapability
 		case c.FaultDelivery:
-			code = runtimes.FailureCodeEventDelivery
+			code = runtimecontract.FailureCodeEventDelivery
 		case c.FaultLimit:
-			code = runtimes.FailureCodeFrameTooLarge
+			code = runtimecontract.FailureCodeFrameTooLarge
 		case c.FaultInactivityTimeout:
-			code = runtimes.FailureCodeInactivityTimeout
+			code = runtimecontract.FailureCodeInactivityTimeout
 		case c.FaultCancelled:
-			code = runtimes.FailureCodeContextCanceled
+			code = runtimecontract.FailureCodeContextCanceled
 		}
 		if !result.Effects.PromptAccepted {
 			stage = constants.RuntimeRunFailureStagePrepare
 		}
-		transience := runtimes.FailureTransiencePermanent
-		if code == runtimes.FailureCodeRateLimited || code == runtimes.FailureCodeUpstreamUnavailable {
-			transience = runtimes.FailureTransienceTransient
+		transience := runtimecontract.FailureTransiencePermanent
+		if code == runtimecontract.FailureCodeRateLimited || code == runtimecontract.FailureCodeUpstreamUnavailable {
+			transience = runtimecontract.FailureTransienceTransient
 		}
-		output.Failure = &runtimes.Failure{Code: code, Stage: stage, Message: fault.Error(), DisplayMessage: runtimes.FailureDisplayMessage(fault), SessionState: output.Session.State, SideEffects: output.SideEffects, Transience: transience}
+		output.Failure = &runtimecontract.Failure{Code: code, Stage: stage, Message: fault.Error(), DisplayMessage: runtimecontract.FailureDisplayMessage(fault), SessionState: output.Session.State, SideEffects: output.SideEffects, Transience: transience}
 		if errors.Is(fault, context.Canceled) {
 			output.TerminationReason = constants.RuntimeTerminationReasonCancelled
 		}
 	} else if result.Status == c.StatusCancelled || result.StopReason == c.StopCancelled {
 		output.ExitCode = -1
 		output.TerminationReason = constants.RuntimeTerminationReasonCancelled
-		output.Failure = &runtimes.Failure{Code: runtimes.FailureCodeContextCanceled, Stage: constants.RuntimeACPFailureStagePrompt, Message: context.Canceled.Error(), DisplayMessage: runtimes.FailureDisplayMessage(context.Canceled), SessionState: output.Session.State, SideEffects: output.SideEffects, Transience: runtimes.FailureTransiencePermanent}
+		output.Failure = &runtimecontract.Failure{Code: runtimecontract.FailureCodeContextCanceled, Stage: constants.RuntimeACPFailureStagePrompt, Message: context.Canceled.Error(), DisplayMessage: runtimecontract.FailureDisplayMessage(context.Canceled), SessionState: output.Session.State, SideEffects: output.SideEffects, Transience: runtimecontract.FailureTransiencePermanent}
 	}
 	return output
 }

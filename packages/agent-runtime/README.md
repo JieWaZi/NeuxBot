@@ -11,7 +11,7 @@
 - `internal/plan`：配置冻结、有效权限与三个摘要。请求输入变化不会改变静态上下文摘要。
 - `internal/engine`：Invoke/Run 共用的接纳、会话互斥、取消、事件交付和资源生命周期。
 - `internal/output`：按消息身份收集有界最终候选；没有最终证据就报告不可用。
-- `driver/acp`：通过公开 ACP SDK、acpserver 和独立 acp-go 的各 CLI 适配创建连接，不复制原生协议或进程实现。
+- `driver/acp`：通过公开 ACP SDK、acpserver 和独立 acp-go 的各 CLI 适配创建连接，不复制原生协议或进程实现；`driver/acp/native.New` 是 11 个 CLI 共用的公开工厂。
 
 依赖方向为 `runtime → engine → contract/plan/output`；`driver/acp → contract + 外部 ACP`。宿主在组合根构造 Driver 和资源端口并注入 Runtime，内核不导入具体 Driver。
 
@@ -29,6 +29,19 @@
 
 执行状态、输出状态、交付故障、清理故障分别记录。原生调用完成但缺少最终消息证据时，执行仍是 completed，输出为 output_unavailable；清理失败不能将已经执行的事实抹掉。宿主据此决定业务终态，不能自动换引擎重跑。
 
+## ACP 管理操作
+
+Probe 和 Fork 使用独立的 ACP Management，不进入执行引擎。调用方显式关闭 Management；如果原生关闭失败，Management 保留失败的资源所有者以便后续 Close 重试，不能提前释放其依赖。
+
+```mermaid
+flowchart LR
+  Exec[Invoke / Run] --> Engine[执行内核] --> Driver[ACP Driver]
+  Admin[Probe / Fork] --> Management[ACP Management]
+  Driver --> Factory[native.New]
+  Management --> Factory
+  Factory --> ACP[acp-go 公开适配器]
+```
+
 ## ACP 结果调用与边界
 
 共享 ACP Driver 为各会话创建独占连接；Invoke 在单次回合后关闭，Run 可保留热会话，冷恢复按原生实际公布的 Resume/Load 能力执行。明确选择 `inherit_native` 与 `allow_all` 且宿主授予相应权限时，才能进入实际 ACP 调用；请求不支持的隔离或禁工具策略时准确返回 unsupported。知识纯生成入口只启动独立 CLI 会话、传入任务输入并消费最终结果，不主动注入 AGENTS.md、Skill 或 MCP，不接管原生工具和配置加载。
@@ -45,7 +58,7 @@ Driver 读取 acp-go 的公开 `MessageId` 与 `acp-go/message` 事实。Codex �
 
 原生关闭通过公开 `Agent.Close` 执行。Runtime 的重试不代表原生实现必然可恢复：当前固定版本 Codex 的 Close 使用一次性释放并保留首次错误，因此该错误再次返回时仍保留租约并报告清理未完成，不能伪造释放成功。原生关闭语义的后续改进继续归独立 acp-go。
 
-全部现有 CLI 的知识宿主位于 `server/internal/runtimehost`，启动事实复用 `SDK.PrepareLaunch`，账号复用原服务，Codex 刷新复用 `runtimeauth`。纯生成与工具任务共用调用内核；维护领域授权在调用完成或取消时撤销，资源继续由内核保护到原生关闭成功。旧知识 GenerateText 与独立维护 Run 装配、专用文本收集器已删除。普通 Chat 以显式端口注册原生工作区准备、启动、分叉、交互与事件消费；已物化原生指令时采用空文本前缀策略，避免重复注入。具体迁移范围见[Chat 阶段计划](../../docs/discussions/agent-runtime-chat-plan-cn.md)。
+全部现有 CLI 的知识宿主位于 `server/internal/runtimehost`，启动事实由宿主 catalog 准备，账号复用原服务，Codex 刷新复用 `runtimeauth`。纯生成与工具任务共用调用内核；维护领域授权在调用完成或取消时撤销，资源继续由内核保护到原生关闭成功。旧知识 GenerateText 与独立维护 Run 装配、专用文本收集器已删除。普通 Chat 以显式端口注册原生工作区准备、启动、分叉、交互与事件消费；已物化原生指令时采用空文本前缀策略，避免重复注入。具体迁移范围见[Chat 阶段计划](../../docs/discussions/agent-runtime-chat-plan-cn.md)。
 
 ## 验证
 

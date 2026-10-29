@@ -9,7 +9,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 // MessageViewBuilder 将权威日志记录逐条折叠为跨 Runtime 的消息展示快照。
@@ -149,7 +149,7 @@ func (p *MessageViewBuilder) applyInvocationFinished(record eventlog.Record) err
 	if err := json.Unmarshal(record.Data, &finished); err != nil {
 		return status_error.ChatLogError
 	}
-	if message := runtimes.RecordedFailureDisplayMessage(finished.FailureMessage); message != "" {
+	if message := runtimecontract.RecordedFailureDisplayMessage(finished.FailureMessage); message != "" {
 		p.failureMessages[record.ExecutionID] = message
 	}
 	return nil
@@ -431,7 +431,7 @@ func (p *MessageViewBuilder) applyExecutionFinished(record eventlog.Record) (str
 			message.RunMetrics.DurationMs = record.RecordedAt - message.RunMetrics.StartedAt
 		}
 	}
-	errorMessage := runtimes.RecordedFailureDisplayMessage(finished.ErrorMessage)
+	errorMessage := runtimecontract.RecordedFailureDisplayMessage(finished.ErrorMessage)
 	if errorMessage == "" {
 		errorMessage = p.failureMessages[record.ExecutionID]
 	}
@@ -619,7 +619,7 @@ func (p *MessageViewBuilder) toolDisplayIndexes(messageID string) map[string]int
 
 // applyUsage 将 Runtime SDK 的统一用量数据投影到公开运行指标。
 func (p *MessageViewBuilder) applyUsage(message *Message, data json.RawMessage) error {
-	var usage runtimes.UsageData
+	var usage runtimecontract.UsageData
 	if err := json.Unmarshal(data, &usage); err != nil {
 		return status_error.ChatLogError
 	}

@@ -7,12 +7,11 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 )
 
-// ValidateConfiguration 校验 Runtime、模型、推理强度和权限组合可以用于下一次执行。
+// ValidateConfiguration 校验下一次执行的程序与账号准入，原生组合由会话初始化确认。
 func (m *service) ValidateConfiguration(
 	ctx context.Context,
 	config ExecutionConfiguration,
@@ -49,12 +48,13 @@ func (m *service) ResolveConfiguration(ctx context.Context, config ExecutionConf
 			if model == "" {
 				model = environment.DefaultModel
 			}
-			_, config.Reasoning = runtimes.NormalizeDetectedDefaults(
+			_, config.Reasoning = runtimecontract.NormalizeDetectedDefaults(
 				environment.Detection, environment.CustomModels, model, config.Reasoning,
 			)
 		}
 	}
 	validation := config
+	validateConfiguration := validateExecutionConfiguration
 	if config.AccountID != constants.AiAccountSystemID {
 		if m.accounts == nil {
 			return config, status_error.AIAccountConfigurationInvalid
@@ -75,17 +75,9 @@ func (m *service) ResolveConfiguration(ctx context.Context, config ExecutionConf
 		}
 		validation = config
 		if account.AuthMode == constants.AccountAuthModeAPIKey && accountconfig.IsNativeAccountRuntime(environment.BaseRuntimeID) {
-			detector, ok := m.runtime.(aiaccount.ModelDetector)
-			if !ok {
-				return config, status_error.RuntimeUnavailable
-			}
-			result, err := m.accounts.DetectModel(ctx, detector, account.ID, environment, config.Model)
-			if err != nil {
-				return config, err
-			}
-			environment.Detection = result
-			environment.DefaultModel = config.Model
-			environment.CustomModels = nil
+			// 账号已确认协议、凭据与模型；原生模型、强度和权限由本次会话的 driver 回执确认。
+			// 系统登录模型的目录不能代表该账号，也不在配置准入额外创建探测会话。
+			validateConfiguration = validateRuntimeAvailability
 		} else if account.AuthMode == constants.AccountAuthModeAPIKey {
 			// 账号模型不一定在原生目录中，权限仍以该环境的已探测能力验证。
 			declaredReasoning := len(account.ModelReasoningLevels[config.Model]) > 0
@@ -99,7 +91,7 @@ func (m *service) ResolveConfiguration(ctx context.Context, config ExecutionConf
 		config.Model = environment.DefaultModel
 		validation.Model = config.Model
 	}
-	if err := validateExecutionConfiguration(environment, validation); err != nil {
+	if err := validateConfiguration(environment, validation); err != nil {
 		return config, err
 	}
 	_, err = m.resolveRuntimeWorkspaceFiles(config.RuntimeID)
@@ -107,8 +99,8 @@ func (m *service) ResolveConfiguration(ctx context.Context, config ExecutionConf
 	return config, err
 }
 
-// validateExecutionConfiguration 只使用一份冻结 Runtime 环境快照完成组合校验。
-func validateExecutionConfiguration(
+// validateRuntimeAvailability 只读取持久化的程序可用状态与连接器传输能力。
+func validateRuntimeAvailability(
 	environment models.RuntimeEnvironment,
 	config ExecutionConfiguration,
 ) error {
@@ -116,17 +108,28 @@ func validateExecutionConfiguration(
 		return status_error.RuntimeUnavailable
 	}
 	if config.RequiredConnectorTransport != constants.RuntimeConnectorTransportUnspecified &&
-		!runtimes.DetectedConnectorTransportSupported(
+		!runtimecontract.DetectedConnectorTransportSupported(
 			environment.Detection,
 			config.RequiredConnectorTransport,
 		) {
 		return status_error.RuntimeUnavailable
 	}
+	return nil
+}
+
+// validateExecutionConfiguration 只使用一份冻结 Runtime 环境快照完成组合校验。
+func validateExecutionConfiguration(
+	environment models.RuntimeEnvironment,
+	config ExecutionConfiguration,
+) error {
+	if err := validateRuntimeAvailability(environment, config); err != nil {
+		return err
+	}
 	selectedModel := strings.TrimSpace(config.Model)
 	if selectedModel == "" {
 		selectedModel = strings.TrimSpace(environment.DefaultModel)
 	}
-	modelsAvailable := runtimes.AvailableModels(environment.Detection, environment.CustomModels)
+	modelsAvailable := runtimecontract.AvailableModels(environment.Detection, environment.CustomModels)
 	modelIndex := -1
 	for index, model := range modelsAvailable {
 		if model.ID == selectedModel {

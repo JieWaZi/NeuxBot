@@ -6,11 +6,11 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 // recentRuntimeHistory 仅选取最近已完成的用户与最终回复，为新原生会话提供有界上下文。
-func recentRuntimeHistory(messages []messageview.Message, turns int, team bool) []runtimes.HistoryMessage {
+func recentRuntimeHistory(messages []messageview.Message, turns int, team bool) []runtimecontract.HistoryMessage {
 	if turns == 0 {
 		turns = constants.RuntimeHistoryDefaultTurns
 	}
@@ -25,9 +25,9 @@ func recentRuntimeHistory(messages []messageview.Message, turns int, team bool) 
 	}
 	type turn struct {
 		// user 保存一个完整回合的用户输入。
-		user runtimes.HistoryMessage
+		user runtimecontract.HistoryMessage
 		// assistant 保存对应回合的助手最终回复，不包含执行过程。
-		assistant runtimes.HistoryMessage
+		assistant runtimecontract.HistoryMessage
 	}
 	completed := make([]turn, 0, turns)
 	var user *messageview.Message
@@ -56,7 +56,7 @@ func recentRuntimeHistory(messages []messageview.Message, turns int, team bool) 
 			user = nil
 		}
 	}
-	result := make([]runtimes.HistoryMessage, 0, turns*2)
+	result := make([]runtimecontract.HistoryMessage, 0, turns*2)
 	bytes := 0
 	for index := len(completed) - 1; index >= 0 && len(result) < turns*2; index-- {
 		pair := completed[index]
@@ -74,12 +74,12 @@ func recentRuntimeHistory(messages []messageview.Message, turns int, team bool) 
 }
 
 // recentTeamHistory 保留团队协调输入和报告，但仍限制新会话的消息数量与长度。
-func recentTeamHistory(messages []messageview.Message, turns int) []runtimes.HistoryMessage {
+func recentTeamHistory(messages []messageview.Message, turns int) []runtimecontract.HistoryMessage {
 	type turn struct {
 		// input 保存团队协调输入或成员报告形成的回合输入。
-		input runtimes.HistoryMessage
+		input runtimecontract.HistoryMessage
 		// answer 保存与团队输入对应的负责人最终回复。
-		answer runtimes.HistoryMessage
+		answer runtimecontract.HistoryMessage
 	}
 	completed := make([]turn, 0, turns)
 	var input *messageview.Message
@@ -108,7 +108,7 @@ func recentTeamHistory(messages []messageview.Message, turns int) []runtimes.His
 			input = nil
 		}
 	}
-	result := make([]runtimes.HistoryMessage, 0, turns*2)
+	result := make([]runtimecontract.HistoryMessage, 0, turns*2)
 	bytes := 0
 	for index := len(completed) - 1; index >= 0 && len(result) < turns*2; index-- {
 		pair := completed[index]
@@ -137,8 +137,8 @@ func finalReplyText(message messageview.Message) string {
 }
 
 // historyMessage 将消息转换为 Runtime 输入并限制单条文本大小。
-func historyMessage(message messageview.Message, content string) runtimes.HistoryMessage {
-	return runtimes.HistoryMessage{
+func historyMessage(message messageview.Message, content string) runtimecontract.HistoryMessage {
+	return runtimecontract.HistoryMessage{
 		Role: string(message.Role), Content: boundedHistoryText(content),
 	}
 }

@@ -13,7 +13,7 @@ import (
 	acpdriver "github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 // chatDriverFixture 记录真实模块交付与会话租约生命周期。
@@ -58,18 +58,18 @@ func (d *chatDriverFixture) Prompt(ctx context.Context, r c.TurnRequest, sink c.
 // chatSinkFixture 捕获既有聊天事件协议。
 type chatSinkFixture struct {
 	// events 保存模块经Host转换的顺序事件。
-	events []runtimes.Event
+	events []runtimecontract.Event
 }
 
-func (s *chatSinkFixture) Accept(_ context.Context, e runtimes.Event) error {
+func (s *chatSinkFixture) Accept(_ context.Context, e runtimecontract.Event) error {
 	s.events = append(s.events, e)
 	return nil
 }
-func chatFixture(t *testing.T, d *chatDriverFixture) (*ChatHost, runtimes.RunRequest) {
+func chatFixture(t *testing.T, d *chatDriverFixture) (*ChatHost, runtimecontract.RunRequest) {
 	t.Helper()
-	request := runtimes.RunRequest{Target: runtimes.RuntimeTarget{RuntimeID: "codex"}, Detection: runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}}, Workspace: runtimes.Workspace{Path: t.TempDir(), Managed: true}, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeNew}, Message: runtimes.Message{Text: "first"}, Policy: runtimes.RunPolicy{Model: "model", Execution: runtimes.ExecutionPolicy{PermissionLevel: runtimes.PermissionLevelAuto}}}
-	host := NewChat(ChatConfig{Launch: func(runtimes.RuntimeTarget, runtimes.DetectionResult) (runtimes.LaunchFacts, error) {
-		return runtimes.LaunchFacts{BaseRuntimeID: "codex", Executable: "fixture"}, nil
+	request := runtimecontract.RunRequest{Target: runtimecontract.RuntimeTarget{RuntimeID: "codex"}, Detection: runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}}, Workspace: runtimecontract.Workspace{Path: t.TempDir(), Managed: true}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}, Message: runtimecontract.Message{Text: "first"}, Policy: runtimecontract.RunPolicy{Model: "model", Execution: runtimecontract.ExecutionPolicy{PermissionLevel: runtimecontract.PermissionLevelAuto}}}
+	host := NewChat(ChatConfig{Launch: func(runtimecontract.RuntimeTarget, runtimecontract.DetectionResult) (runtimecontract.LaunchFacts, error) {
+		return runtimecontract.LaunchFacts{BaseRuntimeID: "codex", Executable: "fixture"}, nil
 	}, Driver: func(Environment, acpdriver.Factory) (c.Driver, error) { return d, nil }})
 	t.Cleanup(func() { _ = host.Close(context.Background()) })
 	return host, request
@@ -85,9 +85,9 @@ func TestChatHostRetainsHotResourcesAndSendsOnlyAddedInput(t *testing.T) {
 	if releases.Load() != 0 {
 		t.Fatal("hot native session lost its resource lease")
 	}
-	request.Session = runtimes.SessionDirective{Mode: runtimes.SessionModeResume, ID: result.Session.OutputID}
+	request.Session = runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: result.Session.OutputID}
 	request.Message.Text = "second"
-	request.History = []runtimes.HistoryMessage{{Role: "user", Content: "first"}, {Role: "assistant", Content: "done"}}
+	request.History = []runtimecontract.HistoryMessage{{Role: "user", Content: "first"}, {Role: "assistant", Content: "done"}}
 	result = host.RunWithLease(context.Background(), request, &chatSinkFixture{}, func(context.Context) error { releases.Add(1); return nil })
 	if result.Failure != nil || len(driver.opened) != 1 || len(driver.turns) != 2 || driver.turns[1].Input.Text != "second" || releases.Load() != 1 {
 		t.Fatalf("resume result=%+v opens=%d turns=%+v releases=%d", result, len(driver.opened), driver.turns, releases.Load())
@@ -138,7 +138,7 @@ func TestChatObserverPreservesInputSnapshotDiffAndResult(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	want := []runtimes.EventType{runtimes.EventTypeInvocationStarted, runtimes.EventTypeThinkingStart, runtimes.EventTypeThinkingDelta, runtimes.EventTypeToolUse, runtimes.EventTypeToolInputSnapshot, runtimes.EventTypeToolUpdate, runtimes.EventTypeToolResult}
+	want := []runtimecontract.EventType{runtimecontract.EventTypeInvocationStarted, runtimecontract.EventTypeThinkingStart, runtimecontract.EventTypeThinkingDelta, runtimecontract.EventTypeToolUse, runtimecontract.EventTypeToolInputSnapshot, runtimecontract.EventTypeToolUpdate, runtimecontract.EventTypeToolResult}
 	if len(sink.events) != len(want) {
 		t.Fatalf("events=%+v", sink.events)
 	}
@@ -159,22 +159,22 @@ func TestChatObserverPreservesInputSnapshotDiffAndResult(t *testing.T) {
 
 // chatApprovalFixture 回传原始审批身份并记录安全展示事实。
 type chatApprovalFixture struct {
-	request runtimes.ApprovalRequest // request 是收到的产品审批事实。
+	request runtimecontract.ApprovalRequest // request 是收到的产品审批事实。
 }
 
-func (f *chatApprovalFixture) Request(_ context.Context, r runtimes.ApprovalRequest) (runtimes.ApprovalDecision, error) {
+func (f *chatApprovalFixture) Request(_ context.Context, r runtimecontract.ApprovalRequest) (runtimecontract.ApprovalDecision, error) {
 	f.request = r
-	return runtimes.ApprovalDecision{OptionID: "original-allow"}, nil
+	return runtimecontract.ApprovalDecision{OptionID: "original-allow"}, nil
 }
 
 // chatInputFixture 保留公开Schema及用户原始表单内容。
 type chatInputFixture struct {
-	request runtimes.ElicitationRequest // request 是收到的产品输入事实。
+	request runtimecontract.ElicitationRequest // request 是收到的产品输入事实。
 }
 
-func (f *chatInputFixture) Request(_ context.Context, r runtimes.ElicitationRequest) (runtimes.ElicitationDecision, error) {
+func (f *chatInputFixture) Request(_ context.Context, r runtimecontract.ElicitationRequest) (runtimecontract.ElicitationDecision, error) {
 	f.request = r
-	return runtimes.ElicitationDecision{Accepted: true, Content: map[string]any{"answer": "value"}}, nil
+	return runtimecontract.ElicitationDecision{Accepted: true, Content: map[string]any{"answer": "value"}}, nil
 }
 func TestChatInteractionPreservesOriginalChoiceAndSchema(t *testing.T) {
 	approval, input := &chatApprovalFixture{}, &chatInputFixture{}
@@ -197,8 +197,8 @@ func TestChatInteractionPreservesOriginalChoiceAndSchema(t *testing.T) {
 func TestChatHostColdResumeDoesNotReplayHistory(t *testing.T) {
 	driver := &chatDriverFixture{}
 	host, request := chatFixture(t, driver)
-	request.Session = runtimes.SessionDirective{Mode: runtimes.SessionModeResume, ID: "native-session"}
-	request.History = []runtimes.HistoryMessage{{Role: "user", Content: "old prompt"}}
+	request.Session = runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: "native-session"}
+	request.History = []runtimecontract.HistoryMessage{{Role: "user", Content: "old prompt"}}
 	result := host.Run(context.Background(), request, &chatSinkFixture{})
 	if result.Failure != nil || len(driver.opened) != 1 || driver.opened[0].Session.Checkpoint == nil || driver.opened[0].Session.Checkpoint.NativeHandle != "native-session" || len(driver.opened[0].Session.Seed) != 0 {
 		t.Fatalf("result=%+v opened=%+v", result, driver.opened)
@@ -208,9 +208,9 @@ func TestChatHostChangedModelStartsNewSessionWithBoundedHistory(t *testing.T) {
 	driver := &chatDriverFixture{}
 	host, request := chatFixture(t, driver)
 	first := host.Run(context.Background(), request, &chatSinkFixture{})
-	request.Session = runtimes.SessionDirective{Mode: runtimes.SessionModeResume, ID: first.Session.OutputID}
+	request.Session = runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: first.Session.OutputID}
 	request.Policy.Model = "new-model"
-	request.History = []runtimes.HistoryMessage{{Role: "user", Content: "old prompt"}, {Role: "assistant", Content: "old answer"}}
+	request.History = []runtimecontract.HistoryMessage{{Role: "user", Content: "old prompt"}, {Role: "assistant", Content: "old answer"}}
 	second := host.Run(context.Background(), request, &chatSinkFixture{})
 	if second.Failure != nil || len(driver.opened) != 2 || driver.opened[1].Session.Mode != c.SessionNew || len(driver.opened[1].Session.Seed) != 2 {
 		t.Fatalf("result=%+v opened=%+v", second, driver.opened)
@@ -224,8 +224,8 @@ func TestChatHostClosedSessionUsesActualPreviousConfiguration(t *testing.T) {
 			host, request := chatFixture(t, driver)
 			request.Target.CloseAfterRun = true
 			first := host.Run(context.Background(), request, &chatSinkFixture{})
-			request.Session = runtimes.SessionDirective{Mode: runtimes.SessionModeResume, ID: first.Session.OutputID}
-			request.History = []runtimes.HistoryMessage{{Role: "user", Content: "prior input"}}
+			request.Session = runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: first.Session.OutputID}
+			request.History = []runtimecontract.HistoryMessage{{Role: "user", Content: "prior input"}}
 			if changed {
 				request.Policy.Model = "another-model"
 			}
@@ -267,10 +267,10 @@ func TestChatSummaryColdRestoresWholeNativeContextWithoutSeed(t *testing.T) {
 	driver := &chatDriverFixture{}
 	host, request := chatFixture(t, driver)
 	first := host.Run(context.Background(), request, &chatSinkFixture{})
-	request.Session = runtimes.SessionDirective{Mode: runtimes.SessionModeResume, ID: first.Session.OutputID}
+	request.Session = runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: first.Session.OutputID}
 	request.Policy.Execution.WorkspaceReadOnly = true
 	request.Message.Text = "summarize"
-	request.History = []runtimes.HistoryMessage{{Role: "user", Content: "must not replay"}}
+	request.History = []runtimecontract.HistoryMessage{{Role: "user", Content: "must not replay"}}
 	result := host.RunSummaryWithLease(context.Background(), request, &chatSinkFixture{}, nil)
 	if result.Failure != nil || len(driver.opened) != 2 || driver.opened[1].Session.Checkpoint == nil || driver.opened[1].Session.Checkpoint.NativeHandle != first.Session.OutputID || len(driver.opened[1].Session.Seed) != 0 {
 		t.Fatalf("summary result=%+v opened=%+v", result, driver.opened)
@@ -287,12 +287,12 @@ func TestChatSummaryColdRestoresWholeNativeContextWithoutSeed(t *testing.T) {
 }
 func TestChatAllElevenProfilesPreservePermissionAndInputFacts(t *testing.T) {
 	entries := []struct{ base, normal, automatic, full string }{
-		{runtimes.RuntimeIDCodex, "read-only", "agent", "agent-full-access"}, {runtimes.RuntimeIDClaude, "default", "auto", "bypassPermissions"}, {runtimes.RuntimeIDKimi, "", "", ""}, {runtimes.RuntimeIDCursor, "agent", "agent", "agent"}, {runtimes.RuntimeIDPi, "", "", ""}, {runtimes.RuntimeIDOpenCode, "", "", ""}, {runtimes.RuntimeIDGemini, "default", "default", "yolo"}, {runtimes.RuntimeIDGrok, "", "", ""}, {runtimes.RuntimeIDWorkBuddy, "default", "auto", "bypassPermissions"}, {runtimes.RuntimeIDQoder, "", "", ""}, {runtimes.RuntimeIDQoderCN, "", "", ""},
+		{runtimecontract.RuntimeIDCodex, "read-only", "agent", "agent-full-access"}, {runtimecontract.RuntimeIDClaude, "default", "auto", "bypassPermissions"}, {runtimecontract.RuntimeIDKimi, "", "", ""}, {runtimecontract.RuntimeIDCursor, "agent", "agent", "agent"}, {runtimecontract.RuntimeIDPi, "", "", ""}, {runtimecontract.RuntimeIDOpenCode, "", "", ""}, {runtimecontract.RuntimeIDGemini, "default", "default", "yolo"}, {runtimecontract.RuntimeIDGrok, "", "", ""}, {runtimecontract.RuntimeIDWorkBuddy, "default", "auto", "bypassPermissions"}, {runtimecontract.RuntimeIDQoder, "", "", ""}, {runtimecontract.RuntimeIDQoderCN, "", "", ""},
 	}
 	for _, entry := range entries {
 		t.Run(entry.base, func(t *testing.T) {
-			for index, permission := range []runtimes.PermissionLevel{runtimes.PermissionLevelDefault, runtimes.PermissionLevelAuto, runtimes.PermissionLevelFullAccess} {
-				request := runtimes.RunRequest{Target: runtimes.RuntimeTarget{RuntimeID: entry.base}, Detection: runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{ID: entry.base}}, Workspace: runtimes.Workspace{Path: t.TempDir()}, Policy: runtimes.RunPolicy{Execution: runtimes.ExecutionPolicy{PermissionLevel: permission}}, Message: runtimes.Message{Text: "current", Attachments: []runtimes.Attachment{{Name: "file", Path: "attachments/file.txt"}}, CodeReferences: []runtimes.CodeReference{{Path: "main.go", StartLine: 1, EndLine: 2, Content: "fixed"}}}, Skills: []runtimes.Skill{{Name: "chosen", Path: t.TempDir(), Selected: true}}, Connectors: []runtimes.Connector{{ID: "connector", Name: "remote", Transport: runtimes.ConnectorTransportStreamableHTTP, URL: "https://example.invalid/mcp", Headers: map[string]string{"Authorization": "private-secret"}, Selected: true}}}
+			for index, permission := range []runtimecontract.PermissionLevel{runtimecontract.PermissionLevelDefault, runtimecontract.PermissionLevelAuto, runtimecontract.PermissionLevelFullAccess} {
+				request := runtimecontract.RunRequest{Target: runtimecontract.RuntimeTarget{RuntimeID: entry.base}, Detection: runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{ID: entry.base}}, Workspace: runtimecontract.Workspace{Path: t.TempDir()}, Policy: runtimecontract.RunPolicy{Execution: runtimecontract.ExecutionPolicy{PermissionLevel: permission}}, Message: runtimecontract.Message{Text: "current", Attachments: []runtimecontract.Attachment{{Name: "file", Path: "attachments/file.txt"}}, CodeReferences: []runtimecontract.CodeReference{{Path: "main.go", StartLine: 1, EndLine: 2, Content: "fixed"}}}, Skills: []runtimecontract.Skill{{Name: "chosen", Path: t.TempDir(), Selected: true}}, Connectors: []runtimecontract.Connector{{ID: "connector", Name: "remote", Transport: runtimecontract.ConnectorTransportStreamableHTTP, URL: "https://example.invalid/mcp", Headers: map[string]string{"Authorization": "private-secret"}, Selected: true}}}
 				spec, bindings, err := chatSpec(request)
 				if err != nil || spec.Profile.NativeMode != []string{entry.normal, entry.automatic, entry.full}[index] || len(spec.Input.Attachments) != 1 || spec.Input.Attachments[0].Path != filepath.Join(request.Workspace.Path, "attachments/file.txt") || len(spec.Input.CodeReferences) != 1 || spec.Input.CodeReferences[0].Content != "fixed" || len(spec.Input.SelectedSkills) != 1 || len(spec.Input.SelectedMCP) != 1 || len(bindings) != 2 || bindings[1].MCP.Headers["Authorization"] != "private-secret" {
 					t.Fatalf("spec=%+v bindings=%+v err=%v", spec, bindings, err)
@@ -301,10 +301,10 @@ func TestChatAllElevenProfilesPreservePermissionAndInputFacts(t *testing.T) {
 				if strings.Contains(string(encoded), "private-secret") {
 					t.Fatal("secret entered durable spec")
 				}
-				if entry.base == runtimes.RuntimeIDCodex && !strings.HasPrefix(spec.Input.Text, "$chosen") {
+				if entry.base == runtimecontract.RuntimeIDCodex && !strings.HasPrefix(spec.Input.Text, "$chosen") {
 					t.Fatal("lost Codex skill selection")
 				}
-				if (entry.base == runtimes.RuntimeIDKimi || entry.base == runtimes.RuntimeIDPi) && !strings.HasPrefix(spec.Input.Text, "/skill:chosen") {
+				if (entry.base == runtimecontract.RuntimeIDKimi || entry.base == runtimecontract.RuntimeIDPi) && !strings.HasPrefix(spec.Input.Text, "/skill:chosen") {
 					t.Fatal("lost native skill selection")
 				}
 			}
@@ -312,7 +312,7 @@ func TestChatAllElevenProfilesPreservePermissionAndInputFacts(t *testing.T) {
 	}
 }
 func TestChatSecretRotationDoesNotInvalidateRetainedResourceSnapshot(t *testing.T) {
-	request := runtimes.RunRequest{Target: runtimes.RuntimeTarget{RuntimeID: "codex"}, Workspace: runtimes.Workspace{Path: t.TempDir()}, Connectors: []runtimes.Connector{{ID: "mcp", Name: "server", Transport: runtimes.ConnectorTransportStreamableHTTP, URL: "https://example.invalid", Headers: map[string]string{"Authorization": "first-secret"}}}}
+	request := runtimecontract.RunRequest{Target: runtimecontract.RuntimeTarget{RuntimeID: "codex"}, Workspace: runtimecontract.Workspace{Path: t.TempDir()}, Connectors: []runtimecontract.Connector{{ID: "mcp", Name: "server", Transport: runtimecontract.ConnectorTransportStreamableHTTP, URL: "https://example.invalid", Headers: map[string]string{"Authorization": "first-secret"}}}}
 	first, _, err := chatSpec(request)
 	if err != nil {
 		t.Fatal(err)
@@ -326,7 +326,7 @@ func TestChatSecretRotationDoesNotInvalidateRetainedResourceSnapshot(t *testing.
 		t.Fatal("secret refresh changed static identity")
 	}
 	request.Target.NativePluginScope = "changed-plugin-snapshot"
-	if chatSignature(first, runtimes.RuntimeTarget{}) == chatSignature(first, request.Target) {
+	if chatSignature(first, runtimecontract.RuntimeTarget{}) == chatSignature(first, request.Target) {
 		t.Fatal("plugin snapshot change did not invalidate native owner")
 	}
 }
@@ -339,10 +339,10 @@ func TestChatHostDeliversFinalPromptResponseUsage(t *testing.T) {
 	if result.Failure != nil {
 		t.Fatalf("result=%+v", result)
 	}
-	var usage *runtimes.UsageData
+	var usage *runtimecontract.UsageData
 	for _, event := range sink.events {
-		if event.Type == runtimes.EventTypeUsage {
-			usage = &runtimes.UsageData{}
+		if event.Type == runtimecontract.EventTypeUsage {
+			usage = &runtimecontract.UsageData{}
 			if err := json.Unmarshal(event.Data, usage); err != nil {
 				t.Fatal(err)
 			}
@@ -351,19 +351,19 @@ func TestChatHostDeliversFinalPromptResponseUsage(t *testing.T) {
 	if usage == nil || usage.Turn == nil || usage.Context == nil {
 		t.Fatalf("missing final prompt response usage: events=%+v", sink.events)
 	}
-	if *usage.Turn != (runtimes.TurnUsageData{InputTokens: 11, OutputTokens: 13, CacheReadTokens: 17, CacheCreationTokens: 19, ReasoningOutputTokens: 23}) || *usage.Context != (runtimes.ContextUsageData{UsedTokens: 29, WindowTokens: 31}) {
+	if *usage.Turn != (runtimecontract.TurnUsageData{InputTokens: 11, OutputTokens: 13, CacheReadTokens: 17, CacheCreationTokens: 19, ReasoningOutputTokens: 23}) || *usage.Context != (runtimecontract.ContextUsageData{UsedTokens: 29, WindowTokens: 31}) {
 		t.Fatalf("usage=%+v context=%+v", usage.Turn, usage.Context)
 	}
 }
 func TestChatResultMapsNativeCancelledStatusWithoutFault(t *testing.T) {
-	result := chatResult(runtimes.RunRequest{}, c.Result{Status: c.StatusCancelled, StopReason: c.StopCancelled, Effects: c.Effects{PromptAccepted: true}}, &chatObserver{})
-	if result.ExitCode == 0 || result.Failure == nil || result.Failure.Code != runtimes.FailureCodeContextCanceled || result.TerminationReason != constants.RuntimeTerminationReasonCancelled {
+	result := chatResult(runtimecontract.RunRequest{}, c.Result{Status: c.StatusCancelled, StopReason: c.StopCancelled, Effects: c.Effects{PromptAccepted: true}}, &chatObserver{})
+	if result.ExitCode == 0 || result.Failure == nil || result.Failure.Code != runtimecontract.FailureCodeContextCanceled || result.TerminationReason != constants.RuntimeTerminationReasonCancelled {
 		t.Fatalf("cancelled mapped as success: %+v", result)
 	}
 }
 func TestChatResultCancellationDoesNotReplacePrimaryFault(t *testing.T) {
-	result := chatResult(runtimes.RunRequest{}, c.Result{Status: c.StatusCancelled, StopReason: c.StopCancelled, Fault: &c.Fault{Code: c.FaultUnsupported, Stage: "prompt", Message: "unsupported native capability"}, Effects: c.Effects{PromptAccepted: true}}, &chatObserver{})
-	if result.ExitCode == 0 || result.Failure == nil || result.Failure.Code != runtimes.FailureCodeUnsupportedCapability {
+	result := chatResult(runtimecontract.RunRequest{}, c.Result{Status: c.StatusCancelled, StopReason: c.StopCancelled, Fault: &c.Fault{Code: c.FaultUnsupported, Stage: "prompt", Message: "unsupported native capability"}, Effects: c.Effects{PromptAccepted: true}}, &chatObserver{})
+	if result.ExitCode == 0 || result.Failure == nil || result.Failure.Code != runtimecontract.FailureCodeUnsupportedCapability {
 		t.Fatalf("lost primary fault: %+v", result)
 	}
 }

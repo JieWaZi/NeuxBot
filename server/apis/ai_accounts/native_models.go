@@ -7,7 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -70,14 +70,14 @@ func (a *GetAIAccountNativeModels) Output(ctx *gin.Context) (interface{}, error)
 }
 
 // persistedModelDirectoryAvailable 允许查询刷新失败时明确保留下来的上次成功目录。
-func persistedModelDirectoryAvailable(result runtimes.DetectionResult) bool {
-	if result.State != runtimes.DetectionStateReady {
+func persistedModelDirectoryAvailable(result runtimecontract.DetectionResult) bool {
+	if result.State != runtimecontract.DetectionStateReady {
 		return false
 	}
 	unavailable, retained := false, false
 	for _, diagnostic := range result.Diagnostics {
-		unavailable = unavailable || diagnostic.Code == runtimes.DiagnosticCodeACPOptionsUnavailable
-		retained = retained || diagnostic.Code == runtimes.DiagnosticCodeACPOptionsFallback
+		unavailable = unavailable || diagnostic.Code == runtimecontract.DiagnosticCodeACPOptionsUnavailable
+		retained = retained || diagnostic.Code == runtimecontract.DiagnosticCodeACPOptionsFallback
 	}
 	return !unavailable || retained && len(result.Models) > 0
 }

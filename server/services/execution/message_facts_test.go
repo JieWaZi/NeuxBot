@@ -12,7 +12,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -43,25 +43,25 @@ type approvalFactRuntime struct {
 	// prefixSnapshots 在审批前形成已经公开但尚未持久化的高修订工具快照。
 	prefixSnapshots int
 	// nextKind 是审批后交付的工具输入或执行进度；空值表示后续没有 Runtime 事件。
-	nextKind runtimes.EventType
+	nextKind runtimecontract.EventType
 	// continued 表示审批决定已返回且后续增量已经进入执行层。
 	continued chan struct{}
 	// finish 让测试在读取实时与权威快照之后释放执行。
 	finish chan struct{}
 }
 
-func (r *approvalFactRuntime) RunWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+func (r *approvalFactRuntime) RunWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
 	if release != nil {
 		defer func() { _ = release(context.WithoutCancel(ctx)) }()
 	}
 	invocationID := "approval-fact-invocation"
-	send := func(kind runtimes.EventType, data any) {
-		_ = sink.Accept(ctx, runtimes.Event{Type: kind, Data: marshalData(data)})
+	send := func(kind runtimecontract.EventType, data any) {
+		_ = sink.Accept(ctx, runtimecontract.Event{Type: kind, Data: marshalData(data)})
 	}
-	send(runtimes.EventTypeInvocationStarted, runtimes.InvocationStartedData{InvocationID: invocationID})
-	send(runtimes.EventTypeToolUse, map[string]any{"toolCallId": "tool", "name": "bash", "input": map[string]any{"command": "echo allowed"}})
+	send(runtimecontract.EventTypeInvocationStarted, runtimecontract.InvocationStartedData{InvocationID: invocationID})
+	send(runtimecontract.EventTypeToolUse, map[string]any{"toolCallId": "tool", "name": "bash", "input": map[string]any{"command": "echo allowed"}})
 	for range r.prefixSnapshots {
-		send(runtimes.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "tool", "input": map[string]any{"command": "echo allowed"}})
+		send(runtimecontract.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "tool", "input": map[string]any{"command": "echo allowed"}})
 	}
 	approval := approvalRequest("tool")
 	approval.InvocationID = invocationID
@@ -74,12 +74,12 @@ func (r *approvalFactRuntime) RunWithLease(ctx context.Context, request runtimes
 	case <-r.finish:
 	case <-ctx.Done():
 	}
-	send(runtimes.EventTypeToolResult, map[string]any{"toolCallId": "tool", "status": "completed"})
-	return runtimes.Result{Facts: runtimes.InvocationFacts{InvocationID: invocationID, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: runtimes.RuntimeIDCodex}}
+	send(runtimecontract.EventTypeToolResult, map[string]any{"toolCallId": "tool", "status": "completed"})
+	return runtimecontract.Result{Facts: runtimecontract.InvocationFacts{InvocationID: invocationID, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: runtimecontract.RuntimeIDCodex}}
 }
 
 func TestDurableApprovalRemainsInSubsequentLiveToolSnapshot(t *testing.T) {
-	for _, kind := range []runtimes.EventType{runtimes.EventTypeToolInputSnapshot, runtimes.EventTypeToolUpdate} {
+	for _, kind := range []runtimecontract.EventType{runtimecontract.EventTypeToolInputSnapshot, runtimecontract.EventTypeToolUpdate} {
 		t.Run(string(kind), func(t *testing.T) {
 			runtime := &approvalFactRuntime{nextKind: kind, continued: make(chan struct{}), finish: make(chan struct{})}
 			defer close(runtime.finish)
@@ -87,7 +87,7 @@ func TestDurableApprovalRemainsInSubsequentLiveToolSnapshot(t *testing.T) {
 			core := manager.execution.(*service)
 			observed := &messageFactTestJournal{Journal: core.journal, live: make(chan eventstream.PublicEvent, 16)}
 			core.journal = observed
-			accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行已授权测试"}, Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: runtimes.PermissionLevelDefault}})
+			accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行已授权测试"}, Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: runtimecontract.PermissionLevelDefault}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -195,14 +195,14 @@ func TestLiveWindowAndFlushConsumeDurableApprovalWithoutAnotherRuntimeEvent(t *t
 	for _, boundary := range []string{"timer", "flush"} {
 		t.Run(boundary, func(t *testing.T) {
 			core, sink, journal, chatID := newMessageFactFixture(t)
-			if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
+			if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
 				t.Fatal(err)
 			}
 			<-journal.live
 			id := requestMessageFactApproval(t, core, sink, chatID, "invocation-1")
 			if boundary == "timer" {
 				sink.mutex.Lock()
-				err := sink.acceptLocked("invocation-1", runtimes.Event{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}})})
+				err := sink.acceptLocked("invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}})})
 				if err != nil {
 					sink.mutex.Unlock()
 					t.Fatal(err)
@@ -247,7 +247,7 @@ func TestLateApprovalKeepsOriginatingInvocationWithReusedNativeToolID(t *testing
 	core, sink, journal, chatID := newMessageFactFixture(t)
 	for _, invocation := range []string{"invocation-1", "invocation-2"} {
 		sink.messageFacts.setInvocation(invocation)
-		if err := sink.acceptInvocation(context.Background(), invocation, runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
+		if err := sink.acceptInvocation(context.Background(), invocation, runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
 			t.Fatal(err)
 		}
 		<-journal.live
@@ -290,7 +290,7 @@ func TestReconnectLiveCacheCatchesUpDurableApprovalWithoutRuntimeOutput(t *testi
 	core := manager.execution.(*service)
 	observed := &messageFactTestJournal{Journal: core.journal, live: make(chan eventstream.PublicEvent, 32)}
 	core.journal = observed
-	accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行后等候"}, Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: runtimes.PermissionLevelDefault}})
+	accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行后等候"}, Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: runtimecontract.PermissionLevelDefault}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,7 +353,7 @@ func TestFactWakeWaitsForFirstRuntimeMessageBeforeInitializingLiveState(t *testi
 	if err := core.ResolveApproval(context.Background(), chatID, id, "allow-once"); err != nil {
 		t.Fatal(err)
 	}
-	if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
+	if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
 		t.Fatal(err)
 	}
 	event := <-journal.live
@@ -367,7 +367,7 @@ func TestFactWakeWaitsForFirstRuntimeMessageBeforeInitializingLiveState(t *testi
 
 func TestFlushFactErrorInvalidatesPendingLiveWindow(t *testing.T) {
 	_, sink, journal, chatID := newMessageFactFixture(t)
-	if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
+	if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
 		t.Fatal(err)
 	}
 	<-journal.live
@@ -378,7 +378,7 @@ func TestFlushFactErrorInvalidatesPendingLiveWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink.mutex.Lock()
-	err = sink.acceptLocked("invocation-1", runtimes.Event{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}})})
+	err = sink.acceptLocked("invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}})})
 	sink.messageFacts.push(foreign)
 	sink.mutex.Unlock()
 	if err != nil {
@@ -395,20 +395,20 @@ func TestFlushFactErrorInvalidatesPendingLiveWindow(t *testing.T) {
 }
 
 func TestApprovalFactsKeepPendingBatchAndNextToolRevisionsOrdered(t *testing.T) {
-	for _, pendingKind := range []runtimes.EventType{runtimes.EventTypeTextDelta, runtimes.EventTypeToolInputSnapshot} {
+	for _, pendingKind := range []runtimecontract.EventType{runtimecontract.EventTypeTextDelta, runtimecontract.EventTypeToolInputSnapshot} {
 		for _, boundary := range []string{"flush", "next-tool"} {
 			t.Run(string(pendingKind)+"/"+boundary, func(t *testing.T) {
 				core, sink, journal, chatID := newMessageFactFixture(t)
 				sink.messageFacts.stopDelivery()
-				if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
+				if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
 					t.Fatal(err)
 				}
 				<-journal.live
 				data := map[string]any{"text": "正在处理"}
-				if pendingKind == runtimes.EventTypeToolInputSnapshot {
+				if pendingKind == runtimecontract.EventTypeToolInputSnapshot {
 					data = map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}}
 				}
-				if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: pendingKind, Data: marshalData(data)}); err != nil {
+				if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: pendingKind, Data: marshalData(data)}); err != nil {
 					t.Fatal(err)
 				}
 				id := requestMessageFactApproval(t, core, sink, chatID, "invocation-1")
@@ -416,7 +416,7 @@ func TestApprovalFactsKeepPendingBatchAndNextToolRevisionsOrdered(t *testing.T) 
 					t.Fatal(err)
 				}
 				if boundary == "next-tool" {
-					if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool-2", "name": "read"})}); err != nil {
+					if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool-2", "name": "read"})}); err != nil {
 						t.Fatal(err)
 					}
 				}

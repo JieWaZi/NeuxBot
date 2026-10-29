@@ -1,6 +1,10 @@
 package workflows
 
 import (
+	workspace "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/workspace"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+
 	"context"
 	"path/filepath"
 	"strings"
@@ -13,7 +17,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
@@ -108,11 +112,11 @@ func TestWorkflowAuthoringAndWorkerUseIndependentRuntimeHost(t *testing.T) {
 		outcomes <- err
 		return err
 	}
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := catalog.New(catalog.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: sdk.PrepareWorkspace, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: sdk.ForkSession,
+	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: workspace.New(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: sdk.ForkSession,
 		Driver: func(runtimehost.Environment, acpdriver.Factory) (c.Driver, error) { return driver, nil }})
 	t.Cleanup(func() {
 		if err := host.Close(context.Background()); err != nil {

@@ -11,7 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -444,7 +444,7 @@ func (s *service) dispatchTask(
 			PermissionLevel:  member.PermissionLevel,
 			SessionPolicy:    constants.RuntimeSessionPolicyContinue,
 			ToolCapabilities: toolCapabilities,
-			SupplementalInstructions: []runtimes.Instruction{
+			SupplementalInstructions: []runtimecontract.Instruction{
 				teamInstruction,
 			},
 		},

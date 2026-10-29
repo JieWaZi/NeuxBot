@@ -69,7 +69,7 @@ flowchart TB
         API[业务 API / 统一事件通道]
         Domain[伙伴 / Chat / Channel / Workflow / Knowledge / Memory]
         EX[Execution：接纳、装配、业务收尾]
-        RT[internal/runtimes：探测与执行适配]
+        RT[runtimehost：CLI 目录与执行装配]
         API --> Domain
         Domain --> EX
         Domain -->|独立知识调用| RT
@@ -325,7 +325,7 @@ PaaS 初期可优先评估按客户组织隔离的部署单元，以复用单所
 
 - [领域词汇](../../CONTEXT.md)、[当前架构](../architecture/overview-cn.md)、[当前桌面边界](../architecture/desktop-lifecycle-cn.md)。
 - [Core 装配](../../server/global/config.go)、[业务执行](../../server/services/execution/work.go)、[Chat 执行准备](../../server/services/chat/journal.go)、[Chat 历史读取](../../server/services/chat/chat.go)。
-- [Runtime SDK](../../server/internal/runtimes/sdk.go)、[ACP 后端](../../server/internal/runtimes/acp_backend.go)、[软件能力 Registry](../../server/internal/agentcapability/registry.go)、[账号服务](../../server/services/aiaccount/service.go)。
+- [Runtime SDK](../../packages/agent-runtime/runtime/runtime.go)、[ACP 驱动](../../packages/agent-runtime/driver/acp/driver.go)、[软件能力 Registry](../../server/internal/agentcapability/registry.go)、[账号服务](../../server/services/aiaccount/service.go)。
 - [桌面 Core 地址和生命周期](../../desktop/electron/main/core-supervisor.ts)、[本机认证](../../server/apis/middleware/local_token_auth.go)、[事件订阅](../../server/apis/events/sources.go)。这些实现面向单人本机可信边界，不能直接当作企业多用户安全边界。
 - [伙伴协作模型](../../server/repositories/models/channel.go)、[项目模型](../../server/repositories/models/project.go)、[项目路径来源](../../server/repositories/models/project_source.go)、[插件配置](../../server/repositories/models/plugin.go)。
 - [聊天与执行](../architecture/chat-and-execution-cn.md)、[Runtime 与账号](../architecture/runtimes-and-accounts-cn.md)、[工作区与存储](../architecture/workspace-and-storage-cn.md)、[软件能力](../architecture/agent-capabilities-cn.md)。

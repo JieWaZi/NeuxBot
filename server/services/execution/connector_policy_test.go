@@ -7,7 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -20,7 +20,7 @@ func TestConnectorAllowlistReachesRuntimeAndPreservesInternalCapability(t *testi
 			{ID: "selected", Name: "Selected", RuntimeKey: "ally_selected", Transport: constants.MCPTransportStreamableHTTP, URL: "http://localhost/selected"},
 			{ID: "excluded", Name: "Excluded", RuntimeKey: "ally_excluded", Transport: constants.MCPTransportStreamableHTTP, URL: "http://localhost/excluded"},
 		}}
-		intent := WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "workflow", Content: "仅测试冻结工具目录"}, Options: WorkOptions{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: runtimes.PermissionLevelDefault, SessionPolicy: constants.RuntimeSessionPolicyNew, AllowedConnectorIDs: &allowed}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+		intent := WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "workflow", Content: "仅测试冻结工具目录"}, Options: WorkOptions{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: runtimecontract.PermissionLevelDefault, SessionPolicy: constants.RuntimeSessionPolicyNew, AllowedConnectorIDs: &allowed}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 		accepted, err := manager.execution.Start(context.Background(), intent)
 		if err != nil {
 			t.Fatal(err)
@@ -48,7 +48,7 @@ func TestOrdinaryChatDoesNotMountContextualBuiltinPlaceholders(t *testing.T) {
 	manager.execution.(*service).connectorController = &retryConnectorController{enabled: []models.MCPConnector{
 		{ID: "selected", Name: "Selected", RuntimeKey: "ally_selected", Transport: constants.MCPTransportStreamableHTTP, URL: "http://localhost/selected"},
 	}}
-	accepted, err := manager.execution.Start(context.Background(), WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "test-user", Content: "普通聊天"}, Options: WorkOptions{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: runtimes.PermissionLevelDefault}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
+	accepted, err := manager.execution.Start(context.Background(), WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "test-user", Content: "普通聊天"}, Options: WorkOptions{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: runtimecontract.PermissionLevelDefault}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
 	if err != nil {
 		t.Fatal(err)
 	}

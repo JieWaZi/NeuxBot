@@ -12,7 +12,7 @@ import (
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -203,7 +203,7 @@ type messageExecution struct {
 	// agentActivate 在执行接纳后激活短期 CLI 身份。
 	agentActivate func()
 	// agentSettle 记录该次调用返回的可靠原生会话身份。
-	agentSettle func(runtimes.Result)
+	agentSettle func(runtimecontract.Result)
 	// capabilityRelease 在回合结束后撤销内置工具能力。
 	capabilityRelease func()
 	// accountLease 在独立 Runtime 原生消费者退出后回收认证，失败允许重试。
@@ -213,7 +213,7 @@ type messageExecution struct {
 	// plugins 是消息明确选择的插件展示快照。
 	plugins []plugins.Snapshot
 	// request 是本次调用交给 Runtime 的结构化输入。
-	request runtimes.RunRequest
+	request runtimecontract.RunRequest
 	// state 是首事件提交前仍未进入权威日志的对话状态。
 	state messageChat
 	// input 是首事件提交时持久化的本次用户输入。
@@ -323,11 +323,11 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 			return
 		}
 		if result.Failure == nil {
-			result.Failure = &runtimes.Failure{
-				Code:       runtimes.FailureCodeRuntimeUnavailable,
+			result.Failure = &runtimecontract.Failure{
+				Code:       runtimecontract.FailureCodeRuntimeUnavailable,
 				Stage:      constants.RuntimeExecutionFailureStageStart,
 				Message:    "runtime did not accept the invocation",
-				Transience: runtimes.FailureTransiencePermanent,
+				Transience: runtimecontract.FailureTransiencePermanent,
 			}
 		}
 		status, errorCode, errorMessage := executionResultStatus(result)
@@ -398,10 +398,10 @@ type chatRuntimeSink struct {
 // Accept 消费 Runtime 首事件并将后续可见事件直接交给既有聚合器。
 func (s *chatRuntimeSink) Accept(
 	ctx context.Context,
-	event runtimes.Event,
+	event runtimecontract.Event,
 ) error {
-	if event.Type == runtimes.EventTypeInvocationStarted {
-		var started runtimes.InvocationStartedData
+	if event.Type == runtimecontract.EventTypeInvocationStarted {
+		var started runtimecontract.InvocationStartedData
 		if err := json.Unmarshal(event.Data, &started); err != nil {
 			return status_error.RuntimeUnavailable
 		}
@@ -492,7 +492,7 @@ func (m *service) commitAcceptedExecution(
 	})
 }
 
-func runtimeStartError(result runtimes.Result) error {
+func runtimeStartError(result runtimecontract.Result) error {
 	if result.Failure == nil {
 		return status_error.RuntimeUnavailable
 	}
@@ -500,17 +500,17 @@ func runtimeStartError(result runtimes.Result) error {
 		return status_error.SkillUnavailable
 	}
 	switch result.Failure.Code {
-	case runtimes.FailureCodeSessionNotFound:
+	case runtimecontract.FailureCodeSessionNotFound:
 		return status_error.RuntimeSessionNotFound
-	case runtimes.FailureCodePolicyUnsupported:
+	case runtimecontract.FailureCodePolicyUnsupported:
 		return status_error.RuntimePolicyUnsupported
-	case runtimes.FailureCodeProtocolIncompatible:
+	case runtimecontract.FailureCodeProtocolIncompatible:
 		return status_error.RuntimeProtocolIncompatible
-	case runtimes.FailureCodeInactivityTimeout:
+	case runtimecontract.FailureCodeInactivityTimeout:
 		return status_error.RuntimeInactivityTimeout
-	case runtimes.FailureCodeAuthRequired:
+	case runtimecontract.FailureCodeAuthRequired:
 		return status_error.RuntimeAuthRequired
-	case runtimes.FailureCodeRuntimeUnavailable:
+	case runtimecontract.FailureCodeRuntimeUnavailable:
 		return status_error.RuntimeUnavailable
 	default:
 		detail := runtimeFailureDisplayMessage(result.Failure)
@@ -580,7 +580,7 @@ func (m *service) recordInvocationResult(
 	chat models.Chat,
 	workingDirectory string,
 	execution models.Execution,
-	result runtimes.Result,
+	result runtimecontract.Result,
 	attempt int,
 	recoveryStrategy constants.InvocationRecoveryStrategy,
 	triggerReason constants.InvocationTriggerReason,
@@ -654,32 +654,32 @@ func (m *service) recordInvocationResult(
 }
 
 func executionResultStatus(
-	result runtimes.Result,
+	result runtimecontract.Result,
 ) (constants.ExecutionStatus, string, string) {
 	if result.Failure == nil {
 		return constants.ExecutionStatusCompleted, "", ""
 	}
 	status := constants.ExecutionStatusFailed
-	if result.Failure.Code == runtimes.FailureCodeContextCanceled {
+	if result.Failure.Code == runtimecontract.FailureCodeContextCanceled {
 		status = constants.ExecutionStatusCanceled
 	}
 	return status, string(result.Failure.Code), runtimeFailureDisplayMessage(result.Failure)
 }
 
 // runtimeFailureDisplayMessage 统一执行前拒绝与执行终态的展示原因，原始诊断仍保存在 Failure.Message。
-func runtimeFailureDisplayMessage(failure *runtimes.Failure) string {
+func runtimeFailureDisplayMessage(failure *runtimecontract.Failure) string {
 	if message := strings.TrimSpace(failure.DisplayMessage); message != "" {
 		return message
 	}
 	return strings.TrimSpace(failure.Message)
 }
 
-func reliableRuntimeSessionID(result runtimes.Result) string {
+func reliableRuntimeSessionID(result runtimecontract.Result) string {
 	if result.Session.OutputID == "" {
 		return ""
 	}
-	if result.Session.State != runtimes.SessionStateCreated &&
-		result.Session.State != runtimes.SessionStateResumed {
+	if result.Session.State != runtimecontract.SessionStateCreated &&
+		result.Session.State != runtimecontract.SessionStateResumed {
 		return ""
 	}
 	return result.Session.OutputID
@@ -688,12 +688,12 @@ func reliableRuntimeSessionID(result runtimes.Result) string {
 func chatDeliveryFailure(
 	stage constants.ChatDeliveryFailureStage,
 	err error,
-) *runtimes.Failure {
-	return &runtimes.Failure{
-		Code:       runtimes.FailureCodeEventDelivery,
+) *runtimecontract.Failure {
+	return &runtimecontract.Failure{
+		Code:       runtimecontract.FailureCodeEventDelivery,
 		Stage:      stage.String(),
 		Message:    err.Error(),
-		Transience: runtimes.FailureTransiencePermanent,
+		Transience: runtimecontract.FailureTransiencePermanent,
 	}
 }
 

@@ -46,7 +46,7 @@ flowchart LR
 | packages/platform-contracts    | 中立能力接口和事件协议                        |
 | packages/agent-runtime         | 独立调用、会话、最终结果与公开 ACP 驱动       |
 | server/internal/runtimehost    | CLI 启动事实、账号租约、Chat 与独立任务装配   |
-| server/internal/runtimes       | CLI 目录、探测、启动资源准备与原生分叉       |
+| server/internal/runtimehost/{contract,catalog,workspace} | CLI 契约、目录与启动准备、原生工作区 |
 | packages/terminal-runtime      | Core 管理的 PTY 与终端屏幕运行时              |
 | server/apis                    | HTTP Operator、校验及单入口用例               |
 | server/services                | 多入口复用业务与后台生命周期                  |

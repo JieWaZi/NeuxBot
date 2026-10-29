@@ -7,7 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -25,12 +25,12 @@ type handoffSink struct {
 }
 
 // Accept 只接收最终回复的文本增量，其他过程事件不进入交接内容。
-func (sink *handoffSink) Accept(_ context.Context, event runtimes.Event) error {
+func (sink *handoffSink) Accept(_ context.Context, event runtimecontract.Event) error {
 	switch event.Type {
-	case runtimes.EventTypeToolUse, runtimes.EventTypeToolInputSnapshot, runtimes.EventTypeToolUpdate:
+	case runtimecontract.EventTypeToolUse, runtimecontract.EventTypeToolInputSnapshot, runtimecontract.EventTypeToolUpdate:
 		sink.rejected = true
 		return status_error.RuntimeHandoffInvalid
-	case runtimes.EventTypeTextDelta:
+	case runtimecontract.EventTypeTextDelta:
 		var payload struct {
 			// Text 是本次交付的最终正文增量。
 			Text string `json:"text"`
@@ -80,26 +80,26 @@ func (m *service) summarizeCurrentSession(
 	if !m.summarySelectionAllowed(ctx, state.chat.LastAccountID, environment, model, reasoning) {
 		return "", false
 	}
-	run := runtimes.RunRequest{
-		Target: runtimes.RuntimeTarget{
+	run := runtimecontract.RunRequest{
+		Target: runtimecontract.RuntimeTarget{
 			RuntimeID:  runtimeID,
 			Binary:     environment.Binary,
 			PrefixArgs: append([]string(nil), environment.PrefixArgs...),
 			ConfigHome: environment.ConfigHome,
 		},
 		Detection: environment.Detection,
-		Workspace: runtimes.Workspace{
+		Workspace: runtimecontract.Workspace{
 			Path:               files.executionWorkspaceDirectory,
 			Managed:            true,
 			ProjectDirectories: runtimeProjectDirectories(state.chat, state.projectSources),
 		},
-		Message: runtimes.Message{Text: handoffPrompt},
-		Session: runtimes.SessionDirective{Mode: runtimes.SessionModeResume, ID: session.SessionID},
-		Policy: runtimes.RunPolicy{
+		Message: runtimecontract.Message{Text: handoffPrompt},
+		Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: session.SessionID},
+		Policy: runtimecontract.RunPolicy{
 			Model:     model,
 			Reasoning: reasoning,
-			Execution: runtimes.ExecutionPolicy{
-				PermissionLevel:   runtimes.PermissionLevelDefault,
+			Execution: runtimecontract.ExecutionPolicy{
+				PermissionLevel:   runtimecontract.PermissionLevelDefault,
 				WorkspaceReadOnly: true,
 			},
 		},
@@ -109,7 +109,7 @@ func (m *service) summarizeCurrentSession(
 		if m.accounts == nil {
 			return "", false
 		}
-		var target runtimes.RuntimeTarget
+		var target runtimecontract.RuntimeTarget
 		var err error
 		if err = m.runtime.CloseWorkspace(ctx, run.Workspace.Path); err != nil {
 			return "", false
@@ -170,7 +170,7 @@ func (m *service) summarySelectionAllowed(
 	return validateExecutionConfiguration(environment, ExecutionConfiguration{
 		Model:           model,
 		Reasoning:       reasoning,
-		PermissionLevel: runtimes.PermissionLevelDefault,
+		PermissionLevel: runtimecontract.PermissionLevelDefault,
 	}) == nil
 }
 
@@ -180,7 +180,7 @@ func summaryReasoningAllowed(environment models.RuntimeEnvironment, model, reaso
 		return true
 	}
 	options := environment.Detection.ReasoningOptions
-	for _, item := range runtimes.AvailableModels(environment.Detection, environment.CustomModels) {
+	for _, item := range runtimecontract.AvailableModels(environment.Detection, environment.CustomModels) {
 		if item.ID == model && len(item.ReasoningOptions) > 0 {
 			options = item.ReasoningOptions
 			break

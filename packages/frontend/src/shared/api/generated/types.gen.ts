@@ -4416,7 +4416,7 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
      * 可执行路径
      */
     binary?: string;
-    capabilities?: GithubComJieWaZiNeuxBotServerInternalRuntimesCapabilitySet & unknown;
+    capabilities?: GithubComJieWaZiNeuxBotServerInternalRuntimehostContractCapabilitySet & unknown;
     /**
      * 配置目录
      */
@@ -8300,7 +8300,7 @@ export type GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod = {
 /**
  * CapabilitySet 保存一次探测确认可用的 Runtime 能力。
  */
-export type GithubComJieWaZiNeuxBotServerInternalRuntimesCapabilitySet = {
+export type GithubComJieWaZiNeuxBotServerInternalRuntimehostContractCapabilitySet = {
     [key: string]: boolean;
 };
 
@@ -17831,35 +17831,6 @@ export type ListLibraryConnectorsData = {
     url: '/api/v1/connectors';
 };
 
-export type ListLibraryConnectorsErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type ListLibraryConnectorsError = ListLibraryConnectorsErrors[keyof ListLibraryConnectorsErrors];
-
 export type ListLibraryConnectorsResponses = {
     200: GithubComJieWaZiNeuxBotServerApisMcpListLibraryConnectorsResponse;
 };
@@ -17888,28 +17859,10 @@ export type CreateLibraryConnectorErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type CreateLibraryConnectorError = CreateLibraryConnectorErrors[keyof CreateLibraryConnectorErrors];
@@ -17980,34 +17933,10 @@ export type GetLibraryConnectorData = {
 export type GetLibraryConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type GetLibraryConnectorError = GetLibraryConnectorErrors[keyof GetLibraryConnectorErrors];
@@ -18045,29 +17974,11 @@ export type UpdateLibraryConnectorErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type UpdateLibraryConnectorError = UpdateLibraryConnectorErrors[keyof UpdateLibraryConnectorErrors];
@@ -18128,40 +18039,16 @@ export type TestLibraryConnectorData = {
 export type TestLibraryConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type TestLibraryConnectorError = TestLibraryConnectorErrors[keyof TestLibraryConnectorErrors];
@@ -28909,7 +28796,6 @@ export type GetCatalogPluginConnectorData = {
 export type GetCatalogPluginConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginContentLimitExceeded][40000006503]`
      * * `[PluginManifestInvalid][40000006501]`
@@ -28926,26 +28812,13 @@ export type GetCatalogPluginConnectorErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[PluginVersionConflict][40900006501]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
      * * `[PluginStorageError][50000006501]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
@@ -30279,7 +30152,6 @@ export type GetPluginConnectorData = {
 export type GetPluginConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginManifestInvalid][40000006501]`
      *
@@ -30293,28 +30165,10 @@ export type GetPluginConnectorErrors = {
     403: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[PluginVersionConflict][40900006501]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type GetPluginConnectorError = GetPluginConnectorErrors[keyof GetPluginConnectorErrors];
@@ -30379,7 +30233,6 @@ export type TestPluginConnectorErrors = {
     /**
      * >
      * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
      *
      */
     408: GithubComShrewxGinxPkgStatuserrorStatusErr;
@@ -30395,14 +30248,8 @@ export type TestPluginConnectorErrors = {
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
      * * `[MCPConnectorCredentialError][50000000022]`
      * * `[PluginStorageError][50000006501]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
@@ -34777,35 +34624,6 @@ export type ListWakerConnectorsData = {
     url: '/api/v1/wakers/{wakerId}/connectors';
 };
 
-export type ListWakerConnectorsErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type ListWakerConnectorsError = ListWakerConnectorsErrors[keyof ListWakerConnectorsErrors];
-
 export type ListWakerConnectorsResponses = {
     200: Array<GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse>;
 };
@@ -34839,28 +34657,10 @@ export type CreateWakerConnectorErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type CreateWakerConnectorError = CreateWakerConnectorErrors[keyof CreateWakerConnectorErrors];
@@ -34939,34 +34739,10 @@ export type GetWakerConnectorData = {
 export type GetWakerConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type GetWakerConnectorError = GetWakerConnectorErrors[keyof GetWakerConnectorErrors];
@@ -35008,29 +34784,11 @@ export type UpdateWakerConnectorErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type UpdateWakerConnectorError = UpdateWakerConnectorErrors[keyof UpdateWakerConnectorErrors];
@@ -35093,40 +34851,16 @@ export type TestWakerConnectorData = {
 export type TestWakerConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type TestWakerConnectorError = TestWakerConnectorErrors[keyof TestWakerConnectorErrors];

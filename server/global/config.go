@@ -2,6 +2,10 @@
 package global
 
 import (
+	workspace "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/workspace"
+
+	runtimecatalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -29,7 +33,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
@@ -128,8 +132,8 @@ var (
 	SkillControllerManager controllers.SkillController
 	// MCPConnectorControllerManager 提供共享连接器和伙伴关系持久化接口。
 	MCPConnectorControllerManager controllers.MCPConnectorController
-	// RuntimeSDK 提供 CLI Runtime 的探测、协议调用和进程治理。
-	RuntimeSDK *runtimes.SDK
+	// RuntimeCatalog 提供 CLI Runtime 的探测、协议调用和进程治理。
+	RuntimeCatalog *runtimecatalog.Catalog
 	// KnowledgeRuntimeHost 拥有知识结果调用及失败清理租约。
 	KnowledgeRuntimeHost *runtimehost.Host
 	// ChatRuntimeHost 拥有全部聊天及编排执行的原生会话和账号、能力资源租约。
@@ -441,18 +445,18 @@ func loadMemory(ctx context.Context, configuration *Configuration) error {
 
 // loadRuntime 装配 Runtime SDK 并启动设备级环境探测。
 func loadRuntime(ctx context.Context) error {
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := runtimecatalog.New(runtimecatalog.Config{})
 	if err != nil {
 		return mapCoreError("initialize_runtime_sdk", status_error.CoreRuntimeInitializationFailed, err)
 	}
-	RuntimeSDK = sdk
-	ChatRuntimeHost = runtimehost.NewChat(runtimehost.ChatConfig{Launch: RuntimeSDK.PrepareLaunch, PrepareWorkspace: RuntimeSDK.PrepareWorkspace, Runtimes: RuntimeSDK.Runtimes, Fork: RuntimeSDK.ForkSession})
+	RuntimeCatalog = sdk
+	ChatRuntimeHost = runtimehost.NewChat(runtimehost.ChatConfig{Launch: RuntimeCatalog.PrepareLaunch, PrepareWorkspace: workspace.New(RuntimeCatalog.Runtimes()).Prepare, Runtimes: RuntimeCatalog.Runtimes, Fork: RuntimeCatalog.ForkSession})
 	KnowledgeRuntimeHost = newKnowledgeRuntimeHost()
 	KnowledgeRuntimeHost.Start(ctx)
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
 		Accounts:                  AIAccountService,
 		AccountWorkspaceDirectory: filepath.Join(Config.DataDirectory, "account-workspaces"),
-		RuntimeSDK:                RuntimeSDK,
+		RuntimeCatalog:            RuntimeCatalog,
 		Environments:              RuntimeEnvironmentControllerManager,
 		Transactions:              TransactionControllerManager,
 		Events:                    EventHub,
@@ -704,20 +708,22 @@ func Close() error {
 		}
 		cancelClose()
 	}
-	if AIAccountService != nil {
-		AIAccountService.Close()
-		AIAccountService = nil
-	}
-	if RuntimeSDK != nil {
+	if RuntimeCatalog != nil {
 		closeContext, cancelClose := context.WithTimeout(
 			context.Background(),
 			5*time.Second,
 		)
-		if err := RuntimeSDK.Close(closeContext); err != nil {
-			result = mapCoreError("close_runtime_sdk", status_error.CoreShutdownFailed, err)
-		}
+		err := RuntimeCatalog.Close(closeContext)
 		cancelClose()
-		RuntimeSDK = nil
+		if err != nil {
+			logx.Errorf("core shutdown failed: component=runtime_catalog error=%v", err)
+			return status_error.CoreShutdownFailed
+		}
+		RuntimeCatalog = nil
+	}
+	if AIAccountService != nil {
+		AIAccountService.Close()
+		AIAccountService = nil
 	}
 	if KnowledgeEngine != nil {
 		if err := KnowledgeEngine.Close(); err != nil && result == nil {

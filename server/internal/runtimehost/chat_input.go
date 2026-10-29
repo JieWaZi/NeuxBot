@@ -11,16 +11,16 @@ import (
 	"strings"
 
 	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
+	"github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp/native"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimeauth"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
-	acpcodex "github.com/JieWaZi/acp-go/pkg/codex"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // chatSpec 将产品已冻结的输入和授权转换为无秘密的独立技术描述。
-func chatSpec(r runtimes.RunRequest) (c.ExecutionSpec, []c.ResourceBinding, error) {
+func chatSpec(r runtimecontract.RunRequest) (c.ExecutionSpec, []c.ResourceBinding, error) {
 	base := r.Detection.Runtime.BaseRuntimeID
 	if base == "" {
 		base = r.Detection.Runtime.ID
@@ -72,7 +72,7 @@ func chatSpec(r runtimes.RunRequest) (c.ExecutionSpec, []c.ResourceBinding, erro
 		version := sha256.Sum256(public)
 		spec.Contributions.MCP = append(spec.Contributions.MCP, c.MCP{Name: name, ResourceID: id, Version: hex.EncodeToString(version[:])})
 		transport := c.MCPTransport(connector.Transport)
-		if connector.Transport == runtimes.ConnectorTransportStreamableHTTP {
+		if connector.Transport == runtimecontract.ConnectorTransportStreamableHTTP {
 			transport = c.MCPHTTP
 		}
 		bindings = append(bindings, c.ResourceBinding{ID: id, MCP: &c.MCPConnection{Transport: transport, Command: connector.Command, Arguments: append([]string(nil), connector.Arguments...), Environment: connector.Environment, URL: connector.URL, Headers: connector.Headers}})
@@ -84,9 +84,9 @@ func chatSpec(r runtimes.RunRequest) (c.ExecutionSpec, []c.ResourceBinding, erro
 		var commands []string
 		for _, skill := range spec.Input.SelectedSkills {
 			switch base {
-			case runtimes.RuntimeIDCodex:
+			case runtimecontract.RuntimeIDCodex:
 				commands = append(commands, "$"+skill)
-			case runtimes.RuntimeIDKimi, runtimes.RuntimeIDPi:
+			case runtimecontract.RuntimeIDKimi, runtimecontract.RuntimeIDPi:
 				commands = append(commands, "/skill:"+skill)
 			default:
 				commands = append(commands, "/"+skill)
@@ -97,11 +97,11 @@ func chatSpec(r runtimes.RunRequest) (c.ExecutionSpec, []c.ResourceBinding, erro
 	return spec, bindings, nil
 }
 
-func chatNativeMode(base string, policy runtimes.ExecutionPolicy) (string, error) {
+func chatNativeMode(base string, policy runtimecontract.ExecutionPolicy) (string, error) {
 	readonly := policy.WorkspaceReadOnly
-	full, automatic := policy.PermissionLevel == runtimes.PermissionLevelFullAccess, policy.PermissionLevel == runtimes.PermissionLevelAuto
+	full, automatic := policy.PermissionLevel == runtimecontract.PermissionLevelFullAccess, policy.PermissionLevel == runtimecontract.PermissionLevelAuto
 	switch base {
-	case runtimes.RuntimeIDCodex:
+	case runtimecontract.RuntimeIDCodex:
 		if readonly || !full && !automatic {
 			return "read-only", nil
 		}
@@ -109,7 +109,7 @@ func chatNativeMode(base string, policy runtimes.ExecutionPolicy) (string, error
 			return "agent-full-access", nil
 		}
 		return "agent", nil
-	case runtimes.RuntimeIDClaude:
+	case runtimecontract.RuntimeIDClaude:
 		if readonly || !full && !automatic {
 			return "default", nil
 		}
@@ -117,22 +117,22 @@ func chatNativeMode(base string, policy runtimes.ExecutionPolicy) (string, error
 			return "bypassPermissions", nil
 		}
 		return "auto", nil
-	case runtimes.RuntimeIDKimi:
+	case runtimecontract.RuntimeIDKimi:
 		if readonly {
 			return "plan", nil
 		}
 		return "", nil
-	case runtimes.RuntimeIDCursor:
+	case runtimecontract.RuntimeIDCursor:
 		if readonly {
 			return "plan", nil
 		}
 		return "agent", nil
-	case runtimes.RuntimeIDGemini:
+	case runtimecontract.RuntimeIDGemini:
 		if full && !readonly {
 			return "yolo", nil
 		}
 		return "default", nil
-	case runtimes.RuntimeIDWorkBuddy:
+	case runtimecontract.RuntimeIDWorkBuddy:
 		if readonly {
 			return "plan", nil
 		}
@@ -143,12 +143,12 @@ func chatNativeMode(base string, policy runtimes.ExecutionPolicy) (string, error
 			return "auto", nil
 		}
 		return "default", nil
-	case runtimes.RuntimeIDQoder, runtimes.RuntimeIDQoderCN:
+	case runtimecontract.RuntimeIDQoder, runtimecontract.RuntimeIDQoderCN:
 		if readonly {
 			return "", status_error.RuntimePolicyUnsupported
 		}
 		return "", nil
-	case runtimes.RuntimeIDPi, runtimes.RuntimeIDOpenCode, runtimes.RuntimeIDGrok:
+	case runtimecontract.RuntimeIDPi, runtimecontract.RuntimeIDOpenCode, runtimecontract.RuntimeIDGrok:
 		if readonly {
 			return "", status_error.RuntimePolicyUnsupported
 		}
@@ -158,24 +158,24 @@ func chatNativeMode(base string, policy runtimes.ExecutionPolicy) (string, error
 	}
 }
 
-func chatModeCandidates(base string, policy runtimes.ExecutionPolicy) []string {
-	if base == runtimes.RuntimeIDKimi {
+func chatModeCandidates(base string, policy runtimecontract.ExecutionPolicy) []string {
+	if base == runtimecontract.RuntimeIDKimi {
 		if policy.WorkspaceReadOnly {
 			return []string{"plan"}
 		}
-		if policy.PermissionLevel == runtimes.PermissionLevelFullAccess {
+		if policy.PermissionLevel == runtimecontract.PermissionLevelFullAccess {
 			return []string{"yolo"}
 		}
-		if policy.PermissionLevel == runtimes.PermissionLevelAuto {
+		if policy.PermissionLevel == runtimecontract.PermissionLevelAuto {
 			return []string{"auto"}
 		}
 		return []string{"default"}
 	}
-	if base == runtimes.RuntimeIDQoder || base == runtimes.RuntimeIDQoderCN {
-		if policy.PermissionLevel == runtimes.PermissionLevelFullAccess {
+	if base == runtimecontract.RuntimeIDQoder || base == runtimecontract.RuntimeIDQoderCN {
+		if policy.PermissionLevel == runtimecontract.PermissionLevelFullAccess {
 			return []string{constants.RuntimeQoderYoloModeID, constants.RuntimeQoderBypassModeID}
 		}
-		if policy.PermissionLevel == runtimes.PermissionLevelAuto {
+		if policy.PermissionLevel == runtimecontract.PermissionLevelAuto {
 			return []string{constants.RuntimeQoderAutoModeID}
 		}
 		return []string{constants.RuntimeQoderDefaultModeID}
@@ -224,10 +224,10 @@ func (p *chatCredentials) Close(ctx context.Context) error {
 	}
 	return nil
 }
-func (p *chatCredentials) agent(ctx context.Context, request c.OpenRequest, permission runtimes.PermissionLevel) (acp.Agent, error) {
+func (p *chatCredentials) agent(ctx context.Context, request c.OpenRequest, permission runtimecontract.PermissionLevel) (acp.Agent, error) {
 	owner := p.provider
 	values := request.Credential.Environment
-	if owner.environment.BaseRuntimeID != runtimes.RuntimeIDCodex {
+	if owner.environment.BaseRuntimeID != runtimecontract.RuntimeIDCodex {
 		return owner.nativeAgentWithPermission(ctx, request, values, permission)
 	}
 	refresh := owner.target.RefreshCredentials
@@ -259,5 +259,5 @@ func (p *chatCredentials) agent(ctx context.Context, request c.OpenRequest, perm
 	for _, key := range keys {
 		args = append(args, "-c", key+"="+owner.target.CodexPluginConfiguration[key])
 	}
-	return acpcodex.NewAgent(ctx, acpcodex.Config{Logger: slog.Default(), CodexPath: owner.launch.Executable, PrefixArgs: args, Environment: environmentList(values), DefaultModeRequestUserInput: constants.RuntimeCodexDefaultModeRequestUserInput})
+	return native.New(ctx, native.Config{RuntimeID: owner.environment.BaseRuntimeID, Logger: slog.Default(), Executable: owner.launch.Executable, PrefixArgs: args, Environment: environmentList(values), DefaultModeRequestUserInput: constants.RuntimeCodexDefaultModeRequestUserInput})
 }

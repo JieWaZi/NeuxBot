@@ -11,18 +11,18 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // runtimeFailureRetryable 只允许明确的短暂拒绝，任何已观察输出、工具或未知会话均阻止重放。
-func runtimeFailureRetryable(result runtimes.Result) bool {
+func runtimeFailureRetryable(result runtimecontract.Result) bool {
 	if result.Failure == nil || result.SideEffects.Any() || result.Failure.SideEffects.Any() ||
 		result.UndeliveredEvents != 0 || result.UndeliveredBytes != 0 {
 		return false
 	}
-	if result.Failure.Code != runtimes.FailureCodeRateLimited &&
-		result.Failure.Code != runtimes.FailureCodeUpstreamUnavailable {
+	if result.Failure.Code != runtimecontract.FailureCodeRateLimited &&
+		result.Failure.Code != runtimecontract.FailureCodeUpstreamUnavailable {
 		return false
 	}
 	return strings.TrimSpace(reliableRuntimeSessionID(result)) != ""

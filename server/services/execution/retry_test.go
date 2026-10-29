@@ -15,7 +15,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -27,23 +27,25 @@ type retryTestRuntime struct {
 	// mutex 保护并发运行和测试读取的请求集合。
 	mutex sync.Mutex
 	// requests 保存真正交给 Runtime 的输入。
-	requests []runtimes.RunRequest
+	requests []runtimecontract.RunRequest
 	// result 是每个回合返回的失败事实。
-	result runtimes.Result
+	result runtimecontract.Result
 	// output 是可选的已观察正文，用于证明不能仅相信失败标签。
 	output string
 	// tool 表示 Runtime 已交付工具调用，但测试故意省略结果中的副作用标记。
 	tool bool
 }
 
-func (r *retryTestRuntime) Runtimes() []runtimes.RuntimeSummary { return (&fakeRuntime{}).Runtimes() }
+func (r *retryTestRuntime) Runtimes() []runtimecontract.RuntimeSummary {
+	return (&fakeRuntime{}).Runtimes()
+}
 
 // ForkSession 保持测试替身与当前 Runtime 契约一致；重试用例不调用分叉。
-func (r *retryTestRuntime) ForkSession(ctx context.Context, request runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error) {
+func (r *retryTestRuntime) ForkSession(ctx context.Context, request runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
 	return (&fakeRuntime{}).ForkSession(ctx, request)
 }
 
-func (r *retryTestRuntime) RunWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+func (r *retryTestRuntime) RunWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
 	if release != nil {
 		defer func() { _ = release(context.WithoutCancel(ctx)) }()
 	}
@@ -52,26 +54,26 @@ func (r *retryTestRuntime) RunWithLease(ctx context.Context, request runtimes.Ru
 	result, output, tool := r.result, r.output, r.tool
 	r.mutex.Unlock()
 	id := util.New()
-	if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeInvocationStarted, Data: marshalData(runtimes.InvocationStartedData{InvocationID: id})}); err != nil {
-		return runtimes.Result{Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery}}
+	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: marshalData(runtimecontract.InvocationStartedData{InvocationID: id})}); err != nil {
+		return runtimecontract.Result{Failure: &runtimecontract.Failure{Code: runtimecontract.FailureCodeEventDelivery}}
 	}
 	if output != "" {
-		if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: marshalData(map[string]string{"text": output})}); err != nil {
-			return runtimes.Result{Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery}}
+		if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: marshalData(map[string]string{"text": output})}); err != nil {
+			return runtimecontract.Result{Failure: &runtimecontract.Failure{Code: runtimecontract.FailureCodeEventDelivery}}
 		}
 	}
 	if tool {
-		if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"id": "tool-1", "name": "Bash"})}); err != nil {
-			return runtimes.Result{Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery}}
+		if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"id": "tool-1", "name": "Bash"})}); err != nil {
+			return runtimecontract.Result{Failure: &runtimecontract.Failure{Code: runtimecontract.FailureCodeEventDelivery}}
 		}
 	}
-	result.Facts = runtimes.InvocationFacts{InvocationID: id, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: runtimes.RuntimeIDCodex}
+	result.Facts = runtimecontract.InvocationFacts{InvocationID: id, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: runtimecontract.RuntimeIDCodex}
 	result.Session.Mode = request.Session.Mode
 	return result
 }
 
 // RunSummaryWithLease 通过同一测试宿主执行隐藏会话交接并结束资源使用。
-func (r *retryTestRuntime) RunSummaryWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+func (r *retryTestRuntime) RunSummaryWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
 	return r.RunWithLease(ctx, request, sink, release)
 }
 
@@ -79,14 +81,14 @@ func (r *retryTestRuntime) RunSummaryWithLease(ctx context.Context, request runt
 func (r *retryTestRuntime) CloseWorkspace(context.Context, string) error { return nil }
 
 // retryableTestResult 构造无输出、无工具且保留可靠会话的限流终态。
-func retryableTestResult() runtimes.Result {
-	return runtimes.Result{ExitCode: -1, Session: runtimes.SessionResult{OutputID: "native-session", State: runtimes.SessionStateCreated}, Failure: &runtimes.Failure{Code: runtimes.FailureCodeRateLimited, Transience: runtimes.FailureTransienceTransient}}
+func retryableTestResult() runtimecontract.Result {
+	return runtimecontract.Result{ExitCode: -1, Session: runtimecontract.SessionResult{OutputID: "native-session", State: runtimecontract.SessionStateCreated}, Failure: &runtimecontract.Failure{Code: runtimecontract.FailureCodeRateLimited, Transience: runtimecontract.FailureTransienceTransient}}
 }
 
 // retryTestIntent 构造直接来自用户且可进入重试流程的原始输入。
 func retryTestIntent(t *testing.T) WorkIntent {
 	t.Helper()
-	return WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "原始问题"}, Options: WorkOptions{RuntimeID: runtimes.RuntimeIDCodex, Model: "gpt-5", Reasoning: "high", PermissionLevel: runtimes.PermissionLevelFullAccess, WorkspaceReadOnly: true, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+	return WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "原始问题"}, Options: WorkOptions{RuntimeID: runtimecontract.RuntimeIDCodex, Model: "gpt-5", Reasoning: "high", PermissionLevel: runtimecontract.PermissionLevelFullAccess, WorkspaceReadOnly: true, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 }
 
 // retryTestStart 提交并等待原始失败完全释放执行占位。
@@ -119,19 +121,19 @@ func TestRuntimeFailureRetryableRequiresSafeReplay(t *testing.T) {
 		// name 描述导致不安全重放的条件。
 		name string
 		// change 注入单一风险信号。
-		change func(*runtimes.Result)
+		change func(*runtimecontract.Result)
 	}{
-		{"visible output", func(r *runtimes.Result) { r.SideEffects.VisibleOutput = true }},
-		{"reasoning", func(r *runtimes.Result) { r.SideEffects.ReasoningOutput = true }},
-		{"tool", func(r *runtimes.Result) { r.Failure.SideEffects.ToolUse = true }},
-		{"write", func(r *runtimes.Result) { r.SideEffects.FileWrite = true }},
-		{"artifact", func(r *runtimes.Result) { r.SideEffects.Artifact = true }},
-		{"unknown session", func(r *runtimes.Result) { r.Session.State = runtimes.SessionStateUnknown }},
-		{"missing session", func(r *runtimes.Result) { r.Session.OutputID = "" }},
-		{"quota", func(r *runtimes.Result) { r.Failure.Code = runtimes.FailureCodeQuotaExhausted }},
-		{"auth", func(r *runtimes.Result) { r.Failure.Code = runtimes.FailureCodeAuthRequired }},
-		{"undelivered events", func(r *runtimes.Result) { r.UndeliveredEvents = 1 }},
-		{"undelivered bytes", func(r *runtimes.Result) { r.UndeliveredBytes = 1 }},
+		{"visible output", func(r *runtimecontract.Result) { r.SideEffects.VisibleOutput = true }},
+		{"reasoning", func(r *runtimecontract.Result) { r.SideEffects.ReasoningOutput = true }},
+		{"tool", func(r *runtimecontract.Result) { r.Failure.SideEffects.ToolUse = true }},
+		{"write", func(r *runtimecontract.Result) { r.SideEffects.FileWrite = true }},
+		{"artifact", func(r *runtimecontract.Result) { r.SideEffects.Artifact = true }},
+		{"unknown session", func(r *runtimecontract.Result) { r.Session.State = runtimecontract.SessionStateUnknown }},
+		{"missing session", func(r *runtimecontract.Result) { r.Session.OutputID = "" }},
+		{"quota", func(r *runtimecontract.Result) { r.Failure.Code = runtimecontract.FailureCodeQuotaExhausted }},
+		{"auth", func(r *runtimecontract.Result) { r.Failure.Code = runtimecontract.FailureCodeAuthRequired }},
+		{"undelivered events", func(r *runtimecontract.Result) { r.UndeliveredEvents = 1 }},
+		{"undelivered bytes", func(r *runtimecontract.Result) { r.UndeliveredBytes = 1 }},
 	}
 	if !runtimeFailureRetryable(retryableTestResult()) {
 		t.Fatal("可靠限流未允许重试")
@@ -188,7 +190,7 @@ func TestRetryExecutionRestoresInputAndHasStableChild(t *testing.T) {
 		t.Fatalf("重试不幂等：%+v %v", repeated, err)
 	}
 	runner.mutex.Lock()
-	requests := append([]runtimes.RunRequest(nil), runner.requests...)
+	requests := append([]runtimecontract.RunRequest(nil), runner.requests...)
 	runner.mutex.Unlock()
 	if len(requests) != 2 {
 		t.Fatalf("重复派发：%d", len(requests))
@@ -197,7 +199,7 @@ func TestRetryExecutionRestoresInputAndHasStableChild(t *testing.T) {
 	if second.Message.Text != first.Message.Text || !reflect.DeepEqual(second.Message.CodeReferences, first.Message.CodeReferences) || !reflect.DeepEqual(second.Skills, first.Skills) || !reflect.DeepEqual(second.Connectors, first.Connectors) || !reflect.DeepEqual(second.Policy, first.Policy) {
 		t.Fatalf("重试改变了输入选项：\nfirst=%+v\nsecond=%+v", first, second)
 	}
-	if second.Session.Mode != runtimes.SessionModeResume || second.Session.ID != "native-session" {
+	if second.Session.Mode != runtimecontract.SessionModeResume || second.Session.ID != "native-session" {
 		t.Fatalf("重试重新播种了会话：%+v", second.Session)
 	}
 	if len(second.Message.Attachments) != 1 {
@@ -223,7 +225,7 @@ func TestRetryExecutionRejectsOutputAndClearedSession(t *testing.T) {
 			original := retryTestStart(t, manager, retryTestIntent(t))
 			core := manager.execution.(*service)
 			if condition == "cleared session" {
-				if _, err := core.journal.AppendExecutionFacts(context.Background(), original.Chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeNativeSessionCleared, ExecutionID: original.Execution.ID, Data: marshalData(eventlog.RuntimeSessionData{RuntimeID: runtimes.RuntimeIDCodex})}}); err != nil {
+				if _, err := core.journal.AppendExecutionFacts(context.Background(), original.Chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeNativeSessionCleared, ExecutionID: original.Execution.ID, Data: marshalData(eventlog.RuntimeSessionData{RuntimeID: runtimecontract.RuntimeIDCodex})}}); err != nil {
 					t.Fatal(err)
 				}
 			}

@@ -7,7 +7,7 @@ import (
 
 	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
@@ -57,8 +57,8 @@ func TestChatToolContentKeepsPublicPayloadAndEmptyReplacement(t *testing.T) {
 
 func TestChatCursorUpgradeClassification(t *testing.T) {
 	err := acp.NewInternalError(map[string]any{"cursorErrorCode": "upgrade"})
-	result := chatResult(runtimes.RunRequest{Detection: runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: runtimes.RuntimeIDCursor}}}, c.Result{Status: c.StatusFailed, Fault: &c.Fault{Code: c.FaultDriver, Cause: err}}, &chatObserver{})
-	if result.Failure == nil || result.Failure.Code != runtimes.FailureCodePlanUpgradeRequired {
+	result := chatResult(runtimecontract.RunRequest{Detection: runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{BaseRuntimeID: runtimecontract.RuntimeIDCursor}}}, c.Result{Status: c.StatusFailed, Fault: &c.Fault{Code: c.FaultDriver, Cause: err}}, &chatObserver{})
+	if result.Failure == nil || result.Failure.Code != runtimecontract.FailureCodePlanUpgradeRequired {
 		t.Fatalf("lost native upgrade classification: %+v", result)
 	}
 }
@@ -66,8 +66,8 @@ func TestChatCursorUpgradeClassification(t *testing.T) {
 // usageFailureSink 只拒绝最终用量，验证交付失败保留已经执行的事实。
 type usageFailureSink struct{}
 
-func (usageFailureSink) Accept(_ context.Context, event runtimes.Event) error {
-	if event.Type == runtimes.EventTypeUsage {
+func (usageFailureSink) Accept(_ context.Context, event runtimecontract.Event) error {
+	if event.Type == runtimecontract.EventTypeUsage {
 		return status_error.ChatLogError
 	}
 	return nil
@@ -77,7 +77,7 @@ func TestChatFinalUsageDeliveryFailureDoesNotReplayPrompt(t *testing.T) {
 	driver := &chatDriverFixture{result: &c.DriverResult{Status: c.StatusCompleted, StopReason: c.StopEndTurn, Usage: c.Usage{Known: true, InputTokens: 1}}}
 	host, request := chatFixture(t, driver)
 	result := host.Run(context.Background(), request, usageFailureSink{})
-	if result.Failure == nil || result.Failure.Code != runtimes.FailureCodeEventDelivery || !result.ProtocolHealthy || len(driver.turns) != 1 {
+	if result.Failure == nil || result.Failure.Code != runtimecontract.FailureCodeEventDelivery || !result.ProtocolHealthy || len(driver.turns) != 1 {
 		t.Fatalf("delivery failure lost execution or replayed: %+v turns=%d", result, len(driver.turns))
 	}
 }
@@ -86,7 +86,7 @@ func TestChatNativeCancellationReachesProductResult(t *testing.T) {
 	driver := &chatDriverFixture{result: &c.DriverResult{Status: c.StatusCancelled, StopReason: c.StopCancelled}}
 	host, request := chatFixture(t, driver)
 	result := host.Run(context.Background(), request, &chatSinkFixture{})
-	if result.Failure == nil || result.Failure.Code != runtimes.FailureCodeContextCanceled || result.ExitCode == 0 {
+	if result.Failure == nil || result.Failure.Code != runtimecontract.FailureCodeContextCanceled || result.ExitCode == 0 {
 		t.Fatalf("native cancelled became successful: %+v", result)
 	}
 }

@@ -6868,51 +6868,6 @@
                 }
               }
             }
-          },
-          "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[BadRequest][40000000001]"
-            ]
-          },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
-            ]
           }
         }
       },
@@ -6978,20 +6933,6 @@
               "[MCPConnectorNotFound][40400000009]"
             ]
           },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
           "409": {
             "description": ">\n* `[MCPConnectorTrustRequired][40900000013]`\n",
             "content": {
@@ -7003,24 +6944,6 @@
             },
             "x-status-errors": [
               "[MCPConnectorTrustRequired][40900000013]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
             ]
           }
         }
@@ -7147,19 +7070,6 @@
               }
             }
           },
-          "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[BadRequest][40000000001]"
-            ]
-          },
           "404": {
             "description": ">\n* `[MCPConnectorNotFound][40400000009]`\n",
             "content": {
@@ -7171,38 +7081,6 @@
             },
             "x-status-errors": [
               "[MCPConnectorNotFound][40400000009]"
-            ]
-          },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
             ]
           }
         }
@@ -7285,20 +7163,6 @@
               "[MCPConnectorNotFound][40400000009]"
             ]
           },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
           "409": {
             "description": ">\n* `[BuiltInMCPConnectorReadOnly][40900000012]`\n* `[MCPConnectorTrustRequired][40900000013]`\n",
             "content": {
@@ -7311,24 +7175,6 @@
             "x-status-errors": [
               "[BuiltInMCPConnectorReadOnly][40900000012]",
               "[MCPConnectorTrustRequired][40900000013]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
             ]
           }
         }
@@ -7450,19 +7296,6 @@
               }
             }
           },
-          "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[BadRequest][40000000001]"
-            ]
-          },
           "404": {
             "description": ">\n* `[MCPConnectorNotFound][40400000009]`\n",
             "content": {
@@ -7476,20 +7309,6 @@
               "[MCPConnectorNotFound][40400000009]"
             ]
           },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
           "409": {
             "description": ">\n* `[MCPConnectorTrustRequired][40900000013]`\n",
             "content": {
@@ -7501,24 +7320,6 @@
             },
             "x-status-errors": [
               "[MCPConnectorTrustRequired][40900000013]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
             ]
           }
         }
@@ -29199,7 +29000,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n",
+            "description": ">\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -29208,7 +29009,6 @@
               }
             },
             "x-status-errors": [
-              "[BadRequest][40000000001]",
               "[PluginContentInvalid][40000006502]",
               "[PluginContentLimitExceeded][40000006503]",
               "[PluginManifestInvalid][40000006501]",
@@ -29229,20 +29029,6 @@
               "[PluginNotFound][40400006501]"
             ]
           },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
           "409": {
             "description": ">\n* `[PluginVersionConflict][40900006501]`\n",
             "content": {
@@ -29257,7 +29043,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[PluginStorageError][50000006501]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillUnavailable][50000000008]`\n",
+            "description": ">\n* `[PluginStorageError][50000006501]`\n* `[SkillUnavailable][50000000008]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -29266,13 +29052,7 @@
               }
             },
             "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
               "[PluginStorageError][50000006501]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]",
               "[SkillUnavailable][50000000008]"
             ]
           },
@@ -31578,7 +31358,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
+            "description": ">\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -31587,7 +31367,6 @@
               }
             },
             "x-status-errors": [
-              "[BadRequest][40000000001]",
               "[PluginContentInvalid][40000006502]",
               "[PluginManifestInvalid][40000006501]"
             ]
@@ -31605,20 +31384,6 @@
               "[PluginForbidden][40300006501]"
             ]
           },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
           "409": {
             "description": ">\n* `[PluginVersionConflict][40900006501]`\n",
             "content": {
@@ -31630,24 +31395,6 @@
             },
             "x-status-errors": [
               "[PluginVersionConflict][40900006501]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
             ]
           }
         }
@@ -31783,7 +31530,7 @@
             ]
           },
           "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
+            "description": ">\n* `[OperationCanceled][40800000001]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -31792,8 +31539,7 @@
               }
             },
             "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
+              "[OperationCanceled][40800000001]"
             ]
           },
           "409": {
@@ -31814,7 +31560,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[PluginStorageError][50000006501]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillUnavailable][50000000008]`\n",
+            "description": ">\n* `[MCPConnectorCredentialError][50000000022]`\n* `[PluginStorageError][50000006501]`\n* `[SkillUnavailable][50000000008]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -31823,14 +31569,8 @@
               }
             },
             "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
               "[MCPConnectorCredentialError][50000000022]",
               "[PluginStorageError][50000006501]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]",
               "[SkillUnavailable][50000000008]"
             ]
           },
@@ -38968,51 +38708,6 @@
                 }
               }
             }
-          },
-          "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[BadRequest][40000000001]"
-            ]
-          },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
-            ]
           }
         }
       },
@@ -39094,20 +38789,6 @@
               "[MCPConnectorNotFound][40400000009]"
             ]
           },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
           "409": {
             "description": ">\n* `[MCPConnectorTrustRequired][40900000013]`\n",
             "content": {
@@ -39119,24 +38800,6 @@
             },
             "x-status-errors": [
               "[MCPConnectorTrustRequired][40900000013]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
             ]
           }
         }
@@ -39291,19 +38954,6 @@
               }
             }
           },
-          "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[BadRequest][40000000001]"
-            ]
-          },
           "404": {
             "description": ">\n* `[MCPConnectorNotFound][40400000009]`\n",
             "content": {
@@ -39315,38 +38965,6 @@
             },
             "x-status-errors": [
               "[MCPConnectorNotFound][40400000009]"
-            ]
-          },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
             ]
           }
         }
@@ -39443,20 +39061,6 @@
               "[MCPConnectorNotFound][40400000009]"
             ]
           },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
           "409": {
             "description": ">\n* `[BuiltInMCPConnectorReadOnly][40900000012]`\n* `[MCPConnectorTrustRequired][40900000013]`\n",
             "content": {
@@ -39469,24 +39073,6 @@
             "x-status-errors": [
               "[BuiltInMCPConnectorReadOnly][40900000012]",
               "[MCPConnectorTrustRequired][40900000013]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
             ]
           }
         }
@@ -39623,19 +39209,6 @@
               }
             }
           },
-          "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[BadRequest][40000000001]"
-            ]
-          },
           "404": {
             "description": ">\n* `[MCPConnectorNotFound][40400000009]`\n",
             "content": {
@@ -39649,20 +39222,6 @@
               "[MCPConnectorNotFound][40400000009]"
             ]
           },
-          "408": {
-            "description": ">\n* `[OperationCanceled][40800000001]`\n* `[OperationTimeout][40800000002]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[OperationCanceled][40800000001]",
-              "[OperationTimeout][40800000002]"
-            ]
-          },
           "409": {
             "description": ">\n* `[MCPConnectorTrustRequired][40900000013]`\n",
             "content": {
@@ -39674,24 +39233,6 @@
             },
             "x-status-errors": [
               "[MCPConnectorTrustRequired][40900000013]"
-            ]
-          },
-          "500": {
-            "description": ">\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeUnavailable][50000000006]`\n",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
-                }
-              }
-            },
-            "x-status-errors": [
-              "[AIAccountLoginFailed][50000000048]",
-              "[AIAccountWorkspaceError][50000000047]",
-              "[RuntimeAuthRequired][50000000044]",
-              "[RuntimeConfigurationInvalid][50000000040]",
-              "[RuntimeProtocolIncompatible][50000000012]",
-              "[RuntimeUnavailable][50000000006]"
             ]
           }
         }
@@ -58616,7 +58157,7 @@
           "capabilities": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalRuntimesCapabilitySet"
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalRuntimehostContractCapabilitySet"
               },
               {
                 "description": "探测能力",
@@ -65316,7 +64857,7 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/profile.WorkMethod"
       },
-      "GithubComJieWaZiNeuxBotServerInternalRuntimesCapabilitySet": {
+      "GithubComJieWaZiNeuxBotServerInternalRuntimehostContractCapabilitySet": {
         "type": "object",
         "additionalProperties": {
           "type": "boolean"
@@ -65325,8 +64866,8 @@
           "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability"
         },
         "description": "CapabilitySet 保存一次探测确认可用的 Runtime 能力。",
-        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalRuntimesCapabilitySet",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/runtimes.CapabilitySet"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalRuntimehostContractCapabilitySet",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract.CapabilitySet"
       },
       "GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration": {
         "type": "object",

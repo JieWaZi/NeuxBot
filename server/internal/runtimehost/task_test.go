@@ -11,7 +11,7 @@ import (
 	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	acpdriver "github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 // taskResourceFixture 核验任务资源与短期授权拥有不同释放边界。
@@ -66,7 +66,7 @@ func (d *taskDriverFixture) Close(ctx context.Context) error {
 func TestTaskResourcesAndAccountRemainOwnedUntilNativeClose(t *testing.T) {
 	resources := &taskResourceFixture{}
 	driver := &taskDriverFixture{driverFixture: &driverFixture{id: "custom-codex"}, resources: resources, t: t}
-	host, released := hostFixture(t, runtimes.RuntimeIDCodex, driver.driverFixture)
+	host, released := hostFixture(t, runtimecontract.RuntimeIDCodex, driver.driverFixture)
 	host.config.Driver = func(Environment, acpdriver.Factory) (c.Driver, error) { return driver, nil }
 	result, err := host.ExecuteTask(context.Background(), TaskRequest{TextRequest: TextRequest{RuntimeID: driver.id, AccountID: "account", Messages: []Message{{Role: "user", Content: "maintain"}}}, Contributions: c.Contributions{Instructions: []c.Instruction{{Name: "wiki", Text: "task rules"}}, Skills: []c.Skill{{Name: "ally", ResourceID: "ally"}}}, Resources: resources})
 	if err != nil || result.Text != "trusted final" || resources.acquired != 1 || resources.closed != 0 || *released != 0 || !resources.revoked.Load() {
@@ -93,7 +93,7 @@ func TestTaskResourcesAndAccountRemainOwnedUntilNativeClose(t *testing.T) {
 func TestTaskCancellationRevokesBeforeFailedNativeClose(t *testing.T) {
 	resources := &taskResourceFixture{}
 	driver := &taskDriverFixture{driverFixture: &driverFixture{id: "custom-codex", entered: make(chan struct{})}, resources: resources, t: t}
-	host, released := hostFixture(t, runtimes.RuntimeIDCodex, driver.driverFixture)
+	host, released := hostFixture(t, runtimecontract.RuntimeIDCodex, driver.driverFixture)
 	host.config.Driver = func(Environment, acpdriver.Factory) (c.Driver, error) { return driver, nil }
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -137,7 +137,7 @@ func TestCredentialCleanupDoesNotRepeatSuccessfulAccountRelease(t *testing.T) {
 func TestTaskOpenFailureRevokesAndRetainsReturnedSession(t *testing.T) {
 	resources := &taskResourceFixture{}
 	driver := &taskDriverFixture{driverFixture: &driverFixture{id: "custom-codex"}, resources: resources, t: t, openError: status_error.RuntimeProtocolIncompatible}
-	host, released := hostFixture(t, runtimes.RuntimeIDCodex, driver.driverFixture)
+	host, released := hostFixture(t, runtimecontract.RuntimeIDCodex, driver.driverFixture)
 	host.config.Driver = func(Environment, acpdriver.Factory) (c.Driver, error) { return driver, nil }
 	_, err := host.ExecuteTask(context.Background(), TaskRequest{TextRequest: TextRequest{RuntimeID: driver.id, Messages: []Message{{Role: "user", Content: "maintain"}}}, Resources: resources})
 	if !errors.Is(err, status_error.RuntimeProtocolIncompatible) || !resources.revoked.Load() || resources.closed != 0 || *released != 0 || driver.promptCalls != 0 {

@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -88,7 +88,7 @@ func TestChatAccountSelectionUsesAccountModels(t *testing.T) {
 	if strings.Contains(string(data), "private-key") {
 		t.Fatal("execution leaked account secret")
 	}
-	if runtime.requests[0].Session.Mode != runtimes.SessionModeNew {
+	if runtime.requests[0].Session.Mode != runtimecontract.SessionModeNew {
 		t.Fatal("new chat changed session mode")
 	}
 }
@@ -159,12 +159,12 @@ type accountRuntime struct {
 }
 
 // Runtimes 允许契约测试跨 Codex 与 Claude 切换。
-func (r *accountRuntime) Runtimes() []runtimes.RuntimeSummary {
+func (r *accountRuntime) Runtimes() []runtimecontract.RuntimeSummary {
 	entries := r.fakeRuntime.Runtimes()
-	entries = append(entries, runtimes.RuntimeSummary{ID: constants.RuntimeIDClaude, BaseRuntimeID: constants.RuntimeIDClaude, InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"})
+	entries = append(entries, runtimecontract.RuntimeSummary{ID: constants.RuntimeIDClaude, BaseRuntimeID: constants.RuntimeIDClaude, InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"})
 	entries = append(entries,
-		runtimes.RuntimeSummary{ID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
-		runtimes.RuntimeSummary{ID: constants.RuntimeIDKimi, BaseRuntimeID: constants.RuntimeIDKimi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
+		runtimecontract.RuntimeSummary{ID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
+		runtimecontract.RuntimeSummary{ID: constants.RuntimeIDKimi, BaseRuntimeID: constants.RuntimeIDKimi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
 	)
 	return entries
 }

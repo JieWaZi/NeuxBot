@@ -15,20 +15,20 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // ChatConfig 注入聊天与编排共用的启动事实、目录资源及独立原生分叉能力。
 type ChatConfig struct {
 	// PrepareWorkspace 只物化受管原生指令与技能，不提交输入或创建进程。
-	PrepareWorkspace func(runtimes.RunRequest) error
+	PrepareWorkspace func(runtimecontract.RunRequest) error
 	// Launch 从已有探测与账号快照生成启动事实，不执行模型请求。
-	Launch func(runtimes.RuntimeTarget, runtimes.DetectionResult) (runtimes.LaunchFacts, error)
+	Launch func(runtimecontract.RuntimeTarget, runtimecontract.DetectionResult) (runtimecontract.LaunchFacts, error)
 	// Runtimes 返回当前已注册的CLI目录声明。
-	Runtimes func() []runtimes.RuntimeSummary
+	Runtimes func() []runtimecontract.RuntimeSummary
 	// Fork 是已有独立原生分叉操作，不参与普通聊天Run。
-	Fork func(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error)
+	Fork func(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error)
 	// Driver 允许测试替换公开原生协议边界。
 	Driver func(Environment, acpdriver.Factory) (c.Driver, error)
 }
@@ -64,7 +64,7 @@ func NewChat(config ChatConfig) *ChatHost {
 }
 
 // Runtimes 返回宿主已经注册的目录声明。
-func (h *ChatHost) Runtimes() []runtimes.RuntimeSummary {
+func (h *ChatHost) Runtimes() []runtimecontract.RuntimeSummary {
 	if h.config.Runtimes == nil {
 		return nil
 	}
@@ -72,21 +72,21 @@ func (h *ChatHost) Runtimes() []runtimes.RuntimeSummary {
 }
 
 // ForkSession 调用独立原生分叉端口；源会话由业务预检关闭，不提交模型输入。
-func (h *ChatHost) ForkSession(ctx context.Context, r runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error) {
+func (h *ChatHost) ForkSession(ctx context.Context, r runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
 	if h.config.Fork == nil {
-		return runtimes.ForkSessionResult{}, status_error.RuntimePolicyUnsupported
+		return runtimecontract.ForkSessionResult{}, status_error.RuntimePolicyUnsupported
 	}
 	return h.config.Fork(ctx, r)
 }
 
 // Run 执行不含额外宿主租约的普通聊天回合。
-func (h *ChatHost) Run(ctx context.Context, r runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
+func (h *ChatHost) Run(ctx context.Context, r runtimecontract.RunRequest, sink runtimecontract.EventSink) runtimecontract.Result {
 	return h.RunWithLease(ctx, r, sink, nil)
 }
 
 // RunSummaryWithLease 为已有原生会话生成隐藏交接，先释放热所有者再用只读配置冷恢复。
 // 这项操作只恢复原生上下文，不重放历史；不支持恢复时由Execution采用原有近期历史回退。
-func (h *ChatHost) RunSummaryWithLease(ctx context.Context, r runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+func (h *ChatHost) RunSummaryWithLease(ctx context.Context, r runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
 	if err := h.CloseWorkspace(ctx, r.Workspace.Path); err != nil {
 		if release != nil {
 			_ = release(context.WithoutCancel(ctx))
@@ -99,12 +99,12 @@ func (h *ChatHost) RunSummaryWithLease(ctx context.Context, r runtimes.RunReques
 
 // RunWithLease 接管已冻结的账号与插件租约，直到真实原生消费者退出才允许释放。
 // 热会话沿用其原有租约，本轮未使用的新快照在返回时释放。
-func (h *ChatHost) RunWithLease(ctx context.Context, r runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+func (h *ChatHost) RunWithLease(ctx context.Context, r runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
 	return h.runWithLease(ctx, r, sink, release, false)
 }
 
 // runWithLease 共享原生准备与收尾；summary 只选择已有原生上下文，不改写普通续聊配置。
-func (h *ChatHost) runWithLease(ctx context.Context, r runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error, summary bool) runtimes.Result {
+func (h *ChatHost) runWithLease(ctx context.Context, r runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error, summary bool) runtimecontract.Result {
 	resources := &chatResources{release: release}
 	defer func() {
 		if !resources.acquired {
@@ -113,7 +113,7 @@ func (h *ChatHost) runWithLease(ctx context.Context, r runtimes.RunRequest, sink
 			}
 		}
 	}()
-	failure := func(err error) runtimes.Result { return chatFailed(r, err) }
+	failure := func(err error) runtimecontract.Result { return chatFailed(r, err) }
 	if ctx == nil || sink == nil || h.config.Launch == nil {
 		return failure(status_error.BadRequest)
 	}
@@ -138,13 +138,13 @@ func (h *ChatHost) runWithLease(ctx context.Context, r runtimes.RunRequest, sink
 		}
 	}
 	// 配置变化明确新建会话，并只在新会话使用有界历史播种；原生恢复不重放历史。
-	if !summary && owner != nil && (r.Session.Mode == runtimes.SessionModeNew || (owner.signature != "" && owner.signature != signature) || owner.nativeID != r.Session.ID) {
+	if !summary && owner != nil && (r.Session.Mode == runtimecontract.SessionModeNew || (owner.signature != "" && owner.signature != signature) || owner.nativeID != r.Session.ID) {
 		if err := h.CloseWorkspace(ctx, r.Workspace.Path); err != nil {
 			return failure(err)
 		}
 		owner = nil
-		if r.Session.Mode == runtimes.SessionModeResume && r.Session.ID != "" {
-			r.Session = runtimes.SessionDirective{Mode: runtimes.SessionModeNew}
+		if r.Session.Mode == runtimecontract.SessionModeResume && r.Session.ID != "" {
+			r.Session = runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}
 		}
 	}
 	if owner != nil && owner.runtime == nil {
@@ -202,7 +202,7 @@ func (h *ChatHost) runWithLease(ctx context.Context, r runtimes.RunRequest, sink
 		}
 		h.sessions[r.Workspace.Path] = owner
 		h.mutex.Unlock()
-		if r.Session.Mode == runtimes.SessionModeResume {
+		if r.Session.Mode == runtimecontract.SessionModeResume {
 			checkpoint, err := engine.NativeCheckpoint(spec, r.Session.ID)
 			if err != nil {
 				_ = h.CloseWorkspace(context.WithoutCancel(ctx), r.Workspace.Path)
@@ -219,7 +219,7 @@ func (h *ChatHost) runWithLease(ctx context.Context, r runtimes.RunRequest, sink
 	result := owner.runtime.Run(ctx, spec, c.RunOptions{Observer: bridge, UserInputState: r.UserInputState, InteractionHandler: chatInteraction{approval: r.ApprovalHandler, input: r.ElicitationHandler, readOnly: r.Policy.Execution.WorkspaceReadOnly}})
 	if result.Usage.Known || result.Usage.ContextKnown {
 		delivery, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		err := bridge.emit(delivery, runtimes.EventTypeUsage, chatUsage(result.Usage))
+		err := bridge.emit(delivery, runtimecontract.EventTypeUsage, chatUsage(result.Usage))
 		cancel()
 		if err != nil && result.DeliveryFault == nil {
 			result.DeliveryFault = &c.Fault{Code: c.FaultDelivery, Stage: "usage", Message: "final usage delivery failed", Cause: err}
@@ -314,7 +314,7 @@ func (r *chatResources) Close(ctx context.Context) error {
 	return nil
 }
 
-func chatSignature(spec c.ExecutionSpec, target runtimes.RuntimeTarget) string {
+func chatSignature(spec c.ExecutionSpec, target runtimecontract.RuntimeTarget) string {
 	spec.Input = c.Input{}
 	spec.Session = c.SessionDirective{}
 	spec.Limits = c.Limits{}
@@ -323,7 +323,7 @@ func chatSignature(spec c.ExecutionSpec, target runtimes.RuntimeTarget) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func chatSeed(history []runtimes.HistoryMessage) []c.SeedMessage {
+func chatSeed(history []runtimecontract.HistoryMessage) []c.SeedMessage {
 	seed := make([]c.SeedMessage, 0, len(history))
 	for _, message := range history {
 		references := make([]c.CodeReference, 0, len(message.CodeReferences))
@@ -335,7 +335,7 @@ func chatSeed(history []runtimes.HistoryMessage) []c.SeedMessage {
 	return seed
 }
 
-func chatFailed(r runtimes.RunRequest, err error) runtimes.Result {
-	code := runtimes.ClassifyFailure(r.Detection.Runtime.BaseRuntimeID, err)
-	return runtimes.Result{ExitCode: -1, Session: runtimes.SessionResult{Mode: r.Session.Mode, InputID: r.Session.ID, State: runtimes.SessionStateUnknown}, Failure: &runtimes.Failure{Code: code, Stage: constants.RuntimeRunFailureStagePrepare, Message: err.Error(), DisplayMessage: runtimes.FailureDisplayMessage(err), Transience: runtimes.FailureTransiencePermanent}}
+func chatFailed(r runtimecontract.RunRequest, err error) runtimecontract.Result {
+	code := runtimecontract.ClassifyFailure(r.Detection.Runtime.BaseRuntimeID, err)
+	return runtimecontract.Result{ExitCode: -1, Session: runtimecontract.SessionResult{Mode: r.Session.Mode, InputID: r.Session.ID, State: runtimecontract.SessionStateUnknown}, Failure: &runtimecontract.Failure{Code: code, Stage: constants.RuntimeRunFailureStagePrepare, Message: err.Error(), DisplayMessage: runtimecontract.FailureDisplayMessage(err), Transience: runtimecontract.FailureTransiencePermanent}}
 }

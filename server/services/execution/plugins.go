@@ -19,7 +19,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/packagefiles"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 )
@@ -29,7 +29,7 @@ type preparedPlugins struct {
 	// native 是本轮独占的完整原生包，不能同时展开其Skill/MCP。
 	native []plugins.NativeTarget
 	// skills 是可按需读取的原始插件技能。
-	skills []runtimes.Skill
+	skills []runtimecontract.Skill
 	// connectors 是经过配置和传输能力检查的派生连接器。
 	connectors []models.MCPConnector
 	// environment 是包内桥接及原生目标交付的私有进程变量。
@@ -43,7 +43,7 @@ type preparedPlugins struct {
 }
 
 // preparePlugins 在接纳前冻结资源，不向 Runtime 传递未就绪组件。
-func (m *service) preparePlugins(ctx context.Context, waker string, request pendingMessage, detection runtimes.DetectionResult, usage ...authorization.Usage) (preparedPlugins, error) {
+func (m *service) preparePlugins(ctx context.Context, waker string, request pendingMessage, detection runtimecontract.DetectionResult, usage ...authorization.Usage) (preparedPlugins, error) {
 	result := preparedPlugins{environment: map[string]string{}, release: func() {}}
 	selected := map[string]bool{}
 	for _, id := range request.message.PluginIDs {
@@ -274,12 +274,12 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 			snapshot.ProviderAccountID = account.ID
 		}
 		nativeEligible := nativePluginVersionSupported(cli, detection.Version) && request.allowedConnectorIDs == nil && request.allowedAgentDomains == nil && len(extension.Bindings) == 0 && len(targetExtension.Bindings) == 0 && (len(extension.Config) == 0 || version.Package.Format != constants.PluginFormatPortable) && (bridge == nil || len(version.Package.Servers) == 0 || len(authenticationBindings) > 0)
-		candidateSkills := []runtimes.Skill{}
+		candidateSkills := []runtimecontract.Skill{}
 		candidateConnectors := []models.MCPConnector{}
 		available := map[string]bool{}
-		if detection.Capabilities.Has(runtimes.CapabilitySkillDirectory) {
+		if detection.Capabilities.Has(runtimecontract.CapabilitySkillDirectory) {
 			for _, skill := range version.Package.Skills {
-				candidateSkills = append(candidateSkills, runtimes.Skill{Name: skill.Name, Path: filepath.Join(root, skill.Path)})
+				candidateSkills = append(candidateSkills, runtimecontract.Skill{Name: skill.Name, Path: filepath.Join(root, skill.Path)})
 				available[skill.Key] = true
 				snapshot.ComponentIDs = append(snapshot.ComponentIDs, plugins.ComponentID(id, "skill:"+skill.Key))
 			}
@@ -297,7 +297,7 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 			if request.allowedConnectorIDs != nil && !slices.Contains(*request.allowedConnectorIDs, componentID) {
 				continue
 			}
-			if !runtimes.DetectedConnectorTransportSupported(detection, transport) {
+			if !runtimecontract.DetectedConnectorTransportSupported(detection, transport) {
 				continue
 			}
 			resolved, resolveErr := plugins.ResolveServer(version.Package, server, root, data, values)
@@ -423,7 +423,7 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 			if nativeErr == nil {
 				snapshot.Delivery = constants.PluginDeliveryNative
 				snapshot.NativePluginID = native.Name
-				if cli == runtimes.RuntimeIDCodex {
+				if cli == runtimecontract.RuntimeIDCodex {
 					snapshot.NativePluginID += "@" + constants.PluginNativeMarketplace
 				}
 				snapshot.TargetDigest = native.Digest
@@ -462,7 +462,7 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 				priorDelivery = constants.PluginDeliveryProjection
 			}
 			priorNativeID := prior.NativePluginID
-			if cli == runtimes.RuntimeIDCodex && snapshot.NativePluginID != "" && strings.HasPrefix(priorNativeID, snapshot.NativePluginID+"-") {
+			if cli == runtimecontract.RuntimeIDCodex && snapshot.NativePluginID != "" && strings.HasPrefix(priorNativeID, snapshot.NativePluginID+"-") {
 				suffix := strings.TrimPrefix(priorNativeID, snapshot.NativePluginID+"-")
 				if regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(suffix) {
 					priorNativeID = snapshot.NativePluginID
@@ -516,12 +516,12 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 }
 
 // mergePluginSkills 只在同名且完整内容相同的情况下共用一份投射。
-func mergePluginSkills(independent, derived []runtimes.Skill) ([]runtimes.Skill, error) {
-	result := make([]runtimes.Skill, 0, len(independent)+len(derived))
+func mergePluginSkills(independent, derived []runtimecontract.Skill) ([]runtimecontract.Skill, error) {
+	result := make([]runtimecontract.Skill, 0, len(independent)+len(derived))
 	indexes := map[string]int{}
 	digests := map[string]string{}
 	policy := packagefiles.Archive{Invalid: status_error.PluginContentInvalid, Limit: status_error.PluginContentLimitExceeded, IO: status_error.PluginStorageError}
-	for _, item := range append(append([]runtimes.Skill{}, independent...), derived...) {
+	for _, item := range append(append([]runtimecontract.Skill{}, independent...), derived...) {
 		existing, ok := indexes[item.Name]
 		if !ok {
 			indexes[item.Name] = len(result)
@@ -579,9 +579,9 @@ func nativePluginScope(snapshots []plugins.Snapshot) string {
 func nativePluginVersionSupported(cli, version string) bool {
 	minimum := []int{}
 	switch cli {
-	case runtimes.RuntimeIDCodex:
+	case runtimecontract.RuntimeIDCodex:
 		minimum = []int{0, 161, 0}
-	case runtimes.RuntimeIDClaude:
+	case runtimecontract.RuntimeIDClaude:
 		minimum = []int{2, 1, 159}
 	default:
 		return false

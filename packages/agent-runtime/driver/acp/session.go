@@ -256,7 +256,9 @@ func (s *session) Close(ctx context.Context) error {
 		}
 	}
 	s.nativeClosed = true
-	s.owner.release(s)
+	if s.owner != nil {
+		s.owner.release(s)
+	}
 	return nil
 }
 

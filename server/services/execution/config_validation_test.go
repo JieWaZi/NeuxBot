@@ -7,7 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -29,8 +29,8 @@ type configurationRuntime struct {
 }
 
 // Runtimes 使配置解析继续执行真实的工作目录布局校验。
-func (runtime *configurationRuntime) Runtimes() []runtimes.RuntimeSummary {
-	return append(runtime.accountRuntime.Runtimes(), runtimes.RuntimeSummary{
+func (runtime *configurationRuntime) Runtimes() []runtimecontract.RuntimeSummary {
+	return append(runtime.accountRuntime.Runtimes(), runtimecontract.RuntimeSummary{
 		ID: constants.RuntimeIDWorkBuddy, BaseRuntimeID: constants.RuntimeIDWorkBuddy,
 		InstructionFileName: "CODEBUDDY.md", SkillDirectoryName: ".codebuddy",
 	})
@@ -39,16 +39,16 @@ func (runtime *configurationRuntime) Runtimes() []runtimes.RuntimeSummary {
 // TestResolveConfigurationUsesSelectedModelReasoning 覆盖不同模型不能直接借用环境默认模型强度。
 func TestResolveConfigurationUsesSelectedModelReasoning(t *testing.T) {
 	step := readyTestModel("step-5-preview")
-	step.ReasoningOptions = []runtimes.ReasoningOption{{ID: "minimal"}, {ID: "high"}}
+	step.ReasoningOptions = []runtimecontract.ReasoningOption{{ID: "minimal"}, {ID: "high"}}
 	hy3 := readyTestModel("hy3")
 	hy4 := readyTestModel("hy4-preview")
-	hy4.ReasoningOptions = []runtimes.ReasoningOption{{ID: "high"}}
+	hy4.ReasoningOptions = []runtimecontract.ReasoningOption{{ID: "high"}}
 	environment := models.RuntimeEnvironment{
 		RuntimeID: constants.RuntimeIDWorkBuddy, BaseRuntimeID: constants.RuntimeIDWorkBuddy,
 		Enabled: true, DefaultModel: step.ID, DefaultReasoning: "minimal",
-		Detection: runtimes.DetectionResult{
-			State:  runtimes.DetectionStateReady,
-			Models: []runtimes.ModelOption{step, hy3, hy4},
+		Detection: runtimecontract.DetectionResult{
+			State:  runtimecontract.DetectionStateReady,
+			Models: []runtimecontract.ModelOption{step, hy3, hy4},
 		},
 	}
 	tests := []struct {
@@ -106,10 +106,10 @@ func TestResolveConfigurationUsesSelectedModelReasoning(t *testing.T) {
 }
 
 func TestValidateExecutionConfigurationSupportsCodexAndClaudeMatrix(t *testing.T) {
-	permissionLevels := []runtimes.PermissionLevel{
-		runtimes.PermissionLevelDefault,
-		runtimes.PermissionLevelAuto,
-		runtimes.PermissionLevelFullAccess,
+	permissionLevels := []runtimecontract.PermissionLevel{
+		runtimecontract.PermissionLevelDefault,
+		runtimecontract.PermissionLevelAuto,
+		runtimecontract.PermissionLevelFullAccess,
 	}
 	tests := []struct {
 		// name 是 Runtime 与模型组合的子测试名称。
@@ -122,15 +122,15 @@ func TestValidateExecutionConfigurationSupportsCodexAndClaudeMatrix(t *testing.T
 		{
 			name: "codex",
 			environment: models.RuntimeEnvironment{
-				RuntimeID:    runtimes.RuntimeIDCodex,
+				RuntimeID:    runtimecontract.RuntimeIDCodex,
 				Enabled:      true,
 				DefaultModel: "gpt-5.6",
-				Detection: runtimes.DetectionResult{
-					State:        runtimes.DetectionStateReady,
-					Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true},
-					Models: []runtimes.ModelOption{{
+				Detection: runtimecontract.DetectionResult{
+					State:        runtimecontract.DetectionStateReady,
+					Capabilities: runtimecontract.CapabilitySet{runtimecontract.CapabilityMCPStreamableHTTP: true},
+					Models: []runtimecontract.ModelOption{{
 						ID:               "gpt-5.6",
-						ReasoningOptions: []runtimes.ReasoningOption{{ID: "low"}, {ID: "high"}},
+						ReasoningOptions: []runtimecontract.ReasoningOption{{ID: "low"}, {ID: "high"}},
 						PermissionLevels: permissionLevels,
 					}},
 				},
@@ -140,13 +140,13 @@ func TestValidateExecutionConfigurationSupportsCodexAndClaudeMatrix(t *testing.T
 		{
 			name: "claude",
 			environment: models.RuntimeEnvironment{
-				RuntimeID:    runtimes.RuntimeIDClaude,
+				RuntimeID:    runtimecontract.RuntimeIDClaude,
 				Enabled:      true,
 				DefaultModel: "claude-sonnet",
-				Detection: runtimes.DetectionResult{
-					State:        runtimes.DetectionStateReady,
-					Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true},
-					Models: []runtimes.ModelOption{{
+				Detection: runtimecontract.DetectionResult{
+					State:        runtimecontract.DetectionStateReady,
+					Capabilities: runtimecontract.CapabilitySet{runtimecontract.CapabilityMCPStreamableHTTP: true},
+					Models: []runtimecontract.ModelOption{{
 						ID:               "claude-sonnet",
 						PermissionLevels: permissionLevels,
 					}},
@@ -173,17 +173,17 @@ func TestValidateExecutionConfigurationSupportsCodexAndClaudeMatrix(t *testing.T
 
 func TestValidateExecutionConfigurationDefersUnknownPermissionsWhenLoginIsMissing(t *testing.T) {
 	environment := models.RuntimeEnvironment{
-		RuntimeID: runtimes.RuntimeIDKimi,
+		RuntimeID: runtimecontract.RuntimeIDKimi,
 		Enabled:   true,
-		Detection: runtimes.DetectionResult{
-			State: runtimes.DetectionStateReady,
-			Auth:  runtimes.AuthStatusMissing,
+		Detection: runtimecontract.DetectionResult{
+			State: runtimecontract.DetectionStateReady,
+			Auth:  runtimecontract.AuthStatusMissing,
 		},
 	}
-	for _, level := range []runtimes.PermissionLevel{
-		runtimes.PermissionLevelDefault,
-		runtimes.PermissionLevelAuto,
-		runtimes.PermissionLevelFullAccess,
+	for _, level := range []runtimecontract.PermissionLevel{
+		runtimecontract.PermissionLevelDefault,
+		runtimecontract.PermissionLevelAuto,
+		runtimecontract.PermissionLevelFullAccess,
 	} {
 		if err := validateExecutionConfiguration(environment, ExecutionConfiguration{PermissionLevel: level}); err != nil {
 			t.Fatalf("未登录且尚无权限目录时不应提前拒绝 %q: %v", level, err)
@@ -193,15 +193,15 @@ func TestValidateExecutionConfigurationDefersUnknownPermissionsWhenLoginIsMissin
 
 func TestValidateExecutionConfigurationRejectsUnavailableCombination(t *testing.T) {
 	environment := models.RuntimeEnvironment{
-		RuntimeID:    runtimes.RuntimeIDCodex,
+		RuntimeID:    runtimecontract.RuntimeIDCodex,
 		Enabled:      true,
 		DefaultModel: "gpt-5.6",
-		Detection: runtimes.DetectionResult{
-			State: runtimes.DetectionStateReady,
-			Models: []runtimes.ModelOption{{
+		Detection: runtimecontract.DetectionResult{
+			State: runtimecontract.DetectionStateReady,
+			Models: []runtimecontract.ModelOption{{
 				ID:               "gpt-5.6",
-				ReasoningOptions: []runtimes.ReasoningOption{{ID: "low"}},
-				PermissionLevels: []runtimes.PermissionLevel{runtimes.PermissionLevelDefault},
+				ReasoningOptions: []runtimecontract.ReasoningOption{{ID: "low"}},
+				PermissionLevels: []runtimecontract.PermissionLevel{runtimecontract.PermissionLevelDefault},
 			}},
 		},
 	}
@@ -244,7 +244,7 @@ func TestValidateExecutionConfigurationRejectsUnavailableCombination(t *testing.
 		{
 			name: "stale detection",
 			mutate: func(environment *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
-				environment.Detection.State = runtimes.DetectionStateUnavailable
+				environment.Detection.State = runtimecontract.DetectionStateUnavailable
 			},
 			expected: status_error.RuntimeUnavailable,
 		},

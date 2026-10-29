@@ -17,7 +17,7 @@ import (
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -34,8 +34,8 @@ func TestRuntimeEventSinkPersistsOnlyCompleteAssistantMessage(t *testing.T) {
 	}
 	sink, _ := newRuntimeEventSinkForTest(store, chatID)
 	for _, text := range []string{"one", "two"} {
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{
-			Type: runtimes.EventTypeTextDelta,
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{
+			Type: runtimecontract.EventTypeTextDelta,
 			Data: marshalData(struct {
 				// Text 是本次测试交付的实时文本增量。
 				Text string `json:"text"`
@@ -66,7 +66,7 @@ func TestRuntimeEventSinkPersistsOnlyCompleteAssistantMessage(t *testing.T) {
 		t.Fatalf("decode persisted execution message: %v", err)
 	}
 	if len(persisted.Content) != 1 ||
-		persisted.Content[0].Type != runtimes.EventTypeTextDelta ||
+		persisted.Content[0].Type != runtimecontract.EventTypeTextDelta ||
 		string(persisted.Content[0].Data) != `{"text":"onetwo"}` ||
 		persisted.MessageRevision != 5 {
 		t.Fatalf("persisted execution message = %#v", persisted)
@@ -85,8 +85,8 @@ func TestRuntimeEventSinkPublishesCompleteLiveSnapshotBeforePersistence(t *testi
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
 	for _, text := range []string{"你好", "！"} {
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{
-			Type: runtimes.EventTypeTextDelta,
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{
+			Type: runtimecontract.EventTypeTextDelta,
 			Data: marshalData(struct {
 				// Text 是验证实时消息视图立即可见的文本增量。
 				Text string `json:"text"`
@@ -145,9 +145,9 @@ func TestRuntimeEventSinkKeepsFileChangesEqualBetweenLiveAndReplay(t *testing.T)
 		t.Fatalf("Create() error = %v", err)
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
-	for _, event := range []runtimes.Event{
+	for _, event := range []runtimecontract.Event{
 		{
-			Type: runtimes.EventTypeToolUse,
+			Type: runtimecontract.EventTypeToolUse,
 			Data: marshalData(map[string]any{
 				"name": "file_modify", "status": "in_progress", "toolCallId": "edit-1",
 				"content": []any{map[string]any{
@@ -157,7 +157,7 @@ func TestRuntimeEventSinkKeepsFileChangesEqualBetweenLiveAndReplay(t *testing.T)
 			}),
 		},
 		{
-			Type: runtimes.EventTypeToolResult,
+			Type: runtimecontract.EventTypeToolResult,
 			Data: marshalData(map[string]any{
 				"name": "file_modify", "status": "completed", "toolCallId": "edit-1",
 				"content": []any{map[string]any{
@@ -218,8 +218,8 @@ func TestExecutionTerminalRevisionStaysAheadOfTransientOnlyEvents(t *testing.T) 
 	}
 	sink, _ := newRuntimeEventSinkForTest(store, chatID)
 	for index := 0; index < 20; index++ {
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{
-			Type: runtimes.EventTypeUsage,
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{
+			Type: runtimecontract.EventTypeUsage,
 			Data: marshalData(map[string]any{"turn": map[string]any{"output_tokens": index + 1}}),
 		}); err != nil {
 			t.Fatalf("Accept(usage %d) error = %v", index, err)
@@ -261,13 +261,13 @@ func TestRuntimeEventSinkPersistsToolMessagesAndKeepsOnlyLatestUsage(t *testing.
 		t.Fatalf("Create() error = %v", err)
 	}
 	sink, _ := newRuntimeEventSinkForTest(store, chatID)
-	for _, event := range []runtimes.Event{
-		{Type: runtimes.EventTypeStatus, Data: json.RawMessage(`{"state":"thinking"}`)},
-		{Type: runtimes.EventTypeRaw, Data: json.RawMessage(`{"type":"system","subtype":"thinking_tokens"}`)},
-		{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"id": "tool-1", "name": "Bash"})},
-		{Type: runtimes.EventTypeToolResult, Data: marshalData(map[string]any{"tool_use_id": "tool-1", "is_error": false})},
-		{Type: runtimes.EventTypeUsage, Data: json.RawMessage(`{"turn":{"output_tokens":10}}`)},
-		{Type: runtimes.EventTypeUsage, Data: json.RawMessage(`{"turn":{"output_tokens":12}}`)},
+	for _, event := range []runtimecontract.Event{
+		{Type: runtimecontract.EventTypeStatus, Data: json.RawMessage(`{"state":"thinking"}`)},
+		{Type: runtimecontract.EventTypeRaw, Data: json.RawMessage(`{"type":"system","subtype":"thinking_tokens"}`)},
+		{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"id": "tool-1", "name": "Bash"})},
+		{Type: runtimecontract.EventTypeToolResult, Data: marshalData(map[string]any{"tool_use_id": "tool-1", "is_error": false})},
+		{Type: runtimecontract.EventTypeUsage, Data: json.RawMessage(`{"turn":{"output_tokens":10}}`)},
+		{Type: runtimecontract.EventTypeUsage, Data: json.RawMessage(`{"turn":{"output_tokens":12}}`)},
 	} {
 		if err := sink.acceptInvocation(context.Background(), "invocation-1", event); err != nil {
 			t.Fatalf("Accept(%s) error = %v", event.Type, err)
@@ -319,12 +319,12 @@ func TestRuntimeEventSinkDoesNotPersistEveryPartialToolInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
-	send := func(kind runtimes.EventType, data map[string]any) *messageview.Message {
+	send := func(kind runtimecontract.EventType, data map[string]any) *messageview.Message {
 		t.Helper()
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: marshalData(data)}); err != nil {
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: kind, Data: marshalData(data)}); err != nil {
 			t.Fatal(err)
 		}
-		if kind == runtimes.EventTypeToolInputSnapshot {
+		if kind == runtimecontract.EventTypeToolInputSnapshot {
 			return nil
 		}
 		revision := sink.MessageRevision()
@@ -335,9 +335,9 @@ func TestRuntimeEventSinkDoesNotPersistEveryPartialToolInput(t *testing.T) {
 			}
 		}
 	}
-	send(runtimes.EventTypeToolUse, map[string]any{"toolCallId": "write-1", "name": "write_file", "kind": "edit", "input": map[string]any{"path": "notes.md"}})
+	send(runtimecontract.EventTypeToolUse, map[string]any{"toolCallId": "write-1", "name": "write_file", "kind": "edit", "input": map[string]any{"path": "notes.md"}})
 	for i := range 1000 {
-		send(runtimes.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "write-1", "input": map[string]any{"path": "notes.md", "content": fmt.Sprintf("body-%d", i)}})
+		send(runtimecontract.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "write-1", "input": map[string]any{"path": "notes.md", "content": fmt.Sprintf("body-%d", i)}})
 	}
 	records, err := store.ReadAll(chatID)
 	if err != nil {
@@ -346,7 +346,7 @@ func TestRuntimeEventSinkDoesNotPersistEveryPartialToolInput(t *testing.T) {
 	if len(records) != 4 {
 		t.Fatalf("records while tool input is streaming = %d, want 3 initial facts and one tool start", len(records))
 	}
-	lastLive := send(runtimes.EventTypeToolResult, map[string]any{"toolCallId": "write-1", "status": "completed"})
+	lastLive := send(runtimecontract.EventTypeToolResult, map[string]any{"toolCallId": "write-1", "status": "completed"})
 	if err := sink.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +392,7 @@ func TestRuntimeEventSinkPreservesToolOutputUpdates(t *testing.T) {
 		{"toolCallId": "shell", "rawOutput": "first output"},
 		{"toolCallId": "shell", "rawOutput": "second output"},
 	} {
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(payload)}); err != nil {
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: marshalData(payload)}); err != nil {
 			t.Fatal(err)
 		}
 		<-live
@@ -419,12 +419,12 @@ func TestRuntimeEventSinkBatchesToolUpdatesWithoutLosingContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
-	send := func(kind runtimes.EventType, data map[string]any) {
+	send := func(kind runtimecontract.EventType, data map[string]any) {
 		t.Helper()
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: marshalData(data)}); err != nil {
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: kind, Data: marshalData(data)}); err != nil {
 			t.Fatal(err)
 		}
-		if kind == runtimes.EventTypeToolUpdate {
+		if kind == runtimecontract.EventTypeToolUpdate {
 			return
 		}
 		revision := sink.MessageRevision()
@@ -434,11 +434,11 @@ func TestRuntimeEventSinkBatchesToolUpdatesWithoutLosingContent(t *testing.T) {
 			}
 		}
 	}
-	send(runtimes.EventTypeToolUse, map[string]any{"toolCallId": "tool", "sessionUpdate": "tool_call", "status": "in_progress", "input": map[string]any{}})
+	send(runtimecontract.EventTypeToolUse, map[string]any{"toolCallId": "tool", "sessionUpdate": "tool_call", "status": "in_progress", "input": map[string]any{}})
 	for i := range 300 {
-		send(runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "tool", "sessionUpdate": "tool_call_update", "rawInput": map[string]any{"value": i}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": fmt.Sprintf("chunk-%d", i)}}}})
+		send(runtimecontract.EventTypeToolUpdate, map[string]any{"toolCallId": "tool", "sessionUpdate": "tool_call_update", "rawInput": map[string]any{"value": i}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": fmt.Sprintf("chunk-%d", i)}}}})
 	}
-	send(runtimes.EventTypeToolResult, map[string]any{"toolCallId": "tool", "status": "completed"})
+	send(runtimecontract.EventTypeToolResult, map[string]any{"toolCallId": "tool", "status": "completed"})
 	records, err := store.ReadAll(chatID)
 	if err != nil {
 		t.Fatal(err)
@@ -679,19 +679,19 @@ func TestCommandFactsKeepLiveAndDurableToolCaptionsEqual(t *testing.T) {
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
 	sink.messageFacts = &executionMessageFacts{}
-	send := func(kind runtimes.EventType, data map[string]any) {
+	send := func(kind runtimecontract.EventType, data map[string]any) {
 		t.Helper()
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: marshalData(data)}); err != nil {
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: kind, Data: marshalData(data)}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	send(runtimes.EventTypeToolUse, map[string]any{"id": "tool", "name": "bash", "input": map[string]any{"command": "allycli workflow source save --input source.json"}})
+	send(runtimecontract.EventTypeToolUse, map[string]any{"id": "tool", "name": "bash", "input": map[string]any{"command": "allycli workflow source save --input source.json"}})
 	op, _ := contract.Find("workflow.source.save")
 	if err := sink.messageFacts.record(context.Background(), sink.journal, chatID, "execution-1", op, agentcapability.Result{CommandID: "receipt"}); err != nil {
 		t.Fatal(err)
 	}
-	send(runtimes.EventTypeToolResult, map[string]any{"tool_use_id": "tool", "output": `{"protocolVersion":1,"ok":true,"commandId":"receipt","operation":"workflow.source.save"}`, "is_error": false})
-	send(runtimes.EventTypeTextDelta, map[string]any{"text": "done"})
+	send(runtimecontract.EventTypeToolResult, map[string]any{"tool_use_id": "tool", "output": `{"protocolVersion":1,"ok":true,"commandId":"receipt","operation":"workflow.source.save"}`, "is_error": false})
+	send(runtimecontract.EventTypeTextDelta, map[string]any{"text": "done"})
 	var lastLive *messageview.Message
 	for index := range 3 {
 		event := <-live
@@ -741,7 +741,7 @@ func TestRuntimeEventSinkInitializesOnlyCurrentExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
-	if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: marshalData(map[string]any{"text": "current answer"})}); err != nil {
+	if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: marshalData(map[string]any{"text": "current answer"})}); err != nil {
 		t.Fatal(err)
 	}
 	event := <-live
@@ -771,7 +771,7 @@ func TestRuntimePendingTextAllocatesLinearly(t *testing.T) {
 			t.Fatal(err)
 		}
 		sink, _ := newRuntimeEventSinkForTest(store, chatID)
-		event := runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: []byte(`{"text":"abcdefgh"}`)}
+		event := runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: []byte(`{"text":"abcdefgh"}`)}
 		runtime.GC()
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
@@ -802,7 +802,7 @@ func TestRuntimePendingTextAllocatesLinearly(t *testing.T) {
 
 // BenchmarkRuntimePendingTextChunks 覆盖完整消息聚合的短片段规模；临时日志准备与结果读取不计入测量。
 func BenchmarkRuntimePendingTextChunks(b *testing.B) {
-	event := runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: []byte(`{"text":"abcdefgh"}`)}
+	event := runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: []byte(`{"text":"abcdefgh"}`)}
 	for _, count := range []int{1000, 10000, 20000} {
 		b.Run(fmt.Sprintf("chunks=%d", count), func(b *testing.B) {
 			b.ReportAllocs()
@@ -854,26 +854,26 @@ func TestRuntimeTextSegmentsKeepOrderAcrossToolAndCancel(t *testing.T) {
 	sink, _ := newRuntimeEventSinkForTest(store, chatID)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	for _, event := range []runtimes.Event{
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"前"}`)},
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"文"}`)},
-		{Type: runtimes.EventTypeCommentaryDelta, Data: json.RawMessage(`{"text":"过"}`)},
-		{Type: runtimes.EventTypeCommentaryDelta, Data: json.RawMessage(`{"text":"程"}`)},
-		{Type: runtimes.EventTypeThinkingStart, Data: json.RawMessage(`{}`)},
-		{Type: runtimes.EventTypeThinkingDelta, Data: json.RawMessage(`{"text":"推"}`)},
-		{Type: runtimes.EventTypeThinkingDelta, Data: json.RawMessage(`{"text":"理"}`)},
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"结"}`)},
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"果"}`)},
-		{Type: runtimes.EventTypeToolUse, Data: json.RawMessage(`{"toolCallId":"read-1","name":"read"}`)},
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"尾"}`)},
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"部"}`)},
+	for _, event := range []runtimecontract.Event{
+		{Type: runtimecontract.EventTypeTextDelta, Data: json.RawMessage(`{"text":"前"}`)},
+		{Type: runtimecontract.EventTypeTextDelta, Data: json.RawMessage(`{"text":"文"}`)},
+		{Type: runtimecontract.EventTypeCommentaryDelta, Data: json.RawMessage(`{"text":"过"}`)},
+		{Type: runtimecontract.EventTypeCommentaryDelta, Data: json.RawMessage(`{"text":"程"}`)},
+		{Type: runtimecontract.EventTypeThinkingStart, Data: json.RawMessage(`{}`)},
+		{Type: runtimecontract.EventTypeThinkingDelta, Data: json.RawMessage(`{"text":"推"}`)},
+		{Type: runtimecontract.EventTypeThinkingDelta, Data: json.RawMessage(`{"text":"理"}`)},
+		{Type: runtimecontract.EventTypeTextDelta, Data: json.RawMessage(`{"text":"结"}`)},
+		{Type: runtimecontract.EventTypeTextDelta, Data: json.RawMessage(`{"text":"果"}`)},
+		{Type: runtimecontract.EventTypeToolUse, Data: json.RawMessage(`{"toolCallId":"read-1","name":"read"}`)},
+		{Type: runtimecontract.EventTypeTextDelta, Data: json.RawMessage(`{"text":"尾"}`)},
+		{Type: runtimecontract.EventTypeTextDelta, Data: json.RawMessage(`{"text":"部"}`)},
 	} {
 		if err = sink.acceptInvocation(ctx, "invocation-1", event); err != nil {
 			t.Fatal(err)
 		}
 	}
 	cancel()
-	if err = sink.acceptInvocation(ctx, "invocation-1", runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"迟到"}`)}); err != status_error.OperationCanceled {
+	if err = sink.acceptInvocation(ctx, "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: json.RawMessage(`{"text":"迟到"}`)}); err != status_error.OperationCanceled {
 		t.Fatalf("late canceled chunk accepted: %v", err)
 	}
 	if err = sink.Flush(); err != nil {
@@ -894,7 +894,7 @@ func TestRuntimeTextSegmentsKeepOrderAcrossToolAndCancel(t *testing.T) {
 		}
 		contents = append(contents, data.Content...)
 	}
-	wantTypes := []runtimes.EventType{runtimes.EventTypeTextDelta, runtimes.EventTypeCommentaryDelta, runtimes.EventTypeThinkingStart, runtimes.EventTypeThinkingDelta, runtimes.EventTypeTextDelta, runtimes.EventTypeToolUse, runtimes.EventTypeTextDelta}
+	wantTypes := []runtimecontract.EventType{runtimecontract.EventTypeTextDelta, runtimecontract.EventTypeCommentaryDelta, runtimecontract.EventTypeThinkingStart, runtimecontract.EventTypeThinkingDelta, runtimecontract.EventTypeTextDelta, runtimecontract.EventTypeToolUse, runtimecontract.EventTypeTextDelta}
 	wantText := []string{"前文", "过程", "", "推理", "结果", "", "尾部"}
 	if len(contents) != len(wantTypes) {
 		t.Fatalf("content boundary count=%d, want %d", len(contents), len(wantTypes))

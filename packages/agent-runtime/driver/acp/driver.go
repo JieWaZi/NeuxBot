@@ -141,36 +141,12 @@ func (d *Driver) Open(ctx context.Context, r contract.OpenRequest) (contract.Dri
 	if err = openCtx.Err(); err != nil {
 		return partial(fault(contract.FaultCancelled, "open", "ACP preparation cancelled", err))
 	}
-	serverIn, clientOut := io.Pipe()
-	clientIn, serverOut := io.Pipe()
-	s.closeTransport = func() error {
-		_ = clientOut.Close()
-		_ = clientIn.Close()
-		_ = serverIn.Close()
-		return serverOut.Close()
-	}
-	serveCtx, serveCancel := context.WithCancel(context.Background())
-	s.serveCancel = serveCancel
-	proxy := &deliveryAgent{Agent: agent, session: s}
-	server, err := acpserver.New(proxy, serverIn, serverOut)
-	if err != nil {
-		serveCancel()
-		_ = s.closeTransport()
-		return partial(fault(contract.FaultPreparation, "connect", "ACP server creation failed", err))
-	}
-	s.client, err = sdk.NewClientSideConnectionWithOptions(s, clientOut, clientIn, sdk.ConnectionOptions{Context: serveCtx, NotificationQueueCapacity: 256, NotificationQueueBytes: 16 << 20, CloseTransport: s.closeTransport})
-	if err != nil {
-		serveCancel()
-		_ = s.closeTransport()
-		return partial(fault(contract.FaultPreparation, "connect", "ACP connection creation failed", err))
+	if err = s.connect(); err != nil {
+		s.closed = true
+		d.retain(s)
+		return s, err
 	}
 	d.retain(s)
-	go func() {
-		// Serve的唯一返回错误来自deliveryAgent.Close；该边界只取消请求，原生Close结果由session单独报告。
-		_ = server.Serve(serveCtx)
-		_ = s.closeTransport()
-		close(s.done)
-	}()
 	d.mu.Lock()
 	closed := d.closed
 	d.mu.Unlock()
@@ -181,12 +157,9 @@ func (d *Driver) Open(ctx context.Context, r contract.OpenRequest) (contract.Dri
 	abort := context.AfterFunc(openCtx, s.stop)
 	defer abort()
 	fail := func(cause error) (contract.DriverSession, error) { s.stop(); return s, cause }
-	initialized, err := s.client.Initialize(openCtx, sdk.InitializeRequest{ProtocolVersion: sdk.ProtocolVersionNumber, ClientCapabilities: sdk.ClientCapabilities{Elicitation: &sdk.ElicitationCapabilities{Form: &sdk.ElicitationFormCapabilities{}, Url: &sdk.ElicitationUrlCapabilities{}}}})
+	initialized, err := s.initialize(openCtx)
 	if err != nil {
-		return fail(fault(contract.FaultPreparation, "initialize", "ACP initialization failed", err))
-	}
-	if initialized.ProtocolVersion != sdk.ProtocolVersionNumber {
-		return fail(fault(contract.FaultProtocol, "initialize", "ACP protocol version is unsupported", nil))
+		return fail(err)
 	}
 	s.promptCapabilities = initialized.AgentCapabilities.PromptCapabilities
 	s.nativeResumable = initialized.AgentCapabilities.SessionCapabilities.Resume != nil || initialized.AgentCapabilities.LoadSession
@@ -232,6 +205,54 @@ func (d *Driver) Open(ctx context.Context, r contract.OpenRequest) (contract.Dri
 		return fail(fault(contract.FaultCancelled, "open", "ACP preparation cancelled", err))
 	}
 	return s, nil
+}
+
+// connect 为执行与管理复用同一条公开 ACP 管道及边界所有权。
+func (s *session) connect() error {
+	serverIn, clientOut := io.Pipe()
+	clientIn, serverOut := io.Pipe()
+	s.closeTransport = func() error {
+		_ = clientOut.Close()
+		_ = clientIn.Close()
+		_ = serverIn.Close()
+		return serverOut.Close()
+	}
+	serveCtx, serveCancel := context.WithCancel(context.Background())
+	s.serveCancel = serveCancel
+	proxy := &deliveryAgent{Agent: s.native, session: s}
+	server, err := acpserver.New(proxy, serverIn, serverOut)
+	if err != nil {
+		serveCancel()
+		_ = s.closeTransport()
+		close(s.done)
+		return fault(contract.FaultPreparation, "connect", "ACP server creation failed", err)
+	}
+	s.client, err = sdk.NewClientSideConnectionWithOptions(s, clientOut, clientIn, sdk.ConnectionOptions{Context: serveCtx, NotificationQueueCapacity: 256, NotificationQueueBytes: 16 << 20, CloseTransport: s.closeTransport})
+	if err != nil {
+		serveCancel()
+		_ = s.closeTransport()
+		close(s.done)
+		return fault(contract.FaultPreparation, "connect", "ACP connection creation failed", err)
+	}
+	go func() {
+		// Serve的唯一返回错误来自deliveryAgent.Close；该边界只取消请求，原生Close结果由session单独报告。
+		_ = server.Serve(serveCtx)
+		_ = s.closeTransport()
+		close(s.done)
+	}()
+	return nil
+}
+
+// initialize 为执行与管理使用相同能力声明和协议版本校验。
+func (s *session) initialize(ctx context.Context) (sdk.InitializeResponse, error) {
+	response, err := s.client.Initialize(ctx, sdk.InitializeRequest{ProtocolVersion: sdk.ProtocolVersionNumber, ClientCapabilities: sdk.ClientCapabilities{Elicitation: &sdk.ElicitationCapabilities{Form: &sdk.ElicitationFormCapabilities{}, Url: &sdk.ElicitationUrlCapabilities{}}}})
+	if err != nil {
+		return response, fault(contract.FaultPreparation, "initialize", "ACP initialization failed", err)
+	}
+	if response.ProtocolVersion != sdk.ProtocolVersionNumber {
+		return response, fault(contract.FaultProtocol, "initialize", "ACP protocol version is unsupported", nil)
+	}
+	return response, nil
 }
 
 // Close 停止接纳、取消准备并尝试关闭当前原生所有者；失败对象保留供后续重试。
@@ -361,4 +382,15 @@ func (a *deliveryAgent) Close(ctx context.Context) error {
 	}
 	a.session.mu.Unlock()
 	return nil
+}
+
+// UnstableForkSession 保留可选原生分叉接口，执行与管理共用公开协议转发。
+func (a *deliveryAgent) UnstableForkSession(ctx context.Context, request sdk.UnstableForkSessionRequest) (sdk.UnstableForkSessionResponse, error) {
+	forker, ok := a.Agent.(interface {
+		UnstableForkSession(context.Context, sdk.UnstableForkSessionRequest) (sdk.UnstableForkSessionResponse, error)
+	})
+	if !ok {
+		return sdk.UnstableForkSessionResponse{}, sdk.NewMethodNotFound(sdk.AgentMethodSessionFork)
+	}
+	return forker.UnstableForkSession(ctx, request)
 }

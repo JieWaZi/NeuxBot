@@ -1,6 +1,10 @@
 package workflows
 
 import (
+	workspace "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/workspace"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+
 	"context"
 	"encoding/json"
 	"os"
@@ -14,7 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
@@ -37,9 +41,9 @@ type observedLiveRuntime struct {
 	test *testing.T
 }
 
-func newObservedLiveRuntime(t *testing.T, sdk *runtimes.SDK) observedLiveRuntime {
+func newObservedLiveRuntime(t *testing.T, sdk *catalog.Catalog) observedLiveRuntime {
 	t.Helper()
-	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: sdk.PrepareWorkspace, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: sdk.ForkSession})
+	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: workspace.New(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: sdk.ForkSession})
 	t.Cleanup(func() {
 		if err := host.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -48,11 +52,11 @@ func newObservedLiveRuntime(t *testing.T, sdk *runtimes.SDK) observedLiveRuntime
 	return observedLiveRuntime{ChatHost: host, test: t}
 }
 
-func (r observedLiveRuntime) Run(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
+func (r observedLiveRuntime) Run(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink) runtimecontract.Result {
 	return r.RunWithLease(ctx, request, sink, nil)
 }
 
-func (r observedLiveRuntime) RunWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+func (r observedLiveRuntime) RunWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
 	result := r.ChatHost.RunWithLease(ctx, request, sink, release)
 	if result.Failure != nil {
 		r.test.Logf("actual failure: stage=%s code=%s runtime=%s detection=%s detectionRuntime=%s", result.Failure.Stage, result.Failure.Code, request.Target.RuntimeID, request.Detection.State, request.Detection.Runtime.ID)
@@ -87,12 +91,12 @@ func awaitLiveWorkflow(t *testing.T, s *workflowFixture, id string, ready func(c
 	return controllers.WorkflowRunState{}
 }
 
-func openLiveWorkflow(t *testing.T, ctx context.Context, directory string) (*workflowFixture, func(), models.WorkflowExecutionDefaults, *runtimes.SDK, models.RuntimeEnvironment) {
+func openLiveWorkflow(t *testing.T, ctx context.Context, directory string) (*workflowFixture, func(), models.WorkflowExecutionDefaults, *catalog.Catalog, models.RuntimeEnvironment) {
 	t.Helper()
 	if os.Getenv("ALLY_WORKFLOW_LIVE_CODEX") != "1" {
 		t.Skip("set ALLY_WORKFLOW_LIVE_CODEX=1 to run an actual billable model in a temporary workspace")
 	}
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := catalog.New(catalog.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,8 +111,8 @@ func openLiveWorkflow(t *testing.T, ctx context.Context, directory string) (*wor
 	if err != nil {
 		t.Fatal(err)
 	}
-	detection := sdk.Detect(ctx, runtimes.DetectRequest{RuntimeID: "codex", BaseEnvironment: os.Environ(), HomeDirectory: homeDirectory})
-	if detection.State != runtimes.DetectionStateReady {
+	detection := sdk.Detect(ctx, runtimecontract.DetectRequest{RuntimeID: "codex", BaseEnvironment: os.Environ(), HomeDirectory: homeDirectory})
+	if detection.State != runtimecontract.DetectionStateReady {
 		t.Fatalf("real runtime unavailable: state=%s diagnostics=%v", detection.State, detection.Diagnostics)
 	}
 	model := os.Getenv("ALLY_WORKFLOW_LIVE_MODEL")
@@ -159,7 +163,7 @@ func TestLiveRuntimeCreationSaveAndIndependentWorkersWriteRead(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := catalog.New(catalog.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,8 +178,8 @@ func TestLiveRuntimeCreationSaveAndIndependentWorkersWriteRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detection := sdk.Detect(ctx, runtimes.DetectRequest{RuntimeID: "codex", BaseEnvironment: os.Environ(), HomeDirectory: homeDirectory})
-	if detection.State != runtimes.DetectionStateReady {
+	detection := sdk.Detect(ctx, runtimecontract.DetectRequest{RuntimeID: "codex", BaseEnvironment: os.Environ(), HomeDirectory: homeDirectory})
+	if detection.State != runtimecontract.DetectionStateReady {
 		t.Fatalf("real runtime unavailable: state=%s diagnostics=%v", detection.State, detection.Diagnostics)
 	}
 	model := os.Getenv("ALLY_WORKFLOW_LIVE_MODEL")

@@ -14,7 +14,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 )
@@ -120,7 +120,7 @@ func TestBoundCanonicalAuthenticationUsesOwnBridgeAndOneNativeMCP(t *testing.T) 
 			if cli == "claude" {
 				version = "2.1.159"
 			}
-			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: cli}, Version: version})
+			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{BaseRuntimeID: cli}, Version: version})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -156,7 +156,7 @@ func TestBoundAuthenticationRejectsUndeclaredRuntimeBeforeStartingBridge(t *test
 			if required {
 				request.message.PluginIDs = []string{"p"}
 			}
-			detection := runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true}}
+			detection := runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: runtimecontract.CapabilitySet{runtimecontract.CapabilityMCPStreamableHTTP: true}}
 			prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
 			if required && !errors.Is(err, status_error.PluginForbidden) {
 				prepared.release()
@@ -180,7 +180,7 @@ func TestBoundAuthenticationRejectsUndeclaredRuntimeBeforeStartingBridge(t *test
 
 func TestUnboundLegacySkillBridgeStillProjectsForOtherRuntime(t *testing.T) {
 	manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{LegacySkillBridge: true})
-	detection := runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: runtimes.CapabilitySet{runtimes.CapabilitySkillDirectory: true}}
+	detection := runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: runtimecontract.CapabilitySet{runtimecontract.CapabilitySkillDirectory: true}}
 	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -204,7 +204,7 @@ func TestSkillCommandBridgeProjectsManagedCLIForOtherRuntimes(t *testing.T) {
 			registry := commandbridge.NewRegistry(context.Background(), nil)
 			t.Cleanup(registry.Close)
 			manager.pluginInstallations = plugininstallation.New(plugininstallation.Config{DataDirectory: data, Bridges: registry, BridgeEnvironment: os.Environ()})
-			detection := runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: cli}, Capabilities: runtimes.CapabilitySet{runtimes.CapabilitySkillDirectory: true}}
+			detection := runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{BaseRuntimeID: cli}, Capabilities: runtimecontract.CapabilitySet{runtimecontract.CapabilitySkillDirectory: true}}
 			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
 			if err != nil {
 				t.Fatal(err)
@@ -250,7 +250,7 @@ func TestSkillCommandBridgesMergePrivatePathsAndKeepOtherConflicts(t *testing.T)
 			registry := commandbridge.NewRegistry(context.Background(), nil)
 			t.Cleanup(registry.Close)
 			manager.pluginInstallations = plugininstallation.New(plugininstallation.Config{DataDirectory: manager.skillDataDirectory, Bridges: registry, BridgeEnvironment: os.Environ()})
-			detection := runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: runtimes.CapabilitySet{runtimes.CapabilitySkillDirectory: true}}
+			detection := runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: runtimecontract.CapabilitySet{runtimecontract.CapabilitySkillDirectory: true}}
 			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p", "second"}}}, detection)
 			defer prepared.release()
 			if conflict {
@@ -281,7 +281,7 @@ func TestBoundCodexExecutionExpandsUnboundCompositeHeaderOnlyInMemory(t *testing
 	secret := "configuration-private-sentinel-902"
 	state.Configuration.Secrets = []models.MCPSecretDefinition{{Name: "OTHER_TOKEN", Value: secret, Configured: true}}
 	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -321,7 +321,7 @@ func TestBoundNativeAuthenticationUsesLogicalBridgeAndPrivateTemplate(t *testing
 			if cli == "claude" {
 				version = "2.1.159"
 			}
-			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: cli}, Version: version})
+			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{BaseRuntimeID: cli}, Version: version})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -354,7 +354,7 @@ func TestBoundNativeAuthenticationUsesLogicalBridgeAndPrivateTemplate(t *testing
 
 func TestBoundAuthenticationFallbackKeepsConnectorScopeAndRetryIdentity(t *testing.T) {
 	manager, _, _ := authenticatedPluginFixture(t)
-	detection := runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: "claude"}, Version: "2.1.1", Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true}}
+	detection := runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{BaseRuntimeID: "claude"}, Version: "2.1.1", Capabilities: runtimecontract.CapabilitySet{runtimecontract.CapabilityMCPStreamableHTTP: true}}
 	request := pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}
 	prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
 	if err != nil {
@@ -406,7 +406,7 @@ func TestBoundAuthenticationRejectsMissingAndUndeclaredSecrets(t *testing.T) {
 	} {
 		t.Run(reply, func(t *testing.T) {
 			manager, _, _ := authenticatedPluginFixture(t, reply)
-			result, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+			result, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimecontract.DetectionResult{Runtime: runtimecontract.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
 			if err == nil {
 				result.release()
 				t.Fatal("unexpected secret binding accepted")

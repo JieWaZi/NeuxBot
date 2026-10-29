@@ -1,10 +1,10 @@
 # 智能体与账号
 
-知识模型生成使用 `GenerateText` 独立入口，复用 ACP 适配与账号事实，直接返回正文、停止原因、用量和实际配置诊断，不进入 Execution 或聊天 JSONL。具体约束见[知识库](knowledge-cn.md#cli-调用与生命周期)。
+知识模型生成使用独立 Invoke，复用 ACP 适配与账号事实，直接返回正文、停止原因、用量和实际配置诊断，不进入 Execution 或聊天 JSONL。具体约束见[知识库](knowledge-cn.md#cli-调用与生命周期)。
 
 ## Runtime 边界
 
-internal/runtimes 提供数据库无关的探测、能力与执行适配。它复用 acp-go 的公共适配器，将智能体事件、审批、问答、会话与错误归一给 Execution。增加智能体通过现有注册和能力边界完成，不向 Chat 暴露私有协议。
+`runtimehost/contract`、`catalog` 和 `workspace` 分别承载宿主契约、CLI 目录与启动准备、工作区准备；执行通过独立 agent-runtime 的 ACP Driver 和 acp-go 公共适配器，将事件、审批、问答、会话与错误归一给 Execution。11 个 CLI 共用 `driver/acp/native.New`，不向 Chat 暴露私有协议。Probe 和 Fork 由独立 ACP Management 执行，不进入调用引擎。
 
 界面支持 Codex、Claude Code、Cursor、Kimi、Pi、OpenCode、Gemini CLI、Grok Build、WorkBuddy、Qoder、Qoder CN。是否可用由本机安装、版本、登录、模型及真实 initialize 能力决定。
 
@@ -28,15 +28,15 @@ Pi 自有 RPC 事件队列沿相同的 256 项与 16 MiB 预算等待真实消�
 
 只合并不含工具正文、输出或非空元数据的相邻累计输入快照，省略字段保留。元数据可能承载终端、MCP 或未知进度，统一按 `tool_update` 保序批写；只有所属 Runtime 明确证明是纯输入后才可在归属层归一化优化，通用层不能猜测。正文、执行输出、文件 Diff、其他工具、状态切换及终态保持原顺序。累计输入归一为独立的 `tool_input_snapshot`，其他非终态工具更新归为 `tool_update`，均不表示新的工具执行。持续交付失败取消当前 Prompt 并停止后续交付，保存首个失败，清理失败另记诊断；队列资源不足记录为事件交付失败，不归为 Runtime 程序不可用。已取消的交付在修改消息前拒绝；已经开始的耐久文件提交完成后再写终态，不能承诺 Context 可以强制中断操作系统文件 I/O。
 
-ACP SDK 与原生 stdio Adapter 的修复统一在 acp-go 仓库维护，宿主只通过 `server/go.mod` 引用固定版本，不保存源码副本。SDK 位于该仓库的独立 `sdk` 子模块，保留上游协议类型，以 `github.com/JieWaZi/acp-go/sdk` 独立模块路径直接固定版本，宿主与 Adapter 使用同一份类型，无需 replace。通知队列显式启用条数、字节预算和独立传输关闭所有者，生成协议类型保持原样。响应之前的通知屏障仍由 SDK 维护，不在业务层另写 JSON-RPC 排序。Claude 连接沿已有每 Session CLI 归属保持独占和热复用。Codex 保留共享 app-server 的热复用与既有进程数量；同连接上的其他会话可能短暂等待背压，当前会话超时或取消不能使它们失败。独立所有者取消直接关闭 Pipe 解除阻塞，不依赖拥塞连接发送关闭请求。桌面和 Web 打包从实际依赖模块目录复制原有许可及 NOTICE。
+ACP SDK 与原生 stdio Adapter 的修复统一在 acp-go 仓库维护，宿主只通过 `server/go.mod` 引用固定版本，不保存源码副本。SDK 位于该仓库的独立 `sdk` 子模块，保留上游协议类型，以 `github.com/JieWaZi/acp-go/sdk` 独立模块路径直接固定版本，宿主与 Adapter 使用同一份类型，无需 replace。通知队列显式启用条数、字节预算和独立传输关闭所有者，生成协议类型保持原样。响应之前的通知屏障仍由 SDK 维护，不在业务层另写 JSON-RPC 排序。ACP Driver 为每个会话创建独占连接，支持时可保留热会话；不同会话不共享原生进程。独立所有者取消直接关闭 Pipe 解除阻塞，不依赖拥塞连接发送关闭请求。桌面和 Web 打包从实际依赖模块目录复制原有许可及 NOTICE。
 
-独立文本生成只返回最终正文、停止原因、用量与实际能力诊断。CLI 的正文片段直接由本次调用的收集器汇总，思考、过程与中间用量不进入聊天事件队列、消息投影或持久化；忽略过程内容仍更新活动时间。意外工具与交互继续拒绝，取消、超时及进程收尾复用 Runtime 生命周期。
+独立文本生成只返回最终正文、停止原因、用量与实际能力诊断。CLI 的正文片段直接由本次调用的收集器汇总，思考、过程与中间用量不进入聊天事件队列、消息投影或持久化；忽略过程内容仍更新活动时间。宿主不主动注入 AGENTS.md、Skill 或 MCP；CLI 自有工具与配置加载由 CLI 负责。取消、超时及进程收尾复用 Runtime 生命周期。
 
 软件能力通过系统 `ally` Skill 交付。Core 将同包技能资源和当前平台的受管 CLI 一起准备到不可变目录，入口为 `scripts/allycli`（Windows 为 `scripts/allycli.exe`），知识指南为同目录下的 `references/wiki-guide.md`。CLI 字节与执行位参与内容摘要，程序更新后生成对应的新目录。执行指令提供 `SKILL.md`、CLI 和知识指南的明确绝对路径；`ALLYCLI_BINARY_PATH` 与进程 `PATH` 指向 Skill 内入口。智能体从 Skill 所在目录解析资源，无需搜索工作区或全局安装目录。
 
 Qoder 与 Qoder CN 的项目技能目录均为 `.qoder/skills`；两者分别使用 `QODER_CONFIG_DIR`、`QODERCN_CONFIG_DIR` 用户配置根。安装探测同时检查 PATH 和官方用户级原生程序位置；不主动扫描仅用于桌面命令分发的 `entry` 目录。
 
-探测保存可查询的安装证据与能力快照。查询使用持久事实，连接测试与能力刷新是明确操作；未完成探测不能解释为未安装。多安装路径需明确选择实际版本。
+探测保存可查询的安装证据与能力快照。启动后台、手动刷新、设置及显式账号能力查询触发探测；普通配置准入不隐式 Detect 或每次探测，读取已有事实。实际执行时初始化握手确认模型、档位和权限；未完成探测不能解释为未安装。多安装路径需明确选择实际版本。
 
 ## 账号隔离
 

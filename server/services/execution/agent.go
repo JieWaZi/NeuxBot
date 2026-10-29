@@ -15,7 +15,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -42,7 +42,7 @@ func agentIdentity(value string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, facts *executionMessageFacts, automaticRunIDs ...string) (func(), func(), func(runtimes.Result), error) {
+func (m *service) prepareAgent(request *runtimecontract.RunRequest, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, facts *executionMessageFacts, automaticRunIDs ...string) (func(), func(), func(runtimecontract.Result), error) {
 	if m.agent == nil {
 		return nil, nil, nil, nil
 	}
@@ -67,9 +67,9 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 			return nil, nil, nil, status_error.SkillContentInvalid
 		}
 	}
-	request.Skills = append(request.Skills, runtimes.Skill{Name: constants.AgentCLISkillName, Path: skill})
+	request.Skills = append(request.Skills, runtimecontract.Skill{Name: constants.AgentCLISkillName, Path: skill})
 	binary = builtinskills.CLIPath(skill)
-	request.Instructions = append(request.Instructions, runtimes.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxBot-provided operations, read the ally skill at %q. Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands. Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract.", filepath.Join(skill, "SKILL.md"), binary, filepath.Join(skill, "references", "wiki-guide.md"))})
+	request.Instructions = append(request.Instructions, runtimecontract.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxBot-provided operations, read the ally skill at %q. Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands. Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract.", filepath.Join(skill, "SKILL.md"), binary, filepath.Join(skill, "references", "wiki-guide.md"))})
 	roots := []string{}
 	for _, candidate := range append([]string{request.Workspace.Path}, chat.AdditionalWorkingDirectories...) {
 		if actual, err := filepath.EvalSymlinks(candidate); err == nil {
@@ -127,7 +127,7 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 	key := agentIdentity(chat.ID + ":" + request.Target.RuntimeID + ":" + request.Target.AccountID)
 	m.agentSessions.mutex.Lock()
 	slot := m.agentSessions.slots[key]
-	if request.Session.Mode == runtimes.SessionModeNew || slot.directory == "" || slot.sessionID != request.Session.ID {
+	if request.Session.Mode == runtimecontract.SessionModeNew || slot.directory == "" || slot.sessionID != request.Session.ID {
 		slot = agentSessionSlot{sessionID: request.Session.ID, directory: filepath.Join(root, "agent-contexts", key, util.New())}
 	}
 	path, err := agentcapability.WriteConnection(slot.directory, "connection.json", agentcapability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: m.agentEndpoint, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
@@ -151,7 +151,7 @@ func (m *service) prepareAgent(request *runtimes.RunRequest, chat models.Chat, e
 		inheritedPath = os.Getenv("PATH")
 	}
 	request.Target.Environment["PATH"] = filepath.Dir(binary) + string(filepath.ListSeparator) + inheritedPath
-	settle := func(result runtimes.Result) {
+	settle := func(result runtimecontract.Result) {
 		if sessionID := reliableRuntimeSessionID(result); sessionID != "" {
 			m.agentSessions.mutex.Lock()
 			defer m.agentSessions.mutex.Unlock()

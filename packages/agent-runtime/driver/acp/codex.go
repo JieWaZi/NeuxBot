@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/agent-runtime/contract"
-	acpcodex "github.com/JieWaZi/acp-go/pkg/codex"
+	"github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp/native"
 	sdk "github.com/JieWaZi/acp-go/sdk"
 )
 
-// CodexConfig 保存首个 Codex 工厂的公开启动选项；原生协议与进程由 acp-go 拥有。
+// CodexConfig 保存 Codex 便捷入口的公开启动选项；所有原生 Agent 由共享工厂创建。
 type CodexConfig struct {
 	ID             string        // ID 是驱动身份，空值采用 codex。
 	Logger         *slog.Logger  // Logger 是原生启动和诊断日志入口。
@@ -60,7 +60,7 @@ func NewCodex(config CodexConfig) (*Driver, error) {
 		for _, key := range keys {
 			merged = append(merged, key+"="+values[key])
 		}
-		agent, err := acpcodex.NewAgent(ctx, acpcodex.Config{Logger: config.Logger, CodexPath: config.CodexPath, PrefixArgs: append([]string(nil), args...), Environment: merged})
+		agent, err := native.New(ctx, native.Config{RuntimeID: "codex", Logger: config.Logger, Executable: config.CodexPath, PrefixArgs: append([]string(nil), args...), Environment: merged})
 		if err != nil {
 			return nil, err
 		}

@@ -52,7 +52,7 @@ server/
   services/execution/                # 产品接纳、工作范围、业务收尾
   services/chat/                     # 产品历史与执行准备读取
   global/                            # 显式装配、临时迁移路由、关闭顺序
-  internal/runtimes/                 # 剩余 CLI 目录、探测、启动准备与原生分叉；无旧 Run
+  internal/runtimehost/{contract,catalog,workspace}/ # 宿主契约、CLI 目录和工作区
 ```
 
 按实际职责建包，不预建空目录；session 首期若与 engine 共享锁和状态，先放 engine 内聚文件，避免人为拆包。
@@ -100,7 +100,7 @@ Engine 不导入具体 Driver。宿主构造 Driver 并注入 Runtime；Driver �
 
 ## 4. 本次并行开发范围与契约
 
-阶段 A 的任务分工保留在本节；阶段 B 已将全部已注册 CLI 的知识结果生成接入新内核，阶段 C 已迁移独立 Wiki 维护。阶段 D 的普通 Chat、伙伴入口已完成，详见 [Chat 阶段计划](agent-runtime-chat-plan-cn.md)。阶段 E 已统一编排执行入口、删除旧执行链，并完成一次阶段评审及问题修复，详见 [编排迁移计划](agent-runtime-orchestration-plan-cn.md)。阶段 F 的管理能力归属、打包与生命周期收敛尚未实施；不把自动化测试等同于真实账号或生产验收。
+阶段 A 的任务分工保留在本节；阶段 B 已将全部已注册 CLI 的知识结果生成接入新内核，阶段 C 已迁移独立 Wiki 维护。阶段 D 的普通 Chat、伙伴入口已完成，详见 [Chat 阶段计划](agent-runtime-chat-plan-cn.md)。阶段 E 已统一编排执行入口、删除旧执行链，并完成一次阶段评审及问题修复，详见 [编排迁移计划](agent-runtime-orchestration-plan-cn.md)。阶段 F 的 CLI 管理归属已完成拆分与旧包删除，详见 [CLI 收尾计划](agent-runtime-cli-plan-cn.md)；打包与桌面生命周期的最终验收仍待后续完成；不把自动化测试等同于真实账号或生产验收。
 
 阶段 A 四项开发任务已完成并通过各自及跨模块独立评审。验证包含新模块真实依赖检查、vet、定向测试与 race、Core＋公开 ACP 传输组合回归和文档检查；未运行全仓验证或真实账号验收。各 CLI 的实际运行证据和边界见[全 CLI 接入计划](agent-runtime-all-cli-plan-cn.md)；Codex 最终性修正见[验收计划](agent-runtime-codex-validation-plan-cn.md)。
 
@@ -131,7 +131,7 @@ type DriverSession interface {
 }
 ```
 
-ExecutionSpec 只含 Profile、Input、SessionDirective、Workspace、明确策略和限制/资源身份；RunOptions 持有 Observer/交互端口。SessionDirective 区分 New/Resume 和 Seed；Result 分开执行状态、输出状态/可靠性、交付故障、用量/副作用与技术会话身份。事件保留 PromptAccepted、MessageID、Phase、文本和工具事实。调用标识由 Runtime 自动生成，或由宿主提前调用 NewInvocationID 申请；未启动预留数量有界，Cancel 可释放预留，用过的标识不重新接纳，不保存无界已完成标识集。首次未实现的 Fork/Detect/冷恢复不伪造支持。
+ExecutionSpec 只含 Profile、Input、SessionDirective、Workspace、明确策略和限制/资源身份；RunOptions 持有 Observer/交互端口。SessionDirective 区分 New/Resume 和 Seed；Result 分开执行状态、输出状态/可靠性、交付故障、用量/副作用与技术会话身份。事件保留 PromptAccepted、MessageID、Phase、文本和工具事实。调用标识由 Runtime 自动生成，或由宿主提前调用 NewInvocationID 申请；未启动预留数量有界，Cancel 可释放预留，用过的标识不重新接纳，不保存无界已完成标识集。冷恢复不伪造支持；Probe 和 Fork 由独立 ACP Management 承担，不进入执行引擎。
 
 ### Task 1: 独立契约和共享内核（Sol 6.1 xhigh）
 

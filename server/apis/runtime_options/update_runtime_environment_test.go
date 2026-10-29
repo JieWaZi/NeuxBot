@@ -3,7 +3,7 @@ package runtime_options
 import (
 	"testing"
 
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -31,16 +31,16 @@ func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.
 		Enabled:                true,
 		IsDefault:              true,
 		DefaultModel:           "free-model",
-		DefaultPermissionLevel: runtimes.PermissionLevelFullAccess,
+		DefaultPermissionLevel: runtimecontract.PermissionLevelFullAccess,
 		CustomModels:           []string{},
-		Detection: runtimes.DetectionResult{
+		Detection: runtimecontract.DetectionResult{
 			ResolvedBinary: "/installed/opencode",
-			State:          runtimes.DetectionStateReady,
-			Models: []runtimes.ModelOption{{
+			State:          runtimecontract.DetectionStateReady,
+			Models: []runtimecontract.ModelOption{{
 				ID:               "free-model",
-				PermissionLevels: []runtimes.PermissionLevel{runtimes.PermissionLevelFullAccess},
+				PermissionLevels: []runtimecontract.PermissionLevel{runtimecontract.PermissionLevelFullAccess},
 			}},
-			Diagnostics: []runtimes.Diagnostic{},
+			Diagnostics: []runtimecontract.Diagnostic{},
 		},
 	}
 	tests := []struct {
@@ -53,13 +53,13 @@ func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.
 	}{
 		{name: "模型与权限就绪", allowed: true},
 		{name: "所选智能体探测未就绪", change: func(environment *models.RuntimeEnvironment) {
-			environment.Detection.State = runtimes.DetectionStateUnavailable
+			environment.Detection.State = runtimecontract.DetectionStateUnavailable
 		}},
 		{name: "尚未设为默认", change: func(environment *models.RuntimeEnvironment) {
 			environment.IsDefault = false
 		}},
 		{name: "只有安装证据", change: func(environment *models.RuntimeEnvironment) {
-			environment.Detection.Models = []runtimes.ModelOption{}
+			environment.Detection.Models = []runtimecontract.ModelOption{}
 		}},
 		{name: "没有默认模型", change: func(environment *models.RuntimeEnvironment) {
 			environment.DefaultModel = ""
@@ -68,10 +68,10 @@ func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.
 			environment.DefaultModel = "removed-model"
 		}},
 		{name: "默认权限不支持", change: func(environment *models.RuntimeEnvironment) {
-			environment.DefaultPermissionLevel = runtimes.PermissionLevelAuto
+			environment.DefaultPermissionLevel = runtimecontract.PermissionLevelAuto
 		}},
 		{name: "旧目录仍在但刷新失败", change: func(environment *models.RuntimeEnvironment) {
-			environment.Detection.Diagnostics = []runtimes.Diagnostic{{Code: runtimes.DiagnosticCodeACPOptionsUnavailable}}
+			environment.Detection.Diagnostics = []runtimecontract.Diagnostic{{Code: runtimecontract.DiagnosticCodeACPOptionsUnavailable}}
 		}},
 	}
 	for _, test := range tests {

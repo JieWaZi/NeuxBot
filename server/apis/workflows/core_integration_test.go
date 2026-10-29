@@ -1,6 +1,8 @@
 package workflows
 
 import (
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+
 	"context"
 	"encoding/json"
 	"net/http/httptest"
@@ -16,7 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
@@ -38,22 +40,22 @@ type fixtureRuntime struct {
 	// calls 保存节点实际调用次数。
 	calls map[string]int
 	// workspaces 验证不同 Chat 使用独立 cwd 并共用批准的业务目录。
-	workspaces []runtimes.Workspace
+	workspaces []runtimecontract.Workspace
 }
 
-func (*fixtureRuntime) ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error) {
-	return runtimes.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
+func (*fixtureRuntime) ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
+	return runtimecontract.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
 }
-func (*fixtureRuntime) Runtimes() []runtimes.RuntimeSummary {
-	return []runtimes.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
+func (*fixtureRuntime) Runtimes() []runtimecontract.RuntimeSummary {
+	return []runtimecontract.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
 }
-func (r *fixtureRuntime) Run(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
+func (r *fixtureRuntime) Run(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink) runtimecontract.Result {
 	invocation := util.New()
-	started, _ := json.Marshal(runtimes.InvocationStartedData{InvocationID: invocation})
-	failed := func(err error) runtimes.Result {
-		return runtimes.Result{ExitCode: 1, Failure: &runtimes.Failure{Code: runtimes.FailureCodeProcessExited, Stage: "runtime", Message: err.Error(), Transience: runtimes.FailureTransiencePermanent}}
+	started, _ := json.Marshal(runtimecontract.InvocationStartedData{InvocationID: invocation})
+	failed := func(err error) runtimecontract.Result {
+		return runtimecontract.Result{ExitCode: 1, Failure: &runtimecontract.Failure{Code: runtimecontract.FailureCodeProcessExited, Stage: "runtime", Message: err.Error(), Transience: runtimecontract.FailureTransiencePermanent}}
 	}
-	if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeInvocationStarted, Data: started}); err != nil {
+	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: started}); err != nil {
 		return failed(err)
 	}
 	contract, err := fixtureCLI(ctx, request, []string{"workflow", "results", "schema"}, nil)
@@ -112,7 +114,7 @@ func (r *fixtureRuntime) Run(ctx context.Context, request runtimes.RunRequest, s
 		return failed(err)
 	}
 
-	return runtimes.Result{Facts: runtimes.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
+	return runtimecontract.Result{Facts: runtimecontract.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
 }
 
 // fixtureEnvironment 返回真实 Core 会校验的固定能力目录，不替代接纳逻辑。
@@ -124,18 +126,18 @@ func (fixtureEnvironment) Get(context.Context, string) (models.RuntimeEnvironmen
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := catalog.New(catalog.Config{})
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
-	var summary runtimes.RuntimeSummary
+	var summary runtimecontract.RuntimeSummary
 	for _, registered := range sdk.Runtimes() {
 		if registered.ID == "codex" {
 			summary = registered
 			break
 		}
 	}
-	return models.RuntimeEnvironment{RuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "fixture", Detection: runtimes.DetectionResult{Runtime: summary, State: runtimes.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true, runtimes.CapabilitySkillDirectory: true}, Models: []runtimes.ModelOption{{ID: "fixture", Name: "fixture", PermissionLevels: []runtimes.PermissionLevel{runtimes.PermissionLevelDefault, runtimes.PermissionLevelFullAccess}}}}}, nil
+	return models.RuntimeEnvironment{RuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "fixture", Detection: runtimecontract.DetectionResult{Runtime: summary, State: runtimecontract.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimecontract.CapabilitySet{runtimecontract.CapabilityMCPStreamableHTTP: true, runtimecontract.CapabilitySkillDirectory: true}, Models: []runtimecontract.ModelOption{{ID: "fixture", Name: "fixture", PermissionLevels: []runtimecontract.PermissionLevel{runtimecontract.PermissionLevelDefault, runtimecontract.PermissionLevelFullAccess}}}}}, nil
 }
 
 func openCoreWorkflowFixture(t *testing.T, directory string, runtime *fixtureRuntime) (*workflowFixture, func()) {
@@ -147,23 +149,23 @@ func openCoreWorkflowFixture(t *testing.T, directory string, runtime *fixtureRun
 // coreTestRuntime 允许既有业务替身或真实宿主接入同一业务 fixture。
 type coreTestRuntime interface {
 	// ForkSession 复用实际会话分叉协议。
-	ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error)
+	ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error)
 	// Runtimes 提供真实工作区集成目录约定。
-	Runtimes() []runtimes.RuntimeSummary
+	Runtimes() []runtimecontract.RuntimeSummary
 	// Run 通过协议交付模型执行事件。
-	Run(context.Context, runtimes.RunRequest, runtimes.EventSink) runtimes.Result
+	Run(context.Context, runtimecontract.RunRequest, runtimecontract.EventSink) runtimecontract.Result
 }
 
 // coreExecutionRuntime 与执行核心共用明确的资源生命周期；真实 Host 直接实现此接口。
 type coreExecutionRuntime interface {
 	// ForkSession 是原生分叉端口。
-	ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error)
+	ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error)
 	// Runtimes 是原生目录约定。
-	Runtimes() []runtimes.RuntimeSummary
+	Runtimes() []runtimecontract.RuntimeSummary
 	// RunWithLease 直到外部消费者退出才释放租约。
-	RunWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
+	RunWithLease(context.Context, runtimecontract.RunRequest, runtimecontract.EventSink, func(context.Context) error) runtimecontract.Result
 	// RunSummaryWithLease 提供同一宿主的隐藏摘要能力。
-	RunSummaryWithLease(context.Context, runtimes.RunRequest, runtimes.EventSink, func(context.Context) error) runtimes.Result
+	RunSummaryWithLease(context.Context, runtimecontract.RunRequest, runtimecontract.EventSink, func(context.Context) error) runtimecontract.Result
 	// CloseWorkspace 释放原生会话所有者。
 	CloseWorkspace(context.Context, string) error
 }
@@ -174,13 +176,13 @@ type coreRuntimeStub struct {
 	coreTestRuntime
 }
 
-func (r coreRuntimeStub) RunWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+func (r coreRuntimeStub) RunWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
 	if release != nil {
 		defer release(context.WithoutCancel(ctx))
 	}
 	return r.coreTestRuntime.Run(ctx, request, sink)
 }
-func (r coreRuntimeStub) RunSummaryWithLease(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink, release func(context.Context) error) runtimes.Result {
+func (r coreRuntimeStub) RunSummaryWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
 	return r.RunWithLease(ctx, request, sink, release)
 }
 func (coreRuntimeStub) CloseWorkspace(context.Context, string) error { return nil }
@@ -421,7 +423,7 @@ func TestF1WholeCoreWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T)
 	}
 }
 
-func assertWorkflowChatWorkspace(t *testing.T, workspace runtimes.Workspace, businessDirectory string) {
+func assertWorkflowChatWorkspace(t *testing.T, workspace runtimecontract.Workspace, businessDirectory string) {
 	t.Helper()
 	if !workspace.Managed || workspace.Path == businessDirectory || len(workspace.AdditionalWritableDirectories) != 1 || workspace.AdditionalWritableDirectories[0] != businessDirectory {
 		t.Fatalf("workflow must use the common managed chat cwd and authorize its business directory: %+v", workspace)
