@@ -9,6 +9,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/shared/lib/cn";
+import { markdownTableLayoutClassName } from "@/shared/ui/markdown-table-styles";
 import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,
@@ -31,8 +32,10 @@ type ChatTableProps = ComponentPropsWithoutRef<"table"> & {
 
 const tableFormats: readonly TableExportFormat[] = ["markdown", "csv", "tsv"];
 
-const tableClassName =
-  "type-body w-full border-collapse [&_thead]:bg-muted/60 [&_th]:text-muted-foreground [&_th]:type-ui [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_th]:whitespace-nowrap [&_td]:px-3 [&_td]:py-2 [&_td]:align-middle [&_tr]:border-border/70 [&_tr]:border-b [&_tr:last-child]:border-b-0";
+const tableClassName = cn(
+  "type-body [&_thead]:bg-muted/60 [&_th]:text-muted-foreground [&_th]:type-ui [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_td]:px-3 [&_td]:py-2 [&_td]:align-middle [&_tr]:border-border/70 [&_tr]:border-b [&_tr:last-child]:border-b-0",
+  markdownTableLayoutClassName,
+);
 
 function TableFrame({
   children,
@@ -47,14 +50,14 @@ function TableFrame({
   return (
     <div
       className={cn(
-        "border-border bg-surface-elevated overflow-auto rounded-lg border",
+        "border-border bg-surface-elevated w-full min-w-0 overflow-auto rounded-lg border",
         preview &&
           "[&_thead]:bg-muted max-h-[calc(100dvh-144px)] [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10",
       )}
     >
       <table
         ref={tableRef}
-        className={cn(tableClassName, className)}
+        className={cn(className, tableClassName)}
         data-streamdown="table"
         {...props}
       >
@@ -124,7 +127,7 @@ export function ChatTable({
 
   return (
     <section
-      className="border-border bg-surface-elevated my-3 rounded-lg border p-3"
+      className="border-border bg-surface-elevated my-3 flex w-full max-w-none min-w-0 flex-col self-stretch rounded-lg border p-3"
       data-streamdown="table-wrapper"
     >
       <header className="mb-3 flex items-center justify-end gap-1">

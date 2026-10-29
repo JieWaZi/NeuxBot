@@ -3,7 +3,9 @@ import {
   Streamdown,
   type StreamdownProps,
 } from "streamdown";
+import { cn } from "@/shared/lib/cn";
 import { openExternalURL } from "@/shared/platform";
+import { markdownTableContainerClassName } from "@/shared/ui/markdown-table-styles";
 
 /** 静态知识正文复用 Markdown 引擎；禁用原始 HTML 与远程图片自动加载。 */
 export function StaticMarkdown({
@@ -26,7 +28,10 @@ export function StaticMarkdown({
         .map(([, plugin]) => plugin)}
       controls={false}
       linkSafety={{ enabled: false }}
-      className="type-body [&_h1]:type-page-title [&_h2]:type-title [&_h3]:type-label min-w-0 space-y-5 break-words [&_h1]:mt-8 [&_h2]:mt-7 [&_h3]:mt-6 [&_li]:my-1 [&_pre]:overflow-x-auto [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto"
+      className={cn(
+        "type-body [&_h1]:type-page-title [&_h2]:type-title [&_h3]:type-label w-full max-w-none min-w-0 space-y-5 break-words [&_h1]:mt-8 [&_h2]:mt-7 [&_h3]:mt-6 [&_li]:my-1 [&_pre]:overflow-x-auto",
+        markdownTableContainerClassName,
+      )}
       components={{
         a: ({ href, children }) => (
           <a
