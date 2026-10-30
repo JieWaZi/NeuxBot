@@ -1,6 +1,6 @@
 # NeuxBot 项目架构与产品形态 Spec
 
-> 状态：目标架构提案，未实施。现阶段面向桌面个人版；企业私有部署与 PaaS 用于检查扩展边界，不是本轮建设任务。
+> 状态：目标架构；Agent 执行职责当前集中于 `server/internal/agent/{core,host,environment}`，同属 `server` Go 模块。执行目录和所有权以[职责收拢 Spec](agent-runtime-boundaries-spec-cn.md)为准，本文保留其他产品形态的目标边界。现阶段面向桌面个人版；企业私有部署与 PaaS 用于检查扩展边界，不是本轮建设任务。
 >
 > 本地依据：2026-10-27 的 `103ff8f` 与读取时工作区。参考：Neutree Agent Platform `5f5d4a0d155eb081702d6bd17623ce8ea0e78b12`。源码核对属于静态分析，不表示多用户、远程执行或性能验收已经通过。
 
@@ -30,7 +30,7 @@ NeuxBot 的目标是：**同一套产品领域内核，按个人或企业的需�
 
 个人版、企业版和 PaaS 复用这些产品职责，差异体现在身份与共享策略、应用装配、存储和执行位置。未来企业治理覆盖入口、领域读写、能力使用、执行与事件访问；它不是今天要新增的独立业务层。
 
-本轮不做 Runtime HTTP，不引入远程 worker、Kubernetes、组织表、租户字段或计费系统；不考虑旧数据和旧会话兼容。`packages/agent-runtime` 是独立 Go module；acp-go 保持独立仓库维护。详细执行契约与分批替换见 [Agent Runtime Spec](agent-runtime-refactor-spec-cn.md)。
+本轮不做 Runtime HTTP，不引入远程 worker、Kubernetes、组织表、租户字段或计费系统；不考虑旧数据和旧会话兼容。Agent 执行内核、产品宿主和环境分别位于 `server/internal/agent/{core,host,environment}`，通过包依赖边界隔离，同属 `server` Go 模块；acp-go 保持独立仓库维护。当前目录和生命周期见[职责收拢 Spec](agent-runtime-boundaries-spec-cn.md)，早期迁移契约与阶段证据见 [Agent Runtime 历史 Spec](agent-runtime-refactor-spec-cn.md)。
 
 ## 2. 借鉴 agent-platform 的什么
 
@@ -69,7 +69,7 @@ flowchart TB
         API[业务 API / 统一事件通道]
         Domain[伙伴 / Chat / Channel / Workflow / Knowledge / Memory]
         EX[Execution：接纳、装配、业务收尾]
-        RT[internal/runtimes：探测与执行适配]
+        RT[runtimehost：CLI 目录与执行装配]
         API --> Domain
         Domain --> EX
         Domain -->|独立知识调用| RT
@@ -94,7 +94,7 @@ flowchart TB
 | 产品入口 | `packages/frontend`、`desktop`、`web`、`server/apis`、IM/自动任务模块 | 呈现、宿主和触发适配调用相同领域用例 |
 | 工作编排 | Chat、Channel、Workflow、伙伴/项目与 Execution 的所属模块 | 业务状态归本域，Execution 收敛共享的工作接纳与执行接入 |
 | 能力供给 | Knowledge、Memory、插件/技能/连接器、AI Account、文件资源模块 | 资源定义与授权归本域，通过明确端口供工作与 Agent 使用 |
-| Agent 执行 | 新 `packages/agent-runtime`、`server/internal/runtimehost`，外部 acp-go | 抽离执行内核，环境装配留宿主，原生协议与进程留 acp-go |
+| Agent 执行 | `server/internal/agent/{core,host,environment}`，外部 acp-go | 抽离执行内核，环境装配留宿主，原生协议与进程留 acp-go |
 | 基础支撑 | 各领域存储实现、受管文件、事件交付与组合根 | 技术实现可独立演进，领域事实保持单一所有者 |
 
 依赖通过消费者定义的窄端口连接：Runtime 不导入 Chat、Workflow、Knowledge、产品数据库或 Execution；宿主绑定资源、交互与结果接收实现。业务工具仍由现有 agentcapability/ally 连接所属领域，不能转移到 Runtime 内执行业务 CRUD。
@@ -127,15 +127,15 @@ Runtime 内部收敛为四个部分：**调用接口、共享执行内核、事�
 
 调用侧经接口进入执行内核，内核驱动 Driver 并管理会话；Driver 的规范事件与内核终态交给结果处理；实时事件、最终结果和检查点按各自合同返回宿主。内部控制与输出是不同路径，不能把“事件与结果”理解为启动 Driver 的前置步骤。
 
-Invoke 与 Run 共享内核。Invoke 使用临时会话、显式工具策略和最终结果消费者；Run 支持恢复、交互和 Observer。知识纯生成可以显式禁止工具，后台维护可以允许限定工具；不能以“是否显示过程”推断工具权限。
+Invoke 与 Run 共享内核。Invoke 使用临时会话、显式工具策略和最终结果消费者；Run 支持恢复、交互和 Observer。知识生成只消费最终结果，中间可正常调用工具，也可加载原生或全局 MCP；工具权限、原生配置继承与输出消费独立决定，不能以“是否显示过程”推断工具权限。
 
 ### 4.2 Execution、Host、Runtime、acp-go 分工
 
 | 边界 | 回答的问题 | 当前实现方向 |
 | --- | --- | --- |
 | Execution | 这项产品工作是否接纳、允许做什么、结果属于谁？ | 保留原业务接纳与 Journal 协议 |
-| ExecutionHost | 在哪个受信环境运行，由谁提供资源与凭据？ | 一个 Local 实现，主要由 `server/internal/runtimehost` 承担装配 |
-| Agent Runtime | 如何执行一次调用、维护会话、交互、取消并收敛？ | 独立 Go module，嵌入 Core |
+| ExecutionHost | 在哪个受信环境运行，由谁提供资源与凭据？ | 一个 Local 实现，主要由 `server/internal/agent/host` 承担业务适配、`agent/environment` 承担启动与认证 |
+| Agent Runtime | 如何执行一次调用、维护会话、交互、取消并收敛？ | `server` 模块内的技术执行内核，包依赖隔离 |
 | Runtime Driver | 某种 Agent 后端具有什么技术能力，如何映射协议？ | ACP Driver 与已有薄 binding |
 | acp-go | 原生 CLI/协议、传输、适配与进程如何正确运行？ | 独立仓库发布；按固定版本引用 |
 
@@ -272,7 +272,7 @@ PaaS 初期可优先评估按客户组织隔离的部署单元，以复用单所
 | --- | --- | --- |
 | 产品域拥有完整业务规则与事实 | 新功能不再依赖跨层的隐含调用顺序 | 新入口与组织策略可复用领域命令 |
 | 资源、凭据与原生环境从 Execution 分离 | 改某种插件或 CLI 不影响全部聊天准备 | 可在不同执行位置物化同一资源描述 |
-| 独立 Agent Runtime + 固定 acp-go 依赖 | 独立测试、明确性能与资源回收 | 企业执行端使用同一执行内核 |
+| 包边界隔离的 Agent Core + 固定 acp-go 依赖 | 独立测试、明确性能与资源回收 | 企业执行端使用同一执行内核 |
 | 入口认证与领域授权分工明确 | CLI、IM、定时任务与 UI 遵守同一规则 | 可接入员工身份而不复制业务权限 |
 | UI 与客户端宿主分开 | Desktop/Web 复用当前功能 | 企业桌面可成为客户端，而非另一份服务器 |
 | 历史、事件与结果单一权威 | 避免重复状态、内存膨胀和丢失恢复 | 以后分进程时有明确持久化边界 |
@@ -290,12 +290,12 @@ PaaS 初期可优先评估按客户组织隔离的部署单元，以复用单所
 | `server/global` / `cmd` | 收敛为显式组合根，领域绑定回归所属模块 | 仍按当前本机生命周期启动 |
 | Chat / Execution | 分开领域接纳、资源准备、Runtime 调用与产品交付 | 首发/续聊、审批、分叉、取消和结果 |
 | Channel / Workflow | 保留独立状态机，Agent 步骤消费执行端口 | 伙伴协作、流程编排和人工处理 |
-| Knowledge / Memory | 纯生成、工具维护、Chat 修订分别使用正确入口 | 检索、整理、维护与记忆规则 |
+| Knowledge / Memory | 结果生成、工具维护、Chat 修订分别使用正确入口 | 检索、整理、维护与记忆规则 |
 | Plugin / Skill / Connector / AI Account | 资源内容、使用权、出站身份和物化分别拥有 | 现有安装与账号能力 |
 | Runtime / acp-go | 宿主侧执行策略迁入独立 module；协议与原生适配留 acp-go | 逐 CLI 能力验收，保持真实支持范围 |
 | Journal / 查询索引 / 事件 | 一套完整消息事实与恢复路径，热准备读取有界 | 历史、通知、看板和结果消费 |
 
-不要求把 `server/apis/services/repositories/internal` 一次性重命名为新目录树。模块所有权跨现有技术目录先对齐；只有边界和独立测试稳定后再决定物理归并。Agent Runtime 因确有独立使用需求，例外先形成独立 module；不据此把每个业务域都拆成 Go module。
+不要求把 `server/apis/services/repositories/internal` 一次性重命名为新目录树。模块所有权跨现有技术目录先对齐；只有边界和独立测试稳定后再决定物理归并。Agent 执行能力已经归到 `server/internal/agent`，内核通过定向架构测试保护依赖边界；不为每个业务域另建 Go module。
 
 ## 9. 演进顺序与完成判断
 
@@ -325,7 +325,7 @@ PaaS 初期可优先评估按客户组织隔离的部署单元，以复用单所
 
 - [领域词汇](../../CONTEXT.md)、[当前架构](../architecture/overview-cn.md)、[当前桌面边界](../architecture/desktop-lifecycle-cn.md)。
 - [Core 装配](../../server/global/config.go)、[业务执行](../../server/services/execution/work.go)、[Chat 执行准备](../../server/services/chat/journal.go)、[Chat 历史读取](../../server/services/chat/chat.go)。
-- [Runtime SDK](../../server/internal/runtimes/sdk.go)、[ACP 后端](../../server/internal/runtimes/acp_backend.go)、[软件能力 Registry](../../server/internal/agentcapability/registry.go)、[账号服务](../../server/services/aiaccount/service.go)。
+- [Runtime SDK](../../server/internal/agent/core/runtime/runtime.go)、[ACP 驱动](../../server/internal/agent/core/driver/acp/driver.go)、[软件能力 Registry](../../server/internal/agentcapability/registry.go)、[账号服务](../../server/services/aiaccount/service.go)。
 - [桌面 Core 地址和生命周期](../../desktop/electron/main/core-supervisor.ts)、[本机认证](../../server/apis/middleware/local_token_auth.go)、[事件订阅](../../server/apis/events/sources.go)。这些实现面向单人本机可信边界，不能直接当作企业多用户安全边界。
 - [伙伴协作模型](../../server/repositories/models/channel.go)、[项目模型](../../server/repositories/models/project.go)、[项目路径来源](../../server/repositories/models/project_source.go)、[插件配置](../../server/repositories/models/plugin.go)。
 - [聊天与执行](../architecture/chat-and-execution-cn.md)、[Runtime 与账号](../architecture/runtimes-and-accounts-cn.md)、[工作区与存储](../architecture/workspace-and-storage-cn.md)、[软件能力](../architecture/agent-capabilities-cn.md)。

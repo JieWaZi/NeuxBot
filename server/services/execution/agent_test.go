@@ -12,9 +12,9 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -41,21 +41,21 @@ func (j *agentTestJournal) LoadExecutionChat(context.Context, string) (models.Ch
 func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing.T) {
 	registry := agentcapability.New(nil)
 	defer registry.Close()
-	endpoint := httptest.NewServer(registry)
-	defer endpoint.Close()
+	endpoint := "http://127.0.0.1:18080"
 	layout, err := chatstorage.NewLayout(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	binary, err := os.Executable()
-	if err != nil {
+	// 本用例只检查打包路径和 HTTP 授权；真实 CLI 命令行为由下方独立回归覆盖。
+	binary := filepath.Join(t.TempDir(), "allycli")
+	if err := os.WriteFile(binary, []byte("test CLI file fixture"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "first"}}
 	programDirectory := t.TempDir()
-	manager := &service{agent: registry, agentEndpoint: endpoint.URL + constants.AgentCLIPath, agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, storage: layout, skillDataDirectory: programDirectory, elicitations: newElicitationCoordinator(journal)}
-	request := runtimes.RunRequest{Target: runtimes.RuntimeTarget{RuntimeID: "codex", AccountID: "account"}, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeNew}}
-	activate, revoke, settle, err := manager.prepareAgent(&request, journal.chat, "first", nil, &[]string{}, nil)
+	manager := &service{agent: registry, agentEndpoint: endpoint + constants.AgentCLIPath, agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, storage: layout, skillDataDirectory: programDirectory, elicitations: newElicitationCoordinator(journal)}
+	request := recordedRun{SessionPlan: runtimecontract.SessionPlan{Target: runtimecontract.SessionTarget{RuntimeID: "codex", AccountID: "account"}}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}}
+	activate, revoke, settle, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "first", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,8 +65,8 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 		cliName += ".exe"
 	}
 	skillCLI := filepath.Join(request.Skills[0].Path, "scripts", cliName)
-	if request.Target.Environment[constants.AgentCLIBinaryEnvironment] != skillCLI {
-		t.Fatalf("CLI must be directly available inside the advertised skill: got %q, want %q", request.Target.Environment[constants.AgentCLIBinaryEnvironment], skillCLI)
+	if request.LaunchEnvironment[constants.AgentCLIBinaryEnvironment] != skillCLI {
+		t.Fatalf("CLI must be directly available inside the advertised skill: got %q, want %q", request.LaunchEnvironment[constants.AgentCLIBinaryEnvironment], skillCLI)
 	}
 	if _, err := os.ReadFile(filepath.Join(request.Skills[0].Path, "references", "wiki-guide.md")); err != nil {
 		t.Fatalf("knowledge reference missing beside SKILL.md: %v", err)
@@ -79,22 +79,22 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 			t.Fatalf("program resources leaked into managed files: %s %v", directory, err)
 		}
 	}
-	firstPath := request.Target.Environment[constants.AgentCLIContextEnvironment]
+	firstPath := request.LaunchEnvironment[constants.AgentCLIContextEnvironment]
 	first, err := agentcapability.ReadConnection(firstPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	settle(runtimes.Result{Session: runtimes.SessionResult{OutputID: "native", State: runtimes.SessionStateCreated}})
+	settle(runtimecontract.Result{Session: runtimecontract.SessionResult{OutputID: "native", State: runtimecontract.SessionStateCreated}})
 	revoke()
 	journal.chat.ActiveExecutionID = "second"
-	secondRequest := runtimes.RunRequest{Target: request.Target, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeResume, ID: "native"}}
-	activate, revokeSecond, _, err := manager.prepareAgent(&secondRequest, journal.chat, "second", nil, &[]string{}, nil)
+	secondRequest := recordedRun{SessionPlan: runtimecontract.SessionPlan{Target: request.Target}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: "native"}}
+	activate, revokeSecond, _, err := manager.prepareAgent(&secondRequest.SessionPlan, &secondRequest.TurnInput, secondRequest.Session, journal.chat, "second", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer revokeSecond()
 	activate()
-	if secondRequest.Target.Environment[constants.AgentCLIContextEnvironment] != firstPath {
+	if secondRequest.LaunchEnvironment[constants.AgentCLIContextEnvironment] != firstPath {
 		t.Fatal("continued native process lost its original environment file path")
 	}
 	second, err := agentcapability.ReadConnection(firstPath)
@@ -102,14 +102,12 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 		t.Fatalf("credential did not rotate: %v", err)
 	}
 	send := func(token string) int {
-		request, _ := http.NewRequest(http.MethodGet, endpoint.URL+constants.AgentCLIPath+"/capabilities", nil)
+		request := httptest.NewRequest(http.MethodGet, endpoint+constants.AgentCLIPath+"/capabilities", nil)
+		request.RemoteAddr = "127.0.0.1:10000"
 		request.Header.Set("Authorization", "Bearer "+token)
-		response, err := endpoint.Client().Do(request)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer response.Body.Close()
-		return response.StatusCode
+		response := httptest.NewRecorder()
+		registry.ServeHTTP(response, request)
+		return response.Code
 	}
 	if send(first.Token) != 401 || send(second.Token) != 200 {
 		t.Fatal("old invocation crossed into a later grant")
@@ -127,13 +125,13 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	if journal.contextReads != 0 {
 		t.Fatalf("capability validation loaded full message context %d times", journal.contextReads)
 	}
-	newRequest := runtimes.RunRequest{Target: request.Target, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeNew}}
-	_, revokeNew, _, err := manager.prepareAgent(&newRequest, journal.chat, "second", nil, &[]string{}, nil)
+	newRequest := recordedRun{SessionPlan: runtimecontract.SessionPlan{Target: request.Target}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}}
+	_, revokeNew, _, err := manager.prepareAgent(&newRequest.SessionPlan, &newRequest.TurnInput, newRequest.Session, journal.chat, "second", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer revokeNew()
-	if newRequest.Target.Environment[constants.AgentCLIContextEnvironment] == firstPath {
+	if newRequest.LaunchEnvironment[constants.AgentCLIContextEnvironment] == firstPath {
 		t.Fatal("new native session reused an old process credential file")
 	}
 }
@@ -167,24 +165,24 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 		}
 		bindings = append(bindings, b)
 	}
-	request := runtimes.RunRequest{Target: runtimes.RuntimeTarget{RuntimeID: "codex"}, Session: runtimes.SessionDirective{Mode: runtimes.SessionModeNew}, Policy: runtimes.RunPolicy{Execution: runtimes.ExecutionPolicy{WorkspaceReadOnly: true}}}
-	activate, revoke, _, err := manager.prepareAgent(&request, journal.chat, "execution", []ToolCapability{{ID: "knowledge.organize", Bindings: bindings}}, &[]string{}, nil)
+	request := recordedRun{SessionPlan: runtimecontract.SessionPlan{Target: runtimecontract.SessionTarget{RuntimeID: "codex"}, Policy: runtimecontract.RunPolicy{Execution: runtimecontract.ExecutionPolicy{WorkspaceReadOnly: true}}}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}}
+	activate, revoke, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "execution", []ToolCapability{{ID: "knowledge.organize", Bindings: bindings}}, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer revoke()
 	activate()
-	if len(request.Connectors) != 0 || len(request.Policy.Execution.TrustedControlTools) != 0 {
+	if len(request.Connectors) != 0 {
 		t.Fatalf("knowledge grant added a retired MCP transport: %+v", request.Connectors)
 	}
-	if request.Target.Environment[constants.AgentCLIContextEnvironment] == "" || !request.Policy.Execution.WorkspaceReadOnly {
+	if request.LaunchEnvironment[constants.AgentCLIContextEnvironment] == "" || !request.Policy.Execution.WorkspaceReadOnly {
 		t.Fatal("existing CLI context or workspace policy was lost")
 	}
 	// 从无技能文件的目录运行，清空 PATH，证明入口与引用均无需搜索。
-	command := exec.Command(request.Target.Environment[constants.AgentCLIBinaryEnvironment], "capabilities")
+	command := exec.Command(request.LaunchEnvironment[constants.AgentCLIBinaryEnvironment], "capabilities")
 	command.Dir = t.TempDir()
 	command.Env = os.Environ()
-	for name, value := range request.Target.Environment {
+	for name, value := range request.LaunchEnvironment {
 		command.Env = append(command.Env, name+"="+value)
 	}
 	command.Env = append(command.Env, "PATH=")

@@ -8,7 +8,7 @@ export type KnowledgePerform = (
   key: string,
   action: (requestId: string) => Promise<unknown>,
 ) => Promise<void>;
-/** 同一操作的未知结果保留请求身份；已接纳之后仅对账当前库。 */
+/** 未知结果保留原请求身份；本地成功由领域事件对账，远端无推送时主动读取。 */
 export function useKnowledgeWrites(ref: ResourceRef) {
   const client = useQueryClient();
   const scope = JSON.stringify(knowledgeKeys.resource(ref));
@@ -33,9 +33,10 @@ export function useKnowledgeWrites(ref: ResourceRef) {
       try {
         await mutation.mutateAsync({ scope, action: () => action(requestId) });
         requests.delete(identity);
-        await Promise.all([
-          client.invalidateQueries({ queryKey: knowledgeKeys.resource(ref) }),
-        ]);
+        if (ref.backend !== "local")
+          await client.invalidateQueries({
+            queryKey: knowledgeKeys.resource(ref),
+          });
       } catch (cause) {
         if (!isKnowledgeWriteOutcomeUnknown(cause)) requests.delete(identity);
         throw cause;

@@ -22,27 +22,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-type chatDetail struct {
-	// SubmittedExecutions 是从权威事实恢复的输入收据，不形成第二份持久历史。
-	SubmittedExecutions map[string]models.Execution
-	// Chat 是对话元数据查询结果。
-	Chat models.Chat
-	// CreateRequestID 是普通 Chat 首次发送的客户端幂等标识。
-	CreateRequestID string
-	// CreateRequestHash 是普通 Chat 首次发送规范化业务内容的摘要。
-	CreateRequestHash string
-	// InitialExecution 是普通 Chat 首次发送建立的第一条 Execution；团队空 Chat 为空。
-	InitialExecution *models.Execution
-	// Messages 是从权威 JSONL 重放得到的完整消息列表。
-	Messages []messageview.Message
-	// RuntimeSessions 是按 Runtime 标识索引的权威原生会话状态。
-	RuntimeSessions map[string]models.RuntimeSession
-	// ProjectSources 是工作区 projects/ 下全部来源入口的冻结快照。
-	ProjectSources []eventlog.ProjectSourceSnapshot
-	// ThreadWorkspaceID 非空时表示 Chat 绑定 thread 级共享执行工作区。
-	ThreadWorkspaceID string
-}
-
 // chatState 是一份 Chat JSONL 完整重放后的权威业务状态。
 type chatState struct {
 	// executions 保留每个已接纳回合的权威身份和终态，供稳定身份对账。
@@ -71,6 +50,8 @@ type ChatSummary struct {
 
 // MessageHistoryPage 是按消息创建序号向前读取的一页权威聊天历史。
 type MessageHistoryPage struct {
+	// 末轮执行标识
+	ForkLatestExecutionID string `json:"forkLatestExecutionId,omitempty"`
 	// Resources 是按创建顺序升序排列的消息窗口。
 	Resources []messageview.Message `json:"resources"`
 	// NextBeforeSequence 是继续读取更早消息时使用的稳定游标。
@@ -93,12 +74,10 @@ type ListChatsInput struct {
 	Limit int
 }
 
-// ChatList 是最近对话和创建草稿默认项目的业务结果。
+// ChatList 是最近对话的分页结果。
 type ChatList struct {
 	// Resources 是按最近活动倒序排列的 Chat 查询结果。
 	Resources []models.Chat
-	// RecentProjectID 是首屏创建草稿时可以采用的最近有效项目。
-	RecentProjectID string
 	// NextBeforeUpdatedAt 是继续加载更早 Chat 的活动时间游标。
 	NextBeforeUpdatedAt int64
 	// NextBeforeID 是继续加载时相同活动时间下的稳定标识游标。
@@ -140,42 +119,6 @@ func (m *service) loadChatState(
 	return records, state, nil
 }
 
-// loadChatDetail 从权威日志恢复提交下一轮消息所需的完整状态。
-func (m *service) loadChatDetail(
-	ctx context.Context,
-	chatID string,
-) (chatDetail, error) {
-	// 消息、调用和元数据都从同一份 JSONL 快照重放，避免混用不同时刻的权威状态。
-	records, state, err := m.loadChatState(chatID)
-	if err != nil {
-		return chatDetail{}, err
-	}
-	messages, err := messageview.ReplayMessages(records)
-	if err != nil {
-		logx.Errorf("project chat messages failed: chat_id=%s error=%v", chatID, err)
-		return chatDetail{}, status_error.ChatLogError
-	}
-	// 查询索引缺失不影响读取权威历史；尽力重建后继续返回本次重放结果。
-	m.queryIndexes.ensureChatState(ctx, state)
-	submitted := make(map[string]models.Execution)
-	for _, value := range state.executions {
-		if value.SubmissionID != "" {
-			submitted[value.SubmissionID] = *cloneExecution(value)
-		}
-	}
-	return chatDetail{
-		SubmittedExecutions: submitted,
-		Chat:                state.chat,
-		CreateRequestID:     state.createRequestID,
-		CreateRequestHash:   state.createRequestHash,
-		InitialExecution:    state.initialExecution,
-		Messages:            messages,
-		RuntimeSessions:     state.runtimeSessions,
-		ProjectSources:      state.projectSources,
-		ThreadWorkspaceID:   state.threadWorkspaceID,
-	}, nil
-}
-
 // GetChatSummary 从查询索引返回打开 Chat 所需的有界摘要。
 func (m *service) GetChatSummary(
 	ctx context.Context,
@@ -200,18 +143,7 @@ func (m *service) ListChats(
 		input.Limit < 1 || input.Limit > 100 {
 		return ChatList{}, status_error.BadRequest
 	}
-	result, recentProjectIDs, err := m.queryIndexes.readChatList(ctx, input)
-	if err != nil {
-		return ChatList{}, err
-	}
-	if input.BeforeUpdatedAt == 0 {
-		result.RecentProjectID, err = m.recentAvailableProjectID(
-			ctx,
-			input.WakerID,
-			recentProjectIDs,
-		)
-	}
-	return result, err
+	return m.queryIndexes.readChatList(ctx, input)
 }
 
 // CountMessagesByWakerGroupedByDay 从每 Chat 派生索引精确统计指定时区的消息活动。
@@ -249,36 +181,49 @@ func (m *service) CountMessagesByWakerGroupedByDay(
 	return counts, nil
 }
 
-// recentAvailableProjectID 按 Chat 最近活动顺序选择仍完整可用的项目。
-func (m *service) recentAvailableProjectID(
-	ctx context.Context,
-	wakerID string,
-	projectIDs []string,
-) (string, error) {
-	if len(projectIDs) == 0 {
-		return "", nil
+// RecentAvailableProject 按 Chat 最近活动顺序查找伙伴仍可使用的项目。
+func (m *service) RecentAvailableProject(ctx context.Context, wakerID string) (string, error) {
+	wakerID = strings.TrimSpace(wakerID)
+	if wakerID == "" {
+		return "", status_error.BadRequest
 	}
-	if m.projectController == nil {
-		return "", status_error.ProjectServiceUnavailable
+	var beforeUpdatedAt int64
+	var beforeID string
+	const batchSize = 100
+	for {
+		rows, err := m.queryIndexes.chatController.ListRecentProjectCandidates(ctx, wakerID, beforeUpdatedAt, beforeID, batchSize)
+		if err != nil {
+			return "", err
+		}
+		if len(rows) == 0 {
+			return "", nil
+		}
+		if m.projectController == nil {
+			return "", status_error.ProjectServiceUnavailable
+		}
+		for _, row := range rows {
+			project, getErr := m.projectController.Get(ctx, row.ProjectID)
+			if getErr != nil || project.WakerID != wakerID {
+				continue
+			}
+			directories, sourceErr := m.projectController.ListDirectories(ctx, row.ProjectID)
+			if sourceErr != nil || len(directories) == 0 {
+				continue
+			}
+			available := true
+			for _, directory := range directories {
+				available = available && projectsource.Available(directory.Source)
+			}
+			if available {
+				return row.ProjectID, nil
+			}
+		}
+		if len(rows) < batchSize {
+			return "", nil
+		}
+		last := rows[len(rows)-1]
+		beforeUpdatedAt, beforeID = last.UpdatedAt, last.ID
 	}
-	for _, projectID := range projectIDs {
-		project, getErr := m.projectController.Get(ctx, projectID)
-		if getErr != nil || project.WakerID != wakerID {
-			continue
-		}
-		directories, sourceErr := m.projectController.ListDirectories(ctx, projectID)
-		if sourceErr != nil || len(directories) == 0 {
-			continue
-		}
-		available := true
-		for _, directory := range directories {
-			available = available && projectsource.Available(directory.Source)
-		}
-		if available {
-			return projectID, nil
-		}
-	}
-	return "", nil
 }
 
 // ReadMessageHistory 按 JSONL 消息创建序号读取一个有界历史窗口。
@@ -302,7 +247,13 @@ func (m *service) ReadMessageHistory(
 	if len(window.Records) == 0 {
 		return MessageHistoryPage{Resources: []messageview.Message{}}, nil
 	}
-	messages, err := messageview.ReplayPublicMessages(window.Records)
+	builder := messageview.NewPublicMessageViewBuilder()
+	for _, record := range window.Records {
+		if _, err = builder.Apply(record); err != nil {
+			break
+		}
+	}
+	messages := builder.Messages()
 	if err != nil {
 		logx.Errorf(
 			"project chat message window failed: chat_id=%s error=%v",
@@ -312,13 +263,15 @@ func (m *service) ReadMessageHistory(
 		return MessageHistoryPage{}, status_error.ChatLogError
 	}
 	page := MessageHistoryPage{
-		Resources:          messages,
-		NextBeforeSequence: window.NextBeforeSequence,
-		LatestSequence:     window.LatestSequence,
-		HasMore:            window.HasMore,
+		ForkLatestExecutionID: builder.LatestForkExecutionID(),
+		Resources:             messages,
+		NextBeforeSequence:    window.NextBeforeSequence,
+		LatestSequence:        window.LatestSequence,
+		HasMore:               window.HasMore,
 	}
 	if beforeSequence > 0 {
 		page.LatestSequence = 0
+		page.ForkLatestExecutionID = ""
 	}
 	return page, nil
 }

@@ -1,5 +1,10 @@
 import type * as GeneratedSDK from "@/shared/api/generated/sdk.gen";
 import type * as GeneratedQueries from "@/shared/api/generated/@tanstack/react-query.gen";
+import type * as ChatQueries from "../api/chat-queries";
+import type {
+  GlobalEventObserver,
+  GlobalEventResource,
+} from "@/shared/api/global-events";
 import { draftWorkspaceStorageKey } from "./use-draft-workspace-selections";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -11,7 +16,14 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { startTransition, StrictMode, type ReactNode } from "react";
+import {
+  Profiler,
+  startTransition,
+  StrictMode,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import {
   MemoryRouter,
   createMemoryRouter,
@@ -20,6 +32,7 @@ import {
   Route,
   Routes,
   useNavigate,
+  useParams,
 } from "react-router-dom";
 import {
   afterAll,
@@ -38,16 +51,65 @@ import {
   useSceneWorkspace,
   WorkspaceProvider,
 } from "@/shared/workspace/workspace-context";
+import { AppSceneWorkspaceContextProvider } from "@/shared/workspace/app-scene-workspace";
 import { ChatQueueProvider } from "../runtime/chat-queue-store";
 import { WorkbenchProvider } from "../workbench/workbench-store";
-import { ChatEntryPage } from "./chat-entry-page";
-import { ChatPage, ChatPageContent } from "./chat-page";
-import { TeamChatPageContent } from "./team-chat-page";
+import { ChatEntryPage as SceneChatEntryPage } from "./chat-entry-page";
+import {
+  ChatPage as SceneChatPage,
+  ChatPageContent,
+  type ChatWorkspaceEntry,
+} from "./chat-page";
+import type { GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as AcceptedExecution } from "@/shared/api/generated/types.gen";
+import { TeamChatPageContent as SceneTeamChatPageContent } from "./team-chat-page";
 import { ChatTaskListPage } from "./chat-task-list-page";
 import { observeRenderedState } from "@/test/observe-rendered-state";
 
 const render = (ui: Parameters<typeof renderUI>[0]) =>
   renderUI(ui, { wrapper: WorkbenchProvider });
+
+// 独立页面测试显式声明所属呈现作用域，与应用 Scene 的挂载身份保持同一契约。
+function ChatPage() {
+  const { chatId } = useParams();
+  return (
+    <SceneChatPage
+      presentationScopeKey={chatId ? `chat:${chatId}` : "draft:test"}
+    />
+  );
+}
+function ChatEntryPage() {
+  return <SceneChatEntryPage presentationScopeKey="entry:test" />;
+}
+type TeamChatFixtureContext = Omit<TeamChatContext, "messageSource">;
+function TeamChatPageContent(
+  props: Omit<
+    ComponentProps<typeof SceneTeamChatPageContent>,
+    "teamContext"
+  > & {
+    teamContext: TeamChatFixtureContext;
+  },
+) {
+  return (
+    <SceneTeamChatPageContent
+      {...props}
+      teamContext={{
+        ...props.teamContext,
+        messageSource: {
+          snapshot: {
+            messages: props.teamContext.timeline.flatMap((item) =>
+              item.coordinator ? [item.message] : [],
+            ),
+            latestSequence: 7,
+            ready: !props.teamContext.timelineLoading,
+          },
+          commit: () => undefined,
+          reconcile: async () => undefined,
+        },
+      }}
+      presentationScopeKey="team:test"
+    />
+  );
+}
 
 const {
   historyMessageContent,
@@ -72,14 +134,21 @@ const {
   resolveApproval,
   wakerSkills,
   wakerPlugins,
+  wakerPluginReads,
   wakerSkillsError,
   wakerConnectors,
   wakerConnectorsError,
   createChatDelay,
   chatMessageDelay,
+  chatMessageReads,
+  chatDetailReads,
+  chatDetailDelay,
+  chatLatestSequence,
+  eventObservers,
   wakerResources,
   projectResources,
   recentProjectID,
+  recentProjectReads,
   chatListByWaker,
   chatListDelay,
 } = vi.hoisted(() => ({
@@ -237,12 +306,21 @@ const {
   ),
   resolveApproval: vi.fn(async () => undefined),
   wakerPlugins: { current: [] as Array<Record<string, unknown>> },
+  wakerPluginReads: vi.fn(),
   wakerSkills: { current: [] as Array<Record<string, unknown>> },
   wakerSkillsError: { current: false },
   wakerConnectors: { current: [] as Array<Record<string, unknown>> },
   wakerConnectorsError: { current: false },
   createChatDelay: { current: 0 },
   chatMessageDelay: { current: 50 },
+  chatMessageReads: { current: {} as Record<string, number> },
+  chatDetailReads: { current: {} as Record<string, number> },
+  chatDetailDelay: { current: 0 },
+  chatLatestSequence: { current: 1 },
+  eventObservers: new Map<
+    GlobalEventObserver,
+    { topic: string; resource: GlobalEventResource }
+  >(),
   wakerResources: {
     current: [
       {
@@ -256,6 +334,7 @@ const {
     current: [] as Array<Record<string, unknown>>,
   },
   recentProjectID: { current: "" },
+  recentProjectReads: vi.fn(),
   chatListByWaker: {
     current: {} as Record<string, Array<Record<string, unknown>>>,
   },
@@ -264,17 +343,119 @@ const {
 
 vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
   ...(await importOriginal<typeof GeneratedSDK>()),
-  listWakerPlugins: async () => ({
-    data: {
-      resources: wakerPlugins.current,
-      totalSize: wakerPlugins.current.length,
-    },
-  }),
+  listChatMessages: async ({ path }: { path: { chatId: string } }) => {
+    const { chatId } = path;
+    chatMessageReads.current[chatId] =
+      (chatMessageReads.current[chatId] ?? 0) + 1;
+    await new Promise((resolve) =>
+      window.setTimeout(resolve, chatMessageDelay.current),
+    );
+    return {
+      data: {
+        resources:
+          chatId === "empty-member-chat"
+            ? []
+            : chatId === "chat-1" && historyMessages.current
+              ? historyMessages.current
+              : [
+                  {
+                    id: chatId === "chat-1" ? "message-1" : `message:${chatId}`,
+                    role: ["member-chat", "team-lead-chat"].includes(chatId)
+                      ? "assistant"
+                      : "user",
+                    content:
+                      chatId === "chat-1"
+                        ? historyMessageContent.current
+                        : `历史消息：${chatId}`,
+                    displayParts: ["member-chat", "team-lead-chat"].includes(
+                      chatId,
+                    )
+                      ? [
+                          {
+                            id: "member-text",
+                            text: `历史消息：${chatId}`,
+                            type: "text",
+                          },
+                        ]
+                      : undefined,
+                    skills: historyMessageSkills.current,
+                    connectors: historyMessageConnectors.current,
+                    status: "completed",
+                    sequence: 1,
+                  },
+                ],
+        hasMore: false,
+        latestSequence: chatLatestSequence.current,
+      },
+    };
+  },
+  listWakerPluginReferences: async () => {
+    wakerPluginReads();
+    return {
+      data: wakerPlugins.current.flatMap((detail) => {
+        const plugin = detail.plugin as {
+          id: string;
+          name: string;
+          description?: string;
+        };
+        const relations = detail.installations as Array<{
+          wakerId: string;
+          enabled: boolean;
+          versionId: string;
+        }>;
+        const versions = detail.versions as Array<{
+          id: string;
+          version: string;
+        }>;
+        const relation = relations?.find(
+          (item) => item.wakerId === "waker-1" && item.enabled,
+        );
+        const version = versions?.find(
+          (item) => item.id === relation?.versionId,
+        );
+        return plugin && version
+          ? [
+              {
+                id: plugin.id,
+                name: plugin.name,
+                description: plugin.description ?? "",
+                version: version.version,
+                versionId: version.id,
+              },
+            ]
+          : [];
+      }),
+    };
+  },
+  listWakerPlugins: async () => {
+    wakerPluginReads();
+    return {
+      data: {
+        resources: wakerPlugins.current,
+        totalSize: wakerPlugins.current.length,
+      },
+    };
+  },
 }));
 vi.mock(
   "@/shared/api/generated/@tanstack/react-query.gen",
   async (importOriginal) => ({
     ...(await importOriginal<typeof GeneratedQueries>()),
+    getWakerRecentProjectOptions: ({
+      path,
+    }: {
+      path: { wakerId: string };
+    }) => ({
+      queryKey: ["recent-project", path.wakerId],
+      queryFn: async () => {
+        recentProjectReads();
+        return { projectId: recentProjectID.current };
+      },
+    }),
+    getChatQueryKey: ({ path }: { path: { chatId: string } }) => [
+      "chat",
+      path.chatId,
+    ],
     getWorkResultOptions: ({
       path,
     }: {
@@ -389,7 +570,8 @@ vi.mock("@/shared/platform", () => ({
   subscribeFileDrop: () => () => undefined,
 }));
 
-vi.mock("../api/chat-queries", () => ({
+vi.mock("../api/chat-queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof ChatQueries>()),
   useChatHistoryVisibility: () => undefined,
   cancelChatExecutionMutation: () => ({
     mutationFn: async () => undefined,
@@ -407,62 +589,22 @@ vi.mock("../api/chat-queries", () => ({
       return {
         resources: chatListByWaker.current[wakerId] ?? [],
         hasMore: false,
-        recentProjectId: recentProjectID.current,
       };
     },
     getNextPageParam: () => undefined,
   }),
   chatListKey: (wakerId: string) => ["chats", "list", wakerId],
-  chatMessagesInfiniteOptions: (chatId: string) => ({
-    queryKey: ["chats", "messages", chatId],
-    initialPageParam: undefined,
-    queryFn: async () => {
-      await new Promise((resolve) =>
-        window.setTimeout(resolve, chatMessageDelay.current),
-      );
-      return {
-        resources:
-          chatId === "empty-member-chat"
-            ? []
-            : chatId === "chat-1" && historyMessages.current
-              ? historyMessages.current
-              : [
-                  {
-                    id: chatId === "chat-1" ? "message-1" : `message:${chatId}`,
-                    role: ["member-chat", "team-lead-chat"].includes(chatId)
-                      ? "assistant"
-                      : "user",
-                    content:
-                      chatId === "chat-1"
-                        ? historyMessageContent.current
-                        : `历史消息：${chatId}`,
-                    displayParts: ["member-chat", "team-lead-chat"].includes(
-                      chatId,
-                    )
-                      ? [
-                          {
-                            id: "member-text",
-                            text: `历史消息：${chatId}`,
-                            type: "text",
-                          },
-                        ]
-                      : undefined,
-                    skills: historyMessageSkills.current,
-                    connectors: historyMessageConnectors.current,
-                    status: "completed",
-                    sequence: 1,
-                  },
-                ],
-        hasMore: false,
-        latestSequence: 1,
-      };
-    },
-    getNextPageParam: () => undefined,
-  }),
   chatMessagesKey: (chatId: string) => ["chats", "messages", chatId],
   getChatOptions: ({ path }: { path: { chatId: string } }) => ({
     queryKey: ["chat", path.chatId],
     queryFn: async () => {
+      chatDetailReads.current[path.chatId] =
+        (chatDetailReads.current[path.chatId] ?? 0) + 1;
+      if (chatDetailDelay.current > 0) {
+        await new Promise((resolve) =>
+          window.setTimeout(resolve, chatDetailDelay.current),
+        );
+      }
       if (path.chatId === "source-chat" && !sourceChatAvailable.current) {
         throw new Error("source chat missing");
       }
@@ -474,6 +616,7 @@ vi.mock("../api/chat-queries", () => ({
           forkSourceChatId: forkSourceChatId.current,
           workspaceDirectory: "/tmp/ally",
           activeExecutionId: chatActiveExecutionID.current,
+          latestSequence: chatLatestSequence.current,
           lastPermissionLevel: chatLastPermissionLevel.current,
           lastRuntimeId: chatLastRuntimeID.current,
           lastAccountId: path.chatId === "member-chat" ? "B" : "system",
@@ -581,6 +724,11 @@ beforeEach(() => {
   wakerConnectorsError.current = false;
   createChatDelay.current = 0;
   chatMessageDelay.current = 50;
+  chatMessageReads.current = {};
+  chatDetailReads.current = {};
+  chatDetailDelay.current = 0;
+  chatLatestSequence.current = 1;
+  eventObservers.clear();
   wakerResources.current = [
     {
       id: "waker-1",
@@ -590,6 +738,7 @@ beforeEach(() => {
   ];
   projectResources.current = [];
   recentProjectID.current = "";
+  recentProjectReads.mockClear();
   chatListByWaker.current = {};
   chatListDelay.current = 0;
   searchWorkspaceFiles.mockClear();
@@ -607,6 +756,7 @@ beforeEach(() => {
   downloadChatWorkspaceFile.mockClear();
   deleteChatWorkspaceFile.mockClear();
   createChat.mockClear();
+  wakerPluginReads.mockClear();
   sendMessage.mockClear();
   resolveApproval.mockClear();
   resolveApproval.mockResolvedValue(undefined);
@@ -618,6 +768,174 @@ afterAll(() => {
 });
 
 describe("ChatPage", () => {
+  it("隐藏 Scene 暂停插件候选读取，恢复可见后才加载", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const content = (active: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceProvider>
+          <ChatQueueProvider>
+            <TooltipProvider>
+              <MemoryRouter>
+                <ChatPageContent
+                  presentationScopeKey="draft:hidden"
+                  entry={{
+                    active,
+                    directoryLabel: "",
+                    scopeKey: "draft:hidden",
+                    wakerId: "waker-1",
+                    prepareSubmission: vi.fn(),
+                    onAccepted: vi.fn(),
+                    onRefresh: vi.fn(),
+                  }}
+                />
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </WorkspaceProvider>
+      </QueryClientProvider>
+    );
+    const view = render(content(false));
+    await waitFor(() =>
+      expect(queryClient.getQueryData(["wakers"])).toBeDefined(),
+    );
+    expect(wakerPluginReads).not.toHaveBeenCalled();
+    view.rerender(content(true));
+    await waitFor(() => expect(wakerPluginReads).toHaveBeenCalledTimes(1));
+    view.unmount();
+    queryClient.clear();
+  });
+  it("切换到新会话后旧会话完成响应不再写入当前 Scene", async () => {
+    const user = userEvent.setup();
+    let resolveSend!: (result: AcceptedExecution) => void;
+    const sendA = vi.fn(
+      () =>
+        new Promise<AcceptedExecution>((resolve) => {
+          resolveSend = resolve;
+        }),
+    );
+    const acceptedA = vi.fn();
+    const acceptedB = vi.fn();
+    const sendB = vi.fn(async () => ({
+      chat: { id: "chat-b", wakerId: "waker-1" },
+      execution: { id: "execution-b", status: "pending" as const },
+    }));
+    const entry = (
+      scopeKey: string,
+      onSend: (
+        message: Parameters<ChatWorkspaceEntry["prepareSubmission"]>[0],
+      ) => Promise<AcceptedExecution>,
+      onAccepted: ChatWorkspaceEntry["onAccepted"],
+    ) => ({
+      active: true,
+      directoryLabel: "",
+      onAccepted,
+      onRefresh: vi.fn(),
+      prepareSubmission: (
+        message: Parameters<ChatWorkspaceEntry["prepareSubmission"]>[0],
+      ) => ({ accept: () => onSend(message) }),
+      scopeKey,
+      wakerId: "waker-1",
+    });
+    function Harness() {
+      const [activeTabId, updateActiveTab] = useState("draft:A");
+      const workspaceValue = (routeSceneId: string) => ({
+        dispatch: vi.fn(),
+        routeSceneId,
+        snapshot: { activeTabId, tabs: [] },
+        syncWorkspace: vi.fn(),
+      });
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              updateActiveTab((current) =>
+                current === "draft:A" ? "draft:B" : "draft:A",
+              )
+            }
+          >
+            切换会话
+          </button>
+          <AppSceneWorkspaceContextProvider value={workspaceValue("draft:A")}>
+            <div data-testid="chat-a">
+              <ChatPageContent
+                presentationScopeKey="draft:A"
+                entry={entry("draft:A", sendA, acceptedA)}
+              />
+            </div>
+          </AppSceneWorkspaceContextProvider>
+          <AppSceneWorkspaceContextProvider value={workspaceValue("draft:B")}>
+            <div data-testid="chat-b">
+              <ChatPageContent
+                presentationScopeKey="draft:B"
+                entry={entry("draft:B", sendB, acceptedB)}
+              />
+            </div>
+          </AppSceneWorkspaceContextProvider>
+        </>
+      );
+    }
+
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <WorkspaceProvider>
+          <ChatQueueProvider>
+            <TooltipProvider>
+              <MemoryRouter initialEntries={["/chat"]}>
+                <Harness />
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </WorkspaceProvider>
+      </QueryClientProvider>,
+    );
+
+    const input = within(screen.getByTestId("chat-a")).getByRole("textbox", {
+      name: "输入消息",
+    });
+    const sendButton = within(screen.getByTestId("chat-a")).getByRole(
+      "button",
+      { name: "发送消息" },
+    );
+    await user.type(input, "A 的消息");
+    await waitFor(() => expect(sendButton).not.toBeDisabled());
+    await user.click(sendButton);
+    await waitFor(() => expect(sendA).toHaveBeenCalledTimes(1));
+    expect(acceptedA).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "切换会话" }));
+    const inputB = within(screen.getByTestId("chat-b")).getByRole("textbox", {
+      name: "输入消息",
+    });
+    await user.type(inputB, "B 的消息");
+    await user.click(
+      within(screen.getByTestId("chat-b")).getByRole("button", {
+        name: "发送消息",
+      }),
+    );
+    await waitFor(() => expect(acceptedB).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      resolveSend({
+        chat: { id: "chat-a", wakerId: "waker-1" },
+        execution: { id: "execution-a", status: "pending" },
+      });
+    });
+
+    expect(acceptedA).not.toHaveBeenCalled();
+    expect(screen.getByTestId("chat-b")).toBeVisible();
+    expect(screen.getByTestId("chat-b")).toHaveTextContent("B 的消息");
+    expect(screen.getByTestId("chat-b")).not.toHaveTextContent("A 的消息");
+
+    await user.click(screen.getByRole("button", { name: "切换会话" }));
+    await waitFor(() => expect(acceptedA).toHaveBeenCalledTimes(1));
+  });
+
   it("父工作区中的成员聊天独立保存和发送所选账号", async () => {
     accountCIncludesOldModel.current = true;
     chatLastRuntimeID.current = "codex";
@@ -721,7 +1039,7 @@ describe("ChatPage", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const context: TeamChatContext = {
+    const context: TeamChatFixtureContext = {
       channelId: "team-1",
       threadId: "thread-1",
       name: "研发团队",
@@ -748,14 +1066,13 @@ describe("ChatPage", () => {
       onCreateThread: vi.fn(),
       onSendMessage: vi.fn(),
       onStopWork: vi.fn(),
-      onThreadChanged: vi.fn(),
       onThreadCreated: vi.fn(),
       onUpdateMemberConfigs: vi.fn(),
       renderTaskBoard: () => null,
       workState: "idle",
       workProgress: { phase: "idle", review: 0, terminal: 0, total: 0 },
     };
-    const view = (teamContext: TeamChatContext) => (
+    const view = (teamContext: TeamChatFixtureContext) => (
       <StrictMode>
         <QueryClientProvider client={queryClient}>
           <WorkspaceProvider>
@@ -785,7 +1102,7 @@ describe("ChatPage", () => {
     const { rerender } = render(view(context));
     expect(screen.getByRole("textbox", { name: "输入消息" })).toBeVisible();
     expect(screen.getByLabelText("正在加载对话消息")).toBeVisible();
-    const loaded: TeamChatContext = {
+    const loaded: TeamChatFixtureContext = {
       ...context,
       timelineLoading: false,
       timeline: [
@@ -1131,7 +1448,6 @@ describe("ChatPage", () => {
                               onCreateThread: vi.fn(),
                               onSendMessage: vi.fn(),
                               onStopWork: vi.fn(),
-                              onThreadChanged: vi.fn(),
                               onThreadCreated: vi.fn(),
                               onUpdateMemberConfigs: vi.fn(),
                               renderTaskBoard: () => <div>任务板详情</div>,
@@ -1207,8 +1523,9 @@ describe("ChatPage", () => {
     ).not.toBeInTheDocument();
     await user.click(workingMember);
     expect(await screen.findByText("历史消息：member-chat")).toBeVisible();
-    expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(input);
-    expect(input).toHaveTextContent("");
+    const memberInput = screen.getByRole("textbox", { name: "输入消息" });
+    expect(memberInput).not.toBe(input);
+    expect(memberInput).toHaveTextContent("");
     fireEvent.click(
       screen.getByRole("button", { name: "测试打开空闲成员会话" }),
     );
@@ -1221,6 +1538,19 @@ describe("ChatPage", () => {
   });
 
   it("成员 Tab 发送直连成员 Chat，不触发 Channel 委派", async () => {
+    sendMessage.mockResolvedValueOnce({
+      chat: {
+        id: "member-chat",
+        wakerId: "waker-2",
+        latestSequence: 4,
+        activeExecutionId: "member-execution",
+      },
+      execution: {
+        id: "member-execution",
+        userMessageId: "message-2",
+        status: "running",
+      },
+    });
     wakerResources.current = [
       { id: "waker-1", name: "团队负责人" },
       { id: "waker-2", name: "执行成员" },
@@ -1289,7 +1619,6 @@ describe("ChatPage", () => {
                               onCreateThread: vi.fn(),
                               onSendMessage,
                               onStopWork: vi.fn(),
-                              onThreadChanged: vi.fn(),
                               onThreadCreated: vi.fn(),
                               onUpdateMemberConfigs: vi.fn(),
                               renderTaskBoard: () => <div>任务板详情</div>,
@@ -1321,11 +1650,17 @@ describe("ChatPage", () => {
       }),
     );
     await screen.findByText("历史消息：member-chat");
+    expect(chatMessageReads.current["member-chat"]).toBe(1);
     const input = screen.getByRole("textbox", { name: "输入消息" });
     await user.type(input, "和成员直接聊聊");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
 
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 100));
+    });
+    expect(screen.getByText("和成员直接聊聊")).toBeVisible();
+    expect(chatMessageReads.current["member-chat"]).toBe(1);
     expect(sendMessage.mock.calls[0]?.[0]).toEqual(
       expect.objectContaining({
         path: { chatId: "member-chat" },
@@ -1333,6 +1668,7 @@ describe("ChatPage", () => {
       }),
     );
     expect(onSendMessage).not.toHaveBeenCalled();
+    expect(chatDetailReads.current["member-chat"]).toBe(1);
   });
 
   it("新团队对话在成员草稿 Tab 调整执行配置后于首次发送冻结", async () => {
@@ -1484,7 +1820,6 @@ describe("ChatPage", () => {
                               onCreateThread,
                               onSendMessage: vi.fn(),
                               onStopWork: vi.fn(),
-                              onThreadChanged: vi.fn(),
                               onThreadCreated: vi.fn(),
                               onUpdateMemberConfigs: vi.fn(),
                               renderTaskBoard: () => <div>任务板详情</div>,
@@ -1622,33 +1957,506 @@ describe("ChatPage", () => {
     },
   );
 
-  it("首条消息创建对话后保持消息区稳定且不闪回加载状态", async () => {
-    projectResources.current = [
-      {
-        id: "project-1",
-        name: "测试项目",
-        available: true,
-        sources: [
-          {
-            path: "/tmp/project",
-            available: true,
+  it.each([undefined, 2, 10])(
+    "已有对话发送接纳复用权威快照，不立即重读详情与历史（已有终态序号：%s）",
+    async (terminalSequence) => {
+      sendMessage.mockResolvedValueOnce({
+        chat: {
+          id: "chat-1",
+          wakerId: "waker-1",
+          latestSequence: 2,
+          activeExecutionId: "execution-2",
+        },
+        execution: {
+          id: "execution-2",
+          userMessageId: "message-2",
+          status: "running",
+        },
+      });
+      const user = userEvent.setup();
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ChatQueueProvider>
+            <TooltipProvider>
+              <MemoryRouter initialEntries={["/chats/chat-1"]}>
+                <Routes>
+                  <Route element={<ChatLayout />}>
+                    <Route path="/chats/:chatId" element={<ChatPage />} />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </QueryClientProvider>,
+      );
+
+      await screen.findByText("直接进入也应显示的历史消息");
+      expect(chatMessageReads.current["chat-1"]).toBe(1);
+      await user.type(
+        screen.getByRole("textbox", { name: "输入消息" }),
+        "继续工作",
+      );
+      if (terminalSequence) {
+        queryClient.setQueryData(["chat", "chat-1"], {
+          chat: {
+            id: "chat-1",
+            wakerId: "waker-1",
+            latestSequence: terminalSequence,
+            activeExecutionId: "",
+            lastEndedExecutionId: "execution-2",
+            lastEndedExecutionStatus: "completed",
           },
-        ],
+        });
+      }
+      await user.click(screen.getByRole("button", { name: "发送消息" }));
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+      await act(async () => {
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+      });
+
+      expect(screen.getByText("继续工作")).toBeVisible();
+      expect(chatMessageReads.current["chat-1"]).toBe(1);
+      expect(chatDetailReads.current["chat-1"]).toBe(1);
+      expect(recentProjectReads).not.toHaveBeenCalled();
+      expect(queryClient.getQueryData(["chat", "chat-1"])).toMatchObject({
+        chat: {
+          latestSequence: terminalSequence ?? 2,
+          activeExecutionId: terminalSequence ? "" : "execution-2",
+        },
+      });
+    },
+  );
+
+  it("直接打开运行中的聊天时只读取原消息窗口", async () => {
+    chatActiveExecutionID.current = "execution-2";
+    historyMessages.current = [
+      {
+        id: "execution-2",
+        executionId: "execution-2",
+        role: "assistant",
+        status: "running",
+        displayParts: [{ type: "text", text: "正在回答" }],
       },
     ];
-    recentProjectID.current = "project-1";
-    createChatDelay.current = 100;
-    chatMessageDelay.current = 250;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter initialEntries={["/chats/chat-1"]}>
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chats/:chatId" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryData(["chats", "messages", "chat-1"]),
+      ).toBeDefined(),
+    );
+    view.unmount();
+    queryClient.clear();
+  });
+
+  it("连续持久事件直接更新历史缓存，发送到终态不新增分叉或插件读取", async () => {
+    sendMessage.mockResolvedValueOnce({
+      chat: {
+        id: "chat-1",
+        wakerId: "waker-1",
+        latestSequence: 4,
+        activeExecutionId: "execution-2",
+      },
+      execution: {
+        id: "execution-2",
+        userMessageId: "message-2",
+        status: "running",
+      },
+    });
     const user = userEvent.setup();
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const { container } = render(
+    const view = render(
       <QueryClientProvider client={queryClient}>
         <ChatQueueProvider>
-          <TooltipProvider delayDuration={0}>
+          <TooltipProvider>
+            <MemoryRouter initialEntries={["/chats/chat-1"]}>
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chats/:chatId" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByText("直接进入也应显示的历史消息");
+    await waitFor(() => expect(wakerPluginReads).toHaveBeenCalledTimes(1));
+    await user.type(
+      screen.getByRole("textbox", { name: "输入消息" }),
+      "继续工作",
+    );
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    for (const field of [
+      "startNewSession",
+      "historyTurns",
+      "historyMode",
+      "summaryModel",
+      "summaryReasoning",
+    ]) {
+      expect(sendMessage.mock.calls[0]?.[0]?.body).not.toHaveProperty(field);
+    }
+    await waitFor(() =>
+      expect(
+        [...eventObservers.keys()].some((observer) => observer.after === 1),
+      ).toBe(true),
+    );
+    const emit = (
+      sequence: number,
+      type: string,
+      message?: Record<string, unknown>,
+      transient = false,
+    ) => {
+      for (const [observer, subscription] of [...eventObservers]) {
+        if (
+          subscription.topic !== "chat" ||
+          subscription.resource.id !== "chat-1"
+        )
+          continue;
+        observer.onEvent({
+          protocolVersion: 1,
+          epoch: "epoch",
+          connectionId: "connection",
+          deliverySequence: sequence,
+          topic: "chat",
+          type: "chat.event",
+          resource: { kind: "chat", id: "chat-1" },
+          eventId: `event-${sequence}`,
+          transient,
+          payload: { sequence, type, message, transient },
+        });
+      }
+    };
+    const assistant = {
+      id: "execution-2",
+      executionId: "execution-2",
+      role: "assistant",
+      status: "running",
+      content: "执行中的回答",
+      displayParts: [{ type: "text", text: "执行中的回答" }],
+    };
+    act(() => {
+      emit(2, "message.user_created", {
+        id: "message-2",
+        role: "user",
+        executionId: "execution-2",
+        content: "继续工作",
+        status: "completed",
+        sequence: 2,
+        revision: 2,
+      });
+      emit(3, "execution.created", assistant);
+      emit(4, "execution.started", assistant);
+      emit(5, "assistant.message", assistant);
+      emit(0, "runtime.event", assistant, true);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(chatDetailReads.current["chat-1"]).toBe(1);
+    expect(chatMessageReads.current["chat-1"]).toBe(1);
+    expect(wakerPluginReads).toHaveBeenCalledTimes(1);
+    chatLatestSequence.current = 6;
+    historyMessages.current = [
+      {
+        id: "message-1",
+        role: "user",
+        content: "直接进入也应显示的历史消息",
+        status: "completed",
+        sequence: 1,
+      },
+      {
+        id: "message-2",
+        role: "user",
+        content: "继续工作",
+        status: "completed",
+        sequence: 2,
+      },
+      {
+        ...assistant,
+        content: "最终持久回答",
+        displayParts: [{ type: "text", text: "最终持久回答" }],
+        status: "completed",
+        revision: 6,
+      },
+    ];
+    act(() =>
+      emit(6, "execution.completed", {
+        ...assistant,
+        content: "最终持久回答",
+        displayParts: [{ type: "text", text: "最终持久回答" }],
+        status: "completed",
+        revision: 6,
+      }),
+    );
+    await waitFor(() => expect(chatDetailReads.current["chat-1"]).toBe(2));
+    expect(wakerPluginReads).toHaveBeenCalledTimes(1);
+    expect(chatMessageReads.current["chat-1"]).toBe(1);
+    expect(chatDetailReads.current["chat-1"]).toBe(2);
+    await waitFor(() =>
+      expect(
+        queryClient.getQueryData(["chats", "messages", "chat-1"]),
+      ).toMatchObject({
+        pages: [
+          {
+            latestSequence: 6,
+            resources: expect.arrayContaining([
+              expect.objectContaining({
+                id: "execution-2",
+                status: "completed",
+                revision: 6,
+              }),
+            ]),
+          },
+        ],
+      }),
+    );
+    expect(queryClient.getQueryData(["chat", "chat-1"])).toMatchObject({
+      chat: { latestSequence: 6, activeExecutionId: "" },
+    });
+    view.unmount();
+    queryClient.clear();
+  });
+
+  it.each(["/chat?draftId=draft-1&wakerId=waker-1", "/chat?wakerId=waker-1"])(
+    "首条消息创建对话后保持消息区稳定且不闪回加载状态（入口：%s）",
+    async (entry) => {
+      const commits: Array<{
+        message: boolean;
+        loading: boolean;
+        avatar: Element | null;
+      }> = [];
+      const root: { current?: HTMLElement } = {};
+      chatActiveExecutionID.current = "execution-2";
+      chatLatestSequence.current = 3;
+      historyMessages.current = [
+        {
+          id: "message-2",
+          role: "user",
+          content: "修复首条消息闪屏",
+          status: "completed",
+          sequence: 2,
+        },
+        {
+          id: "execution-2",
+          executionId: "execution-2",
+          role: "assistant",
+          status: "running",
+          revision: 3,
+        },
+      ];
+      projectResources.current = [
+        {
+          id: "project-1",
+          name: "测试项目",
+          available: true,
+          sources: [
+            {
+              path: "/tmp/project",
+              available: true,
+            },
+          ],
+        },
+      ];
+      recentProjectID.current = "project-1";
+      createChatDelay.current = 100;
+      chatMessageDelay.current = 250;
+      const user = userEvent.setup();
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      const { container } = render(
+        <Profiler
+          id="first-chat-handoff"
+          onRender={() => {
+            if (!root.current) return;
+            commits.push({
+              message:
+                root.current
+                  .querySelector("[data-chat-scroll-viewport]")
+                  ?.textContent?.includes("修复首条消息闪屏") ?? false,
+              loading: Boolean(
+                root.current.querySelector('[role="status"][aria-busy="true"]'),
+              ),
+              avatar: root.current.querySelector(
+                "[data-chat-scroll-viewport] [data-companion-animated]",
+              ),
+            });
+          }}
+        >
+          <QueryClientProvider client={queryClient}>
+            <ChatQueueProvider>
+              <TooltipProvider delayDuration={0}>
+                <MemoryRouter initialEntries={[entry]}>
+                  <Routes>
+                    <Route element={<ChatLayout />}>
+                      <Route element={<ChatEntryPage />}>
+                        <Route path="/chat" element={<></>} />
+                        <Route path="/chats/:chatId" element={<></>} />
+                      </Route>
+                    </Route>
+                  </Routes>
+                </MemoryRouter>
+              </TooltipProvider>
+            </ChatQueueProvider>
+          </QueryClientProvider>
+        </Profiler>,
+      );
+      root.current = container;
+
+      expect(
+        await screen.findByRole("heading", { name: "今天想一起完成什么？" }),
+      ).toBeVisible();
+      const input = screen.getByRole("textbox", { name: "输入消息" });
+      await user.type(input, "修复首条消息闪屏");
+      const states = observeRenderedState(container, () => ({
+        composerPreserved:
+          container.querySelector('[role="textbox"][aria-label="输入消息"]') ===
+          input,
+        message:
+          container
+            .querySelector("[data-chat-scroll-viewport]")
+            ?.textContent?.includes("修复首条消息闪屏") ?? false,
+        loading: Boolean(
+          container.querySelector('[role="status"][aria-busy="true"]'),
+        ),
+        primaryAction:
+          container
+            .querySelector("[data-chat-primary-action]")
+            ?.getAttribute("data-chat-primary-action") ?? null,
+        working: Boolean(
+          container.querySelector("[data-chat-activity-status]"),
+        ),
+      }));
+      await user.click(screen.getByRole("button", { name: "发送消息" }));
+
+      await waitFor(() =>
+        expect(screen.getByText("修复首条消息闪屏")).toBeVisible(),
+      );
+      expect(screen.getByText("飞速运转")).toBeVisible();
+      expect(
+        screen.queryByRole("heading", { name: "今天想一起完成什么？" }),
+      ).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(queryClient.getQueryData(["chat", "chat-1"])).toBeTruthy(),
+      );
+      expect(createChat.mock.calls[0]?.[0]).toEqual(
+        expect.objectContaining({
+          body: expect.objectContaining({
+            clientRequestId: expect.any(String),
+            text: "修复首条消息闪屏",
+          }),
+        }),
+      );
+      expect(screen.getByText("修复首条消息闪屏")).toBeVisible();
+      expect(screen.getByText("飞速运转")).toBeVisible();
+      expect(
+        container.querySelector('[role="status"][aria-busy="true"]'),
+      ).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          queryClient.getQueryData(["chats", "messages", "chat-1"]),
+        ).toBeTruthy(),
+      );
+      states.disconnect();
+      const firstMessage = states.samples.findIndex((state) => state.message);
+      expect(firstMessage).toBeGreaterThanOrEqual(0);
+      expect(
+        states.samples
+          .slice(firstMessage)
+          .filter((state) => !state.message || state.loading),
+      ).toEqual([]);
+      const firstVisibleCommit = commits.findIndex((state) => state.message);
+      expect(firstVisibleCommit).toBeGreaterThanOrEqual(0);
+      expect(
+        commits
+          .slice(firstVisibleCommit)
+          .filter((state) => !state.message || state.loading),
+      ).toEqual([]);
+      const avatar = commits[firstVisibleCommit]?.avatar;
+      expect(avatar).toBeTruthy();
+      expect(
+        commits
+          .slice(firstVisibleCommit)
+          .every((state) => state.avatar === avatar),
+      ).toBe(true);
+      const firstStop = states.samples.findIndex(
+        (state) => state.primaryAction === "stop",
+      );
+      expect(firstStop).toBeGreaterThanOrEqual(0);
+      expect(
+        states.samples.slice(firstStop).filter((state) => !state.working),
+      ).toEqual([]);
+      expect({
+        composerReplaced: states.samples.some(
+          (state) => !state.composerPreserved,
+        ),
+        sendReappeared: states.samples
+          .slice(firstStop)
+          .some((state) => state.primaryAction === "send"),
+      }).toEqual({ composerReplaced: false, sendReappeared: false });
+    },
+  );
+
+  it("首发历史快照已终态时对账较旧接纳详情且不重读消息", async () => {
+    chatDetailDelay.current = 200;
+    createChat.mockResolvedValueOnce({
+      chat: {
+        id: "chat-1",
+        wakerId: "waker-1",
+        title: "接纳时旧标题",
+        latestSequence: 4,
+        activeExecutionId: "execution-2",
+      },
+      execution: {
+        id: "execution-2",
+        userMessageId: "message-2",
+        status: "running",
+      },
+    });
+    chatLatestSequence.current = 8;
+    historyMessages.current = [
+      { id: "message-2", role: "user", content: "首发很快完成", sequence: 2 },
+      {
+        id: "execution-2",
+        executionId: "execution-2",
+        role: "assistant",
+        status: "completed",
+        revision: 8,
+        displayParts: [{ type: "text", text: "首发结果已完成" }],
+      },
+    ];
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 10_000 } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ChatQueueProvider>
+          <TooltipProvider>
             <MemoryRouter
-              initialEntries={["/chat?draftId=draft-1&wakerId=waker-1"]}
+              initialEntries={["/chat?draftId=fast-first&wakerId=waker-1"]}
             >
               <Routes>
                 <Route element={<ChatLayout />}>
@@ -1663,78 +2471,33 @@ describe("ChatPage", () => {
         </ChatQueueProvider>
       </QueryClientProvider>,
     );
-
-    expect(
-      await screen.findByRole("heading", { name: "今天想一起完成什么？" }),
-    ).toBeVisible();
-    const input = screen.getByRole("textbox", { name: "输入消息" });
-    await user.type(input, "修复首条消息闪屏");
-    const states = observeRenderedState(container, () => ({
-      composerPreserved:
-        container.querySelector('[role="textbox"][aria-label="输入消息"]') ===
-        input,
-      message:
-        container
-          .querySelector("[data-chat-scroll-viewport]")
-          ?.textContent?.includes("修复首条消息闪屏") ?? false,
-      loading: Boolean(
-        container.querySelector('[role="status"][aria-busy="true"]'),
-      ),
-      primaryAction:
-        container
-          .querySelector("[data-chat-primary-action]")
-          ?.getAttribute("data-chat-primary-action") ?? null,
-    }));
+    await screen.findByRole("heading", { name: "今天想一起完成什么？" });
+    await user.type(
+      screen.getByRole("textbox", { name: "输入消息" }),
+      "首发很快完成",
+    );
     await user.click(screen.getByRole("button", { name: "发送消息" }));
-
-    await waitFor(() =>
-      expect(screen.getByText("修复首条消息闪屏")).toBeVisible(),
-    );
-    expect(screen.getByText("飞速运转")).toBeVisible();
+    await screen.findByText("首发结果已完成");
     expect(
-      screen.queryByRole("heading", { name: "今天想一起完成什么？" }),
+      screen.queryByRole("button", { name: "停止执行" }),
     ).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(queryClient.getQueryData(["chat", "chat-1"])).toBeTruthy(),
+    expect(queryClient.getQueryState(["chat", "chat-1"])?.fetchStatus).toBe(
+      "fetching",
     );
-    expect(createChat.mock.calls[0]?.[0]).toEqual(
-      expect.objectContaining({
-        body: expect.objectContaining({
-          clientRequestId: expect.any(String),
-          text: "修复首条消息闪屏",
-        }),
+    expect(queryClient.getQueryData(["chat", "chat-1"])).toMatchObject({
+      chat: { activeExecutionId: "execution-2" },
+    });
+    await waitFor(() =>
+      expect(queryClient.getQueryData(["chat", "chat-1"])).toMatchObject({
+        chat: {
+          latestSequence: 8,
+          activeExecutionId: "",
+          title: "直接进入的对话",
+        },
       }),
     );
-    expect(screen.getByText("修复首条消息闪屏")).toBeVisible();
-    expect(screen.getByText("飞速运转")).toBeVisible();
-    expect(
-      container.querySelector('[role="status"][aria-busy="true"]'),
-    ).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(
-        queryClient.getQueryData(["chats", "messages", "chat-1"]),
-      ).toBeTruthy(),
-    );
-    states.disconnect();
-    const firstMessage = states.samples.findIndex((state) => state.message);
-    expect(firstMessage).toBeGreaterThanOrEqual(0);
-    expect(
-      states.samples
-        .slice(firstMessage)
-        .filter((state) => !state.message || state.loading),
-    ).toEqual([]);
-    const firstStop = states.samples.findIndex(
-      (state) => state.primaryAction === "stop",
-    );
-    expect(firstStop).toBeGreaterThanOrEqual(0);
-    expect({
-      composerReplaced: states.samples.some(
-        (state) => !state.composerPreserved,
-      ),
-      sendReappeared: states.samples
-        .slice(firstStop)
-        .some((state) => state.primaryAction === "send"),
-    }).toEqual({ composerReplaced: false, sendReappeared: false });
+    expect(chatMessageReads.current["chat-1"]).toBe(1);
+    expect(chatDetailReads.current["chat-1"]).toBe(1);
   });
 
   it("切换到已有缓存消息的对话时不闪回全屏加载", async () => {
@@ -1792,6 +2555,92 @@ describe("ChatPage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it.each([false, true])(
+    "切换普通 Chat 的提交帧不展示上一 Chat 的消息（目标已缓存：%s）",
+    async (cached) => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+      });
+      for (const id of ["chat-1", "chat-2"]) {
+        if (id === "chat-2" && !cached) continue;
+        queryClient.setQueryData(["chat", id], {
+          chat: { id, wakerId: "waker-1", activeExecutionId: "" },
+        });
+        queryClient.setQueryData(["chats", "messages", id], {
+          pages: [
+            {
+              resources: [
+                {
+                  id: `message:${id}`,
+                  role: "user",
+                  content:
+                    id === "chat-1" ? "第一会话的私有消息" : "第二会话的消息",
+                  status: "completed",
+                  sequence: 1,
+                },
+              ],
+              latestSequence: 1,
+              hasMore: false,
+            },
+          ],
+          pageParams: [undefined],
+        });
+      }
+      const root: { current?: HTMLElement } = {};
+      let switched = false;
+      const commits: Array<{ text: string; loading: boolean }> = [];
+      function Harness() {
+        const [id, setID] = useState("chat-1");
+        return (
+          <div data-target-chat={id}>
+            <button onClick={() => setID("chat-2")}>切换到第二会话</button>
+            <ChatPageContent chatId={id} presentationScopeKey={`chat:${id}`} />
+          </div>
+        );
+      }
+      const view = render(
+        <Profiler
+          id="switch-chat"
+          onRender={() => {
+            if (
+              !root.current ||
+              !switched ||
+              !root.current.querySelector('[data-target-chat="chat-2"]')
+            )
+              return;
+            commits.push({
+              text:
+                root.current.querySelector("[data-chat-scroll-viewport]")
+                  ?.textContent ?? "",
+              loading: Boolean(
+                root.current.querySelector('[role="status"][aria-busy="true"]'),
+              ),
+            });
+          }}
+        >
+          <QueryClientProvider client={queryClient}>
+            <ChatQueueProvider>
+              <TooltipProvider>
+                <MemoryRouter>
+                  <Harness />
+                </MemoryRouter>
+              </TooltipProvider>
+            </ChatQueueProvider>
+          </QueryClientProvider>
+        </Profiler>,
+      );
+      root.current = view.container;
+      await screen.findByText("第一会话的私有消息");
+      switched = true;
+      fireEvent.click(screen.getByRole("button", { name: "切换到第二会话" }));
+      await screen.findByText(cached ? "第二会话的消息" : "历史消息：chat-2");
+      if (!cached) expect(commits.some((state) => state.loading)).toBe(true);
+      expect(
+        commits.filter((state) => state.text.includes("第一会话的私有消息")),
+      ).toEqual([]);
+    },
+  );
+
   it("路由过渡期间不展示 deferred Chat 的旧消息", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -1825,7 +2674,11 @@ describe("ChatPage", () => {
                   <Route
                     path="/chats/:chatId"
                     element={
-                      <ChatPageContent chatId="chat-1" routeTransitioning />
+                      <ChatPageContent
+                        chatId="chat-1"
+                        presentationScopeKey="chat:chat-1"
+                        routeTransitioning
+                      />
                     }
                   />
                 </Route>
@@ -2946,6 +3799,9 @@ describe("ChatPage", () => {
       document.querySelector('[data-chat-composer-skill="skill-review"]'),
     ).toHaveTextContent("代码审查");
     expect(input).toHaveValue("检查这次改动");
+    expect(
+      document.querySelector("[data-chat-activity-status]"),
+    ).not.toBeInTheDocument();
   });
 
   it("输入框开头按 Backspace 会移除最近选择的技能", async () => {
@@ -3415,7 +4271,7 @@ describe("ChatPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("同一伙伴切换会话时立即展示消息区加载状态并保留输入框", async () => {
+  it("同一伙伴切换会话时立即加载目标消息并建立独立输入区", async () => {
     const user = userEvent.setup();
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -3459,8 +4315,9 @@ describe("ChatPage", () => {
     ).toBeVisible();
     expect(screen.getByRole("textbox", { name: "输入消息" })).toBeVisible();
     expect(await screen.findByText("历史消息：chat-2")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(input);
-    expect(input).toHaveTextContent("");
+    const targetInput = screen.getByRole("textbox", { name: "输入消息" });
+    expect(targetInput).not.toBe(input);
+    expect(targetInput).toHaveTextContent("");
   });
 });
 
@@ -3533,7 +4390,15 @@ function ChatLayout({
 
 vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
-  subscribeGlobalEvents: () => () => {},
+  updateGlobalEventCursor: () => {},
+  subscribeGlobalEvents: (
+    topic: string,
+    resource: GlobalEventResource,
+    observer: GlobalEventObserver,
+  ) => {
+    eventObservers.set(observer, { topic, resource });
+    return () => eventObservers.delete(observer);
+  },
 }));
 
 it("团队页面工作台中的独立侧聊自动接入共享阅读器，并以真实 Chat 归属登记", async () => {
@@ -3554,7 +4419,13 @@ it("团队页面工作台中的独立侧聊自动接入共享阅读器，并以�
               <Route element={<ChatLayout />}>
                 <Route
                   path="*"
-                  element={<ChatPageContent chatId={chatId} embedded />}
+                  element={
+                    <ChatPageContent
+                      chatId={chatId}
+                      presentationScopeKey={`chat:${chatId}`}
+                      embedded
+                    />
+                  }
                 />
               </Route>
             </Routes>

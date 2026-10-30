@@ -1,19 +1,32 @@
 package messageview
 
 import (
+	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+
 	"encoding/json"
 	"fmt"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 )
 
 // MessageViewBuilder 将权威日志记录逐条折叠为跨 Runtime 的消息展示快照。
 type MessageViewBuilder struct {
+	// forkLatestID 是当前窗口最后一条执行或继承检查点的消息身份。
+	forkLatestID string
+	// forkRuntimeID 是最后回合冻结的运行时身份。
+	forkRuntimeID string
+	// forkSessionID 是最后回合原生分叉检查所需的私有句柄。
+	forkSessionID string
+	// forkSessions 保存当前窗口内已确认的原生续接事实，不进入公开快照。
+	forkSessions map[string]eventlog.RuntimeSessionData
+	// forkTeam 表示聊天属于团队共享工作区，不支持普通聊天分叉。
+	forkTeam bool
 	// publicOnly 只维护安全展示状态，不保留供分叉和文件详情使用的 Runtime 原始事件或 Diff。
 	publicOnly bool
 	// agentCommands 保存当前执行中由 Core 确认的命令事实，不能从工具输出建立。
@@ -87,6 +100,7 @@ func NewMessageViewBuilder() *MessageViewBuilder {
 		pendingTextIndexes:     make(map[string][]int),
 		provisionalTextIndexes: make(map[string][]int),
 		failureMessages:        make(map[string]string),
+		forkSessions:           make(map[string]eventlog.RuntimeSessionData),
 	}
 }
 
@@ -108,6 +122,15 @@ func (p *MessageViewBuilder) Apply(record eventlog.Record) (string, error) {
 			return "", status_error.ChatLogCorrupted
 		}
 		message := inherited.Message
+		message.ID = record.MessageID
+		if message.Role == constants.MessageRoleAssistant {
+			message.Fork = &MessageFork{ReasonCode: "position_missing"}
+			if inherited.ForkInvocation != nil && inherited.ForkConfiguration != nil {
+				p.forkLatestID = record.MessageID
+				p.forkRuntimeID, p.forkSessionID = "", ""
+				p.setForkInvocation(&message, *inherited.ForkInvocation)
+			}
+		}
 		if !p.publicOnly {
 			message.FileChangeDiffs = inherited.Diffs
 		}
@@ -134,6 +157,8 @@ func (p *MessageViewBuilder) Apply(record eventlog.Record) (string, error) {
 		return p.applyRuntimeMessage(record)
 	case constants.ChatEventTypeInvocationFinished:
 		return "", p.applyInvocationFinished(record)
+	case constants.ChatEventTypeNativeSessionUpdated, constants.ChatEventTypeNativeSessionCleared:
+		return p.applyForkSession(record)
 	case constants.ChatEventTypeExecutionCompleted,
 		constants.ChatEventTypeExecutionFailed,
 		constants.ChatEventTypeExecutionCanceled:
@@ -149,7 +174,10 @@ func (p *MessageViewBuilder) applyInvocationFinished(record eventlog.Record) err
 	if err := json.Unmarshal(record.Data, &finished); err != nil {
 		return status_error.ChatLogError
 	}
-	if message := runtimes.RecordedFailureDisplayMessage(finished.FailureMessage); message != "" {
+	if index, exists := p.messageIndexes[p.executionMessages[record.ExecutionID]]; exists {
+		p.setForkInvocation(&p.messages[index], finished)
+	}
+	if message := runtimediagnostic.RecordedFailureDisplayMessage(finished.FailureMessage); message != "" {
 		p.failureMessages[record.ExecutionID] = message
 	}
 	return nil
@@ -219,6 +247,22 @@ func (p *MessageViewBuilder) snapshotMessage(message Message, public bool) Messa
 			)
 		}
 	}
+	if message.Fork != nil {
+		fork := *message.Fork
+		message.Fork = &fork
+		switch {
+		case p.forkTeam:
+			fork.Available, fork.ReasonCode = false, "team"
+		case message.Status != constants.ExecutionStatusCompleted && message.Status != constants.ExecutionStatusFailed && message.Status != constants.ExecutionStatusCanceled:
+			fork.Available, fork.ReasonCode = false, "unfinished"
+		case fork.LatestOnly && message.ID == p.forkLatestID:
+			session := p.forkSessions[p.forkRuntimeID]
+			if session.SessionID != p.forkSessionID || session.LastExecutionID != message.ID {
+				fork.Available, fork.ReasonCode = false, "session_changed"
+			}
+		}
+		message.Fork = &fork
+	}
 	// 继承消息没有 Runtime 事件或增量工具索引，直接保留权威继承快照中的文件摘要。
 	return cloneMessage(message, public)
 }
@@ -247,6 +291,7 @@ func (p *MessageViewBuilder) applyChatCreated(record eventlog.Record) error {
 	if err := json.Unmarshal(record.Data, &data); err != nil {
 		return status_error.ChatLogError
 	}
+	p.forkTeam = data.ThreadWorkspaceID != ""
 	p.workspaceDirectory = data.WorkspaceDirectory
 	p.projectSources = append([]eventlog.ProjectSourceSnapshot(nil), data.ProjectSources...)
 	return nil
@@ -267,6 +312,7 @@ func (p *MessageViewBuilder) applyMessageCreated(record eventlog.Record) (string
 	}
 	message := Message{
 		ID:              record.MessageID,
+		SubmissionID:    data.SubmissionID,
 		Role:            data.Role,
 		Actor:           data.Actor,
 		SourceWakerID:   data.SourceWakerID,
@@ -303,10 +349,14 @@ func (p *MessageViewBuilder) applyExecutionCreated(record eventlog.Record) (stri
 	}
 	messageID := record.ExecutionID
 	if messageID != "" {
+		p.forkLatestID = messageID
+		p.forkRuntimeID, p.forkSessionID = "", ""
 		p.executionMessages[record.ExecutionID] = messageID
 		if index, exists := p.messageIndexes[messageID]; exists {
 			message := &p.messages[index]
+			message.Fork = &MessageFork{ReasonCode: "session_missing"}
 			message.ExecutionID = record.ExecutionID
+			message.SubmissionID = data.SubmissionID
 			message.Status = constants.ExecutionStatusPending
 			message.Revision = max(message.Revision+1, record.Sequence)
 			message.UpdatedAt = record.RecordedAt
@@ -314,6 +364,8 @@ func (p *MessageViewBuilder) applyExecutionCreated(record eventlog.Record) (stri
 		}
 		message := Message{
 			ID:              messageID,
+			Fork:            &MessageFork{ReasonCode: "session_missing"},
+			SubmissionID:    data.SubmissionID,
 			Role:            constants.MessageRoleAssistant,
 			Revision:        record.Sequence,
 			CreatedSequence: record.Sequence,
@@ -431,7 +483,7 @@ func (p *MessageViewBuilder) applyExecutionFinished(record eventlog.Record) (str
 			message.RunMetrics.DurationMs = record.RecordedAt - message.RunMetrics.StartedAt
 		}
 	}
-	errorMessage := runtimes.RecordedFailureDisplayMessage(finished.ErrorMessage)
+	errorMessage := runtimediagnostic.RecordedFailureDisplayMessage(finished.ErrorMessage)
 	if errorMessage == "" {
 		errorMessage = p.failureMessages[record.ExecutionID]
 	}
@@ -619,7 +671,7 @@ func (p *MessageViewBuilder) toolDisplayIndexes(messageID string) map[string]int
 
 // applyUsage 将 Runtime SDK 的统一用量数据投影到公开运行指标。
 func (p *MessageViewBuilder) applyUsage(message *Message, data json.RawMessage) error {
-	var usage runtimes.UsageData
+	var usage runtimecontract.UsageData
 	if err := json.Unmarshal(data, &usage); err != nil {
 		return status_error.ChatLogError
 	}
@@ -784,3 +836,47 @@ func cloneMessage(message Message, public bool) Message {
 	}
 	return clone
 }
+
+// setForkInvocation 只提取安全操作能力；句柄仅保留在最后回合的私有验证上下文。
+func (p *MessageViewBuilder) setForkInvocation(message *Message, invocation eventlog.InvocationFinishedData) {
+	fork := &MessageFork{ReasonCode: "position_missing"}
+	switch {
+	case invocation.SessionOutputID == "":
+		fork.ReasonCode = "session_missing"
+	case invocation.ForkMode == acpmeta.ForkTurn && invocation.ForkPosition != "":
+		fork.Available, fork.ReasonCode = true, ""
+	case invocation.ForkMode == acpmeta.ForkLatest:
+		fork.Available, fork.LatestOnly, fork.ReasonCode = true, true, ""
+	}
+	message.Fork = fork
+	if message.ID == p.forkLatestID {
+		p.forkRuntimeID, p.forkSessionID = invocation.RuntimeID, invocation.SessionOutputID
+	}
+}
+
+// applyForkSession 更新最后回合的动态续接条件，不重扫历史消息或权威日志。
+func (p *MessageViewBuilder) applyForkSession(record eventlog.Record) (string, error) {
+	var session eventlog.RuntimeSessionData
+	if json.Unmarshal(record.Data, &session) != nil {
+		return "", status_error.ChatLogCorrupted
+	}
+	if record.Type == constants.ChatEventTypeNativeSessionCleared {
+		delete(p.forkSessions, session.RuntimeID)
+	} else {
+		p.forkSessions[session.RuntimeID] = session
+	}
+	if session.RuntimeID != p.forkRuntimeID {
+		return "", nil
+	}
+	index, exists := p.messageIndexes[p.forkLatestID]
+	if !exists || p.messages[index].Fork == nil || !p.messages[index].Fork.LatestOnly {
+		return "", nil
+	}
+	message := &p.messages[index]
+	message.Revision = max(message.Revision+1, record.Sequence)
+	message.UpdatedAt = record.RecordedAt
+	return message.ID, nil
+}
+
+// LatestForkExecutionID 返回已投影窗口末尾的执行身份，只有最新窗口可作为全会话基线。
+func (p *MessageViewBuilder) LatestForkExecutionID() string { return p.forkLatestID }

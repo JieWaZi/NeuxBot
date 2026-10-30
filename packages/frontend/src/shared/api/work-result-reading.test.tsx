@@ -1,4 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { chatMessageSource } from "@/modules/chat/api/chat-queries";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -15,7 +20,7 @@ import {
 } from "vitest";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import { ChatQueueProvider } from "@/modules/chat/runtime/chat-queue-store";
-import { useChatRuntime } from "@/modules/chat/runtime/use-chat-runtime";
+import { useChatRuntime as useProductionChatRuntime } from "@/modules/chat/runtime/use-chat-runtime";
 import { ChatThread } from "@/modules/chat/components/chat-thread";
 import { conversationKeyOf } from "@/modules/chat/model/conversation-identity";
 import { NotificationPresenter } from "@/modules/notification/components/notification-presenter";
@@ -63,6 +68,28 @@ function intersection(target: Element): IntersectionObserverEntry {
 
 const server = setupServer();
 const origin = "http://reading.test";
+
+type RuntimeFixtureOptions = Omit<
+  Parameters<typeof useProductionChatRuntime>[0],
+  "messageSource"
+> & {
+  messages: Parameters<
+    typeof useProductionChatRuntime
+  >[0]["messageSource"]["snapshot"]["messages"];
+  latestSequence: number;
+  isHistoryReady: boolean;
+};
+function useChatRuntime(options: RuntimeFixtureOptions) {
+  const queryClient = useQueryClient();
+  return useProductionChatRuntime({
+    ...options,
+    messageSource: chatMessageSource(queryClient, options.chatId, {
+      messages: options.messages,
+      latestSequence: options.latestSequence,
+      ready: options.isHistoryReady,
+    }),
+  });
+}
 const owner = "a".repeat(32);
 beforeAll(() => {
   client.setConfig({ baseUrl: origin });
@@ -83,6 +110,21 @@ afterEach(() => {
 afterAll(() => server.close());
 const selector = (receipt: Receipt) =>
   `[data-result="${receipt.reference?.messageId}"]`;
+function emitResultChange() {
+  for (const observer of eventObservers)
+    if (observerTopics.get(observer) === "work-results")
+      observer.onEvent({
+        protocolVersion: 1,
+        epoch: "epoch",
+        connectionId: "connection",
+        deliverySequence: 1,
+        topic: "work-results",
+        type: "work-results.changed",
+        resource: { kind: "chat", id: owner },
+        eventId: "result-change",
+        payload: {},
+      });
+}
 function Reader({
   message = "A",
   rendered = true,
@@ -139,7 +181,7 @@ function ProductionChat({
       reasoning: "high",
       permissionLevel: "full-access",
     },
-    send: vi.fn(),
+    prepareSubmission: () => ({ accept: vi.fn() }),
     cancel: vi.fn(),
     onStarted: vi.fn(),
     onTerminal: vi.fn(),
@@ -495,6 +537,7 @@ it("只在真实结果可见后提交观察版本，A 在 B 发布后查看不�
     version: 1,
     reference: { chatId: owner, messageId: "A" },
   });
+  act(emitResultChange);
   await waitFor(() =>
     expect(
       query
@@ -529,6 +572,167 @@ it("只在真实结果可见后提交观察版本，A 在 B 发布后查看不�
     version: 2,
     reference: { chatId: owner, messageId: "B" },
   });
+});
+
+it("阅读成功只等待服务器事件对账，迟到的旧确认不会覆盖新成果", async () => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  let callback: IntersectionObserverCallback | undefined;
+  let target: Element | undefined;
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(value: IntersectionObserverCallback) {
+        callback = value;
+      }
+      observe(value: Element) {
+        target = value;
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  let latest = 1;
+  let viewedVersion = 0;
+  let finishView: () => void = () => {};
+  const read = vi.fn();
+  const viewed = vi.fn();
+  server.use(
+    http.get(`${origin}/api/v1/work-board/results/chat/${owner}`, () => {
+      read();
+      return HttpResponse.json({
+        result: {
+          ownerKind: "chat",
+          ownerId: owner,
+          latestVersion: latest,
+          viewedVersion,
+          reference: { chatId: owner, messageId: latest === 1 ? "A" : "B" },
+        },
+      });
+    }),
+    http.post(
+      `${origin}/api/v1/work-board/results/chat/${owner}/view`,
+      async ({ request }) => {
+        viewed(await request.json());
+        await new Promise<void>((resolve) => {
+          finishView = resolve;
+        });
+        viewedVersion = 1;
+        return HttpResponse.json({ success: true });
+      },
+    ),
+  );
+  const queries = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={queries}>
+      <Reader />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(target).toBeDefined());
+  act(() => {
+    if (target) callback?.([intersection(target)], {} as IntersectionObserver);
+  });
+  await waitFor(() => expect(viewed).toHaveBeenCalledTimes(1));
+  latest = 2;
+  act(emitResultChange);
+  await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+  await act(async () => {
+    finishView();
+  });
+  await waitFor(() =>
+    expect(queries.getMutationCache().getAll()[0]?.state.status).toBe(
+      "success",
+    ),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(read).toHaveBeenCalledTimes(2);
+  act(emitResultChange);
+  await waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+  const receipt = queries.getQueryCache().getAll()[0]?.state.data as {
+    result?: Receipt;
+  };
+  expect(receipt.result).toMatchObject({
+    latestVersion: 2,
+    viewedVersion: 1,
+    reference: { messageId: "B" },
+  });
+  expect(viewed).toHaveBeenLastCalledWith({
+    version: 1,
+    reference: { chatId: owner, messageId: "A" },
+  });
+  view.unmount();
+  queries.clear();
+});
+
+it("阅读失败保留未读，重新呈现后可重试同一准确版本", async () => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  const focus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  let callback: IntersectionObserverCallback | undefined;
+  let target: Element | undefined;
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(value: IntersectionObserverCallback) {
+        callback = value;
+      }
+      observe(value: Element) {
+        target = value;
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const viewed = vi.fn();
+  server.use(
+    http.get(`${origin}/api/v1/work-board/results/chat/${owner}`, () =>
+      HttpResponse.json({
+        result: {
+          ownerKind: "chat",
+          ownerId: owner,
+          latestVersion: 1,
+          viewedVersion: 0,
+          reference: { chatId: owner, messageId: "A" },
+        },
+      }),
+    ),
+    http.post(
+      `${origin}/api/v1/work-board/results/chat/${owner}/view`,
+      async ({ request }) => {
+        viewed(await request.json());
+        return viewed.mock.calls.length === 1
+          ? HttpResponse.json(
+              { message: "暂时无法确认", code: "CONFLICT" },
+              { status: 409 },
+            )
+          : HttpResponse.json({ success: true });
+      },
+    ),
+  );
+  const queries = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={queries}>
+      <Reader />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(target).toBeDefined());
+  act(() => {
+    if (target) callback?.([intersection(target)], {} as IntersectionObserver);
+  });
+  await waitFor(() =>
+    expect(queries.getMutationCache().getAll()[0]?.state.status).toBe("error"),
+  );
+  expect(viewed).toHaveBeenCalledTimes(1);
+  focus.mockReturnValue(false);
+  act(() => window.dispatchEvent(new Event("blur")));
+  focus.mockReturnValue(true);
+  act(() => window.dispatchEvent(new Event("focus")));
+  await waitFor(() => expect(viewed).toHaveBeenCalledTimes(2));
+  expect(viewed.mock.calls[1]).toEqual(viewed.mock.calls[0]);
+  view.unmount();
+  queries.clear();
 });
 
 it.each([

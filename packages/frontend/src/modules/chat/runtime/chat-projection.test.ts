@@ -5,11 +5,45 @@ import {
   latestContextMetrics,
   mergeAuthoritativeMessages,
   toThreadMessage,
+  isLatestAssistantMessage,
   type AllyChatMessage,
 } from "./chat-projection";
 import type { ChatEvent } from "@/shared/api/events";
 
 describe("chat projection", () => {
+  it("输入身份只接管乐观助手，两个真实助手同submission仍只取最后一条", () => {
+    const optimistic = toThreadMessage({
+      id: "optimistic",
+      submissionId: "submission",
+      role: "assistant",
+      optimistic: true,
+    });
+    const first = toThreadMessage({
+      id: "canonical-one",
+      submissionId: "submission",
+      role: "assistant",
+    });
+    const last = toThreadMessage({
+      id: "canonical-two",
+      submissionId: "submission",
+      role: "assistant",
+    });
+    expect(optimistic.metadata?.custom?.submissionId).toBe("submission");
+    expect(isLatestAssistantMessage(optimistic, [first])).toBe(true);
+    expect(isLatestAssistantMessage(first, [optimistic])).toBe(true);
+    expect(isLatestAssistantMessage(first, [first, last])).toBe(false);
+    expect(isLatestAssistantMessage(last, [first, last])).toBe(true);
+    expect(
+      isLatestAssistantMessage(optimistic, [
+        toThreadMessage({
+          id: "other",
+          submissionId: "other-submission",
+          role: "assistant",
+        }),
+      ]),
+    ).toBe(false);
+  });
+
   it("同一消息中复用原生工具标识的不同调用保留独立展示身份", () => {
     const projected = toThreadMessage({
       id: "assistant-retried",
@@ -175,6 +209,78 @@ describe("chat projection", () => {
       path: "attachments/user-2/draft.txt",
       managed: true,
     });
+  });
+
+  it("接纳回执前按明确submissionId分别接管用户和助手，正文相同的另一输入仍保留", () => {
+    const current: AllyChatMessage[] = [
+      {
+        id: "optimistic:user",
+        submissionId: "input-1",
+        role: "user",
+        content: "相同正文",
+        optimistic: true,
+      },
+      {
+        id: "optimistic:assistant",
+        submissionId: "input-1",
+        role: "assistant",
+        status: "pending",
+        optimistic: true,
+      },
+      {
+        id: "another-user",
+        submissionId: "input-2",
+        role: "user",
+        content: "相同正文",
+        optimistic: true,
+      },
+    ];
+    const merged = mergeAuthoritativeMessages(current, [
+      {
+        id: "real-user",
+        submissionId: "input-1",
+        role: "user",
+        content: "相同正文",
+        revision: 2,
+      },
+      {
+        id: "real-assistant",
+        submissionId: "input-1",
+        role: "assistant",
+        status: "running",
+        revision: 3,
+      },
+    ]);
+    expect(merged.map((message) => message.id)).toEqual([
+      "real-user",
+      "real-assistant",
+      "another-user",
+    ]);
+  });
+
+  it("首次权威快照的终态直接覆盖较高修订的临时消息", () => {
+    expect(
+      mergeAuthoritativeMessages(
+        [
+          {
+            id: "assistant",
+            role: "assistant",
+            status: "running",
+            revision: 100,
+          },
+        ],
+        [
+          {
+            id: "assistant",
+            role: "assistant",
+            status: "completed",
+            revision: 5,
+          },
+        ],
+      ),
+    ).toEqual([
+      { id: "assistant", role: "assistant", status: "completed", revision: 5 },
+    ]);
   });
 
   it("按稳定消息 ID 合并 SSE 创建事件且不会重复插入", () => {

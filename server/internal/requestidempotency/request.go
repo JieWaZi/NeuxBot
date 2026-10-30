@@ -1,4 +1,4 @@
-// Package requestidempotency 提供资源首次创建请求的稳定摘要、重放判定和资源身份派生。
+// Package requestidempotency 提供创建与输入请求的稳定摘要、重放判定和资源身份派生。
 package requestidempotency
 
 import (
@@ -13,9 +13,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 )
 
-// Identity 是规范化后的首次创建请求身份。
+// Identity 是规范化后的请求身份。
 type Identity struct {
-	// ID 是客户端为一次逻辑首发稳定复用的标识。
+	// ID 是调用方为一次逻辑请求稳定复用的标识。
 	ID string
 	// Hash 是不包含 ID 本身的规范化业务内容摘要。
 	Hash string
@@ -23,8 +23,17 @@ type Identity struct {
 
 // New 校验客户端标识并为规范化业务内容生成稳定摘要。
 func New(clientRequestID string, content any) (Identity, error) {
+	return newIdentity(clientRequestID, content, constants.CreateRequestIDMaximumLength)
+}
+
+// NewSubmission 沿用同一规范化与摘要规则，接纳既有输入入口最长 128 字节的提交身份。
+func NewSubmission(submissionID string, content any) (Identity, error) {
+	return newIdentity(submissionID, content, constants.InputSubmissionIDMaximumLength)
+}
+
+func newIdentity(clientRequestID string, content any, maximumLength int) (Identity, error) {
 	clientRequestID = strings.TrimSpace(clientRequestID)
-	if clientRequestID == "" || len(clientRequestID) > constants.CreateRequestIDMaximumLength {
+	if clientRequestID == "" || len(clientRequestID) > maximumLength {
 		return Identity{}, status_error.BadRequest
 	}
 	payload, err := json.Marshal(content)
@@ -39,7 +48,7 @@ func New(clientRequestID string, content any) (Identity, error) {
 	}, nil
 }
 
-// ValidateReplay 判断既有资源能否作为本次首次创建请求的确定重放结果。
+// ValidateReplay 判断既有事实能否作为同一逻辑请求的确定重放结果。
 func (i Identity) ValidateReplay(storedID string, storedHash string, ready bool) error {
 	if strings.TrimSpace(storedID) != i.ID || storedHash != i.Hash {
 		return status_error.CreateRequestConflict

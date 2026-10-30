@@ -46,8 +46,10 @@ type Config struct {
 	Driver Driver
 	// Scopes 是该提供者的最小权限。
 	Scopes []string
-	// Changed 只用于发布状态变更，不得把会话验证码放入事件载荷。
+	// Changed 只发布授权会话变化，不得把会话验证码放入事件载荷。
 	Changed func(Session)
+	// UsageChanged 发布原生消费者占用或当前执行引用变化，不代表授权或插件配置变化。
+	UsageChanged func()
 }
 
 // Authorizer 拥有唯一共享 profile 的等待和工作占用，不持久化第二份账号。
@@ -174,30 +176,50 @@ func (a *Authorizer) clearSummary(checked bool) {
 }
 
 func (a *Authorizer) Acquire(uses ...Usage) (func(), error) {
+	_, release, err := a.AcquireUsage(uses...)
+	return release, err
+}
+
+// AcquireUsage 将原生消费者的身份占用与可随回合更新的执行引用分开维护。
+func (a *Authorizer) AcquireUsage(uses ...Usage) (func(...Usage), func(), error) {
 	a.mu.Lock()
 	if a.deviceRunning || a.resetting {
 		a.mu.Unlock()
-		return nil, status_error.PluginBusy
+		return nil, nil, status_error.PluginBusy
 	}
 	a.active++
 	id := util.New()
 	if len(uses) > 0 {
 		a.usages[id] = uses[0]
 	}
-	snapshot := a.snapshotLocked()
+	released := false
 	a.mu.Unlock()
-	a.publish(snapshot)
+	a.publishUsage()
+	update := func(current ...Usage) {
+		a.mu.Lock()
+		if released {
+			a.mu.Unlock()
+			return
+		}
+		delete(a.usages, id)
+		if len(current) > 0 {
+			a.usages[id] = current[0]
+		}
+		a.mu.Unlock()
+		a.publishUsage()
+	}
 	var once sync.Once
-	return func() {
+	release := func() {
 		once.Do(func() {
 			a.mu.Lock()
+			released = true
 			a.active--
 			delete(a.usages, id)
-			snapshot := a.snapshotLocked()
 			a.mu.Unlock()
-			a.publish(snapshot)
+			a.publishUsage()
 		})
-	}, nil
+	}
+	return update, release, nil
 }
 func (a *Authorizer) Usages() []Usage {
 	a.mu.Lock()
@@ -359,6 +381,13 @@ func (a *Authorizer) Login(ctx context.Context, requested ...string) (Session, e
 				err = status_error.PluginAuthorizationFailed
 			}
 		}
+		if err == nil {
+			if complete, ok := a.driver().(interface {
+				CompleteLogin(context.Context, Account) error
+			}); ok {
+				err = complete.CompleteLogin(work, result)
+			}
+		}
 		a.mu.Lock()
 		a.deviceRunning = false
 		a.cancel = nil
@@ -447,6 +476,12 @@ func (a *Authorizer) cancelSession(id string) (<-chan struct{}, error) {
 func (a *Authorizer) publish(session Session) {
 	if a.config.Changed != nil {
 		a.config.Changed(session)
+	}
+}
+
+func (a *Authorizer) publishUsage() {
+	if a.config.UsageChanged != nil {
+		a.config.UsageChanged()
 	}
 }
 

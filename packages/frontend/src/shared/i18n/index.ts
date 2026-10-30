@@ -2064,8 +2064,6 @@ const resources = {
       loadEarlierMessages: "加载更早消息",
       loadEarlierFailed: "更早消息加载失败，请重试。",
       loadingMessages: "正在加载对话消息",
-      runtimeAdditionalDirectoriesUnsupported:
-        "当前智能体无法访问附加目录，可能无法修改项目中的文件。",
       sendFailed: "消息未能发送，请检查项目目录和智能体状态。",
       sendActiveExecution: "当前对话仍有运行中的执行，请稍后重试。",
       sendCreateRequestInProgress:

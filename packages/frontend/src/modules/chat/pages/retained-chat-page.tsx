@@ -2,7 +2,7 @@ import { useState, type ComponentProps } from "react";
 import { ChatPageContent } from "./chat-page";
 
 type ChatProps = ComponentProps<typeof ChatPageContent>;
-type RetainedProps = ChatProps & {
+type RetainedProps = Omit<ChatProps, "presentationScopeKey"> & {
   entry: NonNullable<ChatProps["entry"]>;
   draftBinding?: { scopeKey: string; chatId: string };
   closedChatIds?: readonly string[];
@@ -68,6 +68,7 @@ export function RetainedChatPageContent(props: RetainedProps) {
           >
             <ChatPageContent
               {...item}
+              presentationScopeKey={instanceId}
               entry={{
                 ...item.entry,
                 active: selected,

@@ -1,6 +1,12 @@
 package automatic_tasks
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
+	workspace "github.com/JieWaZi/NeuxBot/server/internal/agent/host/workspace"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,7 +20,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
+	acpdriver "github.com/JieWaZi/NeuxBot/server/internal/agent/core/driver/acp"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -26,58 +34,88 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-// integrationRuntime 仅替代外部模型调用，所有接纳、Chat 事实和结果投影走真实 Core。
+// integrationRuntime 仅替代外部 Driver；接纳、宿主、独立 Runtime、Chat 与结果投影均使用真实实现。
 type integrationRuntime struct {
-	// requests 交付 Runtime 实际收到的冻结输入，避免跨 goroutine 读取切片。
-	requests chan runtimes.RunRequest
+	// requests 交付独立 Runtime 实际发送的静态配置与增量输入。
+	requests chan integrationPrompt
 	// finish 由测试释放一次执行，以验证真实活跃 Chat 的并发和删除保护。
 	finish chan struct{}
-	// calls 为实际派发计数，用于确认同键重放不会再调用模型。
+	// calls 为真实 Prompt 派发计数，用于确认同键重放不会再次提交输入。
 	calls atomic.Int64
 }
 
-func (*integrationRuntime) Runtimes() []runtimes.RuntimeSummary {
-	return []runtimes.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
+// integrationPrompt 保留 Driver 启动事实和当前新增输入，不能从业务接纳回执推测派发。
+type integrationPrompt struct {
+	// session 是独立 Runtime 已冻结的原生启动输入。
+	session c.OpenRequest
+	// turn 是独立 Runtime 实际提交的当前回合。
+	turn c.TurnRequest
 }
-func (*integrationRuntime) ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error) {
-	return runtimes.ForkSessionResult{}, status_error.RuntimeUnavailable
+
+// integrationSession 为每个 Chat 保存独立原生会话，避免团队成员共用模型上下文。
+type integrationSession struct {
+	// driver 提供受测试控制的外部执行边界。
+	driver *integrationRuntime
+	// request 是本原生会话唯一的静态配置。
+	request c.OpenRequest
 }
-func (r *integrationRuntime) Run(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
-	r.calls.Add(1)
-	id := util.New()
-	started, _ := json.Marshal(runtimes.InvocationStartedData{InvocationID: id})
-	if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeInvocationStarted, Data: started}); err != nil {
-		return runtimes.Result{ExitCode: -1, Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery, Message: err.Error()}}
+
+func (*integrationRuntime) ID() string { return "codex" }
+func (*integrationRuntime) Capabilities() c.DriverCapabilities {
+	return c.DriverCapabilities{Version: "business-fixture", HotResume: true, ColdResume: true}
+}
+func (r *integrationRuntime) Open(_ context.Context, request c.OpenRequest) (c.DriverSession, error) {
+	return &integrationSession{driver: r, request: request}, nil
+}
+func (*integrationRuntime) Close(context.Context) error { return nil }
+func (*integrationSession) Close(context.Context) error { return nil }
+func (s *integrationSession) Prompt(ctx context.Context, request c.TurnRequest, sink c.DriverSink) c.DriverResult {
+	s.driver.calls.Add(1)
+	failed := func(err error) c.DriverResult {
+		return c.DriverResult{Status: c.StatusFailed, Fault: &c.Fault{Code: c.FaultDriver, Cause: err}}
+	}
+	if err := sink.Accept(ctx, c.DriverEvent{Kind: c.EventPromptAccepted}); err != nil {
+		return failed(err)
 	}
 	select {
-	case r.requests <- request:
+	case s.driver.requests <- integrationPrompt{session: s.request, turn: request}:
 	case <-ctx.Done():
-		return runtimes.Result{ExitCode: -1, Failure: &runtimes.Failure{Code: runtimes.FailureCodeContextCanceled}}
+		return c.DriverResult{Status: c.StatusCancelled, StopReason: c.StopCancelled}
 	}
 	select {
-	case <-r.finish:
+	case <-s.driver.finish:
 	case <-ctx.Done():
-		return runtimes.Result{ExitCode: -1, Failure: &runtimes.Failure{Code: runtimes.FailureCodeContextCanceled}}
+		return c.DriverResult{Status: c.StatusCancelled, StopReason: c.StopCancelled}
 	}
-	payload, _ := json.Marshal(map[string]string{"text": "归档完成"})
-	if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: payload}); err != nil {
-		return runtimes.Result{ExitCode: -1, Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery, Message: err.Error()}}
+	if err := sink.Accept(ctx, c.DriverEvent{Kind: c.EventAssistantMessage, Message: &c.AssistantMessage{MessageID: "result", Phase: c.PhaseFinal, Delta: "归档完成", Complete: true}}); err != nil {
+		return failed(err)
 	}
-	return runtimes.Result{Facts: runtimes.InvocationFacts{InvocationID: id, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: "codex", Model: request.Policy.Model, Reasoning: request.Policy.Reasoning, Policy: request.Policy.Execution}}
+	return c.DriverResult{Status: c.StatusCompleted, StopReason: c.StopEndTurn, NativeSession: c.NativeSessionInfo{Handle: "native-" + s.request.Invocation.ID, Resumable: true}}
 }
 
 // integrationEnvironment 提供已探测模型和一个不同的默认账号，验证任务不会隐式重绑定。
 type integrationEnvironment struct{}
 
 func (integrationEnvironment) Get(context.Context, string) (models.RuntimeEnvironment, error) {
-	// Runtime.Run 已由测试替身接管，仅用测试进程满足 Core 的可执行路径校验。
+	// 只有外部 Driver 被替换，测试进程路径用于满足真实 Core 的可执行路径校验。
 	binary, err := os.Executable()
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
+	sdk, err := catalog.New(catalog.Config{})
+	if err != nil {
+		return models.RuntimeEnvironment{}, err
+	}
+	var summary runtimeconfig.RuntimeSummary
+	for _, registered := range sdk.Runtimes() {
+		if registered.ID == "codex" {
+			summary = registered
+			break
+		}
+	}
 	return models.RuntimeEnvironment{RuntimeID: "codex", BaseRuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "model", DefaultAccountID: "another-default-account",
-		Detection: runtimes.DetectionResult{Runtime: runtimes.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}, State: runtimes.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimes.CapabilitySet{runtimes.CapabilityMCPStreamableHTTP: true},
-			Models: []runtimes.ModelOption{{ID: "model", PermissionLevels: []runtimes.PermissionLevel{runtimes.PermissionLevelDefault, runtimes.PermissionLevelAuto, runtimes.PermissionLevelFullAccess}}}}}, nil
+		Detection: runtimeconfig.DetectionResult{Runtime: summary, State: runtimeconfig.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilityMCPStreamableHTTP: true, runtimeconfig.CapabilitySkillDirectory: true},
+			Models: []runtimeconfig.ModelOption{{ID: "model", PermissionLevels: []runtimeconfig.PermissionLevel{runtimeconfig.PermissionLevelDefault, runtimeconfig.PermissionLevelAuto, runtimeconfig.PermissionLevelFullAccess}}}}}, nil
 }
 
 func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
@@ -116,7 +154,18 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(chats.Close)
-	runtime := &integrationRuntime{requests: make(chan runtimes.RunRequest, 4), finish: make(chan struct{}, 1)}
+	runtime := &integrationRuntime{requests: make(chan integrationPrompt, 4), finish: make(chan struct{}, 1)}
+	sdk, err := catalog.New(catalog.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: workspace.New(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: runtimehost.NewForkHandler(sdk),
+		Driver: func(runtimehost.Environment, acpdriver.Factory) (c.Driver, error) { return runtime, nil }})
+	t.Cleanup(func() {
+		if err := host.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
 	var teams channelservice.Service
 	var service *schedule.Service
 	core, err := execution.New(execution.Config{AcquireTeamChatInput: func(ctx context.Context, chatID string, userInput bool) (context.Context, func(), error) {
@@ -124,7 +173,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 			return ctx, func() {}, nil
 		}
 		return teams.AcquireChatInput(ctx, chatID, userInput)
-	}, Runtime: runtime, Journal: chats, DormantChats: chats, Wakers: wakers, Profiles: profiles, Projects: projects, RuntimeEnvironments: integrationEnvironment{}, StorageDirectory: dataDirectory, SkillDataDirectory: dataDirectory})
+	}, Runtime: host, Journal: chats, DormantChats: chats, Wakers: wakers, Profiles: profiles, Projects: projects, RuntimeEnvironments: integrationEnvironment{}, StorageDirectory: dataDirectory, SkillDataDirectory: dataDirectory})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +243,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		t.Helper()
 		select {
 		case request := <-runtime.requests:
-			if request.Policy.Model != "model" || !strings.Contains(request.Message.Text, want) {
+			if request.session.Profile.Model != "model" || !strings.Contains(request.turn.Input.Text, want) {
 				t.Fatalf("runtime frozen request: %+v", request)
 			}
 		case <-time.After(5 * time.Second):
@@ -617,6 +666,48 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		if err != nil || len(resetTask.MemberConfigs) != 0 {
 			t.Fatalf("恢复继承未清空持久覆盖: %+v %v", resetTask.MemberConfigs, err)
 		}
+		t.Run("负责人和成员并行使用独立原生会话并持久取消终态", func(t *testing.T) {
+			created, err := teams.SubmitMessage(ctx, channelservice.SubmitMessageInput{Create: &channelservice.CreateThreadInput{ChannelID: teamID, ClientRequestID: "parallel-native", Input: execution.WorkInput{Actor: "user", Content: "并发负责人"}}})
+			if err != nil || created.Thread == nil {
+				t.Fatalf("团队并发首发: %+v %v", created, err)
+			}
+			next := func() integrationPrompt {
+				t.Helper()
+				select {
+				case input := <-runtime.requests:
+					return input
+				case <-time.After(5 * time.Second):
+					t.Fatal("独立 Driver 未接收到输入")
+					return integrationPrompt{}
+				}
+			}
+			lead := next()
+			mentioned, err := teams.SubmitMessage(ctx, channelservice.SubmitMessageInput{Continue: &channelservice.SendMessageInput{ThreadID: created.Thread.Thread.ID, MentionWakerID: wakerID, Input: execution.WorkInput{Actor: "user", Content: "并发成员"}}})
+			if err != nil || mentioned.Message == nil || mentioned.Message.Task == nil {
+				t.Fatalf("团队成员任务未接纳: %+v %v", mentioned, err)
+			}
+			member := next()
+			if !strings.Contains(lead.turn.Input.Text, "并发负责人") || !strings.Contains(member.turn.Input.Text, "并发成员") || lead.session.Workspace.Root == member.session.Workspace.Root || lead.session.Invocation.ID == member.session.Invocation.ID || len(lead.session.Workspace.Directories) != 1 || len(member.session.Workspace.Directories) != 1 || lead.session.Workspace.Directories[0] != member.session.Workspace.Directories[0] {
+				t.Fatalf("并发成员未隔离原生工作区或未共享批准目录: lead=%+v member=%+v", lead.session.Workspace, member.session.Workspace)
+			}
+			for _, snapshot := range created.Thread.Members {
+				state, err := chats.GetChatSummary(ctx, snapshot.ChatID)
+				workspace, pathErr := filepath.EvalSymlinks(state.Chat.WorkspaceDirectory)
+				if err != nil || pathErr != nil || state.Chat.ActiveExecutionID == "" || (workspace != lead.session.Workspace.Root && workspace != member.session.Workspace.Root) {
+					t.Fatalf("实际准备路径或并行执行事实不符: %+v %v", state.Chat, err)
+				}
+			}
+			if err := teams.StopWork(ctx, teamID, created.Thread.Thread.ID); err != nil {
+				t.Fatal(err)
+			}
+			for _, snapshot := range created.Thread.Members {
+				state, err := chats.ReadInitialExecution(ctx, snapshot.ChatID)
+				if err != nil || state.Chat.ActiveExecutionID != "" || state.InitialExecution == nil || state.InitialExecution.Status != constants.ExecutionStatusCanceled || state.InitialExecution.CompletedAt == nil {
+					t.Fatalf("取消没有写入成员权威终态: %+v %v", state, err)
+				}
+			}
+		})
+
 		if err := channels.Delete(ctx, teamID); err != nil {
 			t.Fatal(err)
 		}

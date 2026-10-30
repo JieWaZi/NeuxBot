@@ -1,3 +1,4 @@
+import { getWakerRecentProjectOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useInstalledPluginReferences } from "@/modules/plugin";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
 import type { ExecutionSelection } from "@/shared/hooks/use-execution-selection";
@@ -15,6 +16,7 @@ import { Sparkles } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -29,7 +31,6 @@ import { useWorkbench } from "../workbench/workbench-store";
 import type { ChatSendSelection } from "../runtime/chat-queue-store";
 import { useTranslation } from "react-i18next";
 import {
-  useLocation,
   useNavigate,
   useOutletContext,
   useParams,
@@ -39,11 +40,11 @@ import {
 import {
   cancelChatExecutionMutation,
   createChatMutation,
-  chatListInfiniteOptions,
   chatListKey,
   chatMessagesInfiniteOptions,
+  chatMessageSource,
   useChatHistoryVisibility,
-  chatMessagesKey,
+  commitAcceptedChat,
   getChatOptions,
   getChatQueryKey,
   listRuntimesOptions,
@@ -77,8 +78,14 @@ import {
 } from "../model/conversation-identity";
 import { useChatInteractions } from "../model/use-conversation-interactions";
 import { selectableRuntimes } from "../model/selectable-runtimes";
-import { useChatRuntime } from "../runtime/use-chat-runtime";
-import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
+import {
+  useChatRuntime,
+  type PreparedChatSubmission,
+} from "../runtime/use-chat-runtime";
+import {
+  useRouteSceneActive,
+  useScenePresentationKey,
+} from "@/shared/workspace/app-scene-workspace";
 import { chatHref } from "@/shared/lib/chat-navigation";
 import { listProjectsOptions } from "@/modules/project";
 import {
@@ -99,9 +106,12 @@ import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 import type { WorkspaceMemberTab } from "@/shared/workspace/workspace-tab";
 import { type ChatOutletContext, chatSuggestionKeys } from "./chat-page-shared";
 
-export function ChatPage() {
+export function ChatPage({
+  presentationScopeKey,
+}: { presentationScopeKey?: string } = {}) {
   const { chatId } = useParams();
-  return <ChatPageContent chatId={chatId} />;
+  const scopeKey = useScenePresentationKey(presentationScopeKey);
+  return <ChatPageContent chatId={chatId} presentationScopeKey={scopeKey} />;
 }
 
 /** 业务入口贡献身份、发送接纳和内容；普通聊天的其余能力共用同一实现。 */
@@ -125,33 +135,59 @@ export type ChatWorkspaceEntry = {
       }) => ReactNode);
   isHistoryLoading?: boolean;
   isSendDisabled?: boolean;
-  onSend: (message: ChatMessageRequest) => Promise<AcceptedExecution>;
+  prepareSubmission: (message: ChatMessageRequest) => PreparedChatSubmission;
   onAccepted: (result: AcceptedExecution) => void;
-  onRefresh: () => void;
+  onRefresh?: () => void;
   onConfigurationChange?: (selection: ChatSendSelection | undefined) => void;
   onRunningChange?: (running: boolean) => void;
   onNewChat?: () => void;
   history?: ReactNode;
 };
 
-export function ChatPageContent({
-  chatId,
-  embedded = false,
-  routeTransitioning = false,
-  entry,
-  presentation = "workspace",
-}: {
+type ChatPageContentProps = {
   chatId?: string;
   embedded?: boolean;
   routeTransitioning?: boolean;
   entry?: ChatWorkspaceEntry;
   presentation?: "workspace" | "composer";
-}) {
+  presentationScopeKey: string;
+};
+
+/** 呈现作用域拥有消息视图；接纳只绑定服务器 Chat，不重建同一草稿的视图。 */
+export function ChatPageContent(props: ChatPageContentProps) {
+  const [searchParams] = useSearchParams();
+  const composerHost = useChatWorkspaceHost();
+  const workspaceScopeKey =
+    (props.presentation === "composer" ? composerHost?.scopeKey : undefined) ??
+    props.entry?.scopeKey ??
+    (props.chatId
+      ? `chat:${props.chatId}`
+      : `draft:${searchParams.get("draftId") ?? "default"}`);
+  const workspace = useSceneWorkspace(workspaceScopeKey);
+  const member = workspace.snapshot.tabs.find(
+    (tab) => tab.id === workspace.snapshot.activeTabId && tab.kind === "member",
+  );
+  return (
+    <ChatView
+      key={JSON.stringify([props.presentationScopeKey, member?.id ?? null])}
+      {...props}
+      workspaceScopeKey={workspaceScopeKey}
+    />
+  );
+}
+
+function ChatView({
+  chatId,
+  embedded = false,
+  routeTransitioning = false,
+  entry,
+  presentation = "workspace",
+  workspaceScopeKey,
+}: ChatPageContentProps & { workspaceScopeKey: string }) {
   const { t } = useTranslation("chat");
   const routeActive = useRouteSceneActive();
   const sceneActive = routeActive && (entry?.active ?? true);
   const [searchParams] = useSearchParams();
-  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const outlet = useOutletContext<ChatOutletContext | null>();
@@ -197,18 +233,17 @@ export function ChatPageContent({
     summaryReasoning: string;
   } | null>(null);
   const offeredRecoveryRef = useRef("");
+  const sceneActiveRef = useRef(sceneActive);
+  useLayoutEffect(() => {
+    sceneActiveRef.current = sceneActive;
+  }, [sceneActive]);
+  const pendingAcceptedRef = useRef<{
+    key: string;
+    result: AcceptedExecution;
+  } | null>(null);
   const composerHost = useChatWorkspaceHost();
-  const workspaceScopeKey =
-    (presentation === "composer" ? composerHost?.scopeKey : undefined) ??
-    entry?.scopeKey ??
-    (chatId
-      ? `chat:${chatId}`
-      : `draft:${searchParams.get("draftId") ?? "default"}`);
-  const initialWorkspaceWarningCode =
-    (location.state as { workspaceWarningCode?: string } | null)
-      ?.workspaceWarningCode ?? "";
   const { state: chatViewState, update: updateChatViewState } =
-    useChatViewState(workspaceScopeKey, initialWorkspaceWarningCode);
+    useChatViewState(workspaceScopeKey);
   const workspace = useSceneWorkspace(workspaceScopeKey);
   const workbench = useWorkbench(workspaceScopeKey);
   const activeMemberTab = workspace.snapshot.tabs.find(
@@ -256,7 +291,6 @@ export function ChatPageContent({
     reasoning,
     runtimeId,
     selectedCodeReferences,
-    workspaceWarningCode,
   } = chatViewState;
 
   const wakersQuery = useQuery(
@@ -295,7 +329,10 @@ export function ChatPageContent({
     }),
     enabled: Boolean(selectedWakerID),
   });
-  const pluginsQuery = useInstalledPluginReferences(selectedWakerID);
+  const pluginsQuery = useInstalledPluginReferences(
+    selectedWakerID,
+    sceneActive,
+  );
   const enabledPlugins = pluginsQuery.plugins;
   // 已选插件失效时保留明确意图，由 Core 拒绝；候选刷新不能静默降级发送。
   const selectedPluginIDs =
@@ -322,11 +359,13 @@ export function ChatPageContent({
     }),
     enabled: Boolean(selectedWakerID),
   });
-  const chatsQuery = useInfiniteQuery({
-    ...chatListInfiniteOptions(selectedWaker?.id ?? "pending"),
-    enabled: !entry && Boolean(selectedWaker?.id),
+  const recentProjectQuery = useQuery({
+    ...getWakerRecentProjectOptions({
+      path: { wakerId: selectedWakerID ?? "pending" },
+    }),
+    enabled: sceneActive && !activeChatId && !entry && Boolean(selectedWakerID),
   });
-  const recentProjectID = chatsQuery.data?.pages[0]?.recentProjectId ?? "";
+  const recentProjectID = recentProjectQuery.data?.projectId ?? "";
   const projects = projectsQuery.data?.resources ?? [];
   const enabledSkills = useMemo(
     () =>
@@ -627,14 +666,11 @@ export function ChatPageContent({
     return workspaceDirectory ? [workspaceDirectory] : [];
   })();
 
-  const refreshChat = useCallback(
+  const refreshChatMetadata = useCallback(
     (targetChatId?: string, targetWakerId?: string) => {
       if (targetChatId) {
         void queryClient.invalidateQueries({
           queryKey: getChatQueryKey({ path: { chatId: targetChatId } }),
-        });
-        void queryClient.invalidateQueries({
-          queryKey: chatMessagesKey(targetChatId),
         });
       }
       if (targetWakerId) {
@@ -647,16 +683,46 @@ export function ChatPageContent({
   );
   const refreshEntry = entry?.onRefresh;
   const refreshDetail = useCallback(() => {
-    refreshChat(activeChatId, selectedWakerID);
+    refreshChatMetadata(activeChatId, selectedWakerID);
     refreshEntry?.();
-  }, [activeChatId, refreshChat, selectedWakerID, refreshEntry]);
+  }, [activeChatId, refreshChatMetadata, selectedWakerID, refreshEntry]);
+  const acceptStarted = useCallback(
+    (result: AcceptedExecution) => {
+      const createdID = result.chat?.id;
+      if (entry) {
+        if (createdID && !activeChatId) {
+          markSkipComposerClearOnCreate();
+          workbench.bindToChat(createdID);
+          workspace.dispatch({
+            type: "migrate",
+            toScopeKey: `chat:${createdID}`,
+          });
+        }
+        entry.onAccepted(result);
+        entry.onRefresh?.();
+      } else if (createdID && !chatId) {
+        markSkipComposerClearOnCreate();
+        workspace.dispatch({
+          type: "migrate",
+          toScopeKey: `chat:${createdID}`,
+        });
+        navigate(
+          chatHref(createdID, result.chat?.wakerId ?? selectedWaker?.id ?? ""),
+        );
+      }
+    },
+    [
+      activeChatId,
+      chatId,
+      entry,
+      markSkipComposerClearOnCreate,
+      navigate,
+      selectedWaker?.id,
+      workbench,
+      workspace,
+    ],
+  );
 
-  useEffect(() => {
-    if (!activeMemberTab?.chatId) return;
-    void queryClient.invalidateQueries({
-      queryKey: chatMessagesKey(activeMemberTab.chatId),
-    });
-  }, [activeMemberTab?.chatId, queryClient]);
   const send = useMutation(sendMessageMutation());
   const create = useMutation(createChatMutation());
   const cancel = useMutation(cancelChatExecutionMutation());
@@ -679,12 +745,14 @@ export function ChatPageContent({
     queueKey: runtimeQueueKey,
     queueActive: sceneActive,
     chatId: activeChatId,
-    messages: runtimeMessages,
-    latestSequence: latestMessageSequence,
+    messageSource: chatMessageSource(queryClient, activeChatId, {
+      messages: runtimeMessages,
+      latestSequence: latestMessageSequence,
+      ready: !activeChatId || Boolean(messagesQuery.data),
+    }),
     activeExecutionId: detailQuery.data?.chat?.activeExecutionId,
     initialPendingApprovals: detailQuery.data?.chat?.pendingApprovals,
     initialPendingElicitations: detailQuery.data?.chat?.pendingElicitations,
-    isHistoryReady: !activeChatId || messagesQuery.isSuccess,
     isLoading: Boolean(
       activeChatId && (detailQuery.isLoading || messagesQuery.isLoading),
     ),
@@ -754,7 +822,12 @@ export function ChatPageContent({
     },
     onApprovalRequested: notifyApproval,
     suggestions: chatSuggestionKeys.map((key) => ({ prompt: t(key) })),
-    send: (text, targetChatId, attachmentPaths = [], selection) => {
+    prepareSubmission: (
+      text,
+      targetChatId,
+      attachmentPaths = [],
+      selection,
+    ) => {
       const message = {
         text,
         accountId: selection?.accountId ?? "system",
@@ -766,9 +839,6 @@ export function ChatPageContent({
         skillIds: selection?.skillIds ?? [],
         pluginIds: selection?.pluginIds ?? [],
         connectorIds: selection?.connectorIds ?? [],
-        ...(selection?.workflowIds?.length
-          ? { workflowIds: selection.workflowIds }
-          : {}),
         codeReferences: (selection?.codeReferences ?? []).flatMap(
           ({ path, startLine, endLine, content }) => {
             if (!path) return [];
@@ -788,38 +858,54 @@ export function ChatPageContent({
         freshSession.accountId === message.accountId
           ? freshSession
           : null;
-      const useFreshSession = Boolean(sessionTransition);
       const body: ChatMessageRequest = {
         ...message,
-        startNewSession: useFreshSession,
-        historyTurns: sessionTransition?.historyTurns ?? 5,
-        historyMode: sessionTransition?.historyMode ?? "recent",
-        summaryModel: sessionTransition?.summaryModel ?? "",
-        summaryReasoning: sessionTransition?.summaryReasoning ?? "",
+        ...(sessionTransition
+          ? {
+              startNewSession: true,
+              historyTurns: sessionTransition.historyTurns,
+              historyMode: sessionTransition.historyMode,
+              summaryModel: sessionTransition.summaryModel,
+              summaryReasoning: sessionTransition.summaryReasoning,
+            }
+          : {}),
       };
-      const submit = entry
-        ? entry.onSend(body)
-        : targetChatId
-          ? send.mutateAsync({ path: { chatId: targetChatId }, body })
-          : undefined;
-      if (submit)
-        return submit.then((result) => {
-          if (useFreshSession)
-            setFreshSession((current) =>
-              current === freshSession ? null : current,
-            );
-          return result;
-        });
+      if (entry) return entry.prepareSubmission(body);
+      if (targetChatId) {
+        const requestScope = `${workspaceScopeKey}:send:${targetChatId}`;
+        const prepared = withStableCreateRequest(requestScope, body);
+        const submissionId = prepared.clientRequestId;
+        return {
+          submissionId,
+          confirmAccepted: () => {
+            clearStableCreateRequest(requestScope, submissionId);
+            if (sessionTransition)
+              setFreshSession((current) =>
+                current === freshSession ? null : current,
+              );
+          },
+          accept: () =>
+            send.mutateAsync({
+              path: { chatId: targetChatId },
+              body: { ...body, submissionId },
+            }),
+        };
+      }
       const createRequest = withStableCreateRequest(workspaceScopeKey, {
         ...message,
         wakerId: selectedWaker?.id ?? "",
         projectId: selectedDraftProject?.id ?? "",
         workingDirectory: selectedDraftProject ? "" : workspaceDirectory,
       });
-      return create.mutateAsync({ body: createRequest }).then((result) => {
-        clearStableCreateRequest(workspaceScopeKey);
-        return result;
-      });
+      return {
+        submissionId: createRequest.clientRequestId,
+        confirmAccepted: () =>
+          clearStableCreateRequest(
+            workspaceScopeKey,
+            createRequest.clientRequestId,
+          ),
+        accept: () => create.mutateAsync({ body: createRequest }),
+      };
     },
     cancel: async () => {
       const invocation = chatInvocationGuard.capture(
@@ -831,47 +917,28 @@ export function ChatPageContent({
       await cancel.mutateAsync({ path: { chatId: invocation.chatId } });
     },
     onSettled: (result, invocation) => {
-      refreshChat(
-        result.chat?.id ?? invocation.chatId,
+      const hasSnapshot = commitAcceptedChat(queryClient, result.chat);
+      refreshChatMetadata(
+        hasSnapshot ? undefined : (result.chat?.id ?? invocation.chatId),
         result.chat?.wakerId ?? selectedWakerID,
       );
     },
     onStarted: (result) => {
-      updateChatViewState({
-        workspaceWarningCode: result.workspaceWarningCode ?? "",
-      });
-      const createdID = result.chat?.id;
-      if (entry) {
-        if (createdID && !activeChatId) {
-          markSkipComposerClearOnCreate();
-          workbench.bindToChat(createdID);
-          workspace.dispatch({
-            type: "migrate",
-            toScopeKey: `chat:${createdID}`,
-          });
-        }
-        entry.onAccepted(result);
-        entry.onRefresh();
-      } else if (createdID && !chatId) {
-        markSkipComposerClearOnCreate();
-        workspace.dispatch({
-          type: "migrate",
-          toScopeKey: `chat:${createdID}`,
-        });
-        navigate(
-          chatHref(createdID, result.chat?.wakerId ?? selectedWaker?.id ?? ""),
-          {
-            state: {
-              workspaceWarningCode: result.workspaceWarningCode ?? "",
-            },
-          },
-        );
+      if (!sceneActiveRef.current) {
+        pendingAcceptedRef.current = { key: currentChatKey, result };
+        return;
       }
+      acceptStarted(result);
     },
-    onTerminal: () => {
-      refreshDetail();
-    },
+    onTerminal: refreshDetail,
   });
+  useEffect(() => {
+    const pending = pendingAcceptedRef.current;
+    if (!sceneActiveRef.current || !pending || pending.key !== currentChatKey)
+      return;
+    pendingAcceptedRef.current = null;
+    acceptStarted(pending.result);
+  }, [acceptStarted, sceneActive, currentChatKey]);
   const configurationChanged = entry?.onConfigurationChange;
   const runningChanged = entry?.onRunningChange;
   useEffect(() => {
@@ -924,9 +991,11 @@ export function ChatPageContent({
     sessionSwitch,
   ]);
   const fork = useChatFork({
+    messages,
+    latestExecutionId: messagesQuery.data?.pages[0]?.forkLatestExecutionId,
     chatId: activeMemberTab || entry ? undefined : activeChatId,
     wakerId: selectedWakerID,
-    revision: detailQuery.data?.chat?.latestSequence,
+    enabled: sceneActive && detailQuery.isSuccess && messagesQuery.isSuccess,
     busy:
       chatRuntime.isRunning ||
       chatRuntime.pendingApprovals.length > 0 ||
@@ -941,7 +1010,8 @@ export function ChatPageContent({
     chatId: activeChatId,
     conversationKey: currentChatKey,
     guard: chatInvocationGuard,
-    onSettled: (targetChatId) => refreshChat(targetChatId, selectedWakerID),
+    onSettled: (targetChatId) =>
+      refreshChatMetadata(targetChatId, selectedWakerID),
     pendingApprovals: chatRuntime.pendingApprovals,
     pendingElicitations: chatRuntime.pendingElicitations,
     queueKey: runtimeQueueKey,
@@ -959,9 +1029,8 @@ export function ChatPageContent({
   const historyIsLoading = Boolean(
     entry?.isHistoryLoading ||
     routeTransitioning ||
-    (activeChatId && activeChatId !== chatRuntime.boundChatId) ||
     (activeChatId &&
-      !chatRuntime.isHistorySynchronized &&
+      !messagesQuery.isSuccess &&
       !chatRuntime.hasVisibleMessages),
   );
 
@@ -987,18 +1056,11 @@ export function ChatPageContent({
     selectedDraftProject?.name ||
     (workspaceDirectory ? workspaceDirectory.split(/[\\/]/).pop() : "") ||
     t("selectWorkspace");
-  const runtimeWorkspaceWarning =
-    workspaceWarningCode === "runtime_additional_directories_unsupported"
-      ? t("runtimeAdditionalDirectoriesUnsupported")
-      : "";
   const permissionWarning = selectedPermissionUnsupported
     ? t("permissionUnsupported")
     : defaultPermissionWasDowngraded
       ? t("permissionDowngraded")
       : "";
-  const workspaceWarning = [runtimeWorkspaceWarning, permissionWarning]
-    .filter(Boolean)
-    .join(" ");
 
   const greetingPhrases = useMemo(
     () => [
@@ -1235,7 +1297,7 @@ export function ChatPageContent({
         messagesQuery
           .fetchNextPage({ cancelRefetch: false, throwOnError: true })
           .then(() => {}),
-      warning: workspaceWarning || undefined,
+      warning: permissionWarning || undefined,
       requestedInteractionId: searchParams.get("request")?.split(":").at(-1),
       pendingApprovals: sceneActive ? chatRuntime.pendingApprovals : [],
       approvalSubmissionState,

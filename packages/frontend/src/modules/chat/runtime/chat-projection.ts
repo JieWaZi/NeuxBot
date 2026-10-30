@@ -66,9 +66,19 @@ export type ChatFileChange = ToolFileChangeSummary & { path: string };
 
 export type AllyChatMessage = ChatMessage & {
   optimistic?: boolean;
-  /** 首发已接纳但响应未带执行身份时，仅展示到首次权威历史接管。 */
-  awaitingFirstHistory?: boolean;
   codeReferences?: ChatCodeReference[];
+};
+
+/** 原领域 Query 提供已提交快照和原子持久事件接管，Runtime 不识别来源缓存键。 */
+export type ChatMessageSource = {
+  snapshot: {
+    messages: ChatMessage[];
+    latestSequence: number;
+    ready: boolean;
+  };
+  /** 返回原 Query 已覆盖的持久游标；无法证明连续时不提交部分批次。 */
+  commit: (events: readonly ChatEvent[]) => number | undefined;
+  reconcile: (signal?: AbortSignal) => Promise<number | undefined>;
 };
 
 export type ChatMessageVisibility = (message: AllyChatMessage) => boolean;
@@ -222,6 +232,38 @@ function assistantPartsOf(
   });
 }
 
+function sameSubmittedMessage(
+  first: AllyChatMessage,
+  second: ChatMessage,
+): boolean {
+  return Boolean(
+    first.optimistic &&
+    first.submissionId &&
+    first.submissionId === second.submissionId &&
+    first.role === second.role,
+  );
+}
+
+/** 权威快照已覆盖的乐观或临时消息退出叠层，未提交的更高修订继续保留。 */
+export function uncommittedChatMessages(
+  current: readonly AllyChatMessage[],
+  authoritative: readonly ChatMessage[],
+): AllyChatMessage[] {
+  return current.filter(
+    (message) =>
+      !authoritative.some(
+        (snapshot) =>
+          (snapshot.id === message.id ||
+            sameSubmittedMessage(message, snapshot)) &&
+          (message.optimistic ||
+            ["completed", "failed", "canceled"].includes(
+              snapshot.status ?? "",
+            ) ||
+            contentRevision(snapshot) >= contentRevision(message)),
+      ),
+  );
+}
+
 export function mergeAuthoritativeMessages(
   current: AllyChatMessage[],
   authoritative: ChatMessage[],
@@ -232,10 +274,16 @@ export function mergeAuthoritativeMessages(
       .map((message) => [message.id, message]),
   );
   const merged = authoritative.map((message) => {
-    const local = currentByID.get(message.id);
-    currentByID.delete(message.id);
+    const local =
+      currentByID.get(message.id) ??
+      current.find((item) => sameSubmittedMessage(item, message));
+    currentByID.delete(local?.id ?? message.id);
     if (!local) return message;
-    if (local.optimistic) return message;
+    if (
+      local.optimistic ||
+      ["completed", "failed", "canceled"].includes(message.status ?? "")
+    )
+      return message;
     const localRevision = contentRevision(local);
     const authoritativeRevision = message.revision ?? -1;
     if (localRevision > authoritativeRevision) return local;
@@ -267,7 +315,11 @@ export function applyChatEvent(
     event.recordedAt,
   );
   if (!isMessageVisible(authoritative)) return messages;
-  const index = findMessageIndex(messages, authoritative.id);
+  const matchedIndex = findMessageIndex(messages, authoritative.id);
+  const index =
+    matchedIndex >= 0
+      ? matchedIndex
+      : messages.findIndex((item) => sameSubmittedMessage(item, authoritative));
   const currentMessage = index >= 0 ? messages[index] : undefined;
   // 执行终态是已提交的权威边界，即使修订号落后也必须接管实时快照。
   if (
@@ -284,6 +336,28 @@ export function applyChatEvent(
   if (index >= 0) next[index] = { ...currentMessage, ...authoritative };
   else next.push(authoritative);
   return next;
+}
+
+/** 同一输入的乐观消息与权威消息在上下文接管期间保持相同的助手呈现位置。 */
+export function isLatestAssistantMessage(
+  message: Pick<ThreadMessageLike, "id" | "role" | "metadata">,
+  messages: readonly Pick<ThreadMessageLike, "id" | "role" | "metadata">[],
+): boolean {
+  const latest = messages.findLast((item) => item.role === "assistant");
+  if (!latest || message.role !== "assistant") return false;
+  if (message.id && latest.id === message.id) return true;
+  // 两个真实消息始终按真实身份区分；输入身份只补齐乐观到权威的接管窗口。
+  if (
+    (message.metadata?.isOptimistic === true) ===
+    (latest.metadata?.isOptimistic === true)
+  )
+    return false;
+  const submissionId = message.metadata?.custom?.submissionId;
+  return (
+    typeof submissionId === "string" &&
+    submissionId !== "" &&
+    latest.metadata?.custom?.submissionId === submissionId
+  );
 }
 
 export function toThreadMessage(
@@ -314,6 +388,7 @@ export function toThreadMessage(
       isOptimistic: message.optimistic,
       custom: {
         isTerminal,
+        ...(message.submissionId ? { submissionId: message.submissionId } : {}),
         ...(failure
           ? {
               failureMessage: errorMessage,

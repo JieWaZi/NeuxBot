@@ -121,7 +121,7 @@ func errorKey(err error) string {
 }
 func stagedRoot() string { return filepath.Join(global.Config.DataDirectory, "plugins", "staging") }
 func installationService() *plugininstallation.Service {
-	return plugininstallation.New(plugininstallation.Config{Contents: global.PluginContents, DataDirectory: global.Config.DataDirectory, Bridges: global.PluginBridges, BridgeEnvironment: global.PluginBridgeEnvironment})
+	return plugininstallation.New(plugininstallation.Config{Contents: global.PluginContents, DataDirectory: global.Config.DataDirectory, Bridges: global.PluginBridges, BridgeEnvironment: global.PluginBridgeEnvironment, Store: global.PluginControllerManager, CloseIdlePlugin: closeIdlePlugin})
 }
 
 func listPluginResources(ctx context.Context, waker, query string, page, size int, installedOnly bool) (ListPluginsResponse, error) {
@@ -251,4 +251,12 @@ func acquirePluginReadme(version models.PluginVersion) (string, func(), error) {
 		return "", nil, err
 	}
 	return source, release, nil
+}
+
+// closeIdlePlugin 将身份变更前的消费者回收交回真实会话所有者。
+func closeIdlePlugin(ctx context.Context, id string) error {
+	if global.ChatRuntimeHost != nil {
+		return global.ChatRuntimeHost.CloseIdlePlugin(ctx, id)
+	}
+	return nil
 }

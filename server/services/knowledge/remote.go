@@ -176,7 +176,7 @@ func (a *RemoteAdapter) Maintain(ctx context.Context, in httpapi.MaintenanceRequ
 	if err := a.Service.config.References.CompleteOperation(ctx, operationID, receipt.LibraryID, receipt.ResourceID, receipt.JobID); err != nil {
 		return nil, err
 	}
-	a.Service.emitTaskChanged(receipt.JobID, receipt.LibraryID)
+	a.Service.emitContentChanged(receipt.JobID, receipt.LibraryID)
 	return receipt, nil
 }
 

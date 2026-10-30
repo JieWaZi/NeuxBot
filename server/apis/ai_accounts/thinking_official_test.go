@@ -1,6 +1,10 @@
 package ai_accounts
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
+
 	"context"
 	"encoding/json"
 	"net/http"
@@ -12,7 +16,6 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -51,23 +54,23 @@ func TestOfficialGeminiThinkingHTTP(t *testing.T) {
 		_, _ = w.Write([]byte(`{"models":[{"name":"models/gemini-3.8-flash","supportedGenerationMethods":["generateContent"]}]}`))
 	}))
 	defer provider.Close()
-	oldAccounts, oldEnvironments, oldService, oldSDK := global.AIAccountControllerManager, global.RuntimeEnvironmentControllerManager, global.AIAccountService, global.RuntimeSDK
+	oldAccounts, oldEnvironments, oldService, oldSDK := global.AIAccountControllerManager, global.RuntimeEnvironmentControllerManager, global.AIAccountService, global.RuntimeCatalog
 	defer func() {
 		global.AIAccountControllerManager = oldAccounts
 		global.RuntimeEnvironmentControllerManager = oldEnvironments
 		global.AIAccountService = oldService
-		global.RuntimeSDK = oldSDK
+		global.RuntimeCatalog = oldSDK
 	}()
 	id := "0123456789abcdef0123456789abcdef"
 	global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{ID: id, Revision: 1, AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: provider.URL + "/v1beta"}}, SelectedModels: []string{"gemini-3.8-flash"}}, secret: "local-fixture-key"}
-	global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{RuntimeID: runtimes.RuntimeIDGemini, BaseRuntimeID: runtimes.RuntimeIDGemini, Enabled: true, Binary: node, PrefixArgs: []string{cli}}}
+	global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{RuntimeID: runtimeconfig.RuntimeIDGemini, BaseRuntimeID: runtimeconfig.RuntimeIDGemini, Enabled: true, Binary: node, PrefixArgs: []string{cli}}}
 	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager)
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := catalog.New(catalog.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sdk.Close(context.Background())
-	global.RuntimeSDK = sdk
+	global.RuntimeCatalog = sdk
 	engine := gin.New()
 	engine.GET("/api/v1/ai-accounts/:accountId/thinking", func(ctx *gin.Context) {
 		if _, limited := ctx.Deadline(); limited {

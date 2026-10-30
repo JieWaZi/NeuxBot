@@ -133,37 +133,29 @@ func (a CoreWorkerAdapter) Inspect(ctx context.Context, effect models.WorkflowEf
 	}
 	receipt := WorkerReceipt{ChatID: chatID, ExecutionID: state.InitialExecution.ID, Status: state.InitialExecution.Status, ErrorCode: state.InitialExecution.ErrorCode}
 	if receipt.Status == constants.ExecutionStatusCompleted {
-		before := int64(0)
-		for {
-			page, err := a.Chats.ReadMessageHistory(ctx, chatID, before, 100)
-			if err != nil {
-				return receipt, err
+		messages, err := a.Chats.ReadExecutionMessages(ctx, chatID, effect.ExecutionID)
+		if err != nil {
+			return receipt, err
+		}
+		// 固定首次执行的结果范围；后续普通续聊不参与节点产出，也不倒翻聊天历史。
+		for index := len(messages) - 1; index >= 0; index-- {
+			message := messages[index]
+			if message.ExecutionID != effect.ExecutionID || message.Role != "assistant" {
+				continue
 			}
-			// 按稳定游标读取首次 Execution；不依赖最后一百条或续聊中的最新消息。
-			for index := len(page.Resources) - 1; index >= 0; index-- {
-				message := page.Resources[index]
-				if message.ExecutionID != effect.ExecutionID || message.Role != "assistant" {
-					continue
-				}
-				texts := []string{}
-				for _, part := range message.DisplayParts {
-					if part.Type == constants.MessageDisplayPartText {
-						receipt.FinalPresent = true
-						receipt.FinalMessageID = message.ID
-						texts = append(texts, strings.TrimSpace(part.Text))
-					}
-				}
-				if receipt.FinalPresent {
-					receipt.Text = strings.Join(texts, "\n\n")
-					break
+			texts := []string{}
+			for _, part := range message.DisplayParts {
+				if part.Type == constants.MessageDisplayPartText {
+					receipt.FinalPresent = true
+					receipt.FinalMessageID = message.ID
+					texts = append(texts, strings.TrimSpace(part.Text))
 				}
 			}
-			if receipt.FinalPresent || !page.HasMore || page.NextBeforeSequence <= 0 {
+			if receipt.FinalPresent {
+				receipt.Text = strings.Join(texts, "\n\n")
 				break
 			}
-			before = page.NextBeforeSequence
 		}
-
 	}
 	return receipt, nil
 }

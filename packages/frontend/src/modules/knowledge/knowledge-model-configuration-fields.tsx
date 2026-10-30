@@ -13,16 +13,6 @@ export function KnowledgeModelConfigurationFields(
       <p className="text-content-secondary type-caption">
         {t("modelReasoningHelp")}
       </p>
-      {props.state.capabilityUnavailable ? (
-        <p role="status" className="text-content-secondary type-caption">
-          {t("modelCapabilityUnavailable")}
-        </p>
-      ) : null}
-      {props.state.capabilityUnverified ? (
-        <p role="status" className="text-content-secondary type-caption">
-          {t("modelCapabilityUnverified")}
-        </p>
-      ) : null}
     </>
   );
 }

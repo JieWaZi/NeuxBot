@@ -50,6 +50,8 @@ type TimelineQuery struct {
 
 // TimelinePage 是按时间升序返回的一页团队公开消息。
 type TimelinePage struct {
+	// LeadChatLatestSequence 是主 Chat 最新窗口实际覆盖的持久游标；旧页或未读取该来源时为空。
+	LeadChatLatestSequence *int64
 	// Resources 是本页从旧到新排列的公开消息段。
 	Resources []TimelineMessage
 	// NextCursor 是继续读取更早消息时原样回传的不透明游标。
@@ -64,7 +66,9 @@ type timelineCursor struct {
 	BeforeByChat map[string]int64 `json:"beforeByChat"`
 	// PendingBeforeCreatedAt 是下一页临时输入必须早于的 Unix 毫秒时间。
 	PendingBeforeCreatedAt int64 `json:"pendingBeforeCreatedAt,omitempty"`
-	// PendingBeforeID 是临时输入时间相同时使用的稳定标识边界。
+	// PendingBeforeRole 是同毫秒临时输入保持用户先于负责人排序的角色边界。
+	PendingBeforeRole constants.MessageRole `json:"pendingBeforeRole,omitempty"`
+	// PendingBeforeID 是临时输入时间和角色相同时使用的稳定标识边界。
 	PendingBeforeID string `json:"pendingBeforeId,omitempty"`
 	// PendingExhausted 表示当前游标快照已没有更早的临时用户输入。
 	PendingExhausted bool `json:"pendingExhausted,omitempty"`
@@ -110,6 +114,7 @@ func (s *service) ReadTimeline(ctx context.Context, input TimelineQuery) (Timeli
 
 	sources := make([]timelineSourcePage, 0, 1)
 	candidates := make([]timelineCandidate, 0, input.Limit+len(members))
+	var leadChatLatestSequence *int64
 	readSource := func(chatID string, wakerID string, coordinator bool) error {
 		beforeSequence := cursor.BeforeByChat[chatID]
 		if beforeSequence == exhaustedTimelineSequence {
@@ -123,6 +128,10 @@ func (s *service) ReadTimeline(ctx context.Context, input TimelineQuery) (Timeli
 		)
 		if readErr != nil {
 			return readErr
+		}
+		if coordinator && beforeSequence == 0 {
+			sequence := page.LatestSequence
+			leadChatLatestSequence = &sequence
 		}
 		resources := appendTimelineMessages(nil, page.Resources, chatID, wakerID, coordinator)
 		sources = append(sources, timelineSourcePage{
@@ -138,7 +147,7 @@ func (s *service) ReadTimeline(ctx context.Context, input TimelineQuery) (Timeli
 	if err := readSource(thread.LeadChatID, thread.LeadWakerID, true); err != nil {
 		return TimelinePage{}, err
 	}
-	pendingResources, err := s.pendingTimelineMessages(ctx, thread, members, cursor)
+	pendingResources, err := s.pendingTimelineMessages(ctx, thread, members, cursor, input.Limit+1)
 	if err != nil {
 		return TimelinePage{}, err
 	}
@@ -185,9 +194,10 @@ func (s *service) ReadTimeline(ctx context.Context, input TimelineQuery) (Timeli
 		return TimelinePage{}, err
 	}
 	return TimelinePage{
-		Resources:  resources,
-		NextCursor: nextCursor,
-		HasMore:    hasMore,
+		LeadChatLatestSequence: leadChatLatestSequence,
+		Resources:              resources,
+		NextCursor:             nextCursor,
+		HasMore:                hasMore,
 	}, nil
 }
 
@@ -197,6 +207,7 @@ func (s *service) pendingTimelineMessages(
 	thread models.ChannelThread,
 	members []models.ChannelThreadMember,
 	cursor timelineCursor,
+	limit int,
 ) ([]TimelineMessage, error) {
 	if cursor.PendingExhausted {
 		return nil, nil
@@ -210,53 +221,50 @@ func (s *service) pendingTimelineMessages(
 		membersByWakerID[member.WakerID] = member
 	}
 	result := make([]TimelineMessage, 0)
+	tasksByID := make(map[string]models.ChannelTask, len(tasks))
+	taskIDs := make([]string, 0, len(tasks))
 	for _, task := range tasks {
+		tasksByID[task.ID] = task
+		member, exists := membersByWakerID[task.AssigneeWakerID]
+		if exists {
+			taskIDs = append(taskIDs, task.ID)
+		}
+		if exists && task.CurrentFence == 0 && task.DirectInput != nil {
+			result = appendPendingWorkInput(result, "channel-task-input:"+task.ID, member.ChatID, "", task.CreatedAt, *task.DirectInput)
+		}
+	}
+	beforeAt, beforeID := cursor.PendingBeforeCreatedAt, cursor.PendingBeforeID
+	if strings.HasPrefix(beforeID, "channel-task-follow-up:") {
+		beforeID = strings.TrimPrefix(beforeID, "channel-task-follow-up:")
+	} else {
+		beforeID = ""
+	}
+	followUps, err := s.tasks.ListTimelineFollowUps(ctx, thread.ID, taskIDs, beforeAt, cursor.PendingBeforeRole, beforeID, limit)
+	if err != nil {
+		return nil, err
+	}
+	for _, followUp := range followUps {
+		task, exists := tasksByID[followUp.TaskID]
+		if !exists {
+			continue
+		}
 		member, exists := membersByWakerID[task.AssigneeWakerID]
 		if !exists {
 			continue
 		}
-		if task.CurrentFence == 0 && task.DirectInput != nil {
-			result = appendPendingWorkInput(
-				result,
-				"channel-task-input:"+task.ID,
-				member.ChatID,
-				"",
-				task.CreatedAt,
-				*task.DirectInput,
-			)
+		actor := followUp.Actor
+		if actor == "" {
+			actor = constants.ChannelMessageActorUser
 		}
-		followUps, followUpErr := s.tasks.ListFollowUps(ctx, task.ID)
-		if followUpErr != nil {
-			return nil, followUpErr
+		authorWakerID := ""
+		if actor == constants.ChannelMessageActorLead {
+			authorWakerID = thread.LeadWakerID
 		}
-		for _, followUp := range followUps {
-			actor := followUp.Actor
-			if actor == "" {
-				actor = constants.ChannelMessageActorUser
-			}
-			if actor == constants.ChannelMessageActorUser && followUp.DeliveredAt != nil {
-				continue
-			}
-			authorWakerID := ""
-			if actor == constants.ChannelMessageActorLead {
-				authorWakerID = thread.LeadWakerID
-			}
-			payload := followUp.Payload
-			if strings.TrimSpace(payload.Content) == "" {
-				payload = execution.WorkInput{
-					Actor:   string(actor),
-					Content: followUp.Text,
-				}
-			}
-			result = appendPendingWorkInput(
-				result,
-				"channel-task-follow-up:"+followUp.ID,
-				member.ChatID,
-				authorWakerID,
-				followUp.CreatedAt,
-				payload,
-			)
+		payload := followUp.Payload
+		if strings.TrimSpace(payload.Content) == "" {
+			payload = execution.WorkInput{Actor: string(actor), Content: followUp.Text}
 		}
+		result = appendPendingWorkInput(result, "channel-task-follow-up:"+followUp.ID, member.ChatID, authorWakerID, followUp.CreatedAt, payload)
 	}
 	if cursor.PendingBeforeCreatedAt == 0 {
 		return result, nil
@@ -265,7 +273,8 @@ func (s *service) pendingTimelineMessages(
 	for _, resource := range result {
 		if resource.Message.CreatedAt < cursor.PendingBeforeCreatedAt ||
 			(resource.Message.CreatedAt == cursor.PendingBeforeCreatedAt &&
-				resource.Message.ID < cursor.PendingBeforeID) {
+				(resource.Message.Role == constants.MessageRoleUser && cursor.PendingBeforeRole == constants.MessageRoleAssistant ||
+					resource.Message.Role == cursor.PendingBeforeRole && resource.Message.ID < cursor.PendingBeforeID)) {
 			filtered = append(filtered, resource)
 		}
 	}
@@ -334,6 +343,7 @@ func nextTimelineCursor(
 			}
 		}
 		next.PendingBeforeCreatedAt = oldest.Message.CreatedAt
+		next.PendingBeforeRole = oldest.Message.Role
 		next.PendingBeforeID = oldest.Message.ID
 	} else if !hasPendingCandidate(all) {
 		next.PendingExhausted = true
@@ -403,7 +413,8 @@ func decodeTimelineCursor(encoded string) (timelineCursor, error) {
 		}
 	}
 	if cursor.PendingBeforeCreatedAt < 0 ||
-		(cursor.PendingBeforeCreatedAt == 0 && cursor.PendingBeforeID != "") {
+		(cursor.PendingBeforeCreatedAt == 0 && (cursor.PendingBeforeID != "" || cursor.PendingBeforeRole != "")) ||
+		(cursor.PendingBeforeCreatedAt > 0 && (cursor.PendingBeforeID == "" || (cursor.PendingBeforeRole != constants.MessageRoleUser && cursor.PendingBeforeRole != constants.MessageRoleAssistant))) {
 		return timelineCursor{}, status_error.BadRequest
 	}
 	return cursor, nil
@@ -427,10 +438,10 @@ func timelineMessageLess(left TimelineMessage, right TimelineMessage) bool {
 	if left.Message.Role != right.Message.Role {
 		return left.Message.Role == constants.MessageRoleUser
 	}
-	if left.ChatID != right.ChatID {
-		return left.ChatID < right.ChatID
+	if left.Message.ID != right.Message.ID {
+		return left.Message.ID < right.Message.ID
 	}
-	return left.Message.ID < right.Message.ID
+	return left.ChatID < right.ChatID
 }
 
 // appendPendingWorkInput 把尚未提交到 Chat JSONL 的用户或负责人输入投影为真实作者消息。
@@ -454,12 +465,13 @@ func appendPendingWorkInput(
 		role = constants.MessageRoleAssistant
 	}
 	message := messageview.Message{
-		ID:        messageID,
-		Role:      role,
-		Actor:     input.Actor,
-		Content:   input.Content,
-		CreatedAt: createdAt,
-		UpdatedAt: createdAt,
+		ID:           messageID,
+		SubmissionID: input.SubmissionID,
+		Role:         role,
+		Actor:        input.Actor,
+		Content:      input.Content,
+		CreatedAt:    createdAt,
+		UpdatedAt:    createdAt,
 	}
 	if input.Content != "" {
 		message.DisplayParts = []messageview.MessageDisplayPart{{

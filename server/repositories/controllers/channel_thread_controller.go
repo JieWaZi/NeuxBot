@@ -467,6 +467,7 @@ func (c *channelThreadController) UpdateMemberExecutionConfigs(
 	members []models.ChannelThreadMember,
 ) error {
 	db := controllerDB(ctx, c.db)
+	changedThreads := map[string]bool{}
 	for _, member := range members {
 		result := db.Model(&models.ChannelThreadMember{}).
 			Where("thread_id = ? AND waker_id = ?", member.ThreadID, member.WakerID).
@@ -485,8 +486,11 @@ func (c *channelThreadController) UpdateMemberExecutionConfigs(
 				result.Error,
 			)
 		}
+		changedThreads[member.ThreadID] = true
 	}
-	publishCommittedChange(ctx, c.db, "work-board", eventsResource("global", ""))
+	for threadID := range changedThreads {
+		publishCommittedChange(ctx, c.db, "work-board", eventsResource("thread", threadID))
+	}
 	return nil
 }
 
@@ -699,7 +703,7 @@ func (c *channelThreadController) DeleteByChannel(ctx context.Context, channelID
 			return err
 		}
 	}
-	publishCommittedChange(ctx, c.db, "work-board", eventsResource("global", ""))
+	publishCommittedChange(ctx, c.db, "work-board", eventsResource("channel", channelID))
 	return nil
 }
 

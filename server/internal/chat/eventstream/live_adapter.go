@@ -5,9 +5,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 )
 
 // LiveAdapter 将未持久化的 canonical Runtime Event 增量转换为安全完整消息快照。
@@ -90,7 +90,7 @@ func NewLiveAdapter(records []eventlog.Record, messageID string) (*LiveAdapter, 
 // Apply 应用一条实时事件并返回前端可直接合并的 transient 快照及其消息修订号。
 func (a *LiveAdapter) Apply(
 	invocationID string,
-	event runtimes.Event,
+	event runtimecontract.Event,
 ) (PublicEvent, int64, error) {
 	revision, err := a.ApplyState(invocationID, event)
 	if err != nil {
@@ -101,7 +101,7 @@ func (a *LiveAdapter) Apply(
 }
 
 // ApplyState 按顺序更新唯一实时状态，不为尚未到交付窗口的增量复制整条消息。
-func (a *LiveAdapter) ApplyState(invocationID string, event runtimes.Event) (int64, error) {
+func (a *LiveAdapter) ApplyState(invocationID string, event runtimecontract.Event) (int64, error) {
 	if a == nil || a.messageView == nil {
 		return 0, status_error.ChatLogError
 	}

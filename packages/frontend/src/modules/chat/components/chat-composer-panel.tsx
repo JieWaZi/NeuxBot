@@ -16,6 +16,11 @@ export function ChatComposerPanel({
   ...entry
 }: ChatComposerPanelProps) {
   return (
-    <ChatPageContent chatId={chatId} entry={entry} presentation="composer" />
+    <ChatPageContent
+      chatId={chatId}
+      entry={entry}
+      presentation="composer"
+      presentationScopeKey={entry.scopeKey}
+    />
   );
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 )
 
 func TestLiveAdapterAppliesRuntimeEventWithBoundMessageScope(t *testing.T) {
@@ -20,8 +20,8 @@ func TestLiveAdapterAppliesRuntimeEventWithBoundMessageScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Marshal(payload) error = %v", err)
 	}
-	event, revision, err := adapter.Apply("invocation-2", runtimes.Event{
-		Type: runtimes.EventTypeTextDelta,
+	event, revision, err := adapter.Apply("invocation-2", runtimecontract.Event{
+		Type: runtimecontract.EventTypeTextDelta,
 		Data: payload,
 	})
 	if err != nil {
@@ -61,7 +61,7 @@ func TestLiveAdapterDiscardsPrivateRuntimeHistory(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		event, _, err := adapter.Apply("invocation-2", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: payload})
+		event, _, err := adapter.Apply("invocation-2", runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: payload})
 		if err != nil || event.Message == nil || len(event.Message.DisplayParts) == 0 {
 			t.Fatalf("live update %d: event=%+v error=%v", index, event, err)
 		}

@@ -118,14 +118,28 @@ type MessageDisplayPart struct {
 	ToolApprovalResult *ToolApprovalResult `json:"toolApprovalResult,omitempty"`
 }
 
+// MessageFork 是消息操作可使用的安全分叉能力。
+type MessageFork struct {
+	// 可用状态
+	Available bool `json:"available"`
+	// 仅限末轮
+	LatestOnly bool `json:"latestOnly,omitempty"`
+	// 禁用原因
+	ReasonCode string `json:"reasonCode,omitempty"`
+}
+
 // Message 是从权威事件重放出的聊天消息视图。
 type Message struct {
+	// 分叉能力
+	Fork *MessageFork `json:"fork,omitempty"`
 	// Inherited 标记从来源会话复制的历史，不计作本会话的新执行。
 	Inherited bool `json:"inherited,omitempty"`
 	// Retryable 表示后端允许用户安全重试该失败回合。
 	Retryable bool `json:"retryable,omitempty"`
 	// ID 是消息的稳定标识。
 	ID string `json:"id"`
+	// 输入提交标识
+	SubmissionID string `json:"submissionId,omitempty"`
 	// Role 是消息发送方。
 	Role constants.MessageRole `json:"role"`
 	// Actor 是产生用户输入的入口无关参与者，用于聚合视图隐藏内部协调输入。

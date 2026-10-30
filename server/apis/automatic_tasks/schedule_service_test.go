@@ -31,7 +31,7 @@ type testExecutionBoundary struct {
 	// mutex 保护并发接纳的权威状态和收据。
 	mutex sync.Mutex
 	// states 保存稳定 Chat 身份对应的首次执行事实。
-	states map[string]chat.ExecutionContext
+	states map[string]chat.InitialExecutionState
 	// reads 记录每个 Chat 权威快照的读取次数，验证查询内去重。
 	reads map[string]int
 	// intents 保存进入执行核心的完整中立意图。
@@ -54,7 +54,7 @@ func (b *testExecutionBoundary) Start(_ context.Context, intent execution.WorkIn
 		return execution.AcceptedExecution{Chat: state.Chat, Execution: *state.InitialExecution, Replayed: true}, nil
 	}
 	b.intents = append(b.intents, intent)
-	state := chat.ExecutionContext{Chat: models.Chat{ID: id, WakerID: intent.Chat.Create.WakerID, HiddenFromWakerHistory: intent.Chat.Create.HiddenFromWakerHistory, ActiveExecutionID: intent.ExecutionID},
+	state := chat.InitialExecutionState{Chat: models.Chat{ID: id, WakerID: intent.Chat.Create.WakerID, HiddenFromWakerHistory: intent.Chat.Create.HiddenFromWakerHistory, ActiveExecutionID: intent.ExecutionID},
 		CreateRequestID: intent.ClientRequestID, InitialExecution: &models.Execution{ID: intent.ExecutionID, ChatID: id, Status: constants.ExecutionStatusRunning}}
 	b.states[id] = state
 	return execution.AcceptedExecution{Chat: state.Chat, Execution: *state.InitialExecution}, nil
@@ -130,7 +130,7 @@ func newHarness(t *testing.T) *testHarness {
 	sql, _ := database.DB.DB()
 	t.Cleanup(func() { _ = sql.Close() })
 	tx := controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
-	boundary := &testExecutionBoundary{states: map[string]chat.ExecutionContext{}, transactions: tx}
+	boundary := &testExecutionBoundary{states: map[string]chat.InitialExecutionState{}, transactions: tx}
 	wakers := controllers.NewWakerController(database.DB)
 	h := &testHarness{boundary: boundary, wakerID: util.New(), directory: t.TempDir()}
 	workflowStore := controllers.NewWorkflowController(database.DB)
@@ -360,8 +360,8 @@ func TestTeamAttentionIncludesAllActiveMemberChats(t *testing.T) {
 	if err := h.api.config.Tasks.CreateRun(ctx, run); err != nil {
 		t.Fatal(err)
 	}
-	h.boundary.states[leadChatID] = chat.ExecutionContext{Chat: models.Chat{ID: leadChatID, WakerID: h.wakerID, ActiveExecutionID: executionID}, InitialExecution: &models.Execution{ID: executionID, Status: constants.ExecutionStatusRunning}}
-	h.boundary.states[memberChatID] = chat.ExecutionContext{Chat: models.Chat{ID: memberChatID, WakerID: "member", ActiveExecutionID: "member-execution", WaitingApproval: true, WaitingElicitation: true}, InitialExecution: &models.Execution{ID: "member-execution", Status: constants.ExecutionStatusRunning}}
+	h.boundary.states[leadChatID] = chat.InitialExecutionState{Chat: models.Chat{ID: leadChatID, WakerID: h.wakerID, ActiveExecutionID: executionID}, InitialExecution: &models.Execution{ID: executionID, Status: constants.ExecutionStatusRunning}}
+	h.boundary.states[memberChatID] = chat.InitialExecutionState{Chat: models.Chat{ID: memberChatID, WakerID: "member", ActiveExecutionID: "member-execution", WaitingApproval: true, WaitingElicitation: true}, InitialExecution: &models.Execution{ID: "member-execution", Status: constants.ExecutionStatusRunning}}
 	attention, err := h.api.GetAttention(ctx, h.wakerID)
 	if err != nil {
 		t.Fatal(err)

@@ -1,10 +1,12 @@
 package execution
 
 import (
+	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+
 	"context"
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -16,6 +18,8 @@ import (
 
 // terminalJournal 记录执行终态的 durable 与公开两阶段交接。
 type terminalJournal struct {
+	// Journal 保留本测试不使用的执行查询边界。
+	chatservice.Journal
 	// terminal 是最近一次先持久的执行终态。
 	terminal chatservice.TerminalFact
 	// published 在注册表交出执行占用后接收公开通知。
@@ -143,7 +147,7 @@ func TestExecutionOutcomeIsDurableAndKeepsChatCompletedSemantics(t *testing.T) {
 	}{{"end_turn", constants.RuntimeTerminationReasonNormal}, {"max_tokens", constants.RuntimeTerminationReasonTruncated}, {"max_turn_requests", constants.RuntimeTerminationReasonTurnLimit}, {"refusal", constants.RuntimeTerminationReasonRefusal}, {"future", constants.RuntimeTerminationReasonUnknown}, {"", constants.RuntimeTerminationReasonUnspecified}}
 	for _, test := range cases {
 		t.Run(test.raw, func(t *testing.T) {
-			runner := &retryTestRuntime{result: runtimes.Result{StopReason: test.raw, TerminationReason: test.reason}}
+			runner := &retryTestRuntime{result: runtimecontract.Result{StopReason: test.raw, TerminationReason: test.reason}}
 			manager := newMessageTestService(t, t.TempDir(), runner)
 			accepted := retryTestStart(t, manager, retryTestIntent(t))
 			outcome, err := manager.chats.ReadExecutionOutcome(context.Background(), accepted.Chat.ID, accepted.Execution.ID)
@@ -159,7 +163,7 @@ func TestExecutionOutcomeIsDurableAndKeepsChatCompletedSemantics(t *testing.T) {
 			}
 			// 后续聊天正常完成，不能覆盖指定旧执行的截断或未知结论。
 			runner.mutex.Lock()
-			runner.result = runtimes.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal}
+			runner.result = runtimecontract.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal}
 			runner.mutex.Unlock()
 			intent := retryTestIntent(t)
 			intent.Chat = ChatTarget{ChatID: accepted.Chat.ID}
@@ -177,7 +181,7 @@ func TestExecutionOutcomeIsDurableAndKeepsChatCompletedSemantics(t *testing.T) {
 }
 
 func TestExecutionOutcomeKeepsFailureAlongsideStopReason(t *testing.T) {
-	runner := &retryTestRuntime{result: runtimes.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery, Stage: "sink", Message: "delivery failed"}}}
+	runner := &retryTestRuntime{result: runtimecontract.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeEventDelivery, Stage: "sink", Message: "delivery failed"}}}
 	manager := newMessageTestService(t, t.TempDir(), runner)
 	accepted := retryTestStart(t, manager, retryTestIntent(t))
 	outcome, err := manager.chats.ReadExecutionOutcome(context.Background(), accepted.Chat.ID, accepted.Execution.ID)
@@ -190,7 +194,7 @@ func TestExecutionOutcomeKeepsFailureAlongsideStopReason(t *testing.T) {
 }
 
 func TestExecutionOutcomePreservesConfirmedCancellation(t *testing.T) {
-	runner := &retryTestRuntime{result: runtimes.Result{StopReason: "cancelled", TerminationReason: constants.RuntimeTerminationReasonCancelled, Failure: &runtimes.Failure{Code: runtimes.FailureCodeContextCanceled, Stage: "prompt", Message: "cancelled by user"}}}
+	runner := &retryTestRuntime{result: runtimecontract.Result{StopReason: "cancelled", TerminationReason: constants.RuntimeTerminationReasonCancelled, Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeContextCanceled, Stage: "prompt", Message: "cancelled by user"}}}
 	manager := newMessageTestService(t, t.TempDir(), runner)
 	accepted := retryTestStart(t, manager, retryTestIntent(t))
 	outcome, err := manager.chats.ReadExecutionOutcome(context.Background(), accepted.Chat.ID, accepted.Execution.ID)

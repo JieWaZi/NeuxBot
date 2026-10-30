@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   useEffect,
   useRef,
@@ -12,8 +12,6 @@ import { Button } from "@/shared/ui/button";
 import {
   getWorkResultOptions,
   getWorkResultQueryKey,
-  getWorkBoardSummaryQueryKey,
-  listWorkBoardQueryKey,
   viewWorkResultMutation,
 } from "./generated/@tanstack/react-query.gen";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReceipt as Receipt } from "./generated/types.gen";
@@ -62,7 +60,6 @@ export function useVisibleWorkResult({
   chatId?: string;
 }) {
   const active = useVisibleScene();
-  const client = useQueryClient();
   const query = useQuery({
     ...getWorkResultOptions(
       withLocalErrorSurface({ path: { ownerKind, ownerId } }),
@@ -76,18 +73,8 @@ export function useVisibleWorkResult({
     active: active && rendered,
     enabled: /^[a-f0-9]{32}$/.test(ownerId),
   });
-  const view = useMutation({
-    ...withLocalErrorMutation(viewWorkResultMutation()),
-    onSuccess: () => {
-      void client.invalidateQueries({
-        queryKey: getWorkResultQueryKey({ path: { ownerKind, ownerId } }),
-      });
-      void client.invalidateQueries({
-        queryKey: getWorkBoardSummaryQueryKey(),
-      });
-      void client.invalidateQueries({ queryKey: listWorkBoardQueryKey() });
-    },
-  });
+  // 阅读提交只确认观察版本；本窗口与其他窗口共用服务器变更事件对账。
+  const view = useMutation(withLocalErrorMutation(viewWorkResultMutation()));
   const receipt = query.data?.result;
   useNotificationPresentation({
     root,

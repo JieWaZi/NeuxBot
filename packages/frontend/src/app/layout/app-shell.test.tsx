@@ -614,6 +614,43 @@ describe("AppShell 伙伴导航", () => {
     });
   });
 
+  it("伙伴活动变化只更新伙伴摘要，保留团队列表的缓存", async () => {
+    renderShell();
+    expect(
+      await screen.findByRole("button", { name: "伙伴一" }),
+    ).toHaveAttribute("data-activity-state", "running");
+    expect(screen.getByRole("button", { name: "团队一" })).toHaveAttribute(
+      "data-activity-state",
+      "running",
+    );
+    railActivityFixture.waker = "idle";
+    railActivityFixture.team = "idle";
+    act(() => {
+      for (const observer of globalListeners.get("entities") ?? [])
+        observer.onEvent({
+          protocolVersion: 1,
+          epoch: "epoch",
+          connectionId: "connection",
+          deliverySequence: 1,
+          topic: "entities",
+          type: "entities.activity.changed",
+          resource: { kind: "waker", id: "waker-1" },
+          eventId: "activity",
+          payload: {},
+        });
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "伙伴一" })).toHaveAttribute(
+        "data-activity-state",
+        "idle",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "团队一" })).toHaveAttribute(
+      "data-activity-state",
+      "running",
+    );
+  });
+
   it("伙伴详情从列表行菜单打开，不再占用右上角入口", async () => {
     const user = userEvent.setup();
     renderShell("/chat?wakerId=waker-1");

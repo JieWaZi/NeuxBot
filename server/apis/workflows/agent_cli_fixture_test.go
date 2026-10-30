@@ -12,7 +12,6 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 )
 
 // fixtureCLIBinary 是本测试进程从当前源码构建的真实可执行文件。
@@ -39,7 +38,12 @@ func runCLITestSuite(m *testing.M) int {
 	return code
 }
 
-func fixtureCLI(ctx context.Context, request runtimes.RunRequest, arguments []string, input map[string]any) (map[string]any, error) {
+func fixtureCLI(ctx context.Context, request fixtureInvocation, arguments []string, input map[string]any) (map[string]any, error) {
+	return fixtureCLIEnvironment(ctx, request.Workspace.Path, request.Resources.Target.Environment, arguments, input)
+}
+
+// fixtureCLIEnvironment 让外部 Driver 使用真实启动环境访问同一 allycli 授权入口。
+func fixtureCLIEnvironment(ctx context.Context, directory string, environment map[string]string, arguments []string, input map[string]any) (map[string]any, error) {
 	args := append([]string(nil), arguments...)
 	var body []byte
 	if input != nil {
@@ -47,8 +51,8 @@ func fixtureCLI(ctx context.Context, request runtimes.RunRequest, arguments []st
 		args = append(args, "--input", "-")
 	}
 	command := exec.CommandContext(ctx, fixtureCLIBinary, args...)
-	command.Dir = request.Workspace.Path
-	command.Env = append(os.Environ(), constants.AgentCLIContextEnvironment+"="+request.Target.Environment[constants.AgentCLIContextEnvironment])
+	command.Dir = directory
+	command.Env = append(os.Environ(), constants.AgentCLIContextEnvironment+"="+environment[constants.AgentCLIContextEnvironment])
 	command.Stdin = bytes.NewReader(body)
 	var output, failure bytes.Buffer
 	command.Stdout, command.Stderr = &output, &failure

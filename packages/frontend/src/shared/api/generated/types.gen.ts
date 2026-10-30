@@ -495,18 +495,6 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail = {
      */
     tasks?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelTask>;
     thread?: GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThread & unknown;
-    /**
-     * 聚合时间线
-     */
-    timeline?: Array<GithubComJieWaZiNeuxBotServerServicesChannelTimelineMessage>;
-    /**
-     * 更早消息
-     */
-    timelineHasMore?: boolean;
-    /**
-     * 更早页游标
-     */
-    timelineNextCursor?: string;
 };
 
 /**
@@ -517,6 +505,10 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsChannelTimelinePage = {
      * 更早消息
      */
     hasMore?: boolean;
+    /**
+     * 主聊天游标
+     */
+    leadChatLatestSequence?: number;
     /**
      * 更早页游标
      */
@@ -686,6 +678,13 @@ export type GithubComJieWaZiNeuxBotServerApisChannelsReviewChannelTaskRequest = 
     feedback?: string;
 };
 
+export type GithubComJieWaZiNeuxBotServerApisChannelsSendChannelMessageRequest = GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput & {
+    /**
+     * 输入提交标识
+     */
+    submissionId?: string;
+};
+
 /**
  * 更新团队成员配置请求
  */
@@ -766,10 +765,6 @@ export type GithubComJieWaZiNeuxBotServerApisChatsListChatsResponse = {
      */
     nextBeforeUpdatedAt?: number;
     /**
-     * 最近项目
-     */
-    recentProjectId?: string;
-    /**
      * 资源列表
      */
     resources?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsChat>;
@@ -838,7 +833,7 @@ export type GithubComJieWaZiNeuxBotServerApisChatsMessageRequest = {
     model?: string;
     permissionLevel: GithubComJieWaZiNeuxBotServerConstantsPermissionLevel & unknown;
     /**
-     * 连接器列表
+     * 插件列表
      */
     pluginIds?: Array<string>;
     /**
@@ -899,6 +894,13 @@ export type GithubComJieWaZiNeuxBotServerApisChatsResolveElicitationRequest = {
      * 是否拒绝本次输入
      */
     declined?: boolean;
+};
+
+export type GithubComJieWaZiNeuxBotServerApisChatsSendMessageRequest = GithubComJieWaZiNeuxBotServerApisChatsMessageRequest & {
+    /**
+     * 输入提交标识
+     */
+    submissionId?: string;
 };
 
 /**
@@ -4416,7 +4418,7 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
      * 可执行路径
      */
     binary?: string;
-    capabilities?: GithubComJieWaZiNeuxBotServerInternalRuntimesCapabilitySet & unknown;
+    capabilities?: GithubComJieWaZiNeuxBotServerInternalAgentEnvironmentConfigCapabilitySet & unknown;
     /**
      * 配置目录
      */
@@ -5054,6 +5056,16 @@ export type GithubComJieWaZiNeuxBotServerApisWakersDeleteWakerRequest = {
 };
 
 /**
+ * 伙伴最近可用项目响应
+ */
+export type GithubComJieWaZiNeuxBotServerApisWakersGetWakerRecentProjectResponse = {
+    /**
+     * 项目标识
+     */
+    projectId?: string;
+};
+
+/**
  * 伙伴对话列表响应
  */
 export type GithubComJieWaZiNeuxBotServerApisWakersListWakerChatsResponse = {
@@ -5481,8 +5493,8 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsSendCreationMessageCommand
     summaryReasoning?: string;
 };
 
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsSendWorkflowCreationMessageResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSession & {
-    execution?: GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution & unknown;
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsSendWorkflowCreationMessageResponse = GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSession & GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution & {
+    [key: string]: unknown;
 };
 
 /**
@@ -6901,7 +6913,6 @@ export type GithubComJieWaZiNeuxBotServerConstantsRolePresetSource = '' | 'syste
  * * `add_directory` - RuntimeCapabilityAddDirectory 表示 Runtime 支持声明附加工作目录。
  * * `dynamic_models` - RuntimeCapabilityDynamicModels 表示本次探测取得了动态模型列表。
  * * `image_path` - RuntimeCapabilityImagePath 表示 Runtime 支持通过本地路径原生提交图片。
- * * `isolated_text_generation` - RuntimeCapabilityIsolatedTextGeneration 表示真实会话已确认可配置隔离文本生成策略。
  * * `mcp_sse` - RuntimeCapabilityMCPSSE 表示 ACP Agent 声明支持旧版 SSE MCP。
  * * `mcp_streamable_http` - RuntimeCapabilityMCPStreamableHTTP 表示 ACP Agent 声明支持 Streamable HTTP MCP。
  * * `partial_messages` - RuntimeCapabilityPartialMessages 表示 Runtime 支持更细粒度的流式消息。
@@ -6911,7 +6922,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsRolePresetSource = '' | 'syste
  * * `structured_output` - RuntimeCapabilityStructuredOutput 表示 Runtime 支持要求的结构化输出格式。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability = '' | 'add_directory' | 'dynamic_models' | 'image_path' | 'isolated_text_generation' | 'mcp_sse' | 'mcp_streamable_http' | 'partial_messages' | 'resume_session' | 'skill_directory' | 'streaming_user_messages' | 'structured_output';
+export type GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability = '' | 'add_directory' | 'dynamic_models' | 'image_path' | 'mcp_sse' | 'mcp_streamable_http' | 'partial_messages' | 'resume_session' | 'skill_directory' | 'streaming_user_messages' | 'structured_output';
 
 /**
  * >
@@ -7040,6 +7051,13 @@ export type GithubComJieWaZiNeuxBotServerConstantsWorkflowRunStatus = 'cancelled
 export type GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus = 'unknown' | 'answered' | 'cancelled' | 'failed' | 'prepared' | 'ready' | 'running' | 'skipped' | 'succeeded' | 'timed_out' | 'unknown' | 'waiting';
 
 /**
+ * CapabilitySet 保存一次探测确认可用的 Runtime 能力。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalAgentEnvironmentConfigCapabilitySet = {
+    [key: string]: boolean;
+};
+
+/**
  * AttachmentReference 是一条经过路径校验并可以安全重放的附件引用。
  */
 export type GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference = {
@@ -7163,6 +7181,7 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      * FileChanges 是当前执行内全部成功文件修改工具聚合出的有序变更摘要。
      */
     fileChanges?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolFileChangeSummary>;
+    fork?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFork & unknown;
     /**
      * ID 是消息的稳定标识。
      */
@@ -7198,6 +7217,10 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      */
     sourceWakerId?: string;
     status?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
+    /**
+     * 输入提交标识
+     */
+    submissionId?: string;
     /**
      * Truncated 表示正文只是受限预览，负责人不得把它视为完整报告。
      */
@@ -7257,6 +7280,24 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFileChang
      * Path 是位于对话执行工作区内的安全相对路径。
      */
     path?: string;
+};
+
+/**
+ * MessageFork 是消息操作可使用的安全分叉能力。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFork = {
+    /**
+     * 可用状态
+     */
+    available?: boolean;
+    /**
+     * 仅限末轮
+     */
+    latestOnly?: boolean;
+    /**
+     * 禁用原因
+     */
+    reasonCode?: string;
 };
 
 /**
@@ -8296,13 +8337,6 @@ export type GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod = {
      * Steps 是按执行顺序排列的步骤。
      */
     steps?: Array<string>;
-};
-
-/**
- * CapabilitySet 保存一次探测确认可用的 Runtime 能力。
- */
-export type GithubComJieWaZiNeuxBotServerInternalRuntimesCapabilitySet = {
-    [key: string]: boolean;
 };
 
 /**
@@ -10820,6 +10854,32 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPlugin = {
 };
 
 /**
+ * PluginReference 是输入候选使用的已启用固定版本引用。
+ */
+export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginReference = {
+    /**
+     * 插件说明
+     */
+    description?: string;
+    /**
+     * 插件标识
+     */
+    id?: string;
+    /**
+     * 插件名称
+     */
+    name?: string;
+    /**
+     * 固定版本
+     */
+    version?: string;
+    /**
+     * 版本标识
+     */
+    versionId?: string;
+};
+
+/**
  * PluginVersion 保存完整不可变内容和由其解析的组件快照。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion = {
@@ -12076,31 +12136,13 @@ export type GithubComJieWaZiNeuxBotServerServicesChatChatSummary = {
 };
 
 /**
- * ForkTarget 是不包含原生句柄的回合分叉入口状态。
- */
-export type GithubComJieWaZiNeuxBotServerServicesChatForkTarget = {
-    /**
-     * Available 表示当前空闲状态和原生定位允许执行分叉。
-     */
-    available?: boolean;
-    /**
-     * ExecutionID 是前端可以提交的已结束回合。
-     */
-    executionId?: string;
-    /**
-     * Latest 表示该回合位于会话末尾。
-     */
-    latest?: boolean;
-    /**
-     * ReasonCode 是由前端本地化的稳定不可用原因码。
-     */
-    reasonCode?: string;
-};
-
-/**
  * MessageHistoryPage 是按消息创建序号向前读取的一页权威聊天历史。
  */
 export type GithubComJieWaZiNeuxBotServerServicesChatMessageHistoryPage = {
+    /**
+     * 末轮执行标识
+     */
+    forkLatestExecutionId?: string;
     /**
      * HasMore 表示当前窗口之前是否仍有更早消息。
      */
@@ -12389,13 +12431,9 @@ export type GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution = {
     chat?: GithubComJieWaZiNeuxBotServerRepositoriesModelsChat & unknown;
     execution?: GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution & unknown;
     /**
-     * Replayed 表示本次返回的是相同首次创建请求已经提交的确定结果。
+     * Replayed 表示本次返回的是同一输入请求已经提交的确定结果。
      */
     replayed?: boolean;
-    /**
-     * WorkspaceWarningCode 是 Runtime 不支持附加目录时的稳定提示码。
-     */
-    workspaceWarningCode?: string;
 };
 
 /**
@@ -16972,7 +17010,7 @@ export type UpdateChannelThreadMemberConfigsResponses = {
 export type UpdateChannelThreadMemberConfigsResponse = UpdateChannelThreadMemberConfigsResponses[keyof UpdateChannelThreadMemberConfigsResponses];
 
 export type SendChannelMessageData = {
-    body: GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChannelsSendChannelMessageRequest & unknown;
     path: {
         /**
          * 团队标识
@@ -17612,24 +17650,6 @@ export type ForkChatResponses = {
 
 export type ForkChatResponse = ForkChatResponses[keyof ForkChatResponses];
 
-export type GetChatForkTargetsData = {
-    body?: never;
-    path: {
-        /**
-         * 对话标识
-         */
-        chatId: string;
-    };
-    query?: never;
-    url: '/api/v1/chats/{chatId}/fork-targets';
-};
-
-export type GetChatForkTargetsResponses = {
-    200: Array<GithubComJieWaZiNeuxBotServerServicesChatForkTarget>;
-};
-
-export type GetChatForkTargetsResponse = GetChatForkTargetsResponses[keyof GetChatForkTargetsResponses];
-
 export type ListChatMessagesData = {
     body?: never;
     path: {
@@ -17675,7 +17695,7 @@ export type ListChatMessagesResponses = {
 export type ListChatMessagesResponse = ListChatMessagesResponses[keyof ListChatMessagesResponses];
 
 export type SendMessageData = {
-    body: GithubComJieWaZiNeuxBotServerApisChatsMessageRequest & unknown;
+    body: GithubComJieWaZiNeuxBotServerApisChatsSendMessageRequest & unknown;
     path: {
         /**
          * 对话标识
@@ -17832,35 +17852,6 @@ export type ListLibraryConnectorsData = {
     url: '/api/v1/connectors';
 };
 
-export type ListLibraryConnectorsErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type ListLibraryConnectorsError = ListLibraryConnectorsErrors[keyof ListLibraryConnectorsErrors];
-
 export type ListLibraryConnectorsResponses = {
     200: GithubComJieWaZiNeuxBotServerApisMcpListLibraryConnectorsResponse;
 };
@@ -17889,28 +17880,10 @@ export type CreateLibraryConnectorErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type CreateLibraryConnectorError = CreateLibraryConnectorErrors[keyof CreateLibraryConnectorErrors];
@@ -17981,34 +17954,10 @@ export type GetLibraryConnectorData = {
 export type GetLibraryConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type GetLibraryConnectorError = GetLibraryConnectorErrors[keyof GetLibraryConnectorErrors];
@@ -18046,29 +17995,11 @@ export type UpdateLibraryConnectorErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type UpdateLibraryConnectorError = UpdateLibraryConnectorErrors[keyof UpdateLibraryConnectorErrors];
@@ -18129,40 +18060,16 @@ export type TestLibraryConnectorData = {
 export type TestLibraryConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type TestLibraryConnectorError = TestLibraryConnectorErrors[keyof TestLibraryConnectorErrors];
@@ -28910,7 +28817,6 @@ export type GetCatalogPluginConnectorData = {
 export type GetCatalogPluginConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginContentLimitExceeded][40000006503]`
      * * `[PluginManifestInvalid][40000006501]`
@@ -28927,26 +28833,13 @@ export type GetCatalogPluginConnectorErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[PluginVersionConflict][40900006501]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
      * * `[PluginStorageError][50000006501]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
@@ -29498,9 +29391,16 @@ export type DeletePluginErrors = {
     /**
      * >
      * * `[PluginStorageError][50000006501]`
+     * * `[RuntimeShutdownFailed][50000000041]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[PluginAuthorizationFailed][50200006501]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type DeletePluginError = DeletePluginErrors[keyof DeletePluginErrors];
@@ -29938,6 +29838,12 @@ export type LogoutPluginAuthorizationErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginNotReady][40900006503]`
@@ -29948,9 +29854,16 @@ export type LogoutPluginAuthorizationErrors = {
     /**
      * >
      * * `[PluginStorageError][50000006501]`
+     * * `[RuntimeShutdownFailed][50000000041]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[PluginAuthorizationFailed][50200006501]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type LogoutPluginAuthorizationError = LogoutPluginAuthorizationErrors[keyof LogoutPluginAuthorizationErrors];
@@ -30008,6 +29921,12 @@ export type GetPluginAuthorizationErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginNotReady][40900006503]`
@@ -30021,6 +29940,12 @@ export type GetPluginAuthorizationErrors = {
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[PluginAuthorizationFailed][50200006501]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type GetPluginAuthorizationError = GetPluginAuthorizationErrors[keyof GetPluginAuthorizationErrors];
@@ -30074,6 +29999,12 @@ export type StartPluginAuthorizationErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginNotReady][40900006503]`
@@ -30084,6 +30015,7 @@ export type StartPluginAuthorizationErrors = {
     /**
      * >
      * * `[PluginStorageError][50000006501]`
+     * * `[RuntimeShutdownFailed][50000000041]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
@@ -30169,6 +30101,12 @@ export type CancelPluginAuthorizationErrors = {
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[PluginAuthorizationFailed][50200006501]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type CancelPluginAuthorizationError = CancelPluginAuthorizationErrors[keyof CancelPluginAuthorizationErrors];
@@ -30221,6 +30159,12 @@ export type UpdatePluginConfigurationErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[OperationCanceled][40800000001]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      * * `[PluginBusy][40900006505]`
      * * `[PluginConfigurationConflict][40900006502]`
@@ -30238,6 +30182,7 @@ export type UpdatePluginConfigurationErrors = {
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[PluginAuthorizationFailed][50200006501]`
      * * `[PluginDistributionUnavailable][50200006502]`
      *
      */
@@ -30280,7 +30225,6 @@ export type GetPluginConnectorData = {
 export type GetPluginConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginManifestInvalid][40000006501]`
      *
@@ -30294,28 +30238,10 @@ export type GetPluginConnectorErrors = {
     403: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[PluginVersionConflict][40900006501]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type GetPluginConnectorError = GetPluginConnectorErrors[keyof GetPluginConnectorErrors];
@@ -30380,7 +30306,6 @@ export type TestPluginConnectorErrors = {
     /**
      * >
      * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
      *
      */
     408: GithubComShrewxGinxPkgStatuserrorStatusErr;
@@ -30396,14 +30321,9 @@ export type TestPluginConnectorErrors = {
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
      * * `[MCPConnectorCredentialError][50000000022]`
      * * `[PluginStorageError][50000006501]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
+     * * `[RuntimeShutdownFailed][50000000041]`
      * * `[SkillUnavailable][50000000008]`
      *
      */
@@ -34778,35 +34698,6 @@ export type ListWakerConnectorsData = {
     url: '/api/v1/wakers/{wakerId}/connectors';
 };
 
-export type ListWakerConnectorsErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type ListWakerConnectorsError = ListWakerConnectorsErrors[keyof ListWakerConnectorsErrors];
-
 export type ListWakerConnectorsResponses = {
     200: Array<GithubComJieWaZiNeuxBotServerApisMcpConnectorResponse>;
 };
@@ -34840,28 +34731,10 @@ export type CreateWakerConnectorErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type CreateWakerConnectorError = CreateWakerConnectorErrors[keyof CreateWakerConnectorErrors];
@@ -34940,34 +34813,10 @@ export type GetWakerConnectorData = {
 export type GetWakerConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type GetWakerConnectorError = GetWakerConnectorErrors[keyof GetWakerConnectorErrors];
@@ -35009,29 +34858,11 @@ export type UpdateWakerConnectorErrors = {
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[BuiltInMCPConnectorReadOnly][40900000012]`
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type UpdateWakerConnectorError = UpdateWakerConnectorErrors[keyof UpdateWakerConnectorErrors];
@@ -35094,40 +34925,16 @@ export type TestWakerConnectorData = {
 export type TestWakerConnectorErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorNotFound][40400000009]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
-     * * `[OperationCanceled][40800000001]`
-     * * `[OperationTimeout][40800000002]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
      * * `[MCPConnectorTrustRequired][40900000013]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AIAccountLoginFailed][50000000048]`
-     * * `[AIAccountWorkspaceError][50000000047]`
-     * * `[RuntimeAuthRequired][50000000044]`
-     * * `[RuntimeConfigurationInvalid][50000000040]`
-     * * `[RuntimeProtocolIncompatible][50000000012]`
-     * * `[RuntimeUnavailable][50000000006]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type TestWakerConnectorError = TestWakerConnectorErrors[keyof TestWakerConnectorErrors];
@@ -35246,6 +35053,24 @@ export type UpdateWakerDocumentResponses = {
 };
 
 export type UpdateWakerDocumentResponse = UpdateWakerDocumentResponses[keyof UpdateWakerDocumentResponses];
+
+export type ListWakerPluginReferencesData = {
+    body?: never;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/wakers/{wakerId}/plugin-references';
+};
+
+export type ListWakerPluginReferencesResponses = {
+    200: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginReference>;
+};
+
+export type ListWakerPluginReferencesResponse = ListWakerPluginReferencesResponses[keyof ListWakerPluginReferencesResponses];
 
 export type ListWakerPluginsData = {
     body?: never;
@@ -35639,9 +35464,16 @@ export type UninstallWakerPluginErrors = {
     /**
      * >
      * * `[PluginStorageError][50000006501]`
+     * * `[RuntimeShutdownFailed][50000000041]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[PluginAuthorizationFailed][50200006501]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type UninstallWakerPluginError = UninstallWakerPluginErrors[keyof UninstallWakerPluginErrors];
@@ -35932,6 +35764,24 @@ export type UpdateProjectResponses = {
 };
 
 export type UpdateProjectResponse = UpdateProjectResponses[keyof UpdateProjectResponses];
+
+export type GetWakerRecentProjectData = {
+    body?: never;
+    path: {
+        /**
+         * 伙伴标识
+         */
+        wakerId: string;
+    };
+    query?: never;
+    url: '/api/v1/wakers/{wakerId}/recent-project';
+};
+
+export type GetWakerRecentProjectResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWakersGetWakerRecentProjectResponse;
+};
+
+export type GetWakerRecentProjectResponse = GetWakerRecentProjectResponses[keyof GetWakerRecentProjectResponses];
 
 export type ListWakerSkillsData = {
     body?: never;

@@ -6,9 +6,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -139,7 +139,7 @@ type WorkOptions struct {
 	// AllowedConnectorIDs 是入口冻结的 MCP 白名单；nil 继承伙伴，空白名单排除全部伙伴 MCP。
 	AllowedConnectorIDs *[]string
 	// SupplementalInstructions 是业务层追加的虚拟上下文文件（如 TEAM.md）。
-	SupplementalInstructions []runtimes.Instruction
+	SupplementalInstructions []runtimecontract.Instruction
 	// HistoryMessageIDsToOmit 是本次输入已完整包含、无需再从权威历史重放的消息标识。
 	HistoryMessageIDsToOmit []string
 }
@@ -150,17 +150,12 @@ type AcceptedExecution struct {
 	Chat models.Chat `json:"chat"`
 	// Execution 是已经持久、处于 pending 或 running 的执行投影。
 	Execution models.Execution `json:"execution"`
-	// WorkspaceWarningCode 是 Runtime 不支持附加目录时的稳定提示码。
-	WorkspaceWarningCode string `json:"workspaceWarningCode,omitempty"`
-	// Replayed 表示本次返回的是相同首次创建请求已经提交的确定结果。
+	// Replayed 表示本次返回的是同一输入请求已经提交的确定结果。
 	Replayed bool `json:"replayed,omitempty"`
 }
 
 // Start 校验并执行一个入口无关的工作意图。
-func (m *service) Start(
-	ctx context.Context,
-	intent WorkIntent,
-) (AcceptedExecution, error) {
+func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecution, error) {
 	if m.validateIntent != nil {
 		if err := m.validateIntent(ctx, intent); err != nil {
 			return AcceptedExecution{}, err
@@ -235,7 +230,7 @@ func (m *service) Start(
 		allowedAgentDomains:     cloneConnectorAllowlist(intent.Options.AllowedAgentDomains),
 		historyMessageIDsToOmit: append([]string(nil), intent.Options.HistoryMessageIDsToOmit...),
 		supplementalInstructions: append(
-			[]runtimes.Instruction(nil),
+			[]runtimecontract.Instruction(nil),
 			intent.Options.SupplementalInstructions...,
 		),
 	}
@@ -248,7 +243,7 @@ func (m *service) Start(
 		}
 	}
 	for _, instruction := range intent.Input.ContextInstructions {
-		request.supplementalInstructions = append(request.supplementalInstructions, runtimes.Instruction{Name: instruction.Name, Content: instruction.Content})
+		request.supplementalInstructions = append(request.supplementalInstructions, runtimecontract.Instruction{Name: instruction.Name, Content: instruction.Content})
 	}
 	return m.startMessage(ctx, request)
 }

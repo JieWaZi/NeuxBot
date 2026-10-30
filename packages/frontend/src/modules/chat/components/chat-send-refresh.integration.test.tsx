@@ -1,4 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { chatMessageSource } from "../api/chat-queries";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect, useReducer, type ReactNode } from "react";
@@ -6,11 +11,32 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import "@/shared/i18n";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import { ChatQueueProvider } from "../runtime/chat-queue-store";
-import { useChatRuntime } from "../runtime/use-chat-runtime";
+import { useChatRuntime as useProductionChatRuntime } from "../runtime/use-chat-runtime";
 import { conversationKeyOf } from "../model/conversation-identity";
 import { ChatThread } from "./chat-thread";
 import type * as AssistantUI from "@assistant-ui/react";
 
+type RuntimeFixtureOptions = Omit<
+  Parameters<typeof useProductionChatRuntime>[0],
+  "messageSource"
+> & {
+  messages: Parameters<
+    typeof useProductionChatRuntime
+  >[0]["messageSource"]["snapshot"]["messages"];
+  latestSequence: number;
+  isHistoryReady: boolean;
+};
+function useChatRuntime(options: RuntimeFixtureOptions) {
+  const queryClient = useQueryClient();
+  return useProductionChatRuntime({
+    ...options,
+    messageSource: chatMessageSource(queryClient, options.chatId, {
+      messages: options.messages,
+      latestSequence: options.latestSequence,
+      ready: options.isHistoryReady,
+    }),
+  });
+}
 vi.mock("@/shared/api/events", () => ({ subscribeChat: () => () => {} }));
 vi.mock("@assistant-ui/react", async (importOriginal) => {
   const original = await importOriginal<typeof AssistantUI>();
@@ -65,7 +91,17 @@ afterAll(() => {
 it("聊天订阅通知延迟时，输入后无需切换 CLI 即可启用发送并提交当前正文", async () => {
   let composer: AssistantUI.ThreadComposerRuntime | undefined;
   const send = vi
-    .fn<Parameters<typeof useChatRuntime>[0]["send"]>()
+    .fn<
+      (
+        ...args: Parameters<
+          Parameters<typeof useChatRuntime>[0]["prepareSubmission"]
+        >
+      ) => ReturnType<
+        ReturnType<
+          Parameters<typeof useChatRuntime>[0]["prepareSubmission"]
+        >["accept"]
+      >
+    >()
     .mockResolvedValue({
       chat: { id: "refresh-chat" },
       execution: { id: "refresh-execution", status: "running" },
@@ -92,7 +128,7 @@ it("聊天订阅通知延迟时，输入后无需切换 CLI 即可启用发送�
       },
       attachmentOnlyText: "请查看附件。",
       incompleteErrorText: "执行未完成",
-      send,
+      prepareSubmission: (...args) => ({ accept: () => send(...args) }),
       cancel: async () => {},
       onMessageAccepted: clear,
       onStarted: () => {},

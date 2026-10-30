@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatComposerPanel } from "@/modules/chat";
@@ -8,7 +8,6 @@ import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
 import { Badge } from "@/shared/ui/badge";
 import {
   createWorkflowAnnotationMutation,
-  refreshWorkflow,
   sendWorkflowCreationMessageMutation,
 } from "../api/workflow-queries";
 import type { ExecutionDefaults, WorkflowPhase } from "../model/types";
@@ -32,7 +31,6 @@ export function PhaseAdjustmentComposer({
   onAccepted: (sessionId: string) => void;
 }) {
   const { t } = useTranslation("workflow");
-  const client = useQueryClient();
   const [isSubmitting, setSubmitting] = useState(false);
   const annotation = useMutation(
     withLocalErrorMutation(createWorkflowAnnotationMutation()),
@@ -44,9 +42,7 @@ export function PhaseAdjustmentComposer({
     { signature: string; annotation: string; send: string } | undefined
   >(undefined);
   const acceptedSession = useRef<string | undefined>(undefined);
-  const refresh = () => {
-    void refreshWorkflow(client, id);
-  };
+
   return (
     <section
       className="grid gap-3 px-6 pt-2 pb-6"
@@ -63,12 +59,10 @@ export function PhaseAdjustmentComposer({
         defaults={defaults}
         active={Boolean(revisionId && phase.id)}
         isSendDisabled={isSubmitting}
-        onRefresh={refresh}
         onAccepted={() => {
-          request.current = undefined;
           if (acceptedSession.current) onAccepted(acceptedSession.current);
         }}
-        onSend={async ({
+        prepareSubmission={({
           text: messageText,
           runtimeId,
           accountId,
@@ -77,62 +71,70 @@ export function PhaseAdjustmentComposer({
           permissionLevel,
           ...input
         }) => {
-          if (!phase.id || !revisionId)
-            throw new Error("workflow_phase_not_available");
-          setSubmitting(true);
-          try {
-            const text = messageText ?? "";
-            const body = {
-              ...input,
-              sessionId: session?.id,
-              defaults: {
-                runtimeId,
-                accountId,
-                model,
-                reasoning,
-                permissionLevel,
-              },
-              content: t("phaseAdjustmentMessage", {
-                title: phase.title,
-                text,
-              }),
+          const text = messageText ?? "";
+          const body = {
+            ...input,
+            sessionId: session?.id,
+            defaults: {
+              runtimeId,
+              accountId,
+              model,
+              reasoning,
+              permissionLevel,
+            },
+            content: t("phaseAdjustmentMessage", {
+              title: phase.title,
+              text,
+            }),
+          };
+          const signature = JSON.stringify([revisionId, phase.id, body]);
+          if (request.current?.signature !== signature)
+            request.current = {
+              signature,
+              annotation: crypto.randomUUID(),
+              send: crypto.randomUUID(),
             };
-            const signature = JSON.stringify([revisionId, phase.id, body]);
-            if (request.current?.signature !== signature)
-              request.current = {
-                signature,
-                annotation: crypto.randomUUID(),
-                send: crypto.randomUUID(),
-              };
-            const receipt = request.current;
-            await annotation.mutateAsync({
-              path: { id },
-              body: {
-                requestId: receipt.annotation,
-                baseRevisionId: revisionId,
-                nodeId: phase.id,
-                text,
-              },
-            });
-            const accepted = await send.mutateAsync({
-              path: { id },
-              body: { ...body, requestId: receipt.send },
-            });
-            if (
-              !accepted.id ||
-              !accepted.chatId ||
-              !accepted.acceptedExecutionId
-            )
-              throw new Error("workflow_conversation_not_accepted");
-            acceptedSession.current = accepted.id;
-            // 发送回执已确认接纳；详情由共享聊天查询加载，失败不回退发送状态。
-            return {
-              chat: { id: accepted.chatId },
-              execution: accepted.execution,
-            };
-          } finally {
-            setSubmitting(false);
-          }
+          const receipt = request.current;
+          return {
+            submissionId: receipt.send,
+            confirmAccepted: () => {
+              if (request.current === receipt) request.current = undefined;
+            },
+            accept: async () => {
+              if (!phase.id || !revisionId)
+                throw new Error("workflow_phase_not_available");
+              setSubmitting(true);
+              try {
+                await annotation.mutateAsync({
+                  path: { id },
+                  body: {
+                    requestId: receipt.annotation,
+                    baseRevisionId: revisionId,
+                    nodeId: phase.id,
+                    text,
+                  },
+                });
+                const accepted = await send.mutateAsync({
+                  path: { id },
+                  body: { ...body, requestId: receipt.send },
+                });
+                if (
+                  !accepted.id ||
+                  !accepted.chatId ||
+                  !accepted.acceptedExecutionId
+                )
+                  throw new Error("workflow_conversation_not_accepted");
+                acceptedSession.current = accepted.id;
+                // 交付已接纳的权威快照，阶段批注和定义变化由原领域事件对账。
+                return {
+                  chat: accepted.chat,
+                  execution: accepted.execution,
+                };
+              } finally {
+                setSubmitting(false);
+              }
+            },
+          };
         }}
       />
     </section>

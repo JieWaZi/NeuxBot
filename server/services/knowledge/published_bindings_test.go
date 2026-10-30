@@ -360,7 +360,7 @@ func TestRetryReplayRecoversAcceptedAttemptAfterRequestCancellation(t *testing.T
 				}
 				select {
 				case event := <-subscription.Events:
-					if event.Type != "knowledge.changed" {
+					if event.Type != "knowledge.task.changed" {
 						t.Fatal(event.Type)
 					}
 				default:

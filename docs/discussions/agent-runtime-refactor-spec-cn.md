@@ -1,10 +1,18 @@
 # 独立 Agent Runtime 重构 Spec
 
-> 状态：待实施设计，不代表当前能力。范围：独立目录、嵌入式 Go module、分批替换现有调用方；不建设 Runtime HTTP 服务。
+> 本文记录原阶段方案与验证。当前公开执行入口、会话模型及资源所有权以[会话模型 Spec](agent-runtime-boundaries-spec-cn.md)和[Agent 子系统](../../server/internal/agent/README.md)为准；文中的 Invoke/Run 名称不代表当前公开 API。
+
+> 历史阶段记录：本文的目录、独立 Go module 方案、迁移顺序和验收结果均以当时为准，不作为当前实现或重新验收的依据。当前执行能力已归入 `server/internal/agent/{core,host,environment}` 并属于 `server` 主模块；会话、启动与认证所有权以[职责收拢 Spec](agent-runtime-boundaries-spec-cn.md)及[当前架构说明](../architecture/runtimes-and-accounts-cn.md)为准。
+
+> 当时状态：完整目标设计；采用独立目录与嵌入式 Go module 分批替换调用方。该模块形态和下文旧路径已由职责收拢 Spec 取代，不建设 Runtime HTTP 服务的边界继续成立。
 >
 > 代码基线：2026-10-27，提交 `49250f9` 与编写时工作区。知识维护、账号依赖等存在并行未提交修改；本文依据已读取源码描述，实施每批迁移前重新核对差异。
 
+分阶段目录、依赖、功能影响和开发任务见[实施计划](agent-runtime-implementation-plan-cn.md)；当前执行内核的实际职责及限制见[内核说明](../../server/internal/agent/core/README.md)。本 Spec 保留完整目标，不能据此推定所有阶段已经实现。
+
 项目层次、个人/企业形态与未来部署边界见[项目架构与产品形态 Spec](project-architecture-and-editions-spec-cn.md)。本文只细化 Agent Runtime 子系统；当前仍采用桌面模块化单体，不建设企业平台。
+
+当前所有权与目录收拢按[职责收拢 Spec 与实施计划](agent-runtime-boundaries-spec-cn.md)执行；本文中被该 Spec 明确替代的宿主路径与重复生命周期不得保留为兼容入口。
 
 ## 1. 目标与范围
 
@@ -25,18 +33,18 @@
 
 | 当前入口或模块 | 已有事实 | 本次处理 |
 | --- | --- | --- |
-| `internal/runtimes/sdk.go`、`run.go`、`acp_*` | SDK、共用 ACP 后端、CLI binding、进程复用、取消、事件交付已存在 | 复用职责和测试，不重写原生协议 |
-| `internal/runtimes/text.go` | GenerateText 使用临时工作区与临时会话；工具或交互触发拒绝；正文收集排除 commentary 后拼接 | 迁入同一内核的显式策略，补最终输出语义；不能只改名为 Invoke |
-| `internal/knowledge/model/generator.go` | 知识模型生成独立于 Chat；每次准备账号租约 | 第一批业务迁移，保留纯生成约束和用量、推理配置诊断 |
+| `packages/agent-runtime`、`internal/runtimehost` | 独立执行内核、ACP 驱动和宿主装配 | 原生协议和进程交给 acp-go |
+| `internal/runtimehost/text.go` | 知识结果调用使用独立 Runtime；旧 GenerateText 已删除 | 只消费最终结果，允许原生 CLI 中间调用工具；由适配器提供消息身份与完成事实 |
+| `internal/knowledge/model/generator.go` | 知识模型生成独立于 Chat；每次准备账号租约 | 第一批业务迁移，只消费最终结果，保留用量、推理配置诊断 |
 | `internal/knowledge/model/maintenance.go` | 独立 Wiki 维护使用 Run、临时工作区和库内授权，不创建 Chat | 独立迁入允许工具的 Invoke，保留真实操作成功判定 |
 | `services/knowledge/maintenance.go`、`automatic.go` | 页面 AI 修订、自动维护还会装配 Chat/Execution 和限定工具 | 随所属 Chat 入口迁移，不因名字包含“知识”就改成无历史 Invoke |
 | `services/execution/work.go` | 组合工作范围、账号、插件、技能、MCP、历史、原生会话 | 保留业务解析，逐步把技术装配交给宿主适配 |
 | `services/execution/runtime_events.go`、`message_facts.go` | 同一规范事件生成实时投影和完整消息日志，并接收已提交业务事实 | 保留一套产品消费者，迁移不引入第二个投影器 |
 | `services/execution/recent_history.go`、`handoff.go` | 新会话使用有界近期回合或隐藏交接；恢复会话只发新输入 | 明确历史与原生上下文边界，单独验证历史性能 |
-| `services/execution/fork.go`、`internal/runtimes/fork.go` | 原生分叉携带位置、工作区及回执，不通过重放历史模拟 | 纳入正式能力和迁移门槛 |
+| `services/execution/fork.go`、`driver/acp/management.go` | 原生分叉携带位置、工作区及回执，不通过重放历史模拟 | 纳入正式能力和迁移门槛 |
 | `services/runtimeenvironment`、`services/aiaccount` | 探测持久化、账号选择、排队、认证刷新、通知 | 保持业务权威；向新模块提供端口 |
 
-当前 `runtimes` 直接导入 `server/constants`、`status_error`、`accountconfig`、`codexoauth`、`skills`、`logx` 等。新目录不能继续通过这些导入依赖原项目。现有 `RuntimeEnvironment.Detection` 还持久化旧 Runtime 类型；切换时改用新契约重新探测生成，不编写旧 JSON 的兼容解码器。
+宿主负责产品依赖与探测事实，独立模块不依赖 server。RuntimeEnvironment.Detection 使用宿主契约保存探测结果。
 
 本 Spec 覆盖原生分叉、隐藏交接、知识不同执行路径及历史全量读取问题；独立服务、远程断线、结果查询体系和历史兼容不进入目标架构。
 
@@ -108,7 +116,7 @@ SessionCheckpoint 至少包含格式版本、引擎归属、SessionRef、Driver/
 
 ### 4.1 公开能力
 
-首期提供同步 `Invoke`、`Run`，以及 `Cancel`、`CloseSession`、`ForkSession`、`Detect` 和模块生命周期操作。新会话可在第一次 Run 中延迟建立。调用结果包含 InvocationRef，宿主也可在启动前预分配它用于取消关联。没有后台 Submit/Get/Subscribe 服务或完成结果 TTL 查询接口。
+模块提供同步 `Invoke`、`Run`，以及 `Cancel`、`CloseSession` 和模块生命周期操作。Probe 和 Fork 由独立 ACP Management 提供，不进入执行引擎。新会话可在第一次 Run 中延迟建立。调用结果包含 InvocationRef，宿主也可在启动前预分配它用于取消关联。没有后台 Submit/Get/Subscribe 服务或完成结果 TTL 查询接口。
 
 | 维度 | Invoke | Run |
 | --- | --- | --- |
@@ -122,11 +130,11 @@ SessionCheckpoint 至少包含格式版本、引擎归属、SessionRef、Driver/
 
 Invoke 与 Run 共用计划编译、执行状态机和 Driver。输出消费、工具权限、原生配置继承、会话寿命是独立策略，禁止重新用一个 `TextOnly` 布尔量控制全部行为。
 
-NativeConfigPolicy 明确区分 `explicit_only` 与 `inherit_native`：前者只允许本次批准的扩展资源，保留 Agent 必需的原生基础指令和已授权工具；后者允许宿主明确选择的原生环境。新 Invoke 默认前者，迁移旧 Run 时显式保持原策略。不挂载产品 Skill/MCP 不能证明 CLI 没有读取 HOME、项目指令、hooks 或全局 MCP；Driver 必须验证隔离能力，不能仅凭空目录宣称隔离，也不能为了隔离一并删除正常工具循环需要的基础指令。
+NativeConfigPolicy 明确区分 `explicit_only` 与 `inherit_native`：前者只允许本次批准的扩展资源，保留 Agent 必需的原生基础指令和已授权工具；后者允许宿主明确选择的原生环境。当前 Invoke 缺省为前者；调用方按实际需求选择策略，迁移旧 Run 时保持原策略。不挂载产品 Skill/MCP 不能证明 CLI 没有读取 HOME、项目指令、hooks 或全局 MCP；Driver 必须验证隔离能力，不能仅凭空目录宣称隔离，也不能为了隔离一并删除正常工具循环需要的基础指令。
 
 无人值守审批在已授权范围内即时允许，其余即时拒绝；用户输入请求结束为 interaction_required，不建立 UI 待办。Run 的审批和输入端口与 Observer 分离，响应必须携带 InvocationRef、请求身份及有效修订，拒绝重复或迟到响应。
 
-知识纯生成迁移为 Invoke 时仍显式禁止工具、限制交互，保留现有输出格式和模型配置反馈。通用 Invoke 支持工具，不代表给知识生成扩大权限。独立维护使用允许限定工具的 Invoke；Chat 型知识维护继续使用 Run。
+知识生成迁移为 Invoke 时独立启动一次 CLI 会话，传入任务输入，只消费最终结果。宿主不主动注入 AGENTS.md、Skill 或 MCP，不增加配置合并、工具禁用或 MCP 加载控制；CLI 自身的配置发现和工具循环由 CLI 负责。保留所选账号、现有输出格式和模型配置反馈。独立维护按其授权使用工具；Chat 型知识维护继续使用 Run。
 
 隐藏交接在新实现内部恢复切换前的 Session，因此使用 Run 加内存结果消费者，不使用只能新建临时会话的 Invoke。它不接入产品日志，但仍受 Session 互斥、权限、输出和取消约束；这不包含从旧引擎迁入会话。
 
@@ -152,7 +160,7 @@ NativeConfigPolicy 明确区分 `explicit_only` 与 `inherit_native`：前者只
 
 最终答案必须来自经过验证的消息阶段、边界或 Driver 明确的等价完成语义。当前 ACP 事件转换主要输出 TextDelta/CommentaryDelta，须保留可获得的 MessageID、Phase 和边界；若 acp-go 丢失这些事实，在 acp-go 处理，Engine 不解析厂商私有载荷。缺失能力不能用“全部非 commentary 正文拼接”伪装满足严格最终回答。
 
-严格输出是新 Invoke 默认。尚未验证的 CLI 保持旧入口；迁移 Run 可保留原产品显示流，但结果明确标注输出可靠程度。FinalCollector 只保存有界候选和必要消息状态，不缓存完整过程；拒绝、长度终止、取消、空输出和超限分别报告。迟到工具结果不能误清空最终候选，终态须排空已经接收的事件后收敛。
+严格输出是新 Invoke 默认。现有 CLI 的知识结果调用统一接入新入口，真实 CLI 验收覆盖独立记录；迁移 Run 可保留原产品显示流，但结果明确标注输出可靠程度。FinalCollector 只保存有界候选和必要消息状态，不缓存完整过程；拒绝、长度终止、取消、空输出和超限分别报告。迟到工具结果不能误清空最终候选，终态须排空已经接收的事件后收敛。
 
 ### 4.4 Run 的交付边界
 
@@ -304,7 +312,7 @@ Core 退出顺序为：停止业务接纳与生产者 → 取消/等待调用并
 
 | 功能 | 影响点 | 必须保留的行为 | 迁移批次 |
 | --- | --- | --- | --- |
-| 知识整理的模型生成 | GenerateText → Invoke 策略 | 不创建 Chat；纯生成工具约束、用量及错误保持 | B |
+| 知识整理的模型生成 | GenerateText → Invoke 策略 | 不创建 Chat；只消费最终结果，用量及错误保持 | B |
 | 独立 Wiki 后台维护 | Run → 允许限定工具的 Invoke | 单库授权、每次工具校验、真实操作成果、取消与清理 | C |
 | 普通聊天与伙伴 | 新调用、输入资源、续聊、过程显示 | 工作范围、附件/代码引用、技能/MCP、模型选择、终态 | D |
 | 新会话、切模型与隐藏总结 | 历史选择和会话配置匹配 | 五轮默认、摘要降级、无重复上下文、切换前账号约束 | D |
@@ -326,17 +334,17 @@ Core 退出顺序为：停止业务接纳与生产者 → 取消/等待调用并
 | 批次 | 交付范围 | 允许切换的入口 | 进入下一批前的证据 |
 | --- | --- | --- | --- |
 | A：基线与独立骨架 | 契约、独立 go.mod、FakeDriver、最小 Planner、会话/输出内核；建立基线 | 无生产入口 | 脱离 server 可构建；取消、终态、资源失败清理及模块边界通过 |
-| B：纯生成 | 迁移一个已验证 CLI 的 ACP binding、凭据桥、严格输出及禁工具策略 | 知识 Generator，按 CLI 组合启用 | 原生成契约、无历史、能力限制与真实 CLI 验收；不影响旧 Run |
+| B：结果生成 | 迁移一个已验证 CLI 的 ACP binding、凭据桥及严格输出 | 知识 Generator，按 CLI 组合启用 | 最终结果契约、无历史、所选策略能力与真实 CLI 验收；不影响旧 Run |
 | C：工具型结果任务 | Instructions/Skills/MCP 贡献、工作范围和无人值守交互 | 独立 Wiki MaintenanceRunner | 多次工具循环后的最终答案、库内授权、撤销、副作用未知与清理 |
 | D：交互聊天 | 宿主 Observer、审批、热/冷会话、检查点、隐藏交接、历史准备优化 | 新普通 Chat 的已验收组合 | 连续回合、历史规模、实时/重放一致、原生分叉和重试安全测试 |
 | E：复用入口 | 团队、工作流、自动任务、IM、Chat 型知识维护 | 每个入口独立启用，从新 Session 开始 | 每类业务端到端契约；跨入口取消/报告/交付正确；无旧会话接管 |
-| F：收敛 | 完成剩余 CLI；清理旧后端、过渡路由与废弃类型 | 全部已支持组合 | 无 legacy 活动调用，原连接已关闭，调用方和打包都已迁移 |
+| F：收敛 | 清理剩余旧后端、过渡路由与废弃类型 | 全部已支持组合 | 无 legacy 活动调用，原连接已关闭，调用方和打包都已迁移 |
 
-每批允许按 CLI 分多次交付。不能以 Codex 通过推定 Claude、Cursor、Pi 或其他 binding 通过，也不能为了完成删除任务取消尚未迁移的现有支持。
+B 批后先完成全部现有 CLI 的统一结果调用接入，再推进其他业务入口；详见[全 CLI 接入计划](agent-runtime-all-cli-plan-cn.md)。不能以 Codex 通过推定其他 CLI 的真实运行通过，缺少程序或账号配置的验收边界单独记录。
 
 早期允许把本仓库旧 Runtime 的实现和测试复制到新目录后解耦，原路径继续服务未切换功能；这不包括复制 acp-go 源码。过渡不能形成长期双内核。记录旧到新职责映射和必要修复的同步点；某职责调用方全部迁移后直接删除旧入口和废弃类型，不为旧调用方式保留兼容门面。
 
-每批记录代码与 acp-go 依赖版本、启用入口、CLI 能力矩阵、性能对照、切换收尾情况和已知限制。启用真实生产入口以前必须验证，不能仅以 Fake 测试代替配置隔离、最终输出、Resume/Fork 的能力证明。
+每批记录代码与 acp-go 依赖版本、启用入口、CLI 能力矩阵、性能对照、切换收尾情况和已知限制。启用真实生产入口以前必须验证，不能仅以 Fake 测试代替各入口所需的最终输出、所选策略及 Resume/Fork 能力证明。
 
 ## 10. 验证与实施前待收敛项
 
@@ -358,7 +366,7 @@ Core 退出顺序为：停止业务接纳与生产者 → 取消/等待调用并
 
 以下不是遗漏的产品需求，而是各批次启用前必须产出的技术结论：
 
-1. 每个 CLI 的严格最终输出、原生配置隔离、工具限制、Resume/Fork 能力矩阵；不能满足时保留原入口，不悄悄降级。
+1. 每个 CLI 的严格最终输出、配置继承、工具策略和 Resume/Fork 能力矩阵；入口所选策略不能满足时保留原入口，不悄悄降级。
 2. SessionCheckpoint 在新 Journal 契约中的表示与原生分叉记录映射；不得新增双重权威，不受旧格式约束。
 3. Chat 现有消息索引能否支撑执行准备窗口；不能支撑时给出最小索引扩展、恢复算法及规模测试。
 4. 热 Session 保活与账号租约的兼容组合、空闲上限和全局预算；以真实资源测量确定默认值。
@@ -369,7 +377,7 @@ Spec 的批准只确定目标架构和迁移边界；每批实施仍以当时可
 ## 11. 代码与规范依据
 
 - [领域词汇](../../CONTEXT.md)、[当前架构](../architecture/overview-cn.md)、[后端约定](../development/backend-cn.md)、[文档约定](../development/documentation-cn.md)。
-- [Runtime SDK](../../server/internal/runtimes/sdk.go)、[Run](../../server/internal/runtimes/run.go)、[GenerateText](../../server/internal/runtimes/text.go)、[ACP 后端](../../server/internal/runtimes/acp_backend.go)、[ACP 事件](../../server/internal/runtimes/acp_client.go)、[原生分叉](../../server/internal/runtimes/fork.go)、[架构检查](../../server/internal/runtimes/acp_architecture_test.go)。
+- [宿主装配](../../server/internal/agent/host/chat.go)、[聊天执行宿主](../../server/internal/agent/host/chat.go)、[结果调用宿主](../../server/internal/agent/host/standalone.go)、[独立执行内核](../../server/internal/agent/core/runtime/runtime.go)、[公开 ACP 驱动](../../server/internal/agent/core/driver/acp/driver.go)、[ACP 管理操作](../../server/internal/agent/core/driver/acp/management.go)。
 - [执行装配](../../server/services/execution/work.go)、[执行生命周期](../../server/services/execution/lifecycle.go)、[产品事件消费](../../server/services/execution/runtime_events.go)、[业务消息事实](../../server/services/execution/message_facts.go)、[近期历史](../../server/services/execution/recent_history.go)、[隐藏交接](../../server/services/execution/handoff.go)、[失败重试](../../server/services/execution/retry.go)。
 - [Chat Journal](../../server/services/chat/journal.go)、[Chat 历史读取](../../server/services/chat/chat.go)、[Runtime 持久探测配置](../../server/repositories/models/runtime_environment.go)、[历史限制](../../server/constants/common.go)。
 - [知识生成](../../server/internal/knowledge/model/generator.go)、[独立知识维护](../../server/internal/knowledge/model/maintenance.go)、[知识模型装配](../../server/global/knowledge_model.go)、[Chat 型知识维护](../../server/services/knowledge/maintenance.go)、[自动知识维护](../../server/services/knowledge/automatic.go)。

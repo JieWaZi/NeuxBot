@@ -20,7 +20,6 @@ function renderBoard(tasks: ChannelTask[]) {
           { id: "lead-1", name: "负责人" },
           { id: "member-1", name: "执行成员" },
         ]}
-        onChanged={() => {}}
         tasks={tasks}
         threadId="thread-1"
       />

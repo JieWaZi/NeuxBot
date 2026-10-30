@@ -9,9 +9,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -444,7 +444,7 @@ func (s *service) dispatchTask(
 			PermissionLevel:  member.PermissionLevel,
 			SessionPolicy:    constants.RuntimeSessionPolicyContinue,
 			ToolCapabilities: toolCapabilities,
-			SupplementalInstructions: []runtimes.Instruction{
+			SupplementalInstructions: []runtimecontract.Instruction{
 				teamInstruction,
 			},
 		},

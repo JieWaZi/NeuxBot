@@ -7,6 +7,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
+	"github.com/JieWaZi/NeuxBot/server/services/execution"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -23,6 +24,12 @@ type CreateChannelThreadRequest struct {
 	MemberConfigs []ChannelMemberInput `json:"memberConfigs" validate:"max=5,dive"`
 	// 消息输入
 	ChannelWorkInput
+}
+
+func (r CreateChannelThreadRequest) workInput() execution.WorkInput {
+	input := r.ChannelWorkInput.workInput()
+	input.SubmissionID = strings.TrimSpace(r.ClientRequestID)
+	return input
 }
 
 // 创建团队对话

@@ -1,5 +1,9 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  QueryObserver,
+} from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { expect, it } from "vitest";
 import "@/shared/i18n";
@@ -13,7 +17,7 @@ function setup() {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{children}</QueryClientProvider>
   );
-  return renderHook(
+  const view = renderHook(
     ({ id }) =>
       useKnowledgeWrites({
         backend: "local",
@@ -22,7 +26,28 @@ function setup() {
       }),
     { initialProps: { id: "a" }, wrapper },
   );
+  return { ...view, client };
 }
+it("本地整理接纳后只由领域事件刷新，不再从成功回调重复读取库", async () => {
+  const view = setup();
+  let reads = 0;
+  const observer = new QueryObserver(view.client, {
+    queryKey: ["knowledge", "local", "local", "a", "jobs"],
+    queryFn: async () => ++reads,
+  });
+  const close = observer.subscribe(() => {});
+  try {
+    await waitFor(() => expect(reads).toBe(1));
+    await act(async () => {
+      await view.result.current.organize.perform("batch", async () => ({
+        receipt: { state: "accepted", resourceId: "job" },
+      }));
+    });
+    expect(reads).toBe(1);
+  } finally {
+    close();
+  }
+});
 it("整理错误只属于当前库，切换知识库后不显示上一库错误", async () => {
   const view = setup();
   await act(async () => {

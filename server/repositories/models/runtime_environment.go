@@ -1,8 +1,9 @@
 package models
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
@@ -41,7 +42,7 @@ type RuntimeEnvironment struct {
 	// DefaultPermissionLevel 是该 Runtime 新执行默认使用的产品权限。
 	DefaultPermissionLevel constants.PermissionLevel `gorm:"column:default_permission_level;type:varchar(24);not null;default:'full-access'" json:"defaultPermissionLevel"`
 	// Detection 是最近一次完整且可供执行准备使用的探测快照。
-	Detection runtimes.DetectionResult `gorm:"column:detection;type:text;not null;serializer:json" json:"-"`
+	Detection runtimeconfig.DetectionResult `gorm:"column:detection;type:text;not null;serializer:json" json:"-"`
 	// DetectedAt 是最近一次探测完成的 Unix 毫秒时间，尚未探测时为零。
 	DetectedAt int64 `gorm:"column:detected_at;not null;default:0" json:"detectedAt"`
 	// CreatedAt 是条目首次建立的 Unix 毫秒时间。

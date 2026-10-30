@@ -118,7 +118,6 @@ function LoadedOrganizeDialog({
   );
   const execution = useExecutionSelection({
     value: { ...selection, reasoning: selection.reasoning ?? "" },
-    requiredCapability: maintenance ? undefined : "isolated_text_generation",
     reasoningDefault: "minimum",
   });
   const start = useMutation({

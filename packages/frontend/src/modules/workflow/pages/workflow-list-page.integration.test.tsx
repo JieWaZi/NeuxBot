@@ -23,11 +23,20 @@ import {
 } from "vitest";
 import "@/shared/i18n";
 import { client } from "@/shared/api/generated/client.gen";
+import type { GlobalEventObserver } from "@/shared/api/global-events";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition } from "@/shared/api/generated/types.gen";
 import { ResourcesPage } from "@/app/pages/resources-page";
 
-vi.mock("@/shared/api/use-query-events", () => ({
-  useQueryEvents: () => undefined,
+const listeners = vi.hoisted(() => new Set<GlobalEventObserver>());
+vi.mock("@/shared/api/global-events", () => ({
+  subscribeGlobalEvents: (
+    _topic: string,
+    _resource: unknown,
+    observer: GlobalEventObserver,
+  ) => {
+    listeners.add(observer);
+    return () => listeners.delete(observer);
+  },
 }));
 
 vi.mock("@/shared/workspace/app-scene-workspace", () => ({
@@ -125,6 +134,19 @@ it("从卡片编辑标题和简介，失败保留输入，保存后刷新列表�
           currentRevisionId: "revision-2",
           ordinal: 2,
         };
+        listeners.forEach((observer) =>
+          observer.onEvent({
+            protocolVersion: 1,
+            epoch: "test",
+            connectionId: "test",
+            deliverySequence: 1,
+            topic: "workflow",
+            type: "workflow.event",
+            eventId: "revision-2",
+            resource: { kind: "workflow", id: "flow" },
+            payload: { type: "workflow.revision.saved" },
+          }),
+        );
         return HttpResponse.json({ revision: { id: "revision-2" } });
       },
     ),

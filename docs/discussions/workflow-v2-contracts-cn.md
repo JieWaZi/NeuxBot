@@ -22,7 +22,7 @@
 
 实际工具历史可确认读取、完整源码保存、补丁保存和运行诊断的载荷。尚未取得参考产品完整 MCP tools/list 或内部编译器；原生 Workflow Skill 的 agent()、缓存和限制不自动适用于 WakerFlow。本文据可观测行为与 NeuxBot 代码独立确定 V2 契约。
 
-代码依据包括 [Operation 目录](../../server/internal/agentcapability/contract/catalog.go)、[授权与回执](../../server/internal/agentcapability/registry.go)、[CLI](../../server/internal/agentcli/command.go)、[Runtime MCP](../../server/internal/runtimes/mcp.go)、[会话挂载与恢复](../../server/internal/runtimes/acp_run.go)、[系统能力注入](../../server/services/execution/agent.go)、[DSL 契约](../../server/internal/workflow/dsl/sdk.go)和 [Manifest](../../server/internal/workflow/dsl/program.go)。
+代码依据包括 [Operation 目录](../../server/internal/agentcapability/contract/catalog.go)、[授权与回执](../../server/internal/agentcapability/registry.go)、[CLI](../../server/internal/agentcli/command.go)、[Runtime MCP](../../server/internal/agent/core/driver/acp/mcp.go)、[会话挂载与恢复](../../server/internal/agent/core/driver/acp/driver.go)、[系统能力注入](../../server/services/execution/agent.go)、[DSL 契约](../../server/internal/workflow/dsl/sdk.go)和 [Manifest](../../server/internal/workflow/dsl/program.go)。
 
 ## 2. 需求与架构决策
 

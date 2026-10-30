@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -16,19 +16,19 @@ func (s *service) teamInstruction(
 	ctx context.Context,
 	thread models.ChannelThread,
 	selfWakerID string,
-) (runtimes.Instruction, error) {
+) (runtimecontract.Instruction, error) {
 	content, err := s.buildTeamMD(ctx, thread, selfWakerID)
 	if err != nil {
-		return runtimes.Instruction{}, err
+		return runtimecontract.Instruction{}, err
 	}
-	return runtimes.Instruction{
+	return runtimecontract.Instruction{
 		Name:    constants.TeamInstructionFileName,
 		Content: content,
 	}, nil
 }
 
 // leaderTurnInstruction 将当前负责人回合的路由意图写入虚拟 TEAM.md，不改变执行权限。
-func leaderTurnInstruction(instruction runtimes.Instruction, directExecution bool) runtimes.Instruction {
+func leaderTurnInstruction(instruction runtimecontract.Instruction, directExecution bool) runtimecontract.Instruction {
 	instruction.Content += "\n\n## Current Lead Turn\nThis section applies only to the current execution and replaces the execution mode from earlier turns.\n"
 	if directExecution {
 		instruction.Content += "This is a direct-execution turn: the user mentioned you through the structured `@` mechanism. Execute the current request in this Chat. You may delegate independent subtasks to non-lead members, but do not create a team task for yourself."

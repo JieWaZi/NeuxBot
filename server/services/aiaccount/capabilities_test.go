@@ -1,14 +1,18 @@
 package aiaccount
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -18,9 +22,68 @@ type capabilityDetector struct {
 	called chan struct{}
 }
 
-func (d capabilityDetector) Detect(context.Context, runtimes.DetectRequest) runtimes.DetectionResult {
+// retainedCapabilityDetector 把真实准备出的释放端口交回测试，模拟仍由探测消费者持有的资源。
+type retainedCapabilityDetector struct {
+	// request 保存实际账号工作区及可重试释放端口。
+	request runtimeconfig.DetectRequest
+}
+
+func (d *retainedCapabilityDetector) Detect(_ context.Context, request runtimeconfig.DetectRequest) runtimeconfig.DetectionResult {
+	d.request = request
+	return runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady}
+}
+
+func TestCapabilityReleaseFailureRetainsAccountAndWorkspace(t *testing.T) {
+	service, account, _ := subscriptionFixture(t)
+	detector := &retainedCapabilityDetector{}
+	_, err := service.DetectModel(context.Background(), detector, account.ID, models.RuntimeEnvironment{RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex}, "fixture-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace := detector.request.WorkingDirectory
+	defer os.RemoveAll(workspace)
+	path := filepath.Join(accountconfig.Home(workspace, constants.RuntimeIDCodex), "auth.json")
+	original, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("invalid-native-auth"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := detector.request.ReleaseResources(context.Background()); !errors.Is(err, status_error.AIAccountCredentialError) {
+		t.Fatalf("探测回收未报告认证失败: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("认证尚未回收就删除了工作区: %v", err)
+	}
+	if release, err := service.Exclusive(account.ID); !errors.Is(err, status_error.AIAccountBusy) {
+		if release != nil {
+			release()
+		}
+		t.Fatalf("失败的探测回收释放了账号所有权: %v", err)
+	}
+	if err := os.WriteFile(path, original, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := detector.request.ReleaseResources(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(workspace); !os.IsNotExist(err) {
+		t.Fatalf("成功回收后仍保留探测目录: %v", err)
+	}
+	release, err := service.Exclusive(account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	release()
+}
+
+func (d capabilityDetector) Detect(_ context.Context, request runtimeconfig.DetectRequest) runtimeconfig.DetectionResult {
+	if request.ReleaseResources != nil {
+		defer request.ReleaseResources(context.Background())
+	}
 	close(d.called)
-	return runtimes.DetectionResult{State: runtimes.DetectionStateReady}
+	return runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady}
 }
 
 func TestCapabilityQueryWaitsForAccountMutationAndCanBeCancelled(t *testing.T) {

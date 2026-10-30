@@ -9,9 +9,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
@@ -28,7 +28,7 @@ type pendingRuntimeMessage struct {
 	// content 保存已经结束的规范内容段，当前连续文本只在语义边界编码一次。
 	content []eventlog.RuntimeMessageContent
 	// textType 是当前连续文本段的规范类型；空值表示没有待编码文本。
-	textType runtimes.EventType
+	textType runtimecontract.EventType
 	// text 是当前连续文本的唯一可编辑缓冲，追加不解码或复制已有全文。
 	text strings.Builder
 	// messageRevision 是整条消息应用后的实时展示修订号。
@@ -108,7 +108,7 @@ type runtimeEventSink struct {
 func (s *runtimeEventSink) acceptInvocation(
 	ctx context.Context,
 	invocationID string,
-	event runtimes.Event,
+	event runtimecontract.Event,
 ) error {
 	if err := runtimeDeliveryContextError(ctx); err != nil {
 		return err
@@ -135,13 +135,13 @@ func runtimeDeliveryContextError(ctx context.Context) error {
 // acceptLocked 按 Runtime 交付顺序更新实时状态与完整消息，并在显示窗口或语义边界发布快照。
 func (s *runtimeEventSink) acceptLocked(
 	invocationID string,
-	event runtimes.Event,
+	event runtimecontract.Event,
 ) error {
 	if s.failure != nil {
 		return s.failure
 	}
 	// 深拷贝 Runtime 载荷，避免调用方复用缓冲区破坏实时视图或待提交批次。
-	cloned := runtimes.Event{
+	cloned := runtimecontract.Event{
 		Type: event.Type,
 		Data: append([]byte(nil), event.Data...),
 	}
@@ -161,29 +161,29 @@ func (s *runtimeEventSink) acceptLocked(
 		return err
 	}
 	switch cloned.Type {
-	case runtimes.EventTypeUsage:
+	case runtimecontract.EventTypeUsage:
 		// Usage 可能由 Runtime 高频覆盖报告；只保留最后一次并在执行终态写入一次。
 		s.usage = append(json.RawMessage(nil), cloned.Data...)
 		return nil
-	case runtimes.EventTypeTextDelta,
-		runtimes.EventTypeCommentaryDelta,
-		runtimes.EventTypeThinkingStart,
-		runtimes.EventTypeThinkingDelta:
+	case runtimecontract.EventTypeTextDelta,
+		runtimecontract.EventTypeCommentaryDelta,
+		runtimecontract.EventTypeThinkingStart,
+		runtimecontract.EventTypeThinkingDelta:
 		if err := s.flushToolLocked(); err != nil {
 			return err
 		}
 		return s.appendAssistantContentLocked(invocationID, cloned, revision)
-	case runtimes.EventTypeToolUse:
+	case runtimecontract.EventTypeToolUse:
 		if err := s.flushLocked(); err != nil {
 			return err
 		}
 		return s.commitMessageLocked(constants.ChatEventTypeAssistantMessage, invocationID,
 			[]eventlog.RuntimeMessageContent{runtimeMessageContent(cloned)}, revision)
-	case runtimes.EventTypeToolInputSnapshot:
+	case runtimecontract.EventTypeToolInputSnapshot:
 		return s.acceptToolInputSnapshotLocked(invocationID, cloned, revision)
-	case runtimes.EventTypeToolUpdate:
+	case runtimecontract.EventTypeToolUpdate:
 		return s.appendToolUpdateLocked(invocationID, cloned, revision)
-	case runtimes.EventTypeToolResult:
+	case runtimecontract.EventTypeToolResult:
 		if err := s.flushLocked(); err != nil {
 			return err
 		}
@@ -200,10 +200,10 @@ func (s *runtimeEventSink) acceptLocked(
 }
 
 // publishOrScheduleLiveLocked 将实时物化频率限制在显示窗口，原始内容仍逐条归并与持久化。
-func (s *runtimeEventSink) publishOrScheduleLiveLocked(kind runtimes.EventType) error {
+func (s *runtimeEventSink) publishOrScheduleLiveLocked(kind runtimecontract.EventType) error {
 	switch kind {
-	case runtimes.EventTypeTextDelta, runtimes.EventTypeCommentaryDelta, runtimes.EventTypeThinkingDelta,
-		runtimes.EventTypeToolInputSnapshot, runtimes.EventTypeToolUpdate, runtimes.EventTypeUsage:
+	case runtimecontract.EventTypeTextDelta, runtimecontract.EventTypeCommentaryDelta, runtimecontract.EventTypeThinkingDelta,
+		runtimecontract.EventTypeToolInputSnapshot, runtimecontract.EventTypeToolUpdate, runtimecontract.EventTypeUsage:
 		if s.livePending {
 			return nil
 		}
@@ -288,7 +288,7 @@ func (s *runtimeEventSink) scheduleMessageFacts() {
 	if s.liveAdapter == nil || s.failure != nil || !s.messageFacts.hasPending() {
 		return
 	}
-	if err := s.publishOrScheduleLiveLocked(runtimes.EventTypeToolUpdate); err != nil {
+	if err := s.publishOrScheduleLiveLocked(runtimecontract.EventTypeToolUpdate); err != nil {
 		s.failure = err
 	}
 }
@@ -304,17 +304,12 @@ func (s *runtimeEventSink) stopLiveTimerLocked() {
 }
 
 // acceptToolInputSnapshotLocked 仅聚合 Runtime 已归一化的累计参数；工具正文与输出另走完整消息边界。
-func (s *runtimeEventSink) acceptToolInputSnapshotLocked(invocationID string, event runtimes.Event, revision int64) error {
+func (s *runtimeEventSink) acceptToolInputSnapshotLocked(invocationID string, event runtimecontract.Event, revision int64) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(event.Data, &fields); err != nil {
 		return status_error.RuntimeProtocolIncompatible
 	}
-	toolID := ""
-	for _, key := range []string{"id", "tool_use_id", "toolCallId", "tool_call_id", "call_id"} {
-		if json.Unmarshal(fields[key], &toolID) == nil && toolID != "" {
-			break
-		}
-	}
+	toolID := runtimeToolID(fields)
 	if fields["content"] != nil || fields["output"] != nil || fields["rawOutput"] != nil {
 		return status_error.RuntimeProtocolIncompatible
 	}
@@ -339,17 +334,12 @@ func (s *runtimeEventSink) acceptToolInputSnapshotLocked(invocationID string, ev
 }
 
 // appendToolUpdateLocked 批量保存同一工具的有序正文和执行进度，不把它们当参数快照覆盖。
-func (s *runtimeEventSink) appendToolUpdateLocked(invocationID string, event runtimes.Event, revision int64) error {
+func (s *runtimeEventSink) appendToolUpdateLocked(invocationID string, event runtimecontract.Event, revision int64) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(event.Data, &fields); err != nil {
 		return status_error.RuntimeProtocolIncompatible
 	}
-	toolID := ""
-	for _, key := range []string{"id", "tool_use_id", "toolCallId", "tool_call_id", "call_id"} {
-		if json.Unmarshal(fields[key], &toolID) == nil && toolID != "" {
-			break
-		}
-	}
+	toolID := runtimeToolID(fields)
 	if s.pending != nil || s.pendingTool != nil && (s.pendingTool.toolID != toolID || s.pendingTool.invocationID != invocationID || s.pendingTool.fields != nil) {
 		if err := s.flushLocked(); err != nil {
 			return err
@@ -370,6 +360,12 @@ func (s *runtimeEventSink) appendToolUpdateLocked(invocationID string, event run
 	return nil
 }
 
+func runtimeToolID(fields map[string]json.RawMessage) string {
+	var id string
+	_ = json.Unmarshal(fields["toolCallId"], &id)
+	return id
+}
+
 // flushToolLocked 提交最新工具参数或有序进度批次；开始事实已经独立持久化。
 func (s *runtimeEventSink) flushToolLocked() error {
 	if s.pendingTool == nil {
@@ -382,7 +378,7 @@ func (s *runtimeEventSink) flushToolLocked() error {
 		if err != nil {
 			return status_error.RuntimeEventEncodingFailed
 		}
-		content = []eventlog.RuntimeMessageContent{{Type: runtimes.EventTypeToolInputSnapshot, Data: data}}
+		content = []eventlog.RuntimeMessageContent{{Type: runtimecontract.EventTypeToolInputSnapshot, Data: data}}
 	}
 	s.pendingTool = nil
 	return s.commitMessageLocked(constants.ChatEventTypeAssistantMessage, pending.invocationID,
@@ -392,7 +388,7 @@ func (s *runtimeEventSink) flushToolLocked() error {
 // appendAssistantContentLocked 将相邻同类文本合并进当前完整 Assistant 消息。
 func (s *runtimeEventSink) appendAssistantContentLocked(
 	invocationID string,
-	event runtimes.Event,
+	event runtimecontract.Event,
 	messageRevision int64,
 ) error {
 	if s.pending != nil && s.pending.invocationID != invocationID {
@@ -431,17 +427,17 @@ func (s *runtimeEventSink) appendAssistantContentLocked(
 	return nil
 }
 
-func runtimeMessageContent(event runtimes.Event) eventlog.RuntimeMessageContent {
+func runtimeMessageContent(event runtimecontract.Event) eventlog.RuntimeMessageContent {
 	return eventlog.RuntimeMessageContent{
 		Type: event.Type,
 		Data: append(json.RawMessage(nil), event.Data...),
 	}
 }
 
-func isMergeableRuntimeText(eventType runtimes.EventType) bool {
-	return eventType == runtimes.EventTypeTextDelta ||
-		eventType == runtimes.EventTypeCommentaryDelta ||
-		eventType == runtimes.EventTypeThinkingDelta
+func isMergeableRuntimeText(eventType runtimecontract.EventType) bool {
+	return eventType == runtimecontract.EventTypeTextDelta ||
+		eventType == runtimecontract.EventTypeCommentaryDelta ||
+		eventType == runtimecontract.EventTypeThinkingDelta
 }
 
 func (s *runtimeEventSink) ensureLiveAdapterLocked() error {

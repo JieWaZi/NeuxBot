@@ -11,7 +11,20 @@ import (
 
 // PrepareNativeTarget 保留相同格式原包或转换标准主体；明确授权绑定另派生无秘密模板。
 func PrepareNativeTarget(parent, id string, pkg Package, root, cli string, authentication ...AuthenticationBinding) (NativeTarget, error) {
-	digest, err := pluginArchive.Digest(root)
+	return prepareNativeTarget(parent, id, pkg, root, cli, "", authentication...)
+}
+
+// PrepareNativeTargetWithDigest 使用调用方已完成的内容摘要，避免同一准备流程重复扫描不可变目录。
+func PrepareNativeTargetWithDigest(parent, id string, pkg Package, root, cli, verifiedDigest string, authentication ...AuthenticationBinding) (NativeTarget, error) {
+	return prepareNativeTarget(parent, id, pkg, root, cli, verifiedDigest, authentication...)
+}
+
+func prepareNativeTarget(parent, id string, pkg Package, root, cli, verifiedDigest string, authentication ...AuthenticationBinding) (NativeTarget, error) {
+	digest := verifiedDigest
+	var err error
+	if digest == "" {
+		digest, err = pluginArchive.Digest(root)
+	}
 	if err != nil {
 		return NativeTarget{}, err
 	}

@@ -74,7 +74,7 @@ import {
   listWorkflowRunsInfiniteOptions,
   restoreWorkflowRevisionMutation,
   deleteWorkflowRevisionMutation,
-  refreshWorkflow,
+  useWorkflowDefinitionEvents,
 } from "../api/workflow-queries";
 import { WorkflowChatPane } from "../components/workflow-chat-pane";
 import { WorkflowChatHistory } from "../components/workflow-chat-history";
@@ -247,26 +247,12 @@ export function WorkflowDetailPage() {
     content: string;
     id: string;
   }>();
+  useWorkflowDefinitionEvents(id, active, !isNew);
   useEffect(() => {
     if (!active || !id || isNew) return;
-    let frame = 0;
-    let deleted = false;
-    const refresh = () => {
-      if (deleted || frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        void refreshWorkflow(client, id);
-      });
-    };
     const release = subscribeWorkflow(id, {
       onEvent: (event) => {
-        if (event.type !== "workflow.definition.deleted") {
-          refresh();
-          return;
-        }
-        deleted = true;
-        cancelAnimationFrame(frame);
-        frame = 0;
+        if (event.type !== "workflow.definition.deleted") return;
         for (const queryKey of [
           getWorkflowQueryKey({ path: { id } }),
           getWorkflowSourceQueryKey({ path: { id } }),
@@ -278,13 +264,10 @@ export function WorkflowDetailPage() {
         navigate("/resources?category=workflows", { replace: true });
         void client.invalidateQueries({ queryKey: listWorkflowsQueryKey() });
       },
-      onGap: refresh,
-      onReconnect: refresh,
       onState: setStream,
     });
     return () => {
       release();
-      cancelAnimationFrame(frame);
     };
   }, [active, client, id, isNew, navigate]);
   const revision = detail.data?.revision;
@@ -372,7 +355,6 @@ export function WorkflowDetailPage() {
       });
       setRestoreOpen(false);
       change("revision", "");
-      await refreshWorkflow(client, id);
     } catch {
       /* Mutation owns error. */
     }
@@ -984,7 +966,7 @@ export function WorkflowDetailPage() {
           sessions={detail.data?.creationSessions ?? []}
           selectedId={session?.id}
           onNew={newChat}
-          onRefresh={() => refreshWorkflow(client, id)}
+          onRefresh={() => detail.refetch().then(() => {})}
           onSelect={(sessionId) => {
             setChatExpanded(true);
             setSessionSelection(sessionId, "revision");
@@ -1133,7 +1115,6 @@ export function WorkflowDetailPage() {
                     change("revision", "");
                   }
                   setDeleteRevision(undefined);
-                  await refreshWorkflow(client, id);
                 } catch {
                   /* 请求失败保留所选版本。 */
                 }

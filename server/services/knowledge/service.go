@@ -272,6 +272,8 @@ func (s *Service) Organize(ctx context.Context, in OrganizeCommand) (*core.Recei
 			return nil, session, err
 		}
 		if old.ResourceID != "" {
+			// 回执重放也可能首次补齐宿主接纳，查询对账不依赖任务恰好是队首。
+			s.emitTaskChanged(old.JobID, old.LibraryID)
 			s.drive(old.ResourceID, session)
 		}
 		return old, session, nil
@@ -425,10 +427,15 @@ func (s *Service) drive(jobID string, session models.KnowledgeTaskConfiguration)
 		s.mutex.Unlock()
 		return
 	}
-	job, err := s.config.Engine.GetJob(s.ctx, jobID)
+	job, err := s.config.Engine.GetActiveJob(s.ctx, session.KnowledgeBaseID)
 	if err != nil {
 		s.mutex.Unlock()
 		logx.Errorf("knowledge task lookup failed: job_id=%s error=%v", jobID, err)
+		return
+	}
+	// 核心持久队首拥有派发顺序；其他排队项由队首退出后的恢复接续。
+	if job == nil || job.ID != jobID {
+		s.mutex.Unlock()
 		return
 	}
 	// 首次尝试已由所有接纳入口固定；仅重试可能附加授权，必须在驱动处按当前尝试恢复。
@@ -524,7 +531,7 @@ func (s *Service) drive(jobID string, session models.KnowledgeTaskConfiguration)
 				indexEmbedder := embedder
 				indexEmbedder.PublishGuard = s.publishAttemptGuard(session, jobID, job.Attempt)
 				return s.config.Engine.PrepareIndexedDocument(ctx, jobID, source, artifact, indexEmbedder)
-			}, OnProgress: func(_ context.Context) { s.emitTaskChanged(jobID, session.KnowledgeBaseID) }, OnPublished: func(_ context.Context, _ *core.Receipt) { s.emitTaskChanged(jobID, session.KnowledgeBaseID) }})
+			}, OnProgress: func(_ context.Context) { s.emitTaskChanged(jobID, session.KnowledgeBaseID) }, OnPublished: func(_ context.Context, _ *core.Receipt) { s.emitContentChanged(jobID, session.KnowledgeBaseID) }})
 		}
 		if err != nil && s.ctx.Err() == nil {
 			s.recordTaskFailure(job, err)
@@ -536,7 +543,14 @@ func (s *Service) drive(jobID string, session models.KnowledgeTaskConfiguration)
 
 func (s *Service) emitTaskChanged(job, library string) {
 	if s.config.Events != nil {
-		_ = events.Emit(s.config.Events, "knowledge", "knowledge.changed", events.Resource{Kind: "knowledge_library", ID: library, ParentID: "local"}, map[string]any{"ref": bridge.LocalRef(library), "jobId": job})
+		_ = events.Emit(s.config.Events, "knowledge", "knowledge.task.changed", events.Resource{Kind: "knowledge_library", ID: library, ParentID: "local"}, map[string]any{"ref": bridge.LocalRef(library), "jobId": job})
+	}
+}
+
+// emitContentChanged 只在实际发布后刷新内容、目录和统计；纯进度不进入此边界。
+func (s *Service) emitContentChanged(job, library string) {
+	if s.config.Events != nil {
+		_ = events.Emit(s.config.Events, "knowledge", "knowledge.content.changed", events.Resource{Kind: "knowledge_library", ID: library, ParentID: "local"}, map[string]any{"ref": bridge.LocalRef(library), "jobId": job})
 	}
 }
 

@@ -200,10 +200,16 @@ function AppShellContent({
   useQueryEvents({
     topic: "entities",
     resource: { kind: "global" },
-    queryKeys: [
-      listWakersOptions().queryKey,
-      teamChannelsInfiniteOptions().queryKey,
-    ],
+    queryKeys: [listWakersOptions().queryKey],
+    eventFilter: (frame) =>
+      frame.resource.kind === "global" || frame.resource.kind === "waker",
+  });
+  useQueryEvents({
+    topic: "entities",
+    resource: { kind: "global" },
+    queryKeys: [teamChannelsInfiniteOptions().queryKey],
+    eventFilter: (frame) =>
+      frame.resource.kind === "global" || frame.resource.kind === "channel",
   });
   useQueryEvents({
     topic: "runtimes",

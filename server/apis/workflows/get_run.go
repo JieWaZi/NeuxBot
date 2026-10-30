@@ -1,6 +1,7 @@
 package workflows
 
 import (
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
@@ -77,9 +78,9 @@ func (o *GetWorkflowRun) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(err)
 	}
 	response := WorkflowRunDetailResponse{Run: run, Manifest: revision.Manifest, Children: children, HumanRequests: humans, OperationRequests: operations, InstanceCount: int(total), Instances: instances}
-	response.Files, err = global.WorkflowService.OutputFiles(ctx, run)
-	if err != nil {
-		return nil, ginx.WithStack(err)
+	response.Files = []workflow.OutputFile{}
+	if run.Status == constants.WorkflowRunStatusSucceeded {
+		response.Files = workflow.InspectOutputFiles(run, revision.Manifest.Meta.OutputSchema, run.Result)
 	}
 	response.NodeCounts, err = global.WorkflowRunControllerManager.NodeCounts(ctx, o.RunID)
 	if err != nil {

@@ -6,15 +6,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useInfiniteQuery } from "@tanstack/react-query";
 import { MessageSquarePlus, RotateCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import {
-  forkChatMutation,
-  getChatForkTargetsOptions,
-} from "@/shared/api/generated/@tanstack/react-query.gen";
+import { forkChatMutation } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { Button } from "@/shared/ui/button";
+import { chatMessagesInfiniteOptions } from "../api/chat-queries";
+import { messageForkTargets } from "../components/chat-fork";
 import { Spinner } from "@/shared/ui/spinner";
 import type { WorkbenchTab } from "./workbench-model";
 
@@ -28,30 +27,51 @@ const EmbeddedChat = lazy(async () => ({
 const inFlightForks = new Map<string, Promise<string>>();
 
 type SideChatWorkbenchViewProps = {
+  parentBusy: boolean;
   tab: WorkbenchTab;
   onChatCreated: (chatId: string) => void;
 };
 
-export function SideChatWorkbenchView({
+export function SideChatWorkbenchView(props: SideChatWorkbenchViewProps) {
+  const { t } = useTranslation("chat");
+  if (props.parentBusy && !props.tab.chatId)
+    return (
+      <div className="text-muted-foreground type-body flex h-full items-center justify-center px-5">
+        {t("forkUnavailableBusy")}
+      </div>
+    );
+  return <IdleSideChatWorkbenchView {...props} />;
+}
+
+function IdleSideChatWorkbenchView({
   tab,
   onChatCreated,
 }: SideChatWorkbenchViewProps) {
   const { t } = useTranslation("chat");
   const started = useRef(false);
   const [error, setError] = useState("");
-  const targets = useQuery({
-    ...getChatForkTargetsOptions({ path: { chatId: tab.parentChatId ?? "" } }),
+  const targets = useInfiniteQuery({
+    ...chatMessagesInfiniteOptions(tab.parentChatId ?? ""),
+    refetchOnMount: "always",
     enabled: Boolean(tab.parentChatId && !tab.chatId),
   });
   const fork = useMutation(forkChatMutation());
+  const candidates = messageForkTargets(
+    [...(targets.data?.pages ?? [])]
+      .reverse()
+      .flatMap((page) => page.resources ?? []),
+    targets.data?.pages[0]?.forkLatestExecutionId,
+  );
   const target =
-    targets.data?.find(
-      (candidate) =>
-        candidate.latest && candidate.available && candidate.executionId,
-    ) ??
-    targets.data?.findLast(
-      (candidate) => candidate.available && candidate.executionId,
-    );
+    targets.isSuccess && targets.isFetchedAfterMount && !targets.isFetching
+      ? (candidates.find(
+          (candidate) =>
+            candidate.latest && candidate.available && candidate.executionId,
+        ) ??
+        candidates.findLast(
+          (candidate) => candidate.available && candidate.executionId,
+        ))
+      : undefined;
 
   const start = useCallback(async () => {
     if (!tab.parentChatId || !tab.createRequestId || !target?.executionId)
@@ -107,7 +127,11 @@ export function SideChatWorkbenchView({
           </div>
         }
       >
-        <EmbeddedChat chatId={tab.chatId} embedded />
+        <EmbeddedChat
+          chatId={tab.chatId}
+          embedded
+          presentationScopeKey={tab.id}
+        />
       </Suspense>
     );
   }

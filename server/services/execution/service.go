@@ -2,6 +2,8 @@
 package execution
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"encoding/json"
 	"strings"
@@ -10,13 +12,13 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -24,7 +26,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/plugininstallation"
 )
 
-// Service 是当前 Chat API 与未来 Channel、Schedule、IM 共用的执行接口。
+// Service 是 Chat、团队、工作流、自动任务和 IM 共用的执行接口。
 type Service interface {
 	// ForkChat 在统一执行环境内建立普通会话的原生分支。
 	ForkChat(context.Context, chatservice.ForkInput) (string, error)
@@ -220,11 +222,13 @@ type dormantChatCreator interface {
 // runtimeRunner 是 Execution Core 对 Runtime 深模块的最小消费接口。
 type runtimeRunner interface {
 	// ForkSession 使用冻结运行配置创建独立原生会话。
-	ForkSession(context.Context, runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error)
+	ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error)
 	// Runtimes 返回工作区投影所需的 Runtime 摘要。
-	Runtimes() []runtimes.RuntimeSummary
-	// Run 阻塞执行一次调用，并按发生顺序交付统一事件。
-	Run(context.Context, runtimes.RunRequest, runtimes.EventSink) runtimes.Result
+	Runtimes() []runtimeconfig.RuntimeSummary
+	// PrepareSession 占用技术会话；接纳层只在冷路径显式取得并交还实际资源。
+	PrepareSession(context.Context, runtimecontract.SessionPlan, runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error)
+	// CloseWorkspace 在改写账号或共享工作区配置前关闭仍持有资源的原生消费者。
+	CloseWorkspace(context.Context, string) error
 }
 
 // New 校验配置并创建尚未绑定进程生命周期的 Execution Core。

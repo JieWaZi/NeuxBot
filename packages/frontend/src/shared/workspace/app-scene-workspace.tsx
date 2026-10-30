@@ -56,6 +56,19 @@ export function useOptionalAppSceneWorkspace() {
   return useContext(AppSceneWorkspaceContext);
 }
 
+/** 呈现生命周期沿用 Scene 的挂载身份；嵌入入口显式提供所属工作区身份。 */
+export function useScenePresentationKey(explicitKey?: string): string {
+  const workspace = useOptionalAppSceneWorkspace();
+  if (explicitKey) return explicitKey;
+  const scene = workspace?.snapshot.tabs.find(
+    (tab) => tab.id === workspace.routeSceneId,
+  );
+  if (!scene?.mountKey) {
+    throw new Error("聊天呈现需要 Scene 或工作区身份");
+  }
+  return scene.mountKey;
+}
+
 /** 当前渲染树是否对应用户选中的 Scene Tab。 */
 export function useRouteSceneActive() {
   const workspace = useOptionalAppSceneWorkspace();

@@ -5,9 +5,9 @@ import (
 	"reflect"
 	"testing"
 
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 )
 
 func TestToolInputSnapshotsKeepLiveReplayEquivalent(t *testing.T) {
@@ -21,11 +21,11 @@ func TestToolInputSnapshotsKeepLiveReplayEquivalent(t *testing.T) {
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
 	var lastLive *messageview.Message
-	for _, event := range []runtimes.Event{
-		{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "read-1", "name": "read", "kind": "read"})},
-		{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "read-1", "name": "read", "input": map[string]any{"path": "s"}})},
-		{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "read-1", "name": "read", "input": map[string]any{"path": "src/main.go"}})},
-		{Type: runtimes.EventTypeToolResult, Data: marshalData(map[string]any{"toolCallId": "read-1", "status": "completed"})},
+	for _, event := range []runtimecontract.Event{
+		{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "read-1", "name": "read", "kind": "read"})},
+		{Type: runtimecontract.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "read-1", "name": "read", "input": map[string]any{"path": "s"}})},
+		{Type: runtimecontract.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "read-1", "name": "read", "input": map[string]any{"path": "src/main.go"}})},
+		{Type: runtimecontract.EventTypeToolResult, Data: marshalData(map[string]any{"toolCallId": "read-1", "status": "completed"})},
 	} {
 		if err := sink.acceptInvocation(context.Background(), "invocation-1", event); err != nil {
 			t.Fatal(err)
@@ -58,11 +58,11 @@ func TestToolInputActionKeepsLiveReplayEquivalent(t *testing.T) {
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
 	var lastLive *messageview.Message
-	for _, event := range []runtimes.Event{
-		{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "shell-1"})},
-		{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "shell-1", "name": "command", "input": map[string]any{"command": "g"}})},
-		{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "shell-1", "name": "command", "input": map[string]any{"command": "go test ./x"}})},
-		{Type: runtimes.EventTypeToolResult, Data: marshalData(map[string]any{"toolCallId": "shell-1", "status": "completed"})},
+	for _, event := range []runtimecontract.Event{
+		{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "shell-1"})},
+		{Type: runtimecontract.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "shell-1", "name": "command", "input": map[string]any{"command": "g"}})},
+		{Type: runtimecontract.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "shell-1", "name": "command", "input": map[string]any{"command": "go test ./x"}})},
+		{Type: runtimecontract.EventTypeToolResult, Data: marshalData(map[string]any{"toolCallId": "shell-1", "status": "completed"})},
 	} {
 		if err := sink.acceptInvocation(context.Background(), "invocation-1", event); err != nil {
 			t.Fatal(err)

@@ -2,12 +2,14 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -202,7 +204,7 @@ func TestReadMessageHistoryReadsLatestAndOlderJSONLWindows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("latest ReadMessageHistory() error = %v", err)
 	}
-	if !latest.HasMore || latest.NextBeforeSequence != 7 ||
+	if latest.ForkLatestExecutionID != "execution-2" || !latest.HasMore || latest.NextBeforeSequence != 7 ||
 		latest.LatestSequence != 11 ||
 		len(latest.Resources) != 2 || latest.Resources[1].Content != "回答二" {
 		t.Fatalf("latest ReadMessageHistory() = %+v", latest)
@@ -238,7 +240,7 @@ func TestReadMessageHistoryReadsLatestAndOlderJSONLWindows(t *testing.T) {
 	if err != nil {
 		t.Fatalf("older ReadMessageHistory() error = %v", err)
 	}
-	if older.HasMore || len(older.Resources) != 2 || older.Resources[1].Content != "回答一" {
+	if older.ForkLatestExecutionID != "" || older.HasMore || len(older.Resources) != 2 || older.Resources[1].Content != "回答一" {
 		t.Fatalf("older ReadMessageHistory() = %+v", older)
 	}
 }
@@ -486,7 +488,7 @@ func TestReplayChatStateAppliesRuntimeSessionUpdatesAndClears(t *testing.T) {
 	}
 }
 
-func TestLoadChatDetailUsesJSONLSessionWhenSQLiteIndexIsMissing(t *testing.T) {
+func TestLoadExecutionContextRepairsLaggingSessionProjection(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	database, err := dbhelper.NewDB(conf.DB{
@@ -535,7 +537,7 @@ func TestLoadChatDetailUsesJSONLSessionWhenSQLiteIndexIsMissing(t *testing.T) {
 		WakerID:            "waker-1",
 		WorkspaceDirectory: "/tmp/project",
 		Title:              "Session 权威状态",
-		LatestSequence:     records[len(records)-1].Sequence,
+		LatestSequence:     records[0].Sequence,
 		CreatedAt:          records[0].RecordedAt,
 		UpdatedAt:          records[len(records)-1].RecordedAt,
 	}); err != nil {
@@ -544,13 +546,15 @@ func TestLoadChatDetailUsesJSONLSessionWhenSQLiteIndexIsMissing(t *testing.T) {
 	chatService := newTestService(t, Config{
 		StorageDirectory: logStore.Root(),
 		QueryIndexes: QueryIndexDependencies{
-			Chats: chatController,
+			Chats:           chatController,
+			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),
+			Transactions:    controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)),
 		},
 	})
 
-	detail, err := chatService.loadChatDetail(ctx, chatID)
+	detail, err := chatService.LoadExecutionContext(ctx, chatID)
 	if err != nil {
-		t.Fatalf("loadChatDetail() error = %v", err)
+		t.Fatalf("LoadExecutionContext() error = %v", err)
 	}
 	session, exists := detail.RuntimeSessions["codex"]
 	if !exists || session.SessionID != "jsonl-session" ||
@@ -567,4 +571,51 @@ func newTestService(t *testing.T, dependencies Config) *service {
 		t.Fatalf("newService() error = %v", err)
 	}
 	return implementation
+}
+
+func TestMessageForkWindowAndTerminalDoNotReplayEarlierRounds(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "abababababababababababababababab"
+	facts := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WorkspaceDirectory: "/workspace", WakerID: "waker"})}}
+	for _, id := range []string{"old", "new"} {
+		configuration := marshalData(eventlog.ExecutionCreatedData{RuntimeID: "runtime", UserMessageID: "user-" + id})
+		invocation := marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "runtime", SessionOutputID: "private-session", ForkMode: "turn", ForkPosition: "private-position"})
+		if id == "old" {
+			invocation = json.RawMessage(`{"runtimeId":7}`)
+			configuration = json.RawMessage(`{"runtimeId":7}`)
+		}
+		facts = append(facts,
+			eventlog.AppendInput{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user-" + id, Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: id})},
+			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: id, Data: configuration},
+			eventlog.AppendInput{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: id, Data: invocation},
+			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: id, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
+		)
+	}
+	if _, err := store.Create(chatID, facts); err != nil {
+		t.Fatal(err)
+	}
+	manager := &service{logStore: store}
+	if _, _, err := manager.loadChatState(chatID); err == nil {
+		t.Fatal("sentinel old invocation did not reject full replay")
+	}
+	page, err := manager.ReadMessageHistory(context.Background(), chatID, 0, 1)
+	if err != nil || len(page.Resources) != 1 || page.ForkLatestExecutionID != "new" || page.Resources[0].Fork == nil || !page.Resources[0].Fork.Available {
+		t.Fatalf("window replayed earlier fork rounds: %+v %v", page, err)
+	}
+	window, err := store.ReadProjectionAfter(chatID, 5, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adapter, err := eventstream.ReplayAfter(window.Records, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := adapter.EventsAfter(5, 0)
+	terminal := events[len(events)-1]
+	if terminal.Message == nil || terminal.Message.Fork == nil || !terminal.Message.Fork.Available {
+		t.Fatalf("incremental terminal lost fork capability: %+v", terminal)
+	}
 }

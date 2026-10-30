@@ -15,7 +15,6 @@ import {
   type GlobalEventResource,
   type GlobalEventTopic,
 } from "./global-events";
-import { getApiConnection } from "./runtime";
 import { logger } from "@/shared/diagnostics/logger";
 
 export type StreamState =
@@ -40,7 +39,7 @@ export type ChatEvent = {
 type ChatSubscribeOptions = {
   after?: number;
   onEvent: (event: ChatEvent) => void;
-  onGap?: (expected: number, received: number) => void;
+  reconcileCursor: (signal: AbortSignal) => Promise<number | undefined>;
   onReconnect?: () => void;
   onUnavailable?: () => void;
   onState?: (state: StreamState) => void;
@@ -110,16 +109,6 @@ function isWorkflowEvent(value: unknown): value is WorkflowEvent {
     (value.payload === undefined || isRecord(value.payload))
   );
 }
-function chatEventsFromPayload(payload: unknown): ChatEvent[] {
-  if (
-    !isRecord(payload) ||
-    !Array.isArray(payload.resources) ||
-    !payload.resources.every(isChatEvent)
-  )
-    throw new Error("Chat 事件历史响应格式无效");
-  return payload.resources;
-}
-
 /** 传输共享，领域消费各自保留权威游标与恢复过程，transient 不推进持久游标。 */
 function subscribeDomain<Event extends SequencedEvent>(
   options: SharedSubscribeOptions<Event>,
@@ -300,23 +289,6 @@ export function subscribeChat(
     resource: { kind: "chat", id: chatId },
     contiguous: true,
     validate: isChatEvent,
-    loadHistory: async (after, signal) => {
-      if (typeof after !== "number") return [];
-      const connection = getApiConnection();
-      const response = await fetch(
-        `${connection.baseUrl}/api/v1/chats/${encodeURIComponent(chatId)}/events/history?after=${after}`,
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${connection.token}`,
-          },
-          signal,
-        },
-      );
-      if (!response.ok)
-        throw new Error(`Chat 事件历史对账失败（${response.status}）`);
-      return chatEventsFromPayload(await response.json());
-    },
   });
 }
 export function subscribeChannel(

@@ -316,7 +316,7 @@ func TestCanonicalSkillReadsFullPinnedZIPBeforeAndAfterInstallation(t *testing.T
 		"plugins/github/.codex-plugin/plugin.json":         `{"name":"github","version":"0.1.0"}`,
 		"plugins/github/.mcp.json":                         `{"mcpServers":{"github":{"type":"http","url":"https://api.githubcopilot.com/mcp/"}}}`,
 		"plugins/github/.neuxally/integration.json":        `{"authentication":{"strategy":"plugin-command","protocol":"neuxally-auth/1","command":"node","args":["bridge.mjs"],"bindings":[{"runtime":"codex","server":"github","url":"https://api.githubcopilot.com/mcp/","header":"Authorization"},{"runtime":"claude","server":"github","url":"https://api.githubcopilot.com/mcp/","header":"Authorization"}]}}`,
-		"plugins/github/bridge.mjs":                        `import readline from 'node:readline';for await(const line of readline.createInterface({input:process.stdin})){const r=JSON.parse(line);console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result:{state:'authorized',account:{configured:true,available:true,id:'test-user',scopes:[]}}}));}`,
+		"plugins/github/bridge.mjs":                        `import readline from 'node:readline';for await(const line of readline.createInterface({input:process.stdin})){const r=JSON.parse(line);const result=r.method==='auth/resolve'?{bindings:r.params.components.map(c=>({componentId:c.componentId,headers:{Authorization:'Bearer fixture-token'}}))}:{state:'authorized',account:{configured:true,available:true,id:'test-user',scopes:[]}};console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`,
 		"plugins/github/skills/review/SKILL.md":            guide,
 		"plugins/github/skills/review/references/rules.md": "Canonical reference",
 	}

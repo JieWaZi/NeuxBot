@@ -1,7 +1,6 @@
 package channels
 
 import (
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	channelservice "github.com/JieWaZi/NeuxBot/server/services/channel"
@@ -17,12 +16,6 @@ type ChannelThreadDetail struct {
 	Members []models.ChannelThreadMember `json:"members"`
 	// 任务板
 	Tasks []models.ChannelTask `json:"tasks"`
-	// 聚合时间线
-	Timeline []channelservice.TimelineMessage `json:"timeline"`
-	// 更早页游标
-	TimelineNextCursor string `json:"timelineNextCursor,omitempty"`
-	// 更早消息
-	TimelineHasMore bool `json:"timelineHasMore"`
 	// 负责人执行
 	LeadActiveExecutionID string `json:"leadActiveExecutionId,omitempty"`
 	// 负责人汇总中
@@ -49,7 +42,7 @@ func (g *GetChannelThread) Path() string {
 	return "/:channelId/threads/:threadId"
 }
 
-// Output 返回成员 Chat 映射、当前任务板和最新一页聚合消息。
+// Output 返回成员 Chat 映射、当前任务板和工作状态元数据。
 func (g *GetChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 	thread, err := channelThread(ctx, g.ChannelID, g.ThreadID)
 	if err != nil {
@@ -60,13 +53,6 @@ func (g *GetChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(err)
 	}
 	tasks, err := global.ChannelTaskControllerManager.ListByThread(ctx, thread.ID)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	timeline, err := global.ChannelService.ReadTimeline(ctx, channelservice.TimelineQuery{
-		ThreadID: thread.ID,
-		Limit:    constants.ChannelTimelineDefaultLimit,
-	})
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
@@ -97,9 +83,6 @@ func (g *GetChannelThread) Output(ctx *gin.Context) (interface{}, error) {
 		Thread:                thread,
 		Members:               members,
 		Tasks:                 tasks,
-		Timeline:              timeline.Resources,
-		TimelineNextCursor:    timeline.NextCursor,
-		TimelineHasMore:       timeline.HasMore,
 		LeadActiveExecutionID: leadSummary.Chat.ActiveExecutionID,
 		LeadProcessing:        leadProcessing,
 		PendingInteractions:   interactions,

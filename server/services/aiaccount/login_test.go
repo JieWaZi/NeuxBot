@@ -61,7 +61,7 @@ func TestSubscriptionRecoversNativeRefreshBeforeNextWorkspace(t *testing.T) {
 	service, account, _ := subscriptionFixture(t)
 	ctx := context.Background()
 	workspace := t.TempDir()
-	_, release, err := service.Prepare(ctx, account.ID, constants.RuntimeIDCodex, workspace, "")
+	_, release, err := service.PrepareQueuedLease(ctx, account.ID, constants.RuntimeIDCodex, workspace, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,13 +72,13 @@ func TestSubscriptionRecoversNativeRefreshBeforeNextWorkspace(t *testing.T) {
 	if err := accountconfig.WriteFile(filepath.Join(accountconfig.Home(workspace, constants.RuntimeIDCodex), "auth.json"), data); err != nil {
 		t.Fatal(err)
 	}
-	release()
+	closeAccountLease(t, release)
 	next := t.TempDir()
-	_, nextRelease, err := service.Prepare(ctx, account.ID, constants.RuntimeIDCodex, next, "")
+	_, nextRelease, err := service.PrepareQueuedLease(ctx, account.ID, constants.RuntimeIDCodex, next, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer nextRelease()
+	defer closeAccountLease(t, nextRelease)
 	data, err = os.ReadFile(filepath.Join(accountconfig.Home(next, constants.RuntimeIDCodex), "auth.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -114,10 +114,10 @@ func TestSubscriptionProjectionFailureKeepsCredentialWithoutFalseOwnership(t *te
 	if saved.LiveAuthPath != "" || !saved.HasCredential {
 		t.Fatal("failed projection claimed a native file or lost credentials")
 	}
-	if _, release, err := service.Prepare(ctx, account.ID, constants.RuntimeIDCodex, t.TempDir(), ""); err != nil {
+	if _, release, err := service.PrepareQueuedLease(ctx, account.ID, constants.RuntimeIDCodex, t.TempDir(), ""); err != nil {
 		t.Fatal(err)
 	} else {
-		release()
+		closeAccountLease(t, release)
 	}
 }
 
@@ -145,16 +145,16 @@ func TestSubscriptionConcurrentRefreshPersistsBeforeReturningAndRejectsStaleProj
 	defer endpoint.Close()
 	service.oauth.Origin = endpoint.URL
 	firstWorkspace := t.TempDir()
-	first, releaseFirst, err := service.Prepare(context.Background(), account.ID, constants.RuntimeIDCodex, firstWorkspace, "")
+	first, releaseFirst, err := service.PrepareQueuedLease(context.Background(), account.ID, constants.RuntimeIDCodex, firstWorkspace, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer releaseFirst()
-	second, releaseSecond, err := service.PrepareQueued(context.Background(), account.ID, constants.RuntimeIDCodex, t.TempDir(), "")
+	defer closeAccountLease(t, releaseFirst)
+	second, releaseSecond, err := service.PrepareQueuedLease(context.Background(), account.ID, constants.RuntimeIDCodex, t.TempDir(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer releaseSecond()
+	defer closeAccountLease(t, releaseSecond)
 	if first.RefreshCredentials == nil || second.RefreshCredentials == nil {
 		t.Fatal("账号刷新权威没有交付 Runtime")
 	}
@@ -185,8 +185,8 @@ func TestSubscriptionConcurrentRefreshPersistsBeforeReturningAndRejectsStaleProj
 	if err := accountconfig.WriteFile(filepath.Join(accountconfig.Home(firstWorkspace, constants.RuntimeIDCodex), "auth.json"), data); err != nil {
 		t.Fatal(err)
 	}
-	releaseFirst()
-	releaseSecond()
+	closeAccountLease(t, releaseFirst)
+	closeAccountLease(t, releaseSecond)
 	encoded, err := service.accounts.Credential(context.Background(), account.ID)
 	var saved codexCredential
 	if err != nil || json.Unmarshal([]byte(encoded), &saved) != nil || saved.Tokens.RefreshToken != next.RefreshToken {
@@ -203,7 +203,7 @@ func TestSubscriptionCredentialWaitCanBeCancelledWithoutReleasingOtherOwner(t *t
 	defer unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
-	if _, _, err := service.Prepare(ctx, account.ID, constants.RuntimeIDCodex, t.TempDir(), ""); !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, status_error.DatabaseOperationCancelled) {
+	if _, _, err := service.PrepareQueuedLease(ctx, account.ID, constants.RuntimeIDCodex, t.TempDir(), ""); !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, status_error.DatabaseOperationCancelled) {
 		t.Fatalf("准备未响应取消: %v", err)
 	}
 	if _, err := service.refreshSubscription(ctx, account.ID, "old"); !errors.Is(err, context.DeadlineExceeded) {
@@ -432,4 +432,54 @@ func TestLoginSnapshotsDoNotAdvanceOfficialPollingAndExpirationReleasesLease(t *
 			t.Fatal("expired login did not produce terminal state")
 		}
 	}
+}
+
+func TestLoginUsesRevisionAfterIdleSessionCredentialRecovery(t *testing.T) {
+	service, account, previous := subscriptionFixture(t)
+	shared, err := service.acquire(account.ID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.SetIdleSessionCloser(func(ctx context.Context, id string) error {
+		shared()
+		return service.accounts.StoreCredential(ctx, id, account.Revision, mustEncodeCredential(t, previous), "")
+	})
+	service.oauth.HTTP = &http.Client{Transport: subscriptionTransportFunc(func(request *http.Request) (*http.Response, error) {
+		body := ""
+		switch request.URL.Path {
+		case "/api/accounts/deviceauth/usercode":
+			body = `{"device_auth_id":"device","user_code":"CODE","interval":1}`
+		case "/api/accounts/deviceauth/token":
+			body = `{"authorization_code":"code","code_verifier":"verifier"}`
+		case "/oauth/token":
+			data, _ := json.Marshal(subscriptionTokens("user", "refresh-after-login"))
+			body = string(data)
+		default:
+			return nil, errors.New("unexpected OAuth request")
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+	})}
+	login, err := service.StartLogin(context.Background(), account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, err := service.GetLogin(context.Background(), account.ID, login.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if snapshot.ErrorCode != "" {
+			t.Fatalf("idle credential recovery invalidated login: %s", snapshot.ErrorCode)
+		}
+		if snapshot.Complete {
+			encoded, err := service.accounts.Credential(context.Background(), account.ID)
+			if err != nil || !strings.Contains(encoded, "refresh-after-login") {
+				t.Fatalf("login not committed: %v", err)
+			}
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("login did not complete")
 }

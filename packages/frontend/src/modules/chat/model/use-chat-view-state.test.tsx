@@ -6,7 +6,7 @@ import { useChatViewState } from "./use-chat-view-state";
 describe("useChatViewState", () => {
   it("切换对话时立即使用目标对话自己的视图状态", () => {
     const { result, rerender } = renderHook(
-      ({ scopeKey }) => useChatViewState(scopeKey, ""),
+      ({ scopeKey }) => useChatViewState(scopeKey),
       { initialProps: { scopeKey: "chat:a" } },
     );
 

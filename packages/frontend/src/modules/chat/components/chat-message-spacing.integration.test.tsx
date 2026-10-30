@@ -5,6 +5,7 @@ import {
   type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useMemo } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { expect, it } from "vitest";
 
@@ -20,6 +21,15 @@ function MessageHarness({
   message: ThreadMessageLike;
   showUsageMetrics?: boolean;
 }) {
+  const components = useMemo(
+    () => ({
+      UserMessage: () => null,
+      AssistantMessage: () => (
+        <AssistantMessage name="私人助理" showUsageMetrics={showUsageMetrics} />
+      ),
+    }),
+    [showUsageMetrics],
+  );
   const runtime = useExternalStoreRuntime({
     messages: [message],
     convertMessage: (message) => message,
@@ -31,17 +41,7 @@ function MessageHarness({
       <TooltipProvider>
         <AssistantRuntimeProvider runtime={runtime}>
           <ThreadPrimitive.Root>
-            <ThreadPrimitive.Messages
-              components={{
-                UserMessage: () => null,
-                AssistantMessage: () => (
-                  <AssistantMessage
-                    name="私人助理"
-                    showUsageMetrics={showUsageMetrics}
-                  />
-                ),
-              }}
-            />
+            <ThreadPrimitive.Messages components={components} />
           </ThreadPrimitive.Root>
         </AssistantRuntimeProvider>
       </TooltipProvider>
@@ -144,11 +144,19 @@ it("从执行中切换为完成时自动收起过程", async () => {
   const { rerender } = render(
     <MessageHarness message={resultMessage("running")} />,
   );
-  expect(screen.getByText("先检查配置来源。")).toBeVisible();
+  const reasoning = screen.getByText("先检查配置来源。");
+  expect(reasoning).toBeVisible();
+  const process = reasoning.closest('[data-presence-layout="collapse"]');
+  expect(process).toHaveAttribute("data-state", "open");
   rerender(<MessageHarness message={resultMessage()} />);
   expect(
     await screen.findByRole("button", { name: "用时 22.0s" }),
   ).toHaveAttribute("aria-expanded", "false");
+  const toggle = screen.getByRole("button", { name: "用时 22.0s" });
+  expect(
+    document.getElementById(toggle.getAttribute("aria-controls") ?? ""),
+  ).toBe(process);
+  expect(process).toHaveAttribute("data-state", "closed");
   expect(screen.queryByText("先检查配置来源。")).not.toBeInTheDocument();
   expect(screen.getByText("最终结果：配置正确。")).toBeVisible();
 });

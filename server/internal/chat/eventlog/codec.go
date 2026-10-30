@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -34,6 +35,8 @@ type recordScope struct {
 	executionID string
 	// invocationID 是当前活跃 Runtime Invocation 标识。
 	invocationID string
+	// toolUpdates 仅在存储编解码内保存当前调用各工具的上一份完整载荷。
+	toolUpdates map[string]json.RawMessage
 }
 
 // encodeRecords 为一次原子追加分配内存序号和确定的文件位置。
@@ -46,6 +49,7 @@ func encodeRecords(
 ) ([]Record, []byte, recordScope, error) {
 	now := time.Now().UnixMilli()
 	scope := initialScope
+	scope.toolUpdates = maps.Clone(initialScope.toolUpdates)
 	records := make([]Record, 0, len(inputs))
 	var buffer bytes.Buffer
 	for index, input := range inputs {
@@ -77,6 +81,17 @@ func encodeRecords(
 			input.InvocationID != scope.invocationID {
 			persisted.InvocationID = input.InvocationID
 			scope.invocationID = input.InvocationID
+			scope.toolUpdates = nil
+		}
+		if input.Type == constants.ChatEventTypeExecutionCreated {
+			scope.toolUpdates = nil
+		}
+		if isExecutionMessageRecord(input.Type) {
+			var err error
+			persisted.Data, err = scope.encodeRuntimeMessage(input.Data)
+			if err != nil {
+				return nil, nil, initialScope, err
+			}
 		}
 		record := Record{
 			SchemaVersion: persisted.SchemaVersion,
@@ -124,6 +139,7 @@ func decodeRecordPayload(
 		return Record{}, status_error.ChatLogCorrupted
 	}
 	if persisted.ExecutionID != "" {
+		scope.toolUpdates = nil
 		scope.executionID = persisted.ExecutionID
 		scope.invocationID = ""
 	}
@@ -133,6 +149,9 @@ func decodeRecordPayload(
 		}
 	}
 	if persisted.InvocationID != "" {
+		if scope.invocationID != persisted.InvocationID {
+			scope.toolUpdates = nil
+		}
 		scope.invocationID = persisted.InvocationID
 	}
 	record := Record{
@@ -148,6 +167,13 @@ func decodeRecordPayload(
 	}
 	if record.Type == constants.ChatEventTypeExecutionCreated || isExecutionMessageRecord(record.Type) {
 		record.MessageID = scope.executionID
+	}
+	if isExecutionMessageRecord(record.Type) {
+		var err error
+		record.Data, err = scope.decodeRuntimeMessage(record.Data)
+		if err != nil {
+			return Record{}, err
+		}
 	}
 	if isExecutionTerminalRecord(record.Type) {
 		*scope = recordScope{}

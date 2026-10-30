@@ -8,8 +8,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -32,7 +32,7 @@ type pendingApproval struct {
 	// requestedAt 是请求进入权威日志的 Unix 毫秒时间。
 	requestedAt int64
 	// response 把最终选择交回正在等待的 Runtime 回调。
-	response chan runtimes.ApprovalDecision
+	response chan runtimecontract.ApprovalDecision
 }
 
 // approvalCoordinator 在进程内连接 ACP 回调、Chat 权威事实和用户响应。
@@ -75,7 +75,7 @@ func (c *approvalCoordinator) handler(
 	chatID string,
 	executionID string,
 	facts ...*executionMessageFacts,
-) runtimes.ApprovalHandler {
+) runtimecontract.ApprovalHandler {
 	bound := &executionApprovalHandler{
 		coordinator: c,
 		chatID:      chatID,
@@ -90,10 +90,10 @@ func (c *approvalCoordinator) handler(
 // Request 把 Runtime 请求交给绑定执行的审批协调器。
 func (h *executionApprovalHandler) Request(
 	ctx context.Context,
-	request runtimes.ApprovalRequest,
-) (runtimes.ApprovalDecision, error) {
+	request runtimecontract.ApprovalRequest,
+) (runtimecontract.ApprovalDecision, error) {
 	if h == nil || h.coordinator == nil {
-		return runtimes.ApprovalDecision{Cancelled: true}, nil
+		return runtimecontract.ApprovalDecision{Cancelled: true}, nil
 	}
 	return h.coordinator.request(ctx, h.chatID, h.executionID, request, h.messageFacts)
 }
@@ -121,12 +121,12 @@ func (c *approvalCoordinator) request(
 	ctx context.Context,
 	chatID string,
 	executionID string,
-	request runtimes.ApprovalRequest,
+	request runtimecontract.ApprovalRequest,
 	facts *executionMessageFacts,
-) (runtimes.ApprovalDecision, error) {
+) (runtimecontract.ApprovalDecision, error) {
 	if ctx == nil || strings.TrimSpace(chatID) == "" ||
 		strings.TrimSpace(executionID) == "" {
-		return runtimes.ApprovalDecision{Cancelled: true}, status_error.BadRequest
+		return runtimecontract.ApprovalDecision{Cancelled: true}, status_error.BadRequest
 	}
 	requested := approvalEventData(util.New(), request)
 	pending := &pendingApproval{
@@ -135,7 +135,7 @@ func (c *approvalCoordinator) request(
 		chatID:       chatID,
 		executionID:  executionID,
 		requested:    requested,
-		response:     make(chan runtimes.ApprovalDecision, 1),
+		response:     make(chan runtimecontract.ApprovalDecision, 1),
 	}
 
 	c.commitMutex.Lock()
@@ -147,7 +147,7 @@ func (c *approvalCoordinator) request(
 	})
 	if err != nil {
 		c.commitMutex.Unlock()
-		return runtimes.ApprovalDecision{Cancelled: true}, err
+		return runtimecontract.ApprovalDecision{Cancelled: true}, err
 	}
 	pending.messageFacts.push(record)
 	c.mutex.Lock()
@@ -172,13 +172,13 @@ func (c *approvalCoordinator) request(
 			constants.ApprovalResultInvalidated,
 		)
 		if err != nil && !errors.Is(err, status_error.ApprovalAlreadyResolved) {
-			return runtimes.ApprovalDecision{Cancelled: true}, approvalContextStatus(ctx.Err())
+			return runtimecontract.ApprovalDecision{Cancelled: true}, approvalContextStatus(ctx.Err())
 		}
 		select {
 		case decision := <-pending.response:
 			return decision, nil
 		default:
-			return runtimes.ApprovalDecision{Cancelled: true}, approvalContextStatus(ctx.Err())
+			return runtimecontract.ApprovalDecision{Cancelled: true}, approvalContextStatus(ctx.Err())
 		}
 	}
 }
@@ -193,7 +193,7 @@ func approvalContextStatus(err error) error {
 
 func approvalEventData(
 	approvalID string,
-	request runtimes.ApprovalRequest,
+	request runtimecontract.ApprovalRequest,
 ) eventlog.ApprovalRequestedData {
 	locations := make([]eventlog.ApprovalLocationData, 0, len(request.Locations))
 	for _, location := range request.Locations {
@@ -248,7 +248,7 @@ func (c *approvalCoordinator) resolveSelected(
 		OptionKind: option.Kind,
 		Command:    pending.requested.Command,
 		Result:     constants.ApprovalResultSelected,
-	}, runtimes.ApprovalDecision{OptionID: option.ID})
+	}, runtimecontract.ApprovalDecision{OptionID: option.ID})
 }
 
 func (c *approvalCoordinator) resolveWithoutOption(
@@ -271,7 +271,7 @@ func (c *approvalCoordinator) resolveWithoutOption(
 		ToolCallID: pending.requested.ToolCallID,
 		Command:    pending.requested.Command,
 		Result:     result,
-	}, runtimes.ApprovalDecision{Cancelled: true})
+	}, runtimecontract.ApprovalDecision{Cancelled: true})
 }
 
 func (c *approvalCoordinator) lockPendingResolution(
@@ -324,7 +324,7 @@ func (c *approvalCoordinator) commitResolution(
 	ctx context.Context,
 	pending *pendingApproval,
 	resolved eventlog.ApprovalResolvedData,
-	decision runtimes.ApprovalDecision,
+	decision runtimecontract.ApprovalDecision,
 ) error {
 	c.commitMutex.Lock()
 	defer c.commitMutex.Unlock()

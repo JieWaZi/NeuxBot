@@ -9,11 +9,11 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
@@ -40,7 +40,7 @@ func (s executionInputState) Pending() bool {
 
 func (s executionInputState) Changed() <-chan struct{} { return s.changes }
 
-func (c *elicitationCoordinator) inputState(executionID string) runtimes.UserInputState {
+func (c *elicitationCoordinator) inputState(executionID string) runtimecontract.UserInputState {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	if c.changes == nil {
@@ -119,7 +119,7 @@ func (m *service) questionBindings(chatID, executionID string, facts ...*executi
 }
 
 func (c *elicitationCoordinator) questionSnapshot(chatID, executionID, questionID string) (map[string]any, error) {
-	records, err := c.journal.ReadRecords(chatID)
+	records, err := c.journal.ReadExecutionRecords(chatID, executionID)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, exe
 	if ctx.Err() != nil {
 		return nil, false, status_error.AgentContextUnauthorized
 	}
-	records, err := c.journal.ReadRecords(chatID)
+	records, err := c.journal.ReadExecutionRecords(chatID, executionID)
 	if err != nil {
 		return nil, false, err
 	}
@@ -220,7 +220,7 @@ func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, exe
 	}
 	messageFacts.push(record)
 	c.mutex.Lock()
-	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, messageFacts: messageFacts, invocationID: record.InvocationID, requested: requested, requestedAt: record.RecordedAt, response: make(chan runtimes.ElicitationDecision, 1)}
+	c.byID[id] = &pendingElicitation{chatID: chatID, executionID: executionID, messageFacts: messageFacts, invocationID: record.InvocationID, requested: requested, requestedAt: record.RecordedAt, response: make(chan runtimecontract.ElicitationDecision, 1)}
 	c.orderByChat[chatID] = append(c.orderByChat[chatID], id)
 	c.signalInputLocked(executionID)
 	c.mutex.Unlock()

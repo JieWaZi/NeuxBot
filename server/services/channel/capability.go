@@ -8,9 +8,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
@@ -61,7 +61,7 @@ func leaderWorkOptions(
 	reasoning string,
 	permissionLevel constants.PermissionLevel,
 	capability execution.ToolCapability,
-	teamInstruction runtimes.Instruction,
+	teamInstruction runtimecontract.Instruction,
 	directExecution bool,
 ) execution.WorkOptions {
 	return execution.WorkOptions{
@@ -71,7 +71,7 @@ func leaderWorkOptions(
 		PermissionLevel:  permissionLevel,
 		SessionPolicy:    constants.RuntimeSessionPolicyContinue,
 		ToolCapabilities: []execution.ToolCapability{capability},
-		SupplementalInstructions: []runtimes.Instruction{
+		SupplementalInstructions: []runtimecontract.Instruction{
 			leaderTurnInstruction(teamInstruction, directExecution),
 		},
 	}

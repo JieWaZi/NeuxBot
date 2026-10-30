@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
@@ -55,7 +55,7 @@ func TestRuntimeLiveBurstCoalescesBeforeSnapshot(t *testing.T) {
 	journal := &observedLiveJournal{Journal: sink.journal, changed: make(chan struct{}, 1)}
 	sink.journal = journal
 	for range 1000 {
-		if err = sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: marshalData(map[string]string{"text": "x"})}); err != nil {
+		if err = sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: marshalData(map[string]string{"text": "x"})}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -105,7 +105,7 @@ func TestRuntimeSinkRejectsCanceledDeliveryBeforeMutation(t *testing.T) {
 	sink, _ := newRuntimeEventSinkForTest(store, chatID)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err = sink.acceptInvocation(ctx, "invocation-1", runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: marshalData(map[string]string{"text": "late"})})
+	err = sink.acceptInvocation(ctx, "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: marshalData(map[string]string{"text": "late"})})
 	if err != status_error.OperationCanceled {
 		t.Fatalf("canceled delivery was accepted: %v", err)
 	}
@@ -131,7 +131,7 @@ func TestRuntimeLivePausedProducerStillPublishesLatest(t *testing.T) {
 	sink, _ := newRuntimeEventSinkForTest(store, chatID)
 	journal := &observedLiveJournal{Journal: sink.journal, changed: make(chan struct{}, 1)}
 	sink.journal = journal
-	if err = sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: marshalData(map[string]string{"text": "等待工具期间也要显示"})}); err != nil {
+	if err = sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: marshalData(map[string]string{"text": "等待工具期间也要显示"})}); err != nil {
 		t.Fatal(err)
 	}
 	select {

@@ -31,6 +31,7 @@ func init() {
 	Router.Register(&CancelPluginAuthorization{})
 	Router.Register(&LogoutPluginAuthorization{})
 	WakerRouter.Register(&ListWakerPlugins{})
+	WakerRouter.Register(&ListWakerPluginReferences{})
 	WakerRouter.Register(&SetWakerPluginEnabled{})
 	WakerRouter.Register(&UninstallWakerPlugin{})
 }

@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import { buildCompanionStatic } from "./build-companion-static.mjs";
 
 // 从本仓库维护的形象源码生成；隔离命名空间，不依赖全局 window 或相邻仓库。
 const root = new URL("../vendor/companion/", import.meta.url);
@@ -54,3 +55,10 @@ if (process.argv.includes("--check")) {
 } else {
   await writeFile(target, generated);
 }
+
+await buildCompanionStatic(
+  root,
+  styles,
+  order,
+  process.argv.includes("--check"),
+);

@@ -11,6 +11,8 @@ import (
 
 // 团队时间线页
 type ChannelTimelinePage struct {
+	// 主聊天游标
+	LeadChatLatestSequence *int64 `json:"leadChatLatestSequence,omitempty"`
 	// 消息列表
 	Resources []channelservice.TimelineMessage `json:"resources"`
 	// 更早页游标
@@ -48,7 +50,7 @@ func (l *ListChannelTimeline) Validate(*gin.Context) error {
 	return nil
 }
 
-// Output 从各成员权威 Chat JSONL 读取一页更早消息。
+// Output 返回独立消息页及负责人主 Chat 最新窗口的持久游标。
 func (l *ListChannelTimeline) Output(ctx *gin.Context) (interface{}, error) {
 	if _, err := channelThread(ctx, l.ChannelID, l.ThreadID); err != nil {
 		return nil, ginx.WithStack(err)
@@ -62,8 +64,9 @@ func (l *ListChannelTimeline) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(err)
 	}
 	return ChannelTimelinePage{
-		Resources:  page.Resources,
-		NextCursor: page.NextCursor,
-		HasMore:    page.HasMore,
+		LeadChatLatestSequence: page.LeadChatLatestSequence,
+		Resources:              page.Resources,
+		NextCursor:             page.NextCursor,
+		HasMore:                page.HasMore,
 	}, nil
 }

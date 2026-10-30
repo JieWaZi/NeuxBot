@@ -33,6 +33,7 @@ func (o *UpdatePluginConfiguration) Output(ctx *gin.Context) (interface{}, error
 		return nil, ginx.WithStack(err)
 	}
 	store := global.PluginControllerManager
+	var preparedMaterials []models.MCPSecretDefinition
 	// 外部内容与认证检查不进入数据库事务；占用保持到版本切换提交完成。
 	if len(o.Body.Switches) > 0 {
 		config, err := store.Configuration(ctx, o.PluginID)
@@ -66,11 +67,12 @@ func (o *UpdatePluginConfiguration) Output(ctx *gin.Context) (interface{}, error
 				seen[version.ID] = true
 			}
 		}
-		release, err := prepareInstallationVersions(ctx, targets, config)
+		release, err := prepareInstallationVersions(ctx, targets, &config)
 		if err != nil {
 			return nil, ginx.WithStack(err)
 		}
 		defer release()
+		preparedMaterials = config.DeliveryMaterials
 	}
 	err = global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
 		config, err := store.Configuration(txctx, o.PluginID)
@@ -81,6 +83,9 @@ func (o *UpdatePluginConfiguration) Output(ctx *gin.Context) (interface{}, error
 			return status_error.PluginConfigurationConflict
 		}
 		config = configurationChange(config, o.Body)
+		if len(o.Body.Switches) > 0 {
+			config.DeliveryMaterials = preparedMaterials
+		}
 		versions, err := store.Versions(txctx, o.PluginID)
 		if err != nil {
 			return err

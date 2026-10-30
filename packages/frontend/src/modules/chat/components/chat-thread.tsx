@@ -84,7 +84,7 @@ import { motion, useReducedMotion } from "motion/react";
 import type { ResolvedFileReference } from "@/shared/workspace/file-reference";
 import { cn } from "@/shared/lib/cn";
 import { readLayoutMotionTokens } from "@/shared/lib/ui-motion-tokens";
-import { Avatar } from "@/shared/ui/avatar";
+import { Avatar, StaticAvatar } from "@/shared/ui/avatar";
 import { companionAvatar } from "@/shared/companion/appearance";
 import {
   CompanionInteraction as ComposerCompanion,
@@ -109,6 +109,7 @@ import {
   type AllyPathFile,
 } from "../runtime/chat-attachment-adapter";
 import {
+  isLatestAssistantMessage,
   CHAT_PROCESS_COMMENTARY_PART,
   type ChatProcessCommentaryData,
   type ChatFileChange,
@@ -774,14 +775,14 @@ function isChatProcessPart(part: { type: string; name?: string }) {
   );
 }
 
-function groupCompletedChatPart(part: PartState) {
+function groupProcessChatPart(part: PartState) {
   if (isChatProcessPart(part)) {
-    return ["group-completed-process", ...groupChatPart(part)] as const;
+    return ["group-message-process", ...groupChatPart(part)] as const;
   }
   return [];
 }
 
-function CompletedWorkProcess({
+function MessageWorkProcess({
   children,
   showUsageMetrics,
 }: {
@@ -794,7 +795,12 @@ function CompletedWorkProcess({
   );
   const metrics = runMetricsOf(rawMetrics);
   const durationMs = metrics?.durationMs;
-  const [open, setOpen] = useState(false);
+  const completed = useAuiState(
+    (state) => state.message.status?.type === "complete",
+  );
+  const [expanded, setExpanded] = useState(false);
+  // 完成前后保留同一容器，让 open → closed 触发现有高度退出动画。
+  const open = !completed || expanded;
   const contentId = useId();
   const label =
     durationMs !== undefined
@@ -808,7 +814,7 @@ function CompletedWorkProcess({
       className="text-muted-foreground hover:text-foreground type-label min-h-control-sm inline-flex items-center gap-1 py-1 text-left transition-colors"
       aria-expanded={open}
       aria-controls={contentId}
-      onClick={() => setOpen((current) => !current)}
+      onClick={() => setExpanded((current) => !current)}
     >
       <span>{label}</span>
       <ChevronRight
@@ -821,16 +827,21 @@ function CompletedWorkProcess({
     </button>
   );
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      {metrics && showUsageMetrics ? (
+    <Collapsible open={open} onOpenChange={setExpanded}>
+      {!completed ? null : metrics && showUsageMetrics ? (
         <RunMetricsTooltip metrics={metrics}>{trigger}</RunMetricsTooltip>
       ) : (
         trigger
       )}
-      <CollapsibleContent id={contentId} inert={!open} aria-hidden={!open}>
-        <div className="space-y-4 pt-2">{children}</div>
+      <CollapsibleContent
+        id={contentId}
+        data-motion={completed ? "presence" : "none"}
+        inert={!open}
+        aria-hidden={!open}
+      >
+        <div className={cn("space-y-4", completed && "pt-2")}>{children}</div>
       </CollapsibleContent>
-      <hr className="border-border/60 mt-2 border-0 border-t" />
+      {completed && <hr className="border-border/60 mt-2 border-0 border-t" />}
     </Collapsible>
   );
 }
@@ -846,22 +857,19 @@ function ChatMessageParts({
   const isTerminal = useAuiState(
     (state) => state.message.metadata.custom?.isTerminal === true,
   );
-  const completed = useAuiState(
-    (state) => state.message.status?.type === "complete",
-  );
   return (
     <div className="space-y-4">
       <MessagePrimitive.GroupedParts
-        groupBy={completed ? groupCompletedChatPart : groupChatPart}
+        groupBy={groupProcessChatPart}
         indicator="no-text"
       >
         {({ part, children }) => {
           switch (part.type) {
-            case "group-completed-process":
+            case "group-message-process":
               return (
-                <CompletedWorkProcess showUsageMetrics={showUsageMetrics}>
+                <MessageWorkProcess showUsageMetrics={showUsageMetrics}>
                   {children}
-                </CompletedWorkProcess>
+                </MessageWorkProcess>
               );
             case "group-work-process":
               return (
@@ -1493,8 +1501,14 @@ export function AssistantMessage({
   const { t } = useTranslation("chat");
   const message = useAuiState((state) => state.message);
   const messageID = message.id;
+  const isLatestAssistant = useAuiState((state) =>
+    isLatestAssistantMessage(state.message, state.thread.messages),
+  );
   const interaction = useContext(CompanionInteraction);
-  const companionActivity = messageCompanionActivity(message, interaction);
+  const companionActivity = messageCompanionActivity(
+    { ...message, isLast: isLatestAssistant },
+    interaction,
+  );
   const author = messageAuthors?.[messageID];
   const displayName = author?.name ?? name;
   const displayAvatar = author?.avatar ?? avatar;
@@ -1505,12 +1519,16 @@ export function AssistantMessage({
 
   return (
     <MessagePrimitive.Root className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6">
-      <Avatar
-        name={displayName}
-        src={displayAvatar}
-        size="sm"
-        activity={companionActivity}
-      />
+      {isLatestAssistant ? (
+        <Avatar
+          name={displayName}
+          src={displayAvatar}
+          size="sm"
+          activity={companionActivity}
+        />
+      ) : (
+        <StaticAvatar name={displayName} src={displayAvatar} size="sm" />
+      )}
       <div className="min-w-0">
         <div className="grid justify-items-start">
           <span className="type-body font-medium">{displayName}</span>

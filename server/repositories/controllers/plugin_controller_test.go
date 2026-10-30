@@ -3,16 +3,18 @@ package controllers
 import (
 	"context"
 	"errors"
-	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/dbhelper"
+	"gorm.io/gorm"
 )
 
 func TestPluginControllerSeparatesLibraryFromInstalledPartnerAndPinsVersion(t *testing.T) {
@@ -92,6 +94,29 @@ func TestPluginConfigurationEncryptsSecretsAndRejectsStaleRevision(t *testing.T)
 	}
 	if err := c.UpdateConfiguration(ctx, config, 0); !errors.Is(err, status_error.PluginConfigurationConflict) {
 		t.Fatalf("stale write accepted: %v", err)
+	}
+}
+
+// TestPluginExecutionConfigurationDoesNotReadPrivateMaterials 防止冷配置读取越过共享身份租约提前解码授权材料。
+func TestPluginExecutionConfigurationDoesNotReadPrivateMaterials(t *testing.T) {
+	db := newTestDB(t)
+	controller := NewPluginController(db)
+	ctx := context.Background()
+	if err := controller.Create(ctx, models.Plugin{ID: "cold-config", Name: "共享", SourceKey: "cold-config"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := controller.UpdateConfiguration(ctx, models.PluginConfiguration{PluginID: "cold-config", Values: map[string]string{"region": "cn"}, Secrets: []models.MCPSecretDefinition{{ID: "token", Name: "TOKEN", Configured: true, Value: "private-token"}}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ?", "cold-config").Update("delivery_materials", "invalid-private-material-json").Error; err != nil {
+		t.Fatal(err)
+	}
+	configuration, err := controller.ExecutionConfiguration(ctx, "cold-config")
+	if err != nil || configuration.Revision != 1 || configuration.Values["region"] != "cn" || len(configuration.Secrets) != 1 || configuration.Secrets[0].Value != "private-token" || len(configuration.DeliveryMaterials) != 0 {
+		t.Fatalf("cold values crossed private identity boundary: %+v %v", configuration, err)
+	}
+	if _, err := controller.Configuration(ctx, "cold-config"); !errors.Is(err, status_error.DatabaseError) {
+		t.Fatalf("invalid private materials did not protect the test boundary: %v", err)
 	}
 }
 
@@ -282,7 +307,7 @@ func TestPluginChangesPublishOnlyAfterSuccessfulTransaction(t *testing.T) {
 	}
 }
 
-func TestInstalledPluginSnapshotContainsIdentityAndPartnerNames(t *testing.T) {
+func TestPluginManagementSnapshotContainsIdentityAndPartnerNames(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 	c := NewPluginController(db)
@@ -298,11 +323,171 @@ func TestInstalledPluginSnapshotContainsIdentityAndPartnerNames(t *testing.T) {
 	if err := c.Install(ctx, models.WakerPlugin{ID: "r1", WakerID: "w1", PluginID: "p1", VersionID: "v1", Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	states, err := c.InstalledStates(ctx, "w1")
+	states, err := c.ReadStates(ctx, []string{"p1"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(states) != 1 || states[0].Plugin.ID != "p1" || states[0].Plugin.Name != "办公" || states[0].PartnerNames["w1"] != "伙伴一" || states[0].PartnerAvatars["w1"] != "companion:fixture-avatar" {
-		t.Fatalf("execution snapshot lacks resource identity: %+v", states)
+	if len(states) != 1 || states["p1"].Plugin.ID != "p1" || states["p1"].Plugin.Name != "办公" || states["p1"].PartnerNames["w1"] != "伙伴一" || states["p1"].PartnerAvatars["w1"] != "companion:fixture-avatar" {
+		t.Fatalf("management snapshot lacks resource identity: %+v", states)
+	}
+}
+
+func TestPluginDeliveryMaterialsAreEncryptedAndReuseConfigurationRevision(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	store := NewPluginController(db)
+	if err := store.Create(ctx, models.Plugin{ID: "private-material", Name: "插件", SourceKey: "material-source"}); err != nil {
+		t.Fatal(err)
+	}
+	config := models.PluginConfiguration{PluginID: "private-material", DeliveryMaterials: []models.MCPSecretDefinition{{ID: "target", Name: "target", Configured: true, Value: "private-delivery-sentinel"}}}
+	if err := store.UpdateDeliveryMaterials(ctx, config); err != nil {
+		t.Fatal(err)
+	}
+	var raw models.PluginConfiguration
+	if err := db.Where("plugin_id = ?", config.PluginID).First(&raw).Error; err != nil {
+		t.Fatal(err)
+	}
+	if raw.Revision != 0 || len(raw.DeliveryMaterials) != 1 || raw.DeliveryMaterials[0].Ciphertext == "" || strings.Contains(raw.DeliveryMaterials[0].Ciphertext, "private-delivery-sentinel") {
+		t.Fatal("delivery material leaked or changed configuration revision")
+	}
+	restarted := NewPluginController(db)
+	got, err := restarted.Configuration(ctx, config.PluginID)
+	if err != nil || got.DeliveryMaterials[0].Value != "private-delivery-sentinel" {
+		t.Fatal("material was not readable after repository recreation", err)
+	}
+	states, err := restarted.ReadStates(ctx, []string{config.PluginID})
+	if err != nil || states[config.PluginID].Configuration.DeliveryMaterials[0].Value != "private-delivery-sentinel" {
+		t.Fatal("chat state did not load private material", err)
+	}
+	if err := store.UpdateConfiguration(ctx, got, 0); err != nil {
+		t.Fatal("material preparation blocked the first explicit configuration save", err)
+	}
+	if err := store.UpdateDeliveryMaterials(ctx, config); !errors.Is(err, status_error.PluginConfigurationConflict) {
+		t.Fatal("stale material update bypassed configuration revision", err)
+	}
+	got, err = store.Configuration(ctx, config.PluginID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got.DeliveryMaterials = nil
+	if err := store.UpdateDeliveryMaterials(ctx, got); err != nil {
+		t.Fatal(err)
+	}
+	got, err = restarted.Configuration(ctx, config.PluginID)
+	if err != nil || len(got.DeliveryMaterials) != 0 || got.Revision != 1 {
+		t.Fatal("clearing material changed configuration identity or retained secrets", err)
+	}
+}
+
+func TestInstalledPluginReferencesReadOnlyEnabledPinnedIdentity(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	c := NewPluginController(db)
+	for _, id := range []string{"enabled", "disabled", "other"} {
+		if err := c.Create(ctx, models.Plugin{ID: id, Name: id, Description: "说明", SourceKey: id}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := c.PutVersion(ctx, models.PluginVersion{ID: "v-" + id, PluginID: id, Version: "1.2", Package: plugins.Package{}}); err != nil {
+			t.Fatal(err)
+		}
+		waker := "w1"
+		if id == "other" {
+			waker = "w2"
+		}
+		if err := c.Install(ctx, models.WakerPlugin{ID: "i-" + id, WakerID: waker, PluginID: id, VersionID: "v-" + id, Enabled: id != "disabled"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 非法管理包和配置不能阻塞仅需身份的输入候选。
+	if err := db.Exec("UPDATE plugin_versions SET package = ?", "invalid-json").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("DROP TABLE plugin_configurations").Error; err != nil {
+		t.Fatal(err)
+	}
+	refs, err := c.InstalledReferences(ctx, "w1")
+	if err != nil || len(refs) != 1 || refs[0].ID != "enabled" || refs[0].VersionID != "v-enabled" || refs[0].Version != "1.2" {
+		t.Fatalf("references=%+v err=%v", refs, err)
+	}
+}
+
+func TestPluginReferenceQueryBudgetDoesNotGrowWithInstalledCount(t *testing.T) {
+	ctx := context.Background()
+	db := newTestDB(t)
+	resources := []models.Plugin{}
+	versions := []models.PluginVersion{}
+	installations := []models.WakerPlugin{}
+	for i := 0; i < 205; i++ {
+		id := fmt.Sprintf("plugin-%03d", i)
+		resources = append(resources, models.Plugin{ID: id, Name: id, SourceKey: id})
+		versions = append(versions, models.PluginVersion{ID: "v-" + id, PluginID: id, Version: "1"})
+		installations = append(installations, models.WakerPlugin{ID: "i-" + id, WakerID: "w1", PluginID: id, VersionID: "v-" + id, Enabled: true})
+	}
+	for _, rows := range []any{&resources, &versions, &installations} {
+		if err := db.Create(rows).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	queries := 0
+	if err := db.Callback().Query().After("gorm:query").Register("test:plugin-reference-budget", func(query *gorm.DB) {
+		if !query.DryRun {
+			queries++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	refs, err := NewPluginController(db).InstalledReferences(ctx, "w1")
+	if err != nil || len(refs) != 205 || queries != 3 {
+		t.Fatalf("refs=%d queries=%d err=%v", len(refs), queries, err)
+	}
+
+}
+
+func TestPluginReferenceEventsExcludeConfigurationAndRollback(t *testing.T) {
+	ctx := context.Background()
+	hub := events.New()
+	defer hub.Close()
+	db := WithEventPublisher(newTestDB(t), hub)
+	store := NewPluginController(db)
+	if err := store.Create(ctx, models.Plugin{ID: "p", Name: "插件", SourceKey: "source"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.PutVersion(ctx, models.PluginVersion{ID: "v", PluginID: "p", Version: "1"}); err != nil {
+		t.Fatal(err)
+	}
+	subscription := hub.Subscribe(constants.PluginEventTopic, events.Resource{Kind: "global"})
+	defer subscription.Close()
+	tx := NewTransactionController(dbhelper.NewGormTransactionManager(db))
+	if err := tx.Transaction(ctx, func(ctx context.Context) error {
+		if err := store.Install(ctx, models.WakerPlugin{ID: "i", WakerID: "w1", PluginID: "p", VersionID: "v", Enabled: true}); err != nil {
+			return err
+		}
+		return status_error.PluginVersionConflict
+	}); err == nil {
+		t.Fatal("rollback passed")
+	}
+	select {
+	case event := <-subscription.Events:
+		t.Fatalf("rollback published %+v", event)
+	default:
+	}
+	if err := store.UpdateConfiguration(ctx, models.PluginConfiguration{PluginID: "p", Values: map[string]string{}}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if event := <-subscription.Events; event.Type == constants.PluginReferencesChangedEventType {
+		t.Fatal("configuration invalidated candidates")
+	}
+	if err := store.Install(ctx, models.WakerPlugin{ID: "i", WakerID: "w1", PluginID: "p", VersionID: "v", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for i := 0; i < 2; i++ {
+		event := <-subscription.Events
+		if event.Type == constants.PluginReferencesChangedEventType {
+			found = event.Resource.Kind == "waker" && event.Resource.ID == "w1"
+		}
+	}
+	if !found {
+		t.Fatal("installation lost precise candidate event")
 	}
 }
