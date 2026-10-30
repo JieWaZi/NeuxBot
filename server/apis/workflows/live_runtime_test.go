@@ -1,9 +1,11 @@
 package workflows
 
 import (
-	workspace "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/workspace"
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
 
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+	workspace "github.com/JieWaZi/NeuxBot/server/internal/agent/host/workspace"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
 
 	"context"
 	"encoding/json"
@@ -17,8 +19,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
@@ -43,7 +45,7 @@ type observedLiveRuntime struct {
 
 func newObservedLiveRuntime(t *testing.T, sdk *catalog.Catalog) observedLiveRuntime {
 	t.Helper()
-	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: workspace.New(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: sdk.ForkSession})
+	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: workspace.New(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: runtimehost.NewForkHandler(sdk)})
 	t.Cleanup(func() {
 		if err := host.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -52,14 +54,27 @@ func newObservedLiveRuntime(t *testing.T, sdk *catalog.Catalog) observedLiveRunt
 	return observedLiveRuntime{ChatHost: host, test: t}
 }
 
-func (r observedLiveRuntime) Run(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink) runtimecontract.Result {
-	return r.RunWithLease(ctx, request, sink, nil)
+// observedPreparedRun 保留真实准备与资源生命周期，仅记录执行失败阶段。
+type observedPreparedRun struct {
+	// PreparedChatRun 是生产宿主返回的唯一准备句柄。
+	runtimecontract.PreparedChatRun
+	// plan 是不含本轮输入的会话声明。
+	plan runtimecontract.SessionPlan
+	// test 接收脱敏验收诊断。
+	test *testing.T
 }
 
-func (r observedLiveRuntime) RunWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
-	result := r.ChatHost.RunWithLease(ctx, request, sink, release)
+func (r observedLiveRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+	prepared, err := r.ChatHost.PrepareSession(ctx, plan, session)
+	if err != nil {
+		return prepared, err
+	}
+	return observedPreparedRun{PreparedChatRun: prepared, plan: plan, test: r.test}, nil
+}
+func (r observedPreparedRun) Run(ctx context.Context, turn runtimecontract.TurnInput, sink runtimecontract.EventSink) runtimecontract.Result {
+	result := r.PreparedChatRun.Run(ctx, turn, sink)
 	if result.Failure != nil {
-		r.test.Logf("actual failure: stage=%s code=%s runtime=%s detection=%s detectionRuntime=%s", result.Failure.Stage, result.Failure.Code, request.Target.RuntimeID, request.Detection.State, request.Detection.Runtime.ID)
+		r.test.Logf("actual failure: stage=%s code=%s runtime=%s detection=%s detectionRuntime=%s", result.Failure.Stage, result.Failure.Code, r.plan.Target.RuntimeID, r.plan.Detection.State, r.plan.Detection.Runtime.ID)
 	}
 	return result
 }
@@ -111,8 +126,8 @@ func openLiveWorkflow(t *testing.T, ctx context.Context, directory string) (*wor
 	if err != nil {
 		t.Fatal(err)
 	}
-	detection := sdk.Detect(ctx, runtimecontract.DetectRequest{RuntimeID: "codex", BaseEnvironment: os.Environ(), HomeDirectory: homeDirectory})
-	if detection.State != runtimecontract.DetectionStateReady {
+	detection := sdk.Detect(ctx, runtimeconfig.DetectRequest{RuntimeID: "codex", BaseEnvironment: os.Environ(), HomeDirectory: homeDirectory})
+	if detection.State != runtimeconfig.DetectionStateReady {
 		t.Fatalf("real runtime unavailable: state=%s diagnostics=%v", detection.State, detection.Diagnostics)
 	}
 	model := os.Getenv("ALLY_WORKFLOW_LIVE_MODEL")
@@ -178,8 +193,8 @@ func TestLiveRuntimeCreationSaveAndIndependentWorkersWriteRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	detection := sdk.Detect(ctx, runtimecontract.DetectRequest{RuntimeID: "codex", BaseEnvironment: os.Environ(), HomeDirectory: homeDirectory})
-	if detection.State != runtimecontract.DetectionStateReady {
+	detection := sdk.Detect(ctx, runtimeconfig.DetectRequest{RuntimeID: "codex", BaseEnvironment: os.Environ(), HomeDirectory: homeDirectory})
+	if detection.State != runtimeconfig.DetectionStateReady {
 		t.Fatalf("real runtime unavailable: state=%s diagnostics=%v", detection.State, detection.Diagnostics)
 	}
 	model := os.Getenv("ALLY_WORKFLOW_LIVE_MODEL")

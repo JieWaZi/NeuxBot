@@ -68,13 +68,23 @@ export function withStableCreateRequest<T extends object>(
   return { ...request, clientRequestId: id };
 }
 
-/** 首发得到确定成功响应后删除草稿幂等记录。 */
-export function clearStableCreateRequest(scopeKey: string) {
+/** 只退役已经由权威接纳确认的同一输入，不清除后来准备的新记录。 */
+export function clearStableCreateRequest(scopeKey: string, expectedID: string) {
   const key = storageKey(scopeKey);
-  inMemoryRequests.delete(key);
+  if (inMemoryRequests.get(key)?.id === expectedID)
+    inMemoryRequests.delete(key);
   try {
-    window.localStorage.removeItem(key);
+    const raw = window.localStorage.getItem(key);
+    const stored: unknown = raw ? JSON.parse(raw) : undefined;
+    if (
+      stored &&
+      typeof stored === "object" &&
+      "id" in stored &&
+      stored.id === expectedID
+    ) {
+      window.localStorage.removeItem(key);
+    }
   } catch {
-    // 清理失败只会让相同草稿继续重放既有资源，不会重复创建。
+    // 本地存储不可读写时仍按同一身份清理当前页面的记录。
   }
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
 	"github.com/JieWaZi/neux-knowledge/core"
 )
 

@@ -1,6 +1,8 @@
 package execution
 
 import (
+	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+
 	"context"
 	"encoding/json"
 	"sort"
@@ -9,10 +11,10 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -198,6 +200,8 @@ func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, 
 
 // messageExecution 保存 Chat 已解析的一次 Runtime 调用及其业务身份。
 type messageExecution struct {
+	// pluginUsageRelease 在 Runtime 返回后、Chat 重新接纳前清除本轮引用，不释放会话租约。
+	pluginUsageRelease func()
 	// messageFacts 交付同一执行已提交的交互与命令事实，保证实时与重放一致。
 	messageFacts *executionMessageFacts
 	// agentActivate 在执行接纳后激活短期 CLI 身份。
@@ -206,14 +210,12 @@ type messageExecution struct {
 	agentSettle func(runtimecontract.Result)
 	// capabilityRelease 在回合结束后撤销内置工具能力。
 	capabilityRelease func()
-	// accountLease 在独立 Runtime 原生消费者退出后回收认证，失败允许重试。
-	accountLease func(context.Context) error
-	// pluginRelease 释放本轮冻结共享授权的使用租约。
-	pluginRelease func()
+	// preparedRun 保存已准备但尚未提交本轮输入的原生会话。
+	preparedRun runtimecontract.PreparedChatRun
 	// plugins 是消息明确选择的插件展示快照。
 	plugins []plugins.Snapshot
-	// request 是本次调用交给 Runtime 的结构化输入。
-	request runtimecontract.RunRequest
+	// turn 是本轮提交给已准备消费者的增量输入与交互端口。
+	turn runtimecontract.TurnInput
 	// state 是首事件提交前仍未进入权威日志的对话状态。
 	state messageChat
 	// input 是首事件提交时持久化的本次用户输入。
@@ -252,18 +254,6 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 	}
 	chat := plan.state.chat
 	execution := plan.execution
-	if !plan.request.Policy.Execution.WorkspaceReadOnly {
-		plan.request.ApprovalHandler = m.approvals.handler(
-			chat.ID,
-			execution.ID,
-			plan.messageFacts,
-		)
-	}
-	plan.request.ElicitationHandler = m.elicitations.handler(
-		chat.ID,
-		execution.ID,
-		plan.messageFacts,
-	)
 
 	runtimeSink := &runtimeEventSink{
 		messageFacts: plan.messageFacts,
@@ -298,16 +288,18 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 	}
 	plan.messageFacts.start(runtimeSink.scheduleMessageFacts)
 	defer plan.messageFacts.stopDelivery()
-	result := m.runtime.RunWithLease(ctx, plan.request, sink, func(closeContext context.Context) error {
-		if plan.pluginRelease != nil {
-			plan.pluginRelease()
-			plan.pluginRelease = nil
+	defer func() {
+		if plan.preparedRun != nil {
+			if err := plan.preparedRun.Close(context.WithoutCancel(ctx)); err != nil {
+				logx.Errorf("close unused chat preparation failed: execution_id=%s error=%v", execution.ID, err)
+			}
 		}
-		if plan.accountLease != nil {
-			return plan.accountLease(closeContext)
-		}
-		return nil
-	})
+	}()
+	result := plan.preparedRun.Run(ctx, plan.turn, sink)
+	// 本轮引用必须早于 Chat 占位释放与终态发布清空，避免旧轮收尾覆盖新轮引用。
+	if plan.pluginUsageRelease != nil {
+		plan.pluginUsageRelease()
+	}
 	if plan.capabilityRelease != nil {
 		plan.capabilityRelease()
 	}
@@ -324,10 +316,10 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 		}
 		if result.Failure == nil {
 			result.Failure = &runtimecontract.Failure{
-				Code:       runtimecontract.FailureCodeRuntimeUnavailable,
+				Code:       runtimediagnostic.FailureCodeRuntimeUnavailable,
 				Stage:      constants.RuntimeExecutionFailureStageStart,
 				Message:    "runtime did not accept the invocation",
-				Transience: runtimecontract.FailureTransiencePermanent,
+				Transience: runtimediagnostic.FailureTransiencePermanent,
 			}
 		}
 		status, errorCode, errorMessage := executionResultStatus(result)
@@ -354,7 +346,7 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 	}
 	if err := m.recordInvocationResult(
 		chat,
-		plan.request.Workspace.Path,
+		plan.files.executionWorkspaceDirectory,
 		execution,
 		result,
 		attempt,
@@ -500,17 +492,17 @@ func runtimeStartError(result runtimecontract.Result) error {
 		return status_error.SkillUnavailable
 	}
 	switch result.Failure.Code {
-	case runtimecontract.FailureCodeSessionNotFound:
+	case runtimediagnostic.FailureCodeSessionNotFound:
 		return status_error.RuntimeSessionNotFound
-	case runtimecontract.FailureCodePolicyUnsupported:
+	case runtimediagnostic.FailureCodePolicyUnsupported:
 		return status_error.RuntimePolicyUnsupported
-	case runtimecontract.FailureCodeProtocolIncompatible:
+	case runtimediagnostic.FailureCodeProtocolIncompatible:
 		return status_error.RuntimeProtocolIncompatible
-	case runtimecontract.FailureCodeInactivityTimeout:
+	case runtimediagnostic.FailureCodeInactivityTimeout:
 		return status_error.RuntimeInactivityTimeout
-	case runtimecontract.FailureCodeAuthRequired:
+	case runtimediagnostic.FailureCodeAuthRequired:
 		return status_error.RuntimeAuthRequired
-	case runtimecontract.FailureCodeRuntimeUnavailable:
+	case runtimediagnostic.FailureCodeRuntimeUnavailable:
 		return status_error.RuntimeUnavailable
 	default:
 		detail := runtimeFailureDisplayMessage(result.Failure)
@@ -660,7 +652,7 @@ func executionResultStatus(
 		return constants.ExecutionStatusCompleted, "", ""
 	}
 	status := constants.ExecutionStatusFailed
-	if result.Failure.Code == runtimecontract.FailureCodeContextCanceled {
+	if result.Failure.Code == runtimediagnostic.FailureCodeContextCanceled {
 		status = constants.ExecutionStatusCanceled
 	}
 	return status, string(result.Failure.Code), runtimeFailureDisplayMessage(result.Failure)
@@ -690,10 +682,10 @@ func chatDeliveryFailure(
 	err error,
 ) *runtimecontract.Failure {
 	return &runtimecontract.Failure{
-		Code:       runtimecontract.FailureCodeEventDelivery,
+		Code:       runtimediagnostic.FailureCodeEventDelivery,
 		Stage:      stage.String(),
 		Message:    err.Error(),
-		Transience: runtimecontract.FailureTransiencePermanent,
+		Transience: runtimediagnostic.FailureTransiencePermanent,
 	}
 }
 

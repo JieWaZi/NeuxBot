@@ -1,9 +1,11 @@
 package automatic_tasks
 
 import (
-	workspace "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/workspace"
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
 
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+	workspace "github.com/JieWaZi/NeuxBot/server/internal/agent/host/workspace"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
 
 	"context"
 	"encoding/json"
@@ -16,12 +18,11 @@ import (
 	"testing"
 	"time"
 
-	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
-	acpdriver "github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
+	acpdriver "github.com/JieWaZi/NeuxBot/server/internal/agent/core/driver/acp"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -105,7 +106,7 @@ func (integrationEnvironment) Get(context.Context, string) (models.RuntimeEnviro
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
-	var summary runtimecontract.RuntimeSummary
+	var summary runtimeconfig.RuntimeSummary
 	for _, registered := range sdk.Runtimes() {
 		if registered.ID == "codex" {
 			summary = registered
@@ -113,8 +114,8 @@ func (integrationEnvironment) Get(context.Context, string) (models.RuntimeEnviro
 		}
 	}
 	return models.RuntimeEnvironment{RuntimeID: "codex", BaseRuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "model", DefaultAccountID: "another-default-account",
-		Detection: runtimecontract.DetectionResult{Runtime: summary, State: runtimecontract.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimecontract.CapabilitySet{runtimecontract.CapabilityMCPStreamableHTTP: true, runtimecontract.CapabilitySkillDirectory: true},
-			Models: []runtimecontract.ModelOption{{ID: "model", PermissionLevels: []runtimecontract.PermissionLevel{runtimecontract.PermissionLevelDefault, runtimecontract.PermissionLevelAuto, runtimecontract.PermissionLevelFullAccess}}}}}, nil
+		Detection: runtimeconfig.DetectionResult{Runtime: summary, State: runtimeconfig.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilityMCPStreamableHTTP: true, runtimeconfig.CapabilitySkillDirectory: true},
+			Models: []runtimeconfig.ModelOption{{ID: "model", PermissionLevels: []runtimeconfig.PermissionLevel{runtimeconfig.PermissionLevelDefault, runtimeconfig.PermissionLevelAuto, runtimeconfig.PermissionLevelFullAccess}}}}}, nil
 }
 
 func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
@@ -158,7 +159,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: workspace.New(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: sdk.ForkSession,
+	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: workspace.New(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: runtimehost.NewForkHandler(sdk),
 		Driver: func(runtimehost.Environment, acpdriver.Factory) (c.Driver, error) { return runtime, nil }})
 	t.Cleanup(func() {
 		if err := host.Close(context.Background()); err != nil {

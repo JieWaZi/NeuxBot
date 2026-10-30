@@ -16,6 +16,12 @@ import (
 
 // ChatController 定义 Chat 查询投影的持久化操作。
 type ChatController interface {
+	// ReadExecutionLocation 按原身份定位权威执行入口。
+	ReadExecutionLocation(context.Context, string, string, string) (*models.ChatExecutionLocation, error)
+	// ReadExecutionLocationCursor 返回执行定位已覆盖的持久游标。
+	ReadExecutionLocationCursor(context.Context, string) (int64, error)
+	// AdvanceExecutionLocations 在同一事务提交尾部定位及覆盖游标。
+	AdvanceExecutionLocations(context.Context, string, int64, int64, []models.ChatExecutionLocation) error
 	// Create 创建一条可由权威 JSONL 重建的 Chat 索引。
 	Create(ctx context.Context, chat models.Chat) error
 	// Get 按标识返回 Chat 索引。
@@ -24,8 +30,8 @@ type ChatController interface {
 	ListByWakerBefore(ctx context.Context, wakerID string, beforeUpdatedAt int64, beforeID string, limit int) ([]models.Chat, error)
 	// ListByWakerUpdatedRange 按标题和最近活动时间范围分页返回一位伙伴的 Chat。
 	ListByWakerUpdatedRange(ctx context.Context, wakerID string, titleQuery string, updatedAtStart int64, updatedAtEnd int64, limit int, offset int) ([]models.Chat, error)
-	// ListRecentProjectIDsByWaker 按最近对话活动顺序返回伙伴使用过的去重项目标识。
-	ListRecentProjectIDsByWaker(ctx context.Context, wakerID string) ([]string, error)
+	// ListRecentProjectCandidates 按稳定活动游标读取有界项目候选。
+	ListRecentProjectCandidates(ctx context.Context, wakerID string, beforeUpdatedAt int64, beforeID string, limit int) ([]RecentProjectCandidate, error)
 	// ListIDsByWaker 返回伙伴拥有的全部 Chat 标识。
 	ListIDsByWaker(ctx context.Context, wakerID string) ([]string, error)
 	// CountByWaker 返回伙伴对话总数。
@@ -57,8 +63,12 @@ type chatController struct {
 	db *gorm.DB
 }
 
-// recentProjectIDRow 是最近项目查询使用的最小数据库行。
-type recentProjectIDRow struct {
+// RecentProjectCandidate 是最近项目查询所需的最小 Chat 投影。
+type RecentProjectCandidate struct {
+	// ID 是 Chat 的稳定标识。
+	ID string `gorm:"column:id"`
+	// UpdatedAt 是 Chat 最近活动时间。
+	UpdatedAt int64 `gorm:"column:updated_at"`
 	// ProjectID 是 Chat 创建时冻结的项目标识。
 	ProjectID string `gorm:"column:project_id"`
 }
@@ -231,36 +241,19 @@ func (c *chatController) ListByWakerUpdatedRange(
 	return chats, nil
 }
 
-// ListRecentProjectIDsByWaker 按最近对话活动顺序返回伙伴使用过的去重项目标识。
-func (c *chatController) ListRecentProjectIDsByWaker(
-	ctx context.Context,
-	wakerID string,
-) ([]string, error) {
-	var rows []recentProjectIDRow
-	err := controllerDB(ctx, c.db).
-		Model(&models.Chat{}).
-		Select("project_id").
-		Where("waker_id = ? AND project_id <> '' AND hidden_from_waker_history = ?", wakerID, false).
-		Order("updated_at DESC").
-		Order("id DESC").
-		Find(&rows).Error
+// ListRecentProjectCandidates 按活动时间与标识倒序返回有界候选。
+func (c *chatController) ListRecentProjectCandidates(ctx context.Context, wakerID string, beforeUpdatedAt int64, beforeID string, limit int) ([]RecentProjectCandidate, error) {
+	var rows []RecentProjectCandidate
+	query := controllerDB(ctx, c.db).Model(&models.Chat{}).Select("id, updated_at, project_id").
+		Where("waker_id = ? AND project_id <> '' AND hidden_from_waker_history = ?", wakerID, false)
+	if beforeID != "" {
+		query = query.Where("updated_at < ? OR (updated_at = ? AND id < ?)", beforeUpdatedAt, beforeUpdatedAt, beforeID)
+	}
+	err := query.Order("updated_at DESC").Order("id DESC").Limit(limit).Find(&rows).Error
 	if err != nil {
-		return nil, databaseError(
-			"list_recent_chat_project_ids",
-			"waker_id="+wakerID,
-			err,
-		)
+		return nil, databaseError("list_recent_chat_project_candidates", "waker_id="+wakerID, err)
 	}
-	seen := make(map[string]struct{}, len(rows))
-	projectIDs := make([]string, 0, len(rows))
-	for _, row := range rows {
-		if _, exists := seen[row.ProjectID]; exists {
-			continue
-		}
-		seen[row.ProjectID] = struct{}{}
-		projectIDs = append(projectIDs, row.ProjectID)
-	}
-	return projectIDs, nil
+	return rows, nil
 }
 
 // ListIDsByWaker 返回伙伴拥有的全部 Chat 标识。
@@ -475,9 +468,18 @@ func (c *chatController) AdvanceProjection(
 func (c *chatController) Delete(ctx context.Context, id string) error {
 	db := controllerDB(ctx, c.db)
 	var bindings []models.IMBinding
+	var affectedEntities []events.Resource
 	value, registered := c.db.Get(eventPublisherSetting)
 	publisher, publishesEvents := value.(events.Publisher)
 	if registered && publishesEvents && publisher != nil {
+		// 删除前保留普通 Chat 的伙伴归属，提交后不依赖已经移除的索引行恢复活动范围。
+		var chat models.Chat
+		if err := db.Select("id", "waker_id", "hidden_from_waker_history").Where("id = ?", id).Find(&chat).Error; err != nil {
+			return databaseError("capture_deleted_chat_activity", "chat_id="+id, err)
+		}
+		if chat.ID != "" && chat.WakerID != "" && !chat.HiddenFromWakerHistory {
+			affectedEntities = append(affectedEntities, eventsResource("waker", chat.WakerID))
+		}
 		// 团队成员关系在聚合删除末尾才清理，在此前捕获受影响的 IM 会话范围。
 		threads := db.Model(&models.ChannelThreadMember{}).Select("thread_id").Where("chat_id = ?", id)
 		links := db.Model(&models.IMConversationLink{}).Select("binding_id").Where("chat_id = ? OR thread_id IN (?)", id, threads)
@@ -485,13 +487,20 @@ func (c *chatController) Delete(ctx context.Context, id string) error {
 			return databaseError("capture_deleted_chat_im_bindings", "chat_id="+id, err)
 		}
 	}
+	// 执行定位属于同一可重建 Chat 查询投影，随原删除事务一起清理。
+	if err := db.Where("chat_id = ?", id).Delete(&models.ChatExecutionLocation{}).Error; err != nil {
+		return databaseError("delete_chat_execution_locations", "chat_id="+id, err)
+	}
+	if err := db.Where("chat_id = ?", id).Delete(&models.ChatExecutionLocationCursor{}).Error; err != nil {
+		return databaseError("delete_chat_execution_location_cursor", "chat_id="+id, err)
+	}
 	err := db.
 		Where("id = ?", id).
 		Delete(&models.Chat{}).Error
 	if err != nil {
 		return databaseError("delete_chat_projection", "chat_id="+id, err)
 	}
-	publishCommittedChange(ctx, c.db, "work-board", eventsResource("chat", id))
+	publishCommittedChange(ctx, c.db, "work-board", eventsResource("chat", id), affectedEntities...)
 	connections := make(map[string]bool, len(bindings))
 	for _, binding := range bindings {
 		publishCommittedChange(ctx, c.db, "im", eventsResource("binding", binding.ID))

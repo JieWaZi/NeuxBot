@@ -8,6 +8,7 @@ import (
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"path/filepath"
 	"slices"
@@ -23,6 +24,10 @@ type Config struct {
 	Bridges *commandbridge.Registry
 	// BridgeEnvironment 固定受信程序资产环境。
 	BridgeEnvironment []string
+	// Store 复用唯一共享配置的加密持久化。
+	Store controllers.PluginController
+	// CloseIdlePlugin 在身份管理前关闭相关闲置原生消费者。
+	CloseIdlePlugin func(context.Context, string) error
 }
 
 // Service 不持有第二份安装状态。
@@ -97,8 +102,11 @@ func (s *Service) readiness(ctx context.Context, version models.PluginVersion, c
 	return account, nil
 }
 
-// PrepareVersions 为首次安装与版本切换共同核验固定内容、依赖和授权，并保留占用到提交结束。
-func (s *Service) PrepareVersions(ctx context.Context, versions []models.PluginVersion, config models.PluginConfiguration) (func(), error) {
+// PrepareVersions 为首次安装和版本切换核验固定内容及拟提交配置，并将私有材料交回同一持久化用例。
+// 成功后更新传入配置，返回的占用须保留到配置及安装事务结束。
+func (s *Service) PrepareVersions(ctx context.Context, versions []models.PluginVersion, config *models.PluginConfiguration) (func(), error) {
+	preparedConfig := *config
+	preparedConfig.DeliveryMaterials = slices.Clone(config.DeliveryMaterials)
 	releases := []func(){}
 	release := func() {
 		for i := len(releases) - 1; i >= 0; i-- {
@@ -112,6 +120,9 @@ func (s *Service) PrepareVersions(ctx context.Context, versions []models.PluginV
 		}
 	}()
 	for _, version := range versions {
+		if err := s.CloseIdle(ctx, version.PluginID); err != nil {
+			return nil, err
+		}
 		root, err := packageplugin.ContentPath(s.config.DataDirectory, version.ContentPath)
 		if err != nil {
 			return nil, err
@@ -135,10 +146,26 @@ func (s *Service) PrepareVersions(ctx context.Context, versions []models.PluginV
 		}
 	}
 	for _, version := range versions {
-		if _, err := s.Readiness(ctx, version, config, false); err != nil {
+		account, err := s.Readiness(ctx, version, preparedConfig, false)
+		if err != nil {
 			return nil, err
 		}
+		if version.Package.Integration.Authentication != nil {
+			_, driver, err := s.Bridge(version)
+			if err != nil {
+				return nil, err
+			}
+			materials, err := ResolveDeliveryMaterials(ctx, driver, version, preparedConfig, account.ID)
+			if err != nil {
+				return nil, err
+			}
+			for _, material := range materials {
+				preparedConfig.DeliveryMaterials = slices.DeleteFunc(preparedConfig.DeliveryMaterials, func(old models.MCPSecretDefinition) bool { return old.ID == material.ID })
+				preparedConfig.DeliveryMaterials = append(preparedConfig.DeliveryMaterials, material)
+			}
+		}
 	}
+	*config = preparedConfig
 	prepared = true
 	return release, nil
 }
@@ -190,6 +217,12 @@ func (s *Service) bridge(version models.PluginVersion, acquire bool, uses ...aut
 		return nil, nil, nil, err
 	}
 	config := commandbridge.Config{Command: command, Args: args, Directory: root, DataDirectory: filepath.Join(s.config.DataDirectory, "plugins", "data", version.PluginID), PluginID: version.PluginID, Environment: s.config.BridgeEnvironment}
+	if s.config.Store != nil {
+		config.PrepareDelivery = func(ctx context.Context, driver *commandbridge.Driver, account authorization.Account) error {
+			return s.persistDelivery(ctx, version, driver, account.ID)
+		}
+		config.ClearDelivery = func(ctx context.Context) error { return s.clearDelivery(ctx, version.PluginID) }
+	}
 	// 同一来源快照的不同原生目录也必须各自固定入口，不能复用其他目标的Driver。
 	bridgeDigest := version.Digest + ":" + filepath.ToSlash(version.Package.SourcePath)
 	if acquire {
@@ -197,4 +230,20 @@ func (s *Service) bridge(version models.PluginVersion, acquire bool, uses ...aut
 	}
 	auth, driver, err := s.config.Bridges.Get(version.PluginID, bridgeDigest, config, declaration.Scopes)
 	return auth, driver, nil, err
+}
+
+// CloseIdle 由原生消费者所有者回收闲置资源，活动执行保持忙状态。
+func (s *Service) CloseIdle(ctx context.Context, id string) error {
+	if s.config.CloseIdlePlugin != nil {
+		return s.config.CloseIdlePlugin(ctx, id)
+	}
+	return nil
+}
+
+// IdentityLease 只固定已有材料引用的共享身份，不解析或创建授权程序。
+func (s *Service) IdentityLease(id string, uses ...authorization.Usage) (func(...authorization.Usage), func(), error) {
+	if s.config.Bridges == nil {
+		return func(...authorization.Usage) {}, func() {}, nil
+	}
+	return s.config.Bridges.AcquireIdentity(id, uses...)
 }

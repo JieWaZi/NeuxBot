@@ -67,6 +67,7 @@ export type WorkbenchContentTab = {
 };
 
 type RightWorkbenchProps = {
+  parentBusy: boolean;
   contentTab?: WorkbenchContentTab;
   displayWidth?: number;
   animateLayout?: boolean;
@@ -99,6 +100,7 @@ export function RightWorkbench({
   scopeKey,
   sourceRoots,
   parentChatId,
+  parentBusy,
   terminalWorkingDirectory,
   workspaceDirectory,
   fileWorkspaceProps,
@@ -467,6 +469,7 @@ export function RightWorkbench({
           }
         >
           <SideChatWorkbenchView
+            parentBusy={parentBusy}
             tab={tab}
             onChatCreated={(chatId) =>
               dispatch({ type: "bind-sidechat", tabId: tab.id, chatId })

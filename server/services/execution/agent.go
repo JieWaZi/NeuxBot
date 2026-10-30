@@ -13,9 +13,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -42,7 +42,7 @@ func agentIdentity(value string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (m *service) prepareAgent(request *runtimecontract.RunRequest, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, facts *executionMessageFacts, automaticRunIDs ...string) (func(), func(), func(runtimecontract.Result), error) {
+func (m *service) prepareAgent(plan *runtimecontract.SessionPlan, turn *runtimecontract.TurnInput, session runtimecontract.SessionDirective, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, facts *executionMessageFacts, automaticRunIDs ...string) (func(), func(), func(runtimecontract.Result), error) {
 	if m.agent == nil {
 		return nil, nil, nil, nil
 	}
@@ -62,16 +62,16 @@ func (m *service) prepareAgent(request *runtimecontract.RunRequest, chat models.
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	for _, item := range request.Skills {
+	for _, item := range plan.Skills {
 		if item.Name == constants.AgentCLISkillName {
 			return nil, nil, nil, status_error.SkillContentInvalid
 		}
 	}
-	request.Skills = append(request.Skills, runtimecontract.Skill{Name: constants.AgentCLISkillName, Path: skill})
+	plan.Skills = append(plan.Skills, runtimecontract.Skill{Name: constants.AgentCLISkillName, Path: skill})
 	binary = builtinskills.CLIPath(skill)
-	request.Instructions = append(request.Instructions, runtimecontract.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxBot-provided operations, read the ally skill at %q. Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands. Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract.", filepath.Join(skill, "SKILL.md"), binary, filepath.Join(skill, "references", "wiki-guide.md"))})
+	plan.Instructions = append(plan.Instructions, runtimecontract.Instruction{Name: "软件能力", Content: fmt.Sprintf("For NeuxBot-provided operations, read the ally skill at %q. Its executable is %q; invoke this exact quoted path with capabilities to discover the current authorized commands. Resolve all skill-relative paths from the directory containing SKILL.md, never from the working directory. For knowledge tasks, read %q. These paths are supplied directly; do not search the workspace or global installation directories. Read only the relevant guide and live operation contract.", filepath.Join(skill, "SKILL.md"), binary, filepath.Join(skill, "references", "wiki-guide.md"))})
 	roots := []string{}
-	for _, candidate := range append([]string{request.Workspace.Path}, chat.AdditionalWorkingDirectories...) {
+	for _, candidate := range append([]string{plan.Workspace.Path}, chat.AdditionalWorkingDirectories...) {
 		if actual, err := filepath.EvalSymlinks(candidate); err == nil {
 			roots = append(roots, actual)
 		}
@@ -124,11 +124,11 @@ func (m *service) prepareAgent(request *runtimecontract.RunRequest, chat models.
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	key := agentIdentity(chat.ID + ":" + request.Target.RuntimeID + ":" + request.Target.AccountID)
+	key := agentIdentity(chat.ID + ":" + plan.Target.RuntimeID + ":" + plan.Target.AccountID)
 	m.agentSessions.mutex.Lock()
 	slot := m.agentSessions.slots[key]
-	if request.Session.Mode == runtimecontract.SessionModeNew || slot.directory == "" || slot.sessionID != request.Session.ID {
-		slot = agentSessionSlot{sessionID: request.Session.ID, directory: filepath.Join(root, "agent-contexts", key, util.New())}
+	if session.Mode == runtimecontract.SessionModeNew || slot.directory == "" || slot.sessionID != session.ID {
+		slot = agentSessionSlot{sessionID: session.ID, directory: filepath.Join(root, "agent-contexts", key, util.New())}
 	}
 	path, err := agentcapability.WriteConnection(slot.directory, "connection.json", agentcapability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: m.agentEndpoint, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
 	if err == nil {
@@ -139,18 +139,12 @@ func (m *service) prepareAgent(request *runtimecontract.RunRequest, chat models.
 		revoke()
 		return nil, nil, nil, err
 	}
-	request.UserInputState = m.elicitations.inputState(executionID)
-	if request.Target.Environment == nil {
-		request.Target.Environment = map[string]string{}
+	turn.UserInputState = m.elicitations.inputState(executionID)
+	turn.LaunchEnvironment = map[string]string{
+		constants.AgentCLIContextEnvironment: path,
+		constants.AgentCLIBinaryEnvironment:  binary,
 	}
-	request.Target.Environment[constants.AgentCLIContextEnvironment] = path
-	request.Target.Environment[constants.AgentCLIBinaryEnvironment] = binary
 
-	inheritedPath := request.Target.Environment["PATH"]
-	if inheritedPath == "" {
-		inheritedPath = os.Getenv("PATH")
-	}
-	request.Target.Environment["PATH"] = filepath.Dir(binary) + string(filepath.ListSeparator) + inheritedPath
 	settle := func(result runtimecontract.Result) {
 		if sessionID := reliableRuntimeSessionID(result); sessionID != "" {
 			m.agentSessions.mutex.Lock()

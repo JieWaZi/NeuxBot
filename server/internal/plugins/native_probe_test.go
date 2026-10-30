@@ -41,3 +41,26 @@ func TestEmitNativeAcceptance(t *testing.T) {
 	bytes, _ := json.Marshal(map[string]string{"root": root, "workspace": workspace, "home": home, "claude": claude.Root})
 	t.Log(string(bytes))
 }
+
+func TestPrepareNativeTargetWithDigestDoesNotReReadVerifiedRoot(t *testing.T) {
+	root := t.TempDir()
+	fixtureFile(t, root, ".codex-plugin/plugin.json", `{"name":"verified","version":"1.0.0"}`)
+	pkg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := pluginArchive.Digest(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(root); err != nil {
+		t.Fatal(err)
+	}
+	native, err := PrepareNativeTargetWithDigest(t.TempDir(), "verified", pkg, root, "codex", digest)
+	if err != nil {
+		t.Fatalf("verified digest should avoid a second root scan: %v", err)
+	}
+	if native.Digest != digest {
+		t.Fatalf("native digest = %q, want %q", native.Digest, digest)
+	}
+}

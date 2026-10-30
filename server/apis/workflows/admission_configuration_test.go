@@ -1,6 +1,8 @@
 package workflows
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"encoding/json"
 	"sync"
@@ -9,7 +11,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -32,7 +34,7 @@ func (e *mutableAdmissionEnvironment) Get(ctx context.Context, id string) (model
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 	environment.DefaultReasoning = e.initialReasoning
-	environment.Detection.Models[0].ReasoningOptions = []runtimecontract.ReasoningOption{{ID: "low"}, {ID: "high"}}
+	environment.Detection.Models[0].ReasoningOptions = []runtimeconfig.ReasoningOption{{ID: "low"}, {ID: "high"}}
 	override := environment.Detection.Models[0]
 	override.ID, override.Name = "override", "override"
 	environment.Detection.Models = append(environment.Detection.Models, override)
@@ -53,7 +55,7 @@ type observedWorkerConfiguration struct {
 	// reasoning 是实际派发推理强度。
 	reasoning string
 	// permission 是 Runtime 实际收到的执行权限等级。
-	permission runtimecontract.PermissionLevel
+	permission runtimeconfig.PermissionLevel
 }
 
 // admissionConfigurationRuntime 仅替代模型协议边界，完整 JSONL 与结果对账仍经过 Core。
@@ -67,10 +69,10 @@ type admissionConfigurationRuntime struct {
 func (*admissionConfigurationRuntime) ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
 	return runtimecontract.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
 }
-func (*admissionConfigurationRuntime) Runtimes() []runtimecontract.RuntimeSummary {
+func (*admissionConfigurationRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
 	return (&fixtureRuntime{}).Runtimes()
 }
-func (r *admissionConfigurationRuntime) Run(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink) runtimecontract.Result {
+func (r *admissionConfigurationRuntime) Run(ctx context.Context, request fixtureInvocation, sink runtimecontract.EventSink) runtimecontract.Result {
 	r.observations <- observedWorkerConfiguration{
 		account: request.Target.AccountID, model: request.Policy.Model,
 		reasoning: request.Policy.Reasoning, permission: request.Policy.Execution.PermissionLevel,
@@ -138,9 +140,9 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 		return state.Run.Status == constants.WorkflowRunStatusFailed
 	})
 	for index, model := range []string{"fixture", "override"} {
-		permission := runtimecontract.PermissionLevelDefault
+		permission := runtimeconfig.PermissionLevelDefault
 		if index == 1 {
-			permission = runtimecontract.PermissionLevelFullAccess
+			permission = runtimeconfig.PermissionLevelFullAccess
 		}
 		var actual observedWorkerConfiguration
 		select {
@@ -165,9 +167,9 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 		return state.Run.Status == constants.WorkflowRunStatusSucceeded
 	})
 	for index, model := range []string{"fixture", "override"} {
-		permission := runtimecontract.PermissionLevelDefault
+		permission := runtimeconfig.PermissionLevelDefault
 		if index == 1 {
-			permission = runtimecontract.PermissionLevelFullAccess
+			permission = runtimeconfig.PermissionLevelFullAccess
 		}
 		var actual observedWorkerConfiguration
 		select {

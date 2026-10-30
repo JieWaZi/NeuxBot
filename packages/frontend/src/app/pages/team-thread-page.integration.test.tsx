@@ -31,6 +31,7 @@ import type {
   ListChannelTimelineResponse,
 } from "@/shared/api/generated/types.gen";
 import { TooltipProvider } from "@/shared/ui/tooltip";
+import { AppSceneWorkspaceContextProvider } from "@/shared/workspace/app-scene-workspace";
 import { WorkspaceProvider } from "@/shared/workspace/workspace-context";
 import { TeamThreadPage } from "./team-thread-page";
 
@@ -105,6 +106,7 @@ describe("团队首发完整路由交接", () => {
       const history = deferred<ListChannelTimelineResponse>();
       const received = vi.fn();
       let historyRequests = 0;
+      let submissionId = "";
       const text = "团队首发连续可见";
       const thread = {
         id: "thread-1",
@@ -194,16 +196,26 @@ describe("团队首发完整路由交接", () => {
             ],
           }),
         ),
+        http.get(`${api}/wakers/lead/recent-project`, () =>
+          HttpResponse.json({ projectId: "project" }),
+        ),
         http.get(`${api}/chats`, () =>
-          HttpResponse.json({
-            resources: [],
-            recentProjectId: "project",
-            hasMore: false,
-          }),
+          HttpResponse.json({ resources: [], hasMore: false }),
+        ),
+        http.get(`${api}/wakers/lead/plugin-references`, () =>
+          HttpResponse.json([]),
         ),
         http.get(`${api}/wakers/lead/skills`, () => HttpResponse.json([])),
         http.get(`${api}/wakers/lead/connectors`, () => HttpResponse.json([])),
-        http.post(`${api}/channels/team-1/threads`, async () => {
+        http.post(`${api}/channels/team-1/threads`, async ({ request }) => {
+          const body = await request.json();
+          if (
+            body &&
+            typeof body === "object" &&
+            "clientRequestId" in body &&
+            typeof body.clientRequestId === "string"
+          )
+            submissionId = body.clientRequestId;
           received();
           return HttpResponse.json(await creation.promise);
         }),
@@ -278,7 +290,27 @@ describe("团队首发完整路由交接", () => {
               <WorkspaceProvider>
                 <WorkbenchProvider>
                   <ChatQueueProvider>
-                    <RouterProvider router={router} />
+                    <AppSceneWorkspaceContextProvider
+                      value={{
+                        routeSceneId: "team-scene",
+                        snapshot: {
+                          activeTabId: "team-scene",
+                          tabs: [
+                            {
+                              id: "team-scene",
+                              label: "团队首发",
+                              kind: "route",
+                              lastUsed: 0,
+                              mountKey: "team-scene",
+                            },
+                          ],
+                        },
+                        dispatch: () => {},
+                        syncWorkspace: () => {},
+                      }}
+                    >
+                      <RouterProvider router={router} />
+                    </AppSceneWorkspaceContextProvider>
                   </ChatQueueProvider>
                 </WorkbenchProvider>
               </WorkspaceProvider>
@@ -359,6 +391,7 @@ describe("团队首发完整路由交接", () => {
                 coordinator: true,
                 message: {
                   id: "user-1",
+                  submissionId,
                   role: "user",
                   actor: "user",
                   content: text,
@@ -371,6 +404,7 @@ describe("团队首发完整路由交接", () => {
                 coordinator: true,
                 message: {
                   id: execution.id,
+                  submissionId,
                   executionId: execution.id,
                   role: "assistant",
                   status,

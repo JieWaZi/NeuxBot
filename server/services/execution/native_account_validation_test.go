@@ -1,6 +1,8 @@
 package execution
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"errors"
 	"path/filepath"
@@ -8,8 +10,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -26,9 +27,9 @@ type nativeValidationRuntime struct {
 }
 
 // Detect 使额外探测返回不可用，证明执行配置不依赖设置查询的成功。
-func (r *nativeValidationRuntime) Detect(context.Context, runtimecontract.DetectRequest) runtimecontract.DetectionResult {
+func (r *nativeValidationRuntime) Detect(context.Context, runtimeconfig.DetectRequest) runtimeconfig.DetectionResult {
 	r.probes++
-	return runtimecontract.DetectionResult{State: runtimecontract.DetectionStateUnavailable}
+	return runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateUnavailable}
 }
 
 // TestNativeAccountValidationDoesNotProbe 防止配置准入要求真实 ChatHost 提供探测接口或启动额外会话。
@@ -100,7 +101,7 @@ func TestNativeAccountValidationKeepsAdmissionGuards(t *testing.T) {
 			environment.Enabled = false
 		}, status_error.RuntimeUnavailable},
 		{"unavailable CLI", func(_ *models.AIAccount, environment *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
-			environment.Detection.State = runtimecontract.DetectionStateUnavailable
+			environment.Detection.State = runtimeconfig.DetectionStateUnavailable
 		}, status_error.RuntimeUnavailable},
 		{"missing transport", func(_ *models.AIAccount, _ *models.RuntimeEnvironment, config *ExecutionConfiguration) {
 			config.RequiredConnectorTransport = constants.RuntimeConnectorTransportStreamableHTTP
@@ -164,8 +165,8 @@ func nativeValidationAccounts(t *testing.T, account models.AIAccount, credential
 func nativeValidationEnvironment(runtimeID string) models.RuntimeEnvironment {
 	return models.RuntimeEnvironment{
 		RuntimeID: runtimeID, BaseRuntimeID: runtimeID, Enabled: true, DefaultModel: "auto",
-		Detection: runtimecontract.DetectionResult{State: runtimecontract.DetectionStateReady, Models: []runtimecontract.ModelOption{{
-			ID: "auto", ReasoningOptions: []runtimecontract.ReasoningOption{{ID: "medium"}}, PermissionLevels: []runtimecontract.PermissionLevel{runtimecontract.PermissionLevelDefault},
+		Detection: runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Models: []runtimeconfig.ModelOption{{
+			ID: "auto", ReasoningOptions: []runtimeconfig.ReasoningOption{{ID: "medium"}}, PermissionLevels: []runtimeconfig.PermissionLevel{runtimeconfig.PermissionLevelDefault},
 		}}},
 	}
 }
@@ -174,12 +175,12 @@ func nativeValidationEnvironment(runtimeID string) models.RuntimeEnvironment {
 func nativeValidationHost(t *testing.T, runtimeID string) *runtimehost.ChatHost {
 	t.Helper()
 	return runtimehost.NewChat(runtimehost.ChatConfig{
-		Runtimes: func() []runtimecontract.RuntimeSummary {
-			return []runtimecontract.RuntimeSummary{{ID: runtimeID, BaseRuntimeID: runtimeID, InstructionFileName: "AGENTS.md"}}
+		Runtimes: func() []runtimeconfig.RuntimeSummary {
+			return []runtimeconfig.RuntimeSummary{{ID: runtimeID, BaseRuntimeID: runtimeID, InstructionFileName: "AGENTS.md"}}
 		},
-		Launch: func(runtimecontract.RuntimeTarget, runtimecontract.DetectionResult) (runtimecontract.LaunchFacts, error) {
+		Launch: func(runtimeconfig.RuntimeTarget, runtimeconfig.DetectionResult) (runtimeconfig.LaunchFacts, error) {
 			t.Error("configuration admission started a native process")
-			return runtimecontract.LaunchFacts{}, status_error.RuntimeUnavailable
+			return runtimeconfig.LaunchFacts{}, status_error.RuntimeUnavailable
 		},
 	})
 }

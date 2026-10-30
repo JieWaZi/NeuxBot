@@ -12,12 +12,12 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -473,6 +473,121 @@ func TestRuntimeEventSinkBatchesToolUpdatesWithoutLosingContent(t *testing.T) {
 	}
 }
 
+func TestRuntimeEventSinkStoresGrowingToolSnapshotsWithoutQuadraticJSONL(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "ababcdcdababcdcdababcdcdababcdcd"
+	if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, _ := newRuntimeEventSinkForTest(store, chatID)
+	updates := make([]json.RawMessage, 0, 128)
+	for index := range 128 {
+		payload := marshalData(map[string]any{
+			"toolCallId": "tool", "content": []any{map[string]any{
+				"type": "content", "content": map[string]any{"type": "text", "text": strings.Repeat("abcdef0123456789", (index+1)*64)},
+			}},
+		})
+		updates = append(updates, payload)
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: runtimecontract.EventTypeToolUpdate, Data: payload}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := sink.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	records, err := store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logBytes int64
+	for _, record := range records {
+		logBytes += record.Length
+	}
+	if logBytes > 4*int64(len(updates[len(updates)-1])) {
+		t.Fatalf("JSONL size = %d, final snapshot = %d; cumulative snapshots were stored repeatedly", logBytes, len(updates[len(updates)-1]))
+	}
+	t.Logf("JSONL size = %d bytes; final snapshot = %d bytes", logBytes, len(updates[len(updates)-1]))
+	messages, err := messageview.ReplayMessages(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || len(messages[0].RuntimeEvents) != len(updates) {
+		t.Fatalf("replayed %d runtime events, want %d", len(messages[0].RuntimeEvents), len(updates))
+	}
+	for index, event := range messages[0].RuntimeEvents {
+		if !reflect.DeepEqual(event.Data, updates[index]) {
+			t.Fatalf("replayed update %d differs from original", index)
+		}
+	}
+	public, err := messageview.ReplayPublicMessages(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	window, err := store.ReadMessageWindow(chatID, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	windowPublic, err := messageview.ReplayPublicMessages(window.Records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(public) != 1 || len(windowPublic) != 1 || !reflect.DeepEqual(public[0].DisplayParts, windowPublic[0].DisplayParts) {
+		t.Fatalf("public projection differs across full and paged replay")
+	}
+	projection, err := store.ReadProjectionAfter(chatID, records[len(records)-2].Sequence, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectionPublic, err := messageview.ReplayPublicMessages(projection.Records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projectionPublic) != 1 || !reflect.DeepEqual(public[0].DisplayParts, projectionPublic[0].DisplayParts) {
+		t.Fatalf("public projection differs after cursor replay")
+	}
+}
+
+func TestRuntimeEventSinkCompactedToolUpdatesKeepFullFileDiff(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "abcddcbaabcddcbaabcddcbaabcddcba"
+	if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, _ := newRuntimeEventSinkForTest(store, chatID)
+	send := func(kind runtimecontract.EventType, payload map[string]any) {
+		t.Helper()
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimecontract.Event{Type: kind, Data: marshalData(payload)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	send(runtimecontract.EventTypeToolUse, map[string]any{"toolCallId": "edit", "name": "file_modify", "status": "in_progress"})
+	for _, newText := range []string{strings.Repeat("first line\n", 40), strings.Repeat("first line\n", 40) + "last line\n"} {
+		send(runtimecontract.EventTypeToolUpdate, map[string]any{"toolCallId": "edit", "content": []any{map[string]any{
+			"type": "diff", "path": "/workspace/project/main.go", "oldText": "old\n", "newText": newText,
+		}}})
+	}
+	send(runtimecontract.EventTypeToolResult, map[string]any{"toolCallId": "edit", "status": "completed"})
+	records, err := store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := messageview.ReplayMessages(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || !reflect.DeepEqual(messages[0].FileChangeDiffs, []messageview.MessageFileChangeDiff{{
+		Path: "main.go", OldContent: "old\n", NewContent: strings.Repeat("first line\n", 40) + "last line\n",
+	}}) {
+		t.Fatalf("compacted updates lost complete file diff: %+v", messages)
+	}
+}
+
 func chatCreatedInput() eventlog.AppendInput {
 	return eventlog.AppendInput{
 		Type: constants.ChatEventTypeCreated,
@@ -566,6 +681,8 @@ func TestStartedTurnUsesExecutionAsAssistantIdentityWithoutPlaceholderFact(t *te
 
 // runtimeEventTestJournal 为 Runtime 聚合测试提供最小权威事实端口。
 type runtimeEventTestJournal struct {
+	// Journal 保留本测试不使用的执行查询边界。
+	chatservice.Journal
 	// store 保存测试中的权威 JSONL 记录。
 	store *eventlog.Store
 	// live 接收不入 JSONL 的 transient 消息快照。

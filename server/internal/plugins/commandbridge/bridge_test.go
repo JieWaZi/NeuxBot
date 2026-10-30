@@ -366,3 +366,15 @@ func TestAuthorizationPreparationDeadlineAndCancellation(t *testing.T) {
 		t.Fatalf("challenge retained preparation deadline: %+v", authorizer.Snapshot())
 	})
 }
+
+func TestStatusReadDoesNotPreparePrivateDelivery(t *testing.T) {
+	driver := testDriver(t, "ready")
+	prepared := 0
+	driver.config.PrepareDelivery = func(context.Context, *Driver, authorization.Account) error { prepared++; return nil }
+	if _, err := driver.Status(context.Background(), true); err != nil {
+		t.Fatal(err)
+	}
+	if prepared != 0 {
+		t.Fatal("status read wrote private delivery material outside authorization ownership")
+	}
+}

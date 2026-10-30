@@ -16,6 +16,7 @@ import {
 } from "vitest";
 import "@/shared/i18n";
 import { client } from "@/shared/api/generated/client.gen";
+import { getChatQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import type * as SceneWorkspace from "@/shared/workspace/app-scene-workspace";
 import { chatWorkspaceHandlers } from "../test/chat-workspace-handlers";
@@ -211,6 +212,7 @@ it("已有工作流相同文本的连续发送使用独立接纳身份", async (
         return HttpResponse.json({
           id: "saved-session",
           chatId: "saved-chat",
+          chat: { id: "saved-chat", latestSequence: 1 },
           acceptedExecutionId: `execution-${number}`,
           execution: {
             id: `execution-${number}`,
@@ -489,6 +491,7 @@ it.each([
         return HttpResponse.json({
           id: "session-1",
           chatId: "first-chat",
+          chat: { id: "first-chat", latestSequence: 1 },
           acceptedExecutionId: "real-execution",
           execution: {
             id: "real-execution",
@@ -621,3 +624,89 @@ vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
   subscribeGlobalEvents: () => () => {},
 }));
+
+it("已有创作接纳直接交付完整聊天快照，不补读详情或刷新版本运行目录", async () => {
+  let detailReads = 0;
+  server.use(
+    http.get(`${api}/chats/snapshot-chat`, () => {
+      detailReads++;
+      return HttpResponse.json({
+        chat: { id: "snapshot-chat", latestSequence: 1 },
+      });
+    }),
+    http.get(`${api}/chats/snapshot-chat/messages`, () =>
+      HttpResponse.json({ resources: [], latestSequence: 1 }),
+    ),
+    http.post(`${api}/workflows/flow/creation/messages`, () =>
+      HttpResponse.json({
+        id: "session",
+        chatId: "snapshot-chat",
+        acceptedExecutionId: "accepted",
+        chat: {
+          id: "snapshot-chat",
+          latestSequence: 7,
+          activeExecutionId: "accepted",
+        },
+        execution: {
+          id: "accepted",
+          userMessageId: "input",
+          status: "running",
+        },
+      }),
+    ),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const invalidation = vi.spyOn(queryClient, "invalidateQueries");
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <WorkbenchProvider>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter>
+              <WorkflowChatPane
+                id="flow"
+                session={{
+                  id: "session",
+                  chatId: "snapshot-chat",
+                  defaults: { runtimeId: "codex" },
+                }}
+                onNewChat={() => {}}
+                mainContent={{
+                  contentId: "canvas",
+                  title: "画布",
+                  content: <div>画布</div>,
+                }}
+              />
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </WorkbenchProvider>
+    </QueryClientProvider>,
+  );
+  const input = screen.getByRole("textbox", { name: /输入消息/ });
+  const user = userEvent.setup();
+  await user.type(input, "解释当前流程");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /^发送消息$/ })).toBeEnabled(),
+  );
+  await user.keyboard("{Enter}");
+  await waitFor(() =>
+    expect(
+      queryClient.getQueryData(
+        getChatQueryKey({ path: { chatId: "snapshot-chat" } }),
+      ),
+    ).toMatchObject({
+      chat: { latestSequence: 7, activeExecutionId: "accepted" },
+    }),
+  );
+  expect(detailReads).toBe(1);
+  expect(
+    invalidation.mock.calls.some(([filter]) =>
+      (JSON.stringify(filter?.queryKey) ?? "").includes("Workflow"),
+    ),
+  ).toBe(false);
+  view.unmount();
+  queryClient.clear();
+});

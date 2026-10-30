@@ -1,6 +1,8 @@
 package workflows
 
 import (
+	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+
 	"context"
 	"encoding/json"
 	"os"
@@ -10,7 +12,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -28,11 +30,11 @@ type releaseFixtureRuntime struct {
 	emptyBlocking bool
 }
 
-func (r *releaseFixtureRuntime) Run(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink) runtimecontract.Result {
+func (r *releaseFixtureRuntime) Run(ctx context.Context, request fixtureInvocation, sink runtimecontract.EventSink) runtimecontract.Result {
 	invocation := util.New()
 	started, _ := json.Marshal(runtimecontract.InvocationStartedData{InvocationID: invocation})
 	failed := func(err error) runtimecontract.Result {
-		return runtimecontract.Result{ExitCode: 1, Failure: &runtimecontract.Failure{Code: runtimecontract.FailureCodeProcessExited, Stage: "runtime", Message: err.Error(), Transience: runtimecontract.FailureTransiencePermanent}}
+		return runtimecontract.Result{ExitCode: 1, Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeProcessExited, Stage: "runtime", Message: err.Error(), Transience: runtimediagnostic.FailureTransiencePermanent}}
 	}
 	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: started}); err != nil {
 		return failed(err)

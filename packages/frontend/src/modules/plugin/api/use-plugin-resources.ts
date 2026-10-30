@@ -4,11 +4,11 @@ import { useQueryEvents } from "@/shared/api/use-query-events";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
 import type { PluginDetail } from "../model/plugin-view";
 
-/** 目录中的组件与执行引用复用完整插件快照，不把包内能力复制成独立资源。 */
+/** 管理目录与组件详情读取完整插件快照。 */
 export function usePluginResources(wakerId: string | undefined, active = true) {
   const queryKey = [
     {
-      _id: wakerId ? "listWakerPluginReferences" : "listPluginResources",
+      _id: wakerId ? "listWakerPluginResources" : "listPluginResources",
       path: { wakerId },
     },
   ] as const;

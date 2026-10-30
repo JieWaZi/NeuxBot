@@ -280,16 +280,9 @@ func (s *Store) readMessageIndexedLocked(
 	defer indexFile.Close()
 	targetHash := sha256.Sum256([]byte(messageID))
 	var target indexEntry
-	endOffset := int64(0)
 	err = scanIndexEntries(indexFile, 1, latestSequence, func(entry indexEntry) bool {
-		if target.sequence == 0 {
-			if entry.isMessageStart() && entry.messageHash == targetHash {
-				target = entry
-			}
-			return true
-		}
-		if entry.isMessageStart() {
-			endOffset = entry.offset
+		if entry.isMessageStart() && entry.messageHash == targetHash {
+			target = entry
 			return false
 		}
 		return true
@@ -300,21 +293,59 @@ func (s *Store) readMessageIndexedLocked(
 	if target.sequence == 0 {
 		return []Record{}, nil
 	}
-	if endOffset == 0 {
-		last, readErr := readIndexEntryAt(indexFile, latestSequence)
-		if readErr != nil {
-			return nil, readErr
-		}
-		endOffset = last.endOffset()
-	}
-	records, err := s.readRangeLocked(chatID, target.offset, endOffset, target.sequence)
+	return s.readMessageAtIndexedLocked(chatID, target.sequence, latestSequence, indexFile)
+}
+
+// ReadMessageAt 按原日志中的已知消息入口读取完整事实，不扫描历史前缀。
+func (s *Store) ReadMessageAt(chatID string, sequence int64) ([]Record, error) {
+	state, err := s.state(chatID)
 	if err != nil {
 		return nil, err
 	}
-	if target.sequence == 1 {
-		return records, nil
+	state.mutex.Lock()
+	defer state.mutex.Unlock()
+	return queryWithRecoveredIndexLocked(s, chatID, state, func() ([]Record, error) {
+		file, err := os.Open(s.indexPath(chatID))
+		if err != nil {
+			return nil, status_error.ChatLogError
+		}
+		defer file.Close()
+		return s.readMessageAtIndexedLocked(chatID, sequence, state.lastSequence, file)
+	})
+}
+
+// readMessageAtIndexedLocked 仅扫描已定位消息自身的范围，正文仍从原 JSONL 解码。
+func (s *Store) readMessageAtIndexedLocked(chatID string, sequence, latest int64, file *os.File) ([]Record, error) {
+	target, err := readIndexEntryAt(file, sequence)
+	if err != nil {
+		return nil, err
 	}
-	createdEntry, err := readIndexEntryAt(indexFile, 1)
+	if !target.isMessageStart() {
+		return nil, status_error.ChatLogIndexCorrupted
+	}
+	endOffset := int64(0)
+	err = scanIndexEntries(file, sequence+1, latest, func(entry indexEntry) bool {
+		if entry.isMessageStart() {
+			endOffset = entry.offset
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		return nil, err
+	}
+	if endOffset == 0 {
+		last, err := readIndexEntryAt(file, latest)
+		if err != nil {
+			return nil, err
+		}
+		endOffset = last.endOffset()
+	}
+	records, err := s.readRangeLocked(chatID, target.offset, endOffset, sequence)
+	if err != nil {
+		return nil, err
+	}
+	createdEntry, err := readIndexEntryAt(file, 1)
 	if err != nil {
 		return nil, err
 	}

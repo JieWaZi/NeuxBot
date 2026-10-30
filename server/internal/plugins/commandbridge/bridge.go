@@ -43,6 +43,10 @@ type Config struct {
 	Scopes []string
 	// Environment 是受信程序资产，不来自会话响应。
 	Environment []string
+	// PrepareDelivery 在独占授权完成后保存已校验的私有交付材料。
+	PrepareDelivery func(context.Context, *Driver, authorization.Account) error
+	// ClearDelivery 在官方退出成功后清除已有私有交付材料。
+	ClearDelivery func(context.Context) error
 }
 
 // Component 是本轮已经获准的稳定组件与目标。
@@ -84,6 +88,9 @@ func (d *Driver) Initialize(context.Context, func(authorization.Device) error) e
 // Logout 调用包内协议清理受管身份。
 func (d *Driver) Logout(ctx context.Context) error {
 	_, err := d.call(ctx, constants.PluginAuthLogoutMethod, "", nil, nil, nil)
+	if err == nil && d.config.ClearDelivery != nil {
+		err = d.config.ClearDelivery(ctx)
+	}
 	return err
 }
 
@@ -108,7 +115,19 @@ func (d *Driver) Status(ctx context.Context, _ bool) (authorization.Account, err
 	if result.Account.Scopes == nil {
 		result.Account.Scopes = []string{}
 	}
+
 	return result.Account, nil
+}
+
+// CompleteLogin 仅在授权所有者完成最终核验后保存材料，普通状态读取不产生私有写入。
+func (d *Driver) CompleteLogin(ctx context.Context, account authorization.Account) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if d.config.PrepareDelivery != nil {
+		return d.config.PrepareDelivery(ctx, d, account)
+	}
+	return nil
 }
 
 // Login 兼容既有授权驱动接口，正式流程使用宿主会话身份。

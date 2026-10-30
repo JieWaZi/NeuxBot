@@ -1,7 +1,9 @@
 package global
 
 import (
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
 
 	"context"
 	"errors"
@@ -12,7 +14,6 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -33,7 +34,7 @@ func TestKnowledgeModelSelectionDoesNotRequireExecutionServiceOrPartner(t *testi
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	ExecutionService = nil
 	defer func() { RuntimeEnvironmentControllerManager = previousRuntime; ExecutionService = previousExecution }()
-	environment := models.RuntimeEnvironment{ID: "runtime", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, DefaultModel: "known-model", Detection: runtimecontract.DetectionResult{State: runtimecontract.DetectionStateReady, Models: []runtimecontract.ModelOption{{ID: "known-model"}}}}
+	environment := models.RuntimeEnvironment{ID: "runtime", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, DefaultModel: "known-model", Detection: runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Models: []runtimeconfig.ModelOption{{ID: "known-model"}}}}
 	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +58,7 @@ func TestKnowledgeModelAcceptsRunnableCLIWithoutIsolationCapability(t *testing.T
 	previous := RuntimeEnvironmentControllerManager
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	defer func() { RuntimeEnvironmentControllerManager = previous }()
-	environment := models.RuntimeEnvironment{ID: "unverified", RuntimeID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, Enabled: true, Detection: runtimecontract.DetectionResult{State: runtimecontract.DetectionStateReady}}
+	environment := models.RuntimeEnvironment{ID: "unverified", RuntimeID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, Enabled: true, Detection: runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady}}
 	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +86,7 @@ func TestKnowledgeUnknownCapabilityAcceptsValidManagedAccount(t *testing.T) {
 	if err := database.DB.Create(&account).Error; err != nil {
 		t.Fatal(err)
 	}
-	environment := models.RuntimeEnvironment{ID: "no-system-login", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, Detection: runtimecontract.DetectionResult{State: runtimecontract.DetectionStateReady, Auth: runtimecontract.AuthStatusMissing}}
+	environment := models.RuntimeEnvironment{ID: "no-system-login", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, Detection: runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Auth: runtimeconfig.AuthStatusMissing}}
 	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +126,7 @@ func TestKnowledgeGenerationWaitsForSubscriptionLeaseAndCanBeCancelled(t *testin
 		t.Fatal(err)
 	}
 	binary, _ := os.Executable()
-	environment := models.RuntimeEnvironment{ID: "queue-runtime", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, Binary: binary, Detection: runtimecontract.DetectionResult{State: runtimecontract.DetectionStateReady}}
+	environment := models.RuntimeEnvironment{ID: "queue-runtime", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, Binary: binary, Detection: runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady}}
 	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
 		t.Fatal(err)
 	}

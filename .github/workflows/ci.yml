@@ -191,7 +191,6 @@ jobs:
           cache: true
           cache-dependency-path: |
             server/go.sum
-            packages/agent-runtime/go.sum
       - uses: actions/setup-node@v4
         id: node
         with:
@@ -201,12 +200,10 @@ jobs:
       - run: go test ./...
         if: ${{ !cancelled() && steps.go.outcome == 'success' && steps.node.outcome == 'success' }}
         working-directory: server
-      - run: node --test scripts/check-agent-runtime.test.mjs
-        id: agent-runtime-script-test
-        if: ${{ !cancelled() && steps.go.outcome == 'success' && steps.node.outcome == 'success' }}
-      - run: node scripts/check-agent-runtime.mjs
-        id: agent-runtime-check
-        if: ${{ !cancelled() && steps.go.outcome == 'success' && steps.node.outcome == 'success' }}
+      - run: go test ./internal/agent -run '^TestRuntimeDependencyBoundaries$'
+        id: runtime-boundaries
+        working-directory: server
+        if: ${{ !cancelled() && steps.go.outcome == 'success' }}
 
   windows-core:
     name: Windows Core startup smoke

@@ -1,13 +1,17 @@
 package execution
 
 import (
+	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -19,7 +23,8 @@ func TestSummarizeCurrentSessionUsesHiddenResume(t *testing.T) {
 		runtimeEnvironments: readyRuntimeEnvironmentReader{},
 	}
 	state := messageChat{
-		chat: models.Chat{LastRuntimeID: "codex", LastModel: "gpt-5"},
+		chat:            models.Chat{LastRuntimeID: "codex", LastModel: "gpt-5"},
+		lastExecutionID: "previous-execution",
 		previousMessages: []messageview.Message{{
 			Role: constants.MessageRoleAssistant, ExecutionID: "previous-execution",
 		}},
@@ -48,7 +53,8 @@ func TestSummarizeCurrentSessionFallsBackWhenResumeUnavailable(t *testing.T) {
 	runtime := &fakeRuntime{}
 	manager := &service{runtime: runtime, runtimeEnvironments: readyRuntimeEnvironmentReader{}}
 	state := messageChat{
-		chat: models.Chat{LastRuntimeID: "codex"},
+		chat:            models.Chat{LastRuntimeID: "codex"},
+		lastExecutionID: "newer-execution",
 		previousMessages: []messageview.Message{{
 			Role: constants.MessageRoleAssistant, ExecutionID: "newer-execution",
 		}},
@@ -78,7 +84,7 @@ func TestHandoffStartsNewSessionWithoutShowingSummary(t *testing.T) {
 		ClientRequestID: util.New(),
 		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}},
 		Input:           WorkInput{Actor: "user", Content: "原始问题"},
-		Options:         WorkOptions{RuntimeID: "codex", PermissionLevel: runtimecontract.PermissionLevelAuto},
+		Options:         WorkOptions{RuntimeID: "codex", PermissionLevel: runtimeconfig.PermissionLevelAuto},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -88,7 +94,7 @@ func TestHandoffStartsNewSessionWithoutShowingSummary(t *testing.T) {
 		Chat:  ChatTarget{ChatID: first.Chat.ID},
 		Input: WorkInput{Actor: "user", Content: "继续工作"},
 		Options: WorkOptions{
-			RuntimeID: "codex", PermissionLevel: runtimecontract.PermissionLevelAuto,
+			RuntimeID: "codex", PermissionLevel: runtimeconfig.PermissionLevelAuto,
 			SessionPolicy: constants.RuntimeSessionPolicyNew,
 			HistoryMode:   constants.HistoryModeSummary,
 			SummaryModel:  "gpt-5",
@@ -122,7 +128,7 @@ func TestHandoffResumeFailureUsesRecentTurns(t *testing.T) {
 	runtime := &fakeRuntime{results: []runtimecontract.Result{
 		{Session: runtimecontract.SessionResult{OutputID: "old-session", State: runtimecontract.SessionStateCreated}},
 		{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code: runtimecontract.FailureCodeSessionNotFound, Stage: "resume", Message: "session not found",
+			Code: runtimediagnostic.FailureCodeSessionNotFound, Stage: "resume", Message: "session not found",
 		}},
 		{Session: runtimecontract.SessionResult{OutputID: "new-session", State: runtimecontract.SessionStateCreated}},
 	}}
@@ -131,7 +137,7 @@ func TestHandoffResumeFailureUsesRecentTurns(t *testing.T) {
 		ClientRequestID: util.New(),
 		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}},
 		Input:           WorkInput{Actor: "user", Content: "原始问题"},
-		Options:         WorkOptions{RuntimeID: "codex", PermissionLevel: runtimecontract.PermissionLevelAuto},
+		Options:         WorkOptions{RuntimeID: "codex", PermissionLevel: runtimeconfig.PermissionLevelAuto},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -141,7 +147,7 @@ func TestHandoffResumeFailureUsesRecentTurns(t *testing.T) {
 		Chat:  ChatTarget{ChatID: first.Chat.ID},
 		Input: WorkInput{Actor: "user", Content: "继续工作"},
 		Options: WorkOptions{
-			RuntimeID: "codex", PermissionLevel: runtimecontract.PermissionLevelAuto,
+			RuntimeID: "codex", PermissionLevel: runtimeconfig.PermissionLevelAuto,
 			SessionPolicy: constants.RuntimeSessionPolicyNew,
 			HistoryMode:   constants.HistoryModeSummary,
 			HistoryTurns:  1,

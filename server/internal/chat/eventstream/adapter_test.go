@@ -9,6 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 )
 
 func TestReplayDoesNotRetainPrivateRuntimeHistory(t *testing.T) {
@@ -437,5 +438,39 @@ func executionMessageRecord(
 		ExecutionID:   "execution-1",
 		InvocationID:  "invocation-1",
 		Data:          data,
+	}
+}
+
+func TestForkCapabilitiesMatchWindowAndIncrementalTerminal(t *testing.T) {
+	records := []eventlog.Record{}
+	appendFact := func(typ constants.ChatEventType, execution string, data any) {
+		encoded, err := json.Marshal(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		records = append(records, eventlog.Record{SchemaVersion: 1, Sequence: int64(len(records) + 1), Type: typ, ExecutionID: execution, Data: encoded})
+	}
+	appendFact(constants.ChatEventTypeCreated, "", eventlog.ChatCreatedData{WorkspaceDirectory: "/workspace"})
+	appendFact(constants.ChatEventTypeExecutionCreated, "one", eventlog.ExecutionCreatedData{RuntimeID: "runtime"})
+	appendFact(constants.ChatEventTypeInvocationFinished, "one", eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "runtime", SessionOutputID: "private-session", ForkMode: "latest"})
+	appendFact(constants.ChatEventTypeNativeSessionUpdated, "one", eventlog.RuntimeSessionData{RuntimeID: "runtime", SessionID: "private-session", LastExecutionID: "one"})
+	appendFact(constants.ChatEventTypeExecutionCompleted, "one", eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
+	adapter := NewAdapter()
+	var event PublicEvent
+	for _, record := range records {
+		var err error
+		event, err = adapter.Apply(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	snapshot, err := messageview.ReplayPublicMessages(records)
+	if err != nil || len(snapshot) != 1 || event.Message == nil || !reflect.DeepEqual(event.Message.Fork, snapshot[0].Fork) || !event.Message.Fork.Available {
+		t.Fatalf("terminal and snapshot diverged: %+v %+v %v", event.Message, snapshot, err)
+	}
+	appendFact(constants.ChatEventTypeNativeSessionCleared, "one", eventlog.RuntimeSessionData{RuntimeID: "runtime", LastExecutionID: "one"})
+	event, err = adapter.Apply(records[len(records)-1])
+	if err != nil || event.Message == nil || event.Message.Fork.Available || event.Message.Fork.ReasonCode != "session_changed" {
+		t.Fatalf("native reset failed to update operation: %+v %v", event, err)
 	}
 }

@@ -1,6 +1,7 @@
 package eventlog
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"hash/crc32"
@@ -10,7 +11,7 @@ import (
 )
 
 const (
-	indexSchemaVersion   = uint32(1)
+	indexSchemaVersion   = uint32(3)
 	indexHeaderSize      = int64(64)
 	indexEntrySize       = int64(88)
 	indexFlagChatCreated = uint32(1 << iota)
@@ -18,6 +19,9 @@ const (
 	indexFlagAssistantMessage
 	indexFlagExecutionTerminal
 	indexFlagInheritedMessage
+	indexFlagExecutionFact
+	indexFlagInvocationBoundary
+	indexFlagInvocationFinished
 )
 
 var indexMagic = [8]byte{'A', 'L', 'L', 'Y', 'I', 'D', 'X', '1'}
@@ -36,10 +40,12 @@ type indexEntry struct {
 	executionStartSequence int64
 	// checksum 是完整 JSONL 行的 CRC32 校验值。
 	checksum uint32
-	// flags 标记消息入口、执行终态和 Chat 创建记录。
+	// flags 标记消息与执行入口、生命周期、调用边界和 Chat 创建记录。
 	flags uint32
 	// messageHash 是消息入口稳定标识的 SHA-256 摘要。
 	messageHash [32]byte
+	// headerLength 是不含正文的信封头部字节数，用于恢复调用身份。
+	headerLength uint32
 }
 
 // encodeIndexHeader 编码固定长度索引头。
@@ -80,7 +86,8 @@ func encodeIndexEntry(entry indexEntry) []byte {
 	binary.LittleEndian.PutUint32(buffer[40:44], entry.checksum)
 	binary.LittleEndian.PutUint32(buffer[44:48], entry.flags)
 	copy(buffer[48:80], entry.messageHash[:])
-	binary.LittleEndian.PutUint32(buffer[80:84], crc32.ChecksumIEEE(buffer[:80]))
+	binary.LittleEndian.PutUint32(buffer[80:84], entry.headerLength)
+	binary.LittleEndian.PutUint32(buffer[84:88], crc32.ChecksumIEEE(buffer[:84]))
 	return buffer
 }
 
@@ -89,8 +96,7 @@ func decodeIndexEntry(buffer []byte) (indexEntry, error) {
 	if len(buffer) != int(indexEntrySize) {
 		return indexEntry{}, status_error.ChatLogIndexCorrupted
 	}
-	if binary.LittleEndian.Uint32(buffer[80:84]) != crc32.ChecksumIEEE(buffer[:80]) ||
-		binary.LittleEndian.Uint32(buffer[84:88]) != 0 {
+	if binary.LittleEndian.Uint32(buffer[84:88]) != crc32.ChecksumIEEE(buffer[:84]) {
 		return indexEntry{}, status_error.ChatLogIndexCorrupted
 	}
 	entry := indexEntry{
@@ -103,7 +109,8 @@ func decodeIndexEntry(buffer []byte) (indexEntry, error) {
 		flags:                  binary.LittleEndian.Uint32(buffer[44:48]),
 	}
 	copy(entry.messageHash[:], buffer[48:80])
-	if entry.sequence < 1 || entry.offset < 0 || entry.length < 1 ||
+	entry.headerLength = binary.LittleEndian.Uint32(buffer[80:84])
+	if entry.sequence < 1 || entry.offset < 0 || entry.length < 1 || entry.headerLength == 0 || int64(entry.headerLength) >= entry.length ||
 		entry.executionStartSequence < 0 ||
 		entry.executionStartSequence > entry.sequence {
 		return indexEntry{}, status_error.ChatLogIndexCorrupted
@@ -121,6 +128,14 @@ func indexEntryForRecord(record Record, executionStartSequence int64, line []byt
 		executionStartSequence: executionStartSequence,
 		checksum:               crc32.ChecksumIEEE(line),
 	}
+	headerEnd := bytes.Index(line, []byte(`,"data":`))
+	if headerEnd < 0 {
+		headerEnd = len(line) - 2
+	}
+	entry.headerLength = uint32(headerEnd)
+	if bytes.Contains(line[:headerEnd], []byte(`"invocationId":`)) {
+		entry.flags |= indexFlagInvocationBoundary
+	}
 	switch record.Type {
 	case constants.ChatEventTypeCreated:
 		entry.flags |= indexFlagChatCreated
@@ -131,12 +146,16 @@ func indexEntryForRecord(record Record, executionStartSequence int64, line []byt
 		entry.flags |= indexFlagUserMessage
 		entry.messageHash = sha256.Sum256([]byte(record.MessageID))
 	case constants.ChatEventTypeExecutionCreated:
-		entry.flags |= indexFlagAssistantMessage
+		entry.flags |= indexFlagAssistantMessage | indexFlagExecutionFact
 		entry.messageHash = sha256.Sum256([]byte(record.ExecutionID))
 	case constants.ChatEventTypeExecutionCompleted,
 		constants.ChatEventTypeExecutionFailed,
 		constants.ChatEventTypeExecutionCanceled:
-		entry.flags |= indexFlagExecutionTerminal
+		entry.flags |= indexFlagExecutionTerminal | indexFlagExecutionFact
+	case constants.ChatEventTypeExecutionStarted:
+		entry.flags |= indexFlagExecutionFact
+	case constants.ChatEventTypeInvocationFinished:
+		entry.flags |= indexFlagExecutionFact | indexFlagInvocationFinished
 	}
 	return entry
 }

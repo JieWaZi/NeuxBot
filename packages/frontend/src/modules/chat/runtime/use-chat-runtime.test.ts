@@ -12,14 +12,20 @@ vi.mock("@/shared/api/generated/sdk.gen", () => ({
 }));
 import type { AppendMessage, ExternalStoreAdapter } from "@assistant-ui/react";
 import { act, render, renderHook, waitFor } from "@testing-library/react";
-import { createElement, useLayoutEffect } from "react";
+import { createElement, useLayoutEffect, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { chatMessagesKey, chatMessageSource } from "../api/chat-queries";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useChatRuntime } from "./use-chat-runtime";
+import { useChatRuntime as useProductionChatRuntime } from "./use-chat-runtime";
 import { ChatQueueProvider, useChatQueueStore } from "./chat-queue-store";
 import { classifyChatSendFailure } from "./chat-send-failure";
 import { conversationKeyOf } from "../model/conversation-identity";
 import { ApiError } from "@/shared/api/errors";
+import {
+  clearStableCreateRequest,
+  withStableCreateRequest,
+} from "@/shared/lib/create-request-idempotency";
 import type { GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as MessageResult } from "@/shared/api/generated/types.gen";
 import type { ChatEvent } from "@/shared/api/events";
 
@@ -41,6 +47,14 @@ const {
       | {
           onEvent: (event: ChatEvent) => void;
           onReconnect?: () => void;
+          onGap?: (expected: number, received: number) => void;
+          onState?: (
+            state:
+              "connecting" | "open" | "reconnecting" | "unavailable" | "closed",
+          ) => void;
+          reconcileCursor?: (
+            signal: AbortSignal,
+          ) => Promise<number | undefined>;
           onUnavailable?: () => void;
         }
       | undefined,
@@ -86,7 +100,38 @@ const queuedMessage: AppendMessage = {
   runConfig: undefined,
 };
 
-type RuntimeOptions = Parameters<typeof useChatRuntime>[0];
+type RuntimeOptions = Omit<
+  Parameters<typeof useProductionChatRuntime>[0],
+  "prepareSubmission" | "messageSource"
+> & {
+  messages: Parameters<
+    typeof useProductionChatRuntime
+  >[0]["messageSource"]["snapshot"]["messages"];
+  latestSequence: number;
+  isHistoryReady: boolean;
+  send: (
+    text: string,
+    chatId?: string,
+    paths?: string[],
+    selection?: Parameters<
+      Parameters<typeof useProductionChatRuntime>[0]["prepareSubmission"]
+    >[3],
+  ) => Promise<MessageResult>;
+};
+function useChatRuntime(options: RuntimeOptions) {
+  return useProductionChatRuntime({
+    ...options,
+    messageSource: chatMessageSource(queryClient, options.chatId, {
+      messages: options.messages,
+      latestSequence: options.latestSequence,
+      ready: options.isHistoryReady,
+    }),
+    prepareSubmission: (...args) => ({
+      submissionId: `input:${options.queueKey}`,
+      accept: () => options.send(...args),
+    }),
+  });
+}
 
 function runtimeOptions(queueKey: string): RuntimeOptions {
   return {
@@ -114,6 +159,16 @@ function runtimeOptions(queueKey: string): RuntimeOptions {
   };
 }
 
+let queryClient: QueryClient;
+
+function TestProviders({ children }: { children: ReactNode }) {
+  return createElement(
+    QueryClientProvider,
+    { client: queryClient },
+    createElement(ChatQueueProvider, null, children),
+  );
+}
+
 function RuntimeHarness({ options }: { options: RuntimeOptions }) {
   useChatRuntime(options);
   return null;
@@ -127,15 +182,18 @@ function RuntimeRemountHarness({
   options: RuntimeOptions;
 }) {
   return createElement(
-    ChatQueueProvider,
+    TestProviders,
     null,
     createElement(RuntimeHarness, { key: hookKey, options }),
   );
 }
 
 describe("useChatRuntime queue", () => {
-  const wrapper = ChatQueueProvider;
+  const wrapper = TestProviders;
   beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     runtimeAdapter.current = undefined;
     projectedMessages.current = [];
     subscriptionOptions.current = undefined;
@@ -234,6 +292,7 @@ describe("useChatRuntime queue", () => {
   });
 
   it("响应未知时只检查状态，不重新发送；后续发送成功清除发送错误", async () => {
+    const invalidations = vi.spyOn(queryClient, "invalidateQueries");
     const send = vi
       .fn()
       .mockRejectedValueOnce(new ApiError("Failed to fetch", "NETWORK"))
@@ -253,6 +312,7 @@ describe("useChatRuntime queue", () => {
     await act(async () => {
       await runtimeAdapter.current?.onNew?.(queuedMessage);
     });
+    await waitFor(() => expect(invalidations).toHaveBeenCalledTimes(1));
     const notice = result.current.notices[0];
     expect(notice).toMatchObject({
       message: expect.stringContaining("发送结果未知"),
@@ -391,6 +451,327 @@ describe("useChatRuntime queue", () => {
     await waitFor(() => expect(result.current.isRunning).toBe(false));
   });
 
+  it("连续持久事件合并原历史缓存，终态只刷新摘要并保留旧分页", async () => {
+    const options = runtimeOptions("chat-contiguous");
+    const olderPage = {
+      resources: [{ id: "old-user", role: "user", content: "更早输入" }],
+      hasMore: true,
+      nextBeforeSequence: 1,
+    };
+    queryClient.setQueryData(chatMessagesKey("chat-contiguous"), {
+      pages: [
+        {
+          resources: [],
+          latestSequence: 1,
+          hasMore: true,
+          nextBeforeSequence: 10,
+        },
+        olderPage,
+      ],
+      pageParams: [undefined, { beforeSequence: 10 }],
+    });
+    const { result, rerender } = renderHook(
+      ({ executionId, active }) =>
+        useChatRuntime({
+          ...options,
+          activeExecutionId: executionId,
+          queueActive: active,
+        }),
+      { wrapper, initialProps: { executionId: "execution-1", active: true } },
+    );
+    act(() => {
+      for (const event of [
+        {
+          sequence: 2,
+          type: "user.message",
+          message: { id: "user-1", role: "user", content: "输入", revision: 2 },
+        },
+        {
+          sequence: 3,
+          type: "execution.started",
+          message: {
+            id: "execution-1",
+            role: "assistant",
+            executionId: "execution-1",
+            status: "running",
+            revision: 3,
+          },
+        },
+        {
+          sequence: 4,
+          type: "runtime.event",
+          message: {
+            id: "execution-1",
+            role: "assistant",
+            executionId: "execution-1",
+            status: "running",
+            revision: 4,
+            displayParts: [
+              { id: "tool-1", type: "tool", toolStatus: "completed" },
+            ],
+          },
+        },
+        {
+          sequence: 5,
+          type: "assistant.message",
+          message: {
+            id: "assistant-extra",
+            role: "assistant",
+            content: "过程消息",
+            revision: 5,
+          },
+        },
+        {
+          sequence: 6,
+          type: "execution.completed",
+          message: {
+            id: "execution-1",
+            role: "assistant",
+            executionId: "execution-1",
+            status: "completed",
+            revision: 6,
+            displayParts: [
+              { id: "tool-1", type: "tool", toolStatus: "completed" },
+              { type: "text", text: "结果" },
+            ],
+          },
+        },
+      ] satisfies ChatEvent[])
+        subscriptionOptions.current?.onEvent(event);
+    });
+    expect(result.current.isRunning).toBe(false);
+    expect(
+      queryClient.getQueryData(chatMessagesKey("chat-contiguous")),
+    ).toMatchObject({
+      pages: [
+        {
+          latestSequence: 6,
+          hasMore: true,
+          nextBeforeSequence: 10,
+          resources: [
+            { id: "user-1", content: "输入" },
+            {
+              id: "execution-1",
+              status: "completed",
+              displayParts: [
+                { id: "tool-1", toolStatus: "completed" },
+                { text: "结果" },
+              ],
+            },
+            { id: "assistant-extra", content: "过程消息" },
+          ],
+        },
+        olderPage,
+      ],
+      pageParams: [undefined, { beforeSequence: 10 }],
+    });
+    expect(options.onTerminal).toHaveBeenCalledExactlyOnceWith();
+    rerender({ executionId: "execution-2", active: false });
+    rerender({ executionId: "execution-2", active: true });
+    expect(subscribeChatMock.mock.calls.at(-1)?.[1].after).toBe(6);
+  });
+
+  it("transient 的意外 sequence 也不推进持久历史游标", () => {
+    vi.useFakeTimers();
+    const options = runtimeOptions("chat-transient-cursor");
+    const { rerender, unmount } = renderHook(
+      ({ active }) => useChatRuntime({ ...options, queueActive: active }),
+      { wrapper, initialProps: { active: true } },
+    );
+    try {
+      act(() => {
+        subscriptionOptions.current?.onEvent({
+          transient: true,
+          sequence: 99,
+          type: "runtime.event",
+          message: {
+            id: "execution-1",
+            role: "assistant",
+            status: "running",
+            revision: 99,
+          },
+        });
+        vi.advanceTimersByTime(16);
+      });
+      rerender({ active: false });
+      rerender({ active: true });
+      expect(subscribeChatMock.mock.calls.at(-1)?.[1].after).toBe(1);
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("首发 handoff 已有执行身份时终态立即结束，不等待历史清除交接", async () => {
+    const options = {
+      ...runtimeOptions("chat-handoff-terminal"),
+      activeExecutionId: undefined,
+    };
+    const { result } = renderHook(
+      () => {
+        const store = useChatQueueStore();
+        useLayoutEffect(() => {
+          store.setHandoff("chat-handoff-terminal", [
+            {
+              id: "user-1",
+              role: "user",
+              executionId: "execution-1",
+            },
+            {
+              id: "execution-1",
+              role: "assistant",
+              executionId: "execution-1",
+              status: "pending",
+            },
+          ]);
+        }, [store]);
+        return useChatRuntime(options);
+      },
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.isRunning).toBe(true));
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "execution.canceled",
+        message: {
+          id: "execution-1",
+          role: "assistant",
+          executionId: "execution-1",
+          status: "canceled",
+          revision: 2,
+        },
+      }),
+    );
+    expect(result.current.isRunning).toBe(false);
+  });
+
+  it("无法证明连续性的终态、缺口与重连仍请求权威历史恢复", () => {
+    const options = runtimeOptions("chat-recover");
+    queryClient.setQueryData(chatMessagesKey("chat-recover"), {
+      pages: [{ resources: [], latestSequence: 1, hasMore: false }],
+      pageParams: [undefined],
+    });
+    renderHook(() => useChatRuntime(options), { wrapper });
+    act(() => subscriptionOptions.current?.onReconnect?.());
+    expect(options.onTerminal).toHaveBeenLastCalledWith();
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 8,
+        type: "execution.failed",
+        message: {
+          id: "execution-1",
+          executionId: "execution-1",
+          role: "assistant",
+          status: "failed",
+          revision: 8,
+        },
+      }),
+    );
+    expect(options.onTerminal).toHaveBeenLastCalledWith();
+    expect(
+      queryClient.getQueryData(chatMessagesKey("chat-recover")),
+    ).toMatchObject({ pages: [{ latestSequence: 1, resources: [] }] });
+  });
+
+  it("恢复快照后已收到的新持久批次不会在onReconnect中被丢弃", () => {
+    vi.useFakeTimers();
+    const options = runtimeOptions("chat-recovery-batch");
+    queryClient.setQueryData(chatMessagesKey("chat-recovery-batch"), {
+      pages: [{ resources: [], latestSequence: 1, hasMore: false }],
+      pageParams: [undefined],
+    });
+    const { unmount } = renderHook(() => useChatRuntime(options), { wrapper });
+    try {
+      act(() => {
+        subscriptionOptions.current?.onEvent({
+          sequence: 2,
+          type: "message.user_created",
+          message: {
+            id: "user-after-snapshot",
+            role: "user",
+            content: "恢复读取之后的新输入",
+            revision: 2,
+          },
+        });
+        subscriptionOptions.current?.onReconnect?.();
+        vi.advanceTimersByTime(16);
+      });
+      expect(
+        queryClient.getQueryData(chatMessagesKey("chat-recovery-batch")),
+      ).toMatchObject({
+        pages: [
+          { latestSequence: 2, resources: [{ id: "user-after-snapshot" }] },
+        ],
+      });
+      expect(projectedMessages.current).toContainEqual(
+        expect.objectContaining({
+          id: "user-after-snapshot",
+          content: [{ type: "text", text: "恢复读取之后的新输入" }],
+        }),
+      );
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("空闲会话仍消费跨窗口消息，快速执行与终态不依赖详情查询再触发订阅", () => {
+    const options = {
+      ...runtimeOptions("chat-idle-stream"),
+      activeExecutionId: undefined,
+    };
+    queryClient.setQueryData(chatMessagesKey("chat-idle-stream"), {
+      pages: [{ resources: [], latestSequence: 1, hasMore: false }],
+      pageParams: [undefined],
+    });
+    const { result } = renderHook(() => useChatRuntime(options), { wrapper });
+    expect(subscribeChatMock).toHaveBeenCalledExactlyOnceWith(
+      "chat-idle-stream",
+      expect.objectContaining({ after: 1 }),
+    );
+    act(() => {
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "message.user_created",
+        message: {
+          id: "external-user",
+          role: "user",
+          submissionId: "external-input",
+          revision: 2,
+        },
+      });
+      subscriptionOptions.current?.onEvent({
+        sequence: 3,
+        type: "execution.completed",
+        message: {
+          id: "external-assistant",
+          executionId: "external-assistant",
+          role: "assistant",
+          submissionId: "external-input",
+          status: "completed",
+          revision: 3,
+          displayParts: [{ type: "text", text: "另一个窗口的结果" }],
+        },
+      });
+    });
+    expect(result.current.isRunning).toBe(false);
+    expect(
+      queryClient.getQueryData(chatMessagesKey("chat-idle-stream")),
+    ).toMatchObject({
+      pages: [
+        {
+          latestSequence: 3,
+          resources: [
+            { id: "external-user" },
+            { id: "external-assistant", status: "completed" },
+          ],
+        },
+      ],
+    });
+    expect(subscribeChatMock).toHaveBeenCalledTimes(1);
+  });
+
   it("收到 transient 文本快照后立即更新运行中消息", async () => {
     renderHook(() => useChatRuntime(runtimeOptions("chat-1")), { wrapper });
 
@@ -432,6 +813,7 @@ describe("useChatRuntime queue", () => {
         type: "runtime.event",
         message: {
           id: "assistant-1",
+          executionId: "execution-1",
           role: "assistant",
           status: "running",
           revision: 6,
@@ -446,6 +828,7 @@ describe("useChatRuntime queue", () => {
         executionStatus: "completed",
         message: {
           id: "assistant-1",
+          executionId: "execution-1",
           role: "assistant",
           status: "completed",
           revision: 5,
@@ -951,6 +1334,606 @@ describe("useChatRuntime queue", () => {
     expect(result.current.isRunning).toBe(true);
   });
 
+  it.each(["主动续发", "队列出队"])(
+    "终态先于POST回执时，%s相同正文也取得新输入身份与执行",
+    async (mode) => {
+      const chatId = `identity-${mode}`;
+      const ids: string[] = [];
+      const prepared = new Map<
+        string,
+        { resolve: (value: MessageResult) => void }
+      >();
+      const options = {
+        ...runtimeOptions(chatId),
+        activeExecutionId: undefined,
+      };
+      queryClient.setQueryData(chatMessagesKey(chatId), {
+        pages: [{ resources: [], latestSequence: 1, hasMore: false }],
+        pageParams: [undefined],
+      });
+      const { result } = renderHook(
+        () =>
+          useProductionChatRuntime({
+            ...options,
+            messageSource: chatMessageSource(queryClient, chatId, {
+              messages: [],
+              latestSequence: 1,
+              ready: true,
+            }),
+            prepareSubmission: (text) => {
+              const request = withStableCreateRequest(`send:${chatId}`, {
+                text,
+                runtimeId: "codex",
+                model: "gpt-5",
+                attachments: [],
+              });
+              const submissionId = request.clientRequestId;
+              ids.push(submissionId);
+              return {
+                submissionId,
+                confirmAccepted: () =>
+                  clearStableCreateRequest(`send:${chatId}`, submissionId),
+                accept: () =>
+                  new Promise<MessageResult>((resolve) => {
+                    prepared.set(submissionId, { resolve });
+                  }),
+              };
+            },
+          }),
+        { wrapper },
+      );
+      act(() => {
+        void runtimeAdapter.current?.onNew?.(queuedMessage);
+      });
+      if (mode === "队列出队")
+        act(() =>
+          runtimeAdapter.current?.queue?.enqueue(queuedMessage, {
+            steer: false,
+          }),
+        );
+      act(() => {
+        subscriptionOptions.current?.onEvent({
+          sequence: 2,
+          type: "message.user_created",
+          message: {
+            id: "user-1",
+            role: "user",
+            submissionId: ids[0],
+            content: "排队消息",
+            revision: 2,
+          },
+        });
+        subscriptionOptions.current?.onEvent({
+          sequence: 3,
+          type: "execution.created",
+          message: {
+            id: "exec-1",
+            executionId: "exec-1",
+            role: "assistant",
+            submissionId: ids[0],
+            status: "pending",
+            revision: 3,
+          },
+        });
+        subscriptionOptions.current?.onEvent({
+          sequence: 4,
+          type: "execution.completed",
+          message: {
+            id: "exec-1",
+            executionId: "exec-1",
+            role: "assistant",
+            submissionId: ids[0],
+            status: "completed",
+            revision: 4,
+          },
+        });
+      });
+      expect(result.current.isRunning).toBe(false);
+      if (mode === "主动续发")
+        act(() => {
+          void runtimeAdapter.current?.onNew?.(queuedMessage);
+        });
+      await waitFor(() => expect(ids).toHaveLength(2));
+      expect(ids[1]).not.toBe(ids[0]);
+      act(() => {
+        subscriptionOptions.current?.onEvent({
+          sequence: 5,
+          type: "message.user_created",
+          message: {
+            id: "user-2",
+            role: "user",
+            submissionId: ids[1],
+            content: "排队消息",
+            revision: 5,
+          },
+        });
+        subscriptionOptions.current?.onEvent({
+          sequence: 6,
+          type: "execution.created",
+          message: {
+            id: "exec-2",
+            executionId: "exec-2",
+            role: "assistant",
+            submissionId: ids[1],
+            status: "pending",
+            revision: 6,
+          },
+        });
+      });
+      await waitFor(() =>
+        expect(projectedMessages.current).toContainEqual(
+          expect.objectContaining({
+            id: "exec-2",
+            status: { type: "running" },
+          }),
+        ),
+      );
+      expect(result.current.isRunning).toBe(true);
+    },
+  );
+
+  it("早到持久user已证明接纳即可退役请求，旧HTTP成功不清后来准备记录", async () => {
+    const chatId = "identity-user-first";
+    const scope = `send:${chatId}`;
+    const body = { text: "排队消息", runtimeId: "codex" };
+    let accept!: (value: MessageResult) => void;
+    let firstId = "";
+    const options = { ...runtimeOptions(chatId), activeExecutionId: undefined };
+    queryClient.setQueryData(chatMessagesKey(chatId), {
+      pages: [{ resources: [], latestSequence: 1, hasMore: false }],
+      pageParams: [undefined],
+    });
+    renderHook(
+      () =>
+        useProductionChatRuntime({
+          ...options,
+          messageSource: chatMessageSource(queryClient, chatId, {
+            messages: [],
+            latestSequence: 1,
+            ready: true,
+          }),
+          prepareSubmission: () => {
+            firstId = withStableCreateRequest(scope, body).clientRequestId;
+            return {
+              submissionId: firstId,
+              confirmAccepted: () => clearStableCreateRequest(scope, firstId),
+              accept: () =>
+                new Promise<MessageResult>((resolve) => {
+                  accept = resolve;
+                }),
+            };
+          },
+        }),
+      { wrapper },
+    );
+    let pending: Promise<void> | void;
+    act(() => {
+      pending = runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "message.user_created",
+        message: {
+          id: "user-1",
+          role: "user",
+          submissionId: firstId,
+          revision: 2,
+        },
+      }),
+    );
+    const next = withStableCreateRequest(scope, body);
+    expect(next.clientRequestId).not.toBe(firstId);
+    await act(async () => {
+      accept({
+        chat: { id: chatId },
+        execution: { id: "exec-1", userMessageId: "user-1", status: "pending" },
+      });
+      await pending;
+    });
+    expect(withStableCreateRequest(scope, body).clientRequestId).toBe(
+      next.clientRequestId,
+    );
+  });
+
+  it("没有权威接纳事实的未知响应重试保留原输入身份", async () => {
+    const chatId = "identity-unknown";
+    const scope = `send:${chatId}`;
+    const ids: string[] = [];
+    const options = { ...runtimeOptions(chatId), activeExecutionId: undefined };
+    renderHook(
+      () =>
+        useProductionChatRuntime({
+          ...options,
+          messageSource: chatMessageSource(queryClient, chatId, {
+            messages: [],
+            latestSequence: 1,
+            ready: true,
+          }),
+          prepareSubmission: (text) => {
+            const submissionId = withStableCreateRequest(scope, {
+              text,
+              runtimeId: "codex",
+            }).clientRequestId;
+            ids.push(submissionId);
+            return {
+              submissionId,
+              confirmAccepted: () =>
+                clearStableCreateRequest(scope, submissionId),
+              accept: () =>
+                Promise.reject(new ApiError("Failed to fetch", "NETWORK")),
+            };
+          },
+        }),
+      { wrapper },
+    );
+    await act(async () => {
+      await runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    await act(async () => {
+      await runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
+  });
+
+  it.each(["成功", "失败"])(
+    "A已由终态接纳后HTTP晚到%s不清除B输入状态或幂等身份",
+    async (outcome) => {
+      const chatId = `identity-late-${outcome}`;
+      const scope = `send:${chatId}`;
+      const body = (text: string) => ({ text, runtimeId: "codex" });
+      const ids: string[] = [];
+      let resolveA!: (value: MessageResult) => void;
+      let rejectA!: (error: Error) => void;
+      const options = {
+        ...runtimeOptions(chatId),
+        activeExecutionId: undefined,
+      };
+      queryClient.setQueryData(chatMessagesKey(chatId), {
+        pages: [{ resources: [], latestSequence: 1, hasMore: false }],
+        pageParams: [undefined],
+      });
+      const { result } = renderHook(
+        () =>
+          useProductionChatRuntime({
+            ...options,
+            messageSource: chatMessageSource(queryClient, chatId, {
+              messages: [],
+              latestSequence: 1,
+              ready: true,
+            }),
+            prepareSubmission: (text) => {
+              const submissionId = withStableCreateRequest(
+                scope,
+                body(text),
+              ).clientRequestId;
+              ids.push(submissionId);
+              return {
+                submissionId,
+                confirmAccepted: () =>
+                  clearStableCreateRequest(scope, submissionId),
+                accept: () =>
+                  ids.length === 1
+                    ? new Promise<MessageResult>((resolve, reject) => {
+                        resolveA = resolve;
+                        rejectA = reject;
+                      })
+                    : new Promise<MessageResult>(() => {}),
+              };
+            },
+          }),
+        { wrapper },
+      );
+      let pendingA: Promise<void> | void;
+      act(() => {
+        pendingA = runtimeAdapter.current?.onNew?.(queuedMessage);
+      });
+      act(() =>
+        subscriptionOptions.current?.onEvent({
+          sequence: 2,
+          type: "execution.completed",
+          message: {
+            id: "exec-1",
+            executionId: "exec-1",
+            role: "assistant",
+            submissionId: ids[0],
+            status: "completed",
+            revision: 2,
+          },
+        }),
+      );
+      const second = {
+        ...queuedMessage,
+        content: [{ type: "text" as const, text: "第二轮仍未接纳" }],
+      };
+      act(() => {
+        void runtimeAdapter.current?.onNew?.(second);
+      });
+      const secondMessages = projectedMessages.current.filter((item) =>
+        (item as { content?: { text?: string }[] }).content?.some(
+          (part) => part.text === "第二轮仍未接纳",
+        ),
+      );
+      expect(secondMessages).toHaveLength(1);
+      await act(async () => {
+        if (outcome === "成功")
+          resolveA({
+            chat: { id: chatId },
+            execution: {
+              id: "exec-1",
+              userMessageId: "user-1",
+              status: "pending",
+            },
+          });
+        else rejectA(new ApiError("Failed to fetch", "NETWORK"));
+        await pendingA;
+      });
+      expect(result.current.isRunning).toBe(true);
+      expect(result.current.sendFailure).toEqual({ kind: "none" });
+      expect(projectedMessages.current).toEqual(
+        expect.arrayContaining(secondMessages),
+      );
+      expect(
+        withStableCreateRequest(scope, body("第二轮仍未接纳")).clientRequestId,
+      ).toBe(ids[1]);
+      act(() =>
+        runtimeAdapter.current?.queue?.enqueue(queuedMessage, { steer: false }),
+      );
+      expect(ids).toHaveLength(2);
+      expect(runtimeAdapter.current?.queue?.items).toHaveLength(1);
+      await act(async () => {
+        await runtimeAdapter.current?.onCancel?.();
+      });
+      expect(options.cancel).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("A错误安排的延后输入恢复不能在B开始后重放旧选择", async () => {
+    vi.useFakeTimers();
+    const chatId = "identity-delayed-restore";
+    const onMessageRejected = vi.fn();
+    let calls = 0;
+    const options = {
+      ...runtimeOptions(chatId),
+      activeExecutionId: undefined,
+      onMessageRejected,
+    };
+    const { result, unmount } = renderHook(
+      () =>
+        useProductionChatRuntime({
+          ...options,
+          messageSource: chatMessageSource(queryClient, chatId, {
+            messages: [],
+            latestSequence: 1,
+            ready: true,
+          }),
+          prepareSubmission: (text) => {
+            const submissionId = withStableCreateRequest(`send:${chatId}`, {
+              text,
+            }).clientRequestId;
+            calls++;
+            return {
+              submissionId,
+              confirmAccepted: () =>
+                clearStableCreateRequest(`send:${chatId}`, submissionId),
+              accept: () =>
+                calls === 1
+                  ? Promise.reject(new ApiError("Failed to fetch", "NETWORK"))
+                  : new Promise<MessageResult>(() => {}),
+            };
+          },
+        }),
+      { wrapper },
+    );
+    try {
+      await act(async () => {
+        await runtimeAdapter.current?.onNew?.(queuedMessage);
+      });
+      act(() => {
+        void runtimeAdapter.current?.onNew?.({
+          ...queuedMessage,
+          content: [{ type: "text", text: "B的新输入" }],
+        });
+      });
+      act(() => vi.advanceTimersByTime(0));
+      expect(result.current.isRunning).toBe(true);
+      expect(result.current.sendFailure).toEqual({ kind: "none" });
+      expect(onMessageRejected).not.toHaveBeenCalled();
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  });
+
+  it("持久用户与助手先于接纳回执时按submissionId接管乐观行，终态无需等待POST", async () => {
+    let accept!: (result: MessageResult) => void;
+    const options = {
+      ...runtimeOptions("chat-pre-receipt"),
+      activeExecutionId: undefined,
+      send: vi.fn(
+        () =>
+          new Promise<MessageResult>((resolve) => {
+            accept = resolve;
+          }),
+      ),
+    };
+    queryClient.setQueryData(chatMessagesKey("chat-pre-receipt"), {
+      pages: [{ resources: [], latestSequence: 1, hasMore: false }],
+      pageParams: [undefined],
+    });
+    const { result } = renderHook(() => useChatRuntime(options), { wrapper });
+    let pending: Promise<void> | void;
+    act(() => {
+      pending = runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    act(() => {
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "message.user_created",
+        message: {
+          id: "real-user",
+          role: "user",
+          submissionId: "input:chat-pre-receipt",
+          content: "排队消息",
+          revision: 2,
+        },
+      });
+      subscriptionOptions.current?.onEvent({
+        sequence: 3,
+        type: "execution.created",
+        message: {
+          id: "real-assistant",
+          executionId: "real-assistant",
+          role: "assistant",
+          submissionId: "input:chat-pre-receipt",
+          status: "pending",
+          revision: 3,
+        },
+      });
+    });
+    await waitFor(() =>
+      expect(
+        projectedMessages.current.map((item) => (item as { id: string }).id),
+      ).toEqual(["real-user", "real-assistant"]),
+    );
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 4,
+        type: "execution.completed",
+        message: {
+          id: "real-assistant",
+          executionId: "real-assistant",
+          role: "assistant",
+          submissionId: "input:chat-pre-receipt",
+          status: "completed",
+          revision: 4,
+          displayParts: [{ type: "text", text: "已完成" }],
+        },
+      }),
+    );
+    expect(result.current.isRunning).toBe(false);
+    await act(async () => {
+      accept({
+        chat: { id: "chat-pre-receipt" },
+        execution: {
+          id: "real-assistant",
+          userMessageId: "real-user",
+          status: "pending",
+          submissionId: "input:chat-pre-receipt",
+        },
+      });
+      await pending;
+    });
+    expect(result.current.isRunning).toBe(false);
+    expect(
+      projectedMessages.current.map((item) => (item as { id: string }).id),
+    ).toEqual(["real-user", "real-assistant"]);
+  });
+
+  it("旧接纳回执晚于终态到达时保留完整结果和终态", async () => {
+    let accept!: (result: MessageResult) => void;
+    const options = {
+      ...runtimeOptions("chat-late-receipt"),
+      activeExecutionId: undefined,
+      send: vi.fn(
+        () =>
+          new Promise<MessageResult>((resolve) => {
+            accept = resolve;
+          }),
+      ),
+    };
+    const { result } = renderHook(() => useChatRuntime(options), { wrapper });
+    let pending: Promise<void> | void;
+    act(() => {
+      pending = runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "execution.completed",
+        message: {
+          id: "execution-1",
+          executionId: "execution-1",
+          role: "assistant",
+          status: "completed",
+          revision: 6,
+          displayParts: [{ type: "text", text: "先到达的完整结果" }],
+        },
+      }),
+    );
+    await act(async () => {
+      accept({
+        chat: { id: "chat-late-receipt" },
+        execution: {
+          id: "execution-1",
+          userMessageId: "user-1",
+          status: "pending",
+        },
+      });
+      await pending;
+    });
+    expect(result.current.isRunning).toBe(false);
+    expect(
+      projectedMessages.current.filter(
+        (item) => (item as { id: string }).id === "execution-1",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: "execution-1",
+        status: { type: "complete", reason: "stop" },
+        content: [{ type: "text", text: "先到达的完整结果" }],
+      }),
+    ]);
+  });
+
+  it("首发首次历史已包含终态且没有后续推送时也结束运行", async () => {
+    const options: RuntimeOptions = {
+      ...runtimeOptions("draft:already-finished"),
+      chatId: undefined,
+      activeExecutionId: undefined,
+      send: vi.fn().mockResolvedValue({
+        chat: { id: "chat-already-finished" },
+        execution: {
+          id: "execution-1",
+          userMessageId: "user-1",
+          status: "pending",
+        },
+      }),
+    };
+    const { result, rerender } = renderHook(
+      ({ current }) => useChatRuntime(current),
+      { wrapper, initialProps: { current: options } },
+    );
+    await act(async () => {
+      await runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    expect(result.current.isRunning).toBe(true);
+    rerender({
+      current: {
+        ...options,
+        conversationKey: conversationKeyOf(
+          "scope:finished",
+          "chat-already-finished",
+        ),
+        queueKey: "chat-already-finished",
+        chatId: "chat-already-finished",
+        messages: [
+          { id: "user-1", role: "user", content: "排队消息", revision: 2 },
+          {
+            id: "execution-1",
+            role: "assistant",
+            executionId: "execution-1",
+            status: "completed",
+            revision: 6,
+          },
+        ],
+        latestSequence: 6,
+      },
+    });
+    expect(result.current.isRunning).toBe(false);
+  });
+
   it("等待审批时展示到达顺序并拒绝新增排队消息", async () => {
     const options = runtimeOptions("chat-1");
     const onApprovalRequested = vi.fn();
@@ -1044,7 +2027,10 @@ describe("useChatRuntime queue", () => {
     await waitFor(() =>
       expect(result.current.pendingElicitations).toHaveLength(1),
     );
-    act(() => subscriptionOptions.current?.onReconnect?.());
+    act(() => {
+      subscriptionOptions.current?.onState?.("reconnecting");
+      subscriptionOptions.current?.onReconnect?.();
+    });
     await waitFor(() => expect(result.current.pendingElicitations).toEqual([]));
 
     act(request);
@@ -1069,24 +2055,24 @@ describe("useChatRuntime queue", () => {
     const { result } = renderHook(() => useChatRuntime(options), { wrapper });
 
     expect(result.current.hasVisibleMessages).toBe(true);
-    expect(result.current.isHistorySynchronized).toBe(false);
-    expect(result.current.boundChatId).toBe("chat-1");
   });
 
   it("权威历史首帧就绪后清除无稳定 ID 的 handoff", async () => {
     const handoffMessages = [
       {
-        id: "user-1",
+        id: "optimistic:user",
         role: "user" as const,
         content: "首条消息",
-        awaitingFirstHistory: true,
+        submissionId: "first-input",
+        optimistic: true,
       },
       {
-        id: "execution-1",
+        id: "optimistic:assistant",
         role: "assistant" as const,
+        submissionId: "first-input",
+        optimistic: true,
         content: "",
         status: "pending" as const,
-        awaitingFirstHistory: true,
       },
     ];
     const options = runtimeOptions("chat-1");
@@ -1107,7 +2093,7 @@ describe("useChatRuntime queue", () => {
         return useChatRuntime(currentOptions);
       },
       {
-        wrapper: ChatQueueProvider,
+        wrapper: TestProviders,
         initialProps: { runtimeOptions: options },
       },
     );
@@ -1121,6 +2107,13 @@ describe("useChatRuntime queue", () => {
             id: "user-1",
             role: "user",
             content: "首条消息",
+            submissionId: "first-input",
+            status: "completed",
+          },
+          {
+            id: "execution-1",
+            role: "assistant",
+            submissionId: "first-input",
             status: "completed",
           },
         ],
@@ -1128,20 +2121,6 @@ describe("useChatRuntime queue", () => {
     });
 
     await waitFor(() => expect(runtimeAdapter.current?.isRunning).toBe(false));
-  });
-
-  it("切换 Chat 时 boundChatId 跟随目标对话", () => {
-    const { result, rerender } = renderHook(
-      ({ queueKey }: { queueKey: string }) =>
-        useChatRuntime(runtimeOptions(queueKey)),
-      { initialProps: { queueKey: "chat-1" }, wrapper },
-    );
-
-    expect(result.current.boundChatId).toBe("chat-1");
-
-    rerender({ queueKey: "chat-2" });
-
-    expect(result.current.boundChatId).toBe("chat-2");
   });
 
   it("把稳定消息引用交给 assistant-ui 的增量转换缓存", () => {

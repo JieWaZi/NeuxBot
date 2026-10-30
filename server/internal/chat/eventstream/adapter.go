@@ -232,6 +232,10 @@ func ClonePublicEvent(event PublicEvent) PublicEvent {
 	}
 	if event.Message != nil {
 		message := *event.Message
+		if event.Message.Fork != nil {
+			fork := *event.Message.Fork
+			message.Fork = &fork
+		}
 		message.Attachments = append([]eventlog.AttachmentReference(nil), event.Message.Attachments...)
 		message.Skills = append([]eventlog.MessageSkillReference(nil), event.Message.Skills...)
 		message.Connectors = append([]eventlog.MessageConnectorReference(nil), event.Message.Connectors...)

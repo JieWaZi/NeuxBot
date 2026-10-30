@@ -1,6 +1,8 @@
 package global
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"errors"
 	"os"
@@ -9,8 +11,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecatalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	runtimecatalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -41,26 +42,31 @@ func TestCloseRetainsRuntimeDependenciesUntilManagementCleanupConfirms(t *testin
 	})
 	RuntimeCatalog, AIAccountService, DB = registry, accounts, database.DB
 
-	// 非普通认证文件让准备与退出对账确定性失败，不启动原生进程或网络调用。
+	// 非普通认证文件阻止原生启动；释放端口的失败独立模拟尚未完成的资源回收。
 	home := t.TempDir()
 	authPath := filepath.Join(home, "auth.json")
 	if err := os.Mkdir(authPath, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	released := 0
+	allowRelease := false
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	registry.Detect(ctx, runtimecontract.DetectRequest{
-		RuntimeID: runtimecontract.RuntimeIDCodex, BaseEnvironment: os.Environ(),
-		LaunchOverride: runtimecontract.LaunchOverride{Binary: os.Args[0], Environment: map[string]string{"CODEX_HOME": home}},
-		ReleaseResources: func() {
-			released++
+	registry.Detect(ctx, runtimeconfig.DetectRequest{
+		RuntimeID: runtimeconfig.RuntimeIDCodex, BaseEnvironment: os.Environ(), UseNativeAuth: true,
+		LaunchOverride: runtimeconfig.LaunchOverride{Binary: os.Args[0], Environment: map[string]string{"CODEX_HOME": home}},
+		ReleaseResources: func(context.Context) error {
 			if _, err := accounts.StartLogin(context.Background(), "missing-shutdown-account"); !errors.Is(err, status_error.AIAccountNotFound) {
 				t.Errorf("account service was closed before runtime resources: %v", err)
 			}
 			if err := sqlDB.Ping(); err != nil {
 				t.Errorf("database was closed before runtime resources: %v", err)
 			}
+			if !allowRelease {
+				return status_error.RuntimeShutdownFailed
+			}
+			released++
+			return nil
 		},
 	})
 	if released != 0 {
@@ -79,12 +85,7 @@ func TestCloseRetainsRuntimeDependenciesUntilManagementCleanupConfirms(t *testin
 		t.Fatalf("failed shutdown closed the retained database: %v", err)
 	}
 
-	if err := os.Remove(authPath); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(authPath, []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	allowRelease = true
 	if err := Close(); err != nil {
 		t.Fatalf("second shutdown did not retry management cleanup: %v", err)
 	}

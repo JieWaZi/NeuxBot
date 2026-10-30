@@ -1,6 +1,8 @@
 package model
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"errors"
 	"net/http"
@@ -11,13 +13,12 @@ import (
 	"testing"
 	"time"
 
-	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
-	acpdriver "github.com/JieWaZi/NeuxBot/agent-runtime/driver/acp"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
+	acpdriver "github.com/JieWaZi/NeuxBot/server/internal/agent/core/driver/acp"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	sdk "github.com/JieWaZi/acp-go/sdk"
 )
 
@@ -219,20 +220,20 @@ func TestMaintenanceRuntimeIntegratesScopedACPTask(t *testing.T) {
 			}
 			host := runtimehost.New(runtimehost.Config{
 				Resolve: func(context.Context, runtimehost.TextRequest) (runtimehost.Environment, error) {
-					return runtimehost.Environment{BaseRuntimeID: runtimecontract.RuntimeIDCodex, Target: runtimecontract.RuntimeTarget{RuntimeID: "wiki-profile", Binary: "/selected/codex"}}, nil
+					return runtimehost.Environment{BaseRuntimeID: runtimeconfig.RuntimeIDCodex, Target: runtimeconfig.RuntimeTarget{RuntimeID: "wiki-profile", Binary: "/selected/codex"}}, nil
 				},
-				Prepare: func(_ context.Context, request runtimehost.TextRequest, environment runtimehost.Environment, root string) (runtimecontract.RuntimeTarget, func(context.Context) error, error) {
+				Prepare: func(_ context.Context, request runtimehost.TextRequest, environment runtimehost.Environment, root string) (runtimeconfig.RuntimeTarget, func(context.Context) error, error) {
 					workspace = root
 					if request.RuntimeID != "wiki-profile" || request.AccountID != "wiki-account" || request.Model != "wiki-model" || request.Reasoning != "high" {
 						t.Errorf("accepted model/account selection changed: %+v", request)
 					}
 					accountDirectory := filepath.Join(root, "account-home")
 					if err := os.Mkdir(accountDirectory, 0700); err != nil {
-						return runtimecontract.RuntimeTarget{}, nil, err
+						return runtimeconfig.RuntimeTarget{}, nil, err
 					}
 					accountFile = filepath.Join(accountDirectory, "account.token")
 					if err := os.WriteFile(accountFile, []byte("selected-test-account"), 0600); err != nil {
-						return runtimecontract.RuntimeTarget{}, nil, err
+						return runtimeconfig.RuntimeTarget{}, nil, err
 					}
 					target := environment.Target
 					target.Isolated = true
@@ -242,12 +243,12 @@ func TestMaintenanceRuntimeIntegratesScopedACPTask(t *testing.T) {
 						return os.RemoveAll(accountDirectory)
 					}, nil
 				},
-				Launch: func(target runtimecontract.RuntimeTarget, _ runtimecontract.DetectionResult) (runtimecontract.LaunchFacts, error) {
-					return runtimecontract.LaunchFacts{BaseRuntimeID: runtimecontract.RuntimeIDCodex, Executable: target.Binary, Environment: []string{"ACCOUNT_FILE=" + target.Environment["ACCOUNT_FILE"], "PATH=" + target.Environment["PATH"]}}, nil
+				Launch: func(target runtimeconfig.RuntimeTarget, _ runtimeconfig.DetectionResult) (runtimeconfig.LaunchFacts, error) {
+					return runtimeconfig.LaunchFacts{BaseRuntimeID: runtimeconfig.RuntimeIDCodex, Executable: target.Binary, Environment: []string{"ACCOUNT_FILE=" + target.Environment["ACCOUNT_FILE"], "PATH=" + target.Environment["PATH"]}}, nil
 				},
 				Driver: func(environment runtimehost.Environment, _ acpdriver.Factory) (c.Driver, error) {
-					return acpdriver.New(acpdriver.Config{ID: environment.Target.RuntimeID, CompletionPolicy: acpdriver.CompletionNativePhase, ModeCandidates: []string{"agent-full-access"}, Factory: func(_ context.Context, request c.OpenRequest) (sdk.Agent, error) {
-						if request.Session.Mode != c.SessionNew || request.Policies.Interaction != c.InteractionUnattended || request.Policies.Output != c.OutputStrict || request.Policies.Tools.Mode != c.ToolsAllowAll || request.Policies.NativeConfig != c.NativeConfigInherit {
+					return acpdriver.New(acpdriver.Config{ID: environment.Target.RuntimeID, CompletionPolicy: c.CompletionNativePhase, ModeCandidates: []string{"agent-full-access"}, Factory: func(_ context.Context, request c.OpenRequest) (sdk.Agent, error) {
+						if request.Session.Mode != c.SessionNew || request.Policies.Tools.Mode != c.ToolsAllowAll || request.Policies.NativeConfig != c.NativeConfigInherit {
 							t.Errorf("maintenance execution policy changed: %+v", request)
 						}
 						if request.Credential.Environment["ACCOUNT_FILE"] != accountFile || !strings.HasSuffix(request.Credential.Environment["PATH"], "native-tools") || len(request.Resources) != 1 || request.Resources[0].ID != "ally" {

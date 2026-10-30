@@ -315,7 +315,7 @@ func (s *Store) appendIndexLocked(chatID string, records []Record) error {
 }
 
 // readIndexEntryAt 随机读取指定一基序号的索引记录。
-func readIndexEntryAt(file *os.File, sequence int64) (indexEntry, error) {
+func readIndexEntryAt(file io.ReaderAt, sequence int64) (indexEntry, error) {
 	if sequence < 1 {
 		return indexEntry{}, status_error.ChatLogIndexCorrupted
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -40,7 +41,13 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 		t.Fatal(err)
 	}
 	chatID := "0123456789abcdef0123456789abcdef"
-	if _, err := store.Create(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}, {Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "execution"}, {Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "execution"}}); err != nil {
+	facts := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}
+	for i := 0; i < 128; i++ {
+		id := fmt.Sprintf("old-%d", i)
+		facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: id, Data: marshalData(eventlog.ExecutionCreatedData{})}, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})})
+	}
+	facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "execution"}, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "execution"})
+	if _, err := store.Create(chatID, facts); err != nil {
 		t.Fatal(err)
 	}
 	journal := &consentTestJournal{runtimeEventTestJournal: &runtimeEventTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 16)}
@@ -66,6 +73,10 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 		t.Fatalf("question was not pending: %+v %v", first, err)
 	}
 	id := first.CommandID
+	get, err := bindings["interaction.questions.get"].Call(context.Background(), agentcapability.Request{Params: map[string]any{"questionId": id}})
+	if err != nil || get.Data.(map[string]any)["status"] != "pending" {
+		t.Fatalf("pending get=%+v %v", get, err)
+	}
 	replay, err := bindings[request.Operation].Call(context.Background(), request)
 	if err != nil || !replay.Replayed || replay.CommandID != id {
 		t.Fatalf("question duplicated: %+v %v", replay, err)
@@ -91,9 +102,16 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 	if err != nil || result.Data.(map[string]any)["completed"] != true {
 		t.Fatalf("actual answer not observed: %+v %v", result, err)
 	}
+	receipt, err := bindings[request.Operation].Receipt(context.Background(), request.RequestID)
+	if err != nil || receipt.Data.(map[string]any)["status"] != "accepted" || journal.executionRecords > 6 {
+		t.Fatalf("resolved receipt=%+v err=%v exact records=%d", receipt, err, journal.executionRecords)
+	}
 	other := manager.questionBindings(chatID, "another-execution")
 	if _, err := other[0].Receipt(context.Background(), "choice"); err == nil {
 		t.Fatal("question receipt leaked into another execution")
+	}
+	if journal.fullReads != 0 {
+		t.Fatalf("question create/get/wait/receipt read full Chat %d times", journal.fullReads)
 	}
 	coordinator.finishQuestions(chatID, "execution")
 }

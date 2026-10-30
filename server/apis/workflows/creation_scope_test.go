@@ -1,18 +1,21 @@
 package workflows
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
@@ -23,16 +26,16 @@ import (
 // creationScopeRuntime 只替代外部模型协议，保留真实创作接纳和工作区准备。
 type creationScopeRuntime struct {
 	// requests 记录实际派发请求，检验续聊不会更换获准目录。
-	requests chan runtimecontract.RunRequest
+	requests chan fixtureInvocation
 	// duringRun 在真实执行仍活跃时探测创作 MCP，默认不附加操作。
-	duringRun func(context.Context, runtimecontract.RunRequest)
+	duringRun func(context.Context, fixtureInvocation)
 }
 
 func TestCreationCLIQueriesGuidanceAndSavesThroughAuthorizedCommands(t *testing.T) {
 	source := workflowTestSource(t)
 	outcomes := make(chan error, 1)
-	runtime := &creationScopeRuntime{requests: make(chan runtimecontract.RunRequest, 1)}
-	runtime.duringRun = func(ctx context.Context, request runtimecontract.RunRequest) {
+	runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 1)}
+	runtime.duringRun = func(ctx context.Context, request fixtureInvocation) {
 		for _, command := range []struct {
 			// args 是真实 CLI 的结构化参数列表。
 			args []string
@@ -92,7 +95,7 @@ func TestCreationCLIQueriesGuidanceAndSavesThroughAuthorizedCommands(t *testing.
 
 func TestCreationScopeFailedAdmissionCanRetryNewRequest(t *testing.T) {
 	directory := t.TempDir()
-	runtime := &creationScopeRuntime{requests: make(chan runtimecontract.RunRequest, 4)}
+	runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 4)}
 	s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -112,6 +115,18 @@ func TestCreationScopeFailedAdmissionCanRetryNewRequest(t *testing.T) {
 	if err != nil || accepted.ID != failed.ID || accepted.ChatID == "" || accepted.AcceptedExecutionID == "" {
 		t.Fatalf("failed initial creation could not retry after configuration recovery: %v", err)
 	}
+	encoded, err := json.Marshal(accepted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reply map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &reply); err != nil {
+		t.Fatal(err)
+	}
+	var snapshot models.Chat
+	if err := json.Unmarshal(reply["chat"], &snapshot); err != nil || snapshot.ID != accepted.ChatID || snapshot.LatestSequence <= 0 {
+		t.Fatalf("accepted workflow reply discarded authoritative chat snapshot: %s %v", encoded, err)
+	}
 	select {
 	case <-runtime.requests:
 	case <-ctx.Done():
@@ -126,7 +141,7 @@ func TestCreationScopeFailedAdmissionCanRetryNewRequest(t *testing.T) {
 
 func TestWorkflowReusesAllyAndStartsAnOrdinaryChat(t *testing.T) {
 	directory := t.TempDir()
-	runtime := &creationScopeRuntime{requests: make(chan runtimecontract.RunRequest, 2)}
+	runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 2)}
 	s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -171,7 +186,7 @@ func TestWorkflowReusesAllyAndStartsAnOrdinaryChat(t *testing.T) {
 		if request.Workspace.Path == "" {
 			t.Fatal("no managed workspace")
 		}
-		if request.Target.Environment[constants.AgentCLIContextEnvironment] == "" || len(request.Connectors) != 0 {
+		if request.Resources.Target.Environment[constants.AgentCLIContextEnvironment] == "" || len(request.Connectors) != 0 {
 			t.Fatal("workflow creation missing CLI context or retained product MCP")
 		}
 		if len(request.Skills) != 1 || request.Skills[0].Name != constants.AgentCLISkillName {
@@ -190,10 +205,10 @@ func TestWorkflowReusesAllyAndStartsAnOrdinaryChat(t *testing.T) {
 func (*creationScopeRuntime) ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
 	return runtimecontract.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
 }
-func (*creationScopeRuntime) Runtimes() []runtimecontract.RuntimeSummary {
-	return []runtimecontract.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
+func (*creationScopeRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
+	return []runtimeconfig.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
 }
-func (r *creationScopeRuntime) Run(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink) runtimecontract.Result {
+func (r *creationScopeRuntime) Run(ctx context.Context, request fixtureInvocation, sink runtimecontract.EventSink) runtimecontract.Result {
 	id := util.New()
 	data, _ := json.Marshal(runtimecontract.InvocationStartedData{InvocationID: id})
 	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: data}); err != nil {
@@ -210,9 +225,9 @@ func TestCreationScopeManagedAndExplicitDirectory(t *testing.T) {
 	for _, managed := range []bool{true, false} {
 		t.Run(map[bool]string{true: "managed", false: "explicit"}[managed], func(t *testing.T) {
 			directory := t.TempDir()
-			runtime := &creationScopeRuntime{requests: make(chan runtimecontract.RunRequest, 4)}
+			runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 4)}
 			finishRuntime := make(chan struct{})
-			runtime.duringRun = func(ctx context.Context, _ runtimecontract.RunRequest) {
+			runtime.duringRun = func(ctx context.Context, _ fixtureInvocation) {
 				select {
 				case <-finishRuntime:
 				case <-ctx.Done():
@@ -286,7 +301,7 @@ func TestCreationScopeManagedAndExplicitDirectory(t *testing.T) {
 				// 模拟 Core 已提交、创作确认写入丢失的进程中断窗口。
 				unconfirmed := session
 				unconfirmed.ChatID, unconfirmed.AcceptedExecutionID = "", ""
-				if err := s.CreationSessions.UpdateCreationSession(ctx, unconfirmed); err != nil {
+				if err := s.CreationSessions.UpdateCreationSession(ctx, unconfirmed.WorkflowCreationSession); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -310,11 +325,11 @@ func TestCreationScopeManagedAndExplicitDirectory(t *testing.T) {
 
 func TestCreationSessionsUseChatWorkspacesAndShareDefinitionDirectory(t *testing.T) {
 	directory := t.TempDir()
-	runtime := &creationScopeRuntime{requests: make(chan runtimecontract.RunRequest, 3)}
+	runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 3)}
 	s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	var requests []runtimecontract.RunRequest
+	var requests []fixtureInvocation
 	var sessions []models.WorkflowCreationSession
 	for index, count := range []int{2, 1} {
 		definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: []string{"workflow-a", "workflow-b"}[index], CreationWakerID: "fixture-waker"})
@@ -346,7 +361,7 @@ func TestCreationSessionsUseChatWorkspacesAndShareDefinitionDirectory(t *testing
 					t.Fatal(ctx.Err())
 				}
 			}
-			sessions = append(sessions, session)
+			sessions = append(sessions, session.WorkflowCreationSession)
 		}
 	}
 	for index, request := range requests {
@@ -403,7 +418,7 @@ func (b *creationInputBoundary) Start(_ context.Context, intent execution.WorkIn
 }
 
 func TestCreationForwardsCompleteChatInputAndSessionTransition(t *testing.T) {
-	s, _ := openCoreWorkflowPorts(t, t.TempDir(), &creationScopeRuntime{requests: make(chan runtimecontract.RunRequest, 1)}, fixtureEnvironment{})
+	s, _ := openCoreWorkflowPorts(t, t.TempDir(), &creationScopeRuntime{requests: make(chan fixtureInvocation, 1)}, fixtureEnvironment{})
 	ctx := context.Background()
 	definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "complete-input", CreationWakerID: "fixture-waker"})
 	if err != nil {
@@ -412,7 +427,7 @@ func TestCreationForwardsCompleteChatInputAndSessionTransition(t *testing.T) {
 	boundary := &creationInputBoundary{Service: s.Executions}
 	s.Executions = boundary
 	command := SendCreationMessageCommand{
-		DefinitionID: definition.ID, RequestID: "send", Content: "引用材料修改工作流",
+		DefinitionID: definition.ID, RequestID: strings.Repeat("r", 128), Content: "引用材料修改工作流",
 		Attachments:    []workinput.Attachment{{SourcePath: "/tmp/material.txt"}},
 		CodeReferences: []workinput.CodeReference{{Path: "/tmp/source.go", StartLine: 1, EndLine: 2, Content: "package main"}},
 		SkillIDs:       []string{"skill-one"}, ConnectorIDs: []string{"connector-one"},
@@ -423,7 +438,7 @@ func TestCreationForwardsCompleteChatInputAndSessionTransition(t *testing.T) {
 		t.Fatal(err)
 	}
 	input := boundary.intent.Input
-	if input.Content != command.Content || !reflect.DeepEqual(input.Attachments, command.Attachments) || !reflect.DeepEqual(input.CodeReferences, command.CodeReferences) || !reflect.DeepEqual(input.SkillIDs, command.SkillIDs) || !reflect.DeepEqual(input.ConnectorIDs, command.ConnectorIDs) {
+	if input.SubmissionID != command.RequestID || input.Content != command.Content || !reflect.DeepEqual(input.Attachments, command.Attachments) || !reflect.DeepEqual(input.CodeReferences, command.CodeReferences) || !reflect.DeepEqual(input.SkillIDs, command.SkillIDs) || !reflect.DeepEqual(input.ConnectorIDs, command.ConnectorIDs) {
 		t.Fatalf("creation admission lost common chat input: %+v", input)
 	}
 	options := boundary.intent.Options

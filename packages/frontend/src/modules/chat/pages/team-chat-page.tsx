@@ -1,3 +1,4 @@
+import { getWakerRecentProjectOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useInstalledPluginReferences } from "@/modules/plugin";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
 import { useDraftWorkspaceSelections } from "./use-draft-workspace-selections";
@@ -7,21 +8,26 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
 import {
-  useLocation,
-  useOutletContext,
-  useSearchParams,
-} from "react-router-dom";
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Dispatch,
+  type RefObject,
+  type SetStateAction,
+} from "react";
+import { useTranslation } from "react-i18next";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 
 import {
   cancelChatExecutionMutation,
-  chatListInfiniteOptions,
   chatListKey,
   chatMessagesInfiniteOptions,
+  chatMessageSource,
+  commitAcceptedChat,
   useChatHistoryVisibility,
-  chatMessagesKey,
   getChatOptions,
   getChatQueryKey,
   listRuntimesOptions,
@@ -51,7 +57,10 @@ import {
 import { obsoleteTeamMemberTabIds } from "../model/team-member-tabs";
 import { useChatInteractions } from "../model/use-conversation-interactions";
 import { useChatRuntime } from "../runtime/use-chat-runtime";
-import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
+import {
+  useRouteSceneActive,
+  useScenePresentationKey,
+} from "@/shared/workspace/app-scene-workspace";
 import { listProjectsOptions } from "@/modules/project";
 import {
   connectorSelectableInComposer,
@@ -88,26 +97,63 @@ import {
   teamMainChatMessageVisible,
 } from "./team-chat-presentation";
 
-export function TeamChatPageContent({
-  chatId,
-  routeTransitioning = false,
-  teamContext,
-}: {
+type TeamChatPageContentProps = {
   chatId?: string;
   routeTransitioning?: boolean;
   teamContext: TeamChatContext;
+  presentationScopeKey?: string;
+};
+type TeamDraftConfigurations = Record<
+  string,
+  Record<string, TeamMemberExecutionConfig>
+>;
+
+/** 团队主聊天与成员工作区分别拥有呈现生命周期，首发沿用 Scene 身份。 */
+export function TeamChatPageContent(props: TeamChatPageContentProps) {
+  const scopeKey = useScenePresentationKey(props.presentationScopeKey);
+  const [searchParams] = useSearchParams();
+  const workspaceScopeKey = `team:${props.teamContext.channelId}:${props.teamContext.threadId ?? `draft:${searchParams.get("draftId") ?? "default"}`}`;
+  const workspace = useSceneWorkspace(workspaceScopeKey);
+  const memberConfigurations = useState<TeamDraftConfigurations>({});
+  const createdTeamThreadIds = useRef(new Map<ChatScopeKey, string>());
+  const member = workspace.snapshot.tabs.find(
+    (tab) => tab.id === workspace.snapshot.activeTabId && tab.kind === "member",
+  );
+  return (
+    <TeamChatView
+      key={JSON.stringify([scopeKey, member?.id ?? null])}
+      {...props}
+      workspaceScopeKey={workspaceScopeKey}
+      memberConfigurations={memberConfigurations}
+      createdTeamThreadIds={createdTeamThreadIds}
+    />
+  );
+}
+
+function TeamChatView({
+  chatId,
+  routeTransitioning = false,
+  teamContext,
+  workspaceScopeKey,
+  memberConfigurations,
+  createdTeamThreadIds,
+}: TeamChatPageContentProps & {
+  workspaceScopeKey: string;
+  memberConfigurations: [
+    TeamDraftConfigurations,
+    Dispatch<SetStateAction<TeamDraftConfigurations>>,
+  ];
+  createdTeamThreadIds: RefObject<Map<ChatScopeKey, string>>;
 }) {
   const { t } = useTranslation("chat");
   const sceneActive = useRouteSceneActive();
   const [searchParams] = useSearchParams();
-  const location = useLocation();
   const queryClient = useQueryClient();
   const { chatRightPanel, setChatRightPanel, renderTeamMembers } =
     useOutletContext<ChatOutletContext>();
   const [teamMentionWakerId, setTeamMentionWakerId] = useState("");
   const [draftTeamMemberConfigsByScope, setDraftTeamMemberConfigsByScope] =
-    useState<Record<string, Record<string, TeamMemberExecutionConfig>>>({});
-  const createdTeamThreadIds = useRef(new Map<ChatScopeKey, string>());
+    memberConfigurations;
   const [draftWorkspaceSelections, selectDraftWorkspace] =
     useDraftWorkspaceSelections();
   const draftWorkspacePreferenceKey = `team:${teamContext.channelId}`;
@@ -120,12 +166,8 @@ export function TeamChatPageContent({
   const [selectedConnectorIDsByWaker, setSelectedConnectorIDsByWaker] =
     useState<Record<string, string[]>>({});
   const [composerRestoreRevision, setComposerRestoreRevision] = useState(0);
-  const workspaceScopeKey = `team:${teamContext.channelId}:${teamContext.threadId ?? `draft:${searchParams.get("draftId") ?? "default"}`}`;
-  const initialWorkspaceWarningCode =
-    (location.state as { workspaceWarningCode?: string } | null)
-      ?.workspaceWarningCode ?? "";
   const { state: chatViewState, update: updateChatViewState } =
-    useChatViewState(workspaceScopeKey, initialWorkspaceWarningCode);
+    useChatViewState(workspaceScopeKey);
   const workspace = useSceneWorkspace(workspaceScopeKey);
   const taskWorkbench = useWorkbench(workspaceScopeKey);
   const openedTaskLink = useRef("");
@@ -205,7 +247,6 @@ export function TeamChatPageContent({
     query: workspaceQuery,
     runtimeId,
     selectedCodeReferences,
-    workspaceWarningCode,
   } = chatViewState;
 
   const wakersQuery = useQuery(
@@ -217,10 +258,13 @@ export function TeamChatPageContent({
     }),
     enabled: sceneActive && Boolean(activeChatId),
   });
-  useChatHistoryVisibility(activeChatId, sceneActive);
+  useChatHistoryVisibility(
+    isTeamMainChat ? undefined : activeChatId,
+    sceneActive,
+  );
   const messagesQuery = useInfiniteQuery({
     ...chatMessagesInfiniteOptions(activeChatId ?? "pending"),
-    enabled: sceneActive && Boolean(activeChatId),
+    enabled: sceneActive && !isTeamMainChat && Boolean(activeChatId),
   });
   const runtimesQuery = useQuery(listRuntimesOptions());
   const wakers = wakersQuery.data?.resources ?? [];
@@ -282,11 +326,14 @@ export function TeamChatPageContent({
     }),
     enabled: Boolean(selectedWakerID),
   });
-  const chatsQuery = useInfiniteQuery({
-    ...chatListInfiniteOptions(selectedWaker?.id ?? "pending"),
-    enabled: Boolean(selectedWaker?.id),
+  const recentProjectQuery = useQuery({
+    ...getWakerRecentProjectOptions({
+      path: { wakerId: teamContext.leadWakerId || "pending" },
+    }),
+    enabled:
+      sceneActive && !teamContext.threadId && Boolean(teamContext.leadWakerId),
   });
-  const recentProjectID = chatsQuery.data?.pages[0]?.recentProjectId ?? "";
+  const recentProjectID = recentProjectQuery.data?.projectId ?? "";
   const projects = projectsQuery.data?.resources ?? [];
   const enabledSkills = useMemo(
     () =>
@@ -389,11 +436,7 @@ export function TeamChatPageContent({
   }, [activeChatId, messagesQuery.data]);
   const runtimeMessages = useMemo(
     () =>
-      isTeamMainChat
-        ? teamContext.timeline.flatMap((item) =>
-            item.coordinator ? [item.message] : [],
-          )
-        : messages,
+      isTeamMainChat ? teamContext.messageSource.snapshot.messages : messages,
     [isTeamMainChat, messages, teamContext],
   );
   const teamMessageAuthors = useMemo(() => {
@@ -580,13 +623,10 @@ export function TeamChatPageContent({
     return workspaceDirectory ? [workspaceDirectory] : [];
   })();
 
-  const refreshDetail = () => {
-    if (activeChatId) {
+  const refreshDetail = (includeChat = true) => {
+    if (includeChat && activeChatId) {
       void queryClient.invalidateQueries({
         queryKey: getChatQueryKey({ path: { chatId: activeChatId } }),
-      });
-      void queryClient.invalidateQueries({
-        queryKey: chatMessagesKey(activeChatId),
       });
     }
     if (selectedWakerID) {
@@ -613,18 +653,18 @@ export function TeamChatPageContent({
     queueKey: runtimeQueueKey,
     queueActive: sceneActive,
     chatId: activeChatId,
-    messages: runtimeMessages,
-    latestSequence: latestMessageSequence,
+    messageSource: isTeamMainChat
+      ? teamContext.messageSource
+      : chatMessageSource(queryClient, activeChatId, {
+          messages: runtimeMessages,
+          latestSequence: latestMessageSequence,
+          ready: !activeChatId || Boolean(messagesQuery.data),
+        }),
     activeExecutionId: isTeamMainChat
       ? teamContext.leadActiveExecutionId
       : detailQuery.data?.chat?.activeExecutionId,
     initialPendingApprovals: detailQuery.data?.chat?.pendingApprovals,
     initialPendingElicitations: detailQuery.data?.chat?.pendingElicitations,
-    isHistoryReady: isTeamMainChat
-      ? !teamContext.threadDetailLoading &&
-        !teamContext.timelineLoading &&
-        !teamContext.loadError
-      : !activeChatId || messagesQuery.isSuccess,
     isLoading: isTeamMainChat
       ? Boolean(teamContext.threadDetailLoading || teamContext.timelineLoading)
       : Boolean(
@@ -692,7 +732,12 @@ export function TeamChatPageContent({
     },
     onApprovalRequested: notifyApproval,
 
-    send: (text, _targetChatId, attachmentPaths = [], selection) => {
+    prepareSubmission: (
+      text,
+      _targetChatId,
+      attachmentPaths = [],
+      selection,
+    ) => {
       const codeReferences = (selection?.codeReferences ?? []).flatMap(
         ({ path, startLine, endLine, content }) => {
           if (!path) return [];
@@ -706,30 +751,35 @@ export function TeamChatPageContent({
       );
       const memberChatId = activeMemberTab?.chatId;
       if (memberChatId) {
-        return sendMemberMessage
-          .mutateAsync({
-            path: { chatId: memberChatId },
-            body: {
-              text,
-              accountId:
-                selection?.accountId ?? executionSelection.selection.accountId,
-              runtimeId: selection?.runtimeId ?? "",
-              model: selection?.model ?? "",
-              reasoning: selection?.reasoning ?? "",
-              permissionLevel: selection?.permissionLevel ?? "auto",
-              attachments: attachmentPaths.map((sourcePath) => ({
-                sourcePath,
-              })),
-              skillIds: selection?.skillIds ?? [],
-              pluginIds: selection?.pluginIds ?? [],
-              connectorIds: selection?.connectorIds ?? [],
-              codeReferences,
-            },
-          })
-          .then((result) => ({
-            chat: detailQuery.data?.chat,
-            execution: result.execution,
-          }));
+        const body = {
+          text,
+          accountId:
+            selection?.accountId ?? executionSelection.selection.accountId,
+          runtimeId: selection?.runtimeId ?? "",
+          model: selection?.model ?? "",
+          reasoning: selection?.reasoning ?? "",
+          permissionLevel: selection?.permissionLevel ?? "auto",
+          attachments: attachmentPaths.map((sourcePath) => ({ sourcePath })),
+          skillIds: selection?.skillIds ?? [],
+          pluginIds: selection?.pluginIds ?? [],
+          connectorIds: selection?.connectorIds ?? [],
+          codeReferences,
+        };
+        const requestScope = `${workspaceScopeKey}:send:${memberChatId}`;
+        const { clientRequestId: submissionId } = withStableCreateRequest(
+          requestScope,
+          body,
+        );
+        return {
+          submissionId,
+          confirmAccepted: () =>
+            clearStableCreateRequest(requestScope, submissionId),
+          accept: () =>
+            sendMemberMessage.mutateAsync({
+              path: { chatId: memberChatId },
+              body: { ...body, submissionId },
+            }),
+        };
       }
       const body = {
         text,
@@ -741,10 +791,24 @@ export function TeamChatPageContent({
         codeReferences,
       };
       if (teamContext.threadId) {
-        return teamContext.onSendMessage(body).then((result) => ({
-          chat: detailQuery.data?.chat,
-          execution: result.execution,
-        }));
+        const requestScope = `${workspaceScopeKey}:send:${teamContext.threadId}`;
+        const { clientRequestId: submissionId } = withStableCreateRequest(
+          requestScope,
+          body,
+        );
+        return {
+          submissionId,
+          confirmAccepted: () =>
+            clearStableCreateRequest(requestScope, submissionId),
+          accept: () =>
+            teamContext
+              .onSendMessage({ ...body, submissionId })
+              .then((result) => {
+                return {
+                  execution: result.execution,
+                };
+              }),
+        };
       }
       const createRequest = withStableCreateRequest(workspaceScopeKey, {
         ...body,
@@ -762,34 +826,42 @@ export function TeamChatPageContent({
         projectId: selectedDraftProject?.id || undefined,
         workingDirectory: selectedDraftProject ? undefined : workspaceDirectory,
       });
-      return teamContext.onCreateThread(createRequest).then((result) => {
-        clearStableCreateRequest(workspaceScopeKey);
-        const thread = result.thread;
-        const leadMember = result.members?.find((member) => member.isLead);
-        if (thread?.id) {
-          createdTeamThreadIds.current.set(currentChatKey, thread.id);
-        }
-        const createdChat: Chat | undefined = thread?.leadChatId
-          ? {
-              additionalWorkingDirectories:
-                thread?.additionalWorkingDirectories,
-              hiddenFromWakerHistory: true,
-              id: thread.leadChatId,
-              lastModel: leadMember?.model,
-              lastPermissionLevel: leadMember?.permissionLevel,
-              lastRuntimeId: leadMember?.runtimeId,
-              projectId: thread?.projectId,
-              projectName: thread?.projectName,
-              title: thread?.title,
-              wakerId: leadMember?.wakerId,
-              workspaceDirectory: thread?.workspaceDirectory,
+      return {
+        submissionId: createRequest.clientRequestId,
+        confirmAccepted: () =>
+          clearStableCreateRequest(
+            workspaceScopeKey,
+            createRequest.clientRequestId,
+          ),
+        accept: () =>
+          teamContext.onCreateThread(createRequest).then((result) => {
+            const thread = result.thread;
+            const leadMember = result.members?.find((member) => member.isLead);
+            if (thread?.id) {
+              createdTeamThreadIds.current.set(currentChatKey, thread.id);
             }
-          : undefined;
-        return {
-          chat: createdChat,
-          execution: result.leadExecution,
-        };
-      });
+            const createdChat: Chat | undefined = thread?.leadChatId
+              ? {
+                  additionalWorkingDirectories:
+                    thread?.additionalWorkingDirectories,
+                  hiddenFromWakerHistory: true,
+                  id: thread.leadChatId,
+                  lastModel: leadMember?.model,
+                  lastPermissionLevel: leadMember?.permissionLevel,
+                  lastRuntimeId: leadMember?.runtimeId,
+                  projectId: thread?.projectId,
+                  projectName: thread?.projectName,
+                  title: thread?.title,
+                  wakerId: leadMember?.wakerId,
+                  workspaceDirectory: thread?.workspaceDirectory,
+                }
+              : undefined;
+            return {
+              chat: createdChat,
+              execution: result.leadExecution,
+            };
+          }),
+      };
     },
     cancel: async () => {
       const invocation = chatInvocationGuard.capture(
@@ -819,17 +891,14 @@ export function TeamChatPageContent({
         throw error;
       }
     },
-    onSettled: (_result, invocation) => {
-      refreshDetail();
-      if (isTeamMainChat) teamContext.onThreadChanged();
+    onSettled: (result, invocation) => {
+      if (!isTeamMainChat)
+        refreshDetail(!commitAcceptedChat(queryClient, result.chat));
       if (!invocation.current) {
         createdTeamThreadIds.current.delete(invocation.key);
       }
     },
     onStarted: (result, invocation) => {
-      updateChatViewState({
-        workspaceWarningCode: result.workspaceWarningCode ?? "",
-      });
       const createdID = result.chat?.id;
       const createdThreadId = createdTeamThreadIds.current.get(invocation.key);
       if (createdID && createdThreadId) {
@@ -843,10 +912,7 @@ export function TeamChatPageContent({
       }
     },
     onTerminal: () => {
-      refreshDetail();
-      if (isTeamMainChat) {
-        teamContext.onThreadChanged();
-      }
+      if (!isTeamMainChat) refreshDetail();
     },
   });
   const {
@@ -862,10 +928,7 @@ export function TeamChatPageContent({
       void queryClient.invalidateQueries({
         queryKey: getChatQueryKey({ path: { chatId: targetChatId } }),
       });
-      void queryClient.invalidateQueries({
-        queryKey: chatMessagesKey(targetChatId),
-      });
-      refreshDetail();
+      if (!isTeamMainChat && targetChatId !== activeChatId) refreshDetail();
     },
     pendingApprovals: chatRuntime.pendingApprovals,
     pendingElicitations: chatRuntime.pendingElicitations,
@@ -891,9 +954,8 @@ export function TeamChatPageContent({
     ? teamShellLoading && !chatRuntime.hasVisibleMessages
     : Boolean(
         routeTransitioning ||
-        (activeChatId && activeChatId !== chatRuntime.boundChatId) ||
         (activeChatId &&
-          !chatRuntime.isHistorySynchronized &&
+          !messagesQuery.isSuccess &&
           !chatRuntime.hasVisibleMessages),
       );
 
@@ -931,18 +993,11 @@ export function TeamChatPageContent({
     selectedDraftProject?.name ||
     (workspaceDirectory ? workspaceDirectory.split(/[\\/]/).pop() : "") ||
     t("selectWorkspace");
-  const runtimeWorkspaceWarning =
-    workspaceWarningCode === "runtime_additional_directories_unsupported"
-      ? t("runtimeAdditionalDirectoriesUnsupported")
-      : "";
   const permissionWarning = selectedPermissionUnsupported
     ? t("permissionUnsupported")
     : defaultPermissionWasDowngraded
       ? t("permissionDowngraded")
       : "";
-  const workspaceWarning = [runtimeWorkspaceWarning, permissionWarning]
-    .filter(Boolean)
-    .join(" ");
   const teamGreetingPhrases = useMemo(
     () => [
       t("team.emptyTitle"),
@@ -1217,7 +1272,7 @@ export function TeamChatPageContent({
           : messagesQuery
               .fetchNextPage({ cancelRefetch: false, throwOnError: true })
               .then(() => {}),
-      warning: workspaceWarning || undefined,
+      warning: permissionWarning || undefined,
       requestedInteractionId: searchParams.get("request")?.split(":").at(-1),
       pendingApprovals: chatRuntime.pendingApprovals,
       approvalSubmissionState,

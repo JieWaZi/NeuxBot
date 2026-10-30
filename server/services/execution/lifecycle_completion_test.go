@@ -1,10 +1,12 @@
 package execution
 
 import (
+	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+
 	"context"
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -16,6 +18,8 @@ import (
 
 // terminalJournal 记录执行终态的 durable 与公开两阶段交接。
 type terminalJournal struct {
+	// Journal 保留本测试不使用的执行查询边界。
+	chatservice.Journal
 	// terminal 是最近一次先持久的执行终态。
 	terminal chatservice.TerminalFact
 	// published 在注册表交出执行占用后接收公开通知。
@@ -177,7 +181,7 @@ func TestExecutionOutcomeIsDurableAndKeepsChatCompletedSemantics(t *testing.T) {
 }
 
 func TestExecutionOutcomeKeepsFailureAlongsideStopReason(t *testing.T) {
-	runner := &retryTestRuntime{result: runtimecontract.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Failure: &runtimecontract.Failure{Code: runtimecontract.FailureCodeEventDelivery, Stage: "sink", Message: "delivery failed"}}}
+	runner := &retryTestRuntime{result: runtimecontract.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeEventDelivery, Stage: "sink", Message: "delivery failed"}}}
 	manager := newMessageTestService(t, t.TempDir(), runner)
 	accepted := retryTestStart(t, manager, retryTestIntent(t))
 	outcome, err := manager.chats.ReadExecutionOutcome(context.Background(), accepted.Chat.ID, accepted.Execution.ID)
@@ -190,7 +194,7 @@ func TestExecutionOutcomeKeepsFailureAlongsideStopReason(t *testing.T) {
 }
 
 func TestExecutionOutcomePreservesConfirmedCancellation(t *testing.T) {
-	runner := &retryTestRuntime{result: runtimecontract.Result{StopReason: "cancelled", TerminationReason: constants.RuntimeTerminationReasonCancelled, Failure: &runtimecontract.Failure{Code: runtimecontract.FailureCodeContextCanceled, Stage: "prompt", Message: "cancelled by user"}}}
+	runner := &retryTestRuntime{result: runtimecontract.Result{StopReason: "cancelled", TerminationReason: constants.RuntimeTerminationReasonCancelled, Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeContextCanceled, Stage: "prompt", Message: "cancelled by user"}}}
 	manager := newMessageTestService(t, t.TempDir(), runner)
 	accepted := retryTestStart(t, manager, retryTestIntent(t))
 	outcome, err := manager.chats.ReadExecutionOutcome(context.Background(), accepted.Chat.ID, accepted.Execution.ID)

@@ -168,10 +168,15 @@ func (s *Service) runLoop(lifecycle *runnerLifecycle) {
 			if lifecycle.ctx.Err() != nil {
 				return
 			}
-			if err := s.Tick(lifecycle.ctx, run.ID); err != nil && !errors.Is(err, status_error.WorkflowFenceConflict) {
-				logx.Errorf("advance workflow failed: run_id=%s error=%v", run.ID, err)
+			state, err := s.tick(lifecycle.ctx, run.ID)
+			if err != nil {
+				if !errors.Is(err, status_error.WorkflowFenceConflict) {
+					logx.Errorf("advance workflow failed: run_id=%s error=%v", run.ID, err)
+				}
+				continue
 			}
-			state, err := s.runs.LoadRunState(lifecycle.ctx, run.ID)
+			// CommitRun 可将未知效果收敛为 cancelling；只确认运行行，复用 Tick 已核验的效果与许可。
+			state.Run, err = s.runs.GetRun(lifecycle.ctx, run.ID)
 			if err != nil {
 				continue
 			}

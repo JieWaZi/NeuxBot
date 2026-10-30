@@ -19,7 +19,6 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
 } from "react";
@@ -29,9 +28,11 @@ import {
   isTerminalEvent,
   latestContextMetrics,
   mergeAuthoritativeMessages,
+  uncommittedChatMessages,
   toThreadMessage,
   type AllyChatMessage,
   type ChatMessageVisibility,
+  type ChatMessageSource,
   type ChatRunMetrics,
 } from "./chat-projection";
 import {
@@ -57,7 +58,11 @@ import type {
   ChatInvocation,
   ChatScopeKey,
 } from "../model/conversation-identity";
-import { subscribeChat, type StreamState } from "@/shared/api/events";
+import {
+  subscribeChat,
+  type ChatEvent,
+  type StreamState,
+} from "@/shared/api/events";
 
 function overlayMatchesScope(
   overlayChatId: string | undefined,
@@ -65,18 +70,22 @@ function overlayMatchesScope(
   messages: readonly AllyChatMessage[],
 ): boolean {
   if (overlayChatId === optionsChatId) return true;
-  return (
-    !optionsChatId &&
-    overlayChatId !== undefined &&
-    messages.some((message) => message.awaitingFirstHistory)
-  );
+  return !optionsChatId && overlayChatId !== undefined && messages.length > 0;
 }
 import type {
-  GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as ChatMessage,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingApproval as PendingApproval,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation,
   GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as MessageResult,
 } from "@/shared/api/generated/types.gen";
+
+/** 请求适配层同步确定真实输入身份；接纳命令沿用同一份请求。 */
+export type PreparedChatSubmission = {
+  /** 普通 HTTP 输入复用已有幂等身份；无身份的领域入口保持缺省。 */
+  submissionId?: string;
+  /** 权威消息或成功回执确认接纳后，按本命令身份退役重试记录；重复确认无副作用。 */
+  confirmAccepted?: () => void;
+  accept: () => Promise<MessageResult>;
+};
 
 type ChatRuntimeOptions = {
   conversationKey: ChatScopeKey;
@@ -84,12 +93,10 @@ type ChatRuntimeOptions = {
   /** 隐藏 Scene 暂停临时队列出队，已开始的执行继续运行。 */
   queueActive?: boolean;
   chatId?: string;
-  messages: ChatMessage[];
-  latestSequence: number;
+  messageSource: ChatMessageSource;
   activeExecutionId?: string;
   initialPendingApprovals?: PendingApproval[];
   initialPendingElicitations?: PendingElicitation[];
-  isHistoryReady: boolean;
   isLoading: boolean;
   isSendDisabled: boolean;
   serverManagedQueue?: boolean;
@@ -102,12 +109,12 @@ type ChatRuntimeOptions = {
   onMessageAccepted?: () => void;
   onMessageRejected?: (selection: ChatSendSelection) => void;
   onApprovalRequested?: (approval: PendingApproval) => void;
-  send: (
+  prepareSubmission: (
     text: string,
     chatId?: string,
     attachmentPaths?: string[],
     selection?: ChatSendSelection,
-  ) => Promise<MessageResult>;
+  ) => PreparedChatSubmission;
   cancel: () => Promise<void>;
   onSettled?: (
     result: MessageResult,
@@ -121,8 +128,6 @@ type ChatRuntimeResult = {
   runtime: AssistantRuntime;
   streamState: StreamState;
   isRunning: boolean;
-  isHistorySynchronized: boolean;
-  boundChatId?: string;
   hasVisibleMessages: boolean;
   sendFailure: ChatSendFailure;
   retryExecution: (executionId: string) => Promise<void>;
@@ -199,17 +204,15 @@ function mergeLocalMessages(
   return merged;
 }
 
-function isActiveLocalMessage(message: AllyChatMessage) {
-  return (
-    Boolean(message.executionId) &&
-    (message.status === "pending" || message.status === "running")
-  );
-}
-
 export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
+  const history = options.messageSource.snapshot;
+  const sourceRef = useRef(options.messageSource);
+  useLayoutEffect(() => {
+    sourceRef.current = options.messageSource;
+  }, [options.messageSource]);
   const queueKey = options.queueKey;
   const cancel = options.cancel;
-  const send = options.send;
+  const prepareSubmission = options.prepareSubmission;
   const onStarted = options.onStarted;
   const onSettled = options.onSettled;
   const attachmentOnlyText = options.attachmentOnlyText;
@@ -218,16 +221,30 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     chatId?: string;
     messages: AllyChatMessage[];
   }>({ chatId: options.chatId, messages: [] });
-  const [localExecution, setLocalExecution] = useState<{
-    chatId?: string;
-    id?: string;
-  }>({ chatId: options.chatId });
-  const [sendingKey, setSendingKey] = useState<string>();
+  const [sending, setSending] = useState<{
+    queueKey: string;
+    submission?: PreparedChatSubmission;
+  }>();
+  // 保留最近一次输入命令的所有权，HTTP 结算后其延迟回调也不能接管后续输入。
+  const currentSubmissionRef = useRef<PreparedChatSubmission | undefined>(
+    undefined,
+  );
+  // 这里只保存等待接纳确认的输入命令，不复制消息、执行状态或生成新的身份。
+  const pendingSubmissionsRef = useRef(
+    new Map<string, PreparedChatSubmission>(),
+  );
+  const confirmSubmission = useCallback((submissionId: string | undefined) => {
+    if (!submissionId) return;
+    const prepared = pendingSubmissionsRef.current.get(submissionId);
+    if (!prepared) return;
+    prepared.confirmAccepted?.();
+    pendingSubmissionsRef.current.delete(submissionId);
+  }, []);
+  useLayoutEffect(() => {
+    for (const message of history.messages)
+      confirmSubmission(message.submissionId);
+  }, [confirmSubmission, history.messages]);
   const [streamState, setStreamState] = useState<StreamState>("closed");
-  const [terminalExecution, setTerminalExecution] = useState<{
-    chatId?: string;
-    executionId?: string;
-  }>({});
   const [sendFailure, setSendFailure] = useState<{
     chatId?: string;
     value: ChatSendFailure;
@@ -257,7 +274,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   const handoffMessagesRef = useRef(handoffMessages);
   const cursorRef = useRef({
     chatId: options.chatId,
-    sequence: options.latestSequence,
+    sequence: history.latestSequence,
   });
   const runningRef = useRef(false);
   const runningByQueueRef = useRef<Record<string, boolean>>({});
@@ -269,27 +286,12 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   const approvalPendingRef = useRef(
     Boolean(options.initialPendingApprovals?.length),
   );
-  const elicitationPendingRef = useRef(
-    Boolean(options.initialPendingElicitations?.length),
-  );
-  const authoritativeMessagesRef = useRef(options.messages);
-  const latestSequenceRef = useRef(options.latestSequence);
-  const terminalSnapshotRef = useRef<
-    | {
-        chatId: string;
-        messageId: string;
-        sequence: number;
-      }
-    | undefined
-  >(undefined);
   const runtimeRef = useRef<AssistantRuntime | null>(null);
   const mountedRef = useRef(false);
-  const observedQueueKeyRef = useRef(queueKey);
   const observedChatKeyRef = useRef(options.conversationKey);
   useLayoutEffect(() => {
-    observedQueueKeyRef.current = queueKey;
     observedChatKeyRef.current = options.conversationKey;
-  }, [options.conversationKey, queueKey]);
+  }, [options.conversationKey]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -350,9 +352,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     }
     return [...elicitations.values()];
   }, [elicitationOverlay, options.chatId, options.initialPendingElicitations]);
-  useEffect(() => {
-    elicitationPendingRef.current = pendingElicitations.length > 0;
-  }, [pendingElicitations]);
 
   const messages = useMemo(() => {
     const overlayMessages = overlayMatchesScope(
@@ -363,65 +362,37 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       ? overlay.messages
       : [];
     const localMessages = mergeLocalMessages(handoffMessages, overlayMessages);
-    return mergeAuthoritativeMessages(
-      options.isHistoryReady && options.messages.length > 0
-        ? localMessages.filter(
-            (message) =>
-              !message.awaitingFirstHistory || Boolean(message.executionId),
-          )
-        : localMessages,
-      options.messages,
-    );
-  }, [
-    handoffMessages,
-    options.chatId,
-    options.isHistoryReady,
-    options.messages,
-    overlay,
-  ]);
+    return mergeAuthoritativeMessages(localMessages, history.messages);
+  }, [handoffMessages, options.chatId, history.messages, overlay]);
   const convertMessage = useCallback(
     (message: AllyChatMessage) =>
       toThreadMessage(message, options.incompleteErrorText),
     [options.incompleteErrorText],
   );
-  const localExecutionID =
-    localExecution.chatId === options.chatId
-      ? localExecution.id
-      : !options.chatId &&
-          localExecution.chatId &&
-          overlay.chatId === localExecution.chatId &&
-          overlay.messages.some((message) => message.awaitingFirstHistory)
-        ? localExecution.id
-        : handoffMessages.find(isActiveLocalMessage)?.executionId;
-  const localExecutionIsTerminal = Boolean(
-    localExecutionID &&
-    options.messages.some(
-      (message) =>
-        message.executionId === localExecutionID &&
-        ["completed", "failed", "canceled"].includes(message.status ?? ""),
-    ),
-  );
-  const overlayExecutionIsActive = Boolean(
-    overlayMatchesScope(overlay.chatId, options.chatId, overlay.messages) &&
-    overlay.messages.some(isActiveLocalMessage),
-  );
-  const pendingFirstHistory = Boolean(
-    handoffMessages.some((message) => message.awaitingFirstHistory) ||
-    (overlayMatchesScope(overlay.chatId, options.chatId, overlay.messages) &&
-      overlay.messages.some((message) => message.awaitingFirstHistory)),
-  );
   const isRunning = Boolean(
-    sendingKey === options.queueKey ||
-    pendingFirstHistory ||
-    messages.some((message) => message.awaitingFirstHistory) ||
-    overlayExecutionIsActive ||
-    (options.activeExecutionId &&
-      !(
-        terminalExecution.chatId === options.chatId &&
-        terminalExecution.executionId === options.activeExecutionId
+    (sending?.queueKey === options.queueKey &&
+      !messages.some(
+        (message) =>
+          sending.submission?.submissionId &&
+          message.submissionId === sending.submission.submissionId &&
+          message.role === "assistant" &&
+          ["completed", "failed", "canceled"].includes(message.status ?? ""),
       )) ||
-    (localExecutionID && !localExecutionIsTerminal),
+    messages.some(
+      (message) =>
+        message.role === "assistant" &&
+        ["pending", "running"].includes(message.status ?? ""),
+    ) ||
+    (options.activeExecutionId &&
+      !messages.some(
+        (message) =>
+          message.executionId === options.activeExecutionId &&
+          ["completed", "failed", "canceled"].includes(message.status ?? ""),
+      )),
   );
+  const reconcileHistory = useCallback(() => {
+    void sourceRef.current.reconcile().catch(() => {});
+  }, []);
   useEffect(() => () => clearErrorNoticeActions(queueKey), [queueKey]);
 
   const retryExecution = useCallback(
@@ -431,25 +402,42 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       const chatId = options.chatId;
       const key = options.conversationKey;
       runningRef.current = true;
-      setSendingKey(queueKey);
+      setSending({ queueKey });
       try {
         const { data } = await retryChatExecution({
           path: { chatId, executionId },
           throwOnError: true,
         });
         if (mountedRef.current && observedChatKeyRef.current === key) {
+          const execution = data.execution;
           if (
-            data.execution?.status === "pending" ||
-            data.execution?.status === "running"
+            execution?.status === "pending" ||
+            execution?.status === "running"
           ) {
-            setLocalExecution({ chatId, id: data.execution.id });
+            setOverlay((previous) => ({
+              chatId,
+              messages: applyChatEvent(
+                previous.chatId === chatId ? previous.messages : [],
+                {
+                  message: {
+                    id: execution.id,
+                    executionId: execution.id,
+                    role: "assistant",
+                    status: execution.status,
+                  },
+                },
+              ),
+            }));
           }
           onStarted(data, { chatId, key, queueKey });
+          reconcileHistory();
           terminalRef.current();
         }
       } finally {
         if (observedChatKeyRef.current === key) runningRef.current = false;
-        setSendingKey((value) => (value === queueKey ? undefined : value));
+        setSending((value) =>
+          value?.queueKey === queueKey ? undefined : value,
+        );
       }
     },
     [
@@ -458,6 +446,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       options.isSendDisabled,
       queueKey,
       onStarted,
+      reconcileHistory,
     ],
   );
 
@@ -479,6 +468,15 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
             : "");
       if (!text) return;
 
+      const prepared = prepareSubmission(
+        text,
+        snapshot.chatId,
+        attachmentPaths,
+        snapshot.selection,
+      );
+      currentSubmissionRef.current = prepared;
+      if (prepared.submissionId)
+        pendingSubmissionsRef.current.set(prepared.submissionId, prepared);
       const now = Date.now();
       const operation = `send:${snapshot.queueKey}`;
       const recovery = captureErrorNoticeRecovery(operation);
@@ -486,21 +484,22 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       const assistantID = optimisticID("assistant");
       runningRef.current = true;
       runningByQueueRef.current[snapshot.queueKey] = true;
-      setSendingKey(snapshot.queueKey);
+      setSending({
+        queueKey: snapshot.queueKey,
+        submission: prepared,
+      });
       setSendFailure({
         chatId: snapshot.chatId,
         value: NO_SEND_FAILURE,
       });
       const currentOverlay = overlayRef.current;
       const optimisticMessages = [
-        ...mergeAuthoritativeMessages(
-          currentOverlay.chatId === snapshot.chatId
-            ? currentOverlay.messages
-            : [],
-          authoritativeMessagesRef.current,
-        ),
+        ...(currentOverlay.chatId === snapshot.chatId
+          ? currentOverlay.messages
+          : []),
         {
           id: userID,
+          submissionId: prepared.submissionId,
           role: "user",
           content: text,
           attachments: optimisticAttachmentsOf(message),
@@ -522,6 +521,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         },
         {
           id: assistantID,
+          submissionId: prepared.submissionId,
           role: "assistant",
           content: "",
           status: "pending",
@@ -538,16 +538,12 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       setOverlay(optimisticOverlay);
 
       try {
-        const result = await send(
-          text,
-          snapshot.chatId,
-          attachmentPaths,
-          snapshot.selection,
-        );
+        const result = await prepared.accept();
+        if (prepared.submissionId) confirmSubmission(prepared.submissionId);
+        else prepared.confirmAccepted?.();
         const execution = result.execution;
         const resultChatID = result.chat?.id ?? snapshot.chatId;
-        const pendingCreateHandoff = !snapshot.chatId && Boolean(resultChatID);
-        let committedMessages: AllyChatMessage[] = execution
+        const committedMessages: AllyChatMessage[] = execution
           ? optimisticMessages.map((item) => {
               if (item.id === userID) {
                 return {
@@ -568,20 +564,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
               }
               return item;
             })
-          : pendingCreateHandoff
-            ? optimisticMessages.map((item) => ({
-                ...item,
-                awaitingFirstHistory: true,
-              }))
-            : optimisticMessages.filter(
+          : snapshot.chatId
+            ? optimisticMessages.filter(
                 (item) => item.id !== userID && item.id !== assistantID,
-              );
-        if (pendingCreateHandoff) {
-          committedMessages = committedMessages.map((item) => ({
-            ...item,
-            awaitingFirstHistory: true,
-          }));
-        }
+              )
+            : optimisticMessages;
         const committedOverlay = {
           chatId: resultChatID,
           messages: committedMessages,
@@ -595,22 +582,35 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           mountedRef.current &&
           observedChatKeyRef.current === snapshot.conversationKey;
         if (current) {
-          overlayRef.current = committedOverlay;
-          setOverlay(committedOverlay);
+          // 推送可能先于接纳回执到达；只替换本次乐观身份，保留已经投影的事实。
+          setOverlay((previous) => {
+            const observed =
+              previous.chatId === resultChatID
+                ? previous.messages.filter(
+                    (item) => item.id !== userID && item.id !== assistantID,
+                  )
+                : [];
+            const next = {
+              ...committedOverlay,
+              messages: mergeAuthoritativeMessages(committedMessages, observed),
+            };
+            overlayRef.current = next;
+            return next;
+          });
         }
         if (resultChatID && (resultChatID !== snapshot.chatId || !current)) {
           queueStore.setHandoff(resultChatID, committedMessages);
         }
-        if (execution) {
-          setLocalExecution({
-            chatId: resultChatID,
-            id: execution.id,
-          });
-        }
         if (current) {
           cursorRef.current = {
             chatId: resultChatID,
-            sequence: latestSequenceRef.current,
+            sequence:
+              cursorRef.current.chatId === resultChatID
+                ? Math.max(
+                    cursorRef.current.sequence,
+                    sourceRef.current.snapshot.latestSequence,
+                  )
+                : sourceRef.current.snapshot.latestSequence,
           };
         }
         if (
@@ -626,6 +626,13 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           onStarted(result, invocation);
         }
       } catch (error) {
+        // 已被权威事实接纳，或已有后续命令取得当前输入所有权时，旧 HTTP 失败不回退界面。
+        if (
+          currentSubmissionRef.current !== prepared ||
+          (prepared.submissionId &&
+            !pendingSubmissionsRef.current.has(prepared.submissionId))
+        )
+          return;
         runningByQueueRef.current[snapshot.queueKey] = false;
         const current =
           mountedRef.current &&
@@ -656,6 +663,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
                 if (
                   !mountedRef.current ||
                   observedChatKeyRef.current !== snapshot.conversationKey ||
+                  currentSubmissionRef.current !== prepared ||
                   runningRef.current
                 )
                   return;
@@ -667,13 +675,14 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
                     mountedRef.current &&
                     observedChatKeyRef.current === snapshot.conversationKey
                   )
-                    terminalRef.current();
+                    reconcileHistory();
+                  terminalRef.current();
                 }
               : undefined,
         );
         if (current) {
           const authoritativeIDs = new Set<string>(
-            authoritativeMessagesRef.current.flatMap((message) =>
+            sourceRef.current.snapshot.messages.flatMap((message) =>
               message.id ? [message.id] : [],
             ),
           );
@@ -696,7 +705,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         window.setTimeout(() => {
           if (
             !mountedRef.current ||
-            observedChatKeyRef.current !== snapshot.conversationKey
+            observedChatKeyRef.current !== snapshot.conversationKey ||
+            currentSubmissionRef.current !== prepared
           ) {
             return;
           }
@@ -714,11 +724,12 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           mountedRef.current &&
           observedChatKeyRef.current === snapshot.conversationKey
         ) {
+          reconcileHistory();
           terminalRef.current();
         }
       } finally {
-        setSendingKey((current) =>
-          current === snapshot.queueKey ? undefined : current,
+        setSending((current) =>
+          current?.submission === prepared ? undefined : current,
         );
       }
     },
@@ -727,7 +738,9 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       attachmentOnlyText,
       onSettled,
       referenceOnlyText,
-      send,
+      prepareSubmission,
+      confirmSubmission,
+      reconcileHistory,
       queueStore,
     ],
   );
@@ -802,8 +815,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     messageAcceptedRef.current = options.onMessageAccepted;
     messageRejectedRef.current = options.onMessageRejected;
     approvalRequestedRef.current = options.onApprovalRequested;
-    authoritativeMessagesRef.current = options.messages;
-    latestSequenceRef.current = options.latestSequence;
 
     const wasRunning = runningByQueueRef.current[options.queueKey] ?? false;
     runningByQueueRef.current[options.queueKey] = isRunning;
@@ -814,8 +825,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   }, [
     advanceQueue,
     isRunning,
-    options.latestSequence,
-    options.messages,
+    history.latestSequence,
+    history.messages,
     options.onMessageAccepted,
     options.onMessageRejected,
     options.onApprovalRequested,
@@ -824,68 +835,31 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   ]);
 
   useEffect(() => {
-    const terminalSnapshot = terminalSnapshotRef.current;
-    if (terminalSnapshot && terminalSnapshot.chatId !== options.chatId) {
-      terminalSnapshotRef.current = undefined;
-      return;
-    }
-    if (
-      !terminalSnapshot ||
-      options.latestSequence < terminalSnapshot.sequence
-    ) {
-      return;
-    }
-    const authoritativeTerminalMessage = options.messages.find(
-      (message) => message.id === terminalSnapshot.messageId,
-    );
-    if (
-      !authoritativeTerminalMessage ||
-      !["completed", "failed", "canceled"].includes(
-        authoritativeTerminalMessage.status ?? "",
-      )
-    ) {
-      return;
-    }
-
-    const authoritativeIDs = new Set<string>(
-      options.messages.flatMap((message) => (message.id ? [message.id] : [])),
-    );
     setOverlay((current) => {
       if (current.chatId !== options.chatId) return current;
-      const unreconciled = current.messages.filter(
-        (message) => !authoritativeIDs.has(message.id ?? ""),
+      const pending = uncommittedChatMessages(
+        current.messages,
+        history.messages,
       );
-      if (unreconciled.length === current.messages.length) return current;
-      return {
-        chatId: current.chatId,
-        messages: unreconciled,
-      };
+      return pending.length === current.messages.length
+        ? current
+        : { ...current, messages: pending };
     });
-    terminalSnapshotRef.current = undefined;
-  }, [options.chatId, options.latestSequence, options.messages]);
+  }, [options.chatId, history.messages]);
 
   useEffect(() => {
     if (!options.chatId || handoffMessages.length === 0) return;
-    const authoritativeIDs = new Set<string>(
-      options.messages.flatMap((message) => (message.id ? [message.id] : [])),
-    );
     const handoffIsAuthoritative =
-      options.isHistoryReady &&
-      (handoffMessages.every(
-        (message) => message.id && authoritativeIDs.has(message.id),
-      ) ||
-        (options.messages.length > 0 &&
-          handoffMessages.every(
-            (message) => message.awaitingFirstHistory && !message.executionId,
-          )));
+      history.ready &&
+      uncommittedChatMessages(handoffMessages, history.messages).length === 0;
     if (handoffIsAuthoritative) {
       queueStore.clearHandoff(options.chatId);
     }
   }, [
     handoffMessages,
     options.chatId,
-    options.isHistoryReady,
-    options.messages,
+    history.ready,
+    history.messages,
     queueStore,
   ]);
 
@@ -898,12 +872,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
   }, [advanceQueue, isRunning, options.queueKey, queueStore, queuedEntries]);
 
   useEffect(() => {
-    if (
-      options.queueActive === false ||
-      !options.chatId ||
-      !isRunning ||
-      !options.isHistoryReady
-    ) {
+    if (options.queueActive === false || !options.chatId || !history.ready) {
       return;
     }
     let subscribed = true;
@@ -912,23 +881,24 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       subscribed &&
       mountedRef.current &&
       observedChatKeyRef.current === subscribedChatKey;
-    let pendingSequence = 0;
+    let pendingDurableEvents: ChatEvent[] = [];
+    let historyMerged = false;
     const eventBatcher = createChatEventBatcher((events) => {
       if (!isCurrentSubscription()) return;
-      // 接收不等于投影；隐藏时丢弃的短批次不能推进恢复游标。
-      cursorRef.current.sequence = Math.max(
-        cursorRef.current.sequence,
-        pendingSequence,
-      );
+      // 在原始持久事件上校验连续性；UI 批次会折叠同一消息的中间快照。
+      // 接收不等于投影，隐藏时丢弃的批次不能推进原历史游标。
+      if (pendingDurableEvents.length > 0 && options.chatId) {
+        const sequence = sourceRef.current.commit(pendingDurableEvents);
+        historyMerged = sequence !== undefined;
+        if (sequence !== undefined) cursorRef.current.sequence = sequence;
+        pendingDurableEvents = [];
+      }
       setOverlay((current) => {
         const localMessages = mergeLocalMessages(
           handoffMessagesRef.current,
           current.chatId === options.chatId ? current.messages : [],
         );
-        let projected = mergeAuthoritativeMessages(
-          localMessages,
-          authoritativeMessagesRef.current,
-        );
+        let projected = localMessages;
         for (const event of events) {
           projected = applyChatEvent(
             projected,
@@ -945,23 +915,32 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     if (cursorRef.current.chatId !== options.chatId) {
       cursorRef.current = {
         chatId: options.chatId,
-        sequence: latestSequenceRef.current,
+        sequence: sourceRef.current.snapshot.latestSequence,
       };
     } else {
       cursorRef.current.sequence = Math.max(
         cursorRef.current.sequence,
-        latestSequenceRef.current,
+        sourceRef.current.snapshot.latestSequence,
       );
     }
     const streamOperation = `stream:${options.chatId}`;
     let streamRecovery = captureErrorNoticeRecovery(streamOperation);
     const unsubscribe = subscribeChat(options.chatId, {
       after: cursorRef.current.sequence,
-      isTerminal: () => !runningRef.current,
+      isTerminal: () => false,
+      reconcileCursor: async (signal) => {
+        const sequence = await sourceRef.current.reconcile(signal);
+        if (isCurrentSubscription() && sequence !== undefined)
+          cursorRef.current.sequence = sequence;
+        return sequence;
+      },
       onEvent: (event) => {
         if (!isCurrentSubscription()) return;
         resolveErrorNoticeRecovery(streamRecovery);
-        pendingSequence = Math.max(pendingSequence, event.sequence ?? 0);
+        if (!event.transient) {
+          confirmSubmission(event.message?.submissionId);
+          pendingDurableEvents.push(event);
+        }
         const terminal = isTerminalEvent(event);
         const approvalRequest = event.approvalRequest;
         if (
@@ -1081,51 +1060,15 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         }
         eventBatcher.push(event, terminal);
         if (terminal) {
-          if (
-            options.chatId &&
-            event.message?.id &&
-            event.sequence !== undefined
-          ) {
-            terminalSnapshotRef.current = {
-              chatId: options.chatId,
-              messageId: event.message.id,
-              sequence: event.sequence,
-            };
-          }
           runningRef.current = false;
-          setTerminalExecution({
-            chatId: options.chatId,
-            executionId: options.activeExecutionId,
-          });
-          setLocalExecution({ chatId: options.chatId });
+          if (!historyMerged) reconcileHistory();
           terminalRef.current();
         }
-      },
-      onGap: () => {
-        if (isCurrentSubscription()) terminalRef.current();
       },
       onReconnect: () => {
         if (!isCurrentSubscription()) return;
         resolveErrorNoticeRecovery(streamRecovery);
-        eventBatcher.close();
-        pendingSequence = cursorRef.current.sequence;
-        setApprovalOverlay({
-          chatId: options.chatId,
-          added: [],
-          resolvedIds: [],
-        });
-        setElicitationOverlay({
-          chatId: options.chatId,
-          added: [],
-          resolvedIds: [],
-        });
-        setOverlay((current) => ({
-          chatId: options.chatId,
-          messages:
-            current.chatId === options.chatId
-              ? current.messages.filter((message) => message.optimistic)
-              : [],
-        }));
+        // 来源快照与游标已由同一恢复端口提交；保留其后收到的有效事件批次。
         terminalRef.current();
       },
       onUnavailable: () => {
@@ -1150,7 +1093,20 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         terminalRef.current();
       },
       onState: (state) => {
-        if (isCurrentSubscription()) setStreamState(state);
+        if (!isCurrentSubscription()) return;
+        if (state === "reconnecting") {
+          setApprovalOverlay({
+            chatId: options.chatId,
+            added: [],
+            resolvedIds: [],
+          });
+          setElicitationOverlay({
+            chatId: options.chatId,
+            added: [],
+            resolvedIds: [],
+          });
+        }
+        setStreamState(state);
       },
     });
     return () => {
@@ -1159,13 +1115,13 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       eventBatcher.close();
     };
   }, [
-    isRunning,
-    options.activeExecutionId,
     options.chatId,
     options.conversationKey,
-    options.isHistoryReady,
+    history.ready,
     options.messageVisibility,
     options.queueActive,
+    reconcileHistory,
+    confirmSubmission,
   ]);
 
   const onNew = useCallback(
@@ -1254,33 +1210,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     adapters: { attachments: chatAttachmentAdapter },
     unstable_capabilities: { copy: true },
   });
-  const [historySync, synchronizeHistory] = useReducer(
-    (
-      current: { chatId?: string; ready: boolean },
-      next: { chatId?: string; ready: boolean },
-    ) =>
-      current.chatId === next.chatId && current.ready === next.ready
-        ? current
-        : next,
-    {
-      chatId: options.chatId,
-      ready: options.isHistoryReady,
-    },
-  );
-  useEffect(() => {
-    // assistant-ui 通过被动 Effect 应用外部仓库。这里只确认已提交的
-    // Chat 身份和首次历史就绪，防止切换时展示旧 Chat；同一 Chat 的后续
-    // 消息修订由 ChatThread 订阅 Runtime 快照驱动，不依赖此标志补帧。
-    synchronizeHistory({
-      chatId: options.chatId,
-      ready: options.isHistoryReady,
-    });
-  }, [options.chatId, options.isHistoryReady]);
-  const isHistorySynchronized =
-    !options.chatId ||
-    (options.isHistoryReady &&
-      historySync.chatId === options.chatId &&
-      historySync.ready);
   useEffect(() => {
     runtimeRef.current = runtime;
     return () => {
@@ -1292,8 +1221,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     runtime,
     streamState: isRunning ? streamState : "closed",
     isRunning,
-    isHistorySynchronized,
-    boundChatId: historySync.chatId,
     hasVisibleMessages: messages.length > 0,
     sendFailure: currentSendFailure,
     retryExecution,

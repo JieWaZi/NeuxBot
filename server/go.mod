@@ -4,9 +4,8 @@ go 1.25.8
 
 require (
 	github.com/BurntSushi/toml v1.5.0
-	github.com/JieWaZi/NeuxBot/agent-runtime v0.0.0
-	github.com/JieWaZi/acp-go v0.0.0-20261027103018-620eb1772f72
-	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261027090513-1fc1fd660983
+	github.com/JieWaZi/acp-go v0.0.0-20261030005341-7ff14fc57db7
+	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261030070840-020f20c93f3d
 	github.com/dop251/goja v0.0.0-20261002135814-104bc28c3abd
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/fswatcher/fswatcher v0.1.0
@@ -29,8 +28,6 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.1
 )
-
-replace github.com/JieWaZi/NeuxBot/agent-runtime => ../packages/agent-runtime
 
 require (
 	github.com/ebitengine/purego v0.10.0 // indirect

@@ -93,7 +93,7 @@ func TestAutomaticDeleteSerializesFinalTransactionBeforeKeyRevocation(t *testing
 			if err != nil {
 				t.Fatal(err)
 			}
-			boundary := &coordinatedDeletionBoundary{testExecutionBoundary: &testExecutionBoundary{transactions: tx, states: map[string]chat.ExecutionContext{
+			boundary := &coordinatedDeletionBoundary{testExecutionBoundary: &testExecutionBoundary{transactions: tx, states: map[string]chat.InitialExecutionState{
 				"chat": {Chat: models.Chat{ID: "chat"}, InitialExecution: &models.Execution{ID: "execution", Status: constants.ExecutionStatusCompleted}},
 			}}, chats: chats, entered: make(chan struct{}), finish: make(chan struct{}), failFinalize: rollback}
 			config := schedule.Config{Tasks: auth.CoordinateTasks(tasks), Transactions: tx, Chats: boundary,

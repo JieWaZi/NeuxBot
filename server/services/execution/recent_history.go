@@ -5,113 +5,64 @@ import (
 	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
-// recentRuntimeHistory 仅选取最近已完成的用户与最终回复，为新原生会话提供有界上下文。
-func recentRuntimeHistory(messages []messageview.Message, turns int, team bool) []runtimecontract.HistoryMessage {
-	if turns == 0 {
-		turns = constants.RuntimeHistoryDefaultTurns
-	}
+// completedRuntimeTurn 是可交接的完整成功输入和最终回复。
+type completedRuntimeTurn struct {
+	// input 是已按原字节上限裁剪的用户输入或团队协调输入。
+	input runtimecontract.HistoryMessage
+	// answer 是已按原字节上限裁剪的助手最终回复。
+	answer runtimecontract.HistoryMessage
+}
+
+// completedRuntimeTurns 从候选正文提取完整成功轮，不把失败、过程或省略消息计入轮数。
+func completedRuntimeTurns(messages []messageview.Message, team bool) []completedRuntimeTurn {
 	for _, message := range messages {
 		if message.Actor == string(constants.ChannelMessageActorMemberReport) {
 			team = true
 			break
 		}
 	}
-	if team {
-		return recentTeamHistory(messages, turns)
-	}
-	type turn struct {
-		// user 保存一个完整回合的用户输入。
-		user runtimecontract.HistoryMessage
-		// assistant 保存对应回合的助手最终回复，不包含执行过程。
-		assistant runtimecontract.HistoryMessage
-	}
-	completed := make([]turn, 0, turns)
-	var user *messageview.Message
-	for index := range messages {
-		message := &messages[index]
-		switch message.Role {
-		case constants.MessageRoleUser:
-			if message.Actor == "" || message.Actor == "user" {
-				user = message
-			} else {
-				user = nil
-			}
-		case constants.MessageRoleAssistant:
-			if user == nil {
-				continue
-			}
-			if message.Status == constants.ExecutionStatusCompleted || message.Inherited {
-				answer := finalReplyText(*message)
-				if answer != "" {
-					completed = append(completed, turn{
-						user:      historyMessage(*user, user.Content),
-						assistant: historyMessage(*message, answer),
-					})
-				}
-			}
-			user = nil
-		}
-	}
-	result := make([]runtimecontract.HistoryMessage, 0, turns*2)
-	bytes := 0
-	for index := len(completed) - 1; index >= 0 && len(result) < turns*2; index-- {
-		pair := completed[index]
-		pairBytes := len(pair.user.Content) + len(pair.assistant.Content)
-		if bytes+pairBytes > constants.RuntimeHistoryMaximumBytes {
-			break
-		}
-		result = append(result, pair.assistant, pair.user)
-		bytes += pairBytes
-	}
-	for left, right := 0, len(result)-1; left < right; left, right = left+1, right-1 {
-		result[left], result[right] = result[right], result[left]
-	}
-	return result
-}
-
-// recentTeamHistory 保留团队协调输入和报告，但仍限制新会话的消息数量与长度。
-func recentTeamHistory(messages []messageview.Message, turns int) []runtimecontract.HistoryMessage {
-	type turn struct {
-		// input 保存团队协调输入或成员报告形成的回合输入。
-		input runtimecontract.HistoryMessage
-		// answer 保存与团队输入对应的负责人最终回复。
-		answer runtimecontract.HistoryMessage
-	}
-	completed := make([]turn, 0, turns)
+	completed := []completedRuntimeTurn{}
 	var input *messageview.Message
-	for index := range messages {
-		message := &messages[index]
+	for i := range messages {
+		message := &messages[i]
 		switch message.Role {
 		case constants.MessageRoleUser:
-			input = message
-		case constants.MessageRoleAssistant:
-			if input == nil {
-				continue
+			if team || message.Actor == "" || message.Actor == "user" {
+				input = message
+			} else {
+				input = nil
 			}
-			if message.Status == constants.ExecutionStatusCompleted || message.Inherited {
+		case constants.MessageRoleAssistant:
+			if input != nil && (message.Status == constants.ExecutionStatusCompleted || message.Inherited) {
 				answer := finalReplyText(*message)
 				if answer != "" {
 					content := input.Content
-					if input.Actor == string(constants.ChannelMessageActorMemberReport) {
+					if team && input.Actor == string(constants.ChannelMessageActorMemberReport) {
 						content = teamMemberHistoryContent(*input)
 					}
-					completed = append(completed, turn{
-						input:  historyMessage(*input, content),
-						answer: historyMessage(*message, answer),
-					})
+					completed = append(completed, completedRuntimeTurn{input: historyMessage(*input, content), answer: historyMessage(*message, answer)})
 				}
 			}
 			input = nil
 		}
 	}
+	return completed
+}
+
+// recentRuntimeHistory 仅选择最近完整成功轮并保留历史文本总量上限。
+func recentRuntimeHistory(messages []messageview.Message, turns int, team bool) []runtimecontract.HistoryMessage {
+	if turns == 0 {
+		turns = constants.RuntimeHistoryDefaultTurns
+	}
+	completed := completedRuntimeTurns(messages, team)
 	result := make([]runtimecontract.HistoryMessage, 0, turns*2)
 	bytes := 0
-	for index := len(completed) - 1; index >= 0 && len(result) < turns*2; index-- {
-		pair := completed[index]
+	for i := len(completed) - 1; i >= 0 && len(result) < turns*2; i-- {
+		pair := completed[i]
 		pairBytes := len(pair.input.Content) + len(pair.answer.Content)
 		if bytes+pairBytes > constants.RuntimeHistoryMaximumBytes {
 			break

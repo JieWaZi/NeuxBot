@@ -1,30 +1,32 @@
 package execution
 
 import (
+	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+
 	"errors"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	acp "github.com/JieWaZi/acp-go/sdk"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
 func TestExecutionResultStatusPublishesInnermostRuntimeFailure(t *testing.T) {
 	result := runtimecontract.Result{Failure: &runtimecontract.Failure{
-		Code:           runtimecontract.FailureCodePlanUpgradeRequired,
+		Code:           runtimediagnostic.FailureCodePlanUpgradeRequired,
 		Stage:          constants.RuntimeACPFailureStagePrompt,
 		Message:        "start Runtime: send prompt: API Error: 402 Insufficient Balance",
 		DisplayMessage: "API Error: 402 Insufficient Balance",
-		Transience:     runtimecontract.FailureTransiencePermanent,
+		Transience:     runtimediagnostic.FailureTransiencePermanent,
 	}}
 
 	status, errorCode, errorMessage := executionResultStatus(result)
 	if status != constants.ExecutionStatusFailed {
 		t.Fatalf("status = %q, want failed", status)
 	}
-	if errorCode != string(runtimecontract.FailureCodePlanUpgradeRequired) {
+	if errorCode != string(runtimediagnostic.FailureCodePlanUpgradeRequired) {
 		t.Fatalf("errorCode = %q, want plan upgrade", errorCode)
 	}
 	if errorMessage != "API Error: 402 Insufficient Balance" {
@@ -52,7 +54,7 @@ func TestRuntimeStartErrorUsesSameReadableCauseAsExecution(t *testing.T) {
 				Code:           constants.RuntimeFailureCodeExecutionFailed,
 				Stage:          constants.RuntimeACPFailureStageSessionConfig,
 				Message:        upstream.Error(),
-				DisplayMessage: runtimecontract.FailureDisplayMessage(upstream),
+				DisplayMessage: runtimediagnostic.FailureDisplayMessage(upstream),
 			}}
 			err := runtimeStartError(result)
 			var statusError *statuserror.StatusErr
@@ -74,14 +76,14 @@ func TestRuntimeStartErrorUsesSameReadableCauseAsExecution(t *testing.T) {
 func TestRuntimeStartErrorRetainsBusinessErrorsAndPlainFallback(t *testing.T) {
 	for _, test := range []struct {
 		// code 是执行前明确识别的稳定失败类别。
-		code runtimecontract.FailureCode
+		code runtimediagnostic.FailureCode
 		// want 是 API 已有的业务状态错误。
 		want statuserror.CommonError
 	}{
-		{runtimecontract.FailureCodeSessionNotFound, status_error.RuntimeSessionNotFound},
-		{runtimecontract.FailureCodePolicyUnsupported, status_error.RuntimePolicyUnsupported},
-		{runtimecontract.FailureCodeAuthRequired, status_error.RuntimeAuthRequired},
-		{runtimecontract.FailureCodeRuntimeUnavailable, status_error.RuntimeUnavailable},
+		{runtimediagnostic.FailureCodeSessionNotFound, status_error.RuntimeSessionNotFound},
+		{runtimediagnostic.FailureCodePolicyUnsupported, status_error.RuntimePolicyUnsupported},
+		{runtimediagnostic.FailureCodeAuthRequired, status_error.RuntimeAuthRequired},
+		{runtimediagnostic.FailureCodeRuntimeUnavailable, status_error.RuntimeUnavailable},
 	} {
 		if err := runtimeStartError(runtimecontract.Result{Failure: &runtimecontract.Failure{Code: test.code, Message: "diagnostic"}}); !errors.Is(err, test.want) {
 			t.Fatalf("%s: start error = %v, want %v", test.code, err, test.want)

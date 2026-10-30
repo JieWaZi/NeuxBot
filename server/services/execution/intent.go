@@ -6,9 +6,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -150,9 +150,7 @@ type AcceptedExecution struct {
 	Chat models.Chat `json:"chat"`
 	// Execution 是已经持久、处于 pending 或 running 的执行投影。
 	Execution models.Execution `json:"execution"`
-	// WorkspaceWarningCode 是 Runtime 不支持附加目录时的稳定提示码。
-	WorkspaceWarningCode string `json:"workspaceWarningCode,omitempty"`
-	// Replayed 表示本次返回的是相同首次创建请求已经提交的确定结果。
+	// Replayed 表示本次返回的是同一输入请求已经提交的确定结果。
 	Replayed bool `json:"replayed,omitempty"`
 }
 

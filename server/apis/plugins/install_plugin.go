@@ -52,11 +52,16 @@ func (o *InstallPlugin) Output(ctx *gin.Context) (interface{}, error) {
 	if config.Revision != o.Body.ExpectedConfigurationRevision {
 		return nil, ginx.WithStack(status_error.PluginConfigurationConflict)
 	}
-	release, err := prepareInstallationVersions(ctx, []models.PluginVersion{version}, config)
+	release, err := prepareInstallationVersions(ctx, []models.PluginVersion{version}, &config)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	defer release()
+	if len(config.DeliveryMaterials) > 0 {
+		if err := store.UpdateDeliveryMaterials(ctx, config); err != nil {
+			return nil, ginx.WithStack(err)
+		}
+	}
 	response := InstallPluginResponse{PluginID: o.PluginID, Results: []PartnerInstallResult{}}
 	seen := map[string]bool{}
 	for _, waker := range o.Body.WakerIDs {

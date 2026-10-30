@@ -1,7 +1,9 @@
 package ai_accounts
 
 import (
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
 
 	"context"
 	"encoding/json"
@@ -14,7 +16,6 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -62,7 +63,7 @@ func TestOfficialGeminiThinkingHTTP(t *testing.T) {
 	}()
 	id := "0123456789abcdef0123456789abcdef"
 	global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{ID: id, Revision: 1, AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: provider.URL + "/v1beta"}}, SelectedModels: []string{"gemini-3.8-flash"}}, secret: "local-fixture-key"}
-	global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{RuntimeID: runtimecontract.RuntimeIDGemini, BaseRuntimeID: runtimecontract.RuntimeIDGemini, Enabled: true, Binary: node, PrefixArgs: []string{cli}}}
+	global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{RuntimeID: runtimeconfig.RuntimeIDGemini, BaseRuntimeID: runtimeconfig.RuntimeIDGemini, Enabled: true, Binary: node, PrefixArgs: []string{cli}}}
 	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager)
 	sdk, err := catalog.New(catalog.Config{})
 	if err != nil {

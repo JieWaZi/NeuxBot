@@ -28,8 +28,6 @@ type ListChats struct {
 type ListChatsResponse struct {
 	// 资源列表
 	Resources []models.Chat `json:"resources"`
-	// 最近项目
-	RecentProjectID string `json:"recentProjectId,omitempty"`
 	// 下页时间游标
 	NextBeforeUpdatedAt int64 `json:"nextBeforeUpdatedAt,omitempty"`
 	// 下页标识游标
@@ -75,7 +73,6 @@ func (l *ListChats) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	return ListChatsResponse{
 		Resources:           result.Resources,
-		RecentProjectID:     result.RecentProjectID,
 		NextBeforeUpdatedAt: result.NextBeforeUpdatedAt,
 		NextBeforeID:        result.NextBeforeID,
 		HasMore:             result.HasMore,

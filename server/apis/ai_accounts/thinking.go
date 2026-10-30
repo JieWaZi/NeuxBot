@@ -1,13 +1,14 @@
 package ai_accounts
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -91,11 +92,11 @@ func (a *GetAIAccountThinking) Output(ctx *gin.Context) (interface{}, error) {
 		}
 	}
 	response := GetAIAccountThinkingResponse{Options: []AccountThinkingOption{}}
-	if result.State != runtimecontract.DetectionStateReady {
+	if result.State != runtimeconfig.DetectionStateReady {
 		return response, nil
 	}
 	for _, diagnostic := range result.Diagnostics {
-		if diagnostic.Code == runtimecontract.DiagnosticCodeACPOptionsUnavailable && !(useSavedDirectory && persistedModelDirectoryAvailable(result)) {
+		if diagnostic.Code == runtimeconfig.DiagnosticCodeACPOptionsUnavailable && !(useSavedDirectory && persistedModelDirectoryAvailable(result)) {
 			return response, nil
 		}
 	}

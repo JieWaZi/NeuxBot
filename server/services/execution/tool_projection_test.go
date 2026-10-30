@@ -5,9 +5,9 @@ import (
 	"reflect"
 	"testing"
 
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 func TestToolInputSnapshotsKeepLiveReplayEquivalent(t *testing.T) {

@@ -109,13 +109,13 @@ func (ChannelTaskAttempt) TableName() string { return "channel_task_attempts" }
 // ChannelTaskFollowUp 保存等待追加到原任务和原成员 Chat 的用户补充。
 type ChannelTaskFollowUp struct {
 	// ID 是 32 位无连字符 UUID。
-	ID string `gorm:"column:id;type:varchar(32);primaryKey" json:"id"`
+	ID string `gorm:"column:id;type:varchar(32);primaryKey;index:idx_channel_follow_up_timeline,priority:4,sort:desc,where:actor = 'team_lead' OR ((actor = 'user' OR actor = '') AND delivered_at IS NULL)" json:"id"`
 	// TaskID 是补充内容所属团队任务标识。
-	TaskID string `gorm:"column:task_id;type:varchar(32);not null;index" json:"taskId"`
+	TaskID string `gorm:"column:task_id;type:varchar(32);not null;index;index:idx_channel_follow_up_timeline,priority:1,where:actor = 'team_lead' OR ((actor = 'user' OR actor = '') AND delivered_at IS NULL)" json:"taskId"`
 	// Text 是用户提供并将在当前尝试结束后交付的补充内容。
 	Text string `gorm:"column:text;type:text;not null" json:"text"`
 	// Actor 是补充消息的真实作者，区分用户显式 @ 与负责人内部协调。
-	Actor constants.ChannelMessageActor `gorm:"column:actor;type:varchar(24);not null" json:"actor"`
+	Actor constants.ChannelMessageActor `gorm:"column:actor;type:varchar(24);not null;index:idx_channel_follow_up_timeline,priority:3,sort:desc,expression:CASE WHEN actor = 'team_lead' THEN 1 ELSE 0 END,where:actor = 'team_lead' OR ((actor = 'user' OR actor = '') AND delivered_at IS NULL)" json:"actor"`
 	// Payload 是包含附件、代码引用、技能与连接器选择的完整输入。
 	Payload workinput.Input `gorm:"column:payload;type:text;not null;serializer:json" json:"-"`
 	// DeliveredAt 是补充进入新尝试的可选 Unix 毫秒时间；空表示仍在排队。
@@ -123,7 +123,7 @@ type ChannelTaskFollowUp struct {
 	// DeliveredAttemptID 是领取该补充的尝试标识，用于启动失败或崩溃后的精确补偿。
 	DeliveredAttemptID string `gorm:"column:delivered_attempt_id;type:varchar(32);not null;default:'';index" json:"-"`
 	// CreatedAt 是补充内容持久化时的 Unix 毫秒时间。
-	CreatedAt int64 `gorm:"column:created_at;autoCreateTime:milli" json:"createdAt"`
+	CreatedAt int64 `gorm:"column:created_at;autoCreateTime:milli;index:idx_channel_follow_up_timeline,priority:2,sort:desc,where:actor = 'team_lead' OR ((actor = 'user' OR actor = '') AND delivered_at IS NULL)" json:"createdAt"`
 }
 
 // TableName 返回团队任务补充队列使用的表名。

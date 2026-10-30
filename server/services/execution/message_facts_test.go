@@ -1,6 +1,8 @@
 package execution
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"encoding/json"
 	"reflect"
@@ -9,10 +11,10 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -50,10 +52,7 @@ type approvalFactRuntime struct {
 	finish chan struct{}
 }
 
-func (r *approvalFactRuntime) RunWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink, release func(context.Context) error) runtimecontract.Result {
-	if release != nil {
-		defer func() { _ = release(context.WithoutCancel(ctx)) }()
-	}
+func (r *approvalFactRuntime) Run(ctx context.Context, request recordedRun, sink runtimecontract.EventSink) runtimecontract.Result {
 	invocationID := "approval-fact-invocation"
 	send := func(kind runtimecontract.EventType, data any) {
 		_ = sink.Accept(ctx, runtimecontract.Event{Type: kind, Data: marshalData(data)})
@@ -75,7 +74,7 @@ func (r *approvalFactRuntime) RunWithLease(ctx context.Context, request runtimec
 	case <-ctx.Done():
 	}
 	send(runtimecontract.EventTypeToolResult, map[string]any{"toolCallId": "tool", "status": "completed"})
-	return runtimecontract.Result{Facts: runtimecontract.InvocationFacts{InvocationID: invocationID, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: runtimecontract.RuntimeIDCodex}}
+	return runtimecontract.Result{Facts: runtimecontract.InvocationFacts{InvocationID: invocationID, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: runtimeconfig.RuntimeIDCodex}}
 }
 
 func TestDurableApprovalRemainsInSubsequentLiveToolSnapshot(t *testing.T) {
@@ -87,7 +86,7 @@ func TestDurableApprovalRemainsInSubsequentLiveToolSnapshot(t *testing.T) {
 			core := manager.execution.(*service)
 			observed := &messageFactTestJournal{Journal: core.journal, live: make(chan eventstream.PublicEvent, 16)}
 			core.journal = observed
-			accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行已授权测试"}, Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: runtimecontract.PermissionLevelDefault}})
+			accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行已授权测试"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: runtimeconfig.PermissionLevelDefault}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -290,7 +289,7 @@ func TestReconnectLiveCacheCatchesUpDurableApprovalWithoutRuntimeOutput(t *testi
 	core := manager.execution.(*service)
 	observed := &messageFactTestJournal{Journal: core.journal, live: make(chan eventstream.PublicEvent, 32)}
 	core.journal = observed
-	accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行后等候"}, Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: runtimecontract.PermissionLevelDefault}})
+	accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行后等候"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: runtimeconfig.PermissionLevelDefault}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,4 +458,9 @@ func TestApprovalFactsKeepPendingBatchAndNextToolRevisionsOrdered(t *testing.T) 
 			})
 		}
 	}
+}
+
+// PrepareSession 让同步测试消费者在提交前取得实际资源，保留本类型的执行行为。
+func (r *approvalFactRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
 }

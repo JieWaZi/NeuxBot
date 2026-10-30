@@ -1,11 +1,12 @@
 package controllers
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"errors"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -26,7 +27,7 @@ type RuntimeEnvironmentController interface {
 	// UpdateConfiguration 更新用户可维护的完整启动配置和启用状态。
 	UpdateConfiguration(ctx context.Context, environment models.RuntimeEnvironment) error
 	// UpdateDetection 原子替换一条环境记录的完整探测快照和完成时间。
-	UpdateDetection(ctx context.Context, runtimeID string, detection runtimecontract.DetectionResult, detectedAt int64) error
+	UpdateDetection(ctx context.Context, runtimeID string, detection runtimeconfig.DetectionResult, detectedAt int64) error
 	// ClearDefault 清除全部条目的全局默认标记。
 	ClearDefault(ctx context.Context) error
 }
@@ -171,7 +172,7 @@ func (c *runtimeEnvironmentController) UpdateConfiguration(
 func (c *runtimeEnvironmentController) UpdateDetection(
 	ctx context.Context,
 	runtimeID string,
-	detection runtimecontract.DetectionResult,
+	detection runtimeconfig.DetectionResult,
 	detectedAt int64,
 ) error {
 	err := controllerDB(ctx, c.db).

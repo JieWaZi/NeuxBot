@@ -14,8 +14,8 @@ type Registry struct {
 	root context.Context
 	// entries 防止不同版本绕过同一插件的共享身份租约。
 	entries map[string]entry
-	// changed 只发送资源失效，不发送挑战或凭据。
-	changed func(string)
+	// changed 区分身份占用与授权资源失效，不发送挑战或凭据。
+	changed func(id string, usageOnly bool)
 }
 
 // entry 绑定一个已固定入口和唯一共享身份。
@@ -29,7 +29,7 @@ type entry struct {
 }
 
 // NewRegistry 不启动进程。
-func NewRegistry(ctx context.Context, changed func(string)) *Registry {
+func NewRegistry(ctx context.Context, changed func(id string, usageOnly bool)) *Registry {
 	return &Registry{root: ctx, changed: changed, entries: map[string]entry{}}
 }
 
@@ -52,6 +52,19 @@ func (r *Registry) Acquire(id, digest string, config Config, scopes []string, us
 	return auth, driver, release, err
 }
 
+// AcquireIdentity 只创建进程内身份占用；聊天不会构造或解析包内授权入口。
+func (r *Registry) AcquireIdentity(id string, uses ...authorization.Usage) (func(...authorization.Usage), func(), error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current, exists := r.entries[id]
+	if !exists {
+		current.auth = authorization.New(r.authorizationConfig(id, nil))
+		current.auth.Open(r.root)
+		r.entries[id] = current
+	}
+	return current.auth.AcquireUsage(uses...)
+}
+
 func (r *Registry) getLocked(id, digest string, config Config, scopes []string) (*authorization.Authorizer, *Driver, error) {
 	if previous, ok := r.entries[id]; ok {
 		if previous.digest != digest {
@@ -68,14 +81,26 @@ func (r *Registry) getLocked(id, digest string, config Config, scopes []string) 
 	}
 	config.Scopes = append([]string{}, scopes...)
 	driver := New(config)
-	auth := authorization.New(authorization.Config{Driver: driver, Scopes: nil, Changed: func(authorization.Session) {
-		if r.changed != nil {
-			r.changed(id)
-		}
-	}})
+	auth := authorization.New(r.authorizationConfig(id, driver))
 	auth.Open(r.root)
 	r.entries[id] = entry{digest: digest, auth: auth, driver: driver}
 	return auth, driver, nil
+}
+
+func (r *Registry) authorizationConfig(id string, driver authorization.Driver) authorization.Config {
+	return authorization.Config{
+		Driver: driver,
+		Changed: func(authorization.Session) {
+			if r.changed != nil {
+				r.changed(id, false)
+			}
+		},
+		UsageChanged: func() {
+			if r.changed != nil {
+				r.changed(id, true)
+			}
+		},
+	}
 }
 
 // CachedAccount 只读取已创建且版本一致的身份摘要，不创建或替换桥接。

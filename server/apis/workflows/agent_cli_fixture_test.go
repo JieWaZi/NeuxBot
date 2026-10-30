@@ -12,7 +12,6 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 )
 
 // fixtureCLIBinary 是本测试进程从当前源码构建的真实可执行文件。
@@ -39,8 +38,8 @@ func runCLITestSuite(m *testing.M) int {
 	return code
 }
 
-func fixtureCLI(ctx context.Context, request runtimecontract.RunRequest, arguments []string, input map[string]any) (map[string]any, error) {
-	return fixtureCLIEnvironment(ctx, request.Workspace.Path, request.Target.Environment, arguments, input)
+func fixtureCLI(ctx context.Context, request fixtureInvocation, arguments []string, input map[string]any) (map[string]any, error) {
+	return fixtureCLIEnvironment(ctx, request.Workspace.Path, request.Resources.Target.Environment, arguments, input)
 }
 
 // fixtureCLIEnvironment 让外部 Driver 使用真实启动环境访问同一 allycli 授权入口。

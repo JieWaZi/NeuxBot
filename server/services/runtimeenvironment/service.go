@@ -2,7 +2,9 @@
 package runtimeenvironment
 
 import (
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
 
 	"context"
 	"os"
@@ -16,7 +18,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -100,13 +101,13 @@ type service struct {
 // runtimeCatalog 是运行时环境服务所需的只读 Runtime SDK 视图。
 type runtimeCatalog interface {
 	// Runtimes 返回全部可持久化的 Runtime 摘要。
-	Runtimes() []runtimecontract.RuntimeSummary
+	Runtimes() []runtimeconfig.RuntimeSummary
 	// ResolveExecutable 仅检查 CLI 是否存在，不依赖账号准备。
-	ResolveExecutable(runtimecontract.DetectRequest) (string, error)
+	ResolveExecutable(runtimeconfig.DetectRequest) (string, error)
 	// Detect 对指定 Runtime 执行不触发模型推理的能力探测。
-	Detect(context.Context, runtimecontract.DetectRequest) runtimecontract.DetectionResult
+	Detect(context.Context, runtimeconfig.DetectRequest) runtimeconfig.DetectionResult
 	// DiscoverInstallations 枚举可切换的 CLI 安装路径及版本。
-	DiscoverInstallations(context.Context, runtimecontract.DetectRequest, []runtimecontract.CLIInstallation) []runtimecontract.CLIInstallation
+	DiscoverInstallations(context.Context, runtimeconfig.DetectRequest, []runtimeconfig.CLIInstallation) []runtimeconfig.CLIInstallation
 }
 
 var _ Service = (*service)(nil)
@@ -307,7 +308,7 @@ func (s *service) refreshOneLocked(ctx context.Context, runtimeID string) error 
 	if err != nil {
 		return err
 	}
-	var summary runtimecontract.RuntimeSummary
+	var summary runtimeconfig.RuntimeSummary
 	for _, candidate := range s.runtimeCatalog.Runtimes() {
 		if candidate.ID == runtimeID {
 			summary = candidate
@@ -340,7 +341,7 @@ func (s *service) refreshOneLocked(ctx context.Context, runtimeID string) error 
 // reconcileEnvironment 只同步注册表管理的产品名称，不改写用户配置的启动命令。
 func (s *service) reconcileEnvironment(
 	ctx context.Context,
-	summary runtimecontract.RuntimeSummary,
+	summary runtimeconfig.RuntimeSummary,
 	environment models.RuntimeEnvironment,
 ) (models.RuntimeEnvironment, error) {
 	fields := map[string]any{}
@@ -358,31 +359,31 @@ func (s *service) reconcileEnvironment(
 func (s *service) persistDetection(
 	ctx context.Context,
 	environment models.RuntimeEnvironment,
-	detection runtimecontract.DetectionResult,
+	detection runtimeconfig.DetectionResult,
 	detectedAt int64,
 ) error {
-	detection = runtimecontract.PreservePreviousOptionsOnFailure(
+	detection = runtimeconfig.PreservePreviousOptionsOnFailure(
 		environment.Detection,
 		detection,
 	)
-	defaultModel, defaultReasoning := runtimecontract.NormalizeDetectedDefaults(
+	defaultModel, defaultReasoning := runtimeconfig.NormalizeDetectedDefaults(
 		detection,
 		environment.CustomModels,
 		environment.DefaultModel,
 		environment.DefaultReasoning,
 	)
-	nextPermission, degraded := runtimecontract.SafePermissionLevel(
+	nextPermission, degraded := runtimeconfig.SafePermissionLevel(
 		environment.DefaultPermissionLevel,
-		runtimecontract.ModelPermissionLevels(
+		runtimeconfig.ModelPermissionLevels(
 			detection,
 			environment.CustomModels,
 			defaultModel,
 		),
 	)
 	if degraded {
-		detection.Diagnostics = append(detection.Diagnostics, runtimecontract.Diagnostic{
-			Code:  runtimecontract.DiagnosticCodePermissionDefaultDowngraded,
-			Level: runtimecontract.DiagnosticLevelWarning,
+		detection.Diagnostics = append(detection.Diagnostics, runtimeconfig.Diagnostic{
+			Code:  runtimeconfig.DiagnosticCodePermissionDefaultDowngraded,
+			Level: runtimeconfig.DiagnosticLevelWarning,
 			Message: "default permission level was reduced to a " +
 				"level the current model can express",
 		})
@@ -416,16 +417,16 @@ func (s *service) persistDetection(
 
 func (s *service) detect(
 	ctx context.Context,
-	summary runtimecontract.RuntimeSummary,
+	summary runtimeconfig.RuntimeSummary,
 	environment models.RuntimeEnvironment,
-) runtimecontract.DetectionResult {
+) runtimeconfig.DetectionResult {
 	request := runtimeDetectRequest(summary, environment)
 	if request.LaunchOverride.Binary == firstBinary(summary.BinaryCandidates) && environment.Detection.ResolvedBinary != "" {
 		request.LaunchOverride.Binary = environment.Detection.ResolvedBinary
 	}
 	// 安装版本命令只使用设备级启动配置，不依赖短期账号目录的存活。
 	installationRequest := request
-	finish := func(result runtimecontract.DetectionResult) runtimecontract.DetectionResult {
+	finish := func(result runtimeconfig.DetectionResult) runtimeconfig.DetectionResult {
 		result.Version = catalog.NormalizeRuntimeVersion(result.Version)
 		result.Installations = s.runtimeCatalog.DiscoverInstallations(ctx, installationRequest, environment.Detection.Installations)
 		// 可执行检查短暂失败时只保留明确选中的同一路径版本，不恢复安装或就绪状态。
@@ -451,7 +452,7 @@ func (s *service) detect(
 				if result.Version == "" && result.ResolvedBinary == environment.Detection.ResolvedBinary {
 					result.Version = catalog.NormalizeRuntimeVersion(environment.Detection.Version)
 				}
-				result.Installations = append(result.Installations, runtimecontract.CLIInstallation{
+				result.Installations = append(result.Installations, runtimeconfig.CLIInstallation{
 					Path: result.ResolvedBinary, Version: result.Version, Available: true,
 				})
 			}
@@ -461,8 +462,8 @@ func (s *service) detect(
 	if environment.DefaultAccountID != "" && s.accounts != nil {
 		workspace := filepath.Join(s.accountWorkspaceDirectory, summary.ID)
 		directoryErr := os.MkdirAll(workspace, 0700)
-		var target runtimecontract.RuntimeTarget
-		var release func()
+		var target runtimeconfig.RuntimeTarget
+		var release func(context.Context) error
 		err := directoryErr
 		if err == nil {
 			model := environment.DefaultModel
@@ -481,7 +482,7 @@ func (s *service) detect(
 				}
 			}
 			if err == nil {
-				target, release, err = s.accounts.Prepare(ctx, environment.DefaultAccountID, summary.BaseRuntimeID, workspace, model)
+				target, release, err = s.accounts.PrepareQueuedLease(ctx, environment.DefaultAccountID, summary.BaseRuntimeID, workspace, model)
 			}
 			request.WorkingDirectory = workspace
 			if accountconfig.IsNativeAccountRuntime(summary.BaseRuntimeID) {
@@ -495,12 +496,13 @@ func (s *service) detect(
 				result.Version = ""
 			}
 			if result.State == "" || result.ResolvedBinary == "" {
-				result.State = runtimecontract.DetectionStateUnavailable
+				result.State = runtimeconfig.DetectionStateUnavailable
 			}
-			result.Auth = runtimecontract.AuthStatusMissing
-			result.Diagnostics = append(result.Diagnostics, runtimecontract.Diagnostic{Code: constants.AIAccountDiagnosticUnavailable, Level: runtimecontract.DiagnosticLevelWarning, Message: "account configuration is unavailable"})
+			result.Auth = runtimeconfig.AuthStatusMissing
+			result.Diagnostics = append(result.Diagnostics, runtimeconfig.Diagnostic{Code: constants.AIAccountDiagnosticUnavailable, Level: runtimeconfig.DiagnosticLevelWarning, Message: "account configuration is unavailable"})
 			return finish(result)
 		}
+		request.UseNativeAuth = false
 		request.ReleaseResources = release
 		request.RefreshCredentials = target.RefreshCredentials
 		request.BaseEnvironment = accountconfig.Environment(request.BaseEnvironment)
@@ -518,10 +520,10 @@ func (s *service) detect(
 
 // runtimeDetectRequest 把持久化配置投影为 ACP Agent 构造使用的受控启动输入。
 func runtimeDetectRequest(
-	summary runtimecontract.RuntimeSummary,
+	summary runtimeconfig.RuntimeSummary,
 	environment models.RuntimeEnvironment,
-) runtimecontract.DetectRequest {
-	launchOverride := runtimecontract.LaunchOverride{
+) runtimeconfig.DetectRequest {
+	launchOverride := runtimeconfig.LaunchOverride{
 		Binary:      environment.Binary,
 		PrefixArgs:  append([]string(nil), environment.PrefixArgs...),
 		Environment: map[string]string{},
@@ -530,7 +532,7 @@ func runtimeDetectRequest(
 		launchOverride.Environment[summary.ConfigHomeEnvironmentVariable] = environment.ConfigHome
 	}
 	homeDirectory, _ := os.UserHomeDir()
-	return runtimecontract.DetectRequest{
+	return runtimeconfig.DetectRequest{UseNativeAuth: true,
 		RuntimeID:       summary.ID,
 		BaseEnvironment: os.Environ(),
 		HomeDirectory:   homeDirectory,
@@ -546,12 +548,12 @@ func (s *service) ensureDefault(ctx context.Context) error {
 			return err
 		}
 		for _, environment := range environments {
-			if environment.IsDefault && environment.Enabled && environment.Detection.State == runtimecontract.DetectionStateReady {
+			if environment.IsDefault && environment.Enabled && environment.Detection.State == runtimeconfig.DetectionStateReady {
 				return nil
 			}
 		}
 		for _, environment := range environments {
-			if !environment.Enabled || environment.Detection.State != runtimecontract.DetectionStateReady {
+			if !environment.Enabled || environment.Detection.State != runtimeconfig.DetectionStateReady {
 				continue
 			}
 			if err := s.environments.ClearDefault(transactionContext); err != nil {
@@ -563,7 +565,7 @@ func (s *service) ensureDefault(ctx context.Context) error {
 	})
 }
 
-func newEnvironment(summary runtimecontract.RuntimeSummary) models.RuntimeEnvironment {
+func newEnvironment(summary runtimeconfig.RuntimeSummary) models.RuntimeEnvironment {
 	return models.RuntimeEnvironment{
 		ID:                     util.New(),
 		RuntimeID:              summary.ID,
@@ -575,10 +577,10 @@ func newEnvironment(summary runtimecontract.RuntimeSummary) models.RuntimeEnviro
 		CustomModels:           []string{},
 		DefaultModel:           summary.DefaultModel,
 		DefaultReasoning:       firstReasoning(summary.ReasoningOptions),
-		DefaultPermissionLevel: runtimecontract.PermissionLevelFullAccess,
-		Detection: runtimecontract.DetectionResult{
+		DefaultPermissionLevel: runtimeconfig.PermissionLevelFullAccess,
+		Detection: runtimeconfig.DetectionResult{
 			Runtime: summary,
-			Auth:    runtimecontract.AuthStatusUnknown,
+			Auth:    runtimeconfig.AuthStatusUnknown,
 		},
 	}
 }
@@ -590,7 +592,7 @@ func firstBinary(candidates []string) string {
 	return candidates[0]
 }
 
-func firstReasoning(options []runtimecontract.ReasoningOption) string {
+func firstReasoning(options []runtimeconfig.ReasoningOption) string {
 	if len(options) == 0 {
 		return ""
 	}

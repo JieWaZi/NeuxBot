@@ -2,9 +2,9 @@
 package global
 
 import (
-	workspace "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/workspace"
+	workspace "github.com/JieWaZi/NeuxBot/server/internal/agent/host/workspace"
 
-	runtimecatalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+	runtimecatalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
 
 	"context"
 	"crypto/rand"
@@ -22,6 +22,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinwaker"
@@ -32,7 +33,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
 
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
@@ -349,9 +349,13 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	})
 	PluginContents = plugins.NewContentStore(configuration.DataDirectory, func() ([]string, error) { return PluginControllerManager.ContentReferences(context.Background()) })
 	PluginBridgeEnvironment = os.Environ()
-	PluginBridges = commandbridge.NewRegistry(ctx, func(id string) {
+	PluginBridges = commandbridge.NewRegistry(ctx, func(id string, usageOnly bool) {
 		if EventHub != nil {
-			_ = events.Emit(EventHub, constants.PluginEventTopic, "plugins.changed", events.Resource{Kind: "plugin", ID: id}, nil)
+			kind := "plugins.changed"
+			if usageOnly {
+				kind = constants.PluginUsageChangedEventType
+			}
+			_ = events.Emit(EventHub, constants.PluginEventTopic, kind, events.Resource{Kind: "plugin", ID: id}, nil)
 		}
 	})
 
@@ -450,7 +454,8 @@ func loadRuntime(ctx context.Context) error {
 		return mapCoreError("initialize_runtime_sdk", status_error.CoreRuntimeInitializationFailed, err)
 	}
 	RuntimeCatalog = sdk
-	ChatRuntimeHost = runtimehost.NewChat(runtimehost.ChatConfig{Launch: RuntimeCatalog.PrepareLaunch, PrepareWorkspace: workspace.New(RuntimeCatalog.Runtimes()).Prepare, Runtimes: RuntimeCatalog.Runtimes, Fork: RuntimeCatalog.ForkSession})
+	ChatRuntimeHost = runtimehost.NewChat(runtimehost.ChatConfig{Launch: RuntimeCatalog.PrepareLaunch, PrepareWorkspace: workspace.New(RuntimeCatalog.Runtimes()).Prepare, Runtimes: RuntimeCatalog.Runtimes, Fork: runtimehost.NewForkHandler(RuntimeCatalog)})
+	AIAccountService.SetIdleSessionCloser(ChatRuntimeHost.CloseIdleAccount)
 	KnowledgeRuntimeHost = newKnowledgeRuntimeHost()
 	KnowledgeRuntimeHost.Start(ctx)
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
@@ -530,7 +535,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Profiles:            ProfileDocumentControllerManager,
 		Projects:            ProjectControllerManager,
 		Skills:              SkillControllerManager,
-		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment}),
+		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager, CloseIdlePlugin: ChatRuntimeHost.CloseIdlePlugin}),
 		PluginContents:      PluginContents, Plugins: PluginControllerManager, PluginLauncher: coreExecutablePath(),
 		Connectors:          MCPConnectorControllerManager,
 		RuntimeEnvironments: RuntimeEnvironmentControllerManager,

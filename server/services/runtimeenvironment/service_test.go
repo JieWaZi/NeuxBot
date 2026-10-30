@@ -1,6 +1,8 @@
 package runtimeenvironment
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"os"
 	"path/filepath"
@@ -10,7 +12,6 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -25,7 +26,7 @@ type startupFailingRepository struct {
 }
 
 // UpdateDetection 拒绝探测提交，验证故障不会被解释成没有 CLI。
-func (r startupFailingRepository) UpdateDetection(context.Context, string, runtimecontract.DetectionResult, int64) error {
+func (r startupFailingRepository) UpdateDetection(context.Context, string, runtimeconfig.DetectionResult, int64) error {
 	return status_error.DatabaseError
 }
 
@@ -40,12 +41,12 @@ func TestStartupAdmissionUsesPersistedEvidence(t *testing.T) {
 				t.Fatal(err)
 			}
 			if cached {
-				if err := repo.UpdateDetection(ctx, runtimecontract.RuntimeIDCodex, runtimecontract.DetectionResult{ResolvedBinary: "/usr/local/bin/codex"}, 1); err != nil {
+				if err := repo.UpdateDetection(ctx, runtimeconfig.RuntimeIDCodex, runtimeconfig.DetectionResult{ResolvedBinary: "/usr/local/bin/codex"}, 1); err != nil {
 					t.Fatal(err)
 				}
 			}
 			release := make(chan struct{})
-			catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: runtimecontract.RuntimeIDCodex, release: release}
+			catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: runtimeconfig.RuntimeIDCodex, release: release}
 			svc.runtimeCatalog = catalog
 			hub := events.New()
 			defer hub.Close()
@@ -164,10 +165,10 @@ func TestAccountFailureStillDiscoversInstalledCLI(t *testing.T) {
 		runtimeCatalog:            catalog,
 	}
 	result := svc.detect(context.Background(), catalog.Runtimes()[1], models.RuntimeEnvironment{
-		RuntimeID:        runtimecontract.RuntimeIDCodex,
+		RuntimeID:        runtimeconfig.RuntimeIDCodex,
 		DefaultAccountID: "account-1",
 	})
-	if result.ResolvedBinary == "" || result.Auth != runtimecontract.AuthStatusMissing || result.State != runtimecontract.DetectionStateUnavailable {
+	if result.ResolvedBinary == "" || result.Auth != runtimeconfig.AuthStatusMissing || result.State != runtimeconfig.DetectionStateUnavailable {
 		t.Fatalf("account failure lost installed or auth state: %+v", result)
 	}
 	if catalog.detectionCount() != 0 {
@@ -178,15 +179,15 @@ func TestAccountFailureStillDiscoversInstalledCLI(t *testing.T) {
 // countingRuntimeCatalog 记录通过服务高层 seam 发生的探测次数。
 type countingRuntimeCatalog struct {
 	// summaries 覆盖测试要对账的内置 Runtime；空值沿用 Codex 和 Claude。
-	summaries []runtimecontract.RuntimeSummary
+	summaries []runtimeconfig.RuntimeSummary
 	// mutex 保护并发探测次数和 Runtime 标识记录。
 	mutex sync.Mutex
 	// detections 保存每次 Detect 收到的 Runtime 标识。
 	detections []string
 	// requests 保存每次 Detect 收到的完整启动覆盖请求。
-	requests []runtimecontract.DetectRequest
+	requests []runtimeconfig.DetectRequest
 	// permissionLevels 是写入探测快照的产品权限；nil 表示模型未声明权限。
-	permissionLevels []runtimecontract.PermissionLevel
+	permissionLevels []runtimeconfig.PermissionLevel
 	// codexOptionsUnavailable 控制 Codex 探测是否模拟模型目录刷新失败。
 	codexOptionsUnavailable bool
 }
@@ -194,12 +195,12 @@ type countingRuntimeCatalog struct {
 // DiscoverInstallations 返回测试环境中的安装路径快照。
 func (e *countingRuntimeCatalog) DiscoverInstallations(
 	_ context.Context,
-	request runtimecontract.DetectRequest,
-	previous []runtimecontract.CLIInstallation,
-) []runtimecontract.CLIInstallation {
-	result := append([]runtimecontract.CLIInstallation(nil), previous...)
+	request runtimeconfig.DetectRequest,
+	previous []runtimeconfig.CLIInstallation,
+) []runtimeconfig.CLIInstallation {
+	result := append([]runtimeconfig.CLIInstallation(nil), previous...)
 	if len(result) == 0 {
-		result = append(result, runtimecontract.CLIInstallation{
+		result = append(result, runtimeconfig.CLIInstallation{
 			Path: "/usr/local/bin/" + request.RuntimeID, Available: true,
 		})
 	}
@@ -211,42 +212,42 @@ func TestRefreshKeepsSelectedInstallationWhenPathOrderChanges(t *testing.T) {
 	svc := &service{runtimeCatalog: catalog}
 	summary := catalog.Runtimes()[1]
 	svc.detect(context.Background(), summary, models.RuntimeEnvironment{
-		RuntimeID: runtimecontract.RuntimeIDCodex,
+		RuntimeID: runtimeconfig.RuntimeIDCodex,
 		Binary:    "codex",
-		Detection: runtimecontract.DetectionResult{
+		Detection: runtimeconfig.DetectionResult{
 			ResolvedBinary: "/custom/bin/codex",
-			Installations: []runtimecontract.CLIInstallation{
+			Installations: []runtimeconfig.CLIInstallation{
 				{Path: "/custom/bin/codex", Version: "2.0", Available: true},
 				{Path: "/usr/local/bin/codex", Version: "1.0", Available: true},
 			},
 		},
 	})
-	if got := catalog.lastRequest(runtimecontract.RuntimeIDCodex).LaunchOverride.Binary; got != "/custom/bin/codex" {
+	if got := catalog.lastRequest(runtimeconfig.RuntimeIDCodex).LaunchOverride.Binary; got != "/custom/bin/codex" {
 		t.Fatalf("refresh selected %q, want persisted path", got)
 	}
 }
 
 // Runtimes 返回测试使用的两个内置 Runtime 摘要。
-func (e *countingRuntimeCatalog) Runtimes() []runtimecontract.RuntimeSummary {
+func (e *countingRuntimeCatalog) Runtimes() []runtimeconfig.RuntimeSummary {
 	if e.summaries != nil {
 		return e.summaries
 	}
-	return []runtimecontract.RuntimeSummary{
+	return []runtimeconfig.RuntimeSummary{
 		{
-			ID:                            runtimecontract.RuntimeIDClaude,
-			BaseRuntimeID:                 runtimecontract.RuntimeIDClaude,
+			ID:                            runtimeconfig.RuntimeIDClaude,
+			BaseRuntimeID:                 runtimeconfig.RuntimeIDClaude,
 			Name:                          "Claude Code",
 			BinaryCandidates:              []string{"claude"},
 			DefaultModel:                  "sonnet",
 			ConfigHomeEnvironmentVariable: "CLAUDE_CONFIG_DIR",
 		},
 		{
-			ID:               runtimecontract.RuntimeIDCodex,
-			BaseRuntimeID:    runtimecontract.RuntimeIDCodex,
+			ID:               runtimeconfig.RuntimeIDCodex,
+			BaseRuntimeID:    runtimeconfig.RuntimeIDCodex,
 			Name:             "Codex CLI",
 			BinaryCandidates: []string{"codex"},
 			DefaultModel:     "gpt-stable",
-			ReasoningOptions: []runtimecontract.ReasoningOption{
+			ReasoningOptions: []runtimeconfig.ReasoningOption{
 				{ID: "high", Name: "High"},
 			},
 			ConfigHomeEnvironmentVariable: "CODEX_HOME",
@@ -255,7 +256,7 @@ func (e *countingRuntimeCatalog) Runtimes() []runtimecontract.RuntimeSummary {
 }
 
 // ResolveExecutable 模拟独立于账号认证的 CLI 安装检查。
-func (e *countingRuntimeCatalog) ResolveExecutable(request runtimecontract.DetectRequest) (string, error) {
+func (e *countingRuntimeCatalog) ResolveExecutable(request runtimeconfig.DetectRequest) (string, error) {
 	return "/usr/local/bin/" + request.RuntimeID, nil
 }
 
@@ -271,7 +272,7 @@ func TestRefreshPinsDefaultAndPreservesConfiguredPiCommand(t *testing.T) {
 	}
 	defer sqlDB.Close()
 	environments := controllers.NewRuntimeEnvironmentController(database.DB)
-	catalog := &countingRuntimeCatalog{summaries: []runtimecontract.RuntimeSummary{{ID: runtimecontract.RuntimeIDPi, BaseRuntimeID: runtimecontract.RuntimeIDPi, Name: "Pi", BinaryCandidates: []string{"pi"}}}}
+	catalog := &countingRuntimeCatalog{summaries: []runtimeconfig.RuntimeSummary{{ID: runtimeconfig.RuntimeIDPi, BaseRuntimeID: runtimeconfig.RuntimeIDPi, Name: "Pi", BinaryCandidates: []string{"pi"}}}}
 	svc, err := newWithRuntimeCatalog(catalog, environments, controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)))
 	if err != nil {
 		t.Fatal(err)
@@ -317,58 +318,58 @@ func TestRefreshPinsDefaultAndPreservesConfiguredPiCommand(t *testing.T) {
 // Detect 返回可直接持久化和执行准备使用的就绪快照。
 func (e *countingRuntimeCatalog) Detect(
 	_ context.Context,
-	request runtimecontract.DetectRequest,
-) runtimecontract.DetectionResult {
+	request runtimeconfig.DetectRequest,
+) runtimeconfig.DetectionResult {
 	if request.ReleaseResources != nil {
-		defer request.ReleaseResources()
+		defer request.ReleaseResources(context.Background())
 	}
 	e.mutex.Lock()
 	e.detections = append(e.detections, request.RuntimeID)
 	e.requests = append(e.requests, request)
 	codexOptionsUnavailable := e.codexOptionsUnavailable
-	permissionLevels := append([]runtimecontract.PermissionLevel(nil), e.permissionLevels...)
+	permissionLevels := append([]runtimeconfig.PermissionLevel(nil), e.permissionLevels...)
 	e.mutex.Unlock()
-	var summary runtimecontract.RuntimeSummary
+	var summary runtimeconfig.RuntimeSummary
 	for _, candidate := range e.Runtimes() {
 		if candidate.ID == request.RuntimeID {
 			summary = candidate
 			break
 		}
 	}
-	result := runtimecontract.DetectionResult{
+	result := runtimeconfig.DetectionResult{
 		Runtime:        summary,
-		State:          runtimecontract.DetectionStateReady,
+		State:          runtimeconfig.DetectionStateReady,
 		ResolvedBinary: "/usr/local/bin/" + request.RuntimeID,
-		Models: []runtimecontract.ModelOption{{
+		Models: []runtimeconfig.ModelOption{{
 			ID:               "sonnet",
 			Name:             "Sonnet",
-			PermissionLevels: append([]runtimecontract.PermissionLevel(nil), permissionLevels...),
+			PermissionLevels: append([]runtimeconfig.PermissionLevel(nil), permissionLevels...),
 		}},
 		DetectedDefaultModel: "sonnet",
-		Capabilities: runtimecontract.CapabilitySet{
-			runtimecontract.CapabilityStructuredOutput: true,
-			runtimecontract.CapabilityDynamicModels:    request.RuntimeID == runtimecontract.RuntimeIDCodex && !codexOptionsUnavailable,
+		Capabilities: runtimeconfig.CapabilitySet{
+			runtimeconfig.CapabilityStructuredOutput: true,
+			runtimeconfig.CapabilityDynamicModels:    request.RuntimeID == runtimeconfig.RuntimeIDCodex && !codexOptionsUnavailable,
 		},
 	}
-	if request.RuntimeID == runtimecontract.RuntimeIDCodex {
+	if request.RuntimeID == runtimeconfig.RuntimeIDCodex {
 		if codexOptionsUnavailable {
-			result.Diagnostics = []runtimecontract.Diagnostic{{
+			result.Diagnostics = []runtimeconfig.Diagnostic{{
 				Code:    "ACP_OPTIONS_UNAVAILABLE",
-				Level:   runtimecontract.DiagnosticLevelWarning,
+				Level:   runtimeconfig.DiagnosticLevelWarning,
 				Message: "timeout waiting for child process to exit",
 			}}
 			return result
 		}
-		result.Models = []runtimecontract.ModelOption{{
+		result.Models = []runtimeconfig.ModelOption{{
 			ID:               "gpt-stable",
 			Name:             "GPT Stable",
-			PermissionLevels: append([]runtimecontract.PermissionLevel(nil), permissionLevels...),
-			ReasoningOptions: []runtimecontract.ReasoningOption{
+			PermissionLevels: append([]runtimeconfig.PermissionLevel(nil), permissionLevels...),
+			ReasoningOptions: []runtimeconfig.ReasoningOption{
 				{ID: "high", Name: "High"},
 				{ID: "medium", Name: "Medium"},
 			},
 		}}
-		result.ReasoningOptions = []runtimecontract.ReasoningOption{
+		result.ReasoningOptions = []runtimeconfig.ReasoningOption{
 			{ID: "high", Name: "High"},
 			{ID: "medium", Name: "Medium"},
 		}
@@ -385,7 +386,7 @@ func (e *countingRuntimeCatalog) detectionCount() int {
 	return len(e.detections)
 }
 
-func (e *countingRuntimeCatalog) lastRequest(runtimeID string) runtimecontract.DetectRequest {
+func (e *countingRuntimeCatalog) lastRequest(runtimeID string) runtimeconfig.DetectRequest {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 	for index := len(e.requests) - 1; index >= 0; index-- {
@@ -393,7 +394,7 @@ func (e *countingRuntimeCatalog) lastRequest(runtimeID string) runtimecontract.D
 			return e.requests[index]
 		}
 	}
-	return runtimecontract.DetectRequest{}
+	return runtimeconfig.DetectRequest{}
 }
 
 // failCodexOptions 让后续 Codex 探测返回模型目录刷新警告。
@@ -404,10 +405,10 @@ func (e *countingRuntimeCatalog) failCodexOptions() {
 }
 
 // setPermissionLevels 设置后续探测快照写入模型的产品权限。
-func (e *countingRuntimeCatalog) setPermissionLevels(levels []runtimecontract.PermissionLevel) {
+func (e *countingRuntimeCatalog) setPermissionLevels(levels []runtimeconfig.PermissionLevel) {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
-	e.permissionLevels = append([]runtimecontract.PermissionLevel(nil), levels...)
+	e.permissionLevels = append([]runtimeconfig.PermissionLevel(nil), levels...)
 }
 
 func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testing.T) {
@@ -460,7 +461,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 		)
 	}
 	for _, environment := range first {
-		if environment.DefaultPermissionLevel != runtimecontract.PermissionLevelFullAccess {
+		if environment.DefaultPermissionLevel != runtimeconfig.PermissionLevelFullAccess {
 			t.Fatalf(
 				"%s default permission = %q, want full-access",
 				environment.RuntimeID,
@@ -486,7 +487,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	}
 	selected, err := environments.Get(
 		context.Background(),
-		runtimecontract.RuntimeIDCodex,
+		runtimeconfig.RuntimeIDCodex,
 	)
 	if err != nil {
 		t.Fatalf("repository Get() error = %v", err)
@@ -499,7 +500,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	}
 	var claude models.RuntimeEnvironment
 	for _, environment := range first {
-		if environment.RuntimeID == runtimecontract.RuntimeIDClaude {
+		if environment.RuntimeID == runtimeconfig.RuntimeIDClaude {
 			claude = environment
 			break
 		}
@@ -508,10 +509,10 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	if err := environments.UpdateConfiguration(context.Background(), claude); err != nil {
 		t.Fatalf("UpdateConfiguration() error = %v", err)
 	}
-	if err := serviceValue.RefreshOne(context.Background(), runtimecontract.RuntimeIDClaude); err != nil {
+	if err := serviceValue.RefreshOne(context.Background(), runtimeconfig.RuntimeIDClaude); err != nil {
 		t.Fatalf("RefreshOne() error = %v", err)
 	}
-	request := catalog.lastRequest(runtimecontract.RuntimeIDClaude)
+	request := catalog.lastRequest(runtimeconfig.RuntimeIDClaude)
 	if request.LaunchOverride.Environment["CLAUDE_CONFIG_DIR"] != claude.ConfigHome {
 		t.Fatalf(
 			"Claude config environment = %#v, want CLAUDE_CONFIG_DIR=%q",
@@ -519,7 +520,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 			claude.ConfigHome,
 		)
 	}
-	codex, err := environments.Get(context.Background(), runtimecontract.RuntimeIDCodex)
+	codex, err := environments.Get(context.Background(), runtimeconfig.RuntimeIDCodex)
 	if err != nil {
 		t.Fatalf("get Codex environment: %v", err)
 	}
@@ -528,10 +529,10 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	if err := environments.UpdateConfiguration(context.Background(), codex); err != nil {
 		t.Fatalf("save stale Codex defaults: %v", err)
 	}
-	if err := serviceValue.RefreshOne(context.Background(), runtimecontract.RuntimeIDCodex); err != nil {
+	if err := serviceValue.RefreshOne(context.Background(), runtimeconfig.RuntimeIDCodex); err != nil {
 		t.Fatalf("refresh Codex defaults: %v", err)
 	}
-	codex, err = environments.Get(context.Background(), runtimecontract.RuntimeIDCodex)
+	codex, err = environments.Get(context.Background(), runtimeconfig.RuntimeIDCodex)
 	if err != nil {
 		t.Fatalf("read normalized Codex environment: %v", err)
 	}
@@ -543,10 +544,10 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 		)
 	}
 	catalog.failCodexOptions()
-	if err := serviceValue.RefreshOne(context.Background(), runtimecontract.RuntimeIDCodex); err != nil {
+	if err := serviceValue.RefreshOne(context.Background(), runtimeconfig.RuntimeIDCodex); err != nil {
 		t.Fatalf("refresh Codex with unavailable options: %v", err)
 	}
-	codex, err = environments.Get(context.Background(), runtimecontract.RuntimeIDCodex)
+	codex, err = environments.Get(context.Background(), runtimeconfig.RuntimeIDCodex)
 	if err != nil {
 		t.Fatalf("read fallback Codex environment: %v", err)
 	}
@@ -556,10 +557,10 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 			codex.Detection.Models,
 		)
 	}
-	if err := serviceValue.RefreshOne(context.Background(), runtimecontract.RuntimeIDCodex); err != nil {
+	if err := serviceValue.RefreshOne(context.Background(), runtimeconfig.RuntimeIDCodex); err != nil {
 		t.Fatalf("repeat Codex refresh with unavailable options: %v", err)
 	}
-	codex, err = environments.Get(context.Background(), runtimecontract.RuntimeIDCodex)
+	codex, err = environments.Get(context.Background(), runtimeconfig.RuntimeIDCodex)
 	if err != nil {
 		t.Fatalf("read repeated fallback Codex environment: %v", err)
 	}
@@ -579,9 +580,9 @@ func TestRefreshDowngradesUnsupportedDefaultPermission(t *testing.T) {
 	if err := serviceValue.RefreshAll(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	catalog.setPermissionLevels([]runtimecontract.PermissionLevel{
-		runtimecontract.PermissionLevelDefault,
-		runtimecontract.PermissionLevelAuto,
+	catalog.setPermissionLevels([]runtimeconfig.PermissionLevel{
+		runtimeconfig.PermissionLevelDefault,
+		runtimeconfig.PermissionLevelAuto,
 	})
 	if err := serviceValue.RefreshAll(context.Background()); err != nil {
 		t.Fatalf("RefreshAll() error = %v", err)
@@ -594,7 +595,7 @@ func TestRefreshDowngradesUnsupportedDefaultPermission(t *testing.T) {
 		t.Fatal("expected persisted runtime environments")
 	}
 	for _, environment := range listed {
-		if environment.DefaultPermissionLevel != runtimecontract.PermissionLevelAuto {
+		if environment.DefaultPermissionLevel != runtimeconfig.PermissionLevelAuto {
 			t.Fatalf(
 				"%s default permission = %q, want auto",
 				environment.RuntimeID,
@@ -627,7 +628,7 @@ func TestRefreshDoesNotInventPermissionLevelsWhenCatalogOmitsThem(t *testing.T) 
 		t.Fatalf("List() error = %v", err)
 	}
 	for _, environment := range listed {
-		if environment.DefaultPermissionLevel != runtimecontract.PermissionLevelFullAccess {
+		if environment.DefaultPermissionLevel != runtimeconfig.PermissionLevelFullAccess {
 			t.Fatalf(
 				"%s default permission = %q, want unchanged full-access",
 				environment.RuntimeID,
@@ -688,9 +689,9 @@ func newRuntimeEnvironmentTestService(t *testing.T) (
 	return catalog, environments, serviceValue
 }
 
-func hasPermissionDefaultDowngraded(diagnostics []runtimecontract.Diagnostic) bool {
+func hasPermissionDefaultDowngraded(diagnostics []runtimeconfig.Diagnostic) bool {
 	for _, diagnostic := range diagnostics {
-		if diagnostic.Code == runtimecontract.DiagnosticCodePermissionDefaultDowngraded {
+		if diagnostic.Code == runtimeconfig.DiagnosticCodePermissionDefaultDowngraded {
 			return true
 		}
 	}
@@ -716,7 +717,7 @@ type controlledRuntimeCatalog struct {
 }
 
 // Detect 返回受控快照，并按测试屏障等待或报告可执行路径失效。
-func (c *controlledRuntimeCatalog) Detect(ctx context.Context, request runtimecontract.DetectRequest) runtimecontract.DetectionResult {
+func (c *controlledRuntimeCatalog) Detect(ctx context.Context, request runtimeconfig.DetectRequest) runtimeconfig.DetectionResult {
 	if c.started != nil {
 		c.started <- request.RuntimeID
 	}
@@ -730,7 +731,7 @@ func (c *controlledRuntimeCatalog) Detect(ctx context.Context, request runtimeco
 	result.Version = c.version
 	if c.executableMissing {
 		result.ResolvedBinary = ""
-		result.State = runtimecontract.DetectionStateUnavailable
+		result.State = runtimeconfig.DetectionStateUnavailable
 	}
 	if c.binary != "" {
 		result.ResolvedBinary = c.binary
@@ -752,10 +753,10 @@ func TestRefreshPreservesVersionForSameInstallation(t *testing.T) {
 			}
 			catalog.version = version
 			base.failCodexOptions()
-			if err := svc.RefreshOne(ctx, runtimecontract.RuntimeIDCodex); err != nil {
+			if err := svc.RefreshOne(ctx, runtimeconfig.RuntimeIDCodex); err != nil {
 				t.Fatal(err)
 			}
-			got, err := repo.Get(ctx, runtimecontract.RuntimeIDCodex)
+			got, err := repo.Get(ctx, runtimeconfig.RuntimeIDCodex)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -768,10 +769,10 @@ func TestRefreshPreservesVersionForSameInstallation(t *testing.T) {
 				}
 			}
 			catalog.binary = "/other/bin/codex"
-			if err := svc.RefreshOne(ctx, runtimecontract.RuntimeIDCodex); err != nil {
+			if err := svc.RefreshOne(ctx, runtimeconfig.RuntimeIDCodex); err != nil {
 				t.Fatal(err)
 			}
-			got, err = repo.Get(ctx, runtimecontract.RuntimeIDCodex)
+			got, err = repo.Get(ctx, runtimeconfig.RuntimeIDCodex)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -793,10 +794,10 @@ func TestRefreshFillsVersionFromInstallation(t *testing.T) {
 		t.Fatal(err)
 	}
 	catalog.version = ""
-	if err := svc.RefreshOne(ctx, runtimecontract.RuntimeIDCodex); err != nil {
+	if err := svc.RefreshOne(ctx, runtimeconfig.RuntimeIDCodex); err != nil {
 		t.Fatal(err)
 	}
-	got, err := repo.Get(ctx, runtimecontract.RuntimeIDCodex)
+	got, err := repo.Get(ctx, runtimeconfig.RuntimeIDCodex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -810,7 +811,7 @@ func TestStartupDetectionDoesNotBlockInitializationAndPublishesEachResult(t *tes
 	base, repo, api := newRuntimeEnvironmentTestService(t)
 	svc := api.(*service)
 	release := make(chan struct{})
-	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: runtimecontract.RuntimeIDCodex, release: release}
+	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: runtimeconfig.RuntimeIDCodex, release: release}
 	svc.runtimeCatalog = catalog
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -846,7 +847,7 @@ func TestStartupDetectionDoesNotBlockInitializationAndPublishesEachResult(t *tes
 	}
 	deadline := time.After(5 * time.Second)
 	for {
-		claude, err := repo.Get(ctx, runtimecontract.RuntimeIDClaude)
+		claude, err := repo.Get(ctx, runtimeconfig.RuntimeIDClaude)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -859,7 +860,7 @@ func TestStartupDetectionDoesNotBlockInitializationAndPublishesEachResult(t *tes
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	codex, err := repo.Get(ctx, runtimecontract.RuntimeIDCodex)
+	codex, err := repo.Get(ctx, runtimeconfig.RuntimeIDCodex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -868,7 +869,7 @@ func TestStartupDetectionDoesNotBlockInitializationAndPublishesEachResult(t *tes
 	}
 	// 重检已完成的 Claude 不得等待仍被阻塞的 Codex，也不得重新探测其他项。
 	refreshed := make(chan error, 1)
-	go func() { refreshed <- svc.RefreshOne(ctx, runtimecontract.RuntimeIDClaude) }()
+	go func() { refreshed <- svc.RefreshOne(ctx, runtimeconfig.RuntimeIDClaude) }()
 	select {
 	case err := <-refreshed:
 		if err != nil {
@@ -897,14 +898,14 @@ func TestRefreshKeepsKnownVersionWhenSelectedExecutableIsMissing(t *testing.T) {
 	}
 	catalog.version = ""
 	catalog.executableMissing = true
-	if err := svc.RefreshOne(ctx, runtimecontract.RuntimeIDCodex); err != nil {
+	if err := svc.RefreshOne(ctx, runtimeconfig.RuntimeIDCodex); err != nil {
 		t.Fatal(err)
 	}
-	got, err := repo.Get(ctx, runtimecontract.RuntimeIDCodex)
+	got, err := repo.Get(ctx, runtimeconfig.RuntimeIDCodex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Detection.Version != "1.2.3" || got.Detection.ResolvedBinary != "" || got.Detection.State != runtimecontract.DetectionStateUnavailable {
+	if got.Detection.Version != "1.2.3" || got.Detection.ResolvedBinary != "" || got.Detection.State != runtimeconfig.DetectionStateUnavailable {
 		t.Fatalf("missing executable lost version or retained readiness: %+v", got.Detection)
 	}
 }

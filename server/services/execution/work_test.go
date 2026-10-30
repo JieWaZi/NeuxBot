@@ -1,6 +1,10 @@
 package execution
 
 import (
+	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,10 +18,10 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -48,7 +52,7 @@ func TestHiddenEntryCreatesStandardChatAndPreservesInitialExecution(t *testing.T
 		ExecutionID:     util.New(),
 		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}},
 		Input:           WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理项目资料"},
-		Options:         WorkOptions{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: runtimecontract.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue},
+		Options:         WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: runtimeconfig.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue},
 		Admission:       constants.ExecutionAdmissionCommitBeforeDispatch,
 	}
 	accepted, err := manager.execution.Start(ctx, intent)
@@ -76,7 +80,7 @@ func TestHiddenEntryCreatesStandardChatAndPreservesInitialExecution(t *testing.T
 	if _, err := manager.execution.Start(ctx, changedIntent); !errors.Is(err, status_error.CreateRequestConflict) {
 		t.Fatalf("changed visibility reused original identity: %v", err)
 	}
-	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "继续整理"}, Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex}})
+	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "继续整理"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,8 +102,8 @@ func TestWorkIntentWorkspaceReadOnlyFreezesNonMutationPolicy(t *testing.T) {
 		},
 		Message: userMessage{Text: "只读分析并规划任务"},
 		Runtime: runtimeSelection{
-			RuntimeID:         runtimecontract.RuntimeIDCodex,
-			PermissionLevel:   runtimecontract.PermissionLevelFullAccess,
+			RuntimeID:         runtimeconfig.RuntimeIDCodex,
+			PermissionLevel:   runtimeconfig.PermissionLevelFullAccess,
 			WorkspaceReadOnly: true,
 		},
 	})
@@ -115,7 +119,7 @@ func TestWorkIntentWorkspaceReadOnlyFreezesNonMutationPolicy(t *testing.T) {
 	if executableErr != nil {
 		t.Fatal(executableErr)
 	}
-	if request.Detection.State != runtimecontract.DetectionStateReady ||
+	if request.Detection.State != runtimeconfig.DetectionStateReady ||
 		request.Detection.ResolvedBinary != testExecutable {
 		t.Fatalf("runtime detection snapshot = %+v", request.Detection)
 	}
@@ -180,7 +184,7 @@ func (s messageTestService) sendTestMessage(
 	input testMessageInput,
 ) (AcceptedExecution, error) {
 	if input.Runtime.PermissionLevel == "" {
-		input.Runtime.PermissionLevel = runtimecontract.PermissionLevelAuto
+		input.Runtime.PermissionLevel = runtimeconfig.PermissionLevelAuto
 	}
 	intent := WorkIntent{
 		Chat: ChatTarget{ChatID: input.ChatID},
@@ -224,7 +228,7 @@ func (s messageTestService) sendTestMessage(
 // fakeRuntime 是消息执行测试使用的 Runtime 边界替身。
 type fakeRuntime struct {
 	// requests 记录 Chat 交给 Runtime 的结构化请求。
-	requests []runtimecontract.RunRequest
+	requests []recordedRun
 	// result 是没有配置结果序列时返回的固定终态。
 	result runtimecontract.Result
 	// results 是按调用顺序返回的终态序列。
@@ -242,13 +246,6 @@ func (r *fakeRuntime) ForkSession(context.Context, runtimecontract.ForkSessionRe
 	panic("unexpected ForkSession call")
 }
 
-// RunSummaryWithLease 通过同一测试宿主执行隐藏会话交接并结束资源使用。
-func (r *fakeRuntime) RunSummaryWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink,
-	release func(context.Context) error,
-) runtimecontract.Result {
-	return r.RunWithLease(ctx, request, sink, release)
-}
-
 // CloseWorkspace 的同步测试消费者已经退出，无需另行持有工作区资源。
 func (r *fakeRuntime) CloseWorkspace(context.Context, string) error { return nil }
 
@@ -262,24 +259,19 @@ type gatedRuntime struct {
 	proceed chan struct{}
 }
 
-// RunWithLease 等待测试门闩，然后交付启动事件并在结束后释放资源。
-func (r *gatedRuntime) RunWithLease(
+// Run 等待测试门闩，然后交付启动事件并在结束后释放资源。
+func (r *gatedRuntime) Run(
 	ctx context.Context,
-	request runtimecontract.RunRequest,
-	sink runtimecontract.EventSink,
-	release func(context.Context) error,
-) runtimecontract.Result {
-	if release != nil {
-		defer func() { _ = release(context.WithoutCancel(ctx)) }()
-	}
+	request recordedRun,
+	sink runtimecontract.EventSink) runtimecontract.Result {
 	close(r.entered)
 	select {
 	case <-ctx.Done():
 		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimecontract.FailureCodeContextCanceled,
+			Code:       runtimediagnostic.FailureCodeContextCanceled,
 			Stage:      "runtime",
 			Message:    ctx.Err().Error(),
-			Transience: runtimecontract.FailureTransiencePermanent,
+			Transience: runtimediagnostic.FailureTransiencePermanent,
 		}}
 	case <-r.proceed:
 	}
@@ -290,16 +282,16 @@ func (r *gatedRuntime) RunWithLease(
 		Data: started,
 	}); err != nil {
 		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimecontract.FailureCodeEventDelivery,
+			Code:       runtimediagnostic.FailureCodeEventDelivery,
 			Stage:      "initial_delivery",
 			Message:    err.Error(),
-			Transience: runtimecontract.FailureTransiencePermanent,
+			Transience: runtimediagnostic.FailureTransiencePermanent,
 		}}
 	}
 	return runtimecontract.Result{Facts: runtimecontract.InvocationFacts{
 		InvocationID:  invocationID,
 		RuntimeID:     request.Target.RuntimeID,
-		BaseRuntimeID: runtimecontract.RuntimeIDCodex,
+		BaseRuntimeID: runtimeconfig.RuntimeIDCodex,
 	}}
 }
 
@@ -400,32 +392,27 @@ func (c *trackingSkillController) UpdatePackageDisplayName(context.Context, stri
 }
 
 // Runtimes 返回测试使用的固定 Codex 工作区布局。
-func (r *fakeRuntime) Runtimes() []runtimecontract.RuntimeSummary {
-	return []runtimecontract.RuntimeSummary{{
-		ID:                  runtimecontract.RuntimeIDCodex,
-		BaseRuntimeID:       runtimecontract.RuntimeIDCodex,
+func (r *fakeRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
+	return []runtimeconfig.RuntimeSummary{{
+		ID:                  runtimeconfig.RuntimeIDCodex,
+		BaseRuntimeID:       runtimeconfig.RuntimeIDCodex,
 		InstructionFileName: "AGENTS.md",
 		SkillDirectoryName:  ".agents",
 	}}
 }
 
-// RunWithLease 模拟完整同步消费者，在退出后释放资源。
-func (r *fakeRuntime) RunWithLease(
+// Run 模拟完整同步消费者，在退出后释放资源。
+func (r *fakeRuntime) Run(
 	ctx context.Context,
-	request runtimecontract.RunRequest,
-	sink runtimecontract.EventSink,
-	release func(context.Context) error,
-) runtimecontract.Result {
-	if release != nil {
-		defer func() { _ = release(context.WithoutCancel(ctx)) }()
-	}
+	request recordedRun,
+	sink runtimecontract.EventSink) runtimecontract.Result {
 	r.requests = append(r.requests, request)
 	if r.failureStage != "" {
 		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimecontract.FailureCodeRuntimeUnavailable,
+			Code:       runtimediagnostic.FailureCodeRuntimeUnavailable,
 			Stage:      r.failureStage,
 			Message:    "runtime unavailable",
-			Transience: runtimecontract.FailureTransiencePermanent,
+			Transience: runtimediagnostic.FailureTransiencePermanent,
 		}}
 	}
 	r.starts++
@@ -438,27 +425,27 @@ func (r *fakeRuntime) RunWithLease(
 		Data: started,
 	}); err != nil {
 		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimecontract.FailureCodeEventDelivery,
+			Code:       runtimediagnostic.FailureCodeEventDelivery,
 			Stage:      "initial_delivery",
 			Message:    err.Error(),
-			Transience: runtimecontract.FailureTransiencePermanent,
+			Transience: runtimediagnostic.FailureTransiencePermanent,
 		}}
 	}
 	if r.panicOnStart {
 		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimecontract.FailureCodeProcessExited,
+			Code:       runtimediagnostic.FailureCodeProcessExited,
 			Stage:      "runtime",
 			Message:    "runtime execution failed unexpectedly",
-			Transience: runtimecontract.FailureTransiencePermanent,
+			Transience: runtimediagnostic.FailureTransiencePermanent,
 		}}
 	}
 	payload, _ := json.Marshal(map[string]string{"text": "执行完成"})
 	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: payload}); err != nil {
 		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimecontract.FailureCodeEventDelivery,
+			Code:       runtimediagnostic.FailureCodeEventDelivery,
 			Stage:      "event_delivery",
 			Message:    err.Error(),
-			Transience: runtimecontract.FailureTransiencePermanent,
+			Transience: runtimediagnostic.FailureTransiencePermanent,
 		}}
 	}
 	result := r.result
@@ -468,7 +455,7 @@ func (r *fakeRuntime) RunWithLease(
 	result.Facts = runtimecontract.InvocationFacts{
 		InvocationID:  invocationID,
 		RuntimeID:     request.Target.RuntimeID,
-		BaseRuntimeID: runtimecontract.RuntimeIDCodex,
+		BaseRuntimeID: runtimeconfig.RuntimeIDCodex,
 		Model:         request.Policy.Model,
 		Reasoning:     request.Policy.Reasoning,
 		Policy:        request.Policy.Execution,
@@ -489,36 +476,24 @@ func (r *cancelableRuntime) ForkSession(context.Context, runtimecontract.ForkSes
 }
 
 // Runtimes 返回测试使用的 Codex 工作区布局。
-func (r *cancelableRuntime) Runtimes() []runtimecontract.RuntimeSummary {
+func (r *cancelableRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
 	return (&fakeRuntime{}).Runtimes()
 }
 
-// RunWithLease 确认输入后等待取消，消费者结束后释放资源。
-func (r *cancelableRuntime) RunWithLease(ctx context.Context, _ runtimecontract.RunRequest, sink runtimecontract.EventSink,
-	release func(context.Context) error,
-) runtimecontract.Result {
-	if release != nil {
-		defer func() { _ = release(context.WithoutCancel(ctx)) }()
-	}
+// Run 确认输入后等待取消，消费者结束后释放资源。
+func (r *cancelableRuntime) Run(ctx context.Context, _ recordedRun, sink runtimecontract.EventSink) runtimecontract.Result {
 	started, _ := json.Marshal(runtimecontract.InvocationStartedData{InvocationID: "cancelable-invocation"})
 	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: started}); err != nil {
-		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{Code: runtimecontract.FailureCodeEventDelivery, Message: err.Error()}}
+		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeEventDelivery, Message: err.Error()}}
 	}
 	close(r.started)
 	<-ctx.Done()
 	return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-		Code:       runtimecontract.FailureCodeContextCanceled,
+		Code:       runtimediagnostic.FailureCodeContextCanceled,
 		Stage:      "runtime",
 		Message:    ctx.Err().Error(),
-		Transience: runtimecontract.FailureTransiencePermanent,
+		Transience: runtimediagnostic.FailureTransiencePermanent,
 	}}
-}
-
-// RunSummaryWithLease 通过同一测试宿主执行隐藏会话交接并结束资源使用。
-func (r *cancelableRuntime) RunSummaryWithLease(ctx context.Context, request runtimecontract.RunRequest, sink runtimecontract.EventSink,
-	release func(context.Context) error,
-) runtimecontract.Result {
-	return r.RunWithLease(ctx, request, sink, release)
 }
 
 // CloseWorkspace 的同步测试消费者已经退出，无需另行持有工作区资源。
@@ -747,8 +722,8 @@ func TestWorkIntentCommitBeforeDispatchPersistsPendingFactsBeforeRuntimeAccepts(
 			Content: "可靠收件后再派发",
 		},
 		Options: WorkOptions{
-			RuntimeID:         runtimecontract.RuntimeIDCodex,
-			PermissionLevel:   runtimecontract.PermissionLevelAuto,
+			RuntimeID:         runtimeconfig.RuntimeIDCodex,
+			PermissionLevel:   runtimeconfig.PermissionLevelAuto,
 			SessionPolicy:     constants.RuntimeSessionPolicyNew,
 			ParentExecutionID: "parent-execution-1",
 		},
@@ -819,7 +794,7 @@ func TestSendMessageMapsSkillPreparationFailure(t *testing.T) {
 		},
 		Message: userMessage{Text: "使用当前技能"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimecontract.RuntimeIDCodex,
+			RuntimeID: runtimeconfig.RuntimeIDCodex,
 		},
 	})
 	if !errors.Is(err, status_error.SkillUnavailable) {
@@ -879,7 +854,7 @@ func TestSendMessageDeliversEnabledSkillsWithoutChangingRelations(t *testing.T) 
 			Text:     "只在本轮调用代码审查",
 			SkillIDs: []string{"skill-selected"},
 		},
-		Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
 	}
 	if _, err := manager.sendTestMessage(context.Background(), request); !errors.Is(err, status_error.RuntimeUnavailable) {
 		t.Fatalf("sendTestMessage() error = %v, want RuntimeUnavailable", err)
@@ -891,7 +866,7 @@ func TestSendMessageDeliversEnabledSkillsWithoutChangingRelations(t *testing.T) 
 	for _, skill := range runtime.requests[0].Skills {
 		selectedByName[skill.Name] = skill
 	}
-	if !selectedByName["review"].Selected || selectedByName["diagnose"].Selected {
+	if !slices.Contains(runtime.requests[0].SelectedSkills, "review") || slices.Contains(runtime.requests[0].SelectedSkills, "diagnose") {
 		t.Fatalf("skill selection = %+v", selectedByName)
 	}
 	if selectedByName["review"].Path != filepath.Join(
@@ -963,7 +938,7 @@ func TestSendMessageRunsThroughRuntimeAndPersistsCompletedChat(
 				SkillIDs: []string{"skill-review"},
 			},
 			Runtime: runtimeSelection{
-				RuntimeID: runtimecontract.RuntimeIDCodex,
+				RuntimeID: runtimeconfig.RuntimeIDCodex,
 				Model:     "gpt-5",
 				Reasoning: "high",
 			},
@@ -1045,7 +1020,7 @@ func TestSendMessageKeepsWholeFileCodeReferencesOutOfAttachments(t *testing.T) {
 				Path: referencedFile,
 			}},
 		},
-		Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("sendTestMessage() error = %v", err)
@@ -1107,7 +1082,7 @@ func TestSendMessageForwardsAbsoluteCodeSnippetPath(t *testing.T) {
 				Content:   "其中政策与市场两项变化最快。",
 			}},
 		},
-		Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("sendTestMessage() error = %v", err)
@@ -1148,7 +1123,7 @@ func TestSendMessageRollsBackNewWorkspaceWhenWholeFileReferenceIsOutsideProject(
 				Path: outsideFile,
 			}},
 		},
-		Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
 	})
 	if !errors.Is(err, status_error.BadRequest) {
 		t.Fatalf("sendTestMessage() error = %v, want BadRequest", err)
@@ -1183,7 +1158,7 @@ func TestSendMessagePersistsSessionAndResumesAfterModelChange(t *testing.T) {
 		},
 		Message: userMessage{Text: "建立 Session"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimecontract.RuntimeIDCodex,
+			RuntimeID: runtimeconfig.RuntimeIDCodex,
 			Model:     "gpt-5",
 			Reasoning: "high",
 		},
@@ -1197,7 +1172,7 @@ func TestSendMessagePersistsSessionAndResumesAfterModelChange(t *testing.T) {
 		ChatID:  first.Chat.ID,
 		Message: userMessage{Text: "继续 Session"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimecontract.RuntimeIDCodex,
+			RuntimeID: runtimeconfig.RuntimeIDCodex,
 			Model:     "gpt-5.1",
 			Reasoning: "medium",
 		},
@@ -1246,10 +1221,10 @@ func (r *forkContinuationRuntime) CloseWorkspace(_ context.Context, directory st
 func TestForkClosesSourceBeforeNativeDispatch(t *testing.T) {
 	ctx := context.Background()
 	runtime := &forkContinuationRuntime{fakeRuntime: fakeRuntime{result: runtimecontract.Result{Session: runtimecontract.SessionResult{OutputID: "parent-session", State: runtimecontract.SessionStateCreated, ForkMode: "turn", ForkPosition: "parent-turn"}}}}
-	environment, _ := (readyRuntimeEnvironmentReader{}).Get(ctx, runtimecontract.RuntimeIDCodex)
-	environment.BaseRuntimeID = runtimecontract.RuntimeIDCodex
+	environment, _ := (readyRuntimeEnvironmentReader{}).Get(ctx, runtimeconfig.RuntimeIDCodex)
+	environment.BaseRuntimeID = runtimeconfig.RuntimeIDCodex
 	manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{runtimeEnvironments: configurationEnvironmentReader{environment: environment}})
-	first, err := manager.sendTestMessage(ctx, testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex}})
+	first, err := manager.sendTestMessage(ctx, testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1293,10 +1268,10 @@ func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
 	for _, changed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("external_changed=%t", changed), func(t *testing.T) {
 			runtime := &forkContinuationRuntime{fakeRuntime: fakeRuntime{result: runtimecontract.Result{Session: runtimecontract.SessionResult{OutputID: "parent-session", State: runtimecontract.SessionStateCreated, ForkMode: "turn", ForkPosition: "parent-turn"}}}}
-			environment, _ := (readyRuntimeEnvironmentReader{}).Get(context.Background(), runtimecontract.RuntimeIDCodex)
-			environment.BaseRuntimeID = runtimecontract.RuntimeIDCodex
+			environment, _ := (readyRuntimeEnvironmentReader{}).Get(context.Background(), runtimeconfig.RuntimeIDCodex)
+			environment.BaseRuntimeID = runtimeconfig.RuntimeIDCodex
 			manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{runtimeEnvironments: configurationEnvironmentReader{environment: environment}})
-			first, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex}})
+			first, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1305,7 +1280,7 @@ func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(runtime.forks) != 1 || runtime.forks[0].SourceSessionID != "parent-session" || runtime.forks[0].Position != "parent-turn" || runtime.forks[0].Run.Target.RuntimeID != runtimecontract.RuntimeIDCodex {
+			if len(runtime.forks) != 1 || runtime.forks[0].SourceSessionID != "parent-session" || runtime.forks[0].Position != "parent-turn" || runtime.forks[0].Plan.Target.RuntimeID != runtimeconfig.RuntimeIDCodex {
 				t.Fatalf("fork lost frozen native boundary: %+v", runtime.forks)
 			}
 			if changed {
@@ -1317,7 +1292,7 @@ func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			continued, err := manager.sendTestMessage(context.Background(), testMessageInput{ChatID: child, Message: userMessage{Text: "继续分支"}, Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex}})
+			continued, err := manager.sendTestMessage(context.Background(), testMessageInput{ChatID: child, Message: userMessage{Text: "继续分支"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}})
 			if changed {
 				if !errors.Is(err, status_error.PluginNotReady) {
 					t.Fatalf("changed native scope accepted: %v", err)
@@ -1349,8 +1324,8 @@ func TestSendMessageMergesSupplementalInstructionsBeforeToolCapabilities(t *test
 			Content: "规划团队任务",
 		},
 		Options: WorkOptions{
-			RuntimeID:       runtimecontract.RuntimeIDCodex,
-			PermissionLevel: runtimecontract.PermissionLevelAuto,
+			RuntimeID:       runtimeconfig.RuntimeIDCodex,
+			PermissionLevel: runtimeconfig.PermissionLevelAuto,
 			SessionPolicy:   constants.RuntimeSessionPolicyContinue,
 			SupplementalInstructions: []runtimecontract.Instruction{{
 				Name:    "TEAM.md",
@@ -1382,6 +1357,45 @@ func TestSendMessageMergesSupplementalInstructionsBeforeToolCapabilities(t *test
 
 }
 
+func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T) {
+	ctx := context.Background()
+	project := t.TempDir()
+	if err := os.WriteFile(filepath.Join(project, "AGENTS.md"), []byte("项目约束"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runtime := &fakeRuntime{}
+	manager := newMessageTestService(t, t.TempDir(), runtime)
+	accepted, err := manager.sendTestMessage(ctx, testMessageInput{
+		NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: project},
+		Message: userMessage{Text: "第一次执行"},
+		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
+	core := manager.execution.(*service)
+	state, err := core.resolveMessageChat(ctx, pendingMessage{chatID: accepted.Chat.ID}, util.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := runtime.requests[0].Instructions
+	if len(first) != 4 || !hasInstructionContent(first, "项目约束") {
+		t.Fatalf("initial profile and project instructions = %+v", first)
+	}
+	// 反复经过真实档案读取和工作区准备，覆盖 map 遍历顺序变化造成的静态配置抖动。
+	for attempt := 0; attempt < 64; attempt++ {
+		files, err := core.prepareMessageFiles(ctx, state, util.New(), nil, nil, runtimeconfig.RuntimeIDCodex)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files.rollback()
+		if !slices.Equal(files.instructions, first) {
+			t.Fatalf("unchanged profile changed instructions on attempt %d: first=%+v current=%+v", attempt, first, files.instructions)
+		}
+	}
+}
+
 func TestSendMessageReadsCurrentProfileAndProjectInstructions(t *testing.T) {
 	project := t.TempDir()
 	instructionPath := filepath.Join(project, "AGENTS.md")
@@ -1397,7 +1411,7 @@ func TestSendMessageReadsCurrentProfileAndProjectInstructions(t *testing.T) {
 		},
 		Message: userMessage{Text: "第一次执行"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimecontract.RuntimeIDCodex,
+			RuntimeID: runtimeconfig.RuntimeIDCodex,
 		},
 	})
 	if err != nil {
@@ -1420,7 +1434,7 @@ func TestSendMessageReadsCurrentProfileAndProjectInstructions(t *testing.T) {
 		ChatID:  first.Chat.ID,
 		Message: userMessage{Text: "第二次执行"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimecontract.RuntimeIDCodex,
+			RuntimeID: runtimeconfig.RuntimeIDCodex,
 		},
 	})
 	if err != nil {
@@ -1498,7 +1512,7 @@ func TestSendMessageFreezesDefaultDirectoryAndLoadsOnlyEnabledProjectInstruction
 		},
 		Message: userMessage{Text: "检查项目目录配置"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimecontract.RuntimeIDCodex,
+			RuntimeID: runtimeconfig.RuntimeIDCodex,
 		},
 	})
 	if err != nil {
@@ -1555,7 +1569,7 @@ func TestSelectedConnectorReferencesRequireEnabledConnectors(t *testing.T) {
 	}
 	references := selectedConnectorReferences(
 		[]string{"connector-browser"},
-		enabled,
+		runtimeConnectorResources(enabled),
 	)
 	if len(references) != 1 || references[0].ID != "connector-browser" ||
 		references[0].Name != "浏览器自动化" {
@@ -1575,10 +1589,10 @@ func TestSendMessageDoesNotRebuildMissingSession(t *testing.T) {
 			{
 				Session: runtimecontract.SessionResult{State: runtimecontract.SessionStateMissing},
 				Failure: &runtimecontract.Failure{
-					Code:       runtimecontract.FailureCodeSessionNotFound,
+					Code:       runtimediagnostic.FailureCodeSessionNotFound,
 					Stage:      "runtime-protocol",
 					Message:    "session missing",
-					Transience: runtimecontract.FailureTransiencePermanent,
+					Transience: runtimediagnostic.FailureTransiencePermanent,
 				},
 			},
 		},
@@ -1594,7 +1608,7 @@ func TestSendMessageDoesNotRebuildMissingSession(t *testing.T) {
 			WorkingDirectory: t.TempDir(),
 		},
 		Message: userMessage{Text: "建立旧 Session"},
-		Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("first sendTestMessage() error = %v", err)
@@ -1603,7 +1617,7 @@ func TestSendMessageDoesNotRebuildMissingSession(t *testing.T) {
 	second, err := manager.sendTestMessage(context.Background(), testMessageInput{
 		ChatID:  first.Chat.ID,
 		Message: userMessage{Text: "恢复丢失 Session"},
-		Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("second sendTestMessage() error = %v", err)
@@ -1623,7 +1637,7 @@ func TestSendMessageDoesNotRebuildMissingSession(t *testing.T) {
 	}
 	assistant := history.Resources[len(history.Resources)-1]
 	if assistant.Status != constants.ExecutionStatusFailed ||
-		assistant.ErrorCode != string(runtimecontract.FailureCodeSessionNotFound) {
+		assistant.ErrorCode != string(runtimediagnostic.FailureCodeSessionNotFound) {
 		t.Fatalf("assistant terminal = %+v, want session-not-found failure", assistant)
 	}
 }
@@ -1643,7 +1657,7 @@ func TestSendMessageContainsRuntimeFailureAndReleasesChat(t *testing.T) {
 			WorkingDirectory: t.TempDir(),
 		},
 		Message: userMessage{Text: "触发 Backend panic"},
-		Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("sendTestMessage() error = %v", err)
@@ -1660,7 +1674,7 @@ func TestSendMessageContainsRuntimeFailureAndReleasesChat(t *testing.T) {
 	}
 	assistant := history.Resources[len(history.Resources)-1]
 	if assistant.Status != constants.ExecutionStatusFailed ||
-		assistant.ErrorCode != string(runtimecontract.FailureCodeProcessExited) {
+		assistant.ErrorCode != string(runtimediagnostic.FailureCodeProcessExited) {
 		t.Fatalf("assistant terminal = %+v, want contained runtime failure", assistant)
 	}
 
@@ -1668,7 +1682,7 @@ func TestSendMessageContainsRuntimeFailureAndReleasesChat(t *testing.T) {
 	if _, err := manager.sendTestMessage(context.Background(), testMessageInput{
 		ChatID:  result.Chat.ID,
 		Message: userMessage{Text: "panic 后继续"},
-		Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
 	}); err != nil {
 		t.Fatalf("sendTestMessage() after failure error = %v", err)
 	}
@@ -1691,7 +1705,7 @@ func TestCancelExecutionEndsRuntimeAndReleasesChat(t *testing.T) {
 					WorkingDirectory: t.TempDir(),
 				},
 				Message: userMessage{Text: "等待取消"},
-				Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex},
+				Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
 			}
 			if scope == "team" {
 				group, err := manager.execution.PrepareChatGroup(context.Background(), PrepareChatGroupIntent{ThreadID: "cancel-thread", Title: "团队取消", ProvisioningID: "cancel-provision", Scope: CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Members: []PrepareChatMember{{ChatID: "11111111111111111111111111111111", WakerID: "waker-1", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}}})
@@ -1727,7 +1741,7 @@ func TestCancelExecutionEndsRuntimeAndReleasesChat(t *testing.T) {
 			}
 			assistant := history.Resources[len(history.Resources)-1]
 			if assistant.Status != constants.ExecutionStatusCanceled ||
-				assistant.ErrorCode != string(runtimecontract.FailureCodeContextCanceled) {
+				assistant.ErrorCode != string(runtimediagnostic.FailureCodeContextCanceled) {
 				t.Fatalf("assistant terminal = %+v, want canceled", assistant)
 			}
 			if err := manager.execution.CancelExecutionAndWait(ctx, result.Chat.ID, result.Execution.ID); err != nil {
@@ -1750,7 +1764,7 @@ func TestChatPublicQueriesObserveMessageAndRename(t *testing.T) {
 			WorkingDirectory: t.TempDir(),
 		},
 		Message: userMessage{Text: "查询对话"},
-		Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("sendTestMessage() error = %v", err)
@@ -1968,17 +1982,17 @@ func (readyRuntimeEnvironmentReader) Get(
 		Enabled:      true,
 		Binary:       "codex",
 		DefaultModel: "default",
-		Detection: runtimecontract.DetectionResult{
-			Runtime: runtimecontract.RuntimeSummary{
+		Detection: runtimeconfig.DetectionResult{
+			Runtime: runtimeconfig.RuntimeSummary{
 				ID:            "codex",
-				BaseRuntimeID: runtimecontract.RuntimeIDCodex,
+				BaseRuntimeID: runtimeconfig.RuntimeIDCodex,
 			},
-			State:          runtimecontract.DetectionStateReady,
+			State:          runtimeconfig.DetectionStateReady,
 			ResolvedBinary: "codex",
-			Capabilities: runtimecontract.CapabilitySet{
-				runtimecontract.CapabilityMCPStreamableHTTP: true,
+			Capabilities: runtimeconfig.CapabilitySet{
+				runtimeconfig.CapabilityMCPStreamableHTTP: true,
 			},
-			Models: []runtimecontract.ModelOption{
+			Models: []runtimeconfig.ModelOption{
 				readyTestModel("default"),
 				readyTestModel("gpt-5"),
 				readyTestModel("gpt-5.1"),
@@ -1988,14 +2002,14 @@ func (readyRuntimeEnvironmentReader) Get(
 }
 
 // readyTestModel 构造提交测试中声明全部产品权限的模型目录项。
-func readyTestModel(id string) runtimecontract.ModelOption {
-	return runtimecontract.ModelOption{
+func readyTestModel(id string) runtimeconfig.ModelOption {
+	return runtimeconfig.ModelOption{
 		ID:   id,
 		Name: id,
-		PermissionLevels: []runtimecontract.PermissionLevel{
-			runtimecontract.PermissionLevelDefault,
-			runtimecontract.PermissionLevelAuto,
-			runtimecontract.PermissionLevelFullAccess,
+		PermissionLevels: []runtimeconfig.PermissionLevel{
+			runtimeconfig.PermissionLevelDefault,
+			runtimeconfig.PermissionLevelAuto,
+			runtimeconfig.PermissionLevelFullAccess,
 		},
 	}
 }
@@ -2079,7 +2093,7 @@ func TestForkContinuationNeverSuppliesInheritedPrompt(t *testing.T) {
 func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *testing.T) {
 	manager := newMessageTestService(t, t.TempDir(), &fakeRuntime{})
 	ctx := context.Background()
-	intent := WorkIntent{AutomaticRunID: "original-automatic-run", ClientRequestID: "automatic-provenance", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}}, Input: WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理正文"}, Options: WorkOptions{RuntimeID: runtimecontract.RuntimeIDCodex, PermissionLevel: runtimecontract.PermissionLevelAuto}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+	intent := WorkIntent{AutomaticRunID: "original-automatic-run", ClientRequestID: "automatic-provenance", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}}, Input: WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理正文"}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: runtimeconfig.PermissionLevelAuto}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 	accepted, err := manager.execution.Start(ctx, intent)
 	if err != nil {
 		t.Fatal(err)
@@ -2098,7 +2112,7 @@ func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *tes
 	if _, err = manager.execution.Start(ctx, changed); !errors.Is(err, status_error.CreateRequestConflict) {
 		t.Fatal("same execution changed its automatic origin", err)
 	}
-	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "用户后续操作"}, Runtime: runtimeSelection{RuntimeID: runtimecontract.RuntimeIDCodex}})
+	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "用户后续操作"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2106,4 +2120,106 @@ func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *tes
 		t.Fatal("manual continuation inherited API caller", continued.Execution)
 	}
 	waitForChatTerminal(t, manager, accepted.Chat.ID)
+}
+
+// recordedRun 汇总测试边界观察到的静态配置和本轮输入，不参与生产资源准备。
+type recordedRun struct {
+	// SessionPlan 是原生消费者实际使用的静态事实。
+	runtimecontract.SessionPlan
+	// TurnInput 是本轮提交给原生消费者的增量输入。
+	runtimecontract.TurnInput
+	// Resources 是当前消费者持有的实际资源。
+	Resources runtimecontract.SessionResources
+	// Session 是实际提交时采用的会话指令。
+	Session runtimecontract.SessionDirective
+}
+
+// synchronousPreparation 仅替代原生消费者，保留执行层显式取得和交还资源的顺序。
+type synchronousPreparation struct {
+	// ctx 是占用技术会话后用于取得资源的准备上下文。
+	ctx context.Context
+	// plan 是当前消费者使用的静态配置。
+	plan runtimecontract.SessionPlan
+	// session 是实际采用的会话指令。
+	session runtimecontract.SessionDirective
+	// resources 是已经交还技术消费者的具体租约。
+	resources runtimecontract.SessionResources
+	// needsResources 表示本次准备还没有实际资源。
+	needsResources bool
+	// run 替代真实原生协议提交。
+	run func(context.Context, recordedRun, runtimecontract.EventSink) runtimecontract.Result
+	// bind 在测试需要保留原生消费者时接管租约。
+	bind func(runtimecontract.SessionResources)
+	// close 在测试需要保留原生消费者时区分冷准备和热准备。
+	close func(context.Context) error
+	// started 表示本轮已尝试提交输入。
+	started bool
+	// closed 保证同步消费者的释放只执行一次。
+	closed bool
+}
+
+func (p *synchronousPreparation) Context() context.Context                    { return p.ctx }
+func (p *synchronousPreparation) NeedsResources() bool                        { return p.needsResources }
+func (p *synchronousPreparation) Resources() runtimecontract.SessionResources { return p.resources }
+func (p *synchronousPreparation) Session() runtimecontract.SessionDirective   { return p.session }
+func (p *synchronousPreparation) Bind(_ context.Context, resources runtimecontract.SessionResources) error {
+	p.resources = resources
+	p.plan.Target, p.plan.Skills, p.plan.Connectors = runtimecontract.DeclareTarget(resources.Target), resources.Skills, runtimecontract.DeclareConnectors(resources.Connectors)
+	if resources.Session != nil {
+		p.session = *resources.Session
+	}
+	p.needsResources = false
+	if p.bind != nil {
+		p.bind(resources)
+	}
+	return nil
+}
+func (p *synchronousPreparation) Close(ctx context.Context) error {
+	if p.close != nil {
+		return p.close(ctx)
+	}
+	if p.closed {
+		return nil
+	}
+	if p.resources.Close != nil {
+		if err := p.resources.Close(ctx); err != nil {
+			return err
+		}
+	}
+	p.closed = true
+	return nil
+}
+func (p *synchronousPreparation) Run(ctx context.Context, turn runtimecontract.TurnInput, sink runtimecontract.EventSink) runtimecontract.Result {
+	p.started = true
+	defer func() { _ = p.Close(context.WithoutCancel(ctx)) }()
+	return p.run(ctx, recordedRun{SessionPlan: p.plan, TurnInput: turn, Resources: p.resources, Session: p.session}, sink)
+}
+
+// prepareSynchronousRuntime 不取得资源，接纳层必须先显式 Bind 才能提交输入。
+func prepareSynchronousRuntime(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective, run func(context.Context, recordedRun, runtimecontract.EventSink) runtimecontract.Result) (*synchronousPreparation, error) {
+	return &synchronousPreparation{ctx: ctx, plan: plan, session: session, needsResources: true, run: run}, nil
+}
+
+func (r *fakeRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
+}
+func (r *gatedRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
+}
+func (r *cancelableRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
+}
+
+// buildRunRequest 仅把生产分离的计划与本轮输入组合为既有行为断言的观察值。
+func (m *service) buildRunRequest(state messageChat, request pendingMessage, files *preparedMessageFiles, skills []models.SkillWithState, connectors []models.MCPConnector, environment models.RuntimeEnvironment) recordedRun {
+	if state.lastExecutionID == "" {
+		for i := len(state.previousMessages) - 1; i >= 0; i-- {
+			if state.previousMessages[i].Role == constants.MessageRoleAssistant {
+				state.lastExecutionID = state.previousMessages[i].ExecutionID
+				break
+			}
+		}
+	}
+	plan, turn, session := m.buildSessionPlan(state, request, files, skills, connectors, environment)
+	return recordedRun{SessionPlan: plan, TurnInput: turn, Session: session}
 }

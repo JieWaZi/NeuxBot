@@ -8,7 +8,6 @@ var Router = ginx.NewRouter(ginx.Group("/chats"))
 
 func init() {
 	Router.Register(&ForkChat{})
-	Router.Register(&GetChatForkTargets{})
 	Router.Register(&CreateChat{})
 	Router.Register(&SendMessage{})
 	Router.Register(&RetryChatExecution{})

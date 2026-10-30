@@ -1,4 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { chatMessageSource } from "../api/chat-queries";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   AuiProvider,
   AssistantRuntimeProvider,
@@ -29,7 +34,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { MemoryRouter } from "react-router-dom";
 import "@/shared/i18n";
-import { useChatRuntime } from "./use-chat-runtime";
+import { useChatRuntime as useProductionChatRuntime } from "./use-chat-runtime";
 import {
   ChatQueueProvider,
   type ChatCodeReference,
@@ -60,6 +65,27 @@ function render(ui: Parameters<typeof renderUI>[0]) {
   });
 }
 
+type RuntimeFixtureOptions = Omit<
+  Parameters<typeof useProductionChatRuntime>[0],
+  "messageSource"
+> & {
+  messages: Parameters<
+    typeof useProductionChatRuntime
+  >[0]["messageSource"]["snapshot"]["messages"];
+  latestSequence: number;
+  isHistoryReady: boolean;
+};
+function useChatRuntime(options: RuntimeFixtureOptions) {
+  const queryClient = useQueryClient();
+  return useProductionChatRuntime({
+    ...options,
+    messageSource: chatMessageSource(queryClient, options.chatId, {
+      messages: options.messages,
+      latestSequence: options.latestSequence,
+      ready: options.isHistoryReady,
+    }),
+  });
+}
 const chatSubscription = vi.hoisted(() => ({
   onEvent: undefined as ((event: ChatEvent) => void) | undefined,
 }));
@@ -337,7 +363,7 @@ function ComposerHarness({
       restoreComposer();
       onMessageRejected?.(rejectedSelection);
     },
-    send,
+    prepareSubmission: (...args) => ({ accept: () => send(...args) }),
     cancel: vi.fn(),
     onStarted: vi.fn(),
     onTerminal: vi.fn(),
@@ -416,7 +442,7 @@ function HistoryHarness({
       reasoning: "high",
       permissionLevel: "auto",
     },
-    send: vi.fn(),
+    prepareSubmission: () => ({ accept: vi.fn() }),
     cancel: vi.fn(),
     onStarted: vi.fn(),
     onTerminal: vi.fn(),
@@ -493,7 +519,7 @@ function ChatThreadLayoutHarness({
       reasoning: "high",
       permissionLevel: "auto",
     },
-    send,
+    prepareSubmission: (...args) => ({ accept: () => send(...args) }),
     cancel,
     onMessageAccepted: clearComposer,
     onStarted: vi.fn(),
@@ -560,7 +586,7 @@ function ChatThreadHistoryHarness({
       reasoning: "high",
       permissionLevel: "auto",
     },
-    send: vi.fn(),
+    prepareSubmission: () => ({ accept: vi.fn() }),
     cancel: vi.fn(),
     onStarted: vi.fn(),
     onTerminal: vi.fn(),
@@ -1457,6 +1483,13 @@ describe("chat composer", () => {
         sequence: 1,
         type: "execution.canceled",
         executionStatus: "canceled",
+        message: {
+          id: "execution-1",
+          executionId: "execution-1",
+          role: "assistant",
+          status: "canceled",
+          revision: 1,
+        },
       });
     });
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));

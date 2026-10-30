@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
 )
 
 // maintenanceRuntimeFunc 替换共享宿主边界，保留真实授权表与资源准备。

@@ -19,6 +19,11 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
+	acpdriver "github.com/JieWaZi/NeuxBot/server/internal/agent/core/driver/acp"
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	runtimehost "github.com/JieWaZi/NeuxBot/server/internal/agent/host"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -26,7 +31,7 @@ import (
 )
 
 func TestPluginConnectorProbeUsesSharedAuthorizationAndOnlyDiscoversTools(t *testing.T) {
-	for _, scenario := range []string{"authorized", "unauthorized", "identity-changed"} {
+	for _, scenario := range []string{"authorized", "unauthorized", "identity-changed", "idle-consumer", "active-consumer", "active-same-bridge"} {
 		authorized := scenario != "unauthorized"
 		t.Run(scenario, func(t *testing.T) {
 			ctx := pluginAPIContext(t)
@@ -109,8 +114,36 @@ console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`, authorized))
 					}
 				}
 			}
+			var consumer *connectorProbeSession
+			if scenario == "idle-consumer" || scenario == "active-consumer" || scenario == "active-same-bridge" {
+				// 模拟 Core 重启后先聊天：只创建身份占用，尚未创建授权桥接。
+				global.PluginBridges.Close()
+				global.PluginBridges = commandbridge.NewRegistry(context.Background(), nil)
+				if scenario == "active-same-bridge" {
+					version, err := global.PluginControllerManager.Version(ctx, detail.ResolvedVersionID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, _, err := installationService().Bridge(version); err != nil {
+						t.Fatal(err)
+					}
+				}
+				consumer = retainProbeConsumer(t, detail.Plugin.ID, scenario != "idle-consumer")
+			}
 			request := TestPluginConnector{PluginID: detail.Plugin.ID, VersionID: detail.ResolvedVersionID, Key: "service"}
 			value, err := request.Output(ctx)
+			if scenario == "active-consumer" {
+				if !errors.Is(err, status_error.PluginBusy) || consumer.closed != 0 || requests.Load() != 0 {
+					t.Fatalf("active consumer interrupted: error=%v closed=%d requests=%d", err, consumer.closed, requests.Load())
+				}
+				return
+			}
+			if scenario == "active-same-bridge" && consumer.closed != 0 {
+				t.Fatalf("same bridge probe closed active consumer: %d", consumer.closed)
+			}
+			if scenario == "idle-consumer" && consumer.closed == 0 {
+				t.Fatalf("idle native consumer not closed: closed=%d error=%v", consumer.closed, err)
+			}
 			if !authorized {
 				if !errors.Is(err, status_error.PluginNotReady) || requests.Load() != 0 {
 					t.Fatalf("unauthorized probe reached MCP: %v %d", err, requests.Load())
@@ -211,4 +244,72 @@ func TestPluginConnectorProbeKeepsOwnedSourceWhenNativeReferenceExists(t *testin
 	if result.Connector.TestStatus != constants.MCPTestStatusSucceeded || len(result.Connector.TestTools) != 1 || result.Connector.TestTools[0].Name != "owned_search" {
 		t.Fatalf("probe switched away from owned server: %+v", result)
 	}
+}
+
+// connectorProbeSession 模拟可热续聊的原生协议边界，不接触真实 CLI 或账号。
+type connectorProbeSession struct {
+	// closed 记录原生会话及驱动的关闭调用数。
+	closed int
+}
+
+func (*connectorProbeSession) ID() string { return "codex" }
+func (*connectorProbeSession) Capabilities() c.DriverCapabilities {
+	return c.DriverCapabilities{Version: "probe", HotResume: true, ColdResume: true}
+}
+func (d *connectorProbeSession) Open(context.Context, c.OpenRequest) (c.DriverSession, error) {
+	return d, nil
+}
+func (d *connectorProbeSession) Close(context.Context) error                       { d.closed++; return nil }
+func (*connectorProbeSession) Accept(context.Context, runtimecontract.Event) error { return nil }
+func (*connectorProbeSession) Prompt(ctx context.Context, _ c.TurnRequest, sink c.DriverSink) c.DriverResult {
+	_ = sink.Accept(ctx, c.DriverEvent{Kind: c.EventPromptAccepted})
+	_ = sink.Accept(ctx, c.DriverEvent{Kind: c.EventAssistantMessage, Message: &c.AssistantMessage{MessageID: "answer", Phase: c.PhaseFinal, Delta: "done", Complete: true}})
+	return c.DriverResult{Status: c.StatusCompleted, StopReason: c.StopEndTurn, NativeSession: c.NativeSessionInfo{Handle: "probe-session", Resumable: true}}
+}
+
+func retainProbeConsumer(t *testing.T, pluginID string, active bool) *connectorProbeSession {
+	t.Helper()
+	driver := &connectorProbeSession{}
+	host := runtimehost.NewChat(runtimehost.ChatConfig{
+		Launch: func(runtimeconfig.RuntimeTarget, runtimeconfig.DetectionResult) (runtimeconfig.LaunchFacts, error) {
+			return runtimeconfig.LaunchFacts{BaseRuntimeID: "codex", Executable: "fixture"}, nil
+		},
+		Driver: func(runtimehost.Environment, acpdriver.Factory) (c.Driver, error) { return driver, nil },
+	})
+	previous := global.ChatRuntimeHost
+	global.ChatRuntimeHost = host
+	t.Cleanup(func() { _ = host.Close(context.Background()); global.ChatRuntimeHost = previous })
+	target := runtimeconfig.RuntimeTarget{RuntimeID: "codex", Isolated: true}
+	plan := runtimecontract.SessionPlan{
+		Target:      runtimecontract.DeclareTarget(target),
+		Detection:   runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}},
+		Workspace:   runtimecontract.Workspace{Path: t.TempDir(), Managed: true},
+		ResourceKey: "plugin-resources", PluginIDs: []string{pluginID},
+	}
+	ctx := context.Background()
+	prepared, err := host.PrepareSession(ctx, plan, runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.Close(ctx)
+	_, release, err := global.PluginBridges.AcquireIdentity(pluginID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release)
+	if err := prepared.Bind(ctx, runtimecontract.SessionResources{Target: target, PluginResources: []packageplugin.Snapshot{{ID: pluginID}}, Close: func(context.Context) error { release(); return nil }}); err != nil {
+		t.Fatal(err)
+	}
+	result := prepared.Run(ctx, runtimecontract.TurnInput{Message: runtimecontract.Message{Text: "hello"}}, driver)
+	if result.Failure != nil || driver.closed != 0 {
+		t.Fatalf("hot consumer not retained: %+v closed=%d", result, driver.closed)
+	}
+	if active {
+		running, err := host.PrepareSession(ctx, plan, runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: result.Session.OutputID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = running.Close(ctx) })
+	}
+	return driver
 }

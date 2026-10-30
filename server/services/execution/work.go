@@ -1,33 +1,35 @@
 package execution
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
-	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/NeuxBot/server/internal/profile"
 	"github.com/JieWaZi/NeuxBot/server/internal/projectsource"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
@@ -68,7 +70,7 @@ type runtimeSelection struct {
 	// Reasoning 是本次执行选择的推理强度。
 	Reasoning string
 	// PermissionLevel 是本次执行冻结的跨 Runtime 产品权限等级。
-	PermissionLevel runtimecontract.PermissionLevel
+	PermissionLevel runtimeconfig.PermissionLevel
 	// WorkspaceReadOnly 表示 Runtime 只能读取工作区，不能请求或执行文件修改。
 	WorkspaceReadOnly bool
 	// SessionPolicy 决定本次是续接还是强制新建 Runtime Session。
@@ -243,27 +245,34 @@ func (m *service) startMessage(
 	ctx context.Context,
 	request pendingMessage,
 ) (AcceptedExecution, error) {
+	preparationStarted := time.Now()
 	// 先完成纯输入规范化和契约校验，避免任何外部副作用发生后才拒绝请求。
 	request = normalizePendingMessage(request)
 	if !validCodeReferences(request.message.CodeReferences) {
 		return AcceptedExecution{}, status_error.BadRequest
 	}
 	isNew := request.chatID == ""
-	if !isNew && request.submissionID != "" {
-		identity, err := requestidempotency.New(request.submissionID, []any{request.chatID, request.message, request.runtime, request.parentExecutionID, request.admission, stableToolCapabilities(request.toolCapabilities), request.supplementalInstructions, request.allowedConnectorIDs, request.allowedAgentDomains})
+	if request.submissionID != "" {
+		identity, err := requestidempotency.NewSubmission(request.submissionID, []any{request.chatID, request.message, request.runtime, request.parentExecutionID, request.admission, stableToolCapabilities(request.toolCapabilities), request.supplementalInstructions, request.allowedConnectorIDs, request.allowedAgentDomains})
 		if err != nil {
 			return AcceptedExecution{}, err
 		}
 		request.submissionID, request.submissionHash = identity.ID, identity.Hash
-		detail, err := m.journal.LoadExecutionContext(ctx, request.chatID)
-		if err != nil {
-			return AcceptedExecution{}, err
-		}
-		if receipt, exists := detail.SubmittedExecutions[identity.ID]; exists {
-			if err := identity.ValidateReplay(receipt.SubmissionID, receipt.SubmissionHash, true); err != nil {
+		if !isNew {
+			receipt, err := m.journal.ReadSubmission(ctx, request.chatID, identity.ID)
+			if err != nil {
 				return AcceptedExecution{}, err
 			}
-			return AcceptedExecution{Chat: detail.Chat, Execution: receipt, Replayed: true}, nil
+			if receipt != nil {
+				if err := identity.ValidateReplay(receipt.SubmissionID, receipt.SubmissionHash, true); err != nil {
+					return AcceptedExecution{}, err
+				}
+				chat, err := m.journal.LoadExecutionChat(ctx, request.chatID)
+				if err != nil {
+					return AcceptedExecution{}, err
+				}
+				return AcceptedExecution{Chat: chat, Execution: *receipt, Replayed: true}, nil
+			}
 		}
 	}
 	if isNew != (request.create != nil) ||
@@ -342,12 +351,44 @@ func (m *service) startMessage(
 		executionID = util.New()
 	}
 	userMessageID := util.New()
+	// 现有 Chat 在读取准备状态前取得原操作占位，一次读取即为本次接纳的状态基线。
+	reservationChatID := request.chatID
+	if isNew {
+		reservationChatID = request.createChatID
+	}
+	executionContext, err := m.executions.reserve(reservationChatID, executionID)
+	if err != nil {
+		return AcceptedExecution{}, err
+	}
+	releaseReservation := true
+	defer func() {
+		if releaseReservation {
+			m.executions.release(reservationChatID, executionID)
+		}
+	}()
+	if !isNew && request.submissionID != "" {
+		receipt, err := m.journal.ReadSubmission(ctx, request.chatID, request.submissionID)
+		if err != nil {
+			return AcceptedExecution{}, err
+		}
+		if receipt != nil {
+			identity := requestidempotency.Identity{ID: request.submissionID, Hash: request.submissionHash}
+			if err := identity.ValidateReplay(receipt.SubmissionID, receipt.SubmissionHash, true); err != nil {
+				return AcceptedExecution{}, err
+			}
+			chat, err := m.journal.LoadExecutionChat(ctx, request.chatID)
+			if err != nil {
+				return AcceptedExecution{}, err
+			}
+			return AcceptedExecution{Chat: chat, Execution: *receipt, Replayed: true}, nil
+		}
+	}
 	state, err := m.resolveMessageChat(ctx, request, executionID)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
 	if request.runtime.AccountID == "" && !request.runtime.ConfigurationResolved {
-		if !state.isNew && len(state.previousMessages) > 0 {
+		if !state.isNew && state.lastExecutionID != "" {
 			request.runtime.AccountID = state.chat.LastAccountID
 		} else {
 			request.runtime.AccountID = runtimeEnvironment.DefaultAccountID
@@ -386,7 +427,7 @@ func (m *service) startMessage(
 	permissionModel := request.runtime.Model
 	if request.runtime.AccountID != "" {
 		known := false
-		for _, item := range runtimecontract.AvailableModels(runtimeEnvironment.Detection, runtimeEnvironment.CustomModels) {
+		for _, item := range runtimeconfig.AvailableModels(runtimeEnvironment.Detection, runtimeEnvironment.CustomModels) {
 			if item.ID == permissionModel {
 				known = true
 				break
@@ -403,35 +444,17 @@ func (m *service) startMessage(
 	if !state.isNew && state.chat.ActiveExecutionID != "" {
 		return AcceptedExecution{}, status_error.ChatHasActiveExecution
 	}
-	// 用进程内注册表封住并发入口，避免两个请求在权威事件提交前同时越过检查。
-	executionContext, err := m.executions.reserve(state.chat.ID, executionID)
-	if err != nil {
-		return AcceptedExecution{}, err
-	}
-	releaseReservation := true
-	defer func() {
-		if releaseReservation {
-			m.executions.release(state.chat.ID, executionID)
+	if request.retry {
+		records, readErr := m.journal.ReadRecords(state.chat.ID)
+		if readErr != nil {
+			return AcceptedExecution{}, readErr
 		}
-	}()
-
-	if !state.isNew {
-		// 预留前的快照可能已被另一条快速完成的输入推进；取得占位后读取同一聊天的最新事实。
-		state, err = m.resolveMessageChat(ctx, request, executionID)
-		if err != nil {
-			return AcceptedExecution{}, err
+		state.previousMessages, readErr = messageview.ReplayMessages(records)
+		if readErr != nil {
+			return AcceptedExecution{}, status_error.ChatLogCorrupted
 		}
-		if state.chat.ActiveExecutionID != "" {
-			return AcceptedExecution{}, status_error.ChatHasActiveExecution
-		}
-		if request.retry {
-			records, readErr := m.journal.ReadRecords(state.chat.ID)
-			if readErr != nil {
-				return AcceptedExecution{}, readErr
-			}
-			if _, _, retryErr := retrySource(state, records, request.parentExecutionID); retryErr != nil {
-				return AcceptedExecution{}, retryErr
-			}
+		if _, _, retryErr := retrySource(state, records, request.parentExecutionID); retryErr != nil {
+			return AcceptedExecution{}, retryErr
 		}
 	}
 	var handoffSummary string
@@ -480,247 +503,26 @@ func (m *service) startMessage(
 			return AcceptedExecution{}, err
 		}
 	}
-	pluginResources, err := m.preparePlugins(ctx, state.chat.WakerID, request, runtimeEnvironment.Detection, authorization.Usage{ChatID: state.chat.ID, ExecutionID: executionID, WakerID: state.chat.WakerID, Title: state.chat.Title})
+	frozenPlugins, err := m.freezePluginResources(ctx, state.chat.WakerID, request, runtimeEnvironment.Detection)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
-	defer func() {
-		if releaseReservation {
-			pluginResources.release()
-		}
-	}()
-	enabledConnectors = append(enabledConnectors, pluginResources.connectors...)
-	runtimeConnectors := enabledConnectors
-	runtimeConnectors, err = restrictConnectors(runtimeConnectors, request.allowedConnectorIDs)
-	if err != nil {
-		return AcceptedExecution{}, err
-	}
-	if !selectedConnectorsAreEnabled(
-		request.message.ConnectorIDs,
-		runtimeConnectors,
-	) {
-		return AcceptedExecution{}, status_error.BadRequest
-	}
-	runRequest := m.buildRunRequest(
-		state,
-		request,
-		files,
-		enabledSkills,
-		runtimeConnectors,
-		runtimeEnvironment,
-	)
-	if handoffSummary != "" {
-		runRequest.History = nil
-		runRequest.Message.Text = handoffRunPrompt(handoffSummary, request.message.Text)
-	}
-	var accountLease func(context.Context) error
-	if request.runtime.AccountID != "" {
-		var target runtimecontract.RuntimeTarget
-		var prepareErr error
-		// 受管账号在同一工作区重写原生配置前，先确认旧消费者已退出。
-		if err := m.runtime.CloseWorkspace(ctx, runRequest.Workspace.Path); err != nil {
-			return AcceptedExecution{}, err
-		}
-		target, accountLease, prepareErr = m.accounts.PrepareQueuedLease(ctx, request.runtime.AccountID, runtimeEnvironment.BaseRuntimeID, runRequest.Workspace.Path, request.runtime.Model)
-		if prepareErr != nil {
-			return AcceptedExecution{}, prepareErr
-		}
-		defer func() {
-			if releaseReservation {
-				if accountLease != nil {
-					if err := accountLease(context.WithoutCancel(ctx)); err != nil {
-						logx.Errorf("release unstarted chat account failed: execution_id=%s error=%v", executionID, err)
-					}
-				}
-			}
-		}()
-		runRequest.Target.AccountID = target.AccountID
-		runRequest.Target.RefreshCredentials = target.RefreshCredentials
-		runRequest.Target.Environment = target.Environment
-		runRequest.Target.Isolated = target.Isolated
-		runRequest.Target.CloseAfterRun = target.CloseAfterRun
-		runRequest.Target.ConfigHome = ""
-		runRequest.Policy.Model = request.runtime.Model
-	}
-
-	cliID := runtimeEnvironment.Detection.Runtime.BaseRuntimeID
-	if cliID == "" {
-		cliID = runtimeEnvironment.Detection.Runtime.ID
-	}
-	if cliID == runtimecontract.RuntimeIDCodex {
-		if err := plugins.PrepareCodexWorkspace(runRequest.Workspace.Path, pluginResources.native); err != nil {
-			return AcceptedExecution{}, err
-		}
-	}
-	nativeCommands := ""
-	var nativeScopeCommit func() error
-	nativeScopeChanged := false
-	if cliID == runtimecontract.RuntimeIDCodex || cliID == runtimecontract.RuntimeIDClaude {
-		variable, defaultDirectory := "CODEX_HOME", ".codex"
-		if cliID == runtimecontract.RuntimeIDClaude {
-			variable, defaultDirectory = "CLAUDE_CONFIG_DIR", ".claude"
-		}
-		// 原生插件源来自智能体环境，不能从已经被模型账号替换的进程环境反推。
-		sharedHome := runtimeEnvironment.ConfigHome
-		if sharedHome == "" {
-			sharedHome = os.Getenv(variable)
-		}
-		if sharedHome == "" {
-			home, homeErr := os.UserHomeDir()
-			if homeErr != nil {
-				return AcceptedExecution{}, status_error.PluginStorageError
-			}
-			sharedHome = filepath.Join(home, defaultDirectory)
-		}
-		sharedHome, homeErr := filepath.Abs(sharedHome)
-		if homeErr != nil {
-			return AcceptedExecution{}, status_error.PluginStorageError
-		}
-		binary := runtimeEnvironment.Detection.ResolvedBinary
-		if binary == "" {
-			binary = runtimeEnvironment.Binary
-		}
-		if binary == "" {
-			binary = cliID
-		}
-		executable, binaryErr := exec.LookPath(binary)
-		if binaryErr == nil {
-			executable, binaryErr = filepath.Abs(executable)
-		}
-		if binaryErr != nil {
-			return AcceptedExecution{}, status_error.RuntimeUnavailable
-		}
-		accountHome := ""
-		secretKeys := []string{}
-		if runRequest.Target.AccountID != "" {
-			accountHome = runRequest.Target.Environment[variable]
-			for key := range runRequest.Target.Environment {
-				if key != "PATH" {
-					secretKeys = append(secretKeys, key)
-				}
-			}
-			secretKeys = append(secretKeys, "OPENAI_API_KEY", "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_MODEL")
-		}
-		for key := range pluginResources.environment {
-			if key != "PATH" {
-				secretKeys = append(secretKeys, key)
-			}
-		}
-		native, prepareErr := plugins.PrepareNativeEnvironment(filepath.Join(m.skillDataDirectory, "plugins", "native-homes"), plugins.NativeEnvironmentSpec{
-			RuntimeID: cliID, AccountHome: accountHome, SharedPluginHome: sharedHome, Executable: executable,
-			PrefixArgs: runtimeEnvironment.PrefixArgs, Targets: pluginResources.native,
-			AllowExternal:        request.allowedConnectorIDs == nil && request.allowedAgentDomains == nil,
-			ModelEnvironmentKeys: secretKeys, StateDirectory: filepath.Join(runRequest.Workspace.Path, constants.RuntimeStateDirectoryName, constants.PluginNativeScopeDirectory), Workspace: runRequest.Workspace.Path,
+	// 独立资源进入静态签名，插件秘密和账号物化由新原生消费者取得时加载。
+	baseConnectors := enabledConnectors
+	if request.allowedConnectorIDs != nil {
+		baseConnectors = slices.DeleteFunc(slices.Clone(baseConnectors), func(connector models.MCPConnector) bool {
+			return !slices.Contains(*request.allowedConnectorIDs, connector.ID)
 		})
-		if prepareErr != nil {
-			return AcceptedExecution{}, prepareErr
-		}
-		if runRequest.Target.Environment == nil {
-			runRequest.Target.Environment = map[string]string{}
-		}
-		runRequest.Target.Environment[variable] = native.Home
-		for key, value := range native.Environment {
-			runRequest.Target.Environment[key] = value
-		}
-		runRequest.Target.ConfigHome = native.Home
-		runRequest.Target.CodexPluginConfiguration = native.CodexConfiguration
-		runRequest.Target.NativePluginScope = native.Fingerprint
-		request.nativePluginScope = native.Fingerprint
-		runRequest.Target.ClaudeSettingsPath = native.ClaudeSettingsPath
-		nativeScopeCommit = native.CommitScope
-		if native.Marketplace != "" {
-			if err := plugins.PrepareCodexWorkspace(runRequest.Workspace.Path, pluginResources.native, native.Marketplace); err != nil {
-				return AcceptedExecution{}, err
-			}
-			for index := range pluginResources.snapshots {
-				if pluginResources.snapshots[index].Delivery != constants.PluginDeliveryNative {
-					continue
-				}
-				for _, target := range pluginResources.native {
-					if target.ID == pluginResources.snapshots[index].ID {
-						pluginResources.snapshots[index].NativePluginID = target.Name + "@" + native.Marketplace
-					}
-				}
-			}
-		}
-		nativeCommands = native.CommandDirectory
-		nativeScopeChanged = native.ScopeChanged
-		if cliID == runtimecontract.RuntimeIDClaude {
-			for _, target := range pluginResources.native {
-				runRequest.Target.NativePluginDirectories = append(runRequest.Target.NativePluginDirectories, target.Root)
-			}
-		}
 	}
-	if runRequest.Session.Mode == runtimecontract.SessionModeResume {
-		records, recordErr := m.journal.ReadRecords(state.chat.ID)
-		if recordErr != nil {
-			return AcceptedExecution{}, recordErr
-		}
-		previous := []plugins.Snapshot{}
-		previousNativeScope := ""
-		session := state.runtimeSessions[request.runtime.RuntimeID]
-		for _, record := range records {
-			if record.Type == constants.ChatEventTypeExecutionCreated && record.ExecutionID == session.LastExecutionID {
-				var data eventlog.ExecutionCreatedData
-				if json.Unmarshal(record.Data, &data) != nil {
-					return AcceptedExecution{}, status_error.ChatLogCorrupted
-				}
-				previous = data.PluginResources
-				previousNativeScope = data.NativePluginScope
-				break
-			}
-			if record.Type == constants.ChatEventTypeMessageInherited && record.MessageID == session.LastExecutionID {
-				var inherited messageview.InheritedMessage
-				if json.Unmarshal(record.Data, &inherited) != nil {
-					return AcceptedExecution{}, status_error.ChatLogCorrupted
-				}
-				if inherited.ForkConfiguration != nil {
-					previous = inherited.ForkConfiguration.PluginResources
-					previousNativeScope = inherited.ForkConfiguration.NativePluginScope
-				}
-				break
-			}
-		}
-		if state.chat.ForkSourceChatID != "" && request.nativePluginScope != "" {
-			// 分叉工作区没有来源缓存，必须比较分叉点的冻结事实；未知旧事实不能放行。
-			nativeScopeChanged = previousNativeScope == "" || previousNativeScope != request.nativePluginScope
-		}
-		if nativeScopeChanged || nativePluginScope(previous) != nativePluginScope(pluginResources.snapshots) {
-			if state.chat.ForkSourceChatID != "" {
-				return AcceptedExecution{}, status_error.PluginNotReady
-			}
-			runRequest.Session = runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}
-		}
+	sessionPlan, turn, session := m.buildSessionPlan(state, request, files, enabledSkills, baseConnectors, runtimeEnvironment)
+	sessionPlan.Target.AccountID = request.runtime.AccountID
+	if handoffSummary != "" {
+		turn.History = nil
+		turn.Message.Text = handoffRunPrompt(handoffSummary, request.message.Text)
 	}
-	runRequest.Skills, err = mergePluginSkills(runRequest.Skills, pluginResources.skills)
-	if err != nil {
-		return AcceptedExecution{}, err
-	}
-	if len(pluginResources.environment) > 0 {
-		if runRequest.Target.Environment == nil {
-			runRequest.Target.Environment = map[string]string{}
-		}
-		for key, value := range pluginResources.environment {
-			if key == "PATH" {
-				base := runRequest.Target.Environment["PATH"]
-				if base == "" {
-					base = os.Getenv("PATH")
-				}
-				value += string(os.PathListSeparator) + base
-			}
-			runRequest.Target.Environment[key] = value
-		}
-	}
-	if nativeCommands != "" {
-		base := runRequest.Target.Environment["PATH"]
-		if base == "" {
-			base = os.Getenv("PATH")
-		}
-		runRequest.Target.Environment["PATH"] = nativeCommands + string(os.PathListSeparator) + base
-	}
-	runRequest.Message.Text += pluginSelectionHint(pluginResources.selected)
+	turn.Message.Text += pluginSelectionHint(frozenPlugins.selected)
 	messageFacts := &executionMessageFacts{}
-	agentActivate, capabilityRelease, agentSettle, err := m.prepareAgent(&runRequest, state.chat, executionID, request.toolCapabilities, request.allowedAgentDomains, messageFacts, request.automaticRunID)
+	agentActivate, capabilityRelease, agentSettle, err := m.prepareAgent(&sessionPlan, &turn, session, state.chat, executionID, request.toolCapabilities, request.allowedAgentDomains, messageFacts, request.automaticRunID)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
@@ -731,23 +533,98 @@ func (m *service) startMessage(
 			}
 		}()
 	}
-	execution := newExecutionIndex(
-		state,
-		request,
-		executionID,
-		userMessageID,
-	)
-	execution.PluginResources = pluginResources.snapshots
+	if !sessionPlan.Policy.Execution.WorkspaceReadOnly {
+		turn.ApprovalHandler = m.approvals.handler(state.chat.ID, executionID, messageFacts)
+	}
+	turn.ElicitationHandler = m.elicitations.handler(state.chat.ID, executionID, messageFacts)
+	accountConfiguration := ""
+	if request.runtime.AccountID != "" {
+		account, err := m.accounts.Get(ctx, request.runtime.AccountID)
+		if err != nil {
+			return AcceptedExecution{}, err
+		}
+		accountConfiguration = aiaccount.SessionConfigurationKey(account)
+	}
+	sessionPlan.ResourceKey = sessionResourceKey(frozenPlugins.key, accountConfiguration, baseConnectors)
+	sessionPlan.PluginIDs = slices.Clone(frozenPlugins.pluginIDs)
+	preparedRun, err := m.runtime.PrepareSession(ctx, sessionPlan, session)
+	if err != nil {
+		return AcceptedExecution{}, err
+	}
+	logx.Infof("chat preparation stage: stage=input_preparation elapsed_ms=%.3f success=true chat_id=%s execution_id=%s runtime_id=%s", float64(time.Since(preparationStarted))/float64(time.Millisecond), state.chat.ID, executionID, sessionPlan.Target.RuntimeID)
+	defer func() {
+		if releaseReservation {
+			if err := preparedRun.Close(context.WithoutCancel(ctx)); err != nil {
+				logx.Errorf("release unstarted chat preparation failed: execution_id=%s error=%v", executionID, err)
+			}
+		}
+	}()
+	resourceStarted := time.Now()
+	needsResources := preparedRun.NeedsResources()
+	if needsResources {
+		resources, acquireErr := m.acquireChatSessionResources(preparedRun.Context(), state, request, executionID, enabledConnectors, runtimeEnvironment, sessionPlan, session, frozenPlugins, turn.LaunchEnvironment)
+		// Bind 一经调用即把部分资源交给 Core，获取失败也不能绕开唯一释放栈。
+		bindErr := preparedRun.Bind(preparedRun.Context(), resources)
+		logx.Infof("chat preparation stage: stage=resource_preparation elapsed_ms=%.3f reused=false success=%t chat_id=%s execution_id=%s runtime_id=%s", float64(time.Since(resourceStarted))/float64(time.Millisecond), acquireErr == nil && bindErr == nil, state.chat.ID, executionID, sessionPlan.Target.RuntimeID)
+		if acquireErr != nil {
+			return AcceptedExecution{}, acquireErr
+		}
+		if bindErr != nil {
+			return AcceptedExecution{}, bindErr
+		}
+	} else {
+		logx.Infof("chat preparation stage: stage=resource_preparation elapsed_ms=0 reused=true success=true chat_id=%s execution_id=%s runtime_id=%s", state.chat.ID, executionID, sessionPlan.Target.RuntimeID)
+	}
+	resources := preparedRun.Resources()
+	effectiveSession := preparedRun.Session()
+	if !state.isNew && needsResources && effectiveSession.Mode == runtimecontract.SessionModeNew && handoffSummary == "" {
+		state.previousMessages, err = m.readRecentHistory(ctx, state, request)
+		if err != nil {
+			return AcceptedExecution{}, err
+		}
+		_, historyTurn, _ := m.buildSessionPlan(state, request, files, enabledSkills, baseConnectors, runtimeEnvironment)
+		turn.History = historyTurn.History
+	}
+	if resources.UpdateUsage != nil {
+		resources.UpdateUsage(authorization.Usage{ChatID: state.chat.ID, ExecutionID: executionID, WakerID: state.chat.WakerID, Title: state.chat.Title})
+		defer func() {
+			if releaseReservation {
+				resources.UpdateUsage()
+			}
+		}()
+	}
+	selectedPlugins := make([]plugins.Snapshot, 0, len(request.message.PluginIDs))
+	for _, id := range request.message.PluginIDs {
+		for _, snapshot := range resources.PluginResources {
+			if snapshot.ID == id {
+				selectedPlugins = append(selectedPlugins, snapshot)
+			}
+		}
+	}
+	if len(selectedPlugins) != len(request.message.PluginIDs) {
+		return AcceptedExecution{}, status_error.PluginNotReady
+	}
+	if !selectedRuntimeConnectorsAreEnabled(request.message.ConnectorIDs, resources.Connectors) {
+		return AcceptedExecution{}, status_error.BadRequest
+	}
+	request.nativePluginScope = resources.NativePluginScope
+	nativeScopeCommit := resources.CommitScope
+	execution := newExecutionIndex(state, request, executionID, userMessageID)
+	execution.PluginResources = slices.Clone(resources.PluginResources)
 	started := make(chan executionStartResult, 1)
 	plan := messageExecution{
-		pluginRelease:     pluginResources.release,
-		plugins:           pluginResources.selected,
+		pluginUsageRelease: func() {
+			if resources.UpdateUsage != nil {
+				resources.UpdateUsage()
+			}
+		},
+		preparedRun:       preparedRun,
+		plugins:           selectedPlugins,
 		messageFacts:      messageFacts,
 		agentActivate:     agentActivate,
 		agentSettle:       agentSettle,
-		accountLease:      accountLease,
 		capabilityRelease: capabilityRelease,
-		request:           runRequest,
+		turn:              turn,
 		state:             state,
 		input:             request,
 		execution:         execution,
@@ -758,7 +635,7 @@ func (m *service) startMessage(
 		),
 		connectors: selectedConnectorReferences(
 			request.message.ConnectorIDs,
-			runtimeConnectors,
+			resources.Connectors,
 		),
 		started: started,
 	}
@@ -848,8 +725,6 @@ func createRequestContent(request pendingMessage) []interface{} {
 		request.runtime.Reasoning,
 		request.runtime.PermissionLevel,
 		request.runtime.WorkspaceReadOnly,
-		"", // 保留历史普通首发摘要中两个空槽，避免改变已接纳请求身份。
-		"",
 		request.runtime.SessionPolicy,
 		request.runtime.HistoryTurns,
 		request.runtime.HistoryMode,
@@ -918,7 +793,7 @@ func (m *service) replayCreateRequest(
 	chatID string,
 	identity requestidempotency.Identity,
 ) (AcceptedExecution, bool, error) {
-	detail, err := m.journal.LoadExecutionContext(ctx, chatID)
+	detail, err := m.journal.ReadInitialExecution(ctx, chatID)
 	if err != nil {
 		var commonErr statuserror.CommonError
 		if errors.As(err, &commonErr) && commonErr.Code() == status_error.ChatNotFound.Code() {
@@ -950,7 +825,9 @@ type messageChat struct {
 	isNew bool
 	// chat 是新建或从权威日志恢复的对话状态。
 	chat models.Chat
-	// previousMessages 是续接 Session 或重新播种所需的权威消息历史。
+	// lastExecutionID 是最近助手执行或继承消息的原续接游标。
+	lastExecutionID string
+	// previousMessages 仅在明确重试或冷新会话播种时按需取得。
 	previousMessages []messageview.Message
 	// runtimeSessions 是从同一份权威日志恢复的 Runtime 续接状态。
 	runtimeSessions map[string]models.RuntimeSession
@@ -1069,7 +946,7 @@ func (m *service) resolveMessageChat(
 		}
 		state := messageChat{
 			chat:               detail.Chat,
-			previousMessages:   detail.PreviousMessages,
+			lastExecutionID:    detail.LastExecutionID,
 			runtimeSessions:    detail.RuntimeSessions,
 			workspaceDirectory: detail.Chat.WorkspaceDirectory,
 			projectSources:     append([]eventlog.ProjectSourceSnapshot(nil), detail.ProjectSources...),
@@ -1357,7 +1234,12 @@ func (m *service) prepareMessageFiles(
 		return nil, err
 	}
 	instructions := make([]runtimecontract.Instruction, 0, len(profileContents))
-	for kind, content := range profileContents {
+	// 档案按固定业务顺序进入静态配置，避免相同内容因 map 遍历顺序变化重建原生会话。
+	for _, kind := range profile.EditableKinds() {
+		content, exists := profileContents[kind]
+		if !exists {
+			continue
+		}
 		fileName, ok := constants.ProfileDocumentFileName(kind)
 		if !ok {
 			fileName = constants.ProfileDocumentDefaultFileName
@@ -1498,13 +1380,17 @@ func newExecutionIndex(
 	userMessageID string,
 ) models.Execution {
 	now := nowMillis()
+	submissionID, submissionHash := request.submissionID, request.submissionHash
+	if state.isNew && submissionID == "" {
+		submissionID, submissionHash = request.clientRequestID, request.clientRequestHash
+	}
 	return models.Execution{
 		AutomaticRunID:    request.automaticRunID,
 		ID:                executionID,
 		ChatID:            state.chat.ID,
 		UserMessageID:     userMessageID,
-		SubmissionID:      request.submissionID,
-		SubmissionHash:    request.submissionHash,
+		SubmissionID:      submissionID,
+		SubmissionHash:    submissionHash,
 		ParentExecutionID: request.parentExecutionID,
 		AccountID:         request.runtime.AccountID,
 		RuntimeID:         request.runtime.RuntimeID,
@@ -1561,6 +1447,7 @@ func startedMessageEvents(
 			Type:      constants.ChatEventTypeUserMessageCreated,
 			MessageID: execution.UserMessageID,
 			Data: marshalData(eventlog.MessageCreatedData{
+				SubmissionID:   execution.SubmissionID,
 				Role:           constants.MessageRoleUser,
 				Actor:          request.message.Actor,
 				Content:        request.message.Text,
@@ -1615,7 +1502,7 @@ func selectedSkillReferences(selectedIDs []string, enabled []models.SkillWithSta
 
 func selectedConnectorReferences(
 	selectedIDs []string,
-	enabled []models.MCPConnector,
+	enabled []runtimecontract.Connector,
 ) []eventlog.MessageConnectorReference {
 	selected := make(map[string]struct{}, len(selectedIDs))
 	for _, id := range selectedIDs {
@@ -1634,15 +1521,15 @@ func selectedConnectorReferences(
 	return references
 }
 
-// buildRunRequest 把 Chat 权威状态转换为 Runtime 的结构化调用输入。
-func (m *service) buildRunRequest(
+// buildSessionPlan 分别声明稳定会话、本轮输入和续接指令。
+func (m *service) buildSessionPlan(
 	state messageChat,
 	request pendingMessage,
 	files *preparedMessageFiles,
 	enabledSkills []models.SkillWithState,
 	enabledConnectors []models.MCPConnector,
 	runtimeEnvironment models.RuntimeEnvironment,
-) runtimecontract.RunRequest {
+) (runtimecontract.SessionPlan, runtimecontract.TurnInput, runtimecontract.SessionDirective) {
 	omittedMessageIDs := make(map[string]struct{}, len(request.historyMessageIDsToOmit))
 	for _, id := range request.historyMessageIDsToOmit {
 		if id != "" {
@@ -1690,39 +1577,16 @@ func (m *service) buildRunRequest(
 	for _, skillID := range request.message.SkillIDs {
 		selectedSkillIDs[skillID] = struct{}{}
 	}
-	selectedConnectorIDs := make(
-		map[string]struct{},
-		len(request.message.ConnectorIDs),
-	)
-	for _, connectorID := range request.message.ConnectorIDs {
-		selectedConnectorIDs[connectorID] = struct{}{}
-	}
 	for _, item := range enabledSkills {
 		if item.CurrentVersion.ID == "" {
 			continue
 		}
 		skills = append(skills, runtimecontract.Skill{
-			Name:     item.CurrentVersion.Name,
-			Path:     filepath.Join(m.skillDataDirectory, item.CurrentVersion.ContentPath),
-			Selected: hasSkillID(selectedSkillIDs, item.SkillPackage.ID),
+			Name: item.CurrentVersion.Name,
+			Path: filepath.Join(m.skillDataDirectory, item.CurrentVersion.ContentPath),
 		})
 	}
-	connectors := make([]runtimecontract.Connector, 0, len(enabledConnectors))
-	for _, connector := range enabledConnectors {
-		connectors = append(connectors, runtimecontract.Connector{
-			ID:          connector.ID,
-			Name:        connector.Name,
-			RuntimeKey:  connector.RuntimeKey,
-			Selected:    hasConnectorID(selectedConnectorIDs, connector.ID),
-			Transport:   runtimecontract.ConnectorTransport(connector.Transport),
-			Command:     connector.Command,
-			Arguments:   append([]string(nil), connector.Arguments...),
-			Environment: connectorSecretValues(connector.Environment),
-			URL:         connector.URL,
-			Headers:     connectorSecretValues(connector.Headers),
-			TimeoutMS:   connector.TimeoutMS,
-		})
-	}
+	connectors := runtimeConnectorDeclarations(enabledConnectors)
 	instructions := append([]runtimecontract.Instruction(nil), files.instructions...)
 	for _, instruction := range request.supplementalInstructions {
 		if instruction.Name == "" || instruction.Content == "" {
@@ -1742,7 +1606,7 @@ func (m *service) buildRunRequest(
 	if request.runtime.SessionPolicy == constants.RuntimeSessionPolicyContinue &&
 		(state.isNew || request.runtime.AccountID == state.chat.LastAccountID) &&
 		session.SessionID != "" &&
-		session.LastExecutionID == lastAssistantExecutionID(state.previousMessages) {
+		session.LastExecutionID == state.lastExecutionID {
 		sessionDirective = runtimecontract.SessionDirective{
 			Mode: runtimecontract.SessionModeResume,
 			ID:   session.SessionID,
@@ -1759,8 +1623,8 @@ func (m *service) buildRunRequest(
 	if request.runtime.WorkspaceReadOnly {
 		additionalWritableDirectories = nil
 	}
-	return runtimecontract.RunRequest{
-		Target: runtimecontract.RuntimeTarget{
+	sessionPlan := runtimecontract.SessionPlan{
+		Target: runtimecontract.SessionTarget{
 			RuntimeID:  request.runtime.RuntimeID,
 			Binary:     runtimeEnvironment.Binary,
 			PrefixArgs: append([]string(nil), runtimeEnvironment.PrefixArgs...),
@@ -1774,15 +1638,8 @@ func (m *service) buildRunRequest(
 			ProjectDirectories:            runtimeProjectDirectories(state.chat, state.projectSources),
 		},
 		Instructions: instructions,
-		History:      previousMessages,
-		Message: runtimecontract.Message{
-			Text:           request.message.Text,
-			Attachments:    attachments,
-			CodeReferences: codeReferences,
-		},
-		Skills:     skills,
-		Connectors: connectors,
-		Session:    sessionDirective,
+		Skills:       skills,
+		Connectors:   connectors,
 		Policy: runtimecontract.RunPolicy{
 			Model:     request.runtime.Model,
 			Reasoning: request.runtime.Reasoning,
@@ -1792,6 +1649,26 @@ func (m *service) buildRunRequest(
 			),
 		},
 	}
+	turn := runtimecontract.TurnInput{
+		History: previousMessages,
+		Message: runtimecontract.Message{Text: request.message.Text, Attachments: attachments, CodeReferences: codeReferences},
+	}
+	for _, item := range enabledSkills {
+		if item.CurrentVersion.ID != "" && hasSkillID(selectedSkillIDs, item.SkillPackage.ID) {
+			turn.SelectedSkills = append(turn.SelectedSkills, item.CurrentVersion.Name)
+		}
+	}
+	turn.SelectedConnectors = slices.Clone(request.message.ConnectorIDs)
+	return sessionPlan, turn, sessionDirective
+}
+
+func selectedRuntimeConnectorsAreEnabled(selected []string, connectors []runtimecontract.Connector) bool {
+	for _, id := range selected {
+		if !slices.ContainsFunc(connectors, func(connector runtimecontract.Connector) bool { return connector.ID == id }) {
+			return false
+		}
+	}
+	return true
 }
 
 // teamMemberHistoryContent 保留可去重的成员来源元数据，使冷 Session 能重建已交付结果。
@@ -1911,41 +1788,110 @@ func hasSkillID(skillIDs map[string]struct{}, skillID string) bool {
 	return exists
 }
 
-func hasConnectorID(connectorIDs map[string]struct{}, connectorID string) bool {
-	_, exists := connectorIDs[connectorID]
-	return exists
-}
-
-func lastAssistantExecutionID(messages []messageview.Message) string {
-	for index := len(messages) - 1; index >= 0; index-- {
-		if messages[index].Role == constants.MessageRoleAssistant {
-			return messages[index].ExecutionID
-		}
+// readRecentHistory 从原定位候选逐页选择足够完整成功轮，正文只在成功候选确定后读取。
+func (m *service) readRecentHistory(ctx context.Context, state messageChat, request pendingMessage) ([]messageview.Message, error) {
+	turns := request.runtime.HistoryTurns
+	if turns == 0 {
+		turns = constants.RuntimeHistoryDefaultTurns
 	}
-	return ""
+	omitted := make(map[string]bool, len(request.historyMessageIDsToOmit))
+	for _, id := range request.historyMessageIDsToOmit {
+		omitted[id] = true
+	}
+	messages := []messageview.Message{}
+	before := int64(0)
+	var pendingInherited *messageview.Message
+	for {
+		page, err := m.journal.ReadHistoryCandidates(ctx, state.chat.ID, before, turns)
+		if err != nil {
+			return nil, err
+		}
+		for _, candidate := range page.Resources {
+			if !candidate.Inherited && (omitted[candidate.MessageID] || (candidate.UserMessageID != "" && omitted[candidate.UserMessageID])) {
+				continue
+			}
+			var current []messageview.Message
+			if candidate.Inherited {
+				records, err := m.journal.ReadExecutionRecords(state.chat.ID, candidate.MessageID)
+				if err != nil {
+					return nil, err
+				}
+				current, err = messageview.ReplayMessages(records)
+				if err != nil {
+					return nil, status_error.ChatLogCorrupted
+				}
+			} else {
+				current, err = m.journal.ReadExecutionMessages(ctx, state.chat.ID, candidate.MessageID)
+				if err != nil {
+					return nil, err
+				}
+			}
+			selected := make([]messageview.Message, 0, len(current))
+			if candidate.Inherited {
+				for i := len(current) - 1; i >= 0; i-- {
+					message := current[i]
+					switch message.Role {
+					case constants.MessageRoleAssistant:
+						pendingInherited = nil
+						if !omitted[message.ID] {
+							copy := message
+							pendingInherited = &copy
+						}
+					case constants.MessageRoleUser:
+						if pendingInherited != nil && !omitted[message.ID] {
+							selected = append(selected, message, *pendingInherited)
+						}
+						pendingInherited = nil
+					}
+				}
+			} else {
+				pendingInherited = nil
+				for _, message := range current {
+					if !omitted[message.ID] {
+						selected = append(selected, message)
+					}
+				}
+			}
+			// 非用户输入、省略消息和空最终回复不占用完整轮预算，也不积累到历史投影。
+			if len(completedRuntimeTurns(selected, state.threadWorkspaceID != "")) == 0 {
+				continue
+			}
+
+			messages = append(selected, messages...)
+			completed := completedRuntimeTurns(messages, state.threadWorkspaceID != "")
+			history := recentRuntimeHistory(messages, turns, state.threadWorkspaceID != "")
+			if len(history) >= turns*2 || len(completed) > len(history)/2 {
+				return messages, nil
+			}
+		}
+		if !page.HasMore {
+			return messages, nil
+		}
+		before = page.NextBeforeSequence
+	}
 }
 
-func executionPolicy(level runtimecontract.PermissionLevel, workspaceReadOnly bool) runtimecontract.ExecutionPolicy {
+func executionPolicy(level runtimeconfig.PermissionLevel, workspaceReadOnly bool) runtimecontract.ExecutionPolicy {
 	return runtimecontract.ExecutionPolicy{PermissionLevel: level, WorkspaceReadOnly: workspaceReadOnly}
 }
 
 func runtimePermissionSupported(
 	environment models.RuntimeEnvironment,
 	modelID string,
-	level runtimecontract.PermissionLevel,
+	level runtimeconfig.PermissionLevel,
 ) bool {
 	selectedID := strings.TrimSpace(modelID)
 	if selectedID == "" {
 		selectedID = environment.DefaultModel
 	}
-	levels := runtimecontract.ModelPermissionLevels(
+	levels := runtimeconfig.ModelPermissionLevels(
 		environment.Detection,
 		environment.CustomModels,
 		selectedID,
 	)
 	// 未登录时可能无法取得模型权限目录，留待原生 Runtime 返回鉴权错误。
-	if len(levels) == 0 && environment.Detection.Auth == runtimecontract.AuthStatusMissing {
+	if len(levels) == 0 && environment.Detection.Auth == runtimeconfig.AuthStatusMissing {
 		return constants.SelectablePermissionLevel(level)
 	}
-	return runtimecontract.PermissionLevelSupported(levels, level)
+	return runtimeconfig.PermissionLevelSupported(levels, level)
 }

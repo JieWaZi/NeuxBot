@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 )
 
 func TestLiveAdapterAppliesRuntimeEventWithBoundMessageScope(t *testing.T) {

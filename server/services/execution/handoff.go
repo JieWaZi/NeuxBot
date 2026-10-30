@@ -1,13 +1,15 @@
 package execution
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"encoding/json"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -59,7 +61,7 @@ func (m *service) summarizeCurrentSession(
 	runtimeID := state.chat.LastRuntimeID
 	session := state.runtimeSessions[runtimeID]
 	if runtimeID == "" || session.SessionID == "" ||
-		session.LastExecutionID != lastAssistantExecutionID(state.previousMessages) {
+		session.LastExecutionID != state.lastExecutionID {
 		return "", false
 	}
 	environment, err := m.runtimeEnvironments.Get(ctx, runtimeID)
@@ -80,8 +82,9 @@ func (m *service) summarizeCurrentSession(
 	if !m.summarySelectionAllowed(ctx, state.chat.LastAccountID, environment, model, reasoning) {
 		return "", false
 	}
-	run := runtimecontract.RunRequest{
-		Target: runtimecontract.RuntimeTarget{
+	plan := runtimecontract.SessionPlan{
+		ReadOnlyHandoff: true,
+		Target: runtimecontract.SessionTarget{
 			RuntimeID:  runtimeID,
 			Binary:     environment.Binary,
 			PrefixArgs: append([]string(nil), environment.PrefixArgs...),
@@ -93,40 +96,45 @@ func (m *service) summarizeCurrentSession(
 			Managed:            true,
 			ProjectDirectories: runtimeProjectDirectories(state.chat, state.projectSources),
 		},
-		Message: runtimecontract.Message{Text: handoffPrompt},
-		Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: session.SessionID},
 		Policy: runtimecontract.RunPolicy{
 			Model:     model,
 			Reasoning: reasoning,
 			Execution: runtimecontract.ExecutionPolicy{
-				PermissionLevel:   runtimecontract.PermissionLevelDefault,
+				PermissionLevel:   runtimeconfig.PermissionLevelDefault,
 				WorkspaceReadOnly: true,
 			},
 		},
 	}
-	var accountLease func(context.Context) error
-	if accountID := state.chat.LastAccountID; accountID != "" {
-		if m.accounts == nil {
+	accountID := state.chat.LastAccountID
+	if accountID != "" && m.accounts == nil {
+		return "", false
+	}
+	plan.Target.AccountID = accountID
+	prepared, err := m.runtime.PrepareSession(ctx, plan, runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: session.SessionID})
+	if err != nil {
+		return "", false
+	}
+	defer func() { _ = prepared.Close(context.WithoutCancel(ctx)) }()
+	if prepared.NeedsResources() {
+		resources := runtimecontract.SessionResources{Target: plan.Target.LaunchTarget(), Skills: plan.Skills}
+		var acquireErr error
+		if accountID != "" {
+			account, release, err := m.accounts.PrepareQueuedLease(prepared.Context(), accountID, environment.BaseRuntimeID, plan.Workspace.Path, model)
+			resources.Close, acquireErr = release, err
+			resources.Target.AccountID = account.AccountID
+			resources.Target.RefreshCredentials = account.RefreshCredentials
+			resources.Target.Environment = account.Environment
+			resources.Target.Isolated = account.Isolated
+			resources.Target.CloseAfterRun = account.CloseAfterRun
+			resources.Target.ConfigHome = ""
+		}
+		bindErr := prepared.Bind(prepared.Context(), resources)
+		if acquireErr != nil || bindErr != nil {
 			return "", false
 		}
-		var target runtimecontract.RuntimeTarget
-		var err error
-		if err = m.runtime.CloseWorkspace(ctx, run.Workspace.Path); err != nil {
-			return "", false
-		}
-		target, accountLease, err = m.accounts.PrepareQueuedLease(ctx, accountID, environment.BaseRuntimeID, run.Workspace.Path, model)
-		if err != nil {
-			return "", false
-		}
-		run.Target.AccountID = target.AccountID
-		run.Target.RefreshCredentials = target.RefreshCredentials
-		run.Target.Environment = target.Environment
-		run.Target.Isolated = target.Isolated
-		run.Target.CloseAfterRun = target.CloseAfterRun
-		run.Target.ConfigHome = ""
 	}
 	sink := &handoffSink{}
-	result := m.runtime.RunSummaryWithLease(ctx, run, sink, accountLease)
+	result := prepared.Run(ctx, runtimecontract.TurnInput{Message: runtimecontract.Message{Text: handoffPrompt}}, sink)
 	if result.Failure != nil || sink.rejected {
 		return "", false
 	}
@@ -170,7 +178,7 @@ func (m *service) summarySelectionAllowed(
 	return validateExecutionConfiguration(environment, ExecutionConfiguration{
 		Model:           model,
 		Reasoning:       reasoning,
-		PermissionLevel: runtimecontract.PermissionLevelDefault,
+		PermissionLevel: runtimeconfig.PermissionLevelDefault,
 	}) == nil
 }
 
@@ -180,7 +188,7 @@ func summaryReasoningAllowed(environment models.RuntimeEnvironment, model, reaso
 		return true
 	}
 	options := environment.Detection.ReasoningOptions
-	for _, item := range runtimecontract.AvailableModels(environment.Detection, environment.CustomModels) {
+	for _, item := range runtimeconfig.AvailableModels(environment.Detection, environment.CustomModels) {
 		if item.ID == model && len(item.ReasoningOptions) > 0 {
 			options = item.ReasoningOptions
 			break

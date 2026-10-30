@@ -97,10 +97,10 @@ const (
 )
 
 const (
-	// RuntimeAdditionalDirectoriesUnsupportedWarning 表示 Runtime 未能获得真实项目目录授权。
-	RuntimeAdditionalDirectoriesUnsupportedWarning = "runtime_additional_directories_unsupported"
 	// CreateRequestIDMaximumLength 是各类资源首次创建请求标识允许的最大长度。
 	CreateRequestIDMaximumLength = 64
+	// InputSubmissionIDMaximumLength 保留工作流等既有输入提交身份的最大长度。
+	InputSubmissionIDMaximumLength = 128
 	// RuntimeHistoryDefaultTurns 是新建原生会话时默认携带的最近完整对话轮数。
 	RuntimeHistoryDefaultTurns = 5
 	// RuntimeHistoryMaximumTurns 是用户可选择携带的最大完整对话轮数。
@@ -650,6 +650,10 @@ const (
 const (
 	// PluginEventTopic 是插件资源唯一状态事件主题。
 	PluginEventTopic = "plugins"
+	// PluginUsageChangedEventType 表示原生消费者占用或当前执行引用变化。
+	PluginUsageChangedEventType = "plugins.usage.changed"
+	// EntityActivityChangedEventType 表示已有伙伴或团队的活动摘要变化。
+	EntityActivityChangedEventType = "entities.activity.changed"
 )
 
 // PluginStdioMode 是 Core 内部的原生 MCP 工作目录子进程模式。
@@ -728,3 +732,6 @@ const KnowledgeCLIIndexGroupLimit = 10
 
 // KnowledgeRetryAuthorityOperation 标记依核心重试回执生效的宿主授权候选。
 const KnowledgeRetryAuthorityOperation = "job.retry.authority"
+
+// PluginReferencesChangedEventType 表示输入候选的安装、启停、版本或展示身份变化。
+const PluginReferencesChangedEventType = "plugins.references.changed"

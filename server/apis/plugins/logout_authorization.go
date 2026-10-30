@@ -21,6 +21,9 @@ func (*LogoutPluginAuthorization) Path() string { return "/:pluginId/account" }
 
 // Output 在无执行占用时通过官方 CLI 退出共享身份。
 func (o *LogoutPluginAuthorization) Output(ctx *gin.Context) (interface{}, error) {
+	if err := closeIdlePlugin(ctx, o.PluginID); err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	auth, _, err := pluginAuthorizer(ctx, o.PluginID, o.WakerID, o.VersionID)
 	if err != nil {
 		return nil, ginx.WithStack(err)

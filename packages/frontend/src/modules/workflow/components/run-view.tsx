@@ -1,17 +1,12 @@
 import { NodeOutputCard } from "../presentation/node-result";
 import { useNotificationPresentation } from "@/shared/api/notification-presentation";
-import {
-  keepPreviousData,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Square, WandSparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
-import { subscribeWorkflow } from "@/shared/api/events";
+import { useQueryEvents } from "@/shared/api/use-query-events";
 import {
   localApiErrorMessage,
   withLocalErrorMutation,
@@ -27,7 +22,6 @@ import {
   getWorkflowRunQueryKey,
   listWorkflowRunsQueryKey,
 } from "../api/workflow-queries";
-import { record } from "../model/types";
 import { OperationRequestCard } from "./operation-request";
 import { HumanRequestCard } from "./human-request";
 import { WorkflowCanvas } from "./workflow-canvas";
@@ -51,7 +45,6 @@ export function WorkflowRunView({
 }) {
   const { t } = useTranslation("workflow");
   const { t: boardText } = useTranslation("workBoard");
-  const client = useQueryClient();
   const sceneActive = useRouteSceneActive();
   const active = sceneActive && visible;
   const [params, setParams] = useSearchParams();
@@ -70,42 +63,17 @@ export function WorkflowRunView({
   const [stopRunId, setStopRunId] = useState<string>();
   const [inputRunId, setInputRunId] = useState<string>();
   const stop = useMutation(withLocalErrorMutation(cancelWorkflowRunMutation()));
-  useEffect(() => {
-    if (!active || !id || !runId) return;
-    let frame = 0;
-    const refresh = () => {
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        void client.invalidateQueries({
-          queryKey: getWorkflowRunQueryKey({ path: { id, runId } }),
-        });
-        void client.invalidateQueries({
-          queryKey: listWorkflowRunsQueryKey({ path: { id } }),
-        });
-        void client.invalidateQueries({
-          predicate: (item) => {
-            const key = record(item.queryKey[0]);
-            return (
-              key?._id === "getWorkflowInstance" &&
-              record(key.path)?.runId === runId
-            );
-          },
-        });
-      });
-    };
-    const close = subscribeWorkflow(id, {
-      runId,
-      onEvent: refresh,
-      onGap: refresh,
-      onReconnect: refresh,
-    });
-    refresh();
-    return () => {
-      close();
-      cancelAnimationFrame(frame);
-    };
-  }, [active, client, id, runId]);
+  useQueryEvents({
+    topic: "workflow",
+    resource: { kind: "workflow", id, parentId: runId },
+    queryKeys: [
+      getWorkflowRunQueryKey({ path: { id, runId } }),
+      listWorkflowRunsQueryKey({ path: { id } }),
+    ],
+    active,
+    enabled: Boolean(id && runId),
+    eventTypes: ["workflow.run.changed", "workflow.worker.skip_requested"],
+  });
   const switching = query.isPlaceholderData;
   const run = switching ? undefined : query.data?.run;
   const runRoot = useRef<HTMLElement>(null);
@@ -479,7 +447,6 @@ export function WorkflowRunView({
                   .mutateAsync({ path: { id, runId } })
                   .then(() => {
                     setStopRunId(undefined);
-                    void query.refetch();
                   })
                   .catch(() => {})
               }

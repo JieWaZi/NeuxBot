@@ -31,32 +31,33 @@ import type { GlobalEventObserver } from "@/shared/api/global-events";
 vi.mock("@/shared/companion/companion-avatar", () => ({
   CompanionAvatar: () => null,
 }));
-const eventObservers = vi.hoisted(() => new Set<GlobalEventObserver>());
+const eventObservers = vi.hoisted(() => new Map<GlobalEventObserver, string>());
 vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
   subscribeGlobalEvents: (
-    _topic: string,
+    topic: string,
     _resource: unknown,
     observer: GlobalEventObserver,
   ) => {
-    eventObservers.add(observer);
+    eventObservers.set(observer, topic);
     return () => eventObservers.delete(observer);
   },
 }));
-function publishWorkBoardChange() {
+function publishWorkBoardChange(topic = "work-board") {
   act(() => {
-    for (const observer of eventObservers)
-      observer.onEvent({
-        protocolVersion: 1,
-        epoch: "epoch",
-        connectionId: "connection",
-        deliverySequence: 1,
-        topic: "work-board",
-        type: "work-board.changed",
-        resource: { kind: "global" },
-        eventId: "event",
-        payload: {},
-      });
+    for (const [observer, subscribedTopic] of eventObservers)
+      if (subscribedTopic === topic)
+        observer.onEvent({
+          protocolVersion: 1,
+          epoch: "epoch",
+          connectionId: "connection",
+          deliverySequence: 1,
+          topic: topic === "work-results" ? "work-results" : "work-board",
+          type: `${topic}.changed`,
+          resource: { kind: "global" },
+          eventId: "event",
+          payload: {},
+        });
   });
 }
 
@@ -1300,3 +1301,38 @@ it.each([
     ).toHaveAttribute("aria-current", "page");
   },
 );
+
+it("另一窗口确认阅读后，成果事件同步看板统计和当前列表", async () => {
+  let viewed = false;
+  server.use(
+    http.get(`${origin}/api/v1/work-board/summary`, () =>
+      boardResponse({
+        workCount: viewed ? 2 : 1,
+        attentionCount: 0,
+        resultCount: viewed ? 0 : 1,
+        attention: [],
+        results: viewed ? [] : [entry],
+      }),
+    ),
+    http.get(`${origin}/api/v1/work-board`, () =>
+      boardResponse({
+        resources: [{ ...entry, title: viewed ? "已阅读的工作" : "整理资料" }],
+        totalSize: 1,
+        hasMore: false,
+      }),
+    ),
+  );
+  mount();
+  await screen.findByText("整理资料");
+  expect(screen.getByRole("button", { name: "任务总数" })).toHaveTextContent(
+    "1",
+  );
+  viewed = true;
+  publishWorkBoardChange("work-results");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "任务总数" })).toHaveTextContent(
+      "2",
+    ),
+  );
+  expect(await screen.findByText("已阅读的工作")).toBeInTheDocument();
+});

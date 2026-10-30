@@ -1,7 +1,9 @@
 package runtime_options
 
 import (
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
 
 	"context"
 	"strings"
@@ -9,7 +11,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -122,21 +123,21 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 // canCompleteStartupSetup 只在所选默认智能体完成模型与权限探测后解除首次引导。
 func canCompleteStartupSetup(environment models.RuntimeEnvironment) bool {
 	configured := environment.Enabled && environment.IsDefault && environment.DefaultModel != ""
-	installed := environment.Detection.ResolvedBinary != "" && environment.Detection.State == runtimecontract.DetectionStateReady
+	installed := environment.Detection.ResolvedBinary != "" && environment.Detection.State == runtimeconfig.DetectionStateReady
 	if !configured || !installed {
 		return false
 	}
 	for _, diagnostic := range environment.Detection.Diagnostics {
-		if diagnostic.Code == runtimecontract.DiagnosticCodeACPOptionsUnavailable {
+		if diagnostic.Code == runtimeconfig.DiagnosticCodeACPOptionsUnavailable {
 			return false
 		}
 	}
-	permissions := runtimecontract.ModelPermissionLevels(
+	permissions := runtimeconfig.ModelPermissionLevels(
 		environment.Detection,
 		environment.CustomModels,
 		environment.DefaultModel,
 	)
-	return runtimecontract.PermissionLevelSupported(permissions, environment.DefaultPermissionLevel)
+	return runtimeconfig.PermissionLevelSupported(permissions, environment.DefaultPermissionLevel)
 }
 
 func configurationRequiresDetectRefresh(

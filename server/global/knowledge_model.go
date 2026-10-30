@@ -1,15 +1,16 @@
 package global
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"strconv"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
 	knowledgemodel "github.com/JieWaZi/NeuxBot/server/internal/knowledge/model"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
 	"github.com/JieWaZi/neux-knowledge/core"
@@ -37,7 +38,7 @@ func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExec
 	if err != nil {
 		return selection, err
 	}
-	if !environment.Enabled || environment.Detection.State != runtimecontract.DetectionStateReady {
+	if !environment.Enabled || environment.Detection.State != runtimeconfig.DetectionStateReady {
 		return selection, status_error.RuntimeUnavailable
 	}
 	if selection.AccountID == "" {
@@ -64,7 +65,7 @@ func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExec
 		if selection.Model == "" {
 			selection.Model = environment.DefaultModel
 		}
-		available := runtimecontract.AvailableModels(environment.Detection, environment.CustomModels)
+		available := runtimeconfig.AvailableModels(environment.Detection, environment.CustomModels)
 		found := len(available) == 0
 		for _, model := range available {
 			found = found || model.ID == selection.Model
@@ -107,15 +108,15 @@ func newKnowledgeRuntimeHost() *runtimehost.Host {
 		if err != nil {
 			return runtimehost.Environment{}, err
 		}
-		if !environment.Enabled || environment.Detection.State != runtimecontract.DetectionStateReady {
+		if !environment.Enabled || environment.Detection.State != runtimeconfig.DetectionStateReady {
 			return runtimehost.Environment{}, status_error.RuntimeUnavailable
 		}
 		binary := environment.Binary
 		if binary == "" {
 			binary = environment.Detection.ResolvedBinary
 		}
-		return runtimehost.Environment{BaseRuntimeID: environment.BaseRuntimeID, Detection: environment.Detection, Target: runtimecontract.RuntimeTarget{RuntimeID: input.RuntimeID, Binary: binary, PrefixArgs: append([]string(nil), environment.PrefixArgs...), ConfigHome: environment.ConfigHome, CloseAfterRun: true}}, nil
-	}, Prepare: func(ctx context.Context, input runtimehost.TextRequest, environment runtimehost.Environment, workspace string) (runtimecontract.RuntimeTarget, func(context.Context) error, error) {
+		return runtimehost.Environment{BaseRuntimeID: environment.BaseRuntimeID, Detection: environment.Detection, Target: runtimeconfig.RuntimeTarget{RuntimeID: input.RuntimeID, Binary: binary, PrefixArgs: append([]string(nil), environment.PrefixArgs...), ConfigHome: environment.ConfigHome, CloseAfterRun: true}}, nil
+	}, Prepare: func(ctx context.Context, input runtimehost.TextRequest, environment runtimehost.Environment, workspace string) (runtimeconfig.RuntimeTarget, func(context.Context) error, error) {
 		target := environment.Target
 		if input.AccountID == "" || input.AccountID == constants.AiAccountSystemID {
 			return target, func(context.Context) error { return nil }, nil

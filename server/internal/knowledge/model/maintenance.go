@@ -9,12 +9,12 @@ import (
 	"sync"
 	"sync/atomic"
 
-	c "github.com/JieWaZi/NeuxBot/agent-runtime/contract"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimehost"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 )
 

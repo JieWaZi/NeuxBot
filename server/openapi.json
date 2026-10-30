@@ -4990,7 +4990,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisChannelsSendChannelMessageRequest"
                   },
                   {
                     "description": "请求体",
@@ -6410,46 +6410,6 @@
         }
       }
     },
-    "/api/v1/chats/{chatId}/fork-targets": {
-      "get": {
-        "tags": [
-          "github.com/JieWaZi/NeuxBot/server/apis/chats"
-        ],
-        "summary": "获取对话分叉位置",
-        "operationId": "GetChatForkTargets",
-        "parameters": [
-          {
-            "name": "chatId",
-            "in": "path",
-            "description": "对话标识",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "对话标识",
-              "x-go-field-name": "ChatID",
-              "x-tag-in": "path",
-              "x-tag-name": "chatId",
-              "x-tag-validate": "required"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesChatForkTarget"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/chats/{chatId}/messages": {
       "get": {
         "tags": [
@@ -6567,7 +6527,7 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisChatsMessageRequest"
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisChatsSendMessageRequest"
                   },
                   {
                     "description": "请求体",
@@ -29962,7 +29922,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[PluginStorageError][50000006501]`\n",
+            "description": ">\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -29971,7 +29931,21 @@
               }
             },
             "x-status-errors": [
-              "[PluginStorageError][50000006501]"
+              "[PluginStorageError][50000006501]",
+              "[RuntimeShutdownFailed][50000000041]"
+            ]
+          },
+          "502": {
+            "description": ">\n* `[PluginAuthorizationFailed][50200006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginAuthorizationFailed][50200006501]"
             ]
           }
         }
@@ -30637,6 +30611,19 @@
               "[PluginNotFound][40400006501]"
             ]
           },
+          "408": {
+            "description": ">\n* `[OperationCanceled][40800000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[OperationCanceled][40800000001]"
+            ]
+          },
           "409": {
             "description": ">\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginBusy][40900006505]`\n* `[PluginNotReady][40900006503]`\n* `[PluginVersionConflict][40900006501]`\n",
             "content": {
@@ -30654,7 +30641,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[PluginStorageError][50000006501]`\n",
+            "description": ">\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -30663,7 +30650,21 @@
               }
             },
             "x-status-errors": [
-              "[PluginStorageError][50000006501]"
+              "[PluginStorageError][50000006501]",
+              "[RuntimeShutdownFailed][50000000041]"
+            ]
+          },
+          "502": {
+            "description": ">\n* `[PluginAuthorizationFailed][50200006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginAuthorizationFailed][50200006501]"
             ]
           }
         }
@@ -30779,6 +30780,19 @@
               "[PluginNotFound][40400006501]"
             ]
           },
+          "408": {
+            "description": ">\n* `[OperationCanceled][40800000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[OperationCanceled][40800000001]"
+            ]
+          },
           "409": {
             "description": ">\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginBusy][40900006505]`\n* `[PluginNotReady][40900006503]`\n* `[PluginVersionConflict][40900006501]`\n",
             "content": {
@@ -30806,6 +30820,19 @@
             },
             "x-status-errors": [
               "[PluginStorageError][50000006501]"
+            ]
+          },
+          "502": {
+            "description": ">\n* `[PluginAuthorizationFailed][50200006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginAuthorizationFailed][50200006501]"
             ]
           }
         }
@@ -30926,6 +30953,19 @@
               "[PluginNotFound][40400006501]"
             ]
           },
+          "408": {
+            "description": ">\n* `[OperationCanceled][40800000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[OperationCanceled][40800000001]"
+            ]
+          },
           "409": {
             "description": ">\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginBusy][40900006505]`\n* `[PluginNotReady][40900006503]`\n* `[PluginVersionConflict][40900006501]`\n",
             "content": {
@@ -30943,7 +30983,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[PluginStorageError][50000006501]`\n",
+            "description": ">\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -30952,7 +30992,8 @@
               }
             },
             "x-status-errors": [
-              "[PluginStorageError][50000006501]"
+              "[PluginStorageError][50000006501]",
+              "[RuntimeShutdownFailed][50000000041]"
             ]
           },
           "502": {
@@ -31124,6 +31165,19 @@
             "x-status-errors": [
               "[PluginStorageError][50000006501]"
             ]
+          },
+          "502": {
+            "description": ">\n* `[PluginAuthorizationFailed][50200006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginAuthorizationFailed][50200006501]"
+            ]
           }
         }
       }
@@ -31236,6 +31290,19 @@
               "[PluginNotFound][40400006501]"
             ]
           },
+          "408": {
+            "description": ">\n* `[OperationCanceled][40800000001]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[OperationCanceled][40800000001]"
+            ]
+          },
           "409": {
             "description": ">\n* `[MCPConnectorTrustRequired][40900000013]`\n* `[PluginBusy][40900006505]`\n* `[PluginConfigurationConflict][40900006502]`\n* `[PluginNotReady][40900006503]`\n* `[PluginVersionConflict][40900006501]`\n",
             "content": {
@@ -31268,7 +31335,7 @@
             ]
           },
           "502": {
-            "description": ">\n* `[PluginDistributionUnavailable][50200006502]`\n",
+            "description": ">\n* `[PluginAuthorizationFailed][50200006501]`\n* `[PluginDistributionUnavailable][50200006502]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -31277,6 +31344,7 @@
               }
             },
             "x-status-errors": [
+              "[PluginAuthorizationFailed][50200006501]",
               "[PluginDistributionUnavailable][50200006502]"
             ]
           }
@@ -31560,7 +31628,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[MCPConnectorCredentialError][50000000022]`\n* `[PluginStorageError][50000006501]`\n* `[SkillUnavailable][50000000008]`\n",
+            "description": ">\n* `[MCPConnectorCredentialError][50000000022]`\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[SkillUnavailable][50000000008]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -31571,6 +31639,7 @@
             "x-status-errors": [
               "[MCPConnectorCredentialError][50000000022]",
               "[PluginStorageError][50000006501]",
+              "[RuntimeShutdownFailed][50000000041]",
               "[SkillUnavailable][50000000008]"
             ]
           },
@@ -39487,6 +39556,46 @@
         }
       }
     },
+    "/api/v1/wakers/{wakerId}/plugin-references": {
+      "get": {
+        "tags": [
+          "github.com/JieWaZi/NeuxBot/server/apis/plugins"
+        ],
+        "summary": "获取伙伴插件引用",
+        "operationId": "ListWakerPluginReferences",
+        "parameters": [
+          {
+            "name": "wakerId",
+            "in": "path",
+            "description": "伙伴标识",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "伙伴标识",
+              "x-go-field-name": "WakerID",
+              "x-tag-in": "path",
+              "x-tag-name": "wakerId",
+              "x-tag-validate": "required"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginReference"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/wakers/{wakerId}/plugins": {
       "get": {
         "tags": [
@@ -40066,7 +40175,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[PluginStorageError][50000006501]`\n",
+            "description": ">\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -40075,7 +40184,21 @@
               }
             },
             "x-status-errors": [
-              "[PluginStorageError][50000006501]"
+              "[PluginStorageError][50000006501]",
+              "[RuntimeShutdownFailed][50000000041]"
+            ]
+          },
+          "502": {
+            "description": ">\n* `[PluginAuthorizationFailed][50200006501]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[PluginAuthorizationFailed][50200006501]"
             ]
           }
         }
@@ -40677,6 +40800,43 @@
             "x-status-errors": [
               "[ProjectSourceUnavailable][50000000005]"
             ]
+          }
+        }
+      }
+    },
+    "/api/v1/wakers/{wakerId}/recent-project": {
+      "get": {
+        "tags": [
+          "github.com/JieWaZi/NeuxBot/server/apis/wakers"
+        ],
+        "summary": "伙伴最近可用项目",
+        "operationId": "GetWakerRecentProject",
+        "parameters": [
+          {
+            "name": "wakerId",
+            "in": "path",
+            "description": "伙伴标识",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "伙伴标识",
+              "x-go-field-name": "WakerID",
+              "x-tag-in": "path",
+              "x-tag-name": "wakerId",
+              "x-tag-validate": "required"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisWakersGetWakerRecentProjectResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -51322,25 +51482,6 @@
                 "x-go-field-name": "Thread"
               }
             ]
-          },
-          "timeline": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesChannelTimelineMessage"
-            },
-            "description": "聚合时间线",
-            "x-go-field-name": "Timeline"
-          },
-          "timelineHasMore": {
-            "type": "boolean",
-            "description": "更早消息",
-            "x-go-field-name": "TimelineHasMore"
-          },
-          "timelineNextCursor": {
-            "type": "string",
-            "description": "更早页游标",
-            "x-go-field-name": "TimelineNextCursor",
-            "x-tag-json": "timelineNextCursor,omitempty"
           }
         },
         "description": "团队对话详情",
@@ -51354,6 +51495,14 @@
             "type": "boolean",
             "description": "更早消息",
             "x-go-field-name": "HasMore"
+          },
+          "leadChatLatestSequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "主聊天游标",
+            "x-go-field-name": "LeadChatLatestSequence",
+            "x-go-star-level": 1,
+            "x-tag-json": "leadChatLatestSequence,omitempty"
           },
           "nextCursor": {
             "type": "string",
@@ -51654,6 +51803,28 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisChannelsReviewChannelTaskRequest",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/channels.ReviewChannelTaskRequest"
       },
+      "GithubComJieWaZiNeuxBotServerApisChannelsSendChannelMessageRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "submissionId": {
+                "type": "string",
+                "description": "输入提交标识",
+                "x-go-field-name": "SubmissionID",
+                "x-tag-json": "submissionId,omitempty",
+                "x-tag-validate": "max=64"
+              }
+            },
+            "description": "续发团队消息请求",
+            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisChannelsSendChannelMessageRequest",
+            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/channels.SendChannelMessageRequest"
+          }
+        ]
+      },
       "GithubComJieWaZiNeuxBotServerApisChannelsUpdateChannelThreadMemberConfigsRequest": {
         "type": "object",
         "properties": {
@@ -51790,12 +51961,6 @@
             "description": "下页时间游标",
             "x-go-field-name": "NextBeforeUpdatedAt",
             "x-tag-json": "nextBeforeUpdatedAt,omitempty"
-          },
-          "recentProjectId": {
-            "type": "string",
-            "description": "最近项目",
-            "x-go-field-name": "RecentProjectID",
-            "x-tag-json": "recentProjectId,omitempty"
           },
           "resources": {
             "type": "array",
@@ -51945,7 +52110,7 @@
             "items": {
               "type": "string"
             },
-            "description": "连接器列表",
+            "description": "插件列表",
             "x-go-field-name": "PluginIDs",
             "x-tag-json": "pluginIds,omitempty",
             "x-tag-validate": "max=100,dive,max=32"
@@ -52055,6 +52220,28 @@
         "description": "结构化输入请求",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisChatsResolveElicitationRequest",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/chats.ResolveElicitationRequest"
+      },
+      "GithubComJieWaZiNeuxBotServerApisChatsSendMessageRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisChatsMessageRequest"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "submissionId": {
+                "type": "string",
+                "description": "输入提交标识",
+                "x-go-field-name": "SubmissionID",
+                "x-tag-json": "submissionId,omitempty",
+                "x-tag-validate": "max=64"
+              }
+            },
+            "description": "续发消息请求",
+            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisChatsSendMessageRequest",
+            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/chats.SendMessageRequest"
+          }
+        ]
       },
       "GithubComJieWaZiNeuxBotServerApisChatsUpdateChatRequest": {
         "type": "object",
@@ -58157,7 +58344,7 @@
           "capabilities": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalRuntimehostContractCapabilitySet"
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalAgentEnvironmentConfigCapabilitySet"
               },
               {
                 "description": "探测能力",
@@ -59208,6 +59395,19 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersDeleteWakerRequest",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.DeleteWakerRequest"
       },
+      "GithubComJieWaZiNeuxBotServerApisWakersGetWakerRecentProjectResponse": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "项目标识",
+            "x-go-field-name": "ProjectID"
+          }
+        },
+        "description": "伙伴最近可用项目响应",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWakersGetWakerRecentProjectResponse",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/wakers.GetWakerRecentProjectResponse"
+      },
       "GithubComJieWaZiNeuxBotServerApisWakersListWakerChatsResponse": {
         "type": "object",
         "properties": {
@@ -59953,20 +60153,10 @@
             "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSession"
           },
           {
+            "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution"
+          },
+          {
             "type": "object",
-            "properties": {
-              "execution": {
-                "allOf": [
-                  {
-                    "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution"
-                  },
-                  {
-                    "description": "接纳执行",
-                    "x-go-field-name": "Execution"
-                  }
-                ]
-              }
-            },
             "description": "工作流创作消息响应",
             "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWorkflowsSendWorkflowCreationMessageResponse",
             "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/workflows.SendWorkflowCreationMessageResponse"
@@ -62757,6 +62947,18 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/constants.WorkflowStepStatus"
       },
+      "GithubComJieWaZiNeuxBotServerInternalAgentEnvironmentConfigCapabilitySet": {
+        "type": "object",
+        "additionalProperties": {
+          "type": "boolean"
+        },
+        "propertyNames": {
+          "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability"
+        },
+        "description": "CapabilitySet 保存一次探测确认可用的 Runtime 能力。",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalAgentEnvironmentConfigCapabilitySet",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config.CapabilitySet"
+      },
       "GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference": {
         "type": "object",
         "properties": {
@@ -62940,6 +63142,19 @@
             "x-go-field-name": "FileChanges",
             "x-tag-json": "fileChanges,omitempty"
           },
+          "fork": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFork"
+              },
+              {
+                "description": "分叉能力",
+                "x-go-field-name": "Fork",
+                "x-go-star-level": 1,
+                "x-tag-json": "fork,omitempty"
+              }
+            ]
+          },
           "id": {
             "type": "string",
             "description": "ID 是消息的稳定标识。",
@@ -63028,6 +63243,12 @@
                 "x-tag-json": "status,omitempty"
               }
             ]
+          },
+          "submissionId": {
+            "type": "string",
+            "description": "输入提交标识",
+            "x-go-field-name": "SubmissionID",
+            "x-tag-json": "submissionId,omitempty"
           },
           "truncated": {
             "type": "boolean",
@@ -63178,6 +63399,31 @@
         "description": "MessageFileChangeDiff 是从一条 Assistant 消息的标准 ACP diff 投影出的执行级文件差异。",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFileChangeDiff",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/chat/messageview.MessageFileChangeDiff"
+      },
+      "GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFork": {
+        "type": "object",
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "description": "可用状态",
+            "x-go-field-name": "Available"
+          },
+          "latestOnly": {
+            "type": "boolean",
+            "description": "仅限末轮",
+            "x-go-field-name": "LatestOnly",
+            "x-tag-json": "latestOnly,omitempty"
+          },
+          "reasonCode": {
+            "type": "string",
+            "description": "禁用原因",
+            "x-go-field-name": "ReasonCode",
+            "x-tag-json": "reasonCode,omitempty"
+          }
+        },
+        "description": "MessageFork 是消息操作可使用的安全分叉能力。",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFork",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/chat/messageview.MessageFork"
       },
       "GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageRunMetrics": {
         "type": "object",
@@ -64856,18 +65102,6 @@
         "description": "WorkMethod 表示面向用户展示的一套具名工作过程。",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/profile.WorkMethod"
-      },
-      "GithubComJieWaZiNeuxBotServerInternalRuntimehostContractCapabilitySet": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "boolean"
-        },
-        "propertyNames": {
-          "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability"
-        },
-        "description": "CapabilitySet 保存一次探测确认可用的 Runtime 能力。",
-        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalRuntimehostContractCapabilitySet",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract.CapabilitySet"
       },
       "GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration": {
         "type": "object",
@@ -69041,6 +69275,39 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerRepositoriesModelsPlugin",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/repositories/models.Plugin"
       },
+      "GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginReference": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "插件说明",
+            "x-go-field-name": "Description"
+          },
+          "id": {
+            "type": "string",
+            "description": "插件标识",
+            "x-go-field-name": "ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "插件名称",
+            "x-go-field-name": "Name"
+          },
+          "version": {
+            "type": "string",
+            "description": "固定版本",
+            "x-go-field-name": "Version"
+          },
+          "versionId": {
+            "type": "string",
+            "description": "版本标识",
+            "x-go-field-name": "VersionID"
+          }
+        },
+        "description": "PluginReference 是输入候选使用的已启用固定版本引用。",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginReference",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/repositories/models.PluginReference"
+      },
       "GithubComJieWaZiNeuxBotServerRepositoriesModelsPluginVersion": {
         "type": "object",
         "properties": {
@@ -71169,38 +71436,15 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesChatChatSummary",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/chat.ChatSummary"
       },
-      "GithubComJieWaZiNeuxBotServerServicesChatForkTarget": {
-        "type": "object",
-        "properties": {
-          "available": {
-            "type": "boolean",
-            "description": "Available 表示当前空闲状态和原生定位允许执行分叉。",
-            "x-go-field-name": "Available"
-          },
-          "executionId": {
-            "type": "string",
-            "description": "ExecutionID 是前端可以提交的已结束回合。",
-            "x-go-field-name": "ExecutionID"
-          },
-          "latest": {
-            "type": "boolean",
-            "description": "Latest 表示该回合位于会话末尾。",
-            "x-go-field-name": "Latest"
-          },
-          "reasonCode": {
-            "type": "string",
-            "description": "ReasonCode 是由前端本地化的稳定不可用原因码。",
-            "x-go-field-name": "ReasonCode",
-            "x-tag-json": "reasonCode,omitempty"
-          }
-        },
-        "description": "ForkTarget 是不包含原生句柄的回合分叉入口状态。",
-        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesChatForkTarget",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/chat.ForkTarget"
-      },
       "GithubComJieWaZiNeuxBotServerServicesChatMessageHistoryPage": {
         "type": "object",
         "properties": {
+          "forkLatestExecutionId": {
+            "type": "string",
+            "description": "末轮执行标识",
+            "x-go-field-name": "ForkLatestExecutionID",
+            "x-tag-json": "forkLatestExecutionId,omitempty"
+          },
           "hasMore": {
             "type": "boolean",
             "description": "HasMore 表示当前窗口之前是否仍有更早消息。",
@@ -71765,15 +72009,9 @@
           },
           "replayed": {
             "type": "boolean",
-            "description": "Replayed 表示本次返回的是相同首次创建请求已经提交的确定结果。",
+            "description": "Replayed 表示本次返回的是同一输入请求已经提交的确定结果。",
             "x-go-field-name": "Replayed",
             "x-tag-json": "replayed,omitempty"
-          },
-          "workspaceWarningCode": {
-            "type": "string",
-            "description": "WorkspaceWarningCode 是 Runtime 不支持附加目录时的稳定提示码。",
-            "x-go-field-name": "WorkspaceWarningCode",
-            "x-tag-json": "workspaceWarningCode,omitempty"
           }
         },
         "description": "AcceptedExecution 是首批事实 durable 后返回给入口的稳定结果。",

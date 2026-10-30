@@ -9,11 +9,11 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
@@ -119,7 +119,7 @@ func (m *service) questionBindings(chatID, executionID string, facts ...*executi
 }
 
 func (c *elicitationCoordinator) questionSnapshot(chatID, executionID, questionID string) (map[string]any, error) {
-	records, err := c.journal.ReadRecords(chatID)
+	records, err := c.journal.ReadExecutionRecords(chatID, executionID)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func (c *elicitationCoordinator) createQuestion(ctx context.Context, chatID, exe
 	if ctx.Err() != nil {
 		return nil, false, status_error.AgentContextUnauthorized
 	}
-	records, err := c.journal.ReadRecords(chatID)
+	records, err := c.journal.ReadExecutionRecords(chatID, executionID)
 	if err != nil {
 		return nil, false, err
 	}

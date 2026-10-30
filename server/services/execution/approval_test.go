@@ -9,9 +9,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -26,6 +26,8 @@ type approvalOutcome struct {
 
 // approvalTestJournal 为协调器测试保存 durable 事实和当前审批投影。
 type approvalTestJournal struct {
+	// Journal 保留本测试不使用的执行查询边界。
+	chatservice.Journal
 	// mutex 保护记录序号、事实和查询投影。
 	mutex sync.Mutex
 	// records 保存按提交顺序形成的审批事实。

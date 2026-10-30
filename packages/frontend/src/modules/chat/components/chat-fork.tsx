@@ -1,8 +1,8 @@
-import { createContext, useContext, useEffect } from "react";
+import { createContext, useContext } from "react";
 import {
   useIsMutating,
   useMutation,
-  useQuery,
+  useInfiniteQuery,
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
@@ -12,11 +12,9 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { toast } from "@/shared/ui/sonner";
 
-import {
-  forkChatMutation,
-  getChatForkTargetsOptions,
-} from "@/shared/api/generated/@tanstack/react-query.gen";
-import type { GetChatForkTargetsResponse } from "@/shared/api/generated/types.gen";
+import { forkChatMutation } from "@/shared/api/generated/@tanstack/react-query.gen";
+import type { GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as ChatMessage } from "@/shared/api/generated/types.gen";
+import { chatMessagesInfiniteOptions } from "../api/chat-queries";
 import { toApiError } from "@/shared/api/errors";
 import { chatHref } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
@@ -76,8 +74,36 @@ function clearRequestId(key: string) {
   }
 }
 
+type ForkTarget = {
+  executionId: string;
+  available: boolean;
+  latest: boolean;
+  reasonCode?: string;
+};
+
+/** head 基线始终包含全会话末尾；旧页只追加在其之前。 */
+export function messageForkTargets(
+  messages: readonly ChatMessage[],
+  latest: string | undefined,
+): ForkTarget[] {
+  return messages.flatMap((message) => {
+    const executionId = message.inherited ? message.id : message.executionId;
+    if (!executionId || !message.fork) return [];
+    const isLatest = executionId === latest;
+    const outdated = Boolean(message.fork.latestOnly && !isLatest);
+    return [
+      {
+        executionId,
+        latest: isLatest,
+        available: Boolean(message.fork.available && !outdated),
+        reasonCode: outdated ? "latest_only" : message.fork.reasonCode,
+      },
+    ];
+  });
+}
+
 type ForkControls = {
-  targets: GetChatForkTargetsResponse;
+  targets: ForkTarget[];
   pending: boolean;
   busy: boolean;
   fork: (executionId: string) => Promise<void>;
@@ -90,23 +116,22 @@ export const ChatForkContext = createContext<ForkControls | undefined>(
 export function useChatFork({
   chatId,
   wakerId,
-  revision,
   busy = false,
   enabled = true,
+  messages,
+  latestExecutionId,
 }: {
   chatId?: string;
   wakerId?: string;
-  revision?: number;
   busy?: boolean;
   enabled?: boolean;
+  messages: readonly ChatMessage[];
+  latestExecutionId?: string;
 }): ForkControls {
   const { t } = useTranslation("chat");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const query = useQuery({
-    ...getChatForkTargetsOptions({ path: { chatId: chatId ?? "pending" } }),
-    enabled: Boolean(chatId) && enabled,
-  });
+  const active = Boolean(chatId) && enabled;
   const mutationKey = ["chat-fork", chatId];
   const mutation = useMutation({ ...forkChatMutation(), mutationKey });
   const pending = useIsMutating({ mutationKey }) > 0;
@@ -118,13 +143,9 @@ export function useChatFork({
     };
     operations.set(queryClient, operation);
   }
-  const refetch = query.refetch;
-  useEffect(() => {
-    if (chatId && enabled) void refetch();
-  }, [chatId, enabled, revision, refetch]);
 
   return {
-    targets: query.data ?? [],
+    targets: active ? messageForkTargets(messages, latestExecutionId) : [],
     pending,
     busy,
     fork: async (executionId) => {
@@ -153,7 +174,6 @@ export function useChatFork({
         toast.error(
           failure.code === "NETWORK" ? t("forkFailed") : failure.message,
         );
-        void refetch();
       } finally {
         operation.pending.delete(chatId);
       }
@@ -188,20 +208,15 @@ export function MessageForkAction() {
   );
 }
 
-export function ChatForkMenuItem({
-  chatId,
-  wakerId,
-  enabled,
+function ForkMenuAction({
+  controls,
   busy = false,
 }: {
-  chatId: string;
-  wakerId?: string;
-  enabled: boolean;
+  controls?: ForkControls;
   busy?: boolean;
 }) {
   const { t } = useTranslation("chat");
-  const controls = useChatFork({ chatId, wakerId, enabled, busy });
-  const target = controls.targets.find((item) => item.latest);
+  const target = controls?.targets.find((item) => item.latest);
   return (
     <span
       className="block"
@@ -214,14 +229,56 @@ export function ChatForkMenuItem({
       }
     >
       <DropdownMenuItem
-        disabled={!target?.available || controls.pending || busy}
+        disabled={!target?.available || controls?.pending || busy}
         onSelect={() => {
-          if (target?.executionId) void controls.fork(target.executionId);
+          if (target?.executionId) void controls?.fork(target.executionId);
         }}
       >
         <Shuffle />
         {t("forkCurrent")}
       </DropdownMenuItem>
     </span>
+  );
+}
+
+// 用户打开且会话空闲才挂载读取；每次挂载核对同一来源，不能把新鲜 running 缓存当成终态。
+function IdleChatForkMenuItem({
+  chatId,
+  wakerId,
+}: {
+  chatId: string;
+  wakerId?: string;
+}) {
+  const query = useInfiniteQuery({
+    ...chatMessagesInfiniteOptions(chatId),
+    refetchOnMount: "always",
+  });
+  const controls = useChatFork({
+    chatId,
+    wakerId,
+    messages: [...(query.data?.pages ?? [])]
+      .reverse()
+      .flatMap((page) => page.resources ?? []),
+    latestExecutionId: query.data?.pages[0]?.forkLatestExecutionId,
+    enabled: query.isSuccess && query.isFetchedAfterMount && !query.isFetching,
+  });
+  return <ForkMenuAction controls={controls} />;
+}
+
+export function ChatForkMenuItem({
+  chatId,
+  wakerId,
+  enabled,
+  busy = false,
+}: {
+  chatId: string;
+  wakerId?: string;
+  enabled: boolean;
+  busy?: boolean;
+}) {
+  return enabled && !busy ? (
+    <IdleChatForkMenuItem chatId={chatId} wakerId={wakerId} />
+  ) : (
+    <ForkMenuAction busy={busy} />
   );
 }

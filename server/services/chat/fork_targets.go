@@ -1,7 +1,6 @@
 package chat
 
 import (
-	"context"
 	"encoding/json"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -11,8 +10,8 @@ import (
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
-// ForkTarget 是不包含原生句柄的回合分叉入口状态。
-type ForkTarget struct {
+// forkTarget 保存实际分叉操作的权威校验结果。
+type forkTarget struct {
 	// ExecutionID 是前端可以提交的已结束回合。
 	ExecutionID string `json:"executionId"`
 	// Available 表示当前空闲状态和原生定位允许执行分叉。
@@ -26,30 +25,13 @@ type ForkTarget struct {
 // forkPoint 保存同一回合的冻结配置、原生位置和历史截断边界。
 type forkPoint struct {
 	// target 是对外可见的可用性。
-	target ForkTarget
+	target forkTarget
 	// configuration 是来源回合创建时的执行设置。
 	configuration eventlog.ExecutionCreatedData
 	// invocation 是该回合最后确认的原生调用终态。
 	invocation eventlog.InvocationFinishedData
 	// end 是复制权威日志前缀时使用的半开记录下标。
 	end int
-}
-
-// ForkTargets 用权威事实计算可用性，旧的无定位回合保持禁用。
-func (m *service) ForkTargets(ctx context.Context, chatID string) ([]ForkTarget, error) {
-	records, state, err := m.loadChatState(chatID)
-	if err != nil {
-		return nil, err
-	}
-	points, err := forkPoints(records, state)
-	if err != nil {
-		return nil, err
-	}
-	result := make([]ForkTarget, 0, len(points))
-	for _, point := range points {
-		result = append(result, point.target)
-	}
-	return result, nil
 }
 
 func forkPoints(records []eventlog.Record, state chatState) ([]forkPoint, error) {
@@ -65,7 +47,7 @@ func forkPoints(records []eventlog.Record, state chatState) ([]forkPoint, error)
 			}
 			if inherited.ForkInvocation != nil && inherited.ForkConfiguration != nil {
 				indexes[record.MessageID] = len(points)
-				points = append(points, forkPoint{target: ForkTarget{ExecutionID: record.MessageID}, configuration: *inherited.ForkConfiguration, invocation: *inherited.ForkInvocation, end: i + 1})
+				points = append(points, forkPoint{target: forkTarget{ExecutionID: record.MessageID}, configuration: *inherited.ForkConfiguration, invocation: *inherited.ForkInvocation, end: i + 1})
 				lastExecution = record.MessageID
 			}
 		case constants.ChatEventTypeExecutionCreated:
@@ -74,7 +56,7 @@ func forkPoints(records []eventlog.Record, state chatState) ([]forkPoint, error)
 				return nil, status_error.ChatLogCorrupted
 			}
 			indexes[record.ExecutionID] = len(points)
-			points = append(points, forkPoint{target: ForkTarget{ExecutionID: record.ExecutionID}, configuration: config})
+			points = append(points, forkPoint{target: forkTarget{ExecutionID: record.ExecutionID}, configuration: config})
 			lastExecution = record.ExecutionID
 		case constants.ChatEventTypeInvocationFinished:
 			if index, ok := indexes[record.ExecutionID]; ok {

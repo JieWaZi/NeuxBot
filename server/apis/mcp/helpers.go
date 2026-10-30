@@ -1,7 +1,8 @@
 package mcp
 
 import (
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/catalog"
+	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
 
 	"context"
 	"crypto/sha256"
@@ -19,7 +20,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/mozillazg/go-pinyin"
@@ -342,7 +342,7 @@ func ConnectorCompatibility(
 	for _, runtimeID := range runtimeIDs {
 		supported, reason := catalog.ConnectorCompatibility(
 			runtimeID,
-			runtimecontract.ConnectorTransport(transport),
+			runtimeconfig.ConnectorTransport(transport),
 		)
 		result = append(result, RuntimeCompatibility{
 			RuntimeID: runtimeID,

@@ -229,7 +229,26 @@ export function KnowledgePage() {
         }
       : { kind: "global" },
     queryKeys: detail ? [root] : [knowledgeKeys.libraryLists],
+    eventTypes: ["knowledge.changed", "knowledge.content.changed"],
     enabled: active,
+    active,
+  });
+  useQueryEvents({
+    topic: "knowledge",
+    resource: {
+      kind: "knowledge_library",
+      id: route.libraryId,
+      parentId: ref.connectionId,
+    },
+    queryKeys: [
+      knowledgeKeys.jobs(ref),
+      [...root, "job"],
+      [...root, "activity"],
+      [...root, "sources"],
+      [...root, "source"],
+    ],
+    eventTypes: ["knowledge.task.changed"],
+    enabled: active && detail,
     active,
   });
   const legacy =

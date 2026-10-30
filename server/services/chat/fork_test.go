@@ -86,7 +86,11 @@ func TestForkCopiesBoundaryWithoutExecutionsAndSurvivesParentDeletion(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail.InitialExecution != nil || len(detail.PreviousMessages) != 2 || detail.PreviousMessages[0].Content != "before" || detail.Chat.ForkSourceChatID != parent {
+	inheritedPage, pageErr := m.ReadMessageHistory(context.Background(), child, 0, 20)
+	if pageErr != nil {
+		t.Fatal(pageErr)
+	}
+	if len(inheritedPage.Resources) != 2 || inheritedPage.Resources[0].Content != "before" || detail.Chat.ForkSourceChatID != parent {
 		t.Fatalf("unexpected inherited state: %+v", detail)
 	}
 	if detail.Chat.LastReasoning != "high" {
@@ -95,9 +99,13 @@ func TestForkCopiesBoundaryWithoutExecutionsAndSurvivesParentDeletion(t *testing
 	if detail.RuntimeSessions["custom-codex"].SessionID != "native-child" {
 		t.Fatal("parent session binding copied")
 	}
-	targets, err := m.ForkTargets(context.Background(), child)
-	if err != nil || len(targets) != 1 || !targets[0].Available {
-		t.Fatalf("fork of fork unavailable: %+v %v", targets, err)
+	capabilities, err := m.ReadMessageHistory(context.Background(), child, 0, 50)
+	if err != nil || capabilities.ForkLatestExecutionID == "" {
+		t.Fatalf("fork head missing: %+v %v", capabilities, err)
+	}
+	latest := capabilities.Resources[len(capabilities.Resources)-1]
+	if latest.Fork == nil || !latest.Fork.Available {
+		t.Fatalf("fork of fork unavailable: %+v", latest)
 	}
 	if err = m.DeleteChat(context.Background(), parent); err != nil {
 		t.Fatal(err)

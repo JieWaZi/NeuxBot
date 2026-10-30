@@ -319,3 +319,76 @@ func TestLegacyProviderResourcesCanBeUninstalledAndDeleted(t *testing.T) {
 		})
 	}
 }
+
+func TestNonLastUninstallDoesNotPrepareBridgeForColdIdentityConsumer(t *testing.T) {
+	ctx := pluginAPIContext(t)
+	fixture := removalAuth(t, nil)
+	detail := removalPlugin(t, ctx, "cold-consumer", fixture)
+	installRemovalPlugin(t, ctx, detail, "w1", "w2")
+	global.PluginBridges.Close()
+	global.PluginBridges = commandbridge.NewRegistry(context.Background(), nil)
+	_, release, err := global.PluginBridges.AcquireIdentity(detail.Plugin.ID, authorization.Usage{WakerID: "w2", ExecutionID: "active-cold-round"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if _, err := (&UninstallWakerPlugin{WakerID: "w1", PluginID: detail.Plugin.ID}).Output(ctx); err != nil {
+		t.Fatal("non-last uninstall attempted to replace the running identity driver", err)
+	}
+	retained, err := global.PluginControllerManager.Installations(ctx, detail.Plugin.ID, "w2")
+	if err != nil || len(retained) != 1 {
+		t.Fatal("remaining consumer lost its installation", err)
+	}
+}
+
+func TestUnrelatedInstallationDoesNotBypassLastPluginCleanup(t *testing.T) {
+	for _, operation := range []string{"uninstall", "delete"} {
+		for _, active := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/active=%t", operation, active), func(t *testing.T) {
+				ctx := pluginAPIContext(t)
+				fixture := removalAuth(t, nil)
+				target := removalPlugin(t, ctx, "cleanup-target", fixture)
+				installRemovalPlugin(t, ctx, target, "w1")
+				unrelatedFixture := &removalAuthFixture{}
+				unrelatedFixture.available.Store(true)
+				unrelated := removalPlugin(t, ctx, "unrelated-plugin", unrelatedFixture)
+				installRemovalPlugin(t, ctx, unrelated, "w2")
+				release := func() {}
+				if active {
+					var err error
+					release, err = fixture.auth.Acquire(authorization.Usage{WakerID: "w1", ExecutionID: "target-running"})
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				defer release()
+				var err error
+				if operation == "uninstall" {
+					_, err = (&UninstallWakerPlugin{WakerID: "w1", PluginID: target.Plugin.ID}).Output(ctx)
+				} else {
+					_, err = (&DeletePlugin{PluginID: target.Plugin.ID, Body: DeletePluginRequest{Confirmed: true, Installations: []VersionSwitch{{WakerID: "w1", ExpectedVersionID: target.ResolvedVersionID}}}}).Output(ctx)
+				}
+				if active {
+					if !errors.Is(err, status_error.PluginBusy) {
+						t.Fatal("unrelated installation bypassed the target's active identity", err)
+					}
+					retained, readErr := global.PluginControllerManager.Installations(ctx, target.Plugin.ID, "w1")
+					if readErr != nil || len(retained) != 1 || fixture.logouts.Load() != 0 {
+						t.Fatal("busy cleanup changed target installation", readErr)
+					}
+				} else {
+					if err != nil {
+						t.Fatal(err)
+					}
+					if fixture.logouts.Load() != 1 || fixture.available.Load() {
+						t.Fatal("unrelated installation bypassed the target's final logout")
+					}
+				}
+				retained, readErr := global.PluginControllerManager.Installations(ctx, unrelated.Plugin.ID, "w2")
+				if readErr != nil || len(retained) != 1 || unrelatedFixture.logouts.Load() != 0 || !unrelatedFixture.available.Load() {
+					t.Fatal("target cleanup changed the unrelated plugin", readErr)
+				}
+			})
+		}
+	}
+}

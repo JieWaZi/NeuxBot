@@ -1,6 +1,8 @@
 package execution
 
 import (
+	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+
 	"context"
 	"encoding/json"
 	"path/filepath"
@@ -8,10 +10,10 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -21,8 +23,8 @@ func runtimeFailureRetryable(result runtimecontract.Result) bool {
 		result.UndeliveredEvents != 0 || result.UndeliveredBytes != 0 {
 		return false
 	}
-	if result.Failure.Code != runtimecontract.FailureCodeRateLimited &&
-		result.Failure.Code != runtimecontract.FailureCodeUpstreamUnavailable {
+	if result.Failure.Code != runtimediagnostic.FailureCodeRateLimited &&
+		result.Failure.Code != runtimediagnostic.FailureCodeUpstreamUnavailable {
 		return false
 	}
 	return strings.TrimSpace(reliableRuntimeSessionID(result)) != ""
@@ -59,9 +61,13 @@ func (m *service) retryExecution(ctx context.Context, chatID, executionID string
 	}
 	state := messageChat{
 		chat:              snapshot.Chat,
-		previousMessages:  snapshot.PreviousMessages,
+		lastExecutionID:   snapshot.LastExecutionID,
 		runtimeSessions:   snapshot.RuntimeSessions,
 		threadWorkspaceID: snapshot.ThreadWorkspaceID,
+	}
+	state.previousMessages, err = messageview.ReplayMessages(records)
+	if err != nil {
+		return AcceptedExecution{}, status_error.ChatLogCorrupted
 	}
 	previous, message, err := retrySource(state, records, executionID)
 	if err != nil {

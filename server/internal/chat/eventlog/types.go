@@ -151,6 +151,8 @@ type CodeReference struct {
 
 // MessageCreatedData 保存一条用户输入消息的完整内容。
 type MessageCreatedData struct {
+	// SubmissionID 关联调用方为这次输入提供的既有幂等身份；无标识的程序性输入为空。
+	SubmissionID string `json:"submissionId,omitempty"`
 	// Role 是消息发送方。
 	Role constants.MessageRole `json:"role"`
 	// Actor 是产生该输入的入口无关语义参与者。
@@ -349,8 +351,6 @@ type InvocationFinishedData struct {
 	WorkingDirectory string `json:"workingDirectory"`
 	// AdditionalWritableDirectories 是本次 Runtime 调用实际授权的附加读写目录。
 	AdditionalWritableDirectories []string `json:"additionalWritableDirectories,omitempty"`
-	// WorkspaceWarningCode 是本次调用发生目录能力降级时的稳定提示码。
-	WorkspaceWarningCode string `json:"workspaceWarningCode,omitempty"`
 	// Attempt 是该 Invocation 在所属 Execution 中从一开始的尝试序号。
 	Attempt int `json:"attempt"`
 	// RecoveryStrategy 是 Host 本次采用的启动或恢复策略。

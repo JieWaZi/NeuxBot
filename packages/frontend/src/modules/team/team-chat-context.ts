@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
+import type { ChatMessageSource } from "@/modules/chat";
 
 import type {
   CreateChannelThreadResponse,
-  GithubComJieWaZiNeuxBotServerApisChannelsChannelWorkInput as ChannelWorkInput,
+  GithubComJieWaZiNeuxBotServerApisChannelsSendChannelMessageRequest as SendChannelMessageRequest,
   GithubComJieWaZiNeuxBotServerApisChannelsCreateChannelThreadRequest as CreateChannelThreadRequest,
   GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus as ChannelTaskStatus,
   GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as ChatMessage,
@@ -43,16 +44,17 @@ export type TeamChatContext = {
     message: ChatMessage;
     wakerId?: string;
   }>;
+  /** 主聊天沿用团队时间线快照；不得提交到普通 Chat 消息缓存。 */
+  messageSource: ChatMessageSource;
   hasEarlierTimelineMessages: boolean;
   isLoadingEarlierTimelineMessages: boolean;
   onLoadEarlierTimelineMessages: () => Promise<void>;
-  onThreadChanged: () => void;
   onThreadCreated: (threadId: string) => void;
   onCreateThread: (
     request: CreateChannelThreadRequest,
   ) => Promise<CreateChannelThreadResponse>;
   onSendMessage: (
-    request: ChannelWorkInput,
+    request: SendChannelMessageRequest,
   ) => Promise<SendChannelMessageResponse>;
   onStopWork: () => Promise<void>;
   onUpdateMemberConfigs: (

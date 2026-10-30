@@ -91,7 +91,7 @@ func TestLiteServiceShutdownCancelsModelAndPreservesTaskWithoutChat(t *testing.T
 	}
 	select {
 	case event := <-subscription.Events:
-		if event.Type != "knowledge.changed" || event.Resource.ID != library.ID {
+		if event.Type != "knowledge.task.changed" || event.Resource.ID != library.ID {
 			t.Fatalf("错误来源进度事件: %+v", event)
 		}
 	default:

@@ -1,6 +1,8 @@
 package execution
 
 import (
+	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+
 	"context"
 	"encoding/json"
 	"path/filepath"
@@ -8,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -56,7 +58,7 @@ func TestChatAccountSelectionUsesAccountModels(t *testing.T) {
 	if accepted.Execution.AccountID != account.ID || second.Execution.AccountID != account.ID {
 		t.Fatal("account did not persist across chat turns")
 	}
-	if len(runtime.requests) != 2 || !runtime.requests[0].Target.Isolated || !runtime.requests[1].Target.Isolated {
+	if len(runtime.requests) != 2 || !runtime.requests[0].Resources.Target.Isolated || !runtime.requests[1].Resources.Target.Isolated {
 		t.Fatal("runtime did not receive managed configuration")
 	}
 	if runtime.requests[0].Policy.Model != "gpt-5" || runtime.requests[1].Policy.Model != "gpt-5" {
@@ -67,7 +69,7 @@ func TestChatAccountSelectionUsesAccountModels(t *testing.T) {
 	}); err == nil {
 		t.Fatal("model outside account selection was accepted")
 	}
-	if runtime.requests[0].Target.Environment["CODEX_HOME"] == "" || runtime.requests[1].Target.Environment["CODEX_HOME"] == "" {
+	if runtime.requests[0].Resources.Target.Environment["CODEX_HOME"] == "" || runtime.requests[1].Resources.Target.Environment["CODEX_HOME"] == "" {
 		t.Fatal("missing native configuration home")
 	}
 	summary, err := manager.chats.GetChatSummary(context.Background(), accepted.Chat.ID)
@@ -81,8 +83,49 @@ func TestChatAccountSelectionUsesAccountModels(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForChatTerminal(t, manager, accepted.Chat.ID)
-	if third.Execution.AccountID != "" || runtime.requests[2].Target.Isolated {
+	if third.Execution.AccountID != "" || runtime.requests[2].Resources.Target.Isolated {
 		t.Fatal("explicit system selection ignored")
+	}
+	summary, err = manager.chats.GetChatSummary(context.Background(), accepted.Chat.ID)
+	if err != nil || summary.Chat.LastAccountID != "" {
+		t.Fatalf("system selection did not clear the chat account projection: account=%q err=%v", summary.Chat.LastAccountID, err)
+	}
+	fourth, err := manager.sendTestMessage(context.Background(), testMessageInput{
+		ChatID: accepted.Chat.ID, Message: userMessage{Text: "continue with system"}, Runtime: runtimeSelection{RuntimeID: constants.RuntimeIDCodex},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
+	if fourth.Execution.AccountID != "" || runtime.requests[3].Resources.Target.Isolated {
+		t.Fatal("default continuation restored the previous managed account")
+	}
+	otherAccount := account
+	otherAccount.ID = "1123456789abcdef0123456789abcdef"
+	otherAccount.Name = "other"
+	if err := accounts.Create(context.Background(), otherAccount, "other-private-key"); err != nil {
+		t.Fatal(err)
+	}
+	fifth, err := manager.sendTestMessage(context.Background(), testMessageInput{
+		ChatID: accepted.Chat.ID, Message: userMessage{Text: "switch managed account"}, Runtime: runtimeSelection{RuntimeID: constants.RuntimeIDCodex, AccountID: otherAccount.ID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
+	summary, err = manager.chats.GetChatSummary(context.Background(), accepted.Chat.ID)
+	if err != nil || summary.Chat.LastAccountID != otherAccount.ID {
+		t.Fatalf("managed account switch missing from chat projection: account=%q err=%v", summary.Chat.LastAccountID, err)
+	}
+	sixth, err := manager.sendTestMessage(context.Background(), testMessageInput{
+		ChatID: accepted.Chat.ID, Message: userMessage{Text: "continue with selected account"}, Runtime: runtimeSelection{RuntimeID: constants.RuntimeIDCodex},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
+	if fifth.Execution.AccountID != otherAccount.ID || sixth.Execution.AccountID != otherAccount.ID || !runtime.requests[5].Resources.Target.Isolated {
+		t.Fatal("default continuation did not retain the selected managed account")
 	}
 	data, _ := json.Marshal(accepted.Execution)
 	if strings.Contains(string(data), "private-key") {
@@ -133,7 +176,7 @@ func TestChatAccountModelReachesPiAndKimiNativeConfiguration(t *testing.T) {
 				t.Fatal(err)
 			}
 			waitForChatTerminal(t, manager, accepted.Chat.ID)
-			if len(runtime.requests) != 1 || runtime.requests[0].Policy.Model != test.expectedModel || runtime.requests[0].Target.Environment[test.environmentKey] == "" {
+			if len(runtime.requests) != 1 || runtime.requests[0].Policy.Model != test.expectedModel || runtime.requests[0].Resources.Target.Environment[test.environmentKey] == "" {
 				t.Fatal("chat model did not reach the selected native CLI configuration")
 			}
 		})
@@ -159,12 +202,12 @@ type accountRuntime struct {
 }
 
 // Runtimes 允许契约测试跨 Codex 与 Claude 切换。
-func (r *accountRuntime) Runtimes() []runtimecontract.RuntimeSummary {
+func (r *accountRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
 	entries := r.fakeRuntime.Runtimes()
-	entries = append(entries, runtimecontract.RuntimeSummary{ID: constants.RuntimeIDClaude, BaseRuntimeID: constants.RuntimeIDClaude, InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"})
+	entries = append(entries, runtimeconfig.RuntimeSummary{ID: constants.RuntimeIDClaude, BaseRuntimeID: constants.RuntimeIDClaude, InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"})
 	entries = append(entries,
-		runtimecontract.RuntimeSummary{ID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
-		runtimecontract.RuntimeSummary{ID: constants.RuntimeIDKimi, BaseRuntimeID: constants.RuntimeIDKimi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
+		runtimeconfig.RuntimeSummary{ID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
+		runtimeconfig.RuntimeSummary{ID: constants.RuntimeIDKimi, BaseRuntimeID: constants.RuntimeIDKimi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
 	)
 	return entries
 }

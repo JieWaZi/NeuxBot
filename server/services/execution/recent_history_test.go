@@ -1,12 +1,15 @@
 package execution
 
 import (
+	"context"
+	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
 	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -104,5 +107,91 @@ func TestBuildRunRequestStartsNewSessionWithinSameChat(t *testing.T) {
 	if request.Session.Mode != runtimecontract.SessionModeNew || len(request.History) != 2 ||
 		request.History[0].Content != "recent question" || request.History[1].Content != "recent answer" {
 		t.Fatalf("new session request = %+v", request)
+	}
+}
+
+// TestColdNewSessionFindsSuccessfulTurnPastFailedTail 验证配置轮数计算完整成功轮，而非末尾原始消息数量。
+func TestColdNewSessionFindsSuccessfulTurnPastFailedTail(t *testing.T) {
+	runtime := &fakeRuntime{results: []runtimecontract.Result{{}, {Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeProcessExited, Stage: "runtime", Message: "fixture failed", Transience: runtimediagnostic.FailureTransiencePermanent}}}}
+	manager := newMessageTestService(t, t.TempDir(), runtime)
+	ctx := context.Background()
+	core := manager.execution.(*service)
+	first, err := core.Start(ctx, WorkIntent{ClientRequestID: "complete-history", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "successful context"}, Options: WorkOptions{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	if _, err := core.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", Content: "failed later input"}, Options: WorkOptions{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}}); err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	observed := &readBudgetJournal{Journal: core.journal}
+	core.journal = observed
+	if _, err := core.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", Content: "new session"}, Options: WorkOptions{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyNew, HistoryTurns: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	if observed.historyBodies.Load() != 1 || observed.fullReads.Load() != 0 {
+		t.Fatalf("history body reads=%d full=%d", observed.historyBodies.Load(), observed.fullReads.Load())
+	}
+	history := runtime.requests[2].History
+	if len(history) != 2 || history[0].Content != "successful context" || history[1].Content != "执行完成" {
+		t.Fatalf("lost last complete successful turn: %+v", history)
+	}
+}
+
+// TestColdHistorySkipsNonUserAndOmittedRounds 验证被省略及非用户成功输入不挤占最近完整轮。
+func TestColdHistorySkipsNonUserAndOmittedRounds(t *testing.T) {
+	runtime := &fakeRuntime{}
+	manager := newMessageTestService(t, t.TempDir(), runtime)
+	core := manager.execution.(*service)
+	ctx := context.Background()
+	first, err := core.Start(ctx, WorkIntent{ClientRequestID: "history-filter-first", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "keep completed context"}, Options: WorkOptions{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	omitted, err := core.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", Content: "already included"}, Options: WorkOptions{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	if _, err := core.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "workflow", Content: "nonuser input"}, Options: WorkOptions{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}}); err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	observed := &readBudgetJournal{Journal: core.journal}
+	core.journal = observed
+	if _, err := core.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", Content: "next"}, Options: WorkOptions{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyNew, HistoryTurns: 1, HistoryMessageIDsToOmit: []string{omitted.Execution.UserMessageID, omitted.Execution.ID}}}); err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	history := runtime.requests[3].History
+	if len(history) != 2 || history[0].Content != "keep completed context" || observed.historyBodies.Load() != 2 || observed.fullReads.Load() != 0 {
+		t.Fatalf("history=%+v bodies=%d full=%d", history, observed.historyBodies.Load(), observed.fullReads.Load())
+	}
+}
+
+// TestColdHistoryPairsInheritedMessagesAcrossCandidatePages 验证一轮继承输入和最终答复跨候选页时仍完整交接。
+func TestColdHistoryPairsInheritedMessagesAcrossCandidatePages(t *testing.T) {
+	runtime := &fakeRuntime{}
+	manager := newMessageTestService(t, t.TempDir(), runtime)
+	core := manager.execution.(*service)
+	ctx := context.Background()
+	first, err := core.Start(ctx, WorkIntent{ClientRequestID: "inherited-history", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "older input"}, Options: WorkOptions{RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, first.Chat.ID)
+	if _, err := core.journal.AppendExecutionFacts(ctx, first.Chat.ID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeMessageInherited, MessageID: "inherited-user", Data: marshalData(messageview.InheritedMessage{Message: messageview.Message{ID: "inherited-user", Role: constants.MessageRoleUser, Actor: "user", Content: "inherited input"}})},
+		{Type: constants.ChatEventTypeMessageInherited, MessageID: "inherited-assistant", Data: marshalData(messageview.InheritedMessage{Message: messageview.Message{ID: "inherited-assistant", Role: constants.MessageRoleAssistant, Content: "inherited final", Status: constants.ExecutionStatusCompleted, DisplayParts: []messageview.MessageDisplayPart{{Type: constants.MessageDisplayPartText, Text: "inherited final"}}}})},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := core.readRecentHistory(ctx, messageChat{chat: first.Chat}, pendingMessage{runtime: runtimeSelection{HistoryTurns: 1}})
+	history := recentRuntimeHistory(messages, 1, false)
+	if err != nil || len(history) != 2 || history[0].Content != "inherited input" || history[1].Content != "inherited final" {
+		t.Fatalf("inherited history=%+v %v", history, err)
 	}
 }

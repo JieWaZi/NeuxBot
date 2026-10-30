@@ -17,8 +17,12 @@ import (
 type PluginController interface {
 	// ContentReferences 返回数据库仍保留的受管目录相对路径。
 	ContentReferences(context.Context) ([]string, error)
-	// InstalledStates 在同一事务内读取伙伴全部安装、版本和共享配置。
-	InstalledStates(context.Context, string) ([]models.PluginState, error)
+	// InstalledReferences 只读取伙伴已启用安装的展示身份和固定版本。
+	InstalledReferences(context.Context, string) ([]models.PluginReference, error)
+	// ExecutionDeclarations 在短读事务内声明伙伴启用安装的固定版本与配置修订。
+	ExecutionDeclarations(context.Context, string) ([]models.PluginExecutionDeclaration, error)
+	// ExecutionConfiguration 在冷资源取得时解密共享配置，不读取私有授权交付材料。
+	ExecutionConfiguration(context.Context, string) (models.PluginConfiguration, error)
 	// ReadStates 批量补齐最多一百个资源的版本、安装与配置。
 	ReadStates(context.Context, []string) (map[string]models.PluginState, error)
 	// Create 登记稳定资源。
@@ -53,6 +57,8 @@ type PluginController interface {
 	Configuration(context.Context, string) (models.PluginConfiguration, error)
 	// UpdateConfiguration 条件更新加密共享配置，由完整用例控制事务。
 	UpdateConfiguration(context.Context, models.PluginConfiguration, int64) error
+	// UpdateDeliveryMaterials 只保存同一配置修订的加密授权交付材料，不改变配置身份。
+	UpdateDeliveryMaterials(context.Context, models.PluginConfiguration) error
 	// Delete 删除资源和关联元数据，由调用用例控制事务和活跃内容回收。
 	Delete(context.Context, string) error
 	// DeleteByWaker 删除伙伴安装和自有资源，由伙伴聚合删除事务调用。
@@ -150,6 +156,7 @@ func (c *pluginController) Update(ctx context.Context, id, name, description str
 	if err != nil {
 		return databaseError("update_plugin", id, err)
 	}
+	publishReferenceChange(ctx, controllerDB(ctx, c.db), eventsResource("plugin", id))
 	publishCommittedChange(ctx, controllerDB(ctx, c.db), constants.PluginEventTopic, eventsResource("plugin", id))
 	return nil
 }
@@ -240,6 +247,7 @@ func (c *pluginController) Install(ctx context.Context, r models.WakerPlugin) er
 	if stored.VersionID != r.VersionID {
 		return status_error.PluginVersionConflict
 	}
+	publishReferenceChange(ctx, controllerDB(ctx, c.db), eventsResource("waker", r.WakerID))
 	publishCommittedChange(ctx, controllerDB(ctx, c.db), constants.PluginEventTopic, eventsResource("plugin", r.PluginID))
 	return nil
 }
@@ -272,6 +280,7 @@ func (c *pluginController) SetEnabled(ctx context.Context, waker, plugin string,
 	if result.RowsAffected == 0 {
 		return status_error.PluginNotFound
 	}
+	publishReferenceChange(ctx, controllerDB(ctx, c.db), eventsResource("waker", waker))
 	publishCommittedChange(ctx, controllerDB(ctx, c.db), constants.PluginEventTopic, eventsResource("plugin", plugin))
 	return nil
 }
@@ -292,6 +301,7 @@ func (c *pluginController) SwitchVersion(ctx context.Context, waker, plugin, exp
 	if result.RowsAffected != 1 {
 		return status_error.PluginVersionConflict
 	}
+	publishReferenceChange(ctx, controllerDB(ctx, c.db), eventsResource("waker", waker))
 	publishCommittedChange(ctx, controllerDB(ctx, c.db), constants.PluginEventTopic, eventsResource("plugin", plugin))
 	return nil
 }
@@ -302,6 +312,7 @@ func (c *pluginController) Uninstall(ctx context.Context, waker, plugin string) 
 	if err != nil {
 		return databaseError("uninstall_plugin", plugin, err)
 	}
+	publishReferenceChange(ctx, controllerDB(ctx, c.db), eventsResource("waker", waker))
 	publishCommittedChange(ctx, controllerDB(ctx, c.db), constants.PluginEventTopic, eventsResource("plugin", plugin))
 	return nil
 }
@@ -319,12 +330,15 @@ func (c *pluginController) Configuration(ctx context.Context, id string) (models
 	if result.Secrets == nil {
 		result.Secrets = []models.MCPSecretDefinition{}
 	}
-	if len(result.Secrets) > 0 {
+	if len(result.Secrets) > 0 || len(result.DeliveryMaterials) > 0 {
 		key, err := getMCPStorageKey(db)
 		if err != nil {
 			return result, err
 		}
 		if err := decryptSecretDefinitions(key, id, "plugin", result.Secrets); err != nil {
+			return result, err
+		}
+		if err := decryptSecretDefinitions(key, id, "plugin-delivery", result.DeliveryMaterials); err != nil {
 			return result, err
 		}
 	}
@@ -353,15 +367,22 @@ func (c *pluginController) UpdateConfiguration(ctx context.Context, config model
 			return err
 		}
 	}
+	config.DeliveryMaterials = append([]models.MCPSecretDefinition(nil), config.DeliveryMaterials...)
+	if len(config.DeliveryMaterials) > 0 {
+		key, err := ensureMCPStorageKey(db)
+		if err != nil {
+			return err
+		}
+		if err := encryptSecretDefinitions(key, config.PluginID, "plugin-delivery", config.DeliveryMaterials); err != nil {
+			return err
+		}
+	}
 	config.Revision = expected + 1
 	config.UpdatedAt = nowMillis()
-	var result *gorm.DB
-	if expected == 0 {
+	result := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ? AND revision = ?", config.PluginID, expected).
+		Select("Revision", "Values", "Secrets", "DeliveryMaterials", "UpdatedAt").Updates(&config)
+	if result.Error == nil && result.RowsAffected == 0 && expected == 0 {
 		result = db.Clauses(clause.OnConflict{DoNothing: true}).Create(&config)
-	} else {
-		// JSON 列通过模型 serializer 编码；显式选列同时保留空映射和清除凭据的写入语义。
-		result = db.Model(&models.PluginConfiguration{}).Where("plugin_id = ? AND revision = ?", config.PluginID, expected).
-			Select("Revision", "Values", "Secrets", "UpdatedAt").Updates(&config)
 	}
 	if result.Error != nil {
 		return databaseError("update_plugin_configuration", config.PluginID, result.Error)
@@ -374,6 +395,37 @@ func (c *pluginController) UpdateConfiguration(ctx context.Context, config model
 }
 
 // Delete 删除完整本机元数据，内容回收在数据库提交之后处理。
+// UpdateDeliveryMaterials 复用配置密钥与乐观并发事实，凭据刷新不增加配置修订。
+func (c *pluginController) UpdateDeliveryMaterials(ctx context.Context, config models.PluginConfiguration) error {
+	db := controllerDB(ctx, c.db)
+	if _, err := c.Get(ctx, config.PluginID); err != nil {
+		return err
+	}
+	config.DeliveryMaterials = append([]models.MCPSecretDefinition(nil), config.DeliveryMaterials...)
+	if len(config.DeliveryMaterials) > 0 {
+		key, err := ensureMCPStorageKey(db)
+		if err != nil {
+			return err
+		}
+		if err := encryptSecretDefinitions(key, config.PluginID, "plugin-delivery", config.DeliveryMaterials); err != nil {
+			return err
+		}
+	}
+	result := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ? AND revision = ?", config.PluginID, config.Revision).
+		Select("DeliveryMaterials").Updates(&config)
+	if result.Error == nil && result.RowsAffected == 0 && config.Revision == 0 {
+		config.Values = map[string]string{}
+		result = db.Clauses(clause.OnConflict{DoNothing: true}).Create(&config)
+	}
+	if result.Error != nil {
+		return databaseError("update_plugin_delivery_materials", config.PluginID, result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return status_error.PluginConfigurationConflict
+	}
+	return nil
+}
+
 func (c *pluginController) Delete(ctx context.Context, id string) error {
 	db := controllerDB(ctx, c.db)
 	for _, model := range []any{&models.WakerPlugin{}, &models.PluginConfiguration{}, &models.PluginVersion{}} {
@@ -384,6 +436,7 @@ func (c *pluginController) Delete(ctx context.Context, id string) error {
 	if err := db.Where("id = ?", id).Delete(&models.Plugin{}).Error; err != nil {
 		return databaseError("delete_plugin", id, err)
 	}
+	publishReferenceChange(ctx, controllerDB(ctx, c.db), eventsResource("plugin", id))
 	publishCommittedChange(ctx, controllerDB(ctx, c.db), constants.PluginEventTopic, eventsResource("plugin", id))
 	if c.cleanup != nil {
 		events.AfterCommit(ctx, c.cleanup)
@@ -419,6 +472,7 @@ func (c *pluginController) DeleteByWaker(ctx context.Context, waker string) erro
 			publishCommittedChange(ctx, controllerDB(ctx, c.db), constants.PluginEventTopic, eventsResource("plugin", relation.PluginID))
 		}
 	}
+	publishReferenceChange(ctx, controllerDB(ctx, c.db), eventsResource("waker", waker))
 	return nil
 }
 
@@ -499,7 +553,7 @@ func (c *pluginController) ReadStates(ctx context.Context, ids []string) (map[st
 	}
 	var key []byte
 	for _, config := range configs {
-		if len(config.Secrets) > 0 {
+		if len(config.Secrets) > 0 || len(config.DeliveryMaterials) > 0 {
 			if key == nil {
 				var err error
 				key, err = getMCPStorageKey(db)
@@ -508,6 +562,9 @@ func (c *pluginController) ReadStates(ctx context.Context, ids []string) (map[st
 				}
 			}
 			if err := decryptSecretDefinitions(key, config.PluginID, "plugin", config.Secrets); err != nil {
+				return nil, err
+			}
+			if err := decryptSecretDefinitions(key, config.PluginID, "plugin-delivery", config.DeliveryMaterials); err != nil {
 				return nil, err
 			}
 		}
@@ -524,34 +581,77 @@ func (c *pluginController) ReadStates(ctx context.Context, ids []string) (map[st
 	return result, nil
 }
 
-// InstalledStates 避免配置更新与版本切换之间出现撕裂的执行快照。
-func (c *pluginController) InstalledStates(ctx context.Context, waker string) ([]models.PluginState, error) {
-	result := []models.PluginState{}
-	err := controllerDB(ctx, c.db).Transaction(func(tx *gorm.DB) error {
-		reader := &pluginController{db: tx}
-		installations, err := reader.Installations(ctx, "", waker)
-		if err != nil {
-			return err
+// ExecutionDeclarations 只投影当前伙伴启用的固定事实，历史版本和管理展示不参与执行声明。
+func (c *pluginController) ExecutionDeclarations(ctx context.Context, waker string) ([]models.PluginExecutionDeclaration, error) {
+	result := []models.PluginExecutionDeclaration{}
+	err := NewTransactionController(dbhelper.NewGormTransactionManager(c.db)).Transaction(ctx, func(readContext context.Context) error {
+		tx := controllerDB(readContext, c.db)
+		// 事务重试必须丢弃前次快照，只返回本次一致读取的声明。
+		result = result[:0]
+		var installations []models.WakerPlugin
+		if err := tx.Select("plugin_id", "version_id").Where("waker_id = ? AND enabled = ?", waker, true).Order("plugin_id").Find(&installations).Error; err != nil {
+			return databaseError("execution_plugin_installations", waker, err)
 		}
-		ids := make([]string, 0, len(installations))
-		for _, item := range installations {
-			ids = append(ids, item.PluginID)
+		if len(installations) == 0 {
+			return nil
 		}
-		for start := 0; start < len(ids); start += 100 {
-			end := min(start+100, len(ids))
-			states, err := reader.ReadStates(ctx, ids[start:end])
-			if err != nil {
-				return err
+		installed := func(column string) *gorm.DB {
+			return tx.Model(&models.WakerPlugin{}).Select(column).Where("waker_id = ? AND enabled = ?", waker, true)
+		}
+		var resources []models.Plugin
+		if err := tx.Select("id", "name").Where("id IN (?)", installed("plugin_id")).Where("owner_waker_id = ? OR owner_waker_id = ?", "", waker).Find(&resources).Error; err != nil {
+			return databaseError("execution_plugin_resources", waker, err)
+		}
+		var versions []models.PluginVersion
+		if err := tx.Select("id", "plugin_id", "digest", "trusted_at").Where("id IN (?)", installed("version_id")).Find(&versions).Error; err != nil {
+			return databaseError("execution_plugin_versions", waker, err)
+		}
+		var configurations []models.PluginConfiguration
+		if err := tx.Select("plugin_id", "revision").Where("plugin_id IN (?)", installed("plugin_id")).Find(&configurations).Error; err != nil {
+			return databaseError("execution_plugin_revisions", waker, err)
+		}
+		byID := make(map[string]models.PluginVersion, len(versions))
+		for _, version := range versions {
+			byID[version.ID] = version
+		}
+		names := make(map[string]string, len(resources))
+		for _, resource := range resources {
+			names[resource.ID] = resource.Name
+		}
+		revisions := make(map[string]int64, len(configurations))
+		for _, configuration := range configurations {
+			revisions[configuration.PluginID] = configuration.Revision
+		}
+		for _, installation := range installations {
+			version, exists := byID[installation.VersionID]
+			name, owned := names[installation.PluginID]
+			if !exists || !owned || version.PluginID != installation.PluginID {
+				continue
 			}
-			for _, id := range ids[start:end] {
-				if state, ok := states[id]; ok {
-					result = append(result, state)
-				}
-			}
+			result = append(result, models.PluginExecutionDeclaration{ID: installation.PluginID, Name: name, VersionID: version.ID, Digest: version.Digest, TrustedAt: version.TrustedAt, ConfigurationRevision: revisions[installation.PluginID]})
 		}
 		return nil
 	})
 	return result, err
+}
+
+// ExecutionConfiguration 延迟解密实际执行配置，授权私有材料仍由身份租约持有者单独读取。
+func (c *pluginController) ExecutionConfiguration(ctx context.Context, id string) (models.PluginConfiguration, error) {
+	result := models.PluginConfiguration{PluginID: id, Values: map[string]string{}, Secrets: []models.MCPSecretDefinition{}}
+	db := controllerDB(ctx, c.db)
+	if err := db.Select("plugin_id", "revision", "values", "secrets").Where("plugin_id = ?", id).Limit(1).Find(&result).Error; err != nil {
+		return result, databaseError("execution_plugin_configuration", id, err)
+	}
+	if len(result.Secrets) > 0 {
+		key, err := getMCPStorageKey(db)
+		if err != nil {
+			return result, err
+		}
+		if err := decryptSecretDefinitions(key, id, "plugin", result.Secrets); err != nil {
+			return result, err
+		}
+	}
+	return result, nil
 }
 
 // ContentReferences 以两次单表查询覆盖共享版本和插件实例数据。
@@ -569,4 +669,56 @@ func (c *pluginController) ContentReferences(ctx context.Context) ([]string, err
 		paths = append(paths, "plugins/data/"+id)
 	}
 	return paths, nil
+}
+
+// InstalledReferences 以三次单表窄列查询读取输入引用，不读取包、配置、账号或使用状态。
+// 调用方以短读事务固定三个查询的一致性；IN 子查询复用伙伴安装的索引。
+func (c *pluginController) InstalledReferences(ctx context.Context, waker string) ([]models.PluginReference, error) {
+	db := controllerDB(ctx, c.db)
+	var installations []models.WakerPlugin
+	if err := db.Select("plugin_id", "version_id").Where("waker_id = ? AND enabled = ?", waker, true).Order("plugin_id").Find(&installations).Error; err != nil {
+		return nil, databaseError("plugin_reference_installations", waker, err)
+	}
+	result := make([]models.PluginReference, 0, len(installations))
+	if len(installations) == 0 {
+		return result, nil
+	}
+	installed := func(column string) *gorm.DB {
+		return db.Model(&models.WakerPlugin{}).Select(column).Where("waker_id = ? AND enabled = ?", waker, true)
+	}
+	var resources []models.Plugin
+	if err := db.Select("id", "name", "description").Where("id IN (?)", installed("plugin_id")).Where("owner_waker_id = ? OR owner_waker_id = ?", "", waker).Order("name, id").Find(&resources).Error; err != nil {
+		return nil, databaseError("plugin_reference_resources", waker, err)
+	}
+	var versions []models.PluginVersion
+	if err := db.Select("id", "plugin_id", "version").Where("id IN (?)", installed("version_id")).Find(&versions).Error; err != nil {
+		return nil, databaseError("plugin_reference_versions", waker, err)
+	}
+	pinned := make(map[string]string, len(installations))
+	for _, relation := range installations {
+		pinned[relation.PluginID] = relation.VersionID
+	}
+	byID := make(map[string]models.PluginVersion, len(versions))
+	for _, version := range versions {
+		byID[version.ID] = version
+	}
+	for _, resource := range resources {
+		version, exists := byID[pinned[resource.ID]]
+		if exists && version.PluginID == resource.ID {
+			result = append(result, models.PluginReference{ID: resource.ID, Name: resource.Name, Description: resource.Description, Version: version.Version, VersionID: version.ID})
+		}
+	}
+	return result, nil
+}
+
+// publishReferenceChange 仅广播候选身份实际改变的资源，配置与使用状态仍走管理事件。
+func publishReferenceChange(ctx context.Context, db *gorm.DB, resource events.Resource) {
+	value, exists := db.Get(eventPublisherSetting)
+	publisher, ok := value.(events.Publisher)
+	if !exists || !ok {
+		return
+	}
+	events.AfterCommit(ctx, func() {
+		_ = events.Emit(publisher, constants.PluginEventTopic, constants.PluginReferencesChangedEventType, resource, resource)
+	})
 }

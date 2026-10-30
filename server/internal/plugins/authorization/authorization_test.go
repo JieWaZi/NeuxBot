@@ -34,6 +34,28 @@ func awaitNoticeSession(t *testing.T, events <-chan Session) Session {
 	}
 }
 
+func TestUsageChangesDoNotPublishAuthorizationChanges(t *testing.T) {
+	changes := 0
+	usageChanges := 0
+	authorizer := New(Config{Changed: func(Session) { changes++ }, UsageChanged: func() { usageChanges++ }})
+	update, release, err := authorizer.AcquireUsage(Usage{ChatID: "chat", ExecutionID: "first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	update(Usage{ChatID: "chat", ExecutionID: "second"})
+	update()
+	release()
+	release()
+	update(Usage{ExecutionID: "after-release"})
+	if changes != 0 {
+		t.Fatalf("usage lifecycle published %d authorization changes", changes)
+	}
+	if usageChanges != 4 {
+		t.Fatalf("usage lifecycle published %d usage changes, want 4", usageChanges)
+	}
+}
+
 func TestNoticeCopiesAndClearsAcrossChallengesAndTerminalStates(t *testing.T) {
 	for _, outcome := range []string{"ready", "failed", "cancelled"} {
 		t.Run(outcome, func(t *testing.T) {

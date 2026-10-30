@@ -9,9 +9,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
@@ -309,12 +309,7 @@ func (s *runtimeEventSink) acceptToolInputSnapshotLocked(invocationID string, ev
 	if err := json.Unmarshal(event.Data, &fields); err != nil {
 		return status_error.RuntimeProtocolIncompatible
 	}
-	toolID := ""
-	for _, key := range []string{"id", "tool_use_id", "toolCallId", "tool_call_id", "call_id"} {
-		if json.Unmarshal(fields[key], &toolID) == nil && toolID != "" {
-			break
-		}
-	}
+	toolID := runtimeToolID(fields)
 	if fields["content"] != nil || fields["output"] != nil || fields["rawOutput"] != nil {
 		return status_error.RuntimeProtocolIncompatible
 	}
@@ -344,12 +339,7 @@ func (s *runtimeEventSink) appendToolUpdateLocked(invocationID string, event run
 	if err := json.Unmarshal(event.Data, &fields); err != nil {
 		return status_error.RuntimeProtocolIncompatible
 	}
-	toolID := ""
-	for _, key := range []string{"id", "tool_use_id", "toolCallId", "tool_call_id", "call_id"} {
-		if json.Unmarshal(fields[key], &toolID) == nil && toolID != "" {
-			break
-		}
-	}
+	toolID := runtimeToolID(fields)
 	if s.pending != nil || s.pendingTool != nil && (s.pendingTool.toolID != toolID || s.pendingTool.invocationID != invocationID || s.pendingTool.fields != nil) {
 		if err := s.flushLocked(); err != nil {
 			return err
@@ -368,6 +358,12 @@ func (s *runtimeEventSink) appendToolUpdateLocked(invocationID string, event run
 		return s.flushToolLocked()
 	}
 	return nil
+}
+
+func runtimeToolID(fields map[string]json.RawMessage) string {
+	var id string
+	_ = json.Unmarshal(fields["toolCallId"], &id)
+	return id
 }
 
 // flushToolLocked 提交最新工具参数或有序进度批次；开始事实已经独立持久化。

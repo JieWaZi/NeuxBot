@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/runtimehost/contract"
+	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
@@ -25,8 +25,8 @@ func (m *service) ForkChat(ctx context.Context, input chatservice.ForkInput) (st
 		detection.Version = input.Invocation.Version
 		return runtimecontract.ForkSessionRequest{
 			ReceiptDirectory: input.ReceiptDirectory, ReconcileOnly: input.ReconcileOnly, SourceSessionID: input.Invocation.SessionOutputID, Position: input.Invocation.ForkPosition, SourceWorkspace: input.Invocation.WorkingDirectory,
-			Run: runtimecontract.RunRequest{
-				Target: runtimecontract.RuntimeTarget{RuntimeID: input.Invocation.RuntimeID, Binary: input.Invocation.Binary, PrefixArgs: input.Invocation.PrefixArgs, ConfigHome: input.Invocation.ConfigHome}, Detection: detection,
+			Plan: runtimecontract.SessionPlan{
+				Target: runtimecontract.SessionTarget{RuntimeID: input.Invocation.RuntimeID, Binary: input.Invocation.Binary, PrefixArgs: input.Invocation.PrefixArgs, ConfigHome: input.Invocation.ConfigHome}, Detection: detection,
 				Workspace: runtimecontract.Workspace{Path: input.Workspace, Managed: true, AdditionalWritableDirectories: input.Invocation.AdditionalWritableDirectories},
 				Policy:    runtimecontract.RunPolicy{Model: input.Invocation.Model, Reasoning: input.Invocation.Reasoning, Execution: runtimecontract.ExecutionPolicy{PermissionLevel: input.Invocation.PermissionLevel, WorkspaceReadOnly: input.Invocation.WorkspaceReadOnly}},
 			},

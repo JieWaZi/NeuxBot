@@ -45,3 +45,23 @@ func TestIdentityRejectsInvalidOrConflictingReplay(t *testing.T) {
 		t.Fatalf("conflicting replay error = %v", err)
 	}
 }
+
+func TestSubmissionIdentitySharesDigestWithoutChangingCreationLimit(t *testing.T) {
+	created, err := New(" same-request ", []string{"content"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	submitted, err := NewSubmission(" same-request ", []string{"content"})
+	if err != nil || created != submitted {
+		t.Fatalf("input and creation use different identity mechanisms: %+v %+v %v", created, submitted, err)
+	}
+	if identity, err := NewSubmission(strings.Repeat("s", 128), "content"); err != nil || len(identity.ID) != 128 {
+		t.Fatalf("existing workflow input identity was rejected: %v", err)
+	}
+	if _, err := NewSubmission(strings.Repeat("s", 129), "content"); err != status_error.BadRequest {
+		t.Fatalf("oversized input identity error = %v", err)
+	}
+	if _, err := New(strings.Repeat("s", 65), "content"); err != status_error.BadRequest {
+		t.Fatalf("creation identity boundary changed: %v", err)
+	}
+}
