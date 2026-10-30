@@ -1,6 +1,6 @@
 # CLI 管理与旧 Runtime 收尾计划
 
-> 本文记录 CLI 管理迁移阶段；其后的真实 CLI、实际打包与生命周期结果见[运行与交付收尾](agent-runtime-release-validation-plan-cn.md)。
+> 历史阶段记录：本文的目录、独立 Go module 方案、迁移顺序和验收结果均以当时为准，不作为当前实现或重新验收的依据。当前执行能力已归入 `server/internal/agent/{core,host,environment}` 并属于 `server` 主模块；会话、启动与认证所有权以[职责收拢 Spec](agent-runtime-boundaries-spec-cn.md)及[当前架构说明](../architecture/runtimes-and-accounts-cn.md)为准。
 > 执行方式：subagent-driven-development；按用户要求并行实现，阶段末统一审查一次。
 
 **目标：** 删除 `server/internal/runtimes`，让 CLI 探测、原生分叉、启动工厂和产品宿主各有明确归属，执行内核保持不变。

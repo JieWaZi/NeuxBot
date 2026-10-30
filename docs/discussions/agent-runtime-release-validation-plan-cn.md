@@ -1,5 +1,7 @@
 # Runtime 实际运行与交付收尾
 
+> 历史阶段记录：本文的目录、独立 Go module 方案、迁移顺序和验收结果均以当时为准，不作为当前实现或重新验收的依据。当前执行能力已归入 `server/internal/agent/{core,host,environment}` 并属于 `server` 主模块；会话、启动与认证所有权以[职责收拢 Spec](agent-runtime-boundaries-spec-cn.md)及[当前架构说明](../architecture/runtimes-and-accounts-cn.md)为准。
+
 > 执行方式：Sol 6.1 xhigh 并行验证和修复，Terra 6.1 核对文档；阶段末统一审查一次。
 
 ## 开始前核对

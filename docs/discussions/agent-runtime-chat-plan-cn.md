@@ -1,6 +1,6 @@
 # 普通 Chat Runtime 迁移
 
-> 本文保留对应阶段的设计、实施与验证记录；涉及迁移顺序、旧路径和验收状态的叙述以当时为准。当前代码状态见[实施计划](agent-runtime-implementation-plan-cn.md)及 [CLI 收尾计划](agent-runtime-cli-plan-cn.md)，历史真实 CLI 证据不代表当前构建已验收。
+> 历史阶段记录：本文的目录、独立 Go module 方案、迁移顺序和验收结果均以当时为准，不作为当前实现或重新验收的依据。当前执行能力已归入 `server/internal/agent/{core,host,environment}` 并属于 `server` 主模块；会话、启动与认证所有权以[职责收拢 Spec](agent-runtime-boundaries-spec-cn.md)及[当前架构说明](../architecture/runtimes-and-accounts-cn.md)为准。
 
 ## 设计约束
 

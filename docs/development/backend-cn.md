@@ -68,13 +68,19 @@ cmd / global ---------------> assembly
 - 文件划分必须说明独立的职责、依赖或变化原因；不能以“这是另一个功能”、新增命令或文件较长作为拆分依据。同一职责允许保留较大的文件，优先让完整规则就近阅读；仅当出现实际独立边界时才拆分。装配与生命周期可以同文件，运行接纳与取消可以同文件，同一执行机制的分派、结果与恢复可以同文件；禁止用无明确职责的 `utils.go` 汇总领域逻辑；
 - API 单入口流程优先放在对应 Operator 的职责文件，依赖装配集中管理；禁止为搬移 Service 方法而新增仅有一个 `api.go` 的 `usecases`、`triggers` 包，再由原接口转发。测试随真实职责迁移，不为解决测试导入循环而增加生产包装层；
 - 移动或合并时同步更新所有调用、测试样例路径、生成命令、内嵌资源和当前设计文档；保留既有行为、事务和授权边界，生成内容仍只通过对应生成命令更新；
-- 交付前审查生产文件的职责清单和包依赖：说明每个保留的小文件为何独立、每组关联规则归到哪里。工作流与自动任务的架构测试检查领域目录归属以及孤立私有辅助函数，禁止添加例外来绕过整理要求。
+- 交付前审查生产文件的职责清单和包依赖：说明每个保留的小文件为何独立、每组关联规则归到哪里。工作流与自动任务的代码审查同时核对领域目录归属以及孤立私有辅助函数，禁止添加例外来绕过整理要求。
 
-### 1.2 独立 Agent Runtime 模块
+### 1.2 Agent 执行边界
 
-`packages/agent-runtime` 是独立 Go module，只负责技术调用、会话、事件、输出及资源租约，不导入任何 `server` 包。其技术请求、能力枚举和 Fault 归模块内 `contract`，不使用产品 `constants`、`status_error` 或 toolx 生成器；其他 `server` 包继续遵守第 6 节的原规则。
+`server/internal/agent/{core,host,environment}` 共同属于 `server` 主 Go 模块，不再为执行内核维护独立 `go.mod`。`core` 只负责技术调用、会话、事件、输出与资源租约；除自身包和技术依赖外，不导入产品 `constants`、`status_error`、数据库、Host 或 Environment。技术请求、能力与 Fault 归 `core/contract`，不使用产品 toolx 生成器；其他后端包继续遵守第 6 节的原规则。
 
-宿主接入时在 `server/internal/runtimehost` 完成产品 DTO、账号/资源端口和业务错误的边界转换，不把业务规则或秘密持久化搬入执行内核。Driver 使用公开协议，acp-go 的原生协议和进程实现仍由独立仓库维护。新增技术能力必须有行为测试，不能以复制旧 Runtime 或转发旧 SDK 代替解耦。
+`host` 完成产品 DTO、日志、交互、账号与资源端口的边界转换，只关联业务工作区和 Runtime。技术会话兼容性、活动状态及释放栈由 Core Runtime 唯一维护，不得在 Host 复制摘要、句柄或租约状态机。
+
+SessionPlan 只保存稳定会话配置，TurnInput 只保存本轮输入、资源选择和交互端口，SessionResources 保存实际物化结果及释放能力。所有模型执行统一使用 `Prepare → 冷路径取得资源 → Bind → Run`；Core 不反调业务资源获取函数。冷资源取得使用准备句柄 Context，部分失败结果也必须通过 Bind 交还唯一所有者。禁止传回完整请求继续回填、使用 Data any 携带业务事实，或为聊天和独立任务维护两条准备机制。静态目标与连接器声明必须以窄类型排除秘密环境和刷新函数，不能仅依赖调用方清空字段。原生恢复直接交付真实句柄，历史只从本轮 Seed 进入；不增加未被生产消费的检查点、摘要证明、身份预留或纯转发层。
+
+`environment/config` 是安装、探测和启动事实的叶子；`catalog` 保留本地目录与 Probe/Fork 解释；`launch` 统一持有原生启动和认证资源，只消费冻结配置与刷新、释放回调，不依赖业务数据库或 Host 请求。所有 CLI 技术声明和工厂只在 `core/driver/acp/native` 的 Descriptor 注册表维护。
+
+acp-go 的原生协议和进程实现继续在独立仓库维护并固定依赖版本。新增技术能力必须有行为测试，不能以复制旧实现或增加兼容转发代替职责收拢。当前调用与资源规则见[智能体与账号](../architecture/runtimes-and-accounts-cn.md)，依赖方向由定向架构测试保护。
 
 ## 2. ginx API
 
@@ -161,7 +167,7 @@ API -> Service -> Repository Controller
 - 禁止将多领域归属、生命周期和 JSON 展开塞进层层嵌套的长 SQL，也不能仅把 JOIN 改成逗号联表或大量相关标量子查询来绕过规则；
 - 统计只读取过滤所需的字段和索引，不执行展示补齐；分页必须保留稳定排序、游标和完整总量，不能把有限预览当成总数，也不能加载全部历史后在内存分页；
 - 同一次读取涉及多个查询且要求一致版本时使用短读事务；批量读取限制参数数量，查询计划与查询次数回归必须覆盖规模增长；
-- `internal/architecture/sql_queries_test.go` 检查生产持久化代码的联表边界。已批准例外仅为 memory 的 `keywordSearch.searchFTS` 与 `vectorStore.search`：虚拟索引排名与原记忆范围、正文在同一次查询返回；其他查询不得借此扩大豁免。
+- 查询审查同时核对上述联表边界与真实执行计划。已批准例外仅为 memory 的 `keywordSearch.searchFTS` 与 `vectorStore.search`：虚拟索引排名与原记忆范围、正文在同一次查询返回；其他查询不得借此扩大豁免。
 
 模型和写入规则：
 
@@ -194,6 +200,7 @@ API -> Service -> Repository Controller
 - 字段规则覆盖未导出字段、测试替身字段和适配器内部字段；
 - 注释说明业务含义或技术用途，不机械重复字段名；
 - 新增或修改结构体时，必须检查该结构体的全部字段；
+- `internal/agent/core` 是不依赖产品的技术执行内核，沿用自身结构化 Fault 表达协议、输出与清理结果，由 `agent/host` 在产品边界一次映射为状态错误；该规则不扩展到宿主、环境、API 或业务 Service。技术内核不导入产品 constants、数据库与服务。
 - 所有项目自有错误必须集中定义在 `constants/status_error` 并通过 toolx 生成，规则覆盖 API、Service、Repository Controller、`internal` 深模块、`global` 装配和进程入口，生成文件禁止手改；
 - API、Service、Repository Controller 和 `internal` 可以直接返回 `status_error` 中准确表达当前失败语义的错误，API 只负责通过 `ginx.WithStack(err)` 补充调用堆栈和必要的外部参数；
 - 禁止在任何业务或内部模块中使用 `errors.New`、`fmt.Errorf`、包级哨兵或本包自定义错误类型另行定义项目错误；内部错误说明只能使用稳定英文技术文本，禁止返回中文错误文案；只有 `constants/status_error` 可以通过 `@errZH`、`@errEN` 定义中文与英文 i18n 错误；标准库、第三方依赖和系统调用返回的底层错误必须在首次转换处记录技术上下文，再转换为 `status_error`，不得直接暴露给上层或前端；
@@ -286,5 +293,5 @@ go test ./repositories/controllers -run '^$' -bench '^BenchmarkSQL' -benchtime=2
 - [ ] 没有盲目 `Save`、无条件更新或事务内外部调用；
 - [ ] SQLite 没有启用 WAL 或额外连接参数；
 - [ ] 生成文件由命令产生且可重复生成；
-- [ ] 修改的 Go 文件已执行 `gofmt -w`，`go vet ./...` 和 `go test ./...` 通过。
+- [ ] 修改的 Go 文件已执行 `gofmt -w`，相关包的 vet 和定向测试通过；全量验证仅按用户明确要求执行。
 - [ ] Runtime 续聊只发送本轮新增内容，模型可见静态前缀在配置未变化时保持稳定；随机执行与鉴权数据没有进入工具身份、说明或 Schema。

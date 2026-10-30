@@ -634,7 +634,7 @@ NeuxBot Backend
 | 知识整理   | [published_guard_test.go](../../server/services/knowledge/published_guard_test.go)、[recovery_regression_test.go](../../server/services/knowledge/recovery_regression_test.go)                                                                    | 迟到生成与重启不恢复被撤销权限；冻结配置与队列范围不变化；不创建 Chat/Execution |
 | 工作流     | [authoring_test.go](../../server/services/workflow/authoring_test.go)、[terminal_receipt_test.go](../../server/services/workflow/terminal_receipt_test.go)、[recovery_commands_test.go](../../server/apis/workflows/recovery_commands_test.go)    | 原版本固定、重复命令对账、旧能力失效、终态不被迟到回执改写                      |
 | API 集成   | [authorization_test.go](../../server/services/integration/authorization_test.go)、[invocation_test.go](../../server/services/integration/invocation_test.go)、[published_router_test.go](../../server/apis/integrations/published_router_test.go) | 认证/授权/提交重检分离；撤权顺序保持；只发布登记路由                            |
-| 模块结构   | [现有结构测试](../../server/internal/architecture/workflow_structure_test.go)                                                                                                                                                                     | 增加依赖方向和禁止供应商分支的针对性检查；检查核心行为，不仅检查文件数量        |
+| 模块结构   | [模块与依赖约定](../development/backend-cn.md#11-领域归属与文件内聚)                                                                                                                                                                     | 增加依赖方向和禁止供应商分支的针对性检查；检查核心行为，不仅检查文件数量        |
 
 新增组合测试覆盖：某 Provider 准备失败、重复能力、缺依赖、关闭期间新请求、取消等待、资源逆序释放；服务化阶段再增加两个独立进程的 fence 和撤权竞争测试，进程内 Fake 无法证明该性质。
 

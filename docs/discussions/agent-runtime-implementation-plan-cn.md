@@ -1,5 +1,9 @@
 # Agent Runtime 重构实施计划
 
+> 本文记录原阶段方案与验证。当前公开执行入口、会话模型及资源所有权以[会话模型 Spec](agent-runtime-boundaries-spec-cn.md)和[Agent 子系统](../../server/internal/agent/README.md)为准；文中的 Invoke/Run 名称不代表当前公开 API。
+
+> 历史阶段记录：本文的目录、独立 Go module 方案、迁移顺序和验收结果均以当时为准，不作为当前实现或重新验收的依据。当前执行能力已归入 `server/internal/agent/{core,host,environment}` 并属于 `server` 主模块；会话、启动与认证所有权以[职责收拢 Spec](agent-runtime-boundaries-spec-cn.md)及[当前架构说明](../architecture/runtimes-and-accounts-cn.md)为准。
+
 > **For agentic workers:** 使用 `subagent-driven-development` 执行本计划。用户已要求并行开发；共享契约先固定，按目录所有权并行，依赖任务按门槛衔接。
 
 **Goal:** 建立真正独立、可组合、可验证的 Agent 执行内核，逐批替换功能并删除对应旧职责。
