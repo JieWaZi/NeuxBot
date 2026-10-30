@@ -2,8 +2,9 @@ import { createRef } from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "@/shared/i18n";
-import { Avatar } from "@/shared/ui/avatar";
+import { Avatar, StaticAvatar } from "@/shared/ui/avatar";
 import { Button } from "@/shared/ui/button";
+import styles from "../../../../../vendor/companion/styles.json";
 import { CompanionAvatar, type CompanionControl } from "./companion-avatar";
 
 const mocks = vi.hoisted(() => ({
@@ -53,6 +54,34 @@ afterEach(() => {
 });
 
 describe("共享头像静态展示", () => {
+  it.each(Object.entries(styles))(
+    "普通静态图片保留 %s 风格，不挂载 SVG 引擎",
+    (style, material) => {
+      const { container } = render(
+        <StaticAvatar name="伙伴" src={material.avatar} size="sm" />,
+      );
+      expect(container.querySelector("img")).toHaveAttribute(
+        "src",
+        expect.stringContaining(`/static/${style}.svg`),
+      );
+      expect(container.querySelector("svg")).toBeNull();
+      expect(container.querySelector("button")).toBeNull();
+      expect(mocks.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it("动态头像替换为普通图片时销毁原播放与引擎，不创建新的引擎", async () => {
+    const { engine, playback } = renderer();
+    const view = render(<Avatar name="伙伴" />);
+    await waitFor(() => expect(mocks.playback).toHaveBeenCalledOnce());
+    view.rerender(<StaticAvatar name="伙伴" />);
+    expect(view.container.querySelector("img")).toBeInTheDocument();
+    expect(view.container.querySelector("svg")).toBeNull();
+    expect(playback.destroy).toHaveBeenCalledOnce();
+    expect(engine.destroy).toHaveBeenCalledOnce();
+    expect(mocks.create).toHaveBeenCalledOnce();
+  });
+
   it("实际绘制后通知入场交接，重新渲染不会重建引擎", async () => {
     const { engine } = renderer();
     const ready = vi.fn(() => expect(engine.renderStatic).toHaveBeenCalled());
