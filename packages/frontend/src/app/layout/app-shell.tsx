@@ -19,7 +19,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import type { ChatRightPanel } from "@/modules/chat";
-import { chatListInfiniteOptions, getChatOptions } from "@/modules/chat";
+import { listChatsOptions, getChatOptions } from "@/modules/chat";
 import {
   SettingsContextSidebar,
   SettingsScene,
@@ -109,7 +109,11 @@ export function AppShell({
     <NotificationNavigationProvider resolveHref={notificationHref}>
       <WorkspaceProvider>
         <AppSceneWorkspaceProvider
-          location={{ pathname: location.pathname, search: location.search }}
+          location={{
+            pathname: location.pathname,
+            search: location.search,
+            key: location.key,
+          }}
           navigate={(href) => navigate(href, { flushSync: true })}
         >
           <AppShellContent RouteScene={RouteScene} />
@@ -374,10 +378,13 @@ function AppShellContent({
     }));
     setChatRightPanel(undefined);
     void queryClient
-      .fetchInfiniteQuery(chatListInfiniteOptions(partnerId))
+      .fetchQuery({
+        ...listChatsOptions({ query: { wakerId: partnerId, limit: 1 } }),
+        staleTime: 0,
+      })
       .then((data) => {
         if (entitySelectionRequestRef.current !== request) return;
-        const latestChatId = data.pages[0]?.resources?.[0]?.id;
+        const latestChatId = data.resources?.[0]?.id;
         navigate(
           latestChatId
             ? chatHref(latestChatId, partnerId)
@@ -646,6 +653,13 @@ function AppShellContent({
                   }
                   appScenes.dispatch({ type: "close", tabId });
                 }}
+                onRename={(tabId, label) => {
+                  appScenes.dispatch({ type: "rename-tab", tabId, label });
+                }}
+                onCloseOthers={(tabId) => {
+                  setSceneNavigationVisible(tabId === "settings");
+                  appScenes.dispatch({ type: "close-others", tabId });
+                }}
                 onSelect={(tabId) => {
                   if (tabId === "settings" && !settingsOpen) {
                     settingsPreviousCollapsedRef.current =
@@ -654,7 +668,10 @@ function AppShellContent({
                   setSceneNavigationVisible(tabId === "settings");
                   appScenes.dispatch({ type: "select", tabId });
                 }}
-                tabs={appScenes.snapshot.tabs}
+                tabs={appScenes.snapshot.tabs.map((tab) => ({
+                  ...tab,
+                  label: tab.customLabel ?? tab.label,
+                }))}
                 trailing={
                   (showChatChromeActions ||
                     /^\/workflows\/[^/]+(?:\/runs\/[^/]+)?$/.test(

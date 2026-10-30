@@ -3,6 +3,7 @@ import type { SceneTab } from "@/shared/ui/scene-tab-strip";
 export type AppSceneKind = "route" | "settings" | "workspace";
 
 export type AppSceneTab = SceneTab & {
+  customLabel?: string;
   href?: string;
   kind: AppSceneKind;
   lastUsed: number;
@@ -20,6 +21,8 @@ export type AppSceneCommand =
   | { type: "open"; tab: Omit<AppSceneTab, "lastUsed">; now?: number }
   | { type: "select"; tabId: string; now?: number }
   | { type: "close"; tabId: string }
+  | { type: "rename-tab"; tabId: string; label: string }
+  | { type: "close-others"; tabId: string }
   | { type: "rename"; tabId: string; label: string }
   | {
       type: "sync-workspace";
@@ -165,6 +168,17 @@ export function appSceneReducer(
     };
   }
 
+  if (command.type === "rename-tab") {
+    const label = command.label.trim();
+    if (!label) return snapshot;
+    return {
+      ...snapshot,
+      tabs: snapshot.tabs.map((tab) =>
+        tab.id === command.tabId ? { ...tab, customLabel: label } : tab,
+      ),
+    };
+  }
+
   if (command.type === "rename") {
     return {
       ...snapshot,
@@ -192,6 +206,7 @@ export function appSceneReducer(
       const index = nextTabs.findIndex((tab) => tab.id === id);
       const previous = index >= 0 ? nextTabs[index] : undefined;
       const next: AppSceneTab = {
+        customLabel: previous?.customLabel,
         closeable: workspaceTab.closeable ?? true,
         draggable: workspaceTab.draggable,
         href: command.ownerHref,
@@ -246,6 +261,30 @@ export function appSceneReducer(
         );
       });
     return unchanged ? snapshot : { activeTabId, tabs };
+  }
+
+  if (command.type === "close-others") {
+    const kept = snapshot.tabs.find((tab) => tab.id === command.tabId);
+    if (!kept) return snapshot;
+    // 工作台子页签依赖所属会话，保留子页签时不能卸载其宿主。
+    const protectedIds = new Set([kept?.id, kept?.ownerTabId]);
+    const closingTabs = snapshot.tabs.filter(
+      (tab) => tab.closeable && !protectedIds.has(tab.id),
+    );
+    let next = closingTabs.reduce(
+      (current, tab) =>
+        appSceneReducer(current, { type: "close", tabId: tab.id }),
+      snapshot,
+    );
+    const activeTabId =
+      kept?.id ??
+      (next.tabs.some((tab) => tab.id === next.activeTabId)
+        ? next.activeTabId
+        : [...next.tabs].sort(
+            (left, right) => right.lastUsed - left.lastUsed,
+          )[0]?.id);
+    next = { ...next, activeTabId };
+    return next;
   }
 
   const closing = snapshot.tabs.find((tab) => tab.id === command.tabId);

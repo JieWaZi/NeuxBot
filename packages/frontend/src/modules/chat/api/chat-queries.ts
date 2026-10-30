@@ -7,6 +7,7 @@ export {
   getChatQueryKey,
   getChatMessageFileChangeOptions,
   getChatMessageFileChangeQueryKey,
+  listChatsOptions,
   listChatsQueryKey,
   listChatMessagesOptions,
   listChatMessagesQueryKey,

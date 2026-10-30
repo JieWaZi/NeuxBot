@@ -1,5 +1,6 @@
 import { CircleAlert, MoreHorizontal, X, type LucideIcon } from "lucide-react";
 import {
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -13,6 +14,8 @@ import { useTranslation } from "react-i18next";
 
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
+import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
+import { Input } from "@/shared/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,6 +23,12 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/shared/ui/context-menu";
 import { OverflowText } from "@/shared/ui/overflow-text";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useSceneChromeActions } from "@/shared/ui/scene-chrome-actions";
@@ -47,6 +56,8 @@ type SceneTabStripProps = {
   tabs: readonly SceneTab[];
   onSelect: (tabId: string) => void;
   onClose: (tabId: string) => void;
+  onRename?: (tabId: string, label: string) => void;
+  onCloseOthers?: (tabId: string) => void;
   onReorder?: (sourceTabId: string, targetTabId: string) => void;
   leading?: ReactNode;
   paneActions?: ReactNode;
@@ -60,6 +71,8 @@ export function SceneTabStrip({
   className,
   leading,
   onClose,
+  onRename,
+  onCloseOthers,
   onReorder,
   onSelect,
   paneActions,
@@ -67,6 +80,11 @@ export function SceneTabStrip({
   trailing,
 }: SceneTabStripProps) {
   const { t } = useTranslation("common");
+  const [renameTarget, setRenameTarget] = useState<{
+    id: string;
+    label: string;
+  }>();
+  const renameInputId = useId();
   const draggedTabId = useRef("");
   const tabListRef = useRef<HTMLDivElement>(null);
   const tabButtons = useRef(new Map<string, HTMLButtonElement>());
@@ -321,13 +339,47 @@ export function SceneTabStrip({
               ) : null}
             </div>
           );
-          return tab.notFound ? (
+          const triggerContent =
+            onRename && onCloseOthers ? (
+              <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
+            ) : (
+              content
+            );
+          const tabContent = tab.notFound ? (
             <Tooltip key={tab.id}>
-              <TooltipTrigger asChild>{content}</TooltipTrigger>
+              <TooltipTrigger asChild>{triggerContent}</TooltipTrigger>
               <TooltipContent>{t("sceneTabs.notFound")}</TooltipContent>
             </Tooltip>
           ) : (
-            content
+            triggerContent
+          );
+          return onRename && onCloseOthers ? (
+            <ContextMenu key={tab.id}>
+              {tabContent}
+              <ContextMenuContent
+                onCloseAutoFocus={(event) => {
+                  if (renameTarget) event.preventDefault();
+                }}
+              >
+                <ContextMenuItem
+                  onSelect={() =>
+                    setRenameTarget({ id: tab.id, label: tab.label })
+                  }
+                >
+                  {t("sceneTabs.rename")}
+                </ContextMenuItem>
+                <ContextMenuItem
+                  disabled={
+                    !tabs.some((item) => item.id !== tab.id && item.closeable)
+                  }
+                  onSelect={() => onCloseOthers(tab.id)}
+                >
+                  {t("sceneTabs.closeOthers")}
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          ) : (
+            tabContent
           );
         })}
       </div>
@@ -395,6 +447,63 @@ export function SceneTabStrip({
           {sceneActions}
         </div>
       ) : null}
+      <Dialog
+        open={Boolean(renameTarget)}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(undefined);
+        }}
+      >
+        <DialogContent
+          size="sm"
+          title={t("sceneTabs.renameTitle")}
+          description={t("sceneTabs.renameHint")}
+        >
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const label = renameTarget?.label.trim();
+              if (!renameTarget || !label) return;
+              onRename?.(renameTarget.id, label);
+              setRenameTarget(undefined);
+            }}
+          >
+            <div className="px-6 pb-5">
+              <label htmlFor={renameInputId} className="type-body mb-2 block">
+                {t("sceneTabs.nameLabel")}
+              </label>
+              <Input
+                id={renameInputId}
+                autoFocus
+                maxLength={120}
+                placeholder={t("sceneTabs.namePlaceholder")}
+                value={renameTarget?.label ?? ""}
+                onChange={(event) => {
+                  const label = event.target.value;
+                  setRenameTarget((current) =>
+                    current ? { ...current, label } : current,
+                  );
+                }}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setRenameTarget(undefined)}
+              >
+                {t("cancel")}
+              </Button>
+              <Button
+                type="submit"
+                variant="primary"
+                disabled={!renameTarget?.label.trim()}
+              >
+                {t("save")}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

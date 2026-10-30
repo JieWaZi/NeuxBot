@@ -34,7 +34,7 @@ export function AppSceneWorkspaceProvider({
   navigate: (href: string) => void;
 }) {
   const { t } = useTranslation("common");
-  const { pathname, search } = location;
+  const { pathname, search, key: navigationKey } = location;
   const labels = useMemo<RouteSceneLabels>(
     () => ({
       knowledge: t("knowledge:knowledge"),
@@ -76,12 +76,24 @@ export function AppSceneWorkspaceProvider({
     new Map<string, AppWorkspaceContribution>(),
   );
 
+  const previousNavigation = useRef({ pathname, search, navigationKey });
   useLayoutEffect(() => {
+    const previous = previousNavigation.current;
+    const returningToSameRoute =
+      previous.pathname === pathname &&
+      previous.search === search &&
+      previous.navigationKey !== navigationKey;
+    previousNavigation.current = { pathname, search, navigationKey };
+    // 同一 URL 的显式导航也代表返回主会话，不能继续停留在工作台子页签。
+    if (returningToSameRoute) {
+      const contribution = workspaceContributionsRef.current.get(routeScene.id);
+      contribution?.onSelect(contribution.primaryWorkspaceTabId);
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSnapshot((current) =>
       appSceneReducer(current, { type: "open", tab: routeScene }),
     );
-  }, [routeScene]);
+  }, [navigationKey, pathname, routeScene, search]);
 
   const dispatch = useCallback(
     (command: AppSceneCommand) => {
@@ -92,6 +104,43 @@ export function AppSceneWorkspaceProvider({
           : undefined;
       const next = appSceneReducer(current, command);
       setSnapshot(next);
+
+      if (command.type === "close-others") {
+        for (const tab of current.tabs) {
+          if (
+            tab.kind !== "workspace" ||
+            !tab.workspaceTabId ||
+            next.tabs.some((retained) => retained.id === tab.id)
+          )
+            continue;
+          // 宿主保留时通过原有关闭入口释放子页签；宿主移除时由卸载清理。
+          if (
+            tab.ownerTabId &&
+            next.tabs.some((retained) => retained.id === tab.ownerTabId)
+          ) {
+            workspaceContributionsRef.current
+              .get(tab.ownerTabId)
+              ?.onClose(tab.workspaceTabId);
+          }
+        }
+        const target = next.tabs.find((tab) => tab.id === next.activeTabId);
+        if (
+          target?.kind === "workspace" &&
+          target.ownerTabId &&
+          target.workspaceTabId
+        ) {
+          workspaceContributionsRef.current
+            .get(target.ownerTabId)
+            ?.onSelect(target.workspaceTabId);
+        } else if (target?.kind === "route") {
+          const contribution = workspaceContributionsRef.current.get(target.id);
+          if (contribution)
+            contribution.onSelect(contribution.primaryWorkspaceTabId);
+        }
+        if (target?.href && target.href !== `${pathname}${search}`)
+          navigate(target.href);
+        return;
+      }
 
       if (command.type === "select") {
         const target = next.tabs.find((tab) => tab.id === command.tabId);

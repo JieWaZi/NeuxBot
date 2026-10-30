@@ -10,8 +10,8 @@ export const DropdownMenuTrigger = DropdownMenuPrimitive.Trigger;
 export const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 export const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 
-const menuContentClass =
-  "border-border-default bg-surface-raised origin-(--radix-dropdown-menu-content-transform-origin) z-50 max-h-[min(320px,var(--radix-dropdown-menu-content-available-height))] max-w-[calc(100vw-32px)] min-w-[160px] overflow-y-auto overscroll-contain rounded-lg border p-1 shadow-menu";
+export const menuContentClass =
+  "border-border-default bg-surface-raised z-50 max-w-[calc(100vw-32px)] min-w-[160px] overflow-y-auto overscroll-contain rounded-lg border p-1 shadow-menu";
 
 export function DropdownMenuContent({
   children,
@@ -26,7 +26,11 @@ export function DropdownMenuContent({
         data-motion="popup"
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
-        className={cn(menuContentClass, className)}
+        className={cn(
+          menuContentClass,
+          "max-h-[min(320px,var(--radix-dropdown-menu-content-available-height))] origin-(--radix-dropdown-menu-content-transform-origin)",
+          className,
+        )}
         {...props}
       >
         <NativeOverlayPresence />
@@ -49,7 +53,11 @@ export function DropdownMenuSubContent({
         data-motion="popup"
         sideOffset={sideOffset}
         collisionPadding={collisionPadding}
-        className={cn(menuContentClass, className)}
+        className={cn(
+          menuContentClass,
+          "max-h-[min(320px,var(--radix-dropdown-menu-content-available-height))] origin-(--radix-dropdown-menu-content-transform-origin)",
+          className,
+        )}
         {...props}
       >
         <NativeOverlayPresence />
@@ -59,7 +67,7 @@ export function DropdownMenuSubContent({
   );
 }
 
-const menuItemClass =
+export const menuItemClass =
   "type-ui min-h-row-compact flex w-full cursor-pointer items-center gap-2 rounded-sm px-2 outline-none select-none [&>svg]:size-icon-sm data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[state=checked]:bg-selection-surface data-[state=checked]:text-content-primary data-[highlighted]:bg-muted data-[highlighted]:text-foreground";
 
 export function DropdownMenuLabel({

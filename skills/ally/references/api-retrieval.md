@@ -35,3 +35,26 @@ This is a candidate responsibility split, not a mandatory three-phase template. 
 Implement credential and token storage with appropriate local permissions, atomic updates, expiry handling, and bounded retry behavior. Verify the API's actual invalid-token response. Do not expose secrets in commands, logs, source, or downloadable artifacts. Surface missing setup, incomplete pagination, and empty matches distinctly.
 
 A simulated endpoint may verify cache reuse and pagination logic. It does not verify real credentials, permissions, or the external API. Deliver the saved workflow with that distinction intact.
+
+## Command examples
+
+Use the common rules in [SKILL.md](../SKILL.md). Prepare deterministic API work
+with the API/credential guidance; add `worker` only for requested reasoning:
+
+```sh
+allycli workflow authoring prepare --primitives functionTask --features api-retrieval,files
+```
+
+Implement against verified API documentation and write complete source to
+`workflow.js`. The initial identifier/secret remain declared business inputs,
+not shell arguments or source constants. Optional preflight and authorized save:
+
+```sh
+allycli workflow source validate --source workflow.js
+allycli workflow source save --source workflow.js --expected-revision-id revision-example --request-id api-source-save-01
+allycli receipts get --operation workflow.source.save --request-id api-source-save-01
+```
+
+Use the actual revision from preparation. This creates the workflow; a user-
+authorized run uses [execution](workflow-execution.md#command-examples) with
+inputs matching its revision. `allycli` has no generic HTTP/API passthrough.

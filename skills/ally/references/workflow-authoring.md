@@ -31,3 +31,37 @@ Compare the submitted source with the agreed goal and report any deviation. Dist
 ## Authoring execution recovery
 
 Authoring capability follows the current execution and does not expire while waiting for user answers. `WorkflowAuthoringSuperseded` means a newer execution owns the capability; `WorkflowAuthoringFinished` means this execution has ended. On `retryAdvice: new_authoring_execution`, stop retrying and explain that continuation requires a new message in the workflow authoring chat. The current agent cannot renew its own authority. Closing the editor, repeating preparation, changing request IDs or bypassing the context does not restore old authority. Handle `WorkflowRevisionConflict` separately by reading current source and reconciling changes.
+
+## Command examples
+
+Use the common rules in [SKILL.md](../SKILL.md). For a file-producing partner
+step with deterministic processing, prepare the actual primitives/features:
+
+```sh
+allycli workflow authoring prepare --primitives worker,functionTask --features files
+```
+
+Reuse the returned source, guides, SDK, resources and save contract. When a
+needed detail is absent, these calls illustrate targeted discovery:
+
+```sh
+allycli workflow source get
+allycli workflow annotations list --status pending --page-num 1 --page-size 20
+allycli workflow resources list --kind wakers
+allycli workflow sdk get --topic function --kind sdk
+allycli workflow sdk get --topic f0 --kind example
+```
+
+Topic and resource-kind values must be advertised by the live contract. Write
+the complete agreed source to `workflow.js`, then optionally preflight and save:
+
+```sh
+allycli workflow source validate --source workflow.js
+allycli workflow source save --source workflow.js --expected-revision-id revision-example --request-id source-save-01
+allycli receipts get --operation workflow.source.save --request-id source-save-01
+```
+
+Use the actual `expectedRevisionId` from preparation, including an empty value
+when its initial-save contract requires it. `--source` reads a UTF-8 source file;
+JSON input instead uses a `source` field containing the complete source text.
+Use the returned save receipt; a save does not authorize starting a run.
