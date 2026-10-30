@@ -8,12 +8,16 @@ github.com/BurntSushi/toml v1.5.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
 github.com/JieWaZi/acp-go v0.0.0-20261030005341-7ff14fc57db7 h1:X4c1ViTBsV35ULn8Tu3Vjx0LvzYsxzexEPTYEhmCOkI=
 github.com/JieWaZi/acp-go v0.0.0-20261030005341-7ff14fc57db7/go.mod h1:8MkAHtWdkBWoIIE0YcATk9tMeT2RU4TOBc7zMdG2PXU=
+github.com/JieWaZi/acp-go v0.0.0-20261030094227-a58342da0ddd h1:njW2RKpdS7KBPfWvb5CAcQb43+DsfE2717w11Bt2Euk=
+github.com/JieWaZi/acp-go v0.0.0-20261030094227-a58342da0ddd/go.mod h1:8MkAHtWdkBWoIIE0YcATk9tMeT2RU4TOBc7zMdG2PXU=
 github.com/JieWaZi/acp-go/sdk v0.0.0-20261026093029-d283676c207f h1:isuES04rUQmRGm7ZrztG+u96kFEDpNbS7yJTkxLXshs=
 github.com/JieWaZi/acp-go/sdk v0.0.0-20261026093029-d283676c207f/go.mod h1:aQk0P6nQDXtO7H+lL1YOZbq5nlbxzUSR1x9n469tOfk=
 github.com/JieWaZi/neux-knowledge v0.1.2-0.20261027090513-1fc1fd660983 h1:c0AhW4UqS7T1bc6djZqnamAMiU3zw5Z9e+3vm5rSZGw=
 github.com/JieWaZi/neux-knowledge v0.1.2-0.20261027090513-1fc1fd660983/go.mod h1:0wi+ybWUxSndtQiiJz+Siwixf2nHdceb+DYL5Axm0Tw=
 github.com/JieWaZi/neux-knowledge v0.1.2-0.20261030070840-020f20c93f3d h1:Yb8mTgz5kuMhmM9HSpvva7mE9V/QAeBIjGgkoJzu0Ic=
 github.com/JieWaZi/neux-knowledge v0.1.2-0.20261030070840-020f20c93f3d/go.mod h1:0wi+ybWUxSndtQiiJz+Siwixf2nHdceb+DYL5Axm0Tw=
+github.com/JieWaZi/neux-knowledge v0.1.2-0.20261030094232-fff1c7595373 h1:++x1w16EOSZkIx04D7LlYFZmfhZuCdtWKpjqu2YZb1o=
+github.com/JieWaZi/neux-knowledge v0.1.2-0.20261030094232-fff1c7595373/go.mod h1:0wi+ybWUxSndtQiiJz+Siwixf2nHdceb+DYL5Axm0Tw=
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Microsoft/go-winio v0.5.2/go.mod h1:WpS1mjBmmwHBEWmogvA2mj8546UReBk4v8QkMxJ6pZY=
