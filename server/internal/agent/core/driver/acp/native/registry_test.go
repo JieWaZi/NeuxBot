@@ -44,7 +44,8 @@ func TestNativeConfigurationReachesCLI(t *testing.T) {
 			dir := t.TempDir()
 			capture := filepath.Join(dir, "capture")
 			executable := filepath.Join(dir, "cli")
-			script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CAPTURE\"\necho 'codex-cli 0.99.0'\n"
+			// 后台 app-server 可以晚于版本探测启动，不能覆盖本断言的版本参数记录。
+			script := "#!/bin/sh\nfor argument do last=$argument; done\nif [ \"$last\" = \"--version\" ]; then\n  printf '%s\\n' \"$@\" > \"$CAPTURE\"\nfi\necho 'codex-cli 0.99.0'\n"
 			if err := os.WriteFile(executable, []byte(script), 0755); err != nil {
 				t.Fatal(err)
 			}
