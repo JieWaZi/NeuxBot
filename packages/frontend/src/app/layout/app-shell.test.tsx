@@ -1,3 +1,6 @@
+import { TooltipProvider } from "@/shared/ui/tooltip";
+import { configurePlatform, platform } from "@/shared/platform/provider";
+import type { ApplicationUpdateState } from "@neuxbot/platform-contracts/application-update";
 import type { GlobalEventObserver } from "@/shared/api/global-events";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -519,18 +522,25 @@ function renderShell(
     );
     return render(
       <QueryClientProvider client={queryClient}>
-        <RouterProvider router={router} />
+        <TooltipProvider>
+          <RouterProvider router={router} />
+        </TooltipProvider>
       </QueryClientProvider>,
     );
   }
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[initialEntry]}>
-        <Routes>
-          <Route path="*" element={<AppShell routeScene={TestRouteScene} />} />
-        </Routes>
-      </MemoryRouter>
+      <TooltipProvider>
+        <MemoryRouter initialEntries={[initialEntry]}>
+          <Routes>
+            <Route
+              path="*"
+              element={<AppShell routeScene={TestRouteScene} />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
@@ -550,7 +560,9 @@ function renderLifecycleShell() {
   );
   return render(
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <TooltipProvider>
+        <RouterProvider router={router} />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
@@ -1086,4 +1098,52 @@ describe("AppShell 伙伴导航", () => {
       "top-right",
     );
   });
+  it.each([false, true])(
+    "更新操作进入关于软件，不恢复旧设置分类（曾打开设置=%s）",
+    async (openedSettings) => {
+      const state: ApplicationUpdateState = {
+        revision: 1,
+        currentVersion: "0.1.0",
+        platform: "darwin",
+        arch: "arm64",
+        status: "available",
+        downloadedBytes: 0,
+        release: {
+          version: "0.2.0",
+          url: "https://github.com/JieWaZi/NeuxBot/releases/tag/v0.2.0",
+          notes: "更新",
+          publishedAt: "2026-10-25T00:00:00Z",
+          downloadSize: 100,
+        },
+      };
+      configurePlatform({
+        ...platform(),
+        applicationUpdate: {
+          application_update_state: async () => state,
+          check_application_update: async () => state,
+          download_application_update: async () => state,
+          open_application_installer: async () => state,
+          onApplicationUpdate: () => () => undefined,
+        },
+      });
+      renderShell();
+      if (openedSettings) {
+        await userEvent
+          .setup()
+          .click(await screen.findByRole("button", { name: "设置" }));
+        await userEvent
+          .setup()
+          .click(screen.getByRole("tab", { name: "会话 chat-a" }));
+      }
+      const actions = await screen.findAllByRole("button", {
+        name: "下载新版本 v0.2.0",
+      });
+      const action = actions[0];
+      if (!action) throw new Error("未找到更新入口");
+      await userEvent.setup().click(action);
+      expect(
+        await screen.findByRole("heading", { name: "新版本 v0.2.0" }),
+      ).toBeInTheDocument();
+    },
+  );
 });

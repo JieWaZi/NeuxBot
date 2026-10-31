@@ -1,3 +1,4 @@
+import type { ApplicationUpdateState } from "@neuxbot/platform-contracts/application-update";
 import type { GlobalEventDelivery } from "@neuxbot/platform-contracts/core-event-protocol";
 import type {
   FileDropEvent,
@@ -49,9 +50,26 @@ export type DesktopCommands = HostCommands &
   Pick<WorkspaceCommands, "open_workspace_file"> &
   BrowserCommands &
   EventsCommands & {
+    application_update_state: {
+      args: undefined;
+      result: ApplicationUpdateState;
+    };
+    check_application_update: {
+      args: undefined;
+      result: ApplicationUpdateState;
+    };
+    download_application_update: {
+      args: undefined;
+      result: ApplicationUpdateState;
+    };
+    open_application_installer: {
+      args: undefined;
+      result: ApplicationUpdateState;
+    };
     core_connection: { args: undefined; result: CoreConnection };
   };
 export type DesktopEvents = {
+  "application-update": ApplicationUpdateState;
   "core-event": GlobalEventDelivery;
   "browser-navigation": BrowserNavigationEvent;
   "notification-action": { id: string; action: "click" | "close" };
@@ -63,6 +81,9 @@ export type DesktopBridge = {
       : [args: DesktopCommands[K]["args"]]
   ) => Promise<DesktopCommands[K]["result"]>;
 } & {
+  onApplicationUpdate(
+    handler: (state: ApplicationUpdateState) => void,
+  ): () => void;
   onCoreEvent(handler: (event: GlobalEventDelivery) => void): () => void;
   onBrowserNavigation(
     handler: (event: BrowserNavigationEvent) => void,

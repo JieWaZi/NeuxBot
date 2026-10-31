@@ -1,6 +1,14 @@
-import { Bot, KeyRound, Settings2, Plug, MessageCircle } from "lucide-react";
+import {
+  Bot,
+  Info,
+  KeyRound,
+  Settings2,
+  Plug,
+  MessageCircle,
+} from "lucide-react";
 
 export type SettingsSection =
+  | "about"
   | "general"
   | "ai-accounts"
   | "runtime-environments"
@@ -10,7 +18,10 @@ export type SettingsSection =
 export const settingsNavigationGroups = [
   {
     titleKey: "groups.app",
-    items: [{ key: "general", labelKey: "sections.general", icon: Settings2 }],
+    items: [
+      { key: "general", labelKey: "sections.general", icon: Settings2 },
+      { key: "about", labelKey: "sections.about", icon: Info },
+    ],
   },
   {
     titleKey: "groups.ai",
@@ -58,7 +69,8 @@ export const settingsNavigation = settingsNavigationGroups.flatMap(
 
 export function settingsSectionOf(value?: string): SettingsSection {
   if (value === "integration-mcp") return "integration-api";
-  return value === "runtime-environments" ||
+  return value === "about" ||
+    value === "runtime-environments" ||
     value === "ai-accounts" ||
     value === "integration-api" ||
     value === "integration-im"

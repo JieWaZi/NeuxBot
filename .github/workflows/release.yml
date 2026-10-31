@@ -162,7 +162,8 @@ jobs:
           fi
           {
             printf '%s\n\n' "$notes"
-            printf '%s\n' "内部试用包：macOS 为临时签名且未公证，Windows 未做代码签名。"
+            printf '%s\n' "当前安装包尚未做正式发行代码签名：macOS 为临时签名且未公证，Windows 未做代码签名。"
+            printf '\n%s\n' "安装遇到系统安全提示时，请参考 [README 安装说明](https://github.com/${GITHUB_REPOSITORY}/blob/${RELEASE_TAG}/README.zh-CN.md)。"
           } > release-notes.md
 
       - name: 发布 GitHub Release
@@ -176,6 +177,8 @@ jobs:
             gh release upload "$RELEASE_TAG" dist/* --clobber
           else
             gh release create "$RELEASE_TAG" dist/* \
+              --draft \
               --title "$RELEASE_TAG" \
               --notes-file release-notes.md
           fi
+          gh release edit "$RELEASE_TAG" --draft=false --latest

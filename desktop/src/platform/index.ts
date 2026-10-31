@@ -35,6 +35,13 @@ export function createDesktopPlatform(bridge: DesktopBridge): Platform {
         token: connection.token,
       };
     },
+    applicationUpdate: {
+      application_update_state: bridge.application_update_state,
+      check_application_update: bridge.check_application_update,
+      download_application_update: bridge.download_application_update,
+      open_application_installer: bridge.open_application_installer,
+      onApplicationUpdate: bridge.onApplicationUpdate,
+    },
     host: {
       save_file: bridge.save_file,
       select_directory: bridge.select_directory,

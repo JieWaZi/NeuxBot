@@ -48,6 +48,15 @@ for (const [name, type] of [
   );
 }
 const bridge: DesktopBridge = {
+  application_update_state: () =>
+    ipcRenderer.invoke("ally:application_update_state"),
+  check_application_update: () =>
+    ipcRenderer.invoke("ally:check_application_update"),
+  download_application_update: () =>
+    ipcRenderer.invoke("ally:download_application_update"),
+  open_application_installer: () =>
+    ipcRenderer.invoke("ally:open_application_installer"),
+  onApplicationUpdate: (handler) => subscribe("application-update", handler),
   core_connection: (args) => ipcRenderer.invoke("ally:core_connection", args),
   subscribe_core_events: (args) =>
     ipcRenderer.invoke("ally:subscribe_core_events", args),
