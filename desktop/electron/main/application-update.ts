@@ -108,16 +108,17 @@ export class ApplicationUpdate {
       (options.platform === "darwin" &&
         ["arm64", "x64"].includes(options.arch)) ||
       (options.platform === "win32" && options.arch === "x64");
+    const development = !options.packaged;
     this.state = {
       revision: 0,
       currentVersion: options.version,
       platform: options.platform,
       arch: options.arch,
-      status: !options.packaged || !supported ? "unavailable" : "idle",
-      unavailableReason: !options.packaged
-        ? "development"
-        : !supported
-          ? "platform"
+      status: supported ? "idle" : "unavailable",
+      unavailableReason: !supported
+        ? "platform"
+        : development
+          ? "development"
           : undefined,
       downloadedBytes: 0,
     };
@@ -152,7 +153,12 @@ export class ApplicationUpdate {
   }
 
   start() {
-    if (this.started || this.state.status === "unavailable") return;
+    if (
+      this.started ||
+      this.state.status === "unavailable" ||
+      !this.options.packaged
+    )
+      return;
     this.started = true;
     const schedule = (delay: number) => {
       if (this.abort.signal.aborted) return;
@@ -377,7 +383,12 @@ export class ApplicationUpdate {
 
   download = (): Promise<ApplicationUpdateState> => {
     if (this.operation) return this.operation;
-    if (this.abort.signal.aborted || !this.candidate || this.installer)
+    if (
+      this.abort.signal.aborted ||
+      !this.options.packaged ||
+      !this.candidate ||
+      this.installer
+    )
       return Promise.resolve(this.snapshot());
     this.operation = this.downloadInstaller(this.candidate).finally(() => {
       this.operation = undefined;
@@ -470,6 +481,8 @@ export class ApplicationUpdate {
   openInstaller = (): Promise<ApplicationUpdateState> => {
     if (this.opening) return this.opening;
     if (this.operation) return this.operation;
+    if (this.abort.signal.aborted || !this.options.packaged)
+      return Promise.resolve(this.snapshot());
     this.opening = this.openVerifiedInstaller().finally(() => {
       this.opening = undefined;
     });

@@ -85,6 +85,32 @@ describe("软件更新占用铃铛入口", () => {
     );
     expect(onOpen).toHaveBeenCalledOnce();
   });
+  it("开发模式发现新版本时不展示 Shell 下载入口", async () => {
+    updates.state = {
+      revision: 1,
+      currentVersion: "0.1.0",
+      platform: "darwin",
+      arch: "arm64",
+      status: "available",
+      unavailableReason: "development",
+      downloadedBytes: 0,
+      release: {
+        version: "0.2.0",
+        url: "https://github.com/JieWaZi/NeuxBot/releases/tag/v0.2.0",
+        notes: "更新",
+        publishedAt: "2026-10-16T00:00:00Z",
+        downloadSize: 100,
+      },
+    };
+    setup();
+    expect(
+      screen.queryByRole("button", { name: "下载新版本 v0.2.0" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "通知 2 项，打开任务看板" }),
+    ).toBeInTheDocument();
+  });
+
   for (const status of ["available", "downloading", "downloaded"] as const) {
     it(`${status} 状态定位关于软件，并按状态下载或打开安装包`, async () => {
       updates.state = {

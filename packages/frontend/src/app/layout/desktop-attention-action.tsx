@@ -20,7 +20,7 @@ export function DesktopAttentionAction({
   const { t } = useTranslation("appSettings");
   const updates = useApplicationUpdate();
   const state = updates.state;
-  if (!state?.release)
+  if (!state?.release || state.unavailableReason === "development")
     return (
       <NotificationBell active={active} connected={connected} onOpen={onOpen} />
     );

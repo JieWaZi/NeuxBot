@@ -111,7 +111,7 @@ test("无公开发行、限流和网络故障分别表达，不伪装成已是�
   assert.equal((await updater.check()).error, "network");
 });
 
-test("只选择已支持的平台安装包，开发模式与未知架构不发起请求", async (t) => {
+test("只选择已支持的平台安装包，开发模式可检查但不下载", async (t) => {
   for (const [platform, arch, name] of [
     ["darwin", "arm64", names[0]],
     ["darwin", "x64", names[1]],
@@ -124,8 +124,16 @@ test("只选择已支持的平台安装包，开发模式与未知架构不发�
     await updater.openInstaller();
     assert.equal(path.basename(opened[0]), name);
   }
+  const { updater: devUpdater, calls: devCalls } = await fixture(t, {
+    packaged: false,
+  });
+  assert.equal((await devUpdater.check()).status, "available");
+  assert.equal(devCalls.length, 1);
+  assert.equal((await devUpdater.download()).status, "available");
+  assert.equal(devCalls.length, 1);
+  await devUpdater.openInstaller();
+  assert.equal(devCalls.length, 1);
   for (const options of [
-    { packaged: false },
     { platform: "linux" },
     { platform: "win32", arch: "arm64" },
   ]) {

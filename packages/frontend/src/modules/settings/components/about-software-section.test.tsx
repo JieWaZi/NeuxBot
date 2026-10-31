@@ -30,7 +30,13 @@ import type { ApplicationUpdateState } from "@/shared/platform/application-updat
 import { AboutSoftwareSection } from "./about-software-section";
 import "@/shared/i18n";
 
-afterEach(() => vi.unstubAllGlobals());
+const theme = vi.hoisted(() => ({ resolvedTheme: "light" }));
+vi.mock("@/shared/theme", () => ({ useTheme: () => theme }));
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  theme.resolvedTheme = "light";
+});
 
 it("下载完成后仍能检查后续版本并提供新版下载入口", async () => {
   const downloaded: ApplicationUpdateState = {
@@ -149,7 +155,9 @@ it("关于软件展示真实版本，检查后下载、显示进度与打开安�
   expect(
     await screen.findByRole("heading", { name: "新版本 v0.2.0" }),
   ).toBeInTheDocument();
-  expect(screen.getByText("修复界面并改进伙伴。")).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "查看 v0.2.0 更新说明" }),
+  ).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "下载新版本" }));
   expect(download).toHaveBeenCalledOnce();
   act(() =>
@@ -198,6 +206,154 @@ it("Web 展示部署更新说明并禁用桌面安装操作", async () => {
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "打开安装包" }),
+    ).not.toBeInTheDocument();
+  } finally {
+    view.unmount();
+    client.clear();
+  }
+});
+
+it.each(["light", "dark"])(
+  "%s 主题使用真实 NeuxBot 商标，并分组展示产品与更新信息",
+  async (mode) => {
+    theme.resolvedTheme = mode;
+    const client = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={client}>
+        <AboutSoftwareSection />
+      </QueryClientProvider>,
+    );
+    try {
+      expect(screen.getByRole("img", { name: "NeuxBot" })).toHaveAttribute(
+        "src",
+        mode === "dark" ? "/ally-logo-dark.svg" : "/ally-logo.svg",
+      );
+      expect(
+        screen.getByRole("region", { name: "产品信息" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("region", { name: "软件更新" }),
+      ).toBeInTheDocument();
+      expect(await screen.findByText("Web 版")).toBeInTheDocument();
+    } finally {
+      view.unmount();
+      client.clear();
+    }
+  },
+);
+
+it("开发模式可检查更新但不展示下载操作", async () => {
+  configureUpdates({
+    application_update_state: async () => ({
+      revision: 0,
+      currentVersion: "0.1.0",
+      platform: "darwin",
+      arch: "arm64",
+      status: "idle",
+      unavailableReason: "development",
+      downloadedBytes: 0,
+    }),
+  });
+  const client = new QueryClient();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <AboutSoftwareSection />
+    </QueryClientProvider>,
+  );
+  try {
+    expect(
+      await screen.findByRole("heading", { name: "开发模式" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/开发模式可手动检查正式版本/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "检查更新" })).toBeEnabled();
+  } finally {
+    view.unmount();
+    client.clear();
+  }
+});
+
+it("新版本更新说明在弹层中以 Markdown 展示", async () => {
+  configureUpdates({
+    application_update_state: async () => ({
+      revision: 1,
+      currentVersion: "0.1.0",
+      platform: "darwin",
+      arch: "arm64",
+      status: "available",
+      downloadedBytes: 0,
+      checkedAt: "2026-10-16T00:00:00.000Z",
+      release: {
+        version: "0.2.0",
+        url: "https://github.com/JieWaZi/NeuxBot/releases/tag/v0.2.0",
+        notes: "## 新增功能\n\n- 伙伴工作台",
+        publishedAt: "2026-10-16T00:00:00.000Z",
+        downloadSize: 1024,
+      },
+    }),
+  });
+  const client = new QueryClient();
+  const user = userEvent.setup();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <AboutSoftwareSection />
+    </QueryClientProvider>,
+  );
+  try {
+    expect(
+      screen.queryByText("打开 DMG 后，请完成正在进行的工作"),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "新版本 v0.2.0" }),
+    ).toBeInTheDocument();
+    await user.click(
+      await screen.findByRole("button", { name: "查看 v0.2.0 更新说明" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "更新说明" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "新增功能" })).toBeInTheDocument();
+    expect(screen.getByText("伙伴工作台")).toBeInTheDocument();
+  } finally {
+    view.unmount();
+    client.clear();
+  }
+});
+
+it("开发模式发现新版本时只预览发行信息", async () => {
+  configureUpdates({
+    application_update_state: async () => ({
+      revision: 1,
+      currentVersion: "0.1.0",
+      platform: "darwin",
+      arch: "arm64",
+      status: "available",
+      unavailableReason: "development",
+      downloadedBytes: 0,
+      checkedAt: "2026-10-16T00:00:00.000Z",
+      release: {
+        version: "0.2.0",
+        url: "https://github.com/JieWaZi/NeuxBot/releases/tag/v0.2.0",
+        notes: "改进伙伴工作台。",
+        publishedAt: "2026-10-16T00:00:00.000Z",
+        downloadSize: 1024,
+      },
+    }),
+  });
+  const client = new QueryClient();
+  const view = render(
+    <QueryClientProvider client={client}>
+      <AboutSoftwareSection />
+    </QueryClientProvider>,
+  );
+  try {
+    expect(await screen.findByText("新版本 v0.2.0")).toBeInTheDocument();
+    expect(
+      screen.queryByText(/开发模式仅预览检查结果/),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "下载新版本" }),
     ).not.toBeInTheDocument();
   } finally {
     view.unmount();
