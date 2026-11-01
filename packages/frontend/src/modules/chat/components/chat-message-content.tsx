@@ -1,242 +1,158 @@
-import { StreamdownTextPrimitive } from "@assistant-ui/react-streamdown";
-import { code } from "@streamdown/code";
-import { mermaid } from "./chat-mermaid-plugin";
-import {
-  CodeBlock,
-  CodeBlockCopyButton,
-  defaultRemarkPlugins,
-  type StreamdownProps,
-  useIsCodeFenceIncomplete,
-} from "streamdown";
-import {
-  createContext,
-  isValidElement,
-  useContext,
-  useMemo,
-  type ComponentPropsWithoutRef,
-  type HTMLAttributes,
-  type ReactNode,
-} from "react";
+import { useMemo, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/shared/lib/cn";
-
-import { Button } from "@/shared/ui/button";
-
+import {
+  MarkdownText,
+  type MarkdownComponents,
+  type MarkdownCodeProps,
+  type MarkdownInlineCodeProps,
+} from "@/shared/markdown/MarkdownText";
+import { CodeBlock } from "@/shared/markdown/CodeBlock";
 import { ChatMermaid } from "./chat-mermaid";
 import { ChatTable } from "./chat-table";
 import { parseReference } from "@/shared/workspace/file-reference";
 import { ReferenceLink } from "@/shared/workspace/file-reference-link";
-import { remarkWorkspaceLinks } from "../model/chat-link";
+import { WorkspaceMarkdownImage } from "@/shared/workspace/workspace-markdown-image";
 
-const chatStreamdownPlugins = {
-  code,
-  mermaid,
-};
-
-const chatCodeLanguageAliases: Record<string, string> = {
-  htm: "html",
-};
-
-const InsideChatLinkContext = createContext(false);
-
-type ChatCodeProps = ComponentPropsWithoutRef<"code"> & {
-  node?: unknown;
-  "data-block"?: string;
-};
-
-function extractCode(children: unknown): string {
-  if (typeof children === "string") return children;
-  if (!isValidElement(children)) return "";
-  const props = children.props as { children?: unknown } | null;
-  return props && typeof props.children === "string" ? props.children : "";
-}
-
-function ChatCode({
+function ChatInlineCode({
   children,
-  className,
-  node: _node,
-  "data-block": dataBlock,
-  renderMermaid = true,
-  allowFileReferences = true,
-  ...props
-}: ChatCodeProps & { renderMermaid?: boolean; allowFileReferences?: boolean }) {
-  const { t } = useTranslation("chat");
-  void _node;
-  const isIncomplete = useIsCodeFenceIncomplete();
-  const insideLink = useContext(InsideChatLinkContext);
-  if (!dataBlock) {
-    const text = typeof children === "string" ? children.trim() : "";
-    const reference =
-      allowFileReferences && !insideLink
-        ? parseReference(text, "inline")
-        : null;
-    const code = (
-      <code
-        className={cn(
-          "aui-streamdown-inline-code font-mono",
-          !insideLink &&
-            "border-border/60 bg-muted rounded-xs border px-1 py-0.5",
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </code>
-    );
-    return reference ? (
-      <ReferenceLink
-        reference={reference}
-        className="font-mono"
-        fallback={code}
-      />
-    ) : (
-      code
-    );
-  }
-
-  const fenceLanguage = className?.match(/language-([^\s]+)/)?.[1] ?? "text";
-  const language =
-    chatCodeLanguageAliases[fenceLanguage.toLowerCase()] ?? fenceLanguage;
-  const codeText = extractCode(children);
-  if (language === "mermaid" && renderMermaid) {
-    return <ChatMermaid code={codeText} />;
-  }
+  inLink,
+  allowFileReferences,
+}: MarkdownInlineCodeProps & { allowFileReferences: boolean }) {
+  const candidate =
+    allowFileReferences && !inLink
+      ? parseReference(children.trim(), "inline")
+      : null;
+  // 行内代码不是文件事实；没有已确认的文件映射时保留原文，避免猜测路径或逐项读取。
+  const reference = candidate?.kind === "web" ? candidate : null;
+  const code = (
+    <code
+      className={cn(
+        "font-mono",
+        !inLink && "border-border/60 bg-muted rounded-xs border px-1 py-0.5",
+      )}
+    >
+      {children}
+    </code>
+  );
+  return reference ? (
+    <ReferenceLink reference={reference} className="font-mono">
+      {children}
+    </ReferenceLink>
+  ) : (
+    code
+  );
+}
+function ChatCode({ code, language, streaming }: MarkdownCodeProps) {
+  const { t } = useTranslation(["chat", "plugin"]);
+  if (language === "mermaid" && !streaming) return <ChatMermaid code={code} />;
   return (
     <CodeBlock
-      code={codeText}
-      language={language}
-      className={className}
-      isIncomplete={isIncomplete}
-    >
-      <Button asChild size="icon-sm" variant="ghost">
-        <CodeBlockCopyButton aria-label={t("codeCopy")} title={t("codeCopy")} />
-      </Button>
-    </CodeBlock>
+      code={code}
+      lang={language}
+      streaming={streaming}
+      copyLabel={t("chat:codeCopy")}
+      copiedLabel={t("plugin:codeCopied")}
+    />
   );
 }
-
-type ChatLinkProps = ComponentPropsWithoutRef<"a"> & {
-  node?: unknown;
-};
-
 function ChatLink({
   children,
-  className,
   href = "",
-  node: _node,
-  allowFileReferences = true,
-}: ChatLinkProps & { allowFileReferences?: boolean }) {
-  void _node;
-  if (!allowFileReferences) {
-    if (!/^https?:\/\//i.test(href))
-      return <span className={className}>{children}</span>;
-    return (
-      <ReferenceLink
-        reference={{ kind: "web", url: href }}
-        className={className}
-      >
-        {children}
-      </ReferenceLink>
-    );
-  }
-  const reference = parseReference(href, "link");
-  if (!reference) return <span className={className}>{children}</span>;
-  return (
-    <InsideChatLinkContext.Provider value={true}>
-      <ReferenceLink reference={reference} className={className}>
-        {children}
-      </ReferenceLink>
-    </InsideChatLinkContext.Provider>
+  className,
+  title,
+  allowFileReferences,
+}: ComponentPropsWithoutRef<"a"> & { allowFileReferences: boolean }) {
+  const reference = allowFileReferences
+    ? parseReference(href, "link")
+    : /^https?:\/\//i.test(href)
+      ? { kind: "web" as const, url: href }
+      : null;
+  return reference ? (
+    <ReferenceLink reference={reference} className={className} title={title}>
+      {children}
+    </ReferenceLink>
+  ) : (
+    <span className={className}>{children}</span>
   );
 }
 
-const userMarkdownComponents = { a: ChatLink, code: ChatCode };
-const assistantMarkdownControls = { code: true, mermaid: true, table: false };
+const markdownClassName = cn(
+  "chat-markdown type-chat min-w-0 max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-4 [&_p]:max-w-4xl [&_p:first-child]:mt-0 [&_p:last-child]:mb-0",
+  "[&_h1]:type-chat-title [&_h1]:mt-8 [&_h1]:mb-4 [&_h2]:type-chat-heading [&_h2]:mt-8 [&_h2]:mb-4 [&_h3]:type-chat-subheading [&_h3]:mt-8 [&_h3]:mb-4 [&_h4]:type-title [&_h4]:my-4 [&_h5]:type-chat [&_h5]:my-4 [&_h6]:type-chat [&_h6]:my-4 [&_:is(h1,h2,h3,h4,h5,h6)]:font-semibold [&_:is(h1,h2,h3,h4,h5,h6)_strong]:[font-weight:inherit] [&_:is(h4,h5,h6):has(+:is(ul,ol))]:mb-2 [&_:is(h4,h5,h6)+:is(ul,ol)]:mt-2",
+  "[&_ul]:my-4 [&_ol]:my-4 [&_li]:my-0 [&_li]:max-w-4xl [&_li+li]:mt-1.5 [&_li>:is(ul,ol)]:mt-1 [&_li>p]:my-2 [&_li>*:first-child]:mt-0 [&_li>*:last-child:not([data-streamdown=code-block])]:mb-0 [&_:is(ul,ol)_ol]:list-inside [&_:is(ul,ol)_ol]:pl-0 [&_:is(ul,ol)_ol_li>p]:inline [&_li::marker]:text-muted-foreground",
+  // 行内代码随正文或标题缩放；表格使用 type-body，缩放后仍不低于 caption。
+  "[&_:not(pre)>code]:type-chat-inline-code [&_pre]:type-chat-code [&_pre]:my-4 [&_pre]:max-w-full [&_pre_code]:[font-size:inherit] [&_:is(h1,h2,h3,h4,h5,h6)_code]:[font-weight:inherit]",
+  "[&_[data-streamdown=code-block-actions]]:border-0 [&_[data-streamdown=code-block-actions]]:bg-transparent [&_[data-streamdown=code-block-actions]]:p-0 [&_[data-streamdown=code-block-actions]]:backdrop-blur-none [&_[data-streamdown=table-wrapper]]:max-w-none [&_[data-streamdown=table-wrapper]]:w-full",
+  "[&_p:has(+[data-streamdown=table-wrapper])]:mb-2 [&_[data-streamdown=table-wrapper]+p]:mt-2",
+  "[&_hr]:my-8 [&_hr]:border-0 [&_hr]:border-t [&_hr]:border-border/60 [&_blockquote]:my-4 [&_blockquote]:max-w-4xl [&_blockquote]:border-l-2 [&_blockquote]:border-border-strong [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground",
+);
 
-const chatLinkSafety = { enabled: false } as const;
-
-// 完整流式快照通过字符队列平滑追赶目标文本。
-// 直接使用 assistant-ui 提供的能力，避免在业务组件中维护第二套动画状态机。
-const chatSmoothStream = {
-  drainMs: 180,
-  maxCharIntervalMs: 10,
-  maxCharsPerFrame: 8,
-  minCommitMs: 16,
-} as const;
-
-const assistantMarkdownContainerProps = {
-  "data-chat-markdown": "assistant",
-} as HTMLAttributes<HTMLDivElement>;
-
-const userMarkdownContainerProps = {
-  "data-chat-markdown": "user",
-} as HTMLAttributes<HTMLDivElement>;
-
-const markdownClassName =
-  "chat-markdown type-chat min-w-0 max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_p]:my-2 [&_p]:max-w-4xl [&_li]:max-w-4xl [&_ul]:my-2 [&_ol]:my-2 [&_pre]:type-chat-code [&_pre]:my-3 [&_pre]:max-w-full [&_code]:type-chat-code [&_[data-streamdown=code-block-actions]]:border-0 [&_[data-streamdown=code-block-actions]]:bg-transparent [&_[data-streamdown=code-block-actions]]:p-0 [&_[data-streamdown=code-block-actions]]:backdrop-blur-none [&_[data-streamdown=table-wrapper]]:max-w-none [&_[data-streamdown=table-wrapper]]:w-full [&_h1]:type-chat-title [&_h1]:mt-6 [&_h1]:mb-3 [&_h2]:type-chat-heading [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:type-chat-subheading [&_h3]:mt-4 [&_h3]:mb-2 [&_hr]:my-4 [&_hr]:border-0 [&_hr]:border-t [&_hr]:border-border/60 [&_blockquote]:my-4 [&_blockquote]:max-w-4xl [&_blockquote]:border-l-2 [&_blockquote]:border-border-strong [&_blockquote]:pl-4 [&_blockquote]:text-muted-foreground";
-
-const workspaceRemarkPlugins: StreamdownProps["remarkPlugins"] = [
-  ...Object.values(defaultRemarkPlugins),
-  remarkWorkspaceLinks,
-];
-
-export function AssistantText({
-  isTerminal = true,
-  renderImage,
-  allowFileReferences = true,
-}: {
+export type AssistantMarkdownProps = {
+  text: string;
   isTerminal?: boolean;
   renderImage?: (props: ComponentPropsWithoutRef<"img">) => ReactNode;
   allowFileReferences?: boolean;
-}) {
-  const components = useMemo(
+};
+/** 聊天正文直接消费唯一节点文本；不再排队逐字追赶服务器内容。 */
+function MarkdownBody({
+  text,
+  isTerminal = true,
+  renderImage,
+  allowFileReferences = true,
+  role,
+}: AssistantMarkdownProps & { role: "assistant" | "user" }) {
+  const { t } = useTranslation(["chat", "plugin"]);
+  const labels = useMemo(
     () => ({
-      a: (props: ChatLinkProps) => (
+      code: {
+        copyLabel: t("chat:codeCopy"),
+        copiedLabel: t("plugin:codeCopied"),
+      },
+      footnotes: t("chat:markdownFootnotes"),
+    }),
+    [t],
+  );
+  const components = useMemo<MarkdownComponents>(
+    () => ({
+      link: (props) => (
         <ChatLink {...props} allowFileReferences={allowFileReferences} />
       ),
-      code: (props: ChatCodeProps) => (
-        <ChatCode
-          {...props}
-          renderMermaid={isTerminal}
-          allowFileReferences={allowFileReferences}
-        />
+      inlineCode: (props) => (
+        <ChatInlineCode {...props} allowFileReferences={allowFileReferences} />
       ),
+      code: ChatCode,
       table: ChatTable,
-      ...(renderImage ? { img: renderImage } : {}),
+      ...(renderImage
+        ? { image: renderImage }
+        : isTerminal && allowFileReferences
+          ? { image: WorkspaceMarkdownImage }
+          : {}),
     }),
-    [isTerminal, renderImage, allowFileReferences],
+    [allowFileReferences, renderImage, isTerminal],
   );
-
   return (
-    <div data-work-result-body={isTerminal || undefined}>
-      <StreamdownTextPrimitive
-        className={markdownClassName}
-        components={components}
-        controls={assistantMarkdownControls}
-        defer={!isTerminal}
-        linkSafety={chatLinkSafety}
-        mode={isTerminal ? "static" : "streaming"}
-        plugins={chatStreamdownPlugins}
-        remarkPlugins={workspaceRemarkPlugins}
-        smooth={isTerminal ? false : chatSmoothStream}
-        containerProps={assistantMarkdownContainerProps}
-      />
+    <MarkdownText
+      text={text}
+      streaming={!isTerminal}
+      labels={labels}
+      className={cn(
+        markdownClassName,
+        role === "user" &&
+          "[&_code]:text-inherit [&_pre]:max-w-full [&_pre]:overflow-x-auto",
+      )}
+      components={components}
+      data-chat-markdown={role}
+    />
+  );
+}
+export function AssistantMarkdown(props: AssistantMarkdownProps) {
+  return (
+    <div data-work-result-body={props.isTerminal !== false || undefined}>
+      <MarkdownBody {...props} role="assistant" />
     </div>
   );
 }
-
-export function UserText() {
-  return (
-    <StreamdownTextPrimitive
-      className={`${markdownClassName} [&_code]:text-inherit [&_pre]:max-w-full [&_pre]:overflow-x-auto`}
-      components={userMarkdownComponents}
-      controls={false}
-      linkSafety={chatLinkSafety}
-      mode="static"
-      plugins={chatStreamdownPlugins}
-      remarkPlugins={workspaceRemarkPlugins}
-      smooth={false}
-      containerProps={userMarkdownContainerProps}
-    />
-  );
+export function UserMarkdown({ text }: { text: string }) {
+  return <MarkdownBody text={text} role="user" />;
 }

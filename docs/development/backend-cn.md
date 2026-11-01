@@ -227,12 +227,12 @@ API -> Service -> Repository Controller
 - goroutine 必须归属于 WaitGroup 或等价生命周期对象；
 - 外部命令使用 `exec.CommandContext`；
 - WS 客户端断开必须释放订阅资源；传输断开或退订不能取消原业务执行；
-- Runtime 实时聊天采用单一 canonical Event Adapter 后的双消费者：Live Consumer 按原始交付顺序生成 `transient` 安全消息快照，Durable Consumer 只在完整执行消息形成后写入权威日志；禁止让 API 层分别解析 Runtime 私有协议；
+- Runtime 实时聊天采用单一 canonical Event Adapter 后的双消费者：Live Consumer 按原始交付顺序生成 `transient` 安全消息增量，Durable Consumer 只在完整执行消息形成后写入权威日志；禁止让 API 层分别解析 Runtime 私有协议；
 - `transient` 实时事件 不得伪造 JSONL Sequence 或持久游标；断线恢复必须先以 history Message Snapshot 对账，再从最后持久化 Sequence 续接；
-- Runtime Partial、Delta、Raw 心跳和中间 Usage 覆盖不得进入 JSONL；连续 text、commentary、thinking 内容只在内存聚合，工具消息和 Invocation 结束是完整消息边界；
+- Runtime Partial、Delta、Raw 心跳和中间 Usage 覆盖不得进入 JSONL；连续 text、commentary、thinking 内容只在内存聚合，工具消息、Invocation 结束以及有界恢复预算是完整消息段边界；临时增量合同与覆盖版本遵守[聊天与执行](../architecture/chat-and-execution-cn.md#实时与恢复)；
 - 最终 Usage 随执行终态只保存一次；取消或失败必须先保存已经完整形成的执行消息，Core 异常退出时尚未形成完整消息的内存内容允许丢失；
 - JSONL 使用作用域式信封：Chat ID 由文件名确定，Sequence 由记录行序恢复，Execution、Invocation 和 Message ID 只在对应作用域入口或稳定身份首次出现时写入；
-- 终态快照发布前必须完成全部完整执行消息持久化；测试必须证明原始事件实时投影与完整消息日志重放得到相同的 Message Snapshot；
+- 执行终态发布前必须完成全部完整执行消息持久化；独立文件采集可以随后完成，不能延迟真实模型终态或绕开后台所有者及删除等待；测试必须证明原始事件实时投影与完整消息日志重放得到相同的 Message Snapshot；
 - 测试覆盖启动失败、取消、重复停止和超时退出；
 
 ### 7.1 统一通知与提交后事件

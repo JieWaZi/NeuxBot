@@ -1,8 +1,6 @@
 package messageview
 
 import (
-	"encoding/json"
-
 	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
@@ -16,14 +14,6 @@ type standardACPFileDiffContent struct {
 	newContent string
 	// hasOldContent 区分新建文件与显式提供空旧文本的修改。
 	hasOldContent bool
-}
-
-// toolFileDiffSnapshot 保存一个工具调用最后一次交付的标准 ACP 文件差异。
-type toolFileDiffSnapshot struct {
-	// toolID 是工具调用和最终状态配对使用的稳定标识。
-	toolID string
-	// diffs 是该工具调用最后一次完整替换交付的文件差异。
-	diffs []standardACPFileDiffContent
 }
 
 // standardACPFileDiffContents 读取标准 ACP ToolCallContent diff 的完整文本。
@@ -63,78 +53,4 @@ func standardACPFileDiffContents(
 		})
 	}
 	return diffs
-}
-
-// messageFileChangeDiffs 把成功文件修改工具合成为执行开始到结束的按文件差异。
-func messageFileChangeDiffs(
-	events []MessageRuntimeEvent,
-	parts []MessageDisplayPart,
-	summaries []ToolFileChangeSummary,
-	scope workspacePathScope,
-) []MessageFileChangeDiff {
-	if len(summaries) == 0 {
-		return nil
-	}
-	allowedTools := make(map[string]struct{})
-	for _, part := range parts {
-		if part.Type == constants.MessageDisplayPartTool &&
-			part.ToolCategory == constants.MessageToolCategoryFileModify &&
-			part.ToolStatus != constants.MessageToolStatusFailed {
-			allowedTools[part.ID] = struct{}{}
-		}
-	}
-	allowedPaths := make(map[string]struct{}, len(summaries))
-	for _, summary := range summaries {
-		allowedPaths[summary.Path] = struct{}{}
-	}
-
-	toolIndexes := make(map[string]int)
-	toolSnapshots := make([]toolFileDiffSnapshot, 0)
-	for _, event := range events {
-		if event.Type != constants.RuntimeEventTypeToolUse && event.Type != constants.RuntimeEventTypeToolInputSnapshot && event.Type != constants.RuntimeEventTypeToolUpdate && event.Type != constants.RuntimeEventTypeToolResult {
-			continue
-		}
-		var data map[string]interface{}
-		if err := json.Unmarshal(event.Data, &data); err != nil {
-			continue
-		}
-		toolID := toolProjectionKey(event.InvocationID, displayToolID(data, event))
-		if _, ok := allowedTools[toolID]; !ok {
-			continue
-		}
-		if _, present := data["content"]; !present {
-			continue
-		}
-		diffs := standardACPFileDiffContents(data, scope)
-		if index, exists := toolIndexes[toolID]; exists {
-			toolSnapshots[index].diffs = diffs
-			continue
-		}
-		toolIndexes[toolID] = len(toolSnapshots)
-		toolSnapshots = append(toolSnapshots, toolFileDiffSnapshot{
-			toolID: toolID,
-			diffs:  diffs,
-		})
-	}
-
-	changeIndexes := make(map[string]int)
-	changes := make([]MessageFileChangeDiff, 0, len(summaries))
-	for _, tool := range toolSnapshots {
-		for _, diff := range tool.diffs {
-			if _, ok := allowedPaths[diff.path]; !ok {
-				continue
-			}
-			if index, exists := changeIndexes[diff.path]; exists {
-				changes[index].NewContent = diff.newContent
-				continue
-			}
-			changeIndexes[diff.path] = len(changes)
-			changes = append(changes, MessageFileChangeDiff{
-				Path:       diff.path,
-				OldContent: diff.oldContent,
-				NewContent: diff.newContent,
-			})
-		}
-	}
-	return changes
 }

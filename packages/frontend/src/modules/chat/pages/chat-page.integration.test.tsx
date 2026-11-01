@@ -768,6 +768,43 @@ afterAll(() => {
 });
 
 describe("ChatPage", () => {
+  it("新聊天空态保留问候和输入框，不渲染推荐提示且无需消息区AuiProvider", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter
+              initialEntries={["/chat?draftId=suggestions&wakerId=waker-1"]}
+            >
+              <Routes>
+                <Route element={<ChatLayout />}>
+                  <Route path="/chat" element={<ChatPage />} />
+                </Route>
+              </Routes>
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("textbox", { name: "输入消息" });
+    await screen.findByRole("heading", { name: "今天想一起完成什么？" });
+    for (const prompt of [
+      "阅读当前项目，给我一个可执行的实现计划",
+      "检查当前改动，优先指出真实风险",
+      "分析项目现状并建议最值得做的下一步",
+    ])
+      expect(
+        screen.queryByRole("button", { name: prompt }),
+      ).not.toBeInTheDocument();
+    expect(createChat).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    view.unmount();
+    client.clear();
+  });
+
   it("隐藏 Scene 暂停插件候选读取，恢复可见后才加载", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -3652,7 +3689,7 @@ describe("ChatPage", () => {
     await screen.findByRole("option", { name: /代码审查/ });
     await user.keyboard("{Enter}");
 
-    expect(input.textContent).toBe("readme.mdxx 代码审查");
+    expect(input.textContent).toBe("/tmp/ally/readme.mdxx 代码审查");
     await user.click(screen.getByRole("button", { name: "发送消息" }));
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
     expect(sendMessage.mock.calls[0]?.[0]).toEqual(
@@ -4215,9 +4252,17 @@ describe("ChatPage", () => {
     const bubble = markdown?.closest(".bg-surface-tertiary");
     expect(bubble?.parentElement).toHaveClass("min-w-0", "max-w-[78%]");
     expect(bubble).toHaveClass("min-w-0", "max-w-full");
-    expect(markdown?.firstElementChild).toHaveClass(
+    expect(markdown).toHaveClass(
       "[&_pre]:max-w-full",
       "[&_pre]:overflow-x-auto",
+    );
+    const code = markdown?.querySelector("pre code");
+    expect(code).toHaveTextContent(
+      "File.unlink('/tmp/zdns_node_rebuild.flag')",
+    );
+    expect(code?.closest("[data-code-block-content]")).toHaveClass(
+      "max-w-full",
+      "overflow-x-auto",
     );
   });
 

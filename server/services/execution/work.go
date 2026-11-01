@@ -383,6 +383,11 @@ func (m *service) startMessage(
 			return AcceptedExecution{Chat: chat, Execution: *receipt, Replayed: true}, nil
 		}
 	}
+	// 前一轮已公开终态仍可能正在冻结结束侧；附件、工作区修复及原生资源准备
+	// 都可能写入同一目录，必须在它们的首次副作用之前等待，而不只拦住 Run。
+	if err := m.executions.waitForFileSnapshots(ctx, executionContext, reservationChatID, executionID); err != nil {
+		return AcceptedExecution{}, status_error.OperationCanceled
+	}
 	state, err := m.resolveMessageChat(ctx, request, executionID)
 	if err != nil {
 		return AcceptedExecution{}, err

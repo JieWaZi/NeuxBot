@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
 import { TooltipProvider } from "@/shared/ui/tooltip";
+import { ContentVisibility } from "@/shared/lib/content-visibility";
 import { WorkspaceFileViewer } from "./workspace-file-viewer";
 
 const nativeView = vi.hoisted(() => ({
@@ -55,8 +56,23 @@ const { getChatMessageFileChange, readWorkspaceDiff, readWorkspaceFile } =
     getChatMessageFileChange: vi.fn(
       async (_chatId: string, _messageId: string, path: string) => ({
         path,
-        oldContent: "const value = 1;\n",
-        newContent: "const value = 2;\n",
+        comparison: {
+          state: "text",
+          beforeExists: true,
+          afterExists: true,
+          hunks: [
+            {
+              oldStart: 1,
+              newStart: 1,
+              oldLines: 1,
+              newLines: 1,
+              lines: [
+                { kind: "delete", text: "const value = 1;" },
+                { kind: "add", text: "const value = 2;" },
+              ],
+            },
+          ],
+        },
       }),
     ),
     readWorkspaceDiff: vi.fn<
@@ -226,14 +242,12 @@ describe("WorkspaceFileViewer", () => {
       </QueryClientProvider>,
     );
     const link = await screen.findByRole("link", { name: "a.txt" });
-    await waitFor(() =>
-      expect(link).toHaveAttribute("data-file-path", "/project/a.txt"),
-    );
+    expect(link).toHaveAttribute("data-file-path", "../a.txt");
     await userEvent.setup().click(link);
     expect(onOpenFile).toHaveBeenCalledWith(
       expect.objectContaining({
         canonicalPath: "/project/a.txt",
-        displayPath: "a.txt",
+        displayPath: "/project/a.txt",
       }),
     );
   });
@@ -708,4 +722,44 @@ describe("WorkspaceFileViewer", () => {
       "/tmp/ally",
     );
   });
+});
+
+it("保活工作区把自身与上层可见资格传给媒体，切换pane不重建内容", async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const tree = (active: boolean, parentVisible: boolean) => (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <ContentVisibility value={parentVisible}>
+          <WorkspaceFileViewer
+            active={active}
+            rootPath="/tmp/project"
+            path="src/main.ts"
+            toolbarAccessory={
+              <ContentVisibility.Consumer>
+                {(visible) => (
+                  <output data-testid="media-visibility">
+                    {String(visible)}
+                  </output>
+                )}
+              </ContentVisibility.Consumer>
+            }
+          />
+        </ContentVisibility>
+      </TooltipProvider>
+    </QueryClientProvider>
+  );
+  const view = render(tree(true, true));
+  const indicator = await screen.findByTestId("media-visibility");
+  expect(indicator).toHaveTextContent("true");
+  view.rerender(tree(false, true));
+  expect(screen.getByTestId("media-visibility")).toBe(indicator);
+  expect(indicator).toHaveTextContent("false");
+  view.rerender(tree(true, false));
+  expect(indicator).toHaveTextContent("false");
+  view.rerender(tree(true, true));
+  expect(indicator).toHaveTextContent("true");
+  view.unmount();
+  client.clear();
 });

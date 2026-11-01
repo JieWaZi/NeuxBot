@@ -164,9 +164,9 @@ func TestSubmissionIdentityProjectsBeforeExecutionAndReceipt(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				snapshot, err := live.Snapshot()
-				if err != nil || snapshot.Message == nil || snapshot.Message.SubmissionID != submissionID {
-					t.Fatalf("live snapshot lost the same input identity: %+v error=%v", snapshot.Message, err)
+				snapshot, _, err := live.Apply("input-scope", agentapi.Event{Type: agentapi.EventTypeTextDelta, Data: json.RawMessage(`{"text":"new"}`)})
+				if err != nil || snapshot.Message != nil || snapshot.Live == nil || snapshot.Live.MessageID != accepted.Execution.ID {
+					t.Fatalf("live increment lost the same message identity: %+v error=%v", snapshot.Live, err)
 				}
 			}
 		}

@@ -5,14 +5,12 @@ import type { ExecutionSelection } from "@/shared/hooks/use-execution-selection"
 import { useChatFork } from "../components/chat-fork";
 import { useChatAccountSelection } from "../model/use-chat-account-selection";
 import { useDraftWorkspaceSelections } from "./use-draft-workspace-selections";
-import { SuggestionPrimitive, ThreadPrimitive } from "@assistant-ui/react";
 import {
   useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Sparkles } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -104,7 +102,7 @@ import { Avatar } from "@/shared/ui/avatar";
 import { TypedPhrases } from "@/shared/ui/typed-phrases";
 import { useSceneWorkspace } from "@/shared/workspace/workspace-context";
 import type { WorkspaceMemberTab } from "@/shared/workspace/workspace-tab";
-import { type ChatOutletContext, chatSuggestionKeys } from "./chat-page-shared";
+import type { ChatOutletContext } from "./chat-page-shared";
 
 export function ChatPage({
   presentationScopeKey,
@@ -182,6 +180,7 @@ function ChatView({
   routeTransitioning = false,
   entry,
   presentation = "workspace",
+  presentationScopeKey,
   workspaceScopeKey,
 }: ChatPageContentProps & { workspaceScopeKey: string }) {
   const { t } = useTranslation("chat");
@@ -821,7 +820,6 @@ function ChatView({
       }));
     },
     onApprovalRequested: notifyApproval,
-    suggestions: chatSuggestionKeys.map((key) => ({ prompt: t(key) })),
     prepareSubmission: (
       text,
       targetChatId,
@@ -1093,21 +1091,6 @@ function ChatView({
           {t("createWakerFirst")}
         </h1>
       )}
-      {selectedWaker && (
-        <div className="mt-6 flex w-full flex-wrap justify-center gap-2 [&>div]:flex [&>div]:w-full [&>div]:flex-wrap [&>div]:justify-center [&>div]:gap-2">
-          <ThreadPrimitive.Suggestions>
-            {() => (
-              <SuggestionPrimitive.Trigger className="bg-muted hover:border-border-strong hover:bg-surface type-body inline-flex max-w-full min-w-0 items-start gap-2 rounded-md border border-transparent px-3 py-2 text-left whitespace-normal transition-colors [&_*]:min-w-0 [&_*]:whitespace-normal">
-                <Sparkles
-                  className="text-muted-foreground size-icon-md shrink-0"
-                  strokeWidth={1.5}
-                />
-                <SuggestionPrimitive.Title />
-              </SuggestionPrimitive.Trigger>
-            )}
-          </ThreadPrimitive.Suggestions>
-        </div>
-      )}
     </div>
   );
   const contributedEmptyState =
@@ -1235,6 +1218,9 @@ function ChatView({
         ? runtimeMessages.findLast((message) => message.inherited)?.id
         : undefined,
       runtime: chatRuntime.runtime,
+      messages: chatRuntime.messages,
+      presentationScopeKey,
+      active: sceneActive,
       wakerName,
       wakerId: conversationWakerId,
       wakerAvatar: conversationAvatar,

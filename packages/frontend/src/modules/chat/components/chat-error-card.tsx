@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useAuiState } from "@assistant-ui/react";
+import type { AllyChatMessage } from "../runtime/chat-projection";
 import {
   AlertTriangle,
   ChevronRight,
@@ -31,6 +31,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/shared/ui/collapsible";
+import { runtimeFailurePresentation } from "../model/runtime-failure-presentation";
 import { chatErrorPresentation } from "../model/chat-error-presentation";
 import type { ChatSendFailure } from "../runtime/chat-send-failure";
 import {
@@ -186,33 +187,30 @@ export function ChatErrorCard({
 }
 
 /** 失败是消息的独立状态块，永远不进入可复制的助手正文。 */
-export function MessageFailure() {
-  const message = useAuiState((state) => state.message);
+export function MessageFailure({
+  message,
+  last,
+}: {
+  message: AllyChatMessage;
+  last: boolean;
+}) {
   const actions = useContext(ChatErrorActions);
   const { t } = useTranslation("chat");
-  if (
-    message.status?.type !== "incomplete" ||
-    message.status.reason !== "error"
-  )
-    return null;
-  const meta = message.metadata?.custom;
-  const executionId =
-    typeof meta?.executionId === "string" ? meta.executionId : message.id;
+  if (message.status !== "failed") return null;
+  const executionId = message.executionId || message.id || "";
   const text =
-    typeof meta?.failureMessage === "string" && meta.failureMessage.trim()
-      ? meta.failureMessage
-      : t("executionIncomplete");
-  const canRetry = meta?.retryable === true && message.isLast && actions.retry;
+    message.errorMessage?.trim() ||
+    runtimeFailurePresentation(message.errorCode).message ||
+    t("executionIncomplete");
+  const canRetry = message.retryable === true && last && actions.retry;
   const canRecover =
-    meta?.failureCode === "SESSION_NOT_FOUND" &&
-    message.isLast &&
-    actions.recover;
+    message.errorCode === "SESSION_NOT_FOUND" && last && actions.recover;
   return (
     <ChatErrorCard
-      key={`${executionId}:${message.isLast}`}
+      key={`${executionId}:${last}`}
       id={`execution:${executionId}`}
       execution
-      historical={!message.isLast}
+      historical={!last}
       message={text}
       disabled={actions.disabled}
       onRetry={canRetry ? () => actions.retry?.(executionId) : undefined}

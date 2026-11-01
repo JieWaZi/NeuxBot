@@ -450,6 +450,8 @@ func TestBoardHTTPReadingRacesAndStableTiedPagination(t *testing.T) {
 	b := a
 	b.LatestVersion = 20
 	b.Reference.MessageID = util.New()
+	b.Reference.FileChangeRecordID = util.New()
+	b.Reference.FileChangeRecordVersion = 2
 	if err := global.WorkResultControllerManager.Publish(ctx, b); err != nil {
 		t.Fatal(err)
 	}
@@ -466,6 +468,12 @@ func TestBoardHTTPReadingRacesAndStableTiedPagination(t *testing.T) {
 	}
 	if _, err := callBoard(t, &ViewWorkResult{}, "", params, map[string]any{"version": b.LatestVersion, "reference": a.Reference}); err == nil {
 		t.Fatal("wrong exact result accepted")
+	}
+	bodyOnly := b.Reference
+	bodyOnly.FileChangeRecordID = ""
+	bodyOnly.FileChangeRecordVersion = 0
+	if _, err := callBoard(t, &ViewWorkResult{}, "", params, map[string]any{"version": b.LatestVersion, "reference": bodyOnly}); err == nil {
+		t.Fatal("旧正文引用确认了新文件成果")
 	}
 	if _, err := callBoard(t, &ViewWorkResult{}, "", params, map[string]any{"version": b.LatestVersion, "reference": b.Reference}); err != nil {
 		t.Fatal(err)

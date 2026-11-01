@@ -915,3 +915,59 @@ it("断线超过50条导致新头部完全越过旧窗口时，只补缺口到�
     server.resetHandlers();
   }
 });
+
+it("团队负责人晚到成果更新原始Chat消息且不新建时间线条目", () => {
+  const client = new QueryClient();
+  const key = teamQueryKeys.timelinePages("channel", "thread");
+  client.setQueryData(key, {
+    pages: [
+      {
+        resources: [
+          {
+            chatId: "lead",
+            coordinator: true,
+            message: {
+              id: "old",
+              role: "assistant",
+              content: "done",
+              liveRevision: 3,
+            },
+          },
+        ],
+        leadChatLatestSequence: 8,
+      },
+    ],
+    pageParams: [undefined],
+  });
+  const record = {
+    recordId: "record",
+    version: 2,
+    state: "ready",
+    complete: true,
+    totalFiles: 1,
+  };
+  expect(
+    commitTeamTimelineEvents(client, "channel", "thread", "lead", "waker", [
+      {
+        sequence: 9,
+        type: "workspace.changes",
+        fileChanges: { messageId: "old", record },
+      },
+      {
+        sequence: 10,
+        type: "workspace.changes",
+        fileChanges: { messageId: "absent", record },
+      },
+    ]),
+  ).toBe(10);
+  const data =
+    client.getQueryData<InfiniteData<ListChannelTimelineResponse>>(key);
+  expect(data?.pages[0]?.resources).toHaveLength(1);
+  expect(data?.pages[0]?.resources?.[0]?.message).toMatchObject({
+    id: "old",
+    content: "done",
+    liveRevision: 3,
+    fileChangeRecord: record,
+  });
+  client.clear();
+});

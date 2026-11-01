@@ -243,6 +243,14 @@ func (s *Store) readMessageWindowIndexedLocked(
 		}
 		records = append(created, records...)
 	}
+	hashes := make(map[[32]byte]bool, len(entries))
+	for _, entry := range entries {
+		hashes[entry.messageHash] = true
+	}
+	records, err = s.appendFileChangesLocked(chatID, indexFile, latestSequence, hashes, records, false)
+	if err != nil {
+		return MessageWindow{}, err
+	}
 	window := MessageWindow{
 		Records:        records,
 		LatestSequence: latestSequence,
@@ -353,7 +361,7 @@ func (s *Store) readMessageAtIndexedLocked(chatID string, sequence, latest int64
 	if err != nil {
 		return nil, err
 	}
-	return append(created, records...), nil
+	return s.appendFileChangesLocked(chatID, file, latest, map[[32]byte]bool{target.messageHash: true}, append(created, records...), false)
 }
 
 // MessageRecordedTimes 返回时间窗内全部消息创建时间，用于精确时区分组。

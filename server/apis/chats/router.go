@@ -14,6 +14,7 @@ func init() {
 	Router.Register(&GetChat{})
 	Router.Register(&ListChatMessages{})
 	Router.Register(&GetChatMessageFileChange{})
+	Router.Register(&GetChatMessageFileChanges{})
 	Router.Register(&UpdateChat{})
 	Router.Register(&ListChats{})
 	Router.Register(&ListChatEvents{})

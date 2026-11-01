@@ -6,7 +6,6 @@ import {
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
-import { useAuiState } from "@assistant-ui/react";
 import { Shuffle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -181,13 +180,19 @@ export function useChatFork({
   };
 }
 
-export function MessageForkAction() {
+export function MessageForkAction({ message }: { message: ChatMessage }) {
   const { t } = useTranslation("chat");
   const controls = useContext(ChatForkContext);
-  const id = useAuiState((state) => state.message.id);
-  const status = useAuiState((state) => state.message.status?.type);
+  const id = message.inherited ? message.id : message.executionId || message.id;
+  const status = message.status;
   const target = controls?.targets.find((item) => item.executionId === id);
-  if (!controls || controls.busy || !target || !status || status === "running")
+  if (
+    !controls ||
+    controls.busy ||
+    !target ||
+    !status ||
+    !["completed", "failed", "canceled"].includes(status)
+  )
     return null;
   const reason = target.available
     ? t("forkHere")
@@ -200,7 +205,7 @@ export function MessageForkAction() {
         variant="ghost"
         aria-label={t("forkHere")}
         disabled={!target.available || controls.pending}
-        onClick={() => void controls.fork(id)}
+        onClick={() => void controls.fork(target.executionId)}
       >
         <Shuffle />
       </Button>

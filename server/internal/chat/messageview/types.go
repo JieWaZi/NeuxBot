@@ -6,6 +6,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
@@ -33,14 +34,16 @@ type ToolFileChangeSummary struct {
 	DeletedLines int `json:"deletedLines,omitempty"`
 }
 
-// MessageFileChangeDiff 是从一条 Assistant 消息的标准 ACP diff 投影出的执行级文件差异。
+// MessageFileChangeDiff 是独立工作区快照生成的有界文件差异。
 type MessageFileChangeDiff struct {
-	// Path 是位于对话执行工作区内的安全相对路径。
+	// Path 是仍在当前授权范围内的原始文件绝对路径。
 	Path string `json:"path"`
-	// OldContent 是本次执行首次修改该文件前的完整文本。
-	OldContent string `json:"oldContent"`
-	// NewContent 是本次执行最后一次成功修改该文件后的完整文本。
-	NewContent string `json:"newContent"`
+	// OldContent 仅兼容旧内部快照，不进入公开接口。
+	OldContent string `json:"-"`
+	// NewContent 仅兼容旧内部快照，不进入公开接口。
+	NewContent string `json:"-"`
+	// Comparison 是独立工作区快照提供的有界差异，前端直接渲染。
+	Comparison *changes.Diff `json:"comparison,omitempty"`
 }
 
 // ToolSafeSummary 是聊天接口允许展示的受限工具摘要。
@@ -166,12 +169,16 @@ type Message struct {
 	RuntimeEvents []MessageRuntimeEvent `json:"-"`
 	// DisplayParts 是供聊天界面渲染的最小跨 Runtime 展示视图。
 	DisplayParts []MessageDisplayPart `json:"displayParts,omitempty"`
-	// FileChanges 是当前执行内全部成功文件修改工具聚合出的有序变更摘要。
-	FileChanges []ToolFileChangeSummary `json:"fileChanges,omitempty"`
+	// FileChanges 仅供旧内部调用兼容，不进入公开消息且不再派生成果。
+	FileChanges []ToolFileChangeSummary `json:"-"`
+	// FileChangeRecord 指向独立快照产生的唯一文件成果，列表与内容按需读取。
+	FileChangeRecord *eventlog.FileChangesData `json:"fileChangeRecord,omitempty"`
 	// FileChangeDiffs 是仅供 Core 按需读取、不会进入聊天消息接口的执行级文件差异。
 	FileChangeDiffs []MessageFileChangeDiff `json:"-"`
 	// Revision 是最后一次改变公开消息快照的权威事件序号。
 	Revision int64 `json:"revision"`
+	// LiveRevision 是完整内容已持久化覆盖的实时消息版本，交互事实不冒充正文覆盖。
+	LiveRevision int64 `json:"liveRevision"`
 	// CreatedSequence 是消息建立事件在 Chat JSONL 中的权威序号，仅供 Core 游标分页。
 	CreatedSequence int64 `json:"-"`
 	// ExecutionID 是 Assistant 消息对应的执行标识。
@@ -192,6 +199,8 @@ type Message struct {
 
 // InheritedMessage 是只写入权威日志的继承快照，私有差异不进入公开消息 JSON。
 type InheritedMessage struct {
+	// FileChangeRoots 冻结已复制历史快照的原授权根，来源删除后仍按原范围读取。
+	FileChangeRoots []string `json:"fileChangeRoots,omitempty"`
 	// SourceMessageID 保留直接来源 Chat 中的消息身份，供权威历史追溯。
 	SourceMessageID string `json:"sourceMessageId"`
 	// ForkInvocation 仅在继承末尾保存子原生 Session 的检查点，允许再次分叉。

@@ -49,6 +49,24 @@ type AppendInput struct {
 	Data json.RawMessage
 }
 
+// FileChangesData 只引用已经耐久保存的执行文件成果，不复制内容与文件列表。
+type FileChangesData struct {
+	// RecordID 是 Chat 自有文件成果记录的稳定身份。
+	RecordID string `json:"recordId"`
+	// Version 是独立采集记录版本。
+	Version int `json:"version"`
+	// State 区分 pending、ready、partial、unavailable 和 incomplete。
+	State string `json:"state"`
+	// Reason 是采集失败或覆盖不足的稳定原因。
+	Reason string `json:"reason,omitempty"`
+	// TotalFiles 是完整枚举后已知的净变化文件数。
+	TotalFiles int `json:"totalFiles"`
+	// Complete 表示本轮授权采集范围已完整覆盖。
+	Complete bool `json:"complete"`
+	// Truncated 表示文件列表受展示上限截断。
+	Truncated bool `json:"truncated,omitempty"`
+}
+
 // AgentCommandData 只记录安全业务动作与真实回执身份，不复制正文、路径或凭据。
 type AgentCommandData struct {
 	// CommandID 是 Core 返回并可与真实工具结果关联的命令身份。

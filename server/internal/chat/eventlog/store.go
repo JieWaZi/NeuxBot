@@ -3,6 +3,7 @@ package eventlog
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -89,6 +90,15 @@ func (s *Store) LogPath(chatID string) (string, error) {
 	return address.LogPath, nil
 }
 
+// FileChangesDirectory 返回与精确 Chat 日志共同归属的文件成果目录。
+func (s *Store) FileChangesDirectory(chatID string) (string, error) {
+	path, err := s.LogPath(chatID)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(path), "file-results", chatID), nil
+}
+
 // IndexPath 返回测试和诊断使用的派生索引路径。
 func (s *Store) IndexPath(chatID string) (string, error) {
 	address, err := s.catalog.Address(chatID)
@@ -152,6 +162,13 @@ func (s *Store) Delete(chatID string) error {
 		return status_error.ChatLogError
 	}
 	if err := os.Remove(s.indexPath(chatID)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return status_error.ChatLogError
+	}
+	directory, err := s.FileChangesDirectory(chatID)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(directory); err != nil {
 		return status_error.ChatLogError
 	}
 	s.stateMutex.Lock()

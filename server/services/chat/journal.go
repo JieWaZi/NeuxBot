@@ -127,7 +127,7 @@ type Journal interface {
 	CommitTerminal(ctx context.Context, fact TerminalFact) (TerminalCommit, error)
 	// PublishTerminal 在 Execution Registry 已释放后公开 durable 终态。
 	PublishTerminal(commit TerminalCommit)
-	// PublishLive 发布不进入 JSONL 的实时消息快照。
+	// PublishLive 发布不进入 JSONL 的安全有序消息增量。
 	PublishLive(chatID string, event eventstream.PublicEvent)
 }
 
@@ -558,7 +558,7 @@ func (m *service) PublishTerminal(commit TerminalCommit) {
 	}
 }
 
-// PublishLive 发布不进入 JSONL 的实时消息快照。
+// PublishLive 发布不进入 JSONL 的安全有序消息增量。
 func (m *service) PublishLive(chatID string, event eventstream.PublicEvent) {
 	m.subscriptions.publishLive(chatID, event)
 }

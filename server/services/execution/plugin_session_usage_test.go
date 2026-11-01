@@ -151,6 +151,7 @@ func TestPluginUsageClearsBeforeTerminalAndNextAdmission(t *testing.T) {
 			registry.start(context.Background())
 			defer registry.close()
 			defer registry.release(chatID, secondID)
+			defer registry.release(chatID, firstID)
 			if _, err := registry.reserve(chatID, firstID); err != nil {
 				t.Fatal(err)
 			}

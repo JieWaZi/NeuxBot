@@ -30,6 +30,10 @@ Chat 的固定文件索引定位原日志范围；业务 SQLite 中的 `chat_exe
 
 目录按当前布局直接读写，不执行旧目录迁移或旧名称回退。用户选择的真实项目目录与智能体自行管理的原生目录保留原位置。
 
+Chat 日志目录内的 `log/file-results/<chat-id>/changes/` 保存该 Chat 独有的文件成果记录、私有 Git 对象与有界差异计划。普通与团队 Chat 通过同一日志归属定位；不写用户仓库的 index、refs 或对象目录。分叉只复制引用记录所需内容，删除原 Chat 或团队聚合时同时清理其自有结果目录。
+
+采集使用仓库及祖先 `.gitignore`、有界 `.git/info/exclude` 和调用方显式排除；已跟踪文件遵循 Git 的跟踪语义。非 Git 范围应用目录内同类规则。为隔离宿主配置，不读取全局/系统 Git 配置，也不跟随本地配置 include 或 `core.excludesFile`；额外应用或用户忽略须显式传入，不声称已经导入宿主全局忽略列表。
+
 ## 团队目录
 
 团队对话拥有一个 thread 聚合目录。projects 保存共享项目入口；负责人使用 workspace/leader，其他成员使用 workspace/members/<waker-id>。各成员拥有独立 Runtime cwd、指令、资源和 Chat 日志身份。

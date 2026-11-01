@@ -939,3 +939,69 @@ describe("accepted Chat snapshot ownership", () => {
     },
   );
 });
+
+it("晚到独立成果只更新原页，缺少旧消息时不创建空正文", () => {
+  const client = new QueryClient();
+  const key = chatMessagesKey("late-files");
+  const stable = { id: "stable", role: "user", content: "history" };
+  client.setQueryData(key, {
+    pages: [
+      { resources: [stable], latestSequence: 10 },
+      {
+        resources: [
+          {
+            id: "old",
+            role: "assistant",
+            content: "answer",
+            liveRevision: 5,
+            revision: 7,
+          },
+        ],
+      },
+    ],
+    pageParams: [undefined, { beforeSequence: 4 }],
+  });
+  const record = {
+    recordId: "record",
+    version: 2,
+    state: "ready",
+    complete: true,
+    totalFiles: 1,
+  };
+  expect(
+    mergeChatHistoryEvents(client, "late-files", [
+      {
+        sequence: 11,
+        type: "workspace.changes",
+        fileChanges: { messageId: "old", record },
+      },
+      {
+        sequence: 12,
+        type: "workspace.changes",
+        fileChanges: { messageId: "not-loaded", record },
+      },
+    ]),
+  ).toBe(12);
+  const data = client.getQueryData<{
+    pages: {
+      resources: {
+        id: string;
+        fileChangeRecord?: unknown;
+        content?: string;
+        liveRevision?: number;
+      }[];
+      latestSequence?: number;
+    }[];
+  }>(key);
+  expect(data?.pages[0]?.resources).toEqual([stable]);
+  expect(data?.pages[1]?.resources[0]).toMatchObject({
+    id: "old",
+    content: "answer",
+    liveRevision: 5,
+    fileChangeRecord: record,
+  });
+  expect(
+    data?.pages.flatMap((page) => page.resources).map((message) => message.id),
+  ).toEqual(["stable", "old"]);
+  client.clear();
+});

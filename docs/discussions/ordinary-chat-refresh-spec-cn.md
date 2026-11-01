@@ -45,7 +45,7 @@
 
 呈现会话与服务器 Chat 身份分别表达：同一首发交接保留呈现生命周期；用户切换到另一 Chat 时，旧会话的消息不能在任何一次提交中出现在新会话下。由消息所有者和呈现边界实现该约束，不依靠多级加载标志或被动 Effect 逐轮修正。
 
-呈现边界复用 Scene 的 `mountKey` 或嵌入工作区已有身份；真正换会话时重置消息所有者与 assistant-ui view，草稿接纳沿用原边界。缺少宿主 Scene 的调用方显式提供自己的呈现身份，不新增一个平行的迁移状态机。
+呈现边界复用 Scene 的 `mountKey` 或嵌入工作区已有身份；真正换会话时重置消息所有者与展示节点，草稿接纳沿用原边界。缺少宿主 Scene 的调用方显式提供自己的呈现身份，不新增一个平行的迁移状态机。
 
 ## 普通伙伴：沿一次发送核对
 
@@ -95,15 +95,15 @@ sequenceDiagram
 
 ### 响应与推送：谁消费什么
 
-| 返回事实                                                          | 消费者与规则                                                             |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `chat.id / wakerId / latestSequence` 及完整 Chat 元数据           | 绑定真实资源、路由与详情 Query；迟到旧版本不能覆盖较新终态               |
-| `execution.id / userMessageId / submissionId / status`            | 精确关联执行与用户输入；接纳状态不代表模型完成                           |
-| `replayed`                                                        | 服务器幂等回执语义；普通 UI 不分支展示不等于字段废弃                     |
-| 消息 `id / submissionId / executionId / role / revision / status` | 分别表达消息、输入、执行、角色、消息修订及状态，不能互相替代             |
-| 历史 `resources / latestSequence / nextBeforeSequence / hasMore`  | 消息窗口、已覆盖持久游标与旧页边界；不是 token 数或传输序号              |
-| 最新窗口 `forkLatestExecutionId` 与消息 `fork`                    | 原生句柄不公开；忙碌由会话事实派生，末轮身份只从 head 及连续创建事实推进 |
-| 事件 `sequence / transient / message`                             | 连续持久事实才推进游标；transient 仅展示；message 是完整安全快照         |
+| 返回事实                                                                         | 消费者与规则                                                                                          |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `chat.id / wakerId / latestSequence` 及完整 Chat 元数据                          | 绑定真实资源、路由与详情 Query；迟到旧版本不能覆盖较新终态                                            |
+| `execution.id / userMessageId / submissionId / status`                           | 精确关联执行与用户输入；接纳状态不代表模型完成                                                        |
+| `replayed`                                                                       | 服务器幂等回执语义；普通 UI 不分支展示不等于字段废弃                                                  |
+| 消息 `id / submissionId / executionId / role / revision / liveRevision / status` | 分别表达消息、输入、执行、角色、元数据修订、正文覆盖及状态，不能互相替代                              |
+| 历史 `resources / latestSequence / nextBeforeSequence / hasMore`                 | 消息窗口、已覆盖持久游标与旧页边界；不是 token 数或传输序号                                           |
+| 最新窗口 `forkLatestExecutionId` 与消息 `fork`                                   | 原生句柄不公开；忙碌由会话事实派生，末轮身份只从 head 及连续创建事实推进                              |
+| 事件 `sequence / transient / message / live / fileChanges`                       | 连续持久事实才推进游标；message 是持久安全快照，live 只携带有序新增操作，fileChanges 独立更新成果引用 |
 
 普通消息请求预算：首次进入或新 Chat 首次读一个最新窗口；健康发送、流式与终态新增历史、分叉和插件引用 GET 均为零。分叉初始能力来自原消息窗口，后续由现有持久消息事件更新；不再提供独立全历史分叉查询。断线、缺口与未知状态由原来源一次权威恢复，不再先读一批事件历史后又读消息窗口。实际成果阅读继续提交准确版本。
 

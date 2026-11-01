@@ -1,5 +1,6 @@
 import {
   useLayoutEffect,
+  useCallback,
   useRef,
   useState,
   type RefObject,
@@ -89,7 +90,9 @@ export function useChatHistoryScroll({
       void loadEarlier();
   };
 
+  const isAnchoring = useCallback(() => Boolean(sessionRef.current.anchor), []);
   return {
+    isAnchoring,
     loadEarlier,
     onScroll,
     error,

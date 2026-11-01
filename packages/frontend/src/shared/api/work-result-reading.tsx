@@ -24,6 +24,7 @@ import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { usePresentationReading } from "./presentation-reading";
 import {
   useNotificationPresentation,
+  workResultBodySelector,
   type ChatResultOwner,
 } from "./notification-presentation";
 
@@ -121,7 +122,7 @@ export function useVisibleWorkResult({
 
 const messageSelector = (receipt: Receipt) =>
   receipt.reference?.messageId
-    ? `[data-message-id="${CSS.escape(receipt.reference.messageId)}"] [data-work-result-body]`
+    ? `[data-message-id="${CSS.escape(receipt.reference.messageId)}"] ${workResultBodySelector(receipt.reference)}`
     : "";
 
 /** Chat 只有真实正文所在的滚动区域可以产生阅读事实。 */

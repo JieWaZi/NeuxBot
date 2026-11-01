@@ -6563,9 +6563,10 @@ export type GithubComJieWaZiNeuxBotServerConstantsChannelTaskStatus = 'cancelled
  * * `native_session.updated` - ChatEventTypeNativeSessionUpdated 表示原生 Runtime Session 句柄已经更新。
  * * `runtime.event` - ChatEventTypeRuntimeEvent 表示仅用于实时投影、不会进入权威日志的 Runtime 增量。
  * * `tool.message` - ChatEventTypeToolMessage 表示 Runtime 已完整形成一条工具结果执行消息。
+ * * `workspace.changes` - ChatEventTypeFileChanges 表示独立工作区采集结果及其不可变内容已经提交。
  *
  */
-export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'invocation.finished' | 'message.inherited' | 'message.user_created' | 'native_session.cleared' | 'native_session.updated' | 'runtime.event' | 'tool.message';
+export type GithubComJieWaZiNeuxBotServerConstantsChatEventType = '' | 'agent.command_committed' | 'approval.requested' | 'approval.resolved' | 'assistant.message' | 'chat.created' | 'chat.title_updated' | 'elicitation.requested' | 'elicitation.resolved' | 'execution.canceled' | 'execution.completed' | 'execution.created' | 'execution.failed' | 'execution.started' | 'invocation.finished' | 'message.inherited' | 'message.user_created' | 'native_session.cleared' | 'native_session.updated' | 'runtime.event' | 'tool.message' | 'workspace.changes';
 
 /**
  * >
@@ -7058,6 +7059,236 @@ export type GithubComJieWaZiNeuxBotServerInternalAgentCapabilitySet = {
 };
 
 /**
+ * Coverage 说明一个相对路径及其未覆盖原因。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatChangesCoverage = {
+    /**
+     * Path 是范围内的相对路径；点表示整个根。
+     */
+    path?: string;
+    /**
+     * Reason 是稳定的技术原因。
+     */
+    reason?: string;
+};
+
+/**
+ * Diff 是与摘要同源、可按需读取的不可变有界差异。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatChangesDiff = {
+    /**
+     * Added 是本计划完整新增行数，未知时为空。
+     */
+    added?: number;
+    /**
+     * AfterExists 区分删除与空文件。
+     */
+    afterExists?: boolean;
+    /**
+     * AfterMode 是结束侧 Git mode；零表示不存在。
+     */
+    afterMode?: number;
+    /**
+     * BeforeExists 区分原文件不存在与空文件。
+     */
+    beforeExists?: boolean;
+    /**
+     * BeforeMode 是开始侧 Git mode；零表示不存在。
+     */
+    beforeMode?: number;
+    /**
+     * Coarse 表示预算降级为整段替换。
+     */
+    coarse?: boolean;
+    /**
+     * Deleted 是本计划完整删除行数，未知时为空。
+     */
+    deleted?: number;
+    /**
+     * Hunks 是有界差异内容。
+     */
+    hunks?: Array<GithubComJieWaZiNeuxBotServerInternalChatChangesHunk>;
+    /**
+     * Path 是结束侧路径，删除时使用开始侧路径。
+     */
+    path?: string;
+    /**
+     * RecordID 关联唯一成果记录。
+     */
+    recordId?: string;
+    /**
+     * RootID 关联原授权根。
+     */
+    rootId?: string;
+    /**
+     * State 为 text、binary、oversized 或 unreadable。
+     */
+    state?: string;
+    /**
+     * Truncated 表示返回 hunk 受到行数或字节预算限制。
+     */
+    truncated?: boolean;
+};
+
+/**
+ * File 是同一对快照中的一项净变化；未知行数保持空值。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatChangesFile = {
+    /**
+     * AbsolutePath 是冻结根下的完整文件身份。
+     */
+    absolutePath?: string;
+    /**
+     * Added 是同一差异计划中的新增行数。
+     */
+    added?: number;
+    /**
+     * Coarse 表示算法因预算采用整段替换。
+     */
+    coarse?: boolean;
+    /**
+     * Content 区分 text、binary、oversized、unreadable。
+     */
+    content?: string;
+    /**
+     * Deleted 是同一差异计划中的删除行数。
+     */
+    deleted?: number;
+    /**
+     * OldPath 仅在识别到重命名时保存开始侧路径。
+     */
+    oldPath?: string;
+    /**
+     * Path 是结束侧路径，删除时为原路径。
+     */
+    path?: string;
+    /**
+     * RootID 指向冻结根。
+     */
+    rootId?: string;
+    /**
+     * Status 区分 added、modified、deleted 与 renamed。
+     */
+    status?: string;
+};
+
+/**
+ * Hunk 保存连续变化及三行上下文，不让客户端再比较全文。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatChangesHunk = {
+    /**
+     * Lines 是按原顺序保存的展示行。
+     */
+    lines?: Array<GithubComJieWaZiNeuxBotServerInternalChatChangesLine>;
+    /**
+     * NewLines 是该 hunk 已返回的结束侧行数。
+     */
+    newLines?: number;
+    /**
+     * NewStart 是结束侧的一起始行号。
+     */
+    newStart?: number;
+    /**
+     * OldLines 是该 hunk 已返回的开始侧行数。
+     */
+    oldLines?: number;
+    /**
+     * OldStart 是开始侧的一起始行号。
+     */
+    oldStart?: number;
+};
+
+/**
+ * Line 是可直接渲染的服务端差异行。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatChangesLine = {
+    /**
+     * Kind 为 context、add 或 delete。
+     */
+    kind?: string;
+    /**
+     * NoNewline 表示该侧原文件末行没有换行。
+     */
+    noNewline?: boolean;
+    /**
+     * Text 保留原始行文本，去掉行尾换行。
+     */
+    text?: string;
+};
+
+/**
+ * Root 保存接纳时冻结的真实授权根，不把父仓库当作额外授权。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatChangesRoot = {
+    /**
+     * Boundaries 是未覆盖的嵌套仓库、忽略文件和排除目录。
+     */
+    boundaries?: Array<GithubComJieWaZiNeuxBotServerInternalChatChangesCoverage>;
+    /**
+     * ID 是规范路径的稳定摘要。
+     */
+    id?: string;
+    /**
+     * Kind 表示原目录是否处于 Git 仓库中。
+     */
+    kind?: string;
+    /**
+     * Path 是规范绝对目录路径。
+     */
+    path?: string;
+    /**
+     * RepositoryRoot 仅描述已有仓库，不扩大遍历范围。
+     */
+    repositoryRoot?: string;
+};
+
+/**
+ * Summary 是可在内容闭包落盘后引用的耐久成果。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatChangesSummary = {
+    /**
+     * Complete 表示枚举与读取覆盖完整，不能以展示数量推断。
+     */
+    complete?: boolean;
+    /**
+     * ExecutionID 关联调用方的执行事实。
+     */
+    executionId?: string;
+    /**
+     * Files 是有界且排序稳定的可展示净变化。
+     */
+    files?: Array<GithubComJieWaZiNeuxBotServerInternalChatChangesFile>;
+    /**
+     * ID 是执行身份的安全摘要，也是记录目录名。
+     */
+    id?: string;
+    /**
+     * Reason 是采集失败或覆盖不足的稳定技术原因。
+     */
+    reason?: string;
+    /**
+     * Roots 保存冻结授权范围及实际覆盖。
+     */
+    roots?: Array<GithubComJieWaZiNeuxBotServerInternalChatChangesRoot>;
+    /**
+     * State 为 pending、ready、partial、unavailable 或 incomplete。
+     */
+    state?: string;
+    /**
+     * TotalFiles 是完整枚举时的已知净变化总数。
+     */
+    totalFiles?: number;
+    /**
+     * Truncated 表示展示列表未包含所有已知文件。
+     */
+    truncated?: boolean;
+    /**
+     * Version 在 pending 到终态时递增。
+     */
+    version?: number;
+};
+
+/**
  * AttachmentReference 是一条经过路径校验并可以安全重放的附件引用。
  */
 export type GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference = {
@@ -7102,6 +7333,40 @@ export type GithubComJieWaZiNeuxBotServerInternalChatEventlogCodeReference = {
 };
 
 /**
+ * FileChangesData 只引用已经耐久保存的执行文件成果，不复制内容与文件列表。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatEventlogFileChangesData = {
+    /**
+     * Complete 表示本轮授权采集范围已完整覆盖。
+     */
+    complete?: boolean;
+    /**
+     * Reason 是采集失败或覆盖不足的稳定原因。
+     */
+    reason?: string;
+    /**
+     * RecordID 是 Chat 自有文件成果记录的稳定身份。
+     */
+    recordId?: string;
+    /**
+     * State 区分 pending、ready、partial、unavailable 和 incomplete。
+     */
+    state?: string;
+    /**
+     * TotalFiles 是完整枚举后已知的净变化文件数。
+     */
+    totalFiles?: number;
+    /**
+     * Truncated 表示文件列表受展示上限截断。
+     */
+    truncated?: boolean;
+    /**
+     * Version 是独立采集记录版本。
+     */
+    version?: number;
+};
+
+/**
  * MessageConnectorReference 冻结用户发送消息时明确选择的 MCP 连接器展示信息。
  */
 export type GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageConnectorReference = {
@@ -7131,6 +7396,51 @@ export type GithubComJieWaZiNeuxBotServerInternalChatEventlogMessageSkillReferen
      * Version 是发送时实际交付给 Runtime 的技能版本号。
      */
     version?: string;
+};
+
+/**
+ * FileChangesUpdate 独立更新已有消息的成果元数据。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatEventstreamFileChangesUpdate = {
+    /**
+     * MessageID 是成果所属的稳定消息标识。
+     */
+    messageId?: string;
+    record?: GithubComJieWaZiNeuxBotServerInternalChatEventlogFileChangesData & unknown;
+};
+
+/**
+ * LiveMessageIncrement 是临时消息流的一帧，正文只包含本帧新增字节。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatEventstreamLiveMessageIncrement = {
+    /**
+     * BaseRevision 是本帧首次变化前要求的消息覆盖版本。
+     */
+    baseRevision?: number;
+    /**
+     * ExecutionID 是增量所属的既有执行身份。
+     */
+    executionId?: string;
+    /**
+     * Generation 是本实时状态的唯一代次。
+     */
+    generation?: string;
+    /**
+     * MessageID 是增量目标的稳定消息身份。
+     */
+    messageId?: string;
+    /**
+     * Revision 是应用完整帧后覆盖的消息版本。
+     */
+    revision?: number;
+    /**
+     * Sequence 是本代次严格连续的交付帧号。
+     */
+    sequence?: number;
+    /**
+     * Updates 按原始输入顺序携带安全变化；每项可以单独与持久覆盖版本核验。
+     */
+    updates?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageIncrement>;
 };
 
 /**
@@ -7177,10 +7487,7 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      * ExecutionID 是 Assistant 消息对应的执行标识。
      */
     executionId?: string;
-    /**
-     * FileChanges 是当前执行内全部成功文件修改工具聚合出的有序变更摘要。
-     */
-    fileChanges?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewToolFileChangeSummary>;
+    fileChangeRecord?: GithubComJieWaZiNeuxBotServerInternalChatEventlogFileChangesData & unknown;
     fork?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFork & unknown;
     /**
      * ID 是消息的稳定标识。
@@ -7190,6 +7497,10 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      * Inherited 标记从来源会话复制的历史，不计作本会话的新执行。
      */
     inherited?: boolean;
+    /**
+     * LiveRevision 是完整内容已持久化覆盖的实时消息版本，交互事实不冒充正文覆盖。
+     */
+    liveRevision?: number;
     /**
      * Plugins 是接纳时冻结的插件身份、版本与配置修订。
      */
@@ -7265,19 +7576,12 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPa
 };
 
 /**
- * MessageFileChangeDiff 是从一条 Assistant 消息的标准 ACP diff 投影出的执行级文件差异。
+ * MessageFileChangeDiff 是独立工作区快照生成的有界文件差异。
  */
 export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFileChangeDiff = {
+    comparison?: GithubComJieWaZiNeuxBotServerInternalChatChangesDiff & unknown;
     /**
-     * NewContent 是本次执行最后一次成功修改该文件后的完整文本。
-     */
-    newContent?: string;
-    /**
-     * OldContent 是本次执行首次修改该文件前的完整文本。
-     */
-    oldContent?: string;
-    /**
-     * Path 是位于对话执行工作区内的安全相对路径。
+     * Path 是仍在当前授权范围内的原始文件绝对路径。
      */
     path?: string;
 };
@@ -7298,6 +7602,53 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageFork = {
      * 禁用原因
      */
     reasonCode?: string;
+};
+
+/**
+ * MessageIncrement 是一次原始有序输入造成的安全消息变化，不包含累计正文。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageIncrement = {
+    /**
+     * BaseRevision 是应用本次变化前必须已经覆盖的消息版本。
+     */
+    baseRevision?: number;
+    /**
+     * InvocationID 是本次变化所属的原生调用身份。
+     */
+    invocationId?: string;
+    /**
+     * Parts 按发生顺序更新明确的部件，不扫描未变化节点。
+     */
+    parts?: Array<GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessagePartIncrement>;
+    /**
+     * Revision 是成功应用本次变化后覆盖的消息版本。
+     */
+    revision?: number;
+    runMetrics?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageRunMetrics & unknown;
+    /**
+     * UpdatedAt 是该变化的原始发生时间。
+     */
+    updatedAt?: number;
+};
+
+/**
+ * MessagePartIncrement 是对稳定展示部件的安全增量操作。
+ */
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessagePartIncrement = {
+    /**
+     * Kind 表示追加文本、修改阶段或替换安全工具事实。
+     */
+    kind?: string;
+    part?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart & unknown;
+    /**
+     * PartID 是消息内已经冻结的部件身份。
+     */
+    partId?: string;
+    partType?: GithubComJieWaZiNeuxBotServerConstantsMessageDisplayPartType & unknown;
+    /**
+     * Text 只包含本次新增文本，空值不代表清空。
+     */
+    text?: string;
 };
 
 /**
@@ -11341,6 +11692,14 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkResultReference =
      */
     executionId?: string;
     /**
+     * 文件成果标识
+     */
+    fileChangeRecordId?: string;
+    /**
+     * 文件成果版本
+     */
+    fileChangeRecordVersion?: number;
+    /**
      * MessageID 是持久交付给用户的精确消息。
      */
     messageId?: string;
@@ -12331,6 +12690,8 @@ export type GithubComJieWaZiNeuxBotServerServicesChatPublicEvent = {
      */
     errorMessage?: string;
     executionStatus?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
+    fileChanges?: GithubComJieWaZiNeuxBotServerInternalChatEventstreamFileChangesUpdate & unknown;
+    live?: GithubComJieWaZiNeuxBotServerInternalChatEventstreamLiveMessageIncrement & unknown;
     message?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage & unknown;
     /**
      * RecordedAt 是事件发生时间的 Unix 毫秒时间戳。
@@ -17831,6 +18192,46 @@ export type GetChatMessageFileChangeResponses = {
 };
 
 export type GetChatMessageFileChangeResponse = GetChatMessageFileChangeResponses[keyof GetChatMessageFileChangeResponses];
+
+export type GetChatMessageFileChangesData = {
+    body?: never;
+    path: {
+        /**
+         * 对话标识
+         */
+        chatId: string;
+        /**
+         * 消息标识
+         */
+        messageId: string;
+    };
+    query?: never;
+    url: '/api/v1/chats/{chatId}/messages/{messageId}/file-changes/summary';
+};
+
+export type GetChatMessageFileChangesErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type GetChatMessageFileChangesError = GetChatMessageFileChangesErrors[keyof GetChatMessageFileChangesErrors];
+
+export type GetChatMessageFileChangesResponses = {
+    200: GithubComJieWaZiNeuxBotServerInternalChatChangesSummary;
+};
+
+export type GetChatMessageFileChangesResponse = GetChatMessageFileChangesResponses[keyof GetChatMessageFileChangesResponses];
 
 export type ListLibraryConnectorsData = {
     body?: never;

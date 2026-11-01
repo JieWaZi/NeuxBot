@@ -8,7 +8,6 @@ import {
   AuiProvider,
   AssistantRuntimeProvider,
   ComposerPrimitive,
-  MessagePrimitive,
   ThreadPrimitive,
   useAui,
 } from "@assistant-ui/react";
@@ -305,6 +304,25 @@ function MemberMentionComposerHarness({
   );
 }
 
+function CanonicalMessages({ messages }: { messages: readonly ChatMessage[] }) {
+  return (
+    <>
+      {messages.map((message) => (
+        <div
+          key={message.submissionId || message.id}
+          data-message-id={message.id}
+        >
+          {message.content ||
+            (message.displayParts ?? [])
+              .filter((part) => part.type === "text")
+              .map((part) => part.text ?? "")
+              .join("\n")}
+        </div>
+      ))}
+    </>
+  );
+}
+
 function ComposerHarness({
   activeExecutionId,
   onMessageAccepted,
@@ -341,7 +359,7 @@ function ComposerHarness({
     (revision: number) => revision + 1,
     0,
   );
-  const { runtime } = useChatRuntime({
+  const { runtime, messages: timeline } = useChatRuntime({
     conversationKey: conversationKeyOf("scope:chat-1", "chat-1"),
     queueKey: "chat-1",
     chatId: "chat-1",
@@ -372,13 +390,7 @@ function ComposerHarness({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root>
-        <ThreadPrimitive.Messages>
-          {() => (
-            <MessagePrimitive.Root>
-              <MessagePrimitive.Parts />
-            </MessagePrimitive.Root>
-          )}
-        </ThreadPrimitive.Messages>
+        <CanonicalMessages messages={timeline} />
         {children ?? (
           <ComposerControls
             codeReferenceRequest={codeReferenceRequest}
@@ -425,7 +437,7 @@ function HistoryHarness({
   messages: ChatMessage[];
   historyReady?: boolean;
 }) {
-  const { runtime } = useChatRuntime({
+  const { runtime, messages: timeline } = useChatRuntime({
     conversationKey: conversationKeyOf(`scope:${chatId}`, chatId),
     queueKey: chatId,
     chatId,
@@ -454,13 +466,7 @@ function HistoryHarness({
       runtime={runtime}
     >
       <ThreadPrimitive.Root>
-        <ThreadPrimitive.Messages>
-          {() => (
-            <MessagePrimitive.Root>
-              <MessagePrimitive.Parts />
-            </MessagePrimitive.Root>
-          )}
-        </ThreadPrimitive.Messages>
+        <CanonicalMessages messages={timeline} />
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   );
@@ -501,7 +507,11 @@ function ChatThreadLayoutHarness({
     (revision: number) => revision + 1,
     0,
   );
-  const { isRunning, runtime } = useChatRuntime({
+  const {
+    isRunning,
+    runtime,
+    messages: timeline,
+  } = useChatRuntime({
     conversationKey: conversationKeyOf("scope:chat-layout", "chat-layout"),
     queueKey: "chat-layout",
     chatId: "chat-layout",
@@ -529,6 +539,7 @@ function ChatThreadLayoutHarness({
   return (
     <ChatThread
       runtime={runtime}
+      messages={timeline}
       wakerName="测试伙伴"
       emptyState={<div>空对话</div>}
       renderComposerContextStrip={() => (
@@ -566,7 +577,7 @@ function ChatThreadHistoryHarness({
   onOpenCodeReference?: (reference: ChatCodeReference) => void;
   onOpenFile?: (file: { name: string; path: string }) => void;
 }) {
-  const { runtime } = useChatRuntime({
+  const { runtime, messages: timeline } = useChatRuntime({
     conversationKey: conversationKeyOf(`scope:${chatId}`, chatId),
     queueKey: chatId,
     chatId,
@@ -595,6 +606,7 @@ function ChatThreadHistoryHarness({
   return (
     <ChatThread
       runtime={runtime}
+      messages={timeline}
       wakerName="测试伙伴"
       emptyState={<div>空对话</div>}
       renderComposerContextStrip={undefined}
@@ -2807,4 +2819,43 @@ describe("chat composer", () => {
       ),
     );
   });
+});
+
+it("canonical渲染完成后展开过程仍保留工具组的阅读选择", async () => {
+  const running: ChatMessage = {
+    id: "remember-tool-reading",
+    role: "assistant",
+    status: "running",
+    runMetrics: { durationMs: 13_500 },
+    displayParts: [
+      {
+        id: "network",
+        type: "tool",
+        toolCategory: "network",
+        toolStatus: "completed",
+        toolLabel: "搜索官方资料",
+      },
+      { id: "body", type: "text", text: "真实正文" },
+    ],
+  };
+  const ui = (message: ChatMessage) => (
+    <TooltipProvider>
+      <ChatQueueProvider>
+        <ChatThreadHistoryHarness messages={[message]} />
+      </ChatQueueProvider>
+    </TooltipProvider>
+  );
+  const view = render(ui(running));
+  const network = screen.getByRole("button", { name: "已访问网络" });
+  fireEvent.click(network);
+  expect(network).toHaveAttribute("aria-expanded", "true");
+  view.rerender(ui({ ...running, status: "completed" }));
+  const process = await screen.findByRole("button", { name: "用时 13.5s" });
+  expect(process).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(process);
+  expect(screen.getByRole("button", { name: "已访问网络" })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  expect(screen.getByText("搜索官方资料")).toBeVisible();
 });

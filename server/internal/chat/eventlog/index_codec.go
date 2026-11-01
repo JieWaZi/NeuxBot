@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	indexSchemaVersion   = uint32(3)
+	indexSchemaVersion   = uint32(4)
 	indexHeaderSize      = int64(64)
 	indexEntrySize       = int64(88)
 	indexFlagChatCreated = uint32(1 << iota)
@@ -22,6 +22,7 @@ const (
 	indexFlagExecutionFact
 	indexFlagInvocationBoundary
 	indexFlagInvocationFinished
+	indexFlagFileChanges
 )
 
 var indexMagic = [8]byte{'A', 'L', 'L', 'Y', 'I', 'D', 'X', '1'}
@@ -156,6 +157,9 @@ func indexEntryForRecord(record Record, executionStartSequence int64, line []byt
 		entry.flags |= indexFlagExecutionFact
 	case constants.ChatEventTypeInvocationFinished:
 		entry.flags |= indexFlagExecutionFact | indexFlagInvocationFinished
+	case constants.ChatEventTypeFileChanges:
+		entry.flags |= indexFlagFileChanges
+		entry.messageHash = sha256.Sum256([]byte(record.MessageID))
 	}
 	return entry
 }

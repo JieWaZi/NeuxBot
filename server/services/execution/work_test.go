@@ -1811,7 +1811,8 @@ func TestChatPublicQueriesObserveMessageAndRename(t *testing.T) {
 func waitForChatTerminal(t *testing.T, manager messageTestService, chatID string) {
 	t.Helper()
 	core := manager.execution.(*service)
-	deadline := time.Now().Add(2 * time.Second)
+	// 此等待只核对最终事实，不能把并行采集与 SQLite 调度时间当成产品延迟断言。
+	deadline := time.Now().Add(10 * time.Second)
 	for {
 		summary, err := manager.chats.GetChatSummary(context.Background(), chatID)
 		if err == nil && summary.Chat.ActiveExecutionID == "" {

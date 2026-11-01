@@ -1,3 +1,4 @@
+import { notificationIsPresented } from "./notification-presentation";
 import { chatMessageSource } from "@/modules/chat/api/chat-queries";
 import {
   QueryClient,
@@ -152,7 +153,7 @@ function ProductionChat({
 }: {
   status?: "running" | "completed" | "failed";
 }) {
-  const { runtime, isRunning } = useChatRuntime({
+  const { runtime, isRunning, messages } = useChatRuntime({
     conversationKey: conversationKeyOf(`chat:${owner}`, owner),
     queueKey: owner,
     chatId: owner,
@@ -189,6 +190,7 @@ function ProductionChat({
   return (
     <ChatThread
       runtime={runtime}
+      messages={messages}
       isRunning={isRunning}
       fileScopeChatId={owner}
       resultSource={{ chatId: owner, owner: { kind: "chat", id: owner } }}
@@ -1316,3 +1318,127 @@ it.each(["chat", "team_thread"] as const)(
     cache.clear();
   },
 );
+
+it("晚到文件成果不能被原正文标读，精确文件卡片出现后才提交新版本", async () => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  const observations = new Map<Element, IntersectionObserverCallback>();
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      callback: IntersectionObserverCallback;
+      owned = new Set<Element>();
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+      }
+      observe(target: Element) {
+        this.owned.add(target);
+        observations.set(target, this.callback);
+      }
+      unobserve(target: Element) {
+        this.owned.delete(target);
+        observations.delete(target);
+      }
+      disconnect() {
+        for (const target of this.owned) observations.delete(target);
+        this.owned.clear();
+      }
+    },
+  );
+  const reference = {
+    chatId: owner,
+    messageId: "final-message",
+    executionId: "final-message",
+    fileChangeRecordId: "files",
+    fileChangeRecordVersion: 2,
+  };
+  const reads = vi.fn(),
+    viewed = vi.fn();
+  server.use(
+    http.get(`${origin}/api/v1/work-board/results/chat/${owner}`, () => {
+      reads();
+      return HttpResponse.json({
+        result: {
+          ownerKind: "chat",
+          ownerId: owner,
+          latestVersion: 9,
+          viewedVersion: 7,
+          reference,
+        },
+      });
+    }),
+    http.post(
+      `${origin}/api/v1/work-board/results/chat/${owner}/view`,
+      async ({ request }) => {
+        viewed(await request.json());
+        return HttpResponse.json({ success: true });
+      },
+    ),
+  );
+  function FileReader({ showFile = false }: { showFile?: boolean }) {
+    const viewport = useRef<HTMLDivElement>(null);
+    return (
+      <>
+        <div ref={viewport}>
+          <div data-message-id="final-message">
+            <p data-work-result-body>已读过的原正文</p>
+            {showFile ? (
+              <section
+                data-work-result-body
+                data-file-change-record-id="files"
+                data-file-change-record-version="2"
+              >
+                新文件成果
+              </section>
+            ) : null}
+          </div>
+        </div>
+        <ChatWorkResultReader chatId={owner} viewport={viewport} />
+      </>
+    );
+  }
+  const query = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <MemoryRouter>
+      <QueryClientProvider client={query}>{children}</QueryClientProvider>
+    </MemoryRouter>
+  );
+  const view = render(<FileReader />, { wrapper });
+  await waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    for (const [element, callback] of observations)
+      callback([intersection(element)], {} as IntersectionObserver);
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector('[data-work-result-version="9"]'),
+    ).not.toBeNull(),
+  );
+  const notice = {
+    id: "file-notice",
+    kind: "result" as const,
+    version: 9,
+    target: { ownerKind: "chat" as const, ownerId: owner, reference },
+  };
+  expect(notificationIsPresented(notice)).toBe(false);
+  expect(viewed).not.toHaveBeenCalled();
+  view.rerender(<FileReader showFile />);
+  await waitFor(() =>
+    expect(
+      [...observations.keys()].some(
+        (element) => element.textContent === "新文件成果",
+      ),
+    ).toBe(true),
+  );
+  expect(notificationIsPresented(notice)).toBe(true);
+  act(() => {
+    for (const [element, callback] of observations)
+      callback([intersection(element)], {} as IntersectionObserver);
+  });
+  await waitFor(() => expect(viewed).toHaveBeenCalledTimes(1));
+  expect(viewed).toHaveBeenCalledWith({ version: 9, reference });
+  view.unmount();
+  query.clear();
+});

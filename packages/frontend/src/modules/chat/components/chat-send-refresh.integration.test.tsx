@@ -140,6 +140,7 @@ it("聊天订阅通知延迟时，输入后无需切换 CLI 即可启用发送�
     return (
       <ChatThread
         runtime={state.runtime}
+        messages={state.messages}
         wakerName="NeuxBot"
         emptyState={null}
         isRunning={state.isRunning}

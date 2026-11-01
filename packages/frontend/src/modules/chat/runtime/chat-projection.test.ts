@@ -680,7 +680,7 @@ describe("chat projection", () => {
     });
   });
 
-  it("把执行级文件变更放入消息元数据，供终态卡片稳定展示", () => {
+  it("旧工具累计摘要不再进入输入适配器的消息元数据", () => {
     const projected = toThreadMessage({
       id: "assistant-file-changes",
       role: "assistant",
@@ -689,10 +689,8 @@ describe("chat projection", () => {
       fileChanges: [{ path: "README.md", addedLines: 3, deletedLines: 1 }],
     } as AllyChatMessage);
 
-    expect(projected.metadata?.custom).toMatchObject({
-      isTerminal: true,
-      fileChanges: [{ path: "README.md", addedLines: 3, deletedLines: 1 }],
-    });
+    expect(projected.metadata?.custom).toMatchObject({ isTerminal: true });
+    expect(projected.metadata?.custom?.fileChanges).toBeUndefined();
   });
 
   it("把统一执行耗时与 Token 摘要放入消息 metadata", () => {

@@ -134,7 +134,7 @@ func TestRuntimeEventSinkPublishesCompleteLiveSnapshotBeforePersistence(t *testi
 	}
 }
 
-func TestRuntimeEventSinkKeepsFileChangesEqualBetweenLiveAndReplay(t *testing.T) {
+func TestRuntimeEventSinkDoesNotPromoteToolDiffsToFileOutcomes(t *testing.T) {
 	t.Parallel()
 	store, err := eventlog.NewStore(t.TempDir())
 	if err != nil {
@@ -197,12 +197,11 @@ func TestRuntimeEventSinkKeepsFileChangesEqualBetweenLiveAndReplay(t *testing.T)
 	if err != nil {
 		t.Fatalf("ReplayMessages() error = %v", err)
 	}
-	if lastLive == nil || len(persisted) != 1 ||
-		!reflect.DeepEqual(persisted[0].FileChanges, lastLive.FileChanges) ||
-		len(persisted[0].FileChanges) != 1 ||
-		persisted[0].FileChanges[0].AddedLines != 2 ||
-		persisted[0].FileChanges[0].DeletedLines != 1 {
-		t.Fatalf("live file changes %#v != persisted %#v", lastLive, persisted)
+	if lastLive == nil || len(persisted) != 1 || len(persisted[0].FileChanges) != 0 || persisted[0].FileChangeRecord != nil || len(lastLive.FileChanges) != 0 {
+		t.Fatalf("tool output was promoted to independent file outcome: live=%+v durable=%+v", lastLive, persisted)
+	}
+	if !reflect.DeepEqual(persisted[0].DisplayParts, lastLive.DisplayParts) {
+		t.Fatal("safe tool projection differs after durable replay")
 	}
 }
 
@@ -343,8 +342,8 @@ func TestRuntimeEventSinkDoesNotPersistEveryPartialToolInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(records) != 4 {
-		t.Fatalf("records while tool input is streaming = %d, want 3 initial facts and one tool start", len(records))
+	if len(records) > 8 {
+		t.Fatalf("records while tool input is streaming = %d, want bounded complete parameter segments", len(records))
 	}
 	lastLive := send(agentapi.EventTypeToolResult, map[string]any{"toolCallId": "write-1", "status": "completed"})
 	if err := sink.Flush(); err != nil {
@@ -354,11 +353,11 @@ func TestRuntimeEventSinkDoesNotPersistEveryPartialToolInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(records) != 6 {
-		t.Fatalf("records after complete tool = %d, want start, latest input, result", len(records))
+	if len(records) > 10 {
+		t.Fatalf("records after complete tool = %d, want bounded parameter segments plus result", len(records))
 	}
 	var stored eventlog.RuntimeMessageData
-	if err := json.Unmarshal(records[4].Data, &stored); err != nil {
+	if err := json.Unmarshal(records[len(records)-2].Data, &stored); err != nil {
 		t.Fatal(err)
 	}
 	var payload map[string]any
@@ -550,7 +549,7 @@ func TestRuntimeEventSinkStoresGrowingToolSnapshotsWithoutQuadraticJSONL(t *test
 	}
 }
 
-func TestRuntimeEventSinkCompactedToolUpdatesKeepFullFileDiff(t *testing.T) {
+func TestRuntimeEventSinkCompactedToolUpdatesKeepPrivateHistoryWithoutFileOutcome(t *testing.T) {
 	store, err := eventlog.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -581,10 +580,17 @@ func TestRuntimeEventSinkCompactedToolUpdatesKeepFullFileDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages) != 1 || !reflect.DeepEqual(messages[0].FileChangeDiffs, []messageview.MessageFileChangeDiff{{
-		Path: "main.go", OldContent: "old\n", NewContent: strings.Repeat("first line\n", 40) + "last line\n",
-	}}) {
-		t.Fatalf("compacted updates lost complete file diff: %+v", messages)
+	if len(messages) != 1 || len(messages[0].FileChangeDiffs) != 0 || messages[0].FileChangeRecord != nil {
+		t.Fatalf("legacy tool data created independent file result: %+v", messages)
+	}
+	found := false
+	for _, event := range messages[0].RuntimeEvents {
+		if event.Type == agentapi.EventTypeToolUpdate && strings.Contains(string(event.Data), "last line") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("bounded batching lost the original private Runtime tool data")
 	}
 }
 
@@ -685,7 +691,10 @@ type runtimeEventTestJournal struct {
 	chatservice.Journal
 	// store 保存测试中的权威 JSONL 记录。
 	store *eventlog.Store
-	// live 接收不入 JSONL 的 transient 消息快照。
+	// live 接收测试消费者折叠后的消息；真实线上信封仍只有 Live。
+	// message 保存测试消费者从增量构建的当前视图。
+	message *messageview.Message
+	// live 接收不入 JSONL 的 transient 消息增量。
 	live chan eventstream.PublicEvent
 	// fullReads 记录误读完整历史的次数。
 	fullReads int
@@ -768,7 +777,67 @@ func (j *runtimeEventTestJournal) PublishTerminal(chatservice.TerminalCommit) {
 
 // PublishLive 交付 transient 消息快照供测试断言。
 func (j *runtimeEventTestJournal) PublishLive(_ string, event eventstream.PublicEvent) {
+	event = foldTestLive(&j.message, event)
 	j.live <- event
+}
+
+// foldTestLive 模拟客户端逐操作折叠，仅供实时与耐久重放的等价性断言。
+func foldTestLive(current **messageview.Message, event eventstream.PublicEvent) eventstream.PublicEvent {
+	// 本测试替身模拟呈现消费者，以继续比较原始实时折叠与完整日志重放。
+	if event.Message != nil || event.Live == nil {
+		panic("live wire unexpectedly contains a snapshot")
+	}
+	if *current == nil {
+		*current = &messageview.Message{ID: event.Live.MessageID, Revision: event.Live.BaseRevision}
+	}
+	message := **current
+	message.DisplayParts = append([]messageview.MessageDisplayPart(nil), message.DisplayParts...)
+	for _, update := range event.Live.Updates {
+		if update.BaseRevision != message.Revision {
+			panic("noncontiguous test live message")
+		}
+		for _, change := range update.Parts {
+			index := -1
+			for i, part := range message.DisplayParts {
+				if part.ID == change.PartID {
+					index = i
+					break
+				}
+			}
+			switch change.Kind {
+			case constants.MessageIncrementTextAppend:
+				if change.PartType == constants.MessageDisplayPartText || change.PartType == constants.MessageDisplayPartProcessCommentary {
+					message.Content += change.Text
+				}
+				if index < 0 {
+					message.DisplayParts = append(message.DisplayParts, messageview.MessageDisplayPart{ID: change.PartID, Type: change.PartType})
+					index = len(message.DisplayParts) - 1
+				}
+				message.DisplayParts[index].Text += change.Text
+				message.DisplayParts[index].Type = change.PartType
+			case constants.MessageIncrementPartType:
+				if index < 0 {
+					panic("unknown text phase target")
+				}
+				message.DisplayParts[index].Type = change.PartType
+			case constants.MessageIncrementPartUpsert:
+				if index < 0 {
+					message.DisplayParts = append(message.DisplayParts, *change.Part)
+				} else {
+					message.DisplayParts[index] = *change.Part
+				}
+			}
+		}
+		if update.RunMetrics != nil {
+			metrics := *update.RunMetrics
+			message.RunMetrics = &metrics
+		}
+		message.Revision, message.UpdatedAt = update.Revision, update.UpdatedAt
+	}
+
+	*current = &message
+	event.Message = &message // 仅测试断言便利字段，不经过服务端公开通道。
+	return event
 }
 
 // newRuntimeEventSinkForTest 组合 Runtime 事件管线的最小 Journal 端口。

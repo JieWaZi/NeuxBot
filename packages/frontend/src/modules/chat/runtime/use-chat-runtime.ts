@@ -12,7 +12,7 @@ import {
   type AppendMessage,
   type AssistantRuntime,
   type ExternalThreadQueueAdapter,
-  type ThreadSuggestion,
+  type ThreadMessageLike,
 } from "@assistant-ui/react";
 import {
   useCallback,
@@ -29,7 +29,6 @@ import {
   latestContextMetrics,
   mergeAuthoritativeMessages,
   uncommittedChatMessages,
-  toThreadMessage,
   type AllyChatMessage,
   type ChatMessageVisibility,
   type ChatMessageSource,
@@ -54,6 +53,7 @@ import {
   type ChatSendFailure,
 } from "./chat-send-failure";
 import { createChatEventBatcher } from "./chat-event-batcher";
+import { ChatLiveTracker } from "./chat-live";
 import type {
   ChatInvocation,
   ChatScopeKey,
@@ -77,6 +77,10 @@ import type {
   GithubComJieWaZiNeuxBotServerRepositoriesModelsPendingElicitation as PendingElicitation,
   GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as MessageResult,
 } from "@/shared/api/generated/types.gen";
+
+/** assistant-ui 仅承担输入适配，消息正文由领域消息直接渲染。 */
+const COMPOSER_MESSAGES: readonly ThreadMessageLike[] = [];
+const convertComposerMessage = (message: ThreadMessageLike) => message;
 
 /** 请求适配层同步确定真实输入身份；接纳命令沿用同一份请求。 */
 export type PreparedChatSubmission = {
@@ -105,7 +109,6 @@ type ChatRuntimeOptions = {
   referenceOnlyText?: string;
   incompleteErrorText: string;
   selection: ChatSendSelection;
-  suggestions?: readonly ThreadSuggestion[];
   onMessageAccepted?: () => void;
   onMessageRejected?: (selection: ChatSendSelection) => void;
   onApprovalRequested?: (approval: PendingApproval) => void;
@@ -125,6 +128,7 @@ type ChatRuntimeOptions = {
 };
 
 type ChatRuntimeResult = {
+  messages: readonly AllyChatMessage[];
   runtime: AssistantRuntime;
   streamState: StreamState;
   isRunning: boolean;
@@ -245,6 +249,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       confirmSubmission(message.submissionId);
   }, [confirmSubmission, history.messages]);
   const [streamState, setStreamState] = useState<StreamState>("closed");
+  const [streamRecoveryGeneration, setStreamRecoveryGeneration] = useState(0);
   const [sendFailure, setSendFailure] = useState<{
     chatId?: string;
     value: ChatSendFailure;
@@ -364,11 +369,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     const localMessages = mergeLocalMessages(handoffMessages, overlayMessages);
     return mergeAuthoritativeMessages(localMessages, history.messages);
   }, [handoffMessages, options.chatId, history.messages, overlay]);
-  const convertMessage = useCallback(
-    (message: AllyChatMessage) =>
-      toThreadMessage(message, options.incompleteErrorText),
-    [options.incompleteErrorText],
-  );
   const isRunning = Boolean(
     (sending?.queueKey === options.queueKey &&
       !messages.some(
@@ -883,6 +883,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       observedChatKeyRef.current === subscribedChatKey;
     let pendingDurableEvents: ChatEvent[] = [];
     let historyMerged = false;
+    let liveRecovering = false;
+    let liveTracker = new ChatLiveTracker();
     const eventBatcher = createChatEventBatcher((events) => {
       if (!isCurrentSubscription()) return;
       // 在原始持久事件上校验连续性；UI 批次会折叠同一消息的中间快照。
@@ -900,6 +902,28 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         );
         let projected = localMessages;
         for (const event of events) {
+          if (event.live) {
+            const baseline = sourceRef.current.snapshot.messages.find(
+              (message) => message.id === event.live?.messageId,
+            );
+            if (baseline) {
+              const index = projected.findIndex(
+                (message) => message.id === baseline.id,
+              );
+              const local = projected[index];
+              if (!local) projected = [...projected, baseline];
+              else if (
+                (baseline.liveRevision ?? baseline.revision ?? -1) >
+                (local.liveRevision ?? local.revision ?? -1)
+              ) {
+                projected = [...projected];
+                projected[index] = {
+                  ...baseline,
+                  runMetrics: baseline.runMetrics ?? local.runMetrics,
+                };
+              }
+            }
+          }
           projected = applyChatEvent(
             projected,
             event,
@@ -930,12 +954,57 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       isTerminal: () => false,
       reconcileCursor: async (signal) => {
         const sequence = await sourceRef.current.reconcile(signal);
-        if (isCurrentSubscription() && sequence !== undefined)
-          cursorRef.current.sequence = sequence;
+        if (isCurrentSubscription()) {
+          if (sequence !== undefined) cursorRef.current.sequence = sequence;
+          // 对账先于缓冲事件交付完成；重连后的代次和帧号从新基线核验。
+          liveRecovering = false;
+          liveTracker = new ChatLiveTracker();
+        }
         return sequence;
       },
       onEvent: (event) => {
         if (!isCurrentSubscription()) return;
+        if (event.live) {
+          if (liveRecovering) return;
+          const id = event.live.messageId;
+          const baseline = [
+            [...pendingDurableEvents]
+              .reverse()
+              .find((entry) => entry.message?.id === id)?.message,
+            overlayRef.current.messages.find((message) => message.id === id),
+            sourceRef.current.snapshot.messages.find(
+              (message) => message.id === id,
+            ),
+          ]
+            .filter((message): message is AllyChatMessage => Boolean(message))
+            .sort(
+              (a, b) =>
+                (b.liveRevision ?? b.revision ?? -1) -
+                (a.liveRevision ?? a.revision ?? -1),
+            )[0];
+          const decision = liveTracker.accept(event.live, baseline);
+          if (decision === "duplicate") return;
+          if (decision === "recover") {
+            liveRecovering = true;
+            eventBatcher.flush();
+            void sourceRef.current
+              .reconcile()
+              .then((sequence) => {
+                if (isCurrentSubscription()) {
+                  if (sequence !== undefined)
+                    cursorRef.current.sequence = sequence;
+                  setStreamRecoveryGeneration((value) => value + 1);
+                }
+              })
+              .catch(() => {
+                if (isCurrentSubscription()) {
+                  liveRecovering = false;
+                  setStreamState("unavailable");
+                }
+              });
+            return;
+          }
+        }
         resolveErrorNoticeRecovery(streamRecovery);
         if (!event.transient) {
           confirmSubmission(event.message?.submissionId);
@@ -1122,6 +1191,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     options.queueActive,
     reconcileHistory,
     confirmSubmission,
+    streamRecoveryGeneration,
   ]);
 
   const onNew = useCallback(
@@ -1194,16 +1264,15 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     options.queueActive,
   ]);
 
-  const runtime = useExternalStoreRuntime<AllyChatMessage>({
-    messages,
-    convertMessage,
+  const runtime = useExternalStoreRuntime<ThreadMessageLike>({
+    messages: COMPOSER_MESSAGES,
+    convertMessage: convertComposerMessage,
     isRunning,
     isLoading: options.isLoading,
     isSendDisabled:
       options.isSendDisabled ||
       pendingApprovals.length > 0 ||
       pendingElicitations.length > 0,
-    suggestions: options.suggestions,
     queue,
     onNew,
     onCancel: options.cancel,
@@ -1219,6 +1288,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
 
   return {
     runtime,
+    messages,
     streamState: isRunning ? streamState : "closed",
     isRunning,
     hasVisibleMessages: messages.length > 0,

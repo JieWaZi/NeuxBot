@@ -17,7 +17,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { chatMessagesKey, chatMessageSource } from "../api/chat-queries";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useChatRuntime as useProductionChatRuntime } from "./use-chat-runtime";
+import { toThreadMessage } from "./chat-projection";
+import { useChatRuntime as useProductionChatRuntimeImpl } from "./use-chat-runtime";
 import { ChatQueueProvider, useChatQueueStore } from "./chat-queue-store";
 import { classifyChatSendFailure } from "./chat-send-failure";
 import { conversationKeyOf } from "../model/conversation-identity";
@@ -78,9 +79,7 @@ const {
 vi.mock("@assistant-ui/react", () => ({
   useExternalStoreRuntime: (adapter: TestRuntimeAdapter) => {
     runtimeAdapter.current = adapter;
-    projectedMessages.current = (adapter.messages ?? []).map(
-      (message, index) => adapter.convertMessage?.(message, index) ?? message,
-    );
+
     return {};
   },
 }));
@@ -118,8 +117,20 @@ type RuntimeOptions = Omit<
     >[3],
   ) => Promise<MessageResult>;
 };
+function useProductionChatRuntime(
+  options: Parameters<typeof useProductionChatRuntimeImpl>[0],
+) {
+  const runtime = useProductionChatRuntimeImpl(options);
+  useLayoutEffect(() => {
+    projectedMessages.current = runtime.messages.map((message) =>
+      toThreadMessage(message, options.incompleteErrorText),
+    );
+  }, [runtime.messages, options.incompleteErrorText]);
+  return runtime;
+}
+
 function useChatRuntime(options: RuntimeOptions) {
-  return useProductionChatRuntime({
+  const runtime = useProductionChatRuntime({
     ...options,
     messageSource: chatMessageSource(queryClient, options.chatId, {
       messages: options.messages,
@@ -131,6 +142,7 @@ function useChatRuntime(options: RuntimeOptions) {
       accept: () => options.send(...args),
     }),
   });
+  return runtime;
 }
 
 function runtimeOptions(queueKey: string): RuntimeOptions {
@@ -2123,7 +2135,214 @@ describe("useChatRuntime queue", () => {
     await waitFor(() => expect(runtimeAdapter.current?.isRunning).toBe(false));
   });
 
-  it("把稳定消息引用交给 assistant-ui 的增量转换缓存", () => {
+  it("按下一帧提交增量，持久覆盖与断流恢复不重复正文，取消释放发布窗口", async () => {
+    vi.useFakeTimers();
+    const tool = {
+      id: "tool",
+      type: "tool" as const,
+      toolStatus: "completed" as const,
+    };
+    const initial = {
+      id: "live",
+      executionId: "live",
+      role: "assistant" as const,
+      status: "running" as const,
+      revision: 1,
+      liveRevision: 1,
+      content: "",
+      displayParts: [tool],
+    };
+    const source = {
+      snapshot: { messages: [initial], latestSequence: 1, ready: true },
+      commit: vi.fn(() => 2),
+      reconcile: vi.fn(async () => 8),
+    };
+    const { result, unmount } = renderHook(
+      () =>
+        useProductionChatRuntime({
+          ...runtimeOptions("live-chat"),
+          messageSource: source,
+          prepareSubmission: () => ({ accept: async () => ({}) }),
+        }),
+      { wrapper },
+    );
+    const live = (
+      sequence: number,
+      base: number,
+      text: string,
+      generation = "one",
+    ): ChatEvent => ({
+      transient: true,
+      type: "runtime.event",
+      live: {
+        generation,
+        sequence,
+        messageId: "live",
+        executionId: "live",
+        baseRevision: base,
+        revision: base + 1,
+        updates: [
+          {
+            baseRevision: base,
+            revision: base + 1,
+            updatedAt: sequence,
+            parts: [
+              { kind: "text_append", partId: "reply", partType: "text", text },
+            ],
+          },
+        ],
+      },
+    });
+    act(() => {
+      subscriptionOptions.current?.onEvent(live(1, 1, "甲"));
+      subscriptionOptions.current?.onEvent(live(2, 2, "乙"));
+      vi.advanceTimersByTime(1);
+    });
+    expect(result.current.messages[0]?.content).toBe("");
+    act(() => vi.advanceTimersToNextFrame());
+    expect(result.current.messages[0]?.content).toBe("甲乙");
+    expect(result.current.messages[0]?.displayParts?.[0]).toBe(tool);
+    act(() => {
+      subscriptionOptions.current?.onEvent(live(2, 2, "乙"));
+      vi.advanceTimersByTime(48);
+    });
+    expect(result.current.messages[0]?.content).toBe("甲乙");
+    // 恢复获得更完整正文；旧overlay不得成为新的流基线。
+    source.snapshot.messages = [
+      { ...initial, content: "甲乙丙", revision: 8, liveRevision: 8 },
+    ];
+    await act(async () => {
+      subscriptionOptions.current?.onEvent(live(4, 3, "丢帧"));
+      await Promise.resolve();
+    });
+    expect(source.reconcile).toHaveBeenCalledTimes(1);
+    expect(subscribeChatMock).toHaveBeenCalledTimes(2);
+    act(() => {
+      subscriptionOptions.current?.onEvent(live(10, 8, "丁", "recovered"));
+      vi.advanceTimersByTime(48);
+    });
+    expect(result.current.messages[0]?.content).toBe("甲乙丙丁");
+    act(() => {
+      subscriptionOptions.current?.onEvent(
+        live(11, 9, "取消窗口", "recovered"),
+      );
+    });
+    unmount();
+    act(() => vi.advanceTimersByTime(64));
+    vi.useRealTimers();
+  });
+
+  it.each(["下一帧", "重连"] as const)(
+    "缺帧对账失败后允许%s恢复实时消费",
+    async (recovery) => {
+      vi.useFakeTimers();
+      const initial = {
+        id: "live",
+        executionId: "live",
+        role: "assistant" as const,
+        status: "running" as const,
+        revision: 1,
+        liveRevision: 1,
+        content: "",
+        displayParts: [],
+      };
+      const source = {
+        snapshot: { messages: [initial], latestSequence: 1, ready: true },
+        commit: vi.fn(() => 1),
+        reconcile: vi
+          .fn(async () => 1)
+          .mockRejectedValueOnce(new Error("temporary HTTP failure")),
+      };
+      const { result, unmount } = renderHook(
+        () =>
+          useProductionChatRuntime({
+            ...runtimeOptions("live-chat"),
+            messageSource: source,
+            prepareSubmission: () => ({ accept: async () => ({}) }),
+          }),
+        { wrapper },
+      );
+      const live = (
+        sequence: number,
+        base: number,
+        text: string,
+        generation = "one",
+      ): ChatEvent => ({
+        transient: true,
+        type: "runtime.event",
+        live: {
+          generation,
+          sequence,
+          messageId: "live",
+          executionId: "live",
+          baseRevision: base,
+          revision: base + 1,
+          updates: [
+            {
+              baseRevision: base,
+              revision: base + 1,
+              updatedAt: sequence,
+              parts: [
+                {
+                  kind: "text_append",
+                  partId: "reply",
+                  partType: "text",
+                  text,
+                },
+              ],
+            },
+          ],
+        },
+      });
+      try {
+        act(() => {
+          subscriptionOptions.current?.onEvent(live(1, 1, "甲"));
+          vi.advanceTimersToNextFrame();
+        });
+        expect(result.current.messages[0]?.content).toBe("甲");
+        await act(async () => {
+          subscriptionOptions.current?.onEvent(live(3, 3, "缺帧"));
+          await Promise.resolve();
+        });
+        expect(result.current.streamState).toBe("unavailable");
+
+        if (recovery === "下一帧") {
+          source.snapshot.messages = [
+            { ...initial, content: "甲乙丙丁", revision: 8, liveRevision: 8 },
+          ];
+          await act(async () => {
+            subscriptionOptions.current?.onEvent(live(4, 4, "仍有缺口"));
+            await Promise.resolve();
+          });
+          expect(subscribeChatMock).toHaveBeenCalledTimes(2);
+          act(() => {
+            subscriptionOptions.current?.onEvent(live(10, 8, "戊", "new"));
+            vi.advanceTimersToNextFrame();
+          });
+          expect(result.current.messages[0]?.content).toBe("甲乙丙丁戊");
+        } else {
+          await act(async () => {
+            await subscriptionOptions.current?.reconcileCursor?.(
+              new AbortController().signal,
+            );
+            // 共享恢复先交付缓冲帧，再通知 onReconnect；新代次也必须能接续。
+            subscriptionOptions.current?.onEvent(live(10, 2, "乙", "new"));
+            subscriptionOptions.current?.onReconnect?.();
+            subscriptionOptions.current?.onState?.("open");
+          });
+          act(() => vi.advanceTimersToNextFrame());
+          expect(subscribeChatMock).toHaveBeenCalledTimes(1);
+          expect(result.current.messages[0]?.content).toBe("甲乙");
+        }
+        expect(source.reconcile).toHaveBeenCalledTimes(2);
+      } finally {
+        unmount();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("直接返回稳定领域消息，composer不复制消息正文", () => {
     const options = runtimeOptions("chat-1");
     const historicalMessage = {
       id: "message-stable",
@@ -2132,9 +2351,10 @@ describe("useChatRuntime queue", () => {
     } as const;
     options.messages = [historicalMessage];
 
-    renderHook(() => useChatRuntime(options), { wrapper });
+    const { result } = renderHook(() => useChatRuntime(options), { wrapper });
 
-    expect(runtimeAdapter.current?.messages?.[0]).toBe(historicalMessage);
+    expect(result.current.messages[0]).toBe(historicalMessage);
+    expect(runtimeAdapter.current?.messages).toEqual([]);
     expect(runtimeAdapter.current?.convertMessage).toBeTypeOf("function");
   });
 });

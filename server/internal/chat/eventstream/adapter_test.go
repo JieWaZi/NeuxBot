@@ -43,8 +43,8 @@ func TestReplayAfterRestoresPrefixWithoutKeepingSnapshots(t *testing.T) {
 	}
 }
 
-// TestReplayAfterKeepsHighestObservedRevision 保留审批更新后 Runtime 修订号暂时落后时的去重基线。
-func TestReplayAfterKeepsHighestObservedRevision(t *testing.T) {
+// TestReplayAfterKeepsCompleteContentCoverage 保留审批更新后 Runtime 修订号暂时落后时的去重基线。
+func TestReplayAfterKeepsCompleteContentCoverage(t *testing.T) {
 	records := fixtureRecords(t)
 	approval, err := eventlog.MarshalData(eventlog.ApprovalResolvedData{ToolCallID: "tool-command", Result: constants.ApprovalResultSelected})
 	if err != nil {
@@ -66,8 +66,8 @@ func TestReplayAfterKeepsHighestObservedRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := adapter.MessageRevisions()["execution-1"]; got != 6 {
-		t.Fatalf("revision baseline = %d, want highest observed revision 6", got)
+	if got := adapter.MessageRevisions()["execution-1"]; got != 5 {
+		t.Fatalf("content coverage baseline = %d, want highest complete content revision 5", got)
 	}
 }
 
@@ -472,5 +472,32 @@ func TestForkCapabilitiesMatchWindowAndIncrementalTerminal(t *testing.T) {
 	event, err = adapter.Apply(records[len(records)-1])
 	if err != nil || event.Message == nil || event.Message.Fork.Available || event.Message.Fork.ReasonCode != "session_changed" {
 		t.Fatalf("native reset failed to update operation: %+v %v", event, err)
+	}
+}
+
+// TestLateFileChangesWithoutBodyPrefix 验证不加载旧正文也能公开晚到成果，且载荷不携带整条消息。
+func TestLateFileChangesWithoutBodyPrefix(t *testing.T) {
+	adapter := NewAdapter()
+	if _, err := adapter.Apply(eventlog.Record{SchemaVersion: 1, Sequence: 1, Type: constants.ChatEventTypeCreated, Data: json.RawMessage(`{}`)}); err != nil {
+		t.Fatal(err)
+	}
+	event, err := adapter.Apply(eventlog.Record{SchemaVersion: 1, Sequence: 19, Type: constants.ChatEventTypeFileChanges, MessageID: "old", ExecutionID: "old", Data: json.RawMessage(`{"recordId":"snapshot","version":2,"state":"ready","totalFiles":1,"complete":true}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.Message != nil || event.FileChanges == nil || event.FileChanges.MessageID != "old" || event.FileChanges.Record.Version != 2 {
+		t.Fatalf("late reference = %+v", event)
+	}
+	clone := ClonePublicEvent(event)
+	clone.FileChanges.Record.Version = 3
+	if event.FileChanges.Record.Version != 2 {
+		t.Fatal("result reference shares mutable state")
+	}
+	encoded, err := json.Marshal(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"message":`) || len(encoded) > 512 {
+		t.Fatalf("reference sent body: %s", encoded)
 	}
 }

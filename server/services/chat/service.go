@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
@@ -51,8 +52,10 @@ type Service interface {
 	CountUserMessages(ctx context.Context, chatID string) (int64, error)
 	// ReadMessageHistory 返回指定创建游标之前的消息窗口。
 	ReadMessageHistory(ctx context.Context, chatID string, beforeSequence int64, limit int) (MessageHistoryPage, error)
-	// GetMessageFileChange 从权威 JSONL 返回指定消息和文件的执行级 Diff。
+	// GetMessageFileChange 按原消息授权范围读取独立快照的有界文件差异。
 	GetMessageFileChange(ctx context.Context, chatID string, messageID string, path string) (messageview.MessageFileChangeDiff, error)
+	// GetMessageFileChanges 读取独立快照提供的文件成果摘要。
+	GetMessageFileChanges(context.Context, string, string) (changes.Summary, error)
 	// ListEvents 返回持久化游标之后的安全公开事件。
 	ListEvents(ctx context.Context, chatID string, after int64, limit int) ([]PublicEvent, error)
 	// SubscribeExecutionEvents 只观察精确执行生命周期，先注册后补偿且不生成消息视图。
@@ -228,7 +231,10 @@ func (m *service) Start(ctx context.Context) error {
 	if err := m.logStore.RefreshCatalog(); err != nil {
 		return err
 	}
-	return m.recovery.reconcileAll(ctx)
+	if err := m.recovery.reconcileAll(ctx); err != nil {
+		return err
+	}
+	return m.recoverFileChanges(ctx)
 }
 
 // Close 关闭全部进程内事件订阅。

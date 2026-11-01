@@ -18,7 +18,9 @@ import (
 const (
 	runtimeToolUpdateBatchSize  = 128
 	runtimeToolUpdateBatchBytes = 256 * 1024
-	runtimeLiveSnapshotInterval = 16 * time.Millisecond
+	runtimeLiveBatchInterval    = 12 * time.Millisecond
+	runtimeLiveCheckpointBytes  = 128 * 1024
+	runtimeLiveCheckpointEvents = 256
 )
 
 // pendingRuntimeMessage 保存尚未到达完整消息边界的 Assistant 内容。
@@ -73,7 +75,7 @@ func (pending *pendingRuntimeMessage) finishText() error {
 type runtimeEventSink struct {
 	// messageFacts 提供本执行已持久化但尚未投影的交互与命令事实。
 	messageFacts *executionMessageFacts
-	// journal 提交完整消息事实并发布 transient 快照。
+	// journal 提交完整消息事实并发布 transient 增量。
 	journal chatservice.Journal
 	// chatID 是事件所属对话标识。
 	chatID string
@@ -85,11 +87,15 @@ type runtimeEventSink struct {
 	liveAdapter *eventstream.LiveAdapter
 	// liveTimer 只在有未公开变化时安排一次窗口交付，由 Flush 或语义边界释放。
 	liveTimer *time.Timer
-	// livePending 表示唯一实时状态比已公开快照更新，不缓存另一份消息副本。
+	// livePending 表示唯一实时状态比已公开增量更新，不缓存另一份消息副本。
 	livePending bool
-	// liveGeneration 使已开始等待锁的旧定时回调失效，防止终态之后补发旧快照。
+	// liveGeneration 使已开始等待锁的旧定时回调失效，防止终态之后补发旧增量。
 	liveGeneration uint64
-	// publishedRevision 是已公开消息的修订号，未改变消息的交互事实不重复物化整条快照。
+	// liveCheckpointBytes 统计上次完整消息段提交后新增的字节，限制恢复后缀。
+	liveCheckpointBytes int
+	// liveCheckpointEvents 限制尚未被完整消息段覆盖的输入数量。
+	liveCheckpointEvents int
+	// publishedRevision 是已公开安全增量覆盖的消息修订号。
 	publishedRevision int64
 	// pending 保存尚未遇到工具或 Invocation 边界的 Assistant 内容。
 	pending *pendingRuntimeMessage
@@ -132,7 +138,7 @@ func runtimeDeliveryContextError(ctx context.Context) error {
 	return status_error.OperationCanceled
 }
 
-// acceptLocked 按 Runtime 交付顺序更新实时状态与完整消息，并在显示窗口或语义边界发布快照。
+// acceptLocked 按 Runtime 交付顺序更新实时状态与完整消息，并在显示窗口或语义边界发布增量。
 func (s *runtimeEventSink) acceptLocked(
 	invocationID string,
 	event agentapi.Event,
@@ -156,7 +162,9 @@ func (s *runtimeEventSink) acceptLocked(
 		return err
 	}
 	s.messageRevision = revision
-	// 高频变化先进入唯一状态，在交付窗口才复制与广播整条消息；工具边界立即交付。
+	s.liveCheckpointBytes += len(cloned.Data)
+	s.liveCheckpointEvents++
+	// 高频变化先进入唯一状态，在交付窗口才打包与广播新增变化；工具边界立即交付。
 	if err := s.publishOrScheduleLiveLocked(cloned.Type); err != nil {
 		return err
 	}
@@ -172,7 +180,17 @@ func (s *runtimeEventSink) acceptLocked(
 		if err := s.flushToolLocked(); err != nil {
 			return err
 		}
-		return s.appendAssistantContentLocked(invocationID, cloned, revision)
+		if err := s.appendAssistantContentLocked(invocationID, cloned, revision); err != nil {
+			return err
+		}
+		// 预算边界结束当前完整内容段，JSONL 不保存原始 token。
+		if s.liveCheckpointBytes >= runtimeLiveCheckpointBytes || s.liveCheckpointEvents >= runtimeLiveCheckpointEvents {
+			if err := s.publishLiveBatchLocked(); err != nil {
+				return err
+			}
+			return s.flushLocked()
+		}
+		return nil
 	case agentapi.EventTypeToolUse:
 		if err := s.flushLocked(); err != nil {
 			return err
@@ -180,9 +198,15 @@ func (s *runtimeEventSink) acceptLocked(
 		return s.commitMessageLocked(constants.ChatEventTypeAssistantMessage, invocationID,
 			[]eventlog.RuntimeMessageContent{runtimeMessageContent(cloned)}, revision)
 	case agentapi.EventTypeToolInputSnapshot:
-		return s.acceptToolInputSnapshotLocked(invocationID, cloned, revision)
+		if err := s.acceptToolInputSnapshotLocked(invocationID, cloned, revision); err != nil {
+			return err
+		}
+		return s.checkpointLiveBudgetLocked()
 	case agentapi.EventTypeToolUpdate:
-		return s.appendToolUpdateLocked(invocationID, cloned, revision)
+		if err := s.appendToolUpdateLocked(invocationID, cloned, revision); err != nil {
+			return err
+		}
+		return s.checkpointLiveBudgetLocked()
 	case agentapi.EventTypeToolResult:
 		if err := s.flushLocked(); err != nil {
 			return err
@@ -199,8 +223,22 @@ func (s *runtimeEventSink) acceptLocked(
 	}
 }
 
-// publishOrScheduleLiveLocked 将实时物化频率限制在显示窗口，原始内容仍逐条归并与持久化。
+// checkpointLiveBudgetLocked 完成当前有界消息段，使新订阅者可从耐久基线恢复全部后缀。
+func (s *runtimeEventSink) checkpointLiveBudgetLocked() error {
+	if s.liveCheckpointBytes < runtimeLiveCheckpointBytes && s.liveCheckpointEvents < runtimeLiveCheckpointEvents {
+		return nil
+	}
+	if err := s.publishLiveBatchLocked(); err != nil {
+		return err
+	}
+	return s.flushLocked()
+}
+
+// publishOrScheduleLiveLocked 将实时打包频率限制在显示窗口，原始内容仍逐条归并与持久化。
 func (s *runtimeEventSink) publishOrScheduleLiveLocked(kind agentapi.EventType) error {
+	if s.liveAdapter.PendingCount() >= 128 {
+		return s.publishLiveBatchLocked()
+	}
 	switch kind {
 	case agentapi.EventTypeTextDelta, agentapi.EventTypeCommentaryDelta, agentapi.EventTypeThinkingDelta,
 		agentapi.EventTypeToolInputSnapshot, agentapi.EventTypeToolUpdate, agentapi.EventTypeUsage:
@@ -210,7 +248,7 @@ func (s *runtimeEventSink) publishOrScheduleLiveLocked(kind agentapi.EventType) 
 		s.livePending = true
 		s.liveGeneration++
 		generation := s.liveGeneration
-		s.liveTimer = time.AfterFunc(runtimeLiveSnapshotInterval, func() {
+		s.liveTimer = time.AfterFunc(runtimeLiveBatchInterval, func() {
 			s.mutex.Lock()
 			defer s.mutex.Unlock()
 			if generation != s.liveGeneration || !s.livePending || s.failure != nil {
@@ -223,31 +261,36 @@ func (s *runtimeEventSink) publishOrScheduleLiveLocked(kind agentapi.EventType) 
 		return nil
 	default:
 		// 入口已在 ApplyState 前追平事实；不能在新事件与前段提交之间再次改变修订号。
-		return s.publishLiveSnapshotLocked()
+		return s.publishLiveBatchLocked()
 	}
 }
 
-// publishLiveLocked 在消费者可见边界生成当前快照，transient 不推进 JSONL 游标。
+// publishLiveLocked 在消费者可见边界交付当前增量，transient 不推进 JSONL 游标。
 func (s *runtimeEventSink) publishLiveLocked() error {
 	s.stopLiveTimerLocked()
 	if _, err := s.consumeMessageFactsLocked(); err != nil {
 		return err
 	}
-	return s.publishLiveSnapshotLocked()
+	return s.publishLiveBatchLocked()
 }
 
-// publishLiveSnapshotLocked 物化当前已折叠状态，不在 Runtime 应用与消息提交之间插入外部事实。
-func (s *runtimeEventSink) publishLiveSnapshotLocked() error {
+// publishLiveBatchLocked 交付当前尚未发布的有序增量，不在 Runtime 应用与消息提交之间插入外部事实。
+func (s *runtimeEventSink) publishLiveBatchLocked() error {
 	s.stopLiveTimerLocked()
 	if s.liveAdapter.MessageRevision() <= s.publishedRevision {
 		return nil
 	}
-	event, err := s.liveAdapter.Snapshot()
-	if err != nil {
-		return err
+	for s.liveAdapter.PendingCount() > 0 {
+		event, err := s.liveAdapter.Drain()
+		if err != nil {
+			return err
+		}
+		if event.Live == nil {
+			break
+		}
+		s.journal.PublishLive(s.chatID, event)
+		s.publishedRevision = event.Live.Revision
 	}
-	s.journal.PublishLive(s.chatID, event)
-	s.publishedRevision = event.Message.Revision
 	return nil
 }
 
@@ -288,7 +331,7 @@ func (s *runtimeEventSink) scheduleMessageFacts() {
 	if s.liveAdapter == nil || s.failure != nil || !s.messageFacts.hasPending() {
 		return
 	}
-	if err := s.publishOrScheduleLiveLocked(agentapi.EventTypeToolUpdate); err != nil {
+	if err := s.publishLiveLocked(); err != nil {
 		s.failure = err
 	}
 }
@@ -522,6 +565,8 @@ func (s *runtimeEventSink) commitMessageLocked(
 		s.failure = err
 		return err
 	}
+	s.liveCheckpointBytes = 0
+	s.liveCheckpointEvents = 0
 	return nil
 }
 

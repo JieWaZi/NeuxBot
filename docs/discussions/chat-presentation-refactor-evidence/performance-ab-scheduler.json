@@ -1,0 +1,1422 @@
+{
+  "scope": "实际旧/新调度器的受控 enqueue→onBatch 等待；虚拟60/120Hz，不含真实React提交/布局/绘制或旧smooth额外等待",
+  "baselineRevision": "29b609b",
+  "candidateScope": "candidateOneFrame仅将实际当前源码schedule(3)替换成schedule(1)的实验；尚未修改产品",
+  "environment": {
+    "node": "v22.20.0",
+    "platform": "darwin",
+    "arch": "x64",
+    "cpu": "Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz"
+  },
+  "sourceHashes": {
+    "before": "cfe0bd16c697c81a478984ac3ec0a6fcea53ee469f439e9642ba65bb4db744e2",
+    "after": "0384663bd7e769f538851630b9219ad028079b1fc5b83afeb98643352741b35d",
+    "candidateOneFrame": "a016c847d6994a828e9b3906528afcefcaa13f1f979e97dc6aa6ad2bc91297ab"
+  },
+  "workload": {
+    "inputBatches": 100,
+    "bytesPerInput": 512,
+    "phasesMs": [
+      1,
+      3,
+      7,
+      11,
+      13
+    ],
+    "terminal": "lastInput+2ms, flushImmediately=true"
+  },
+  "results": [
+    {
+      "hz": 60,
+      "intervalMs": 5,
+      "before": {
+        "firstPublishMedianMs": 16,
+        "p50MedianMs": 6,
+        "p95WorstPhaseMs": 16,
+        "averageBatches": 26,
+        "terminalDelayMs": 0
+      },
+      "after": {
+        "firstPublishMedianMs": 43,
+        "p50MedianMs": 23.000000000000057,
+        "p95WorstPhaseMs": 49,
+        "averageBatches": 10.8,
+        "terminalDelayMs": 0
+      },
+      "candidateOneFrame": {
+        "firstPublishMedianMs": 9.666666666666668,
+        "p50MedianMs": 7.333333333333371,
+        "p95WorstPhaseMs": 16.333333333333343,
+        "averageBatches": 30.8,
+        "terminalDelayMs": 0
+      },
+      "pairs": [
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 26,
+            "firstPublishMs": 16,
+            "p50Ms": 6,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.9314870000000042
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 10,
+            "firstPublishMs": 49,
+            "p50Ms": 24.000000000000057,
+            "p95Ms": 49,
+            "maxMs": 49.00000000000006,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.6256549999999947
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 30,
+            "firstPublishMs": 15.666666666666668,
+            "p50Ms": 7.333333333333371,
+            "p95Ms": 15.666666666666686,
+            "maxMs": 15.666666666666686,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.5221300000000042
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 26,
+            "firstPublishMs": 16,
+            "p50Ms": 6,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.5753840000000139
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 11,
+            "firstPublishMs": 47,
+            "p50Ms": 22.000000000000057,
+            "p95Ms": 47,
+            "maxMs": 47.00000000000006,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 1.0347790000000145
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 31,
+            "firstPublishMs": 13.666666666666668,
+            "p50Ms": 7.000000000000057,
+            "p95Ms": 15.333333333333343,
+            "maxMs": 15.333333333333371,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.24048100000001682
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 26,
+            "firstPublishMs": 16,
+            "p50Ms": 6,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.17583000000001903
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 11,
+            "firstPublishMs": 43,
+            "p50Ms": 23.000000000000057,
+            "p95Ms": 48,
+            "maxMs": 48.00000000000006,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.2259249999999895
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 31,
+            "firstPublishMs": 9.666666666666668,
+            "p50Ms": 8.000000000000057,
+            "p95Ms": 16.333333333333343,
+            "maxMs": 16.33333333333337,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.30969300000001
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 26,
+            "firstPublishMs": 16,
+            "p50Ms": 6,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.320619999999991
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 11,
+            "firstPublishMs": 39,
+            "p50Ms": 24.00000000000003,
+            "p95Ms": 49,
+            "maxMs": 49.00000000000006,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.5063969999999927
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 31,
+            "firstPublishMs": 5.666666666666668,
+            "p50Ms": 7.333333333333371,
+            "p95Ms": 15.666666666666686,
+            "maxMs": 15.666666666666686,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.4214929999999981
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 26,
+            "firstPublishMs": 16,
+            "p50Ms": 6,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.24026799999998616
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 11,
+            "firstPublishMs": 37,
+            "p50Ms": 22.00000000000003,
+            "p95Ms": 47,
+            "maxMs": 47.00000000000006,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.2944520000000068
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 5,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 31,
+            "firstPublishMs": 3.666666666666668,
+            "p50Ms": 7.000000000000028,
+            "p95Ms": 15.333333333333343,
+            "maxMs": 15.333333333333371,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.7114590000000192
+          }
+        }
+      ]
+    },
+    {
+      "hz": 60,
+      "intervalMs": 20,
+      "before": {
+        "firstPublishMedianMs": 16,
+        "p50MedianMs": 16,
+        "p95WorstPhaseMs": 16,
+        "averageBatches": 100,
+        "terminalDelayMs": 0
+      },
+      "after": {
+        "firstPublishMedianMs": 43,
+        "p50MedianMs": 29,
+        "p95WorstPhaseMs": 49.66666666666674,
+        "averageBatches": 40,
+        "terminalDelayMs": 0
+      },
+      "candidateOneFrame": {
+        "firstPublishMedianMs": 9.666666666666668,
+        "p50MedianMs": 9,
+        "p95WorstPhaseMs": 16.333333333333485,
+        "averageBatches": 100.2,
+        "terminalDelayMs": 0
+      },
+      "pairs": [
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.27190400000000636
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 40,
+            "firstPublishMs": 49,
+            "p50Ms": 29,
+            "p95Ms": 49.000000000000114,
+            "maxMs": 49.00000000000023,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.3172529999999938
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 15.666666666666668,
+            "p50Ms": 9,
+            "p95Ms": 15.666666666666742,
+            "maxMs": 15.666666666666742,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.5567020000000014
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.37718299999997384
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 40,
+            "firstPublishMs": 47,
+            "p50Ms": 27,
+            "p95Ms": 47.000000000000114,
+            "maxMs": 47.00000000000023,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 1.0513899999999978
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 101,
+            "firstPublishMs": 13.666666666666668,
+            "p50Ms": 7,
+            "p95Ms": 13.666666666666742,
+            "maxMs": 13.666666666666742,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.6555429999999944
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.7172159999999792
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 40,
+            "firstPublishMs": 43,
+            "p50Ms": 29.666666666666742,
+            "p95Ms": 49.66666666666674,
+            "maxMs": 49.66666666666674,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.5460109999999929
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 9.666666666666668,
+            "p50Ms": 9.666666666666742,
+            "p95Ms": 16.333333333333485,
+            "maxMs": 16.333333333333485,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.49944499999998015
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.4330580000000168
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 40,
+            "firstPublishMs": 39,
+            "p50Ms": 29,
+            "p95Ms": 49.00000000000006,
+            "maxMs": 49.00000000000023,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.3262619999999856
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 5.666666666666668,
+            "p50Ms": 9,
+            "p95Ms": 15.666666666666742,
+            "maxMs": 15.666666666666742,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.3478159999999946
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.22849699999997597
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 40,
+            "firstPublishMs": 37,
+            "p50Ms": 27,
+            "p95Ms": 47.00000000000006,
+            "maxMs": 47.00000000000023,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.3835149999999885
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 20,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 3.666666666666668,
+            "p50Ms": 7,
+            "p95Ms": 13.666666666666742,
+            "maxMs": 13.666666666666742,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.324134000000015
+          }
+        }
+      ]
+    },
+    {
+      "hz": 60,
+      "intervalMs": 80,
+      "before": {
+        "firstPublishMedianMs": 16,
+        "p50MedianMs": 16,
+        "p95WorstPhaseMs": 16,
+        "averageBatches": 100,
+        "terminalDelayMs": 0
+      },
+      "after": {
+        "firstPublishMedianMs": 43,
+        "p50MedianMs": 42.333333333333485,
+        "p95WorstPhaseMs": 49.66666666666697,
+        "averageBatches": 100,
+        "terminalDelayMs": 0
+      },
+      "candidateOneFrame": {
+        "firstPublishMedianMs": 9.666666666666668,
+        "p50MedianMs": 9,
+        "p95WorstPhaseMs": 16.33333333333394,
+        "averageBatches": 100.2,
+        "terminalDelayMs": 0
+      },
+      "pairs": [
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.30027999999998656
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 49,
+            "p50Ms": 42.333333333333485,
+            "p95Ms": 49.000000000000455,
+            "maxMs": 49.00000000000091,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.4208229999999844
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 15.666666666666668,
+            "p50Ms": 9,
+            "p95Ms": 15.66666666666697,
+            "maxMs": 15.66666666666697,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.5524660000000097
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.4804860000000133
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 47,
+            "p50Ms": 40.333333333333485,
+            "p95Ms": 47.000000000000455,
+            "maxMs": 47.00000000000091,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.8296429999999759
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 13.666666666666668,
+            "p50Ms": 7,
+            "p95Ms": 13.66666666666697,
+            "maxMs": 13.66666666666697,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.8134279999999876
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.21967699999999013
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 43,
+            "p50Ms": 43,
+            "p95Ms": 49.66666666666697,
+            "maxMs": 49.66666666666697,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.36954000000000065
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 9.666666666666668,
+            "p50Ms": 9.66666666666697,
+            "p95Ms": 16.33333333333394,
+            "maxMs": 16.33333333333394,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.30363700000000904
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.245285999999993
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 39,
+            "p50Ms": 42.333333333333485,
+            "p95Ms": 49.000000000000455,
+            "maxMs": 49.00000000000091,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.3839800000000082
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 5.666666666666668,
+            "p50Ms": 9,
+            "p95Ms": 15.66666666666697,
+            "maxMs": 15.66666666666697,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.7256639999999948
+          }
+        },
+        {
+          "before": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.17794400000002497
+          },
+          "after": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 37,
+            "p50Ms": 40.333333333333485,
+            "p95Ms": 47.000000000000455,
+            "maxMs": 47.00000000000091,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.42674800000000346
+          },
+          "candidateOneFrame": {
+            "hz": 60,
+            "intervalMs": 80,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 101,
+            "firstPublishMs": 3.666666666666668,
+            "p50Ms": 7,
+            "p95Ms": 13.66666666666697,
+            "maxMs": 13.66666666666697,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.2817280000000153
+          }
+        }
+      ]
+    },
+    {
+      "hz": 120,
+      "intervalMs": 5,
+      "before": {
+        "firstPublishMedianMs": 16,
+        "p50MedianMs": 6,
+        "p95WorstPhaseMs": 16,
+        "averageBatches": 26,
+        "terminalDelayMs": 0
+      },
+      "after": {
+        "firstPublishMedianMs": 22,
+        "p50MedianMs": 12.333333333333343,
+        "p95WorstPhaseMs": 24.000000000000014,
+        "averageBatches": 20.6,
+        "terminalDelayMs": 0
+      },
+      "candidateOneFrame": {
+        "firstPublishMedianMs": 5.333333333333334,
+        "p50MedianMs": 4,
+        "p95WorstPhaseMs": 8.000000000000028,
+        "averageBatches": 60.6,
+        "terminalDelayMs": 0
+      },
+      "pairs": [
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 26,
+            "firstPublishMs": 16,
+            "p50Ms": 6,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.14402300000000423
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 20,
+            "firstPublishMs": 24,
+            "p50Ms": 14,
+            "p95Ms": 24.000000000000014,
+            "maxMs": 24.000000000000057,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.1908809999999903
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 60,
+            "firstPublishMs": 7.333333333333334,
+            "p50Ms": 4,
+            "p95Ms": 7.333333333333371,
+            "maxMs": 7.333333333333371,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.22933499999999185
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 26,
+            "firstPublishMs": 16,
+            "p50Ms": 6,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.13040200000000368
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 21,
+            "firstPublishMs": 22,
+            "p50Ms": 12,
+            "p95Ms": 22.00000000000003,
+            "maxMs": 22.000000000000057,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.187279999999987
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 61,
+            "firstPublishMs": 5.333333333333334,
+            "p50Ms": 3.6666666666666856,
+            "p95Ms": 7.000000000000028,
+            "maxMs": 7.000000000000057,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.9754949999999951
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 26,
+            "firstPublishMs": 16,
+            "p50Ms": 6,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.134018999999995
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 21,
+            "firstPublishMs": 18,
+            "p50Ms": 13,
+            "p95Ms": 23.00000000000003,
+            "maxMs": 23.000000000000057,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.21432699999999727
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 61,
+            "firstPublishMs": 1.333333333333334,
+            "p50Ms": 4.666666666666686,
+            "p95Ms": 8.000000000000028,
+            "maxMs": 8.000000000000057,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.23290199999999572
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 26,
+            "firstPublishMs": 16,
+            "p50Ms": 6,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.13635699999997541
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 20,
+            "firstPublishMs": 22.333333333333336,
+            "p50Ms": 12.333333333333343,
+            "p95Ms": 22.33333333333337,
+            "maxMs": 22.33333333333337,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.18806000000000722
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 60,
+            "firstPublishMs": 5.666666666666668,
+            "p50Ms": 4,
+            "p95Ms": 7.333333333333371,
+            "maxMs": 7.333333333333371,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.22765700000002198
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 26,
+            "firstPublishMs": 16,
+            "p50Ms": 6,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.1240709999999865
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 21,
+            "firstPublishMs": 20.333333333333336,
+            "p50Ms": 10.333333333333371,
+            "p95Ms": 20.33333333333337,
+            "maxMs": 20.33333333333337,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.19977600000001416
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 5,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 61,
+            "firstPublishMs": 3.666666666666668,
+            "p50Ms": 3.6666666666666856,
+            "p95Ms": 7.000000000000028,
+            "maxMs": 7.000000000000057,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.23832300000000828
+          }
+        }
+      ]
+    },
+    {
+      "hz": 120,
+      "intervalMs": 20,
+      "before": {
+        "firstPublishMedianMs": 16,
+        "p50MedianMs": 16,
+        "p95WorstPhaseMs": 16,
+        "averageBatches": 100,
+        "terminalDelayMs": 0
+      },
+      "after": {
+        "firstPublishMedianMs": 22,
+        "p50MedianMs": 17.33333333333337,
+        "p95WorstPhaseMs": 24.666666666666742,
+        "averageBatches": 60,
+        "terminalDelayMs": 0
+      },
+      "candidateOneFrame": {
+        "firstPublishMedianMs": 5.333333333333334,
+        "p50MedianMs": 4,
+        "p95WorstPhaseMs": 8.000000000000114,
+        "averageBatches": 100.4,
+        "terminalDelayMs": 0
+      },
+      "pairs": [
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.8861970000000099
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 60,
+            "firstPublishMs": 24,
+            "p50Ms": 17.33333333333337,
+            "p95Ms": 24.000000000000114,
+            "maxMs": 24.000000000000227,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.2811129999999764
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 7.333333333333334,
+            "p50Ms": 4,
+            "p95Ms": 7.333333333333485,
+            "maxMs": 7.333333333333485,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.37764000000001374
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.17750300000000152
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 60,
+            "firstPublishMs": 22,
+            "p50Ms": 17,
+            "p95Ms": 23.666666666666742,
+            "maxMs": 23.666666666666742,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.2711979999999983
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 101,
+            "firstPublishMs": 5.333333333333334,
+            "p50Ms": 3.6666666666667425,
+            "p95Ms": 7.000000000000114,
+            "maxMs": 7.000000000000227,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.27628100000001155
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.19662700000000655
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 60,
+            "firstPublishMs": 18,
+            "p50Ms": 18,
+            "p95Ms": 24.666666666666742,
+            "maxMs": 24.666666666666742,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.9176760000000002
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 1.333333333333334,
+            "p50Ms": 4.6666666666667425,
+            "p95Ms": 8.000000000000114,
+            "maxMs": 8.000000000000227,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.280651000000006
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.21063100000000645
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 60,
+            "firstPublishMs": 22.333333333333336,
+            "p50Ms": 17.33333333333337,
+            "p95Ms": 24.000000000000114,
+            "maxMs": 24.000000000000227,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.43098399999999515
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 101,
+            "firstPublishMs": 5.666666666666668,
+            "p50Ms": 4,
+            "p95Ms": 7.333333333333485,
+            "maxMs": 7.333333333333485,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.4431929999999795
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.4482230000000129
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 60,
+            "firstPublishMs": 20.333333333333336,
+            "p50Ms": 17,
+            "p95Ms": 23.666666666666742,
+            "maxMs": 23.666666666666742,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.5433319999999924
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 20,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 3.666666666666668,
+            "p50Ms": 3.6666666666667425,
+            "p95Ms": 7.000000000000057,
+            "maxMs": 7.000000000000227,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 6.183645999999982
+          }
+        }
+      ]
+    },
+    {
+      "hz": 120,
+      "intervalMs": 80,
+      "before": {
+        "firstPublishMedianMs": 16,
+        "p50MedianMs": 16,
+        "p95WorstPhaseMs": 16,
+        "averageBatches": 100,
+        "terminalDelayMs": 0
+      },
+      "after": {
+        "firstPublishMedianMs": 22,
+        "p50MedianMs": 20.66666666666697,
+        "p95WorstPhaseMs": 24.66666666666697,
+        "averageBatches": 100,
+        "terminalDelayMs": 0
+      },
+      "candidateOneFrame": {
+        "firstPublishMedianMs": 5.333333333333334,
+        "p50MedianMs": 4,
+        "p95WorstPhaseMs": 8.000000000000455,
+        "averageBatches": 100.4,
+        "terminalDelayMs": 0
+      },
+      "pairs": [
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.3136589999999728
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 24,
+            "p50Ms": 20.66666666666697,
+            "p95Ms": 24.000000000000455,
+            "maxMs": 24.00000000000091,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.34810699999999883
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 1,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 7.333333333333334,
+            "p50Ms": 4,
+            "p95Ms": 7.33333333333394,
+            "maxMs": 7.33333333333394,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.2745260000000087
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.17567999999999984
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 22,
+            "p50Ms": 20.333333333333485,
+            "p95Ms": 23.66666666666697,
+            "maxMs": 23.66666666666697,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.5617799999999988
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 3,
+            "sourceEvents": 100,
+            "batches": 101,
+            "firstPublishMs": 5.333333333333334,
+            "p50Ms": 3.66666666666697,
+            "p95Ms": 7.000000000000455,
+            "maxMs": 7.0000000000009095,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.2915610000000015
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.2734209999999848
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 18,
+            "p50Ms": 21.333333333333485,
+            "p95Ms": 24.66666666666697,
+            "maxMs": 24.66666666666697,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.552835000000016
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 7,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 1.333333333333334,
+            "p50Ms": 4.66666666666697,
+            "p95Ms": 8.000000000000455,
+            "maxMs": 8.00000000000091,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.4741070000000036
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.3095779999999877
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 22.333333333333336,
+            "p50Ms": 20.66666666666697,
+            "p95Ms": 24.000000000000455,
+            "maxMs": 24.00000000000091,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.6152650000000222
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 11,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 5.666666666666668,
+            "p50Ms": 4,
+            "p95Ms": 7.33333333333394,
+            "maxMs": 7.33333333333394,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.4390420000000006
+          }
+        },
+        {
+          "before": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 16,
+            "p50Ms": 16,
+            "p95Ms": 16,
+            "maxMs": 16,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.28688900000000217
+          },
+          "after": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 100,
+            "firstPublishMs": 20.333333333333336,
+            "p50Ms": 20.333333333333485,
+            "p95Ms": 23.66666666666697,
+            "maxMs": 23.66666666666697,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.9384079999999813
+          },
+          "candidateOneFrame": {
+            "hz": 120,
+            "intervalMs": 80,
+            "phaseMs": 13,
+            "sourceEvents": 100,
+            "batches": 101,
+            "firstPublishMs": 3.666666666666668,
+            "p50Ms": 3.66666666666697,
+            "p95Ms": 7.000000000000455,
+            "maxMs": 7.0000000000009095,
+            "terminalDelayMs": 0,
+            "simulationCpuMs": 0.26874499999999557
+          }
+        }
+      ]
+    }
+  ]
+}

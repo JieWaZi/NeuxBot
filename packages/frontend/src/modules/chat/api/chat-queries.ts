@@ -6,6 +6,7 @@ export {
   getChatOptions,
   getChatQueryKey,
   getChatMessageFileChangeOptions,
+  getChatMessageFileChangesOptions,
   getChatMessageFileChangeQueryKey,
   listChatsOptions,
   listChatsQueryKey,
@@ -160,6 +161,25 @@ export function mergeChatHistoryEvents(
     if (next <= sequence) continue;
     if (next !== sequence + 1) return undefined;
     sequence = next;
+    if (event.fileChanges) {
+      const id = event.fileChanges.messageId;
+      const message =
+        updates.get(id) ??
+        current.pages
+          .flatMap((page) => page.resources ?? [])
+          .find((item) => item.id === id);
+      if (
+        message &&
+        (message.fileChangeRecord?.version ?? 0) <
+          (event.fileChanges.record.version ?? 0)
+      )
+        updates.set(id, {
+          ...message,
+          fileChangeRecord: event.fileChanges.record,
+          revision: Math.max(message.revision ?? 0, next),
+        });
+      continue;
+    }
     if (!event.message) continue;
     if (!event.message.id) return undefined;
     if (

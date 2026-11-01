@@ -21,6 +21,8 @@ import (
 
 // messageFactTestJournal 观察真实 Journal 的实时交付和初始化读取次数，不替代持久化与协调器。
 type messageFactTestJournal struct {
+	// message 是测试呈现消费者从安全增量恢复的消息状态。
+	message *messageview.Message
 	// Journal 执行真实 JSONL 与临时 SQLite 提交。
 	chatservice.Journal
 	// live 保存真实 Journal 发布的 transient 快照。
@@ -31,7 +33,7 @@ type messageFactTestJournal struct {
 
 func (j *messageFactTestJournal) PublishLive(chatID string, event eventstream.PublicEvent) {
 	j.Journal.PublishLive(chatID, event)
-	j.live <- event
+	j.live <- foldTestLive(&j.message, event)
 }
 func (j *messageFactTestJournal) ReadExecutionRecords(chatID, executionID string) ([]eventlog.Record, error) {
 	j.reads.Add(1)
@@ -242,6 +244,73 @@ func TestLiveWindowAndFlushConsumeDurableApprovalWithoutAnotherRuntimeEvent(t *t
 	}
 }
 
+// TestPublicSubscriptionKeepsPendingIncrementAfterApproval 验证真实审批提交不能让公开订阅丢弃待交付的工具变化。
+func TestPublicSubscriptionKeepsPendingIncrementAfterApproval(t *testing.T) {
+	core, sink, journal, chatID := newMessageFactFixture(t)
+	if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{
+		Type: agentapi.EventTypeToolUse,
+		Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	<-journal.live
+	approvalID := requestMessageFactApproval(t, core, sink, chatID, "invocation-1")
+	records, err := journal.ReadRecords(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	subscription, err := journal.Journal.(chatservice.Service).SubscribeEvents(ctx, chatID, records[len(records)-1].Sequence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Close()
+
+	func() {
+		sink.mutex.Lock()
+		defer sink.mutex.Unlock()
+		if err := sink.acceptLocked("invocation-1", agentapi.Event{
+			Type: agentapi.EventTypeToolInputSnapshot,
+			Data: marshalData(map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}}),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		// 协调器提交不等待 Sink 锁，实时窗口随后按原顺序包含工具变化和审批事实。
+		resolved := make(chan error, 1)
+		go func() { resolved <- core.ResolveApproval(ctx, chatID, approvalID, "allow-once") }()
+		select {
+		case err := <-resolved:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-ctx.Done():
+			t.Fatal("approval commit waited for the live window")
+		}
+	}()
+
+	select {
+	case event := <-subscription.Events:
+		if event.Type != constants.ChatEventTypeApprovalResolved || event.Message == nil || event.Message.Revision <= event.Message.LiveRevision {
+			t.Fatalf("approval did not preserve independent content coverage: %+v", event)
+		}
+	case <-ctx.Done():
+		t.Fatal("public subscription did not deliver the committed approval")
+	}
+	select {
+	case event := <-subscription.Events:
+		if event.Live == nil || len(event.Live.Updates) != 2 || len(event.Live.Updates[0].Parts) != 1 {
+			t.Fatalf("public subscription lost pending increments: %+v", event)
+		}
+		part := event.Live.Updates[0].Parts[0].Part
+		if part == nil || part.ToolSafeSummary == nil || part.ToolSafeSummary.Path != "main.go" {
+			t.Fatalf("pending tool target did not reach the public subscription: %+v", part)
+		}
+	case <-ctx.Done():
+		t.Fatal("committed approval hid the pending live tool increment")
+	}
+}
+
 func TestLateApprovalKeepsOriginatingInvocationWithReusedNativeToolID(t *testing.T) {
 	core, sink, journal, chatID := newMessageFactFixture(t)
 	for _, invocation := range []string{"invocation-1", "invocation-2"} {
@@ -327,10 +396,18 @@ func TestReconnectLiveCacheCatchesUpDurableApprovalWithoutRuntimeOutput(t *testi
 	for {
 		select {
 		case event := <-subscription.Events:
-			if !event.Transient || event.Message == nil || len(event.Message.DisplayParts) == 0 {
+			if !event.Transient || event.Live == nil {
 				continue
 			}
-			if result := event.Message.DisplayParts[0].ToolApprovalResult; result != nil && result.Result == constants.ApprovalResultSelected {
+			approved := false
+			for _, update := range event.Live.Updates {
+				for _, op := range update.Parts {
+					if op.Part != nil && op.Part.ToolApprovalResult != nil && op.Part.ToolApprovalResult.Result == constants.ApprovalResultSelected {
+						approved = true
+					}
+				}
+			}
+			if approved {
 				if observed.reads.Load() != 1 {
 					t.Fatalf("external fact wake reread execution %d times", observed.reads.Load())
 				}
@@ -389,7 +466,7 @@ func TestFlushFactErrorInvalidatesPendingLiveWindow(t *testing.T) {
 	select {
 	case event := <-journal.live:
 		t.Fatalf("old live window published after Flush failed: %+v", event)
-	case <-time.After(3 * runtimeLiveSnapshotInterval):
+	case <-time.After(3 * runtimeLiveBatchInterval):
 	}
 }
 

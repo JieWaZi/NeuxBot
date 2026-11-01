@@ -215,25 +215,14 @@ func TestReadMessageHistoryReadsLatestAndOlderJSONLWindows(t *testing.T) {
 			latest.Resources[1].CreatedSequence,
 		)
 	}
-	if changes := latest.Resources[1].FileChanges; len(changes) != 1 ||
-		changes[0].Path != "projects/Desktop/main.go" || changes[0].AddedLines != 1 {
-		t.Fatalf("latest file changes = %+v, want managed workspace relative path", changes)
+	if len(latest.Resources[1].FileChanges) != 0 || latest.Resources[1].FileChangeRecord != nil {
+		t.Fatal("legacy tool diff must not create independent file outcome")
 	}
 	if len(latest.Resources[1].RuntimeEvents) != 0 || len(latest.Resources[1].FileChangeDiffs) != 0 {
-		t.Fatal("message history must not retain private runtime events or full file diffs")
+		t.Fatal("public history leaked private tool payload")
 	}
-	diff, err := chatService.GetMessageFileChange(
-		context.Background(),
-		chatID,
-		"execution-2",
-		"projects/Desktop/main.go",
-	)
-	if err != nil {
-		t.Fatalf("GetMessageFileChange() error = %v", err)
-	}
-	if diff.Path != "projects/Desktop/main.go" || diff.OldContent != "" ||
-		diff.NewContent != "package main\n" {
-		t.Fatalf("GetMessageFileChange() = %+v, want JSONL execution diff", diff)
+	if _, err := chatService.GetMessageFileChange(context.Background(), chatID, "execution-2", "projects/Desktop/main.go"); err == nil {
+		t.Fatal("legacy tool payload was used as independent historical diff")
 	}
 
 	older, err := chatService.ReadMessageHistory(context.Background(), chatID, 7, 2)

@@ -276,7 +276,7 @@ func (m *service) ReadMessageHistory(
 	return page, nil
 }
 
-// GetMessageFileChange 从权威 JSONL 重放并返回指定消息的执行级文件 Diff。
+// GetMessageFileChange 从独立历史快照读取原消息文件的有界差异。
 func (m *service) GetMessageFileChange(
 	ctx context.Context,
 	chatID string,
@@ -285,42 +285,13 @@ func (m *service) GetMessageFileChange(
 ) (messageview.MessageFileChangeDiff, error) {
 	chatID = strings.TrimSpace(chatID)
 	messageID = strings.TrimSpace(messageID)
-	path = strings.TrimSpace(path)
-	if chatID == "" || messageID == "" || path == "" {
+	if chatID == "" || messageID == "" || strings.TrimSpace(path) == "" {
 		return messageview.MessageFileChangeDiff{}, status_error.BadRequest
 	}
 	if err := ctx.Err(); err != nil {
 		return messageview.MessageFileChangeDiff{}, chatContextStatus(err)
 	}
-	records, err := m.logStore.ReadMessage(chatID, messageID)
-	if err != nil {
-		return messageview.MessageFileChangeDiff{}, err
-	}
-	messages, err := messageview.ReplayMessages(records)
-	if err != nil {
-		logx.Errorf(
-			"project chat message file change failed: chat_id=%s message_id=%s error=%v",
-			chatID,
-			messageID,
-			err,
-		)
-		return messageview.MessageFileChangeDiff{}, status_error.ChatLogError
-	}
-	for _, message := range messages {
-		if message.ID != messageID {
-			continue
-		}
-		for _, diff := range message.FileChangeDiffs {
-			if diff.Path == path {
-				return diff, nil
-			}
-		}
-		break
-	}
-	return messageview.MessageFileChangeDiff{},
-		status_error.ChatMessageFileChangeNotFound.WithParams(
-			map[string]interface{}{"Path": path},
-		)
+	return m.readRecordedFileDiff(ctx, chatID, messageID, path)
 }
 
 // chatContextStatus 把查询 Context 终态收敛为稳定状态错误。

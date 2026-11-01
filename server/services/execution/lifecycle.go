@@ -29,6 +29,14 @@ type activeExecution struct {
 	done chan struct{}
 }
 
+// executionSettlement 记录同一后台所有者的文件冻结与最终退出屏障，不复制业务状态。
+type executionSettlement struct {
+	// frozen 在结束侧冻结或明确放弃采集后关闭；nil 表示已关闭。
+	frozen chan struct{}
+	// done 在差异计算、发布和后台资源清理全部退出后关闭。
+	done chan struct{}
+}
+
 // executionRegistry 统一维护 Chat 执行的进程生命周期和单执行约束。
 //
 // 注册表只管理进程内占用关系，不替代 JSONL 中的权威执行状态。调用方必须先取得
@@ -39,11 +47,13 @@ type executionRegistry struct {
 	mutex sync.Mutex
 	// active 按对话标识保存当前唯一活跃执行。
 	active map[string]activeExecution
+	// settling 保存已接纳后台工作的技术屏障，冻结后允许下一轮读取基线和写盘。
+	settling map[string]map[string]*executionSettlement
 	// lifecycleContext 控制全部后台执行。
 	lifecycleContext context.Context
 	// lifecycleCancel 取消全部后台执行。
 	lifecycleCancel context.CancelFunc
-	// waitGroup 等待已经启动的后台执行退出。
+	// waitGroup 等待预留、原生执行与终态之后的文件收尾全部退出。
 	waitGroup sync.WaitGroup
 	// started 表示注册表已经绑定进程根 Context。
 	started bool
@@ -51,7 +61,7 @@ type executionRegistry struct {
 
 // newExecutionRegistry 创建尚未绑定进程生命周期的执行注册表。
 func newExecutionRegistry() *executionRegistry {
-	return &executionRegistry{active: make(map[string]activeExecution)}
+	return &executionRegistry{active: make(map[string]activeExecution), settling: make(map[string]map[string]*executionSettlement)}
 }
 
 // start 绑定进程根 Context；重复调用保持幂等。
@@ -97,6 +107,10 @@ func (r *executionRegistry) reserve(
 	// 从预留成功开始计入生命周期，而不是等到 goroutine 启动后再 Add。这样 Close
 	// 与发送准备或权威提交并发时，不会在 Wait 已返回后才出现新的后台执行。
 	r.waitGroup.Add(1)
+	if r.settling[chatID] == nil {
+		r.settling[chatID] = make(map[string]*executionSettlement)
+	}
+	r.settling[chatID][executionID] = &executionSettlement{frozen: make(chan struct{}), done: make(chan struct{})}
 	r.active[chatID] = activeExecution{
 		executionID: executionID,
 		cancel:      cancel,
@@ -118,17 +132,60 @@ func (r *executionRegistry) launch(
 	}()
 }
 
-// release 仅释放与 executionID 匹配的占用，避免旧流程误删新执行。
+// release 释放指定后台工作及其收尾所有权，旧流程不能删除新执行占用。
 func (r *executionRegistry) release(chatID string, executionID string) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	active, exists := r.active[chatID]
-	if !exists || active.executionID != executionID {
-		return
+	if active, exists := r.active[chatID]; exists && active.executionID == executionID {
+		delete(r.active, chatID)
+		close(active.done)
 	}
-	delete(r.active, chatID)
-	close(active.done)
-	r.waitGroup.Done()
+	if settlement, exists := r.settling[chatID][executionID]; exists {
+		delete(r.settling[chatID], executionID)
+		if len(r.settling[chatID]) == 0 {
+			delete(r.settling, chatID)
+		}
+		if settlement.frozen != nil {
+			close(settlement.frozen)
+		}
+		close(settlement.done)
+		r.waitGroup.Done()
+	}
+}
+
+// waitForFileSnapshots 只等待前序后台所有者冻结结束侧，不等待差异计算或成果发布。
+func (r *executionRegistry) waitForFileSnapshots(ctx, executionContext context.Context, chatID, executionID string) error {
+	r.mutex.Lock()
+	pending := make([]<-chan struct{}, 0, len(r.settling[chatID]))
+	for id, settlement := range r.settling[chatID] {
+		if id != executionID && settlement.frozen != nil {
+			pending = append(pending, settlement.frozen)
+		}
+	}
+	r.mutex.Unlock()
+	for _, frozen := range pending {
+		select {
+		case <-frozen:
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-executionContext.Done():
+			return executionContext.Err()
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return executionContext.Err()
+}
+
+// freezeFileSnapshots 解除同一所有者的工作树屏障，后续收尾只能消费不可变快照。
+func (r *executionRegistry) freezeFileSnapshots(chatID, executionID string) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if settlement := r.settling[chatID][executionID]; settlement != nil && settlement.frozen != nil {
+		close(settlement.frozen)
+		settlement.frozen = nil
+	}
 }
 
 // complete 在同一临界区内释放执行占用并发布终态，避免订阅者先于下一轮入口观察到完成。
@@ -149,7 +206,6 @@ func (r *executionRegistry) complete(
 	}
 	if matched {
 		close(active.done)
-		r.waitGroup.Done()
 	}
 }
 
@@ -163,39 +219,48 @@ func (r *executionRegistry) cancel(chatID string) {
 	}
 }
 
-// cancelAndWait 取消活跃执行并等待其完成持久化收尾。
+// cancelAndWait 取消活跃执行，并等待该 Chat 已发布终态的文件收尾退出。
 func (r *executionRegistry) cancelAndWait(ctx context.Context, chatID string) error {
 	r.mutex.Lock()
 	active, exists := r.active[chatID]
+	pending := make([]<-chan struct{}, 0, len(r.settling[chatID]))
+	for _, settlement := range r.settling[chatID] {
+		pending = append(pending, settlement.done)
+	}
 	r.mutex.Unlock()
-	if !exists {
-		return nil
+	if exists && active.cancel != nil {
+		active.cancel()
 	}
-	active.cancel()
-	select {
-	case <-active.done:
-		return nil
-	case <-ctx.Done():
-		return status_error.ChatHasActiveExecution
+	for _, done := range pending {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return status_error.ChatHasActiveExecution
+		}
 	}
+	return nil
 }
 
-// cancelExecutionAndWait 捕获精确执行的取消句柄，锁释放后新执行也不会成为取消目标。
+// cancelExecutionAndWait 捕获精确执行并等待其文件收尾，旧请求不能取消新工作。
 func (r *executionRegistry) cancelExecutionAndWait(ctx context.Context, chatID, executionID string) error {
 	r.mutex.Lock()
 	active, exists := r.active[chatID]
-	matched := exists && active.executionID == executionID
+	var done <-chan struct{}
+	if settlement := r.settling[chatID][executionID]; settlement != nil {
+		done = settlement.done
+	}
 	r.mutex.Unlock()
-	if !matched {
-		return nil
+	if exists && active.executionID == executionID && active.cancel != nil {
+		active.cancel()
 	}
-	active.cancel()
-	select {
-	case <-active.done:
-		return nil
-	case <-ctx.Done():
-		return status_error.ChatHasActiveExecution
+	if done != nil {
+		select {
+		case <-done:
+		case <-ctx.Done():
+			return status_error.ChatHasActiveExecution
+		}
 	}
+	return nil
 }
 
 // messageExecution 保存 Chat 已解析的一次 Runtime 调用及其业务身份。
@@ -255,6 +320,7 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 	chat := plan.state.chat
 	execution := plan.execution
 
+	var recording *chatservice.FileChangesRecording
 	runtimeSink := &runtimeEventSink{
 		messageFacts: plan.messageFacts,
 		journal:      m.journal,
@@ -276,6 +342,11 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 			}
 			chat = committedChat
 			execution = committedExecution
+			if recording != nil {
+				if err := recording.PublishPending(context.WithoutCancel(ctx)); err != nil {
+					logx.Warnf("publish pending file result failed: chat_id=%s execution_id=%s error=%v", chat.ID, execution.ID, err)
+				}
+			}
 			if !plan.precommitted {
 				plan.files.commit()
 				plan.started <- executionStartResult{
@@ -295,7 +366,49 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 			}
 		}
 	}()
-	result := plan.preparedRun.Run(ctx, plan.turn, sink)
+	// 前一轮可以已经公开真实终态；取得本轮基线和提交原生输入仍须等待其结束侧冻结。
+	snapshotWaitErr := m.executions.waitForFileSnapshots(ctx, ctx, chat.ID, execution.ID)
+	if recorder, ok := m.journal.(chatservice.FileChangesRecorder); ok && snapshotWaitErr == nil {
+		var err error
+		recording, err = recorder.BeginFileChanges(ctx, chat, execution.ID, plan.state.threadWorkspaceID, plan.state.projectSources)
+		if err != nil {
+			logx.Warnf("prepare file result failed: chat_id=%s execution_id=%s error=%v", chat.ID, execution.ID, err)
+		}
+	}
+	// 文件收尾晚于真实执行终态；同一后台工作仍由注册表等待和删除边界拥有。
+	defer func() {
+		if recording == nil {
+			m.executions.freezeFileSnapshots(chat.ID, execution.ID)
+			return
+		}
+		if !sink.accepted && !plan.precommitted {
+			defer m.executions.freezeFileSnapshots(chat.ID, execution.ID)
+			if err := recording.Discard(context.WithoutCancel(ctx), plan.state.isNew); err != nil {
+				logx.Warnf("discard unaccepted file result failed: chat_id=%s execution_id=%s error=%v", chat.ID, execution.ID, err)
+			}
+			return
+		}
+		if err := recording.Freeze(context.WithoutCancel(ctx)); err != nil {
+			_ = recording.Close()
+			m.executions.freezeFileSnapshots(chat.ID, execution.ID)
+			logx.Warnf("freeze file result failed: chat_id=%s execution_id=%s error=%v", chat.ID, execution.ID, err)
+			return
+		}
+		m.executions.freezeFileSnapshots(chat.ID, execution.ID)
+		if err := recording.Finish(context.WithoutCancel(ctx)); err != nil {
+			logx.Warnf("finish file result failed: chat_id=%s execution_id=%s error=%v", chat.ID, execution.ID, err)
+		}
+	}()
+	var result agentapi.Result
+	if snapshotWaitErr != nil {
+		result.Failure = &agentapi.Failure{
+			Code:    agentapi.FailureCodeContextCanceled,
+			Stage:   constants.RuntimeExecutionFailureStageStart,
+			Message: snapshotWaitErr.Error(),
+		}
+	} else {
+		result = plan.preparedRun.Run(ctx, plan.turn, sink)
+	}
 	// 本轮引用必须早于 Chat 占位释放与终态发布清空，避免旧轮收尾覆盖新轮引用。
 	if plan.pluginUsageRelease != nil {
 		plan.pluginUsageRelease()
@@ -311,6 +424,13 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 	}
 	if !sink.accepted {
 		if !plan.precommitted {
+			// 先解除采集并回收无引用对象，再交付失败；调用方随后可以安全回滚整个新工作区。
+			if recording != nil {
+				if err := recording.Discard(context.WithoutCancel(ctx), plan.state.isNew); err != nil {
+					logx.Warnf("discard unaccepted file result failed: chat_id=%s execution_id=%s error=%v", chat.ID, execution.ID, err)
+				}
+				recording = nil
+			}
 			plan.started <- executionStartResult{err: runtimeStartError(result)}
 			return
 		}

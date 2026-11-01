@@ -1,0 +1,37 @@
+{
+  "scope": "仅替换机器绝对目录；所有计量数字、生产源码与fixture哈希保持不变。gzip mtime固定为0。",
+  "files": [
+    {
+      "file": "performance-ab-markdown.json.gz",
+      "originalOutputSha256": "f81cfb8538b2ccf024ca268937c8e2171c4c8720437c51d1448cf942035dc12f",
+      "sanitizedJsonSha256": "707d89fd9d56e6a360adbd560f2c5adb140e4157aa5be6efeaa1c0115915a43e",
+      "artifactSha256": "64f4ccad5cda6a011874ecaf331d7323c675bc34b6f20974de94077912a1e488",
+      "uncompressedBytes": 5018743,
+      "artifactBytes": 617868
+    },
+    {
+      "file": "performance-ab-projection.json.gz",
+      "originalOutputSha256": "ebc54b998b72f8c1fcd4c7ac37250bc2f772912dd8953ae82ce05df6d9618e16",
+      "sanitizedJsonSha256": "652965a988bf9e2754b2218bf2932250c0bff4959cd1e4c6226a20b38661e139",
+      "artifactSha256": "74a14a77123b0fb9b6f36d6e05c94fa006b374c9b1fbda99bb47076e3f34fad3",
+      "uncompressedBytes": 1134660,
+      "artifactBytes": 30547
+    },
+    {
+      "file": "performance-ab-backend.json.gz",
+      "originalOutputSha256": "ccbb37e9e27538c11e20fe35280cadee141455e2590d596aeec4509e1ae19d5f",
+      "sanitizedJsonSha256": "a4b7c7b1fbb4f9e457310139147adfc1018e4f09106448bbf766d8ebf95f2af4",
+      "artifactSha256": "88c8b74b9f9e3be699057e89a1ad6fabe4c68094a97975e04ced65be3caacf24",
+      "uncompressedBytes": 74371,
+      "artifactBytes": 8702
+    },
+    {
+      "file": "performance-ab-scheduler.json",
+      "originalOutputSha256": "15d368876862c2cfe7194a36a4076d136a4a4310c9db3d379e5a2cf7db7e882b",
+      "sanitizedJsonSha256": "15d368876862c2cfe7194a36a4076d136a4a4310c9db3d379e5a2cf7db7e882b",
+      "artifactSha256": "15d368876862c2cfe7194a36a4076d136a4a4310c9db3d379e5a2cf7db7e882b",
+      "uncompressedBytes": 41886,
+      "artifactBytes": 41886
+    }
+  ]
+}

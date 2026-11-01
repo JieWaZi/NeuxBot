@@ -136,6 +136,7 @@ func TestFinishExecutionReleasesReservationAndPublishesDurableTerminal(t *testin
 		t.Fatalf("reserve after visible terminal event error = %v", err)
 	}
 	registry.release(chatID, "22222222222222222222222222222222")
+	registry.release(chatID, executionID)
 }
 
 func TestExecutionOutcomeIsDurableAndKeepsChatCompletedSemantics(t *testing.T) {

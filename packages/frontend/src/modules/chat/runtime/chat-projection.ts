@@ -15,6 +15,7 @@ import type {
 import type { ChatEvent } from "@/shared/api/events";
 import type { ChatCodeReference } from "./chat-queue-store";
 import { runtimeFailurePresentation } from "../model/runtime-failure-presentation";
+import { applyChatLiveFrame } from "./chat-live";
 
 export const CHAT_PROCESS_COMMENTARY_PART = "chat.process_commentary";
 
@@ -66,6 +67,7 @@ export type ChatFileChange = ToolFileChangeSummary & { path: string };
 
 export type AllyChatMessage = ChatMessage & {
   optimistic?: boolean;
+  liveRevision?: number;
   codeReferences?: ChatCodeReference[];
 };
 
@@ -160,7 +162,7 @@ function normalizeAuthoritativeMessage(
 }
 
 function contentRevision(message: AllyChatMessage): number {
-  return message.revision ?? -1;
+  return message.liveRevision ?? message.revision ?? -1;
 }
 
 function displayPartsOf(message: AllyChatMessage): MessageDisplayPart[] {
@@ -285,15 +287,45 @@ export function mergeAuthoritativeMessages(
     )
       return message;
     const localRevision = contentRevision(local);
-    const authoritativeRevision = message.revision ?? -1;
-    if (localRevision > authoritativeRevision) return local;
-    return message;
+    const authoritativeRevision = contentRevision(message);
+    return mergeMessageCoverage(
+      local,
+      message,
+      localRevision > authoritativeRevision,
+    );
   });
 
   for (const message of currentByID.values()) {
     merged.push(message);
   }
   return merged;
+}
+
+/** 持久元数据可以先于正文检查点到达；保留尚未被检查点覆盖的增量正文。 */
+function mergeMessageCoverage(
+  local: AllyChatMessage,
+  authoritative: ChatMessage,
+  keepLive: boolean,
+): AllyChatMessage {
+  if (keepLive && (authoritative.revision ?? -1) <= (local.revision ?? -1))
+    return local;
+  const next = keepLive
+    ? {
+        ...local,
+        ...authoritative,
+        content: local.content,
+        displayParts: local.displayParts,
+        liveRevision: local.liveRevision,
+        revision: Math.max(local.revision ?? 0, authoritative.revision ?? 0),
+      }
+    : authoritative;
+  if (
+    !["completed", "failed", "canceled"].includes(authoritative.status ?? "") &&
+    local.runMetrics &&
+    !authoritative.runMetrics
+  )
+    return { ...next, runMetrics: local.runMetrics };
+  return next;
 }
 
 function findMessageIndex(
@@ -309,6 +341,34 @@ export function applyChatEvent(
   event: ChatEvent,
   isMessageVisible: ChatMessageVisibility = () => true,
 ): AllyChatMessage[] {
+  if (event.fileChanges) {
+    const index = findMessageIndex(messages, event.fileChanges.messageId);
+    const current = messages[index];
+    if (
+      !current ||
+      (current.fileChangeRecord?.version ?? 0) >=
+        (event.fileChanges.record.version ?? 0)
+    )
+      return messages;
+    const next = [...messages];
+    next[index] = {
+      ...current,
+      fileChangeRecord: event.fileChanges.record,
+      revision: Math.max(current.revision ?? 0, event.sequence ?? 0),
+    };
+    return next;
+  }
+  if (event.live) {
+    const index = findMessageIndex(messages, event.live.messageId);
+    if (index < 0) return messages;
+    const current = messages[index];
+    if (!current) return messages;
+    const next = applyChatLiveFrame(current, event.live);
+    if (next === current) return messages;
+    const updated = [...messages];
+    updated[index] = next;
+    return updated;
+  }
   if (!event.message) return messages;
   const authoritative = normalizeAuthoritativeMessage(
     event.message,
@@ -321,19 +381,30 @@ export function applyChatEvent(
       ? matchedIndex
       : messages.findIndex((item) => sameSubmittedMessage(item, authoritative));
   const currentMessage = index >= 0 ? messages[index] : undefined;
+  if (
+    currentMessage &&
+    ["completed", "failed", "canceled"].includes(currentMessage.status ?? "") &&
+    !isTerminalEvent(event)
+  )
+    return messages;
   // 执行终态是已提交的权威边界，即使修订号落后也必须接管实时快照。
   if (
     currentMessage &&
     !isTerminalEvent(event) &&
     contentRevision(currentMessage) > contentRevision(authoritative)
   ) {
-    return messages;
+    const next = [...messages];
+    next[index] = mergeMessageCoverage(currentMessage, authoritative, true);
+    return next;
   }
 
   // 流式更新只替换命中的消息，保留历史消息引用，让消费方可以跳过
   // 已稳定消息的转换和渲染。
   const next = [...messages];
-  if (index >= 0) next[index] = { ...currentMessage, ...authoritative };
+  if (currentMessage)
+    next[index] = isTerminalEvent(event)
+      ? authoritative
+      : mergeMessageCoverage(currentMessage, authoritative, false);
   else next.push(authoritative);
   return next;
 }
@@ -371,7 +442,6 @@ export function toThreadMessage(
       : undefined;
   const errorMessage =
     message.errorMessage?.trim() || failure?.message || incompleteErrorText;
-  const fileChanges = message.fileChanges ?? [];
   const isTerminal = ["completed", "failed", "canceled"].includes(
     message.status ?? "",
   );
@@ -398,7 +468,6 @@ export function toThreadMessage(
             }
           : {}),
         ...(message.runMetrics ? { runMetrics: message.runMetrics } : {}),
-        ...(fileChanges.length ? { fileChanges } : {}),
         ...(message.plugins?.length ? { plugins: message.plugins } : {}),
         ...(message.skills?.length ? { skills: message.skills } : {}),
         ...(message.connectors?.length

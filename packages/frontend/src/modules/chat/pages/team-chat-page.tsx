@@ -123,6 +123,7 @@ export function TeamChatPageContent(props: TeamChatPageContentProps) {
     <TeamChatView
       key={JSON.stringify([scopeKey, member?.id ?? null])}
       {...props}
+      presentationScopeKey={scopeKey}
       workspaceScopeKey={workspaceScopeKey}
       memberConfigurations={memberConfigurations}
       createdTeamThreadIds={createdTeamThreadIds}
@@ -134,6 +135,7 @@ function TeamChatView({
   chatId,
   routeTransitioning = false,
   teamContext,
+  presentationScopeKey,
   workspaceScopeKey,
   memberConfigurations,
   createdTeamThreadIds,
@@ -1184,6 +1186,10 @@ function TeamChatView({
           }
         : undefined,
       runtime: chatRuntime.runtime,
+      messages: chatRuntime.messages,
+      presentationScopeKey,
+      fileScopeChatId: activeChatId,
+      active: sceneActive,
       wakerName,
       wakerId: conversationWakerId,
       wakerAvatar: conversationAvatar,

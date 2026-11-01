@@ -55,10 +55,6 @@ vi.mock("@/shared/api/global-events", () => ({
     return () => eventObservers.delete(observer);
   },
 }));
-vi.mock("@assistant-ui/react", () => ({
-  useAuiState: (selector: (state: typeof messageState) => unknown) =>
-    selector(messageState),
-}));
 vi.mock("@/shared/ui/sonner", () => ({ toast: { error: vi.fn() } }));
 const server = setupServer();
 const api = "http://ally.test/api/v1/chats/parent";
@@ -112,7 +108,16 @@ function Harness({
       <input aria-label="draft" defaultValue="保留草稿" />
       <output>{location.pathname + location.search}</output>
       <ChatForkContext value={enabled ? fork : undefined}>
-        <MessageForkAction />
+        <MessageForkAction
+          message={{
+            id: messageState.message.id,
+            executionId: messageState.message.id,
+            status:
+              messageState.message.status.type === "running"
+                ? "running"
+                : "completed",
+          }}
+        />
       </ChatForkContext>
     </>
   );
@@ -232,7 +237,16 @@ describe("原生会话分叉入口", () => {
     messageState.message.status.type = "running";
     const view = render(
       <ChatForkContext value={controls}>
-        <MessageForkAction />
+        <MessageForkAction
+          message={{
+            id: messageState.message.id,
+            executionId: messageState.message.id,
+            status:
+              messageState.message.status.type === "running"
+                ? "running"
+                : "completed",
+          }}
+        />
       </ChatForkContext>,
     );
     expect(
@@ -241,7 +255,16 @@ describe("原生会话分叉入口", () => {
     messageState.message.status.type = "complete";
     view.rerender(
       <ChatForkContext value={controls}>
-        <MessageForkAction />
+        <MessageForkAction
+          message={{
+            id: messageState.message.id,
+            executionId: messageState.message.id,
+            status:
+              messageState.message.status.type === "running"
+                ? "running"
+                : "completed",
+          }}
+        />
       </ChatForkContext>,
     );
     expect(screen.getByRole("button", { name: "分支到新聊天" })).toBeEnabled();
@@ -325,7 +348,16 @@ describe("原生会话分叉入口", () => {
     };
     render(
       <ChatForkContext value={controls}>
-        <MessageForkAction />
+        <MessageForkAction
+          message={{
+            id: messageState.message.id,
+            executionId: messageState.message.id,
+            status:
+              messageState.message.status.type === "running"
+                ? "running"
+                : "completed",
+          }}
+        />
       </ChatForkContext>,
     );
     expect(screen.queryByRole("button", { name: "分支到新聊天" })).toBeNull();

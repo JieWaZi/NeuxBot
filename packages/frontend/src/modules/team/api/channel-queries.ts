@@ -461,6 +461,28 @@ export function commitTeamTimelineEvents(
     if (next <= sequence) continue;
     if (next !== sequence + 1) return undefined;
     sequence = next;
+    if (event.fileChanges) {
+      const id = event.fileChanges.messageId;
+      const item =
+        updates.get(id) ??
+        current.pages
+          .flatMap((page) => page.resources ?? [])
+          .find((item) => item.chatId === chatId && item.message?.id === id);
+      if (
+        item?.message &&
+        (item.message.fileChangeRecord?.version ?? 0) <
+          (event.fileChanges.record.version ?? 0)
+      )
+        updates.set(id, {
+          ...item,
+          message: {
+            ...item.message,
+            fileChangeRecord: event.fileChanges.record,
+            revision: Math.max(item.message.revision ?? 0, next),
+          },
+        });
+      continue;
+    }
     const message = event.message;
     if (!message) continue;
     if (!message.id) return undefined;

@@ -1,0 +1,79 @@
+import type { ChatEvent } from "@/shared/api/events";
+
+export type ChatEventBatcher = {
+  push: (event: ChatEvent, flushImmediately?: boolean) => void;
+  flush: () => void;
+  close: () => void;
+};
+
+export function createChatEventBatcher(
+  onBatch: (events: ChatEvent[]) => void,
+): ChatEventBatcher {
+  let pending: ChatEvent[] = [];
+  const pendingMessageIndices = new Map<string, number>();
+  let frame: number | undefined;
+  let scheduled = false;
+  let generation = 0;
+  const cancel = () => {
+    generation++;
+    if (
+      frame !== undefined &&
+      typeof window.cancelAnimationFrame === "function"
+    )
+      window.cancelAnimationFrame(frame);
+    frame = undefined;
+    scheduled = false;
+  };
+
+  const flush = () => {
+    cancel();
+    if (pending.length === 0) return;
+    const batch = pending;
+    pending = [];
+    pendingMessageIndices.clear();
+    onBatch(batch);
+  };
+
+  return {
+    push(event, flushImmediately = false) {
+      const messageID = event.message?.id;
+      const pendingIndex = messageID
+        ? pendingMessageIndices.get(messageID)
+        : undefined;
+      if (pendingIndex === undefined) {
+        if (messageID) pendingMessageIndices.set(messageID, pending.length);
+        pending.push(event);
+      } else {
+        // Runtime 事件携带的是完整消息快照；同一刷新窗口内只保留最新
+        // 快照即可，避免重复归并和重复触发 Markdown 渲染。
+        pending[pendingIndex] = event;
+      }
+      if (flushImmediately || !event.transient) {
+        flush();
+      } else if (!scheduled) {
+        scheduled = true;
+        const current = generation;
+        if (typeof window.requestAnimationFrame !== "function") {
+          queueMicrotask(() => {
+            if (generation === current) flush();
+          });
+        } else {
+          const schedule = (remaining: number) => {
+            frame = window.requestAnimationFrame(() => {
+              if (generation !== current) return;
+              if (remaining > 1) schedule(remaining - 1);
+              else flush();
+            });
+          };
+          schedule(3);
+        }
+      }
+    },
+    flush,
+    close() {
+      cancel();
+      pending = [];
+      pendingMessageIndices.clear();
+    },
+  };
+}

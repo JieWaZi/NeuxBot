@@ -1,7 +1,11 @@
 package eventstream
 
 import (
+	"encoding/json"
 	"time"
+	"unicode/utf8"
+
+	"github.com/google/uuid"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -10,8 +14,17 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 )
 
-// LiveAdapter 将未持久化的 canonical Runtime Event 增量转换为安全完整消息快照。
+// LiveAdapter 将未持久化的规范 Runtime 事件转换为有序安全增量。
 type LiveAdapter struct {
+	// currentRevision 是实时流已经覆盖的版本，不以独立持久交互版本代替。
+	currentRevision int64
+	// generation 区分同一消息在进程重启或实时状态重建后的不同流。
+	generation string
+	// sequence 是本代次已交付的连续帧号，与持久游标分别计数。
+	sequence int64
+	// pending 只保留本交付窗口尚未公开的增量。
+	pending []messageview.MessageIncrement
+
 	// messageView 保存包括尚未持久化事件在内的实时消息展示状态。
 	messageView *messageview.MessageViewBuilder
 	// messageID 是接收实时 Runtime 输出的 Assistant 消息标识。
@@ -44,14 +57,20 @@ func (a *LiveAdapter) ApplyFact(record eventlog.Record) (bool, error) {
 	if _, exists := a.appliedFacts[record.Sequence]; exists {
 		return false, nil
 	}
-	messageID, err := a.messageView.Apply(record)
+	messageID, change, err := a.messageView.ApplyIncrement(record, a.messageID)
 	if err != nil {
 		return false, err
 	}
 	a.appliedFacts[record.Sequence] = struct{}{}
-	a.nextRevision = max(a.nextRevision, a.MessageRevision()+1)
+	if messageID != "" {
+		change.BaseRevision = a.currentRevision
+		change.Revision = max(a.nextRevision, change.Revision)
+		a.currentRevision = change.Revision
+		a.nextRevision = change.Revision + 1
+	}
 	if messageID != "" {
 		a.recordedAt = max(a.recordedAt, record.RecordedAt)
+		a.pending = append(a.pending, change)
 	}
 	return messageID != "", nil
 }
@@ -61,7 +80,7 @@ func (a *LiveAdapter) MessageRevision() int64 {
 	if a == nil || a.messageView == nil {
 		return 0
 	}
-	return a.messageView.MessageRevision(a.messageID)
+	return a.currentRevision
 }
 
 // NewLiveAdapter 从当前权威日志建立实时消息视图起点。
@@ -79,15 +98,17 @@ func NewLiveAdapter(records []eventlog.Record, messageID string) (*LiveAdapter, 
 		return nil, status_error.ChatLogError
 	}
 	return &LiveAdapter{
-		messageView:  builder,
-		messageID:    messageID,
-		nextRevision: message.Revision + 1,
-		baseSequence: baseSequence,
-		appliedFacts: make(map[int64]struct{}),
+		generation:      uuid.NewString(),
+		currentRevision: message.LiveRevision,
+		messageView:     builder,
+		messageID:       messageID,
+		nextRevision:    message.Revision + 1,
+		baseSequence:    baseSequence,
+		appliedFacts:    make(map[int64]struct{}),
 	}, nil
 }
 
-// Apply 应用一条实时事件并返回前端可直接合并的 transient 快照及其消息修订号。
+// Apply 应用一条实时事件并交付当前窗口的安全增量。
 func (a *LiveAdapter) Apply(
 	invocationID string,
 	event agentapi.Event,
@@ -96,14 +117,40 @@ func (a *LiveAdapter) Apply(
 	if err != nil {
 		return PublicEvent{}, 0, err
 	}
-	snapshot, err := a.Snapshot()
-	return snapshot, revision, err
+	batch, err := a.Drain()
+	return batch, revision, err
 }
 
 // ApplyState 按顺序更新唯一实时状态，不为尚未到交付窗口的增量复制整条消息。
 func (a *LiveAdapter) ApplyState(invocationID string, event agentapi.Event) (int64, error) {
 	if a == nil || a.messageView == nil {
 		return 0, status_error.ChatLogError
+	}
+	// 一次上游大文本也按 UTF-8 边界拆成有界规范输入，不能绕过帧字节预算。
+	switch event.Type {
+	case agentapi.EventTypeTextDelta, agentapi.EventTypeCommentaryDelta, agentapi.EventTypeThinkingDelta:
+		var text struct { // Text 是规范输入的新增正文。
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(event.Data, &text) == nil && len(text.Text) > 16*1024 {
+			var revision int64
+			for len(text.Text) > 0 {
+				n := min(len(text.Text), 16*1024)
+				for n < len(text.Text) && !utf8.RuneStart(text.Text[n]) {
+					n--
+				}
+				data, _ := json.Marshal(struct { // Text 是按 UTF-8 边界拆分的新增片段。
+					Text string `json:"text"`
+				}{Text: text.Text[:n]})
+				var err error
+				revision, err = a.ApplyState(invocationID, agentapi.Event{Type: event.Type, Data: data})
+				if err != nil {
+					return 0, err
+				}
+				text.Text = text.Text[n:]
+			}
+			return revision, nil
+		}
 	}
 	revision := a.nextRevision
 	a.nextRevision++
@@ -125,28 +172,72 @@ func (a *LiveAdapter) ApplyState(invocationID string, event agentapi.Event) (int
 		InvocationID:  invocationID,
 		Data:          data,
 	}
-	_, err = a.messageView.Apply(record)
+	_, change, err := a.messageView.ApplyIncrement(record, a.messageID)
 	if err != nil {
 		return 0, err
 	}
+	change.BaseRevision = a.currentRevision
+	change.Revision = revision
+	a.currentRevision = revision
 	a.recordedAt = recordedAt
+	a.pending = append(a.pending, change)
 	return revision, nil
 }
 
-// Snapshot 只在实时交付窗口或工具、终态边界物化当前完整安全消息。
-func (a *LiveAdapter) Snapshot() (PublicEvent, error) {
+// LiveMessageIncrement 是临时消息流的一帧，正文只包含本帧新增字节。
+type LiveMessageIncrement struct {
+	// Generation 是本实时状态的唯一代次。
+	Generation string `json:"generation"`
+	// Sequence 是本代次严格连续的交付帧号。
+	Sequence int64 `json:"sequence"`
+	// MessageID 是增量目标的稳定消息身份。
+	MessageID string `json:"messageId"`
+	// ExecutionID 是增量所属的既有执行身份。
+	ExecutionID string `json:"executionId"`
+	// BaseRevision 是本帧首次变化前要求的消息覆盖版本。
+	BaseRevision int64 `json:"baseRevision"`
+	// Revision 是应用完整帧后覆盖的消息版本。
+	Revision int64 `json:"revision"`
+	// Updates 按原始输入顺序携带安全变化；每项可以单独与持久覆盖版本核验。
+	Updates []messageview.MessageIncrement `json:"updates"`
+}
+
+// PendingCount 返回尚未交付的输入数量，供生产者执行明确的批次上限。
+func (a *LiveAdapter) PendingCount() int {
+	if a == nil {
+		return 0
+	}
+	return len(a.pending)
+}
+
+// Drain 交付尚未公开的增量，不访问累计正文或未变化的工具部件。
+func (a *LiveAdapter) Drain() (PublicEvent, error) {
 	if a == nil || a.messageView == nil {
 		return PublicEvent{}, status_error.ChatLogError
 	}
-	message := a.messageView.PublicMessage(a.messageID)
-	if message == nil {
-		return PublicEvent{}, status_error.ChatLogError
+	if len(a.pending) == 0 {
+		return PublicEvent{}, nil
 	}
-	return PublicEvent{
-		SchemaVersion: 1,
-		RecordedAt:    a.recordedAt,
-		Type:          constants.ChatEventTypeRuntimeEvent,
-		Message:       message,
-		Transient:     true,
-	}, nil
+	a.sequence++
+	// 每帧按新增载荷与操作数量有界；序列化的仅是新变化。
+	count, bytes := 0, 0
+	for count < len(a.pending) && count < 128 {
+		encoded, err := json.Marshal(a.pending[count])
+		if err != nil {
+			return PublicEvent{}, status_error.ChatLogError
+		}
+		if count > 0 && bytes+len(encoded) > 64*1024 {
+			break
+		}
+		bytes += len(encoded)
+		count++
+	}
+	updates := a.pending[:count:count]
+	a.pending = a.pending[count:]
+	if len(a.pending) == 0 {
+		a.pending = nil
+	}
+	return PublicEvent{SchemaVersion: 1, RecordedAt: a.recordedAt, Type: constants.ChatEventTypeRuntimeEvent, Transient: true,
+		Live: &LiveMessageIncrement{Generation: a.generation, Sequence: a.sequence, MessageID: a.messageID, ExecutionID: a.messageID,
+			BaseRevision: updates[0].BaseRevision, Revision: updates[len(updates)-1].Revision, Updates: updates}}, nil
 }
