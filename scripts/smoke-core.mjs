@@ -13,6 +13,8 @@ export async function smokeCore({
   env: environment = process.env,
   label = "Go Core",
   diagnostic = console.error,
+  // 全新隔离库在共享 Windows runner 上建表较慢，冒烟使用独立且有界的冷启动预算。
+  startupTimeout = 120_000,
 }) {
   const dataDir = await mkdtemp(path.join(tmpdir(), "ally-packaged-core-"));
   const env = { ...environment };
@@ -36,6 +38,7 @@ export async function smokeCore({
     binary,
     dataDir,
     env,
+    startupTimeout,
   });
   try {
     const connection = await core.connection();
