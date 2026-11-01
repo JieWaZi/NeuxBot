@@ -1,7 +1,7 @@
 package aiaccount
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"os"
@@ -17,22 +17,22 @@ import (
 // ModelDetector 是查询账号能力所需的只读原生探测边界。
 type ModelDetector interface {
 	// Detect 在临时会话读取真实模型目录，并在原生使用者退出后调用请求中的 ReleaseResources。
-	Detect(context.Context, runtimeconfig.DetectRequest) runtimeconfig.DetectionResult
+	Detect(context.Context, agentapi.DetectRequest) agentapi.DetectionResult
 }
 
 // DetectModel 为设置查询和执行验证复用同一账号、原始模型与私有目录准备链路。
-func (s *Service) DetectModel(ctx context.Context, detector ModelDetector, id string, environment models.RuntimeEnvironment, model string) (runtimeconfig.DetectionResult, error) {
+func (s *Service) DetectModel(ctx context.Context, detector ModelDetector, id string, environment models.RuntimeEnvironment, model string) (agentapi.DetectionResult, error) {
 	account, err := s.ValidateSelection(ctx, id, environment.BaseRuntimeID, model, "")
 	if err != nil {
-		return runtimeconfig.DetectionResult{}, err
+		return agentapi.DetectionResult{}, err
 	}
 	if account.AuthMode == constants.AccountAuthModeAPIKey && !slices.Contains(account.SelectedModels, model) {
-		return runtimeconfig.DetectionResult{}, status_error.BadRequest
+		return agentapi.DetectionResult{}, status_error.BadRequest
 	}
 	workspace, err := os.MkdirTemp("", "ally-account-probe-")
 	if err != nil {
 		logx.Errorf("create account capability workspace failed: account_id=%s error=%v", id, err)
-		return runtimeconfig.DetectionResult{}, status_error.AIAccountWorkspaceError
+		return agentapi.DetectionResult{}, status_error.AIAccountWorkspaceError
 	}
 	removeDirectory := true
 	defer func() {
@@ -42,11 +42,11 @@ func (s *Service) DetectModel(ctx context.Context, detector ModelDetector, id st
 	}()
 	target, release, err := s.PrepareQueuedLease(ctx, id, environment.BaseRuntimeID, workspace, model)
 	if err != nil {
-		return runtimeconfig.DetectionResult{}, err
+		return agentapi.DetectionResult{}, err
 	}
 	home, _ := os.UserHomeDir()
 	nativeModel := accountconfig.NativeModelID(environment.BaseRuntimeID, model)
-	request := runtimeconfig.DetectRequest{RuntimeID: environment.RuntimeID, WorkingDirectory: workspace, BaseEnvironment: accountconfig.Environment(os.Environ()), HomeDirectory: home, LaunchOverride: runtimeconfig.LaunchOverride{Binary: environment.Binary, PrefixArgs: slices.Clone(environment.PrefixArgs), Environment: target.Environment}}
+	request := agentapi.DetectRequest{RuntimeID: environment.RuntimeID, WorkingDirectory: workspace, BaseEnvironment: accountconfig.Environment(os.Environ()), HomeDirectory: home, LaunchOverride: agentapi.LaunchOverride{Binary: environment.Binary, PrefixArgs: slices.Clone(environment.PrefixArgs), Environment: target.Environment}}
 	// 既有运行时保持原探测约定；新绑定对目标模型验证原生 setter 回执。
 	request.RefreshCredentials = target.RefreshCredentials
 	request.ReleaseResources = func(closeContext context.Context) error {
@@ -64,11 +64,11 @@ func (s *Service) DetectModel(ctx context.Context, detector ModelDetector, id st
 	}
 	removeDirectory = false
 	result := detector.Detect(ctx, request)
-	if result.State != runtimeconfig.DetectionStateReady {
+	if result.State != agentapi.DetectionStateReady {
 		return result, status_error.RuntimeUnavailable
 	}
 	for _, diagnostic := range result.Diagnostics {
-		if diagnostic.Code == runtimeconfig.DiagnosticCodeACPOptionsUnavailable {
+		if diagnostic.Code == agentapi.DiagnosticCodeACPOptionsUnavailable {
 			return result, status_error.RuntimeUnavailable
 		}
 	}

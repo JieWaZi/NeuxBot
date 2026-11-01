@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -47,19 +47,19 @@ func (j *readBudgetJournal) ReadRecords(id string) ([]eventlog.Record, error) {
 // TestHotContinuationReadsOneCurrentContextAndNoHistory 覆盖带新 submission 的健康热续发与同键回执重放。
 func TestHotContinuationReadsOneCurrentContextAndNoHistory(t *testing.T) {
 	runtime := &leasedChatRuntime{}
-	runtime.result.Session = runtimecontract.SessionResult{OutputID: "native-budget", State: runtimecontract.SessionStateCreated}
+	runtime.result.Session = agentapi.SessionResult{OutputID: "native-budget", State: agentapi.SessionStateCreated}
 	manager := newMessageTestService(t, t.TempDir(), &runtime.accountRuntime)
 	core := manager.execution.(*service)
 	core.runtime = runtime
 	ctx := context.Background()
-	first, err := core.Start(ctx, WorkIntent{ClientRequestID: "budget-first", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "first"}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto}})
+	first, err := core.Start(ctx, WorkIntent{ClientRequestID: "budget-first", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "first"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	waitForChatTerminal(t, manager, first.Chat.ID)
 	observed := &readBudgetJournal{Journal: core.journal}
 	core.journal = observed
-	intent := WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", SubmissionID: "budget-next", Content: "next"}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto}}
+	intent := WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", SubmissionID: "budget-next", Content: "next"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto}}
 	accepted, err := core.Start(ctx, intent)
 	if err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestHotContinuationReadsOneCurrentContextAndNoHistory(t *testing.T) {
 	if observed.contexts.Load() != 1 || observed.histories.Load() != 0 || observed.fullReads.Load() != 0 {
 		t.Fatalf("hot reads: context=%d history=%d full=%d", observed.contexts.Load(), observed.histories.Load(), observed.fullReads.Load())
 	}
-	if len(runtime.requests) != 2 || runtime.requests[1].Session.Mode != runtimecontract.SessionModeResume || len(runtime.requests[1].History) != 0 {
+	if len(runtime.requests) != 2 || runtime.requests[1].Session.Mode != agentapi.SessionModeResume || len(runtime.requests[1].History) != 0 {
 		t.Fatal("healthy native continuation lost its incremental input")
 	}
 	replay, err := core.Start(ctx, intent)

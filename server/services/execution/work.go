@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"errors"
@@ -15,7 +15,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
@@ -70,7 +70,7 @@ type runtimeSelection struct {
 	// Reasoning 是本次执行选择的推理强度。
 	Reasoning string
 	// PermissionLevel 是本次执行冻结的跨 Runtime 产品权限等级。
-	PermissionLevel runtimeconfig.PermissionLevel
+	PermissionLevel agentapi.PermissionLevel
 	// WorkspaceReadOnly 表示 Runtime 只能读取工作区，不能请求或执行文件修改。
 	WorkspaceReadOnly bool
 	// SessionPolicy 决定本次是续接还是强制新建 Runtime Session。
@@ -138,7 +138,7 @@ type pendingMessage struct {
 	// allowedConnectorIDs 是入口冻结的 MCP 白名单，nil 与空列表具有不同业务含义。
 	allowedConnectorIDs *[]string
 	// supplementalInstructions 是业务层追加的虚拟上下文文件。
-	supplementalInstructions []runtimecontract.Instruction
+	supplementalInstructions []agentapi.Instruction
 	// historyMessageIDsToOmit 是已包含在本次输入中的权威消息标识。
 	historyMessageIDsToOmit []string
 }
@@ -157,7 +157,7 @@ func normalizePendingMessage(input pendingMessage) pendingMessage {
 	input.allowedConnectorIDs = cloneConnectorAllowlist(input.allowedConnectorIDs)
 	input.historyMessageIDsToOmit = append([]string(nil), input.historyMessageIDsToOmit...)
 	input.supplementalInstructions = append(
-		[]runtimecontract.Instruction(nil),
+		[]agentapi.Instruction(nil),
 		input.supplementalInstructions...,
 	)
 	input.message.PluginIDs = append([]string(nil), input.message.PluginIDs...)
@@ -427,7 +427,7 @@ func (m *service) startMessage(
 	permissionModel := request.runtime.Model
 	if request.runtime.AccountID != "" {
 		known := false
-		for _, item := range runtimeconfig.AvailableModels(runtimeEnvironment.Detection, runtimeEnvironment.CustomModels) {
+		for _, item := range agentapi.AvailableModels(runtimeEnvironment.Detection, runtimeEnvironment.CustomModels) {
 			if item.ID == permissionModel {
 				known = true
 				break
@@ -577,7 +577,7 @@ func (m *service) startMessage(
 	}
 	resources := preparedRun.Resources()
 	effectiveSession := preparedRun.Session()
-	if !state.isNew && needsResources && effectiveSession.Mode == runtimecontract.SessionModeNew && handoffSummary == "" {
+	if !state.isNew && needsResources && effectiveSession.Mode == agentapi.SessionModeNew && handoffSummary == "" {
 		state.previousMessages, err = m.readRecentHistory(ctx, state, request)
 		if err != nil {
 			return AcceptedExecution{}, err
@@ -872,7 +872,7 @@ type preparedMessageFiles struct {
 	// codeReferences 保存整文件的权威工作区路径及按输入保留路径的代码片段。
 	codeReferences []eventlog.CodeReference
 	// instructions 是本次执行实际读取并交给 Runtime 的当前指令。
-	instructions []runtimecontract.Instruction
+	instructions []agentapi.Instruction
 	// committed 表示权威消息和执行事实已经成功提交。
 	committed bool
 }
@@ -1233,7 +1233,7 @@ func (m *service) prepareMessageFiles(
 	if err != nil {
 		return nil, err
 	}
-	instructions := make([]runtimecontract.Instruction, 0, len(profileContents))
+	instructions := make([]agentapi.Instruction, 0, len(profileContents))
 	// 档案按固定业务顺序进入静态配置，避免相同内容因 map 遍历顺序变化重建原生会话。
 	for _, kind := range profile.EditableKinds() {
 		content, exists := profileContents[kind]
@@ -1244,7 +1244,7 @@ func (m *service) prepareMessageFiles(
 		if !ok {
 			fileName = constants.ProfileDocumentDefaultFileName
 		}
-		instructions = append(instructions, runtimecontract.Instruction{
+		instructions = append(instructions, agentapi.Instruction{
 			Name:    fileName,
 			Content: content,
 		})
@@ -1264,7 +1264,7 @@ func (m *service) prepareMessageFiles(
 			continue
 		}
 		if content, exists := files[runtimeFiles.instructionFileName]; exists {
-			instructions = append(instructions, runtimecontract.Instruction{
+			instructions = append(instructions, agentapi.Instruction{
 				Name: filepath.Join(
 					constants.ExecutionWorkspaceProjectsDirectory,
 					source.EntryName,
@@ -1502,7 +1502,7 @@ func selectedSkillReferences(selectedIDs []string, enabled []models.SkillWithSta
 
 func selectedConnectorReferences(
 	selectedIDs []string,
-	enabled []runtimecontract.Connector,
+	enabled []agentapi.Connector,
 ) []eventlog.MessageConnectorReference {
 	selected := make(map[string]struct{}, len(selectedIDs))
 	for _, id := range selectedIDs {
@@ -1529,7 +1529,7 @@ func (m *service) buildSessionPlan(
 	enabledSkills []models.SkillWithState,
 	enabledConnectors []models.MCPConnector,
 	runtimeEnvironment models.RuntimeEnvironment,
-) (runtimecontract.SessionPlan, runtimecontract.TurnInput, runtimecontract.SessionDirective) {
+) (agentapi.SessionPlan, agentapi.TurnInput, agentapi.SessionDirective) {
 	omittedMessageIDs := make(map[string]struct{}, len(request.historyMessageIDsToOmit))
 	for _, id := range request.historyMessageIDsToOmit {
 		if id != "" {
@@ -1549,7 +1549,7 @@ func (m *service) buildSessionPlan(
 		state.threadWorkspaceID != "",
 	)
 	attachments := make(
-		[]runtimecontract.Attachment,
+		[]agentapi.Attachment,
 		0,
 		len(files.attachmentReferences),
 	)
@@ -1558,21 +1558,21 @@ func (m *service) buildSessionPlan(
 		if index < len(files.attachments.RuntimePaths) {
 			runtimePath = files.attachments.RuntimePaths[index]
 		}
-		attachments = append(attachments, runtimecontract.Attachment{
+		attachments = append(attachments, agentapi.Attachment{
 			Name:        attachment.Name,
 			Path:        attachment.Path,
 			MediaType:   attachment.MediaType,
 			RuntimePath: runtimePath,
 		})
 	}
-	codeReferences := make([]runtimecontract.CodeReference, 0, len(files.codeReferences))
+	codeReferences := make([]agentapi.CodeReference, 0, len(files.codeReferences))
 	for _, reference := range files.codeReferences {
-		codeReferences = append(codeReferences, runtimecontract.CodeReference{
+		codeReferences = append(codeReferences, agentapi.CodeReference{
 			Path: reference.Path, StartLine: reference.StartLine, EndLine: reference.EndLine, Content: reference.Content,
 		})
 	}
 	session := state.runtimeSessions[request.runtime.RuntimeID]
-	skills := make([]runtimecontract.Skill, 0, len(enabledSkills))
+	skills := make([]agentapi.Skill, 0, len(enabledSkills))
 	selectedSkillIDs := make(map[string]struct{}, len(request.message.SkillIDs))
 	for _, skillID := range request.message.SkillIDs {
 		selectedSkillIDs[skillID] = struct{}{}
@@ -1581,13 +1581,13 @@ func (m *service) buildSessionPlan(
 		if item.CurrentVersion.ID == "" {
 			continue
 		}
-		skills = append(skills, runtimecontract.Skill{
+		skills = append(skills, agentapi.Skill{
 			Name: item.CurrentVersion.Name,
 			Path: filepath.Join(m.skillDataDirectory, item.CurrentVersion.ContentPath),
 		})
 	}
 	connectors := runtimeConnectorDeclarations(enabledConnectors)
-	instructions := append([]runtimecontract.Instruction(nil), files.instructions...)
+	instructions := append([]agentapi.Instruction(nil), files.instructions...)
 	for _, instruction := range request.supplementalInstructions {
 		if instruction.Name == "" || instruction.Content == "" {
 			continue
@@ -1595,20 +1595,20 @@ func (m *service) buildSessionPlan(
 		instructions = append(instructions, instruction)
 	}
 
-	sessionDirective := runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}
+	sessionDirective := agentapi.SessionDirective{Mode: agentapi.SessionModeNew}
 	// 分支禁止通过重新注入继承历史降级为新 Session；缺失句柄交给恢复路径明确报错。
 	if state.chat.ForkSourceChatID != "" &&
 		request.runtime.SessionPolicy != constants.RuntimeSessionPolicyNew &&
 		(state.isNew || request.runtime.AccountID == state.chat.LastAccountID) {
 		previousMessages = nil
-		sessionDirective = runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: session.SessionID}
+		sessionDirective = agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: session.SessionID}
 	}
 	if request.runtime.SessionPolicy == constants.RuntimeSessionPolicyContinue &&
 		(state.isNew || request.runtime.AccountID == state.chat.LastAccountID) &&
 		session.SessionID != "" &&
 		session.LastExecutionID == state.lastExecutionID {
-		sessionDirective = runtimecontract.SessionDirective{
-			Mode: runtimecontract.SessionModeResume,
+		sessionDirective = agentapi.SessionDirective{
+			Mode: agentapi.SessionModeResume,
 			ID:   session.SessionID,
 		}
 	}
@@ -1616,22 +1616,22 @@ func (m *service) buildSessionPlan(
 	if state.chat.ForkSourceChatID == "" && state.chat.LastRuntimeID != "" &&
 		(state.chat.LastRuntimeID != request.runtime.RuntimeID || state.chat.LastModel != request.runtime.Model ||
 			state.chat.LastReasoning != request.runtime.Reasoning || state.chat.LastPermissionLevel != request.runtime.PermissionLevel) {
-		sessionDirective = runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}
+		sessionDirective = agentapi.SessionDirective{Mode: agentapi.SessionModeNew}
 	}
 	additionalWritableDirectories := append([]string(nil), state.chat.AdditionalWorkingDirectories...)
 
 	if request.runtime.WorkspaceReadOnly {
 		additionalWritableDirectories = nil
 	}
-	sessionPlan := runtimecontract.SessionPlan{
-		Target: runtimecontract.SessionTarget{
+	sessionPlan := agentapi.SessionPlan{
+		Target: agentapi.SessionTarget{
 			RuntimeID:  request.runtime.RuntimeID,
 			Binary:     runtimeEnvironment.Binary,
 			PrefixArgs: append([]string(nil), runtimeEnvironment.PrefixArgs...),
 			ConfigHome: runtimeEnvironment.ConfigHome,
 		},
 		Detection: runtimeEnvironment.Detection,
-		Workspace: runtimecontract.Workspace{
+		Workspace: agentapi.Workspace{
 			Path:                          files.executionWorkspaceDirectory,
 			Managed:                       true,
 			AdditionalWritableDirectories: additionalWritableDirectories,
@@ -1640,7 +1640,7 @@ func (m *service) buildSessionPlan(
 		Instructions: instructions,
 		Skills:       skills,
 		Connectors:   connectors,
-		Policy: runtimecontract.RunPolicy{
+		Policy: agentapi.RunPolicy{
 			Model:     request.runtime.Model,
 			Reasoning: request.runtime.Reasoning,
 			Execution: executionPolicy(
@@ -1649,9 +1649,9 @@ func (m *service) buildSessionPlan(
 			),
 		},
 	}
-	turn := runtimecontract.TurnInput{
+	turn := agentapi.TurnInput{
 		History: previousMessages,
-		Message: runtimecontract.Message{Text: request.message.Text, Attachments: attachments, CodeReferences: codeReferences},
+		Message: agentapi.Message{Text: request.message.Text, Attachments: attachments, CodeReferences: codeReferences},
 	}
 	for _, item := range enabledSkills {
 		if item.CurrentVersion.ID != "" && hasSkillID(selectedSkillIDs, item.SkillPackage.ID) {
@@ -1662,9 +1662,9 @@ func (m *service) buildSessionPlan(
 	return sessionPlan, turn, sessionDirective
 }
 
-func selectedRuntimeConnectorsAreEnabled(selected []string, connectors []runtimecontract.Connector) bool {
+func selectedRuntimeConnectorsAreEnabled(selected []string, connectors []agentapi.Connector) bool {
 	for _, id := range selected {
-		if !slices.ContainsFunc(connectors, func(connector runtimecontract.Connector) bool { return connector.ID == id }) {
+		if !slices.ContainsFunc(connectors, func(connector agentapi.Connector) bool { return connector.ID == id }) {
 			return false
 		}
 	}
@@ -1699,14 +1699,14 @@ func teamMemberHistoryContent(message messageview.Message) string {
 func runtimeProjectDirectories(
 	chat models.Chat,
 	sources []eventlog.ProjectSourceSnapshot,
-) []runtimecontract.WorkspaceProjectDirectory {
-	directories := make([]runtimecontract.WorkspaceProjectDirectory, 0, len(sources))
+) []agentapi.WorkspaceProjectDirectory {
+	directories := make([]agentapi.WorkspaceProjectDirectory, 0, len(sources))
 	defaultDirectory := ""
 	if len(chat.AdditionalWorkingDirectories) > 0 {
 		defaultDirectory = chat.AdditionalWorkingDirectories[0]
 	}
 	for _, source := range sources {
-		directories = append(directories, runtimecontract.WorkspaceProjectDirectory{
+		directories = append(directories, agentapi.WorkspaceProjectDirectory{
 			Path: filepath.ToSlash(filepath.Join(
 				constants.ExecutionWorkspaceProjectsDirectory,
 				source.EntryName,
@@ -1871,27 +1871,27 @@ func (m *service) readRecentHistory(ctx context.Context, state messageChat, requ
 	}
 }
 
-func executionPolicy(level runtimeconfig.PermissionLevel, workspaceReadOnly bool) runtimecontract.ExecutionPolicy {
-	return runtimecontract.ExecutionPolicy{PermissionLevel: level, WorkspaceReadOnly: workspaceReadOnly}
+func executionPolicy(level agentapi.PermissionLevel, workspaceReadOnly bool) agentapi.ExecutionPolicy {
+	return agentapi.ExecutionPolicy{PermissionLevel: level, WorkspaceReadOnly: workspaceReadOnly}
 }
 
 func runtimePermissionSupported(
 	environment models.RuntimeEnvironment,
 	modelID string,
-	level runtimeconfig.PermissionLevel,
+	level agentapi.PermissionLevel,
 ) bool {
 	selectedID := strings.TrimSpace(modelID)
 	if selectedID == "" {
 		selectedID = environment.DefaultModel
 	}
-	levels := runtimeconfig.ModelPermissionLevels(
+	levels := agentapi.ModelPermissionLevels(
 		environment.Detection,
 		environment.CustomModels,
 		selectedID,
 	)
 	// 未登录时可能无法取得模型权限目录，留待原生 Runtime 返回鉴权错误。
-	if len(levels) == 0 && environment.Detection.Auth == runtimeconfig.AuthStatusMissing {
+	if len(levels) == 0 && environment.Detection.Auth == agentapi.AuthStatusMissing {
 		return constants.SelectablePermissionLevel(level)
 	}
-	return runtimeconfig.PermissionLevelSupported(levels, level)
+	return agentapi.PermissionLevelSupported(levels, level)
 }

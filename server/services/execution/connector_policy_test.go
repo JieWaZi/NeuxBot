@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"errors"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -22,7 +22,7 @@ func TestConnectorAllowlistReachesRuntimeAndPreservesInternalCapability(t *testi
 			{ID: "selected", Name: "Selected", RuntimeKey: "ally_selected", Transport: constants.MCPTransportStreamableHTTP, URL: "http://localhost/selected"},
 			{ID: "excluded", Name: "Excluded", RuntimeKey: "ally_excluded", Transport: constants.MCPTransportStreamableHTTP, URL: "http://localhost/excluded"},
 		}}
-		intent := WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "workflow", Content: "仅测试冻结工具目录"}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: runtimeconfig.PermissionLevelDefault, SessionPolicy: constants.RuntimeSessionPolicyNew, AllowedConnectorIDs: &allowed}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+		intent := WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "workflow", Content: "仅测试冻结工具目录"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelDefault, SessionPolicy: constants.RuntimeSessionPolicyNew, AllowedConnectorIDs: &allowed}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 		accepted, err := manager.execution.Start(context.Background(), intent)
 		if err != nil {
 			t.Fatal(err)
@@ -50,7 +50,7 @@ func TestOrdinaryChatDoesNotMountContextualBuiltinPlaceholders(t *testing.T) {
 	manager.execution.(*service).connectorController = &retryConnectorController{enabled: []models.MCPConnector{
 		{ID: "selected", Name: "Selected", RuntimeKey: "ally_selected", Transport: constants.MCPTransportStreamableHTTP, URL: "http://localhost/selected"},
 	}}
-	accepted, err := manager.execution.Start(context.Background(), WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "test-user", Content: "普通聊天"}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: runtimeconfig.PermissionLevelDefault}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
+	accepted, err := manager.execution.Start(context.Background(), WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "test-user", Content: "普通聊天"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelDefault}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestSessionPlanExcludesConnectorSecretMaterial(t *testing.T) {
 
 func TestSavedConnectorConfigurationChangeReplacesHotResources(t *testing.T) {
 	runner := &leasedChatRuntime{}
-	runner.result.Session = runtimecontract.SessionResult{OutputID: "native-session", State: runtimecontract.SessionStateCreated}
+	runner.result.Session = agentapi.SessionResult{OutputID: "native-session", State: agentapi.SessionStateCreated}
 	manager := newMessageTestService(t, t.TempDir(), &runner.accountRuntime)
 	core := manager.execution.(*service)
 	core.runtime = runner

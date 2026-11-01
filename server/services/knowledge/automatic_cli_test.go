@@ -14,8 +14,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcli"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	agentcli "github.com/JieWaZi/NeuxBot/server/internal/agent/cli"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/neux-knowledge/core"
@@ -61,9 +61,9 @@ func TestAutomaticMaintenanceCLIUsesAuthorizedTools(t *testing.T) {
 		}
 		return func() {}, nil
 	}
-	registry := agentcapability.New(builtinskills.Guide)
+	registry := capability.New(builtinskills.Guide)
 	defer registry.Close()
-	grant, activate, revoke, err := registry.Prepare(agentcapability.GrantSpec{ExecutionID: chat.ActiveExecutionID, Bindings: s.AutomaticBindings(ctx, chat, run.ID), Validate: func(context.Context) error { return nil }})
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: chat.ActiveExecutionID, Bindings: s.AutomaticBindings(ctx, chat, run.ID), Validate: func(context.Context) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,11 +92,11 @@ func TestAutomaticMaintenanceCLIUsesAuthorizedTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, err := agentcapability.WriteConnection(directory, "context.json", agentcapability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: server.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
+	connection, err := capability.WriteConnection(directory, "context.json", capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: server.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
 	if err != nil {
 		t.Fatal(err)
 	}
-	cli := func(input string, args ...string) (int, agentcapability.Response) {
+	cli := func(input string, args ...string) (int, capability.Response) {
 		t.Helper()
 		var output, errors bytes.Buffer
 		code := agentcli.Execute(ctx, args, agentcli.IO{In: strings.NewReader(input), Out: &output, Err: &errors, ContextFile: connection})
@@ -104,13 +104,13 @@ func TestAutomaticMaintenanceCLIUsesAuthorizedTools(t *testing.T) {
 		if code != 0 {
 			data = errors.Bytes()
 		}
-		var response agentcapability.Response
+		var response capability.Response
 		if err := json.Unmarshal(data, &response); err != nil {
 			t.Fatalf("CLI envelope: args=%v code=%d output=%s errors=%s", args, code, &output, &errors)
 		}
 		return code, response
 	}
-	success := func(input string, args ...string) agentcapability.Response {
+	success := func(input string, args ...string) capability.Response {
 		t.Helper()
 		code, response := cli(input, args...)
 		if code != 0 || !response.OK {

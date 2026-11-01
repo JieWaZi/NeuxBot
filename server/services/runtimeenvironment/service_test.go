@@ -1,7 +1,7 @@
 package runtimeenvironment
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"os"
@@ -26,7 +26,7 @@ type startupFailingRepository struct {
 }
 
 // UpdateDetection 拒绝探测提交，验证故障不会被解释成没有 CLI。
-func (r startupFailingRepository) UpdateDetection(context.Context, string, runtimeconfig.DetectionResult, int64) error {
+func (r startupFailingRepository) UpdateDetection(context.Context, string, agentapi.DetectionResult, int64) error {
 	return status_error.DatabaseError
 }
 
@@ -41,12 +41,12 @@ func TestStartupAdmissionUsesPersistedEvidence(t *testing.T) {
 				t.Fatal(err)
 			}
 			if cached {
-				if err := repo.UpdateDetection(ctx, runtimeconfig.RuntimeIDCodex, runtimeconfig.DetectionResult{ResolvedBinary: "/usr/local/bin/codex"}, 1); err != nil {
+				if err := repo.UpdateDetection(ctx, agentapi.RuntimeIDCodex, agentapi.DetectionResult{ResolvedBinary: "/usr/local/bin/codex"}, 1); err != nil {
 					t.Fatal(err)
 				}
 			}
 			release := make(chan struct{})
-			catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: runtimeconfig.RuntimeIDCodex, release: release}
+			catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: agentapi.RuntimeIDCodex, release: release}
 			svc.runtimeCatalog = catalog
 			hub := events.New()
 			defer hub.Close()
@@ -165,10 +165,10 @@ func TestAccountFailureStillDiscoversInstalledCLI(t *testing.T) {
 		runtimeCatalog:            catalog,
 	}
 	result := svc.detect(context.Background(), catalog.Runtimes()[1], models.RuntimeEnvironment{
-		RuntimeID:        runtimeconfig.RuntimeIDCodex,
+		RuntimeID:        agentapi.RuntimeIDCodex,
 		DefaultAccountID: "account-1",
 	})
-	if result.ResolvedBinary == "" || result.Auth != runtimeconfig.AuthStatusMissing || result.State != runtimeconfig.DetectionStateUnavailable {
+	if result.ResolvedBinary == "" || result.Auth != agentapi.AuthStatusMissing || result.State != agentapi.DetectionStateUnavailable {
 		t.Fatalf("account failure lost installed or auth state: %+v", result)
 	}
 	if catalog.detectionCount() != 0 {
@@ -179,15 +179,15 @@ func TestAccountFailureStillDiscoversInstalledCLI(t *testing.T) {
 // countingRuntimeCatalog 记录通过服务高层 seam 发生的探测次数。
 type countingRuntimeCatalog struct {
 	// summaries 覆盖测试要对账的内置 Runtime；空值沿用 Codex 和 Claude。
-	summaries []runtimeconfig.RuntimeSummary
+	summaries []agentapi.RuntimeSummary
 	// mutex 保护并发探测次数和 Runtime 标识记录。
 	mutex sync.Mutex
 	// detections 保存每次 Detect 收到的 Runtime 标识。
 	detections []string
 	// requests 保存每次 Detect 收到的完整启动覆盖请求。
-	requests []runtimeconfig.DetectRequest
+	requests []agentapi.DetectRequest
 	// permissionLevels 是写入探测快照的产品权限；nil 表示模型未声明权限。
-	permissionLevels []runtimeconfig.PermissionLevel
+	permissionLevels []agentapi.PermissionLevel
 	// codexOptionsUnavailable 控制 Codex 探测是否模拟模型目录刷新失败。
 	codexOptionsUnavailable bool
 }
@@ -195,12 +195,12 @@ type countingRuntimeCatalog struct {
 // DiscoverInstallations 返回测试环境中的安装路径快照。
 func (e *countingRuntimeCatalog) DiscoverInstallations(
 	_ context.Context,
-	request runtimeconfig.DetectRequest,
-	previous []runtimeconfig.CLIInstallation,
-) []runtimeconfig.CLIInstallation {
-	result := append([]runtimeconfig.CLIInstallation(nil), previous...)
+	request agentapi.DetectRequest,
+	previous []agentapi.CLIInstallation,
+) []agentapi.CLIInstallation {
+	result := append([]agentapi.CLIInstallation(nil), previous...)
 	if len(result) == 0 {
-		result = append(result, runtimeconfig.CLIInstallation{
+		result = append(result, agentapi.CLIInstallation{
 			Path: "/usr/local/bin/" + request.RuntimeID, Available: true,
 		})
 	}
@@ -212,42 +212,42 @@ func TestRefreshKeepsSelectedInstallationWhenPathOrderChanges(t *testing.T) {
 	svc := &service{runtimeCatalog: catalog}
 	summary := catalog.Runtimes()[1]
 	svc.detect(context.Background(), summary, models.RuntimeEnvironment{
-		RuntimeID: runtimeconfig.RuntimeIDCodex,
+		RuntimeID: agentapi.RuntimeIDCodex,
 		Binary:    "codex",
-		Detection: runtimeconfig.DetectionResult{
+		Detection: agentapi.DetectionResult{
 			ResolvedBinary: "/custom/bin/codex",
-			Installations: []runtimeconfig.CLIInstallation{
+			Installations: []agentapi.CLIInstallation{
 				{Path: "/custom/bin/codex", Version: "2.0", Available: true},
 				{Path: "/usr/local/bin/codex", Version: "1.0", Available: true},
 			},
 		},
 	})
-	if got := catalog.lastRequest(runtimeconfig.RuntimeIDCodex).LaunchOverride.Binary; got != "/custom/bin/codex" {
+	if got := catalog.lastRequest(agentapi.RuntimeIDCodex).LaunchOverride.Binary; got != "/custom/bin/codex" {
 		t.Fatalf("refresh selected %q, want persisted path", got)
 	}
 }
 
 // Runtimes 返回测试使用的两个内置 Runtime 摘要。
-func (e *countingRuntimeCatalog) Runtimes() []runtimeconfig.RuntimeSummary {
+func (e *countingRuntimeCatalog) Runtimes() []agentapi.RuntimeSummary {
 	if e.summaries != nil {
 		return e.summaries
 	}
-	return []runtimeconfig.RuntimeSummary{
+	return []agentapi.RuntimeSummary{
 		{
-			ID:                            runtimeconfig.RuntimeIDClaude,
-			BaseRuntimeID:                 runtimeconfig.RuntimeIDClaude,
+			ID:                            agentapi.RuntimeIDClaude,
+			BaseRuntimeID:                 agentapi.RuntimeIDClaude,
 			Name:                          "Claude Code",
 			BinaryCandidates:              []string{"claude"},
 			DefaultModel:                  "sonnet",
 			ConfigHomeEnvironmentVariable: "CLAUDE_CONFIG_DIR",
 		},
 		{
-			ID:               runtimeconfig.RuntimeIDCodex,
-			BaseRuntimeID:    runtimeconfig.RuntimeIDCodex,
+			ID:               agentapi.RuntimeIDCodex,
+			BaseRuntimeID:    agentapi.RuntimeIDCodex,
 			Name:             "Codex CLI",
 			BinaryCandidates: []string{"codex"},
 			DefaultModel:     "gpt-stable",
-			ReasoningOptions: []runtimeconfig.ReasoningOption{
+			ReasoningOptions: []agentapi.ReasoningOption{
 				{ID: "high", Name: "High"},
 			},
 			ConfigHomeEnvironmentVariable: "CODEX_HOME",
@@ -256,7 +256,7 @@ func (e *countingRuntimeCatalog) Runtimes() []runtimeconfig.RuntimeSummary {
 }
 
 // ResolveExecutable 模拟独立于账号认证的 CLI 安装检查。
-func (e *countingRuntimeCatalog) ResolveExecutable(request runtimeconfig.DetectRequest) (string, error) {
+func (e *countingRuntimeCatalog) ResolveExecutable(request agentapi.DetectRequest) (string, error) {
 	return "/usr/local/bin/" + request.RuntimeID, nil
 }
 
@@ -272,7 +272,7 @@ func TestRefreshPinsDefaultAndPreservesConfiguredPiCommand(t *testing.T) {
 	}
 	defer sqlDB.Close()
 	environments := controllers.NewRuntimeEnvironmentController(database.DB)
-	catalog := &countingRuntimeCatalog{summaries: []runtimeconfig.RuntimeSummary{{ID: runtimeconfig.RuntimeIDPi, BaseRuntimeID: runtimeconfig.RuntimeIDPi, Name: "Pi", BinaryCandidates: []string{"pi"}}}}
+	catalog := &countingRuntimeCatalog{summaries: []agentapi.RuntimeSummary{{ID: agentapi.RuntimeIDPi, BaseRuntimeID: agentapi.RuntimeIDPi, Name: "Pi", BinaryCandidates: []string{"pi"}}}}
 	svc, err := newWithRuntimeCatalog(catalog, environments, controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)))
 	if err != nil {
 		t.Fatal(err)
@@ -318,8 +318,8 @@ func TestRefreshPinsDefaultAndPreservesConfiguredPiCommand(t *testing.T) {
 // Detect 返回可直接持久化和执行准备使用的就绪快照。
 func (e *countingRuntimeCatalog) Detect(
 	_ context.Context,
-	request runtimeconfig.DetectRequest,
-) runtimeconfig.DetectionResult {
+	request agentapi.DetectRequest,
+) agentapi.DetectionResult {
 	if request.ReleaseResources != nil {
 		defer request.ReleaseResources(context.Background())
 	}
@@ -327,49 +327,49 @@ func (e *countingRuntimeCatalog) Detect(
 	e.detections = append(e.detections, request.RuntimeID)
 	e.requests = append(e.requests, request)
 	codexOptionsUnavailable := e.codexOptionsUnavailable
-	permissionLevels := append([]runtimeconfig.PermissionLevel(nil), e.permissionLevels...)
+	permissionLevels := append([]agentapi.PermissionLevel(nil), e.permissionLevels...)
 	e.mutex.Unlock()
-	var summary runtimeconfig.RuntimeSummary
+	var summary agentapi.RuntimeSummary
 	for _, candidate := range e.Runtimes() {
 		if candidate.ID == request.RuntimeID {
 			summary = candidate
 			break
 		}
 	}
-	result := runtimeconfig.DetectionResult{
+	result := agentapi.DetectionResult{
 		Runtime:        summary,
-		State:          runtimeconfig.DetectionStateReady,
+		State:          agentapi.DetectionStateReady,
 		ResolvedBinary: "/usr/local/bin/" + request.RuntimeID,
-		Models: []runtimeconfig.ModelOption{{
+		Models: []agentapi.ModelOption{{
 			ID:               "sonnet",
 			Name:             "Sonnet",
-			PermissionLevels: append([]runtimeconfig.PermissionLevel(nil), permissionLevels...),
+			PermissionLevels: append([]agentapi.PermissionLevel(nil), permissionLevels...),
 		}},
 		DetectedDefaultModel: "sonnet",
-		Capabilities: runtimeconfig.CapabilitySet{
-			runtimeconfig.CapabilityStructuredOutput: true,
-			runtimeconfig.CapabilityDynamicModels:    request.RuntimeID == runtimeconfig.RuntimeIDCodex && !codexOptionsUnavailable,
+		Capabilities: agentapi.CapabilitySet{
+			agentapi.CapabilityStructuredOutput: true,
+			agentapi.CapabilityDynamicModels:    request.RuntimeID == agentapi.RuntimeIDCodex && !codexOptionsUnavailable,
 		},
 	}
-	if request.RuntimeID == runtimeconfig.RuntimeIDCodex {
+	if request.RuntimeID == agentapi.RuntimeIDCodex {
 		if codexOptionsUnavailable {
-			result.Diagnostics = []runtimeconfig.Diagnostic{{
+			result.Diagnostics = []agentapi.Diagnostic{{
 				Code:    "ACP_OPTIONS_UNAVAILABLE",
-				Level:   runtimeconfig.DiagnosticLevelWarning,
+				Level:   agentapi.DiagnosticLevelWarning,
 				Message: "timeout waiting for child process to exit",
 			}}
 			return result
 		}
-		result.Models = []runtimeconfig.ModelOption{{
+		result.Models = []agentapi.ModelOption{{
 			ID:               "gpt-stable",
 			Name:             "GPT Stable",
-			PermissionLevels: append([]runtimeconfig.PermissionLevel(nil), permissionLevels...),
-			ReasoningOptions: []runtimeconfig.ReasoningOption{
+			PermissionLevels: append([]agentapi.PermissionLevel(nil), permissionLevels...),
+			ReasoningOptions: []agentapi.ReasoningOption{
 				{ID: "high", Name: "High"},
 				{ID: "medium", Name: "Medium"},
 			},
 		}}
-		result.ReasoningOptions = []runtimeconfig.ReasoningOption{
+		result.ReasoningOptions = []agentapi.ReasoningOption{
 			{ID: "high", Name: "High"},
 			{ID: "medium", Name: "Medium"},
 		}
@@ -386,7 +386,7 @@ func (e *countingRuntimeCatalog) detectionCount() int {
 	return len(e.detections)
 }
 
-func (e *countingRuntimeCatalog) lastRequest(runtimeID string) runtimeconfig.DetectRequest {
+func (e *countingRuntimeCatalog) lastRequest(runtimeID string) agentapi.DetectRequest {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 	for index := len(e.requests) - 1; index >= 0; index-- {
@@ -394,7 +394,7 @@ func (e *countingRuntimeCatalog) lastRequest(runtimeID string) runtimeconfig.Det
 			return e.requests[index]
 		}
 	}
-	return runtimeconfig.DetectRequest{}
+	return agentapi.DetectRequest{}
 }
 
 // failCodexOptions 让后续 Codex 探测返回模型目录刷新警告。
@@ -405,10 +405,10 @@ func (e *countingRuntimeCatalog) failCodexOptions() {
 }
 
 // setPermissionLevels 设置后续探测快照写入模型的产品权限。
-func (e *countingRuntimeCatalog) setPermissionLevels(levels []runtimeconfig.PermissionLevel) {
+func (e *countingRuntimeCatalog) setPermissionLevels(levels []agentapi.PermissionLevel) {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
-	e.permissionLevels = append([]runtimeconfig.PermissionLevel(nil), levels...)
+	e.permissionLevels = append([]agentapi.PermissionLevel(nil), levels...)
 }
 
 func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testing.T) {
@@ -461,7 +461,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 		)
 	}
 	for _, environment := range first {
-		if environment.DefaultPermissionLevel != runtimeconfig.PermissionLevelFullAccess {
+		if environment.DefaultPermissionLevel != agentapi.PermissionLevelFullAccess {
 			t.Fatalf(
 				"%s default permission = %q, want full-access",
 				environment.RuntimeID,
@@ -487,7 +487,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	}
 	selected, err := environments.Get(
 		context.Background(),
-		runtimeconfig.RuntimeIDCodex,
+		agentapi.RuntimeIDCodex,
 	)
 	if err != nil {
 		t.Fatalf("repository Get() error = %v", err)
@@ -500,7 +500,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	}
 	var claude models.RuntimeEnvironment
 	for _, environment := range first {
-		if environment.RuntimeID == runtimeconfig.RuntimeIDClaude {
+		if environment.RuntimeID == agentapi.RuntimeIDClaude {
 			claude = environment
 			break
 		}
@@ -509,10 +509,10 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	if err := environments.UpdateConfiguration(context.Background(), claude); err != nil {
 		t.Fatalf("UpdateConfiguration() error = %v", err)
 	}
-	if err := serviceValue.RefreshOne(context.Background(), runtimeconfig.RuntimeIDClaude); err != nil {
+	if err := serviceValue.RefreshOne(context.Background(), agentapi.RuntimeIDClaude); err != nil {
 		t.Fatalf("RefreshOne() error = %v", err)
 	}
-	request := catalog.lastRequest(runtimeconfig.RuntimeIDClaude)
+	request := catalog.lastRequest(agentapi.RuntimeIDClaude)
 	if request.LaunchOverride.Environment["CLAUDE_CONFIG_DIR"] != claude.ConfigHome {
 		t.Fatalf(
 			"Claude config environment = %#v, want CLAUDE_CONFIG_DIR=%q",
@@ -520,7 +520,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 			claude.ConfigHome,
 		)
 	}
-	codex, err := environments.Get(context.Background(), runtimeconfig.RuntimeIDCodex)
+	codex, err := environments.Get(context.Background(), agentapi.RuntimeIDCodex)
 	if err != nil {
 		t.Fatalf("get Codex environment: %v", err)
 	}
@@ -529,10 +529,10 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	if err := environments.UpdateConfiguration(context.Background(), codex); err != nil {
 		t.Fatalf("save stale Codex defaults: %v", err)
 	}
-	if err := serviceValue.RefreshOne(context.Background(), runtimeconfig.RuntimeIDCodex); err != nil {
+	if err := serviceValue.RefreshOne(context.Background(), agentapi.RuntimeIDCodex); err != nil {
 		t.Fatalf("refresh Codex defaults: %v", err)
 	}
-	codex, err = environments.Get(context.Background(), runtimeconfig.RuntimeIDCodex)
+	codex, err = environments.Get(context.Background(), agentapi.RuntimeIDCodex)
 	if err != nil {
 		t.Fatalf("read normalized Codex environment: %v", err)
 	}
@@ -544,10 +544,10 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 		)
 	}
 	catalog.failCodexOptions()
-	if err := serviceValue.RefreshOne(context.Background(), runtimeconfig.RuntimeIDCodex); err != nil {
+	if err := serviceValue.RefreshOne(context.Background(), agentapi.RuntimeIDCodex); err != nil {
 		t.Fatalf("refresh Codex with unavailable options: %v", err)
 	}
-	codex, err = environments.Get(context.Background(), runtimeconfig.RuntimeIDCodex)
+	codex, err = environments.Get(context.Background(), agentapi.RuntimeIDCodex)
 	if err != nil {
 		t.Fatalf("read fallback Codex environment: %v", err)
 	}
@@ -557,10 +557,10 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 			codex.Detection.Models,
 		)
 	}
-	if err := serviceValue.RefreshOne(context.Background(), runtimeconfig.RuntimeIDCodex); err != nil {
+	if err := serviceValue.RefreshOne(context.Background(), agentapi.RuntimeIDCodex); err != nil {
 		t.Fatalf("repeat Codex refresh with unavailable options: %v", err)
 	}
-	codex, err = environments.Get(context.Background(), runtimeconfig.RuntimeIDCodex)
+	codex, err = environments.Get(context.Background(), agentapi.RuntimeIDCodex)
 	if err != nil {
 		t.Fatalf("read repeated fallback Codex environment: %v", err)
 	}
@@ -580,9 +580,9 @@ func TestRefreshDowngradesUnsupportedDefaultPermission(t *testing.T) {
 	if err := serviceValue.RefreshAll(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	catalog.setPermissionLevels([]runtimeconfig.PermissionLevel{
-		runtimeconfig.PermissionLevelDefault,
-		runtimeconfig.PermissionLevelAuto,
+	catalog.setPermissionLevels([]agentapi.PermissionLevel{
+		agentapi.PermissionLevelDefault,
+		agentapi.PermissionLevelAuto,
 	})
 	if err := serviceValue.RefreshAll(context.Background()); err != nil {
 		t.Fatalf("RefreshAll() error = %v", err)
@@ -595,7 +595,7 @@ func TestRefreshDowngradesUnsupportedDefaultPermission(t *testing.T) {
 		t.Fatal("expected persisted runtime environments")
 	}
 	for _, environment := range listed {
-		if environment.DefaultPermissionLevel != runtimeconfig.PermissionLevelAuto {
+		if environment.DefaultPermissionLevel != agentapi.PermissionLevelAuto {
 			t.Fatalf(
 				"%s default permission = %q, want auto",
 				environment.RuntimeID,
@@ -628,7 +628,7 @@ func TestRefreshDoesNotInventPermissionLevelsWhenCatalogOmitsThem(t *testing.T) 
 		t.Fatalf("List() error = %v", err)
 	}
 	for _, environment := range listed {
-		if environment.DefaultPermissionLevel != runtimeconfig.PermissionLevelFullAccess {
+		if environment.DefaultPermissionLevel != agentapi.PermissionLevelFullAccess {
 			t.Fatalf(
 				"%s default permission = %q, want unchanged full-access",
 				environment.RuntimeID,
@@ -689,9 +689,9 @@ func newRuntimeEnvironmentTestService(t *testing.T) (
 	return catalog, environments, serviceValue
 }
 
-func hasPermissionDefaultDowngraded(diagnostics []runtimeconfig.Diagnostic) bool {
+func hasPermissionDefaultDowngraded(diagnostics []agentapi.Diagnostic) bool {
 	for _, diagnostic := range diagnostics {
-		if diagnostic.Code == runtimeconfig.DiagnosticCodePermissionDefaultDowngraded {
+		if diagnostic.Code == agentapi.DiagnosticCodePermissionDefaultDowngraded {
 			return true
 		}
 	}
@@ -717,7 +717,7 @@ type controlledRuntimeCatalog struct {
 }
 
 // Detect 返回受控快照，并按测试屏障等待或报告可执行路径失效。
-func (c *controlledRuntimeCatalog) Detect(ctx context.Context, request runtimeconfig.DetectRequest) runtimeconfig.DetectionResult {
+func (c *controlledRuntimeCatalog) Detect(ctx context.Context, request agentapi.DetectRequest) agentapi.DetectionResult {
 	if c.started != nil {
 		c.started <- request.RuntimeID
 	}
@@ -731,7 +731,7 @@ func (c *controlledRuntimeCatalog) Detect(ctx context.Context, request runtimeco
 	result.Version = c.version
 	if c.executableMissing {
 		result.ResolvedBinary = ""
-		result.State = runtimeconfig.DetectionStateUnavailable
+		result.State = agentapi.DetectionStateUnavailable
 	}
 	if c.binary != "" {
 		result.ResolvedBinary = c.binary
@@ -753,10 +753,10 @@ func TestRefreshPreservesVersionForSameInstallation(t *testing.T) {
 			}
 			catalog.version = version
 			base.failCodexOptions()
-			if err := svc.RefreshOne(ctx, runtimeconfig.RuntimeIDCodex); err != nil {
+			if err := svc.RefreshOne(ctx, agentapi.RuntimeIDCodex); err != nil {
 				t.Fatal(err)
 			}
-			got, err := repo.Get(ctx, runtimeconfig.RuntimeIDCodex)
+			got, err := repo.Get(ctx, agentapi.RuntimeIDCodex)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -769,10 +769,10 @@ func TestRefreshPreservesVersionForSameInstallation(t *testing.T) {
 				}
 			}
 			catalog.binary = "/other/bin/codex"
-			if err := svc.RefreshOne(ctx, runtimeconfig.RuntimeIDCodex); err != nil {
+			if err := svc.RefreshOne(ctx, agentapi.RuntimeIDCodex); err != nil {
 				t.Fatal(err)
 			}
-			got, err = repo.Get(ctx, runtimeconfig.RuntimeIDCodex)
+			got, err = repo.Get(ctx, agentapi.RuntimeIDCodex)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -794,10 +794,10 @@ func TestRefreshFillsVersionFromInstallation(t *testing.T) {
 		t.Fatal(err)
 	}
 	catalog.version = ""
-	if err := svc.RefreshOne(ctx, runtimeconfig.RuntimeIDCodex); err != nil {
+	if err := svc.RefreshOne(ctx, agentapi.RuntimeIDCodex); err != nil {
 		t.Fatal(err)
 	}
-	got, err := repo.Get(ctx, runtimeconfig.RuntimeIDCodex)
+	got, err := repo.Get(ctx, agentapi.RuntimeIDCodex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -811,7 +811,7 @@ func TestStartupDetectionDoesNotBlockInitializationAndPublishesEachResult(t *tes
 	base, repo, api := newRuntimeEnvironmentTestService(t)
 	svc := api.(*service)
 	release := make(chan struct{})
-	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: runtimeconfig.RuntimeIDCodex, release: release}
+	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: agentapi.RuntimeIDCodex, release: release}
 	svc.runtimeCatalog = catalog
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -847,7 +847,7 @@ func TestStartupDetectionDoesNotBlockInitializationAndPublishesEachResult(t *tes
 	}
 	deadline := time.After(5 * time.Second)
 	for {
-		claude, err := repo.Get(ctx, runtimeconfig.RuntimeIDClaude)
+		claude, err := repo.Get(ctx, agentapi.RuntimeIDClaude)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -860,7 +860,7 @@ func TestStartupDetectionDoesNotBlockInitializationAndPublishesEachResult(t *tes
 		case <-time.After(10 * time.Millisecond):
 		}
 	}
-	codex, err := repo.Get(ctx, runtimeconfig.RuntimeIDCodex)
+	codex, err := repo.Get(ctx, agentapi.RuntimeIDCodex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -869,7 +869,7 @@ func TestStartupDetectionDoesNotBlockInitializationAndPublishesEachResult(t *tes
 	}
 	// 重检已完成的 Claude 不得等待仍被阻塞的 Codex，也不得重新探测其他项。
 	refreshed := make(chan error, 1)
-	go func() { refreshed <- svc.RefreshOne(ctx, runtimeconfig.RuntimeIDClaude) }()
+	go func() { refreshed <- svc.RefreshOne(ctx, agentapi.RuntimeIDClaude) }()
 	select {
 	case err := <-refreshed:
 		if err != nil {
@@ -898,14 +898,14 @@ func TestRefreshKeepsKnownVersionWhenSelectedExecutableIsMissing(t *testing.T) {
 	}
 	catalog.version = ""
 	catalog.executableMissing = true
-	if err := svc.RefreshOne(ctx, runtimeconfig.RuntimeIDCodex); err != nil {
+	if err := svc.RefreshOne(ctx, agentapi.RuntimeIDCodex); err != nil {
 		t.Fatal(err)
 	}
-	got, err := repo.Get(ctx, runtimeconfig.RuntimeIDCodex)
+	got, err := repo.Get(ctx, agentapi.RuntimeIDCodex)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Detection.Version != "1.2.3" || got.Detection.ResolvedBinary != "" || got.Detection.State != runtimeconfig.DetectionStateUnavailable {
+	if got.Detection.Version != "1.2.3" || got.Detection.ResolvedBinary != "" || got.Detection.State != agentapi.DetectionStateUnavailable {
 		t.Fatalf("missing executable lost version or retained readiness: %+v", got.Detection)
 	}
 }

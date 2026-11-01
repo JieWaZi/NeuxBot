@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"errors"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
+
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -20,16 +20,16 @@ import (
 
 // nativeValidationRuntime 模拟仍提供显式设置探测端口的宿主。
 type nativeValidationRuntime struct {
-	// ChatHost 保留真实聊天宿主与工作区目录查询行为。
-	*runtimehost.ChatHost
+	// Manager 保留真实聊天宿主与工作区目录查询行为。
+	*agentapi.Manager
 	// probes 记录配置准入不应调用的额外能力探测。
 	probes int
 }
 
 // Detect 使额外探测返回不可用，证明执行配置不依赖设置查询的成功。
-func (r *nativeValidationRuntime) Detect(context.Context, runtimeconfig.DetectRequest) runtimeconfig.DetectionResult {
+func (r *nativeValidationRuntime) Detect(context.Context, agentapi.DetectRequest) agentapi.DetectionResult {
 	r.probes++
-	return runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateUnavailable}
+	return agentapi.DetectionResult{State: agentapi.DetectionStateUnavailable}
 }
 
 // TestNativeAccountValidationDoesNotProbe 防止配置准入要求真实 ChatHost 提供探测接口或启动额外会话。
@@ -58,7 +58,7 @@ func TestNativeAccountValidationDoesNotProbe(t *testing.T) {
 					host := nativeValidationHost(t, sample.runtimeID)
 					defer host.Close(context.Background())
 					manager := &service{runtime: host, accounts: accounts, runtimeEnvironments: configurationEnvironmentReader{environment: nativeValidationEnvironment(sample.runtimeID)}}
-					detector := &nativeValidationRuntime{ChatHost: host}
+					detector := &nativeValidationRuntime{Manager: host}
 					if withDetector {
 						manager.runtime = detector
 					}
@@ -101,7 +101,7 @@ func TestNativeAccountValidationKeepsAdmissionGuards(t *testing.T) {
 			environment.Enabled = false
 		}, status_error.RuntimeUnavailable},
 		{"unavailable CLI", func(_ *models.AIAccount, environment *models.RuntimeEnvironment, _ *ExecutionConfiguration) {
-			environment.Detection.State = runtimeconfig.DetectionStateUnavailable
+			environment.Detection.State = agentapi.DetectionStateUnavailable
 		}, status_error.RuntimeUnavailable},
 		{"missing transport", func(_ *models.AIAccount, _ *models.RuntimeEnvironment, config *ExecutionConfiguration) {
 			config.RequiredConnectorTransport = constants.RuntimeConnectorTransportStreamableHTTP
@@ -165,22 +165,22 @@ func nativeValidationAccounts(t *testing.T, account models.AIAccount, credential
 func nativeValidationEnvironment(runtimeID string) models.RuntimeEnvironment {
 	return models.RuntimeEnvironment{
 		RuntimeID: runtimeID, BaseRuntimeID: runtimeID, Enabled: true, DefaultModel: "auto",
-		Detection: runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Models: []runtimeconfig.ModelOption{{
-			ID: "auto", ReasoningOptions: []runtimeconfig.ReasoningOption{{ID: "medium"}}, PermissionLevels: []runtimeconfig.PermissionLevel{runtimeconfig.PermissionLevelDefault},
+		Detection: agentapi.DetectionResult{State: agentapi.DetectionStateReady, Models: []agentapi.ModelOption{{
+			ID: "auto", ReasoningOptions: []agentapi.ReasoningOption{{ID: "medium"}}, PermissionLevels: []agentapi.PermissionLevel{agentapi.PermissionLevelDefault},
 		}}},
 	}
 }
 
 // nativeValidationHost 提供真实聊天宿主，任何配置准入发起的原生启动都会立即失败。
-func nativeValidationHost(t *testing.T, runtimeID string) *runtimehost.ChatHost {
+func nativeValidationHost(t *testing.T, runtimeID string) *agentapi.Manager {
 	t.Helper()
-	return runtimehost.NewChat(runtimehost.ChatConfig{
-		Runtimes: func() []runtimeconfig.RuntimeSummary {
-			return []runtimeconfig.RuntimeSummary{{ID: runtimeID, BaseRuntimeID: runtimeID, InstructionFileName: "AGENTS.md"}}
+	return agentapi.NewManager(agentapi.ManagerConfig{
+		Runtimes: func() []agentapi.RuntimeSummary {
+			return []agentapi.RuntimeSummary{{ID: runtimeID, BaseRuntimeID: runtimeID, InstructionFileName: "AGENTS.md"}}
 		},
-		Launch: func(runtimeconfig.RuntimeTarget, runtimeconfig.DetectionResult) (runtimeconfig.LaunchFacts, error) {
+		Launch: func(agentapi.RuntimeTarget, agentapi.DetectionResult) (agentapi.LaunchFacts, error) {
 			t.Error("configuration admission started a native process")
-			return runtimeconfig.LaunchFacts{}, status_error.RuntimeUnavailable
+			return agentapi.LaunchFacts{}, status_error.RuntimeUnavailable
 		},
 	})
 }

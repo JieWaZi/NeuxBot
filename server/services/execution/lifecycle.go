@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
@@ -207,15 +207,15 @@ type messageExecution struct {
 	// agentActivate 在执行接纳后激活短期 CLI 身份。
 	agentActivate func()
 	// agentSettle 记录该次调用返回的可靠原生会话身份。
-	agentSettle func(runtimecontract.Result)
+	agentSettle func(agentapi.Result)
 	// capabilityRelease 在回合结束后撤销内置工具能力。
 	capabilityRelease func()
 	// preparedRun 保存已准备但尚未提交本轮输入的原生会话。
-	preparedRun runtimecontract.PreparedChatRun
+	preparedRun agentapi.PreparedChatRun
 	// plugins 是消息明确选择的插件展示快照。
 	plugins []plugins.Snapshot
 	// turn 是本轮提交给已准备消费者的增量输入与交互端口。
-	turn runtimecontract.TurnInput
+	turn agentapi.TurnInput
 	// state 是首事件提交前仍未进入权威日志的对话状态。
 	state messageChat
 	// input 是首事件提交时持久化的本次用户输入。
@@ -315,11 +315,11 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 			return
 		}
 		if result.Failure == nil {
-			result.Failure = &runtimecontract.Failure{
-				Code:       runtimediagnostic.FailureCodeRuntimeUnavailable,
+			result.Failure = &agentapi.Failure{
+				Code:       agentapi.FailureCodeRuntimeUnavailable,
 				Stage:      constants.RuntimeExecutionFailureStageStart,
 				Message:    "runtime did not accept the invocation",
-				Transience: runtimediagnostic.FailureTransiencePermanent,
+				Transience: agentapi.FailureTransiencePermanent,
 			}
 		}
 		status, errorCode, errorMessage := executionResultStatus(result)
@@ -390,10 +390,10 @@ type chatRuntimeSink struct {
 // Accept 消费 Runtime 首事件并将后续可见事件直接交给既有聚合器。
 func (s *chatRuntimeSink) Accept(
 	ctx context.Context,
-	event runtimecontract.Event,
+	event agentapi.Event,
 ) error {
-	if event.Type == runtimecontract.EventTypeInvocationStarted {
-		var started runtimecontract.InvocationStartedData
+	if event.Type == agentapi.EventTypeInvocationStarted {
+		var started agentapi.InvocationStartedData
 		if err := json.Unmarshal(event.Data, &started); err != nil {
 			return status_error.RuntimeUnavailable
 		}
@@ -484,7 +484,7 @@ func (m *service) commitAcceptedExecution(
 	})
 }
 
-func runtimeStartError(result runtimecontract.Result) error {
+func runtimeStartError(result agentapi.Result) error {
 	if result.Failure == nil {
 		return status_error.RuntimeUnavailable
 	}
@@ -492,17 +492,17 @@ func runtimeStartError(result runtimecontract.Result) error {
 		return status_error.SkillUnavailable
 	}
 	switch result.Failure.Code {
-	case runtimediagnostic.FailureCodeSessionNotFound:
+	case agentapi.FailureCodeSessionNotFound:
 		return status_error.RuntimeSessionNotFound
-	case runtimediagnostic.FailureCodePolicyUnsupported:
+	case agentapi.FailureCodePolicyUnsupported:
 		return status_error.RuntimePolicyUnsupported
-	case runtimediagnostic.FailureCodeProtocolIncompatible:
+	case agentapi.FailureCodeProtocolIncompatible:
 		return status_error.RuntimeProtocolIncompatible
-	case runtimediagnostic.FailureCodeInactivityTimeout:
+	case agentapi.FailureCodeInactivityTimeout:
 		return status_error.RuntimeInactivityTimeout
-	case runtimediagnostic.FailureCodeAuthRequired:
+	case agentapi.FailureCodeAuthRequired:
 		return status_error.RuntimeAuthRequired
-	case runtimediagnostic.FailureCodeRuntimeUnavailable:
+	case agentapi.FailureCodeRuntimeUnavailable:
 		return status_error.RuntimeUnavailable
 	default:
 		detail := runtimeFailureDisplayMessage(result.Failure)
@@ -572,7 +572,7 @@ func (m *service) recordInvocationResult(
 	chat models.Chat,
 	workingDirectory string,
 	execution models.Execution,
-	result runtimecontract.Result,
+	result agentapi.Result,
 	attempt int,
 	recoveryStrategy constants.InvocationRecoveryStrategy,
 	triggerReason constants.InvocationTriggerReason,
@@ -646,32 +646,32 @@ func (m *service) recordInvocationResult(
 }
 
 func executionResultStatus(
-	result runtimecontract.Result,
+	result agentapi.Result,
 ) (constants.ExecutionStatus, string, string) {
 	if result.Failure == nil {
 		return constants.ExecutionStatusCompleted, "", ""
 	}
 	status := constants.ExecutionStatusFailed
-	if result.Failure.Code == runtimediagnostic.FailureCodeContextCanceled {
+	if result.Failure.Code == agentapi.FailureCodeContextCanceled {
 		status = constants.ExecutionStatusCanceled
 	}
 	return status, string(result.Failure.Code), runtimeFailureDisplayMessage(result.Failure)
 }
 
 // runtimeFailureDisplayMessage 统一执行前拒绝与执行终态的展示原因，原始诊断仍保存在 Failure.Message。
-func runtimeFailureDisplayMessage(failure *runtimecontract.Failure) string {
+func runtimeFailureDisplayMessage(failure *agentapi.Failure) string {
 	if message := strings.TrimSpace(failure.DisplayMessage); message != "" {
 		return message
 	}
 	return strings.TrimSpace(failure.Message)
 }
 
-func reliableRuntimeSessionID(result runtimecontract.Result) string {
+func reliableRuntimeSessionID(result agentapi.Result) string {
 	if result.Session.OutputID == "" {
 		return ""
 	}
-	if result.Session.State != runtimecontract.SessionStateCreated &&
-		result.Session.State != runtimecontract.SessionStateResumed {
+	if result.Session.State != agentapi.SessionStateCreated &&
+		result.Session.State != agentapi.SessionStateResumed {
 		return ""
 	}
 	return result.Session.OutputID
@@ -680,12 +680,12 @@ func reliableRuntimeSessionID(result runtimecontract.Result) string {
 func chatDeliveryFailure(
 	stage constants.ChatDeliveryFailureStage,
 	err error,
-) *runtimecontract.Failure {
-	return &runtimecontract.Failure{
-		Code:       runtimediagnostic.FailureCodeEventDelivery,
+) *agentapi.Failure {
+	return &agentapi.Failure{
+		Code:       agentapi.FailureCodeEventDelivery,
 		Stage:      stage.String(),
 		Message:    err.Error(),
-		Transience: runtimediagnostic.FailureTransiencePermanent,
+		Transience: agentapi.FailureTransiencePermanent,
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 )
 
 // fixtureCLIBinary 是本测试进程从当前源码构建的真实可执行文件。
@@ -59,7 +59,7 @@ func fixtureCLIEnvironment(ctx context.Context, directory string, environment ma
 	if err := command.Run(); err != nil {
 		return nil, fmt.Errorf("CLI failed: %w: %s", err, failure.String())
 	}
-	var response agentcapability.Response
+	var response capability.Response
 	if err := json.Unmarshal(output.Bytes(), &response); err != nil || !response.OK {
 		return nil, fmt.Errorf("invalid CLI response: %s", output.String())
 	}

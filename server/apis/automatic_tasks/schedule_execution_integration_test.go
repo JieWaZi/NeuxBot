@@ -1,12 +1,6 @@
 package automatic_tasks
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-
-	workspace "github.com/JieWaZi/NeuxBot/server/internal/agent/host/workspace"
-
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
-
 	"context"
 	"encoding/json"
 	"errors"
@@ -20,9 +14,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
-	acpdriver "github.com/JieWaZi/NeuxBot/server/internal/agent/core/driver/acp"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -34,9 +28,9 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-// integrationRuntime 仅替代外部 Driver；接纳、宿主、独立 Runtime、Chat 与结果投影均使用真实实现。
+// integrationRuntime 仅替代原生连接；接纳、Manager、Session、Chat 与结果投影均使用真实实现。
 type integrationRuntime struct {
-	// requests 交付独立 Runtime 实际发送的静态配置与增量输入。
+	// requests 交付产品 Session 实际发送的静态配置与增量输入。
 	requests chan integrationPrompt
 	// finish 由测试释放一次执行，以验证真实活跃 Chat 的并发和删除保护。
 	finish chan struct{}
@@ -44,12 +38,12 @@ type integrationRuntime struct {
 	calls atomic.Int64
 }
 
-// integrationPrompt 保留 Driver 启动事实和当前新增输入，不能从业务接纳回执推测派发。
+// integrationPrompt 保留原生连接启动事实和当前新增输入，不能从业务接纳回执推测派发。
 type integrationPrompt struct {
-	// session 是独立 Runtime 已冻结的原生启动输入。
-	session c.OpenRequest
-	// turn 是独立 Runtime 实际提交的当前回合。
-	turn c.TurnRequest
+	// session 是产品 Session 已冻结的原生启动输入。
+	session native.OpenRequest
+	// turn 是产品 Session 实际提交的当前回合。
+	turn native.TurnRequest
 }
 
 // integrationSession 为每个 Chat 保存独立原生会话，避免团队成员共用模型上下文。
@@ -57,56 +51,51 @@ type integrationSession struct {
 	// driver 提供受测试控制的外部执行边界。
 	driver *integrationRuntime
 	// request 是本原生会话唯一的静态配置。
-	request c.OpenRequest
+	request native.OpenRequest
 }
 
-func (*integrationRuntime) ID() string { return "codex" }
-func (*integrationRuntime) Capabilities() c.DriverCapabilities {
-	return c.DriverCapabilities{Version: "business-fixture", HotResume: true, ColdResume: true}
-}
-func (r *integrationRuntime) Open(_ context.Context, request c.OpenRequest) (c.DriverSession, error) {
+func (r *integrationRuntime) Open(_ context.Context, request native.OpenRequest) (agentapi.NativeConnection, error) {
 	return &integrationSession{driver: r, request: request}, nil
 }
-func (*integrationRuntime) Close(context.Context) error { return nil }
 func (*integrationSession) Close(context.Context) error { return nil }
-func (s *integrationSession) Prompt(ctx context.Context, request c.TurnRequest, sink c.DriverSink) c.DriverResult {
+func (s *integrationSession) Prompt(ctx context.Context, request native.TurnRequest, sink native.EventSink) native.TurnResult {
 	s.driver.calls.Add(1)
-	failed := func(err error) c.DriverResult {
-		return c.DriverResult{Status: c.StatusFailed, Fault: &c.Fault{Code: c.FaultDriver, Cause: err}}
+	failed := func(err error) native.TurnResult {
+		return native.TurnResult{Status: native.StatusFailed, Fault: &native.Fault{Code: native.FaultDriver, Cause: err}}
 	}
-	if err := sink.Accept(ctx, c.DriverEvent{Kind: c.EventPromptAccepted}); err != nil {
+	if err := sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted}); err != nil {
 		return failed(err)
 	}
 	select {
 	case s.driver.requests <- integrationPrompt{session: s.request, turn: request}:
 	case <-ctx.Done():
-		return c.DriverResult{Status: c.StatusCancelled, StopReason: c.StopCancelled}
+		return native.TurnResult{Status: native.StatusCancelled, StopReason: native.StopCancelled}
 	}
 	select {
 	case <-s.driver.finish:
 	case <-ctx.Done():
-		return c.DriverResult{Status: c.StatusCancelled, StopReason: c.StopCancelled}
+		return native.TurnResult{Status: native.StatusCancelled, StopReason: native.StopCancelled}
 	}
-	if err := sink.Accept(ctx, c.DriverEvent{Kind: c.EventAssistantMessage, Message: &c.AssistantMessage{MessageID: "result", Phase: c.PhaseFinal, Delta: "归档完成", Complete: true}}); err != nil {
+	if err := sink.Accept(ctx, native.Event{Kind: native.EventAssistantMessage, Message: &native.AssistantMessage{MessageID: "result", Phase: native.PhaseFinal, Delta: "归档完成", Complete: true}}); err != nil {
 		return failed(err)
 	}
-	return c.DriverResult{Status: c.StatusCompleted, StopReason: c.StopEndTurn, NativeSession: c.NativeSessionInfo{Handle: "native-" + s.request.Invocation.ID, Resumable: true}}
+	return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn, NativeSession: native.NativeSessionInfo{Handle: "native-" + s.request.Invocation.ID, Resumable: true}}
 }
 
 // integrationEnvironment 提供已探测模型和一个不同的默认账号，验证任务不会隐式重绑定。
 type integrationEnvironment struct{}
 
 func (integrationEnvironment) Get(context.Context, string) (models.RuntimeEnvironment, error) {
-	// 只有外部 Driver 被替换，测试进程路径用于满足真实 Core 的可执行路径校验。
+	// 只有原生连接被替换，测试进程路径用于满足产品会话的可执行路径校验。
 	binary, err := os.Executable()
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
-	sdk, err := catalog.New(catalog.Config{})
+	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
-	var summary runtimeconfig.RuntimeSummary
+	var summary agentapi.RuntimeSummary
 	for _, registered := range sdk.Runtimes() {
 		if registered.ID == "codex" {
 			summary = registered
@@ -114,8 +103,8 @@ func (integrationEnvironment) Get(context.Context, string) (models.RuntimeEnviro
 		}
 	}
 	return models.RuntimeEnvironment{RuntimeID: "codex", BaseRuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "model", DefaultAccountID: "another-default-account",
-		Detection: runtimeconfig.DetectionResult{Runtime: summary, State: runtimeconfig.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilityMCPStreamableHTTP: true, runtimeconfig.CapabilitySkillDirectory: true},
-			Models: []runtimeconfig.ModelOption{{ID: "model", PermissionLevels: []runtimeconfig.PermissionLevel{runtimeconfig.PermissionLevelDefault, runtimeconfig.PermissionLevelAuto, runtimeconfig.PermissionLevelFullAccess}}}}}, nil
+		Detection: agentapi.DetectionResult{Runtime: summary, State: agentapi.DetectionStateReady, ResolvedBinary: binary, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true, agentapi.CapabilitySkillDirectory: true},
+			Models: []agentapi.ModelOption{{ID: "model", PermissionLevels: []agentapi.PermissionLevel{agentapi.PermissionLevelDefault, agentapi.PermissionLevelAuto, agentapi.PermissionLevelFullAccess}}}}}, nil
 }
 
 func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
@@ -155,12 +144,14 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 	}
 	t.Cleanup(chats.Close)
 	runtime := &integrationRuntime{requests: make(chan integrationPrompt, 4), finish: make(chan struct{}, 1)}
-	sdk, err := catalog.New(catalog.Config{})
+	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: workspace.New(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: runtimehost.NewForkHandler(sdk),
-		Driver: func(runtimehost.Environment, acpdriver.Factory) (c.Driver, error) { return runtime, nil }})
+	host := agentapi.NewManager(agentapi.ManagerConfig{PrepareWorkspace: agentapi.NewWorkspacePreparer(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: agentapi.NewForkHandler(sdk),
+		Open: func(ctx context.Context, _ native.ConnectionConfig, request native.OpenRequest) (agentapi.NativeConnection, error) {
+			return runtime.Open(ctx, request)
+		}})
 	t.Cleanup(func() {
 		if err := host.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -677,7 +668,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 				case input := <-runtime.requests:
 					return input
 				case <-time.After(5 * time.Second):
-					t.Fatal("独立 Driver 未接收到输入")
+					t.Fatal("原生连接未接收到输入")
 					return integrationPrompt{}
 				}
 			}

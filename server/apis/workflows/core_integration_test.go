@@ -1,11 +1,7 @@
 package workflows
 
 import (
-	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
-
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -19,8 +15,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
@@ -44,22 +39,22 @@ type fixtureRuntime struct {
 	// calls 保存节点实际调用次数。
 	calls map[string]int
 	// workspaces 验证不同 Chat 使用独立 cwd 并共用批准的业务目录。
-	workspaces []runtimecontract.Workspace
+	workspaces []agentapi.Workspace
 }
 
-func (*fixtureRuntime) ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
-	return runtimecontract.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
+func (*fixtureRuntime) ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
+	return agentapi.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
 }
-func (*fixtureRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
-	return []runtimeconfig.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
+func (*fixtureRuntime) Runtimes() []agentapi.RuntimeSummary {
+	return []agentapi.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
 }
-func (r *fixtureRuntime) Run(ctx context.Context, request fixtureInvocation, sink runtimecontract.EventSink) runtimecontract.Result {
+func (r *fixtureRuntime) Run(ctx context.Context, request fixtureInvocation, sink agentapi.EventSink) agentapi.Result {
 	invocation := util.New()
-	started, _ := json.Marshal(runtimecontract.InvocationStartedData{InvocationID: invocation})
-	failed := func(err error) runtimecontract.Result {
-		return runtimecontract.Result{ExitCode: 1, Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeProcessExited, Stage: "runtime", Message: err.Error(), Transience: runtimediagnostic.FailureTransiencePermanent}}
+	started, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: invocation})
+	failed := func(err error) agentapi.Result {
+		return agentapi.Result{ExitCode: 1, Failure: &agentapi.Failure{Code: agentapi.FailureCodeProcessExited, Stage: "runtime", Message: err.Error(), Transience: agentapi.FailureTransiencePermanent}}
 	}
-	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: started}); err != nil {
+	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: started}); err != nil {
 		return failed(err)
 	}
 	contract, err := fixtureCLI(ctx, request, []string{"workflow", "results", "schema"}, nil)
@@ -118,7 +113,7 @@ func (r *fixtureRuntime) Run(ctx context.Context, request fixtureInvocation, sin
 		return failed(err)
 	}
 
-	return runtimecontract.Result{Facts: runtimecontract.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
+	return agentapi.Result{Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
 }
 
 // fixtureEnvironment 返回真实 Core 会校验的固定能力目录，不替代接纳逻辑。
@@ -130,18 +125,18 @@ func (fixtureEnvironment) Get(context.Context, string) (models.RuntimeEnvironmen
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
-	sdk, err := catalog.New(catalog.Config{})
+	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		return models.RuntimeEnvironment{}, err
 	}
-	var summary runtimeconfig.RuntimeSummary
+	var summary agentapi.RuntimeSummary
 	for _, registered := range sdk.Runtimes() {
 		if registered.ID == "codex" {
 			summary = registered
 			break
 		}
 	}
-	return models.RuntimeEnvironment{RuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "fixture", Detection: runtimeconfig.DetectionResult{Runtime: summary, State: runtimeconfig.DetectionStateReady, ResolvedBinary: binary, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilityMCPStreamableHTTP: true, runtimeconfig.CapabilitySkillDirectory: true}, Models: []runtimeconfig.ModelOption{{ID: "fixture", Name: "fixture", PermissionLevels: []runtimeconfig.PermissionLevel{runtimeconfig.PermissionLevelDefault, runtimeconfig.PermissionLevelFullAccess}}}}}, nil
+	return models.RuntimeEnvironment{RuntimeID: "codex", Enabled: true, Binary: binary, DefaultModel: "fixture", Detection: agentapi.DetectionResult{Runtime: summary, State: agentapi.DetectionStateReady, ResolvedBinary: binary, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true, agentapi.CapabilitySkillDirectory: true}, Models: []agentapi.ModelOption{{ID: "fixture", Name: "fixture", PermissionLevels: []agentapi.PermissionLevel{agentapi.PermissionLevelDefault, agentapi.PermissionLevelFullAccess}}}}}, nil
 }
 
 func openCoreWorkflowFixture(t *testing.T, directory string, runtime *fixtureRuntime) (*workflowFixture, func()) {
@@ -153,26 +148,26 @@ func openCoreWorkflowFixture(t *testing.T, directory string, runtime *fixtureRun
 // coreRuntimeMetadata 是真实宿主和业务替身共有的目录与分叉端口。
 type coreRuntimeMetadata interface {
 	// ForkSession 复用实际会话分叉协议。
-	ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error)
+	ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error)
 	// Runtimes 提供真实工作区集成目录约定。
-	Runtimes() []runtimeconfig.RuntimeSummary
+	Runtimes() []agentapi.RuntimeSummary
 }
 
 // coreTestRuntime 仅替代外部模型调用，输入由测试准备对象显式组合。
 type coreTestRuntime interface {
 	coreRuntimeMetadata
 	// Run 通过协议交付模型执行事件。
-	Run(context.Context, fixtureInvocation, runtimecontract.EventSink) runtimecontract.Result
+	Run(context.Context, fixtureInvocation, agentapi.EventSink) agentapi.Result
 }
 
 // coreExecutionRuntime 与执行核心共用明确的资源生命周期；真实 Host 直接实现此接口。
 type coreExecutionRuntime interface {
 	// ForkSession 是原生分叉端口。
-	ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error)
+	ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error)
 	// Runtimes 是原生目录约定。
-	Runtimes() []runtimeconfig.RuntimeSummary
+	Runtimes() []agentapi.RuntimeSummary
 	// PrepareSession 在权威日志之前取得实际资源。
-	PrepareSession(context.Context, runtimecontract.SessionPlan, runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error)
+	PrepareSession(context.Context, agentapi.SessionPlan, agentapi.SessionDirective) (agentapi.PreparedChatRun, error)
 	// CloseWorkspace 释放原生会话所有者。
 	CloseWorkspace(context.Context, string) error
 }
@@ -186,13 +181,13 @@ type coreRuntimeStub struct {
 // fixtureInvocation 在测试边界同时保留会话事实和本轮输入，便于业务断言。
 type fixtureInvocation struct {
 	// SessionPlan 是实际绑定后的会话配置。
-	runtimecontract.SessionPlan
+	agentapi.SessionPlan
 	// TurnInput 是本轮新增输入和交互。
-	runtimecontract.TurnInput
+	agentapi.TurnInput
 	// Resources 是实际租约保护的启动与连接事实。
-	Resources runtimecontract.SessionResources
+	Resources agentapi.SessionResources
 	// Session 是实际会话动作。
-	Session runtimecontract.SessionDirective
+	Session agentapi.SessionDirective
 }
 
 // fixturePreparedRun 只替代模型边界，领域资源仍由接纳流程显式交接。
@@ -202,32 +197,32 @@ type fixturePreparedRun struct {
 	// ctx 约束准备与执行。
 	ctx context.Context
 	// plan 是接纳时固定的会话声明。
-	plan runtimecontract.SessionPlan
+	plan agentapi.SessionPlan
 	// session 是实际新建或恢复动作。
-	session runtimecontract.SessionDirective
+	session agentapi.SessionDirective
 	// resources 是显式 Bind 交接的领域资源。
-	resources runtimecontract.SessionResources
+	resources agentapi.SessionResources
 	// bound 表示当前替身已收到领域资源。
 	bound bool
 	// closed 表示资源已成功释放。
 	closed bool
 }
 
-func (r coreRuntimeStub) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+func (r coreRuntimeStub) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
 	return &fixturePreparedRun{runtime: r.coreTestRuntime, ctx: ctx, plan: plan, session: session}, nil
 }
 func (p *fixturePreparedRun) Context() context.Context { return p.ctx }
 func (p *fixturePreparedRun) NeedsResources() bool     { return !p.bound }
-func (p *fixturePreparedRun) Bind(_ context.Context, resources runtimecontract.SessionResources) error {
+func (p *fixturePreparedRun) Bind(_ context.Context, resources agentapi.SessionResources) error {
 	p.resources, p.bound = resources, true
-	p.plan.Target, p.plan.Skills, p.plan.Connectors = runtimecontract.DeclareTarget(resources.Target), resources.Skills, runtimecontract.DeclareConnectors(resources.Connectors)
+	p.plan.Target, p.plan.Skills, p.plan.Connectors = agentapi.DeclareTarget(resources.Target), resources.Skills, agentapi.DeclareConnectors(resources.Connectors)
 	if resources.Session != nil {
 		p.session = *resources.Session
 	}
 	return nil
 }
-func (p *fixturePreparedRun) Resources() runtimecontract.SessionResources { return p.resources }
-func (p *fixturePreparedRun) Session() runtimecontract.SessionDirective   { return p.session }
+func (p *fixturePreparedRun) Resources() agentapi.SessionResources { return p.resources }
+func (p *fixturePreparedRun) Session() agentapi.SessionDirective   { return p.session }
 func (p *fixturePreparedRun) Close(ctx context.Context) error {
 	if p.closed {
 		return nil
@@ -240,7 +235,7 @@ func (p *fixturePreparedRun) Close(ctx context.Context) error {
 	p.closed = true
 	return nil
 }
-func (p *fixturePreparedRun) Run(ctx context.Context, turn runtimecontract.TurnInput, sink runtimecontract.EventSink) runtimecontract.Result {
+func (p *fixturePreparedRun) Run(ctx context.Context, turn agentapi.TurnInput, sink agentapi.EventSink) agentapi.Result {
 	defer func() { _ = p.Close(context.WithoutCancel(ctx)) }()
 	return p.runtime.Run(ctx, fixtureInvocation{SessionPlan: p.plan, TurnInput: turn, Resources: p.resources, Session: p.session}, sink)
 }
@@ -280,7 +275,7 @@ func openCoreWorkflowPorts(t *testing.T, directory string, runtime coreRuntimeMe
 	}
 	transactions := controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))
 	hub := events.New()
-	registry := agentcapability.New(builtinskills.Guide)
+	registry := capability.New(builtinskills.Guide)
 	endpoint := httptest.NewServer(registry)
 	skills := controllers.NewSkillController(database.DB)
 	installer := builtinskills.Installer{DataDirectory: directory, Skills: skills, Transactions: transactions}
@@ -486,7 +481,7 @@ func TestF1WholeCoreWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T)
 	}
 }
 
-func assertWorkflowChatWorkspace(t *testing.T, workspace runtimecontract.Workspace, businessDirectory string) {
+func assertWorkflowChatWorkspace(t *testing.T, workspace agentapi.Workspace, businessDirectory string) {
 	t.Helper()
 	if !workspace.Managed || workspace.Path == businessDirectory || len(workspace.AdditionalWritableDirectories) != 1 || workspace.AdditionalWritableDirectories[0] != businessDirectory {
 		t.Fatalf("workflow must use the common managed chat cwd and authorize its business directory: %+v", workspace)

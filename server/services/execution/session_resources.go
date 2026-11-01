@@ -11,9 +11,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
-	runtimeworkspace "github.com/JieWaZi/NeuxBot/server/internal/agent/host/workspace"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -37,10 +36,10 @@ func sessionResourceKey(pluginKey, accountConfiguration string, connectors []mod
 }
 
 // acquireChatSessionResources 只在新原生消费者取得资源时物化账号和插件。
-func (m *service) acquireChatSessionResources(ctx context.Context, state messageChat, request pendingMessage, executionID string, enabledConnectors []models.MCPConnector, runtimeEnvironment models.RuntimeEnvironment, sessionPlan runtimecontract.SessionPlan, session runtimecontract.SessionDirective, frozen frozenPluginResources, launchEnvironment map[string]string) (runtimecontract.SessionResources, error) {
+func (m *service) acquireChatSessionResources(ctx context.Context, state messageChat, request pendingMessage, executionID string, enabledConnectors []models.MCPConnector, runtimeEnvironment models.RuntimeEnvironment, sessionPlan agentapi.SessionPlan, session agentapi.SessionDirective, frozen frozenPluginResources, launchEnvironment map[string]string) (agentapi.SessionResources, error) {
 	var accountLease func(context.Context) error
 	var releasePlugins func()
-	partial := runtimecontract.SessionResources{Target: sessionPlan.Target.LaunchTarget(), Skills: slices.Clone(sessionPlan.Skills)}
+	partial := agentapi.SessionResources{Target: sessionPlan.Target.LaunchTarget(), Skills: slices.Clone(sessionPlan.Skills)}
 	// 部分准备也必须交回同一释放入口；成功步骤立即移出释放栈，失败步骤保留供Core重试。
 	partial.Close = func(closeContext context.Context) error {
 		if releasePlugins != nil {
@@ -83,7 +82,7 @@ func (m *service) acquireChatSessionResources(ctx context.Context, state message
 	runtimeSource := partial.Target
 	agentEnvironment := launchEnvironment
 	if request.runtime.AccountID != "" {
-		var target runtimeconfig.RuntimeTarget
+		var target agentapi.RuntimeTarget
 		var prepareErr error
 		target, accountLease, prepareErr = m.accounts.PrepareQueuedLease(ctx, request.runtime.AccountID, runtimeEnvironment.BaseRuntimeID, sessionPlan.Workspace.Path, request.runtime.Model)
 		if prepareErr != nil {
@@ -116,7 +115,7 @@ func (m *service) acquireChatSessionResources(ctx context.Context, state message
 		partial.Target.Environment["PATH"] = filepath.Dir(binary) + string(os.PathListSeparator) + base
 	}
 
-	nativeEnvironment, err := runtimeworkspace.PreparePluginEnvironment(runtimeworkspace.PluginEnvironmentRequest{
+	nativeEnvironment, err := agentapi.PreparePluginEnvironment(agentapi.PluginEnvironmentRequest{
 		Target: partial.Target, Source: runtimeSource, Detection: runtimeEnvironment.Detection,
 		Workspace: sessionPlan.Workspace.Path, DataDirectory: m.skillDataDirectory,
 		Native: pluginResources.native, Snapshots: pluginResources.snapshots, Environment: pluginResources.environment,
@@ -129,7 +128,7 @@ func (m *service) acquireChatSessionResources(ctx context.Context, state message
 	pluginResources.snapshots = nativeEnvironment.Snapshots
 	request.nativePluginScope = partial.Target.NativePluginScope
 	nativeScopeChanged := nativeEnvironment.ScopeChanged
-	if session.Mode == runtimecontract.SessionModeResume {
+	if session.Mode == agentapi.SessionModeResume {
 		runtimeSession := state.runtimeSessions[request.runtime.RuntimeID]
 		previousConfiguration, recordErr := m.journal.ReadExecutionConfiguration(ctx, state.chat.ID, runtimeSession.LastExecutionID)
 		if recordErr != nil {
@@ -145,14 +144,15 @@ func (m *service) acquireChatSessionResources(ctx context.Context, state message
 			if state.chat.ForkSourceChatID != "" {
 				return partial, status_error.PluginNotReady
 			}
-			session = runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}
+			session = agentapi.SessionDirective{Mode: agentapi.SessionModeNew}
 		}
 	}
 	partial.Skills, err = mergePluginSkills(partial.Skills, pluginResources.skills)
 	if err != nil {
 		return partial, err
 	}
-	partial.Session = &session
+	// 资源只能请求会话动作；原生 ID 及配置变化后的最终动作由 Prepare 冻结。
+	partial.Session = &agentapi.SessionDirective{Mode: session.Mode}
 	partial.PluginResources = slices.Clone(pluginResources.snapshots)
 	partial.NativePluginScope = partial.Target.NativePluginScope
 	partial.CommitScope = nativeEnvironment.CommitScope
@@ -161,12 +161,12 @@ func (m *service) acquireChatSessionResources(ctx context.Context, state message
 }
 
 // runtimeConnectorDeclarations 只声明连接器的固定程序与公开配置，不读取秘密值。
-func runtimeConnectorDeclarations(connectors []models.MCPConnector) []runtimecontract.ConnectorDeclaration {
-	result := make([]runtimecontract.ConnectorDeclaration, 0, len(connectors))
+func runtimeConnectorDeclarations(connectors []models.MCPConnector) []agentapi.ConnectorDeclaration {
+	result := make([]agentapi.ConnectorDeclaration, 0, len(connectors))
 	for _, connector := range connectors {
-		result = append(result, runtimecontract.ConnectorDeclaration{
+		result = append(result, agentapi.ConnectorDeclaration{
 			ID: connector.ID, Name: connector.Name, RuntimeKey: connector.RuntimeKey,
-			Transport: runtimeconfig.ConnectorTransport(connector.Transport), Command: connector.Command,
+			Transport: agentapi.ConnectorTransport(connector.Transport), Command: connector.Command,
 			Arguments: slices.Clone(connector.Arguments), URL: connector.URL, TimeoutMS: connector.TimeoutMS,
 		})
 	}
@@ -174,12 +174,12 @@ func runtimeConnectorDeclarations(connectors []models.MCPConnector) []runtimecon
 }
 
 // runtimeConnectorResources 只在冷获取时展开实际连接秘密，本轮选择由 TurnInput 保存。
-func runtimeConnectorResources(connectors []models.MCPConnector) []runtimecontract.Connector {
-	result := make([]runtimecontract.Connector, 0, len(connectors))
+func runtimeConnectorResources(connectors []models.MCPConnector) []agentapi.Connector {
+	result := make([]agentapi.Connector, 0, len(connectors))
 	for _, connector := range connectors {
-		result = append(result, runtimecontract.Connector{
+		result = append(result, agentapi.Connector{
 			ID: connector.ID, Name: connector.Name, RuntimeKey: connector.RuntimeKey,
-			Transport: runtimeconfig.ConnectorTransport(connector.Transport), Command: connector.Command,
+			Transport: agentapi.ConnectorTransport(connector.Transport), Command: connector.Command,
 			Arguments: slices.Clone(connector.Arguments), URL: connector.URL, TimeoutMS: connector.TimeoutMS,
 			Environment: connectorSecretValues(connector.Environment), Headers: connectorSecretValues(connector.Headers),
 		})

@@ -9,7 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -35,7 +35,7 @@ type pendingElicitation struct {
 	// requestedAt 是请求进入权威日志的 Unix 毫秒时间。
 	requestedAt int64
 	// response 把最终选择交回正在等待的 Runtime 回调。
-	response chan runtimecontract.ElicitationDecision
+	response chan agentapi.ElicitationDecision
 }
 
 // elicitationCoordinator 在进程内连接 ACP 回调、Chat 权威事实和用户响应。
@@ -87,7 +87,7 @@ func (c *elicitationCoordinator) handler(
 	chatID string,
 	executionID string,
 	facts ...*executionMessageFacts,
-) runtimecontract.ElicitationHandler {
+) agentapi.ElicitationHandler {
 	bound := &executionElicitationHandler{
 		coordinator: c,
 		chatID:      chatID,
@@ -102,10 +102,10 @@ func (c *elicitationCoordinator) handler(
 // Request 把 Runtime 请求交给绑定执行的结构化输入协调器。
 func (h *executionElicitationHandler) Request(
 	ctx context.Context,
-	request runtimecontract.ElicitationRequest,
-) (runtimecontract.ElicitationDecision, error) {
+	request agentapi.ElicitationRequest,
+) (agentapi.ElicitationDecision, error) {
 	if h == nil || h.coordinator == nil {
-		return runtimecontract.ElicitationDecision{Cancelled: true}, nil
+		return agentapi.ElicitationDecision{Cancelled: true}, nil
 	}
 	return h.coordinator.request(ctx, h.chatID, h.executionID, request, h.messageFacts)
 }
@@ -136,12 +136,12 @@ func (c *elicitationCoordinator) request(
 	ctx context.Context,
 	chatID string,
 	executionID string,
-	request runtimecontract.ElicitationRequest,
+	request agentapi.ElicitationRequest,
 	facts *executionMessageFacts,
-) (runtimecontract.ElicitationDecision, error) {
+) (agentapi.ElicitationDecision, error) {
 	if ctx == nil || strings.TrimSpace(chatID) == "" ||
 		strings.TrimSpace(executionID) == "" {
-		return runtimecontract.ElicitationDecision{Cancelled: true}, status_error.BadRequest
+		return agentapi.ElicitationDecision{Cancelled: true}, status_error.BadRequest
 	}
 	requested := elicitationEventData(util.New(), request)
 	pending := &pendingElicitation{
@@ -150,7 +150,7 @@ func (c *elicitationCoordinator) request(
 		chatID:       chatID,
 		executionID:  executionID,
 		requested:    requested,
-		response:     make(chan runtimecontract.ElicitationDecision, 1),
+		response:     make(chan agentapi.ElicitationDecision, 1),
 	}
 
 	c.commitMutex.Lock()
@@ -162,7 +162,7 @@ func (c *elicitationCoordinator) request(
 	})
 	if err != nil {
 		c.commitMutex.Unlock()
-		return runtimecontract.ElicitationDecision{Cancelled: true}, err
+		return agentapi.ElicitationDecision{Cancelled: true}, err
 	}
 	pending.messageFacts.push(record)
 	c.mutex.Lock()
@@ -188,13 +188,13 @@ func (c *elicitationCoordinator) request(
 			constants.ElicitationResultInvalidated,
 		)
 		if err != nil && !errors.Is(err, status_error.ElicitationAlreadyResolved) {
-			return runtimecontract.ElicitationDecision{Cancelled: true}, elicitationContextStatus(ctx.Err())
+			return agentapi.ElicitationDecision{Cancelled: true}, elicitationContextStatus(ctx.Err())
 		}
 		select {
 		case decision := <-pending.response:
 			return decision, nil
 		default:
-			return runtimecontract.ElicitationDecision{Cancelled: true}, elicitationContextStatus(ctx.Err())
+			return agentapi.ElicitationDecision{Cancelled: true}, elicitationContextStatus(ctx.Err())
 		}
 	}
 }
@@ -208,7 +208,7 @@ func elicitationContextStatus(err error) error {
 
 func elicitationEventData(
 	elicitationID string,
-	request runtimecontract.ElicitationRequest,
+	request agentapi.ElicitationRequest,
 ) eventlog.ElicitationRequestedData {
 	result := eventlog.ElicitationRequestedData{
 		ElicitationID: elicitationID,
@@ -251,7 +251,7 @@ func (c *elicitationCoordinator) resolveAccepted(
 		ToolCallID:    pending.requested.ToolCallID,
 		Content:       content,
 		Result:        constants.ElicitationResultAccepted,
-	}, runtimecontract.ElicitationDecision{Accepted: true, Content: content})
+	}, agentapi.ElicitationDecision{Accepted: true, Content: content})
 }
 
 // validateElicitationContent 按请求时冻结的 JSON Schema 校验 form 响应。
@@ -300,7 +300,7 @@ func (c *elicitationCoordinator) resolveDeclined(
 		ElicitationID: pending.requested.ElicitationID,
 		ToolCallID:    pending.requested.ToolCallID,
 		Result:        constants.ElicitationResultDeclined,
-	}, runtimecontract.ElicitationDecision{Declined: true})
+	}, agentapi.ElicitationDecision{Declined: true})
 }
 
 func (c *elicitationCoordinator) resolveWithoutContent(
@@ -322,7 +322,7 @@ func (c *elicitationCoordinator) resolveWithoutContent(
 		ElicitationID: pending.requested.ElicitationID,
 		ToolCallID:    pending.requested.ToolCallID,
 		Result:        result,
-	}, runtimecontract.ElicitationDecision{Cancelled: true})
+	}, agentapi.ElicitationDecision{Cancelled: true})
 }
 
 func (c *elicitationCoordinator) lockPendingResolution(
@@ -362,7 +362,7 @@ func (c *elicitationCoordinator) commitResolution(
 	ctx context.Context,
 	pending *pendingElicitation,
 	resolved eventlog.ElicitationResolvedData,
-	decision runtimecontract.ElicitationDecision,
+	decision agentapi.ElicitationDecision,
 ) error {
 	c.commitMutex.Lock()
 	defer c.commitMutex.Unlock()

@@ -1,32 +1,32 @@
 package execution
 
 import (
-	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"errors"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	acp "github.com/JieWaZi/acp-go/sdk"
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
 func TestExecutionResultStatusPublishesInnermostRuntimeFailure(t *testing.T) {
-	result := runtimecontract.Result{Failure: &runtimecontract.Failure{
-		Code:           runtimediagnostic.FailureCodePlanUpgradeRequired,
+	result := agentapi.Result{Failure: &agentapi.Failure{
+		Code:           agentapi.FailureCodePlanUpgradeRequired,
 		Stage:          constants.RuntimeACPFailureStagePrompt,
 		Message:        "start Runtime: send prompt: API Error: 402 Insufficient Balance",
 		DisplayMessage: "API Error: 402 Insufficient Balance",
-		Transience:     runtimediagnostic.FailureTransiencePermanent,
+		Transience:     agentapi.FailureTransiencePermanent,
 	}}
 
 	status, errorCode, errorMessage := executionResultStatus(result)
 	if status != constants.ExecutionStatusFailed {
 		t.Fatalf("status = %q, want failed", status)
 	}
-	if errorCode != string(runtimediagnostic.FailureCodePlanUpgradeRequired) {
+	if errorCode != string(agentapi.FailureCodePlanUpgradeRequired) {
 		t.Fatalf("errorCode = %q, want plan upgrade", errorCode)
 	}
 	if errorMessage != "API Error: 402 Insufficient Balance" {
@@ -50,11 +50,11 @@ func TestRuntimeStartErrorUsesSameReadableCauseAsExecution(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			upstream := acp.NewInternalError(test.data)
-			result := runtimecontract.Result{Failure: &runtimecontract.Failure{
+			result := agentapi.Result{Failure: &agentapi.Failure{
 				Code:           constants.RuntimeFailureCodeExecutionFailed,
 				Stage:          constants.RuntimeACPFailureStageSessionConfig,
 				Message:        upstream.Error(),
-				DisplayMessage: runtimediagnostic.FailureDisplayMessage(upstream),
+				DisplayMessage: agentapi.FailureDisplayMessage(upstream),
 			}}
 			err := runtimeStartError(result)
 			var statusError *statuserror.StatusErr
@@ -76,25 +76,25 @@ func TestRuntimeStartErrorUsesSameReadableCauseAsExecution(t *testing.T) {
 func TestRuntimeStartErrorRetainsBusinessErrorsAndPlainFallback(t *testing.T) {
 	for _, test := range []struct {
 		// code 是执行前明确识别的稳定失败类别。
-		code runtimediagnostic.FailureCode
+		code agentapi.FailureCode
 		// want 是 API 已有的业务状态错误。
 		want statuserror.CommonError
 	}{
-		{runtimediagnostic.FailureCodeSessionNotFound, status_error.RuntimeSessionNotFound},
-		{runtimediagnostic.FailureCodePolicyUnsupported, status_error.RuntimePolicyUnsupported},
-		{runtimediagnostic.FailureCodeAuthRequired, status_error.RuntimeAuthRequired},
-		{runtimediagnostic.FailureCodeRuntimeUnavailable, status_error.RuntimeUnavailable},
+		{agentapi.FailureCodeSessionNotFound, status_error.RuntimeSessionNotFound},
+		{agentapi.FailureCodePolicyUnsupported, status_error.RuntimePolicyUnsupported},
+		{agentapi.FailureCodeAuthRequired, status_error.RuntimeAuthRequired},
+		{agentapi.FailureCodeRuntimeUnavailable, status_error.RuntimeUnavailable},
 	} {
-		if err := runtimeStartError(runtimecontract.Result{Failure: &runtimecontract.Failure{Code: test.code, Message: "diagnostic"}}); !errors.Is(err, test.want) {
+		if err := runtimeStartError(agentapi.Result{Failure: &agentapi.Failure{Code: test.code, Message: "diagnostic"}}); !errors.Is(err, test.want) {
 			t.Fatalf("%s: start error = %v, want %v", test.code, err, test.want)
 		}
 	}
-	result := runtimecontract.Result{Failure: &runtimecontract.Failure{Code: constants.RuntimeFailureCodeExecutionFailed, Message: "  native process refused the configuration  "}}
+	result := agentapi.Result{Failure: &agentapi.Failure{Code: constants.RuntimeFailureCodeExecutionFailed, Message: "  native process refused the configuration  "}}
 	var statusError *statuserror.StatusErr
 	if err := runtimeStartError(result); !errors.As(err, &statusError) || statusError.Params["Detail"] != "native process refused the configuration" {
 		t.Fatalf("plain fallback = %#v", statusError)
 	}
-	if err := runtimeStartError(runtimecontract.Result{}); !errors.Is(err, status_error.RuntimeUnavailable) {
+	if err := runtimeStartError(agentapi.Result{}); !errors.Is(err, status_error.RuntimeUnavailable) {
 		t.Fatalf("missing failure = %v, want runtime unavailable", err)
 	}
 }

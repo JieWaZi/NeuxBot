@@ -7,7 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
@@ -66,7 +66,7 @@ func (s *Service) ValidateWorkIntent(ctx context.Context, intent execution.WorkI
 }
 
 // MaintenanceBindings 为维护入口和普通执行恢复共用同一单页签发规则。
-func (s *Service) MaintenanceBindings(ctx context.Context, chat models.Chat, ref bridge.ResourceRef, pageID string) ([]agentcapability.Binding, error) {
+func (s *Service) MaintenanceBindings(ctx context.Context, chat models.Chat, ref bridge.ResourceRef, pageID string) ([]capability.Binding, error) {
 	if pageID == "" {
 		return nil, status_error.KnowledgeInvalid
 	}
@@ -74,7 +74,7 @@ func (s *Service) MaintenanceBindings(ctx context.Context, chat models.Chat, ref
 }
 
 // LibraryMaintenanceBindings 只签发当前库的 Wiki 修订和目录维护，不授予原件导入或整理重试。
-func (s *Service) LibraryMaintenanceBindings(ctx context.Context, chat models.Chat, ref bridge.ResourceRef) ([]agentcapability.Binding, error) {
+func (s *Service) LibraryMaintenanceBindings(ctx context.Context, chat models.Chat, ref bridge.ResourceRef) ([]capability.Binding, error) {
 	if err := bridge.RequireLocal(ref); err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (s *Service) LibraryMaintenanceBindings(ctx context.Context, chat models.Ch
 }
 
 // libraryAutoFixBinding 复用核心上游确定性修复，回执与写入都保持原库、执行和策略代次。
-func (s *Service) libraryAutoFixBinding(chat models.Chat, ref bridge.ResourceRef, policyVersion int64) agentcapability.Binding {
+func (s *Service) libraryAutoFixBinding(chat models.Chat, ref bridge.ResourceRef, policyVersion int64) capability.Binding {
 	authorize := func(ctx context.Context) error {
 		lib, err := s.config.Engine.GetLibrary(ctx, ref.KnowledgeBaseID)
 		if err != nil {
@@ -124,49 +124,49 @@ func (s *Service) libraryAutoFixBinding(chat models.Chat, ref bridge.ResourceRef
 }
 
 // autoFixBinding 在聊天或独立知识任务的真实授权下复用同一核心修复。
-func (s *Service) autoFixBinding(ref bridge.ResourceRef, policyVersion int64, authorize func(context.Context) error, identity func(string) string, activity func(context.Context) context.Context) agentcapability.Binding {
-	return agentcapability.Binding{Operation: "knowledge.wiki.auto-fix", Call: func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+func (s *Service) autoFixBinding(ref bridge.ResourceRef, policyVersion int64, authorize func(context.Context) error, identity func(string) string, activity func(context.Context) context.Context) capability.Binding {
+	return capability.Binding{Operation: "knowledge.wiki.auto-fix", Call: func(ctx context.Context, request capability.Request) (capability.Result, error) {
 		s.policy.RLock()
 		defer s.policy.RUnlock()
 		if err := authorize(ctx); err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		var in wikiCommand
-		if err := agentcapability.DecodeParams(request.Params, &in); err != nil {
-			return agentcapability.Result{}, err
+		if err := capability.DecodeParams(request.Params, &in); err != nil {
+			return capability.Result{}, err
 		}
 		if in.ref() != ref {
-			return agentcapability.Result{}, status_error.KnowledgeForbidden
+			return capability.Result{}, status_error.KnowledgeForbidden
 		}
 		if request.RequestID == "" || in.StructureVersion < 1 {
-			return agentcapability.Result{}, status_error.KnowledgeInvalid
+			return capability.Result{}, status_error.KnowledgeInvalid
 		}
 		result, err := s.config.Engine.AutoFixLibrary(activity(ctx), core.AutoFixInput{RequestID: identity(request.RequestID), LibraryID: ref.KnowledgeBaseID, StructureVersion: in.StructureVersion, ExpectedPolicyVersion: policyVersion})
 		if err != nil {
-			return agentcapability.Result{}, bridge.MapError(err)
+			return capability.Result{}, bridge.MapError(err)
 		}
 		if s.config.Events != nil && result.Fixed > 0 {
 			_ = events.Emit(s.config.Events, "knowledge", "knowledge.changed", events.Resource{Kind: "knowledge_library", ID: ref.KnowledgeBaseID, ParentID: ref.ConnectionID}, map[string]any{"ref": ref, "requestId": request.RequestID})
 		}
-		return agentcapability.Result{CommandID: request.RequestID, Data: map[string]any{"ref": ref, "receipt": result.Receipt, "fixed": result.Fixed, "audit": result.Report}}, nil
-	}, Receipt: func(ctx context.Context, requestID string) (agentcapability.Result, error) {
+		return capability.Result{CommandID: request.RequestID, Data: map[string]any{"ref": ref, "receipt": result.Receipt, "fixed": result.Fixed, "audit": result.Report}}, nil
+	}, Receipt: func(ctx context.Context, requestID string) (capability.Result, error) {
 		s.policy.RLock()
 		defer s.policy.RUnlock()
 		if err := authorize(ctx); err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		receipt, err := s.config.Engine.GetReceipt(ctx, identity(requestID))
 		if err != nil {
-			return agentcapability.Result{}, bridge.MapError(err)
+			return capability.Result{}, bridge.MapError(err)
 		}
 		if receipt.Operation != "wiki.auto-fix" || receipt.LibraryID != ref.KnowledgeBaseID || receipt.ResourceID != ref.KnowledgeBaseID || receipt.State != "saved" {
-			return agentcapability.Result{}, status_error.KnowledgeForbidden
+			return capability.Result{}, status_error.KnowledgeForbidden
 		}
-		return agentcapability.Result{CommandID: requestID, Replayed: true, Data: map[string]any{"ref": ref, "receipt": receipt}}, nil
+		return capability.Result{CommandID: requestID, Replayed: true, Data: map[string]any{"ref": ref, "receipt": receipt}}, nil
 	}}
 }
 
-func (s *Service) maintenanceBindings(ctx context.Context, chat models.Chat, ref bridge.ResourceRef, pageID string) ([]agentcapability.Binding, error) {
+func (s *Service) maintenanceBindings(ctx context.Context, chat models.Chat, ref bridge.ResourceRef, pageID string) ([]capability.Binding, error) {
 	provider, err := s.freezeReadProvider(ctx)
 	if err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ func (s *Service) maintenanceBindings(ctx context.Context, chat models.Chat, ref
 	bindings := bridge.ProviderReadBindings(provider, bridge.FreezeScope(chat.ProjectID, refs), current)
 	for i := range bindings {
 		call := bindings[i].Call
-		bindings[i].Call = func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+		bindings[i].Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
 			s.policy.RLock()
 			defer s.policy.RUnlock()
 			return call(ctx, request)

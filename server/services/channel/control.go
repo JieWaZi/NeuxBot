@@ -7,7 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -85,7 +85,7 @@ func (s *service) FollowUpTask(
 		if err != nil {
 			return err
 		}
-		return agentcommand.Commit(transactionContext, map[string]any{"taskId": task.ID, "followUpId": followUp.ID, "accepted": true})
+		return capability.Commit(transactionContext, map[string]any{"taskId": task.ID, "followUpId": followUp.ID, "accepted": true})
 	})
 	if err != nil {
 		return err
@@ -165,7 +165,7 @@ func (s *service) retryTask(
 		if err != nil {
 			return err
 		}
-		return agentcommand.Commit(transactionContext, map[string]any{"taskId": task.ID, "retryQueued": true})
+		return capability.Commit(transactionContext, map[string]any{"taskId": task.ID, "retryQueued": true})
 	})
 	if err != nil {
 		return err
@@ -214,7 +214,7 @@ func (s *service) StopTask(ctx context.Context, taskID string) error {
 			if err != nil {
 				return err
 			}
-			return agentcommand.Commit(transactionContext, map[string]any{"taskId": task.ID, "cancellationRequested": true})
+			return capability.Commit(transactionContext, map[string]any{"taskId": task.ID, "cancellationRequested": true})
 		})
 		if err != nil {
 			return err
@@ -229,7 +229,7 @@ func (s *service) StopTask(ctx context.Context, taskID string) error {
 	if err != nil {
 		return err
 	}
-	if !agentcommand.Active(ctx) {
+	if !capability.Active(ctx) {
 		return s.executions.CancelAndWait(ctx, attempt.ChatID)
 	}
 	now := time.Now().UnixMilli()
@@ -244,7 +244,7 @@ func (s *service) StopTask(ctx context.Context, taskID string) error {
 		if err := s.tasks.UpdateFields(ctx, task.ID, map[string]interface{}{"cancel_requested_at": now, "cancel_requested_fence": attempt.Fence}); err != nil {
 			return err
 		}
-		return agentcommand.Commit(ctx, map[string]any{"taskId": task.ID, "cancellationRequested": true})
+		return capability.Commit(ctx, map[string]any{"taskId": task.ID, "cancellationRequested": true})
 	}); err != nil {
 		return err
 	}

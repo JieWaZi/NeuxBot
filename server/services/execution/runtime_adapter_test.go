@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
@@ -42,11 +42,11 @@ func TestChatRuntimeSinkKeepsConcurrentInvocationIDsWithTheirEvents(t *testing.T
 			defer waitGroup.Done()
 			invocationID := fmt.Sprintf("invocation-%02d", index)
 			sink := &chatRuntimeSink{runtime: runtimeSink}
-			started := marshalData(runtimecontract.InvocationStartedData{
+			started := marshalData(agentapi.InvocationStartedData{
 				InvocationID: invocationID,
 			})
-			if acceptErr := sink.Accept(context.Background(), runtimecontract.Event{
-				Type: runtimecontract.EventTypeInvocationStarted,
+			if acceptErr := sink.Accept(context.Background(), agentapi.Event{
+				Type: agentapi.EventTypeInvocationStarted,
 				Data: started,
 			}); acceptErr != nil {
 				t.Errorf("Accept started (%s) error = %v", invocationID, acceptErr)
@@ -56,8 +56,8 @@ func TestChatRuntimeSinkKeepsConcurrentInvocationIDsWithTheirEvents(t *testing.T
 				// Index 将持久化事件关联回预期 Invocation。
 				Index int `json:"index"`
 			}{Index: index})
-			if acceptErr := sink.Accept(context.Background(), runtimecontract.Event{
-				Type: runtimecontract.EventTypeToolUse,
+			if acceptErr := sink.Accept(context.Background(), agentapi.Event{
+				Type: agentapi.EventTypeToolUse,
 				Data: payload,
 			}); acceptErr != nil {
 				t.Errorf("Accept(%s) error = %v", invocationID, acceptErr)

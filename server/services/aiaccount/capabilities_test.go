@@ -1,7 +1,7 @@
 package aiaccount
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"errors"
@@ -25,12 +25,12 @@ type capabilityDetector struct {
 // retainedCapabilityDetector 把真实准备出的释放端口交回测试，模拟仍由探测消费者持有的资源。
 type retainedCapabilityDetector struct {
 	// request 保存实际账号工作区及可重试释放端口。
-	request runtimeconfig.DetectRequest
+	request agentapi.DetectRequest
 }
 
-func (d *retainedCapabilityDetector) Detect(_ context.Context, request runtimeconfig.DetectRequest) runtimeconfig.DetectionResult {
+func (d *retainedCapabilityDetector) Detect(_ context.Context, request agentapi.DetectRequest) agentapi.DetectionResult {
 	d.request = request
-	return runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady}
+	return agentapi.DetectionResult{State: agentapi.DetectionStateReady}
 }
 
 func TestCapabilityReleaseFailureRetainsAccountAndWorkspace(t *testing.T) {
@@ -78,12 +78,12 @@ func TestCapabilityReleaseFailureRetainsAccountAndWorkspace(t *testing.T) {
 	release()
 }
 
-func (d capabilityDetector) Detect(_ context.Context, request runtimeconfig.DetectRequest) runtimeconfig.DetectionResult {
+func (d capabilityDetector) Detect(_ context.Context, request agentapi.DetectRequest) agentapi.DetectionResult {
 	if request.ReleaseResources != nil {
 		defer request.ReleaseResources(context.Background())
 	}
 	close(d.called)
-	return runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady}
+	return agentapi.DetectionResult{State: agentapi.DetectionStateReady}
 }
 
 func TestCapabilityQueryWaitsForAccountMutationAndCanBeCancelled(t *testing.T) {

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 )
 
 func TestAgentMemoryReceiptsSurviveReopenForgetAndRejectChangedPayload(t *testing.T) {
@@ -18,14 +18,14 @@ func TestAgentMemoryReceiptsSurviveReopenForgetAndRejectChangedPayload(t *testin
 	}
 	ctx := context.Background()
 	owner := newContext("partner", "project")
-	bindings := map[string]agentcapability.Binding{}
+	bindings := map[string]capability.Binding{}
 	bind := func() {
 		for _, value := range service.AgentBindings(owner) {
 			bindings[value.Operation] = value
 		}
 	}
 	bind()
-	request := agentcapability.Request{Operation: "memory.entries.create", RequestID: "stable", Params: map[string]any{"scope": "partner", "content": "用户使用中文沟通"}}
+	request := capability.Request{Operation: "memory.entries.create", RequestID: "stable", Params: map[string]any{"scope": "partner", "content": "用户使用中文沟通"}}
 	first, err := bindings[request.Operation].Call(ctx, request)
 	if err != nil {
 		t.Fatal(err)
@@ -48,10 +48,10 @@ func TestAgentMemoryReceiptsSurviveReopenForgetAndRejectChangedPayload(t *testin
 		t.Fatalf("changed request accepted: %v", err)
 	}
 	forget := bindings["memory.entries.forget"]
-	if _, err := forget.Call(ctx, agentcapability.Request{Operation: forget.Operation, RequestID: "forget", Params: map[string]any{"memoryId": id}}); err != nil {
+	if _, err := forget.Call(ctx, capability.Request{Operation: forget.Operation, RequestID: "forget", Params: map[string]any{"memoryId": id}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bindings["memory.entries.get"].Call(ctx, agentcapability.Request{Params: map[string]any{"memoryId": id}}); err == nil {
+	if _, err := bindings["memory.entries.get"].Call(ctx, capability.Request{Params: map[string]any{"memoryId": id}}); err == nil {
 		t.Fatal("forgotten memory remained readable")
 	}
 	if receipt, err := bindings[request.Operation].Receipt(ctx, "stable"); err != nil || receipt.CommandID != first.CommandID {
@@ -73,13 +73,13 @@ func TestAgentMemoryReceiptFailureRollsBackKnowledgeAndIndex(t *testing.T) {
 	if _, err := service.store.db.Exec("CREATE TRIGGER reject_cli_receipt BEFORE INSERT ON memory_command_receipts BEGIN SELECT RAISE(ABORT, 'receipt denied'); END"); err != nil {
 		t.Fatal(err)
 	}
-	var create agentcapability.Binding
+	var create capability.Binding
 	for _, binding := range service.AgentBindings(newContext("partner", "")) {
 		if binding.Operation == "memory.entries.create" {
 			create = binding
 		}
 	}
-	if _, err := create.Call(context.Background(), agentcapability.Request{Operation: create.Operation, RequestID: "rollback", Params: map[string]any{"scope": "partner", "content": "这条事实必须回滚"}}); err == nil {
+	if _, err := create.Call(context.Background(), capability.Request{Operation: create.Operation, RequestID: "rollback", Params: map[string]any{"scope": "partner", "content": "这条事实必须回滚"}}); err == nil {
 		t.Fatal("write succeeded without receipt")
 	}
 	var count int

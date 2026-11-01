@@ -1,7 +1,7 @@
 package ai_accounts
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"strings"
 
@@ -92,11 +92,11 @@ func (a *GetAIAccountThinking) Output(ctx *gin.Context) (interface{}, error) {
 		}
 	}
 	response := GetAIAccountThinkingResponse{Options: []AccountThinkingOption{}}
-	if result.State != runtimeconfig.DetectionStateReady {
+	if result.State != agentapi.DetectionStateReady {
 		return response, nil
 	}
 	for _, diagnostic := range result.Diagnostics {
-		if diagnostic.Code == runtimeconfig.DiagnosticCodeACPOptionsUnavailable && !(useSavedDirectory && persistedModelDirectoryAvailable(result)) {
+		if diagnostic.Code == agentapi.DiagnosticCodeACPOptionsUnavailable && !(useSavedDirectory && persistedModelDirectoryAvailable(result)) {
 			return response, nil
 		}
 	}

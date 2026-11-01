@@ -10,8 +10,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	integrationservice "github.com/JieWaZi/NeuxBot/server/services/integration"
 	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
@@ -57,11 +57,11 @@ func NewHandler(knowledge *knowledgeservice.Service, authority *integrationservi
 				if binding.Operation != op.ID {
 					continue
 				}
-				result, err := binding.Call(ctx, agentcapability.Request{Operation: op.ID, RequestID: requestID, Params: params})
+				result, err := binding.Call(ctx, capability.Request{Operation: op.ID, RequestID: requestID, Params: params})
 				if err != nil {
 					return toolResult(toolFailure(op, err)), nil
 				}
-				return toolResult(agentcapability.Response{ProtocolVersion: constants.AgentCLIProtocolVersion, OK: true, Operation: op.ID, Completion: op.Completion, Result: result}), nil
+				return toolResult(capability.Response{ProtocolVersion: constants.AgentCLIProtocolVersion, OK: true, Operation: op.ID, Completion: op.Completion, Result: result}), nil
 			}
 			return toolResult(toolFailure(op, status_error.IntegrationForbidden)), nil
 		})
@@ -108,7 +108,7 @@ func NewHandler(knowledge *knowledgeservice.Service, authority *integrationservi
 }
 
 // toolSchema 只为传输信封补充 requestId；所有业务字段仍引用唯一命令合同。
-func toolSchema(op contract.Operation) map[string]any {
+func toolSchema(op capability.Operation) map[string]any {
 	out := map[string]any{}
 	for key, value := range op.InputSchema {
 		out[key] = value
@@ -126,13 +126,13 @@ func toolSchema(op contract.Operation) map[string]any {
 	return out
 }
 
-func toolResult(value agentcapability.Response) *sdk.CallToolResult {
+func toolResult(value capability.Response) *sdk.CallToolResult {
 	raw, _ := json.Marshal(value)
 	return &sdk.CallToolResult{StructuredContent: value, Content: []sdk.Content{&sdk.TextContent{Text: string(raw)}}, IsError: !value.OK}
 }
 
 // responseSchema 仅包装同源输出到传输信封，业务 Data 的字段保持唯一合同。
-func responseSchema(op contract.Operation) map[string]any {
+func responseSchema(op capability.Operation) map[string]any {
 	return map[string]any{"type": "object", "properties": map[string]any{
 		"protocolVersion": map[string]any{"type": "integer"}, "ok": map[string]any{"type": "boolean"},
 		"operation": map[string]any{"type": "string"}, "completion": map[string]any{"type": "string"},
@@ -142,8 +142,8 @@ func responseSchema(op contract.Operation) map[string]any {
 	}, "required": []string{"protocolVersion", "ok", "operation", "replayed", "data"}, "additionalProperties": false}
 }
 
-func toolFailure(op contract.Operation, err error) agentcapability.Response {
-	value := agentcapability.ErrorResponse(op.ID, err)
+func toolFailure(op capability.Operation, err error) capability.Response {
+	value := capability.ErrorResponse(op.ID, err)
 	if errors.Is(err, status_error.AgentInputInvalid) {
 		value.Error.Details = map[string]any{"toolName": strings.ReplaceAll(op.ID, ".", "_"), "inputSchema": toolSchema(op)}
 		value.Error.RetryAdvice = "inspect_tools_list"
@@ -152,9 +152,9 @@ func toolFailure(op contract.Operation, err error) agentcapability.Response {
 }
 
 // knowledgeOperations 从同源命令目录发现发布工具，内部永久清理不扩展既有 Key 权限。
-func knowledgeOperations() []contract.Operation {
-	out := []contract.Operation{}
-	for _, op := range contract.Operations() {
+func knowledgeOperations() []capability.Operation {
+	out := []capability.Operation{}
+	for _, op := range capability.Operations() {
 		if strings.HasPrefix(op.ID, "knowledge.") && op.ID != "knowledge.pages.purge" && op.ID != "knowledge.jobs.wait" {
 			out = append(out, op)
 		}

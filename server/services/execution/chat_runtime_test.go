@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/base64"
@@ -21,7 +21,6 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
 )
 
 // TestStartUsesOneRuntimeForChatAndTeam 验证普通输入、团队直接输入和团队调度复用同一宿主，并保留聚合接纳。
@@ -29,7 +28,7 @@ func TestStartUsesOneRuntimeForChatAndTeam(t *testing.T) {
 	runtime := &fakeRuntime{}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
 	core := manager.execution.(*service)
-	ordinary, err := core.Start(context.Background(), WorkIntent{ClientRequestID: "ordinary", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "ordinary"}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto}})
+	ordinary, err := core.Start(context.Background(), WorkIntent{ClientRequestID: "ordinary", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "ordinary"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,15 +79,15 @@ type leasedChatRuntime struct {
 	release        func(context.Context) error // release 保存技术宿主已接管的账号释放入口。
 	closeError     bool                        // closeError 表示已有原生消费者尚未退出。
 	// resources 保存仍受真实账号租约保护的实际资源。
-	resources runtimecontract.SessionResources
+	resources agentapi.SessionResources
 	// resourceKey 是当前原生消费者使用的资源配置摘要。
 	resourceKey string
 }
 
 // PrepareSession 先占用消费者，只有冷准备才由接纳层取得资源。
-func (r *leasedChatRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+func (r *leasedChatRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
 	cold := r.release == nil
-	if !cold && (plan.ResourceKey != r.resourceKey || session.Mode == runtimecontract.SessionModeNew || plan.ReadOnlyHandoff) {
+	if !cold && (plan.ResourceKey != r.resourceKey || session.Mode == agentapi.SessionModeNew || plan.ReadOnlyHandoff) {
 		if err := r.CloseWorkspace(ctx, plan.Workspace.Path); err != nil {
 			return nil, err
 		}
@@ -98,7 +97,7 @@ func (r *leasedChatRuntime) PrepareSession(ctx context.Context, plan runtimecont
 	if err != nil {
 		return nil, err
 	}
-	prepared.bind = func(resources runtimecontract.SessionResources) {
+	prepared.bind = func(resources agentapi.SessionResources) {
 		r.resources, r.resourceKey, r.release = resources, plan.ResourceKey, resources.Close
 	}
 	if !cold {
@@ -124,7 +123,7 @@ func (r *leasedChatRuntime) CloseWorkspace(ctx context.Context, _ string) error 
 			return err
 		}
 		r.release = nil
-		r.resources = runtimecontract.SessionResources{}
+		r.resources = agentapi.SessionResources{}
 		r.resourceKey = ""
 	}
 	return nil
@@ -178,7 +177,7 @@ func TestStartManagedAccountWaitsForNativeCloseBeforeRewritingProjection(t *test
 			if len(runtime.requests) != 1 || runtime.requests[0].Resources.Target.CloseAfterRun || runtime.release == nil {
 				t.Fatalf("target=%+v lease=%v", runtime.requests, runtime.release != nil)
 			}
-			authPath := filepath.Join(accountconfig.Home(runtime.requests[0].Workspace.Path, runtimeconfig.RuntimeIDCodex), "auth.json")
+			authPath := filepath.Join(accountconfig.Home(runtime.requests[0].Workspace.Path, agentapi.RuntimeIDCodex), "auth.json")
 			before, err := os.ReadFile(authPath)
 			if err != nil {
 				t.Fatal(err)
@@ -204,7 +203,7 @@ func TestStartKeepsManagedSessionAcrossCredentialRevision(t *testing.T) {
 	for _, authMode := range []constants.AccountAuthMode{constants.AccountAuthModeAPIKey, constants.AccountAuthModeSubscription} {
 		t.Run(string(authMode), func(t *testing.T) {
 			runtime := &leasedChatRuntime{}
-			runtime.result.Session = runtimecontract.SessionResult{OutputID: "native-session", State: runtimecontract.SessionStateCreated}
+			runtime.result.Session = agentapi.SessionResult{OutputID: "native-session", State: agentapi.SessionStateCreated}
 			manager := newMessageTestService(t, t.TempDir(), &runtime.accountRuntime, messageTestOptions{runtimeEnvironments: accountRuntimeEnvironmentReader{}})
 			core := manager.execution.(*service)
 			core.runtime = runtime

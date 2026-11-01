@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -146,7 +146,7 @@ func TestBoundCanonicalAuthenticationUsesOwnBridgeAndOneNativeMCP(t *testing.T) 
 			if cli == "claude" {
 				version = "2.1.159"
 			}
-			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: cli}, Version: version})
+			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: cli}, Version: version})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -182,7 +182,7 @@ func TestBoundAuthenticationRejectsUndeclaredRuntimeBeforeStartingBridge(t *test
 			if required {
 				request.message.PluginIDs = []string{"p"}
 			}
-			detection := runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilityMCPStreamableHTTP: true}}
+			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}}
 			prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
 			if required && !errors.Is(err, status_error.PluginForbidden) {
 				prepared.release()
@@ -206,7 +206,7 @@ func TestBoundAuthenticationRejectsUndeclaredRuntimeBeforeStartingBridge(t *test
 
 func TestUnboundLegacySkillBridgeStillProjectsForOtherRuntime(t *testing.T) {
 	manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{LegacySkillBridge: true})
-	detection := runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -230,7 +230,7 @@ func TestSkillCommandBridgeProjectsManagedCLIForOtherRuntimes(t *testing.T) {
 			registry := commandbridge.NewRegistry(context.Background(), nil)
 			t.Cleanup(registry.Close)
 			manager.pluginInstallations = plugininstallation.New(plugininstallation.Config{DataDirectory: data, Bridges: registry, BridgeEnvironment: os.Environ()})
-			detection := runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: cli}, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: cli}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
 			if err != nil {
 				t.Fatal(err)
@@ -279,7 +279,7 @@ func TestSkillCommandBridgesMergePrivatePathsAndKeepOtherConflicts(t *testing.T)
 			first = resolveFixtureDelivery(t, manager, first)
 			second = resolveFixtureDelivery(t, manager, second)
 			manager.pluginController = installedPluginFixture{states: []models.PluginState{first, second}}
-			detection := runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+			detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p", "second"}}}, detection)
 			defer prepared.release()
 			if conflict {
@@ -310,7 +310,7 @@ func TestBoundCodexExecutionExpandsUnboundCompositeHeaderOnlyInMemory(t *testing
 	secret := "configuration-private-sentinel-902"
 	state.Configuration.Secrets = []models.MCPSecretDefinition{{Name: "OTHER_TOKEN", Value: secret, Configured: true}}
 	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -350,7 +350,7 @@ func TestBoundNativeAuthenticationUsesLogicalBridgeAndPrivateTemplate(t *testing
 			if cli == "claude" {
 				version = "2.1.159"
 			}
-			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: cli}, Version: version})
+			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: cli}, Version: version})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -383,7 +383,7 @@ func TestBoundNativeAuthenticationUsesLogicalBridgeAndPrivateTemplate(t *testing
 
 func TestBoundAuthenticationFallbackKeepsConnectorScopeAndRetryIdentity(t *testing.T) {
 	manager, _, _ := authenticatedPluginFixture(t)
-	detection := runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "claude"}, Version: "2.1.1", Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilityMCPStreamableHTTP: true}}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "claude"}, Version: "2.1.1", Capabilities: agentapi.CapabilitySet{agentapi.CapabilityMCPStreamableHTTP: true}}
 	request := pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}
 	prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
 	if err != nil {
@@ -430,7 +430,7 @@ func TestBoundAuthenticationAllowsMissingCredentialDuringChat(t *testing.T) {
 	for _, reply := range []string{`headers:{}`, `headers:{Authorization:''}`} {
 		t.Run(reply, func(t *testing.T) {
 			manager, _, _ := authenticatedPluginFixture(t, reply)
-			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+			prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
 			if err != nil {
 				t.Fatalf("missing authorization prevented plugin delivery: %v", err)
 			}
@@ -464,7 +464,7 @@ func TestAuthorizationManagementRejectsUndeclaredSecrets(t *testing.T) {
 
 func TestChatPluginLoadingDoesNotPreflightProviderStatus(t *testing.T) {
 	manager, _, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{RejectStatus: true})
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
 	if err != nil {
 		t.Fatalf("chat performed provider status preflight: %v", err)
 	}
@@ -478,7 +478,7 @@ func TestChatPluginLoadingNeverStartsAuthorizationBridge(t *testing.T) {
 	manager, state, _ := authenticatedPluginFixture(t)
 	state.Configuration.DeliveryMaterials = nil
 	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,7 +500,7 @@ func TestChatPluginLoadingKeepsMaterialAcrossOrdinaryConfigurationRevision(t *te
 	manager, state, _ := authenticatedPluginFixture(t)
 	state.Configuration.Revision++
 	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -522,7 +522,7 @@ func TestChatDeliversLegacySkillWithoutPrivateMaterial(t *testing.T) {
 	manager, state, _ := authenticatedPluginSourceFixture(t, authenticationFixtureShape{LegacySkillBridge: true})
 	state.Configuration.DeliveryMaterials = nil
 	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
-	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}})
+	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "pi"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,7 +534,7 @@ func TestChatDeliversLegacySkillWithoutPrivateMaterial(t *testing.T) {
 
 func TestRetryRejectsChangedSavedAuthorizationSubject(t *testing.T) {
 	manager, state, _ := authenticatedPluginFixture(t)
-	detection := runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"}
 	first, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -575,7 +575,7 @@ func (f currentAuthenticationFixture) Configuration(context.Context, string) (mo
 
 func TestPluginIdentityIsLoadedAfterAcquiringFrozenResources(t *testing.T) {
 	manager, state, _ := authenticatedPluginFixture(t)
-	detection := runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "codex"}, Version: "0.161.0"}
 	plan, err := manager.freezePluginResources(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, detection)
 	if err != nil {
 		t.Fatal(err)

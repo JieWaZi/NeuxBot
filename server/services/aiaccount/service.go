@@ -2,7 +2,7 @@
 package aiaccount
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"crypto/sha256"
@@ -237,41 +237,41 @@ func (s *Service) ValidateSelection(ctx context.Context, id, runtimeID, model, r
 }
 
 // PrepareQueuedLease 等待账号配置修改结束，冻结共享执行配置并返回可重试的认证回收租约。
-func (s *Service) PrepareQueuedLease(ctx context.Context, id, runtimeID, workspace, model string) (runtimeconfig.RuntimeTarget, func(context.Context) error, error) {
+func (s *Service) PrepareQueuedLease(ctx context.Context, id, runtimeID, workspace, model string) (agentapi.RuntimeTarget, func(context.Context) error, error) {
 	return s.prepareWithLease(ctx, id, runtimeID, workspace, model)
 }
 
-func (s *Service) prepareWithLease(ctx context.Context, id, runtimeID, workspace, model string) (runtimeconfig.RuntimeTarget, func(context.Context) error, error) {
+func (s *Service) prepareWithLease(ctx context.Context, id, runtimeID, workspace, model string) (agentapi.RuntimeTarget, func(context.Context) error, error) {
 	account, err := s.accounts.Get(ctx, id)
 	if err != nil {
-		return runtimeconfig.RuntimeTarget{}, nil, err
+		return agentapi.RuntimeTarget{}, nil, err
 	}
 	release, err := s.acquireLease(ctx, id, false, true)
 	if err != nil {
-		return runtimeconfig.RuntimeTarget{}, nil, err
+		return agentapi.RuntimeTarget{}, nil, err
 	}
 	unlock, err := s.credentialGate(id).Lock(ctx)
 	if err != nil {
 		release()
-		return runtimeconfig.RuntimeTarget{}, nil, err
+		return agentapi.RuntimeTarget{}, nil, err
 	}
 	// 账号可能在取得共享租约前被修改，认证模式必须使用租约内的当前快照。
 	account, err = s.accounts.Get(ctx, id)
 	if err != nil {
 		unlock()
 		release()
-		return runtimeconfig.RuntimeTarget{}, nil, err
+		return agentapi.RuntimeTarget{}, nil, err
 	}
 	if err := s.recoverWorkspaceAuth(ctx, account.ID, runtimeID, workspace); err != nil {
 		unlock()
 		release()
-		return runtimeconfig.RuntimeTarget{}, nil, err
+		return agentapi.RuntimeTarget{}, nil, err
 	}
 	target, err := s.prepare(ctx, account, runtimeID, workspace, model)
 	if err != nil {
 		unlock()
 		release()
-		return runtimeconfig.RuntimeTarget{}, nil, err
+		return agentapi.RuntimeTarget{}, nil, err
 	}
 	seed := ""
 	if account.AuthMode == constants.AccountAuthModeSubscription && runtimeID == constants.RuntimeIDCodex {
@@ -279,7 +279,7 @@ func (s *Service) prepareWithLease(ctx context.Context, id, runtimeID, workspace
 		if err != nil {
 			unlock()
 			release()
-			return runtimeconfig.RuntimeTarget{}, nil, err
+			return agentapi.RuntimeTarget{}, nil, err
 		}
 		target.RefreshCredentials = func(ctx context.Context, previous string) (codexoauth.Tokens, error) {
 			return s.refreshSubscription(ctx, id, previous)
@@ -310,31 +310,31 @@ func (s *Service) credentialGate(id string) *codexoauth.CredentialGate {
 	return gate.(*codexoauth.CredentialGate)
 }
 
-func (s *Service) prepare(ctx context.Context, account models.AIAccount, runtimeID, workspace, model string) (runtimeconfig.RuntimeTarget, error) {
+func (s *Service) prepare(ctx context.Context, account models.AIAccount, runtimeID, workspace, model string) (agentapi.RuntimeTarget, error) {
 	// 获取租约后重新读取，确保修改与冻结配置没有时间窗口。
 	current, err := s.accounts.Get(ctx, account.ID)
 	if err != nil {
-		return runtimeconfig.RuntimeTarget{}, err
+		return agentapi.RuntimeTarget{}, err
 	}
 	if _, ok := accountEndpoint(current, runtimeID); !ok {
-		return runtimeconfig.RuntimeTarget{}, status_error.AIAccountConfigurationInvalid
+		return agentapi.RuntimeTarget{}, status_error.AIAccountConfigurationInvalid
 	}
 	if !current.HasCredential {
-		return runtimeconfig.RuntimeTarget{}, status_error.RuntimeAuthRequired
+		return agentapi.RuntimeTarget{}, status_error.RuntimeAuthRequired
 	}
 	if current.AuthMode == constants.AccountAuthModeSubscription && runtimeID == constants.RuntimeIDKimi {
 		return s.prepareKimiSubscription(current)
 	}
 	key, err := s.accounts.Credential(ctx, current.ID)
 	if err != nil {
-		return runtimeconfig.RuntimeTarget{}, err
+		return agentapi.RuntimeTarget{}, err
 	}
 	if current.AuthMode == constants.AccountAuthModeSubscription {
 		if runtimeID != constants.RuntimeIDCodex {
-			return runtimeconfig.RuntimeTarget{}, status_error.AIAccountConfigurationInvalid
+			return agentapi.RuntimeTarget{}, status_error.AIAccountConfigurationInvalid
 		}
 		if err := s.prepareSubscription(ctx, &current, workspace, key); err != nil {
-			return runtimeconfig.RuntimeTarget{}, err
+			return agentapi.RuntimeTarget{}, err
 		}
 	}
 	endpoint, _ := accountEndpoint(current, runtimeID)
@@ -346,9 +346,9 @@ func (s *Service) prepare(ctx context.Context, account models.AIAccount, runtime
 		ClaudeModelRoles: current.ClaudeModelRoles,
 	})
 	if err != nil {
-		return runtimeconfig.RuntimeTarget{}, err
+		return agentapi.RuntimeTarget{}, err
 	}
-	return runtimeconfig.RuntimeTarget{AccountID: current.ID, Environment: environment, Isolated: true}, nil
+	return agentapi.RuntimeTarget{AccountID: current.ID, Environment: environment, Isolated: true}, nil
 }
 
 // accountEndpoint 只使用账号的唯一协议入口，不进行协议转换。

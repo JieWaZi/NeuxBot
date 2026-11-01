@@ -1,7 +1,7 @@
 package runtime_options
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
@@ -55,7 +55,7 @@ type RuntimeInstallation struct {
 // 运行时选项
 type RuntimeOption struct {
 	// 探测能力
-	Capabilities runtimeconfig.CapabilitySet `json:"capabilities"`
+	Capabilities agentapi.CapabilitySet `json:"capabilities"`
 	// 默认账号
 	DefaultAccountID string `json:"defaultAccountId"`
 	// 基础 CLI 类型，用于账号协议兼容性判断。
@@ -148,13 +148,13 @@ func (l *ListRuntimes) Output(ctx *gin.Context) (interface{}, error) {
 
 func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 	detection := environment.Detection
-	defaultModel, defaultReasoning := runtimeconfig.NormalizeDetectedDefaults(
+	defaultModel, defaultReasoning := agentapi.NormalizeDetectedDefaults(
 		detection,
 		environment.CustomModels,
 		environment.DefaultModel,
 		environment.DefaultReasoning,
 	)
-	availableModels := runtimeconfig.AvailableModels(detection, environment.CustomModels)
+	availableModels := agentapi.AvailableModels(detection, environment.CustomModels)
 	detectedModelIDs := make(map[string]struct{}, len(detection.Models))
 	for _, model := range detection.Models {
 		detectedModelIDs[model.ID] = struct{}{}
@@ -171,7 +171,7 @@ func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 		})
 	}
 	reasoningSource := detection.ReasoningOptions
-	if reasoningSource == nil && detection.Runtime.BaseRuntimeID != runtimeconfig.RuntimeIDCodex {
+	if reasoningSource == nil && detection.Runtime.BaseRuntimeID != agentapi.RuntimeIDCodex {
 		reasoningSource = detection.Runtime.ReasoningOptions
 	}
 	reasoningOptions := runtimeReasoningOptions(reasoningSource)
@@ -212,7 +212,7 @@ func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 	}
 }
 
-func runtimeInstallations(installations []runtimeconfig.CLIInstallation) []RuntimeInstallation {
+func runtimeInstallations(installations []agentapi.CLIInstallation) []RuntimeInstallation {
 	result := make([]RuntimeInstallation, 0, len(installations))
 	for _, installation := range installations {
 		result = append(result, RuntimeInstallation{
@@ -222,7 +222,7 @@ func runtimeInstallations(installations []runtimeconfig.CLIInstallation) []Runti
 	return result
 }
 
-func runtimePermissionLevels(levels []runtimeconfig.PermissionLevel) []constants.PermissionLevel {
+func runtimePermissionLevels(levels []agentapi.PermissionLevel) []constants.PermissionLevel {
 	result := make([]constants.PermissionLevel, 0, len(levels))
 	for _, level := range levels {
 		if constants.SelectablePermissionLevel(level) {
@@ -233,7 +233,7 @@ func runtimePermissionLevels(levels []runtimeconfig.PermissionLevel) []constants
 }
 
 func runtimeReasoningOptions(
-	options []runtimeconfig.ReasoningOption,
+	options []agentapi.ReasoningOption,
 ) []RuntimeReasoningOption {
 	result := make([]RuntimeReasoningOption, 0, len(options))
 	for _, option := range options {

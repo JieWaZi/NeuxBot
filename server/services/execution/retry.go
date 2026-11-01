@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
@@ -18,13 +18,13 @@ import (
 )
 
 // runtimeFailureRetryable 只允许明确的短暂拒绝，任何已观察输出、工具或未知会话均阻止重放。
-func runtimeFailureRetryable(result runtimecontract.Result) bool {
+func runtimeFailureRetryable(result agentapi.Result) bool {
 	if result.Failure == nil || result.SideEffects.Any() || result.Failure.SideEffects.Any() ||
 		result.UndeliveredEvents != 0 || result.UndeliveredBytes != 0 {
 		return false
 	}
-	if result.Failure.Code != runtimediagnostic.FailureCodeRateLimited &&
-		result.Failure.Code != runtimediagnostic.FailureCodeUpstreamUnavailable {
+	if result.Failure.Code != agentapi.FailureCodeRateLimited &&
+		result.Failure.Code != agentapi.FailureCodeUpstreamUnavailable {
 		return false
 	}
 	return strings.TrimSpace(reliableRuntimeSessionID(result)) != ""

@@ -8,7 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -27,7 +27,7 @@ type WorkerDispatch struct {
 	// Effect 是固定尝试和执行身份。
 	Effect models.WorkflowEffect
 	// ResultBindings 是本次效果与 fence 绑定的结果能力。
-	ResultBindings []agentcapability.Binding
+	ResultBindings []capability.Binding
 }
 
 // WorkerReceipt 是从既有 Core 与权威 Chat 读取的最小执行事实。

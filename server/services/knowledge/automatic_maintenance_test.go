@@ -7,7 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
@@ -23,7 +23,7 @@ func TestLibraryAutoFixBindingKeepsScopeAndDurableReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var fix agentcapability.Binding
+	var fix capability.Binding
 	for _, binding := range bindings {
 		if binding.Operation == "knowledge.wiki.auto-fix" {
 			fix = binding
@@ -33,11 +33,11 @@ func TestLibraryAutoFixBindingKeepsScopeAndDurableReceipt(t *testing.T) {
 		t.Fatal("upstream AutoFix is not exposed to whole-library maintenance")
 	}
 	params := map[string]any{"libraryId": "another-library", "structureVersion": library.StructureVersion}
-	if _, err := fix.Call(ctx, agentcapability.Request{RequestID: "outside", Params: params}); !errors.Is(err, status_error.KnowledgeForbidden) {
+	if _, err := fix.Call(ctx, capability.Request{RequestID: "outside", Params: params}); !errors.Is(err, status_error.KnowledgeForbidden) {
 		t.Fatalf("AutoFix changed library scope: %v", err)
 	}
 	params["libraryId"] = library.ID
-	if _, err := fix.Call(ctx, agentcapability.Request{RequestID: "upstream-fix", Params: params}); err != nil {
+	if _, err := fix.Call(ctx, capability.Request{RequestID: "upstream-fix", Params: params}); err != nil {
 		t.Fatal(err)
 	}
 	if result, err := fix.Receipt(ctx, "upstream-fix"); err != nil || !result.Replayed {
@@ -84,7 +84,7 @@ func TestAutomaticMaintenanceUpdatesOnlyFrozenLibraryAndRevokesTools(t *testing.
 		t.Fatalf("ordinary continuation escaped automatic maintenance scope: %v", err)
 	}
 	bindings := s.AutomaticBindings(ctx, chat, run.ID)
-	var replace agentcapability.Binding
+	var replace capability.Binding
 	for _, binding := range bindings {
 		if binding.Operation == "knowledge.sources.import" || binding.Operation == "knowledge.jobs.start" || binding.Operation == "knowledge.jobs.retry" {
 			t.Fatalf("wiki maintenance acquired source processing: %s", binding.Operation)
@@ -97,11 +97,11 @@ func TestAutomaticMaintenanceUpdatesOnlyFrozenLibraryAndRevokesTools(t *testing.
 		t.Fatal("automatic restore lost Wiki maintenance tools")
 	}
 	params := map[string]any{"libraryId": "different-library", "pageId": page.ResourceID, "expectedVersion": 1, "structureVersion": library.StructureVersion, "oldText": "待核查正文", "newText": "已核查正文"}
-	if _, err := replace.Call(ctx, agentcapability.Request{RequestID: "outside", Params: params}); !errors.Is(err, status_error.KnowledgeForbidden) {
+	if _, err := replace.Call(ctx, capability.Request{RequestID: "outside", Params: params}); !errors.Is(err, status_error.KnowledgeForbidden) {
 		t.Fatalf("different library accepted: %v", err)
 	}
 	params["libraryId"] = library.ID
-	if _, err := replace.Call(ctx, agentcapability.Request{RequestID: "inside", Params: params}); err != nil {
+	if _, err := replace.Call(ctx, capability.Request{RequestID: "inside", Params: params}); err != nil {
 		t.Fatal(err)
 	}
 	current, err := s.config.Engine.GetPage(ctx, library.ID, page.ResourceID)
@@ -110,7 +110,7 @@ func TestAutomaticMaintenanceUpdatesOnlyFrozenLibraryAndRevokesTools(t *testing.
 	}
 	revoked = true
 	params["expectedVersion"], params["oldText"], params["newText"] = 2, "已核查正文", "越权修改"
-	if _, err := replace.Call(ctx, agentcapability.Request{RequestID: "after-revoke", Params: params}); !errors.Is(err, status_error.IntegrationForbidden) {
+	if _, err := replace.Call(ctx, capability.Request{RequestID: "after-revoke", Params: params}); !errors.Is(err, status_error.IntegrationForbidden) {
 		t.Fatalf("revoked maintenance tool remained writable: %v", err)
 	}
 }

@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -26,7 +26,7 @@ func TestSubmissionIdentityPreservesEntryRequestAndWorkflowLength(t *testing.T) 
 		ClientRequestID: "internal-resource-creation",
 		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},
 		Input:           WorkInput{Actor: "user", SubmissionID: strings.Repeat("w", 128), Content: "工作流输入"},
-		Options:         WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+		Options:         WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
 	}
 	for index := 0; index < 2; index++ {
 		accepted, err := manager.execution.Start(context.Background(), intent)
@@ -76,7 +76,7 @@ func TestSubmissionIdentityProjectsBeforeExecutionAndReceipt(t *testing.T) {
 		ClientRequestID: "first-input",
 		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},
 		Input:           WorkInput{Actor: "user", Content: "相同正文"},
-		Options:         WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+		Options:         WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
 	}
 	store, err := eventlog.NewStore(root)
 	if err != nil {
@@ -181,12 +181,12 @@ func TestContinuationSubmissionReceiptSurvivesJournalReloadAndRejectsChangedInpu
 	runtime := &fakeRuntime{}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
 	ctx := context.Background()
-	first, err := manager.execution.Start(ctx, WorkIntent{ClientRequestID: "first", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "开始"}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
+	first, err := manager.execution.Start(ctx, WorkIntent{ClientRequestID: "first", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "开始"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
 	if err != nil {
 		t.Fatal(err)
 	}
 	waitForChatTerminal(t, manager, first.Chat.ID)
-	intent := WorkIntent{ExecutionID: util.New(), Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", SubmissionID: "platform-message", Content: "整理结果"}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+	intent := WorkIntent{ExecutionID: util.New(), Chat: ChatTarget{ChatID: first.Chat.ID}, Input: WorkInput{Actor: "user", SubmissionID: "platform-message", Content: "整理结果"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 	accepted, err := manager.execution.Start(ctx, intent)
 	if err != nil {
 		t.Fatal(err)
@@ -219,7 +219,7 @@ func TestContextInstructionsStayOutOfUserMessageAndTitle(t *testing.T) {
 		ClientRequestID: "context-only", ExecutionID: util.New(),
 		Chat:      ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},
 		Input:     WorkInput{Actor: "user", Content: "你是谁", ContextInstructions: []workinput.Instruction{{Name: "DELIVERY.md", Content: "结果自动发送到已批准的接收方。"}}},
-		Options:   WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+		Options:   WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
 		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
 	})
 	if err != nil {

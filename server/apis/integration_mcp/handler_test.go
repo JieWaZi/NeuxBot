@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+
 	rules "github.com/JieWaZi/NeuxBot/server/internal/integration"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -111,7 +111,7 @@ func (f *fixture) client(t *testing.T, key string) *sdk.ClientSession {
 	t.Cleanup(func() { session.Close() })
 	return session
 }
-func call(t *testing.T, c *sdk.ClientSession, opID string, params map[string]any, wantError bool) agentcapability.Response {
+func call(t *testing.T, c *sdk.ClientSession, opID string, params map[string]any, wantError bool) capability.Response {
 	t.Helper()
 	var arguments any
 	if params != nil {
@@ -126,11 +126,11 @@ func call(t *testing.T, c *sdk.ClientSession, opID string, params map[string]any
 		t.Fatalf("%s error=%v content=%s", opID, r.IsError, raw)
 	}
 	raw, _ := json.Marshal(r.StructuredContent)
-	var out agentcapability.Response
+	var out capability.Response
 	if json.Unmarshal(raw, &out) != nil {
 		t.Fatal(string(raw))
 	}
-	op, _ := contract.Find(opID)
+	op, _ := capability.Find(opID)
 	encoded, _ := json.Marshal(responseSchema(op))
 	var schema jsonschema.Schema
 	_ = json.Unmarshal(encoded, &schema)
@@ -145,7 +145,7 @@ func call(t *testing.T, c *sdk.ClientSession, opID string, params map[string]any
 	}
 	return out
 }
-func getReceipt(t *testing.T, out agentcapability.Response) *core.Receipt {
+func getReceipt(t *testing.T, out capability.Response) *core.Receipt {
 	t.Helper()
 	raw, _ := json.Marshal(out.Data)
 	var data struct {
@@ -181,7 +181,7 @@ func TestSDKHTTPAllKnowledgeContractsAndSharedWrites(t *testing.T) {
 		if tool.Name == "knowledge_pages_purge" || tool.Name == "knowledge_jobs_wait" {
 			t.Fatal("external MCP exposed an internal maintenance-only operation")
 		}
-		op, ok := contract.Find(strings.ReplaceAll(tool.Name, "_", "."))
+		op, ok := capability.Find(strings.ReplaceAll(tool.Name, "_", "."))
 		if !ok || !strings.HasPrefix(op.ID, "knowledge.") {
 			t.Fatal(tool.Name)
 		}
@@ -288,7 +288,7 @@ func TestSDKHTTPAllKnowledgeContractsAndSharedWrites(t *testing.T) {
 	for _, binding := range f.service.AgentBindings(ctx, models.Chat{}) {
 		if binding.Operation == "knowledge.pages.get" {
 			found = true
-			if _, e := binding.Call(ctx, agentcapability.Request{Params: map[string]any{"libraryId": lib.ID, "pageId": page.ID}}); e != nil {
+			if _, e := binding.Call(ctx, capability.Request{Params: map[string]any{"libraryId": lib.ID, "pageId": page.ID}}); e != nil {
 				t.Fatal(e)
 			}
 		}

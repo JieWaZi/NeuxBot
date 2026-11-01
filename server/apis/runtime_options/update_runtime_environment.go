@@ -1,9 +1,7 @@
 package runtime_options
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"strings"
@@ -72,7 +70,7 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if !catalog.LaunchOverrideArgumentsAllowed(current.BaseRuntimeID, u.Body.PrefixArgs) {
+	if !agentapi.LaunchOverrideArgumentsAllowed(current.BaseRuntimeID, u.Body.PrefixArgs) {
 		return nil, ginx.WithStack(status_error.BadRequest)
 	}
 	releaseAccount := func() {}
@@ -123,34 +121,34 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 // canCompleteStartupSetup 只在所选默认智能体完成模型与权限探测后解除首次引导。
 func canCompleteStartupSetup(environment models.RuntimeEnvironment) bool {
 	configured := environment.Enabled && environment.IsDefault && environment.DefaultModel != ""
-	installed := environment.Detection.ResolvedBinary != "" && environment.Detection.State == runtimeconfig.DetectionStateReady
+	installed := environment.Detection.ResolvedBinary != "" && environment.Detection.State == agentapi.DetectionStateReady
 	if !configured || !installed {
 		return false
 	}
 	for _, diagnostic := range environment.Detection.Diagnostics {
-		if diagnostic.Code == runtimeconfig.DiagnosticCodeACPOptionsUnavailable {
+		if diagnostic.Code == agentapi.DiagnosticCodeACPOptionsUnavailable {
 			return false
 		}
 	}
-	permissions := runtimeconfig.ModelPermissionLevels(
+	permissions := agentapi.ModelPermissionLevels(
 		environment.Detection,
 		environment.CustomModels,
 		environment.DefaultModel,
 	)
-	return runtimeconfig.PermissionLevelSupported(permissions, environment.DefaultPermissionLevel)
+	return agentapi.PermissionLevelSupported(permissions, environment.DefaultPermissionLevel)
 }
 
 func configurationRequiresDetectRefresh(
 	current models.RuntimeEnvironment,
 	next models.RuntimeEnvironment,
 ) bool {
-	return !catalog.LaunchDetectInputsEqual(
-		catalog.LaunchDetectInput{
+	return !agentapi.LaunchDetectInputsEqual(
+		agentapi.LaunchDetectInput{
 			Binary:     current.Binary,
 			PrefixArgs: current.PrefixArgs,
 			ConfigHome: current.ConfigHome,
 		},
-		catalog.LaunchDetectInput{
+		agentapi.LaunchDetectInput{
 			Binary:     next.Binary,
 			PrefixArgs: next.PrefixArgs,
 			ConfigHome: next.ConfigHome,

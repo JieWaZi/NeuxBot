@@ -11,16 +11,16 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 )
 
 // MaintenanceRuntime 提供无需伙伴、聊天或执行记录的共享独立工具调用。
 type MaintenanceRuntime interface {
-	ExecuteTask(context.Context, runtimehost.TaskRequest) (runtimehost.TextResult, error)
+	ExecuteTask(context.Context, agentapi.TaskRequest) (agentapi.TextResult, error)
 }
 
 // MaintenanceConfig 显式装配知识维护的模型、能力授权与共享运行端口。
@@ -28,7 +28,7 @@ type MaintenanceConfig struct {
 	// Runtime 复用共享宿主的原生调用、账号租约和清理所有权。
 	Runtime MaintenanceRuntime
 	// Registry 负责知识任务的短期操作授权。
-	Registry *agentcapability.Registry
+	Registry *capability.Registry
 	// Endpoint 是现有软件能力服务的回环地址。
 	Endpoint string
 	// Binary 是应用同包交付的真实 allycli 可执行文件。
@@ -48,7 +48,7 @@ type MaintenanceRequest struct {
 	// JobID 是本次独立知识任务身份。
 	JobID string
 	// Bindings 是入口已经冻结的单库操作集合。
-	Bindings []agentcapability.Binding
+	Bindings []capability.Binding
 	// Instructions 保留上游 Wiki Fixer 工作流和当前库边界。
 	Instructions string
 	// Message 是本次明确的维护要求。
@@ -91,13 +91,13 @@ func (runner *MaintenanceRunner) Run(ctx context.Context, input MaintenanceReque
 	}
 	// 只认服务端真正完成的领域调用，发现命令和模型自述不能证明执行过维护检查。
 	var successfulCalls atomic.Uint64
-	bindings := append([]agentcapability.Binding(nil), input.Bindings...)
+	bindings := append([]capability.Binding(nil), input.Bindings...)
 	for index := range bindings {
 		call := bindings[index].Call
 		if call == nil || !strings.HasPrefix(bindings[index].Operation, "knowledge.") {
 			continue
 		}
-		bindings[index].Call = func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+		bindings[index].Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
 			result, err := call(ctx, request)
 			if err == nil {
 				successfulCalls.Add(1)
@@ -107,14 +107,14 @@ func (runner *MaintenanceRunner) Run(ctx context.Context, input MaintenanceReque
 	}
 	resources := &maintenanceResources{config: runner.config, input: input, binary: binary, bindings: bindings}
 	defer resources.Revoke()
-	result, err := runner.config.Runtime.ExecuteTask(ctx, runtimehost.TaskRequest{
-		TextRequest: runtimehost.TextRequest{RuntimeID: runner.config.RuntimeID, AccountID: runner.config.AccountID, Model: runner.config.Model, Reasoning: runner.config.Reasoning, Thinking: true, Messages: []runtimehost.Message{{Role: "user", Content: input.Message}}},
-		Contributions: c.Contributions{
-			Instructions: []c.Instruction{
+	result, err := runner.config.Runtime.ExecuteTask(ctx, agentapi.TaskRequest{
+		TextRequest: agentapi.TextRequest{RuntimeID: runner.config.RuntimeID, AccountID: runner.config.AccountID, Model: runner.config.Model, Reasoning: runner.config.Reasoning, Thinking: true, Messages: []agentapi.TextMessage{{Role: "user", Content: input.Message}}},
+		Contributions: native.Contributions{
+			Instructions: []native.Instruction{
 				{Name: "WIKI_MAINTENANCE.md", Text: input.Instructions},
 				{Name: "软件能力", Text: fmt.Sprintf("Read the supplied ally skill. The exact executable is provided by %s. Start with capabilities and describe, and use the advertised knowledge commands for all knowledge reads and changes. Use this invocation's existing connection; do not discover other credentials, databases or endpoints. Use the temporary workspace for scratch files and JSON command input as described in the skill. The runtime has full access for this knowledge task. Knowledge authorization, versions and durable results remain enforced by the supplied CLI. The knowledge task owns all state; do not create a partner or chat.", constants.AgentCLIBinaryEnvironment)},
 			},
-			Skills: []c.Skill{{Name: constants.AgentCLISkillName, ResourceID: constants.AgentCLISkillName}},
+			Skills: []native.Skill{{Name: constants.AgentCLISkillName, ResourceID: constants.AgentCLISkillName}},
 		}, Resources: resources,
 	})
 	if err != nil {
@@ -141,7 +141,7 @@ type maintenanceResources struct {
 	// binary 是已验证的同包 CLI 来源。
 	binary string
 	// bindings 只包含本次冻结范围，并登记成功领域调用。
-	bindings []agentcapability.Binding
+	bindings []capability.Binding
 	// workspace 是共享宿主拥有的原生工作区。
 	workspace string
 	// directory 是本租约独占的资源目录，不包含账号投射。
@@ -159,7 +159,7 @@ type maintenanceResources struct {
 }
 
 // Acquire 由引擎在账号准备后调用；返回部分租约以保留失败准备的清理所有权。
-func (resources *maintenanceResources) Acquire(ctx context.Context, request c.ResourceRequest) (c.ResourceLease, error) {
+func (resources *maintenanceResources) Acquire(ctx context.Context, request agentapi.ResourceRequest) (agentapi.ResourceLease, error) {
 	if ctx.Err() != nil {
 		return resources, status_error.OperationCanceled
 	}
@@ -173,7 +173,7 @@ func (resources *maintenanceResources) Acquire(ctx context.Context, request c.Re
 	if err != nil {
 		return resources, err
 	}
-	grant, activate, revoke, err := resources.config.Registry.Prepare(agentcapability.GrantSpec{ExecutionID: resources.input.JobID, Bindings: resources.bindings, FileRoots: []string{request.Workspace.Root}, Validate: resources.input.Validate})
+	grant, activate, revoke, err := resources.config.Registry.Prepare(capability.GrantSpec{ExecutionID: resources.input.JobID, Bindings: resources.bindings, FileRoots: []string{request.Workspace.Root}, Validate: resources.input.Validate})
 	if err != nil {
 		return resources, err
 	}
@@ -185,7 +185,7 @@ func (resources *maintenanceResources) Acquire(ctx context.Context, request c.Re
 	}
 	resources.revoke = revoke
 	resources.mutex.Unlock()
-	connection, err := agentcapability.WriteConnection(filepath.Join(resources.directory, "context"), "connection.json", agentcapability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: resources.config.Endpoint, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
+	connection, err := capability.WriteConnection(filepath.Join(resources.directory, "context"), "connection.json", capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: resources.config.Endpoint, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
 	if err != nil {
 		return resources, err
 	}
@@ -200,10 +200,10 @@ func (resources *maintenanceResources) Acquire(ctx context.Context, request c.Re
 }
 
 // Resources 交付必需技能的目录绑定，内容安装与释放均由同一租约拥有。
-func (resources *maintenanceResources) Resources() []c.ResourceBinding {
+func (resources *maintenanceResources) Resources() []native.ResourceBinding {
 	resources.mutex.Lock()
 	defer resources.mutex.Unlock()
-	return []c.ResourceBinding{{ID: constants.AgentCLISkillName, Path: resources.skill}}
+	return []native.ResourceBinding{{ID: constants.AgentCLISkillName, Path: resources.skill}}
 }
 
 // LaunchEnvironment 只在原生启动边界注入本次连接与 CLI，并保留账号和原生环境。

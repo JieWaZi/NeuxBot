@@ -1,7 +1,7 @@
 package workflows
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -34,7 +34,7 @@ func (e *mutableAdmissionEnvironment) Get(ctx context.Context, id string) (model
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
 	environment.DefaultReasoning = e.initialReasoning
-	environment.Detection.Models[0].ReasoningOptions = []runtimeconfig.ReasoningOption{{ID: "low"}, {ID: "high"}}
+	environment.Detection.Models[0].ReasoningOptions = []agentapi.ReasoningOption{{ID: "low"}, {ID: "high"}}
 	override := environment.Detection.Models[0]
 	override.ID, override.Name = "override", "override"
 	environment.Detection.Models = append(environment.Detection.Models, override)
@@ -55,7 +55,7 @@ type observedWorkerConfiguration struct {
 	// reasoning 是实际派发推理强度。
 	reasoning string
 	// permission 是 Runtime 实际收到的执行权限等级。
-	permission runtimeconfig.PermissionLevel
+	permission agentapi.PermissionLevel
 }
 
 // admissionConfigurationRuntime 仅替代模型协议边界，完整 JSONL 与结果对账仍经过 Core。
@@ -66,29 +66,29 @@ type admissionConfigurationRuntime struct {
 	final *string
 }
 
-func (*admissionConfigurationRuntime) ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
-	return runtimecontract.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
+func (*admissionConfigurationRuntime) ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
+	return agentapi.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
 }
-func (*admissionConfigurationRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
+func (*admissionConfigurationRuntime) Runtimes() []agentapi.RuntimeSummary {
 	return (&fixtureRuntime{}).Runtimes()
 }
-func (r *admissionConfigurationRuntime) Run(ctx context.Context, request fixtureInvocation, sink runtimecontract.EventSink) runtimecontract.Result {
+func (r *admissionConfigurationRuntime) Run(ctx context.Context, request fixtureInvocation, sink agentapi.EventSink) agentapi.Result {
 	r.observations <- observedWorkerConfiguration{
 		account: request.Target.AccountID, model: request.Policy.Model,
 		reasoning: request.Policy.Reasoning, permission: request.Policy.Execution.PermissionLevel,
 	}
 	invocation := util.New()
-	started, _ := json.Marshal(runtimecontract.InvocationStartedData{InvocationID: invocation})
-	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: started}); err != nil {
-		return runtimecontract.Result{ExitCode: 1}
+	started, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: invocation})
+	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: started}); err != nil {
+		return agentapi.Result{ExitCode: 1}
 	}
 	if r.final != nil {
 		text, _ := json.Marshal(map[string]any{"text": *r.final})
-		if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: text}); err != nil {
-			return runtimecontract.Result{ExitCode: 1}
+		if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeTextDelta, Data: text}); err != nil {
+			return agentapi.Result{ExitCode: 1}
 		}
 	}
-	return runtimecontract.Result{Facts: runtimecontract.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
+	return agentapi.Result{Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
 }
 
 func TestWorkerAdmissionFreezesDefaultsAcrossHumanWaitAndRestart(t *testing.T) {
@@ -140,9 +140,9 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 		return state.Run.Status == constants.WorkflowRunStatusFailed
 	})
 	for index, model := range []string{"fixture", "override"} {
-		permission := runtimeconfig.PermissionLevelDefault
+		permission := agentapi.PermissionLevelDefault
 		if index == 1 {
-			permission = runtimeconfig.PermissionLevelFullAccess
+			permission = agentapi.PermissionLevelFullAccess
 		}
 		var actual observedWorkerConfiguration
 		select {
@@ -167,9 +167,9 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 		return state.Run.Status == constants.WorkflowRunStatusSucceeded
 	})
 	for index, model := range []string{"fixture", "override"} {
-		permission := runtimeconfig.PermissionLevelDefault
+		permission := agentapi.PermissionLevelDefault
 		if index == 1 {
-			permission = runtimeconfig.PermissionLevelFullAccess
+			permission = agentapi.PermissionLevelFullAccess
 		}
 		var actual observedWorkerConfiguration
 		select {

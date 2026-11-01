@@ -1,7 +1,7 @@
 package messageview
 
 import (
-	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"encoding/json"
 	"fmt"
@@ -10,7 +10,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 )
@@ -177,7 +177,7 @@ func (p *MessageViewBuilder) applyInvocationFinished(record eventlog.Record) err
 	if index, exists := p.messageIndexes[p.executionMessages[record.ExecutionID]]; exists {
 		p.setForkInvocation(&p.messages[index], finished)
 	}
-	if message := runtimediagnostic.RecordedFailureDisplayMessage(finished.FailureMessage); message != "" {
+	if message := agentapi.RecordedFailureDisplayMessage(finished.FailureMessage); message != "" {
 		p.failureMessages[record.ExecutionID] = message
 	}
 	return nil
@@ -483,7 +483,7 @@ func (p *MessageViewBuilder) applyExecutionFinished(record eventlog.Record) (str
 			message.RunMetrics.DurationMs = record.RecordedAt - message.RunMetrics.StartedAt
 		}
 	}
-	errorMessage := runtimediagnostic.RecordedFailureDisplayMessage(finished.ErrorMessage)
+	errorMessage := agentapi.RecordedFailureDisplayMessage(finished.ErrorMessage)
 	if errorMessage == "" {
 		errorMessage = p.failureMessages[record.ExecutionID]
 	}
@@ -671,7 +671,7 @@ func (p *MessageViewBuilder) toolDisplayIndexes(messageID string) map[string]int
 
 // applyUsage 将 Runtime SDK 的统一用量数据投影到公开运行指标。
 func (p *MessageViewBuilder) applyUsage(message *Message, data json.RawMessage) error {
-	var usage runtimecontract.UsageData
+	var usage agentapi.UsageData
 	if err := json.Unmarshal(data, &usage); err != nil {
 		return status_error.ChatLogError
 	}

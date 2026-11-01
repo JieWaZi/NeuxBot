@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -39,7 +39,7 @@ func (j *agentTestJournal) LoadExecutionChat(context.Context, string) (models.Ch
 }
 
 func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing.T) {
-	registry := agentcapability.New(nil)
+	registry := capability.New(nil)
 	defer registry.Close()
 	endpoint := "http://127.0.0.1:18080"
 	layout, err := chatstorage.NewLayout(t.TempDir())
@@ -54,7 +54,7 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "first"}}
 	programDirectory := t.TempDir()
 	manager := &service{agent: registry, agentEndpoint: endpoint + constants.AgentCLIPath, agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, storage: layout, skillDataDirectory: programDirectory, elicitations: newElicitationCoordinator(journal)}
-	request := recordedRun{SessionPlan: runtimecontract.SessionPlan{Target: runtimecontract.SessionTarget{RuntimeID: "codex", AccountID: "account"}}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}}
+	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex", AccountID: "account"}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
 	activate, revoke, settle, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "first", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -80,14 +80,14 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 		}
 	}
 	firstPath := request.LaunchEnvironment[constants.AgentCLIContextEnvironment]
-	first, err := agentcapability.ReadConnection(firstPath)
+	first, err := capability.ReadConnection(firstPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	settle(runtimecontract.Result{Session: runtimecontract.SessionResult{OutputID: "native", State: runtimecontract.SessionStateCreated}})
+	settle(agentapi.Result{Session: agentapi.SessionResult{OutputID: "native", State: agentapi.SessionStateCreated}})
 	revoke()
 	journal.chat.ActiveExecutionID = "second"
-	secondRequest := recordedRun{SessionPlan: runtimecontract.SessionPlan{Target: request.Target}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: "native"}}
+	secondRequest := recordedRun{SessionPlan: agentapi.SessionPlan{Target: request.Target}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: "native"}}
 	activate, revokeSecond, _, err := manager.prepareAgent(&secondRequest.SessionPlan, &secondRequest.TurnInput, secondRequest.Session, journal.chat, "second", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	if secondRequest.LaunchEnvironment[constants.AgentCLIContextEnvironment] != firstPath {
 		t.Fatal("continued native process lost its original environment file path")
 	}
-	second, err := agentcapability.ReadConnection(firstPath)
+	second, err := capability.ReadConnection(firstPath)
 	if err != nil || second.Token == first.Token || second.GrantID == first.GrantID {
 		t.Fatalf("credential did not rotate: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	if journal.contextReads != 0 {
 		t.Fatalf("capability validation loaded full message context %d times", journal.contextReads)
 	}
-	newRequest := recordedRun{SessionPlan: runtimecontract.SessionPlan{Target: request.Target}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}}
+	newRequest := recordedRun{SessionPlan: agentapi.SessionPlan{Target: request.Target}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
 	_, revokeNew, _, err := manager.prepareAgent(&newRequest.SessionPlan, &newRequest.TurnInput, newRequest.Session, journal.chat, "second", nil, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 }
 
 func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
-	registry := agentcapability.New(nil)
+	registry := capability.New(nil)
 	defer registry.Close()
 	endpoint := httptest.NewServer(registry)
 	defer endpoint.Close()
@@ -151,21 +151,21 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}}
 	manager := &service{agent: registry, agentEndpoint: endpoint.URL + constants.AgentCLIPath, agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
-	manager.agentBindings = func(models.Chat, string, []string, string) []agentcapability.Binding {
+	manager.agentBindings = func(models.Chat, string, []string, string) []capability.Binding {
 		t.Fatal("scoped command discovered ordinary resources")
 		return nil
 	}
-	bindings := []agentcapability.Binding{}
+	bindings := []capability.Binding{}
 	for _, op := range []string{"knowledge.jobs.start"} {
-		b := agentcapability.Binding{Operation: op, Call: func(context.Context, agentcapability.Request) (agentcapability.Result, error) {
-			return agentcapability.Result{}, nil
+		b := capability.Binding{Operation: op, Call: func(context.Context, capability.Request) (capability.Result, error) {
+			return capability.Result{}, nil
 		}}
 		if op == "knowledge.jobs.start" {
-			b.Receipt = func(context.Context, string) (agentcapability.Result, error) { return agentcapability.Result{}, nil }
+			b.Receipt = func(context.Context, string) (capability.Result, error) { return capability.Result{}, nil }
 		}
 		bindings = append(bindings, b)
 	}
-	request := recordedRun{SessionPlan: runtimecontract.SessionPlan{Target: runtimecontract.SessionTarget{RuntimeID: "codex"}, Policy: runtimecontract.RunPolicy{Execution: runtimecontract.ExecutionPolicy{WorkspaceReadOnly: true}}}, Session: runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew}}
+	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}, Policy: agentapi.RunPolicy{Execution: agentapi.ExecutionPolicy{WorkspaceReadOnly: true}}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
 	activate, revoke, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "execution", []ToolCapability{{ID: "knowledge.organize", Bindings: bindings}}, &[]string{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -190,7 +190,7 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("invoke skill-local CLI without PATH: %v\n%s", err, output)
 	}
-	var response agentcapability.Response
+	var response capability.Response
 	if err := json.Unmarshal(output, &response); err != nil || !response.OK {
 		t.Fatalf("skill-local capabilities failed: %s (%v)", output, err)
 	}

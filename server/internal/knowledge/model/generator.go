@@ -5,14 +5,14 @@ import (
 	"context"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/neux-knowledge/core"
 )
 
 // TextRuntime 是模型适配唯一需要的 Runtime 能力。
 type TextRuntime interface {
 	// GenerateText 执行一次独立上下文并返回真实文本、终态及诊断。
-	GenerateText(context.Context, runtimehost.TextRequest) (runtimehost.TextResult, error)
+	GenerateText(context.Context, agentapi.TextRequest) (agentapi.TextResult, error)
 }
 
 // Config 显式提供模型选择与每调用账号租约，不依赖伙伴或 ExecutionService。
@@ -28,7 +28,7 @@ type Config struct {
 	// Reasoning 是冻结的推理强度，空值沿模型最低档策略。
 	Reasoning string
 	// Observe 接收原始结果诊断，不能改变模型正文或知识发布事实。
-	Observe func(context.Context, core.GenerateRequest, runtimehost.TextResult)
+	Observe func(context.Context, core.GenerateRequest, agentapi.TextResult)
 }
 
 // Generator 是无跨调用会话状态的知识模型适配器。
@@ -45,11 +45,11 @@ func (generator *Generator) Generate(ctx context.Context, input core.GenerateReq
 	if generator == nil || generator.config.Runtime == nil {
 		return core.GenerateResult{}, status_error.RuntimeUnavailable
 	}
-	messages := make([]runtimehost.Message, len(input.Messages))
+	messages := make([]agentapi.TextMessage, len(input.Messages))
 	for index, message := range input.Messages {
-		messages[index] = runtimehost.Message{Role: message.Role, Content: message.Content}
+		messages[index] = agentapi.TextMessage{Role: message.Role, Content: message.Content}
 	}
-	result, err := generator.config.Runtime.GenerateText(ctx, runtimehost.TextRequest{
+	result, err := generator.config.Runtime.GenerateText(ctx, agentapi.TextRequest{
 		RuntimeID: generator.config.RuntimeID, AccountID: generator.config.AccountID, Model: generator.config.Model,
 		Messages: messages, Reasoning: generator.config.Reasoning, Thinking: input.Thinking, MaxTokens: input.MaxTokens, Temperature: input.Temperature,
 	})

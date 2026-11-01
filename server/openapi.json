@@ -29922,7 +29922,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
+            "description": ">\n* `[AIAccountWorkspaceError][50000000047]`\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -29931,6 +29931,7 @@
               }
             },
             "x-status-errors": [
+              "[AIAccountWorkspaceError][50000000047]",
               "[PluginStorageError][50000006501]",
               "[RuntimeShutdownFailed][50000000041]"
             ]
@@ -30572,7 +30573,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
+            "description": ">\n* `[BadRequest][40000000001]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -30581,6 +30582,7 @@
               }
             },
             "x-status-errors": [
+              "[BadRequest][40000000001]",
               "[PluginContentInvalid][40000006502]",
               "[PluginManifestInvalid][40000006501]"
             ]
@@ -30641,7 +30643,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
+            "description": ">\n* `[AIAccountWorkspaceError][50000000047]`\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -30650,6 +30652,7 @@
               }
             },
             "x-status-errors": [
+              "[AIAccountWorkspaceError][50000000047]",
               "[PluginStorageError][50000006501]",
               "[RuntimeShutdownFailed][50000000041]"
             ]
@@ -30914,7 +30917,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
+            "description": ">\n* `[BadRequest][40000000001]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -30923,6 +30926,7 @@
               }
             },
             "x-status-errors": [
+              "[BadRequest][40000000001]",
               "[PluginContentInvalid][40000006502]",
               "[PluginManifestInvalid][40000006501]"
             ]
@@ -30983,7 +30987,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
+            "description": ">\n* `[AIAccountWorkspaceError][50000000047]`\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -30992,6 +30996,7 @@
               }
             },
             "x-status-errors": [
+              "[AIAccountWorkspaceError][50000000047]",
               "[PluginStorageError][50000006501]",
               "[RuntimeShutdownFailed][50000000041]"
             ]
@@ -31628,7 +31633,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[MCPConnectorCredentialError][50000000022]`\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[SkillUnavailable][50000000008]`\n",
+            "description": ">\n* `[AIAccountWorkspaceError][50000000047]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[SkillUnavailable][50000000008]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -31637,6 +31642,7 @@
               }
             },
             "x-status-errors": [
+              "[AIAccountWorkspaceError][50000000047]",
               "[MCPConnectorCredentialError][50000000022]",
               "[PluginStorageError][50000006501]",
               "[RuntimeShutdownFailed][50000000041]",
@@ -40119,7 +40125,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
+            "description": ">\n* `[BadRequest][40000000001]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginManifestInvalid][40000006501]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -40128,6 +40134,7 @@
               }
             },
             "x-status-errors": [
+              "[BadRequest][40000000001]",
               "[PluginContentInvalid][40000006502]",
               "[PluginManifestInvalid][40000006501]"
             ]
@@ -40175,7 +40182,7 @@
             ]
           },
           "500": {
-            "description": ">\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
+            "description": ">\n* `[AIAccountWorkspaceError][50000000047]`\n* `[PluginStorageError][50000006501]`\n* `[RuntimeShutdownFailed][50000000041]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -40184,6 +40191,7 @@
               }
             },
             "x-status-errors": [
+              "[AIAccountWorkspaceError][50000000047]",
               "[PluginStorageError][50000006501]",
               "[RuntimeShutdownFailed][50000000041]"
             ]
@@ -58344,7 +58352,7 @@
           "capabilities": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalAgentEnvironmentConfigCapabilitySet"
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalAgentCapabilitySet"
               },
               {
                 "description": "探测能力",
@@ -62947,7 +62955,7 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/constants.WorkflowStepStatus"
       },
-      "GithubComJieWaZiNeuxBotServerInternalAgentEnvironmentConfigCapabilitySet": {
+      "GithubComJieWaZiNeuxBotServerInternalAgentCapabilitySet": {
         "type": "object",
         "additionalProperties": {
           "type": "boolean"
@@ -62956,8 +62964,8 @@
           "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsRuntimeCapability"
         },
         "description": "CapabilitySet 保存一次探测确认可用的 Runtime 能力。",
-        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalAgentEnvironmentConfigCapabilitySet",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config.CapabilitySet"
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerInternalAgentCapabilitySet",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/internal/agent.CapabilitySet"
       },
       "GithubComJieWaZiNeuxBotServerInternalChatEventlogAttachmentReference": {
         "type": "object",

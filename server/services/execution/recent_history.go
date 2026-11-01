@@ -5,16 +5,16 @@ import (
 	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 )
 
 // completedRuntimeTurn 是可交接的完整成功输入和最终回复。
 type completedRuntimeTurn struct {
 	// input 是已按原字节上限裁剪的用户输入或团队协调输入。
-	input runtimecontract.HistoryMessage
+	input agentapi.HistoryMessage
 	// answer 是已按原字节上限裁剪的助手最终回复。
-	answer runtimecontract.HistoryMessage
+	answer agentapi.HistoryMessage
 }
 
 // completedRuntimeTurns 从候选正文提取完整成功轮，不把失败、过程或省略消息计入轮数。
@@ -54,12 +54,12 @@ func completedRuntimeTurns(messages []messageview.Message, team bool) []complete
 }
 
 // recentRuntimeHistory 仅选择最近完整成功轮并保留历史文本总量上限。
-func recentRuntimeHistory(messages []messageview.Message, turns int, team bool) []runtimecontract.HistoryMessage {
+func recentRuntimeHistory(messages []messageview.Message, turns int, team bool) []agentapi.HistoryMessage {
 	if turns == 0 {
 		turns = constants.RuntimeHistoryDefaultTurns
 	}
 	completed := completedRuntimeTurns(messages, team)
-	result := make([]runtimecontract.HistoryMessage, 0, turns*2)
+	result := make([]agentapi.HistoryMessage, 0, turns*2)
 	bytes := 0
 	for i := len(completed) - 1; i >= 0 && len(result) < turns*2; i-- {
 		pair := completed[i]
@@ -88,8 +88,8 @@ func finalReplyText(message messageview.Message) string {
 }
 
 // historyMessage 将消息转换为 Runtime 输入并限制单条文本大小。
-func historyMessage(message messageview.Message, content string) runtimecontract.HistoryMessage {
-	return runtimecontract.HistoryMessage{
+func historyMessage(message messageview.Message, content string) agentapi.HistoryMessage {
+	return agentapi.HistoryMessage{
 		Role: string(message.Role), Content: boundedHistoryText(content),
 	}
 }

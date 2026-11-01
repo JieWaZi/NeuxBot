@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -23,11 +23,11 @@ func TestAgentDeliveryFreezesBytesReplaysAndWakesOnCommittedState(t *testing.T) 
 	if err := os.WriteFile(path, []byte("first"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	bindings := map[string]agentcapability.Binding{}
+	bindings := map[string]capability.Binding{}
 	for _, value := range service.AgentBindings(models.Chat{ID: "chat", WakerID: "waker"}, "execution", []string{root}, hub) {
 		bindings[value.Operation] = value
 	}
-	request := agentcapability.Request{Operation: "im.deliveries.create", RequestID: "report", Params: map[string]any{"targetId": "b", "files": []string{path}}}
+	request := capability.Request{Operation: "im.deliveries.create", RequestID: "report", Params: map[string]any{"targetId": "b", "files": []string{path}}}
 	first, err := bindings[request.Operation].Call(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func TestAgentDeliveryFreezesBytesReplaysAndWakesOnCommittedState(t *testing.T) 
 	if err := service.config.Store.UpdateDelivery(context.Background(), delivery); err != nil {
 		t.Fatal(err)
 	}
-	observation, err := bindings["im.deliveries.wait"].Call(context.Background(), agentcapability.Request{Params: map[string]any{"deliveryId": delivery.ID, "timeoutMs": 100}})
+	observation, err := bindings["im.deliveries.wait"].Call(context.Background(), capability.Request{Params: map[string]any{"deliveryId": delivery.ID, "timeoutMs": 100}})
 	if err != nil || observation.Data.(map[string]any)["completed"] != true {
 		t.Fatalf("unknown is a terminal observation: %+v %v", observation, err)
 	}

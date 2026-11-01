@@ -1,9 +1,7 @@
 package model
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"net/http/httptest"
@@ -14,8 +12,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 )
 
 // TestRealWikiMaintenanceReadsSkillAndCallsCLI 核验真实原生会话能读取技能并执行只读知识命令，不访问生产知识内容。
@@ -29,25 +26,25 @@ func TestRealWikiMaintenanceReadsSkillAndCallsCLI(t *testing.T) {
 	}
 	runtimeID := os.Getenv("ALLY_WIKI_RUNTIME")
 	if runtimeID == "" {
-		runtimeID = runtimeconfig.RuntimeIDWorkBuddy
+		runtimeID = agentapi.RuntimeIDWorkBuddy
 	}
 	model := os.Getenv("ALLY_WIKI_MODEL")
-	if model == "" && runtimeID == runtimeconfig.RuntimeIDWorkBuddy {
+	if model == "" && runtimeID == agentapi.RuntimeIDWorkBuddy {
 		model = "deepseek-v4.1-flash"
 	}
 	reasoning := os.Getenv("ALLY_WIKI_REASONING")
-	sdk, err := catalog.New(catalog.Config{})
+	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sdk.Close(context.Background())
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
-	detection := sdk.Detect(ctx, runtimeconfig.DetectRequest{RuntimeID: runtimeID, BaseEnvironment: os.Environ()})
-	if detection.State != runtimeconfig.DetectionStateReady {
+	detection := sdk.Detect(ctx, agentapi.DetectRequest{RuntimeID: runtimeID, BaseEnvironment: os.Environ()})
+	if detection.State != agentapi.DetectionStateReady {
 		t.Fatalf("%s detection failed: %+v", runtimeID, detection.Diagnostics)
 	}
-	registry := agentcapability.New(nil)
+	registry := capability.New(nil)
 	defer registry.Close()
 	endpoint := httptest.NewServer(registry)
 	defer endpoint.Close()
@@ -60,12 +57,12 @@ func TestRealWikiMaintenanceReadsSkillAndCallsCLI(t *testing.T) {
 		Instructions: "This is a read-only transport verification, with one synthetic library named transport-check. Only knowledge.audit.get is authorized. Do not read any other local files, access other services, modify files, or attempt any writes.",
 		Message:      "Read the selected ally SKILL.md using the Read tool. Then use the exact supplied allycli executable to run capabilities and knowledge audit get --library-id transport-check. Do not plan a Wiki edit or call ExitPlanMode. Report the marker returned by the audit. This checks software transport only, not real knowledge contents.",
 		Validate:     func(context.Context) error { return nil },
-		Bindings: []agentcapability.Binding{{Operation: "knowledge.audit.get", Call: func(_ context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+		Bindings: []capability.Binding{{Operation: "knowledge.audit.get", Call: func(_ context.Context, request capability.Request) (capability.Result, error) {
 			if request.Params["libraryId"] != "transport-check" {
 				t.Errorf("unexpected synthetic scope: %+v", request.Params)
 			}
 			calls.Add(1)
-			return agentcapability.Result{Data: map[string]any{"marker": "WIKI_TRANSPORT_OK", "issues": []any{}}}, nil
+			return capability.Result{Data: map[string]any{"marker": "WIKI_TRANSPORT_OK", "issues": []any{}}}, nil
 		}}},
 	}
 	report, err := runner.Run(ctx, input)
@@ -76,13 +73,13 @@ func TestRealWikiMaintenanceReadsSkillAndCallsCLI(t *testing.T) {
 }
 
 // maintenanceTransportHost 仅供显式真实验收复用共享原生启动边界，不调用旧 Run 引擎。
-func maintenanceTransportHost(runtimeID string, detection runtimeconfig.DetectionResult, sdk *catalog.Catalog) *runtimehost.Host {
-	return runtimehost.New(runtimehost.Config{
+func maintenanceTransportHost(runtimeID string, detection agentapi.DetectionResult, sdk *agentapi.Catalog) *agentapi.Manager {
+	return agentapi.NewManager(agentapi.ManagerConfig{
 		Launch: sdk.PrepareLaunch,
-		Resolve: func(context.Context, runtimehost.TextRequest) (runtimehost.Environment, error) {
-			return runtimehost.Environment{BaseRuntimeID: runtimeID, Detection: detection, Target: runtimeconfig.RuntimeTarget{RuntimeID: runtimeID, Binary: detection.ResolvedBinary, CloseAfterRun: true}}, nil
+		Resolve: func(context.Context, agentapi.TextRequest) (agentapi.Environment, error) {
+			return agentapi.Environment{BaseRuntimeID: runtimeID, Detection: detection, Target: agentapi.RuntimeTarget{RuntimeID: runtimeID, Binary: detection.ResolvedBinary, CloseAfterRun: true}}, nil
 		},
-		Prepare: func(_ context.Context, _ runtimehost.TextRequest, environment runtimehost.Environment, _ string) (runtimeconfig.RuntimeTarget, func(context.Context) error, error) {
+		Prepare: func(_ context.Context, _ agentapi.TextRequest, environment agentapi.Environment, _ string) (agentapi.RuntimeTarget, func(context.Context) error, error) {
 			return environment.Target, func(context.Context) error { return nil }, nil
 		},
 	})

@@ -1,9 +1,7 @@
 package execution
 
 import (
-	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
-
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -18,7 +16,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -33,42 +31,42 @@ type retryTestRuntime struct {
 	// requests 保存真正交给 Runtime 的输入。
 	requests []recordedRun
 	// result 是每个回合返回的失败事实。
-	result runtimecontract.Result
+	result agentapi.Result
 	// output 是可选的已观察正文，用于证明不能仅相信失败标签。
 	output string
 	// tool 表示 Runtime 已交付工具调用，但测试故意省略结果中的副作用标记。
 	tool bool
 }
 
-func (r *retryTestRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
+func (r *retryTestRuntime) Runtimes() []agentapi.RuntimeSummary {
 	return (&fakeRuntime{}).Runtimes()
 }
 
 // ForkSession 保持测试替身与当前 Runtime 契约一致；重试用例不调用分叉。
-func (r *retryTestRuntime) ForkSession(ctx context.Context, request runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
+func (r *retryTestRuntime) ForkSession(ctx context.Context, request agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
 	return (&fakeRuntime{}).ForkSession(ctx, request)
 }
 
-func (r *retryTestRuntime) Run(ctx context.Context, request recordedRun, sink runtimecontract.EventSink) runtimecontract.Result {
+func (r *retryTestRuntime) Run(ctx context.Context, request recordedRun, sink agentapi.EventSink) agentapi.Result {
 	r.mutex.Lock()
 	r.requests = append(r.requests, request)
 	result, output, tool := r.result, r.output, r.tool
 	r.mutex.Unlock()
 	id := util.New()
-	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: marshalData(runtimecontract.InvocationStartedData{InvocationID: id})}); err != nil {
-		return runtimecontract.Result{Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeEventDelivery}}
+	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: marshalData(agentapi.InvocationStartedData{InvocationID: id})}); err != nil {
+		return agentapi.Result{Failure: &agentapi.Failure{Code: agentapi.FailureCodeEventDelivery}}
 	}
 	if output != "" {
-		if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: marshalData(map[string]string{"text": output})}); err != nil {
-			return runtimecontract.Result{Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeEventDelivery}}
+		if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeTextDelta, Data: marshalData(map[string]string{"text": output})}); err != nil {
+			return agentapi.Result{Failure: &agentapi.Failure{Code: agentapi.FailureCodeEventDelivery}}
 		}
 	}
 	if tool {
-		if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeToolUse, Data: marshalData(map[string]any{"id": "tool-1", "name": "Bash"})}); err != nil {
-			return runtimecontract.Result{Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeEventDelivery}}
+		if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"id": "tool-1", "name": "Bash"})}); err != nil {
+			return agentapi.Result{Failure: &agentapi.Failure{Code: agentapi.FailureCodeEventDelivery}}
 		}
 	}
-	result.Facts = runtimecontract.InvocationFacts{InvocationID: id, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: runtimeconfig.RuntimeIDCodex}
+	result.Facts = agentapi.InvocationFacts{InvocationID: id, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: agentapi.RuntimeIDCodex}
 	result.Session.Mode = request.Session.Mode
 	return result
 }
@@ -77,14 +75,14 @@ func (r *retryTestRuntime) Run(ctx context.Context, request recordedRun, sink ru
 func (r *retryTestRuntime) CloseWorkspace(context.Context, string) error { return nil }
 
 // retryableTestResult 构造无输出、无工具且保留可靠会话的限流终态。
-func retryableTestResult() runtimecontract.Result {
-	return runtimecontract.Result{ExitCode: -1, Session: runtimecontract.SessionResult{OutputID: "native-session", State: runtimecontract.SessionStateCreated}, Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeRateLimited, Transience: runtimediagnostic.FailureTransienceTransient}}
+func retryableTestResult() agentapi.Result {
+	return agentapi.Result{ExitCode: -1, Session: agentapi.SessionResult{OutputID: "native-session", State: agentapi.SessionStateCreated}, Failure: &agentapi.Failure{Code: agentapi.FailureCodeRateLimited, Transience: agentapi.FailureTransienceTransient}}
 }
 
 // retryTestIntent 构造直接来自用户且可进入重试流程的原始输入。
 func retryTestIntent(t *testing.T) WorkIntent {
 	t.Helper()
-	return WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "原始问题"}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, Model: "gpt-5", Reasoning: "high", PermissionLevel: runtimeconfig.PermissionLevelFullAccess, WorkspaceReadOnly: true, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+	return WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "原始问题"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, Model: "gpt-5", Reasoning: "high", PermissionLevel: agentapi.PermissionLevelFullAccess, WorkspaceReadOnly: true, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 }
 
 // retryTestStart 提交并等待原始失败完全释放执行占位。
@@ -117,19 +115,19 @@ func TestRuntimeFailureRetryableRequiresSafeReplay(t *testing.T) {
 		// name 描述导致不安全重放的条件。
 		name string
 		// change 注入单一风险信号。
-		change func(*runtimecontract.Result)
+		change func(*agentapi.Result)
 	}{
-		{"visible output", func(r *runtimecontract.Result) { r.SideEffects.VisibleOutput = true }},
-		{"reasoning", func(r *runtimecontract.Result) { r.SideEffects.ReasoningOutput = true }},
-		{"tool", func(r *runtimecontract.Result) { r.Failure.SideEffects.ToolUse = true }},
-		{"write", func(r *runtimecontract.Result) { r.SideEffects.FileWrite = true }},
-		{"artifact", func(r *runtimecontract.Result) { r.SideEffects.Artifact = true }},
-		{"unknown session", func(r *runtimecontract.Result) { r.Session.State = runtimecontract.SessionStateUnknown }},
-		{"missing session", func(r *runtimecontract.Result) { r.Session.OutputID = "" }},
-		{"quota", func(r *runtimecontract.Result) { r.Failure.Code = runtimediagnostic.FailureCodeQuotaExhausted }},
-		{"auth", func(r *runtimecontract.Result) { r.Failure.Code = runtimediagnostic.FailureCodeAuthRequired }},
-		{"undelivered events", func(r *runtimecontract.Result) { r.UndeliveredEvents = 1 }},
-		{"undelivered bytes", func(r *runtimecontract.Result) { r.UndeliveredBytes = 1 }},
+		{"visible output", func(r *agentapi.Result) { r.SideEffects.VisibleOutput = true }},
+		{"reasoning", func(r *agentapi.Result) { r.SideEffects.ReasoningOutput = true }},
+		{"tool", func(r *agentapi.Result) { r.Failure.SideEffects.ToolUse = true }},
+		{"write", func(r *agentapi.Result) { r.SideEffects.FileWrite = true }},
+		{"artifact", func(r *agentapi.Result) { r.SideEffects.Artifact = true }},
+		{"unknown session", func(r *agentapi.Result) { r.Session.State = agentapi.SessionStateUnknown }},
+		{"missing session", func(r *agentapi.Result) { r.Session.OutputID = "" }},
+		{"quota", func(r *agentapi.Result) { r.Failure.Code = agentapi.FailureCodeQuotaExhausted }},
+		{"auth", func(r *agentapi.Result) { r.Failure.Code = agentapi.FailureCodeAuthRequired }},
+		{"undelivered events", func(r *agentapi.Result) { r.UndeliveredEvents = 1 }},
+		{"undelivered bytes", func(r *agentapi.Result) { r.UndeliveredBytes = 1 }},
 	}
 	if !runtimeFailureRetryable(retryableTestResult()) {
 		t.Fatal("可靠限流未允许重试")
@@ -195,7 +193,7 @@ func TestRetryExecutionRestoresInputAndHasStableChild(t *testing.T) {
 	if second.Message.Text != first.Message.Text || !reflect.DeepEqual(second.Message.CodeReferences, first.Message.CodeReferences) || !reflect.DeepEqual(second.Skills, first.Skills) || !reflect.DeepEqual(second.Connectors, first.Connectors) || !reflect.DeepEqual(second.Policy, first.Policy) {
 		t.Fatalf("重试改变了输入选项：\nfirst=%+v\nsecond=%+v", first, second)
 	}
-	if second.Session.Mode != runtimecontract.SessionModeResume || second.Session.ID != "native-session" {
+	if second.Session.Mode != agentapi.SessionModeResume || second.Session.ID != "native-session" {
 		t.Fatalf("重试重新播种了会话：%+v", second.Session)
 	}
 	if len(second.Message.Attachments) != 1 {
@@ -221,7 +219,7 @@ func TestRetryExecutionRejectsOutputAndClearedSession(t *testing.T) {
 			original := retryTestStart(t, manager, retryTestIntent(t))
 			core := manager.execution.(*service)
 			if condition == "cleared session" {
-				if _, err := core.journal.AppendExecutionFacts(context.Background(), original.Chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeNativeSessionCleared, ExecutionID: original.Execution.ID, Data: marshalData(eventlog.RuntimeSessionData{RuntimeID: runtimeconfig.RuntimeIDCodex})}}); err != nil {
+				if _, err := core.journal.AppendExecutionFacts(context.Background(), original.Chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeNativeSessionCleared, ExecutionID: original.Execution.ID, Data: marshalData(eventlog.RuntimeSessionData{RuntimeID: agentapi.RuntimeIDCodex})}}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -372,6 +370,6 @@ func TestRetryExecutionConcurrentRequestsShareOneChild(t *testing.T) {
 }
 
 // PrepareSession 让执行层显式交还资源后使用本类型的执行行为。
-func (r *retryTestRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+func (r *retryTestRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
 	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
 }

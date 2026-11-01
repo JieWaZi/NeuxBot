@@ -1,7 +1,7 @@
 package global
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecatalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
+
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -30,7 +30,7 @@ func TestCloseRetainsRuntimeDependenciesUntilManagementCleanupConfirms(t *testin
 	}
 	accounts := aiaccount.New(controllers.NewAIAccountController(database.DB))
 	accounts.Start(context.Background())
-	registry, err := runtimecatalog.New(runtimecatalog.Config{})
+	registry, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,9 +52,9 @@ func TestCloseRetainsRuntimeDependenciesUntilManagementCleanupConfirms(t *testin
 	allowRelease := false
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	registry.Detect(ctx, runtimeconfig.DetectRequest{
-		RuntimeID: runtimeconfig.RuntimeIDCodex, BaseEnvironment: os.Environ(), UseNativeAuth: true,
-		LaunchOverride: runtimeconfig.LaunchOverride{Binary: os.Args[0], Environment: map[string]string{"CODEX_HOME": home}},
+	registry.Detect(ctx, agentapi.DetectRequest{
+		RuntimeID: agentapi.RuntimeIDCodex, BaseEnvironment: os.Environ(), UseNativeAuth: true,
+		LaunchOverride: agentapi.LaunchOverride{Binary: os.Args[0], Environment: map[string]string{"CODEX_HOME": home}},
 		ReleaseResources: func(context.Context) error {
 			if _, err := accounts.StartLogin(context.Background(), "missing-shutdown-account"); !errors.Is(err, status_error.AIAccountNotFound) {
 				t.Errorf("account service was closed before runtime resources: %v", err)

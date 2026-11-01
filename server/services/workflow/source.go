@@ -6,7 +6,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
@@ -169,7 +169,7 @@ func (s *Service) saveReceipt(ctx context.Context, command SaveSourceCommand, di
 	if err := s.store.CreateReceipt(ctx, models.WorkflowCommandReceipt{AggregateID: command.DefinitionID, RequestID: command.RequestID, Kind: "save", PayloadDigest: digest, Result: result}); err != nil {
 		return err
 	}
-	return agentcommand.Commit(ctx, result)
+	return capability.Commit(ctx, result)
 }
 
 // validateSourcePolicies 在源码提交前核验强制策略及伙伴绑定，避免保存不可运行的限制。

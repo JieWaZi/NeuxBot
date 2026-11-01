@@ -1,9 +1,7 @@
 package ai_accounts
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -63,9 +61,9 @@ func TestOfficialGeminiThinkingHTTP(t *testing.T) {
 	}()
 	id := "0123456789abcdef0123456789abcdef"
 	global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{ID: id, Revision: 1, AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: provider.URL + "/v1beta"}}, SelectedModels: []string{"gemini-3.8-flash"}}, secret: "local-fixture-key"}
-	global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{RuntimeID: runtimeconfig.RuntimeIDGemini, BaseRuntimeID: runtimeconfig.RuntimeIDGemini, Enabled: true, Binary: node, PrefixArgs: []string{cli}}}
+	global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{RuntimeID: agentapi.RuntimeIDGemini, BaseRuntimeID: agentapi.RuntimeIDGemini, Enabled: true, Binary: node, PrefixArgs: []string{cli}}}
 	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager)
-	sdk, err := catalog.New(catalog.Config{})
+	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}

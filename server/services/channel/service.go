@@ -9,7 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -59,7 +59,7 @@ type Service interface {
 // Config 声明团队服务需要的稳定依赖。
 type Config struct {
 	// Commands 保存与任务事务一起提交的 CLI 回执。
-	Commands agentcommand.Store
+	Commands capability.Store
 	// PrepareDirectResult 在事务外读取原成员交付消息的位置。
 	PrepareDirectResult func(context.Context, string, string) (*models.WorkResultReceipt, error)
 	// Results 在正式直达资格提交事务中发布原结果引用。
@@ -89,7 +89,7 @@ type Config struct {
 // service 是团队业务用例的唯一实现。
 type service struct {
 	// commands 持久化任务命令接纳事实。
-	commands agentcommand.Store
+	commands capability.Store
 	// prepareDirectResult 在事务外定位原成员消息。
 	prepareDirectResult func(context.Context, string, string) (*models.WorkResultReceipt, error)
 	// results 持久化正式结果交付与阅读事实。

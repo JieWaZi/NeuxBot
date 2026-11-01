@@ -8,7 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
@@ -21,7 +21,7 @@ import (
 // Service 是 HTTP、执行能力、触发入口及 Runner 共同复用的应用边界。
 type Service struct {
 	// commands 保存与领域变更同事务提交的 CLI 回执。
-	commands agentcommand.Store
+	commands capability.Store
 	// events 是已有应用事件通道。
 	events *events.Hub
 	// store 拥有不可变源码和持久运行事实。
@@ -65,7 +65,7 @@ type Service struct {
 // Config 是显式装配 Workflow 服务需要的业务端口。
 type Config struct {
 	// Commands 保存主库命令回执。
-	Commands agentcommand.Store
+	Commands capability.Store
 	// Events 复用应用内状态变化通道。
 	Events *events.Hub
 	// State 是 API 和后台运行共用的命令锁、租约与监听器身份。

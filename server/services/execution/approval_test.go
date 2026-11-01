@@ -9,7 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -19,7 +19,7 @@ import (
 // approvalOutcome 保存审批回调测试收到的最终选择。
 type approvalOutcome struct {
 	// decision 是协调器返回给 Runtime 的审批选择。
-	decision runtimecontract.ApprovalDecision
+	decision agentapi.ApprovalDecision
 	// err 是审批等待或持久化失败。
 	err error
 }
@@ -161,11 +161,11 @@ func TestApprovalCoordinatorPreservesUnknownOptionKind(t *testing.T) {
 	go func() {
 		decision, err := core.approvals.handler(chatID, "execution-1").Request(
 			context.Background(),
-			runtimecontract.ApprovalRequest{
+			agentapi.ApprovalRequest{
 				ToolCallID: "tool-custom",
 				Title:      "自定义审批",
 				Kind:       "other",
-				Options: []runtimecontract.ApprovalOption{{
+				Options: []agentapi.ApprovalOption{{
 					ID: "custom-scope", Name: "Allow this repo clone", Kind: "allow_repo",
 				}},
 			},
@@ -224,13 +224,13 @@ func startApprovalRequest(
 	return outcome
 }
 
-func approvalRequest(toolCallID string) runtimecontract.ApprovalRequest {
-	return runtimecontract.ApprovalRequest{
+func approvalRequest(toolCallID string) agentapi.ApprovalRequest {
+	return agentapi.ApprovalRequest{
 		ToolCallID: toolCallID,
 		Title:      "执行测试命令",
 		Kind:       "command",
 		Command:    "curl https://chatgpt.com/",
-		Options: []runtimecontract.ApprovalOption{
+		Options: []agentapi.ApprovalOption{
 			{ID: "allow-once", Name: "Allow once", Kind: "allow_once"},
 			{ID: "reject-once", Name: "Reject", Kind: "reject_once"},
 		},

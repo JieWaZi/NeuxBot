@@ -18,8 +18,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/packagefiles"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
@@ -33,7 +33,7 @@ type preparedPlugins struct {
 	// native 是消费者独占的完整原生包，不能同时展开其 Skill/MCP。
 	native []plugins.NativeTarget
 	// skills 是可按需读取的原始插件技能。
-	skills []runtimecontract.Skill
+	skills []agentapi.Skill
 	// connectors 是经过配置和传输能力检查的派生连接器。
 	connectors []models.MCPConnector
 	// environment 是包内桥接及原生目标交付的私有进程变量。
@@ -71,7 +71,7 @@ type frozenPluginResources struct {
 	// selection 是固定的插件交付与重试约束。
 	selection pluginResourceSelection
 	// detection 是本次选用的原生能力快照。
-	detection runtimeconfig.DetectionResult
+	detection agentapi.DetectionResult
 	// declarations 仅持有当前伙伴启用的版本、信任与配置修订，不携带实际配置和包。
 	declarations []models.PluginExecutionDeclaration
 }
@@ -92,7 +92,7 @@ func pluginTargetDigest(sourceRoot, targetRoot, verifiedDigest string) (string, 
 }
 
 // freezePluginResources 仅读取安装事实，不启动桥接或访问插件内容。
-func (m *service) freezePluginResources(ctx context.Context, waker string, request pendingMessage, detection runtimeconfig.DetectionResult) (frozenPluginResources, error) {
+func (m *service) freezePluginResources(ctx context.Context, waker string, request pendingMessage, detection agentapi.DetectionResult) (frozenPluginResources, error) {
 	var declarations []models.PluginExecutionDeclaration
 	if m.pluginController != nil {
 		var err error
@@ -384,12 +384,12 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 
 		}
 		nativeEligible := nativePluginVersionSupported(cli, detection.Version) && request.allowedConnectorIDs == nil && request.allowedAgentDomains == nil && len(extension.Bindings) == 0 && len(targetExtension.Bindings) == 0 && (len(extension.Config) == 0 || version.Package.Format != constants.PluginFormatPortable) && (!hasAuthentication || len(version.Package.Servers) == 0 || len(authenticationBindings) > 0)
-		candidateSkills := []runtimecontract.Skill{}
+		candidateSkills := []agentapi.Skill{}
 		candidateConnectors := []models.MCPConnector{}
 		available := map[string]bool{}
-		if detection.Capabilities.Has(runtimeconfig.CapabilitySkillDirectory) {
+		if detection.Capabilities.Has(agentapi.CapabilitySkillDirectory) {
 			for _, skill := range version.Package.Skills {
-				candidateSkills = append(candidateSkills, runtimecontract.Skill{Name: skill.Name, Path: filepath.Join(root, skill.Path)})
+				candidateSkills = append(candidateSkills, agentapi.Skill{Name: skill.Name, Path: filepath.Join(root, skill.Path)})
 				available[skill.Key] = true
 				snapshot.ComponentIDs = append(snapshot.ComponentIDs, plugins.ComponentID(id, "skill:"+skill.Key))
 			}
@@ -407,7 +407,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			if request.allowedConnectorIDs != nil && !slices.Contains(*request.allowedConnectorIDs, componentID) {
 				continue
 			}
-			if !runtimecontract.DetectedConnectorTransportSupported(detection, transport) {
+			if !agentapi.DetectedConnectorTransportSupported(detection, transport) {
 				continue
 			}
 			resolved, resolveErr := plugins.ResolveServer(version.Package, server, root, data, values)
@@ -451,7 +451,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			for _, binding := range bindings {
 				isSkill := false
 				for _, declaration := range version.Package.Skills {
-					if plugins.ComponentID(id, "skill:"+declaration.Key) == binding.ComponentID && slices.ContainsFunc(candidateSkills, func(skill runtimecontract.Skill) bool { return skill.Name == declaration.Name }) {
+					if plugins.ComponentID(id, "skill:"+declaration.Key) == binding.ComponentID && slices.ContainsFunc(candidateSkills, func(skill agentapi.Skill) bool { return skill.Name == declaration.Name }) {
 						isSkill = true
 					}
 				}
@@ -516,7 +516,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			if nativeErr == nil {
 				snapshot.Delivery = constants.PluginDeliveryNative
 				snapshot.NativePluginID = native.Name
-				if cli == runtimeconfig.RuntimeIDCodex {
+				if cli == agentapi.RuntimeIDCodex {
 					snapshot.NativePluginID += "@" + constants.PluginNativeMarketplace
 				}
 				snapshot.TargetDigest = native.Digest
@@ -555,7 +555,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 				priorDelivery = constants.PluginDeliveryProjection
 			}
 			priorNativeID := prior.NativePluginID
-			if cli == runtimeconfig.RuntimeIDCodex && snapshot.NativePluginID != "" && strings.HasPrefix(priorNativeID, snapshot.NativePluginID+"-") {
+			if cli == agentapi.RuntimeIDCodex && snapshot.NativePluginID != "" && strings.HasPrefix(priorNativeID, snapshot.NativePluginID+"-") {
 				suffix := strings.TrimPrefix(priorNativeID, snapshot.NativePluginID+"-")
 				if regexp.MustCompile(`^[0-9a-f]{32}$`).MatchString(suffix) {
 					priorNativeID = snapshot.NativePluginID
@@ -603,12 +603,12 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 }
 
 // mergePluginSkills 只在同名且完整内容相同的情况下共用一份投射。
-func mergePluginSkills(independent, derived []runtimecontract.Skill) ([]runtimecontract.Skill, error) {
-	result := make([]runtimecontract.Skill, 0, len(independent)+len(derived))
+func mergePluginSkills(independent, derived []agentapi.Skill) ([]agentapi.Skill, error) {
+	result := make([]agentapi.Skill, 0, len(independent)+len(derived))
 	indexes := map[string]int{}
 	digests := map[string]string{}
 	policy := packagefiles.Archive{Invalid: status_error.PluginContentInvalid, Limit: status_error.PluginContentLimitExceeded, IO: status_error.PluginStorageError}
-	for _, item := range append(append([]runtimecontract.Skill{}, independent...), derived...) {
+	for _, item := range append(append([]agentapi.Skill{}, independent...), derived...) {
 		existing, ok := indexes[item.Name]
 		if !ok {
 			indexes[item.Name] = len(result)
@@ -665,9 +665,9 @@ func nativePluginScope(snapshots []plugins.Snapshot) string {
 func nativePluginVersionSupported(cli, version string) bool {
 	minimum := []int{}
 	switch cli {
-	case runtimeconfig.RuntimeIDCodex:
+	case agentapi.RuntimeIDCodex:
 		minimum = []int{0, 161, 0}
-	case runtimeconfig.RuntimeIDClaude:
+	case agentapi.RuntimeIDClaude:
 		minimum = []int{2, 1, 159}
 	default:
 		return false

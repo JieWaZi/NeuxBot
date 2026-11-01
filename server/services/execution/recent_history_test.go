@@ -2,12 +2,12 @@ package execution
 
 import (
 	"context"
-	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -104,7 +104,7 @@ func TestBuildRunRequestStartsNewSessionWithinSameChat(t *testing.T) {
 		message: userMessage{Text: "next question"},
 		runtime: runtimeSelection{RuntimeID: "codex", AccountID: "new-account", HistoryTurns: 1},
 	}, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-	if request.Session.Mode != runtimecontract.SessionModeNew || len(request.History) != 2 ||
+	if request.Session.Mode != agentapi.SessionModeNew || len(request.History) != 2 ||
 		request.History[0].Content != "recent question" || request.History[1].Content != "recent answer" {
 		t.Fatalf("new session request = %+v", request)
 	}
@@ -112,7 +112,7 @@ func TestBuildRunRequestStartsNewSessionWithinSameChat(t *testing.T) {
 
 // TestColdNewSessionFindsSuccessfulTurnPastFailedTail 验证配置轮数计算完整成功轮，而非末尾原始消息数量。
 func TestColdNewSessionFindsSuccessfulTurnPastFailedTail(t *testing.T) {
-	runtime := &fakeRuntime{results: []runtimecontract.Result{{}, {Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeProcessExited, Stage: "runtime", Message: "fixture failed", Transience: runtimediagnostic.FailureTransiencePermanent}}}}
+	runtime := &fakeRuntime{results: []agentapi.Result{{}, {Failure: &agentapi.Failure{Code: agentapi.FailureCodeProcessExited, Stage: "runtime", Message: "fixture failed", Transience: agentapi.FailureTransiencePermanent}}}}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
 	ctx := context.Background()
 	core := manager.execution.(*service)

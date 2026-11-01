@@ -1,7 +1,7 @@
 package aiaccount
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"net/url"
@@ -85,17 +85,17 @@ func (s *Service) kimiHome(id string) (string, error) {
 	return filepath.Join(s.kimiDataDirectory, id), nil
 }
 
-func (s *Service) prepareKimiSubscription(account models.AIAccount) (runtimeconfig.RuntimeTarget, error) {
+func (s *Service) prepareKimiSubscription(account models.AIAccount) (agentapi.RuntimeTarget, error) {
 	home, err := s.kimiHome(account.ID)
 	if err != nil {
-		return runtimeconfig.RuntimeTarget{}, err
+		return agentapi.RuntimeTarget{}, err
 	}
 	if info, err := os.Stat(filepath.Join(home, "config.toml")); err != nil || !info.Mode().IsRegular() {
-		return runtimeconfig.RuntimeTarget{}, status_error.RuntimeAuthRequired
+		return agentapi.RuntimeTarget{}, status_error.RuntimeAuthRequired
 	}
 	environment := accountconfig.HomeEnvironment(constants.RuntimeIDKimi, home)
 	environment[constants.AIAccountIdentityEnvironment] = account.ID + ":" + strconv.FormatInt(account.Revision, 10)
-	return runtimeconfig.RuntimeTarget{AccountID: account.ID, Environment: environment, Isolated: true}, nil
+	return agentapi.RuntimeTarget{AccountID: account.ID, Environment: environment, Isolated: true}, nil
 }
 
 // KimiSubscriptionModels 读取该订阅账号独有的原生模型别名目录。

@@ -1,10 +1,6 @@
 package workflows
 
 import (
-	workspace "github.com/JieWaZi/NeuxBot/server/internal/agent/host/workspace"
-
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
-
 	"context"
 	"path/filepath"
 	"strings"
@@ -14,21 +10,20 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
-	acpdriver "github.com/JieWaZi/NeuxBot/server/internal/agent/core/driver/acp"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
 
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
-// orchestrationDriver 仅替代外部模型，真实宿主与独立 Runtime 负责会话、事件和终态。
+// orchestrationDriver 仅替代外部模型，真实 Manager 与 Session 负责会话、事件和终态。
 type orchestrationDriver struct {
 	// prompt 在仍有效的原生会话内调用真实业务 CLI。
-	prompt func(context.Context, c.OpenRequest, c.TurnRequest) error
-	// opens 记录独立 Runtime 实际准备的原生会话。
-	opens chan c.OpenRequest
+	prompt func(context.Context, native.OpenRequest, native.TurnRequest) error
+	// opens 记录产品 Session 实际准备的原生会话。
+	opens chan native.OpenRequest
 	// calls 计数真实 Prompt，检查重放不会重复派发。
 	calls atomic.Int32
 }
@@ -38,14 +33,10 @@ type orchestrationSession struct {
 	// driver 是外部测试边界。
 	driver *orchestrationDriver
 	// request 是此原生会话的冻结配置。
-	request c.OpenRequest
+	request native.OpenRequest
 }
 
-func (*orchestrationDriver) ID() string { return "codex" }
-func (*orchestrationDriver) Capabilities() c.DriverCapabilities {
-	return c.DriverCapabilities{Version: "orchestration-fixture", HotResume: true, ColdResume: true}
-}
-func (d *orchestrationDriver) Open(ctx context.Context, request c.OpenRequest) (c.DriverSession, error) {
+func (d *orchestrationDriver) Open(ctx context.Context, request native.OpenRequest) (agentapi.NativeConnection, error) {
 	select {
 	case d.opens <- request:
 		return &orchestrationSession{driver: d, request: request}, nil
@@ -53,23 +44,22 @@ func (d *orchestrationDriver) Open(ctx context.Context, request c.OpenRequest) (
 		return nil, ctx.Err()
 	}
 }
-func (*orchestrationDriver) Close(context.Context) error  { return nil }
 func (*orchestrationSession) Close(context.Context) error { return nil }
-func (s *orchestrationSession) Prompt(ctx context.Context, turn c.TurnRequest, sink c.DriverSink) c.DriverResult {
+func (s *orchestrationSession) Prompt(ctx context.Context, turn native.TurnRequest, sink native.EventSink) native.TurnResult {
 	s.driver.calls.Add(1)
-	failed := func(err error) c.DriverResult {
-		return c.DriverResult{Status: c.StatusFailed, Fault: &c.Fault{Code: c.FaultDriver, Cause: err}}
+	failed := func(err error) native.TurnResult {
+		return native.TurnResult{Status: native.StatusFailed, Fault: &native.Fault{Code: native.FaultDriver, Cause: err}}
 	}
-	if err := sink.Accept(ctx, c.DriverEvent{Kind: c.EventPromptAccepted}); err != nil {
+	if err := sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted}); err != nil {
 		return failed(err)
 	}
 	if err := s.driver.prompt(ctx, s.request, turn); err != nil {
 		return failed(err)
 	}
-	if err := sink.Accept(ctx, c.DriverEvent{Kind: c.EventAssistantMessage, Message: &c.AssistantMessage{MessageID: "answer", Phase: c.PhaseFinal, Delta: "已提交", Complete: true}}); err != nil {
+	if err := sink.Accept(ctx, native.Event{Kind: native.EventAssistantMessage, Message: &native.AssistantMessage{MessageID: "answer", Phase: native.PhaseFinal, Delta: "已提交", Complete: true}}); err != nil {
 		return failed(err)
 	}
-	return c.DriverResult{Status: c.StatusCompleted, StopReason: c.StopEndTurn, NativeSession: c.NativeSessionInfo{Handle: "native-" + s.request.Invocation.ID, Resumable: true}}
+	return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn, NativeSession: native.NativeSessionInfo{Handle: "native-" + s.request.Invocation.ID, Resumable: true}}
 }
 
 func TestWorkflowAuthoringAndWorkerUseIndependentRuntimeHost(t *testing.T) {
@@ -80,8 +70,8 @@ func TestWorkflowAuthoringAndWorkerUseIndependentRuntimeHost(t *testing.T) {
 	workerStarted := make(chan struct{}, 1)
 	releaseWorker := make(chan struct{})
 	outcomes := make(chan error, 2)
-	driver := &orchestrationDriver{opens: make(chan c.OpenRequest, 2)}
-	driver.prompt = func(ctx context.Context, open c.OpenRequest, turn c.TurnRequest) error {
+	driver := &orchestrationDriver{opens: make(chan native.OpenRequest, 2)}
+	driver.prompt = func(ctx context.Context, open native.OpenRequest, turn native.TurnRequest) error {
 		call := func(args []string, input map[string]any) (map[string]any, error) {
 			return fixtureCLIEnvironment(ctx, open.Workspace.Root, open.Credential.Environment, args, input)
 		}
@@ -112,12 +102,14 @@ func TestWorkflowAuthoringAndWorkerUseIndependentRuntimeHost(t *testing.T) {
 		outcomes <- err
 		return err
 	}
-	sdk, err := catalog.New(catalog.Config{})
+	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	host := runtimehost.NewChat(runtimehost.ChatConfig{PrepareWorkspace: workspace.New(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: runtimehost.NewForkHandler(sdk),
-		Driver: func(runtimehost.Environment, acpdriver.Factory) (c.Driver, error) { return driver, nil }})
+	host := agentapi.NewManager(agentapi.ManagerConfig{PrepareWorkspace: agentapi.NewWorkspacePreparer(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: agentapi.NewForkHandler(sdk),
+		Open: func(ctx context.Context, _ native.ConnectionConfig, request native.OpenRequest) (agentapi.NativeConnection, error) {
+			return driver.Open(ctx, request)
+		}})
 	t.Cleanup(func() {
 		if err := host.Close(context.Background()); err != nil {
 			t.Error(err)

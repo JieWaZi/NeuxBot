@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -27,12 +27,12 @@ type handoffSink struct {
 }
 
 // Accept 只接收最终回复的文本增量，其他过程事件不进入交接内容。
-func (sink *handoffSink) Accept(_ context.Context, event runtimecontract.Event) error {
+func (sink *handoffSink) Accept(_ context.Context, event agentapi.Event) error {
 	switch event.Type {
-	case runtimecontract.EventTypeToolUse, runtimecontract.EventTypeToolInputSnapshot, runtimecontract.EventTypeToolUpdate:
+	case agentapi.EventTypeToolUse, agentapi.EventTypeToolInputSnapshot, agentapi.EventTypeToolUpdate:
 		sink.rejected = true
 		return status_error.RuntimeHandoffInvalid
-	case runtimecontract.EventTypeTextDelta:
+	case agentapi.EventTypeTextDelta:
 		var payload struct {
 			// Text 是本次交付的最终正文增量。
 			Text string `json:"text"`
@@ -82,25 +82,25 @@ func (m *service) summarizeCurrentSession(
 	if !m.summarySelectionAllowed(ctx, state.chat.LastAccountID, environment, model, reasoning) {
 		return "", false
 	}
-	plan := runtimecontract.SessionPlan{
+	plan := agentapi.SessionPlan{
 		ReadOnlyHandoff: true,
-		Target: runtimecontract.SessionTarget{
+		Target: agentapi.SessionTarget{
 			RuntimeID:  runtimeID,
 			Binary:     environment.Binary,
 			PrefixArgs: append([]string(nil), environment.PrefixArgs...),
 			ConfigHome: environment.ConfigHome,
 		},
 		Detection: environment.Detection,
-		Workspace: runtimecontract.Workspace{
+		Workspace: agentapi.Workspace{
 			Path:               files.executionWorkspaceDirectory,
 			Managed:            true,
 			ProjectDirectories: runtimeProjectDirectories(state.chat, state.projectSources),
 		},
-		Policy: runtimecontract.RunPolicy{
+		Policy: agentapi.RunPolicy{
 			Model:     model,
 			Reasoning: reasoning,
-			Execution: runtimecontract.ExecutionPolicy{
-				PermissionLevel:   runtimeconfig.PermissionLevelDefault,
+			Execution: agentapi.ExecutionPolicy{
+				PermissionLevel:   agentapi.PermissionLevelDefault,
 				WorkspaceReadOnly: true,
 			},
 		},
@@ -110,13 +110,13 @@ func (m *service) summarizeCurrentSession(
 		return "", false
 	}
 	plan.Target.AccountID = accountID
-	prepared, err := m.runtime.PrepareSession(ctx, plan, runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: session.SessionID})
+	prepared, err := m.runtime.PrepareSession(ctx, plan, agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: session.SessionID})
 	if err != nil {
 		return "", false
 	}
 	defer func() { _ = prepared.Close(context.WithoutCancel(ctx)) }()
 	if prepared.NeedsResources() {
-		resources := runtimecontract.SessionResources{Target: plan.Target.LaunchTarget(), Skills: plan.Skills}
+		resources := agentapi.SessionResources{Target: plan.Target.LaunchTarget(), Skills: plan.Skills}
 		var acquireErr error
 		if accountID != "" {
 			account, release, err := m.accounts.PrepareQueuedLease(prepared.Context(), accountID, environment.BaseRuntimeID, plan.Workspace.Path, model)
@@ -134,7 +134,7 @@ func (m *service) summarizeCurrentSession(
 		}
 	}
 	sink := &handoffSink{}
-	result := prepared.Run(ctx, runtimecontract.TurnInput{Message: runtimecontract.Message{Text: handoffPrompt}}, sink)
+	result := prepared.Run(ctx, agentapi.TurnInput{Message: agentapi.Message{Text: handoffPrompt}}, sink)
 	if result.Failure != nil || sink.rejected {
 		return "", false
 	}
@@ -178,7 +178,7 @@ func (m *service) summarySelectionAllowed(
 	return validateExecutionConfiguration(environment, ExecutionConfiguration{
 		Model:           model,
 		Reasoning:       reasoning,
-		PermissionLevel: runtimeconfig.PermissionLevelDefault,
+		PermissionLevel: agentapi.PermissionLevelDefault,
 	}) == nil
 }
 
@@ -188,7 +188,7 @@ func summaryReasoningAllowed(environment models.RuntimeEnvironment, model, reaso
 		return true
 	}
 	options := environment.Detection.ReasoningOptions
-	for _, item := range runtimeconfig.AvailableModels(environment.Detection, environment.CustomModels) {
+	for _, item := range agentapi.AvailableModels(environment.Detection, environment.CustomModels) {
 		if item.ID == model && len(item.ReasoningOptions) > 0 {
 			options = item.ReasoningOptions
 			break

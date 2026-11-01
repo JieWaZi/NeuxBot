@@ -11,7 +11,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	rules "github.com/JieWaZi/NeuxBot/server/internal/integration"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -322,7 +322,7 @@ func TestRetryReplayRecoversAcceptedAttemptAfterRequestCancellation(t *testing.T
 				if err != nil {
 					t.Fatal(err)
 				}
-				var retry *agentcapability.Binding
+				var retry *capability.Binding
 				for i := range bindings {
 					if bindings[i].Operation == "knowledge.jobs.retry" {
 						retry = &bindings[i]
@@ -350,7 +350,7 @@ func TestRetryReplayRecoversAcceptedAttemptAfterRequestCancellation(t *testing.T
 						}
 					}, nil
 				}
-				request := agentcapability.Request{Operation: "knowledge.jobs.retry", RequestID: "retry", Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID, "expectedVersion": job.Version}}
+				request := capability.Request{Operation: "knowledge.jobs.retry", RequestID: "retry", Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID, "expectedVersion": job.Version}}
 				if _, err = retry.Call(requestCtx, request); err == nil || requestCtx.Err() == nil {
 					t.Fatalf("request cancellation not injected: %v", err)
 				}
@@ -387,7 +387,7 @@ func TestRetryReplayRecoversAcceptedAttemptAfterRequestCancellation(t *testing.T
 				if revoked {
 					revokeRetryKey(t, authority, keys, "a")
 				}
-				var result agentcapability.Result
+				var result capability.Result
 				if path == "call" {
 					result, err = retry.Call(ctx, request)
 				} else {

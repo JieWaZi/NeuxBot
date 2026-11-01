@@ -1,16 +1,14 @@
 package execution
 
 import (
-	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
-
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -42,7 +40,7 @@ func TestSummarizeCurrentSessionUsesHiddenResume(t *testing.T) {
 		t.Fatalf("handoff = %q, success = %v, requests = %d", summary, ok, len(runtime.requests))
 	}
 	request := runtime.requests[0]
-	if request.Session.Mode != runtimecontract.SessionModeResume || request.Session.ID != "previous-session" ||
+	if request.Session.Mode != agentapi.SessionModeResume || request.Session.ID != "previous-session" ||
 		request.Policy.Model != "gpt-5" || !request.Policy.Execution.WorkspaceReadOnly ||
 		!strings.Contains(request.Message.Text, "Summarize the current conversation") {
 		t.Fatalf("hidden handoff request = %+v", request)
@@ -74,17 +72,17 @@ func TestSummarizeCurrentSessionFallsBackWhenResumeUnavailable(t *testing.T) {
 }
 
 func TestHandoffStartsNewSessionWithoutShowingSummary(t *testing.T) {
-	runtime := &fakeRuntime{results: []runtimecontract.Result{
-		{Session: runtimecontract.SessionResult{OutputID: "old-session", State: runtimecontract.SessionStateCreated}},
+	runtime := &fakeRuntime{results: []agentapi.Result{
+		{Session: agentapi.SessionResult{OutputID: "old-session", State: agentapi.SessionStateCreated}},
 		{},
-		{Session: runtimecontract.SessionResult{OutputID: "new-session", State: runtimecontract.SessionStateCreated}},
+		{Session: agentapi.SessionResult{OutputID: "new-session", State: agentapi.SessionStateCreated}},
 	}}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
 	first, err := manager.execution.Start(context.Background(), WorkIntent{
 		ClientRequestID: util.New(),
 		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}},
 		Input:           WorkInput{Actor: "user", Content: "原始问题"},
-		Options:         WorkOptions{RuntimeID: "codex", PermissionLevel: runtimeconfig.PermissionLevelAuto},
+		Options:         WorkOptions{RuntimeID: "codex", PermissionLevel: agentapi.PermissionLevelAuto},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +92,7 @@ func TestHandoffStartsNewSessionWithoutShowingSummary(t *testing.T) {
 		Chat:  ChatTarget{ChatID: first.Chat.ID},
 		Input: WorkInput{Actor: "user", Content: "继续工作"},
 		Options: WorkOptions{
-			RuntimeID: "codex", PermissionLevel: runtimeconfig.PermissionLevelAuto,
+			RuntimeID: "codex", PermissionLevel: agentapi.PermissionLevelAuto,
 			SessionPolicy: constants.RuntimeSessionPolicyNew,
 			HistoryMode:   constants.HistoryModeSummary,
 			SummaryModel:  "gpt-5",
@@ -105,10 +103,10 @@ func TestHandoffStartsNewSessionWithoutShowingSummary(t *testing.T) {
 	}
 	waitForChatTerminal(t, manager, second.Chat.ID)
 	if len(runtime.requests) != 3 ||
-		runtime.requests[1].Session.Mode != runtimecontract.SessionModeResume ||
+		runtime.requests[1].Session.Mode != agentapi.SessionModeResume ||
 		runtime.requests[1].Session.ID != "old-session" ||
 		runtime.requests[1].Policy.Model != "gpt-5" ||
-		runtime.requests[2].Session.Mode != runtimecontract.SessionModeNew ||
+		runtime.requests[2].Session.Mode != agentapi.SessionModeNew ||
 		len(runtime.requests[2].History) != 0 ||
 		!strings.Contains(runtime.requests[2].Message.Text, "执行完成") {
 		t.Fatalf("handoff requests = %+v", runtime.requests)
@@ -125,19 +123,19 @@ func TestHandoffStartsNewSessionWithoutShowingSummary(t *testing.T) {
 }
 
 func TestHandoffResumeFailureUsesRecentTurns(t *testing.T) {
-	runtime := &fakeRuntime{results: []runtimecontract.Result{
-		{Session: runtimecontract.SessionResult{OutputID: "old-session", State: runtimecontract.SessionStateCreated}},
-		{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code: runtimediagnostic.FailureCodeSessionNotFound, Stage: "resume", Message: "session not found",
+	runtime := &fakeRuntime{results: []agentapi.Result{
+		{Session: agentapi.SessionResult{OutputID: "old-session", State: agentapi.SessionStateCreated}},
+		{ExitCode: -1, Failure: &agentapi.Failure{
+			Code: agentapi.FailureCodeSessionNotFound, Stage: "resume", Message: "session not found",
 		}},
-		{Session: runtimecontract.SessionResult{OutputID: "new-session", State: runtimecontract.SessionStateCreated}},
+		{Session: agentapi.SessionResult{OutputID: "new-session", State: agentapi.SessionStateCreated}},
 	}}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
 	first, err := manager.execution.Start(context.Background(), WorkIntent{
 		ClientRequestID: util.New(),
 		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}},
 		Input:           WorkInput{Actor: "user", Content: "原始问题"},
-		Options:         WorkOptions{RuntimeID: "codex", PermissionLevel: runtimeconfig.PermissionLevelAuto},
+		Options:         WorkOptions{RuntimeID: "codex", PermissionLevel: agentapi.PermissionLevelAuto},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +145,7 @@ func TestHandoffResumeFailureUsesRecentTurns(t *testing.T) {
 		Chat:  ChatTarget{ChatID: first.Chat.ID},
 		Input: WorkInput{Actor: "user", Content: "继续工作"},
 		Options: WorkOptions{
-			RuntimeID: "codex", PermissionLevel: runtimeconfig.PermissionLevelAuto,
+			RuntimeID: "codex", PermissionLevel: agentapi.PermissionLevelAuto,
 			SessionPolicy: constants.RuntimeSessionPolicyNew,
 			HistoryMode:   constants.HistoryModeSummary,
 			HistoryTurns:  1,
@@ -159,8 +157,8 @@ func TestHandoffResumeFailureUsesRecentTurns(t *testing.T) {
 	}
 	waitForChatTerminal(t, manager, second.Chat.ID)
 	if len(runtime.requests) != 3 ||
-		runtime.requests[1].Session.Mode != runtimecontract.SessionModeResume ||
-		runtime.requests[2].Session.Mode != runtimecontract.SessionModeNew ||
+		runtime.requests[1].Session.Mode != agentapi.SessionModeResume ||
+		runtime.requests[2].Session.Mode != agentapi.SessionModeNew ||
 		len(runtime.requests[2].History) != 2 ||
 		runtime.requests[2].History[0].Content != "原始问题" ||
 		runtime.requests[2].History[1].Content != "执行完成" ||

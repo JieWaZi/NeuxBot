@@ -9,8 +9,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -122,7 +122,7 @@ func (s *service) CreateTask(
 		if err != nil {
 			return err
 		}
-		return agentcommand.Commit(transactionContext, map[string]any{"taskId": task.ID, "accepted": true})
+		return capability.Commit(transactionContext, map[string]any{"taskId": task.ID, "accepted": true})
 	})
 	if err != nil {
 		return TaskResult{}, err
@@ -217,7 +217,7 @@ func (s *service) updatePendingTask(
 		if eventErr != nil {
 			return eventErr
 		}
-		return agentcommand.Commit(transactionContext, map[string]any{"taskId": task.ID, "updated": true})
+		return capability.Commit(transactionContext, map[string]any{"taskId": task.ID, "updated": true})
 	})
 	if err != nil {
 		return models.ChannelTask{}, err
@@ -444,7 +444,7 @@ func (s *service) dispatchTask(
 			PermissionLevel:  member.PermissionLevel,
 			SessionPolicy:    constants.RuntimeSessionPolicyContinue,
 			ToolCapabilities: toolCapabilities,
-			SupplementalInstructions: []runtimecontract.Instruction{
+			SupplementalInstructions: []agentapi.Instruction{
 				teamInstruction,
 			},
 		},

@@ -18,8 +18,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/packagefiles"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
@@ -122,7 +122,7 @@ func TestPluginAdmissionPinsResourcesAndDoesNotSelectEveryComponent(t *testing.T
 	data := t.TempDir()
 	state := executionPlugin(t, data, "p1", "use office", true)
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data, pluginLauncher: "/core"}
-	detection := runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	prepared, err := s.preparePlugins(context.Background(), "w1", pendingMessage{message: userMessage{PluginIDs: []string{"p1"}}}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -167,7 +167,7 @@ func TestPluginSkillCollisionDeduplicatesOnlyEqualContent(t *testing.T) {
 	b := executionPlugin(t, data, "b", "second", false)
 	b.Configuration.Secrets = nil
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{a, b}}, skillDataDirectory: data}
-	detection := runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	result, err := s.preparePlugins(context.Background(), "w1", pendingMessage{}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestPluginRetryRejectsChangedConfiguration(t *testing.T) {
 	state := executionPlugin(t, data, "p1", "use office", false)
 	state.Configuration.Secrets = nil
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-	_, err := s.preparePlugins(context.Background(), "w1", pendingMessage{retry: true, pluginSnapshots: []plugins.Snapshot{{ID: "p1", VersionID: "p1-v1", ConfigurationRevision: 2}}}, runtimeconfig.DetectionResult{})
+	_, err := s.preparePlugins(context.Background(), "w1", pendingMessage{retry: true, pluginSnapshots: []plugins.Snapshot{{ID: "p1", VersionID: "p1-v1", ConfigurationRevision: 2}}}, agentapi.DetectionResult{})
 	if !errors.Is(err, status_error.PluginConfigurationConflict) {
 		t.Fatalf("retry silently changed config: %v", err)
 	}
@@ -196,7 +196,7 @@ func TestPluginRestrictedEntryFiltersMCPAndRejectsProviderCLI(t *testing.T) {
 	data := t.TempDir()
 	state := executionPlugin(t, data, "p1", "use office", true)
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data, pluginLauncher: "/core"}
-	detection := runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	empty := []string{}
 	result, err := s.preparePlugins(context.Background(), "w1", pendingMessage{allowedConnectorIDs: &empty}, detection)
 	if err != nil {
@@ -230,7 +230,7 @@ func TestPluginIntentAndVersionSurviveAdmissionAndHistory(t *testing.T) {
 	runtime := &fakeRuntime{}
 	manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{plugins: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data})
 	manager.execution.(*service).pluginLauncher = "/core"
-	intent := WorkIntent{ClientRequestID: "plugin-intent", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "整理文档", PluginIDs: []string{"p1"}}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: runtimeconfig.PermissionLevelDefault}}
+	intent := WorkIntent{ClientRequestID: "plugin-intent", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "整理文档", PluginIDs: []string{"p1"}}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelDefault}}
 	accepted, err := manager.execution.Start(context.Background(), intent)
 	if err != nil {
 		t.Fatal(err)
@@ -272,7 +272,7 @@ func TestDeduplicatedPluginSkillKeepsLeasedImmutableSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	derived := runtimecontract.Skill{Name: "office", Path: filepath.Join(root, "skills", "office")}
+	derived := agentapi.Skill{Name: "office", Path: filepath.Join(root, "skills", "office")}
 	content, err := os.ReadFile(filepath.Join(derived.Path, "SKILL.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -281,7 +281,7 @@ func TestDeduplicatedPluginSkillKeepsLeasedImmutableSource(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(independent, "SKILL.md"), content, 0600); err != nil {
 		t.Fatal(err)
 	}
-	merged, err := mergePluginSkills([]runtimecontract.Skill{{Name: "office", Path: independent}}, []runtimecontract.Skill{derived})
+	merged, err := mergePluginSkills([]agentapi.Skill{{Name: "office", Path: independent}}, []agentapi.Skill{derived})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,19 +297,19 @@ func TestDeduplicatedPluginSkillKeepsLeasedImmutableSource(t *testing.T) {
 }
 
 func TestIndependentSkillDuplicatesUseTheSameContentRule(t *testing.T) {
-	makeSkill := func(body string) runtimecontract.Skill {
+	makeSkill := func(body string) agentapi.Skill {
 		root := t.TempDir()
 		if err := os.WriteFile(filepath.Join(root, "SKILL.md"), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		return runtimecontract.Skill{Name: "same", Path: root}
+		return agentapi.Skill{Name: "same", Path: root}
 	}
 	first, second := makeSkill("same body"), makeSkill("same body")
-	merged, err := mergePluginSkills([]runtimecontract.Skill{first, second}, nil)
+	merged, err := mergePluginSkills([]agentapi.Skill{first, second}, nil)
 	if err != nil || len(merged) != 1 {
 		t.Errorf("same independent content did not merge: %+v %v", merged, err)
 	}
-	if _, err := mergePluginSkills([]runtimecontract.Skill{first, makeSkill("different body")}, nil); !errors.Is(err, status_error.PluginSkillConflict) {
+	if _, err := mergePluginSkills([]agentapi.Skill{first, makeSkill("different body")}, nil); !errors.Is(err, status_error.PluginSkillConflict) {
 		t.Errorf("conflicting independent content admitted: %v", err)
 	}
 }
@@ -358,7 +358,7 @@ func TestPluginAdmissionPreservesLegacyNestedPackageRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data, pluginLauncher: "/core"}
-	detection := runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	prepared, err := s.preparePlugins(context.Background(), "w1", pendingMessage{message: userMessage{PluginIDs: []string{"legacy"}}}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -406,7 +406,7 @@ func TestClaudeNativePluginDoesNotAlsoProjectSkills(t *testing.T) {
 	version := models.PluginVersion{ID: "v", PluginID: "p", Version: "2", Digest: stage.Digest, ContentPath: relative, Package: stage.Package, TrustedAt: 1}
 	state := models.PluginState{Plugin: models.Plugin{ID: "p"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w", PluginID: "p", VersionID: "v", Enabled: true}}, Configuration: models.PluginConfiguration{Values: map[string]string{}}}
 	manager := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-	detection := runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: runtimeconfig.RuntimeIDClaude}, Version: "2.1.159", Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: agentapi.RuntimeIDClaude}, Version: "2.1.159", Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	prepared, err := manager.preparePlugins(context.Background(), "w", pendingMessage{}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -425,7 +425,7 @@ func TestClaudeNativePluginDoesNotAlsoProjectSkills(t *testing.T) {
 		t.Fatal(err)
 	}
 	codex := detection
-	codex.Runtime.BaseRuntimeID = runtimeconfig.RuntimeIDCodex
+	codex.Runtime.BaseRuntimeID = agentapi.RuntimeIDCodex
 	codex.Version = "0.161.0"
 	if fallback, err := manager.preparePlugins(context.Background(), "w", pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}, codex); err == nil {
 		fallback.release()
@@ -491,7 +491,7 @@ func TestNativeTargetConfigurationIsValidatedAndOnlySelectedSecretsInjected(t *t
 	version := models.PluginVersion{ID: "v", PluginID: "p", Version: "1", Digest: stage.Digest, ContentPath: relative, Package: stage.Package, TrustedAt: 1}
 	state := models.PluginState{Plugin: models.Plugin{ID: "p"}, Versions: []models.PluginVersion{version}, Installations: []models.WakerPlugin{{WakerID: "w", PluginID: "p", VersionID: "v", Enabled: true}}, Configuration: models.PluginConfiguration{Values: map[string]string{}}}
 	manager := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-	detection := runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{BaseRuntimeID: runtimeconfig.RuntimeIDCodex}, Version: "0.161.0"}
+	detection := agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: agentapi.RuntimeIDCodex}, Version: "0.161.0"}
 	request := pendingMessage{message: userMessage{PluginIDs: []string{"p"}}}
 	prepared, err := manager.preparePlugins(context.Background(), "w", request, detection)
 	if err != nil {
@@ -501,7 +501,7 @@ func TestNativeTargetConfigurationIsValidatedAndOnlySelectedSecretsInjected(t *t
 	if len(prepared.native) != 1 || prepared.environment["TARGET_TOKEN"] != "" {
 		t.Fatalf("unexpected Codex delivery: %+v", prepared)
 	}
-	detection.Runtime.BaseRuntimeID = runtimeconfig.RuntimeIDClaude
+	detection.Runtime.BaseRuntimeID = agentapi.RuntimeIDClaude
 	detection.Version = "2.1.159"
 	if result, err := manager.preparePlugins(context.Background(), "w", request, detection); err == nil {
 		result.release()
@@ -539,7 +539,7 @@ func TestPluginAdmissionRejectsLegacyProviderWithoutDeliveringComponents(t *test
 			raw, _ := json.Marshal(map[string]any{"provider": provider})
 			state.Versions[0].Package.Manifest.Extensions = map[string]json.RawMessage{constants.PluginExtensionNamespace: raw}
 			s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-			detection := runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+			detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 			result, err := s.preparePlugins(context.Background(), "w1", pendingMessage{message: userMessage{PluginIDs: []string{"legacy"}}}, detection)
 			if !errors.Is(err, status_error.PluginManifestInvalid) {
 				t.Fatalf("legacy provider accepted: %v", err)
@@ -561,7 +561,7 @@ func TestFreezePluginResourcesDefersContentPreparationAndPinsConfiguration(t *te
 	state := executionPlugin(t, data, "p1", "use office", false)
 	state.Configuration.Secrets = nil
 	s := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data}
-	detection := runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	plan, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -649,7 +649,7 @@ func TestHotPluginDeclarationsIgnoreManagementPayloads(t *testing.T) {
 	defer db.Callback().Query().Remove("plugin-declaration-budget")
 	core := &service{pluginController: controllers.NewPluginController(db)}
 	request := pendingMessage{message: userMessage{PluginIDs: []string{"active"}}}
-	frozen, err := core.freezePluginResources(context.Background(), "w1", request, runtimeconfig.DetectionResult{})
+	frozen, err := core.freezePluginResources(context.Background(), "w1", request, agentapi.DetectionResult{})
 	if err != nil {
 		t.Fatalf("hot declaration accessed unused payload: %v", err)
 	}
@@ -665,7 +665,7 @@ func TestHotPluginDeclarationsIgnoreManagementPayloads(t *testing.T) {
 	if err := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ?", "active").Update("revision", 4).Error; err != nil {
 		t.Fatal(err)
 	}
-	changed, err := core.freezePluginResources(context.Background(), "w1", request, runtimeconfig.DetectionResult{})
+	changed, err := core.freezePluginResources(context.Background(), "w1", request, agentapi.DetectionResult{})
 	if err != nil || changed.key == frozen.key {
 		t.Fatalf("revision did not change static identity: %v", err)
 	}
@@ -689,7 +689,7 @@ func TestColdPluginResourcesRejectConfigurationChangedAfterDeclaration(t *testin
 		}
 	}
 	core := &service{pluginController: controllers.NewPluginController(db), skillDataDirectory: data}
-	detection := runtimeconfig.DetectionResult{Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}
+	detection := agentapi.DetectionResult{Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
 	frozen, err := core.freezePluginResources(context.Background(), "w1", pendingMessage{}, detection)
 	if err != nil {
 		t.Fatal(err)
@@ -712,12 +712,12 @@ func TestFrozenPluginResourceKeyUsesStableResourceFacts(t *testing.T) {
 	b := executionPlugin(t, data, "b", "second", false)
 	states := []models.PluginState{a, b}
 	s := &service{pluginController: installedPluginFixture{states: states}, skillDataDirectory: data}
-	first, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{message: userMessage{Text: "first", PluginIDs: []string{"a"}}}, runtimeconfig.DetectionResult{})
+	first, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{message: userMessage{Text: "first", PluginIDs: []string{"a"}}}, agentapi.DetectionResult{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.pluginController = installedPluginFixture{states: []models.PluginState{b, a}}
-	second, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{message: userMessage{Text: "second", PluginIDs: []string{"b"}}}, runtimeconfig.DetectionResult{})
+	second, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{message: userMessage{Text: "second", PluginIDs: []string{"b"}}}, agentapi.DetectionResult{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -726,7 +726,7 @@ func TestFrozenPluginResourceKeyUsesStableResourceFacts(t *testing.T) {
 	}
 	b.Configuration.Revision++
 	s.pluginController = installedPluginFixture{states: []models.PluginState{a, b}}
-	changed, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{}, runtimeconfig.DetectionResult{})
+	changed, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{}, agentapi.DetectionResult{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -735,7 +735,7 @@ func TestFrozenPluginResourceKeyUsesStableResourceFacts(t *testing.T) {
 	}
 	b.Configuration.Revision--
 	b.Installations[0].Enabled = false
-	disabled, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{}, runtimeconfig.DetectionResult{})
+	disabled, err := s.freezePluginResources(context.Background(), "w1", pendingMessage{}, agentapi.DetectionResult{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -745,7 +745,7 @@ func TestFrozenPluginResourceKeyUsesStableResourceFacts(t *testing.T) {
 }
 
 // preparePlugins 为资源行为测试顺序调用生产冻结与取得端口。
-func (m *service) preparePlugins(ctx context.Context, waker string, request pendingMessage, detection runtimeconfig.DetectionResult, usage ...authorization.Usage) (preparedPlugins, error) {
+func (m *service) preparePlugins(ctx context.Context, waker string, request pendingMessage, detection agentapi.DetectionResult, usage ...authorization.Usage) (preparedPlugins, error) {
 	plan, err := m.freezePluginResources(ctx, waker, request, detection)
 	if err != nil {
 		return preparedPlugins{}, err

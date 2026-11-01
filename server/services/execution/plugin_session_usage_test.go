@@ -7,8 +7,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -30,22 +30,22 @@ type pluginUsageRuntime struct {
 // pluginUsagePreparation 只观察接纳层显式交还真实资源的次数。
 type pluginUsagePreparation struct {
 	// PreparedChatRun 保留消费者的阶段与所有权。
-	runtimecontract.PreparedChatRun
+	agentapi.PreparedChatRun
 	// owner 保存当前测试的身份与提交观察值。
 	owner *pluginUsageRuntime
 }
 
-func (p *pluginUsagePreparation) Bind(ctx context.Context, resources runtimecontract.SessionResources) error {
+func (p *pluginUsagePreparation) Bind(ctx context.Context, resources agentapi.SessionResources) error {
 	p.owner.acquisitions++
 	return p.PreparedChatRun.Bind(ctx, resources)
 }
-func (p *pluginUsagePreparation) Run(ctx context.Context, turn runtimecontract.TurnInput, sink runtimecontract.EventSink) runtimecontract.Result {
+func (p *pluginUsagePreparation) Run(ctx context.Context, turn agentapi.TurnInput, sink agentapi.EventSink) agentapi.Result {
 	p.owner.observed = append(p.owner.observed, p.owner.authorizer.Usages())
 	return p.PreparedChatRun.Run(ctx, turn, sink)
 }
 
 // PrepareSession 保留同一原生消费者，只在提交边界观察已有身份事实。
-func (r *pluginUsageRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+func (r *pluginUsageRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
 	prepared, err := r.leasedChatRuntime.PrepareSession(ctx, plan, session)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func TestChatHotPluginUsageTracksCurrentExecutionAndClearsAtIdle(t *testing.T) {
 		t.Fatal(err)
 	}
 	runtime := &pluginUsageRuntime{authorizer: authorizer}
-	runtime.result.Session = runtimecontract.SessionResult{OutputID: "native-session", State: runtimecontract.SessionStateCreated}
+	runtime.result.Session = agentapi.SessionResult{OutputID: "native-session", State: agentapi.SessionStateCreated}
 	manager := newMessageTestService(t, t.TempDir(), &runtime.accountRuntime, messageTestOptions{skillDataDirectory: plugins.skillDataDirectory, plugins: installedPluginFixture{states: []models.PluginState{state}}})
 	core := manager.execution.(*service)
 	core.runtime, core.pluginInstallations = runtime, plugins.pluginInstallations
@@ -116,7 +116,7 @@ type usageHandoffPreparation struct {
 	*synchronousPreparation
 }
 
-func (p *usageHandoffPreparation) Run(ctx context.Context, turn runtimecontract.TurnInput, sink runtimecontract.EventSink) runtimecontract.Result {
+func (p *usageHandoffPreparation) Run(ctx context.Context, turn agentapi.TurnInput, sink agentapi.EventSink) agentapi.Result {
 	p.started = true
 	return p.run(ctx, recordedRun{SessionPlan: p.plan, TurnInput: turn, Session: p.session}, sink)
 }
@@ -129,14 +129,14 @@ func TestPluginUsageClearsBeforeTerminalAndNextAdmission(t *testing.T) {
 		// accepted 表示 Runtime 是否发出真实启动确认。
 		accepted bool
 		// failure 是当前分支的固定运行结果。
-		failure *runtimecontract.Failure
+		failure *agentapi.Failure
 		// status 是权威终态应当保留的执行状态。
 		status constants.ExecutionStatus
 	}{
 		{name: "completed", accepted: true, status: constants.ExecutionStatusCompleted},
-		{name: "failed", accepted: true, failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeRuntimeUnavailable}, status: constants.ExecutionStatusFailed},
-		{name: "canceled", accepted: true, failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeContextCanceled}, status: constants.ExecutionStatusCanceled},
-		{name: "rejected", failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeRuntimeUnavailable}, status: constants.ExecutionStatusFailed},
+		{name: "failed", accepted: true, failure: &agentapi.Failure{Code: agentapi.FailureCodeRuntimeUnavailable}, status: constants.ExecutionStatusFailed},
+		{name: "canceled", accepted: true, failure: &agentapi.Failure{Code: agentapi.FailureCodeContextCanceled}, status: constants.ExecutionStatusCanceled},
+		{name: "rejected", failure: &agentapi.Failure{Code: agentapi.FailureCodeRuntimeUnavailable}, status: constants.ExecutionStatusFailed},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -159,13 +159,13 @@ func TestPluginUsageClearsBeforeTerminalAndNextAdmission(t *testing.T) {
 			cleanupCount := 0
 			var admissionError error
 			prepared := &usageHandoffPreparation{synchronousPreparation: &synchronousPreparation{
-				run: func(ctx context.Context, _ recordedRun, sink runtimecontract.EventSink) runtimecontract.Result {
+				run: func(ctx context.Context, _ recordedRun, sink agentapi.EventSink) agentapi.Result {
 					if test.accepted {
-						if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: marshalData(runtimecontract.InvocationStartedData{InvocationID: "invocation"})}); err != nil {
+						if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: marshalData(agentapi.InvocationStartedData{InvocationID: "invocation"})}); err != nil {
 							t.Fatal(err)
 						}
 					}
-					return runtimecontract.Result{Failure: test.failure}
+					return agentapi.Result{Failure: test.failure}
 				},
 				close: func(context.Context) error {
 					// 此关闭入口在 finishExecution 返回后执行，此时新轮确实可以取得同一 Chat。

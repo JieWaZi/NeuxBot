@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"os"
@@ -13,7 +13,7 @@ func TestFirstSendWithoutDirectoryCreatesPerChatWorkspaceAndContinuationKeepsIt(
 	runtime := &fakeRuntime{}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
 	ctx := context.Background()
-	input := testMessageInput{ClientRequestID: "managed-first", NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "使用会话临时目录"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}}
+	input := testMessageInput{ClientRequestID: "managed-first", NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "使用会话临时目录"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}}
 	first, err := manager.sendTestMessage(ctx, input)
 	if err != nil {
 		t.Fatal(err)

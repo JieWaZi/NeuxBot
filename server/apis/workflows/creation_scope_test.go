@@ -1,7 +1,7 @@
 package workflows
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -14,7 +14,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
@@ -202,23 +202,23 @@ func TestWorkflowReusesAllyAndStartsAnOrdinaryChat(t *testing.T) {
 	}
 }
 
-func (*creationScopeRuntime) ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
-	return runtimecontract.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
+func (*creationScopeRuntime) ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
+	return agentapi.ForkSessionResult{}, status_error.WorkflowCapabilityUnsupported
 }
-func (*creationScopeRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
-	return []runtimeconfig.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
+func (*creationScopeRuntime) Runtimes() []agentapi.RuntimeSummary {
+	return []agentapi.RuntimeSummary{{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}}
 }
-func (r *creationScopeRuntime) Run(ctx context.Context, request fixtureInvocation, sink runtimecontract.EventSink) runtimecontract.Result {
+func (r *creationScopeRuntime) Run(ctx context.Context, request fixtureInvocation, sink agentapi.EventSink) agentapi.Result {
 	id := util.New()
-	data, _ := json.Marshal(runtimecontract.InvocationStartedData{InvocationID: id})
-	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: data}); err != nil {
-		return runtimecontract.Result{ExitCode: 1}
+	data, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: id})
+	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: data}); err != nil {
+		return agentapi.Result{ExitCode: 1}
 	}
 	r.requests <- request
 	if r.duringRun != nil {
 		r.duringRun(ctx, request)
 	}
-	return runtimecontract.Result{ProtocolHealthy: true, Facts: runtimecontract.InvocationFacts{InvocationID: id, RuntimeID: "codex", BaseRuntimeID: "codex"}}
+	return agentapi.Result{ProtocolHealthy: true, Facts: agentapi.InvocationFacts{InvocationID: id, RuntimeID: "codex", BaseRuntimeID: "codex"}}
 }
 
 func TestCreationScopeManagedAndExplicitDirectory(t *testing.T) {

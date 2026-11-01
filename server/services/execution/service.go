@@ -2,7 +2,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -12,8 +12,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
@@ -93,13 +92,13 @@ type service struct {
 	// events 复用已提交 Chat 事件的应用内路由。
 	events *events.Hub
 	// agent 是统一执行能力的授权注册表。
-	agent *agentcapability.Registry
+	agent *capability.Registry
 	// agentEndpoint 是应用明确提供的本机执行协议地址。
 	agentEndpoint string
 	// agentBinary 是随应用发布的 CLI 真实路径。
 	agentBinary string
 	// agentBindings 提供伙伴当前普通业务能力的领域绑定。
-	agentBindings func(models.Chat, string, []string, string) []agentcapability.Binding
+	agentBindings func(models.Chat, string, []string, string) []capability.Binding
 	// validateIntent 在任何首发、续发或重试接纳前校验领域持久约束。
 	validateIntent func(context.Context, WorkIntent) error
 	// agentSessions 保存同一原生会话进程独占的连接文件位置。
@@ -155,13 +154,13 @@ type Config struct {
 	// Events 提供已提交状态的有界观察。
 	Events *events.Hub
 	// Agent 是当前 Core 独占的短期执行能力注册表。
-	Agent *agentcapability.Registry
+	Agent *capability.Registry
 	// AgentEndpoint 是与桌面管理认证分离的本机地址。
 	AgentEndpoint string
 	// AgentBinary 是应用提供的 CLI 绝对路径。
 	AgentBinary string
 	// AgentBindings 按冻结伙伴和目录范围签发普通能力。
-	AgentBindings func(models.Chat, string, []string, string) []agentcapability.Binding
+	AgentBindings func(models.Chat, string, []string, string) []capability.Binding
 	// ValidateIntent 校验入口无关的领域接纳约束；为空时不增加额外限制。
 	ValidateIntent func(context.Context, WorkIntent) error
 	// AcquireTeamChatInput 保护团队成员直接输入，普通 Chat 通过不持锁。
@@ -222,11 +221,11 @@ type dormantChatCreator interface {
 // runtimeRunner 是 Execution Core 对 Runtime 深模块的最小消费接口。
 type runtimeRunner interface {
 	// ForkSession 使用冻结运行配置创建独立原生会话。
-	ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error)
+	ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error)
 	// Runtimes 返回工作区投影所需的 Runtime 摘要。
-	Runtimes() []runtimeconfig.RuntimeSummary
+	Runtimes() []agentapi.RuntimeSummary
 	// PrepareSession 占用技术会话；接纳层只在冷路径显式取得并交还实际资源。
-	PrepareSession(context.Context, runtimecontract.SessionPlan, runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error)
+	PrepareSession(context.Context, agentapi.SessionPlan, agentapi.SessionDirective) (agentapi.PreparedChatRun, error)
 	// CloseWorkspace 在改写账号或共享工作区配置前关闭仍持有资源的原生消费者。
 	CloseWorkspace(context.Context, string) error
 }

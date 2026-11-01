@@ -1,7 +1,7 @@
 package runtime_options
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"testing"
 
@@ -32,16 +32,16 @@ func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.
 		Enabled:                true,
 		IsDefault:              true,
 		DefaultModel:           "free-model",
-		DefaultPermissionLevel: runtimeconfig.PermissionLevelFullAccess,
+		DefaultPermissionLevel: agentapi.PermissionLevelFullAccess,
 		CustomModels:           []string{},
-		Detection: runtimeconfig.DetectionResult{
+		Detection: agentapi.DetectionResult{
 			ResolvedBinary: "/installed/opencode",
-			State:          runtimeconfig.DetectionStateReady,
-			Models: []runtimeconfig.ModelOption{{
+			State:          agentapi.DetectionStateReady,
+			Models: []agentapi.ModelOption{{
 				ID:               "free-model",
-				PermissionLevels: []runtimeconfig.PermissionLevel{runtimeconfig.PermissionLevelFullAccess},
+				PermissionLevels: []agentapi.PermissionLevel{agentapi.PermissionLevelFullAccess},
 			}},
-			Diagnostics: []runtimeconfig.Diagnostic{},
+			Diagnostics: []agentapi.Diagnostic{},
 		},
 	}
 	tests := []struct {
@@ -54,13 +54,13 @@ func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.
 	}{
 		{name: "模型与权限就绪", allowed: true},
 		{name: "所选智能体探测未就绪", change: func(environment *models.RuntimeEnvironment) {
-			environment.Detection.State = runtimeconfig.DetectionStateUnavailable
+			environment.Detection.State = agentapi.DetectionStateUnavailable
 		}},
 		{name: "尚未设为默认", change: func(environment *models.RuntimeEnvironment) {
 			environment.IsDefault = false
 		}},
 		{name: "只有安装证据", change: func(environment *models.RuntimeEnvironment) {
-			environment.Detection.Models = []runtimeconfig.ModelOption{}
+			environment.Detection.Models = []agentapi.ModelOption{}
 		}},
 		{name: "没有默认模型", change: func(environment *models.RuntimeEnvironment) {
 			environment.DefaultModel = ""
@@ -69,10 +69,10 @@ func TestCanCompleteStartupSetupRequiresDetectedModelsAndPermissions(t *testing.
 			environment.DefaultModel = "removed-model"
 		}},
 		{name: "默认权限不支持", change: func(environment *models.RuntimeEnvironment) {
-			environment.DefaultPermissionLevel = runtimeconfig.PermissionLevelAuto
+			environment.DefaultPermissionLevel = agentapi.PermissionLevelAuto
 		}},
 		{name: "旧目录仍在但刷新失败", change: func(environment *models.RuntimeEnvironment) {
-			environment.Detection.Diagnostics = []runtimeconfig.Diagnostic{{Code: runtimeconfig.DiagnosticCodeACPOptionsUnavailable}}
+			environment.Detection.Diagnostics = []agentapi.Diagnostic{{Code: agentapi.DiagnosticCodeACPOptionsUnavailable}}
 		}},
 	}
 	for _, test := range tests {

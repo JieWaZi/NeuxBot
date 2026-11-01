@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"strings"
@@ -9,7 +9,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -50,7 +50,7 @@ func (m *service) ResolveConfiguration(ctx context.Context, config ExecutionConf
 			if model == "" {
 				model = environment.DefaultModel
 			}
-			_, config.Reasoning = runtimeconfig.NormalizeDetectedDefaults(
+			_, config.Reasoning = agentapi.NormalizeDetectedDefaults(
 				environment.Detection, environment.CustomModels, model, config.Reasoning,
 			)
 		}
@@ -110,7 +110,7 @@ func validateRuntimeAvailability(
 		return status_error.RuntimeUnavailable
 	}
 	if config.RequiredConnectorTransport != constants.RuntimeConnectorTransportUnspecified &&
-		!runtimecontract.DetectedConnectorTransportSupported(
+		!agentapi.DetectedConnectorTransportSupported(
 			environment.Detection,
 			config.RequiredConnectorTransport,
 		) {
@@ -131,7 +131,7 @@ func validateExecutionConfiguration(
 	if selectedModel == "" {
 		selectedModel = strings.TrimSpace(environment.DefaultModel)
 	}
-	modelsAvailable := runtimeconfig.AvailableModels(environment.Detection, environment.CustomModels)
+	modelsAvailable := agentapi.AvailableModels(environment.Detection, environment.CustomModels)
 	modelIndex := -1
 	for index, model := range modelsAvailable {
 		if model.ID == selectedModel {

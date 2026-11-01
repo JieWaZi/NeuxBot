@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"path/filepath"
@@ -31,8 +31,8 @@ func TestRuntimeEnvironmentControllerPersistsConfigurationAndDetection(t *testin
 	ctx := context.Background()
 	initial := models.RuntimeEnvironment{
 		ID:            "0123456789abcdef0123456789abcdef",
-		RuntimeID:     runtimeconfig.RuntimeIDCodex,
-		BaseRuntimeID: runtimeconfig.RuntimeIDCodex,
+		RuntimeID:     agentapi.RuntimeIDCodex,
+		BaseRuntimeID: agentapi.RuntimeIDCodex,
 		Name:          "Codex CLI",
 		Enabled:       true,
 		Binary:        "codex",
@@ -42,7 +42,7 @@ func TestRuntimeEnvironmentControllerPersistsConfigurationAndDetection(t *testin
 		t.Fatalf("Ensure() error = %v", err)
 	}
 	configuration := models.RuntimeEnvironment{
-		RuntimeID:              runtimeconfig.RuntimeIDCodex,
+		RuntimeID:              agentapi.RuntimeIDCodex,
 		Enabled:                false,
 		Binary:                 "/opt/tools/codex",
 		PrefixArgs:             []string{"--profile", "ally"},
@@ -50,34 +50,34 @@ func TestRuntimeEnvironmentControllerPersistsConfigurationAndDetection(t *testin
 		CustomModels:           []string{"gpt-team-custom"},
 		DefaultModel:           "gpt-5.6",
 		DefaultReasoning:       "high",
-		DefaultPermissionLevel: runtimeconfig.PermissionLevelDefault,
+		DefaultPermissionLevel: agentapi.PermissionLevelDefault,
 	}
 	if err := controller.UpdateConfiguration(ctx, configuration); err != nil {
 		t.Fatalf("UpdateConfiguration() error = %v", err)
 	}
-	detection := runtimeconfig.DetectionResult{
-		Runtime: runtimeconfig.RuntimeSummary{
-			ID:                            runtimeconfig.RuntimeIDCodex,
-			BaseRuntimeID:                 runtimeconfig.RuntimeIDCodex,
+	detection := agentapi.DetectionResult{
+		Runtime: agentapi.RuntimeSummary{
+			ID:                            agentapi.RuntimeIDCodex,
+			BaseRuntimeID:                 agentapi.RuntimeIDCodex,
 			Name:                          "Codex CLI",
 			ConfigHomeEnvironmentVariable: "CODEX_HOME",
 		},
-		State:          runtimeconfig.DetectionStateReady,
+		State:          agentapi.DetectionStateReady,
 		Version:        "1.2.3",
 		ResolvedBinary: "/opt/tools/codex",
-		Models:         []runtimeconfig.ModelOption{{ID: "gpt-5.6", Name: "GPT-5.6"}},
+		Models:         []agentapi.ModelOption{{ID: "gpt-5.6", Name: "GPT-5.6"}},
 	}
-	if err := controller.UpdateDetection(ctx, runtimeconfig.RuntimeIDCodex, detection, 1234); err != nil {
+	if err := controller.UpdateDetection(ctx, agentapi.RuntimeIDCodex, detection, 1234); err != nil {
 		t.Fatalf("UpdateDetection() error = %v", err)
 	}
 
-	stored, err := controller.Get(ctx, runtimeconfig.RuntimeIDCodex)
+	stored, err := controller.Get(ctx, agentapi.RuntimeIDCodex)
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
 	if stored.Enabled || stored.Binary != configuration.Binary ||
 		stored.ConfigHome != configuration.ConfigHome ||
-		stored.DefaultPermissionLevel != runtimeconfig.PermissionLevelDefault {
+		stored.DefaultPermissionLevel != agentapi.PermissionLevelDefault {
 		t.Fatalf("stored configuration = %#v, want disabled custom configuration", stored)
 	}
 	if !reflect.DeepEqual(stored.PrefixArgs, configuration.PrefixArgs) {

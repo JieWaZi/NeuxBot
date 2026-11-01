@@ -12,15 +12,15 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcli"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	agentcli "github.com/JieWaZi/NeuxBot/server/internal/agent/cli"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/neux-knowledge/core"
 )
 
-func observedMaintenance(t *testing.T) (*Service, *core.Library, *core.Job, agentcapability.Binding) {
+func observedMaintenance(t *testing.T) (*Service, *core.Library, *core.Job, capability.Binding) {
 	t.Helper()
 	s, lib := newServiceFixture(t)
 	s.config.Events = events.New()
@@ -41,13 +41,13 @@ func observedMaintenance(t *testing.T) (*Service, *core.Library, *core.Job, agen
 		}
 	}
 	t.Fatal("chat cannot wait for its accepted knowledge task")
-	return nil, nil, nil, agentcapability.Binding{}
+	return nil, nil, nil, capability.Binding{}
 }
 
 func TestKnowledgeJobWaitTimeoutCanResumeToSavedReport(t *testing.T) {
 	s, lib, job, wait := observedMaintenance(t)
 	ctx := context.Background()
-	request := agentcapability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID, "timeoutMs": 1}}
+	request := capability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID, "timeoutMs": 1}}
 	result, err := wait.Call(ctx, request)
 	if err != nil || result.Data.(map[string]any)["completed"] != false {
 		t.Fatalf("pending observation: %+v %v", result, err)
@@ -75,7 +75,7 @@ func TestKnowledgeJobWaitWakesOnCommitWithoutHoldingPolicyLock(t *testing.T) {
 	s, lib, job, _ := observedMaintenance(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var get agentcapability.Binding
+	var get capability.Binding
 	for _, binding := range s.AgentBindings(ctx, s.config.Chats.(selectedChat).chat) {
 		if binding.Operation == "knowledge.jobs.get" {
 			get = binding
@@ -83,7 +83,7 @@ func TestKnowledgeJobWaitWakesOnCommitWithoutHoldingPolicyLock(t *testing.T) {
 	}
 	read := make(chan struct{}, 2)
 	call := get.Call
-	get.Call = func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+	get.Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
 		result, err := call(ctx, request)
 		read <- struct{}{}
 		return result, err
@@ -91,7 +91,7 @@ func TestKnowledgeJobWaitWakesOnCommitWithoutHoldingPolicyLock(t *testing.T) {
 	wait := s.jobWaitBinding(get)
 	done := make(chan error, 1)
 	go func() {
-		result, err := wait.Call(ctx, agentcapability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID, "timeoutMs": 60000}})
+		result, err := wait.Call(ctx, capability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID, "timeoutMs": 60000}})
 		if err == nil && result.Data.(map[string]any)["completed"] != true {
 			err = errors.New("event did not deliver terminal result")
 		}
@@ -138,7 +138,7 @@ func TestKnowledgeJobWaitFailureIsTerminalAndKeepsDiagnostic(t *testing.T) {
 	if _, err := s.config.Engine.FailJob(ctx, core.FailJobInput{JobActionInput: core.JobActionInput{RequestID: "fail", JobID: job.ID, ExpectedVersion: job.Version}, Diagnostic: "model disconnected"}); err != nil {
 		t.Fatal(err)
 	}
-	result, err := wait.Call(ctx, agentcapability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID}})
+	result, err := wait.Call(ctx, capability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,13 +168,13 @@ func TestKnowledgeJobWaitRejectsCrossLibraryRemoteAndCancelledObserver(t *testin
 		{"libraryId": other.ResourceID, "jobId": job.ID},
 		{"libraryId": lib.ID, "backend": "custom", "connectionId": "remote", "jobId": job.ID},
 	} {
-		if _, err := wait.Call(ctx, agentcapability.Request{Params: params}); err == nil {
+		if _, err := wait.Call(ctx, capability.Request{Params: params}); err == nil {
 			t.Fatalf("unauthorized wait accepted: %v", params)
 		}
 	}
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
-	if _, err := wait.Call(cancelled, agentcapability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID}}); err == nil {
+	if _, err := wait.Call(cancelled, capability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID}}); err == nil {
 		t.Fatal("cancelled observer kept waiting")
 	}
 	got, err := s.config.Engine.GetJob(ctx, job.ID)
@@ -182,7 +182,7 @@ func TestKnowledgeJobWaitRejectsCrossLibraryRemoteAndCancelledObserver(t *testin
 		t.Fatalf("observer cancellation cancelled background work: %+v %v", got, err)
 	}
 	s.config.Events = nil
-	if _, err := wait.Call(ctx, agentcapability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID}}); !errors.Is(err, status_error.AgentConnectionUnavailable) {
+	if _, err := wait.Call(ctx, capability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID}}); !errors.Is(err, status_error.AgentConnectionUnavailable) {
 		t.Fatalf("missing event channel: %v", err)
 	}
 }
@@ -190,9 +190,9 @@ func TestKnowledgeJobWaitRejectsCrossLibraryRemoteAndCancelledObserver(t *testin
 func TestKnowledgeJobWaitCLIResumesSameTaskAndReturnsReport(t *testing.T) {
 	s, lib, job, wait := observedMaintenance(t)
 	ctx := context.Background()
-	registry := agentcapability.New(builtinskills.Guide)
+	registry := capability.New(builtinskills.Guide)
 	defer registry.Close()
-	grant, activate, revoke, err := registry.Prepare(agentcapability.GrantSpec{ExecutionID: "execution", Bindings: []agentcapability.Binding{wait}, Validate: func(context.Context) error { return nil }})
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: "execution", Bindings: []capability.Binding{wait}, Validate: func(context.Context) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestKnowledgeJobWaitCLIResumesSameTaskAndReturnsReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, err := agentcapability.WriteConnection(directory, "context.json", agentcapability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: server.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
+	connection, err := capability.WriteConnection(directory, "context.json", capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: server.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestKnowledgeJobWaitCLIResumesSameTaskAndReturnsReport(t *testing.T) {
 		t.Helper()
 		var output, stderr bytes.Buffer
 		code := agentcli.Execute(ctx, []string{"knowledge", "jobs", "wait", "--library-id", lib.ID, "--job-id", job.ID, "--timeout", "1ms"}, agentcli.IO{Out: &output, Err: &stderr, ContextFile: connection})
-		var response agentcapability.Response
+		var response capability.Response
 		if err := json.Unmarshal(output.Bytes(), &response); err != nil || code != 0 || !response.OK {
 			t.Fatalf("CLI wait: code=%d stdout=%s stderr=%s error=%v", code, &output, &stderr, err)
 		}
@@ -248,7 +248,7 @@ func TestAutomaticIngestionJobWaitKeepsOriginalInvocationGuard(t *testing.T) {
 		}
 		return func() {}, nil
 	}
-	var wait agentcapability.Binding
+	var wait capability.Binding
 	for _, binding := range s.AutomaticBindings(ctx, current.chat, run.ID) {
 		if binding.Operation == "knowledge.jobs.wait" {
 			wait = binding
@@ -257,7 +257,7 @@ func TestAutomaticIngestionJobWaitKeepsOriginalInvocationGuard(t *testing.T) {
 	if wait.Call == nil {
 		t.Fatal("automatic ingestion cannot follow the shared observation guide")
 	}
-	request := agentcapability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID, "timeoutMs": 1}}
+	request := capability.Request{Params: map[string]any{"libraryId": lib.ID, "jobId": job.ID, "timeoutMs": 1}}
 	if result, err := wait.Call(ctx, request); err != nil || result.Data.(map[string]any)["completed"] != false {
 		t.Fatalf("authorized observation failed: %+v %v", result, err)
 	}

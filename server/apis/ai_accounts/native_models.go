@@ -1,7 +1,7 @@
 package ai_accounts
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"strings"
 
@@ -71,14 +71,14 @@ func (a *GetAIAccountNativeModels) Output(ctx *gin.Context) (interface{}, error)
 }
 
 // persistedModelDirectoryAvailable 允许查询刷新失败时明确保留下来的上次成功目录。
-func persistedModelDirectoryAvailable(result runtimeconfig.DetectionResult) bool {
-	if result.State != runtimeconfig.DetectionStateReady {
+func persistedModelDirectoryAvailable(result agentapi.DetectionResult) bool {
+	if result.State != agentapi.DetectionStateReady {
 		return false
 	}
 	unavailable, retained := false, false
 	for _, diagnostic := range result.Diagnostics {
-		unavailable = unavailable || diagnostic.Code == runtimeconfig.DiagnosticCodeACPOptionsUnavailable
-		retained = retained || diagnostic.Code == runtimeconfig.DiagnosticCodeACPOptionsFallback
+		unavailable = unavailable || diagnostic.Code == agentapi.DiagnosticCodeACPOptionsUnavailable
+		retained = retained || diagnostic.Code == agentapi.DiagnosticCodeACPOptionsFallback
 	}
 	return !unavailable || retained && len(result.Models) > 0
 }

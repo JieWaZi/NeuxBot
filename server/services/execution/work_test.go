@@ -1,9 +1,7 @@
 package execution
 
 import (
-	runtimediagnostic "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/diagnostic"
-
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -18,7 +16,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
@@ -52,7 +50,7 @@ func TestHiddenEntryCreatesStandardChatAndPreservesInitialExecution(t *testing.T
 		ExecutionID:     util.New(),
 		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}},
 		Input:           WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理项目资料"},
-		Options:         WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: runtimeconfig.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue},
+		Options:         WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue},
 		Admission:       constants.ExecutionAdmissionCommitBeforeDispatch,
 	}
 	accepted, err := manager.execution.Start(ctx, intent)
@@ -80,7 +78,7 @@ func TestHiddenEntryCreatesStandardChatAndPreservesInitialExecution(t *testing.T
 	if _, err := manager.execution.Start(ctx, changedIntent); !errors.Is(err, status_error.CreateRequestConflict) {
 		t.Fatalf("changed visibility reused original identity: %v", err)
 	}
-	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "继续整理"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}})
+	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "继续整理"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,8 +100,8 @@ func TestWorkIntentWorkspaceReadOnlyFreezesNonMutationPolicy(t *testing.T) {
 		},
 		Message: userMessage{Text: "只读分析并规划任务"},
 		Runtime: runtimeSelection{
-			RuntimeID:         runtimeconfig.RuntimeIDCodex,
-			PermissionLevel:   runtimeconfig.PermissionLevelFullAccess,
+			RuntimeID:         agentapi.RuntimeIDCodex,
+			PermissionLevel:   agentapi.PermissionLevelFullAccess,
 			WorkspaceReadOnly: true,
 		},
 	})
@@ -119,7 +117,7 @@ func TestWorkIntentWorkspaceReadOnlyFreezesNonMutationPolicy(t *testing.T) {
 	if executableErr != nil {
 		t.Fatal(executableErr)
 	}
-	if request.Detection.State != runtimeconfig.DetectionStateReady ||
+	if request.Detection.State != agentapi.DetectionStateReady ||
 		request.Detection.ResolvedBinary != testExecutable {
 		t.Fatalf("runtime detection snapshot = %+v", request.Detection)
 	}
@@ -184,7 +182,7 @@ func (s messageTestService) sendTestMessage(
 	input testMessageInput,
 ) (AcceptedExecution, error) {
 	if input.Runtime.PermissionLevel == "" {
-		input.Runtime.PermissionLevel = runtimeconfig.PermissionLevelAuto
+		input.Runtime.PermissionLevel = agentapi.PermissionLevelAuto
 	}
 	intent := WorkIntent{
 		Chat: ChatTarget{ChatID: input.ChatID},
@@ -230,9 +228,9 @@ type fakeRuntime struct {
 	// requests 记录 Chat 交给 Runtime 的结构化请求。
 	requests []recordedRun
 	// result 是没有配置结果序列时返回的固定终态。
-	result runtimecontract.Result
+	result agentapi.Result
 	// results 是按调用顺序返回的终态序列。
-	results []runtimecontract.Result
+	results []agentapi.Result
 	// failureStage 非空时模拟 Runtime 接收首条输入前失败。
 	failureStage string
 	// starts 记录 Runtime 已经接受首条输入的调用次数。
@@ -242,7 +240,7 @@ type fakeRuntime struct {
 }
 
 // ForkSession 不参与消息执行测试。
-func (r *fakeRuntime) ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
+func (r *fakeRuntime) ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
 	panic("unexpected ForkSession call")
 }
 
@@ -263,35 +261,35 @@ type gatedRuntime struct {
 func (r *gatedRuntime) Run(
 	ctx context.Context,
 	request recordedRun,
-	sink runtimecontract.EventSink) runtimecontract.Result {
+	sink agentapi.EventSink) agentapi.Result {
 	close(r.entered)
 	select {
 	case <-ctx.Done():
-		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimediagnostic.FailureCodeContextCanceled,
+		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
+			Code:       agentapi.FailureCodeContextCanceled,
 			Stage:      "runtime",
 			Message:    ctx.Err().Error(),
-			Transience: runtimediagnostic.FailureTransiencePermanent,
+			Transience: agentapi.FailureTransiencePermanent,
 		}}
 	case <-r.proceed:
 	}
 	invocationID := "gated-invocation"
-	started, _ := json.Marshal(runtimecontract.InvocationStartedData{InvocationID: invocationID})
-	if err := sink.Accept(ctx, runtimecontract.Event{
-		Type: runtimecontract.EventTypeInvocationStarted,
+	started, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: invocationID})
+	if err := sink.Accept(ctx, agentapi.Event{
+		Type: agentapi.EventTypeInvocationStarted,
 		Data: started,
 	}); err != nil {
-		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimediagnostic.FailureCodeEventDelivery,
+		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
+			Code:       agentapi.FailureCodeEventDelivery,
 			Stage:      "initial_delivery",
 			Message:    err.Error(),
-			Transience: runtimediagnostic.FailureTransiencePermanent,
+			Transience: agentapi.FailureTransiencePermanent,
 		}}
 	}
-	return runtimecontract.Result{Facts: runtimecontract.InvocationFacts{
+	return agentapi.Result{Facts: agentapi.InvocationFacts{
 		InvocationID:  invocationID,
 		RuntimeID:     request.Target.RuntimeID,
-		BaseRuntimeID: runtimeconfig.RuntimeIDCodex,
+		BaseRuntimeID: agentapi.RuntimeIDCodex,
 	}}
 }
 
@@ -392,10 +390,10 @@ func (c *trackingSkillController) UpdatePackageDisplayName(context.Context, stri
 }
 
 // Runtimes 返回测试使用的固定 Codex 工作区布局。
-func (r *fakeRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
-	return []runtimeconfig.RuntimeSummary{{
-		ID:                  runtimeconfig.RuntimeIDCodex,
-		BaseRuntimeID:       runtimeconfig.RuntimeIDCodex,
+func (r *fakeRuntime) Runtimes() []agentapi.RuntimeSummary {
+	return []agentapi.RuntimeSummary{{
+		ID:                  agentapi.RuntimeIDCodex,
+		BaseRuntimeID:       agentapi.RuntimeIDCodex,
 		InstructionFileName: "AGENTS.md",
 		SkillDirectoryName:  ".agents",
 	}}
@@ -405,57 +403,57 @@ func (r *fakeRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
 func (r *fakeRuntime) Run(
 	ctx context.Context,
 	request recordedRun,
-	sink runtimecontract.EventSink) runtimecontract.Result {
+	sink agentapi.EventSink) agentapi.Result {
 	r.requests = append(r.requests, request)
 	if r.failureStage != "" {
-		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimediagnostic.FailureCodeRuntimeUnavailable,
+		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
+			Code:       agentapi.FailureCodeRuntimeUnavailable,
 			Stage:      r.failureStage,
 			Message:    "runtime unavailable",
-			Transience: runtimediagnostic.FailureTransiencePermanent,
+			Transience: agentapi.FailureTransiencePermanent,
 		}}
 	}
 	r.starts++
 	invocationID := "test-invocation-" + string(rune('0'+r.starts))
-	started, _ := json.Marshal(runtimecontract.InvocationStartedData{
+	started, _ := json.Marshal(agentapi.InvocationStartedData{
 		InvocationID: invocationID,
 	})
-	if err := sink.Accept(ctx, runtimecontract.Event{
-		Type: runtimecontract.EventTypeInvocationStarted,
+	if err := sink.Accept(ctx, agentapi.Event{
+		Type: agentapi.EventTypeInvocationStarted,
 		Data: started,
 	}); err != nil {
-		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimediagnostic.FailureCodeEventDelivery,
+		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
+			Code:       agentapi.FailureCodeEventDelivery,
 			Stage:      "initial_delivery",
 			Message:    err.Error(),
-			Transience: runtimediagnostic.FailureTransiencePermanent,
+			Transience: agentapi.FailureTransiencePermanent,
 		}}
 	}
 	if r.panicOnStart {
-		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimediagnostic.FailureCodeProcessExited,
+		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
+			Code:       agentapi.FailureCodeProcessExited,
 			Stage:      "runtime",
 			Message:    "runtime execution failed unexpectedly",
-			Transience: runtimediagnostic.FailureTransiencePermanent,
+			Transience: agentapi.FailureTransiencePermanent,
 		}}
 	}
 	payload, _ := json.Marshal(map[string]string{"text": "执行完成"})
-	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeTextDelta, Data: payload}); err != nil {
-		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-			Code:       runtimediagnostic.FailureCodeEventDelivery,
+	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeTextDelta, Data: payload}); err != nil {
+		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
+			Code:       agentapi.FailureCodeEventDelivery,
 			Stage:      "event_delivery",
 			Message:    err.Error(),
-			Transience: runtimediagnostic.FailureTransiencePermanent,
+			Transience: agentapi.FailureTransiencePermanent,
 		}}
 	}
 	result := r.result
 	if index := r.starts - 1; index < len(r.results) {
 		result = r.results[index]
 	}
-	result.Facts = runtimecontract.InvocationFacts{
+	result.Facts = agentapi.InvocationFacts{
 		InvocationID:  invocationID,
 		RuntimeID:     request.Target.RuntimeID,
-		BaseRuntimeID: runtimeconfig.RuntimeIDCodex,
+		BaseRuntimeID: agentapi.RuntimeIDCodex,
 		Model:         request.Policy.Model,
 		Reasoning:     request.Policy.Reasoning,
 		Policy:        request.Policy.Execution,
@@ -471,28 +469,28 @@ type cancelableRuntime struct {
 }
 
 // ForkSession 不参与取消执行测试。
-func (r *cancelableRuntime) ForkSession(context.Context, runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
+func (r *cancelableRuntime) ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
 	panic("unexpected ForkSession call")
 }
 
 // Runtimes 返回测试使用的 Codex 工作区布局。
-func (r *cancelableRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
+func (r *cancelableRuntime) Runtimes() []agentapi.RuntimeSummary {
 	return (&fakeRuntime{}).Runtimes()
 }
 
 // Run 确认输入后等待取消，消费者结束后释放资源。
-func (r *cancelableRuntime) Run(ctx context.Context, _ recordedRun, sink runtimecontract.EventSink) runtimecontract.Result {
-	started, _ := json.Marshal(runtimecontract.InvocationStartedData{InvocationID: "cancelable-invocation"})
-	if err := sink.Accept(ctx, runtimecontract.Event{Type: runtimecontract.EventTypeInvocationStarted, Data: started}); err != nil {
-		return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{Code: runtimediagnostic.FailureCodeEventDelivery, Message: err.Error()}}
+func (r *cancelableRuntime) Run(ctx context.Context, _ recordedRun, sink agentapi.EventSink) agentapi.Result {
+	started, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: "cancelable-invocation"})
+	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: started}); err != nil {
+		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{Code: agentapi.FailureCodeEventDelivery, Message: err.Error()}}
 	}
 	close(r.started)
 	<-ctx.Done()
-	return runtimecontract.Result{ExitCode: -1, Failure: &runtimecontract.Failure{
-		Code:       runtimediagnostic.FailureCodeContextCanceled,
+	return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
+		Code:       agentapi.FailureCodeContextCanceled,
 		Stage:      "runtime",
 		Message:    ctx.Err().Error(),
-		Transience: runtimediagnostic.FailureTransiencePermanent,
+		Transience: agentapi.FailureTransiencePermanent,
 	}}
 }
 
@@ -722,8 +720,8 @@ func TestWorkIntentCommitBeforeDispatchPersistsPendingFactsBeforeRuntimeAccepts(
 			Content: "可靠收件后再派发",
 		},
 		Options: WorkOptions{
-			RuntimeID:         runtimeconfig.RuntimeIDCodex,
-			PermissionLevel:   runtimeconfig.PermissionLevelAuto,
+			RuntimeID:         agentapi.RuntimeIDCodex,
+			PermissionLevel:   agentapi.PermissionLevelAuto,
 			SessionPolicy:     constants.RuntimeSessionPolicyNew,
 			ParentExecutionID: "parent-execution-1",
 		},
@@ -794,7 +792,7 @@ func TestSendMessageMapsSkillPreparationFailure(t *testing.T) {
 		},
 		Message: userMessage{Text: "使用当前技能"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimeconfig.RuntimeIDCodex,
+			RuntimeID: agentapi.RuntimeIDCodex,
 		},
 	})
 	if !errors.Is(err, status_error.SkillUnavailable) {
@@ -854,7 +852,7 @@ func TestSendMessageDeliversEnabledSkillsWithoutChangingRelations(t *testing.T) 
 			Text:     "只在本轮调用代码审查",
 			SkillIDs: []string{"skill-selected"},
 		},
-		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 	}
 	if _, err := manager.sendTestMessage(context.Background(), request); !errors.Is(err, status_error.RuntimeUnavailable) {
 		t.Fatalf("sendTestMessage() error = %v, want RuntimeUnavailable", err)
@@ -862,7 +860,7 @@ func TestSendMessageDeliversEnabledSkillsWithoutChangingRelations(t *testing.T) 
 	if len(runtime.requests) != 1 || len(runtime.requests[0].Skills) != 2 {
 		t.Fatalf("Runtime requests = %+v, want both enabled skills", runtime.requests)
 	}
-	selectedByName := make(map[string]runtimecontract.Skill, len(runtime.requests[0].Skills))
+	selectedByName := make(map[string]agentapi.Skill, len(runtime.requests[0].Skills))
 	for _, skill := range runtime.requests[0].Skills {
 		selectedByName[skill.Name] = skill
 	}
@@ -938,7 +936,7 @@ func TestSendMessageRunsThroughRuntimeAndPersistsCompletedChat(
 				SkillIDs: []string{"skill-review"},
 			},
 			Runtime: runtimeSelection{
-				RuntimeID: runtimeconfig.RuntimeIDCodex,
+				RuntimeID: agentapi.RuntimeIDCodex,
 				Model:     "gpt-5",
 				Reasoning: "high",
 			},
@@ -1020,7 +1018,7 @@ func TestSendMessageKeepsWholeFileCodeReferencesOutOfAttachments(t *testing.T) {
 				Path: referencedFile,
 			}},
 		},
-		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("sendTestMessage() error = %v", err)
@@ -1082,7 +1080,7 @@ func TestSendMessageForwardsAbsoluteCodeSnippetPath(t *testing.T) {
 				Content:   "其中政策与市场两项变化最快。",
 			}},
 		},
-		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("sendTestMessage() error = %v", err)
@@ -1123,7 +1121,7 @@ func TestSendMessageRollsBackNewWorkspaceWhenWholeFileReferenceIsOutsideProject(
 				Path: outsideFile,
 			}},
 		},
-		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 	})
 	if !errors.Is(err, status_error.BadRequest) {
 		t.Fatalf("sendTestMessage() error = %v, want BadRequest", err)
@@ -1139,10 +1137,10 @@ func TestSendMessageRollsBackNewWorkspaceWhenWholeFileReferenceIsOutsideProject(
 
 func TestSendMessagePersistsSessionAndResumesAfterModelChange(t *testing.T) {
 	runtime := &fakeRuntime{
-		result: runtimecontract.Result{
-			Session: runtimecontract.SessionResult{
+		result: agentapi.Result{
+			Session: agentapi.SessionResult{
 				OutputID: "session-1",
-				State:    runtimecontract.SessionStateCreated,
+				State:    agentapi.SessionStateCreated,
 			},
 		},
 	}
@@ -1158,7 +1156,7 @@ func TestSendMessagePersistsSessionAndResumesAfterModelChange(t *testing.T) {
 		},
 		Message: userMessage{Text: "建立 Session"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimeconfig.RuntimeIDCodex,
+			RuntimeID: agentapi.RuntimeIDCodex,
 			Model:     "gpt-5",
 			Reasoning: "high",
 		},
@@ -1172,7 +1170,7 @@ func TestSendMessagePersistsSessionAndResumesAfterModelChange(t *testing.T) {
 		ChatID:  first.Chat.ID,
 		Message: userMessage{Text: "继续 Session"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimeconfig.RuntimeIDCodex,
+			RuntimeID: agentapi.RuntimeIDCodex,
 			Model:     "gpt-5.1",
 			Reasoning: "medium",
 		},
@@ -1191,7 +1189,7 @@ type forkContinuationRuntime struct {
 	// fakeRuntime 提供会话执行及结构化请求记录。
 	fakeRuntime
 	// forks 记录唯一宿主收到的冻结原生分叉请求。
-	forks []runtimecontract.ForkSessionRequest
+	forks []agentapi.ForkSessionRequest
 	// closed 记录原生派发前要求释放的源工作区。
 	closed []string
 	// closeError 模拟源工作区消费者尚未退出。
@@ -1200,15 +1198,15 @@ type forkContinuationRuntime struct {
 	forkError error
 }
 
-func (r *forkContinuationRuntime) ForkSession(_ context.Context, request runtimecontract.ForkSessionRequest) (runtimecontract.ForkSessionResult, error) {
+func (r *forkContinuationRuntime) ForkSession(_ context.Context, request agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
 	r.forks = append(r.forks, request)
 	if request.ReconcileOnly {
-		return runtimecontract.ForkSessionResult{}, status_error.ChatForkIndeterminate
+		return agentapi.ForkSessionResult{}, status_error.ChatForkIndeterminate
 	}
 	if r.forkError != nil {
-		return runtimecontract.ForkSessionResult{}, r.forkError
+		return agentapi.ForkSessionResult{}, r.forkError
 	}
-	return runtimecontract.ForkSessionResult{SessionID: "fork-child-session"}, nil
+	return agentapi.ForkSessionResult{SessionID: "fork-child-session"}, nil
 }
 
 // CloseWorkspace 记录源消费者关闭尝试，失败不进入原生分叉派发。
@@ -1220,11 +1218,11 @@ func (r *forkContinuationRuntime) CloseWorkspace(_ context.Context, directory st
 // TestForkClosesSourceBeforeNativeDispatch 验证关闭失败可重试，已派发的不确定结果只允许对账。
 func TestForkClosesSourceBeforeNativeDispatch(t *testing.T) {
 	ctx := context.Background()
-	runtime := &forkContinuationRuntime{fakeRuntime: fakeRuntime{result: runtimecontract.Result{Session: runtimecontract.SessionResult{OutputID: "parent-session", State: runtimecontract.SessionStateCreated, ForkMode: "turn", ForkPosition: "parent-turn"}}}}
-	environment, _ := (readyRuntimeEnvironmentReader{}).Get(ctx, runtimeconfig.RuntimeIDCodex)
-	environment.BaseRuntimeID = runtimeconfig.RuntimeIDCodex
+	runtime := &forkContinuationRuntime{fakeRuntime: fakeRuntime{result: agentapi.Result{Session: agentapi.SessionResult{OutputID: "parent-session", State: agentapi.SessionStateCreated, ForkMode: "turn", ForkPosition: "parent-turn"}}}}
+	environment, _ := (readyRuntimeEnvironmentReader{}).Get(ctx, agentapi.RuntimeIDCodex)
+	environment.BaseRuntimeID = agentapi.RuntimeIDCodex
 	manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{runtimeEnvironments: configurationEnvironmentReader{environment: environment}})
-	first, err := manager.sendTestMessage(ctx, testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}})
+	first, err := manager.sendTestMessage(ctx, testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1267,11 +1265,11 @@ func TestForkClosesSourceBeforeNativeDispatch(t *testing.T) {
 func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
 	for _, changed := range []bool{false, true} {
 		t.Run(fmt.Sprintf("external_changed=%t", changed), func(t *testing.T) {
-			runtime := &forkContinuationRuntime{fakeRuntime: fakeRuntime{result: runtimecontract.Result{Session: runtimecontract.SessionResult{OutputID: "parent-session", State: runtimecontract.SessionStateCreated, ForkMode: "turn", ForkPosition: "parent-turn"}}}}
-			environment, _ := (readyRuntimeEnvironmentReader{}).Get(context.Background(), runtimeconfig.RuntimeIDCodex)
-			environment.BaseRuntimeID = runtimeconfig.RuntimeIDCodex
+			runtime := &forkContinuationRuntime{fakeRuntime: fakeRuntime{result: agentapi.Result{Session: agentapi.SessionResult{OutputID: "parent-session", State: agentapi.SessionStateCreated, ForkMode: "turn", ForkPosition: "parent-turn"}}}}
+			environment, _ := (readyRuntimeEnvironmentReader{}).Get(context.Background(), agentapi.RuntimeIDCodex)
+			environment.BaseRuntimeID = agentapi.RuntimeIDCodex
 			manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{runtimeEnvironments: configurationEnvironmentReader{environment: environment}})
-			first, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}})
+			first, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1280,7 +1278,7 @@ func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(runtime.forks) != 1 || runtime.forks[0].SourceSessionID != "parent-session" || runtime.forks[0].Position != "parent-turn" || runtime.forks[0].Plan.Target.RuntimeID != runtimeconfig.RuntimeIDCodex {
+			if len(runtime.forks) != 1 || runtime.forks[0].SourceSessionID != "parent-session" || runtime.forks[0].Position != "parent-turn" || runtime.forks[0].Plan.Target.RuntimeID != agentapi.RuntimeIDCodex {
 				t.Fatalf("fork lost frozen native boundary: %+v", runtime.forks)
 			}
 			if changed {
@@ -1292,7 +1290,7 @@ func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			continued, err := manager.sendTestMessage(context.Background(), testMessageInput{ChatID: child, Message: userMessage{Text: "继续分支"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}})
+			continued, err := manager.sendTestMessage(context.Background(), testMessageInput{ChatID: child, Message: userMessage{Text: "继续分支"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}})
 			if changed {
 				if !errors.Is(err, status_error.PluginNotReady) {
 					t.Fatalf("changed native scope accepted: %v", err)
@@ -1303,7 +1301,7 @@ func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
 				t.Fatalf("unchanged fork cannot continue without a local scope cache: %v", err)
 			}
 			waitForChatTerminal(t, manager, continued.Chat.ID)
-			if runtime.requests[1].Session.Mode != runtimecontract.SessionModeResume || runtime.requests[1].Session.ID != "fork-child-session" {
+			if runtime.requests[1].Session.Mode != agentapi.SessionModeResume || runtime.requests[1].Session.ID != "fork-child-session" {
 				t.Fatal("fork continuation lost the native child session")
 			}
 		})
@@ -1324,10 +1322,10 @@ func TestSendMessageMergesSupplementalInstructionsBeforeToolCapabilities(t *test
 			Content: "规划团队任务",
 		},
 		Options: WorkOptions{
-			RuntimeID:       runtimeconfig.RuntimeIDCodex,
-			PermissionLevel: runtimeconfig.PermissionLevelAuto,
+			RuntimeID:       agentapi.RuntimeIDCodex,
+			PermissionLevel: agentapi.PermissionLevelAuto,
 			SessionPolicy:   constants.RuntimeSessionPolicyContinue,
-			SupplementalInstructions: []runtimecontract.Instruction{{
+			SupplementalInstructions: []agentapi.Instruction{{
 				Name:    "TEAM.md",
 				Content: "团队协作规则",
 			}},
@@ -1368,7 +1366,7 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	accepted, err := manager.sendTestMessage(ctx, testMessageInput{
 		NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: project},
 		Message: userMessage{Text: "第一次执行"},
-		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1385,7 +1383,7 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	}
 	// 反复经过真实档案读取和工作区准备，覆盖 map 遍历顺序变化造成的静态配置抖动。
 	for attempt := 0; attempt < 64; attempt++ {
-		files, err := core.prepareMessageFiles(ctx, state, util.New(), nil, nil, runtimeconfig.RuntimeIDCodex)
+		files, err := core.prepareMessageFiles(ctx, state, util.New(), nil, nil, agentapi.RuntimeIDCodex)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1411,7 +1409,7 @@ func TestSendMessageReadsCurrentProfileAndProjectInstructions(t *testing.T) {
 		},
 		Message: userMessage{Text: "第一次执行"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimeconfig.RuntimeIDCodex,
+			RuntimeID: agentapi.RuntimeIDCodex,
 		},
 	})
 	if err != nil {
@@ -1434,7 +1432,7 @@ func TestSendMessageReadsCurrentProfileAndProjectInstructions(t *testing.T) {
 		ChatID:  first.Chat.ID,
 		Message: userMessage{Text: "第二次执行"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimeconfig.RuntimeIDCodex,
+			RuntimeID: agentapi.RuntimeIDCodex,
 		},
 	})
 	if err != nil {
@@ -1512,7 +1510,7 @@ func TestSendMessageFreezesDefaultDirectoryAndLoadsOnlyEnabledProjectInstruction
 		},
 		Message: userMessage{Text: "检查项目目录配置"},
 		Runtime: runtimeSelection{
-			RuntimeID: runtimeconfig.RuntimeIDCodex,
+			RuntimeID: agentapi.RuntimeIDCodex,
 		},
 	})
 	if err != nil {
@@ -1547,7 +1545,7 @@ func TestSendMessageFreezesDefaultDirectoryAndLoadsOnlyEnabledProjectInstruction
 	}
 }
 
-func hasInstructionContent(instructions []runtimecontract.Instruction, content string) bool {
+func hasInstructionContent(instructions []agentapi.Instruction, content string) bool {
 	for _, instruction := range instructions {
 		if instruction.Content == content {
 			return true
@@ -1579,20 +1577,20 @@ func TestSelectedConnectorReferencesRequireEnabledConnectors(t *testing.T) {
 
 func TestSendMessageDoesNotRebuildMissingSession(t *testing.T) {
 	runtime := &fakeRuntime{
-		results: []runtimecontract.Result{
+		results: []agentapi.Result{
 			{
-				Session: runtimecontract.SessionResult{
+				Session: agentapi.SessionResult{
 					OutputID: "session-1",
-					State:    runtimecontract.SessionStateCreated,
+					State:    agentapi.SessionStateCreated,
 				},
 			},
 			{
-				Session: runtimecontract.SessionResult{State: runtimecontract.SessionStateMissing},
-				Failure: &runtimecontract.Failure{
-					Code:       runtimediagnostic.FailureCodeSessionNotFound,
+				Session: agentapi.SessionResult{State: agentapi.SessionStateMissing},
+				Failure: &agentapi.Failure{
+					Code:       agentapi.FailureCodeSessionNotFound,
 					Stage:      "runtime-protocol",
 					Message:    "session missing",
-					Transience: runtimediagnostic.FailureTransiencePermanent,
+					Transience: agentapi.FailureTransiencePermanent,
 				},
 			},
 		},
@@ -1608,7 +1606,7 @@ func TestSendMessageDoesNotRebuildMissingSession(t *testing.T) {
 			WorkingDirectory: t.TempDir(),
 		},
 		Message: userMessage{Text: "建立旧 Session"},
-		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("first sendTestMessage() error = %v", err)
@@ -1617,7 +1615,7 @@ func TestSendMessageDoesNotRebuildMissingSession(t *testing.T) {
 	second, err := manager.sendTestMessage(context.Background(), testMessageInput{
 		ChatID:  first.Chat.ID,
 		Message: userMessage{Text: "恢复丢失 Session"},
-		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("second sendTestMessage() error = %v", err)
@@ -1637,7 +1635,7 @@ func TestSendMessageDoesNotRebuildMissingSession(t *testing.T) {
 	}
 	assistant := history.Resources[len(history.Resources)-1]
 	if assistant.Status != constants.ExecutionStatusFailed ||
-		assistant.ErrorCode != string(runtimediagnostic.FailureCodeSessionNotFound) {
+		assistant.ErrorCode != string(agentapi.FailureCodeSessionNotFound) {
 		t.Fatalf("assistant terminal = %+v, want session-not-found failure", assistant)
 	}
 }
@@ -1657,7 +1655,7 @@ func TestSendMessageContainsRuntimeFailureAndReleasesChat(t *testing.T) {
 			WorkingDirectory: t.TempDir(),
 		},
 		Message: userMessage{Text: "触发 Backend panic"},
-		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("sendTestMessage() error = %v", err)
@@ -1674,7 +1672,7 @@ func TestSendMessageContainsRuntimeFailureAndReleasesChat(t *testing.T) {
 	}
 	assistant := history.Resources[len(history.Resources)-1]
 	if assistant.Status != constants.ExecutionStatusFailed ||
-		assistant.ErrorCode != string(runtimediagnostic.FailureCodeProcessExited) {
+		assistant.ErrorCode != string(agentapi.FailureCodeProcessExited) {
 		t.Fatalf("assistant terminal = %+v, want contained runtime failure", assistant)
 	}
 
@@ -1682,7 +1680,7 @@ func TestSendMessageContainsRuntimeFailureAndReleasesChat(t *testing.T) {
 	if _, err := manager.sendTestMessage(context.Background(), testMessageInput{
 		ChatID:  result.Chat.ID,
 		Message: userMessage{Text: "panic 后继续"},
-		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 	}); err != nil {
 		t.Fatalf("sendTestMessage() after failure error = %v", err)
 	}
@@ -1705,7 +1703,7 @@ func TestCancelExecutionEndsRuntimeAndReleasesChat(t *testing.T) {
 					WorkingDirectory: t.TempDir(),
 				},
 				Message: userMessage{Text: "等待取消"},
-				Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+				Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 			}
 			if scope == "team" {
 				group, err := manager.execution.PrepareChatGroup(context.Background(), PrepareChatGroupIntent{ThreadID: "cancel-thread", Title: "团队取消", ProvisioningID: "cancel-provision", Scope: CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Members: []PrepareChatMember{{ChatID: "11111111111111111111111111111111", WakerID: "waker-1", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}}})
@@ -1741,7 +1739,7 @@ func TestCancelExecutionEndsRuntimeAndReleasesChat(t *testing.T) {
 			}
 			assistant := history.Resources[len(history.Resources)-1]
 			if assistant.Status != constants.ExecutionStatusCanceled ||
-				assistant.ErrorCode != string(runtimediagnostic.FailureCodeContextCanceled) {
+				assistant.ErrorCode != string(agentapi.FailureCodeContextCanceled) {
 				t.Fatalf("assistant terminal = %+v, want canceled", assistant)
 			}
 			if err := manager.execution.CancelExecutionAndWait(ctx, result.Chat.ID, result.Execution.ID); err != nil {
@@ -1764,7 +1762,7 @@ func TestChatPublicQueriesObserveMessageAndRename(t *testing.T) {
 			WorkingDirectory: t.TempDir(),
 		},
 		Message: userMessage{Text: "查询对话"},
-		Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("sendTestMessage() error = %v", err)
@@ -1982,17 +1980,17 @@ func (readyRuntimeEnvironmentReader) Get(
 		Enabled:      true,
 		Binary:       "codex",
 		DefaultModel: "default",
-		Detection: runtimeconfig.DetectionResult{
-			Runtime: runtimeconfig.RuntimeSummary{
+		Detection: agentapi.DetectionResult{
+			Runtime: agentapi.RuntimeSummary{
 				ID:            "codex",
-				BaseRuntimeID: runtimeconfig.RuntimeIDCodex,
+				BaseRuntimeID: agentapi.RuntimeIDCodex,
 			},
-			State:          runtimeconfig.DetectionStateReady,
+			State:          agentapi.DetectionStateReady,
 			ResolvedBinary: "codex",
-			Capabilities: runtimeconfig.CapabilitySet{
-				runtimeconfig.CapabilityMCPStreamableHTTP: true,
+			Capabilities: agentapi.CapabilitySet{
+				agentapi.CapabilityMCPStreamableHTTP: true,
 			},
-			Models: []runtimeconfig.ModelOption{
+			Models: []agentapi.ModelOption{
 				readyTestModel("default"),
 				readyTestModel("gpt-5"),
 				readyTestModel("gpt-5.1"),
@@ -2002,14 +2000,14 @@ func (readyRuntimeEnvironmentReader) Get(
 }
 
 // readyTestModel 构造提交测试中声明全部产品权限的模型目录项。
-func readyTestModel(id string) runtimeconfig.ModelOption {
-	return runtimeconfig.ModelOption{
+func readyTestModel(id string) agentapi.ModelOption {
+	return agentapi.ModelOption{
 		ID:   id,
 		Name: id,
-		PermissionLevels: []runtimeconfig.PermissionLevel{
-			runtimeconfig.PermissionLevelDefault,
-			runtimeconfig.PermissionLevelAuto,
-			runtimeconfig.PermissionLevelFullAccess,
+		PermissionLevels: []agentapi.PermissionLevel{
+			agentapi.PermissionLevelDefault,
+			agentapi.PermissionLevelAuto,
+			agentapi.PermissionLevelFullAccess,
 		},
 	}
 }
@@ -2054,12 +2052,12 @@ func TestChatColdConfigurationChangeUsesJournalFacts(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					pending := pendingMessage{runtime: runtimeSelection{RuntimeID: "codex", Model: "old", Reasoning: "high", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}}
 					unchanged := manager.buildRunRequest(current, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-					if unchanged.Session.Mode != runtimecontract.SessionModeResume || unchanged.Session.ID != "native" {
+					if unchanged.Session.Mode != agentapi.SessionModeResume || unchanged.Session.ID != "native" {
 						t.Fatalf("unchanged=%+v", unchanged.Session)
 					}
 					change(&pending.runtime)
 					changed := manager.buildRunRequest(current, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-					if changed.Session.Mode != runtimecontract.SessionModeNew || changed.Session.ID != "" || len(changed.History) == 0 {
+					if changed.Session.Mode != agentapi.SessionModeNew || changed.Session.ID != "" || len(changed.History) == 0 {
 						t.Fatalf("changed=%+v history=%+v", changed.Session, changed.History)
 					}
 				})
@@ -2074,18 +2072,18 @@ func TestForkContinuationNeverSuppliesInheritedPrompt(t *testing.T) {
 	state := messageChat{chat: models.Chat{ID: "child", ForkSourceChatID: "parent"}, previousMessages: []messageview.Message{{ID: "inherited", Role: constants.MessageRoleAssistant, ExecutionID: "boundary", Content: "must-not-reinject", Inherited: true}}, runtimeSessions: map[string]models.RuntimeSession{"custom-codex": {SessionID: "native-child", LastExecutionID: "boundary"}}}
 	pending := pendingMessage{message: userMessage{Text: "new-input"}, runtime: runtimeSelection{RuntimeID: "custom-codex"}}
 	request := manager.buildRunRequest(state, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-	if request.Session.Mode != runtimecontract.SessionModeResume || request.Session.ID != "native-child" || len(request.History) != 0 || request.Message.Text != "new-input" {
+	if request.Session.Mode != agentapi.SessionModeResume || request.Session.ID != "native-child" || len(request.History) != 0 || request.Message.Text != "new-input" {
 		t.Fatalf("fork continuation: %+v", request)
 	}
 	pending.runtime.SessionPolicy = constants.RuntimeSessionPolicyNew
 	request = manager.buildRunRequest(state, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-	if request.Session.Mode != runtimecontract.SessionModeNew || request.Session.ID != "" {
+	if request.Session.Mode != agentapi.SessionModeNew || request.Session.ID != "" {
 		t.Fatalf("fork should start new native session: %+v", request.Session)
 	}
 	pending.runtime.SessionPolicy = ""
 	delete(state.runtimeSessions, "custom-codex")
 	request = manager.buildRunRequest(state, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-	if request.Session.Mode != runtimecontract.SessionModeResume || len(request.History) != 0 {
+	if request.Session.Mode != agentapi.SessionModeResume || len(request.History) != 0 {
 		t.Fatal("missing native session fell back to history")
 	}
 }
@@ -2093,7 +2091,7 @@ func TestForkContinuationNeverSuppliesInheritedPrompt(t *testing.T) {
 func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *testing.T) {
 	manager := newMessageTestService(t, t.TempDir(), &fakeRuntime{})
 	ctx := context.Background()
-	intent := WorkIntent{AutomaticRunID: "original-automatic-run", ClientRequestID: "automatic-provenance", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}}, Input: WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理正文"}, Options: WorkOptions{RuntimeID: runtimeconfig.RuntimeIDCodex, PermissionLevel: runtimeconfig.PermissionLevelAuto}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+	intent := WorkIntent{AutomaticRunID: "original-automatic-run", ClientRequestID: "automatic-provenance", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}}, Input: WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理正文"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelAuto}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 	accepted, err := manager.execution.Start(ctx, intent)
 	if err != nil {
 		t.Fatal(err)
@@ -2112,7 +2110,7 @@ func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *tes
 	if _, err = manager.execution.Start(ctx, changed); !errors.Is(err, status_error.CreateRequestConflict) {
 		t.Fatal("same execution changed its automatic origin", err)
 	}
-	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "用户后续操作"}, Runtime: runtimeSelection{RuntimeID: runtimeconfig.RuntimeIDCodex}})
+	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "用户后续操作"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2125,13 +2123,13 @@ func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *tes
 // recordedRun 汇总测试边界观察到的静态配置和本轮输入，不参与生产资源准备。
 type recordedRun struct {
 	// SessionPlan 是原生消费者实际使用的静态事实。
-	runtimecontract.SessionPlan
+	agentapi.SessionPlan
 	// TurnInput 是本轮提交给原生消费者的增量输入。
-	runtimecontract.TurnInput
+	agentapi.TurnInput
 	// Resources 是当前消费者持有的实际资源。
-	Resources runtimecontract.SessionResources
+	Resources agentapi.SessionResources
 	// Session 是实际提交时采用的会话指令。
-	Session runtimecontract.SessionDirective
+	Session agentapi.SessionDirective
 }
 
 // synchronousPreparation 仅替代原生消费者，保留执行层显式取得和交还资源的顺序。
@@ -2139,17 +2137,17 @@ type synchronousPreparation struct {
 	// ctx 是占用技术会话后用于取得资源的准备上下文。
 	ctx context.Context
 	// plan 是当前消费者使用的静态配置。
-	plan runtimecontract.SessionPlan
+	plan agentapi.SessionPlan
 	// session 是实际采用的会话指令。
-	session runtimecontract.SessionDirective
+	session agentapi.SessionDirective
 	// resources 是已经交还技术消费者的具体租约。
-	resources runtimecontract.SessionResources
+	resources agentapi.SessionResources
 	// needsResources 表示本次准备还没有实际资源。
 	needsResources bool
 	// run 替代真实原生协议提交。
-	run func(context.Context, recordedRun, runtimecontract.EventSink) runtimecontract.Result
+	run func(context.Context, recordedRun, agentapi.EventSink) agentapi.Result
 	// bind 在测试需要保留原生消费者时接管租约。
-	bind func(runtimecontract.SessionResources)
+	bind func(agentapi.SessionResources)
 	// close 在测试需要保留原生消费者时区分冷准备和热准备。
 	close func(context.Context) error
 	// started 表示本轮已尝试提交输入。
@@ -2158,13 +2156,13 @@ type synchronousPreparation struct {
 	closed bool
 }
 
-func (p *synchronousPreparation) Context() context.Context                    { return p.ctx }
-func (p *synchronousPreparation) NeedsResources() bool                        { return p.needsResources }
-func (p *synchronousPreparation) Resources() runtimecontract.SessionResources { return p.resources }
-func (p *synchronousPreparation) Session() runtimecontract.SessionDirective   { return p.session }
-func (p *synchronousPreparation) Bind(_ context.Context, resources runtimecontract.SessionResources) error {
+func (p *synchronousPreparation) Context() context.Context             { return p.ctx }
+func (p *synchronousPreparation) NeedsResources() bool                 { return p.needsResources }
+func (p *synchronousPreparation) Resources() agentapi.SessionResources { return p.resources }
+func (p *synchronousPreparation) Session() agentapi.SessionDirective   { return p.session }
+func (p *synchronousPreparation) Bind(_ context.Context, resources agentapi.SessionResources) error {
 	p.resources = resources
-	p.plan.Target, p.plan.Skills, p.plan.Connectors = runtimecontract.DeclareTarget(resources.Target), resources.Skills, runtimecontract.DeclareConnectors(resources.Connectors)
+	p.plan.Target, p.plan.Skills, p.plan.Connectors = agentapi.DeclareTarget(resources.Target), resources.Skills, agentapi.DeclareConnectors(resources.Connectors)
 	if resources.Session != nil {
 		p.session = *resources.Session
 	}
@@ -2189,24 +2187,24 @@ func (p *synchronousPreparation) Close(ctx context.Context) error {
 	p.closed = true
 	return nil
 }
-func (p *synchronousPreparation) Run(ctx context.Context, turn runtimecontract.TurnInput, sink runtimecontract.EventSink) runtimecontract.Result {
+func (p *synchronousPreparation) Run(ctx context.Context, turn agentapi.TurnInput, sink agentapi.EventSink) agentapi.Result {
 	p.started = true
 	defer func() { _ = p.Close(context.WithoutCancel(ctx)) }()
 	return p.run(ctx, recordedRun{SessionPlan: p.plan, TurnInput: turn, Resources: p.resources, Session: p.session}, sink)
 }
 
 // prepareSynchronousRuntime 不取得资源，接纳层必须先显式 Bind 才能提交输入。
-func prepareSynchronousRuntime(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective, run func(context.Context, recordedRun, runtimecontract.EventSink) runtimecontract.Result) (*synchronousPreparation, error) {
+func prepareSynchronousRuntime(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective, run func(context.Context, recordedRun, agentapi.EventSink) agentapi.Result) (*synchronousPreparation, error) {
 	return &synchronousPreparation{ctx: ctx, plan: plan, session: session, needsResources: true, run: run}, nil
 }
 
-func (r *fakeRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+func (r *fakeRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
 	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
 }
-func (r *gatedRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+func (r *gatedRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
 	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
 }
-func (r *cancelableRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+func (r *cancelableRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
 	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
 }
 

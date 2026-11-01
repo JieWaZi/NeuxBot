@@ -1,9 +1,7 @@
 package global
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-
-	catalog "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/catalog"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"errors"
@@ -34,7 +32,7 @@ func TestKnowledgeModelSelectionDoesNotRequireExecutionServiceOrPartner(t *testi
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	ExecutionService = nil
 	defer func() { RuntimeEnvironmentControllerManager = previousRuntime; ExecutionService = previousExecution }()
-	environment := models.RuntimeEnvironment{ID: "runtime", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, DefaultModel: "known-model", Detection: runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Models: []runtimeconfig.ModelOption{{ID: "known-model"}}}}
+	environment := models.RuntimeEnvironment{ID: "runtime", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, DefaultModel: "known-model", Detection: agentapi.DetectionResult{State: agentapi.DetectionStateReady, Models: []agentapi.ModelOption{{ID: "known-model"}}}}
 	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +56,7 @@ func TestKnowledgeModelAcceptsRunnableCLIWithoutIsolationCapability(t *testing.T
 	previous := RuntimeEnvironmentControllerManager
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	defer func() { RuntimeEnvironmentControllerManager = previous }()
-	environment := models.RuntimeEnvironment{ID: "unverified", RuntimeID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, Enabled: true, Detection: runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady}}
+	environment := models.RuntimeEnvironment{ID: "unverified", RuntimeID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, Enabled: true, Detection: agentapi.DetectionResult{State: agentapi.DetectionStateReady}}
 	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +84,7 @@ func TestKnowledgeUnknownCapabilityAcceptsValidManagedAccount(t *testing.T) {
 	if err := database.DB.Create(&account).Error; err != nil {
 		t.Fatal(err)
 	}
-	environment := models.RuntimeEnvironment{ID: "no-system-login", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, Detection: runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady, Auth: runtimeconfig.AuthStatusMissing}}
+	environment := models.RuntimeEnvironment{ID: "no-system-login", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, Detection: agentapi.DetectionResult{State: agentapi.DetectionStateReady, Auth: agentapi.AuthStatusMissing}}
 	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
 		t.Fatal(err)
 	}
@@ -104,29 +102,29 @@ func TestKnowledgeGenerationWaitsForSubscriptionLeaseAndCanBeCancelled(t *testin
 	}
 	sqlDB, _ := database.DB.DB()
 	defer sqlDB.Close()
-	previousRuntime, previousAccounts, previousSDK, previousHost := RuntimeEnvironmentControllerManager, AIAccountService, RuntimeCatalog, KnowledgeRuntimeHost
+	previousRuntime, previousAccounts, previousSDK, previousHost := RuntimeEnvironmentControllerManager, AIAccountService, RuntimeCatalog, AgentManager
 	defer func() {
 		RuntimeEnvironmentControllerManager, AIAccountService, RuntimeCatalog = previousRuntime, previousAccounts, previousSDK
-		KnowledgeRuntimeHost = previousHost
+		AgentManager = previousHost
 	}()
 	RuntimeEnvironmentControllerManager = controllers.NewRuntimeEnvironmentController(database.DB)
 	accounts := controllers.NewAIAccountController(database.DB)
 	AIAccountService = aiaccount.New(accounts)
 	AIAccountService.Start(ctx)
 	defer AIAccountService.Close()
-	RuntimeCatalog, err = catalog.New(catalog.Config{})
+	RuntimeCatalog, err = agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer RuntimeCatalog.Close(ctx)
-	KnowledgeRuntimeHost = newKnowledgeRuntimeHost()
-	defer KnowledgeRuntimeHost.Close(ctx)
+	AgentManager = newAgentManager()
+	defer AgentManager.Close(ctx)
 	account := models.AIAccount{ID: "queued-subscription", Name: "fixture", AuthMode: constants.AccountAuthModeSubscription, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}}}
 	if err := accounts.Create(ctx, account, "not-read-before-lease-is-acquired"); err != nil {
 		t.Fatal(err)
 	}
 	binary, _ := os.Executable()
-	environment := models.RuntimeEnvironment{ID: "queue-runtime", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, Binary: binary, Detection: runtimeconfig.DetectionResult{State: runtimeconfig.DetectionStateReady}}
+	environment := models.RuntimeEnvironment{ID: "queue-runtime", RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, Binary: binary, Detection: agentapi.DetectionResult{State: agentapi.DetectionStateReady}}
 	if err := RuntimeEnvironmentControllerManager.Ensure(ctx, environment); err != nil {
 		t.Fatal(err)
 	}

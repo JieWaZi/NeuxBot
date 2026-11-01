@@ -1,7 +1,7 @@
 package ai_accounts
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"errors"
@@ -30,9 +30,9 @@ func codexSubscriptionQueryFixture(t *testing.T) string {
 	}}
 	global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{
 		RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true,
-		Detection: runtimeconfig.DetectionResult{
-			State: runtimeconfig.DetectionStateReady, DetectedDefaultModel: "saved-model",
-			Models: []runtimeconfig.ModelOption{{ID: "saved-model", ReasoningOptions: []runtimeconfig.ReasoningOption{{ID: "high", Name: "High"}}}},
+		Detection: agentapi.DetectionResult{
+			State: agentapi.DetectionStateReady, DetectedDefaultModel: "saved-model",
+			Models: []agentapi.ModelOption{{ID: "saved-model", ReasoningOptions: []agentapi.ReasoningOption{{ID: "high", Name: "High"}}}},
 		},
 	}}
 	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager)
@@ -53,9 +53,9 @@ func TestCodexSubscriptionQueriesReadSnapshotDuringAccountUse(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				environment.Detection.Capabilities = runtimeconfig.CapabilitySet{runtimeconfig.CapabilityDynamicModels: true}
-				environment.Detection = runtimeconfig.PreservePreviousOptionsOnFailure(environment.Detection, runtimeconfig.DetectionResult{
-					State: runtimeconfig.DetectionStateReady, Diagnostics: []runtimeconfig.Diagnostic{{Code: runtimeconfig.DiagnosticCodeACPOptionsUnavailable}},
+				environment.Detection.Capabilities = agentapi.CapabilitySet{agentapi.CapabilityDynamicModels: true}
+				environment.Detection = agentapi.PreservePreviousOptionsOnFailure(environment.Detection, agentapi.DetectionResult{
+					State: agentapi.DetectionStateReady, Diagnostics: []agentapi.Diagnostic{{Code: agentapi.DiagnosticCodeACPOptionsUnavailable}},
 				})
 				global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: environment}
 			}
@@ -92,13 +92,13 @@ func TestCodexSubscriptionQueriesReadSnapshotDuringAccountUse(t *testing.T) {
 
 func TestCodexSubscriptionQueriesDoNotProbeMissingSnapshot(t *testing.T) {
 	id := codexSubscriptionQueryFixture(t)
-	for _, snapshot := range []runtimeconfig.DetectionResult{
+	for _, snapshot := range []agentapi.DetectionResult{
 		{},
-		{State: runtimeconfig.DetectionStateReady},
+		{State: agentapi.DetectionStateReady},
 		{
-			State:       runtimeconfig.DetectionStateReady,
-			Models:      []runtimeconfig.ModelOption{{ID: "saved-model"}},
-			Diagnostics: []runtimeconfig.Diagnostic{{Code: runtimeconfig.DiagnosticCodeACPOptionsUnavailable}},
+			State:       agentapi.DetectionStateReady,
+			Models:      []agentapi.ModelOption{{ID: "saved-model"}},
+			Diagnostics: []agentapi.Diagnostic{{Code: agentapi.DiagnosticCodeACPOptionsUnavailable}},
 		},
 	} {
 		global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{

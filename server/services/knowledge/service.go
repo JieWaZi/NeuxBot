@@ -9,7 +9,7 @@ import (
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
@@ -633,7 +633,7 @@ func (s *Service) currentResources(ctx context.Context) ([]bridge.ResourceRef, e
 }
 
 // AgentBindings 冻结普通执行可见库；整理通过CLI选择当前消息范围并逐次校验。
-func (s *Service) AgentBindings(ctx context.Context, chat models.Chat) []agentcapability.Binding {
+func (s *Service) AgentBindings(ctx context.Context, chat models.Chat) []capability.Binding {
 	maintenance, err := s.maintenanceChatLink(ctx, chat.ID)
 	if err != nil {
 		return deniedKnowledgeReads(err)
@@ -666,7 +666,7 @@ func (s *Service) AgentBindings(ctx context.Context, chat models.Chat) []agentca
 	bindings := bridge.ProviderReadBindings(provider, bridge.FreezeScope(chat.ProjectID, refs), current)
 	for i := range bindings {
 		call := bindings[i].Call
-		bindings[i].Call = func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+		bindings[i].Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
 			s.policy.RLock()
 			defer s.policy.RUnlock()
 			return call(ctx, request)

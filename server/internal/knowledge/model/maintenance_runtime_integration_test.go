@@ -1,8 +1,6 @@
 package model
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-
 	"context"
 	"errors"
 	"net/http"
@@ -15,14 +13,13 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
-	acpdriver "github.com/JieWaZi/NeuxBot/server/internal/agent/core/driver/acp"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/host"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
 	sdk "github.com/JieWaZi/acp-go/sdk"
 )
 
-// maintenanceACPAgent 只替换原生 Agent 边界，公开 ACP 传输、Driver 和执行内核均使用真实实现。
+// maintenanceACPAgent 只替换原生 Agent 边界，公开 ACP 传输、原生连接和产品会话均使用真实实现。
 type maintenanceACPAgent struct {
 	// connection 保存公开 acpserver 注入的 Agent 端连接。
 	connection atomic.Pointer[sdk.AgentSideConnection]
@@ -124,14 +121,14 @@ func (*maintenanceACPAgent) SetSessionMode(context.Context, sdk.SetSessionModeRe
 func TestMaintenanceRuntimeIntegratesScopedACPTask(t *testing.T) {
 	for _, callKnowledge := range []bool{true, false} {
 		t.Run(map[bool]string{true: "authorized-knowledge-operation", false: "discovery-cannot-prove-maintenance"}[callKnowledge], func(t *testing.T) {
-			registry := agentcapability.New(nil)
+			registry := capability.New(nil)
 			t.Cleanup(registry.Close)
 			binary := filepath.Join(t.TempDir(), "allycli")
 			if err := os.WriteFile(binary, []byte("bundled-test-allycli"), 0700); err != nil {
 				t.Fatal(err)
 			}
 			var workspace, accountFile, connectionPath, skillPath string
-			var connection agentcapability.Connection
+			var connection capability.Connection
 			var domainCalls, accountReleases atomic.Int32
 			agent := &maintenanceACPAgent{bound: make(chan struct{})}
 			for _, choice := range []struct {
@@ -164,12 +161,12 @@ func TestMaintenanceRuntimeIntegratesScopedACPTask(t *testing.T) {
 			input := maintenanceInput()
 			input.Instructions = "WIKI_FIXER_INSTRUCTIONS: inspect the existing library before repairing its pages."
 			input.Message = "MAINTENANCE_TASK: maintain this library's existing Wiki."
-			input.Bindings[0].Call = func(_ context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+			input.Bindings[0].Call = func(_ context.Context, request capability.Request) (capability.Result, error) {
 				domainCalls.Add(1)
 				if request.Operation != "knowledge.audit.get" || request.Params["libraryId"] != "library" {
 					t.Errorf("domain scope changed: %+v", request)
 				}
-				return agentcapability.Result{Data: map[string]any{"checked": true}}, nil
+				return capability.Result{Data: map[string]any{"checked": true}}, nil
 			}
 			const finalReport = "维护完成：已检查现有 Wiki。"
 			agent.prompt = func(ctx context.Context, request sdk.PromptRequest) (sdk.PromptResponse, error) {
@@ -218,22 +215,22 @@ func TestMaintenanceRuntimeIntegratesScopedACPTask(t *testing.T) {
 				}
 				return sdk.PromptResponse{StopReason: sdk.StopReasonEndTurn}, nil
 			}
-			host := runtimehost.New(runtimehost.Config{
-				Resolve: func(context.Context, runtimehost.TextRequest) (runtimehost.Environment, error) {
-					return runtimehost.Environment{BaseRuntimeID: runtimeconfig.RuntimeIDCodex, Target: runtimeconfig.RuntimeTarget{RuntimeID: "wiki-profile", Binary: "/selected/codex"}}, nil
+			host := agentapi.NewManager(agentapi.ManagerConfig{
+				Resolve: func(context.Context, agentapi.TextRequest) (agentapi.Environment, error) {
+					return agentapi.Environment{BaseRuntimeID: agentapi.RuntimeIDCodex, Target: agentapi.RuntimeTarget{RuntimeID: "wiki-profile", Binary: "/selected/codex"}}, nil
 				},
-				Prepare: func(_ context.Context, request runtimehost.TextRequest, environment runtimehost.Environment, root string) (runtimeconfig.RuntimeTarget, func(context.Context) error, error) {
+				Prepare: func(_ context.Context, request agentapi.TextRequest, environment agentapi.Environment, root string) (agentapi.RuntimeTarget, func(context.Context) error, error) {
 					workspace = root
 					if request.RuntimeID != "wiki-profile" || request.AccountID != "wiki-account" || request.Model != "wiki-model" || request.Reasoning != "high" {
 						t.Errorf("accepted model/account selection changed: %+v", request)
 					}
 					accountDirectory := filepath.Join(root, "account-home")
 					if err := os.Mkdir(accountDirectory, 0700); err != nil {
-						return runtimeconfig.RuntimeTarget{}, nil, err
+						return agentapi.RuntimeTarget{}, nil, err
 					}
 					accountFile = filepath.Join(accountDirectory, "account.token")
 					if err := os.WriteFile(accountFile, []byte("selected-test-account"), 0600); err != nil {
-						return runtimeconfig.RuntimeTarget{}, nil, err
+						return agentapi.RuntimeTarget{}, nil, err
 					}
 					target := environment.Target
 					target.Isolated = true
@@ -243,12 +240,14 @@ func TestMaintenanceRuntimeIntegratesScopedACPTask(t *testing.T) {
 						return os.RemoveAll(accountDirectory)
 					}, nil
 				},
-				Launch: func(target runtimeconfig.RuntimeTarget, _ runtimeconfig.DetectionResult) (runtimeconfig.LaunchFacts, error) {
-					return runtimeconfig.LaunchFacts{BaseRuntimeID: runtimeconfig.RuntimeIDCodex, Executable: target.Binary, Environment: []string{"ACCOUNT_FILE=" + target.Environment["ACCOUNT_FILE"], "PATH=" + target.Environment["PATH"]}}, nil
+				Launch: func(target agentapi.RuntimeTarget, _ agentapi.DetectionResult) (agentapi.LaunchFacts, error) {
+					return agentapi.LaunchFacts{BaseRuntimeID: agentapi.RuntimeIDCodex, Executable: target.Binary, Environment: []string{"ACCOUNT_FILE=" + target.Environment["ACCOUNT_FILE"], "PATH=" + target.Environment["PATH"]}}, nil
 				},
-				Driver: func(environment runtimehost.Environment, _ acpdriver.Factory) (c.Driver, error) {
-					return acpdriver.New(acpdriver.Config{ID: environment.Target.RuntimeID, CompletionPolicy: c.CompletionNativePhase, ModeCandidates: []string{"agent-full-access"}, Factory: func(_ context.Context, request c.OpenRequest) (sdk.Agent, error) {
-						if request.Session.Mode != c.SessionNew || request.Policies.Tools.Mode != c.ToolsAllowAll || request.Policies.NativeConfig != c.NativeConfigInherit {
+				Open: func(ctx context.Context, config native.ConnectionConfig, request native.OpenRequest) (agentapi.NativeConnection, error) {
+					config.CompletionPolicy = native.CompletionNativePhase
+					config.ModeCandidates = []string{"agent-full-access"}
+					config.Factory = func(_ context.Context, request native.OpenRequest) (sdk.Agent, error) {
+						if request.Session.Mode != native.SessionNew || request.Policies.Tools.Mode != native.ToolsAllowAll || request.Policies.NativeConfig != native.NativeConfigInherit {
 							t.Errorf("maintenance execution policy changed: %+v", request)
 						}
 						if request.Credential.Environment["ACCOUNT_FILE"] != accountFile || !strings.HasSuffix(request.Credential.Environment["PATH"], "native-tools") || len(request.Resources) != 1 || request.Resources[0].ID != "ally" {
@@ -257,7 +256,7 @@ func TestMaintenanceRuntimeIntegratesScopedACPTask(t *testing.T) {
 						}
 						connectionPath = request.Credential.Environment[constants.AgentCLIContextEnvironment]
 						var err error
-						connection, err = agentcapability.ReadConnection(connectionPath)
+						connection, err = capability.ReadConnection(connectionPath)
 						if err != nil {
 							return nil, err
 						}
@@ -273,7 +272,8 @@ func TestMaintenanceRuntimeIntegratesScopedACPTask(t *testing.T) {
 							t.Errorf("supplied CLI source changed: %v", err)
 						}
 						return agent, nil
-					}})
+					}
+					return native.Open(ctx, config, request)
 				},
 			})
 			t.Cleanup(func() {

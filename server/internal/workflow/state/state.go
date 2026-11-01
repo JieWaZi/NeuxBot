@@ -10,7 +10,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -26,7 +26,7 @@ type Coordinator struct {
 	// Owner 标识本应用生命周期持有运行租约的主体。
 	Owner string
 	// AgentBindings 为创作、使用和结果场景签发精确领域能力。
-	AgentBindings func(string, string, constants.WorkflowCapabilityScope) []agentcapability.Binding
+	AgentBindings func(string, string, constants.WorkflowCapabilityScope) []capability.Binding
 	// jobs 记录真实在途外部效果及其取消函数。
 	jobs map[string]context.CancelFunc
 	// jobsMutex 保护效果集合的查询、接纳与释放。

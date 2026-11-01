@@ -13,13 +13,88 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 )
+
+// coldResumeJournal 返回既有配置，避免资源契约测试依赖日志文件与数据库。
+type coldResumeJournal struct {
+	// agentTestJournal 保留本用例不调用的日志端口。
+	agentTestJournal
+}
+
+func (*coldResumeJournal) ReadExecutionConfiguration(context.Context, string, string) (eventlog.ExecutionCreatedData, error) {
+	return eventlog.ExecutionCreatedData{}, nil
+}
+
+func TestColdResourcesPreservePreparedSessionIdentity(t *testing.T) {
+	for _, replaceConfiguration := range []bool{false, true} {
+		name := "cold_resume"
+		if replaceConfiguration {
+			name = "changed_configuration"
+		}
+		t.Run(name, func(t *testing.T) {
+			core := &service{journal: &coldResumeJournal{}}
+			state := messageChat{
+				chat:            models.Chat{ID: "chat", LastRuntimeID: agentapi.RuntimeIDPi, LastPermissionLevel: constants.PermissionLevelFullAccess},
+				lastExecutionID: "previous-execution",
+				runtimeSessions: map[string]models.RuntimeSession{agentapi.RuntimeIDPi: {SessionID: "persisted-native-session", LastExecutionID: "previous-execution"}},
+			}
+			input := pendingMessage{runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDPi, PermissionLevel: constants.PermissionLevelFullAccess, SessionPolicy: constants.RuntimeSessionPolicyContinue}}
+			environment := models.RuntimeEnvironment{BaseRuntimeID: agentapi.RuntimeIDPi, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{ID: agentapi.RuntimeIDPi, BaseRuntimeID: agentapi.RuntimeIDPi}}}
+			plan, _, directive := core.buildSessionPlan(state, input, &preparedMessageFiles{executionWorkspaceDirectory: t.TempDir()}, nil, nil, environment)
+			if directive.Mode != agentapi.SessionModeResume || directive.ID != "persisted-native-session" {
+				t.Fatalf("production plan lost persisted session: %+v", directive)
+			}
+			manager := agentapi.NewManager(agentapi.ManagerConfig{Launch: func(agentapi.RuntimeTarget, agentapi.DetectionResult) (agentapi.LaunchFacts, error) {
+				return agentapi.LaunchFacts{BaseRuntimeID: agentapi.RuntimeIDPi, Executable: "never-started-fixture"}, nil
+			}})
+			defer manager.Close(context.Background())
+			if replaceConfiguration {
+				previous, err := manager.PrepareSession(context.Background(), plan, directive)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = previous.Close(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+				plan.ResourceKey = "changed-resource-configuration"
+			}
+			prepared, err := manager.PrepareSession(context.Background(), plan, directive)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer prepared.Close(context.Background())
+			want := directive
+			if replaceConfiguration {
+				want = agentapi.SessionDirective{Mode: agentapi.SessionModeNew}
+			}
+			if got := prepared.Session(); got != want {
+				t.Fatalf("prepare directive=%+v, want %+v", got, want)
+			}
+			resources, err := core.acquireChatSessionResources(prepared.Context(), state, input, "next-execution", nil, environment, plan, directive, frozenPluginResources{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// 即使断言失败，也要让同一准备接管并释放真实取得的资源。
+			bindErr := prepared.Bind(prepared.Context(), resources)
+			if resources.Session == nil || resources.Session.Mode != agentapi.SessionModeResume || resources.Session.ID != "" {
+				t.Fatalf("resource receipt must only project mode: %+v; bind=%v", resources.Session, bindErr)
+			}
+			if bindErr != nil {
+				t.Fatalf("production cold resource bind failed: %v", bindErr)
+			}
+			if got := prepared.Session(); got != want {
+				t.Fatalf("resources changed frozen session identity: got %+v, want %+v", got, want)
+			}
+		})
+	}
+}
 
 // TestColdResourcesMergeCurrentAuthorizationEnvironment 防止软件授权环境在静态声明分型后丢失或反写本轮输入。
 func TestColdResourcesMergeCurrentAuthorizationEnvironment(t *testing.T) {
@@ -27,9 +102,9 @@ func TestColdResourcesMergeCurrentAuthorizationEnvironment(t *testing.T) {
 	workspace := t.TempDir()
 	binary := filepath.Join(t.TempDir(), "allycli")
 	current := map[string]string{constants.AgentCLIContextEnvironment: filepath.Join(workspace, "connection.json"), constants.AgentCLIBinaryEnvironment: binary}
-	plan := runtimecontract.SessionPlan{Target: runtimecontract.SessionTarget{RuntimeID: runtimeconfig.RuntimeIDPi}, Workspace: runtimecontract.Workspace{Path: workspace}}
+	plan := agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: agentapi.RuntimeIDPi}, Workspace: agentapi.Workspace{Path: workspace}}
 	core := &service{}
-	resources, err := core.acquireChatSessionResources(context.Background(), messageChat{}, pendingMessage{}, "execution", nil, models.RuntimeEnvironment{}, plan, runtimecontract.SessionDirective{}, frozenPluginResources{}, current)
+	resources, err := core.acquireChatSessionResources(context.Background(), messageChat{}, pendingMessage{}, "execution", nil, models.RuntimeEnvironment{}, plan, agentapi.SessionDirective{}, frozenPluginResources{}, current)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,14 +156,14 @@ func TestFailedColdPreparationRetainsAccountCleanupOwner(t *testing.T) {
 	pluginState.Configuration.Secrets = nil
 	core := &service{accounts: accounts, skillDataDirectory: data, pluginController: installedPluginFixture{states: []models.PluginState{pluginState}}, pluginContents: plugins.NewContentStore(data, func() ([]string, error) { return nil, nil })}
 	workspace := t.TempDir()
-	request := pendingMessage{message: userMessage{PluginIDs: []string{"cleanup"}}, runtime: runtimeSelection{AccountID: "managed", RuntimeID: runtimeconfig.RuntimeIDCodex, Model: "gpt-5"}}
-	plan := runtimecontract.SessionPlan{Target: runtimecontract.SessionTarget{RuntimeID: runtimeconfig.RuntimeIDCodex, Binary: "/missing-native-binary"}, Workspace: runtimecontract.Workspace{Path: workspace}}
-	environment := models.RuntimeEnvironment{BaseRuntimeID: runtimeconfig.RuntimeIDCodex, Detection: runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{ID: runtimeconfig.RuntimeIDCodex, BaseRuntimeID: runtimeconfig.RuntimeIDCodex}, Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}, ResolvedBinary: "/missing-native-binary"}}
+	request := pendingMessage{message: userMessage{PluginIDs: []string{"cleanup"}}, runtime: runtimeSelection{AccountID: "managed", RuntimeID: agentapi.RuntimeIDCodex, Model: "gpt-5"}}
+	plan := agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: agentapi.RuntimeIDCodex, Binary: "/missing-native-binary"}, Workspace: agentapi.Workspace{Path: workspace}}
+	environment := models.RuntimeEnvironment{BaseRuntimeID: agentapi.RuntimeIDCodex, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{ID: agentapi.RuntimeIDCodex, BaseRuntimeID: agentapi.RuntimeIDCodex}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}, ResolvedBinary: "/missing-native-binary"}}
 	frozen, err := core.freezePluginResources(context.Background(), "w1", request, environment.Detection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	partial, err := core.acquireChatSessionResources(context.Background(), messageChat{chat: models.Chat{WakerID: "w1"}}, request, "execution", nil, environment, plan, runtimecontract.SessionDirective{}, frozen, nil)
+	partial, err := core.acquireChatSessionResources(context.Background(), messageChat{chat: models.Chat{WakerID: "w1"}}, request, "execution", nil, environment, plan, agentapi.SessionDirective{}, frozen, nil)
 	if err == nil {
 		t.Fatal("expected native plugin environment preparation failure")
 	}
@@ -130,7 +205,7 @@ type canceledPreparationRuntime struct {
 	preparation *synchronousPreparation
 }
 
-func (r *canceledPreparationRuntime) PrepareSession(ctx context.Context, plan runtimecontract.SessionPlan, session runtimecontract.SessionDirective) (runtimecontract.PreparedChatRun, error) {
+func (r *canceledPreparationRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
 	prepareContext, cancel := context.WithCancel(ctx)
 	cancel()
 	prepared, err := prepareSynchronousRuntime(prepareContext, plan, session, r.Run)
@@ -169,12 +244,12 @@ func TestFailedPluginPreparationKeepsPartialLeaseUntilConsumerClose(t *testing.T
 	second.Versions[0].ContentPath = filepath.Join("plugins", "content", "missing")
 	core := &service{skillDataDirectory: data, pluginController: installedPluginFixture{states: []models.PluginState{first, second}}, pluginContents: plugins.NewContentStore(data, func() ([]string, error) { return nil, nil })}
 	request := pendingMessage{message: userMessage{PluginIDs: []string{"a", "b"}}, runtime: runtimeSelection{RuntimeID: "codex"}}
-	environment := models.RuntimeEnvironment{Detection: runtimeconfig.DetectionResult{Capabilities: runtimeconfig.CapabilitySet{runtimeconfig.CapabilitySkillDirectory: true}}}
+	environment := models.RuntimeEnvironment{Detection: agentapi.DetectionResult{Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}}
 	frozen, err := core.freezePluginResources(context.Background(), "w1", request, environment.Detection)
 	if err != nil {
 		t.Fatal(err)
 	}
-	partial, err := core.acquireChatSessionResources(context.Background(), messageChat{}, request, "execution", nil, environment, runtimecontract.SessionPlan{}, runtimecontract.SessionDirective{}, frozen, nil)
+	partial, err := core.acquireChatSessionResources(context.Background(), messageChat{}, request, "execution", nil, environment, agentapi.SessionPlan{}, agentapi.SessionDirective{}, frozen, nil)
 	if err == nil || partial.Close == nil {
 		t.Fatalf("failed preparation omitted its partial lease: %v", err)
 	}

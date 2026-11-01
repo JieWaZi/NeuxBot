@@ -1,7 +1,7 @@
 package execution
 
 import (
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
@@ -131,7 +131,7 @@ func TestChatAccountSelectionUsesAccountModels(t *testing.T) {
 	if strings.Contains(string(data), "private-key") {
 		t.Fatal("execution leaked account secret")
 	}
-	if runtime.requests[0].Session.Mode != runtimecontract.SessionModeNew {
+	if runtime.requests[0].Session.Mode != agentapi.SessionModeNew {
 		t.Fatal("new chat changed session mode")
 	}
 }
@@ -202,12 +202,12 @@ type accountRuntime struct {
 }
 
 // Runtimes 允许契约测试跨 Codex 与 Claude 切换。
-func (r *accountRuntime) Runtimes() []runtimeconfig.RuntimeSummary {
+func (r *accountRuntime) Runtimes() []agentapi.RuntimeSummary {
 	entries := r.fakeRuntime.Runtimes()
-	entries = append(entries, runtimeconfig.RuntimeSummary{ID: constants.RuntimeIDClaude, BaseRuntimeID: constants.RuntimeIDClaude, InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"})
+	entries = append(entries, agentapi.RuntimeSummary{ID: constants.RuntimeIDClaude, BaseRuntimeID: constants.RuntimeIDClaude, InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"})
 	entries = append(entries,
-		runtimeconfig.RuntimeSummary{ID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
-		runtimeconfig.RuntimeSummary{ID: constants.RuntimeIDKimi, BaseRuntimeID: constants.RuntimeIDKimi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
+		agentapi.RuntimeSummary{ID: constants.RuntimeIDPi, BaseRuntimeID: constants.RuntimeIDPi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
+		agentapi.RuntimeSummary{ID: constants.RuntimeIDKimi, BaseRuntimeID: constants.RuntimeIDKimi, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"},
 	)
 	return entries
 }

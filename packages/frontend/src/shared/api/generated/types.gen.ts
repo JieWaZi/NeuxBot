@@ -4418,7 +4418,7 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
      * 可执行路径
      */
     binary?: string;
-    capabilities?: GithubComJieWaZiNeuxBotServerInternalAgentEnvironmentConfigCapabilitySet & unknown;
+    capabilities?: GithubComJieWaZiNeuxBotServerInternalAgentCapabilitySet & unknown;
     /**
      * 配置目录
      */
@@ -7053,7 +7053,7 @@ export type GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus = 'unknown'
 /**
  * CapabilitySet 保存一次探测确认可用的 Runtime 能力。
  */
-export type GithubComJieWaZiNeuxBotServerInternalAgentEnvironmentConfigCapabilitySet = {
+export type GithubComJieWaZiNeuxBotServerInternalAgentCapabilitySet = {
     [key: string]: boolean;
 };
 
@@ -29390,6 +29390,7 @@ export type DeletePluginErrors = {
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[AIAccountWorkspaceError][50000000047]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeShutdownFailed][50000000041]`
      *
@@ -29819,6 +29820,7 @@ export type LogoutPluginAuthorizationData = {
 export type LogoutPluginAuthorizationErrors = {
     /**
      * >
+     * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginManifestInvalid][40000006501]`
      *
@@ -29853,6 +29855,7 @@ export type LogoutPluginAuthorizationErrors = {
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[AIAccountWorkspaceError][50000000047]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeShutdownFailed][50000000041]`
      *
@@ -29980,6 +29983,7 @@ export type StartPluginAuthorizationData = {
 export type StartPluginAuthorizationErrors = {
     /**
      * >
+     * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginManifestInvalid][40000006501]`
      *
@@ -30014,6 +30018,7 @@ export type StartPluginAuthorizationErrors = {
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[AIAccountWorkspaceError][50000000047]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeShutdownFailed][50000000041]`
      *
@@ -30321,6 +30326,7 @@ export type TestPluginConnectorErrors = {
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[AIAccountWorkspaceError][50000000047]`
      * * `[MCPConnectorCredentialError][50000000022]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeShutdownFailed][50000000041]`
@@ -35435,6 +35441,7 @@ export type UninstallWakerPluginData = {
 export type UninstallWakerPluginErrors = {
     /**
      * >
+     * * `[BadRequest][40000000001]`
      * * `[PluginContentInvalid][40000006502]`
      * * `[PluginManifestInvalid][40000006501]`
      *
@@ -35463,6 +35470,7 @@ export type UninstallWakerPluginErrors = {
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[AIAccountWorkspaceError][50000000047]`
      * * `[PluginStorageError][50000006501]`
      * * `[RuntimeShutdownFailed][50000000041]`
      *

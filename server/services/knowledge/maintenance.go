@@ -8,7 +8,7 @@ import (
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
@@ -18,22 +18,22 @@ import (
 )
 
 // jobWaitBinding 复用已授权的任务读取与知识事件；等待期间不持有策略锁或取消后台工作。
-func (s *Service) jobWaitBinding(get agentcapability.Binding) agentcapability.Binding {
-	return agentcapability.Binding{Operation: "knowledge.jobs.wait", Call: func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+func (s *Service) jobWaitBinding(get capability.Binding) capability.Binding {
+	return capability.Binding{Operation: "knowledge.jobs.wait", Call: func(ctx context.Context, request capability.Request) (capability.Result, error) {
 		var input wikiCommand
-		if err := agentcapability.DecodeParams(request.Params, &input); err != nil {
-			return agentcapability.Result{}, err
+		if err := capability.DecodeParams(request.Params, &input); err != nil {
+			return capability.Result{}, err
 		}
 		ref := input.ref()
 		if err := bridge.RequireLocal(ref); err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		hub := s.config.Events
 		if hub == nil {
-			return agentcapability.Result{}, status_error.AgentConnectionUnavailable
+			return capability.Result{}, status_error.AgentConnectionUnavailable
 		}
-		readRequest := agentcapability.Request{Operation: get.Operation, Params: map[string]any{"libraryId": input.LibraryID, "backend": ref.Backend, "connectionId": ref.ConnectionID, "jobId": input.JobID}}
-		return agentcapability.Observe(ctx, request.Params, func() events.Subscription {
+		readRequest := capability.Request{Operation: get.Operation, Params: map[string]any{"libraryId": input.LibraryID, "backend": ref.Backend, "connectionId": ref.ConnectionID, "jobId": input.JobID}}
+		return capability.Observe(ctx, request.Params, func() events.Subscription {
 			return hub.Subscribe("knowledge", events.Resource{Kind: "knowledge_library", ID: ref.KnowledgeBaseID, ParentID: "local"})
 		}, func(ctx context.Context) (any, bool, error) {
 			result, err := get.Call(ctx, readRequest)
@@ -111,7 +111,7 @@ func (s *Service) BindIntent(ctx context.Context, intent execution.WorkIntent, a
 		}
 		return validateTarget(ctx)
 	}
-	var binding agentcapability.Binding
+	var binding capability.Binding
 	switch auth.Operation {
 	case "organize":
 		// 不得把空来源解释为全库；空时在签发时冻结当前pending集合。
@@ -148,30 +148,30 @@ func (s *Service) BindIntent(ctx context.Context, intent execution.WorkIntent, a
 			}
 			return (requestidempotency.Identity{ID: id}).ResourceID("automatic-knowledge", intent.AutomaticRunID, lib.ID)
 		}
-		binding = agentcapability.Binding{Operation: "knowledge.jobs.start", Call: func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+		binding = capability.Binding{Operation: "knowledge.jobs.start", Call: func(ctx context.Context, r capability.Request) (capability.Result, error) {
 			if err := validate(ctx); err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			chosen := append([]string(nil), frozen...)
 			if len(selected) > 0 {
 				imported, err := s.importSelectedAttachments(ctx, originChat, lib.ID, identity(r.RequestID), selected, validateTarget, s.publishGuard(session))
 				if err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
 				chosen = append(chosen, imported...)
 			}
 			receipt, _, err := s.Organize(ctx, OrganizeCommand{RequestID: identity(r.RequestID), LibraryID: lib.ID, SourceVersionIDs: chosen, ExplicitSources: true, Configuration: session, Message: intent.Input.Content})
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
-			return agentcapability.Result{CommandID: r.RequestID, Data: map[string]any{"receipt": receipt, "noop": receipt == nil || receipt.State == "no-op"}}, nil
+			return capability.Result{CommandID: r.RequestID, Data: map[string]any{"receipt": receipt, "noop": receipt == nil || receipt.State == "no-op"}}, nil
 		}}
 	default:
 		return intent, status_error.KnowledgeInvalid
 	}
-	binding.Receipt = func(ctx context.Context, id string) (agentcapability.Result, error) {
+	binding.Receipt = func(ctx context.Context, id string) (capability.Result, error) {
 		if err := validate(ctx); err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		requestID := id
 		if intent.AutomaticRunID != "" {
@@ -179,15 +179,15 @@ func (s *Service) BindIntent(ctx context.Context, intent execution.WorkIntent, a
 		}
 		r, err := s.config.Engine.GetReceipt(ctx, requestID)
 		if err != nil {
-			return agentcapability.Result{}, bridge.MapError(err)
+			return capability.Result{}, bridge.MapError(err)
 		}
 		if r.LibraryID != lib.ID {
-			return agentcapability.Result{}, status_error.KnowledgeForbidden
+			return capability.Result{}, status_error.KnowledgeForbidden
 		}
-		return agentcapability.Result{CommandID: id, Replayed: true, Data: map[string]any{"receipt": r, "noop": false}}, nil
+		return capability.Result{CommandID: id, Replayed: true, Data: map[string]any{"receipt": r, "noop": false}}, nil
 	}
 	// 普通聊天只获得明确目标的作业触发能力，模型生成完全由知识后台任务拥有。
-	intent.Options.ToolCapabilities = append(intent.Options.ToolCapabilities, execution.ToolCapability{ID: "knowledge.organize", Name: "知识整理", Bindings: []agentcapability.Binding{binding}})
+	intent.Options.ToolCapabilities = append(intent.Options.ToolCapabilities, execution.ToolCapability{ID: "knowledge.organize", Name: "知识整理", Bindings: []capability.Binding{binding}})
 
 	return intent, nil
 }
@@ -209,7 +209,7 @@ type chatOrganizeInput struct {
 }
 
 // chatJobBinding 为普通对话提供知识任务入口，复用手动整理、维护及持久回执。
-func (s *Service) chatJobBinding(ctx context.Context, chat models.Chat, refs []bridge.ResourceRef, operation string) agentcapability.Binding {
+func (s *Service) chatJobBinding(ctx context.Context, chat models.Chat, refs []bridge.ResourceRef, operation string) capability.Binding {
 	maintenance := operation == "knowledge.wiki.maintain"
 	anchorOperation := constants.KnowledgeChatOrganizeOperation
 	namespace := "knowledge-chat-job"
@@ -247,44 +247,44 @@ func (s *Service) chatJobBinding(ctx context.Context, chat models.Chat, refs []b
 	identity := func(id string) string {
 		return (requestidempotency.Identity{ID: id}).ResourceID(namespace, chat.ID, chat.ActiveExecutionID)
 	}
-	receipt := func(ctx context.Context, id string) (agentcapability.Result, error) {
+	receipt := func(ctx context.Context, id string) (capability.Result, error) {
 		r, err := s.config.Engine.GetReceipt(ctx, identity(id))
 		if err != nil {
-			return agentcapability.Result{}, bridge.MapError(err)
+			return capability.Result{}, bridge.MapError(err)
 		}
 		if err := validate(ctx, r.LibraryID); err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		// 核心可能已接纳而宿主补记失败；沿原任务配置恢复启动，不能只回放接纳回执。
 		link, err := s.config.References.GetOperation(ctx, r.RequestID)
 		if err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		session, err := s.config.References.GetTaskConfiguration(ctx, link.ConfigurationID)
 		if err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		for _, key := range []string{r.RequestID, r.RequestID + "/input"} {
 			if err := s.config.References.CompleteOperation(ctx, key, r.LibraryID, r.ResourceID, r.JobID); err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 		}
 		if r.ResourceID != "" {
 			s.drive(r.ResourceID, session)
 		}
-		return agentcapability.Result{CommandID: id, Replayed: true, Data: map[string]any{"receipt": r, "noop": r.State == "no-op"}}, nil
+		return capability.Result{CommandID: id, Replayed: true, Data: map[string]any{"receipt": r, "noop": r.State == "no-op"}}, nil
 	}
-	return agentcapability.Binding{Operation: operation, Receipt: receipt, Call: func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+	return capability.Binding{Operation: operation, Receipt: receipt, Call: func(ctx context.Context, r capability.Request) (capability.Result, error) {
 		raw, err := json.Marshal(r.Params)
 		if err != nil {
-			return agentcapability.Result{}, status_error.KnowledgeInvalid
+			return capability.Result{}, status_error.KnowledgeInvalid
 		}
 		var in chatOrganizeInput
 		if json.Unmarshal(raw, &in) != nil || in.LibraryID == "" || r.RequestID == "" {
-			return agentcapability.Result{}, status_error.KnowledgeInvalid
+			return capability.Result{}, status_error.KnowledgeInvalid
 		}
 		if maintenance && (len(in.AttachmentIndexes) != 0 || len(in.SourceVersionIDs) != 0) {
-			return agentcapability.Result{}, status_error.KnowledgeInvalid
+			return capability.Result{}, status_error.KnowledgeInvalid
 		}
 		if in.Backend == "" {
 			in.Backend = "local"
@@ -293,29 +293,29 @@ func (s *Service) chatJobBinding(ctx context.Context, chat models.Chat, refs []b
 			in.ConnectionID = "local"
 		}
 		if err := bridge.RequireLocal(bridge.ResourceRef{Backend: in.Backend, ConnectionID: in.ConnectionID, KnowledgeBaseID: in.LibraryID}); err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		if err := validate(ctx, in.LibraryID); err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		// 输入锚点固定原请求选择；核心回执使用执行范围身份，避免跨聊天碰撞。
 		digest := sha256.Sum256(raw)
 		key := identity(r.RequestID)
 		if err := s.config.References.BeginOperation(ctx, models.KnowledgeOperationLink{RequestID: key + "/input", Operation: anchorOperation, Digest: hex.EncodeToString(digest[:]), Backend: "local", ConnectionID: "local", KnowledgeBaseID: in.LibraryID, ChatID: chat.ID, ExecutionID: chat.ActiveExecutionID}); err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		if old, err := receipt(ctx, r.RequestID); err == nil {
 			return old, nil
 		} else if !errors.Is(err, status_error.KnowledgeNotFound) {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		active, err := s.config.Chats.ReadExecution(ctx, chat.ID, chat.ActiveExecutionID)
 		if err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		history, err := s.config.Chats.ReadMessageHistory(ctx, chat.ID, 0, 100)
 		if err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		for _, message := range history.Resources {
 			if message.ID != active.UserMessageID {
@@ -334,32 +334,32 @@ func (s *Service) chatJobBinding(ctx context.Context, chat models.Chat, refs []b
 			if maintenance {
 				accepted, _, err := s.Organize(ctx, OrganizeCommand{RequestID: key, LibraryID: in.LibraryID, Maintenance: true, Configuration: configuration, Message: requirements})
 				if err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
 				if err := s.config.References.CompleteOperation(ctx, key+"/input", accepted.LibraryID, accepted.ResourceID, accepted.JobID); err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
-				return agentcapability.Result{CommandID: r.RequestID, Data: map[string]any{"receipt": accepted, "noop": false}}, nil
+				return capability.Result{CommandID: r.RequestID, Data: map[string]any{"receipt": accepted, "noop": false}}, nil
 			}
 			attachments := make([]execution.AttachmentInput, len(message.Attachments))
 			// 聊天只提交业务选择，本轮执行配置由服务端冻结，不接受模型覆盖。
 			intent := execution.WorkIntent{ExecutionID: chat.ActiveExecutionID, Chat: execution.ChatTarget{ChatID: chat.ID}, Input: execution.WorkInput{Content: requirements, Attachments: attachments}, Options: execution.WorkOptions{RuntimeID: configuration.RuntimeID, AccountID: configuration.AccountID, Model: configuration.Model, Reasoning: configuration.Reasoning}}
 			bound, err := s.BindIntent(ctx, intent, models.KnowledgeMaintenanceAuthorization{Backend: in.Backend, ConnectionID: in.ConnectionID, KnowledgeBaseID: in.LibraryID, Operation: "organize", AttachmentIndexes: in.AttachmentIndexes, SourceVersionIDs: in.SourceVersionIDs})
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			command := r
 			command.RequestID = key
 			result, err := bound.Options.ToolCapabilities[0].Bindings[0].Call(ctx, command)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			coreReceipt := result.Data.(map[string]any)["receipt"].(*core.Receipt)
 			if err := s.config.References.CompleteOperation(ctx, key+"/input", coreReceipt.LibraryID, coreReceipt.ResourceID, coreReceipt.JobID); err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
-			return agentcapability.Result{CommandID: r.RequestID, Data: result.Data}, nil
+			return capability.Result{CommandID: r.RequestID, Data: result.Data}, nil
 		}
-		return agentcapability.Result{}, status_error.KnowledgeForbidden
+		return capability.Result{}, status_error.KnowledgeForbidden
 	}}
 }

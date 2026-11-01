@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -73,15 +73,15 @@ func TestOrdinaryRemoteReadsFreezeCompleteRefsAndNeverUseLocalEngineOrGenerator(
 	// 无本机Engine以及未装配Runtime端口，若远端分支意外访问本机实现测试立即失败。
 	s.config.Engine = nil
 	bindings := s.AgentBindings(ctx, models.Chat{})
-	call := func(operation string, params map[string]any) (agentcapability.Result, error) {
+	call := func(operation string, params map[string]any) (capability.Result, error) {
 		t.Helper()
 		for _, binding := range bindings {
 			if binding.Operation == operation {
-				return binding.Call(ctx, agentcapability.Request{Params: params})
+				return binding.Call(ctx, capability.Request{Params: params})
 			}
 		}
 		t.Fatalf("missing operation %s", operation)
-		return agentcapability.Result{}, nil
+		return capability.Result{}, nil
 	}
 	list, err := call("knowledge.libraries.list", map[string]any{})
 	if err != nil {
@@ -183,13 +183,13 @@ func TestAgentKnowledgeSearchUsesRealRAGChunksAndParentContext(t *testing.T) {
 				}}, nil
 			}
 			bindings := s.AgentBindings(ctx, models.Chat{})
-			var search agentcapability.Binding
+			var search capability.Binding
 			for _, b := range bindings {
 				if b.Operation == "knowledge.pages.search" {
 					search = b
 				}
 			}
-			result, err := search.Call(ctx, agentcapability.Request{Params: map[string]any{"libraryId": lib.ID, "query": "semantic ultraviolet"}})
+			result, err := search.Call(ctx, capability.Request{Params: map[string]any{"libraryId": lib.ID, "query": "semantic ultraviolet"}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -244,7 +244,7 @@ func TestAgentKnowledgeSearchUsesRealRAGChunksAndParentContext(t *testing.T) {
 			failedBindings := s.AgentBindings(ctx, models.Chat{})
 			for _, b := range failedBindings {
 				if b.Operation == "knowledge.pages.search" {
-					if _, err = b.Call(ctx, agentcapability.Request{Params: map[string]any{"libraryId": lib.ID, "query": "semantic ultraviolet"}}); !errors.Is(err, status_error.KnowledgeEmbeddingUnavailable) {
+					if _, err = b.Call(ctx, capability.Request{Params: map[string]any{"libraryId": lib.ID, "query": "semantic ultraviolet"}}); !errors.Is(err, status_error.KnowledgeEmbeddingUnavailable) {
 						t.Fatalf("embedding error hidden: %v", err)
 					}
 				}

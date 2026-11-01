@@ -8,7 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -18,7 +18,7 @@ import (
 )
 
 // PublishedBindings 将 API Key 的明确本地库绑定到与 allycli 相同的知识命令实现。
-func (s *Service) PublishedBindings(ctx context.Context, authority *integrationservice.Service, identity models.IntegrationIdentity) ([]agentcapability.Binding, error) {
+func (s *Service) PublishedBindings(ctx context.Context, authority *integrationservice.Service, identity models.IntegrationIdentity) ([]capability.Binding, error) {
 	readCaps := []constants.IntegrationCapability{constants.IntegrationCapabilityRetrieve}
 	resources := func(ctx context.Context, _ string) ([]bridge.ResourceRef, error) {
 		ids, err := authority.ResourceIDs(ctx, identity, constants.IntegrationResourceKindKnowledge, readCaps)
@@ -113,20 +113,20 @@ func (s *Service) PublishedBindings(ctx context.Context, authority *integrations
 	for i := range writes {
 		if writes[i].Operation == "knowledge.jobs.retry" {
 			call := writes[i].Call
-			writes[i].Call = func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+			writes[i].Call = func(ctx context.Context, r capability.Request) (capability.Result, error) {
 				var in wikiCommand
-				if err := agentcapability.DecodeParams(r.Params, &in); err != nil {
-					return agentcapability.Result{}, err
+				if err := capability.DecodeParams(r.Params, &in); err != nil {
+					return capability.Result{}, err
 				}
 				if _, err := authorize(ctx, "knowledge.jobs.retry", in.ref()); err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
 				j, err := s.config.Engine.GetJob(ctx, in.JobID)
 				if err != nil {
-					return agentcapability.Result{}, bridge.MapError(err)
+					return capability.Result{}, bridge.MapError(err)
 				}
 				if j.LibraryID != in.LibraryID {
-					return agentcapability.Result{}, status_error.KnowledgeForbidden
+					return capability.Result{}, status_error.KnowledgeForbidden
 				}
 				return call(ctx, r)
 			}
@@ -138,7 +138,7 @@ func (s *Service) PublishedBindings(ctx context.Context, authority *integrations
 			bindings = append(bindings, binding)
 		}
 	}
-	bindings = append(bindings, agentcapability.Binding{Operation: "knowledge.jobs.start", Call: func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+	bindings = append(bindings, capability.Binding{Operation: "knowledge.jobs.start", Call: func(ctx context.Context, r capability.Request) (capability.Result, error) {
 		var in struct {
 			LibraryID         string   `json:"libraryId"`         // 明确本地库。
 			Backend           string   `json:"backend"`           // 目标协议。
@@ -147,32 +147,32 @@ func (s *Service) PublishedBindings(ctx context.Context, authority *integrations
 			SourceVersionIDs  []string `json:"sourceVersionIds"`  // 已导入的真实来源版本。
 			Message           string   `json:"message"`           // 本次整理要求。
 		}
-		if err := agentcapability.DecodeParams(r.Params, &in); err != nil {
-			return agentcapability.Result{}, err
+		if err := capability.DecodeParams(r.Params, &in); err != nil {
+			return capability.Result{}, err
 		}
 		if in.LibraryID == "" || r.RequestID == "" {
-			return agentcapability.Result{}, status_error.KnowledgeInvalid
+			return capability.Result{}, status_error.KnowledgeInvalid
 		}
 		if len(in.AttachmentIndexes) > 0 {
-			return agentcapability.Result{}, agentcapability.Reject(status_error.KnowledgeInvalid, "Import source bytes first, then select sourceVersionIds; attachmentIndexes belongs to internal executions.")
+			return capability.Result{}, capability.Reject(status_error.KnowledgeInvalid, "Import source bytes first, then select sourceVersionIds; attachmentIndexes belongs to internal executions.")
 		}
 		ref := (wikiCommand{LibraryID: in.LibraryID, Backend: in.Backend, ConnectionID: in.ConnectionID}).ref()
 		raw, err := recovery(ctx, "knowledge.jobs.start", ref)
 		if err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		id := key(r.RequestID)
 		session := models.KnowledgeTaskConfiguration{ID: id, RemoteSubject: identity.KeyID, RemoteAuthorization: raw}
 		if old, e := s.config.References.GetTaskConfiguration(ctx, id); e == nil {
 			session.RemoteAuthorization = old.RemoteAuthorization
 		} else if !errors.Is(e, status_error.KnowledgeNotFound) {
-			return agentcapability.Result{}, e
+			return capability.Result{}, e
 		}
 		receipt, _, err := s.Organize(ctx, OrganizeCommand{RequestID: id, LibraryID: in.LibraryID, SourceVersionIDs: in.SourceVersionIDs, ExplicitSources: in.SourceVersionIDs != nil, Message: in.Message, Configuration: session})
 		if err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
-		return agentcapability.Result{CommandID: r.RequestID, Data: map[string]any{"receipt": receipt, "noop": receipt == nil || receipt.State == "no-op"}}, nil
+		return capability.Result{CommandID: r.RequestID, Data: map[string]any{"receipt": receipt, "noop": receipt == nil || receipt.State == "no-op"}}, nil
 	}})
 	return bindings, nil
 }

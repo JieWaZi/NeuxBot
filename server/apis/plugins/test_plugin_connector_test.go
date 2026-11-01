@@ -19,11 +19,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	c "github.com/JieWaZi/NeuxBot/server/internal/agent/core/contract"
-	acpdriver "github.com/JieWaZi/NeuxBot/server/internal/agent/core/driver/acp"
-	runtimeconfig "github.com/JieWaZi/NeuxBot/server/internal/agent/environment/config"
-	runtimehost "github.com/JieWaZi/NeuxBot/server/internal/agent/host"
-	runtimecontract "github.com/JieWaZi/NeuxBot/server/internal/agent/host/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
+
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -248,46 +246,44 @@ func TestPluginConnectorProbeKeepsOwnedSourceWhenNativeReferenceExists(t *testin
 
 // connectorProbeSession 模拟可热续聊的原生协议边界，不接触真实 CLI 或账号。
 type connectorProbeSession struct {
-	// closed 记录原生会话及驱动的关闭调用数。
+	// closed 记录原生连接实际退出次数。
 	closed int
 }
 
-func (*connectorProbeSession) ID() string { return "codex" }
-func (*connectorProbeSession) Capabilities() c.DriverCapabilities {
-	return c.DriverCapabilities{Version: "probe", HotResume: true, ColdResume: true}
-}
-func (d *connectorProbeSession) Open(context.Context, c.OpenRequest) (c.DriverSession, error) {
+func (d *connectorProbeSession) Open(context.Context, native.OpenRequest) (agentapi.NativeConnection, error) {
 	return d, nil
 }
-func (d *connectorProbeSession) Close(context.Context) error                       { d.closed++; return nil }
-func (*connectorProbeSession) Accept(context.Context, runtimecontract.Event) error { return nil }
-func (*connectorProbeSession) Prompt(ctx context.Context, _ c.TurnRequest, sink c.DriverSink) c.DriverResult {
-	_ = sink.Accept(ctx, c.DriverEvent{Kind: c.EventPromptAccepted})
-	_ = sink.Accept(ctx, c.DriverEvent{Kind: c.EventAssistantMessage, Message: &c.AssistantMessage{MessageID: "answer", Phase: c.PhaseFinal, Delta: "done", Complete: true}})
-	return c.DriverResult{Status: c.StatusCompleted, StopReason: c.StopEndTurn, NativeSession: c.NativeSessionInfo{Handle: "probe-session", Resumable: true}}
+func (d *connectorProbeSession) Close(context.Context) error                { d.closed++; return nil }
+func (*connectorProbeSession) Accept(context.Context, agentapi.Event) error { return nil }
+func (*connectorProbeSession) Prompt(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
+	_ = sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted})
+	_ = sink.Accept(ctx, native.Event{Kind: native.EventAssistantMessage, Message: &native.AssistantMessage{MessageID: "answer", Phase: native.PhaseFinal, Delta: "done", Complete: true}})
+	return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn, NativeSession: native.NativeSessionInfo{Handle: "probe-session", Resumable: true}}
 }
 
 func retainProbeConsumer(t *testing.T, pluginID string, active bool) *connectorProbeSession {
 	t.Helper()
 	driver := &connectorProbeSession{}
-	host := runtimehost.NewChat(runtimehost.ChatConfig{
-		Launch: func(runtimeconfig.RuntimeTarget, runtimeconfig.DetectionResult) (runtimeconfig.LaunchFacts, error) {
-			return runtimeconfig.LaunchFacts{BaseRuntimeID: "codex", Executable: "fixture"}, nil
+	host := agentapi.NewManager(agentapi.ManagerConfig{
+		Launch: func(agentapi.RuntimeTarget, agentapi.DetectionResult) (agentapi.LaunchFacts, error) {
+			return agentapi.LaunchFacts{BaseRuntimeID: "codex", Executable: "fixture"}, nil
 		},
-		Driver: func(runtimehost.Environment, acpdriver.Factory) (c.Driver, error) { return driver, nil },
+		Open: func(ctx context.Context, _ native.ConnectionConfig, request native.OpenRequest) (agentapi.NativeConnection, error) {
+			return driver.Open(ctx, request)
+		},
 	})
-	previous := global.ChatRuntimeHost
-	global.ChatRuntimeHost = host
-	t.Cleanup(func() { _ = host.Close(context.Background()); global.ChatRuntimeHost = previous })
-	target := runtimeconfig.RuntimeTarget{RuntimeID: "codex", Isolated: true}
-	plan := runtimecontract.SessionPlan{
-		Target:      runtimecontract.DeclareTarget(target),
-		Detection:   runtimeconfig.DetectionResult{Runtime: runtimeconfig.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}},
-		Workspace:   runtimecontract.Workspace{Path: t.TempDir(), Managed: true},
+	previous := global.AgentManager
+	global.AgentManager = host
+	t.Cleanup(func() { _ = host.Close(context.Background()); global.AgentManager = previous })
+	target := agentapi.RuntimeTarget{RuntimeID: "codex", Isolated: true}
+	plan := agentapi.SessionPlan{
+		Target:      agentapi.DeclareTarget(target),
+		Detection:   agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}},
+		Workspace:   agentapi.Workspace{Path: t.TempDir(), Managed: true},
 		ResourceKey: "plugin-resources", PluginIDs: []string{pluginID},
 	}
 	ctx := context.Background()
-	prepared, err := host.PrepareSession(ctx, plan, runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeNew})
+	prepared, err := host.PrepareSession(ctx, plan, agentapi.SessionDirective{Mode: agentapi.SessionModeNew})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -297,15 +293,15 @@ func retainProbeConsumer(t *testing.T, pluginID string, active bool) *connectorP
 		t.Fatal(err)
 	}
 	t.Cleanup(release)
-	if err := prepared.Bind(ctx, runtimecontract.SessionResources{Target: target, PluginResources: []packageplugin.Snapshot{{ID: pluginID}}, Close: func(context.Context) error { release(); return nil }}); err != nil {
+	if err := prepared.Bind(ctx, agentapi.SessionResources{Target: target, PluginResources: []packageplugin.Snapshot{{ID: pluginID}}, Close: func(context.Context) error { release(); return nil }}); err != nil {
 		t.Fatal(err)
 	}
-	result := prepared.Run(ctx, runtimecontract.TurnInput{Message: runtimecontract.Message{Text: "hello"}}, driver)
+	result := prepared.Run(ctx, agentapi.TurnInput{Message: agentapi.Message{Text: "hello"}}, driver)
 	if result.Failure != nil || driver.closed != 0 {
 		t.Fatalf("hot consumer not retained: %+v closed=%d", result, driver.closed)
 	}
 	if active {
-		running, err := host.PrepareSession(ctx, plan, runtimecontract.SessionDirective{Mode: runtimecontract.SessionModeResume, ID: result.Session.OutputID})
+		running, err := host.PrepareSession(ctx, plan, agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: result.Session.OutputID})
 		if err != nil {
 			t.Fatal(err)
 		}
