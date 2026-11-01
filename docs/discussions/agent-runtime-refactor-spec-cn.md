@@ -1,6 +1,6 @@
 # 独立 Agent Runtime 重构 Spec
 
-> 本文记录原阶段方案与验证。当前公开执行入口、会话模型及资源所有权以[会话模型 Spec](agent-runtime-boundaries-spec-cn.md)和[Agent 子系统](../../server/internal/agent/README.md)为准；文中的 Invoke/Run 名称不代表当前公开 API。
+> 本文记录原阶段方案与验证。当前公开执行入口、会话模型及资源所有权以[会话重构 Spec](agent-session-refactor-spec-cn.md)和[Agent 子系统](../../server/internal/agent/README.md)为准；文中的 Invoke/Run 名称不代表当前公开 API。
 
 > 历史阶段记录：本文的目录、独立 Go module 方案、迁移顺序和验收结果均以当时为准，不作为当前实现或重新验收的依据。当前执行能力已归入 `server/internal/agent/{core,host,environment}` 并属于 `server` 主模块；会话、启动与认证所有权以[职责收拢 Spec](agent-runtime-boundaries-spec-cn.md)及[当前架构说明](../architecture/runtimes-and-accounts-cn.md)为准。
 
@@ -8,7 +8,7 @@
 >
 > 代码基线：2026-10-27，提交 `49250f9` 与编写时工作区。知识维护、账号依赖等存在并行未提交修改；本文依据已读取源码描述，实施每批迁移前重新核对差异。
 
-分阶段目录、依赖、功能影响和开发任务见[实施计划](agent-runtime-implementation-plan-cn.md)；当前执行内核的实际职责及限制见[内核说明](../../server/internal/agent/core/README.md)。本 Spec 保留完整目标，不能据此推定所有阶段已经实现。
+分阶段目录、依赖、功能影响和开发任务见[实施计划](agent-runtime-implementation-plan-cn.md)；当前执行内核的实际职责及限制见[内核说明](../../server/internal/agent/README.md)。本 Spec 保留完整目标，不能据此推定所有阶段已经实现。
 
 项目层次、个人/企业形态与未来部署边界见[项目架构与产品形态 Spec](project-architecture-and-editions-spec-cn.md)。本文只细化 Agent Runtime 子系统；当前仍采用桌面模块化单体，不建设企业平台。
 
@@ -377,7 +377,7 @@ Spec 的批准只确定目标架构和迁移边界；每批实施仍以当时可
 ## 11. 代码与规范依据
 
 - [领域词汇](../../CONTEXT.md)、[当前架构](../architecture/overview-cn.md)、[后端约定](../development/backend-cn.md)、[文档约定](../development/documentation-cn.md)。
-- [宿主装配](../../server/internal/agent/host/chat.go)、[聊天执行宿主](../../server/internal/agent/host/chat.go)、[结果调用宿主](../../server/internal/agent/host/standalone.go)、[独立执行内核](../../server/internal/agent/core/runtime/runtime.go)、[公开 ACP 驱动](../../server/internal/agent/core/driver/acp/driver.go)、[ACP 管理操作](../../server/internal/agent/core/driver/acp/management.go)。
+- [宿主装配](../../server/internal/agent/agent.go)、[聊天执行宿主](../../server/internal/agent/agent.go)、[结果调用宿主](../../server/internal/agent/agent.go)、[独立执行内核](../../server/internal/agent/session.go)、[公开 ACP 驱动](../../server/internal/agent/native/connection.go)、[ACP 管理操作](../../server/internal/agent/native/management.go)。
 - [执行装配](../../server/services/execution/work.go)、[执行生命周期](../../server/services/execution/lifecycle.go)、[产品事件消费](../../server/services/execution/runtime_events.go)、[业务消息事实](../../server/services/execution/message_facts.go)、[近期历史](../../server/services/execution/recent_history.go)、[隐藏交接](../../server/services/execution/handoff.go)、[失败重试](../../server/services/execution/retry.go)。
 - [Chat Journal](../../server/services/chat/journal.go)、[Chat 历史读取](../../server/services/chat/chat.go)、[Runtime 持久探测配置](../../server/repositories/models/runtime_environment.go)、[历史限制](../../server/constants/common.go)。
 - [知识生成](../../server/internal/knowledge/model/generator.go)、[独立知识维护](../../server/internal/knowledge/model/maintenance.go)、[知识模型装配](../../server/global/knowledge_model.go)、[Chat 型知识维护](../../server/services/knowledge/maintenance.go)、[自动知识维护](../../server/services/knowledge/automatic.go)。

@@ -62,7 +62,7 @@ cmd / global ---------------> assembly
 
 ### 1.1 领域归属与文件内聚
 
-- 同一领域的内部能力必须归到一个上层目录，再按真实能力划分子包。例如工作流统一使用 `internal/workflow/{dsl,files,function,input,state}`；软件能力统一通过系统 `ally` skill 与 `allycli` 交付，命令契约归到 `internal/agentcapability/contract`，认证/观察归到 `internal/agentcapability`，客户端归到 `internal/agentcli`；业务存储、编译和调度留在各自领域模块。禁止在 `internal` 顶层继续新增 `workflowxxx` 平级包。上层目录只表达归属，不为了聚合目录新增空接口、转发包或第二套 Service；
+- 同一领域的内部能力必须归到一个上层目录，再按真实能力划分子包。例如工作流统一使用 `internal/workflow/{dsl,files,function,input,state}`；软件能力统一通过系统 `ally` skill 与 `allycli` 交付，命令目录、Schema、授权、观察和回执归到 `internal/agent/capability`，参数解析与客户端归到 `internal/agent/cli`；业务存储、编译和调度留在各自领域模块。禁止在 `internal` 顶层继续新增 `workflowxxx` 平级包。上层目录只表达归属，不为了聚合目录新增空接口、转发包或第二套 Service；
 - 新建文件前，先检查同包中拥有该职责的文件；依附于既有编译、查询、接纳、恢复或执行规则的辅助函数应放回对应职责文件。禁止按一个函数、一个命令或一次补丁建立文件，导致完成一个用例需要在多个零散文件间跳转；
 - 一两个函数可以构成完整且有独立变化原因的公开能力；判断依据是职责边界、依赖和测试，而不是函数或行数。独立 HTTP Operator、平台构建变体及生成文件遵守各自规则，不为减少文件数混合路由、平台或生成边界；
 - 文件划分必须说明独立的职责、依赖或变化原因；不能以“这是另一个功能”、新增命令或文件较长作为拆分依据。同一职责允许保留较大的文件，优先让完整规则就近阅读；仅当出现实际独立边界时才拆分。装配与生命周期可以同文件，运行接纳与取消可以同文件，同一执行机制的分派、结果与恢复可以同文件；禁止用无明确职责的 `utils.go` 汇总领域逻辑；
@@ -72,15 +72,19 @@ cmd / global ---------------> assembly
 
 ### 1.2 Agent 执行边界
 
-`server/internal/agent/{core,host,environment}` 共同属于 `server` 主 Go 模块，不再为执行内核维护独立 `go.mod`。`core` 只负责技术调用、会话、事件、输出与资源租约；除自身包和技术依赖外，不导入产品 `constants`、`status_error`、数据库、Host 或 Environment。技术请求、能力与 Fault 归 `core/contract`，不使用产品 toolx 生成器；其他后端包继续遵守第 6 节的原规则。
+`server/internal/agent` 及 `native`、`capability`、`cli` 子包共同属于 `server` 主 Go 模块，不另建执行内核的 `go.mod`。根 Agent 承担产品执行合同、会话、事件、交互、资源装配和故障转换，产品错误遵守第 6 节的 `status_error` 规则。根 Agent 和 native 均不得导入 `apis`、`services` 或 `repositories`。
 
-`host` 完成产品 DTO、日志、交互、账号与资源端口的边界转换，只关联业务工作区和 Runtime。技术会话兼容性、活动状态及释放栈由 Core Runtime 唯一维护，不得在 Host 复制摘要、句柄或租约状态机。
+应用只装配一个 Manager，统一登记聊天工作区、临时 Session 与尚未清理完成的所有者。Session 唯一拥有稳定计划、兼容依据、当前 Turn、原生句柄、连接、实际资源和可重试释放进度；Manager 只维护索引、接纳与根生命周期，不复制 busy、配置摘要、句柄或释放状态。一个 Session 同时最多一个 Turn，不在每工作区再嵌套 sessions/active 管理集合。PreparedTurn 直接关联同一 Session 与 Turn，不保留准备句柄转发层。
 
-SessionPlan 只保存稳定会话配置，TurnInput 只保存本轮输入、资源选择和交互端口，SessionResources 保存实际物化结果及释放能力。所有模型执行统一使用 `Prepare → 冷路径取得资源 → Bind → Run`；Core 不反调业务资源获取函数。冷资源取得使用准备句柄 Context，部分失败结果也必须通过 Bind 交还唯一所有者。禁止传回完整请求继续回填、使用 Data any 携带业务事实，或为聊天和独立任务维护两条准备机制。静态目标与连接器声明必须以窄类型排除秘密环境和刷新函数，不能仅依赖调用方清空字段。原生恢复直接交付真实句柄，历史只从本轮 Seed 进入；不增加未被生产消费的检查点、摘要证明、身份预留或纯转发层。
+SessionPlan 只保存稳定会话配置，TurnInput 只保存本轮输入、资源选择和交互端口，SessionResources 保存实际物化结果及释放能力。所有模型执行统一使用 `Prepare → 冷路径取得资源 → Bind → Run`；Prepare 不启动原生进程、不反调业务 Acquire，Bind 不提交 Prompt。冷资源取得使用准备句柄 Context，首次有效冷 Bind 先接管实际或部分资源，再校验和准备启动租约；失败仍由同一 Session 清理，重复或已消费句柄的 Bind 不接管新资源。取得句柄后所有提前返回路径都登记 Close，取消不能遗弃迟到资源；成功交接后解除短接纳 Context 的取消转发，Run 使用执行 Context。
 
-`environment/config` 是安装、探测和启动事实的叶子；`catalog` 保留本地目录与 Probe/Fork 解释；`launch` 统一持有原生启动和认证资源，只消费冻结配置与刷新、释放回调，不依赖业务数据库或 Host 请求。所有 CLI 技术声明和工厂只在 `core/driver/acp/native` 的 Descriptor 注册表维护。
+静态目标和连接器声明必须使用窄类型排除秘密环境、请求头和刷新函数，不能只依赖调用方清空字段。本轮输入和授权不进入兼容摘要；禁止使用完整请求回填、Data any 或第二份热资源表保存业务事实。原生恢复直接交付真实句柄，新建会话只播种一次有界完整历史，热续聊和冷恢复只发送新增消息。不增加没有生产消费者的检查点、身份预留或纯转发层。
 
-acp-go 的原生协议和进程实现继续在独立仓库维护并固定依赖版本。新增技术能力必须有行为测试，不能以复制旧实现或增加兼容转发代替职责收拢。当前调用与资源规则见[智能体与账号](../architecture/runtimes-and-accounts-cn.md)，依赖方向由定向架构测试保护。
+Catalog 维护安装、Profile、程序定位与探测解释，编排无 Prompt 的 Probe/Fork；普通聊天只消费已有事实，不隐式重复健康或账号探测。native 只定义原生连接、Prompt、协议事件、完成事实、结构化技术 Fault、唯一 Descriptor/工厂、LaunchLease 和 Management；不得反向导入根 Agent、capability 或 cli，也不得持有产品 SessionPlan、PreparedTurn、领域资源获取函数或会话管理集合。根 Agent 仅在原生连接边界转换一次计划和输入。
+
+本轮授权的撤销与会话资源释放分别表达。先确认原生消费者退出，再关闭启动认证租约、领域资源和临时工作区；成功步骤不重复，失败保留同一所有者及剩余依赖，不通过打开替代消费者绕过失败，不自动重放 Prompt。执行状态、最终答案、事件交付失败和清理失败分别保留。Manager 的索引锁不得覆盖原生 I/O、账号等待、事件回调或资源清理。
+
+acp-go 的原生协议和进程实现继续在独立仓库维护并固定依赖版本。新增能力必须有行为测试；同一对象的方法和测试按完整职责内聚，文件较长不构成拆分理由，不复制生命周期或增加兼容转发。当前调用与资源规则见[智能体与账号](../architecture/runtimes-and-accounts-cn.md)，依赖方向由定向架构测试保护。
 
 ## 2. ginx API
 
@@ -200,10 +204,10 @@ API -> Service -> Repository Controller
 - 字段规则覆盖未导出字段、测试替身字段和适配器内部字段；
 - 注释说明业务含义或技术用途，不机械重复字段名；
 - 新增或修改结构体时，必须检查该结构体的全部字段；
-- `internal/agent/core` 是不依赖产品的技术执行内核，沿用自身结构化 Fault 表达协议、输出与清理结果，由 `agent/host` 在产品边界一次映射为状态错误；该规则不扩展到宿主、环境、API 或业务 Service。技术内核不导入产品 constants、数据库与服务。
-- 所有项目自有错误必须集中定义在 `constants/status_error` 并通过 toolx 生成，规则覆盖 API、Service、Repository Controller、`internal` 深模块、`global` 装配和进程入口，生成文件禁止手改；
+- `internal/agent/native` 的原生 I/O 边界可以使用结构化技术 Fault 保留协议、取消和清理原因，由根 Agent 在产品入口一次映射为 `status_error`；这个例外只覆盖 native，不扩展到根 Agent、capability、cli、其他 `internal` 包、API、业务 Service 或装配。native 不定义产品错误，也不导入产品 constants、数据库或服务。
+- 除上述 native 结构化技术 Fault 边界外，所有项目自有错误必须集中定义在 `constants/status_error` 并通过 toolx 生成，规则覆盖 API、Service、Repository Controller、`internal` 深模块、`global` 装配和进程入口，生成文件禁止手改；
 - API、Service、Repository Controller 和 `internal` 可以直接返回 `status_error` 中准确表达当前失败语义的错误，API 只负责通过 `ginx.WithStack(err)` 补充调用堆栈和必要的外部参数；
-- 禁止在任何业务或内部模块中使用 `errors.New`、`fmt.Errorf`、包级哨兵或本包自定义错误类型另行定义项目错误；内部错误说明只能使用稳定英文技术文本，禁止返回中文错误文案；只有 `constants/status_error` 可以通过 `@errZH`、`@errEN` 定义中文与英文 i18n 错误；标准库、第三方依赖和系统调用返回的底层错误必须在首次转换处记录技术上下文，再转换为 `status_error`，不得直接暴露给上层或前端；
+- 除上述 native 结构化技术 Fault 边界外，禁止在任何业务或内部模块中使用 `errors.New`、`fmt.Errorf`、包级哨兵或本包自定义错误类型另行定义项目错误；内部错误说明只能使用稳定英文技术文本，禁止返回中文错误文案；只有 `constants/status_error` 可以通过 `@errZH`、`@errEN` 定义中文与英文 i18n 错误；标准库、第三方依赖和系统调用返回的底层错误必须在首次转换处记录技术上下文，再转换为 `status_error`，不得直接暴露给上层或前端；
 - 现有 `status_error` 不能准确表达失败语义时，必须在 `constants/status_error/error.go` 新增对应错误并重新生成，禁止为了消除错误字符串而把配置缺失、调用取消、外部服务失败、协议损坏、数据库故障等不同语义粗略折叠为 `BadRequest`、`InternalServerError` 或其他不准确错误；
 - 同一失败沿调用链只能转换一次；下层已经返回 `status_error` 时，上层必须原样传递，禁止再次按 `errors.Is`、错误文本或 switch 二次映射；
 - API 不得对 Controller、Service 已经返回的 `status_error` 再增加 `errors.go`、错误映射函数、`errors.Is` 分支或 switch 做二次转换；收到此类错误后直接使用 `ginx.WithStack(err)`；
@@ -265,7 +269,7 @@ go test ./repositories/controllers -run '^$' -bench '^BenchmarkSQL' -benchtime=2
 ### 8.1 连续聊天输入稳定性
 
 - 新建原生 Session 默认只用有界的最近完整对话轮次播种，默认五轮、最多二十轮，并限制历史文本总量；只保留用户输入和助手最终回复，不注入过程、推理和工具输出。用户选择自动总结时，先在切换前的原生 Session 上生成不进入聊天日志和实时流的交接内容；成功后只把该交接带入新 Session，失败时改用有界近期对话。恢复原生 Session 时只发送本轮新增消息，不得再次把已有历史、伙伴档案、项目指令、MCP 说明或工具定义拼入当前 Prompt；
-- 原生 CLI 或模型接口因无状态协议而需要重建上下文时，只允许 Adapter/CLI 单层负责，Host 不得同时重建同一内容；不能仅凭 Provider 报告的输入 Token 较大判断 Host 重复发送，必须分别检查 Host 到 CLI 的请求和 CLI 到 Provider 的真实载荷；
+- 原生 CLI 或模型接口因无状态协议而需要重建上下文时，只允许 Adapter/CLI 单层负责，根 Agent 不得同时重建同一内容；不能仅凭 Provider 报告的输入 Token 较大判断应用重复发送，必须分别检查 Agent 到 CLI 的请求和 CLI 到 Provider 的真实载荷；
 - 同一会话配置未变化时，系统提示、工具名称、MCP 服务名、工具 Schema 及其顺序必须确定且稳定。随机端口、临时路径、Invocation ID、时间戳和鉴权凭据不得进入模型可见名称、描述或 Schema；
 - 连接器、技能、权限、模型或指令确实变化时允许重新挂载或改变前缀，但变化必须来自结构化配置事实，不能来自每轮重新生成的随机值；
 - 新增或升级 Runtime Adapter 时，必须至少覆盖两个连续回合：断言恢复请求只含第二轮新增消息；对模型可见静态前缀或可观测替代物做规范化摘要，断言无配置变化时摘要一致；同时证明随机端口和凭据仍会安全轮换；
@@ -287,7 +291,7 @@ go test ./repositories/controllers -run '^$' -bench '^BenchmarkSQL' -benchtime=2
 - [ ] Model 可满足协议时没有机械增加 DTO，必要的 HTTP Response 只定义在 API 包；
 - [ ] 写接口默认返回 `ginx.CommonSuccessResponse()`，返回数据的例外确有前端后续交互依赖；
 - [ ] Controller 没有向外抛出原始数据库错误，API 没有重复映射或记录下层错误；
-- [ ] API、Service、Repository Controller、`internal` 和 `global` 的项目自有错误均来自 `status_error`，没有 `errors.New`、`fmt.Errorf`、包级哨兵或本包自定义错误类型，内部错误说明没有中文文案；
+- [ ] API、Service、Repository Controller、根 Agent、其他 `internal` 和 `global` 的项目自有错误均来自 `status_error`；仅 native 保留结构化技术 Fault，产品边界只转换一次，没有向其他包扩大例外；内部错误说明没有中文文案；
 - [ ] 每个失败都返回准确的状态错误，配置缺失、调用取消、外部服务失败、协议损坏和数据库故障没有被粗略折叠为通用错误；
 - [ ] 唯一名称直接使用规范化后的名称字段，没有派生判重 Key；
 - [ ] 没有盲目 `Save`、无条件更新或事务内外部调用；

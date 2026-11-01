@@ -1,5 +1,7 @@
 # Agent 会话模型与统一准备流程 Spec
 
+> 历史阶段设计。当前结构与所有权以[Agent 会话重构 Spec](agent-session-refactor-spec-cn.md)和[Agent 子系统](../../server/internal/agent/README.md)为准。
+
 ## 目标与约束
 
 本轮删除无生产用途的会话入口与自制 Checkpoint 往返，收紧静态声明、每轮输入和实际资源边界，取消纯转发层并合并零散文件。统一 Prepare / Bind / Run 流程继续保留。目录保持 `server/internal/agent/{core,host,environment}`，同属 server Go module；acp-go 独立维护并固定版本。聊天、团队、工作流和知识独立任务最终使用同一 Core 准备与执行流程。

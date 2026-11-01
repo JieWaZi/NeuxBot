@@ -1,75 +1,70 @@
 # Agent 子系统
 
-Agent 位于 server Go module 内，为聊天和独立任务提供同一准备及执行流程。业务接纳与持久化归原领域，技术会话与资源生命周期归 Core，产品转换归 Host，启动和认证装配归 Environment。
+Agent 位于 `server` Go module 内。应用装配一个 Manager，为聊天、独立文本生成和工具任务提供同一会话机制；业务接纳、授权和持久化归原领域，Session 唯一拥有执行与资源生命周期。模型推理和工具循环由本机 CLI 负责。
 
-## 职责与依赖
+## 职责与调用
+
+下图只表示主要调用方向；领域资源经装配端口取得，接口实现关系不混入调用图。
 
 ```mermaid
-flowchart TB
-  UI[桌面或 Web 界面] --> API[业务 API]
-  API --> Business[Execution / Knowledge]
-  Business --> Domain[账号、插件、技能等领域资源]
-  Business --> Host[Host：产品计划、输入、资源和事件转换]
-  Host --> Core[Core：技术会话、执行、复用和释放]
-  Host --> Environment[Environment：启动配置与认证资源]
-  Environment --> Native[Core native：CLI 声明和原生工厂]
-  Core --> Driver[ACP Driver]
-  Driver --> ACP[独立 acp-go]
-  Native --> ACP
-  ACP --> CLI[本机 CLI：模型及工具循环]
-  Business --> Store[Journal / JSONL / 数据库]
-  Business --> Events[实时事件]
-  Events --> UI
+flowchart LR
+  Business[Execution / Knowledge] --> Manager[agent.Manager]
+  Manager --> Session[agent.Session]
+  Session --> Connection[native.Connection]
+  Connection --> ACP[独立 acp-go]
+  ACP --> CLI[本机 CLI]
 ```
 
-| 模块 | 拥有的职责 | 边界 |
+| 对象 | 唯一拥有的事实 | 边界 |
 | --- | --- | --- |
-| core | 技术会话、活动调用、静态兼容、执行、取消、输出和释放栈 | 不读取业务数据库，不识别伙伴、知识库或插件授权 |
-| host | 产品模型转换、工作区与 Runtime 关联、交互及事件适配 | 不复制技术会话状态，不保存完整请求作为热资源 |
-| environment | 安装发现、探测事实、启动配置和认证装配 | 不拥有聊天及执行终态，不在每轮聊天做远端预检 |
-| Execution / Knowledge | 接纳、本轮能力、领域资源取得、日志和结果 | 不持有原生连接，不另建技术会话表 |
+| Manager | 工作区索引、临时 Session 登记、接纳门禁、根生命周期及待清理所有者集合 | 不复制 Session 的 busy、兼容摘要、句柄或释放状态 |
+| Session | 稳定计划、兼容依据、当前 Turn、原生句柄、连接、实际资源及释放进度 | 一个 Session 同时最多一个 Turn，不管理其他 Session |
+| PreparedTurn / Turn | 同一回合的准备占位、Context、输入、事件、交互和有界最终候选 | PreparedTurn 直接持有 Session 与 Turn，不包装另一套执行内核 |
+| Catalog | 安装、Profile、程序定位、已有探测事实及 Probe/Fork 编排 | 不拥有聊天终态，不在每轮聊天做远端健康或授权预检 |
+| native.Connection | 一次原生 Agent、ACP 传输、原生会话、通知与取消 | 不接收产品计划或领域资源获取回调 |
+| native.LaunchLease | 冻结启动环境、认证刷新入口、凭据对账和可重试释放 | 原生消费者退出后才关闭，不读取业务数据库 |
+| capability.Registry | 精确授权、撤销、在途调用和有界观察 | 业务状态及事务内回执归原领域 |
 
-Core 不依赖 Host 或 Environment；Host 通过 Driver 工厂使用统一启动器。Environment 的 launch 使用公开的 native 工厂构造原生实例。厂商协议和进程实现仍归独立 acp-go。
+根 Agent 与 native 不导入 API、Service 或 Repository。native 不反向导入根 Agent、capability 或 cli。根 Agent 只在原生连接边界转换计划和输入；产品错误使用 `status_error`，原生边界保留结构化技术 Fault，并在产品入口转换一次。
 
 ## 三个模型
 
-- **SessionPlan**：窄 SessionTarget、模型、工作区、指令、ConnectorDeclaration 等稳定事实；类型不包含认证环境、刷新回调、关闭策略或连接器秘密。
-- **TurnInput**：本轮正文、附件、代码引用、资源选择、唯一历史播种及交互。本轮软件授权提供 LaunchEnvironment，只有冷资源取得时并入启动资源；热轮更新原有稳定连接文件。它不进入 Core Prompt 或兼容摘要。
-- **SessionResources**：实际 RuntimeTarget、账号、插件、技能、完整连接器及释放能力；认证环境、刷新和强制关闭事实只在这一资源边界。业务事实具名表达，不以 Data any 或完整请求回填。
+- **SessionPlan**：窄 SessionTarget、模型、工作区、固定指令、技能和 ConnectorDeclaration 等稳定事实；类型排除秘密环境、刷新回调和连接器请求头，不携带本轮输入。
+- **TurnInput**：本轮正文、附件、代码引用、资源选择、有界历史播种和交互端口。本轮软件授权只在冷资源取得时并入启动资源，热轮更新既有稳定连接文件；它不进入兼容摘要或模型可见静态身份。
+- **SessionResources**：实际 RuntimeTarget、账号、插件、技能、完整连接器、业务快照及释放能力。业务层从同一资源所有者回读接纳所需事实，不另建热资源表。
 
-新建/恢复、真实原生句柄、只读交接和消费者留存是准备指令。Runtime 不生成或消费自制 Checkpoint；稳定配置兼容仍由 preparationKey 判断。普通聊天允许保留热消费者，独立任务及只读交接要求本轮结束关闭。
+新建、恢复、真实原生句柄和只读交接由 SessionDirective 表达。静态配置与句柄一致时才能复用热连接；配置改变先关闭旧消费者，再取得冷资源。新会话只播种一次有界完整历史，热续聊和冷恢复只发送新增消息，不生成自制 Checkpoint。
 
-## 一次聊天
+## 准备与执行
 
-1. API 进入 Execution，整理本轮输入，冻结 SessionPlan 和准备指令。
-2. Host 转换会话声明，调用 Core.Prepare。Core 占用会话，判断热复用；配置不兼容时先关闭旧消费者。
-3. 热路径沿用原资源；冷路径由 Execution 使用准备 Context 顺序取得领域资源，再调用 Host.Bind。Host 共用启动装配生成 Driver 和 launch 资源，Core 接管包括部分失败结果的释放责任。
-4. Execution 读取具名插件和范围事实，构造接纳记录；Run 显式接收 TurnInput，冷路径此时才打开原生连接。
-5. Driver 提交 Prompt。普通聊天收到 PromptAccepted 后，经 Host 转成 InvocationStarted，Execution 提交用户消息和执行事实并返回 API 接纳结果。
-6. 过程事件经 Core → Host → Execution，分别进入实时投影和完整消息日志；审批、提问经本轮端口往返，不由 Core 解释业务。
-7. 最终结果交回业务层保存终态和续接信息。Core 按能力、执行结果和留存策略保留消费者，或按依赖顺序释放。
+1. Execution 冻结 SessionPlan 与准备指令，调用 `Manager.PrepareSession`。Manager 找到唯一 Session，由 Session 占用本轮并判断复用；Prepare 不启动原生进程。
+2. 热准备沿用原连接及资源。冷准备由调用方使用 `PreparedTurn.Context()` 顺序取得账号、插件等领域资源，再调用 Bind。首次有效冷 Bind 立即接管实际或部分资源，随后校验和启动租约准备失败也由同一 Session 清理；重复或已消费句柄的 Bind 不接管新资源。
+3. Execution 回读实际插件和范围等具名事实，形成接纳所需数据；`Run(TurnInput, EventSink)` 此时才打开必要连接并提交本轮输入，Bind 不提交 Prompt。
+4. `native.Connection` 经独立 acp-go 与 CLI 通信。普通聊天收到真实 PromptAccepted 后，Agent 转为 InvocationStarted，Execution 提交消息和执行事实并返回 API 接纳结果。
+5. 原生消息身份、阶段和完成证明交给 Turn 的有界收集器判断最终答案；产品事件交给 Execution 的实时投影与完整消息日志。审批和问答经本轮端口往返。
+6. Agent 返回结果，由原领域保存终态及续接事实。执行状态、答案可用性、事件交付失败和清理失败分别表达；Session 按结果与留存策略保留或关闭消费者。
 
-独立文本生成与 Wiki 工具任务使用相同的 Prepare → 冷取得资源 → Bind → Run；输出只消费任务结果，按任务类型注入显式资源，不创建 Chat 或聊天日志。
+`GenerateText` 与 `ExecuteTask` 由同一个 Manager 登记临时 Session，复用同一 Prepare / Bind / Run 机制；两者按任务类型取得显式资源，执行后关闭，不创建 Chat 或聊天日志。严格最终输出和无人交互是本轮策略，模型工厂在提交前确定，失败后不切换或重放输入。
 
-## 所有权与关闭
+## Context、授权与关闭
 
-Host 只保留工作区到 Runtime 的关联。Core 持有活的技术 Session、Driver、原生连接和资源释放栈；业务层只持久化原生句柄供冷恢复。账号配置和凭据仍归账号服务，插件安装及授权仍归插件领域，launch 仅装配其启动资源。
+取得准备句柄后，调用方立即登记 Close。冷资源取得受准备 Context 取消约束；取消不能遗弃仍可能返回的资源，迟到部分结果仍经 Bind 交还 Session。成功冷 Bind 和热准备返回前解除短接纳 Context 的取消转发，Run 使用执行 Context；接纳请求结束不能取消已经交给后台的执行。未运行冷准备回收，未运行热准备保留原消费者。
 
-准备调用方立即登记 Close，并用准备 Context 取得资源。首次冷 Bind 成功后解除短接纳 Context 的取消转发，Run 使用独立执行 Context；接纳请求结束不会取消已交接后台的工作。取消和应用退出可以撤销获取过程，不能提前遗弃仍可能返回资源的准备；迟到的部分资源也须 Bind 交还 Core。未运行的冷准备回收，未运行的热准备保留原消费者。
+同一 Session 的取消、关闭、Prompt 完成与交互返回有唯一线性化点；不同工作区和独立任务可以并发。Manager 的集合锁不覆盖原生 I/O、账号等待、事件回调或资源清理。账号与插件管理通过 Manager 请求各 Session 在同一会话锁下检查闲置状态；活动调用返回 Busy。
 
-关闭顺序为原生会话 → Driver → 启动认证资源 → 领域资源。失败保留该步骤及依赖，仅重试清理，不重放输入。账号与插件管理通过 Core 的资源标签回收闲置消费者；活动调用返回忙，不维护第二份活动状态。
+本轮能力授权在 Prompt 返回或取消时撤销，连接文件、技能、账号等会话资源继续保留至原生消费者退出。关闭顺序为原生 Connection → LaunchLease 的刷新入口与凭据对账 → 任务文件及领域资源 → 临时工作区。成功步骤不重复；失败保留同一消费者和剩余依赖，阻止替代消费者绕过失败，只重试清理，不重新提交 Prompt。清理故障不覆盖已经取得的答案。
 
-## 阅读顺序与文件职责
+`Manager.Start` 显式启动每 10 秒一次的临时任务清理重试，只处理执行已结束且没有当前 Turn 的临时 Session，不关闭活动或正常留存的聊天。独立任务的活动与待清理所有者合计上限为 64，聊天不计入此上限。应用退出停止新接纳，取消并等待准备、执行和后台清理，再关闭闲置及清理未完成的所有者；超时返回关闭错误，可对同一 Manager 再次 Close。
 
-按一次调用阅读，不必从目录树逐个找同名文件：
+Probe/Fork 经 Catalog 使用无 Prompt 的独立 `native.Management`，共享唯一 Descriptor、原生工厂和 LaunchLease。关闭失败同样保留管理连接及账号、目录依赖；原生位置、耐久分叉回执和 ReconcileOnly 沿原协议核对，未知结果不重复派发。
 
-1. [Execution 接纳](../../services/execution/work.go)：构造静态计划和本轮输入，顺序 Prepare / 冷 Acquire / Bind。
-2. [业务资源取得](../../services/execution/session_resources.go)：账号、插件、实际连接器和范围事实；[执行收尾](../../services/execution/lifecycle.go)管理业务接纳、授权与终态。
-3. [聊天宿主](host/chat.go)或[独立任务宿主](host/standalone.go)：接入产品调用；[原生资源](host/native_resources.go)统一装配和交接。
-4. [Runtime 准备与执行](core/runtime/preparation.go)：直接实现兼容、绑定和 Run；同包 session 管释放、stream 管交付，没有 internal/engine 转发层。
-5. [ACP Driver](core/driver/acp/driver.go)：原生握手和会话协议；input 统一输入形成，native 注册声明与工厂选择具体 CLI。
-6. [启动与认证](environment/launch/launch.go)：取得认证资源、创建原生实例和依赖回收。
+## 阅读顺序
 
-同名 session 表示不同层次：Runtime 拥有技术会话与租约，ACP session 拥有原生协议连接。产品 Profile 在 environment/catalog/profiles.go；CLI 技术声明在 core/driver/acp/native/registry.go。plan 与 output 保留无状态规则和最终证据的独立变化边界，不合并为另一套生命周期。
+1. [Execution 接纳](../../services/execution/work.go)、[资源取得](../../services/execution/session_resources.go)与[执行收尾](../../services/execution/lifecycle.go)：接纳、授权、日志和业务终态。
+2. [agent.go](agent.go)：Manager、聊天准备、独立文本/工具任务及根关闭；[contract.go](contract.go)定义唯一产品合同。
+3. [session.go](session.go)：Session、PreparedTurn、Turn 的兼容、绑定、执行、输出、交互和清理。
+4. [resources.go](resources.go)：原生工作区、插件环境、启动租约与领域资源装配；[catalog.go](catalog.go)和[config.go](config.go)维护目录、探测与配置规则。
+5. [native/connection.go](native/connection.go)：一次原生连接与协议；[registry.go](native/registry.go)维护唯一 CLI 声明、工厂和厂商输入差异；[launch.go](native/launch.go)和[management.go](native/management.go)维护认证及管理连接。
+6. [capability](capability/)保存同源命令 Schema、授权、观察和回执；[cli/cli.go](cli/cli.go)负责 allycli 解析与客户端。
 
-实施与验收见[会话模型 Spec](../../../docs/discussions/agent-runtime-boundaries-spec-cn.md)，业务边界见[智能体与账号](../../../docs/architecture/runtimes-and-accounts-cn.md)，消息链见[聊天与执行](../../../docs/architecture/chat-and-execution-cn.md)。
+业务边界见[智能体与账号](../../../docs/architecture/runtimes-and-accounts-cn.md)，消息链见[聊天与执行](../../../docs/architecture/chat-and-execution-cn.md)。自动化测试、真实 CLI/账号/模型及平台验收分别提供证据，结构与契约检查不代表真实模型验收已经通过。

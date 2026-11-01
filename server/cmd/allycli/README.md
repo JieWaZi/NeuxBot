@@ -2,7 +2,7 @@
 
 `allycli` 是 NeuxBot 随应用交付的能力命令入口，供智能体在当前执行的授权范围内调用知识库、IM、工作流、团队、记忆和结构化问答。本文列出当前实现的完整操作；某次聊天实际能调用哪些操作，以该执行的 `capabilities` 返回为准。
 
-命令与参数的权威定义是 [contract](../../internal/agentcapability/contract/catalog.go)，命令树直接由该目录建立。本文说明用途和完成语义，完整参数、枚举、限制与输出结构通过 `describe` 获取，避免维护第二套参数表。目录测试检查下列能力是否遗漏、重复，以及影响和完成语义是否与代码一致。
+命令与参数的权威定义是 [contract](../../internal/agent/capability/catalog.go)，命令树直接由该目录建立。本文说明用途和完成语义，完整参数、枚举、限制与输出结构通过 `describe` 获取，避免维护第二套参数表。目录测试检查下列能力是否遗漏、重复，以及影响和完成语义是否与代码一致。
 
 ## 开始使用
 
@@ -207,4 +207,4 @@ Windows 使用当前 Shell 的环境变量语法及应用提供的 `allycli.exe`
 | 团队负责人和成员 | [team.lead](../../../skills/ally/references/team-lead.md)、[team.member](../../../skills/ally/references/team-member.md) |
 | 记忆与用户问题 | [memory](../../../skills/ally/references/memory.md)、[interaction.questions](../../../skills/ally/references/user-questions.md) |
 
-授权、回执和执行生命周期见[系统技能与软件能力](../../../docs/architecture/agent-capabilities-cn.md)。修改命令时同时更新能力目录、真实领域绑定、本 README 及相关指南；运行 `go -C server test ./internal/agentcapability/contract ./internal/agentcli` 和 `pnpm docs:check` 核对合同与文档。
+授权、回执和执行生命周期见[系统技能与软件能力](../../../docs/architecture/agent-capabilities-cn.md)。修改命令时同时更新能力目录、真实领域绑定、本 README 及相关指南；运行 `go -C server test ./internal/agent/capability ./internal/agent/cli` 和 `pnpm docs:check` 核对合同与文档。

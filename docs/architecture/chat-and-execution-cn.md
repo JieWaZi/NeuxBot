@@ -4,9 +4,9 @@
 
 Chat 是消息与原生会话的容器。用户输入、结构化执行事件和终态结果写入追加式 JSONL；查询索引与当前消息投影可以重建。SQLite 保存聊天聚合摘要、查询定位和其他业务数据，不另存一套 Execution 状态或可编辑聊天正文。
 
-Execution 负责中立工作意图、权限和配置校验、业务接纳、执行终态及取消。`server/internal/agent/host` 将产品请求、资源、日志和交互端口接入执行内核，只保存工作区到 Runtime 的关联。
+Execution 负责中立工作意图、权限和配置校验、业务接纳、执行终态及取消。应用共享的 `agent.Manager` 统一登记聊天工作区及独立任务 Session，根 Agent 接入产品输入、资源、事件和交互端口。
 
-`agent/core` 的 Runtime 唯一维护技术会话、原生句柄、静态配置兼容性、活动调用和资源释放栈，不访问业务数据库。`agent/environment` 维护安装与探测事实；聊天、独立调用和管理操作共用其中的启动与认证生命周期。CLI 工厂和技术能力只在内核的 native Descriptor 注册表维护。职责详见[智能体与账号](runtimes-and-accounts-cn.md)。
+`agent.Session` 唯一维护稳定计划、兼容依据、当前 Turn、真实原生句柄、连接与资源释放进度，不访问业务数据库。`agent.Catalog` 维护安装、Profile 和探测事实；`agent/native` 提供一次原生 Connection、唯一 CLI Descriptor/工厂、LaunchLease 与无 Prompt 管理连接。根 Agent 在原生边界转换一次请求和结果，native 不反向依赖产品 Agent。职责详见[智能体与账号](runtimes-and-accounts-cn.md)。
 
 ## 输入与接纳
 
@@ -24,45 +24,48 @@ Execution 负责中立工作意图、权限和配置校验、业务接纳、执�
 
 聊天目录只返回游标页，不附带默认项目的全历史查询。普通伙伴与团队草稿在所属伙伴确定后按需查询最近可用项目；候选按活动游标有界推进，失效项目不会令有效的更早候选被任意截断。已有 Chat、运行中发送和终态不重新查询草稿默认项目。
 
-聊天采用 `Prepare → 冷路径取得资源 → Bind → Run`。SessionPlan 固定程序、工作范围和静态能力；TurnInput 携带当前消息、资源选择及交互；SessionResources 交接实际物化结果及释放能力。Runtime 在唯一会话锁下占用并判断复用，关闭不兼容消费者；冷资源由 Execution 顺序取得，不通过 Core → Host → Execution 的回调链获取。
+聊天采用 `Prepare → 冷路径取得资源 → Bind → Run`。SessionPlan 固定程序、工作范围和静态能力；TurnInput 携带当前消息、资源选择及交互；SessionResources 交接实际物化结果及释放能力。Manager 将工作区路由到唯一 Session，由 Session 占用本轮并判断复用、关闭不兼容消费者；冷资源由 Execution 使用准备 Context 顺序取得，Agent 不反调业务资源获取函数。
 
-Bind 后技术资源归 Core，实际插件版本和原生范围等具名事实供 Execution 构造接纳记录。Run 显式接收本轮输入与处理器，冷路径此时才打开连接。普通聊天在原生输入已接纳事件后提交用户消息和执行事实，再返回 API 接纳结果；持久编排入口按其既有接纳策略执行，不把资源准备成功当作模型已接收输入。
+首次有效冷 Bind 接管实际或部分资源，之后的校验失败也由同一 Session 清理；重复或已消费句柄的 Bind 不接管新资源。实际插件版本和原生范围等具名事实供 Execution 构造接纳记录。Run 显式接收本轮输入与处理器，冷路径此时才打开连接。普通聊天在原生输入已接纳事件后提交用户消息和执行事实，再返回 API 接纳结果；持久编排入口按其既有接纳策略执行，不把资源准备成功当作模型已接收输入。
 
-热续聊保留原生消费者及其租约，不重复取得账号和插件。每轮选择、使用引用、审批、提问和软件授权独立更新；本轮授权结束不提前释放热会话文件。准备被放弃时，冷资源回收，兼容热消费者保留。账号或插件管理由 Runtime 统一检查并回收闲置消费者，活动调用返回 Busy。关闭失败保留原资源及依赖，只重试清理。隐藏摘要以只读交接策略经过同一准备路径，并强制关闭临时消费者。
+热续聊保留原生消费者及其租约，不重复取得账号和插件。每轮选择、使用引用、审批、提问和软件授权独立更新；本轮授权结束不提前释放热会话文件。准备被放弃时，冷资源回收，兼容热消费者保留。账号或插件管理通过 Manager 请求 Session 检查并回收闲置消费者，活动调用返回 Busy。关闭失败保留原资源及依赖，只重试清理。隐藏摘要以只读交接策略经过同一准备路径，并强制关闭临时消费者。
 
 热插件兼容判断只取得当前伙伴已启用的固定版本、内容摘要、信任事实和配置修订，不展开所有版本、其他伙伴安装或解密配置。实际版本包、普通配置和秘密归冷 Acquire；私有身份材料继续在原身份占用取得后读取。管理读取不进入这条执行声明路径。
+
+取得准备句柄后立即登记 Close，取消不能遗弃迟到的部分资源。成功冷 Bind 或热准备返回前解除短接纳 Context 的取消转发，Run 使用独立执行 Context，已交给后台的执行不随接纳请求结束而取消。资源与本轮授权的完整关闭顺序见 [Agent 子系统](../../server/internal/agent/README.md#context授权与关闭)。
 
 ```mermaid
 sequenceDiagram
   participant Execution as Execution
-  participant Host as agent/host
-  participant Runtime as agent/core
+  participant Manager as agent.Manager
+  participant Session as agent.Session
   participant Resources as 领域资源
-  participant CLI as CLI
-  Execution->>Host: PrepareSession(SessionPlan, SessionDirective)
-  Host->>Runtime: Prepare
-  Runtime-->>Host: 占位或复用的 PreparedRun
-  Host-->>Execution: PreparedChatRun
+  participant Connection as native.Connection
+  participant CLI as acp-go / CLI
+  Execution->>Manager: PrepareSession(SessionPlan, SessionDirective)
+  Manager->>Session: 占用本轮并判断复用
+  Session-->>Execution: PreparedTurn（同一 Session / Turn）
   opt 冷准备
     Execution->>Resources: 使用准备 Context 取得资源
     Resources-->>Execution: SessionResources（含部分失败结果）
-    Execution->>Host: Bind(SessionResources)
-    Host->>Host: 共用 launch 与 Driver 装配
-    Host->>Runtime: Bind（交接释放所有权）
+    Execution->>Session: Bind(SessionResources)
+    Session->>Session: 接管资源，准备 LaunchLease
   end
-  Execution->>Host: Run(TurnInput, EventSink)
-  Host->>Runtime: Run
+  Execution->>Session: Run(TurnInput, EventSink)
   opt 冷连接
-    Runtime->>CLI: Open / initialize / 新建或恢复
+    Session->>Connection: Open / initialize / 新建或恢复
+    Connection->>CLI: 初始化原生会话
   end
-  Runtime->>CLI: Prompt（仅本轮新增输入）
-  CLI-->>Runtime: PromptAccepted
-  Runtime-->>Execution: Host 转换 InvocationStarted
+  Session->>Connection: Prompt（仅本轮新增输入）
+  Connection->>CLI: 提交输入
+  CLI-->>Connection: PromptAccepted
+  Connection-->>Session: 原生接纳事实
+  Session-->>Execution: InvocationStarted
   Execution->>Execution: 普通聊天提交消息与执行事实
-  Execution-->>Execution: API 返回已接纳结果
-  CLI-->>Runtime: 过程事件与最终结果
-  Runtime-->>Execution: Host 转换事件与结果
-  Runtime->>Runtime: 按留存策略保留或关闭
+  CLI-->>Connection: 过程事件与最终结果
+  Connection-->>Session: 原生事件与完成证明
+  Session-->>Execution: 产品事件与结果
+  Session->>Session: 按留存策略保留或关闭
 ```
 
 ## 实时与恢复
@@ -91,7 +94,7 @@ Scene 或嵌入工作区既有身份拥有消息视图生命周期，服务器 C
 
 连续文本只解码新片段并追加到唯一文本缓冲，类型切换或持久化边界才编码完整语义段；实时正文和展示段引用缓冲的不可变前缀，追加不能改写已经交付的旧快照。不能逐 Token 反复解码、拼接和重编码已经累积的全文，否则即使广播限频，文本分配仍随长度平方增长。
 
-审批、问答与 Core 命令先提交权威事实，再进入执行级待投影队列。容量为 1 的唤醒只合并通知，不覆盖事实；执行开始前显式启动唯一消费者，结束时先停止消费者，再追平余量并提交终态。Runtime 更新、显示窗口和 Flush 都由同一实时投影消费这些事实，不能让后续 transient 覆盖已持久的审批结果。原生交互的 Invocation 来自 Runtime Bridge，不能从最后出现的工具或当前界面推断；旧调用迟到的批准不能作用于复用同一原生工具标识的新调用。
+审批、问答与 Core 命令先提交权威事实，再进入执行级待投影队列。容量为 1 的唤醒只合并通知，不覆盖事实；执行开始前显式启动唯一消费者，结束时先停止消费者，再追平余量并提交终态。Runtime 更新、显示窗口和 Flush 都由同一实时投影消费这些事实，不能让后续 transient 覆盖已持久的审批结果。原生交互的 Invocation 来自本轮 Agent 事件端口，不能从最后出现的工具或当前界面推断；旧调用迟到的批准不能作用于复用同一原生工具标识的新调用。
 
 ```mermaid
 flowchart LR
@@ -122,8 +125,8 @@ flowchart LR
 
 ## 阶段耗时
 
-Execution 记录 `input_preparation`（业务输入、范围和静态声明准备）与 `resource_preparation`（冷资源取得、物化和绑定）。Core 通过宿主注入的标准 Logger 记录 `cli_initialization`（原生连接及会话初始化）与 `input_acceptance`（提交本轮输入至真实接纳）；诊断不进入聊天消息、领域事件或模型输入。
+Execution 记录 `input_preparation`（业务输入、范围和静态声明准备）与 `resource_preparation`（冷资源取得、物化和绑定）。Session 通过装配注入的标准 Logger 记录 `cli_initialization`（原生连接及会话初始化）与 `input_acceptance`（提交本轮输入至真实接纳）；诊断不进入聊天消息、领域事件或模型输入。
 
 各阶段使用 `elapsed_ms`，资源准备和 CLI 初始化以 `reused=true`、零初始化耗时明确表示热复用。业务阶段携带 Chat、Execution 和 Runtime 身份；技术阶段携带工作区、Invocation 和技术会话身份。CLI 初始化与输入接纳分别计时，不能把整轮模型响应时间算作初始化。日志不记录输入正文、凭据和环境；实际协议错误仍由原故障边界负责。
 
-代码入口为 `services/chat`、`services/execution`、`internal/agent/{core,host,environment}`、`internal/chat/{eventlog,eventstream,messageview}` 及前端 `modules/chat`。
+代码入口为 `services/chat`、`services/execution`、`internal/agent`、`internal/agent/native`、`internal/chat/{eventlog,eventstream,messageview}` 及前端 `modules/chat`。
