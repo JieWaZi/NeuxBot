@@ -2163,8 +2163,8 @@ func (p *synchronousPreparation) Session() agentapi.SessionDirective   { return 
 func (p *synchronousPreparation) Bind(_ context.Context, resources agentapi.SessionResources) error {
 	p.resources = resources
 	p.plan.Target, p.plan.Skills, p.plan.Connectors = agentapi.DeclareTarget(resources.Target), resources.Skills, agentapi.DeclareConnectors(resources.Connectors)
-	if resources.Session != nil {
-		p.session = *resources.Session
+	if resources.Session != nil && resources.Session.Mode == agentapi.SessionModeNew {
+		p.session = agentapi.SessionDirective{Mode: agentapi.SessionModeNew}
 	}
 	p.needsResources = false
 	if p.bind != nil {

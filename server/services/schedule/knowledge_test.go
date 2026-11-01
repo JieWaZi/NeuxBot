@@ -76,8 +76,8 @@ func (p *knowledgeScheduleExecutions) Start(ctx context.Context, intent executio
 	p.intent = intent
 	p.receiptID = intent.ClientRequestID + ".organize"
 	found := false
-	for _, capability := range intent.Options.ToolCapabilities {
-		for _, binding := range capability.Bindings {
+	for _, toolCapability := range intent.Options.ToolCapabilities {
+		for _, binding := range toolCapability.Bindings {
 			if binding.Operation != "knowledge.jobs.start" {
 				continue
 			}
