@@ -45,6 +45,51 @@ NeuxBot 把 AI 工具、项目上下文与分工协作放进同一个本地桌�
 
 在 [Releases](https://github.com/JieWaZi/NeuxBot/releases) 查找安装包，或按下方步骤从源码运行。连接支持的 CLI 与账号，创建一位伙伴，把项目交给它。
 
+当前版本尚未提供 Apple Developer ID 签名与公证，Windows 安装包也未做代码签名。首次安装可能出现系统安全提示，处理方法见下方说明。
+
+<details>
+<summary>安装提示：macOS 无法验证开发者、Windows 已保护你的电脑、HTTPS 连接错误</summary>
+
+请从本仓库的 [Releases](https://github.com/JieWaZi/NeuxBot/releases) 下载安装包，核对同一发行页 `SHA256SUMS` 中对应文件的摘要。摘要可检查下载是否完整，不能代替发行者签名。
+
+**macOS**
+
+1. 选择对应芯片的 DMG：Apple Silicon 使用 `NeuxBot-mac-arm64.dmg`，Intel 使用 `NeuxBot-mac-x64.dmg`，打开后将 `NeuxBot.app` 拖入“应用程序”。
+2. 首次打开若提示“无法验证开发者”或“Apple 无法检查其是否包含恶意软件”，关闭提示，进入“系统设置 → 隐私与安全性”，在安全性区域找到 NeuxBot，点击“仍要打开”，再确认“打开”。系统可能要求身份验证。
+3. 如果未出现“仍要打开”，或提示应用“已损坏”，先从官方 Release 重新下载并核对摘要。确认来源和摘要后，若仍受下载隔离限制，可在“终端”仅清除本应用的隔离标记，再重新打开：
+
+   ```sh
+   xattr -dr com.apple.quarantine "/Applications/NeuxBot.app"
+   ```
+
+   此命令会移除 NeuxBot 的下载隔离检查，仅在确认信任该安装包后使用。如果系统明确检测到恶意软件或提示“将损坏你的电脑”，停止安装并[反馈问题](https://github.com/JieWaZi/NeuxBot/issues)。
+
+macOS 摘要核对示例，文件名按实际下载内容替换：
+
+```sh
+shasum -a 256 "$HOME/Downloads/NeuxBot-mac-arm64.dmg"
+```
+
+**Windows**
+
+1. 下载并打开 `NeuxBot-windows-x64.exe`。
+2. 若 SmartScreen 提示“Windows 已保护你的电脑”，在确认安装包来源和摘要后，点击“更多信息”（部分系统显示“详细信息”），再点击“仍要运行”，然后继续安装。
+3. 如果没有“仍要运行”，或由 Smart App Control、组织策略或防病毒软件拦截，请联系设备管理员或[反馈问题](https://github.com/JieWaZi/NeuxBot/issues)，保留具体提示；不需要关闭 Defender 或全局安全保护。
+
+Windows 摘要核对示例，在 PowerShell 中运行：
+
+```powershell
+Get-FileHash "$env:USERPROFILE\Downloads\NeuxBot-windows-x64.exe" -Algorithm SHA256
+```
+
+**HTTPS 连接或证书错误**
+
+浏览器提示“连接不安全”“证书错误”，或下载时报 HTTPS 证书校验失败，属于网络连接问题，与安装包未签名不同。请检查系统日期和时间、代理或 VPN 配置，换用可信网络后重新打开官方 Releases；不要改用 HTTP 或跳过证书校验。仍无法下载时，请反馈错误文字和系统版本。
+
+系统说明：[Apple：在 Mac 上安全地打开 App](https://support.apple.com/zh-cn/102445) · [Microsoft：SmartScreen 信誉与安装提示](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)。
+
+</details>
+
 <details>
 <summary>从源码运行</summary>
 

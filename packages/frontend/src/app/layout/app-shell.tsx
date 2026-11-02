@@ -27,11 +27,11 @@ import {
 } from "@/modules/settings";
 import { listWakersOptions } from "@/modules/waker";
 import {
-  NotificationBell,
   NotificationPresenter,
   NotificationNavigationProvider,
 } from "@/modules/notification";
 import { notificationHref } from "../notifications/notification-navigation";
+import { DesktopAttentionAction } from "./desktop-attention-action";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { listRuntimesQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
 import {
@@ -511,6 +511,12 @@ function AppShellContent({
       navigate("/", { replace: true });
     }
   };
+  const openUpdateSettings = () => {
+    setSceneNavigationVisible(true);
+    if (!settingsOpen)
+      settingsPreviousCollapsedRef.current = preferences.globalSidebarCollapsed;
+    selectSettingsSection("about");
+  };
   useEffect(() => {
     const openGeneral = () => {
       setSettingsSection("general");
@@ -524,10 +530,11 @@ function AppShellContent({
   const sceneActions = (
     <>
       {bellInSceneChrome ? (
-        <NotificationBell
+        <DesktopAttentionAction
           active={workBoardActive}
           onOpen={openWorkBoard}
           connected={notificationsConnected}
+          onOpenUpdates={openUpdateSettings}
         />
       ) : null}
       {hasActiveScene && !settingsOpen && showChatChromeActions ? (
@@ -560,10 +567,11 @@ function AppShellContent({
         <PartnerNavigationLayout
           notificationBell={
             settingsOpen || bellInSceneChrome ? undefined : (
-              <NotificationBell
+              <DesktopAttentionAction
                 active={workBoardActive}
                 onOpen={openWorkBoard}
                 connected={notificationsConnected}
+                onOpenUpdates={openUpdateSettings}
               />
             )
           }

@@ -18,6 +18,10 @@ const bounds = {
 const file = { root, relativePath: text };
 export const commandSchemas = {
   core_connection: z.undefined(),
+  application_update_state: z.undefined(),
+  check_application_update: z.undefined(),
+  download_application_update: z.undefined(),
+  open_application_installer: z.undefined(),
   subscribe_core_events: globalEventSubscriptionSchema,
   resync_core_events: z
     .object({

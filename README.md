@@ -45,6 +45,51 @@ Partners and work records are stored locally. AI requests use your chosen provid
 
 Find an installer in [Releases](https://github.com/JieWaZi/NeuxBot/releases), or run from source below. Connect a supported CLI and account, create a partner, and give it a project to work on.
 
+Current macOS releases have no Apple Developer ID signature or notarization, and Windows installers are not code signed. You may see a security prompt during installation; see the instructions below.
+
+<details>
+<summary>Installation help: unidentified macOS developer, Windows protected your PC, or HTTPS errors</summary>
+
+Download installers from this repository's [Releases](https://github.com/JieWaZi/NeuxBot/releases) and compare the file's SHA-256 hash with its entry in that release's `SHA256SUMS`. A matching hash checks download integrity; it does not replace a publisher signature.
+
+**macOS**
+
+1. Choose `NeuxBot-mac-arm64.dmg` for Apple Silicon or `NeuxBot-mac-x64.dmg` for Intel, open the DMG, and drag `NeuxBot.app` into Applications.
+2. If macOS cannot verify the developer or check the app for malicious software, dismiss the prompt. Open **System Settings → Privacy & Security**, find NeuxBot in the Security section, click **Open Anyway**, then confirm **Open**. Authentication may be required.
+3. If **Open Anyway** is unavailable, or the app is reported as damaged, download it again from the official release and check its hash. If you trust the source, the hash matches, and download quarantine still prevents opening it, remove quarantine for this app only in Terminal, then open it again:
+
+   ```sh
+   xattr -dr com.apple.quarantine "/Applications/NeuxBot.app"
+   ```
+
+   This removes NeuxBot's download quarantine check; use it only for an installer you have verified and trust. If macOS detects malware or says the app **will damage your computer**, stop installation and [report the issue](https://github.com/JieWaZi/NeuxBot/issues).
+
+To check a macOS download's hash, replace the filename below with your actual download:
+
+```sh
+shasum -a 256 "$HOME/Downloads/NeuxBot-mac-arm64.dmg"
+```
+
+**Windows**
+
+1. Download and open `NeuxBot-windows-x64.exe`.
+2. If SmartScreen shows **Windows protected your PC**, verify the download source and hash, then choose **More info → Run anyway** and continue installation.
+3. If **Run anyway** is unavailable, or Smart App Control, an organization policy, or antivirus software blocks installation, contact your device administrator or [report the issue](https://github.com/JieWaZi/NeuxBot/issues) with the exact message. Keep Defender and system-wide protections enabled.
+
+To check the Windows installer's hash, run this in PowerShell:
+
+```powershell
+Get-FileHash "$env:USERPROFILE\Downloads\NeuxBot-windows-x64.exe" -Algorithm SHA256
+```
+
+**HTTPS connection or certificate errors**
+
+A browser's insecure-connection or certificate warning, or an HTTPS certificate validation failure during download, is a network connection issue separate from an unsigned installer. Check your system date and time and proxy or VPN settings, then retry the official Releases page on a trusted network. Keep HTTPS and certificate validation enabled. If downloading still fails, report the error text and operating system version.
+
+System guidance: [Apple: Open apps safely on your Mac](https://support.apple.com/en-us/102445) · [Microsoft: SmartScreen reputation and installation warnings](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation).
+
+</details>
+
 <details>
 <summary>Run from source</summary>
 

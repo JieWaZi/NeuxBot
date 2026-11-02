@@ -16,12 +16,14 @@ import { authorizeBrowserRoot } from "./browser-workspace-root";
 import * as files from "./workspace-files";
 import { createAttachmentStaging } from "./attachment-staging";
 import type { CoreEventClient } from "../shared/core-event-client";
+import type { ApplicationUpdate } from "./application-update";
 
 export function installDesktopServices(
   window: BrowserWindow,
   core: CoreSupervisor,
   trustedURL: string,
   events?: CoreEventClient,
+  updates?: ApplicationUpdate,
 ) {
   // BrowserWindow 的 closed 事件触发时再读取 window.webContents 会抛出
   // “Object has been destroyed”，因此安装阶段固定持有本次窗口的内容对象。
@@ -48,6 +50,22 @@ export function installDesktopServices(
       args: DesktopCommands[K]["args"],
     ) => DesktopCommands[K]["result"] | Promise<DesktopCommands[K]["result"]>;
   } = {
+    application_update_state: () => {
+      if (!updates) throw new Error("软件更新服务尚未装配");
+      return updates.snapshot();
+    },
+    check_application_update: () => {
+      if (!updates) throw new Error("软件更新服务尚未装配");
+      return updates.check();
+    },
+    download_application_update: () => {
+      if (!updates) throw new Error("软件更新服务尚未装配");
+      return updates.download();
+    },
+    open_application_installer: () => {
+      if (!updates) throw new Error("软件更新服务尚未装配");
+      return updates.openInstaller();
+    },
     core_connection: () => core.connection(),
     subscribe_core_events: ({ subscriptionId, topic, resource, after }) => {
       if (!events) throw new Error("全局事件服务尚未装配");
@@ -181,6 +199,9 @@ export function installDesktopServices(
   }
   for (const name of Object.keys(commandSchemas) as (keyof DesktopCommands)[])
     register(name);
+  const stopUpdates = updates?.subscribe((state) =>
+    emit("application-update", state),
+  );
   const releaseViews = () => {
     for (const subscription of eventSubscriptions.values()) subscription.stop();
     eventSubscriptions.clear();
@@ -211,6 +232,7 @@ export function installDesktopServices(
   return () => {
     if (disposed) return;
     disposed = true;
+    stopUpdates?.();
     if (!window.isDestroyed() && !contents.isDestroyed()) {
       contents.off("render-process-gone", handleRenderProcessGone);
       contents.off("did-start-navigation", handleNavigation);

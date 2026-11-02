@@ -14,6 +14,11 @@ import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 
 // 配置面板在用户打开对应设置时加载，不增加双端工作台首屏成本。
+const AboutSoftwareSection = lazy(() =>
+  import("../components/about-software-section").then((module) => ({
+    default: module.AboutSoftwareSection,
+  })),
+);
 const AIAccountsSection = lazy(() =>
   import("../components/ai-accounts-section").then((module) => ({
     default: module.AIAccountsSection,
@@ -108,6 +113,7 @@ function SettingsSectionContent({
         <APIIntegrationSection />
       </Suspense>
     );
+  if (section === "about") return <AboutSoftwareSection />;
   if (section === "general") return <GeneralSettings />;
   if (section === "ai-accounts") return <AIAccountsSection />;
   return (

@@ -149,6 +149,85 @@ test("文件拖放在预加载层解析路径，注销后不再交付", () => {
     { type: "drop", paths: ["/work/a.txt"], position: { x: 10, y: 20 } },
   ]);
 });
+
+test("软件更新 IPC 只允许可信主框架的无参数调用，窗口销毁释放状态订阅", async () => {
+  const registered = new Map();
+  const { installDesktopServices } = loadModule("main/desktop-services.ts", {
+    electron: {
+      ipcMain: {
+        handle: (name, handler) => registered.set(name, handler),
+        removeHandler: (name) => registered.delete(name),
+      },
+      Notification: { isSupported: () => false },
+    },
+    "node-pty": {},
+  });
+  const contents = new EventEmitter();
+  contents.mainFrame = { url: "ally://app/index.html" };
+  contents.isDestroyed = () => false;
+  const sent = [];
+  contents.send = (...args) => sent.push(args);
+  const state = { revision: 1, status: "available" };
+  const called = [];
+  let listener;
+  let stopped = false;
+  const updates = Object.fromEntries(
+    ["snapshot", "check", "download", "openInstaller"].map((name) => [
+      name,
+      () => {
+        called.push(name);
+        return state;
+      },
+    ]),
+  );
+  updates.subscribe = (callback) => {
+    listener = callback;
+    return () => {
+      stopped = true;
+    };
+  };
+  const dispose = installDesktopServices(
+    { webContents: contents, isDestroyed: () => false },
+    {},
+    contents.mainFrame.url,
+    undefined,
+    updates,
+  );
+  for (const command of [
+    "application_update_state",
+    "check_application_update",
+    "download_application_update",
+    "open_application_installer",
+  ]) {
+    const handler = registered.get(`ally:${command}`);
+    assert.throws(
+      () => handler({ sender: {}, senderFrame: contents.mainFrame }),
+      /来源无效/,
+    );
+    assert.throws(
+      () =>
+        handler({
+          sender: contents,
+          senderFrame: { url: contents.mainFrame.url },
+        }),
+      /来源无效/,
+    );
+    const event = { sender: contents, senderFrame: contents.mainFrame };
+    assert.throws(() =>
+      handler(event, {
+        url: "https://attacker.example/installer",
+        path: "/tmp/a.exe",
+      }),
+    );
+    assert.deepEqual(await handler(event, undefined), state);
+  }
+  assert.deepEqual(called, ["snapshot", "check", "download", "openInstaller"]);
+  listener(state);
+  assert.deepEqual(sent, [["ally:application-update", state]]);
+  dispose();
+  assert.equal(stopped, true);
+  assert.equal(registered.has("ally:download_application_update"), false);
+});
 test("IPC 拒绝外部网页及子框架，并在执行前校验参数", async () => {
   const registered = new Map();
   const electron = {

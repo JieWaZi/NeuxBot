@@ -28,6 +28,10 @@ API 生成器从锁定 ginx 模块的临时源码副本构建，应用 `scripts/
 
 发布矩阵在原生 runner 上分别构建 macOS arm64、macOS x64（amd64）与 Windows x64，并校验构建机架构。GitHub Release 直接提供用户可安装的 NeuxBot-mac-arm64.dmg、NeuxBot-mac-x64.dmg 和 NeuxBot-windows-x64.exe，附带分架构体积报告及 SHA256SUMS。Actions 中以 NeuxBot 命名的 artifact 仅用于 CI 暂存与跨任务传输，用户下载入口为 Release 中的 DMG 或 EXE。代码签名、公证及签名密钥由发布环境管理；本地签名不表示完成发行签名与公证。
 
+当前发行不接入正式发行者签名：macOS 保留运行所需的临时签名，不使用 Developer ID、不提交 Apple 公证；Windows 不接入 Authenticode。临时签名不能提供发行者身份认证，SHA256SUMS 只用于核对发行文件的下载完整性。安装包及升级下载继续使用 HTTPS 并保留证书校验。安装提示的用户操作统一见 [中文 README](../../README.zh-CN.md) 与 [英文 README](../../README.md)，不将 HTTPS 证书错误、未知发行者提示与明确恶意软件检测混为一谈。后续正式签名方案属于[独立讨论](../discussions/software-release-security-cn.md)，不作为本轮发布前提。
+
+发布任务先准备草稿及全部资产，上传完成后公开并标记为最新正式发行。客户端读取固定仓库的最新公开正式 Release，草稿和预发行不触发升级；tag、安装包名、包内版本及 SHA256SUMS 必须保持一致。设置中的“关于软件”提供当前版本、手动检查、更新说明、下载进度和打开安装包入口，自动探测与安全边界见 [桌面生命周期](../architecture/desktop-lifecycle-cn.md#软件更新)。整包覆盖安装后仍使用原应用标识和独立数据目录。
+
 ## 发布前
 
 CI 将生成契约与资源、前端类型与 lint、前端测试、Web 与终端、桌面检查和 Go 检查分为独立任务并行运行。前端完整测试按四片分配，单片失败不取消其他片，测试超时与用例集合不变。同组独立检查在前序检查失败后继续执行；依赖安装或必要构建失败时，仅跳过依赖其产物的检查。最终 `verify` 必须取得所有任务的成功结果，失败、取消或跳过均不能通过发布门禁。Release 复用同一 CI，全部检查成功后才开始三平台打包。

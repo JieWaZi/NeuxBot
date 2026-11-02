@@ -7,6 +7,7 @@ import {
   dialog,
   powerMonitor,
   powerSaveBlocker,
+  shell,
 } from "electron";
 import path from "node:path";
 import { appendFile, mkdir } from "node:fs/promises";
@@ -19,6 +20,7 @@ import { installIMPowerLifecycle } from "./im-power-lifecycle";
 import { createCoreEvents } from "./core-events";
 import type { CoreEventClient } from "../shared/core-event-client";
 import { installAutomaticTaskPowerLifecycle } from "./automatic-task-power-lifecycle";
+import { ApplicationUpdate } from "./application-update";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -41,6 +43,7 @@ const isDevelopment =
   !app.isPackaged && process.env.ALLY_RENDERER_URL !== undefined;
 let core: CoreSupervisor | undefined;
 let coreEvents: CoreEventClient | undefined;
+let updates: ApplicationUpdate | undefined;
 let disposePowerLifecycle: (() => void) | undefined;
 let disposeIMPowerLifecycle: (() => void) | undefined;
 async function log(message: string) {
@@ -93,6 +96,7 @@ async function createWindow(): Promise<BrowserWindow> {
     core,
     rendererURL,
     coreEvents,
+    updates,
   );
   current.webContents.on("will-prevent-unload", (event) => {
     const answer = dialog.showMessageBoxSync(current, {
@@ -122,6 +126,7 @@ else {
     createWindow,
     resourcesPath: process.resourcesPath,
     stopCore: async () => {
+      await updates?.dispose();
       disposePowerLifecycle?.();
       disposeIMPowerLifecycle?.();
       await coreEvents?.close();
@@ -133,6 +138,17 @@ else {
     .whenReady()
     .then(async () => {
       configureApplicationIcon(app);
+      updates = new ApplicationUpdate({
+        version: app.getVersion(),
+        packaged: app.isPackaged,
+        platform: process.platform,
+        arch: process.arch,
+        cacheDirectory: path.join(app.getPath("userData"), "updates"),
+        fetch: (url, options) => net.fetch(url, options),
+        openInstaller: (file) => shell.openPath(file),
+        log,
+      });
+      updates.start();
       const dist = path.join(__dirname, "../dist");
       protocol.handle("ally", async (request) => {
         try {
@@ -203,6 +219,7 @@ else {
     .catch(async (error) => {
       await log(String(error));
       try {
+        await updates?.dispose();
         disposeIMPowerLifecycle?.();
         await coreEvents?.close();
         await core?.stop();
