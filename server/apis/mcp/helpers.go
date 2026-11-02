@@ -1,6 +1,8 @@
 package mcp
 
 import (
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -17,7 +19,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/mozillazg/go-pinyin"
@@ -335,12 +336,12 @@ func clearTestSnapshot(connector *models.MCPConnector) {
 func ConnectorCompatibility(
 	transport constants.MCPTransport,
 ) []RuntimeCompatibility {
-	runtimeIDs := runtimes.BaseRuntimeIDs()
+	runtimeIDs := agentapi.BaseRuntimeIDs()
 	result := make([]RuntimeCompatibility, 0, len(runtimeIDs))
 	for _, runtimeID := range runtimeIDs {
-		supported, reason := runtimes.ConnectorCompatibility(
+		supported, reason := agentapi.ConnectorCompatibility(
 			runtimeID,
-			runtimes.ConnectorTransport(transport),
+			agentapi.ConnectorTransport(transport),
 		)
 		result = append(result, RuntimeCompatibility{
 			RuntimeID: runtimeID,

@@ -101,3 +101,20 @@ describe("team thread event refresh scheduler", () => {
     expect(refreshDetail).toHaveBeenCalledTimes(1);
   });
 });
+
+it("负责人状态和交互仅刷新元数据，真实补充与成员报告才刷新消息来源", () => {
+  vi.useFakeTimers();
+  const refreshTimeline = vi.fn();
+  const scheduler = createTeamThreadRefreshScheduler({
+    refreshDetail: vi.fn(),
+    refreshNavigation: vi.fn(),
+    refreshTimeline,
+  });
+  scheduler.push("team.leader.processing");
+  vi.advanceTimersByTime(0);
+  expect(refreshTimeline).not.toHaveBeenCalled();
+  scheduler.push("task.follow_up_queued");
+  scheduler.push("interaction.approval.requested");
+  vi.advanceTimersByTime(300);
+  expect(refreshTimeline).toHaveBeenCalledTimes(1);
+});

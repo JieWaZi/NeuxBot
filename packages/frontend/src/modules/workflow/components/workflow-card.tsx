@@ -12,6 +12,8 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
+import { useQueryEvents } from "@/shared/api/use-query-events";
+import { listWorkflowsQueryKey } from "../api/workflow-queries";
 import { BasicInformationDialog } from "./basic-information-dialog";
 import { WorkflowDeleteDialog } from "./workflow-delete-dialog";
 
@@ -27,6 +29,15 @@ export function WorkflowCard({
   const id = definition.id ?? "";
   const revisionId = definition.currentRevisionId ?? "";
   const title = definition.title || t("newTitle");
+
+  useQueryEvents({
+    topic: "workflow",
+    resource: { kind: "workflow", id },
+    active,
+    enabled: Boolean(id),
+    queryKeys: [listWorkflowsQueryKey()],
+    eventTypes: ["workflow.definition.", "workflow.revision.saved"],
+  });
 
   return (
     <>

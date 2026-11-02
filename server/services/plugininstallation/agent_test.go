@@ -14,7 +14,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
@@ -35,9 +35,9 @@ func TestAllyCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) 
 	}
 	defer sqlDB.Close()
 	store := controllers.NewPluginController(database.DB)
-	registry := agentcapability.New(nil)
+	registry := capability.New(nil)
 	defer registry.Close()
-	grant, activate, revoke, err := registry.Prepare(agentcapability.GrantSpec{ExecutionID: "execution-one", Validate: func(context.Context) error { return nil }})
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: "execution-one", Validate: func(context.Context) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestAllyCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) 
 	activate()
 	endpoint := httptest.NewServer(registry)
 	defer endpoint.Close()
-	connection, err := agentcapability.WriteConnection(root, "connection.json", agentcapability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: endpoint.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
+	connection, err := capability.WriteConnection(root, "connection.json", capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: endpoint.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,11 +82,11 @@ func TestAllyCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) 
 			command.Env = []string{constants.AgentCLIContextEnvironment + "=" + connection, "PATH=" + root, "HOME=" + filepath.Dir(native)}
 			command.Stdin = bytes.NewReader(input)
 			output, err := command.CombinedOutput()
-			var response agentcapability.Response
+			var response capability.Response
 			if json.Unmarshal(output, &response) != nil || err == nil || response.Error == nil || response.Error.Code != status_error.AgentInputInvalid.Key() {
 				t.Fatalf("removed CLI operation was not rejected by closed command syntax: %s %v", output, err)
 			}
-			body, _ := json.Marshal(agentcapability.Request{Operation: id, Params: params, RequestID: "stable-install"})
+			body, _ := json.Marshal(capability.Request{Operation: id, Params: params, RequestID: "stable-install"})
 			request, err := http.NewRequest(http.MethodPost, endpoint.URL+constants.AgentCLIPath+"/commands", bytes.NewReader(body))
 			if err != nil {
 				t.Fatal(err)
@@ -100,9 +100,9 @@ func TestAllyCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) 
 			if err := json.NewDecoder(raw.Body).Decode(&response); err != nil || response.Error == nil || response.Error.Code != status_error.AgentOperationForbidden.Key() {
 				t.Fatalf("removed HTTP operation was not forbidden: %+v %v", response, err)
 			}
-			_, _, _, err = registry.Prepare(agentcapability.GrantSpec{ExecutionID: "stale-operation", Validate: func(context.Context) error { return nil }, Bindings: []agentcapability.Binding{{Operation: id, Call: func(context.Context, agentcapability.Request) (agentcapability.Result, error) {
-				return agentcapability.Result{}, nil
-			}, Receipt: func(context.Context, string) (agentcapability.Result, error) { return agentcapability.Result{}, nil }}}})
+			_, _, _, err = registry.Prepare(capability.GrantSpec{ExecutionID: "stale-operation", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: id, Call: func(context.Context, capability.Request) (capability.Result, error) {
+				return capability.Result{}, nil
+			}, Receipt: func(context.Context, string) (capability.Result, error) { return capability.Result{}, nil }}}})
 			if err != status_error.AgentInputInvalid {
 				t.Fatalf("removed operation was accepted in a stale binding: %v", err)
 			}

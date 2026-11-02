@@ -1,7 +1,7 @@
 import type { SendWorkflowCreationMessageData } from "@/shared/api/generated/types.gen";
 import { Button } from "@/shared/ui/button";
 import { X } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   RetainedChatPageContent,
@@ -15,7 +15,6 @@ import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
 import {
   sendWorkflowCreationMessageMutation,
   createWorkflowMutation,
-  refreshWorkflow,
   getWorkflowRunOptions,
 } from "../api/workflow-queries";
 import type { ExecutionDefaults } from "../model/types";
@@ -73,7 +72,11 @@ export function WorkflowChatPane({
   onFirstMessageSubmitted?: () => void;
 }) {
   const { t } = useTranslation("workflow");
-  const client = useQueryClient();
+  const canvasReferenceKey = JSON.stringify(canvasReferences);
+  const visibleCanvasReferenceKey = useRef(canvasReferenceKey);
+  useLayoutEffect(() => {
+    visibleCanvasReferenceKey.current = canvasReferenceKey;
+  }, [canvasReferenceKey]);
   const send = useMutation(
     withLocalErrorMutation(sendWorkflowCreationMessageMutation()),
   );
@@ -123,10 +126,7 @@ export function WorkflowChatPane({
     if (id === "new" && createdDefinition.current)
       onCreated?.(createdDefinition.current);
   }, [active, scopeKey, session?.chatId, id, onSession, onCreated]);
-  const refresh = () => {
-    const definitionId = id === "new" ? createdDefinition.current : id;
-    if (definitionId) void refreshWorkflow(client, definitionId);
-  };
+
   return (
     <RetainedChatPageContent
       draftBinding={draftBinding}
@@ -195,23 +195,9 @@ export function WorkflowChatPane({
         ),
         emptyState,
         isHistoryLoading,
-        onRefresh: refresh,
         onConfigurationChange,
         onRunningChange,
-        onSend: async (message) => {
-          setFirstMessageSubmitted(true);
-          onFirstMessageSubmitted?.();
-          let definitionId = id;
-          if (id === "new") {
-            if (!createdDefinition.current) {
-              const definition = await create.mutateAsync({
-                body: { requestId: definitionRequest.current },
-              });
-              if (!definition.id) throw new Error("workflow_not_created");
-              createdDefinition.current = definition.id;
-            }
-            definitionId = createdDefinition.current;
-          }
+        prepareSubmission: (message, targetChatId) => {
           const {
             text,
             runtimeId,
@@ -223,7 +209,10 @@ export function WorkflowChatPane({
           } = message;
           const body = {
             ...input,
-            sessionId: session?.id,
+            sessionId: targetChatId
+              ? (acceptedSessions.current.get(targetChatId) ??
+                (session?.chatId === targetChatId ? session.id : undefined))
+              : session?.id,
             content: text,
             runReference,
             canvasReferences: canvasReferences.length
@@ -244,21 +233,45 @@ export function WorkflowChatPane({
               ? previousRequest
               : { signature, id: crypto.randomUUID() };
           requests.current.set(scopeKey, request);
-          const accepted = await send.mutateAsync({
-            path: { id: definitionId },
-            body: { ...body, requestId: request.id },
-          });
-          if (!accepted.chatId || !accepted.acceptedExecutionId)
-            throw new Error("workflow_conversation_not_accepted");
-          if (accepted.id)
-            acceptedSessions.current.set(accepted.chatId, accepted.id);
-          if (requests.current.get(scopeKey) === request)
-            requests.current.delete(scopeKey);
-          onCanvasReferencesSent?.();
-          // 接纳回执已确定聊天身份；详情由原 Chat 查询加载，读取故障不能改写发送结果。
+          let confirmed = false;
           return {
-            chat: { id: accepted.chatId },
-            execution: accepted.execution,
+            submissionId: request.id,
+            confirmAccepted: () => {
+              if (confirmed) return;
+              confirmed = true;
+              if (visibleCanvasReferenceKey.current === canvasReferenceKey)
+                onCanvasReferencesSent?.();
+              if (requests.current.get(scopeKey) === request)
+                requests.current.delete(scopeKey);
+            },
+            accept: async () => {
+              setFirstMessageSubmitted(true);
+              onFirstMessageSubmitted?.();
+              let definitionId = id;
+              if (id === "new") {
+                if (!createdDefinition.current) {
+                  const definition = await create.mutateAsync({
+                    body: { requestId: definitionRequest.current },
+                  });
+                  if (!definition.id) throw new Error("workflow_not_created");
+                  createdDefinition.current = definition.id;
+                }
+                definitionId = createdDefinition.current;
+              }
+              const accepted = await send.mutateAsync({
+                path: { id: definitionId },
+                body: { ...body, requestId: request.id },
+              });
+              if (!accepted.chatId || !accepted.acceptedExecutionId)
+                throw new Error("workflow_conversation_not_accepted");
+              if (accepted.id)
+                acceptedSessions.current.set(accepted.chatId, accepted.id);
+              // 交付已接纳的权威快照，由共享 Chat 查询按持久序号接纳。
+              return {
+                chat: accepted.chat,
+                execution: accepted.execution,
+              };
+            },
           };
         },
       }}

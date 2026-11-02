@@ -22,7 +22,7 @@ func (g *GetChatMessageFileChange) Path() string {
 	return "/:chatId/messages/:messageId/file-changes"
 }
 
-// Output 从 Chat 权威 JSONL 返回执行级文件 Diff。
+// Output 读取消息引用的独立文件快照及有界差异。
 // [BadRequest][40000000001][请求参数无效]
 // [ChatNotFound][40400000005][对话不存在]
 // [ChatMessageFileChangeNotFound][40400000011][消息中的文件改动不存在]

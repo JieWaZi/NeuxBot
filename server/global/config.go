@@ -2,6 +2,8 @@
 package global
 
 import (
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -18,7 +20,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinwaker"
 	integrationapi "github.com/JieWaZi/NeuxBot/server/internal/integration"
@@ -28,7 +30,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/catalog"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/sqlite"
@@ -61,7 +63,7 @@ var (
 	// KnowledgeControllerManager 仅持久化本机知识接入引用。
 	KnowledgeControllerManager controllers.KnowledgeController
 	// AgentCapabilities 只接纳当前执行授权，不接受桌面全局管理令牌。
-	AgentCapabilities *agentcapability.Registry
+	AgentCapabilities *capability.Registry
 	// EventHub 是当前 Core 生命周期内所有安全事件的窄路由器。
 	EventHub *events.Hub
 	// NotificationControllerManager 查询原事实与版本化通知定位。
@@ -128,8 +130,10 @@ var (
 	SkillControllerManager controllers.SkillController
 	// MCPConnectorControllerManager 提供共享连接器和伙伴关系持久化接口。
 	MCPConnectorControllerManager controllers.MCPConnectorController
-	// RuntimeSDK 提供 CLI Runtime 的探测、协议调用和进程治理。
-	RuntimeSDK *runtimes.SDK
+	// RuntimeCatalog 提供 CLI Runtime 的探测、协议调用和进程治理。
+	RuntimeCatalog *agentapi.Catalog
+	// AgentManager 统一登记聊天与独立任务会话，保留未完成清理的唯一所有者。
+	AgentManager *agentapi.Manager
 	// RuntimeEnvironmentControllerManager 提供设备级 Runtime 环境持久化接口。
 	RuntimeEnvironmentControllerManager controllers.RuntimeEnvironmentController
 	// RuntimeEnvironmentService 提供 Runtime 环境初始化和探测生命周期。
@@ -311,7 +315,7 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	}
 
 	EventHub = events.New()
-	AgentCapabilities = agentcapability.New(builtinskills.Guide)
+	AgentCapabilities = capability.New(builtinskills.Guide)
 	DB = controllers.WithEventPublisher(database.DB, EventHub)
 	KnowledgeControllerManager = controllers.NewKnowledgeController(DB)
 	IMControllerManager = controllers.NewIMController(DB)
@@ -344,9 +348,13 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	})
 	PluginContents = plugins.NewContentStore(configuration.DataDirectory, func() ([]string, error) { return PluginControllerManager.ContentReferences(context.Background()) })
 	PluginBridgeEnvironment = os.Environ()
-	PluginBridges = commandbridge.NewRegistry(ctx, func(id string) {
+	PluginBridges = commandbridge.NewRegistry(ctx, func(id string, usageOnly bool) {
 		if EventHub != nil {
-			_ = events.Emit(EventHub, constants.PluginEventTopic, "plugins.changed", events.Resource{Kind: "plugin", ID: id}, nil)
+			kind := "plugins.changed"
+			if usageOnly {
+				kind = constants.PluginUsageChangedEventType
+			}
+			_ = events.Emit(EventHub, constants.PluginEventTopic, kind, events.Resource{Kind: "plugin", ID: id}, nil)
 		}
 	})
 
@@ -440,15 +448,18 @@ func loadMemory(ctx context.Context, configuration *Configuration) error {
 
 // loadRuntime 装配 Runtime SDK 并启动设备级环境探测。
 func loadRuntime(ctx context.Context) error {
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		return mapCoreError("initialize_runtime_sdk", status_error.CoreRuntimeInitializationFailed, err)
 	}
-	RuntimeSDK = sdk
+	RuntimeCatalog = sdk
+	AgentManager = newAgentManager()
+	AIAccountService.SetIdleSessionCloser(AgentManager.CloseIdleAccount)
+	AgentManager.Start(ctx)
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
 		Accounts:                  AIAccountService,
 		AccountWorkspaceDirectory: filepath.Join(Config.DataDirectory, "account-workspaces"),
-		RuntimeSDK:                RuntimeSDK,
+		RuntimeCatalog:            RuntimeCatalog,
 		Environments:              RuntimeEnvironmentControllerManager,
 		Transactions:              TransactionControllerManager,
 		Events:                    EventHub,
@@ -498,7 +509,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		Agent: AgentCapabilities, Events: EventHub,
 		AgentEndpoint: "http://127.0.0.1:" + strconv.Itoa(configuration.Server.Port) + constants.AgentCLIPath,
 		AgentBinary:   agentBinaryPath(),
-		AgentBindings: func(chat models.Chat, executionID string, roots []string, automaticRunID string) []agentcapability.Binding {
+		AgentBindings: func(chat models.Chat, executionID string, roots []string, automaticRunID string) []capability.Binding {
 			bindings := MemoryService.AgentBindings(memory.Context{RunID: executionID, ChatID: chat.ID, PartnerID: chat.WakerID, ProjectID: chat.ProjectID})
 			if KnowledgeService != nil {
 				knowledgeChat := chat
@@ -515,14 +526,14 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			return bindings
 		},
 		Accounts:            AIAccountService,
-		Runtime:             RuntimeSDK,
+		Runtime:             AgentManager,
 		Journal:             chatModule,
 		DormantChats:        chatModule,
 		Wakers:              WakerControllerManager,
 		Profiles:            ProfileDocumentControllerManager,
 		Projects:            ProjectControllerManager,
 		Skills:              SkillControllerManager,
-		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment}),
+		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager, CloseIdlePlugin: AgentManager.CloseIdlePlugin}),
 		PluginContents:      PluginContents, Plugins: PluginControllerManager, PluginLauncher: coreExecutablePath(),
 		Connectors:          MCPConnectorControllerManager,
 		RuntimeEnvironments: RuntimeEnvironmentControllerManager,
@@ -670,6 +681,15 @@ func Close() error {
 		ExecutionService.Close()
 		ExecutionService = nil
 	}
+	if AgentManager != nil {
+		closeContext, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
+		err := AgentManager.Close(closeContext)
+		cancelClose()
+		if err != nil {
+			return mapCoreError("close_agent_manager", status_error.CoreShutdownFailed, err)
+		}
+		AgentManager = nil
+	}
 	if PluginBridges != nil {
 		PluginBridges.Close()
 		PluginBridges = nil
@@ -682,20 +702,23 @@ func Close() error {
 		RuntimeEnvironmentService.Close()
 		RuntimeEnvironmentService = nil
 	}
-	if AIAccountService != nil {
-		AIAccountService.Close()
-		AIAccountService = nil
-	}
-	if RuntimeSDK != nil {
+
+	if RuntimeCatalog != nil {
 		closeContext, cancelClose := context.WithTimeout(
 			context.Background(),
 			5*time.Second,
 		)
-		if err := RuntimeSDK.Close(closeContext); err != nil {
-			result = mapCoreError("close_runtime_sdk", status_error.CoreShutdownFailed, err)
-		}
+		err := RuntimeCatalog.Close(closeContext)
 		cancelClose()
-		RuntimeSDK = nil
+		if err != nil {
+			logx.Errorf("core shutdown failed: component=runtime_catalog error=%v", err)
+			return status_error.CoreShutdownFailed
+		}
+		RuntimeCatalog = nil
+	}
+	if AIAccountService != nil {
+		AIAccountService.Close()
+		AIAccountService = nil
 	}
 	if KnowledgeEngine != nil {
 		if err := KnowledgeEngine.Close(); err != nil && result == nil {
@@ -813,4 +836,40 @@ func PluginCatalogSource() string {
 		return value
 	}
 	return constants.PluginCatalogHTTPSource
+}
+
+// newAgentManager 将聊天工作区与独立任务账号端口装配到同一个会话管理器。
+func newAgentManager() *agentapi.Manager {
+	return agentapi.NewManager(agentapi.ManagerConfig{Launch: RuntimeCatalog.PrepareLaunch, PrepareWorkspace: agentapi.NewWorkspacePreparer(RuntimeCatalog.Runtimes()).Prepare, Runtimes: RuntimeCatalog.Runtimes, Fork: agentapi.NewForkHandler(RuntimeCatalog), Resolve: func(ctx context.Context, input agentapi.TextRequest) (agentapi.Environment, error) {
+		environment, err := RuntimeEnvironmentControllerManager.Get(ctx, input.RuntimeID)
+		if err != nil {
+			return agentapi.Environment{}, err
+		}
+		if !environment.Enabled || environment.Detection.State != agentapi.DetectionStateReady {
+			return agentapi.Environment{}, status_error.RuntimeUnavailable
+		}
+		binary := environment.Binary
+		if binary == "" {
+			binary = environment.Detection.ResolvedBinary
+		}
+		return agentapi.Environment{BaseRuntimeID: environment.BaseRuntimeID, Detection: environment.Detection, Target: agentapi.RuntimeTarget{RuntimeID: input.RuntimeID, Binary: binary, PrefixArgs: append([]string(nil), environment.PrefixArgs...), ConfigHome: environment.ConfigHome, CloseAfterRun: true}}, nil
+	}, Prepare: func(ctx context.Context, input agentapi.TextRequest, environment agentapi.Environment, workspace string) (agentapi.RuntimeTarget, func(context.Context) error, error) {
+		target := environment.Target
+		if input.AccountID == "" || input.AccountID == constants.AiAccountSystemID {
+			return target, func(context.Context) error { return nil }, nil
+		}
+		if AIAccountService == nil {
+			return target, nil, status_error.AIAccountConfigurationInvalid
+		}
+		prepared, release, err := AIAccountService.PrepareQueuedLease(ctx, input.AccountID, environment.BaseRuntimeID, workspace, input.Model)
+		if err != nil {
+			return target, nil, err
+		}
+		target.AccountID, target.Environment, target.Isolated = prepared.AccountID, prepared.Environment, prepared.Isolated
+		target.RefreshCredentials = prepared.RefreshCredentials
+		if prepared.ConfigHome != "" {
+			target.ConfigHome = prepared.ConfigHome
+		}
+		return target, release, nil
+	}})
 }

@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 )
 
 func TestSystemSkillVersionsCLIAndRejectsTampering(t *testing.T) {
@@ -79,7 +79,7 @@ func TestSystemGuidesAndRelativeLinksResolveBundledResources(t *testing.T) {
 			}
 		}
 	}
-	for _, operation := range contract.Operations() {
+	for _, operation := range capability.Operations() {
 		for _, id := range operation.Guides {
 			if content, err := Guide(id); err != nil || content == "" {
 				t.Errorf("operation guide unavailable: %s -> %s: %v", operation.ID, id, err)

@@ -67,13 +67,6 @@ func (c *CreateChat) Output(ctx *gin.Context) (interface{}, error) {
 		Options:   options,
 		Admission: constants.ExecutionAdmissionCommitOnRuntimeAccept,
 	}
-	if len(c.Body.WorkflowIDs) > 0 {
-		bound, err := global.WorkflowService.BindConsumer(ctx, intent, c.Body.WorkflowIDs)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		intent = bound
-	}
 	result, err := global.ExecutionService.Start(ctx, intent)
 	if err != nil {
 		return nil, ginx.WithStack(err)

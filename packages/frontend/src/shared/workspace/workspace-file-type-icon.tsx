@@ -14,7 +14,7 @@ type WorkspaceFileTypeIconProps = {
   name: string;
   isDirectory: boolean;
   isOpen?: boolean;
-  size?: number;
+  size?: number | string;
   className?: string;
 };
 
@@ -42,7 +42,7 @@ export const WorkspaceFileTypeIcon = memo(function WorkspaceFileTypeIcon({
         width: size,
       }}
     >
-      <Icon size={size} strokeWidth={1.5} />
+      <Icon size={typeof size === "string" ? "100%" : size} strokeWidth={1.5} />
     </span>
   );
 });

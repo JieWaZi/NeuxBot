@@ -1,14 +1,16 @@
 package global
 
 import (
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"context"
 	"strconv"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+
 	knowledgemodel "github.com/JieWaZi/NeuxBot/server/internal/knowledge/model"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	knowledgeservice "github.com/JieWaZi/NeuxBot/server/services/knowledge"
 	"github.com/JieWaZi/neux-knowledge/core"
@@ -16,15 +18,15 @@ import (
 
 // resolveKnowledgeModel 只验证模型服务选择；伙伴、聊天和执行权限不参与知识整理准入。
 func resolveKnowledgeModel(ctx context.Context, selection models.LibraryExecutionDefaults) (models.LibraryExecutionDefaults, error) {
-	return resolveKnowledgeSelection(ctx, selection, true)
+	return resolveKnowledgeSelection(ctx, selection)
 }
 
-// resolveKnowledgeMaintenanceModel 验证可执行工具的 ACP 模型，不套用纯文本隔离能力门槛。
+// resolveKnowledgeMaintenanceModel 验证维护使用的模型选择与账号认证。
 func resolveKnowledgeMaintenanceModel(ctx context.Context, selection models.LibraryExecutionDefaults) (models.LibraryExecutionDefaults, error) {
-	return resolveKnowledgeSelection(ctx, selection, false)
+	return resolveKnowledgeSelection(ctx, selection)
 }
 
-func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExecutionDefaults, pureText bool) (models.LibraryExecutionDefaults, error) {
+func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExecutionDefaults) (models.LibraryExecutionDefaults, error) {
 	selection.RuntimeID = strings.TrimSpace(selection.RuntimeID)
 	selection.AccountID = strings.TrimSpace(selection.AccountID)
 	selection.Model = strings.TrimSpace(selection.Model)
@@ -36,11 +38,8 @@ func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExec
 	if err != nil {
 		return selection, err
 	}
-	if !environment.Enabled || environment.Detection.State != runtimes.DetectionStateReady {
+	if !environment.Enabled || environment.Detection.State != agentapi.DetectionStateReady {
 		return selection, status_error.RuntimeUnavailable
-	}
-	if supported, known := environment.Detection.Capabilities[runtimes.CapabilityIsolatedTextGeneration]; pureText && known && !supported {
-		return selection, status_error.RuntimePolicyUnsupported
 	}
 	if selection.AccountID == "" {
 		selection.AccountID = environment.DefaultAccountID
@@ -66,7 +65,7 @@ func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExec
 		if selection.Model == "" {
 			selection.Model = environment.DefaultModel
 		}
-		available := runtimes.AvailableModels(environment.Detection, environment.CustomModels)
+		available := agentapi.AvailableModels(environment.Detection, environment.CustomModels)
 		found := len(available) == 0
 		for _, model := range available {
 			found = found || model.ID == selection.Model
@@ -80,28 +79,24 @@ func resolveKnowledgeSelection(ctx context.Context, selection models.LibraryExec
 
 // newKnowledgeModelGenerator 每个模型调用单独准备账号租约，调用结束后回收配置目录。
 func newKnowledgeModelGenerator(_ context.Context, selection models.LibraryExecutionDefaults) (core.Generator, error) {
-	if RuntimeSDK == nil || RuntimeEnvironmentControllerManager == nil {
+	if RuntimeCatalog == nil || RuntimeEnvironmentControllerManager == nil || AgentManager == nil {
 		return nil, status_error.RuntimeUnavailable
 	}
-	return knowledgemodel.New(knowledgemodel.Config{Runtime: RuntimeSDK, Model: selection.Model, Reasoning: selection.Reasoning, Prepare: func(ctx context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
-		return prepareModelRuntime(ctx, selection.RuntimeID, selection.AccountID, selection.Model)
-	}}), nil
+	return knowledgemodel.New(knowledgemodel.Config{Runtime: AgentManager, RuntimeID: selection.RuntimeID, AccountID: selection.AccountID, Model: selection.Model, Reasoning: selection.Reasoning}), nil
 }
 
-// runKnowledgeMaintenance 复用 ACP SDK、账号租约及同包 CLI 执行独立 Wiki 维护。
+// runKnowledgeMaintenance 通过共享 Runtime 宿主和单任务 CLI 授权执行独立 Wiki 维护。
 func runKnowledgeMaintenance(ctx context.Context, selection models.LibraryExecutionDefaults, input knowledgeservice.MaintenanceInvocation) (string, error) {
 	selected, err := resolveKnowledgeMaintenanceModel(ctx, selection)
 	if err != nil {
 		return "", err
 	}
 	runner := knowledgemodel.NewMaintenanceRunner(knowledgemodel.MaintenanceConfig{
-		Runtime: RuntimeSDK, Registry: AgentCapabilities,
-		Binary:   agentBinaryPath(),
-		Endpoint: "http://127.0.0.1:" + strconv.Itoa(Config.Server.Port) + constants.AgentCLIPath,
-		Model:    selected.Model, Reasoning: selected.Reasoning,
-		Prepare: func(ctx context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
-			return prepareModelRuntime(ctx, selected.RuntimeID, selected.AccountID, selected.Model)
-		},
+		Runtime: AgentManager, Registry: AgentCapabilities,
+		Binary:    agentBinaryPath(),
+		Endpoint:  "http://127.0.0.1:" + strconv.Itoa(Config.Server.Port) + constants.AgentCLIPath,
+		RuntimeID: selected.RuntimeID, AccountID: selected.AccountID,
+		Model: selected.Model, Reasoning: selected.Reasoning,
 	})
 	return runner.Run(ctx, knowledgemodel.MaintenanceRequest{JobID: input.JobID, Bindings: input.Bindings, Instructions: input.Instructions, Message: input.Message, Validate: input.Validate})
 }

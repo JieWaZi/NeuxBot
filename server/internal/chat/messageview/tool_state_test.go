@@ -88,7 +88,7 @@ func TestToolProjectionKeepsPrivateBodiesOutOfCurrentFacts(t *testing.T) {
 	}
 }
 
-func TestToolInvocationIdentityPreservesComposedFileDiffs(t *testing.T) {
+func TestToolInvocationIdentityRemainsSeparateWithoutComposedFileDiffs(t *testing.T) {
 	records := []eventlog.Record{chatCreatedRecord(1, "/workspace/project"), executionCreatedRecord(2, "execution-1")}
 	for i, invocation := range []string{"invocation-1", "invocation-2"} {
 		oldText, newText := "a\n", "b\n"
@@ -101,9 +101,10 @@ func TestToolInvocationIdentityPreservesComposedFileDiffs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages[0].FileChanges) != 1 || messages[0].FileChanges[0].AddedLines != 2 || len(messages[0].FileChangeDiffs) != 1 || messages[0].FileChangeDiffs[0].OldContent != "a\n" || messages[0].FileChangeDiffs[0].NewContent != "c\n" {
-		t.Fatalf("invocation file changes collapsed: summary=%+v diffs=%+v", messages[0].FileChanges, messages[0].FileChangeDiffs)
+	if len(messages[0].FileChanges) != 0 || len(messages[0].FileChangeDiffs) != 0 || len(messages[0].DisplayParts) != 2 || messages[0].DisplayParts[0].ID == messages[0].DisplayParts[1].ID {
+		t.Fatalf("invocation identities collapsed or CLI data generated file outcome: %+v", messages[0])
 	}
+
 }
 
 func TestToolInvocationIdentityKeepsApprovalsSeparate(t *testing.T) {

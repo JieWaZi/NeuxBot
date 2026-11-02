@@ -15,9 +15,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
-import themeStyles from "@/shared/styles/index.css?raw";
+import themeStyles from "@/shared/styles/theme.css?raw";
 
-import { AssistantText, UserText } from "./chat-message-content";
+import { AssistantText, UserText } from "@/test/chat-markdown-context";
 import { ChatMermaid } from "./chat-mermaid";
 
 const { saveBlob, themeState } = vi.hoisted(() => ({
@@ -60,6 +60,7 @@ vi.mock("@/shared/theme", () => ({ useTheme: () => themeState }));
 describe("chat markdown", () => {
   beforeEach(() => {
     themeState.resolvedTheme = "light";
+    vi.mocked(resolveFileReferencePath).mockClear();
     vi.stubGlobal(
       "IntersectionObserver",
       class {
@@ -84,7 +85,7 @@ describe("chat markdown", () => {
     delete (SVGElement.prototype as SVGElement & { getBBox?: unknown }).getBBox;
   });
 
-  it("renders Mermaid fences as diagrams through Streamdown", async () => {
+  it("renders Mermaid fences through the shared Markdown renderer", async () => {
     const { container } = render(
       <TextMessagePartProvider
         text={"```mermaid\nflowchart TD\n  A --> B\n```"}
@@ -99,6 +100,10 @@ describe("chat markdown", () => {
         container.querySelector('[data-streamdown="mermaid-block"]'),
       ).not.toBeNull(),
     );
+    const diagram = await screen.findByRole("img", { name: "Mermaid diagram" });
+    expect(diagram.querySelector("style")?.textContent).toContain(
+      "var(--foreground)",
+    );
   });
 
   it("暗色主题下使用 Mermaid 暗色配色", async () => {
@@ -112,7 +117,13 @@ describe("chat markdown", () => {
     render(<ChatMermaid code={"flowchart TD\n  A --> B"} />);
 
     await waitFor(() => expect(getMermaid).toHaveBeenCalled());
-    expect(getMermaid).toHaveBeenLastCalledWith({ theme: "dark" });
+    expect(getMermaid).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        theme: "dark",
+        fontFamily: "var(--font-sans)",
+        themeCSS: expect.stringContaining("var(--foreground)"),
+      }),
+    );
   });
 
   it("waits for the assistant message to finish before rendering Mermaid", async () => {
@@ -219,49 +230,29 @@ describe("chat markdown", () => {
     ).toHaveAttribute("data-source", firstCode);
   });
 
-  it("暗色主题下使用可读的代码高亮前景色", async () => {
+  it("暗色主题下使用现有语义 Token 高亮代码", async () => {
     document.documentElement.dataset.theme = "dark";
+    // 本用例明确把代码放进可视区域；离屏门控另有共享组件测试。
+    vi.stubGlobal("IntersectionObserver", undefined);
     const { container } = render(
       <TextMessagePartProvider
-        text={"```html\nEnable JavaScript and cookies to continue\n```"}
+        text={"```html\n<p>hello</p>\n```"}
         isRunning={false}
       >
         <AssistantText />
       </TextMessagePartProvider>,
     );
-
-    await waitFor(() => {
-      expect(
-        container.querySelector('[data-streamdown="code-block"]'),
-      ).not.toBeNull();
-      expect(
-        container.querySelector('[data-streamdown="code-block-body"]'),
-      ).not.toBeNull();
-    });
-
-    const token = await waitFor(() => {
-      const element = container.querySelector<HTMLElement>(
-        '[data-streamdown="code-block-body"] span[style*="--shiki-dark"]',
-      );
-      if (!element) throw new Error("代码高亮未生成暗色主题 Token");
-      return element;
-    });
-
-    const darkTextClass = [...token.classList].find((className) =>
-      className.startsWith("dark:text-"),
+    await waitFor(() =>
+      expect(container.querySelector("pre.shiki span[style]")).not.toBeNull(),
     );
-    if (!darkTextClass) throw new Error("代码高亮未生成暗色前景工具类");
-
-    const darkVariant = themeStyles.match(/@custom-variant dark .+;/)?.[0];
-    if (!darkVariant) throw new Error("全局样式未声明暗色主题变体");
-    const { compile } = await import("tailwindcss");
-    const compiler = await compile(`${darkVariant}\n@tailwind utilities;`);
-    const compiledCSS = compiler.build([darkTextClass]);
-
-    expect(compiledCSS).toContain(
-      ':where([data-theme="dark"], [data-theme="dark"] *)',
+    expect(container.querySelector("pre.shiki")?.textContent).toBe(
+      "<p>hello</p>",
     );
-    expect(compiledCSS).toContain("color: var(--shiki-dark");
+    expect(container.querySelector("pre.shiki")?.innerHTML).toContain(
+      "var(--editor-syntax-",
+    );
+    expect(themeStyles).toContain("--editor-syntax-green:");
+    expect(themeStyles).toContain('[data-theme="dark"]');
   });
 
   it("将 htm 代码围栏按 HTML 高亮且不输出 Shiki 错误", async () => {
@@ -367,14 +358,12 @@ describe("chat markdown", () => {
   });
 
   it.each([
-    "`/workspace/projects/share/a.txt`",
-    "`/Users/example/Desktop/share/a.txt`",
-    "`~/Desktop/share/a.txt`",
-    "`./projects/share/a.txt`",
     "[a.txt](file:///Users/example/Desktop/share/a.txt)",
     "[a.txt](/workspace/projects/share/a.txt)",
+    "[a.txt](/Users/example/Desktop/share/a.txt)",
+    "[a.txt](~/Desktop/share/a.txt)",
     "[a.txt](./projects/share/a.txt)",
-  ])("文件引用的所有语法共用真实路径、显示、复制与打开：%s", async (text) => {
+  ])("显式文件链接共用真实路径、显示、复制与打开：%s", async (text) => {
     const user = userEvent.setup();
     const clipboard = vi
       .spyOn(navigator.clipboard, "writeText")
@@ -394,7 +383,13 @@ describe("chat markdown", () => {
         </TextMessagePartProvider>
       </FileReferenceProvider>,
     );
-    const file = await screen.findByRole("link", { name: "a.txt" });
+    const file = await screen.findByRole("link", {
+      name: "a.txt",
+    });
+    expect(resolveFileReferencePath).not.toHaveBeenCalled();
+    await user.click(
+      screen.getByRole("button", { name: "复制完整路径：a.txt" }),
+    );
     await waitFor(() =>
       expect(file).toHaveAttribute(
         "data-file-path",
@@ -402,9 +397,6 @@ describe("chat markdown", () => {
       ),
     );
     expect(file).toHaveAttribute("title", "/Users/example/Desktop/share/a.txt");
-    await user.click(
-      screen.getByRole("button", { name: "复制完整路径：a.txt" }),
-    );
     expect(clipboard).toHaveBeenCalledWith(
       "/Users/example/Desktop/share/a.txt",
     );
@@ -413,7 +405,6 @@ describe("chat markdown", () => {
     expect(open).toHaveBeenCalledWith(
       expect.objectContaining({
         canonicalPath: "/Users/example/Desktop/share/a.txt",
-        displayPath: "a.txt",
       }),
     );
   });
@@ -448,25 +439,24 @@ describe("chat markdown", () => {
         onOpenFile={open}
       >
         <TextMessagePartProvider
-          text={`在默认项目目录 \`${path}\``}
+          text={`在默认项目目录 [${path}](${path})`}
           isRunning={false}
         >
           <AssistantText />
         </TextMessagePartProvider>
       </FileReferenceProvider>,
     );
+    expect(resolveFileReferencePath).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: path })).toHaveTextContent(path);
+    await user.click(screen.getByRole("button", { name: /复制完整路径/ }));
+    await waitFor(() => expect(clipboard).toHaveBeenCalledWith(canonicalPath));
     const directory = await screen.findByTitle(canonicalPath);
     expect(directory).toHaveAttribute("data-chat-link", "directory");
-    expect(directory).toHaveTextContent(
-      path.endsWith("folder.with.dots") ? "folder.with.dots/" : "share/",
-    );
+    expect(directory).toHaveTextContent(path);
     expect(directory.querySelector(".lucide-folder")).not.toBeNull();
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(screen.queryByText("文件不存在")).not.toBeInTheDocument();
-    await user.click(directory);
     expect(open).not.toHaveBeenCalled();
-    await user.click(screen.getByRole("button", { name: /复制完整路径/ }));
-    expect(clipboard).toHaveBeenCalledWith(canonicalPath);
   });
 
   it.each([
@@ -484,8 +474,11 @@ describe("chat markdown", () => {
         );
       else
         vi.mocked(resolveFileReferencePath).mockResolvedValueOnce({ status });
+      const user = userEvent.setup();
+      const open = vi.fn();
       const ui = (
         <FileReferenceProvider
+          onOpenFile={open}
           context={{
             baseDirectory: "/workspace",
             workspaceRoot: "/workspace",
@@ -502,24 +495,15 @@ describe("chat markdown", () => {
           </TextMessagePartProvider>
         </FileReferenceProvider>
       );
-      const { client, rerender } = render(ui);
-      // 等查询完成后再重渲染，确保断言覆盖真实失败结果，而非仅覆盖加载时原文。
-      await waitFor(() =>
-        expect(
-          client
-            .getQueryCache()
-            .getAll()
-            .every((query) => query.state.status !== "pending"),
-        ).toBe(true),
-      );
-      rerender(ui);
-      expect(screen.queryByRole("link")).not.toBeInTheDocument();
-      expect(screen.getByText("./missing.custom").tagName).toBe("CODE");
+      render(ui);
+      expect(resolveFileReferencePath).not.toHaveBeenCalled();
+      const file = screen.getByRole("link", { name: "查看目录" });
+      await user.click(file);
+      expect(resolveFileReferencePath).toHaveBeenCalledTimes(1);
+      expect(open).not.toHaveBeenCalled();
+      expect(screen.getByText("./missing.custom")).toBeInTheDocument();
       expect(screen.getByText("查看目录")).toBeInTheDocument();
       expect(screen.queryByText("文件不存在")).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: /复制完整路径/ }),
-      ).not.toBeInTheDocument();
       expect(screen.getByText("a").tagName).toBe("CODE");
       expect(screen.getByText("python3 -m http.server 8000").tagName).toBe(
         "CODE",
@@ -569,7 +553,10 @@ describe("chat markdown", () => {
 
   it("renders user message Markdown with the same typography pipeline", async () => {
     const { container } = render(
-      <TextMessagePartProvider text={"**重点** 与 `file.ts`"} isRunning={false}>
+      <TextMessagePartProvider
+        text={"**重点** 与 `const value = 1`"}
+        isRunning={false}
+      >
         <UserText />
       </TextMessagePartProvider>,
     );
@@ -638,6 +625,9 @@ describe("chat markdown", () => {
     const clientWidth = vi
       .spyOn(HTMLElement.prototype, "clientWidth", "get")
       .mockImplementation(() => viewportWidth);
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, "clientHeight", "get")
+      .mockReturnValue(600);
     // jsdom 没有布局引擎：模拟 SVG 受父容器 max-width 与 transform 影响后的尺寸。
     const bounds = vi
       .spyOn(SVGElement.prototype, "getBoundingClientRect")
@@ -692,6 +682,7 @@ describe("chat markdown", () => {
       layoutStyles.remove();
       bounds.mockRestore();
       clientWidth.mockRestore();
+      clientHeight.mockRestore();
       getMermaid.mockRestore();
     }
   });

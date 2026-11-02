@@ -31,7 +31,7 @@
 | 编辑器     | [输入框](../../packages/frontend/src/modules/chat/components/chat-composer-input.tsx)支持文件、技能、连接器等引用                                      | 增加工作流引用类型；不能仅发送名称或依赖正文模糊匹配                        |
 | Agent 能力 | [工作流绑定](../../server/services/workflow/agent.go)已有定义查询、参数说明、启动、查询、等待和取消                                          | 串联等待、终态结果、文件交付和执行过程关联                                  |
 | 调用授权   | [使用者能力](../../server/services/workflow/capabilities.go)按选中定义和当前聊天回合校验；运行保存使用者关联                                 | 为展示、取消传播及交付保存准确关联；版本由 Agent 读取契约后传入已有启动操作 |
-| 等待       | [有界观察](../../server/internal/agentcapability/observe.go)单次默认等待 30 秒，最长 60 秒                                                   | 有界观察结束后继续跟随原运行，不能将其当作业务终态                          |
+| 等待       | [有界观察](../../server/internal/agent/capability/capability.go)单次默认等待 30 秒，最长 60 秒                                                   | 有界观察结束后继续跟随原运行，不能将其当作业务终态                          |
 | 取消       | [取消运行](../../server/services/workflow/runs.go)先写入 `cancelling`，实际停止后形成终态                                                    | 持久化用户停止来源，建立聊天与运行之间的取消传播                            |
 | 文件       | [运行查询](../../server/apis/workflows/get_run.go)提供声明产出文件；[聊天日志](../../server/internal/chat/eventlog/types.go)已有受管附件引用 | 完成 Run 最终文件到助手消息的受控交付与持久登记                             |
 

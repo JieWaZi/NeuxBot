@@ -12,7 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/JieWaZi/neux-knowledge/httpapi"
 	"github.com/JieWaZi/neux-knowledge/remote"
@@ -77,15 +77,15 @@ func readFixture(t *testing.T) (*core.Engine, *core.Library, *core.Page, *core.S
 	return e, lib, page, source, job
 }
 
-func callRead(t *testing.T, bindings []agentcapability.Binding, operation string, params map[string]any) (agentcapability.Result, error) {
+func callRead(t *testing.T, bindings []capability.Binding, operation string, params map[string]any) (capability.Result, error) {
 	t.Helper()
 	for _, b := range bindings {
 		if b.Operation == operation {
-			return b.Call(context.Background(), agentcapability.Request{Params: params})
+			return b.Call(context.Background(), capability.Request{Params: params})
 		}
 	}
 	t.Fatalf("missing read binding %s", operation)
-	return agentcapability.Result{}, nil
+	return capability.Result{}, nil
 }
 
 func TestReadPageAcceptsExactlyOneIdentityAndResolvesSlug(t *testing.T) {

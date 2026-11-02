@@ -1,40 +1,41 @@
 package runtime_options
 
 import (
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"reflect"
 	"testing"
 
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 func TestRuntimeOptionIncludesDetectedModelReasoningOptions(t *testing.T) {
-	detection := runtimes.DetectionResult{
-		Runtime: runtimes.RuntimeSummary{
-			ID:            runtimes.RuntimeIDCodex,
-			BaseRuntimeID: runtimes.RuntimeIDCodex,
+	detection := agentapi.DetectionResult{
+		Runtime: agentapi.RuntimeSummary{
+			ID:            agentapi.RuntimeIDCodex,
+			BaseRuntimeID: agentapi.RuntimeIDCodex,
 			Name:          "Codex CLI",
 		},
 		DetectedDefaultModel:     "gpt-stable",
 		DetectedDefaultReasoning: "high",
-		Models: []runtimes.ModelOption{
+		Models: []agentapi.ModelOption{
 			{
 				ID:   "gpt-stable",
 				Name: "GPT Stable",
-				ReasoningOptions: []runtimes.ReasoningOption{
+				ReasoningOptions: []agentapi.ReasoningOption{
 					{ID: "high", Name: "High"},
 					{ID: "medium", Name: "Medium"},
 				},
 			},
 		},
-		ReasoningOptions: []runtimes.ReasoningOption{
+		ReasoningOptions: []agentapi.ReasoningOption{
 			{ID: "high", Name: "High"},
 			{ID: "medium", Name: "Medium"},
 		},
 	}
 
 	option := runtimeOption(models.RuntimeEnvironment{
-		RuntimeID:        runtimes.RuntimeIDCodex,
+		RuntimeID:        agentapi.RuntimeIDCodex,
 		Name:             "Codex CLI",
 		DefaultModel:     "stale-model",
 		DefaultReasoning: "stale-reasoning",
@@ -74,15 +75,15 @@ func TestRuntimeOptionSeparatesExecutableDiscoveryFromReadiness(t *testing.T) {
 		// path 是探测到的可执行文件路径，空值表示未安装。
 		path string
 		// state 是协议探测的就绪结论。
-		state runtimes.DetectionState
+		state agentapi.DetectionState
 		// installed 是设置页应展示的安装状态。
 		installed bool
 	}{
-		{name: "已安装但协议不可用", path: "/usr/local/bin/kimi", state: runtimes.DetectionStateUnavailable, installed: true},
-		{name: "未安装", state: runtimes.DetectionStateUnavailable, installed: false},
+		{name: "已安装但协议不可用", path: "/usr/local/bin/kimi", state: agentapi.DetectionStateUnavailable, installed: true},
+		{name: "未安装", state: agentapi.DetectionStateUnavailable, installed: false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			option := runtimeOption(models.RuntimeEnvironment{Detection: runtimes.DetectionResult{
+			option := runtimeOption(models.RuntimeEnvironment{Detection: agentapi.DetectionResult{
 				State: test.state, ResolvedBinary: test.path,
 			}})
 			if option.Installed != test.installed || option.State != string(test.state) {
@@ -93,15 +94,15 @@ func TestRuntimeOptionSeparatesExecutableDiscoveryFromReadiness(t *testing.T) {
 }
 
 func TestRuntimeOptionIncludesCustomModels(t *testing.T) {
-	detection := runtimes.DetectionResult{
+	detection := agentapi.DetectionResult{
 		DetectedDefaultModel: "gpt-stable",
-		Models:               []runtimes.ModelOption{{ID: "gpt-stable", Name: "GPT Stable"}},
-		ReasoningOptions: []runtimes.ReasoningOption{
+		Models:               []agentapi.ModelOption{{ID: "gpt-stable", Name: "GPT Stable"}},
+		ReasoningOptions: []agentapi.ReasoningOption{
 			{ID: "high", Name: "High"},
 		},
 	}
 	option := runtimeOption(models.RuntimeEnvironment{
-		RuntimeID:    runtimes.RuntimeIDCodex,
+		RuntimeID:    agentapi.RuntimeIDCodex,
 		CustomModels: []string{"gpt-team-custom"},
 		DefaultModel: "gpt-team-custom",
 		Detection:    detection,

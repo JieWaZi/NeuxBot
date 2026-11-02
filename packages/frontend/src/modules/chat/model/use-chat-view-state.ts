@@ -13,10 +13,9 @@ export type ChatViewState = {
   reasoning: string;
   runtimeId: string;
   selectedCodeReferences: ChatCodeReference[];
-  workspaceWarningCode: string;
 };
 
-function initialChatViewState(workspaceWarningCode: string): ChatViewState {
+function initialChatViewState(): ChatViewState {
   return {
     fileSource: "project",
     model: "",
@@ -24,34 +23,28 @@ function initialChatViewState(workspaceWarningCode: string): ChatViewState {
     reasoning: "",
     runtimeId: "",
     selectedCodeReferences: [],
-    workspaceWarningCode,
   };
 }
 
 /**
  * 对话视图状态按对话或草稿范围隔离，切换范围时不依赖渲染后的清理 Effect。
  */
-export function useChatViewState(
-  scopeKey: string,
-  initialWorkspaceWarningCode: string,
-) {
+export function useChatViewState(scopeKey: string) {
   const [stateByScope, setStateByScope] = useState<
     Record<string, ChatViewState>
   >({});
-  const state =
-    stateByScope[scopeKey] ?? initialChatViewState(initialWorkspaceWarningCode);
+  const state = stateByScope[scopeKey] ?? initialChatViewState();
   const update = useCallback(
     (patch: Partial<ChatViewState>) => {
       setStateByScope((current) => ({
         ...current,
         [scopeKey]: {
-          ...(current[scopeKey] ??
-            initialChatViewState(initialWorkspaceWarningCode)),
+          ...(current[scopeKey] ?? initialChatViewState()),
           ...patch,
         },
       }));
     },
-    [initialWorkspaceWarningCode, scopeKey],
+    [scopeKey],
   );
 
   return { state, update };

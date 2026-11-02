@@ -1,4 +1,4 @@
-// Package capability 保存工作流业务场景身份，CLI 契约由 agentcapability/contract 唯一维护。
+// Package capability 保存工作流业务场景身份，CLI 契约由 agent/capability 唯一维护。
 package capability
 
 import "github.com/JieWaZi/NeuxBot/server/constants"

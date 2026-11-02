@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -34,6 +35,8 @@ type recordScope struct {
 	executionID string
 	// invocationID 是当前活跃 Runtime Invocation 标识。
 	invocationID string
+	// toolUpdates 仅在存储编解码内保存当前调用各工具的上一份完整载荷。
+	toolUpdates map[string]json.RawMessage
 }
 
 // encodeRecords 为一次原子追加分配内存序号和确定的文件位置。
@@ -46,6 +49,7 @@ func encodeRecords(
 ) ([]Record, []byte, recordScope, error) {
 	now := time.Now().UnixMilli()
 	scope := initialScope
+	scope.toolUpdates = maps.Clone(initialScope.toolUpdates)
 	records := make([]Record, 0, len(inputs))
 	var buffer bytes.Buffer
 	for index, input := range inputs {
@@ -64,6 +68,12 @@ func encodeRecords(
 		if isMessageIdentityRecord(input.Type) {
 			persisted.MessageID = input.MessageID
 		}
+		if input.Type == constants.ChatEventTypeFileChanges {
+			if input.MessageID == "" || input.ExecutionID == "" || input.InvocationID != "" {
+				return nil, nil, initialScope, status_error.ChatLogRecordInvalid
+			}
+			persisted.ExecutionID = input.ExecutionID
+		}
 		if input.Type == constants.ChatEventTypeExecutionCreated {
 			if input.ExecutionID == "" {
 				return nil, nil, initialScope, status_error.ChatLogRecordInvalid
@@ -77,6 +87,17 @@ func encodeRecords(
 			input.InvocationID != scope.invocationID {
 			persisted.InvocationID = input.InvocationID
 			scope.invocationID = input.InvocationID
+			scope.toolUpdates = nil
+		}
+		if input.Type == constants.ChatEventTypeExecutionCreated {
+			scope.toolUpdates = nil
+		}
+		if isExecutionMessageRecord(input.Type) {
+			var err error
+			persisted.Data, err = scope.encodeRuntimeMessage(input.Data)
+			if err != nil {
+				return nil, nil, initialScope, err
+			}
 		}
 		record := Record{
 			SchemaVersion: persisted.SchemaVersion,
@@ -88,6 +109,9 @@ func encodeRecords(
 			ExecutionID:   resolvedExecutionID(input, scope),
 			InvocationID:  resolvedInvocationID(input, scope),
 			Data:          append(json.RawMessage(nil), input.Data...),
+		}
+		if input.Type == constants.ChatEventTypeFileChanges {
+			record.InvocationID = ""
 		}
 		encoded, err := json.Marshal(persisted)
 		if err != nil {
@@ -123,7 +147,17 @@ func decodeRecordPayload(
 	if persisted.Type == constants.ChatEventTypeUnspecified {
 		return Record{}, status_error.ChatLogCorrupted
 	}
+	// 文件成果可以晚于终态并与下一轮交错，完整身份不得改写当前执行作用域。
+	if persisted.Type == constants.ChatEventTypeFileChanges {
+		if persisted.MessageID == "" || persisted.ExecutionID == "" {
+			return Record{}, status_error.ChatLogCorrupted
+		}
+		return Record{SchemaVersion: persisted.SchemaVersion, ChatID: chatID, Sequence: sequence,
+			RecordedAt: persisted.RecordedAt, Type: persisted.Type, MessageID: persisted.MessageID,
+			ExecutionID: persisted.ExecutionID, Data: append(json.RawMessage(nil), persisted.Data...)}, nil
+	}
 	if persisted.ExecutionID != "" {
+		scope.toolUpdates = nil
 		scope.executionID = persisted.ExecutionID
 		scope.invocationID = ""
 	}
@@ -133,6 +167,9 @@ func decodeRecordPayload(
 		}
 	}
 	if persisted.InvocationID != "" {
+		if scope.invocationID != persisted.InvocationID {
+			scope.toolUpdates = nil
+		}
 		scope.invocationID = persisted.InvocationID
 	}
 	record := Record{
@@ -148,6 +185,13 @@ func decodeRecordPayload(
 	}
 	if record.Type == constants.ChatEventTypeExecutionCreated || isExecutionMessageRecord(record.Type) {
 		record.MessageID = scope.executionID
+	}
+	if isExecutionMessageRecord(record.Type) {
+		var err error
+		record.Data, err = scope.decodeRuntimeMessage(record.Data)
+		if err != nil {
+			return Record{}, err
+		}
 	}
 	if isExecutionTerminalRecord(record.Type) {
 		*scope = recordScope{}
@@ -199,7 +243,7 @@ func decodeRecordRange(
 }
 
 func isMessageIdentityRecord(eventType constants.ChatEventType) bool {
-	return eventType == constants.ChatEventTypeUserMessageCreated || eventType == constants.ChatEventTypeMessageInherited
+	return eventType == constants.ChatEventTypeUserMessageCreated || eventType == constants.ChatEventTypeMessageInherited || eventType == constants.ChatEventTypeFileChanges
 }
 
 func isExecutionMessageRecord(eventType constants.ChatEventType) bool {

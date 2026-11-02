@@ -356,7 +356,7 @@ func TestSingleUserReadyReportIsDeliveredWithoutLeadExecution(t *testing.T) {
 			if chatID != leadChatID || messageID != attemptID || len(chatFake.participantMessages) != 1 {
 				t.Fatal("必须先提交原成员报告，才能定位交付结果")
 			}
-			return &models.WorkResultReceipt{LatestVersion: 10, Reference: models.WorkResultReference{ChatID: chatID, MessageID: messageID}}, nil
+			return &models.WorkResultReceipt{LatestVersion: 10, Reference: models.WorkResultReference{ChatID: chatID, MessageID: messageID, FileChangeRecordID: "copied-file-record", FileChangeRecordVersion: 2}}, nil
 		},
 	}
 	directIDs, err := tasks.ListDirectDeliveredNotificationIDs(ctx, threadID, []string{attemptID})
@@ -433,7 +433,7 @@ func TestSingleUserReadyReportIsDeliveredWithoutLeadExecution(t *testing.T) {
 		t.Fatalf("direct delivery events = %d, want one", directEvents)
 	}
 	receipt, found, err := results.Get(ctx, constants.WorkResultOwnerKindTeamThread, threadID)
-	if err != nil || !found || receipt.LatestVersion != 10 || receipt.ViewedVersion != 0 || receipt.Reference.MessageID != attemptID {
+	if err != nil || !found || receipt.LatestVersion != 10 || receipt.ViewedVersion != 0 || receipt.Reference.MessageID != attemptID || receipt.Reference.FileChangeRecordID != "copied-file-record" || receipt.Reference.FileChangeRecordVersion != 2 {
 		t.Fatalf("直达交付未形成团队未读结果: %+v, %v", receipt, err)
 	}
 	for _, event := range events {

@@ -16,7 +16,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
@@ -271,7 +271,7 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		if err = s.store.CreateReceipt(ctx, models.WorkflowCommandReceipt{AggregateID: definition.ID, RequestID: command.RequestID, Kind: "run", PayloadDigest: digest, Result: map[string]any{"runId": id}}); err != nil {
 			return err
 		}
-		if err := agentcommand.Commit(ctx, map[string]any{"runId": id, "definitionId": definition.ID, "revisionId": revision.ID}); err != nil {
+		if err := capability.Commit(ctx, map[string]any{"runId": id, "definitionId": definition.ID, "revisionId": revision.ID}); err != nil {
 			return err
 		}
 		_, err = s.store.AppendEvent(ctx, models.WorkflowEvent{StreamID: definition.ID, EventID: util.New(), Type: constants.WorkflowRunCreatedEvent, EntityID: id, Payload: map[string]any{"runId": id, "revisionId": revision.ID}})
@@ -336,7 +336,7 @@ func (s *Service) CancelRun(ctx context.Context, id string) error {
 				return err
 			}
 		}
-		return agentcommand.Commit(ctx, map[string]any{"runId": id, "definitionId": state.Run.DefinitionID, "cancellationRequested": true})
+		return capability.Commit(ctx, map[string]any{"runId": id, "definitionId": state.Run.DefinitionID, "cancellationRequested": true})
 	})
 }
 

@@ -10,7 +10,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
@@ -80,11 +80,11 @@ func insertAgentReceipt(ctx context.Context, tx *sql.Tx) error {
 }
 
 // AgentBindings 以当前伙伴和项目范围直接调用记忆领域，并在同库提交命令回执。
-func (s *Service) AgentBindings(mc Context) []agentcapability.Binding {
+func (s *Service) AgentBindings(mc Context) []capability.Binding {
 	show := func(memory Memory) map[string]any {
 		return map[string]any{"memoryId": memory.ID, "scope": memory.Scope, "content": memory.Data, "createdAt": memory.CreatedAt, "updatedAt": memory.UpdatedAt}
 	}
-	bindings := []agentcapability.Binding{{Operation: "memory.entries.search", Call: func(ctx context.Context, input agentcapability.Request) (agentcapability.Result, error) {
+	bindings := []capability.Binding{{Operation: "memory.entries.search", Call: func(ctx context.Context, input capability.Request) (capability.Result, error) {
 		var params struct {
 			// Query 是本次检索文本。
 			Query string `json:"query"`
@@ -93,12 +93,12 @@ func (s *Service) AgentBindings(mc Context) []agentcapability.Binding {
 			// TopK 是有界命中条数。
 			TopK int `json:"topK"`
 		}
-		if err := agentcapability.DecodeParams(input.Params, &params); err != nil {
-			return agentcapability.Result{}, err
+		if err := capability.DecodeParams(input.Params, &params); err != nil {
+			return capability.Result{}, err
 		}
 		result, err := s.Search(ctx, mc, params.Query, constants.MemoryScope(params.Scope), params.TopK)
 		if err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		items := []map[string]any{}
 		for _, item := range result.Results {
@@ -106,23 +106,23 @@ func (s *Service) AgentBindings(mc Context) []agentcapability.Binding {
 			value["score"] = item.Score
 			items = append(items, value)
 		}
-		return agentcapability.Result{Data: map[string]any{"items": items, "mode": result.Mode, "indexConflict": result.Conflict}}, nil
-	}}, {Operation: "memory.entries.get", Call: func(_ context.Context, input agentcapability.Request) (agentcapability.Result, error) {
+		return capability.Result{Data: map[string]any{"items": items, "mode": result.Mode, "indexConflict": result.Conflict}}, nil
+	}}, {Operation: "memory.entries.get", Call: func(_ context.Context, input capability.Request) (capability.Result, error) {
 		id, _ := input.Params["memoryId"].(string)
 		entry, err := s.getAccessibleMemory(id, mc)
 		if err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
-		return agentcapability.Result{Data: show(*entry)}, nil
+		return capability.Result{Data: show(*entry)}, nil
 	}}}
 	for _, operation := range []string{"memory.entries.create", "memory.entries.update", "memory.entries.forget"} {
 		newCommand := func(requestID string) *agentCommand {
 			return &agentCommand{id: util.New(), key: commandDigest([]string{mc.ChatID, mc.PartnerID, mc.ProjectID, operation, requestID})}
 		}
-		result := func(command *agentCommand) agentcapability.Result {
-			return agentcapability.Result{CommandID: command.id, Replayed: command.replayed, Data: map[string]any{"memoryId": command.memoryID, "duplicate": command.duplicate}}
+		result := func(command *agentCommand) capability.Result {
+			return capability.Result{CommandID: command.id, Replayed: command.replayed, Data: map[string]any{"memoryId": command.memoryID, "duplicate": command.duplicate}}
 		}
-		bindings = append(bindings, agentcapability.Binding{Operation: operation, Call: func(ctx context.Context, input agentcapability.Request) (agentcapability.Result, error) {
+		bindings = append(bindings, capability.Binding{Operation: operation, Call: func(ctx context.Context, input capability.Request) (capability.Result, error) {
 			command := newCommand(input.RequestID)
 			command.hash = commandDigest(input.Params)
 			ctx = context.WithValue(ctx, agentCommandKey{}, command)
@@ -139,14 +139,14 @@ func (s *Service) AgentBindings(mc Context) []agentcapability.Binding {
 				err = s.Forget(ctx, mc, id)
 			}
 			return result(command), err
-		}, Receipt: func(ctx context.Context, requestID string) (agentcapability.Result, error) {
+		}, Receipt: func(ctx context.Context, requestID string) (capability.Result, error) {
 			command := newCommand(requestID)
 			err := s.store.db.QueryRowContext(ctx, "SELECT id, request_hash, memory_id, duplicate FROM memory_command_receipts WHERE request_key = ?", command.key).Scan(&command.id, &command.hash, &command.memoryID, &command.duplicate)
 			if errors.Is(err, sql.ErrNoRows) {
-				return agentcapability.Result{}, status_error.MemoryNotFound
+				return capability.Result{}, status_error.MemoryNotFound
 			}
 			if err != nil {
-				return agentcapability.Result{}, status_error.DatabaseError
+				return capability.Result{}, status_error.DatabaseError
 			}
 			command.replayed = true
 			return result(command), nil

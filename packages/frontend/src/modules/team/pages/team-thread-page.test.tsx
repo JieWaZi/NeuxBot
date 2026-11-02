@@ -1,3 +1,5 @@
+import type * as TeamAPI from "../api/channel-queries";
+import type * as GeneratedSDK from "@/shared/api/generated/sdk.gen";
 import type * as ErrorNotices from "@/shared/api/error-notices";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -15,6 +17,7 @@ import "@/shared/i18n";
 import { ApiError } from "@/shared/api/errors";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelThreadMember as ChannelThreadMember } from "@/shared/api/generated/types.gen";
 
+import { AppSceneWorkspaceContextProvider } from "@/shared/workspace/app-scene-workspace";
 import { TeamThreadPage, type TeamThreadChatContext } from "./team-thread-page";
 
 const teamThreadFixture = vi.hoisted(() => ({
@@ -97,6 +100,8 @@ const teamThreadFixture = vi.hoisted(() => ({
     },
   ] as ChannelThreadMember[],
   timelineHasMore: false,
+  leadChatLatestSequence: 7,
+  timelineHeadReads: vi.fn(),
   timelineNextCursor: undefined as string | undefined,
   timeline: [
     {
@@ -147,14 +152,27 @@ vi.mock("@/shared/api/error-notices", async (importOriginal) => ({
   reportErrorNotice: teamThreadFixture.errorNotice,
 }));
 
-vi.mock("../api/channel-queries", () => ({
+vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
+  ...(await importOriginal<typeof GeneratedSDK>()),
+  listChannelTimeline: async ({ query }: { query?: { cursor?: string } }) => {
+    if (query?.cursor)
+      return { data: await teamThreadFixture.loadTimeline(query.cursor) };
+    teamThreadFixture.timelineHeadReads();
+    return {
+      data: {
+        leadChatLatestSequence: teamThreadFixture.leadChatLatestSequence,
+        hasMore: teamThreadFixture.timelineHasMore,
+        nextCursor: teamThreadFixture.timelineNextCursor,
+        resources: teamThreadFixture.timeline,
+      },
+    };
+  },
+}));
+
+vi.mock("../api/channel-queries", async (importOriginal) => ({
+  ...(await importOriginal<typeof TeamAPI>()),
   createChannelThreadMutation: () => ({
     mutationFn: teamThreadFixture.createThread,
-  }),
-  fetchTeamTimelinePage: async () => ({
-    hasMore: teamThreadFixture.timelineHasMore,
-    nextCursor: teamThreadFixture.timelineNextCursor,
-    resources: teamThreadFixture.timeline,
   }),
   getChannelOptions: ({ path }: { path: { channelId: string } }) => ({
     queryFn: async () => ({
@@ -188,9 +206,6 @@ vi.mock("../api/channel-queries", () => ({
         memberActivities: teamThreadFixture.memberActivities,
         pendingInteractions: teamThreadFixture.pendingInteractions,
         tasks: teamThreadFixture.tasks,
-        timelineHasMore: teamThreadFixture.timelineHasMore,
-        timelineNextCursor: teamThreadFixture.timelineNextCursor,
-        timeline: teamThreadFixture.timeline,
         thread: {
           cancelingAt: teamThreadFixture.threadCancelingAt,
           id: path.threadId,
@@ -212,20 +227,6 @@ vi.mock("../api/channel-queries", () => ({
     "channel-threads",
     path.channelId,
   ],
-  teamTimelineInfiniteOptions: (channelId: string, threadId: string) => ({
-    initialPageParam: "",
-    queryFn: ({ pageParam }: { pageParam: string }) =>
-      pageParam
-        ? teamThreadFixture.loadTimeline(pageParam)
-        : Promise.resolve({
-            hasMore: teamThreadFixture.timelineHasMore,
-            nextCursor: teamThreadFixture.timelineNextCursor,
-            resources: teamThreadFixture.timeline,
-          }),
-    queryKey: ["channel-timeline", channelId, threadId],
-    getNextPageParam: (page: { hasMore?: boolean; nextCursor?: string }) =>
-      page.hasMore ? page.nextCursor : undefined,
-  }),
   reviewChannelTaskMutation: () => ({
     mutationFn: teamThreadFixture.reviewTask,
   }),
@@ -234,16 +235,6 @@ vi.mock("../api/channel-queries", () => ({
     mutationFn: teamThreadFixture.stopTask,
   }),
   stopChannelWorkMutation: () => ({ mutationFn: teamThreadFixture.stopWork }),
-  teamQueryKeys: {
-    channelPages: () => ["channels", "pages"],
-    channels: () => ["channels"],
-    threads: (channelId: string) => ["channel-threads", channelId],
-    timelinePages: (channelId: string, threadId: string) => [
-      "channel-timeline",
-      channelId,
-      threadId,
-    ],
-  },
   updateChannelThreadMemberConfigsMutation: () => ({
     mutationFn: teamThreadFixture.updateMemberConfigs,
   }),
@@ -308,8 +299,11 @@ function renderTeamChat({
           加载更早团队消息
         </button>
       ) : null}
-      <button type="button" onClick={teamContext.onThreadChanged}>
-        刷新团队快照
+      <button
+        type="button"
+        onClick={() => void teamContext.messageSource.reconcile()}
+      >
+        恢复团队消息快照
       </button>
       <button
         type="button"
@@ -356,6 +350,7 @@ function renderPage(
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  let teamContext: TeamThreadChatContext | undefined;
   if (options?.seedChannel) {
     queryClient.setQueryData(["channel", "channel-1"], {
       channel: {
@@ -366,7 +361,7 @@ function renderPage(
       members: teamThreadFixture.channelMembers,
     });
   }
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
@@ -375,7 +370,10 @@ function renderPage(
             element={
               <TeamThreadPage
                 onThreadMissing={options?.onThreadMissing}
-                renderChat={renderTeamChat}
+                renderChat={(props) => {
+                  teamContext = props.teamContext;
+                  return renderTeamChat(props);
+                }}
               />
             }
           />
@@ -384,6 +382,13 @@ function renderPage(
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return {
+    ...view,
+    queryClient,
+    get teamContext() {
+      return teamContext;
+    },
+  };
 }
 
 describe("TeamThreadPage", () => {
@@ -467,6 +472,8 @@ describe("TeamThreadPage", () => {
       },
     ];
     teamThreadFixture.timelineHasMore = false;
+    teamThreadFixture.leadChatLatestSequence = 7;
+    teamThreadFixture.timelineHeadReads.mockClear();
     teamThreadFixture.timelineNextCursor = undefined;
     teamThreadFixture.timeline = [
       {
@@ -488,6 +495,54 @@ describe("TeamThreadPage", () => {
         subject: "审核团队实现",
       },
     ];
+  });
+
+  it("团队消息源使用时间线游标，元数据刷新不重复读取消息", async () => {
+    const page = renderPage("/teams/channel-1/threads/thread-1");
+    await waitFor(() =>
+      expect(page.teamContext?.messageSource.snapshot.ready).toBe(true),
+    );
+    expect(page.teamContext?.messageSource.snapshot.latestSequence).toBe(7);
+    expect(page.teamContext?.messageSource.snapshot.messages).toEqual([]);
+    expect(
+      page.teamContext?.messageSource.commit([
+        {
+          sequence: 8,
+          type: "message.created",
+          message: {
+            id: "durable-main",
+            role: "assistant",
+            executionId: "execution",
+            status: "completed",
+          },
+        },
+      ]),
+    ).toBe(8);
+    await waitFor(() =>
+      expect(page.teamContext?.messageSource.snapshot.messages[0]?.id).toBe(
+        "durable-main",
+      ),
+    );
+    expect(teamThreadFixture.timelineHeadReads).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await page.queryClient.invalidateQueries({
+        queryKey: ["channel-thread", "channel-1", "thread-1"],
+      });
+    });
+    expect(teamThreadFixture.timelineHeadReads).toHaveBeenCalledTimes(1);
+    teamThreadFixture.leadChatLatestSequence = 9;
+    let reconciled: number | undefined;
+    await act(async () => {
+      reconciled = await page.teamContext?.messageSource.reconcile();
+    });
+    expect(reconciled).toBe(9);
+    await waitFor(() =>
+      expect(page.teamContext?.messageSource.snapshot.latestSequence).toBe(9),
+    );
+    expect(teamThreadFixture.timelineHeadReads).toHaveBeenCalledTimes(2);
+    expect(
+      page.queryClient.getQueryData(["chats", "messages", "lead-chat"]),
+    ).toBeUndefined();
   });
 
   it("使用负责人成员 Chat 渲染团队主会话", async () => {
@@ -907,7 +962,7 @@ describe("TeamThreadPage", () => {
         wakerId: "",
       },
     ];
-    fireEvent.click(screen.getByRole("button", { name: "刷新团队快照" }));
+    fireEvent.click(screen.getByRole("button", { name: "恢复团队消息快照" }));
 
     await waitFor(() =>
       expect(screen.getByTestId("timeline-messages")).toHaveTextContent(
@@ -1006,6 +1061,80 @@ describe("TeamThreadPage", () => {
     expect(await screen.findByLabelText("location")).toHaveTextContent(
       /\/teams\/channel-1\?draftId=.+/,
     );
+  });
+  it("隐藏Scene释放团队消费且不补读，恢复只读取最新窗口并保留已翻旧页", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+    });
+    let currentContext: TeamThreadChatContext | undefined;
+    const surface = (active: boolean) => (
+      <QueryClientProvider client={queryClient}>
+        <AppSceneWorkspaceContextProvider
+          value={{
+            routeSceneId: "team",
+            snapshot: {
+              activeTabId: active ? "team" : "other",
+              tabs: [
+                {
+                  id: "team",
+                  label: "团队",
+                  kind: "route",
+                  lastUsed: 0,
+                  mountKey: "team",
+                },
+              ],
+            },
+            dispatch: () => {},
+            syncWorkspace: () => {},
+          }}
+        >
+          <MemoryRouter initialEntries={["/teams/channel-1/threads/thread-1"]}>
+            <Routes>
+              <Route
+                path="/teams/:channelId/threads/:threadId"
+                element={
+                  <TeamThreadPage
+                    renderChat={(props) => {
+                      currentContext = props.teamContext;
+                      return renderTeamChat(props);
+                    }}
+                  />
+                }
+              />
+            </Routes>
+          </MemoryRouter>
+        </AppSceneWorkspaceContextProvider>
+      </QueryClientProvider>
+    );
+    teamThreadFixture.timelineHasMore = true;
+    teamThreadFixture.timelineNextCursor = "old-window";
+    const view = render(surface(true));
+    await waitFor(() =>
+      expect(currentContext?.messageSource.snapshot.ready).toBe(true),
+    );
+    await act(async () => {
+      await currentContext?.onLoadEarlierTimelineMessages();
+    });
+    expect(teamThreadFixture.timelineHeadReads).toHaveBeenCalledTimes(1);
+    expect(teamThreadFixture.loadTimeline).toHaveBeenCalledTimes(1);
+    expect(teamThreadFixture.channelEventHandler).toBeDefined();
+    view.rerender(surface(false));
+    await waitFor(() =>
+      expect(teamThreadFixture.channelEventHandler).toBeUndefined(),
+    );
+    expect(teamThreadFixture.timelineHeadReads).toHaveBeenCalledTimes(1);
+    teamThreadFixture.timelineHasMore = false;
+    teamThreadFixture.timelineNextCursor = undefined;
+    view.rerender(surface(true));
+    await waitFor(() =>
+      expect(teamThreadFixture.timelineHeadReads).toHaveBeenCalledTimes(2),
+    );
+    expect(teamThreadFixture.loadTimeline).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("timeline-messages")).toHaveTextContent(
+      "earlier-result,member-result",
+    );
+    view.unmount();
+    queryClient.clear();
   });
 });
 

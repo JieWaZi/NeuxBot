@@ -8,6 +8,16 @@ export type ChatResultSource = { chatId: string; owner: ChatResultOwner };
 export const notificationPresentationSelector =
   "[data-notification-id], [data-notification-workflow-run], [data-work-result-body], [data-work-result-output]";
 
+/** 晚到文件成果只由其精确卡片确认，原来的文字不能代替新文件交付。 */
+export function workResultBodySelector(reference?: {
+  fileChangeRecordId?: string;
+  fileChangeRecordVersion?: number;
+}): string {
+  return reference?.fileChangeRecordId
+    ? `[data-work-result-body][data-file-change-record-id="${CSS.escape(reference.fileChangeRecordId)}"][data-file-change-record-version="${reference.fileChangeRecordVersion ?? 0}"]`
+    : "[data-work-result-body]";
+}
+
 type PresentationTarget =
   | { kind: "request"; noticeId: string }
   | { kind: "workflow_run"; runId: string }
@@ -136,7 +146,9 @@ export function notificationIsPresented(
       (message) =>
         message.dataset.messageId === messageId &&
         [
-          ...message.querySelectorAll<HTMLElement>("[data-work-result-body]"),
+          ...message.querySelectorAll<HTMLElement>(
+            workResultBodySelector(target.reference),
+          ),
         ].some(isElementVisible),
     );
   });

@@ -140,3 +140,37 @@ func TestCancelExecutionAndWaitCannotCancelNextChatExecution(t *testing.T) {
 		t.Fatal("obsolete cancel invoked old reservation after release")
 	}
 }
+
+func TestExecutionRegistryReleasesAdmissionBeforeFileSettlementButDeletionStillWaits(t *testing.T) {
+	registry := newExecutionRegistry()
+	registry.start(context.Background())
+	defer registry.close()
+	if _, err := registry.reserve("chat", "old"); err != nil {
+		t.Fatal(err)
+	}
+	defer registry.release("chat", "old")
+	registry.complete("chat", "old", nil)
+	if _, err := registry.reserve("chat", "next"); err != nil {
+		t.Fatalf("file settlement retained model admission: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := registry.waitForFileSnapshots(ctx, context.Background(), "chat", "next"); err != context.Canceled {
+		t.Fatalf("next input did not wait for the previous after snapshot: %v", err)
+	}
+	if err := registry.waitForFileSnapshots(context.Background(), ctx, "chat", "next"); err != context.Canceled {
+		t.Fatalf("snapshot preparation ignored execution cancellation: %v", err)
+	}
+	registry.freezeFileSnapshots("chat", "old")
+	if err := registry.waitForFileSnapshots(context.Background(), context.Background(), "chat", "next"); err != nil {
+		t.Fatalf("next input waited for diff calculation after the snapshot froze: %v", err)
+	}
+	registry.release("chat", "next")
+	if err := registry.cancelAndWait(ctx, "chat"); err != status_error.ChatHasActiveExecution {
+		t.Fatalf("deletion skipped unfinished file owner: %v", err)
+	}
+	registry.release("chat", "old")
+	if err := registry.cancelAndWait(context.Background(), "chat"); err != nil {
+		t.Fatal(err)
+	}
+}

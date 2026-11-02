@@ -7,7 +7,6 @@
 @import "./welcome.css";
 @import "@ncdai/react-wheel-picker/style.css" layer(components);
 @source "../../../node_modules/streamdown/dist/*.js";
-@source "../../../node_modules/@streamdown/code/dist/*.js";
 @source "../../../node_modules/@streamdown/mermaid/dist/*.js";
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
@@ -140,6 +139,8 @@
   --spacing-icon-md: 1rem;
   --spacing-icon-lg: 1.25rem;
   --spacing-icon-xl: 1.5rem;
+  /* 正文链接图标随所属阅读字号缩放，控件图标仍沿用固定尺寸阶梯。 */
+  --spacing-icon-inline: 1em;
   --spacing-avatar-xs: 1.5rem;
   --spacing-avatar-sm: 2rem;
   --spacing-avatar-md: 2.5rem;
@@ -226,6 +227,12 @@
 @utility type-chat-code {
   font-size: 0.875rem;
   line-height: 1.375rem;
+}
+
+/* 行内代码随所属正文、标题或表格字号缩放。 */
+@utility type-chat-inline-code {
+  font-size: 0.875em;
+  line-height: inherit;
 }
 
 @utility type-label {

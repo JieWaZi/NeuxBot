@@ -1,0 +1,36 @@
+package execution
+
+import (
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+)
+
+const abVariant = "current-worktree"
+
+// abProtocolCounts 只累计当前生产信封实际携带的新增文本或完整持久消息。
+func abProtocolCounts(event eventstream.PublicEvent) (body, tools int64) {
+	if event.Message != nil {
+		body = int64(len(event.Message.Content))
+		for _, part := range event.Message.DisplayParts {
+			if part.Type == constants.MessageDisplayPartText || part.Type == constants.MessageDisplayPartProcessCommentary {
+				body += int64(len(part.Text))
+			}
+			if part.Type == constants.MessageDisplayPartTool {
+				tools++
+			}
+		}
+	}
+	if event.Live != nil {
+		for _, update := range event.Live.Updates {
+			for _, operation := range update.Parts {
+				if operation.Kind == constants.MessageIncrementTextAppend && (operation.PartType == constants.MessageDisplayPartText || operation.PartType == constants.MessageDisplayPartProcessCommentary) {
+					body += int64(len(operation.Text))
+				}
+				if operation.Part != nil && operation.Part.Type == constants.MessageDisplayPartTool {
+					tools++
+				}
+			}
+		}
+	}
+	return
+}

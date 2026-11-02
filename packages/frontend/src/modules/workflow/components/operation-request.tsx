@@ -1,5 +1,5 @@
 import { notificationPresentationProps } from "@/shared/api/notification-presentation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,7 +11,6 @@ import {
 } from "@/shared/api/local-error-surface";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
-import { refreshWorkflow } from "../api/workflow-queries";
 import { jsonText } from "../model/types";
 
 export function OperationRequestCard({
@@ -24,7 +23,6 @@ export function OperationRequestCard({
   operation: OperationRequest;
 }) {
   const { t } = useTranslation("workflow");
-  const client = useQueryClient();
   const answer = useMutation(
     withLocalErrorMutation(answerWorkflowOperationMutation()),
   );
@@ -42,7 +40,6 @@ export function OperationRequestCard({
           allowed,
         },
       });
-      await refreshWorkflow(client, id, runId);
     } catch {
       /* Mutation owns error. */
     }

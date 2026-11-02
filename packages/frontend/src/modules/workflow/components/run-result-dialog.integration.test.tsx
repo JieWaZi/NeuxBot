@@ -44,6 +44,15 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
           scripts: [],
           phases: [{ detail: "", id: "fetch", title: "读取评论" }],
         },
+        files: [
+          { id: "ready-file", name: "report.md", size: 2048, available: true },
+          {
+            id: "missing-file",
+            name: "missing.csv",
+            size: 0,
+            available: false,
+          },
+        ],
         instances: [
           {
             id: "step",
@@ -100,6 +109,12 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
   expect(output.closest("pre")).toHaveClass("max-h-80", "overflow-auto");
   expect(screen.getByText("对话调用")).toBeInTheDocument();
   expect(detail).not.toHaveBeenCalled();
+  expect(screen.getByText("report.md")).toBeInTheDocument();
+  expect(screen.getByText("2 KB")).toBeInTheDocument();
+  expect(screen.getByText("missing.csv")).toBeInTheDocument();
+  expect(
+    screen.getByText("文件已移除或不在本次运行的允许目录内。"),
+  ).toBeInTheDocument();
   await user.click(summary);
   expect(await screen.findByText('"真实评论输出"')).toBeInTheDocument();
   expect(screen.getByText('"真实评论输入"')).toBeInTheDocument();

@@ -10,6 +10,25 @@ import {
 import type { AllyChatMessage } from "./chat-projection";
 import type { PermissionLevel } from "@/shared/lib/runtime-permissions";
 
+import type { GithubComJieWaZiNeuxBotServerServicesExecutionAcceptedExecution as MessageResult } from "@/shared/api/generated/types.gen";
+
+/** 请求适配层同步确定真实输入身份；接纳命令沿用同一份请求。 */
+export type PreparedChatSubmission = {
+  /** 普通 HTTP 输入复用已有幂等身份；无身份的领域入口保持缺省。 */
+  submissionId?: string;
+  /** 权威消息或成功回执确认接纳后，按本命令身份退役重试记录；重复确认无副作用。 */
+  confirmAccepted?: () => void;
+  accept: () => Promise<MessageResult>;
+};
+
+/** 冻结所属场景的请求构造器；出队时不读取后来改选的领域上下文。 */
+export type ChatSubmissionPreparer = (
+  text: string,
+  chatId?: string,
+  attachmentPaths?: string[],
+  selection?: ChatSendSelection,
+) => PreparedChatSubmission;
+
 export type ChatSendSelection = {
   accountId?: string;
   runtimeId: string;
@@ -30,7 +49,6 @@ export type ChatSendSelection = {
     versionId?: string;
   }>;
   connectorIds?: string[];
-  workflowIds?: string[];
   selectedConnectors?: Array<{
     id: string;
     name: string;
@@ -52,6 +70,7 @@ export type QueuedChatEntry = {
   message: AppendMessage;
   chatId?: string;
   selection: ChatSendSelection;
+  prepareSubmission?: ChatSubmissionPreparer;
 };
 
 type Listener = () => void;

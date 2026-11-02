@@ -1101,7 +1101,6 @@ it.each(["approval", "elicitation", "human", "operation", "review"] as const)(
                     subject: "原验收任务",
                   },
                 ]}
-                onChanged={resolve}
               />
             )
           ) : null}

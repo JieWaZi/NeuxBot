@@ -30,8 +30,12 @@ type PublicEvent struct {
 	Type constants.ChatEventType `json:"type"`
 	// ExecutionID 是事件所属执行标识；Chat 级事件为空。
 	ExecutionID string `json:"-"`
-	// Message 是已经完成安全投影的消息视图。
+	// Live 是尚未被持久快照接管的安全消息增量。
+	Live *eventstream.LiveMessageIncrement `json:"live,omitempty"`
+	// Message 是已经完成安全投影的持久消息视图。
 	Message *messageview.Message `json:"message,omitempty"`
+	// FileChanges 是独立文件成果的最小消息更新。
+	FileChanges *eventstream.FileChangesUpdate `json:"fileChanges,omitempty"`
 	// ExecutionStatus 是对话执行状态；非执行状态事件为空值。
 	ExecutionStatus constants.ExecutionStatus `json:"executionStatus,omitempty"`
 	// ErrorCode 是可以安全暴露给调用方的错误代码。
@@ -138,7 +142,7 @@ type PublicElicitationResolution struct {
 type Subscription struct {
 	// Backlog 是游标之后已经提交并完成安全转换的历史事件。
 	Backlog []PublicEvent
-	// Events 持续接收安全的持久化 checkpoint 和 transient 实时快照。
+	// Events 持续接收安全的持久化 checkpoint 和 transient 实时增量。
 	Events <-chan PublicEvent
 	// Close 注销订阅并释放通道。
 	Close func()
@@ -148,8 +152,25 @@ type Subscription struct {
 type streamEvent struct {
 	// Record 是已经写入 JSONL、可以推进恢复游标的权威记录。
 	Record *eventlog.Record
-	// Live 是不等待 JSONL 聚合窗口的 transient 实时消息快照。
+	// Live 是不等待 JSONL 聚合窗口的 transient 实时消息增量。
 	Live *eventstream.PublicEvent
+}
+
+// streamSubscriber 在同一注册表声明消费范围，生命周期观察不领取正文或实时增量。
+type streamSubscriber struct {
+	// listener 复用统一的有界通道和注销生命周期。
+	listener chan streamEvent
+	// executionID 非空时只接收该执行的生命周期提交信号。
+	executionID string
+}
+
+// executionLifecycleRecord 限定后台业务观察需要的稀疏持久事实。
+func executionLifecycleRecord(kind constants.ChatEventType) bool {
+	switch kind {
+	case constants.ChatEventTypeExecutionCreated, constants.ChatEventTypeExecutionStarted, constants.ChatEventTypeExecutionCompleted, constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
+		return true
+	}
+	return false
 }
 
 // subscriptionHub 只负责进程内实时订阅者的注册、广播和释放。
@@ -158,9 +179,11 @@ type subscriptionHub struct {
 	// mutex 保护订阅者集合和递增标识。
 	mutex sync.Mutex
 	// subscribers 按对话标识保存实时事件订阅者。
-	subscribers map[string]map[uint64]chan streamEvent
-	// latestLive 按对话保留当前执行尚未持久化的最新安全消息快照。
-	latestLive map[string]eventstream.PublicEvent
+	subscribers map[string]map[uint64]streamSubscriber
+	// latestLive 按对话保留当前执行尚未持久化的尚未被持久版本覆盖的有界安全增量。
+	latestLive map[string][]eventstream.PublicEvent
+	// lostLiveRevision 记录恢复缓存超限后必须由完整消息覆盖的位置，禁止尾帧冒充起点。
+	lostLiveRevision map[string]int64
 	// nextSubscriberID 为进程内订阅生成递增标识。
 	nextSubscriberID uint64
 }
@@ -168,25 +191,55 @@ type subscriptionHub struct {
 // newSubscriptionHub 创建空的实时订阅中心。
 func newSubscriptionHub() *subscriptionHub {
 	return &subscriptionHub{
-		subscribers: make(map[string]map[uint64]chan streamEvent),
-		latestLive:  make(map[string]eventstream.PublicEvent),
+		subscribers:      make(map[string]map[uint64]streamSubscriber),
+		latestLive:       make(map[string][]eventstream.PublicEvent),
+		lostLiveRevision: make(map[string]int64),
 	}
 }
 
 // add 在读取 backlog 前注册订阅者，防止提交与订阅建立之间出现事件缺口。
-func (h *subscriptionHub) add(chatID string) (uint64, <-chan streamEvent) {
+func (h *subscriptionHub) add(chatID string, executionID string) (uint64, <-chan streamEvent) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 	h.nextSubscriberID++
 	subscriberID := h.nextSubscriberID
 	if h.subscribers[chatID] == nil {
-		h.subscribers[chatID] = make(map[uint64]chan streamEvent)
+		h.subscribers[chatID] = make(map[uint64]streamSubscriber)
 	}
 	listener := make(chan streamEvent, subscriberBufferSize)
-	h.subscribers[chatID][subscriberID] = listener
-	if event, exists := h.latestLive[chatID]; exists {
-		live := eventstream.ClonePublicEvent(event)
-		listener <- streamEvent{Live: &live}
+	h.subscribers[chatID][subscriberID] = streamSubscriber{listener: listener, executionID: executionID}
+	if h.lostLiveRevision[chatID] > 0 && executionID == "" {
+		close(listener)
+		delete(h.subscribers[chatID], subscriberID)
+	} else if frames := h.latestLive[chatID]; executionID == "" && len(frames) > 0 {
+		// 重放只发送未覆盖操作；按同一载荷预算分帧，最后帧号仍与实时流衔接。
+		latest := frames[len(frames)-1]
+		updates := []messageview.MessageIncrement{}
+		for _, frame := range frames {
+			updates = append(updates, eventstream.ClonePublicEvent(frame).Live.Updates...)
+		}
+		batches := [][]messageview.MessageIncrement{}
+		for len(updates) > 0 {
+			count, bytes := 0, 0
+			for count < len(updates) && count < 128 {
+				encoded, _ := json.Marshal(updates[count])
+				if count > 0 && bytes+len(encoded) > 64*1024 {
+					break
+				}
+				bytes += len(encoded)
+				count++
+			}
+			batches = append(batches, updates[:count:count])
+			updates = updates[count:]
+		}
+		for index, batch := range batches {
+			live := eventstream.ClonePublicEvent(latest)
+			live.Live.Sequence = latest.Live.Sequence - int64(len(batches)-index-1)
+			live.Live.Updates = batch
+			live.Live.BaseRevision = batch[0].BaseRevision
+			live.Live.Revision = batch[len(batch)-1].Revision
+			listener <- streamEvent{Live: &live}
+		}
 	}
 	return subscriberID, listener
 }
@@ -199,16 +252,45 @@ func (h *subscriptionHub) publishCommitted(
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 	for _, record := range records {
+		if record.Type == constants.ChatEventTypeAssistantMessage || record.Type == constants.ChatEventTypeToolMessage {
+			var message eventlog.RuntimeMessageData
+			if json.Unmarshal(record.Data, &message) == nil {
+				if message.MessageRevision >= h.lostLiveRevision[chatID] {
+					delete(h.lostLiveRevision, chatID)
+				}
+				frames := h.latestLive[chatID]
+				first := 0
+				for first < len(frames) && frames[first].Live.MessageID == record.MessageID && frames[first].Live.Revision <= message.MessageRevision {
+					first++
+				}
+				if first > 0 {
+					frames = append([]eventstream.PublicEvent(nil), frames[first:]...)
+				}
+				// 用量是独立替换；覆盖点落在合并范围内时可安全缩短其恢复基线。
+				if len(frames) > 0 && metadataOnlyLive(frames[0]) && frames[0].Live.BaseRevision < message.MessageRevision {
+					frame := eventstream.ClonePublicEvent(frames[0])
+					frame.Live.BaseRevision = message.MessageRevision
+					frame.Live.Updates[0].BaseRevision = message.MessageRevision
+					frames[0] = frame
+				}
+				h.latestLive[chatID] = frames
+			}
+		}
 		if record.Type == constants.ChatEventTypeExecutionCompleted ||
 			record.Type == constants.ChatEventTypeExecutionFailed ||
 			record.Type == constants.ChatEventTypeExecutionCanceled {
 			delete(h.latestLive, chatID)
+			delete(h.lostLiveRevision, chatID)
 			break
 		}
 	}
-	for subscriberID, listener := range h.subscribers[chatID] {
+	for subscriberID, subscriber := range h.subscribers[chatID] {
+		listener := subscriber.listener
 		delivered := true
 		for _, record := range records {
+			if subscriber.executionID != "" && (record.ExecutionID != subscriber.executionID || !executionLifecycleRecord(record.Type)) {
+				continue
+			}
 			committed := record
 			select {
 			case listener <- streamEvent{Record: &committed}:
@@ -226,15 +308,62 @@ func (h *subscriptionHub) publishCommitted(
 	}
 }
 
-// publishLive 广播不带权威 Sequence 的 transient 消息快照。
+// publishLive 广播不带权威 Sequence 的 transient 消息增量。
 func (h *subscriptionHub) publishLive(
 	chatID string,
 	event eventstream.PublicEvent,
 ) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
-	h.latestLive[chatID] = eventstream.ClonePublicEvent(event)
-	for subscriberID, listener := range h.subscribers[chatID] {
+	if event.Live == nil {
+		return
+	}
+	frames := h.latestLive[chatID]
+	if len(frames) > 0 && frames[0].Live.Generation != event.Live.Generation {
+		frames = nil
+		delete(h.lostLiveRevision, chatID)
+	}
+	// 连续用量/无正文输入在恢复缓存中只保留一个有覆盖范围的替换，运行中的消费者仍接收原帧。
+	if len(frames) > 0 && metadataOnlyLive(frames[len(frames)-1]) && metadataOnlyLive(event) {
+		previous := frames[len(frames)-1]
+		merged := eventstream.ClonePublicEvent(event)
+		change := merged.Live.Updates[len(merged.Live.Updates)-1]
+		change.BaseRevision = previous.Live.BaseRevision
+		change.Revision = merged.Live.Revision
+		if change.RunMetrics == nil {
+			for i := len(merged.Live.Updates) - 1; i >= 0; i-- {
+				if merged.Live.Updates[i].RunMetrics != nil {
+					change.RunMetrics = merged.Live.Updates[i].RunMetrics
+					break
+				}
+			}
+		}
+		if change.RunMetrics == nil {
+			for i := len(previous.Live.Updates) - 1; i >= 0; i-- {
+				if previous.Live.Updates[i].RunMetrics != nil {
+					change.RunMetrics = previous.Live.Updates[i].RunMetrics
+					break
+				}
+			}
+		}
+		merged.Live.BaseRevision = previous.Live.BaseRevision
+		merged.Live.Updates = []messageview.MessageIncrement{change}
+		frames = frames[:len(frames)-1]
+		frames = append(frames, merged)
+	} else {
+		frames = append(frames, eventstream.ClonePublicEvent(event))
+	}
+	// 不把末尾帧冒充完整恢复起点；预算超限交由原端口恢复。
+	if len(frames) >= subscriberBufferSize {
+		h.lostLiveRevision[chatID] = frames[len(frames)-1].Live.Revision
+		frames = nil
+	}
+	h.latestLive[chatID] = frames
+	for subscriberID, subscriber := range h.subscribers[chatID] {
+		if subscriber.executionID != "" {
+			continue
+		}
+		listener := subscriber.listener
 		live := eventstream.ClonePublicEvent(event)
 		select {
 		case listener <- streamEvent{Live: &live}:
@@ -245,16 +374,29 @@ func (h *subscriptionHub) publishLive(
 	}
 }
 
+// metadataOnlyLive 只允许合并独立用量替换或空操作，不跨越正文、阶段和工具变化。
+func metadataOnlyLive(event eventstream.PublicEvent) bool {
+	if event.Live == nil || len(event.Live.Updates) == 0 {
+		return false
+	}
+	for _, update := range event.Live.Updates {
+		if len(update.Parts) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // remove 注销指定订阅者；重复调用保持幂等。
 func (h *subscriptionHub) remove(chatID string, subscriberID uint64) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 	listeners := h.subscribers[chatID]
-	listener, exists := listeners[subscriberID]
+	subscriber, exists := listeners[subscriberID]
 	if !exists {
 		return
 	}
-	close(listener)
+	close(subscriber.listener)
 	delete(listeners, subscriberID)
 	if len(listeners) == 0 {
 		delete(h.subscribers, chatID)
@@ -266,13 +408,14 @@ func (h *subscriptionHub) closeAll() {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 	for chatID, listeners := range h.subscribers {
-		for subscriberID, listener := range listeners {
-			close(listener)
+		for subscriberID, subscriber := range listeners {
+			close(subscriber.listener)
 			delete(listeners, subscriberID)
 		}
 		delete(h.subscribers, chatID)
 	}
 	clear(h.latestLive)
+	clear(h.lostLiveRevision)
 }
 
 // ListEvents 返回游标之后已经完成安全转换的权威事件。
@@ -312,7 +455,7 @@ func (m *service) SubscribeEvents(
 		return Subscription{}, status_error.BadRequest
 	}
 	// 先注册再回读；期间新提交的原始事件进入 listener，随后由同一个 Adapter 去重并转换。
-	subscriberID, listener := m.subscriptions.add(chatID)
+	subscriberID, listener := m.subscriptions.add(chatID, "")
 	window, err := m.readProjectionWindow(chatID, after, 0)
 	if err != nil {
 		m.subscriptions.remove(chatID, subscriberID)
@@ -357,6 +500,67 @@ func (m *service) SubscribeEvents(
 	}, nil
 }
 
+// SubscribeExecutionEvents 在原订阅中心先注册精确执行，再用窄权威快照补偿，不构建 UI 消息。
+func (m *service) SubscribeExecutionEvents(ctx context.Context, chatID, executionID string) (Subscription, error) {
+	chatID, executionID = strings.TrimSpace(chatID), strings.TrimSpace(executionID)
+	if chatID == "" || executionID == "" {
+		return Subscription{}, status_error.BadRequest
+	}
+	subscriberID, listener := m.subscriptions.add(chatID, executionID)
+	snapshot, err := m.ReadExecutionOutcome(ctx, chatID, executionID)
+	if err != nil {
+		m.subscriptions.remove(chatID, subscriberID)
+		return Subscription{}, err
+	}
+	streamContext, cancel := context.WithCancel(ctx)
+	events := make(chan PublicEvent, subscriberBufferSize)
+	go func() {
+		defer close(events)
+		defer m.subscriptions.remove(chatID, subscriberID)
+		sequence := snapshot.LatestSequence
+		for {
+			select {
+			case <-streamContext.Done():
+				return
+			case incoming, open := <-listener:
+				if !open {
+					return
+				}
+				if incoming.Record == nil || incoming.Record.Sequence <= sequence {
+					continue
+				}
+				outcome, err := m.ReadExecutionOutcome(streamContext, chatID, executionID)
+				if err != nil {
+					logx.Errorf("read subscribed execution state failed: chat_id=%s execution_id=%s error=%v", chatID, executionID, err)
+					return
+				}
+				sequence = outcome.LatestSequence
+				if !sendPublicEvent(streamContext, events, executionOutcomeEvent(outcome)) {
+					return
+				}
+			}
+		}
+	}()
+	var once sync.Once
+	return Subscription{Backlog: []PublicEvent{executionOutcomeEvent(snapshot)}, Events: events, Close: func() { once.Do(func() { cancel(); m.subscriptions.remove(chatID, subscriberID) }) }}, nil
+}
+
+// executionOutcomeEvent 只交付执行身份、持久位置和生命周期结论，正文按业务需要另读。
+func executionOutcomeEvent(outcome ExecutionOutcome) PublicEvent {
+	kind := constants.ChatEventTypeExecutionCreated
+	switch outcome.Execution.Status {
+	case constants.ExecutionStatusRunning:
+		kind = constants.ChatEventTypeExecutionStarted
+	case constants.ExecutionStatusCompleted:
+		kind = constants.ChatEventTypeExecutionCompleted
+	case constants.ExecutionStatusFailed:
+		kind = constants.ChatEventTypeExecutionFailed
+	case constants.ExecutionStatusCanceled:
+		kind = constants.ChatEventTypeExecutionCanceled
+	}
+	return PublicEvent{SchemaVersion: constants.ChatLogSchemaVersion, Sequence: outcome.LatestSequence, RecordedAt: outcome.Execution.UpdatedAt, Type: kind, ExecutionID: outcome.Execution.ID, ExecutionStatus: outcome.Execution.Status, ErrorCode: outcome.Execution.ErrorCode, ErrorMessage: outcome.FailureMessage}
+}
+
 // readProjectionWindow 读取公开事件适配所需的最小权威记录窗口并统一错误语义。
 func (m *service) readProjectionWindow(
 	chatID string,
@@ -394,17 +598,17 @@ func (m *service) forwardPublicEvents(
 			}
 			if incoming.Live != nil {
 				live := publicEventFromStream(*incoming.Live)
-				if live.Message != nil {
-					messageID := live.Message.ID
-					if live.Message.Revision <= revisions[messageID] {
+				if live.Live != nil {
+					messageID := live.Live.MessageID
+					if live.Live.Revision <= revisions[messageID] {
 						continue
 					}
 				}
 				if !sendPublicEvent(ctx, events, live) {
 					return
 				}
-				if live.Message != nil {
-					revisions[live.Message.ID] = live.Message.Revision
+				if live.Live != nil {
+					revisions[live.Live.MessageID] = live.Live.Revision
 				}
 				continue
 			}
@@ -423,9 +627,10 @@ func (m *service) forwardPublicEvents(
 			}
 			public := publicEventFromStream(streamPublic)
 			latestSequence = public.Sequence
+			// 审批等独立元数据不能覆盖尚未持久化的正文与工具增量。
 			if public.Message != nil &&
-				public.Message.Revision > revisions[public.Message.ID] {
-				revisions[public.Message.ID] = public.Message.Revision
+				public.Message.LiveRevision > revisions[public.Message.ID] {
+				revisions[public.Message.ID] = public.Message.LiveRevision
 			}
 			if !sendPublicEvent(ctx, events, public) {
 				return
@@ -453,6 +658,8 @@ func publicEventFromStream(event eventstream.PublicEvent) PublicEvent {
 		Type:                  event.Type,
 		ExecutionID:           event.ExecutionID,
 		Message:               event.Message,
+		Live:                  event.Live,
+		FileChanges:           event.FileChanges,
 		ExecutionStatus:       event.ExecutionStatus,
 		ErrorCode:             event.ErrorCode,
 		ErrorMessage:          event.ErrorMessage,

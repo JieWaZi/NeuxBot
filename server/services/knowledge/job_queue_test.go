@@ -30,7 +30,7 @@ func TestQueuedAdmissionPublishesCommittedStateWithoutStartingModels(t *testing.
 	select {
 	case event := <-subscription.Events:
 		job, readErr := s.config.Engine.GetJob(ctx, receipt.JobID)
-		if event.Type != "knowledge.changed" || event.Resource.ID != lib.ID || readErr != nil || job.State != "queued" {
+		if event.Type != "knowledge.task.changed" || event.Resource.ID != lib.ID || readErr != nil || job.State != "queued" {
 			t.Fatal("queue event did not identify committed state", event, job, readErr)
 		}
 	default:
@@ -68,6 +68,109 @@ func TestDefaultOrganizeOnlyQueuesUnoccupiedSources(t *testing.T) {
 	noop, _, err := s.Organize(ctx, OrganizeCommand{RequestID: "no-other-files", LibraryID: lib.ID})
 	if err != nil || noop.State != "no-op" {
 		t.Fatal("all sources already queued", noop, err)
+	}
+}
+
+func TestQueuedAdmissionOnlyDrivesPersistentLibraryHead(t *testing.T) {
+	s, lib := newServiceFixture(t)
+	ctx := context.Background()
+	preparing := make(chan struct{}, 2)
+	s.config.Generator = func(ctx context.Context, _ models.LibraryExecutionDefaults) (core.Generator, error) {
+		preparing <- struct{}{}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	for index, name := range []string{"first", "second"} {
+		raw, err := s.config.Engine.ImportSource(ctx, core.ImportSourceInput{RequestID: name + "-raw", LibraryID: lib.ID, Filename: name + ".md", Bytes: []byte(name)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _, err = s.Organize(ctx, OrganizeCommand{RequestID: name + "-job", LibraryID: lib.ID, SourceVersionIDs: []string{raw.ResourceID}, Configuration: models.KnowledgeTaskConfiguration{RuntimeID: "codex", Model: "model"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if index == 0 {
+			select {
+			case <-preparing:
+			case <-time.After(5 * time.Second):
+				t.Fatal("head did not enter the model")
+			}
+		}
+	}
+	s.mutex.Lock()
+	activeDrivers := len(s.running)
+	s.mutex.Unlock()
+	if activeDrivers != 1 {
+		t.Fatalf("queued job entered model preparation or processor lock wait: drivers=%d, want only persistent head", activeDrivers)
+	}
+}
+
+func TestQueuedReceiptRecoveryPublishesCommittedTaskWithoutDrivingIt(t *testing.T) {
+	s, lib := newServiceFixture(t)
+	ctx := context.Background()
+	preparing := make(chan struct{}, 2)
+	s.config.Generator = func(ctx context.Context, _ models.LibraryExecutionDefaults) (core.Generator, error) {
+		preparing <- struct{}{}
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	s.config.Events = events.New()
+	if err := s.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	first, err := s.config.Engine.ImportSource(ctx, core.ImportSourceInput{RequestID: "head-source", LibraryID: lib.ID, Filename: "head.md", Bytes: []byte("head")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.Organize(ctx, OrganizeCommand{RequestID: "head-job", LibraryID: lib.ID, SourceVersionIDs: []string{first.ResourceID}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-preparing:
+	case <-time.After(5 * time.Second):
+		t.Fatal("head did not enter model preparation")
+	}
+
+	subscription := s.config.Events.Subscribe("knowledge", events.Resource{})
+	defer subscription.Close()
+	s.config.References = &interruptedJobReference{KnowledgeController: s.config.References}
+	second, err := s.config.Engine.ImportSource(ctx, core.ImportSourceInput{RequestID: "queued-source", LibraryID: lib.ID, Filename: "queued.md", Bytes: []byte("queued")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := OrganizeCommand{RequestID: "queued-job", LibraryID: lib.ID, SourceVersionIDs: []string{second.ResourceID}}
+	if _, _, err := s.Organize(ctx, input); !errors.Is(err, status_error.DatabaseError) {
+		t.Fatalf("expected interruption after core acceptance: %v", err)
+	}
+	select {
+	case event := <-subscription.Events:
+		t.Fatalf("unconfirmed host operation published a task event: %+v", event)
+	default:
+	}
+	receipt, _, err := s.Organize(ctx, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case event := <-subscription.Events:
+		job, readErr := s.config.Engine.GetJob(ctx, receipt.JobID)
+		if event.Type != "knowledge.task.changed" || event.Resource.ID != lib.ID || readErr != nil || job.State != "queued" {
+			t.Fatalf("receipt recovery did not publish the committed queued task: event=%+v job=%+v err=%v", event, job, readErr)
+		}
+	default:
+		t.Fatal("confirmed receipt recovery had no query reconciliation event")
+	}
+	s.mutex.Lock()
+	drivers := len(s.running)
+	s.mutex.Unlock()
+	_, total, err := s.config.Engine.ListJobs(ctx, lib.ID, 0, 10)
+	if err != nil || total != 2 || drivers != 1 {
+		t.Fatalf("receipt recovery duplicated acceptance or drove the queued job: jobs=%d drivers=%d err=%v", total, drivers, err)
 	}
 }
 

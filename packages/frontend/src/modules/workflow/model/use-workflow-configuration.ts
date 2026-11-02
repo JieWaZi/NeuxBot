@@ -1,12 +1,10 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useRef } from "react";
 import { editWorkflowConfigurationMutation } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
-import { refreshWorkflow } from "../api/workflow-queries";
 
 /** 手工表单与 Agent 共享源码、资源校验和 CAS 版本。 */
 export function useWorkflowConfiguration(id: string, revisionId: string) {
-  const client = useQueryClient();
   const mutation = useMutation(
     withLocalErrorMutation(editWorkflowConfigurationMutation()),
   );
@@ -29,7 +27,6 @@ export function useWorkflowConfiguration(id: string, revisionId: string) {
           edit,
         },
       });
-      await refreshWorkflow(client, id);
       return true;
     } catch {
       return false;

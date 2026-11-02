@@ -224,6 +224,16 @@ export function WorkBoardPage() {
     ],
     active,
   });
+  useQueryEvents({
+    topic: "work-results",
+    resource: { kind: "global" },
+    queryKeys: [
+      listWorkBoardQueryKey(),
+      listWorkBoardInfiniteQueryKey(),
+      getWorkBoardSummaryQueryKey(),
+    ],
+    active,
+  });
   useEffect(() => {
     if (active && summary.isSuccess && summary.dataUpdatedAt) {
       void client.invalidateQueries({

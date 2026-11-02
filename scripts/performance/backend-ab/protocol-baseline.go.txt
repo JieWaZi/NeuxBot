@@ -1,0 +1,25 @@
+package execution
+
+import (
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+)
+
+const abVariant = "baseline-29b609b"
+
+// abProtocolCounts 只观察旧生产信封已存在的字段，不重建或解析消息。
+func abProtocolCounts(event eventstream.PublicEvent) (body, tools int64) {
+	if event.Message == nil {
+		return
+	}
+	body = int64(len(event.Message.Content))
+	for _, part := range event.Message.DisplayParts {
+		if part.Type == constants.MessageDisplayPartText || part.Type == constants.MessageDisplayPartProcessCommentary {
+			body += int64(len(part.Text))
+		}
+		if part.Type == constants.MessageDisplayPartTool {
+			tools++
+		}
+	}
+	return
+}

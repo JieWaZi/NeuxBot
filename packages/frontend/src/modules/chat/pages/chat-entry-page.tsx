@@ -4,7 +4,7 @@ import {
   useQueryClient,
   type InfiniteData,
 } from "@tanstack/react-query";
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
@@ -25,33 +25,27 @@ import {
   writeChatLastWakerId,
 } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
+import { useScenePresentationKey } from "@/shared/workspace/app-scene-workspace";
 
-export function ChatEntryPage() {
+export function ChatEntryPage({
+  presentationScopeKey,
+}: { presentationScopeKey?: string } = {}) {
+  const scopeKey = useScenePresentationKey(presentationScopeKey);
   const { chatId } = useParams();
   const [searchParams] = useSearchParams();
   const requestedWakerId = searchParams.get("wakerId")?.trim() ?? "";
+  const resolveRecent = !chatId && !searchParams.get("draftId");
   useLayoutEffect(() => {
     if (!requestedWakerId) return;
     writeChatLastWakerId(requestedWakerId);
   }, [requestedWakerId]);
-  if (chatId) return <ChatPageContent chatId={chatId} />;
-  if (searchParams.get("draftId")) {
-    return <ChatPageContent />;
-  }
-  return <ChatRecentEntry />;
-}
-
-function ChatRecentEntry() {
   const { t } = useTranslation("chat");
   const navigate = useNavigate();
-  const lastNavigationTargetRef = useRef("");
   const queryClient = useQueryClient();
-  const [searchParams] = useSearchParams();
-  const requestedWakerId = searchParams.get("wakerId")?.trim() ?? "";
   const wakersOptions = listWakersOptions({
     query: { pageNum: 1, pageSize: 100 },
   });
-  const wakersQuery = useQuery(wakersOptions);
+  const wakersQuery = useQuery({ ...wakersOptions, enabled: resolveRecent });
   const cachedWakers = queryClient.getQueryData(wakersOptions.queryKey);
   const wakers = wakersQuery.data?.resources ?? cachedWakers?.resources ?? [];
   const lastWakerId = readChatLastWakerId();
@@ -74,15 +68,17 @@ function ChatRecentEntry() {
       path: { chatId: lastActive?.chatId ?? "pending" },
     }),
     enabled:
+      resolveRecent &&
       Boolean(lastActive?.chatId) &&
       Boolean(wakerId) &&
       lastActive?.wakerId === wakerId &&
       (requestedWakerReady || wakersQuery.isSuccess),
   });
   useLayoutEffect(() => {
-    if (!lastActiveQuery.isError || !lastActive?.chatId) return;
+    if (!resolveRecent || !lastActiveQuery.isError || !lastActive?.chatId)
+      return;
     clearChatLastActiveIfMatches(lastActive.chatId);
-  }, [lastActive?.chatId, lastActiveQuery.isError]);
+  }, [lastActive?.chatId, lastActiveQuery.isError, resolveRecent]);
   const staleLastActiveId =
     lastActiveQuery.isError && lastActive?.chatId
       ? lastActive.chatId
@@ -94,7 +90,10 @@ function ChatRecentEntry() {
 
   const chatsQuery = useInfiniteQuery({
     ...listOptions,
-    enabled: Boolean(wakerId) && (requestedWakerReady || wakersQuery.isSuccess),
+    enabled:
+      resolveRecent &&
+      Boolean(wakerId) &&
+      (requestedWakerReady || wakersQuery.isSuccess),
   });
   const latestChat =
     chatsQuery.data?.pages[0]?.resources?.[0] ?? latestFromCacheSafe;
@@ -112,19 +111,28 @@ function ChatRecentEntry() {
     latestChat,
   });
   const resolvedChatHref =
-    resolvedTarget.kind === "chat"
+    resolveRecent && resolvedTarget.kind === "chat"
       ? chatHref(resolvedTarget.chatId, resolvedTarget.wakerId)
       : "";
 
   useEffect(() => {
     if (!resolvedChatHref) return;
-    if (lastNavigationTargetRef.current === resolvedChatHref) return;
-    lastNavigationTargetRef.current = resolvedChatHref;
     navigate(resolvedChatHref, { replace: true });
   }, [navigate, resolvedChatHref]);
 
+  // 最近对话解析与接纳后的路由只改变参数，保留同一个聊天组件及输入区。
+  if (chatId)
+    return <ChatPageContent chatId={chatId} presentationScopeKey={scopeKey} />;
+  if (!resolveRecent)
+    return <ChatPageContent presentationScopeKey={scopeKey} />;
+
   if (resolvedTarget.kind === "chat") {
-    return <ChatPageContent chatId={resolvedTarget.chatId} />;
+    return (
+      <ChatPageContent
+        chatId={resolvedTarget.chatId}
+        presentationScopeKey={scopeKey}
+      />
+    );
   }
 
   if (wakersQuery.isError && !resolvedChatHref) {
@@ -159,10 +167,12 @@ function ChatRecentEntry() {
       lastActiveQuery.isPending) ||
     (Boolean(wakerId) && !latestChat && chatsQuery.isPending)
   ) {
-    return <ChatPageContent routeTransitioning />;
+    return (
+      <ChatPageContent routeTransitioning presentationScopeKey={scopeKey} />
+    );
   }
 
-  return <ChatPageContent />;
+  return <ChatPageContent presentationScopeKey={scopeKey} />;
 }
 
 function ChatEntryState({

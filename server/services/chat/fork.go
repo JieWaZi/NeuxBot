@@ -9,6 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
@@ -232,6 +233,22 @@ func (m *service) prepareFork(input ForkInput) (chatstorage.ForkOperation, error
 	if err != nil {
 		return chatstorage.ForkOperation{}, err
 	}
+	// 晚到文件结果不属于后续对话轮次，按已包含消息身份补齐其当前不可变引用。
+	references := map[string]*eventlog.FileChangesData{}
+	for _, record := range records {
+		if record.Type == constants.ChatEventTypeFileChanges {
+			var reference eventlog.FileChangesData
+			if json.Unmarshal(record.Data, &reference) == nil {
+				value := reference
+				references[record.MessageID] = &value
+			}
+		}
+	}
+	for index := range messages {
+		if reference := references[messages[index].ID]; reference != nil {
+			messages[index].FileChangeRecord = reference
+		}
+	}
 	chatID := util.New()
 	target, err := m.storage.ChatWorkspace(chatID)
 	if err != nil {
@@ -265,7 +282,21 @@ func (m *service) prepareFork(input ForkInput) (chatstorage.ForkOperation, error
 		for i := range message.DisplayParts {
 			message.DisplayParts[i].ID = util.New()
 		}
-		payload.Messages = append(payload.Messages, messageview.InheritedMessage{Message: message, SourceMessageID: sourceMessageID, Diffs: message.FileChangeDiffs})
+		inherited := messageview.InheritedMessage{Message: message, SourceMessageID: sourceMessageID}
+		if message.FileChangeRecord != nil {
+			summary, err := m.GetMessageFileChanges(context.Background(), input.ChatID, sourceMessageID)
+			if err != nil {
+				return chatstorage.ForkOperation{}, err
+			}
+			// 正在收尾的来源不能作为不可变结果继承；保持同一分叉请求可重试。
+			if summary.State == "pending" {
+				return chatstorage.ForkOperation{}, status_error.WorkspaceResourceConflict
+			}
+			for _, root := range summary.Roots {
+				inherited.FileChangeRoots = append(inherited.FileChangeRoots, root.Path)
+			}
+		}
+		payload.Messages = append(payload.Messages, inherited)
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -312,6 +343,25 @@ func (m *service) publishFork(ctx context.Context, directory string, operation c
 		store, storeErr := eventlog.NewStore(stagingRoot)
 		if storeErr != nil {
 			return storeErr
+		}
+		sourceDirectory, err := m.logStore.FileChangesDirectory(operation.SourceChatID)
+		if err != nil {
+			return err
+		}
+		targetDirectory, err := store.FileChangesDirectory(operation.ChatID)
+		if err != nil {
+			return err
+		}
+		copied := map[string]bool{}
+		for _, message := range payload.Messages {
+			reference := message.FileChangeRecord
+			if reference == nil || copied[reference.RecordID] {
+				continue
+			}
+			if err := changes.CloneRecord(sourceDirectory, targetDirectory, reference.RecordID); err != nil {
+				return err
+			}
+			copied[reference.RecordID] = true
 		}
 		facts := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(payload.Created)}}
 		for _, message := range payload.Messages {

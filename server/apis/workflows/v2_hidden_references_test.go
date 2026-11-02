@@ -7,13 +7,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
 func TestV2CreationReferencesStayHiddenAndPersistForReplay(t *testing.T) {
-	runtime := &creationScopeRuntime{requests: make(chan runtimes.RunRequest, 3)}
+	runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 3)}
 	s, close := openCoreWorkflowPorts(t, t.TempDir(), runtime, fixtureEnvironment{})
 	defer close()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -32,7 +31,7 @@ func TestV2CreationReferencesStayHiddenAndPersistForReplay(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var request runtimes.RunRequest
+	var request fixtureInvocation
 	select {
 	case request = <-runtime.requests:
 	case <-ctx.Done():
@@ -43,14 +42,13 @@ func TestV2CreationReferencesStayHiddenAndPersistForReplay(t *testing.T) {
 		t.Fatalf("reference context polluted visible content or was not persisted: %+v %v", persisted, err)
 	}
 	for _, instruction := range persisted.ContextInstructions {
-		found := false
-		for _, actual := range request.Instructions {
-			if actual.Name == instruction.Name && actual.Content == instruction.Content {
-				found = true
-			}
+		if !strings.Contains(instruction.Content, revision.ID) || !strings.Contains(request.Message.Text, instruction.Name) {
+			t.Fatalf("model lost current-turn reference: %+v", instruction)
 		}
-		if !found || !strings.Contains(instruction.Content, revision.ID) {
-			t.Fatalf("model lost bound reference: %+v", instruction)
+		for _, actual := range request.Instructions {
+			if actual.Name == instruction.Name {
+				t.Fatal("per-turn reference changed the stable native session plan")
+			}
 		}
 	}
 	if !strings.Contains(request.Message.Text, "<workflow-reference-context>") || !strings.Contains(request.Message.Text, revision.ID) || !strings.Contains(request.Message.Text, run.ID) || !strings.Contains(request.Message.Text, revision.Manifest.Nodes[0].ID) {

@@ -1,9 +1,13 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { chatMessageSource } from "../api/chat-queries";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   AuiProvider,
   AssistantRuntimeProvider,
   ComposerPrimitive,
-  MessagePrimitive,
   ThreadPrimitive,
   useAui,
 } from "@assistant-ui/react";
@@ -29,7 +33,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { MemoryRouter } from "react-router-dom";
 import "@/shared/i18n";
-import { useChatRuntime } from "./use-chat-runtime";
+import { useChatRuntime as useProductionChatRuntime } from "./use-chat-runtime";
 import {
   ChatQueueProvider,
   type ChatCodeReference,
@@ -60,6 +64,27 @@ function render(ui: Parameters<typeof renderUI>[0]) {
   });
 }
 
+type RuntimeFixtureOptions = Omit<
+  Parameters<typeof useProductionChatRuntime>[0],
+  "messageSource"
+> & {
+  messages: Parameters<
+    typeof useProductionChatRuntime
+  >[0]["messageSource"]["snapshot"]["messages"];
+  latestSequence: number;
+  isHistoryReady: boolean;
+};
+function useChatRuntime(options: RuntimeFixtureOptions) {
+  const queryClient = useQueryClient();
+  return useProductionChatRuntime({
+    ...options,
+    messageSource: chatMessageSource(queryClient, options.chatId, {
+      messages: options.messages,
+      latestSequence: options.latestSequence,
+      ready: options.isHistoryReady,
+    }),
+  });
+}
 const chatSubscription = vi.hoisted(() => ({
   onEvent: undefined as ((event: ChatEvent) => void) | undefined,
 }));
@@ -279,6 +304,25 @@ function MemberMentionComposerHarness({
   );
 }
 
+function CanonicalMessages({ messages }: { messages: readonly ChatMessage[] }) {
+  return (
+    <>
+      {messages.map((message) => (
+        <div
+          key={message.submissionId || message.id}
+          data-message-id={message.id}
+        >
+          {message.content ||
+            (message.displayParts ?? [])
+              .filter((part) => part.type === "text")
+              .map((part) => part.text ?? "")
+              .join("\n")}
+        </div>
+      ))}
+    </>
+  );
+}
+
 function ComposerHarness({
   activeExecutionId,
   onMessageAccepted,
@@ -315,7 +359,7 @@ function ComposerHarness({
     (revision: number) => revision + 1,
     0,
   );
-  const { runtime } = useChatRuntime({
+  const { runtime, messages: timeline } = useChatRuntime({
     conversationKey: conversationKeyOf("scope:chat-1", "chat-1"),
     queueKey: "chat-1",
     chatId: "chat-1",
@@ -337,7 +381,7 @@ function ComposerHarness({
       restoreComposer();
       onMessageRejected?.(rejectedSelection);
     },
-    send,
+    prepareSubmission: (...args) => ({ accept: () => send(...args) }),
     cancel: vi.fn(),
     onStarted: vi.fn(),
     onTerminal: vi.fn(),
@@ -346,13 +390,7 @@ function ComposerHarness({
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <ThreadPrimitive.Root>
-        <ThreadPrimitive.Messages>
-          {() => (
-            <MessagePrimitive.Root>
-              <MessagePrimitive.Parts />
-            </MessagePrimitive.Root>
-          )}
-        </ThreadPrimitive.Messages>
+        <CanonicalMessages messages={timeline} />
         {children ?? (
           <ComposerControls
             codeReferenceRequest={codeReferenceRequest}
@@ -399,7 +437,7 @@ function HistoryHarness({
   messages: ChatMessage[];
   historyReady?: boolean;
 }) {
-  const { runtime } = useChatRuntime({
+  const { runtime, messages: timeline } = useChatRuntime({
     conversationKey: conversationKeyOf(`scope:${chatId}`, chatId),
     queueKey: chatId,
     chatId,
@@ -416,7 +454,7 @@ function HistoryHarness({
       reasoning: "high",
       permissionLevel: "auto",
     },
-    send: vi.fn(),
+    prepareSubmission: () => ({ accept: vi.fn() }),
     cancel: vi.fn(),
     onStarted: vi.fn(),
     onTerminal: vi.fn(),
@@ -428,13 +466,7 @@ function HistoryHarness({
       runtime={runtime}
     >
       <ThreadPrimitive.Root>
-        <ThreadPrimitive.Messages>
-          {() => (
-            <MessagePrimitive.Root>
-              <MessagePrimitive.Parts />
-            </MessagePrimitive.Root>
-          )}
-        </ThreadPrimitive.Messages>
+        <CanonicalMessages messages={timeline} />
       </ThreadPrimitive.Root>
     </AssistantRuntimeProvider>
   );
@@ -477,7 +509,11 @@ function ChatThreadLayoutHarness({
     (revision: number) => revision + 1,
     0,
   );
-  const { isRunning, runtime } = useChatRuntime({
+  const {
+    isRunning,
+    runtime,
+    messages: timeline,
+  } = useChatRuntime({
     conversationKey: conversationKeyOf("scope:chat-layout", "chat-layout"),
     queueKey: "chat-layout",
     chatId: "chat-layout",
@@ -495,7 +531,7 @@ function ChatThreadLayoutHarness({
       reasoning: "high",
       permissionLevel: "auto",
     },
-    send,
+    prepareSubmission: (...args) => ({ accept: () => send(...args) }),
     cancel,
     onMessageAccepted: clearComposer,
     onStarted: vi.fn(),
@@ -505,6 +541,7 @@ function ChatThreadLayoutHarness({
   return (
     <ChatThread
       runtime={runtime}
+      messages={timeline}
       wakerName="测试伙伴"
       emptyState={<div>空对话</div>}
       renderComposerContextStrip={() => (
@@ -543,7 +580,7 @@ function ChatThreadHistoryHarness({
   onOpenCodeReference?: (reference: ChatCodeReference) => void;
   onOpenFile?: (file: { name: string; path: string }) => void;
 }) {
-  const { runtime } = useChatRuntime({
+  const { runtime, messages: timeline } = useChatRuntime({
     conversationKey: conversationKeyOf(`scope:${chatId}`, chatId),
     queueKey: chatId,
     chatId,
@@ -563,7 +600,7 @@ function ChatThreadHistoryHarness({
       reasoning: "high",
       permissionLevel: "auto",
     },
-    send: vi.fn(),
+    prepareSubmission: () => ({ accept: vi.fn() }),
     cancel: vi.fn(),
     onStarted: vi.fn(),
     onTerminal: vi.fn(),
@@ -572,6 +609,7 @@ function ChatThreadHistoryHarness({
   return (
     <ChatThread
       runtime={runtime}
+      messages={timeline}
       wakerName="测试伙伴"
       emptyState={<div>空对话</div>}
       renderComposerContextStrip={undefined}
@@ -1460,6 +1498,13 @@ describe("chat composer", () => {
         sequence: 1,
         type: "execution.canceled",
         executionStatus: "canceled",
+        message: {
+          id: "execution-1",
+          executionId: "execution-1",
+          role: "assistant",
+          status: "canceled",
+          revision: 1,
+        },
       });
     });
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
@@ -2838,4 +2883,43 @@ describe("chat composer", () => {
       ),
     );
   });
+});
+
+it("canonical渲染完成后展开过程仍保留工具组的阅读选择", async () => {
+  const running: ChatMessage = {
+    id: "remember-tool-reading",
+    role: "assistant",
+    status: "running",
+    runMetrics: { durationMs: 13_500 },
+    displayParts: [
+      {
+        id: "network",
+        type: "tool",
+        toolCategory: "network",
+        toolStatus: "completed",
+        toolLabel: "搜索官方资料",
+      },
+      { id: "body", type: "text", text: "真实正文" },
+    ],
+  };
+  const ui = (message: ChatMessage) => (
+    <TooltipProvider>
+      <ChatQueueProvider>
+        <ChatThreadHistoryHarness messages={[message]} />
+      </ChatQueueProvider>
+    </TooltipProvider>
+  );
+  const view = render(ui(running));
+  const network = screen.getByRole("button", { name: "已访问网络" });
+  fireEvent.click(network);
+  expect(network).toHaveAttribute("aria-expanded", "true");
+  view.rerender(ui({ ...running, status: "completed" }));
+  const process = await screen.findByRole("button", { name: "用时 13.5s" });
+  expect(process).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(process);
+  expect(screen.getByRole("button", { name: "已访问网络" })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  );
+  expect(screen.getByText("搜索官方资料")).toBeVisible();
 });

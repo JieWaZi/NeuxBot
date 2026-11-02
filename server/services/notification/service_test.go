@@ -526,3 +526,64 @@ func TestWorkflowCreationLinkReconcilesEarlierRequest(t *testing.T) {
 		t.Fatalf("首次绑定未补发原待办: %+v", update)
 	}
 }
+
+func TestFileResultExactReferenceRejectsBodyOnlyObservationForEveryOwner(t *testing.T) {
+	fixture := newNotificationFixture(t)
+	ctx := context.Background()
+	if err := fixture.results.EnableTracking(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, kind := range []constants.WorkResultOwnerKind{constants.WorkResultOwnerKindChat, constants.WorkResultOwnerKindTeamThread, constants.WorkResultOwnerKindWorkflowRun} {
+		t.Run(string(kind), func(t *testing.T) {
+			id := util.New()
+			body := models.WorkResultReference{ChatID: util.New(), ExecutionID: util.New(), MessageID: util.New()}
+			if kind == constants.WorkResultOwnerKindWorkflowRun {
+				body.WorkflowRunID = id
+			}
+			if err := fixture.results.Publish(ctx, models.WorkResultReceipt{OwnerKind: kind, OwnerID: id, LatestVersion: 1, AvailableAt: 100, Reference: body}); err != nil {
+				t.Fatal(err)
+			}
+			// ready 且零文件的结果沿用原正文身份，原有确认仍可成功。
+			if err := fixture.service.ViewResult(ctx, kind, id, 1, body); err != nil {
+				t.Fatalf("body-only original result could not be read: %v", err)
+			}
+			exact := body
+			exact.FileChangeRecordID = util.New()
+			exact.FileChangeRecordVersion = 2
+			if err := fixture.results.Publish(ctx, models.WorkResultReceipt{OwnerKind: kind, OwnerID: id, LatestVersion: 2, AvailableAt: 200, Reference: exact}); err != nil {
+				t.Fatal(err)
+			}
+			encoded, err := json.Marshal(exact)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var transmitted models.WorkResultReference
+			if err = json.Unmarshal(encoded, &transmitted); err != nil || transmitted != exact {
+				t.Fatal("JSON boundary lost exact file identity")
+			}
+			wrongVersion := exact
+			wrongVersion.FileChangeRecordVersion--
+			wrongRecord := exact
+			wrongRecord.FileChangeRecordID = util.New()
+			for _, observed := range []models.WorkResultReference{body, wrongVersion, wrongRecord} {
+				if err := fixture.service.ViewResult(ctx, kind, id, 2, observed); !errors.Is(err, status_error.BadRequest) {
+					t.Fatalf("inexact file observation accepted: %+v error=%v", observed, err)
+				}
+			}
+			if err := fixture.service.ViewResult(ctx, kind, id, 1, body); err != nil {
+				t.Fatal(err)
+			}
+			receipt, found, err := fixture.results.Get(ctx, kind, id)
+			if err != nil || !found || receipt.Reference != exact || receipt.ViewedVersion != 1 {
+				t.Fatalf("body-only read cleared new file result or owner mapping lost identity: %+v %v", receipt, err)
+			}
+			if err := fixture.service.ViewResult(ctx, kind, id, 2, transmitted); err != nil {
+				t.Fatal(err)
+			}
+			receipt, _, err = fixture.results.Get(ctx, kind, id)
+			if err != nil || receipt.ViewedVersion != 2 {
+				t.Fatalf("exact visible file card could not be confirmed: %+v %v", receipt, err)
+			}
+		})
+	}
+}

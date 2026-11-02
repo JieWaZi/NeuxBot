@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
@@ -18,7 +18,7 @@ import (
 // MaintenanceInvocation 是知识任务交给独立 ACP 的冻结输入，不含伙伴或聊天身份。
 type MaintenanceInvocation struct {
 	JobID        string                      // 已接纳知识任务的身份。
-	Bindings     []agentcapability.Binding   // 只限目标知识库的实际读写能力。
+	Bindings     []capability.Binding        // 只限目标知识库的实际读写能力。
 	Instructions string                      // 同源 Wiki Fixer 工作流程。
 	Message      string                      // 用户本次维护要求。
 	Validate     func(context.Context) error // 每次工具调用核对任务和授权。

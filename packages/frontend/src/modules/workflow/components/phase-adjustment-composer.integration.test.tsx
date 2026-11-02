@@ -120,6 +120,7 @@ it("阶段完整 Composer 的模型、思考、权限与附件选择实际进入
         return HttpResponse.json({
           id: "session-1",
           chatId: "chat-1",
+          chat: { id: "chat-1", latestSequence: 1 },
           acceptedExecutionId: "execution-1",
         });
       },
@@ -249,6 +250,7 @@ it("阶段账号切换沿用聊天的上下文确认并真实提交，不覆盖�
         return HttpResponse.json({
           id: "session-1",
           chatId: "chat-1",
+          chat: { id: "chat-1", latestSequence: 1 },
           acceptedExecutionId: "execution-1",
         });
       },
@@ -380,6 +382,7 @@ it("阶段要求绑定基准版本与稳定阶段，发送失败后保留输入�
           : HttpResponse.json({
               id: "session-1",
               chatId: "chat-1",
+              chat: { id: "chat-1", latestSequence: 1 },
               acceptedExecutionId: "execution-1",
             });
       },
@@ -437,6 +440,7 @@ it.each(["http", "network"] as const)(
       HttpResponse.json({
         id: "accepted-session",
         chatId: "accepted-chat",
+        chat: { id: "accepted-chat", latestSequence: 1 },
         acceptedExecutionId: "accepted-execution",
         execution: { id: "accepted-execution", status: "running" },
       }),
@@ -501,6 +505,7 @@ it("阶段调整沿用聊天默认配置并使用当前模型新建会话", asyn
         return HttpResponse.json({
           id: "new-session",
           chatId: "new-chat",
+          chat: { id: "new-chat", latestSequence: 1 },
           acceptedExecutionId: "new-execution",
         });
       },
@@ -559,6 +564,7 @@ it("阶段输入沿用聊天键盘交互：Shift+Enter 换行，普通 Enter 发
         return HttpResponse.json({
           id: "session-1",
           chatId: "chat-1",
+          chat: { id: "chat-1", latestSequence: 1 },
           acceptedExecutionId: "execution-1",
         });
       },
@@ -607,6 +613,7 @@ it("阶段输入复用聊天的中文输入法保护，确认候选字的 Enter 
       return HttpResponse.json({
         id: "session-1",
         chatId: "chat-1",
+        chat: { id: "chat-1", latestSequence: 1 },
         acceptedExecutionId: "execution-1",
       });
     }),

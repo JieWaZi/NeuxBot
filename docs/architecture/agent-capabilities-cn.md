@@ -4,15 +4,15 @@
 
 系统 ally 技能教授任务方法，内部 MCP 与 allycli 共用能力发现、参数和调用契约，Core 负责身份、授权、领域规则与真实回执。技能与命令名称是当前技术契约，产品名称为 NeuxBot。
 
-server/internal/agentcapability/contract 是命令 Schema 与解析的共同来源，agentcapability 负责执行授权和有界观察，agentcli 提供客户端。记忆、IM、团队、工作流与知识业务状态仍由各自领域拥有。所有领域的当前命令、完成语义和调用示例统一见 [allycli README](../../server/cmd/allycli/README.md)。
+`server/internal/agent/capability` 统一维护命令目录、Schema、解析、精确执行授权、有界观察及回执协议，`agent/cli/cli.go` 提供 allycli 的参数解析与客户端。记忆、IM、团队、工作流与知识业务状态仍由各自领域拥有。所有领域的当前命令、完成语义和调用示例统一见 [allycli README](../../server/cmd/allycli/README.md)。
 
 ## 授权与请求
 
-受管执行得到绑定当前 Execution 的精确能力上下文。连接文件按 Grant 建立不可变路径，不覆盖原会话文件；CLI 使用宿主提供的 --context 路径。工作流在支持 stdio 的 Runtime 中注入 allycli mcp serve 薄桥，启动时只读取一次原 Grant，按同一目录发布获准操作，转发既有 Core 入口，不另开监听。能力发现只报告当前可用范围，不能因知道其他命令而扩大授权。上下文失效、身份不匹配或范围不足时拒绝调用。
+受管执行得到绑定当前 Execution 的精确能力上下文。连接文件在同一原生 Session 内保持固定路径，每轮原子更新 Grant；本轮结束或取消时撤销授权，文件和已物化资源保留至原生消费者退出。工作流在支持 stdio 的 Runtime 中注入 `allycli mcp serve` 薄桥，固定会话入口、Core epoch 和启动时获准的工具目录，每次调用只读取一次当前授权，不在失败后换凭据重试。Core 逐次核对当前身份与能力范围；撤销期间、Core 重启、身份不匹配或范围不足均拒绝调用。桥接不另开监听，不拥有业务状态。
 
-写命令使用稳定 request-id，保存内容摘要和领域回执。同键同内容重放原回执，同键异内容冲突；响应不确定时查询收据，避免生成新请求重复副作用。
+写命令使用稳定 request-id，保存内容摘要和领域回执。同键同内容重放原回执，同键异内容冲突；响应不确定时沿原请求查询收据，避免生成新请求重复副作用。能力桥负责授权、派发和未知结果观察；实际写入及 Commit 由原领域在同一事务内核对授权、版本和回执，不在 Registry 建立第二份业务状态。
 
-返回区分同步完成、耐久接纳与候选提交。查询或有限 wait 的超时不改变业务状态；真正完成以所属资源终态为准。
+命令身份摘要、协议路径、allycli 名称、环境变量及私有连接文件的 Unix/Windows 权限边界共同构成既有调用合同。返回区分同步完成、耐久接纳与候选提交。查询或有限 wait 的超时不改变业务状态；真正完成以所属资源终态为准。
 
 外部 Agent 通过发布服务的 HTTP MCP 调用同源知识合同；内部 CLI/stdio MCP 使用 Execution 身份，外部 HTTP MCP 使用现有 API Key。两者共享知识操作、版本检查和回执逻辑，入口分别注入授权上下文。外部 HTTP MCP 不发布其他领域的内部命令；接入、能力映射和后台撤权边界见 [知识库](knowledge-cn.md#api-集成与指定库接入)。
 

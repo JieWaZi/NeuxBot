@@ -19,6 +19,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
+
 	packageplugin "github.com/JieWaZi/NeuxBot/server/internal/plugins"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins/commandbridge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -26,7 +29,7 @@ import (
 )
 
 func TestPluginConnectorProbeUsesSharedAuthorizationAndOnlyDiscoversTools(t *testing.T) {
-	for _, scenario := range []string{"authorized", "unauthorized", "identity-changed"} {
+	for _, scenario := range []string{"authorized", "unauthorized", "identity-changed", "idle-consumer", "active-consumer", "active-same-bridge"} {
 		authorized := scenario != "unauthorized"
 		t.Run(scenario, func(t *testing.T) {
 			ctx := pluginAPIContext(t)
@@ -109,8 +112,36 @@ console.log(JSON.stringify({jsonrpc:'2.0',id:r.id,result}));}`, authorized))
 					}
 				}
 			}
+			var consumer *connectorProbeSession
+			if scenario == "idle-consumer" || scenario == "active-consumer" || scenario == "active-same-bridge" {
+				// 模拟 Core 重启后先聊天：只创建身份占用，尚未创建授权桥接。
+				global.PluginBridges.Close()
+				global.PluginBridges = commandbridge.NewRegistry(context.Background(), nil)
+				if scenario == "active-same-bridge" {
+					version, err := global.PluginControllerManager.Version(ctx, detail.ResolvedVersionID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, _, err := installationService().Bridge(version); err != nil {
+						t.Fatal(err)
+					}
+				}
+				consumer = retainProbeConsumer(t, detail.Plugin.ID, scenario != "idle-consumer")
+			}
 			request := TestPluginConnector{PluginID: detail.Plugin.ID, VersionID: detail.ResolvedVersionID, Key: "service"}
 			value, err := request.Output(ctx)
+			if scenario == "active-consumer" {
+				if !errors.Is(err, status_error.PluginBusy) || consumer.closed != 0 || requests.Load() != 0 {
+					t.Fatalf("active consumer interrupted: error=%v closed=%d requests=%d", err, consumer.closed, requests.Load())
+				}
+				return
+			}
+			if scenario == "active-same-bridge" && consumer.closed != 0 {
+				t.Fatalf("same bridge probe closed active consumer: %d", consumer.closed)
+			}
+			if scenario == "idle-consumer" && consumer.closed == 0 {
+				t.Fatalf("idle native consumer not closed: closed=%d error=%v", consumer.closed, err)
+			}
 			if !authorized {
 				if !errors.Is(err, status_error.PluginNotReady) || requests.Load() != 0 {
 					t.Fatalf("unauthorized probe reached MCP: %v %d", err, requests.Load())
@@ -211,4 +242,70 @@ func TestPluginConnectorProbeKeepsOwnedSourceWhenNativeReferenceExists(t *testin
 	if result.Connector.TestStatus != constants.MCPTestStatusSucceeded || len(result.Connector.TestTools) != 1 || result.Connector.TestTools[0].Name != "owned_search" {
 		t.Fatalf("probe switched away from owned server: %+v", result)
 	}
+}
+
+// connectorProbeSession 模拟可热续聊的原生协议边界，不接触真实 CLI 或账号。
+type connectorProbeSession struct {
+	// closed 记录原生连接实际退出次数。
+	closed int
+}
+
+func (d *connectorProbeSession) Open(context.Context, native.OpenRequest) (agentapi.NativeConnection, error) {
+	return d, nil
+}
+func (d *connectorProbeSession) Close(context.Context) error                { d.closed++; return nil }
+func (*connectorProbeSession) Accept(context.Context, agentapi.Event) error { return nil }
+func (*connectorProbeSession) Prompt(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
+	_ = sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted})
+	_ = sink.Accept(ctx, native.Event{Kind: native.EventAssistantMessage, Message: &native.AssistantMessage{MessageID: "answer", Phase: native.PhaseFinal, Delta: "done", Complete: true}})
+	return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn, NativeSession: native.NativeSessionInfo{Handle: "probe-session", Resumable: true}}
+}
+
+func retainProbeConsumer(t *testing.T, pluginID string, active bool) *connectorProbeSession {
+	t.Helper()
+	driver := &connectorProbeSession{}
+	host := agentapi.NewManager(agentapi.ManagerConfig{
+		Launch: func(agentapi.RuntimeTarget, agentapi.DetectionResult) (agentapi.LaunchFacts, error) {
+			return agentapi.LaunchFacts{BaseRuntimeID: "codex", Executable: "fixture"}, nil
+		},
+		Open: func(ctx context.Context, _ native.ConnectionConfig, request native.OpenRequest) (agentapi.NativeConnection, error) {
+			return driver.Open(ctx, request)
+		},
+	})
+	previous := global.AgentManager
+	global.AgentManager = host
+	t.Cleanup(func() { _ = host.Close(context.Background()); global.AgentManager = previous })
+	target := agentapi.RuntimeTarget{RuntimeID: "codex", Isolated: true}
+	plan := agentapi.SessionPlan{
+		Target:      agentapi.DeclareTarget(target),
+		Detection:   agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex"}},
+		Workspace:   agentapi.Workspace{Path: t.TempDir(), Managed: true},
+		ResourceKey: "plugin-resources", PluginIDs: []string{pluginID},
+	}
+	ctx := context.Background()
+	prepared, err := host.PrepareSession(ctx, plan, agentapi.SessionDirective{Mode: agentapi.SessionModeNew})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer prepared.Close(ctx)
+	_, release, err := global.PluginBridges.AcquireIdentity(pluginID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(release)
+	if err := prepared.Bind(ctx, agentapi.SessionResources{Target: target, PluginResources: []packageplugin.Snapshot{{ID: pluginID}}, Close: func(context.Context) error { release(); return nil }}); err != nil {
+		t.Fatal(err)
+	}
+	result := prepared.Run(ctx, agentapi.TurnInput{Message: agentapi.Message{Text: "hello"}}, driver)
+	if result.Failure != nil || driver.closed != 0 {
+		t.Fatalf("hot consumer not retained: %+v closed=%d", result, driver.closed)
+	}
+	if active {
+		running, err := host.PrepareSession(ctx, plan, agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: result.Session.OutputID})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = running.Close(ctx) })
+	}
+	return driver
 }

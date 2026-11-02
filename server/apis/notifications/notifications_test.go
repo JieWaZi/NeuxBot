@@ -53,7 +53,7 @@ func TestNotificationAPIConfirmExactResultAndKeepPendingRequest(t *testing.T) {
 	if err := results.EnableTracking(ctx, 1); err != nil {
 		t.Fatal(err)
 	}
-	reference := models.WorkResultReference{ChatID: chatID, ExecutionID: util.New(), MessageID: util.New()}
+	reference := models.WorkResultReference{ChatID: chatID, ExecutionID: util.New(), MessageID: util.New(), FileChangeRecordID: util.New(), FileChangeRecordVersion: 2}
 	if err := results.Publish(ctx, models.WorkResultReceipt{OwnerKind: constants.WorkResultOwnerKindChat, OwnerID: chatID, LatestVersion: 1, AvailableAt: 10, Reference: reference}); err != nil {
 		t.Fatal(err)
 	}
@@ -73,6 +73,14 @@ func TestNotificationAPIConfirmExactResultAndKeepPendingRequest(t *testing.T) {
 	item, err := global.NotificationControllerManager.Get(ctx, id)
 	if err != nil || item.Target.Reference == nil || *item.Target.Reference != reference {
 		t.Fatalf("通知丢失完整原引用: %+v %v", item, err)
+	}
+	bodyOnly := reference
+	bodyOnly.FileChangeRecordID = ""
+	bodyOnly.FileChangeRecordVersion = 0
+	bodyTarget := item.Target
+	bodyTarget.Reference = &bodyOnly
+	if _, err := (&ViewNotification{NoticeID: id, Body: ViewNotificationRequest{Version: 1, Target: &bodyTarget}}).Output(callContext); !errors.Is(err, status_error.BadRequest) {
+		t.Fatalf("旧正文引用确认了新文件成果: %v", err)
 	}
 	wrong := reference
 	wrong.ExecutionID = util.New()

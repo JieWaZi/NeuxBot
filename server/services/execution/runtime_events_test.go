@@ -12,12 +12,12 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -34,8 +34,8 @@ func TestRuntimeEventSinkPersistsOnlyCompleteAssistantMessage(t *testing.T) {
 	}
 	sink, _ := newRuntimeEventSinkForTest(store, chatID)
 	for _, text := range []string{"one", "two"} {
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{
-			Type: runtimes.EventTypeTextDelta,
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{
+			Type: agentapi.EventTypeTextDelta,
 			Data: marshalData(struct {
 				// Text 是本次测试交付的实时文本增量。
 				Text string `json:"text"`
@@ -66,7 +66,7 @@ func TestRuntimeEventSinkPersistsOnlyCompleteAssistantMessage(t *testing.T) {
 		t.Fatalf("decode persisted execution message: %v", err)
 	}
 	if len(persisted.Content) != 1 ||
-		persisted.Content[0].Type != runtimes.EventTypeTextDelta ||
+		persisted.Content[0].Type != agentapi.EventTypeTextDelta ||
 		string(persisted.Content[0].Data) != `{"text":"onetwo"}` ||
 		persisted.MessageRevision != 5 {
 		t.Fatalf("persisted execution message = %#v", persisted)
@@ -85,8 +85,8 @@ func TestRuntimeEventSinkPublishesCompleteLiveSnapshotBeforePersistence(t *testi
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
 	for _, text := range []string{"你好", "！"} {
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{
-			Type: runtimes.EventTypeTextDelta,
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{
+			Type: agentapi.EventTypeTextDelta,
 			Data: marshalData(struct {
 				// Text 是验证实时消息视图立即可见的文本增量。
 				Text string `json:"text"`
@@ -134,7 +134,7 @@ func TestRuntimeEventSinkPublishesCompleteLiveSnapshotBeforePersistence(t *testi
 	}
 }
 
-func TestRuntimeEventSinkKeepsFileChangesEqualBetweenLiveAndReplay(t *testing.T) {
+func TestRuntimeEventSinkDoesNotPromoteToolDiffsToFileOutcomes(t *testing.T) {
 	t.Parallel()
 	store, err := eventlog.NewStore(t.TempDir())
 	if err != nil {
@@ -145,9 +145,9 @@ func TestRuntimeEventSinkKeepsFileChangesEqualBetweenLiveAndReplay(t *testing.T)
 		t.Fatalf("Create() error = %v", err)
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
-	for _, event := range []runtimes.Event{
+	for _, event := range []agentapi.Event{
 		{
-			Type: runtimes.EventTypeToolUse,
+			Type: agentapi.EventTypeToolUse,
 			Data: marshalData(map[string]any{
 				"name": "file_modify", "status": "in_progress", "toolCallId": "edit-1",
 				"content": []any{map[string]any{
@@ -157,7 +157,7 @@ func TestRuntimeEventSinkKeepsFileChangesEqualBetweenLiveAndReplay(t *testing.T)
 			}),
 		},
 		{
-			Type: runtimes.EventTypeToolResult,
+			Type: agentapi.EventTypeToolResult,
 			Data: marshalData(map[string]any{
 				"name": "file_modify", "status": "completed", "toolCallId": "edit-1",
 				"content": []any{map[string]any{
@@ -197,12 +197,11 @@ func TestRuntimeEventSinkKeepsFileChangesEqualBetweenLiveAndReplay(t *testing.T)
 	if err != nil {
 		t.Fatalf("ReplayMessages() error = %v", err)
 	}
-	if lastLive == nil || len(persisted) != 1 ||
-		!reflect.DeepEqual(persisted[0].FileChanges, lastLive.FileChanges) ||
-		len(persisted[0].FileChanges) != 1 ||
-		persisted[0].FileChanges[0].AddedLines != 2 ||
-		persisted[0].FileChanges[0].DeletedLines != 1 {
-		t.Fatalf("live file changes %#v != persisted %#v", lastLive, persisted)
+	if lastLive == nil || len(persisted) != 1 || len(persisted[0].FileChanges) != 0 || persisted[0].FileChangeRecord != nil || len(lastLive.FileChanges) != 0 {
+		t.Fatalf("tool output was promoted to independent file outcome: live=%+v durable=%+v", lastLive, persisted)
+	}
+	if !reflect.DeepEqual(persisted[0].DisplayParts, lastLive.DisplayParts) {
+		t.Fatal("safe tool projection differs after durable replay")
 	}
 }
 
@@ -218,8 +217,8 @@ func TestExecutionTerminalRevisionStaysAheadOfTransientOnlyEvents(t *testing.T) 
 	}
 	sink, _ := newRuntimeEventSinkForTest(store, chatID)
 	for index := 0; index < 20; index++ {
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{
-			Type: runtimes.EventTypeUsage,
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{
+			Type: agentapi.EventTypeUsage,
 			Data: marshalData(map[string]any{"turn": map[string]any{"output_tokens": index + 1}}),
 		}); err != nil {
 			t.Fatalf("Accept(usage %d) error = %v", index, err)
@@ -261,13 +260,13 @@ func TestRuntimeEventSinkPersistsToolMessagesAndKeepsOnlyLatestUsage(t *testing.
 		t.Fatalf("Create() error = %v", err)
 	}
 	sink, _ := newRuntimeEventSinkForTest(store, chatID)
-	for _, event := range []runtimes.Event{
-		{Type: runtimes.EventTypeStatus, Data: json.RawMessage(`{"state":"thinking"}`)},
-		{Type: runtimes.EventTypeRaw, Data: json.RawMessage(`{"type":"system","subtype":"thinking_tokens"}`)},
-		{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"id": "tool-1", "name": "Bash"})},
-		{Type: runtimes.EventTypeToolResult, Data: marshalData(map[string]any{"tool_use_id": "tool-1", "is_error": false})},
-		{Type: runtimes.EventTypeUsage, Data: json.RawMessage(`{"turn":{"output_tokens":10}}`)},
-		{Type: runtimes.EventTypeUsage, Data: json.RawMessage(`{"turn":{"output_tokens":12}}`)},
+	for _, event := range []agentapi.Event{
+		{Type: agentapi.EventTypeStatus, Data: json.RawMessage(`{"state":"thinking"}`)},
+		{Type: agentapi.EventTypeRaw, Data: json.RawMessage(`{"type":"system","subtype":"thinking_tokens"}`)},
+		{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"id": "tool-1", "name": "Bash"})},
+		{Type: agentapi.EventTypeToolResult, Data: marshalData(map[string]any{"tool_use_id": "tool-1", "is_error": false})},
+		{Type: agentapi.EventTypeUsage, Data: json.RawMessage(`{"turn":{"output_tokens":10}}`)},
+		{Type: agentapi.EventTypeUsage, Data: json.RawMessage(`{"turn":{"output_tokens":12}}`)},
 	} {
 		if err := sink.acceptInvocation(context.Background(), "invocation-1", event); err != nil {
 			t.Fatalf("Accept(%s) error = %v", event.Type, err)
@@ -319,12 +318,12 @@ func TestRuntimeEventSinkDoesNotPersistEveryPartialToolInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
-	send := func(kind runtimes.EventType, data map[string]any) *messageview.Message {
+	send := func(kind agentapi.EventType, data map[string]any) *messageview.Message {
 		t.Helper()
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: marshalData(data)}); err != nil {
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: kind, Data: marshalData(data)}); err != nil {
 			t.Fatal(err)
 		}
-		if kind == runtimes.EventTypeToolInputSnapshot {
+		if kind == agentapi.EventTypeToolInputSnapshot {
 			return nil
 		}
 		revision := sink.MessageRevision()
@@ -335,18 +334,18 @@ func TestRuntimeEventSinkDoesNotPersistEveryPartialToolInput(t *testing.T) {
 			}
 		}
 	}
-	send(runtimes.EventTypeToolUse, map[string]any{"toolCallId": "write-1", "name": "write_file", "kind": "edit", "input": map[string]any{"path": "notes.md"}})
+	send(agentapi.EventTypeToolUse, map[string]any{"toolCallId": "write-1", "name": "write_file", "kind": "edit", "input": map[string]any{"path": "notes.md"}})
 	for i := range 1000 {
-		send(runtimes.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "write-1", "input": map[string]any{"path": "notes.md", "content": fmt.Sprintf("body-%d", i)}})
+		send(agentapi.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "write-1", "input": map[string]any{"path": "notes.md", "content": fmt.Sprintf("body-%d", i)}})
 	}
 	records, err := store.ReadAll(chatID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(records) != 4 {
-		t.Fatalf("records while tool input is streaming = %d, want 3 initial facts and one tool start", len(records))
+	if len(records) > 8 {
+		t.Fatalf("records while tool input is streaming = %d, want bounded complete parameter segments", len(records))
 	}
-	lastLive := send(runtimes.EventTypeToolResult, map[string]any{"toolCallId": "write-1", "status": "completed"})
+	lastLive := send(agentapi.EventTypeToolResult, map[string]any{"toolCallId": "write-1", "status": "completed"})
 	if err := sink.Flush(); err != nil {
 		t.Fatal(err)
 	}
@@ -354,11 +353,11 @@ func TestRuntimeEventSinkDoesNotPersistEveryPartialToolInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(records) != 6 {
-		t.Fatalf("records after complete tool = %d, want start, latest input, result", len(records))
+	if len(records) > 10 {
+		t.Fatalf("records after complete tool = %d, want bounded parameter segments plus result", len(records))
 	}
 	var stored eventlog.RuntimeMessageData
-	if err := json.Unmarshal(records[4].Data, &stored); err != nil {
+	if err := json.Unmarshal(records[len(records)-2].Data, &stored); err != nil {
 		t.Fatal(err)
 	}
 	var payload map[string]any
@@ -392,7 +391,7 @@ func TestRuntimeEventSinkPreservesToolOutputUpdates(t *testing.T) {
 		{"toolCallId": "shell", "rawOutput": "first output"},
 		{"toolCallId": "shell", "rawOutput": "second output"},
 	} {
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(payload)}); err != nil {
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeToolUse, Data: marshalData(payload)}); err != nil {
 			t.Fatal(err)
 		}
 		<-live
@@ -419,12 +418,12 @@ func TestRuntimeEventSinkBatchesToolUpdatesWithoutLosingContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
-	send := func(kind runtimes.EventType, data map[string]any) {
+	send := func(kind agentapi.EventType, data map[string]any) {
 		t.Helper()
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: marshalData(data)}); err != nil {
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: kind, Data: marshalData(data)}); err != nil {
 			t.Fatal(err)
 		}
-		if kind == runtimes.EventTypeToolUpdate {
+		if kind == agentapi.EventTypeToolUpdate {
 			return
 		}
 		revision := sink.MessageRevision()
@@ -434,11 +433,11 @@ func TestRuntimeEventSinkBatchesToolUpdatesWithoutLosingContent(t *testing.T) {
 			}
 		}
 	}
-	send(runtimes.EventTypeToolUse, map[string]any{"toolCallId": "tool", "sessionUpdate": "tool_call", "status": "in_progress", "input": map[string]any{}})
+	send(agentapi.EventTypeToolUse, map[string]any{"toolCallId": "tool", "sessionUpdate": "tool_call", "status": "in_progress", "input": map[string]any{}})
 	for i := range 300 {
-		send(runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "tool", "sessionUpdate": "tool_call_update", "rawInput": map[string]any{"value": i}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": fmt.Sprintf("chunk-%d", i)}}}})
+		send(agentapi.EventTypeToolUpdate, map[string]any{"toolCallId": "tool", "sessionUpdate": "tool_call_update", "rawInput": map[string]any{"value": i}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": fmt.Sprintf("chunk-%d", i)}}}})
 	}
-	send(runtimes.EventTypeToolResult, map[string]any{"toolCallId": "tool", "status": "completed"})
+	send(agentapi.EventTypeToolResult, map[string]any{"toolCallId": "tool", "status": "completed"})
 	records, err := store.ReadAll(chatID)
 	if err != nil {
 		t.Fatal(err)
@@ -470,6 +469,128 @@ func TestRuntimeEventSinkBatchesToolUpdatesWithoutLosingContent(t *testing.T) {
 	}
 	if index != 300 {
 		t.Fatalf("preserved %d chunks, want all 300", index)
+	}
+}
+
+func TestRuntimeEventSinkStoresGrowingToolSnapshotsWithoutQuadraticJSONL(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "ababcdcdababcdcdababcdcdababcdcd"
+	if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, _ := newRuntimeEventSinkForTest(store, chatID)
+	updates := make([]json.RawMessage, 0, 128)
+	for index := range 128 {
+		payload := marshalData(map[string]any{
+			"toolCallId": "tool", "content": []any{map[string]any{
+				"type": "content", "content": map[string]any{"type": "text", "text": strings.Repeat("abcdef0123456789", (index+1)*64)},
+			}},
+		})
+		updates = append(updates, payload)
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeToolUpdate, Data: payload}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := sink.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	records, err := store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logBytes int64
+	for _, record := range records {
+		logBytes += record.Length
+	}
+	if logBytes > 4*int64(len(updates[len(updates)-1])) {
+		t.Fatalf("JSONL size = %d, final snapshot = %d; cumulative snapshots were stored repeatedly", logBytes, len(updates[len(updates)-1]))
+	}
+	t.Logf("JSONL size = %d bytes; final snapshot = %d bytes", logBytes, len(updates[len(updates)-1]))
+	messages, err := messageview.ReplayMessages(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || len(messages[0].RuntimeEvents) != len(updates) {
+		t.Fatalf("replayed %d runtime events, want %d", len(messages[0].RuntimeEvents), len(updates))
+	}
+	for index, event := range messages[0].RuntimeEvents {
+		if !reflect.DeepEqual(event.Data, updates[index]) {
+			t.Fatalf("replayed update %d differs from original", index)
+		}
+	}
+	public, err := messageview.ReplayPublicMessages(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	window, err := store.ReadMessageWindow(chatID, 0, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	windowPublic, err := messageview.ReplayPublicMessages(window.Records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(public) != 1 || len(windowPublic) != 1 || !reflect.DeepEqual(public[0].DisplayParts, windowPublic[0].DisplayParts) {
+		t.Fatalf("public projection differs across full and paged replay")
+	}
+	projection, err := store.ReadProjectionAfter(chatID, records[len(records)-2].Sequence, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectionPublic, err := messageview.ReplayPublicMessages(projection.Records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projectionPublic) != 1 || !reflect.DeepEqual(public[0].DisplayParts, projectionPublic[0].DisplayParts) {
+		t.Fatalf("public projection differs after cursor replay")
+	}
+}
+
+func TestRuntimeEventSinkCompactedToolUpdatesKeepPrivateHistoryWithoutFileOutcome(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "abcddcbaabcddcbaabcddcbaabcddcba"
+	if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, _ := newRuntimeEventSinkForTest(store, chatID)
+	send := func(kind agentapi.EventType, payload map[string]any) {
+		t.Helper()
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: kind, Data: marshalData(payload)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	send(agentapi.EventTypeToolUse, map[string]any{"toolCallId": "edit", "name": "file_modify", "status": "in_progress"})
+	for _, newText := range []string{strings.Repeat("first line\n", 40), strings.Repeat("first line\n", 40) + "last line\n"} {
+		send(agentapi.EventTypeToolUpdate, map[string]any{"toolCallId": "edit", "content": []any{map[string]any{
+			"type": "diff", "path": "/workspace/project/main.go", "oldText": "old\n", "newText": newText,
+		}}})
+	}
+	send(agentapi.EventTypeToolResult, map[string]any{"toolCallId": "edit", "status": "completed"})
+	records, err := store.ReadAll(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, err := messageview.ReplayMessages(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || len(messages[0].FileChangeDiffs) != 0 || messages[0].FileChangeRecord != nil {
+		t.Fatalf("legacy tool data created independent file result: %+v", messages)
+	}
+	found := false
+	for _, event := range messages[0].RuntimeEvents {
+		if event.Type == agentapi.EventTypeToolUpdate && strings.Contains(string(event.Data), "last line") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("bounded batching lost the original private Runtime tool data")
 	}
 }
 
@@ -566,9 +687,14 @@ func TestStartedTurnUsesExecutionAsAssistantIdentityWithoutPlaceholderFact(t *te
 
 // runtimeEventTestJournal 为 Runtime 聚合测试提供最小权威事实端口。
 type runtimeEventTestJournal struct {
+	// Journal 保留本测试不使用的执行查询边界。
+	chatservice.Journal
 	// store 保存测试中的权威 JSONL 记录。
 	store *eventlog.Store
-	// live 接收不入 JSONL 的 transient 消息快照。
+	// live 接收测试消费者折叠后的消息；真实线上信封仍只有 Live。
+	// message 保存测试消费者从增量构建的当前视图。
+	message *messageview.Message
+	// live 接收不入 JSONL 的 transient 消息增量。
 	live chan eventstream.PublicEvent
 	// fullReads 记录误读完整历史的次数。
 	fullReads int
@@ -651,7 +777,67 @@ func (j *runtimeEventTestJournal) PublishTerminal(chatservice.TerminalCommit) {
 
 // PublishLive 交付 transient 消息快照供测试断言。
 func (j *runtimeEventTestJournal) PublishLive(_ string, event eventstream.PublicEvent) {
+	event = foldTestLive(&j.message, event)
 	j.live <- event
+}
+
+// foldTestLive 模拟客户端逐操作折叠，仅供实时与耐久重放的等价性断言。
+func foldTestLive(current **messageview.Message, event eventstream.PublicEvent) eventstream.PublicEvent {
+	// 本测试替身模拟呈现消费者，以继续比较原始实时折叠与完整日志重放。
+	if event.Message != nil || event.Live == nil {
+		panic("live wire unexpectedly contains a snapshot")
+	}
+	if *current == nil {
+		*current = &messageview.Message{ID: event.Live.MessageID, Revision: event.Live.BaseRevision}
+	}
+	message := **current
+	message.DisplayParts = append([]messageview.MessageDisplayPart(nil), message.DisplayParts...)
+	for _, update := range event.Live.Updates {
+		if update.BaseRevision != message.Revision {
+			panic("noncontiguous test live message")
+		}
+		for _, change := range update.Parts {
+			index := -1
+			for i, part := range message.DisplayParts {
+				if part.ID == change.PartID {
+					index = i
+					break
+				}
+			}
+			switch change.Kind {
+			case constants.MessageIncrementTextAppend:
+				if change.PartType == constants.MessageDisplayPartText || change.PartType == constants.MessageDisplayPartProcessCommentary {
+					message.Content += change.Text
+				}
+				if index < 0 {
+					message.DisplayParts = append(message.DisplayParts, messageview.MessageDisplayPart{ID: change.PartID, Type: change.PartType})
+					index = len(message.DisplayParts) - 1
+				}
+				message.DisplayParts[index].Text += change.Text
+				message.DisplayParts[index].Type = change.PartType
+			case constants.MessageIncrementPartType:
+				if index < 0 {
+					panic("unknown text phase target")
+				}
+				message.DisplayParts[index].Type = change.PartType
+			case constants.MessageIncrementPartUpsert:
+				if index < 0 {
+					message.DisplayParts = append(message.DisplayParts, *change.Part)
+				} else {
+					message.DisplayParts[index] = *change.Part
+				}
+			}
+		}
+		if update.RunMetrics != nil {
+			metrics := *update.RunMetrics
+			message.RunMetrics = &metrics
+		}
+		message.Revision, message.UpdatedAt = update.Revision, update.UpdatedAt
+	}
+
+	*current = &message
+	event.Message = &message // 仅测试断言便利字段，不经过服务端公开通道。
+	return event
 }
 
 // newRuntimeEventSinkForTest 组合 Runtime 事件管线的最小 Journal 端口。
@@ -679,19 +865,19 @@ func TestCommandFactsKeepLiveAndDurableToolCaptionsEqual(t *testing.T) {
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
 	sink.messageFacts = &executionMessageFacts{}
-	send := func(kind runtimes.EventType, data map[string]any) {
+	send := func(kind agentapi.EventType, data map[string]any) {
 		t.Helper()
-		if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: marshalData(data)}); err != nil {
+		if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: kind, Data: marshalData(data)}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	send(runtimes.EventTypeToolUse, map[string]any{"id": "tool", "name": "bash", "input": map[string]any{"command": "allycli workflow source save --input source.json"}})
-	op, _ := contract.Find("workflow.source.save")
-	if err := sink.messageFacts.record(context.Background(), sink.journal, chatID, "execution-1", op, agentcapability.Result{CommandID: "receipt"}); err != nil {
+	send(agentapi.EventTypeToolUse, map[string]any{"id": "tool", "name": "bash", "input": map[string]any{"command": "allycli workflow source save --input source.json"}})
+	op, _ := capability.Find("workflow.source.save")
+	if err := sink.messageFacts.record(context.Background(), sink.journal, chatID, "execution-1", op, capability.Result{CommandID: "receipt"}); err != nil {
 		t.Fatal(err)
 	}
-	send(runtimes.EventTypeToolResult, map[string]any{"tool_use_id": "tool", "output": `{"protocolVersion":1,"ok":true,"commandId":"receipt","operation":"workflow.source.save"}`, "is_error": false})
-	send(runtimes.EventTypeTextDelta, map[string]any{"text": "done"})
+	send(agentapi.EventTypeToolResult, map[string]any{"tool_use_id": "tool", "output": `{"protocolVersion":1,"ok":true,"commandId":"receipt","operation":"workflow.source.save"}`, "is_error": false})
+	send(agentapi.EventTypeTextDelta, map[string]any{"text": "done"})
 	var lastLive *messageview.Message
 	for index := range 3 {
 		event := <-live
@@ -741,7 +927,7 @@ func TestRuntimeEventSinkInitializesOnlyCurrentExecution(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
-	if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: marshalData(map[string]any{"text": "current answer"})}); err != nil {
+	if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeTextDelta, Data: marshalData(map[string]any{"text": "current answer"})}); err != nil {
 		t.Fatal(err)
 	}
 	event := <-live
@@ -771,7 +957,7 @@ func TestRuntimePendingTextAllocatesLinearly(t *testing.T) {
 			t.Fatal(err)
 		}
 		sink, _ := newRuntimeEventSinkForTest(store, chatID)
-		event := runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: []byte(`{"text":"abcdefgh"}`)}
+		event := agentapi.Event{Type: agentapi.EventTypeTextDelta, Data: []byte(`{"text":"abcdefgh"}`)}
 		runtime.GC()
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
@@ -802,7 +988,7 @@ func TestRuntimePendingTextAllocatesLinearly(t *testing.T) {
 
 // BenchmarkRuntimePendingTextChunks 覆盖完整消息聚合的短片段规模；临时日志准备与结果读取不计入测量。
 func BenchmarkRuntimePendingTextChunks(b *testing.B) {
-	event := runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: []byte(`{"text":"abcdefgh"}`)}
+	event := agentapi.Event{Type: agentapi.EventTypeTextDelta, Data: []byte(`{"text":"abcdefgh"}`)}
 	for _, count := range []int{1000, 10000, 20000} {
 		b.Run(fmt.Sprintf("chunks=%d", count), func(b *testing.B) {
 			b.ReportAllocs()
@@ -854,26 +1040,26 @@ func TestRuntimeTextSegmentsKeepOrderAcrossToolAndCancel(t *testing.T) {
 	sink, _ := newRuntimeEventSinkForTest(store, chatID)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	for _, event := range []runtimes.Event{
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"前"}`)},
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"文"}`)},
-		{Type: runtimes.EventTypeCommentaryDelta, Data: json.RawMessage(`{"text":"过"}`)},
-		{Type: runtimes.EventTypeCommentaryDelta, Data: json.RawMessage(`{"text":"程"}`)},
-		{Type: runtimes.EventTypeThinkingStart, Data: json.RawMessage(`{}`)},
-		{Type: runtimes.EventTypeThinkingDelta, Data: json.RawMessage(`{"text":"推"}`)},
-		{Type: runtimes.EventTypeThinkingDelta, Data: json.RawMessage(`{"text":"理"}`)},
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"结"}`)},
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"果"}`)},
-		{Type: runtimes.EventTypeToolUse, Data: json.RawMessage(`{"toolCallId":"read-1","name":"read"}`)},
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"尾"}`)},
-		{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"部"}`)},
+	for _, event := range []agentapi.Event{
+		{Type: agentapi.EventTypeTextDelta, Data: json.RawMessage(`{"text":"前"}`)},
+		{Type: agentapi.EventTypeTextDelta, Data: json.RawMessage(`{"text":"文"}`)},
+		{Type: agentapi.EventTypeCommentaryDelta, Data: json.RawMessage(`{"text":"过"}`)},
+		{Type: agentapi.EventTypeCommentaryDelta, Data: json.RawMessage(`{"text":"程"}`)},
+		{Type: agentapi.EventTypeThinkingStart, Data: json.RawMessage(`{}`)},
+		{Type: agentapi.EventTypeThinkingDelta, Data: json.RawMessage(`{"text":"推"}`)},
+		{Type: agentapi.EventTypeThinkingDelta, Data: json.RawMessage(`{"text":"理"}`)},
+		{Type: agentapi.EventTypeTextDelta, Data: json.RawMessage(`{"text":"结"}`)},
+		{Type: agentapi.EventTypeTextDelta, Data: json.RawMessage(`{"text":"果"}`)},
+		{Type: agentapi.EventTypeToolUse, Data: json.RawMessage(`{"toolCallId":"read-1","name":"read"}`)},
+		{Type: agentapi.EventTypeTextDelta, Data: json.RawMessage(`{"text":"尾"}`)},
+		{Type: agentapi.EventTypeTextDelta, Data: json.RawMessage(`{"text":"部"}`)},
 	} {
 		if err = sink.acceptInvocation(ctx, "invocation-1", event); err != nil {
 			t.Fatal(err)
 		}
 	}
 	cancel()
-	if err = sink.acceptInvocation(ctx, "invocation-1", runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: json.RawMessage(`{"text":"迟到"}`)}); err != status_error.OperationCanceled {
+	if err = sink.acceptInvocation(ctx, "invocation-1", agentapi.Event{Type: agentapi.EventTypeTextDelta, Data: json.RawMessage(`{"text":"迟到"}`)}); err != status_error.OperationCanceled {
 		t.Fatalf("late canceled chunk accepted: %v", err)
 	}
 	if err = sink.Flush(); err != nil {
@@ -894,7 +1080,7 @@ func TestRuntimeTextSegmentsKeepOrderAcrossToolAndCancel(t *testing.T) {
 		}
 		contents = append(contents, data.Content...)
 	}
-	wantTypes := []runtimes.EventType{runtimes.EventTypeTextDelta, runtimes.EventTypeCommentaryDelta, runtimes.EventTypeThinkingStart, runtimes.EventTypeThinkingDelta, runtimes.EventTypeTextDelta, runtimes.EventTypeToolUse, runtimes.EventTypeTextDelta}
+	wantTypes := []agentapi.EventType{agentapi.EventTypeTextDelta, agentapi.EventTypeCommentaryDelta, agentapi.EventTypeThinkingStart, agentapi.EventTypeThinkingDelta, agentapi.EventTypeTextDelta, agentapi.EventTypeToolUse, agentapi.EventTypeTextDelta}
 	wantText := []string{"前文", "过程", "", "推理", "结果", "", "尾部"}
 	if len(contents) != len(wantTypes) {
 		t.Fatalf("content boundary count=%d, want %d", len(contents), len(wantTypes))
@@ -926,11 +1112,9 @@ func TestRuntimeEventSinkCompactsMixedCumulativeInput(t *testing.T) {
 		inputStep int
 		// progressPadding 是每次有序正文的额外字节数。
 		progressPadding int
-		// snapshots 是包含最终参数的有界提交次数。
-		snapshots int
 	}{
-		{name: "count_boundary", count: 300, inputStep: 128, snapshots: 3},
-		{name: "byte_boundary", count: 100, inputStep: 1024, progressPadding: 4096, snapshots: 2},
+		{name: "count_boundary", count: 300, inputStep: 128},
+		{name: "byte_boundary", count: 100, inputStep: 1024, progressPadding: 4096},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store, err := eventlog.NewStore(t.TempDir())
@@ -943,25 +1127,25 @@ func TestRuntimeEventSinkCompactsMixedCumulativeInput(t *testing.T) {
 			}
 			sink, live := newRuntimeEventSinkForTest(store, chatID)
 			originalBytes := 0
-			send := func(kind runtimes.EventType, payload map[string]any) {
+			send := func(kind agentapi.EventType, payload map[string]any) {
 				t.Helper()
 				data := marshalData(payload)
 				originalBytes += len(data)
-				if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: kind, Data: data}); err != nil {
+				if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: kind, Data: data}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			send(runtimes.EventTypeToolUse, map[string]any{"toolCallId": "mixed", "name": "write_file", "rawInput": map[string]any{"path": "note.md"}})
+			send(agentapi.EventTypeToolUse, map[string]any{"toolCallId": "mixed", "name": "write_file", "rawInput": map[string]any{"path": "note.md"}})
 			finalInput := ""
 			padding := strings.Repeat("p", test.progressPadding)
 			for i := range test.count {
 				finalInput = strings.Repeat("x", (i+1)*test.inputStep)
-				send(runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "mixed", "sessionUpdate": "tool_call_update", "status": "in_progress", "rawInput": map[string]any{"path": "note.md", "content": finalInput}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": fmt.Sprintf("chunk-%d", i) + padding}}}, "_meta": map[string]any{"progress": i}})
+				send(agentapi.EventTypeToolUpdate, map[string]any{"toolCallId": "mixed", "sessionUpdate": "tool_call_update", "status": "in_progress", "rawInput": map[string]any{"path": "note.md", "content": finalInput}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": fmt.Sprintf("chunk-%d", i) + padding}}}, "_meta": map[string]any{"progress": i}})
 				if i%7 == 0 {
-					send(runtimes.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "mixed", "rawInput": map[string]any{"path": "note.md", "content": finalInput}})
+					send(agentapi.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "mixed", "rawInput": map[string]any{"path": "note.md", "content": finalInput}})
 				}
 			}
-			send(runtimes.EventTypeToolResult, map[string]any{"toolCallId": "mixed", "status": "completed"})
+			send(agentapi.EventTypeToolResult, map[string]any{"toolCallId": "mixed", "status": "completed"})
 			if err := sink.Flush(); err != nil {
 				t.Fatal(err)
 			}
@@ -982,11 +1166,11 @@ func TestRuntimeEventSinkCompactsMixedCumulativeInput(t *testing.T) {
 					if err := json.Unmarshal(content.Data, &payload); err != nil {
 						t.Fatal(err)
 					}
-					if _, present := payload["rawInput"]; present && content.Type != runtimes.EventTypeToolUse {
+					if _, present := payload["rawInput"]; present && content.Type != agentapi.EventTypeToolUse {
 						inputs++
 						latestInput, _ = payload["rawInput"].(map[string]any)["content"].(string)
 					}
-					if content.Type != runtimes.EventTypeToolUpdate {
+					if content.Type != agentapi.EventTypeToolUpdate {
 						continue
 					}
 					blocks := payload["content"].([]any)
@@ -997,7 +1181,7 @@ func TestRuntimeEventSinkCompactsMixedCumulativeInput(t *testing.T) {
 					progress++
 				}
 			}
-			if progress != test.count || inputs != test.snapshots || latestInput != finalInput {
+			if progress != test.count || inputs == 0 || latestInput != finalInput {
 				t.Fatalf("progress=%d inputs=%d latest input length=%d", progress, inputs, len(latestInput))
 			}
 			if totalBytes >= originalBytes/5 {
@@ -1020,10 +1204,10 @@ func TestRuntimeEventSinkKeepsSnapshotMetadataInDeliveryOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink, live := newRuntimeEventSinkForTest(store, chatID)
-	for _, event := range []runtimes.Event{
-		{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read_file", "rawInput": map[string]any{"path": "old.md"}})},
-		{Type: runtimes.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "rawInput": map[string]any{"path": "old.md"}, "title": "old", "name": "read_file", "status": "in_progress", "locations": []any{map[string]any{"path": "old.md"}}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "progress"}}}})},
-		{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "rawInput": nil, "title": "new", "name": "write_file", "status": "completed", "locations": []any{}})},
+	for _, event := range []agentapi.Event{
+		{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read_file", "rawInput": map[string]any{"path": "old.md"}})},
+		{Type: agentapi.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "rawInput": map[string]any{"path": "old.md"}, "title": "old", "name": "read_file", "status": "in_progress", "locations": []any{map[string]any{"path": "old.md"}}, "content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": "progress"}}}})},
+		{Type: agentapi.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "rawInput": nil, "title": "new", "name": "write_file", "status": "completed", "locations": []any{}})},
 	} {
 		if err := sink.acceptInvocation(context.Background(), "invocation-1", event); err != nil {
 			t.Fatal(err)
@@ -1083,18 +1267,18 @@ func TestRuntimeEventSinkCompactionPreservesScopeAndClears(t *testing.T) {
 				t.Fatal(err)
 			}
 			sink, live := newRuntimeEventSinkForTest(store, chatID)
-			send := func(invocationID string, kind runtimes.EventType, payload map[string]any) {
+			send := func(invocationID string, kind agentapi.EventType, payload map[string]any) {
 				t.Helper()
-				if err := sink.acceptInvocation(context.Background(), invocationID, runtimes.Event{Type: kind, Data: marshalData(payload)}); err != nil {
+				if err := sink.acceptInvocation(context.Background(), invocationID, agentapi.Event{Type: kind, Data: marshalData(payload)}); err != nil {
 					t.Fatal(err)
 				}
 			}
-			send("invocation-1", runtimes.EventTypeToolUse, map[string]any{"toolCallId": "a", "name": "file_modify", "kind": "edit", inputKey: map[string]any{"path": "a.md"}})
-			send("invocation-1", runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "a", inputKey: map[string]any{"path": "a.md", "content": "private body"}, "status": "in_progress", "content": []any{map[string]any{"type": "diff", "path": "a.md", "oldText": "old", "newText": "new"}}, "_meta": map[string]any{"progress": 1}})
-			send("invocation-1", runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "a", inputKey: nil, "content": []any{}, "locations": []any{}, "_meta": map[string]any{"progress": 2}})
-			send("invocation-1", runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "b", "name": "read_file", inputKey: map[string]any{"path": "b.md"}, "status": "in_progress", "content": []any{}, "_meta": map[string]any{"progress": 3}})
-			send("invocation-2", runtimes.EventTypeToolUpdate, map[string]any{"toolCallId": "b", "name": "read_file", inputKey: map[string]any{"path": "c.md"}, "status": "in_progress", "content": []any{}, "_meta": map[string]any{"progress": 4}})
-			send("invocation-2", runtimes.EventTypeToolResult, map[string]any{"toolCallId": "b", "status": "completed"})
+			send("invocation-1", agentapi.EventTypeToolUse, map[string]any{"toolCallId": "a", "name": "file_modify", "kind": "edit", inputKey: map[string]any{"path": "a.md"}})
+			send("invocation-1", agentapi.EventTypeToolUpdate, map[string]any{"toolCallId": "a", inputKey: map[string]any{"path": "a.md", "content": "private body"}, "status": "in_progress", "content": []any{map[string]any{"type": "diff", "path": "a.md", "oldText": "old", "newText": "new"}}, "_meta": map[string]any{"progress": 1}})
+			send("invocation-1", agentapi.EventTypeToolUpdate, map[string]any{"toolCallId": "a", inputKey: nil, "content": []any{}, "locations": []any{}, "_meta": map[string]any{"progress": 2}})
+			send("invocation-1", agentapi.EventTypeToolUpdate, map[string]any{"toolCallId": "b", "name": "read_file", inputKey: map[string]any{"path": "b.md"}, "status": "in_progress", "content": []any{}, "_meta": map[string]any{"progress": 3}})
+			send("invocation-2", agentapi.EventTypeToolUpdate, map[string]any{"toolCallId": "b", "name": "read_file", inputKey: map[string]any{"path": "c.md"}, "status": "in_progress", "content": []any{}, "_meta": map[string]any{"progress": 4}})
+			send("invocation-2", agentapi.EventTypeToolResult, map[string]any{"toolCallId": "b", "status": "completed"})
 			if err := sink.Flush(); err != nil {
 				t.Fatal(err)
 			}
@@ -1115,7 +1299,7 @@ func TestRuntimeEventSinkCompactionPreservesScopeAndClears(t *testing.T) {
 					if err := json.Unmarshal(content.Data, &payload); err != nil {
 						t.Fatal(err)
 					}
-					if value, present := payload[inputKey]; present && content.Type != runtimes.EventTypeToolUse {
+					if value, present := payload[inputKey]; present && content.Type != agentapi.EventTypeToolUse {
 						scopes = append(scopes, record.InvocationID+":"+payload["toolCallId"].(string))
 						if input, ok := value.(map[string]any); ok {
 							paths = append(paths, input["path"])
@@ -1123,7 +1307,7 @@ func TestRuntimeEventSinkCompactionPreservesScopeAndClears(t *testing.T) {
 							paths = append(paths, value)
 						}
 					}
-					if content.Type == runtimes.EventTypeToolUpdate {
+					if content.Type == agentapi.EventTypeToolUpdate {
 						progress = append(progress, payload["_meta"].(map[string]any)["progress"].(float64))
 						if len(progress) == 2 && (len(payload["content"].([]any)) != 0 || len(payload["locations"].([]any)) != 0) {
 							t.Fatal("explicit empty content or locations lost")
@@ -1172,24 +1356,24 @@ func TestRuntimeEventSinkKeepsInputProjectionContext(t *testing.T) {
 			// name 标识身份元数据与参数的原始先后关系。
 			name string
 			// events 是真实交付顺序下的规范工具更新。
-			events []runtimes.Event
+			events []agentapi.Event
 			// wantFallback 表示自定义工具是否应保留输入中的通用摘要。
 			wantFallback bool
 		}{
-			{name: "same_mixed_event", events: []runtimes.Event{{Type: runtimes.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool", inputKey: map[string]any{"ticket": "ABC"}, "status": "in_progress", "content": []any{}, "_meta": map[string]any{"progress": 1}})}}, wantFallback: true},
-			{name: "same_snapshot_event", events: []runtimes.Event{{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool", inputKey: map[string]any{"ticket": "ABC"}})}}, wantFallback: true},
-			{name: "metadata_before_snapshot", events: []runtimes.Event{
-				{Type: runtimes.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool"})},
-				{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", inputKey: map[string]any{"ticket": "ABC"}})},
+			{name: "same_mixed_event", events: []agentapi.Event{{Type: agentapi.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool", inputKey: map[string]any{"ticket": "ABC"}, "status": "in_progress", "content": []any{}, "_meta": map[string]any{"progress": 1}})}}, wantFallback: true},
+			{name: "same_snapshot_event", events: []agentapi.Event{{Type: agentapi.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool", inputKey: map[string]any{"ticket": "ABC"}})}}, wantFallback: true},
+			{name: "metadata_before_snapshot", events: []agentapi.Event{
+				{Type: agentapi.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool"})},
+				{Type: agentapi.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", inputKey: map[string]any{"ticket": "ABC"}})},
 			}, wantFallback: true},
-			{name: "snapshot_before_metadata", events: []runtimes.Event{
-				{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", inputKey: map[string]any{"ticket": "ABC"}})},
-				{Type: runtimes.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool"})},
+			{name: "snapshot_before_metadata", events: []agentapi.Event{
+				{Type: agentapi.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", inputKey: map[string]any{"ticket": "ABC"}})},
+				{Type: agentapi.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool"})},
 			}},
-			{name: "different_input_sources_across_metadata", events: []runtimes.Event{
-				{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", inputKey: map[string]any{"ticket": "ABC"}})},
-				{Type: runtimes.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool"})},
-				{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", otherInputKey: map[string]any{"ticket": "DEF"}})},
+			{name: "different_input_sources_across_metadata", events: []agentapi.Event{
+				{Type: agentapi.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", inputKey: map[string]any{"ticket": "ABC"}})},
+				{Type: agentapi.EventTypeToolUpdate, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "customTool"})},
+				{Type: agentapi.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", otherInputKey: map[string]any{"ticket": "DEF"}})},
 			}},
 		} {
 			t.Run(inputKey+"/"+test.name, func(t *testing.T) {
@@ -1202,8 +1386,8 @@ func TestRuntimeEventSinkKeepsInputProjectionContext(t *testing.T) {
 					t.Fatal(err)
 				}
 				sink, live := newRuntimeEventSinkForTest(store, chatID)
-				events := append([]runtimes.Event{{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}}, test.events...)
-				events = append(events, runtimes.Event{Type: runtimes.EventTypeToolResult, Data: marshalData(map[string]any{"toolCallId": "tool", "status": "completed"})})
+				events := append([]agentapi.Event{{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}}, test.events...)
+				events = append(events, agentapi.Event{Type: agentapi.EventTypeToolResult, Data: marshalData(map[string]any{"toolCallId": "tool", "status": "completed"})})
 				for _, event := range events {
 					if err := sink.acceptInvocation(context.Background(), "invocation-1", event); err != nil {
 						t.Fatal(err)

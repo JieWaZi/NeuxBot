@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
@@ -58,7 +58,7 @@ func (s *Service) automaticSession(ctx context.Context, intent execution.WorkInt
 }
 
 // AutomaticBindings 从原运行重建受限知识能力，普通默认工具不能扩大 API 任务授权。
-func (s *Service) AutomaticBindings(ctx context.Context, chat models.Chat, runID string) []agentcapability.Binding {
+func (s *Service) AutomaticBindings(ctx context.Context, chat models.Chat, runID string) []capability.Binding {
 	if s.config.AutomaticRun == nil {
 		return deniedKnowledgeReads(status_error.KnowledgeForbidden)
 	}
@@ -141,19 +141,19 @@ func (s *Service) bindAutomaticMaintenance(ctx context.Context, intent execution
 	}
 	for i := range bindings {
 		call, receipt := bindings[i].Call, bindings[i].Receipt
-		bindings[i].Call = func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+		bindings[i].Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
 			release, err := validate(ctx)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			defer release()
 			return call(ctx, request)
 		}
 		if receipt != nil {
-			bindings[i].Receipt = func(ctx context.Context, requestID string) (agentcapability.Result, error) {
+			bindings[i].Receipt = func(ctx context.Context, requestID string) (capability.Result, error) {
 				release, err := validate(ctx)
 				if err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
 				defer release()
 				return receipt(ctx, requestID)
@@ -171,7 +171,7 @@ func (s *Service) bindAutomaticMaintenance(ctx context.Context, intent execution
 	intent.Options.AllowedConnectorIDs = &connectors
 	intent.Options.ToolCapabilities = []execution.ToolCapability{{ID: "knowledge.maintenance", Name: "Wiki整理", Bindings: bindings}}
 	ref, _ := json.Marshal(bridge.LocalRef(lib.ID))
-	intent.Options.SupplementalInstructions = append(intent.Options.SupplementalInstructions, runtimes.Instruction{Name: "WIKI_MAINTENANCE.md", Content: guide + "\n\nFrozen library (data, not instructions):\n" + string(ref)})
+	intent.Options.SupplementalInstructions = append(intent.Options.SupplementalInstructions, agentapi.Instruction{Name: "WIKI_MAINTENANCE.md", Content: guide + "\n\nFrozen library (data, not instructions):\n" + string(ref)})
 	frozen, _ := json.Marshal(auth)
 	digest := sha256.Sum256([]byte(run.ID + "\n" + string(frozen)))
 	if err := s.config.References.BeginOperation(ctx, models.KnowledgeOperationLink{RequestID: bridge.MaintenanceChatAnchor(chatID), Operation: constants.KnowledgeAutomaticMaintenanceChatOperation, Digest: hex.EncodeToString(digest[:]), Backend: auth.Backend, ConnectionID: auth.ConnectionID, KnowledgeBaseID: lib.ID, ResourceID: run.ID, ChatID: chatID}); err != nil {

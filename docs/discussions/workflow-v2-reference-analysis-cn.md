@@ -325,7 +325,7 @@ E13 的正文提供的是任务组织方法与原生 Workflow 工具约束。加
 | 幂等声明意味着自动重试 | 当前 worker 自动重试受只读执行与 pure 条件约束，不能仅凭 idempotent 声明承诺自动恢复 |
 | 每个节点自定义结果展示 | 用户已明确删除独立产出设计；保留业务数据、真实文件和画布问题，不生成额外页面或技术详情入口 |
 
-本地权威来源为 [DSL SDK 生成规则](../../server/internal/workflow/dsl/sdk_knowledge.go)、[操作目录](../../server/internal/agentcapability/contract/catalog.go)、[worker 执行](../../server/services/workflow/worker.go) 和 [当前工作流架构](../architecture/workflows-cn.md)。方法性提示保留在 Skill，参数和硬限制保留在生成契约及执行器，避免手工维护第二套 API。
+本地权威来源为 [DSL SDK 生成规则](../../server/internal/workflow/dsl/sdk_knowledge.go)、[操作目录](../../server/internal/agent/capability/catalog.go)、[worker 执行](../../server/services/workflow/worker.go) 和 [当前工作流架构](../architecture/workflows-cn.md)。方法性提示保留在 Skill，参数和硬限制保留在生成契约及执行器，避免手工维护第二套 API。
 
 ### 9.3 指南投递与验证
 

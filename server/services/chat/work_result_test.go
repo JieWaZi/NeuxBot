@@ -176,3 +176,57 @@ func TestFailedRoundPublishesReadableErrorAsUnreadResult(t *testing.T) {
 		t.Fatalf("失败结果必须精确定位原失败消息: %+v", receipt)
 	}
 }
+
+func TestFileResultReferenceRequiresVisibleCardButEmptyReadyKeepsBodyVersion(t *testing.T) {
+	for _, test := range []struct {
+		// name 标识实际文件交付或可见采集状态。
+		name string
+		// state 是独立采集状态。
+		state string
+		// files 是实际净变更数量。
+		files int
+		// visible 表示该结果必须通过文件卡片确认阅读。
+		visible bool
+	}{{"pending", "pending", 0, false}, {"no_changes", "ready", 0, false}, {"files", "ready", 2, true}, {"partial", "partial", 0, true}, {"unavailable", "unavailable", 0, true}, {"incomplete", "incomplete", 0, true}} {
+		t.Run(test.name, func(t *testing.T) {
+			store, err := eventlog.NewStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			chatID, executionID := util.New(), util.New()
+			inputs := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: util.New(), WorkspaceDirectory: "/workspace"})}}
+			inputs = append(inputs, workResultRound(executionID, constants.RuntimeEventTypeTextDelta, "unchanged final answer")...)
+			records, err := store.Create(chatID, inputs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			terminal := records[len(records)-1]
+			version := 2
+			if test.state == "pending" {
+				version = 1
+			}
+			added, err := store.Append(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeFileChanges, MessageID: executionID, ExecutionID: executionID, Data: marshalData(eventlog.FileChangesData{RecordID: "exact-file-record", Version: version, State: test.state, TotalFiles: test.files})}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt, err := resultFromRecords(append(records, added...), executionID)
+			if err != nil || receipt == nil {
+				t.Fatalf("readable result missing: %+v %v", receipt, err)
+			}
+			wantVersion := terminal.Sequence
+			if test.visible {
+				wantVersion = added[0].Sequence
+			}
+			if receipt.LatestVersion != wantVersion {
+				t.Fatalf("file presentation advanced wrong result version: %+v", receipt)
+			}
+			if test.visible {
+				if receipt.Reference.FileChangeRecordID != "exact-file-record" || receipt.Reference.FileChangeRecordVersion != version {
+					t.Fatalf("file identity missing: %+v", receipt.Reference)
+				}
+			} else if receipt.Reference.FileChangeRecordID != "" || receipt.Reference.FileChangeRecordVersion != 0 {
+				t.Fatalf("invisible state blocked body reading: %+v", receipt.Reference)
+			}
+		})
+	}
+}

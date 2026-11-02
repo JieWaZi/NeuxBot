@@ -92,13 +92,20 @@ func TestWatchFileAndRootDirectoryCancellation(t *testing.T) {
 		t.Fatal(ready)
 	}
 	os.WriteFile(filepath.Join(root, "note.txt"), []byte("changed"), 0600)
-	select {
-	case event := <-events:
-		if event.Sequence <= 1 || event.Resource == nil || event.Resource.Version == ready.Resource.Version {
-			t.Fatal(event)
+waitForChange:
+	for {
+		select {
+		case event := <-events:
+			if event.State == "recovering" {
+				continue
+			}
+			if event.Sequence <= 1 || event.Resource == nil || event.Resource.Version == ready.Resource.Version {
+				t.Fatal(event)
+			}
+			break waitForChange
+		case <-time.After(3 * time.Second):
+			t.Fatal("missing file event")
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("missing file event")
 	}
 	_, events2, close2, e := m.Watch(ctx, "web:one", s.ID, "", "", true)
 	if e != nil {
@@ -236,15 +243,22 @@ func TestWatchSlowConsumerReceivesLatestSnapshotWithoutFalseRecovery(t *testing.
 		t.Fatal(err)
 	}
 	defer stop()
-	if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte("first"), 0600); err != nil {
-		t.Fatal(err)
+	// 原子发布隔离写入中间态，本用例只验证消费背压不会产生恢复事件。
+	write := func(content string) {
+		t.Helper()
+		temporary := filepath.Join(root, "next.txt")
+		if err := os.WriteFile(temporary, []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(temporary, filepath.Join(root, "note.txt")); err != nil {
+			t.Fatal(err)
+		}
 	}
+	write("first")
 	// 暂停消费，让监听只积压一个失效信号，而不是逐次快照。
 	time.Sleep(50 * time.Millisecond)
 	for index := range 20 {
-		if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte(fmt.Sprintf("latest-%d", index)), 0600); err != nil {
-			t.Fatal(err)
-		}
+		write(fmt.Sprintf("latest-%d", index))
 	}
 	expected, _, err := m.Read("web:one", scope.ID, "", "note.txt")
 	if err != nil {
@@ -265,6 +279,58 @@ func TestWatchSlowConsumerReceivesLatestSnapshotWithoutFalseRecovery(t *testing.
 			}
 		case <-deadline.C:
 			t.Fatal("未读到最后一次文件变化的快照")
+		}
+	}
+}
+
+// TestWatchKeepsSubscriptionDuringConcurrentWrites 验证写入期间的不一致快照不会永久关闭观察。
+func TestWatchKeepsSubscriptionDuringConcurrentWrites(t *testing.T) {
+	m, scope, root := fixture(t)
+	target := filepath.Join(root, "note.txt")
+	content := make([]byte, 1024*1024)
+	if err := os.WriteFile(target, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, events, stop, err := m.Watch(ctx, "web:one", scope.ID, "note.txt", "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	writing := make(chan error, 1)
+	go func() {
+		deadline := time.Now().Add(300 * time.Millisecond)
+		for time.Now().Before(deadline) {
+			if err := os.WriteFile(target, content, 0600); err != nil {
+				writing <- err
+				return
+			}
+		}
+		writing <- os.WriteFile(target, []byte("stable final content"), 0600)
+	}()
+	// 失败路径也先等待写入退出，避免临时目录清理与测试协程竞争。
+	defer func() {
+		if writing != nil {
+			<-writing
+		}
+	}()
+	for {
+		select {
+		case err := <-writing:
+			writing = nil
+			if err != nil {
+				t.Fatal(err)
+			}
+		case event, ok := <-events:
+			if !ok || event.State == "failed" {
+				t.Fatalf("concurrent write stopped observation: %+v", event)
+			}
+			if event.Resource != nil && event.Resource.Size == int64(len("stable final content")) {
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal("final stable snapshot was not delivered")
 		}
 	}
 }

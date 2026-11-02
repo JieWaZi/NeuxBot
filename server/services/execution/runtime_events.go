@@ -9,16 +9,18 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	eventstream "github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 const (
 	runtimeToolUpdateBatchSize  = 128
 	runtimeToolUpdateBatchBytes = 256 * 1024
-	runtimeLiveSnapshotInterval = 16 * time.Millisecond
+	runtimeLiveBatchInterval    = 12 * time.Millisecond
+	runtimeLiveCheckpointBytes  = 128 * 1024
+	runtimeLiveCheckpointEvents = 256
 )
 
 // pendingRuntimeMessage 保存尚未到达完整消息边界的 Assistant 内容。
@@ -28,7 +30,7 @@ type pendingRuntimeMessage struct {
 	// content 保存已经结束的规范内容段，当前连续文本只在语义边界编码一次。
 	content []eventlog.RuntimeMessageContent
 	// textType 是当前连续文本段的规范类型；空值表示没有待编码文本。
-	textType runtimes.EventType
+	textType agentapi.EventType
 	// text 是当前连续文本的唯一可编辑缓冲，追加不解码或复制已有全文。
 	text strings.Builder
 	// messageRevision 是整条消息应用后的实时展示修订号。
@@ -83,7 +85,7 @@ func (pending *pendingRuntimeMessage) finishText() error {
 type runtimeEventSink struct {
 	// messageFacts 提供本执行已持久化但尚未投影的交互与命令事实。
 	messageFacts *executionMessageFacts
-	// journal 提交完整消息事实并发布 transient 快照。
+	// journal 提交完整消息事实并发布 transient 增量。
 	journal chatservice.Journal
 	// chatID 是事件所属对话标识。
 	chatID string
@@ -95,11 +97,15 @@ type runtimeEventSink struct {
 	liveAdapter *eventstream.LiveAdapter
 	// liveTimer 只在有未公开变化时安排一次窗口交付，由 Flush 或语义边界释放。
 	liveTimer *time.Timer
-	// livePending 表示唯一实时状态比已公开快照更新，不缓存另一份消息副本。
+	// livePending 表示唯一实时状态比已公开增量更新，不缓存另一份消息副本。
 	livePending bool
-	// liveGeneration 使已开始等待锁的旧定时回调失效，防止终态之后补发旧快照。
+	// liveGeneration 使已开始等待锁的旧定时回调失效，防止终态之后补发旧增量。
 	liveGeneration uint64
-	// publishedRevision 是已公开消息的修订号，未改变消息的交互事实不重复物化整条快照。
+	// liveCheckpointBytes 统计上次完整消息段提交后新增的字节，限制恢复后缀。
+	liveCheckpointBytes int
+	// liveCheckpointEvents 限制尚未被完整消息段覆盖的输入数量。
+	liveCheckpointEvents int
+	// publishedRevision 是已公开安全增量覆盖的消息修订号。
 	publishedRevision int64
 	// pending 保存尚未遇到工具或 Invocation 边界的 Assistant 内容。
 	pending *pendingRuntimeMessage
@@ -118,7 +124,7 @@ type runtimeEventSink struct {
 func (s *runtimeEventSink) acceptInvocation(
 	ctx context.Context,
 	invocationID string,
-	event runtimes.Event,
+	event agentapi.Event,
 ) error {
 	if err := runtimeDeliveryContextError(ctx); err != nil {
 		return err
@@ -142,16 +148,16 @@ func runtimeDeliveryContextError(ctx context.Context) error {
 	return status_error.OperationCanceled
 }
 
-// acceptLocked 按 Runtime 交付顺序更新实时状态与完整消息，并在显示窗口或语义边界发布快照。
+// acceptLocked 按 Runtime 交付顺序更新实时状态与完整消息，并在显示窗口或语义边界发布增量。
 func (s *runtimeEventSink) acceptLocked(
 	invocationID string,
-	event runtimes.Event,
+	event agentapi.Event,
 ) error {
 	if s.failure != nil {
 		return s.failure
 	}
 	// 深拷贝 Runtime 载荷，避免调用方复用缓冲区破坏实时视图或待提交批次。
-	cloned := runtimes.Event{
+	cloned := agentapi.Event{
 		Type: event.Type,
 		Data: append([]byte(nil), event.Data...),
 	}
@@ -166,34 +172,52 @@ func (s *runtimeEventSink) acceptLocked(
 		return err
 	}
 	s.messageRevision = revision
-	// 高频变化先进入唯一状态，在交付窗口才复制与广播整条消息；工具边界立即交付。
+	s.liveCheckpointBytes += len(cloned.Data)
+	s.liveCheckpointEvents++
+	// 高频变化先进入唯一状态，在交付窗口才打包与广播新增变化；工具边界立即交付。
 	if err := s.publishOrScheduleLiveLocked(cloned.Type); err != nil {
 		return err
 	}
 	switch cloned.Type {
-	case runtimes.EventTypeUsage:
+	case agentapi.EventTypeUsage:
 		// Usage 可能由 Runtime 高频覆盖报告；只保留最后一次并在执行终态写入一次。
 		s.usage = append(json.RawMessage(nil), cloned.Data...)
 		return nil
-	case runtimes.EventTypeTextDelta,
-		runtimes.EventTypeCommentaryDelta,
-		runtimes.EventTypeThinkingStart,
-		runtimes.EventTypeThinkingDelta:
+	case agentapi.EventTypeTextDelta,
+		agentapi.EventTypeCommentaryDelta,
+		agentapi.EventTypeThinkingStart,
+		agentapi.EventTypeThinkingDelta:
 		if err := s.flushToolLocked(); err != nil {
 			return err
 		}
-		return s.appendAssistantContentLocked(invocationID, cloned, revision)
-	case runtimes.EventTypeToolUse:
+		if err := s.appendAssistantContentLocked(invocationID, cloned, revision); err != nil {
+			return err
+		}
+		// 预算边界结束当前完整内容段，JSONL 不保存原始 token。
+		if s.liveCheckpointBytes >= runtimeLiveCheckpointBytes || s.liveCheckpointEvents >= runtimeLiveCheckpointEvents {
+			if err := s.publishLiveBatchLocked(); err != nil {
+				return err
+			}
+			return s.flushLocked()
+		}
+		return nil
+	case agentapi.EventTypeToolUse:
 		if err := s.flushLocked(); err != nil {
 			return err
 		}
 		return s.commitMessageLocked(constants.ChatEventTypeAssistantMessage, invocationID,
 			[]eventlog.RuntimeMessageContent{runtimeMessageContent(cloned)}, revision)
-	case runtimes.EventTypeToolInputSnapshot:
-		return s.acceptToolInputSnapshotLocked(invocationID, cloned, revision)
-	case runtimes.EventTypeToolUpdate:
-		return s.appendToolUpdateLocked(invocationID, cloned, revision)
-	case runtimes.EventTypeToolResult:
+	case agentapi.EventTypeToolInputSnapshot:
+		if err := s.acceptToolInputSnapshotLocked(invocationID, cloned, revision); err != nil {
+			return err
+		}
+		return s.checkpointLiveBudgetLocked()
+	case agentapi.EventTypeToolUpdate:
+		if err := s.appendToolUpdateLocked(invocationID, cloned, revision); err != nil {
+			return err
+		}
+		return s.checkpointLiveBudgetLocked()
+	case agentapi.EventTypeToolResult:
 		if err := s.flushLocked(); err != nil {
 			return err
 		}
@@ -209,18 +233,32 @@ func (s *runtimeEventSink) acceptLocked(
 	}
 }
 
-// publishOrScheduleLiveLocked 将实时物化频率限制在显示窗口，原始内容仍逐条归并与持久化。
-func (s *runtimeEventSink) publishOrScheduleLiveLocked(kind runtimes.EventType) error {
+// checkpointLiveBudgetLocked 完成当前有界消息段，使新订阅者可从耐久基线恢复全部后缀。
+func (s *runtimeEventSink) checkpointLiveBudgetLocked() error {
+	if s.liveCheckpointBytes < runtimeLiveCheckpointBytes && s.liveCheckpointEvents < runtimeLiveCheckpointEvents {
+		return nil
+	}
+	if err := s.publishLiveBatchLocked(); err != nil {
+		return err
+	}
+	return s.flushLocked()
+}
+
+// publishOrScheduleLiveLocked 将实时打包频率限制在显示窗口，原始内容仍逐条归并与持久化。
+func (s *runtimeEventSink) publishOrScheduleLiveLocked(kind agentapi.EventType) error {
+	if s.liveAdapter.PendingCount() >= 128 {
+		return s.publishLiveBatchLocked()
+	}
 	switch kind {
-	case runtimes.EventTypeTextDelta, runtimes.EventTypeCommentaryDelta, runtimes.EventTypeThinkingDelta,
-		runtimes.EventTypeToolInputSnapshot, runtimes.EventTypeToolUpdate, runtimes.EventTypeUsage:
+	case agentapi.EventTypeTextDelta, agentapi.EventTypeCommentaryDelta, agentapi.EventTypeThinkingDelta,
+		agentapi.EventTypeToolInputSnapshot, agentapi.EventTypeToolUpdate, agentapi.EventTypeUsage:
 		if s.livePending {
 			return nil
 		}
 		s.livePending = true
 		s.liveGeneration++
 		generation := s.liveGeneration
-		s.liveTimer = time.AfterFunc(runtimeLiveSnapshotInterval, func() {
+		s.liveTimer = time.AfterFunc(runtimeLiveBatchInterval, func() {
 			s.mutex.Lock()
 			defer s.mutex.Unlock()
 			if generation != s.liveGeneration || !s.livePending || s.failure != nil {
@@ -233,31 +271,36 @@ func (s *runtimeEventSink) publishOrScheduleLiveLocked(kind runtimes.EventType) 
 		return nil
 	default:
 		// 入口已在 ApplyState 前追平事实；不能在新事件与前段提交之间再次改变修订号。
-		return s.publishLiveSnapshotLocked()
+		return s.publishLiveBatchLocked()
 	}
 }
 
-// publishLiveLocked 在消费者可见边界生成当前快照，transient 不推进 JSONL 游标。
+// publishLiveLocked 在消费者可见边界交付当前增量，transient 不推进 JSONL 游标。
 func (s *runtimeEventSink) publishLiveLocked() error {
 	s.stopLiveTimerLocked()
 	if _, err := s.consumeMessageFactsLocked(); err != nil {
 		return err
 	}
-	return s.publishLiveSnapshotLocked()
+	return s.publishLiveBatchLocked()
 }
 
-// publishLiveSnapshotLocked 物化当前已折叠状态，不在 Runtime 应用与消息提交之间插入外部事实。
-func (s *runtimeEventSink) publishLiveSnapshotLocked() error {
+// publishLiveBatchLocked 交付当前尚未发布的有序增量，不在 Runtime 应用与消息提交之间插入外部事实。
+func (s *runtimeEventSink) publishLiveBatchLocked() error {
 	s.stopLiveTimerLocked()
 	if s.liveAdapter.MessageRevision() <= s.publishedRevision {
 		return nil
 	}
-	event, err := s.liveAdapter.Snapshot()
-	if err != nil {
-		return err
+	for s.liveAdapter.PendingCount() > 0 {
+		event, err := s.liveAdapter.Drain()
+		if err != nil {
+			return err
+		}
+		if event.Live == nil {
+			break
+		}
+		s.journal.PublishLive(s.chatID, event)
+		s.publishedRevision = event.Live.Revision
 	}
-	s.journal.PublishLive(s.chatID, event)
-	s.publishedRevision = event.Message.Revision
 	return nil
 }
 
@@ -298,7 +341,7 @@ func (s *runtimeEventSink) scheduleMessageFacts() {
 	if s.liveAdapter == nil || s.failure != nil || !s.messageFacts.hasPending() {
 		return
 	}
-	if err := s.publishOrScheduleLiveLocked(runtimes.EventTypeToolUpdate); err != nil {
+	if err := s.publishLiveLocked(); err != nil {
 		s.failure = err
 	}
 }
@@ -314,7 +357,7 @@ func (s *runtimeEventSink) stopLiveTimerLocked() {
 }
 
 // acceptToolInputSnapshotLocked 仅聚合 Runtime 已归一化的累计参数；工具正文与输出另走完整消息边界。
-func (s *runtimeEventSink) acceptToolInputSnapshotLocked(invocationID string, event runtimes.Event, revision int64) error {
+func (s *runtimeEventSink) acceptToolInputSnapshotLocked(invocationID string, event agentapi.Event, revision int64) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(event.Data, &fields); err != nil {
 		return status_error.RuntimeProtocolIncompatible
@@ -326,7 +369,7 @@ func (s *runtimeEventSink) acceptToolInputSnapshotLocked(invocationID string, ev
 }
 
 // appendToolUpdateLocked 批量保存同一工具的有序正文和执行进度，不把它们当参数快照覆盖。
-func (s *runtimeEventSink) appendToolUpdateLocked(invocationID string, event runtimes.Event, revision int64) error {
+func (s *runtimeEventSink) appendToolUpdateLocked(invocationID string, event agentapi.Event, revision int64) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(event.Data, &fields); err != nil {
 		return status_error.RuntimeProtocolIncompatible
@@ -335,13 +378,8 @@ func (s *runtimeEventSink) appendToolUpdateLocked(invocationID string, event run
 }
 
 // appendToolFieldsLocked 仅覆盖参数字段，其余快照字段与工具进度一起按原始顺序提交。
-func (s *runtimeEventSink) appendToolFieldsLocked(invocationID string, event runtimes.Event, revision int64, fields map[string]json.RawMessage) error {
-	toolID := ""
-	for _, key := range []string{"id", "tool_use_id", "toolCallId", "tool_call_id", "call_id"} {
-		if json.Unmarshal(fields[key], &toolID) == nil && toolID != "" {
-			break
-		}
-	}
+func (s *runtimeEventSink) appendToolFieldsLocked(invocationID string, event agentapi.Event, revision int64, fields map[string]json.RawMessage) error {
+	toolID := runtimeToolID(fields)
 	if s.pending != nil || s.pendingTool != nil && (s.pendingTool.toolID != toolID || s.pendingTool.invocationID != invocationID) {
 		if err := s.flushLocked(); err != nil {
 			return err
@@ -375,7 +413,7 @@ func (s *runtimeEventSink) appendToolFieldsLocked(invocationID string, event run
 		progress.Data = data
 	}
 	// 纯参数快照只需保留最新输入；名称、状态、位置和扩展字段保持原始交付顺序。
-	keepProgress := event.Type != runtimes.EventTypeToolInputSnapshot || inputFields == nil
+	keepProgress := event.Type != agentapi.EventTypeToolInputSnapshot || inputFields == nil
 	for key := range fields {
 		switch key {
 		case "id", "tool_use_id", "toolCallId", "tool_call_id", "call_id":
@@ -389,6 +427,7 @@ func (s *runtimeEventSink) appendToolFieldsLocked(invocationID string, event run
 		for _, input := range s.pendingTool.inputs {
 			for key := range inputFields {
 				if key != "toolCallId" {
+					s.liveCheckpointBytes = max(0, s.liveCheckpointBytes-len(input.fields[key]))
 					delete(input.fields, key)
 				}
 			}
@@ -410,6 +449,12 @@ func (s *runtimeEventSink) appendToolFieldsLocked(invocationID string, event run
 		return s.flushToolLocked()
 	}
 	return nil
+}
+
+func runtimeToolID(fields map[string]json.RawMessage) string {
+	var id string
+	_ = json.Unmarshal(fields["toolCallId"], &id)
+	return id
 }
 
 // flushToolLocked 提交最新工具参数或有序进度批次；开始事实已经独立持久化。
@@ -446,7 +491,7 @@ func (s *runtimeEventSink) flushToolLocked() error {
 				if err != nil {
 					return status_error.RuntimeEventEncodingFailed
 				}
-				content = append(content, eventlog.RuntimeMessageContent{Type: runtimes.EventTypeToolInputSnapshot, Data: data})
+				content = append(content, eventlog.RuntimeMessageContent{Type: agentapi.EventTypeToolInputSnapshot, Data: data})
 			}
 			inputIndex++
 		}
@@ -462,7 +507,7 @@ func (s *runtimeEventSink) flushToolLocked() error {
 // appendAssistantContentLocked 将相邻同类文本合并进当前完整 Assistant 消息。
 func (s *runtimeEventSink) appendAssistantContentLocked(
 	invocationID string,
-	event runtimes.Event,
+	event agentapi.Event,
 	messageRevision int64,
 ) error {
 	if s.pending != nil && s.pending.invocationID != invocationID {
@@ -501,17 +546,17 @@ func (s *runtimeEventSink) appendAssistantContentLocked(
 	return nil
 }
 
-func runtimeMessageContent(event runtimes.Event) eventlog.RuntimeMessageContent {
+func runtimeMessageContent(event agentapi.Event) eventlog.RuntimeMessageContent {
 	return eventlog.RuntimeMessageContent{
 		Type: event.Type,
 		Data: append(json.RawMessage(nil), event.Data...),
 	}
 }
 
-func isMergeableRuntimeText(eventType runtimes.EventType) bool {
-	return eventType == runtimes.EventTypeTextDelta ||
-		eventType == runtimes.EventTypeCommentaryDelta ||
-		eventType == runtimes.EventTypeThinkingDelta
+func isMergeableRuntimeText(eventType agentapi.EventType) bool {
+	return eventType == agentapi.EventTypeTextDelta ||
+		eventType == agentapi.EventTypeCommentaryDelta ||
+		eventType == agentapi.EventTypeThinkingDelta
 }
 
 func (s *runtimeEventSink) ensureLiveAdapterLocked() error {
@@ -596,6 +641,8 @@ func (s *runtimeEventSink) commitMessageLocked(
 		s.failure = err
 		return err
 	}
+	s.liveCheckpointBytes = 0
+	s.liveCheckpointEvents = 0
 	return nil
 }
 

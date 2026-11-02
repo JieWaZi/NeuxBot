@@ -10,10 +10,7 @@ import {
   listWorkBoardQueryKey,
 } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
-import {
-  deleteWorkflowRunMutation,
-  refreshWorkflow,
-} from "../api/workflow-queries";
+import { deleteWorkflowRunMutation } from "../api/workflow-queries";
 import { runTime } from "../model/run-presentation";
 import type { WorkflowRun } from "../model/types";
 
@@ -44,7 +41,6 @@ export function RunDeleteDialog({
       onDeleted(run.id);
       onClose();
       await Promise.all([
-        refreshWorkflow(client, id),
         client.invalidateQueries({ queryKey: listWorkBoardQueryKey() }),
         client.invalidateQueries({ queryKey: getWorkBoardSummaryQueryKey() }),
       ]);

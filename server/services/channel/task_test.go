@@ -13,6 +13,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
@@ -112,6 +113,20 @@ func (f *postTurnChatFake) GetChatSummary(
 	return f.summaries[chatID], nil
 }
 
+// ReadExecutionMessages 返回本轮完整终态消息，其他回合不参与补偿。
+func (f *postTurnChatFake) ReadExecutionMessages(_ context.Context, chatID, executionID string) ([]messageview.Message, error) {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+	event := f.terminalEvents[chatID]
+	if chatID == f.leadChatID {
+		event = f.leadTerminal
+	}
+	if event.Message == nil || event.Message.ExecutionID != executionID {
+		return nil, nil
+	}
+	return []messageview.Message{*event.Message}, nil
+}
+
 // SubscribeEvents 为负责人返回终态 backlog，为成员监听返回等待关闭的空事件流。
 func (f *postTurnChatFake) SubscribeEvents(
 	ctx context.Context,
@@ -155,6 +170,20 @@ func (f *postTurnChatFake) SubscribeEvents(
 		close(events)
 	}()
 	return chatservice.Subscription{Events: events, Close: func() {}}, nil
+}
+
+// SubscribeExecutionEvents 以原有替身的订阅故障和终态事实提供窄生命周期事件。
+func (f *postTurnChatFake) SubscribeExecutionEvents(ctx context.Context, chatID, executionID string) (chatservice.Subscription, error) {
+	subscription, err := f.SubscribeEvents(ctx, chatID, 9005)
+	if err != nil {
+		return subscription, err
+	}
+	for index, event := range subscription.Backlog {
+		if event.Message != nil {
+			subscription.Backlog[index] = chatservice.PublicEvent{ExecutionID: event.Message.ExecutionID, ExecutionStatus: event.Message.Status, ErrorCode: event.Message.ErrorCode, ErrorMessage: event.Message.ErrorMessage}
+		}
+	}
+	return subscription, nil
 }
 
 // postTurnExecutionFake 记录负责人回合结束后实际派发到成员 Chat 的工作。
@@ -1161,5 +1190,63 @@ func TestPostTurnExecutionFakeCancel(t *testing.T) {
 	}
 	if fake.cancelCount() != 1 || fake.canceledChats[0] != "lead-chat" {
 		t.Fatalf("取消请求未记录: %v", fake.canceledChats)
+	}
+}
+
+func TestExecutionObservationHotReadBudgetIgnoresLongPublicHistory(t *testing.T) {
+	measure := func(prefix int) float64 {
+		fixture := newDeletionFixture(t)
+		root := t.TempDir()
+		store, err := eventlog.NewStore(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		marshal := func(value interface{}) json.RawMessage {
+			data, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return data
+		}
+		records := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshal(eventlog.ChatCreatedData{WorkspaceDirectory: t.TempDir()})}}
+		for index := 0; index <= prefix; index++ {
+			id := fmt.Sprintf("round-%d", index)
+			records = append(records,
+				eventlog.AppendInput{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user-" + id, Data: marshal(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Actor: string(constants.ChannelMessageActorUser), Content: strings.Repeat("historical input ", 128)})},
+				eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: id, Data: marshal(eventlog.ExecutionCreatedData{UserMessageID: "user-" + id})},
+				eventlog.AppendInput{Type: constants.ChatEventTypeAssistantMessage, ExecutionID: id, Data: marshal(eventlog.RuntimeMessageData{MessageRevision: 1, Content: []eventlog.RuntimeMessageContent{{Type: "text_delta", Data: marshal(map[string]interface{}{"text": strings.Repeat("historical result ", 128)})}}})},
+				eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: id, Data: marshal(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})})
+		}
+		chatID := "91919191919191919191919191919191"
+		if _, err := store.Create(chatID, records); err != nil {
+			t.Fatal(err)
+		}
+		module, err := chatservice.New(chatservice.Config{StorageDirectory: root, Projects: controllers.NewProjectController(fixture.db), QueryIndexes: chatservice.QueryIndexDependencies{Chats: controllers.NewChatController(fixture.db), RuntimeSessions: controllers.NewRuntimeSessionController(fixture.db), DeletionIntents: controllers.NewChatDeletionIntentController(fixture.db), Transactions: fixture.service.transactions}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixture.service.chats = module
+		target := fmt.Sprintf("round-%d", prefix)
+		// 首次恢复可重建索引；计量只覆盖索引健康后的真实订阅与准确终态补偿。
+		warm, err := fixture.service.chats.SubscribeExecutionEvents(context.Background(), chatID, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		warm.Close()
+		return testing.AllocsPerRun(2, func() {
+			subscription, err := fixture.service.chats.SubscribeExecutionEvents(context.Background(), chatID, target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer subscription.Close()
+			if len(subscription.Backlog) != 1 || subscription.Backlog[0].ExecutionID != target || subscription.Backlog[0].Message != nil {
+				t.Fatalf("historical public snapshots materialized: backlog=%d", len(subscription.Backlog))
+			}
+		})
+	}
+	small, large := measure(8), measure(256)
+	t.Logf("hot observation allocations: 8 prior rounds=%.0f, 256 prior rounds=%.0f", small, large)
+	if large > small*3 {
+		t.Fatalf("public history replay grows with prior rounds: %.0f -> %.0f", small, large)
 	}
 }

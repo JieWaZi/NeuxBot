@@ -4,6 +4,8 @@
 
 业务 SQLite 保存伙伴、项目、账号、资源、团队和工作流等配置及状态；Chat JSONL 保存完整消息事实；memory.db 保存长期记忆与向量、关键词索引。生成视图、文件索引与查询投影不作为第二份权威内容。
 
+Chat 的固定文件索引定位原日志范围；业务 SQLite 中的 `chat_execution_locations` 和覆盖游标只建立原 Chat/执行/提交身份到日志序号的查询关系，不保存执行状态、正文、配置或结果。精确状态查询回到这些位置读取原事实，正常缺失身份不遍历完整日志或固定索引。定位覆盖落后只追平原日志尾部；缺失、截短或损坏按原日志恢复，删除 Chat 时一起清理定位投影。
+
 普通 Chat 的日志与工作区由 internal/chatstorage 布局管理。项目真实目录属于用户，受管工作区通过 projects 入口引用它们。工作范围在首次接纳时冻结，目录失效会阻止继续执行，不静默改绑。
 
 ## 存储目录
@@ -27,6 +29,11 @@
 
 目录按当前布局直接读写，不执行旧目录迁移或旧名称回退。用户选择的真实项目目录与智能体自行管理的原生目录保留原位置。
 
+Chat 日志目录内的 `log/file-results/<chat-id>/changes/` 保存该 Chat 独有的文件成果记录、私有 Git 对象与有界差异计划。普通与团队 Chat 通过同一日志归属定位；不写用户仓库的 index、refs 或对象目录。分叉只复制引用记录所需内容，删除原 Chat 或团队聚合时同时清理其自有结果目录。
+
+采集使用仓库及祖先 `.gitignore`、有界 `.git/info/exclude` 和调用方显式排除；已跟踪文件遵循 Git 的跟踪语义。非 Git 范围应用目录内同类规则。为隔离宿主配置，不读取全局/系统 Git 配置，也不跟随本地配置 include 或 `core.excludesFile`；额外应用或用户忽略须显式传入，不声称已经导入宿主全局忽略列表。
+
+
 ## 工作流目录
 
 工作流内部文件只使用 `workflow-workspaces/<workflow-id>/`。`scripts/` 保存草稿与从不可变版本物化的脚本，`state/` 保存跨运行配置和状态，`cache/` 保存缓存，`tmp/` 保存验证、进程和接纳前输入的临时文件，`runs/<run-id>/` 隔离每次运行的默认业务文件。冻结输入位于该工作流根内的 `workflow-inputs/<run-id>/`。目录由宿主创建并限制私有权限，内部软链接不能把这些目录改绑到根外。源码和版本 Bundle 仍是权威，磁盘脚本副本不能覆盖版本内容。
@@ -36,7 +43,6 @@
 脚本与 Python 函数的进程工作目录为 `runs/<run-id>/`；宿主注入 `ALLY_WORKFLOW_ROOT`、`ALLY_WORKFLOW_SCRIPTS_DIR`、`ALLY_WORKFLOW_STATE_DIR`、`ALLY_WORKFLOW_CACHE_DIR`、`ALLY_WORKFLOW_TEMP_DIR`、`ALLY_WORKFLOW_RUN_DIR`，并固定 `TMPDIR`、`TMP`、`TEMP` 与 `XDG_CACHE_HOME`。动作不得通过环境配置覆盖保留目录变量。该机制约束宿主布局并给脚本明确存储契约；受信本地 Python 的任意绝对路径访问仍由实际 Runtime/平台权限管理。
 
 业务成果默认放本次 `runDirectory`。运行文件的相对引用只按所属运行的 `runDirectory` 解析，再校验目录授权；缺失时不查找业务目录或工作流根下的同名文件。子流程参数按父运行解析，子流程成果按子运行解析；CLI 文件输入仍按 CLI 的当前目录冻结。用户明确选择的知识同步目录、报告目录等仍属于业务输出范围；这一选择不会移动脚本、缓存和辅助状态。文件结果只允许该工作流内部根或已批准的业务范围，其他目录不能仅凭路径字符串获得权限。此布局直接用于新执行，不增加历史路径回退或迁移。
-
 ## 团队目录
 
 团队对话拥有一个 thread 聚合目录。projects 保存共享项目入口；负责人使用 workspace/leader，其他成员使用 workspace/members/<waker-id>。各成员拥有独立 Runtime cwd、指令、资源和 Chat 日志身份。

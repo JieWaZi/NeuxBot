@@ -515,3 +515,53 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+## DeepSeek Harness Markdown、消息呈现与工作区快照
+
+适用范围：`packages/frontend/src/shared/markdown/` 的解析、增量块缓存、直接 mdast 渲染、KaTeX、语言懒加载、流式高亮和可视区域控制，以及对应测试；聊天稳定节点和发布调度、`server/internal/chat/changes/` 工作区快照的设计与行为适配。来源固定为 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness/tree/ce7073d51254c26cd63b22a60835b8f948deb447/packages/client/ui-primitives/src/markdown) commit `ce7073d51254c26cd63b22a60835b8f948deb447`。
+
+移植对应关系：
+
+| 上游文件                                                                                                     | 本地文件                      | 适配                                                                                              |
+| ------------------------------------------------------------------------------------------------------------ | ----------------------------- | ------------------------------------------------------------------------------------------------- |
+| `parse.ts`、`incremental.ts`、`cjkFriendlyStrong.ts`、`mathCompatibility.ts`、`windows-path-destinations.ts` | 同名文件                      | 保留语法、冻结边界、未闭合围栏及非追加失效                                                        |
+| `local-image-syntax.ts`                                                                                      | 同名文件                      | 只保留本地图像语法恢复，文件类型识别改为本地扩展名集合                                            |
+| `MarkdownText.tsx`、`render.tsx`                                                                             | 同名文件                      | 宿主注入现有链接、表格、Mermaid 与授权图片；移除 Cordis/专属 UI 和网络图片默认加载，禁用原始 HTML |
+| `katex.tsx`                                                                                                  | 同名文件                      | 保留不可信公式解析；异常使用现有语义错误色                                                        |
+| `highlight.ts`、`CodeBlock.tsx`、`useViewportHighlighting.ts`                                                | 同名文件                      | 保留 Shiki 3.23.0；使用现有编辑器语义 Token、共享 Button/i18n；仅可视块启动高亮，无模块预热计时器 |
+| `tests/markdown-incremental.client.spec.tsx`                                                                 | `incremental.test.tsx`        | 保留追加、冻结、语法尾部预算、替换和数学/脚注收尾回归                                             |
+| `tests/highlight-viewport.client.spec.tsx`                                                                   | `highlight-viewport.test.tsx` | 保留代码可视区域、懒加载及 observer 释放；不移植无本地消费者的 ReadBlock 用例                     |
+
+`MarkdownText.module.css` 的六级标题、嵌套列表、相对行内代码及按列数选择表格宽度的排版规则适配到 `modules/chat/components/chat-message-content.tsx`、`chat-table.tsx` 和现有语义 Token；没有导入上游品牌配色或样式平台。本地图片经 `shared/workspace/workspace-markdown-image.tsx` 复用当前授权读取和精确文件观察，普通网页链接保留修饰点击原生行为。
+
+`useViewportHighlighting.ts` 的单文档 observer 另提取到 `packages/frontend/src/shared/lib/viewport-activation.ts`，由 Markdown 高亮与独立成果卡片共用；`shared/lib/content-visibility.ts` 只表达当前 Scene 是否可见，隐藏时暂停计算和摘要读取。提取没有增加业务状态或第二个 observer 所有者。
+
+聊天节点的稳定身份、dirty 部件及所属组更新、不同频率发布策略参考同一 commit 的 `packages/client/ui-conversation/src/client/conversation/assembly.ts` 与 `assembler.ts`。本地 `packages/frontend/src/modules/chat/components/chat-message-nodes.ts` 按当前 canonical 消息与连续 live 部件变更建立可丢弃投影；`packages/frontend/src/modules/chat/runtime/chat-event-batcher.ts` 在既有唯一消息消费者中采用本地单帧合并策略，不引入 Cordis、注册框架或第二份持久历史。
+
+Go 工作区快照参考同一 commit 的 `packages/deliverables/workspace-changes/src/{git.ts,capture.ts,compare.ts,recorder.ts,paths.ts,numstat.ts,types.ts,index.ts}`，本地归属于 `server/internal/chat/changes/{changes.go,snapshot.go,diff.go,retention.go,open_unix.go,open_other.go}` 及对应测试。这是设计与行为的 Go 适配，不是 TypeScript 逐行翻译：采用私有 Git index/object/tree、不可变前后净变化与内容身份和预算；raw blob fast-import pack、`os.Root`/不跟随符号链接的安全读取、非 Git 影子仓库、冻结多根和子模块排除、Chat 记录持久恢复与选择性分叉、有界 LCS 及持久 hunks 为本地适配。该模块没有复制额外第三方声明，也没有因此新增 Go 依赖。
+
+代码及测试保留以下 MIT 许可。Shiki、micromark/mdast 与 KaTeX 使用原有发布包，不复制其第三方语法或字体源码；既有静态 Streamdown 消费者继续使用原依赖。
+
+```text
+MIT License
+
+Copyright (c) 2026 DeepSeek
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```

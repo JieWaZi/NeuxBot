@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  displayFilePath,
+  fileReferenceLabel,
   localFileURL,
   parseReference,
   referenceHref,
@@ -88,27 +88,16 @@ describe("统一文件引用语法", () => {
   });
 });
 describe("真实路径展示", () => {
-  it("项目根目录展示真实目录名，同名来源保留完整路径", () => {
-    expect(displayFilePath("/work/share", ["/work/share"])).toBe("share");
-    expect(displayFilePath("/work/share", ["/work/share", "/work/other"])).toBe(
-      "share",
-    );
-    expect(
-      displayFilePath("/work/share", ["/work/share", "/other/share"]),
-    ).toBe("/work/share");
-  });
-  it("相对项目展示，多来源明确区分，无法相对化保留真实完整路径", () => {
-    expect(displayFilePath("/work/share/src/a.txt", ["/work/share"])).toBe(
-      "src/a.txt",
-    );
-    expect(
-      displayFilePath("/work/share/src/a.txt", ["/work/share", "/work/other"]),
-    ).toBe("share/src/a.txt");
-    expect(
-      displayFilePath("/work/share/src/a.txt", ["/work/share", "/other/share"]),
-    ).toBe("/work/share/src/a.txt");
-    expect(displayFilePath("/outside/a.txt", ["/work/share"])).toBe(
-      "/outside/a.txt",
-    );
+  it("作者标签原样保留，空标签展示完整路径，长路径不清空", () => {
+    const canonicalPath = "/work/" + "nested/".repeat(30) + "main.ts";
+    const file = {
+      canonicalPath,
+      displayPath: canonicalPath,
+      name: "main.ts",
+      rootPath: "/work",
+      path: "main.ts",
+    };
+    expect(fileReferenceLabel(file)).toBe(canonicalPath);
+    expect(fileReferenceLabel(file, "作者指定的名字")).toBe("作者指定的名字");
   });
 });

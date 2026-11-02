@@ -6,12 +6,12 @@ import {
 import {
   AttachmentPrimitive,
   ComposerPrimitive,
-  MessagePrimitive,
   useAui,
   useAuiState,
 } from "@assistant-ui/react";
 import { X } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { AllyChatMessage } from "../runtime/chat-projection";
 import type { AllyPathFile } from "../runtime/chat-attachment-adapter";
 import {
   chatComposerReferenceChipClass,
@@ -122,41 +122,38 @@ export function ChatComposerAttachments({
   );
 }
 
-function ChatMessageAttachmentChip({
-  onOpenFile,
-}: {
-  onOpenFile?: (file: ChatFileOpenRequest) => void;
-}) {
-  const attachment = useAuiState((state) => state.attachment);
-  const path =
-    attachment.content?.find((part) => part.type === "file")?.data ?? "";
-  return (
-    <AttachmentPrimitive.Root className={chatMessageReferenceChipClass}>
-      {onOpenFile && path ? (
-        <button
-          type="button"
-          className="max-w-40 truncate text-left"
-          onClick={() => onOpenFile({ name: attachment.name, path })}
-        >
-          <AttachmentPrimitive.Name />
-        </button>
-      ) : (
-        <span className="max-w-40 truncate">
-          <AttachmentPrimitive.Name />
-        </span>
-      )}
-    </AttachmentPrimitive.Root>
-  );
-}
-
+/** 消息附件直接读取接纳时的引用；composer 仍复用 assistant-ui 附件适配器。 */
 export function ChatMessageAttachments({
+  attachments = [],
   onOpenFile,
 }: {
+  attachments?: NonNullable<AllyChatMessage["attachments"]>;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
 }) {
   return (
-    <MessagePrimitive.Attachments>
-      {() => <ChatMessageAttachmentChip onOpenFile={onOpenFile} />}
-    </MessagePrimitive.Attachments>
+    <>
+      {attachments.map((attachment, index) => {
+        const path = attachment.path ?? "";
+        const name = attachment.name ?? path;
+        return (
+          <span
+            key={`${path}:${index}`}
+            className={chatMessageReferenceChipClass}
+          >
+            {onOpenFile && path ? (
+              <button
+                type="button"
+                className="max-w-40 truncate text-left"
+                onClick={() => onOpenFile({ name, path })}
+              >
+                {name}
+              </button>
+            ) : (
+              <span className="max-w-40 truncate">{name}</span>
+            )}
+          </span>
+        );
+      })}
+    </>
   );
 }

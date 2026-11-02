@@ -1,6 +1,8 @@
 import type {
   GithubComJieWaZiNeuxBotServerConstantsExecutionStatus as ExecutionStatus,
   GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage as ChatMessage,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageDisplayPart as MessageDisplayPart,
+  GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageRunMetrics as MessageRunMetrics,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsChannelEvent as ChannelEvent,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEvent as WorkflowEvent,
   GithubComJieWaZiNeuxBotServerServicesChatPublicApprovalRequest as ApprovalRequest,
@@ -15,7 +17,6 @@ import {
   type GlobalEventResource,
   type GlobalEventTopic,
 } from "./global-events";
-import { getApiConnection } from "./runtime";
 import { logger } from "@/shared/diagnostics/logger";
 
 export type StreamState =
@@ -28,6 +29,11 @@ export type ChatEvent = {
   recordedAt?: number;
   type?: string;
   message?: ChatMessage;
+  live?: ChatLiveFrame;
+  fileChanges?: {
+    messageId: string;
+    record: NonNullable<ChatMessage["fileChangeRecord"]>;
+  };
   approvalRequest?: ApprovalRequest;
   approvalResolution?: ApprovalResolution;
   elicitationRequest?: ElicitationRequest;
@@ -37,10 +43,36 @@ export type ChatEvent = {
   errorMessage?: string;
 };
 
+/** 临时流顺序与持久游标分别校验；只有规范安全展示字段可以进入 Renderer。 */
+export type ChatLiveFrame = {
+  generation: string;
+  sequence: number;
+  messageId: string;
+  executionId: string;
+  baseRevision: number;
+  revision: number;
+  updates: ChatMessageIncrement[];
+};
+
+export type ChatMessageIncrement = {
+  baseRevision: number;
+  revision: number;
+  invocationId?: string;
+  updatedAt: number;
+  parts?: {
+    kind: "text_append" | "part_type" | "part_upsert";
+    partId: string;
+    partType?: MessageDisplayPart["type"];
+    text?: string;
+    part?: MessageDisplayPart;
+  }[];
+  runMetrics?: MessageRunMetrics;
+};
+
 type ChatSubscribeOptions = {
   after?: number;
   onEvent: (event: ChatEvent) => void;
-  onGap?: (expected: number, received: number) => void;
+  reconcileCursor: (signal: AbortSignal) => Promise<number | undefined>;
   onReconnect?: () => void;
   onUnavailable?: () => void;
   onState?: (state: StreamState) => void;
@@ -90,8 +122,79 @@ function isChatEvent(value: unknown): value is ChatEvent {
     isRecord(value) &&
     (value.sequence === undefined || Number.isSafeInteger(value.sequence)) &&
     (value.transient === undefined || typeof value.transient === "boolean") &&
-    (value.type === undefined || typeof value.type === "string")
+    (value.type === undefined || typeof value.type === "string") &&
+    (value.live === undefined || isChatLiveFrame(value.live)) &&
+    (value.fileChanges === undefined ||
+      (isRecord(value.fileChanges) &&
+        typeof value.fileChanges.messageId === "string" &&
+        value.fileChanges.messageId.length > 0 &&
+        isRecord(value.fileChanges.record) &&
+        typeof value.fileChanges.record.recordId === "string" &&
+        value.fileChanges.record.recordId.length > 0 &&
+        Number.isSafeInteger(value.fileChanges.record.version) &&
+        Number(value.fileChanges.record.version) > 0 &&
+        ["pending", "ready", "partial", "unavailable", "incomplete"].includes(
+          String(value.fileChanges.record.state),
+        )))
   );
+}
+
+export function isChatLiveFrame(value: unknown): value is ChatLiveFrame {
+  if (
+    !isRecord(value) ||
+    typeof value.generation !== "string" ||
+    !value.generation ||
+    typeof value.messageId !== "string" ||
+    !value.messageId ||
+    typeof value.executionId !== "string" ||
+    !value.executionId ||
+    !Number.isSafeInteger(value.sequence) ||
+    Number(value.sequence) < 1 ||
+    !Number.isSafeInteger(value.baseRevision) ||
+    !Number.isSafeInteger(value.revision) ||
+    !Array.isArray(value.updates) ||
+    value.updates.length === 0
+  )
+    return false;
+  if (
+    Number(value.baseRevision) < 0 ||
+    Number(value.revision) <= Number(value.baseRevision)
+  )
+    return false;
+  let expected = value.baseRevision;
+  const valid = value.updates.every(
+    (update) =>
+      isRecord(update) &&
+      Number.isSafeInteger(update.baseRevision) &&
+      Number.isSafeInteger(update.revision) &&
+      update.baseRevision === expected &&
+      (expected = Number(update.revision)) > Number(update.baseRevision) &&
+      typeof update.updatedAt === "number" &&
+      Number.isFinite(update.updatedAt) &&
+      (update.runMetrics === undefined || isRecord(update.runMetrics)) &&
+      (update.parts === undefined ||
+        (Array.isArray(update.parts) &&
+          update.parts.every(
+            (part) =>
+              isRecord(part) &&
+              typeof part.partId === "string" &&
+              part.partId.length > 0 &&
+              ((part.kind === "text_append" &&
+                typeof part.text === "string" &&
+                ["text", "reasoning", "process_commentary"].includes(
+                  String(part.partType),
+                )) ||
+                (part.kind === "part_type" &&
+                  ["text", "reasoning", "process_commentary"].includes(
+                    String(part.partType),
+                  )) ||
+                (part.kind === "part_upsert" &&
+                  isRecord(part.part) &&
+                  part.part.id === part.partId &&
+                  part.part.type === "tool")),
+          ))),
+  );
+  return valid && expected === value.revision;
 }
 function isChannelEvent(value: unknown): value is ChannelEvent {
   return (
@@ -110,16 +213,6 @@ function isWorkflowEvent(value: unknown): value is WorkflowEvent {
     (value.payload === undefined || isRecord(value.payload))
   );
 }
-function chatEventsFromPayload(payload: unknown): ChatEvent[] {
-  if (
-    !isRecord(payload) ||
-    !Array.isArray(payload.resources) ||
-    !payload.resources.every(isChatEvent)
-  )
-    throw new Error("Chat 事件历史响应格式无效");
-  return payload.resources;
-}
-
 /** 传输共享，领域消费各自保留权威游标与恢复过程，transient 不推进持久游标。 */
 function subscribeDomain<Event extends SequencedEvent>(
   options: SharedSubscribeOptions<Event>,
@@ -300,23 +393,6 @@ export function subscribeChat(
     resource: { kind: "chat", id: chatId },
     contiguous: true,
     validate: isChatEvent,
-    loadHistory: async (after, signal) => {
-      if (typeof after !== "number") return [];
-      const connection = getApiConnection();
-      const response = await fetch(
-        `${connection.baseUrl}/api/v1/chats/${encodeURIComponent(chatId)}/events/history?after=${after}`,
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${connection.token}`,
-          },
-          signal,
-        },
-      );
-      if (!response.ok)
-        throw new Error(`Chat 事件历史对账失败（${response.status}）`);
-      return chatEventsFromPayload(await response.json());
-    },
   });
 }
 export function subscribeChannel(

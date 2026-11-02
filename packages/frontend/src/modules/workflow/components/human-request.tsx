@@ -2,7 +2,7 @@ import { humanAnswerLabel } from "../model/human-answer";
 import { WorkflowResult } from "./instance-details";
 import { Input } from "@/shared/ui/input";
 import { notificationPresentationProps } from "@/shared/api/notification-presentation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -20,10 +20,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/ui/select";
-import {
-  answerWorkflowHumanMutation,
-  getWorkflowRunQueryKey,
-} from "../api/workflow-queries";
+import { answerWorkflowHumanMutation } from "../api/workflow-queries";
 import { record, jsonText, type HumanRequest } from "../model/types";
 import { ReadOnlyMarkdown } from "@/modules/chat";
 import {
@@ -44,7 +41,6 @@ export function HumanRequestCard({
   onAnswered?: () => void;
 }) {
   const { t, i18n } = useTranslation("workflow");
-  const client = useQueryClient();
   const options = human.options ?? {};
   const choices = Array.isArray(options.choices)
     ? options.choices.flatMap((item) => {
@@ -121,9 +117,6 @@ export function HumanRequestCard({
         },
       });
       onAnswered?.();
-      await client.invalidateQueries({
-        queryKey: getWorkflowRunQueryKey({ path: { id, runId } }),
-      });
     } catch {
       /* Mutation owns local error and preserves the draft. */
     }

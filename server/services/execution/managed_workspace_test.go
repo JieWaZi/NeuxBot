@@ -1,6 +1,8 @@
 package execution
 
 import (
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,7 +13,6 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -20,7 +21,7 @@ func TestFirstSendWithoutDirectoryCreatesPerChatWorkspaceAndContinuationKeepsIt(
 	runtime := &fakeRuntime{}
 	manager := newMessageTestService(t, t.TempDir(), runtime)
 	ctx := context.Background()
-	input := testMessageInput{ClientRequestID: "managed-first", NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "使用会话临时目录"}, Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex}}
+	input := testMessageInput{ClientRequestID: "managed-first", NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "使用会话临时目录"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}}
 	first, err := manager.sendTestMessage(ctx, input)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +95,7 @@ func TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope(t *testing.T) {
 				}
 				create.ProjectID, create.WorkingDirectory = project.ID, ""
 			}
-			intent := WorkIntent{ClientRequestID: "host-scope", Chat: ChatTarget{Create: create}, Input: WorkInput{Actor: "user", Content: "处理业务资料"}, Options: WorkOptions{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+			intent := WorkIntent{ClientRequestID: "host-scope", Chat: ChatTarget{Create: create}, Input: WorkInput{Actor: "user", Content: "处理业务资料"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 			accepted, err := manager.execution.Start(ctx, intent)
 			if err != nil {
 				t.Fatal(err)

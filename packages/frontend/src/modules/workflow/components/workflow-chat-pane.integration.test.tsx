@@ -1,5 +1,12 @@
+import { getChatQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
@@ -492,6 +499,11 @@ it.each([
           id: "session-1",
           chatId: "first-chat",
           acceptedExecutionId: "real-execution",
+          chat: {
+            id: "first-chat",
+            activeExecutionId: "real-execution",
+            latestSequence: 3,
+          },
           execution: {
             id: "real-execution",
             userMessageId: "real-user",
@@ -785,4 +797,269 @@ it("阶段引用位于输入正文内部，删除后仅发送仍可见的引用"
     { revisionId: "revision", kind: "phase", id: "review" },
   ]);
   client.clear();
+});
+
+it("已有创作接纳直接交付完整聊天快照，不补读详情或刷新版本运行目录", async () => {
+  let detailReads = 0;
+  server.use(
+    http.get(`${api}/chats/snapshot-chat`, () => {
+      detailReads++;
+      return HttpResponse.json({
+        chat: { id: "snapshot-chat", latestSequence: 1 },
+      });
+    }),
+    http.get(`${api}/chats/snapshot-chat/messages`, () =>
+      HttpResponse.json({ resources: [], latestSequence: 1 }),
+    ),
+    http.post(`${api}/workflows/flow/creation/messages`, () =>
+      HttpResponse.json({
+        id: "session",
+        chatId: "snapshot-chat",
+        acceptedExecutionId: "accepted",
+        chat: {
+          id: "snapshot-chat",
+          latestSequence: 7,
+          activeExecutionId: "accepted",
+        },
+        execution: {
+          id: "accepted",
+          userMessageId: "input",
+          status: "running",
+        },
+      }),
+    ),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const invalidation = vi.spyOn(queryClient, "invalidateQueries");
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <WorkbenchProvider>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter>
+              <WorkflowChatPane
+                id="flow"
+                session={{
+                  id: "session",
+                  chatId: "snapshot-chat",
+                  defaults: { runtimeId: "codex" },
+                }}
+                onNewChat={() => {}}
+                mainContent={{
+                  contentId: "canvas",
+                  title: "画布",
+                  content: <div>画布</div>,
+                }}
+              />
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </WorkbenchProvider>
+    </QueryClientProvider>,
+  );
+  const input = screen.getByRole("textbox", { name: /输入消息/ });
+  const user = userEvent.setup();
+  await user.type(input, "解释当前流程");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /^发送消息$/ })).toBeEnabled(),
+  );
+  await user.keyboard("{Enter}");
+  await waitFor(() =>
+    expect(
+      queryClient.getQueryData(
+        getChatQueryKey({ path: { chatId: "snapshot-chat" } }),
+      ),
+    ).toMatchObject({
+      chat: { latestSequence: 7, activeExecutionId: "accepted" },
+    }),
+  );
+  expect(detailReads).toBe(1);
+  expect(
+    invalidation.mock.calls.some(([filter]) =>
+      (JSON.stringify(filter?.queryKey) ?? "").includes("Workflow"),
+    ),
+  ).toBe(false);
+  view.unmount();
+  queryClient.clear();
+});
+
+it("旧请求接纳后保留用户新选择的阶段引用", async () => {
+  const bodies: unknown[] = [];
+  const onAccepted = vi.fn();
+  let release!: () => void;
+  const accepted = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.post(
+      `${api}/workflows/flow-late/creation/messages`,
+      async ({ request }) => {
+        bodies.push(await request.json());
+        await accepted;
+        return HttpResponse.json({
+          id: "session-late",
+          chatId: "chat-late",
+          acceptedExecutionId: "execution-late",
+          chat: { id: "chat-late", activeExecutionId: "execution-late" },
+          execution: { id: "execution-late", status: "running" },
+        });
+      },
+    ),
+  );
+  function Content() {
+    const [reference, setReference] = useState("A");
+    return (
+      <>
+        <button onClick={() => setReference("B")}>改选阶段 B</button>
+        <WorkflowChatPane
+          id="flow-late"
+          draft="修改所选阶段"
+          onNewChat={() => {}}
+          onSession={onAccepted}
+          canvasReferences={
+            reference
+              ? [{ revisionId: "revision", kind: "phase", id: reference }]
+              : []
+          }
+          canvasReferenceLabels={{ "phase:A": "阶段 A", "phase:B": "阶段 B" }}
+          onCanvasReferencesSent={() => setReference("")}
+          mainContent={{
+            contentId: "canvas-late",
+            title: "画布",
+            content: <div>流程</div>,
+          }}
+        />
+      </>
+    );
+  }
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <WorkbenchProvider>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter>
+              <Content />
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </WorkbenchProvider>
+    </QueryClientProvider>,
+  );
+  const user = userEvent.setup();
+  const send = await screen.findByRole("button", { name: "发送消息" });
+  await waitFor(() => expect(send).toBeEnabled());
+  await user.click(send);
+  await waitFor(() => expect(bodies).toHaveLength(1));
+  await user.click(screen.getByRole("button", { name: "改选阶段 B" }));
+  expect(screen.getByText("阶段 B")).toBeInTheDocument();
+  await act(async () => {
+    release();
+    await accepted;
+  });
+  await waitFor(() => expect(onAccepted).toHaveBeenCalled());
+  expect(bodies[0]).toHaveProperty("canvasReferences", [
+    { revisionId: "revision", kind: "phase", id: "A" },
+  ]);
+  expect(screen.getByText("阶段 B")).toBeInTheDocument();
+  view.unmount();
+  queryClient.clear();
+});
+
+it("首次接纳前入队的消息绑定已创建的同一个创作会话", async () => {
+  const bodies: unknown[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.post(
+      `${api}/workflows/flow-queue/creation/messages`,
+      async ({ request }) => {
+        bodies.push(await request.json());
+        if (bodies.length === 1) await gate;
+        return HttpResponse.json({
+          id: "queue-session",
+          chatId: "queue-chat",
+          acceptedExecutionId: `queue-execution-${bodies.length}`,
+          chat: { id: "queue-chat", latestSequence: 2 },
+          execution: {
+            id: `queue-execution-${bodies.length}`,
+            status: "completed",
+          },
+        });
+      },
+    ),
+    http.get(`${api}/chats/queue-chat`, () =>
+      HttpResponse.json({ chat: { id: "queue-chat", latestSequence: 2 } }),
+    ),
+    http.get(`${api}/chats/queue-chat/messages`, () =>
+      HttpResponse.json({
+        resources: [
+          {
+            id: "queue-execution-1",
+            executionId: "queue-execution-1",
+            role: "assistant",
+            status: "completed",
+            content: "第一条已完成",
+            displayParts: [{ type: "text", text: "第一条已完成" }],
+          },
+        ],
+        latestSequence: 2,
+      }),
+    ),
+  );
+  function Content() {
+    const [session, setSession] = useState<{ id: string; chatId: string }>();
+    return (
+      <WorkflowChatPane
+        id="flow-queue"
+        session={session}
+        draft="第一条"
+        onNewChat={() => {}}
+        onSession={(id) => setSession({ id, chatId: "queue-chat" })}
+        mainContent={{
+          contentId: "canvas-queue",
+          title: "画布",
+          content: <div>流程</div>,
+        }}
+      />
+    );
+  }
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <WorkbenchProvider>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter>
+              <Content />
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </WorkbenchProvider>
+    </QueryClientProvider>,
+  );
+  const user = userEvent.setup();
+  const send = await screen.findByRole("button", { name: "发送消息" });
+  await waitFor(() => expect(send).toBeEnabled());
+  await user.click(send);
+  await waitFor(() => expect(bodies).toHaveLength(1));
+  const input = screen.getByRole("textbox", { name: "输入消息" });
+  await user.type(input, "第二条");
+  await user.click(await screen.findByRole("button", { name: "加入发送队列" }));
+  await act(async () => {
+    release();
+    await gate;
+  });
+  await waitFor(() => expect(bodies).toHaveLength(2));
+  expect(bodies[1]).toHaveProperty("sessionId", "queue-session");
+  view.unmount();
+  queryClient.clear();
 });

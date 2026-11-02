@@ -10,24 +10,25 @@ Tailwind CSS 4 是页面样式体系，shared/ui 持有基础组件，Radix 提�
 
 系统 UI 字体承载界面，系统等宽字体承载代码与终端，不加载远程字体。排版使用 type-_，text-_ 仅承载颜色。
 
-| Token                   | 字号／行高 |
-| ----------------------- | ---------- |
-| caption                 | 11 / 16px  |
-| ui                      | 12 / 16px  |
-| body                    | 13 / 20px  |
-| label                   | 14 / 20px  |
-| title                   | 16 / 24px  |
-| page-title              | 20 / 28px  |
-| display                 | 24 / 32px  |
-| conversation            | 15 / 26px  |
-| conversation-title      | 24 / 32px  |
-| conversation-heading    | 20 / 30px  |
-| conversation-subheading | 17 / 26px  |
-| conversation-code       | 14 / 22px  |
+| Token                   | 字号／行高         |
+| ----------------------- | ------------------ |
+| caption                 | 11 / 16px          |
+| ui                      | 12 / 16px          |
+| body                    | 13 / 20px          |
+| label                   | 14 / 20px          |
+| title                   | 16 / 24px          |
+| page-title              | 20 / 28px          |
+| display                 | 24 / 32px          |
+| conversation            | 15 / 26px          |
+| conversation-title      | 24 / 32px          |
+| conversation-heading    | 20 / 30px          |
+| conversation-subheading | 17 / 26px          |
+| conversation-code       | 14 / 22px          |
+| chat-inline-code        | 0.875em / 继承行高 |
 
 常规字重使用 400、500、600；不使用低于 11px 的文字。文字按钮通过 size 使用 28 / 32 / 36px 阶梯，表单控件使用 control-sm / md / lg 的 28 / 36 / 44px 阶梯。独立操作提供至少 36×36px 真实命中区及可访问名称。
 
-图标 icon-xs / sm / md / lg / xl 为 12 / 14 / 16 / 20 / 24px，默认描边 1.5。头像 avatar-xs / sm / md / lg / xl / hero / docked 为 24 / 32 / 40 / 56 / 80 / 128 / 160px，保持完整身体与透明边缘。
+图标 icon-xs / sm / md / lg / xl 为 12 / 14 / 16 / 20 / 24px，默认描边 1.5。正文链接使用 `icon-inline` 随所属字号缩放；控件继续使用固定图标阶梯。头像 avatar-xs / sm / md / lg / xl / hero / docked 为 24 / 32 / 40 / 56 / 80 / 128 / 160px，保持完整身体与透明边缘。
 
 间距使用 4px 网格，紧凑控件允许既有 2px、6px 半步。radius-xs / sm / md / lg / xl / 2xl / 3xl / 4xl 为 4 / 6 / 8 / 12 / 16 / 20 / 24 / 32px。文字按钮和 Scene Tab 使用 radius-control，圆形和胶囊使用明确变体。
 

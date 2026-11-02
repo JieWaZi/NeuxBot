@@ -11,6 +11,20 @@ import (
 	"github.com/shrewx/ginx"
 )
 
+// 续发消息请求
+type SendMessageRequest struct {
+	// 输入提交标识
+	SubmissionID string `json:"submissionId,omitempty" validate:"max=64"`
+	// 消息内容
+	MessageRequest
+}
+
+func (r SendMessageRequest) workInput() (execution.WorkInput, execution.WorkOptions) {
+	input, options := r.MessageRequest.workInput()
+	input.SubmissionID = strings.TrimSpace(r.SubmissionID)
+	return input, options
+}
+
 // 发送消息
 type SendMessage struct {
 	// 通过嵌入契约声明该接口使用 HTTP POST 方法。
@@ -18,7 +32,7 @@ type SendMessage struct {
 	// 对话标识
 	ChatID string `in:"path" name:"chatId" validate:"required,max=32"`
 	// 请求体
-	Body MessageRequest `in:"body"`
+	Body SendMessageRequest `in:"body"`
 }
 
 // Path 返回已有对话发送消息接口路径。
@@ -38,13 +52,6 @@ func (s *SendMessage) Output(ctx *gin.Context) (interface{}, error) {
 		Input:     input,
 		Options:   options,
 		Admission: constants.ExecutionAdmissionCommitOnRuntimeAccept,
-	}
-	if len(s.Body.WorkflowIDs) > 0 {
-		bound, err := global.WorkflowService.BindConsumer(ctx, intent, s.Body.WorkflowIDs)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		intent = bound
 	}
 	result, err := global.ExecutionService.Start(ctx, intent)
 	if err != nil {

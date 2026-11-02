@@ -54,8 +54,21 @@ func (p *queryIndexStore) prepareResult(chatID, messageID string) (*models.WorkR
 // resultFromRecords 仅认真实结束回合的最终文本、错误或文件交付。
 func resultFromRecords(records []eventlog.Record, messageID string) (*models.WorkResultReceipt, error) {
 	var terminal *eventlog.Record
+	var fileResult *eventlog.Record
+	var fileReference *eventlog.FileChangesData
 	for i := range records {
 		r := &records[i]
+		if r.Type == constants.ChatEventTypeFileChanges && r.MessageID == messageID {
+			var reference eventlog.FileChangesData
+			if json.Unmarshal(r.Data, &reference) != nil {
+				return nil, status_error.ChatLogCorrupted
+			}
+			// 没有净变化的 ready 状态不产生可读文件交付，保留原正文版本与引用。
+			fileResult, fileReference = nil, nil
+			if reference.State != "pending" && fileResultNeedsPresentation(reference) {
+				fileResult, fileReference = r, &reference
+			}
+		}
 		if r.ExecutionID == messageID && (r.Type == constants.ChatEventTypeExecutionCompleted || r.Type == constants.ChatEventTypeExecutionFailed || r.Type == constants.ChatEventTypeExecutionCanceled) {
 			terminal = r
 		}
@@ -71,7 +84,7 @@ func resultFromRecords(records []eventlog.Record, messageID string) (*models.Wor
 		if message.ID != messageID || message.Inherited || message.Role != constants.MessageRoleAssistant {
 			continue
 		}
-		readable := message.ErrorCode != "" || message.ErrorMessage != "" || len(message.FileChanges) > 0
+		readable := message.ErrorCode != "" || message.ErrorMessage != "" || fileReference != nil
 		for _, part := range message.DisplayParts {
 			if part.Type == constants.MessageDisplayPartText && strings.TrimSpace(part.Text) != "" {
 				readable = true
@@ -80,10 +93,22 @@ func resultFromRecords(records []eventlog.Record, messageID string) (*models.Wor
 		if !readable {
 			return nil, nil
 		}
-		return &models.WorkResultReceipt{OwnerKind: constants.WorkResultOwnerKindChat, OwnerID: terminal.ChatID, LatestVersion: terminal.Sequence, AvailableAt: terminal.RecordedAt,
-			Reference: models.WorkResultReference{ChatID: terminal.ChatID, ExecutionID: messageID, MessageID: messageID}}, nil
+		version, at := terminal.Sequence, terminal.RecordedAt
+		if fileResult != nil && fileResult.Sequence > version {
+			version, at = fileResult.Sequence, fileResult.RecordedAt
+		}
+		reference := models.WorkResultReference{ChatID: terminal.ChatID, ExecutionID: messageID, MessageID: messageID}
+		if fileReference != nil {
+			reference.FileChangeRecordID, reference.FileChangeRecordVersion = fileReference.RecordID, fileReference.Version
+		}
+		return &models.WorkResultReceipt{OwnerKind: constants.WorkResultOwnerKindChat, OwnerID: terminal.ChatID, LatestVersion: version, AvailableAt: at, Reference: reference}, nil
 	}
 	return nil, nil
+}
+
+// fileResultNeedsPresentation 只为实际文件交付或需要用户看到的采集边界绑定卡片阅读身份。
+func fileResultNeedsPresentation(reference eventlog.FileChangesData) bool {
+	return reference.TotalFiles > 0 || reference.State == "partial" || reference.State == "unavailable" || reference.State == "incomplete"
 }
 
 // publishResult 与查询投影使用同一短事务，阅读事实在重建中保持不变。

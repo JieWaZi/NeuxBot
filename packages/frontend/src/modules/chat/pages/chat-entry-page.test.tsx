@@ -1,6 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
+import { fireEvent, render, screen } from "@testing-library/react";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useNavigate,
+  useParams,
+} from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import "@/shared/i18n";
@@ -76,6 +82,15 @@ function ChatTarget() {
   return <div data-testid="chat-page">{chatId}</div>;
 }
 
+function AcceptChat() {
+  const navigate = useNavigate();
+  return (
+    <button onClick={() => navigate("/chats/chat-created?wakerId=waker-1")}>
+      接纳首条消息
+    </button>
+  );
+}
+
 function renderEntry(initialEntry = "/chat") {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -84,7 +99,10 @@ function renderEntry(initialEntry = "/chat") {
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
-          <Route path="/chat" element={<ChatEntryPage />} />
+          <Route
+            path="/chat"
+            element={<ChatEntryPage presentationScopeKey="test-entry" />}
+          />
           <Route path="/chats/:chatId" element={<ChatTarget />} />
         </Routes>
       </MemoryRouter>
@@ -104,6 +122,36 @@ describe("ChatEntryPage", () => {
       },
     });
   });
+
+  it.each(["/chat?wakerId=waker-1", "/chat?draftId=new&wakerId=waker-1"])(
+    "首发接纳后保留输入区组件身份（入口：%s）",
+    async (entry) => {
+      chatState.current = "empty";
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      render(
+        <QueryClientProvider client={queryClient}>
+          <MemoryRouter initialEntries={[entry]}>
+            <AcceptChat />
+            <Routes>
+              <Route
+                element={<ChatEntryPage presentationScopeKey="test-entry" />}
+              >
+                <Route path="/chat" element={<></>} />
+                <Route path="/chats/:chatId" element={<></>} />
+              </Route>
+            </Routes>
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+      const input = await screen.findByRole("textbox", { name: "输入消息" });
+      fireEvent.change(input, { target: { value: "保留未提交草稿" } });
+      fireEvent.click(screen.getByRole("button", { name: "接纳首条消息" }));
+      expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(input);
+      expect(input).toHaveValue("保留未提交草稿");
+    },
+  );
 
   it("restores the last active chat instead of the server latest", async () => {
     window.localStorage.setItem("ally.chat.last-waker-id", "waker-1");

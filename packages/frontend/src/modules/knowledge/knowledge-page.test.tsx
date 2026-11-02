@@ -308,6 +308,73 @@ function fixtures() {
   );
 }
 
+it("任务纯进度只刷新任务与来源，内容发布才刷新Wiki树和正文", async () => {
+  fixtures();
+  const reads = { jobs: 0, sources: 0, directory: 0, themes: 0, page: 0 };
+  const page = {
+    id: "topic",
+    slug: "topic",
+    title: "已有知识",
+    pageType: "concept",
+    content: "已有正文保持可见",
+    version: 1,
+    sources: [],
+    links: [],
+  };
+  const base = "http://ally.test/api/v1/knowledge/libraries/kb";
+  server.use(
+    http.get(`${base}/jobs`, () => {
+      reads.jobs++;
+      return HttpResponse.json({ items: [], total: 0 });
+    }),
+    http.get(`${base}/sources`, () => {
+      reads.sources++;
+      return HttpResponse.json({ items: [firstSource], total: 1 });
+    }),
+    http.get(`${base}/page-directory`, () => {
+      reads.directory++;
+      return HttpResponse.json({ items: [page], total: 1 });
+    }),
+    http.get(`${base}/themes`, () => {
+      reads.themes++;
+      return HttpResponse.json({ items: [] });
+    }),
+    http.get(`${base}/pages/topic`, () => {
+      reads.page++;
+      return HttpResponse.json(page);
+    }),
+  );
+  show("/knowledge/kb?view=wiki&page=topic");
+  await vi.dynamicImportSettled();
+  await waitFor(() => expect(reads.page).toBe(1));
+  const initial = { ...reads };
+  const emit = (type: string) =>
+    act(() => {
+      for (const listener of listeners)
+        listener.onEvent({
+          protocolVersion: 1,
+          epoch: "epoch",
+          connectionId: "connection",
+          deliverySequence: 1,
+          topic: "knowledge",
+          type,
+          resource: { kind: "knowledge_library", id: "kb", parentId: "local" },
+          eventId: type,
+          transient: false,
+          payload: { jobId: "job" },
+        });
+    });
+  emit("knowledge.task.changed");
+  await waitFor(() => expect(reads.jobs).toBe(initial.jobs + 1));
+  expect(reads.sources).toBe(initial.sources + 1);
+  expect(reads.directory).toBe(initial.directory);
+  expect(reads.themes).toBe(initial.themes);
+  expect(reads.page).toBe(initial.page);
+  emit("knowledge.content.changed");
+  await waitFor(() => expect(reads.directory).toBe(initial.directory + 1));
+  await waitFor(() => expect(reads.page).toBe(initial.page + 1));
+});
+
 it("整理Wiki接纳后关闭配置弹窗，不打开结果或伙伴聊天", async () => {
   fixtures();
   const requests: Record<string, unknown>[] = [];

@@ -2,12 +2,16 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"gorm.io/gorm"
+	"strings"
 	"sync"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
 func TestChannelTaskDispatchClaimIsAtomicAndQuotaBound(t *testing.T) {
@@ -585,5 +589,76 @@ func TestChannelStopDeliveryStateCannotBeOverwrittenByLateWatcher(t *testing.T) 
 	pending, err := tasks.ListPendingNotifications(ctx, threadID, 10)
 	if err != nil || len(pending) != 0 {
 		t.Fatalf("late watcher restored notifications = %+v, error = %v", pending, err)
+	}
+}
+
+func TestChannelTimelineFollowUpsBoundVisibleThreadCursor(t *testing.T) {
+	database := newTestDB(t)
+	controller := NewChannelTaskController(database)
+	ctx := context.Background()
+	for _, task := range []models.ChannelTask{{ID: "task-a", ThreadID: "thread-a", AssigneeWakerID: "member-a"}, {ID: "task-b", ThreadID: "thread-b", AssigneeWakerID: "member-b"}} {
+		if err := controller.Create(ctx, task, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	delivered := int64(1)
+	rows := make([]models.ChannelTaskFollowUp, 0, 1005)
+	for index := 0; index < 1000; index++ {
+		rows = append(rows, models.ChannelTaskFollowUp{ID: fmt.Sprintf("old-%04d", index), TaskID: "task-a", Actor: constants.ChannelMessageActorUser, Text: "已投递历史", DeliveredAt: &delivered, CreatedAt: int64(index + 1)})
+	}
+	rows = append(rows,
+		models.ChannelTaskFollowUp{ID: "lead-a", TaskID: "task-a", Actor: constants.ChannelMessageActorLead, Text: "负责人补充", DeliveredAt: &delivered, CreatedAt: 2000},
+		models.ChannelTaskFollowUp{ID: "user-b", TaskID: "task-a", Actor: constants.ChannelMessageActorUser, Text: "待投递用户", CreatedAt: 2000},
+		models.ChannelTaskFollowUp{ID: "user-a", TaskID: "task-a", Text: "旧数据用户", CreatedAt: 2000},
+		models.ChannelTaskFollowUp{ID: "internal", TaskID: "task-a", Actor: constants.ChannelMessageActorSystem, Text: "内部", CreatedAt: 3000},
+		models.ChannelTaskFollowUp{ID: "other", TaskID: "task-b", Actor: constants.ChannelMessageActorUser, Text: "其他线程", CreatedAt: 3000})
+	if err := database.CreateInBatches(rows, 100).Error; err != nil {
+		t.Fatal(err)
+	}
+	queryLog := &notificationQueryLog{Interface: database.Logger}
+	loggedDB := database.Session(&gorm.Session{Logger: queryLog})
+	controller = NewChannelTaskController(loggedDB)
+	transaction := NewTransactionController(dbhelper.NewGormTransactionManager(loggedDB))
+	if err := transaction.Transaction(ctx, func(readCtx context.Context) error {
+		page, err := controller.ListTimelineFollowUps(readCtx, "thread-a", []string{"task-a"}, 0, "", "", 2)
+		if err != nil || len(page) != 2 || page[0].ID != "lead-a" || page[1].ID != "user-b" {
+			t.Fatalf("latest visible page=%+v error=%v", page, err)
+		}
+		older, err := controller.ListTimelineFollowUps(readCtx, "thread-a", []string{"task-a"}, 2000, constants.MessageRoleUser, "user-b", 2)
+		if err != nil || len(older) != 1 || older[0].ID != "user-a" {
+			t.Fatalf("older visible page=%+v error=%v", older, err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(queryLog.Statements) != 2 {
+		t.Fatalf("queries=%d want 2 independently of follow-up history", len(queryLog.Statements))
+	}
+	for _, rows := range queryLog.Rows {
+		if rows > 2 {
+			t.Fatalf("unbounded follow-up rows=%d", rows)
+		}
+	}
+	lastSQL := queryLog.Statements[1]
+	var plan []struct {
+		// Detail 是 SQLite 对实际游标查询给出的执行计划。
+		Detail string
+	}
+	if err := database.Raw("EXPLAIN QUERY PLAN " + lastSQL).Scan(&plan).Error; err != nil {
+		t.Fatal(err)
+	}
+	indexed := false
+	for _, row := range plan {
+		t.Log(row.Detail)
+		if strings.Contains(row.Detail, "TEMP B-TREE") {
+			t.Fatalf("task window sorted unbounded visible history: %s", row.Detail)
+		}
+		if strings.Contains(row.Detail, "idx_channel_follow_up_timeline") && strings.Contains(row.Detail, "SEARCH") {
+			indexed = true
+		}
+	}
+	if !indexed {
+		t.Fatalf("timeline did not narrow by visible task index: %+v SQL=%s", plan, lastSQL)
 	}
 }

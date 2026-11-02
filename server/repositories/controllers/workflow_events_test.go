@@ -46,3 +46,18 @@ func TestWorkflowLogEventsFilterBeforePagination(t *testing.T) {
 		t.Fatalf("日志查询改变了原事件重放: %+v %v", all, err)
 	}
 }
+
+func TestWorkflowRevisionListSelectsOnlySummaryFields(t *testing.T) {
+	db := newTestDB(t)
+	controller := NewWorkflowController(db)
+	if err := controller.CreateRevision(context.Background(), models.WorkflowRevision{ID: "revision", DefinitionID: "definition", Ordinal: 1, SourceDigest: "digest", Source: "large source"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`UPDATE workflow_revisions SET manifest = ?, bundle = ? WHERE id = ?`, "invalid manifest must never decode", "invalid bundle", "revision").Error; err != nil {
+		t.Fatal(err)
+	}
+	values, err := controller.ListRevisions(context.Background(), "definition", 0, 50)
+	if err != nil || len(values) != 1 || values[0].ID != "revision" || values[0].SourceDigest != "digest" || values[0].Source != "" {
+		t.Fatalf("summary read expanded program data: %+v %v", values, err)
+	}
+}

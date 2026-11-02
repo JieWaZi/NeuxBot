@@ -14,15 +14,14 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcli"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	agentcli "github.com/JieWaZi/NeuxBot/server/internal/agent/cli"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
-func authoringTestCLI(t *testing.T, s *Service, session models.WorkflowCreationSession) func([]string, any) (int, agentcapability.Response) {
+func authoringTestCLI(t *testing.T, s *Service, session models.WorkflowCreationSession) func([]string, any) (int, capability.Response) {
 	t.Helper()
 	if s.chats == nil {
 		session.ChatID = "authoring-chat"
@@ -34,9 +33,9 @@ func authoringTestCLI(t *testing.T, s *Service, session models.WorkflowCreationS
 	if err := s.creationSessions.CreateCreationSession(context.Background(), session); err != nil {
 		t.Fatal(err)
 	}
-	registry := agentcapability.New(nil)
+	registry := capability.New(nil)
 	t.Cleanup(registry.Close)
-	grant, activate, revoke, err := registry.Prepare(agentcapability.GrantSpec{
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{
 		ExecutionID: "authoring", Bindings: s.AgentBindings(session.ID, session.AuthToken, constants.WorkflowCapabilityScopeCreation),
 		Validate: func(context.Context) error { return nil },
 	})
@@ -51,14 +50,14 @@ func authoringTestCLI(t *testing.T, s *Service, session models.WorkflowCreationS
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, err := agentcapability.WriteConnection(root, "connection.json", agentcapability.Connection{
+	connection, err := capability.WriteConnection(root, "connection.json", capability.Connection{
 		ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: endpoint.URL + constants.AgentCLIPath,
 		CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return func(args []string, params any) (int, agentcapability.Response) {
+	return func(args []string, params any) (int, capability.Response) {
 		t.Helper()
 		var input, output, failure bytes.Buffer
 		if params != nil {
@@ -76,7 +75,7 @@ func authoringTestCLI(t *testing.T, s *Service, session models.WorkflowCreationS
 			}
 			body = failure.Bytes()
 		}
-		var response agentcapability.Response
+		var response capability.Response
 		if err := json.Unmarshal(body, &response); err != nil {
 			t.Fatalf("invalid CLI result: %s: %v", body, err)
 		}
@@ -395,7 +394,7 @@ func TestAuthoringWorkspaceIsBoundToWorkflow(t *testing.T) {
 					t.Fatalf("%s: %+v", operation, response.Error)
 				}
 				data := response.Data.(map[string]any)
-				op, _ := contract.Find(operation)
+				op, _ := capability.Find(operation)
 				if err := workflowdsl.ValidateJSON(op.OutputSchema, data); err != nil {
 					t.Fatalf("MCP output schema rejects workspace: %v", err)
 				}

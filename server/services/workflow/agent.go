@@ -11,9 +11,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
@@ -23,7 +22,7 @@ import (
 )
 
 // AgentBindings 只签发当前服务端场景具有的操作，不接受调用方声明场景或身份。
-func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabilityScope) []agentcapability.Binding {
+func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabilityScope) []capability.Binding {
 	scope := workflowtool.Scope{Key: key, Token: token, Kind: kind}
 	ids := []string{}
 	switch kind {
@@ -34,32 +33,32 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 	case constants.WorkflowCapabilityScopeResult:
 		ids = []string{"workflow.results.schema", "workflow.results.submit"}
 	}
-	bindings := make([]agentcapability.Binding, 0, len(ids))
+	bindings := make([]capability.Binding, 0, len(ids))
 	for _, id := range ids {
-		binding := agentcapability.Binding{Operation: id}
-		binding.Call = func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+		binding := capability.Binding{Operation: id}
+		binding.Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
 			owner, err := s.agentOwner(ctx, scope)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			if kind == constants.WorkflowCapabilityScopeConsumer && id == "workflow.runs.start" {
 				lease, err := s.consumers.GetConsumer(ctx, key)
 				if err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
 				definitionID, _ := request.Params["definitionId"].(string)
 				if !slices.Contains(lease.DefinitionIDs, definitionID) {
-					return agentcapability.Result{}, status_error.AgentOperationForbidden
+					return capability.Result{}, status_error.AgentOperationForbidden
 				}
 			}
-			op, _ := contract.Find(id)
+			op, _ := capability.Find(id)
 			if op.Effect != constants.AgentCLIEffectRead {
 				if id == "workflow.runs.start" {
 					return s.startAgentRun(ctx, scope, owner, request)
 				}
-				result, err := agentcommand.Execute(ctx, s.commands, owner, request, func(ctx context.Context) error {
+				result, err := capability.Execute(ctx, s.commands, owner, request, func(ctx context.Context) error {
 					input := workflowAgentInput(request)
-					input.RequestID = agentcommand.ID(owner, id, request.RequestID)
+					input.RequestID = capability.ID(owner, id, request.RequestID)
 					_, err := s.handleTool(ctx, scope, input)
 					return err
 				})
@@ -67,10 +66,10 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 			}
 			if id == "workflow.runs.wait" {
 				if s.events == nil {
-					return agentcapability.Result{}, status_error.AgentConnectionUnavailable
+					return capability.Result{}, status_error.AgentConnectionUnavailable
 				}
 				input := workflowAgentInput(request)
-				return agentcapability.Observe(ctx, request.Params, func() events.Subscription {
+				return capability.Observe(ctx, request.Params, func() events.Subscription {
 					return s.events.Subscribe("workflow", events.Resource{Kind: "workflow", ID: input.RunID})
 				}, func(ctx context.Context) (any, bool, error) {
 					value, err := s.handleConsumerTool(ctx, scope, workflowtool.Input{Action: constants.WorkflowActionRunGet, RunID: input.RunID})
@@ -84,49 +83,49 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 			input := workflowAgentInput(request)
 			value, err := s.handleTool(ctx, scope, input)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			value = unwrapWorkflow(value)
 			if id == "workflow.definitions.describe" {
 				items, _ := value["items"].([]map[string]any)
 				for _, item := range items {
 					if item["id"] == request.Params["definitionId"] {
-						return agentcapability.Result{Data: item}, nil
+						return capability.Result{Data: item}, nil
 					}
 				}
-				return agentcapability.Result{}, status_error.WorkflowNotFound
+				return capability.Result{}, status_error.WorkflowNotFound
 			}
 			if id == "workflow.definitions.list" {
 				items, _ := value["items"].([]map[string]any)
-				page, err := agentcapability.Page(items, request.Params)
-				return agentcapability.Result{Data: page}, err
+				page, err := capability.Page(items, request.Params)
+				return capability.Result{Data: page}, err
 			}
 			if id == "workflow.annotations.list" {
 				encoded, _ := json.Marshal(value["items"])
 				var items []any
 				_ = json.Unmarshal(encoded, &items)
-				page, err := agentcapability.Page(items, request.Params)
-				return agentcapability.Result{Data: page}, err
+				page, err := capability.Page(items, request.Params)
+				return capability.Result{Data: page}, err
 			}
-			return agentcapability.Result{Data: value}, nil
+			return capability.Result{Data: value}, nil
 		}
-		op, _ := contract.Find(id)
+		op, _ := capability.Find(id)
 		if op.Effect != constants.AgentCLIEffectRead {
-			binding.Receipt = func(ctx context.Context, requestID string) (agentcapability.Result, error) {
+			binding.Receipt = func(ctx context.Context, requestID string) (capability.Result, error) {
 				owner, err := s.agentOwner(ctx, scope)
 				if err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
-				result, err := agentcommand.Lookup(ctx, s.commands, owner, id, requestID)
+				result, err := capability.Lookup(ctx, s.commands, owner, id, requestID)
 				if err == nil && kind == constants.WorkflowCapabilityScopeConsumer {
 					data, _ := result.Data.(map[string]any)
 					if definition, ok := data["definitionId"].(string); ok {
 						lease, getErr := s.consumers.GetConsumer(ctx, key)
 						if getErr != nil {
-							return agentcapability.Result{}, getErr
+							return capability.Result{}, getErr
 						}
 						if !slices.Contains(lease.DefinitionIDs, definition) {
-							return agentcapability.Result{}, status_error.AgentOperationForbidden
+							return capability.Result{}, status_error.AgentOperationForbidden
 						}
 					}
 				}
@@ -138,17 +137,17 @@ func (s *Service) AgentBindings(key, token string, kind constants.WorkflowCapabi
 	return bindings
 }
 
-func (s *Service) startAgentRun(ctx context.Context, scope workflowtool.Scope, owner string, request agentcapability.Request) (agentcapability.Result, error) {
+func (s *Service) startAgentRun(ctx context.Context, scope workflowtool.Scope, owner string, request capability.Request) (capability.Result, error) {
 	for attempt := 0; ; attempt++ {
 		prepared, err := s.prepareAgentRunInput(ctx, owner, request)
 		if err != nil {
-			return agentcapability.Result{}, err
+			return capability.Result{}, err
 		}
 		defer prepared.close()
-		result, callErr := agentcommand.Execute(ctx, s.commands, owner, prepared.request, func(ctx context.Context) error {
+		result, callErr := capability.Execute(ctx, s.commands, owner, prepared.request, func(ctx context.Context) error {
 			input := workflowAgentInput(prepared.request)
 			input.Args, input.InputFileRoots = prepared.args, prepared.roots
-			input.RequestID = agentcommand.ID(owner, request.Operation, request.RequestID)
+			input.RequestID = capability.ID(owner, request.Operation, request.RequestID)
 			_, err := s.handleTool(ctx, scope, input)
 			return err
 		})
@@ -157,7 +156,7 @@ func (s *Service) startAgentRun(ctx context.Context, scope workflowtool.Scope, o
 			return result, callErr
 		}
 		// 并发首提可能先按另一个 Head 准备；只按已经胜出的原回执重核一次。
-		accepted, err := agentcommand.Lookup(ctx, s.commands, owner, request.Operation, request.RequestID)
+		accepted, err := capability.Lookup(ctx, s.commands, owner, request.Operation, request.RequestID)
 		data, _ := accepted.Data.(map[string]any)
 		if err != nil || data["revisionId"] == prepared.request.Params["revisionId"] {
 			return result, callErr
@@ -168,7 +167,7 @@ func (s *Service) startAgentRun(ctx context.Context, scope workflowtool.Scope, o
 // agentRunInput 持有单次接纳前的冻结原件，不让临时路径进入幂等摘要。
 type agentRunInput struct {
 	// request 保留规范路径参数及同一次复制得到的文件摘要。
-	request agentcapability.Request
+	request capability.Request
 	// args 只向领域接纳传递受管冻结路径。
 	args any
 	// roots 只授权领域读取本次临时原件。
@@ -185,10 +184,10 @@ func (p *agentRunInput) close() {
 	}
 }
 
-func (s *Service) prepareAgentRunInput(ctx context.Context, owner string, request agentcapability.Request) (_ *agentRunInput, err error) {
+func (s *Service) prepareAgentRunInput(ctx context.Context, owner string, request capability.Request) (_ *agentRunInput, err error) {
 	input := workflowAgentInput(request)
 	if input.RevisionID == "" {
-		accepted, err := agentcommand.Lookup(ctx, s.commands, owner, request.Operation, request.RequestID)
+		accepted, err := capability.Lookup(ctx, s.commands, owner, request.Operation, request.RequestID)
 		if err == nil {
 			data, _ := accepted.Data.(map[string]any)
 			if data["definitionId"] != input.WorkflowID {
@@ -257,7 +256,7 @@ func (s *Service) prepareAgentRunInput(ctx context.Context, owner string, reques
 			}
 			prepared.directory, prepared.roots = actual, []string{actual}
 		}
-		frozen, err := workflowfiles.FreezeLocalInput(ctx, agentcapability.FileRoots(ctx), reference, prepared.directory, "input", pointer)
+		frozen, err := workflowfiles.FreezeLocalInput(ctx, capability.FileRoots(ctx), reference, prepared.directory, "input", pointer)
 		if err != nil {
 			return "", err
 		}
@@ -305,7 +304,7 @@ func unwrapWorkflow(value map[string]any) map[string]any {
 }
 
 // workflowAgentReceipt 只从已持久化的保存回执派生完成标志，回放与查询保持同一语义。
-func workflowAgentReceipt(operation string, result agentcapability.Result) agentcapability.Result {
+func workflowAgentReceipt(operation string, result capability.Result) capability.Result {
 	if operation != "workflow.source.save" {
 		return result
 	}
@@ -325,7 +324,7 @@ func workflowAgentReceipt(operation string, result agentcapability.Result) agent
 }
 
 // workflowAgentInput 只映射封闭业务参数；身份与 Token 永不来自 JSON。
-func workflowAgentInput(request agentcapability.Request) workflowtool.Input {
+func workflowAgentInput(request capability.Request) workflowtool.Input {
 	encoded, _ := json.Marshal(request.Params)
 	var input workflowtool.Input
 	_ = json.Unmarshal(encoded, &input)

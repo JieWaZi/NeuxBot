@@ -13,9 +13,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -116,7 +115,7 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 			if diagnostics == nil {
 				diagnostics = []workflowdsl.Diagnostic{}
 			}
-			return nil, agentcapability.RejectWithDetails(err, "Source was not saved; repair the diagnostics or resolve the revision conflict.", map[string]any{
+			return nil, capability.RejectWithDetails(err, "Source was not saved; repair the diagnostics or resolve the revision conflict.", map[string]any{
 				"diagnostics": diagnostics,
 			})
 		}
@@ -237,7 +236,7 @@ func (s *Service) prepareAuthoring(
 	if err != nil {
 		return nil, err
 	}
-	annotationPage, err := agentcapability.Page(annotations, map[string]any{})
+	annotationPage, err := capability.Page(annotations, map[string]any{})
 	if err != nil {
 		return nil, err
 	}
@@ -249,9 +248,9 @@ func (s *Service) prepareAuthoring(
 		}
 		resources[kind] = page
 	}
-	operations := []contract.Operation{}
+	operations := []capability.Operation{}
 	for _, id := range []string{"workflow.source.save", "workflow.source.validate"} {
-		op, _ := contract.Find(id)
+		op, _ := capability.Find(id)
 		operations = append(operations, op)
 	}
 	return map[string]any{
@@ -389,7 +388,7 @@ func (s *Service) handleConsumerTool(ctx context.Context, scope workflowtool.Sco
 		}
 		approved := models.WorkflowScopeBinding{ProjectID: summary.Chat.ProjectID, WorkingDirectory: summary.Chat.AdditionalWorkingDirectories[0]}
 		requestID := requestidempotency.Identity{ID: input.RequestID}.ResourceID("workflow-use-run", lease.ID)
-		roots := agentcapability.FileRoots(ctx)
+		roots := capability.FileRoots(ctx)
 		if input.InputFileRoots != nil {
 			roots = input.InputFileRoots
 		}
@@ -734,11 +733,11 @@ func (s *Service) handleTool(ctx context.Context, scope workflowtool.Scope, inpu
 			if workflowstate.Digest(existing) != workflowstate.Digest(input.Data) {
 				return status_error.WorkflowRequestConflict
 			}
-			return agentcommand.Commit(ctx, map[string]any{"submitted": true, "executionId": current.ExecutionID, "attemptGeneration": current.AttemptGeneration})
+			return capability.Commit(ctx, map[string]any{"submitted": true, "executionId": current.ExecutionID, "attemptGeneration": current.AttemptGeneration})
 		}
 		value := workflowdsl.JSONValue(input.Data)
 		current.Candidate = &value
-		return agentcommand.Commit(ctx, map[string]any{"submitted": true, "executionId": current.ExecutionID, "attemptGeneration": current.AttemptGeneration})
+		return capability.Commit(ctx, map[string]any{"submitted": true, "executionId": current.ExecutionID, "attemptGeneration": current.AttemptGeneration})
 	})
 	if err != nil {
 		return nil, err

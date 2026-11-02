@@ -21,7 +21,7 @@
 
 实际工具历史可确认读取、完整源码保存、补丁保存和运行诊断的载荷。尚未取得参考产品完整 MCP tools/list 或内部编译器；原生 Workflow Skill 的 agent()、缓存和限制不自动适用于 WakerFlow。本文据可观测行为与 NeuxBot 代码独立确定 V2 契约。
 
-代码依据包括 [Operation 目录](../../server/internal/agentcapability/contract/catalog.go)、[授权与回执](../../server/internal/agentcapability/registry.go)、[CLI](../../server/internal/agentcli/command.go)、[Runtime MCP](../../server/internal/runtimes/mcp.go)、[会话挂载与恢复](../../server/internal/runtimes/acp_run.go)、[系统能力注入](../../server/services/execution/agent.go)、[DSL 契约](../../server/internal/workflow/dsl/sdk.go)和 [Manifest](../../server/internal/workflow/dsl/program.go)。
+代码依据包括 [Operation 目录](../../server/internal/agent/capability/catalog.go)、[授权与回执](../../server/internal/agent/capability/capability.go)、[CLI](../../server/internal/agent/cli/cli.go)、[Runtime MCP](../../server/internal/agent/native/connection.go)、[会话挂载与恢复](../../server/internal/agent/native/connection.go)、[系统能力注入](../../server/services/execution/agent.go)、[DSL 契约](../../server/internal/workflow/dsl/sdk.go)和 [Manifest](../../server/internal/workflow/dsl/program.go)。
 
 ## 2. 需求与架构决策
 
@@ -70,13 +70,13 @@ Canvas Manifest 类型归 Workflow Compiler；通过正常生成链路提供前�
 
 首版内部 MCP 采用应用自有的 stdio 薄桥：拟新增 `allycli mcp serve --context <execution-file>`。它只做 MCP 编解码并转发现有 Core 能力入口，不执行领域逻辑、不绑定新监听端口，不依赖用户开启对外集成 API/MCP 开关。
 
-1. Core 先为当前 Execution 签发 Grant 和**不可变的执行级连接文件**。
-2. Runtime 本轮挂载内部 MCP，stdio 桥启动时读取一次连接描述并固定该 Grant；不在每次 tools/call 重新读一个会被下一轮覆盖的共享文件。
-3. tools/list 仅返回该 Grant 的操作；tools/call 继续经过 Core 当前执行、对象和作用域校验。
-4. 新 Execution 生成新桥接配置；原生会话可可靠重开/恢复并刷新 MCP 时继续该会话，否则选择 CLI 路径。
-5. 结束或被替代时撤销 Grant、取消在途调用并收敛桥进程；旧连接不得自动换绑新权限。
+1. Core 为当前 Execution 签发 Grant，同一原生 Session 复用固定连接文件路径，每轮原子更新授权。
+2. stdio 桥启动时固定 Core 入口、epoch 和获准工具目录；每次调用开始只读取一次当前 Grant，并以该凭据完成本次请求，失败不切换凭据或重放。
+3. tools/list 只发布启动时获准的操作；tools/call 继续经过 Core 当前执行、对象和作用域校验，工具目录不授予额外权限。
+4. 热会话复用原桥和资源；新原生 Session 使用自己的连接目录，Core 重启后旧桥不能跨 epoch 取得新权限。
+5. 执行结束或取消时撤销 Grant，已开始的调用保留原身份；Session 在原生消费者退出后统一释放文件及资源。
 
-CLI 命令同样在启动时固定本次连接。V2 增加全局 `--context <execution-file>`，由当轮 bootstrap 给出准确路径；持续原生进程不能更新环境时，使用这个显式参数，不能沿用旧环境或读取下一轮共享文件。当前实现使用原生会话槽位内的连接文件；V2 的 stdio 长连接不得直接套用该可覆盖文件行为。执行级文件、桥实例与旧调用围栏必须一起实现。
+CLI 命令在启动时固定本次连接，`--context <session-file>` 与宿主环境指向同一会话文件；授权轮转不改变原生进程环境。内部 MCP 不另开业务监听，不复制执行状态。
 
 令牌只在受管文件和请求头，命令行仅传文件路径，工具 Schema 不暴露 Token。Core 校验回环地址和原固定能力路径；Core epoch 变化使旧连接失效。
 
@@ -917,7 +917,7 @@ MCP 不改变全局产品的授权边界，也不替换现有对外集成服务�
 | 参考产品完整 MCP Schema、编译器及画布内部结构 | 仍未知；保留可观测行为依据，不影响我们定义准确的自有契约            |
 | 各 Runtime 的 stdio MCP 换绑和原生会话恢复    | 实现/验收项；真实新建、续聊、取消、重启、迟到调用测试，未通过用 CLI |
 | Python 解释器和依赖环境                       | 环境项；创建/运行入口显示真实可用性；Windows/macOS/Linux 分别验收   |
-| Schema 输出纠正的 Runtime 能力                | 验收项；结果提交专用纠正阶段不能再执行业务工具，不能支持则明确失败  |
+| Schema 输出纠正的 Runtime 能力                | 验收项；复用共享独立文本调用，只传 Schema 与候选，不注入工作流业务能力；校验格式与持久预算  |
 | 大集合、长画布和日志的实际预算                | 性能项；沿用已有限制并用同等任务测量，发布确定常量和超限行为        |
 
 本轮应验证文档链接/格式、JSON 示例、DSL 样本的 JS 包装语法和 Python 静态语法、画布例子的 ID/连线/引用一致性。它们只证明设计工件内部一致，不代表 V2 编译器、MCP 适配或真实模型已通过。

@@ -1,7 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type * as ReactModule from "react";
-import type * as AssistantUI from "@assistant-ui/react";
 import type {
   ReasoningMessagePartProps,
   ThreadAssistantMessagePart,
@@ -13,19 +11,29 @@ import "@/shared/i18n";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import {
   AgentRunningIndicator,
-  AssistantMessage,
+  AssistantMessage as PureAssistantMessage,
   ComposerContextUsage,
-  ExecutionFileChangesCard,
-  MessageRunStatus,
+  MessageRunStatus as PureMessageRunStatus,
   ReasoningPart,
   RunMetricsBadge,
-  ToolActivityRow,
-  WorkProcess,
+  ToolActivityRow as PureToolActivityRow,
+  WorkProcess as PureWorkProcess,
 } from "./chat-thread";
-import { CHAT_PROCESS_COMMENTARY_PART } from "../runtime/chat-projection";
+import {
+  CHAT_PROCESS_COMMENTARY_PART,
+  type AllyChatMessage,
+  type ChatRunMetrics,
+} from "../runtime/chat-projection";
+import {
+  ChatMessageProjection,
+  isTerminalMessage,
+  type ChatToolGroup,
+} from "./chat-message-nodes";
+import type { ComponentProps, ReactNode } from "react";
 
 type MockMessageState = {
   id: string;
+  role: "assistant";
   isLast?: boolean;
   createdAt?: Date;
   metadata?: { custom?: Record<string, unknown> };
@@ -38,7 +46,10 @@ type MockMessageState = {
 
 const { messageState } = vi.hoisted(() => ({
   messageState: {
+    messages: undefined as
+      { id: string; role: "assistant" | "user" }[] | undefined,
     current: {
+      role: "assistant",
       id: "message-1",
       status: { type: "complete", reason: "stop" },
       content: [] as ThreadAssistantMessagePart[],
@@ -46,55 +57,144 @@ const { messageState } = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@assistant-ui/react", async () => {
-  const actual = await vi.importActual<typeof AssistantUI>(
-    "@assistant-ui/react",
-  );
-  const React = await vi.importActual<typeof ReactModule>("react");
-  const subscribe = () => () => undefined;
-  const PassThrough = ({ children }: { children?: ReactModule.ReactNode }) => (
-    <>{children}</>
-  );
+vi.mock("./execution-file-changes-card", () => ({
+  ExecutionFileChangesCard: () => null,
+}));
+
+type DisplayPart = NonNullable<AllyChatMessage["displayParts"]>[number];
+function canonicalPart(
+  part: ThreadAssistantMessagePart,
+  index: number,
+): DisplayPart {
+  if (part.type === "tool-call")
+    return {
+      id: part.toolCallId || String(index),
+      type: "tool",
+      toolCategory: part.args.category as DisplayPart["toolCategory"],
+      toolAction: part.args.action as DisplayPart["toolAction"],
+      toolStatus: part.isError
+        ? "failed"
+        : part.result !== undefined
+          ? "completed"
+          : (part.args.status as DisplayPart["toolStatus"]),
+      toolLabel:
+        typeof part.args.label === "string" ? part.args.label : undefined,
+      toolLoadingLabel:
+        typeof part.args.loadingLabel === "string"
+          ? part.args.loadingLabel
+          : undefined,
+      toolSafeSummary: part.args.safeSummary as DisplayPart["toolSafeSummary"],
+      toolApprovalResult: part.args
+        .approvalResult as DisplayPart["toolApprovalResult"],
+    };
+  if (part.type === "data")
+    return {
+      id: String(index),
+      type: "process_commentary",
+      text: (part.data as { text: string }).text,
+    };
   return {
-    ...actual,
-    ActionBarPrimitive: {
-      Root: PassThrough,
-      Copy: PassThrough,
-    },
-    AuiIf: ({
-      condition,
-      children,
-    }: {
-      condition: boolean | ((state: { message: MockMessageState }) => boolean);
-      children?: ReactModule.ReactNode;
-    }) => (
-      <>
-        {(
-          typeof condition === "function"
-            ? condition({ message: messageState.current })
-            : condition
-        )
-          ? children
-          : null}
-      </>
-    ),
-    MessagePrimitive: {
-      Root: PassThrough,
-      GroupedParts: () => null,
-      Error: () => null,
-    },
-    useAuiState: <T,>(selector: (state: { message: MockMessageState }) => T) =>
-      React.useSyncExternalStore(
-        subscribe,
-        () => selector({ message: messageState.current }),
-        () => selector({ message: messageState.current }),
-      ),
+    id: String(index),
+    type: part.type === "reasoning" ? "reasoning" : "text",
+    text: "text" in part ? part.text : "",
   };
-});
+}
+function canonicalMessage(): AllyChatMessage {
+  const source = messageState.current;
+  const meta = source.metadata?.custom;
+  return {
+    id: source.id,
+    role: source.role,
+    createdAt: source.createdAt?.getTime(),
+    status:
+      source.status?.type === "complete"
+        ? "completed"
+        : source.status?.type === "incomplete"
+          ? source.status.reason === "cancelled"
+            ? "canceled"
+            : "failed"
+          : "running",
+    displayParts: source.content.map(canonicalPart),
+    runMetrics: meta?.runMetrics as ChatRunMetrics | undefined,
+    executionId:
+      typeof meta?.executionId === "string" ? meta.executionId : source.id,
+    errorMessage:
+      typeof meta?.failureMessage === "string"
+        ? meta.failureMessage
+        : undefined,
+    errorCode:
+      typeof meta?.failureCode === "string" ? meta.failureCode : undefined,
+    retryable: meta?.retryable === true,
+  };
+}
+function AssistantMessage(
+  props: Omit<
+    ComponentProps<typeof PureAssistantMessage>,
+    "view" | "latest" | "last"
+  >,
+) {
+  const view = new ChatMessageProjection().update([canonicalMessage()])[0];
+  if (!view) throw new Error("missing test message");
+  const latest =
+    messageState.messages?.findLast((message) => message.role === "assistant")
+      ?.id ?? view.message.id;
+  return (
+    <PureAssistantMessage
+      {...props}
+      view={view}
+      latest={latest === view.message.id}
+      last={messageState.current.isLast !== false}
+    />
+  );
+}
+function WorkProcess({
+  indices,
+  children,
+}: {
+  indices: readonly number[];
+  children?: ReactNode;
+  onOpenFileChange?: unknown;
+}) {
+  const message = canonicalMessage();
+  const group: ChatToolGroup = {
+    key: "test-tools",
+    kind: "tools",
+    nodes: indices.flatMap((index) => {
+      const part = message.displayParts?.[index];
+      return part?.type === "tool" ? [{ key: String(index), part }] : [];
+    }),
+  };
+  return (
+    <PureWorkProcess
+      group={group}
+      terminal={isTerminalMessage(message)}
+      current={
+        !isTerminalMessage(message) &&
+        indices.at(-1) === (message.displayParts?.length ?? 0) - 1
+      }
+    >
+      {children}
+    </PureWorkProcess>
+  );
+}
+function ToolActivityRow(props: ToolCallMessagePartProps) {
+  const part = canonicalPart({ ...props, type: "tool-call" }, 0);
+  return (
+    <PureToolActivityRow
+      part={part}
+      terminal={isTerminalMessage(canonicalMessage())}
+    />
+  );
+}
+function MessageRunStatus(props: { showUsageDetails?: boolean }) {
+  return <PureMessageRunStatus {...props} message={canonicalMessage()} />;
+}
 
 afterEach(() => {
   vi.useRealTimers();
+  messageState.messages = undefined;
   messageState.current = {
+    role: "assistant",
     id: "message-1",
     status: { type: "complete", reason: "stop" },
     content: [],
@@ -136,6 +236,7 @@ function toolPart(
 describe("chat work process", () => {
   it("失败回复成为历史后自动收起，原失败详情和正文阅读标记只在展开时出现", () => {
     messageState.current = {
+      role: "assistant",
       id: "failed-message",
       createdAt: new Date(0),
       isLast: true,
@@ -195,6 +296,7 @@ describe("chat work process", () => {
   });
   it("摘要按首次出现顺序合并工具类别，不展示计数和过程消息", () => {
     messageState.current = {
+      role: "assistant",
       id: "message-1",
       status: { type: "complete", reason: "stop" },
       content: [
@@ -287,6 +389,7 @@ describe("chat work process", () => {
 
   it("运行中的当前工具段默认收起并闪光，完成后停止", () => {
     messageState.current = {
+      role: "assistant",
       id: "message-1",
       status: { type: "running" },
       content: [toolPart("file_read", "running")],
@@ -322,6 +425,7 @@ describe("chat work process", () => {
 
   it("后续出现过程说明时，先前的工具段停止闪光", () => {
     messageState.current = {
+      role: "assistant",
       id: "member-running-message",
       status: { type: "running" },
       content: [toolPart("file_read", "completed"), processPart("继续检查")],
@@ -341,6 +445,7 @@ describe("chat work process", () => {
 
   it("同一消息内的多个折叠段各自限定箭头悬停范围", () => {
     messageState.current = {
+      role: "assistant",
       id: "message-hover-scope",
       status: { type: "complete", reason: "stop" },
       content: [
@@ -373,9 +478,10 @@ describe("chat work process", () => {
     }
   });
 
-  it("终态文件改动 Card 展示在执行过程内容底部", async () => {
+  it("终态工具组不再从工具摘要生产文件成果", async () => {
     const onOpenFile = vi.fn();
     messageState.current = {
+      role: "assistant",
       id: "message-process-file-changes",
       status: { type: "complete", reason: "stop" },
       metadata: {
@@ -399,28 +505,14 @@ describe("chat work process", () => {
     const toggle = screen.getByRole("button", { name: "已编辑文件" });
     expect(screen.queryByText("已编辑 2 个文件")).not.toBeInTheDocument();
     fireEvent.click(toggle);
-    await screen.findByText("已编辑 2 个文件");
-
-    const process = toggle.closest("section");
-    expect(process).not.toBeNull();
-    expect(
-      within(process as HTMLElement).getByText("已编辑 2 个文件"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Desktop/note_two.txt")).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "查看 Desktop/note_two.txt 的更改",
-      }),
-    );
-    expect(onOpenFile).toHaveBeenCalledWith({
-      messageId: "message-process-file-changes",
-      name: "note_two.txt",
-      path: "projects/Desktop/note_two.txt",
-    });
+    expect(screen.getByText("修改文件")).toBeVisible();
+    expect(screen.queryByText("已编辑 2 个文件")).not.toBeInTheDocument();
+    expect(onOpenFile).not.toHaveBeenCalled();
   });
 
-  it("多段工具活动只在最后一段展示文件改动汇总", async () => {
+  it("多个工具组均不再承载文件成果汇总", async () => {
     messageState.current = {
+      role: "assistant",
       id: "message-multiple-tool-groups",
       status: { type: "complete", reason: "stop" },
       metadata: {
@@ -451,12 +543,13 @@ describe("chat work process", () => {
     expect(screen.getByText("编辑明细")).toBeVisible();
     expect(screen.queryByText("已编辑 1 个文件")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "已执行命令" }));
-    expect(await screen.findByText("已编辑 1 个文件")).toBeVisible();
-    expect(screen.getAllByText("已编辑 1 个文件")).toHaveLength(1);
+    expect(screen.getByText("命令明细")).toBeVisible();
+    expect(screen.queryByText("已编辑 1 个文件")).not.toBeInTheDocument();
   });
 
   it("运行中手动展开后，完成时保持展开", () => {
     messageState.current = {
+      role: "assistant",
       id: "message-1",
       status: { type: "running" },
       content: [toolPart("file_read", "running")],
@@ -488,6 +581,7 @@ describe("chat work process", () => {
 
   it("过程内容按需挂载，快速反向切换后保持最后状态", () => {
     messageState.current = {
+      role: "assistant",
       id: "toggle-message",
       status: { type: "complete", reason: "stop" },
       content: [toolPart("file_read", "completed")],
@@ -865,6 +959,7 @@ describe("chat work process", () => {
 
   it("当前处于工具过程时隐藏飞速运转和图标，离开工具过程后恢复", () => {
     messageState.current = {
+      role: "assistant",
       id: "message-running-process",
       metadata: { custom: {} },
       status: { type: "running" },
@@ -909,6 +1004,7 @@ describe("chat work process", () => {
 
   it("完成消息读取运行指标时保持外部 store snapshot 稳定", () => {
     messageState.current = {
+      role: "assistant",
       id: "message-1",
       createdAt: new Date("2026-08-02T07:00:00.000Z"),
       status: { type: "complete", reason: "stop" },
@@ -932,6 +1028,7 @@ describe("chat work process", () => {
 
   it("团队主会话隐藏上下文和消息运行用量，成员会话仍保留", () => {
     messageState.current = {
+      role: "assistant",
       id: "member-message",
       createdAt: new Date("2026-09-02T08:24:00.000Z"),
       status: { type: "complete", reason: "stop" },
@@ -979,75 +1076,10 @@ describe("chat work process", () => {
 });
 
 describe("execution file changes", () => {
-  it("仅在终态展示本次执行文件，并支持展开和打开 Diff", () => {
-    const onOpenFile = vi.fn();
-    messageState.current = {
-      id: "message-file-changes",
-      status: { type: "complete", reason: "stop" },
-      metadata: {
-        custom: {
-          isTerminal: true,
-          fileChanges: [
-            {
-              path: "projects/Desktop/README.md",
-              addedLines: 12,
-              deletedLines: 3,
-            },
-            { path: "docs/a.md", addedLines: 1, deletedLines: 1 },
-            { path: "docs/b.md", addedLines: 2, deletedLines: 0 },
-            { path: "src/main.ts", addedLines: 4, deletedLines: 2 },
-            { path: "src/main.test.ts", addedLines: 8, deletedLines: 0 },
-          ],
-        },
-      },
-      content: [],
-    };
-
-    render(<ExecutionFileChangesCard visible onOpenFile={onOpenFile} />);
-
-    expect(screen.getByText("已编辑 5 个文件")).toBeInTheDocument();
-    expect(screen.queryByText("查看更改")).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("region", { name: "已编辑 5 个文件" }).firstElementChild,
-    ).toHaveClass("min-h-row-default");
-    expect(screen.getByText("Desktop/README.md")).toBeInTheDocument();
-    expect(
-      screen.queryByText("projects/Desktop/README.md"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("src/main.ts")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "再显示 2 个文件" }));
-    expect(screen.getByText("src/main.ts")).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "查看 src/main.ts 的更改" }),
-    );
-    expect(onOpenFile).toHaveBeenCalledWith({
-      messageId: "message-file-changes",
-      name: "main.ts",
-      path: "src/main.ts",
-    });
-  });
-
-  it("执行仍在运行时不提前展示文件变更卡片", () => {
-    messageState.current = {
-      id: "message-running-file-changes",
-      status: { type: "running" },
-      metadata: {
-        custom: {
-          isTerminal: false,
-          fileChanges: [{ path: "README.md", addedLines: 1 }],
-        },
-      },
-      content: [],
-    };
-
-    render(<ExecutionFileChangesCard visible />);
-
-    expect(screen.queryByText("已编辑 1 个文件")).not.toBeInTheDocument();
-  });
-
+  // 快照成果卡片的终态、展开与按需 Diff 由 execution-file-changes-card.test.tsx 验证。
   it("有文件改动时不在复制按钮后展示独立入口", () => {
     messageState.current = {
+      role: "assistant",
       id: "message-toggle-file-changes",
       createdAt: new Date("2026-08-25T07:30:00.000Z"),
       status: { type: "complete", reason: "stop" },
@@ -1068,6 +1100,7 @@ describe("execution file changes", () => {
 
   it("团队聚合消息按消息标识展示实际执行成员", () => {
     messageState.current = {
+      role: "assistant",
       id: "member-message",
       createdAt: new Date("2026-09-02T08:24:00.000Z"),
       metadata: { custom: {} },
@@ -1090,8 +1123,9 @@ describe("execution file changes", () => {
 });
 
 describe("assistant message shell", () => {
-  it("最新助手消息变成历史消息后，头像退出工作状态", () => {
+  it("最新助手消息变成历史消息后用普通图片代替动态头像并保留名称", () => {
     messageState.current = {
+      role: "assistant",
       id: "assistant-avatar-state",
       createdAt: new Date("2026-09-21T06:00:00.000Z"),
       isLast: true,
@@ -1104,13 +1138,42 @@ describe("assistant message shell", () => {
       view.container.querySelector("[data-companion-activity]"),
     ).toHaveAttribute("data-companion-activity", "searching");
     messageState.current = { ...messageState.current, isLast: false };
+    messageState.messages = [
+      { id: messageState.current.id, role: "assistant" },
+      { id: "new-assistant", role: "assistant" },
+    ];
     view.rerender(<AssistantMessage name="测试伙伴" />);
     expect(
-      view.container.querySelector("[data-companion-activity]"),
-    ).toHaveAttribute("data-companion-activity", "idle");
+      view.container.querySelector("[data-companion-animated]"),
+    ).toBeNull();
+    const image = view.container.querySelector("img");
+    expect(image).toHaveAttribute("loading", "lazy");
+    expect(image).toHaveAttribute("src", expect.stringMatching(/\.svg/));
+    expect(screen.getByText("测试伙伴")).toBeVisible();
+  });
+  it("末尾是用户消息时，最近的助手消息仍保留动态头像", () => {
+    messageState.current = {
+      role: "assistant",
+      id: "last-assistant",
+      metadata: { custom: {} },
+      isLast: false,
+      createdAt: new Date("2026-10-30T00:00:00Z"),
+      status: { type: "complete", reason: "stop" },
+      content: [],
+    };
+    messageState.messages = [
+      { id: "last-assistant", role: "assistant" },
+      { id: "new-user", role: "user" },
+    ];
+    const { container } = render(<AssistantMessage name="测试伙伴" />);
+    expect(
+      container.querySelector('[data-companion-animated="true"]'),
+    ).not.toBeNull();
+    expect(container.querySelector("img")).toBeNull();
   });
   it("尚无输出时立即展示伙伴身份和原有飞速运转动画", () => {
     messageState.current = {
+      role: "assistant",
       createdAt: new Date("2026-09-05T01:58:48.000Z"),
       id: "assistant-pending-output",
       metadata: { custom: {} },

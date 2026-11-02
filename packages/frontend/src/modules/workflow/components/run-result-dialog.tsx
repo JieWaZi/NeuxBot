@@ -60,6 +60,7 @@ export function RunResultDialog({
     queryKeys: [getWorkflowRunQueryKey({ path: { id, runId } })],
     active,
     enabled: Boolean(id && runId),
+    eventTypes: ["workflow.run.changed", "workflow.worker.skip_requested"],
   });
   const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage } =
     query;
@@ -261,6 +262,34 @@ export function RunResultDialog({
                   </div>
                 )}
               </section>
+              {data?.files?.length ? (
+                <section className="grid gap-3">
+                  <h3 className="type-title font-semibold">
+                    {t("resultPage.filesTitle")}
+                  </h3>
+                  <ul className="grid gap-2">
+                    {data.files.map((file) => (
+                      <li
+                        key={file.id}
+                        className="bg-card flex flex-wrap items-center justify-between gap-3 rounded-lg p-3"
+                      >
+                        <span className="type-body min-w-0 break-all">
+                          {file.name}
+                        </span>
+                        <span className="text-muted-foreground type-caption">
+                          {file.available
+                            ? t("resultPage.fileSize", {
+                                size: new Intl.NumberFormat(i18n.language, {
+                                  maximumFractionDigits: 1,
+                                }).format((file.size ?? 0) / 1024),
+                              })
+                            : t("outputFileUnavailable")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
               <RunLogs
                 key={runId}
                 id={id}

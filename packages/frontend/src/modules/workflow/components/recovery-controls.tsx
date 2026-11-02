@@ -16,14 +16,12 @@ export function SkipWorkerControl({
   instanceId,
   generation,
   skipRequested,
-  onChanged,
 }: {
   id: string;
   runId: string;
   instanceId: string;
   generation: number;
   skipRequested: boolean;
-  onChanged: () => void;
 }) {
   const { t } = useTranslation("workflow");
   const [requestId, setRequestId] = useState<string>();
@@ -38,7 +36,6 @@ export function SkipWorkerControl({
         body: { requestId, attemptGeneration: generation },
       });
       setRequestId(undefined);
-      onChanged();
     } catch {
       /* Mutation owns the local error. */
     }

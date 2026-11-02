@@ -12,6 +12,10 @@ func init() {
 
 // WorkResultReference 引用原结果身份，不复制正文或执行状态。
 type WorkResultReference struct {
+	// 文件成果标识
+	FileChangeRecordID string `json:"fileChangeRecordId,omitempty"`
+	// 文件成果版本
+	FileChangeRecordVersion int `json:"fileChangeRecordVersion,omitempty"`
 	// ChatID 是结果所在的真实对话。
 	ChatID string `json:"chatId,omitempty"`
 	// ExecutionID 是产生结果的真实执行。

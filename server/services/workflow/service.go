@@ -8,7 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
@@ -21,7 +21,7 @@ import (
 // Service 是 HTTP、执行能力、触发入口及 Runner 共同复用的应用边界。
 type Service struct {
 	// commands 保存与领域变更同事务提交的 CLI 回执。
-	commands agentcommand.Store
+	commands capability.Store
 	// events 是已有应用事件通道。
 	events *events.Hub
 	// store 拥有不可变源码和持久运行事实。
@@ -67,7 +67,7 @@ type Service struct {
 // Config 是显式装配 Workflow 服务需要的业务端口。
 type Config struct {
 	// Commands 保存主库命令回执。
-	Commands agentcommand.Store
+	Commands capability.Store
 	// Events 复用应用内状态变化通道。
 	Events *events.Hub
 	// State 是 API 和后台运行共用的命令锁、租约与监听器身份。
@@ -76,7 +76,7 @@ type Config struct {
 	Store controllers.WorkflowController
 	// Runs 是运行 Repository。
 	Runs controllers.WorkflowRunController
-	// RepairOutput 以无业务工具通道最多纠正两次输出格式。
+	// RepairOutput 通过独立文本调用最多纠正两次输出格式，不注入工作流业务能力。
 	RepairOutput func(context.Context, models.WorkflowExecutionDefaults, map[string]any, string) (string, error)
 	// Worker 是真实执行与结果对账端口。
 	Worker WorkerPort
@@ -172,10 +172,15 @@ func (s *Service) runLoop(lifecycle *runnerLifecycle) {
 			if lifecycle.ctx.Err() != nil {
 				return
 			}
-			if err := s.Tick(lifecycle.ctx, run.ID); err != nil && !errors.Is(err, status_error.WorkflowFenceConflict) {
-				logx.Errorf("advance workflow failed: run_id=%s error=%v", run.ID, err)
+			state, err := s.tick(lifecycle.ctx, run.ID)
+			if err != nil {
+				if !errors.Is(err, status_error.WorkflowFenceConflict) {
+					logx.Errorf("advance workflow failed: run_id=%s error=%v", run.ID, err)
+				}
+				continue
 			}
-			state, err := s.runs.LoadRunState(lifecycle.ctx, run.ID)
+			// CommitRun 可将未知效果收敛为 cancelling；只确认运行行，复用 Tick 已核验的效果与许可。
+			state.Run, err = s.runs.GetRun(lifecycle.ctx, run.ID)
 			if err != nil {
 				continue
 			}

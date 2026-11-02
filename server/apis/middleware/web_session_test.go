@@ -9,7 +9,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/localweb"
 	"github.com/gin-gonic/gin"
 )
@@ -86,10 +86,10 @@ func TestWebStaticRoutingPreservesExecutionCapabilityProtocol(t *testing.T) {
 	}
 	global.LocalWeb = web
 	t.Cleanup(func() { web.Close(); global.LocalWeb = old })
-	registry := agentcapability.New(nil)
+	registry := capability.New(nil)
 	defer registry.Close()
-	grant, activate, revoke, err := registry.Prepare(agentcapability.GrantSpec{ExecutionID: "workflow-turn", Validate: func(context.Context) error { return nil }, Bindings: []agentcapability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, agentcapability.Request) (agentcapability.Result, error) {
-		return agentcapability.Result{}, nil
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: "workflow-turn", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, capability.Request) (capability.Result, error) {
+		return capability.Result{}, nil
 	}}}})
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +106,7 @@ func TestWebStaticRoutingPreservesExecutionCapabilityProtocol(t *testing.T) {
 		r.Header.Set("Origin", origin)
 		w := httptest.NewRecorder()
 		engine.ServeHTTP(w, r)
-		var response agentcapability.Response
+		var response capability.Response
 		if json.Unmarshal(w.Body.Bytes(), &response) != nil || response.ProtocolVersion != constants.AgentCLIProtocolVersion {
 			t.Fatalf("execution protocol routed as static content: status=%d body=%s", w.Code, w.Body)
 		}

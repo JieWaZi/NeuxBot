@@ -1,0 +1,30 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/JieWaZi/NeuxBot/server/internal/chat/changes
+cpu: Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz
+BenchmarkCapture10000/shadow-16         	       5	7452813287 ns/op	      4114 baseline-max-ms	      3891 baseline-median-ms	      4114 baseline-p95-ms	      4065 finish-max-ms	      3563 finish-median-ms	      4065 finish-p95-ms	282965348 B/op	 1396875 allocs/op
+--- BENCH: BenchmarkCapture10000/shadow-16
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":6784.748856,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":4160.018959,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":1}
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":4038.64997,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":3503.63503,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":1}
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":4113.756478,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":4065.01529,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":2}
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":3890.933123,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":3879.187042,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":3}
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":3699.64232,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":3562.839858,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":4}
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":3135.281237,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":3375.108445,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":5}
+BenchmarkCapture10000/git-16            	       5	6843878318 ns/op	      4155 baseline-max-ms	      3163 baseline-median-ms	      4155 baseline-p95-ms	      3525 finish-max-ms	      3489 finish-median-ms	      3525 finish-p95-ms	299535044 B/op	 1417804 allocs/op
+--- BENCH: BenchmarkCapture10000/git-16
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":4508.963768,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":3879.537128,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":1}
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":4154.586024,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":3488.860217,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":1}
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":3247.010835,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":3437.406878,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":2}
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":3163.342504,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":3524.564496,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":3}
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":3102.373591,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":3497.871251,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":4}
+    performance_test.go:91: {"baselineEncodedBytes":834626,"baselineLogicalBytes":52848800,"baselineMs":3151.283664,"baselineObjects":10001,"bytes":52428800,"changedFiles":20,"files":10000,"finishMs":3452.07863,"incrementEncodedBytes":248923,"incrementLogicalBytes":524860,"incrementObjects":21,"iteration":5}
+BenchmarkTextDiffAtLimit-16             	       5	  31988142 ns/op	        39.09 max-ms	        33.09 median-ms	        39.09 p95-ms	34718776 B/op	   10032 allocs/op
+--- BENCH: BenchmarkTextDiffAtLimit-16
+    performance_test.go:168: iteration=1 bytesPerSide=2097152 algorithmMs=42.194369 coarse=true truncated=true renderLines=5000
+    performance_test.go:168: iteration=1 bytesPerSide=2097152 algorithmMs=29.267850 coarse=true truncated=true renderLines=5000
+    performance_test.go:168: iteration=2 bytesPerSide=2097152 algorithmMs=36.649002 coarse=true truncated=true renderLines=5000
+    performance_test.go:168: iteration=3 bytesPerSide=2097152 algorithmMs=39.091045 coarse=true truncated=true renderLines=5000
+    performance_test.go:168: iteration=4 bytesPerSide=2097152 algorithmMs=21.841216 coarse=true truncated=true renderLines=5000
+    performance_test.go:168: iteration=5 bytesPerSide=2097152 algorithmMs=33.088158 coarse=true truncated=true renderLines=5000
+PASS
+ok  	github.com/JieWaZi/NeuxBot/server/internal/chat/changes	131.051s

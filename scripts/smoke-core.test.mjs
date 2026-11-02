@@ -5,6 +5,43 @@ import path from "node:path";
 import test from "node:test";
 import { smokeCore } from "./smoke-core.mjs";
 
+test("Core 冷启动使用冒烟预算，超时仍回收进程", async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), "core-smoke-delayed-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const fixture = path.join(directory, "delayed.cjs");
+  await writeFile(
+    fixture,
+    `
+const server = require("node:http").createServer((req, res) => {
+  res.setHeader("content-type", "application/json");
+  if (req.headers.authorization !== "Bearer " + process.env.ALLY_LOCAL_TOKEN) {
+    res.writeHead(401);
+    res.end("{}");
+    return;
+  }
+  res.end(JSON.stringify({ status: "ok" }));
+});
+setTimeout(() => server.listen(Number(process.env.SERVER_PORT), "127.0.0.1"), 200);
+process.on("SIGTERM", () => server.close(() => process.exit(0)));
+`,
+  );
+  const options = {
+    binary: process.execPath,
+    resources: directory,
+    executable: process.execPath,
+    env: {
+      ...process.env,
+      NODE_OPTIONS: `--require=${JSON.stringify(fixture)}`,
+    },
+    diagnostic: () => {},
+  };
+  await assert.rejects(
+    smokeCore({ ...options, startupTimeout: 50 }),
+    /本地服务启动超时/,
+  );
+  await smokeCore({ ...options, startupTimeout: 5000 });
+});
+
 test("Core 启动失败保留有界脱敏诊断，并清理隔离数据", async (t) => {
   const directory = await mkdtemp(path.join(tmpdir(), "core-smoke-failure-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

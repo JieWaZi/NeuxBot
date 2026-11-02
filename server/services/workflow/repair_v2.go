@@ -12,7 +12,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-// repairWorkerOutput 在业务执行成功后使用无工具文本通道修正格式，预算先落盘再调用。
+// repairWorkerOutput 在业务执行成功后使用独立文本通道修正格式，预算先落盘再调用。
 func (s *Service) repairWorkerOutput(ctx context.Context, run models.WorkflowRun, effect models.WorkflowEffect, receipt WorkerReceipt) (WorkerReceipt, error) {
 	if receipt.Status != constants.ExecutionStatusCompleted {
 		return receipt, nil

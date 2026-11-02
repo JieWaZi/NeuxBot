@@ -133,6 +133,7 @@ function Harness({
     },
     thread: {
       runtime: {} as AssistantRuntime,
+      messages: [],
       wakerName: variant === "team" ? "团队负责人" : "普通伙伴",
       emptyState: null,
       composerSettings: null,

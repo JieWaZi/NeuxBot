@@ -450,7 +450,7 @@ func (s *service) watchLeadExecution(
 		retryDelay := policy.initialDelay
 		consecutiveFailures := 0
 		for {
-			subscription, err := s.chats.SubscribeEvents(watcherContext, thread.LeadChatID, 0)
+			subscription, err := s.chats.SubscribeExecutionEvents(watcherContext, thread.LeadChatID, executionID)
 			if err != nil {
 				logx.Errorf("subscribe lead execution events failed: thread_id=%s execution_id=%s chat_id=%s error=%v", thread.ID, executionID, thread.LeadChatID, err)
 				consecutiveFailures++
@@ -605,14 +605,13 @@ func (s *service) completeLeadExecution(
 	inputIDs []string,
 	event chat.PublicEvent,
 ) (bool, error) {
-	if event.Message == nil || event.Message.ExecutionID != executionID ||
-		!executionTerminal(event.Message.Status) {
+	if event.ExecutionID != executionID || !executionTerminal(event.ExecutionStatus) {
 		return false, nil
 	}
 	notificationStatus := constants.ChannelNotificationStatusConsumed
 	inputStatus := constants.ChannelInputStatusConsumed
 	leadExecutionID := executionID
-	if event.Message.Status != constants.ExecutionStatusCompleted {
+	if event.ExecutionStatus != constants.ExecutionStatusCompleted {
 		notificationStatus = constants.ChannelNotificationStatusPending
 		inputStatus = constants.ChannelInputStatusPending
 		leadExecutionID = ""

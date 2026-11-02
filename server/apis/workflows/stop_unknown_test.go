@@ -7,7 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -129,7 +129,7 @@ func TestLostWorkerReceiptFailsWithoutUserReconciliationOrResend(t *testing.T) {
 	var callErr error
 	for _, binding := range bindings {
 		if binding.Operation == "workflow.results.submit" {
-			_, callErr = binding.Call(ctx, agentcapability.Request{Operation: binding.Operation, RequestID: "late", Params: map[string]any{"data": "late"}})
+			_, callErr = binding.Call(ctx, capability.Request{Operation: binding.Operation, RequestID: "late", Params: map[string]any{"data": "late"}})
 		}
 	}
 	if workflowstate.ErrorKey(callErr) != status_error.WorkflowStateConflict.Key() {

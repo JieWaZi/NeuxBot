@@ -5,7 +5,7 @@ import (
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -76,13 +76,13 @@ func (p *knowledgeScheduleExecutions) Start(ctx context.Context, intent executio
 	p.intent = intent
 	p.receiptID = intent.ClientRequestID + ".organize"
 	found := false
-	for _, capability := range intent.Options.ToolCapabilities {
-		for _, binding := range capability.Bindings {
+	for _, toolCapability := range intent.Options.ToolCapabilities {
+		for _, binding := range toolCapability.Bindings {
 			if binding.Operation != "knowledge.jobs.start" {
 				continue
 			}
 			found = true
-			result, err := binding.Call(ctx, agentcapability.Request{Operation: binding.Operation, RequestID: p.receiptID, Params: map[string]any{}})
+			result, err := binding.Call(ctx, capability.Request{Operation: binding.Operation, RequestID: p.receiptID, Params: map[string]any{}})
 			if err != nil {
 				return execution.AcceptedExecution{}, err
 			}

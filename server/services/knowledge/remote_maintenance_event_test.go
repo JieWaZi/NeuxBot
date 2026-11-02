@@ -59,7 +59,7 @@ func TestRemoteMaintenanceEmitsOnlyCommittedChanges(t *testing.T) {
 			select {
 			case event := <-subscription.Events:
 				current, e := s.config.Engine.GetPage(ctx, lib.ID, page.ID)
-				if event.Type != "knowledge.changed" || event.Resource.ID != lib.ID || e != nil || current.Content != "维护后的内容" {
+				if event.Type != "knowledge.content.changed" || event.Resource.ID != lib.ID || e != nil || current.Content != "维护后的内容" {
 					t.Fatal("event did not identify committed page", event, current, e)
 				}
 				if receipt.ResourceID != page.ID {

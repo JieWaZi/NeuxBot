@@ -1,6 +1,8 @@
 package workflows
 
 import (
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"context"
 	"encoding/json"
 	"os"
@@ -10,7 +12,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -28,13 +30,13 @@ type releaseFixtureRuntime struct {
 	emptyBlocking bool
 }
 
-func (r *releaseFixtureRuntime) Run(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
+func (r *releaseFixtureRuntime) Run(ctx context.Context, request fixtureInvocation, sink agentapi.EventSink) agentapi.Result {
 	invocation := util.New()
-	started, _ := json.Marshal(runtimes.InvocationStartedData{InvocationID: invocation})
-	failed := func(err error) runtimes.Result {
-		return runtimes.Result{ExitCode: 1, Failure: &runtimes.Failure{Code: runtimes.FailureCodeProcessExited, Stage: "runtime", Message: err.Error(), Transience: runtimes.FailureTransiencePermanent}}
+	started, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: invocation})
+	failed := func(err error) agentapi.Result {
+		return agentapi.Result{ExitCode: 1, Failure: &agentapi.Failure{Code: agentapi.FailureCodeProcessExited, Stage: "runtime", Message: err.Error(), Transience: agentapi.FailureTransiencePermanent}}
 	}
-	if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeInvocationStarted, Data: started}); err != nil {
+	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: started}); err != nil {
 		return failed(err)
 	}
 	contract, err := fixtureCLI(ctx, request, []string{"workflow", "results", "schema"}, nil)
@@ -125,7 +127,7 @@ func (r *releaseFixtureRuntime) Run(ctx context.Context, request runtimes.RunReq
 		return failed(err)
 	}
 
-	return runtimes.Result{Facts: runtimes.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
+	return agentapi.Result{Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
 }
 
 func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.T) {

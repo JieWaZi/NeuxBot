@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
@@ -20,12 +21,12 @@ import (
 // 调用方只依赖这些稳定用例和公开结果，不需要理解 JSONL、SQLite 查询索引、
 // Runtime 重试、Session 恢复或事件适配实现。
 type Service interface {
+	// ReadExecutionMessages 返回指定执行的公开消息。
+	ReadExecutionMessages(context.Context, string, string) ([]messageview.Message, error)
 	// ReadExecutionOutcome 读取指定执行最后一次持久调用的终止和失败事实。
 	ReadExecutionOutcome(context.Context, string, string) (ExecutionOutcome, error)
 	// ReadExecution 按稳定身份读取任意已接纳回合的权威事实。
 	ReadExecution(context.Context, string, string) (models.Execution, error)
-	// ForkTargets 返回普通会话各个结束回合的真实分叉可用性。
-	ForkTargets(ctx context.Context, chatID string) ([]ForkTarget, error)
 	// ForkChat 事务化复制继承历史，并在原生分叉完成后公开子会话。
 	ForkChat(ctx context.Context, input ForkInput, fork NativeFork) (string, error)
 	// Start 完成权威日志恢复并开始接受新的 Chat 执行。
@@ -43,16 +44,22 @@ type Service interface {
 	GetChatSummary(ctx context.Context, chatID string) (ChatSummary, error)
 	// ListChats 返回一位伙伴的最近 Chat。
 	ListChats(ctx context.Context, input ListChatsInput) (ChatList, error)
+	// RecentAvailableProject 返回伙伴最近使用且仍可用的项目。
+	RecentAvailableProject(ctx context.Context, wakerID string) (string, error)
 	// CountMessagesByWakerGroupedByDay 从每 Chat 索引统计伙伴消息活动。
 	CountMessagesByWakerGroupedByDay(ctx context.Context, wakerID string, startMs int64, endMs int64, loc *time.Location) (map[string]int64, error)
 	// CountUserMessages 从权威日志索引统计真实用户输入，排除成员报告和系统协调消息。
 	CountUserMessages(ctx context.Context, chatID string) (int64, error)
 	// ReadMessageHistory 返回指定创建游标之前的消息窗口。
 	ReadMessageHistory(ctx context.Context, chatID string, beforeSequence int64, limit int) (MessageHistoryPage, error)
-	// GetMessageFileChange 从权威 JSONL 返回指定消息和文件的执行级 Diff。
+	// GetMessageFileChange 按原消息授权范围读取独立快照的有界文件差异。
 	GetMessageFileChange(ctx context.Context, chatID string, messageID string, path string) (messageview.MessageFileChangeDiff, error)
+	// GetMessageFileChanges 读取独立快照提供的文件成果摘要。
+	GetMessageFileChanges(context.Context, string, string) (changes.Summary, error)
 	// ListEvents 返回持久化游标之后的安全公开事件。
 	ListEvents(ctx context.Context, chatID string, after int64, limit int) ([]PublicEvent, error)
+	// SubscribeExecutionEvents 只观察精确执行生命周期，先注册后补偿且不生成消息视图。
+	SubscribeExecutionEvents(ctx context.Context, chatID string, executionID string) (Subscription, error)
 	// SubscribeEvents 衔接持久化历史与后续实时公开事件。
 	SubscribeEvents(ctx context.Context, chatID string, after int64) (Subscription, error)
 
@@ -224,7 +231,10 @@ func (m *service) Start(ctx context.Context) error {
 	if err := m.logStore.RefreshCatalog(); err != nil {
 		return err
 	}
-	return m.recovery.reconcileAll(ctx)
+	if err := m.recovery.reconcileAll(ctx); err != nil {
+		return err
+	}
+	return m.recoverFileChanges(ctx)
 }
 
 // Close 关闭全部进程内事件订阅。

@@ -189,37 +189,6 @@ function relativeWithin(path: string, root: string): string | undefined {
     : undefined;
 }
 
-/** 只格式化已解析的真实路径。此函数从不解释软链接或猜测 projects 目录。 */
-export function displayFilePath(
-  canonicalPath: string,
-  sourceRoots: readonly string[],
-  baseDirectory = "",
-): string {
-  const roots = [...new Set(sourceRoots)];
-  const root = roots
-    .toSorted((a, b) => b.length - a.length)
-    .find(
-      (root) => canonicalPath === root || relativeWithin(canonicalPath, root),
-    );
-  if (!root)
-    return (
-      (roots.length === 0 && baseDirectory
-        ? relativeWithin(canonicalPath, baseDirectory)
-        : undefined) ?? canonicalPath
-    );
-  if (canonicalPath === root)
-    return roots.filter((entry) => fileName(entry) === fileName(root)).length >
-      1
-      ? canonicalPath
-      : fileName(root);
-  const relative = relativeWithin(canonicalPath, root) ?? canonicalPath;
-  if (roots.length < 2) return relative;
-  const label = fileName(root);
-  return roots.filter((root) => fileName(root) === label).length > 1
-    ? canonicalPath
-    : `${label}/${relative}`;
-}
-
 /** 所有入口共用真实文件解析；状态与文件身份分离，不以 null 隐藏失败原因。 */
 export async function resolveFileReference(
   candidate: FileReferenceCandidate,
@@ -244,7 +213,7 @@ export async function resolveFileReference(
       status: "directory",
       directory: {
         canonicalPath: result.canonicalPath,
-        displayPath: `${displayFilePath(result.canonicalPath, result.sourceRoots, result.workspaceRoot).replace(/\/$/, "")}/`,
+        displayPath: `${result.canonicalPath.replace(/\/$/, "")}/`,
         name: fileName(result.canonicalPath),
       },
     };
@@ -260,11 +229,7 @@ export async function resolveFileReference(
     status: "resolved",
     file: {
       canonicalPath: result.canonicalPath,
-      displayPath: displayFilePath(
-        result.canonicalPath,
-        result.sourceRoots,
-        result.workspaceRoot,
-      ),
+      displayPath: result.canonicalPath,
       name: fileName(result.canonicalPath),
       rootPath,
       path:
@@ -280,17 +245,6 @@ export async function resolveFileReference(
 export function fileReferenceLabel(
   file: ResolvedFileReference | ResolvedDirectoryReference,
   label?: string,
-  candidate?: FileReferenceCandidate,
 ): string {
-  if (!label) return file.displayPath;
-  // 只有直接展示地址的标题才相对化；人工标题不能因包含点号而被改写。
-  return [
-    file.name,
-    "path" in file ? file.path : undefined,
-    file.canonicalPath,
-    candidate?.path,
-    candidate?.raw,
-  ].includes(label)
-    ? file.displayPath
-    : label;
+  return label || file.canonicalPath;
 }

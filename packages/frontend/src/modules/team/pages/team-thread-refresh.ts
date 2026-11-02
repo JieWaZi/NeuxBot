@@ -14,6 +14,7 @@ export type TeamLeadActivity = {
 type TeamThreadRefreshCallbacks = {
   refreshDetail: () => void;
   refreshNavigation: () => void;
+  refreshTimeline?: () => void;
 };
 
 type TeamThreadRefreshScheduler = {
@@ -69,8 +70,10 @@ export function teamWorkStateOf(
 export function createTeamThreadRefreshScheduler({
   refreshDetail,
   refreshNavigation,
+  refreshTimeline,
 }: TeamThreadRefreshCallbacks): TeamThreadRefreshScheduler {
   let lifecycleTimer: number | undefined;
+  let timelineDirty = false;
 
   const clearLifecycle = () => {
     if (lifecycleTimer !== undefined) window.clearTimeout(lifecycleTimer);
@@ -79,9 +82,26 @@ export function createTeamThreadRefreshScheduler({
   return {
     clear: () => {
       clearLifecycle();
+      timelineDirty = false;
     },
     push: (eventType) => {
       clearLifecycle();
+      // 主 Chat 持久消息由消息源提交；只有团队额外拥有的输入/报告投影需要 HTTP。
+      timelineDirty ||=
+        eventType === undefined ||
+        eventType === "" ||
+        [
+          "team.member.direct_delivered",
+          "task.created",
+          "task.started",
+          "task.finished",
+          "task.follow_up_queued",
+          "task.retry_queued",
+          "task.review_approved",
+          "task.cancelled",
+          "task.recovery_failed",
+          "thread.work_stopped",
+        ].includes(eventType);
       const delay = (() => {
         switch (eventType) {
           case "team.leader.processing":
@@ -115,6 +135,8 @@ export function createTeamThreadRefreshScheduler({
         lifecycleTimer = undefined;
         refreshDetail();
         refreshNavigation();
+        if (timelineDirty) refreshTimeline?.();
+        timelineDirty = false;
       }, delay);
     },
   };
