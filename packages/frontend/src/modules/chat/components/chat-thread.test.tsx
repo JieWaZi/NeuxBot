@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ReasoningMessagePartProps,
@@ -55,10 +56,6 @@ const { messageState } = vi.hoisted(() => ({
       content: [] as ThreadAssistantMessagePart[],
     } as MockMessageState,
   },
-}));
-
-vi.mock("./execution-file-changes-card", () => ({
-  ExecutionFileChangesCard: () => null,
 }));
 
 type DisplayPart = NonNullable<AllyChatMessage["displayParts"]>[number];
@@ -1076,6 +1073,41 @@ describe("chat work process", () => {
 });
 
 describe("execution file changes", () => {
+  it.each([
+    { name: "默认展示", showFileChanges: undefined, visible: true },
+    { name: "按入口关闭", showFileChanges: false, visible: false },
+  ])("$name执行文件变更卡片并保留正文", ({ showFileChanges, visible }) => {
+    const view = new ChatMessageProjection().update([
+      {
+        id: "file-result",
+        role: "assistant",
+        status: "completed",
+        displayParts: [{ id: "body", type: "text", text: "已交付业务报告" }],
+        fileChangeRecord: {
+          recordId: "snapshot",
+          version: 2,
+          state: "ready",
+          totalFiles: 1,
+          complete: true,
+        },
+      },
+    ])[0];
+    if (!view) throw new Error("missing test message");
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <PureAssistantMessage
+          view={view}
+          name="测试伙伴"
+          showFileChanges={showFileChanges}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("已交付业务报告")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "已编辑 1 个文件" }) !== null,
+    ).toBe(visible);
+  });
+
   // 快照成果卡片的终态、展开与按需 Diff 由 execution-file-changes-card.test.tsx 验证。
   it("有文件改动时不在复制按钮后展示独立入口", () => {
     messageState.current = {

@@ -185,6 +185,7 @@ type ChatThreadProps = {
   isWorkStopping?: boolean;
   onStopWork?: () => void;
   showUsageMetrics?: boolean;
+  showFileChanges?: boolean;
   emptyState: ReactNode;
   emptyStatePosition?: "center" | "fill";
   /** 画布首发时同步输入框的位置与宽度，保留同一编辑器实例。 */
@@ -1300,6 +1301,7 @@ export function AssistantMessage({
   messageAuthors,
   onOpenFileChange,
   showUsageMetrics = true,
+  showFileChanges = true,
 }: {
   view: ChatMessageView;
   latest?: boolean;
@@ -1309,6 +1311,7 @@ export function AssistantMessage({
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
   showUsageMetrics?: boolean;
+  showFileChanges?: boolean;
 }) {
   const { t } = useTranslation("chat");
   const message = view.message;
@@ -1351,7 +1354,7 @@ export function AssistantMessage({
         </div>
         <div className="mt-2 min-w-0">
           <ChatMessageParts view={view} showUsageMetrics={showUsageMetrics} />
-          {message.fileChangeRecord ? (
+          {showFileChanges && message.fileChangeRecord ? (
             <ExecutionFileChangesCard
               message={message}
               chatId={author?.sourceChatId}
@@ -1396,6 +1399,7 @@ const ChatMessage = memo(function ChatMessage({
   onOpenFileChange,
   messageAuthors,
   showUsageMetrics,
+  showFileChanges,
 }: {
   view: ChatMessageView;
   latest: boolean;
@@ -1411,6 +1415,7 @@ const ChatMessage = memo(function ChatMessage({
   onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   showUsageMetrics?: boolean;
+  showFileChanges?: boolean;
 }) {
   const message = view.message;
   if (message.role === "user") {
@@ -1443,6 +1448,7 @@ const ChatMessage = memo(function ChatMessage({
       messageAuthors={messageAuthors}
       onOpenFileChange={onOpenFileChange}
       showUsageMetrics={showUsageMetrics}
+      showFileChanges={showFileChanges}
     />
   ) : null;
 });
@@ -2020,6 +2026,7 @@ export function ChatThread({
   onOpenFileChange,
   contextMetrics,
   showUsageMetrics = true,
+  showFileChanges = true,
   hasEarlierMessages,
   isLoadingEarlier,
   onLoadEarlier,
@@ -2266,6 +2273,7 @@ export function ChatThread({
                                   wakerId={wakerId}
                                   messageAuthors={messageAuthors}
                                   showUsageMetrics={showUsageMetrics}
+                                  showFileChanges={showFileChanges}
                                   onOpenCodeReference={onOpenCodeReference}
                                   onOpenFile={onOpenFile}
                                   onOpenFileChange={onOpenFileChange}

@@ -117,6 +117,7 @@ export type ChatWorkspaceEntry = {
   /** 首条输入在完整画布内居中，发送后在主容器内展开会话与业务内容。 */
   canvasInput?: boolean;
   showSummary?: boolean;
+  showFileChanges?: boolean;
   active?: boolean;
   defaults?: ExecutionSelection;
   scopeKey: string;
@@ -1197,6 +1198,7 @@ function ChatView({
       streamState: chatRuntime.streamState,
     },
     thread: {
+      showFileChanges: entry?.showFileChanges,
       fileScopeChatId: activeChatId,
       resultSource:
         activeChatId && !entry

@@ -29,7 +29,11 @@ import type { subscribeChat } from "@/shared/api/events";
 import type * as SceneWorkspace from "@/shared/workspace/app-scene-workspace";
 import { chatWorkspaceHandlers } from "../test/chat-workspace-handlers";
 import { WorkflowChatPane } from "./workflow-chat-pane";
-import { ChatQueueProvider, WorkbenchProvider } from "@/modules/chat";
+import {
+  ChatQueueProvider,
+  WorkbenchProvider,
+  chatMessagesKey,
+} from "@/modules/chat";
 
 type ChatSubscription = Parameters<typeof subscribeChat>[1];
 const chatSubscriptions = vi.hoisted(() => new Map<string, ChatSubscription>());
@@ -1341,5 +1345,102 @@ it("首次接纳前入队的消息绑定已创建的同一个创作会话", asyn
   await waitFor(() => expect(bodies).toHaveLength(2));
   expect(bodies[1]).toHaveProperty("sessionId", "queue-session");
   view.unmount();
+  queryClient.clear();
+});
+
+it("工作流创作隐藏历史与实时文件变更卡片，保留正文链接与画布", async () => {
+  const record = {
+    recordId: "authoring-snapshot",
+    version: 2,
+    state: "ready",
+    totalFiles: 1,
+    complete: true,
+  };
+  server.use(
+    http.get(`${api}/chats/file-card-chat`, () =>
+      HttpResponse.json({ chat: { id: "file-card-chat", latestSequence: 1 } }),
+    ),
+    http.get(`${api}/chats/file-card-chat/messages`, () =>
+      HttpResponse.json({
+        resources: [
+          {
+            id: "authoring-message",
+            role: "assistant",
+            status: "completed",
+            revision: 1,
+            executionId: "authoring-message",
+            displayParts: [
+              {
+                id: "authoring-body",
+                type: "text",
+                text: "工作流已保存。[业务报告](https://example.com/report)",
+              },
+            ],
+            fileChangeRecord: record,
+          },
+        ],
+        latestSequence: 1,
+      }),
+    ),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <WorkbenchProvider>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter>
+              <WorkflowChatPane
+                id="file-card-flow"
+                session={{ id: "file-card-session", chatId: "file-card-chat" }}
+                onNewChat={() => {}}
+                mainContent={{
+                  contentId: "test-canvas",
+                  title: "画布",
+                  content: <div>业务流程画布</div>,
+                }}
+              />
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </WorkbenchProvider>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole("link", { name: "业务报告" })).toHaveAttribute(
+    "href",
+    "https://example.com/report",
+  );
+  expect(screen.getByText("业务流程画布")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("region", { name: "已编辑 1 个文件" }),
+  ).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(chatSubscriptions.has("file-card-chat")).toBe(true),
+  );
+  act(() => {
+    chatSubscriptions.get("file-card-chat")?.onEvent({
+      sequence: 2,
+      type: "workspace.changes",
+      fileChanges: {
+        messageId: "authoring-message",
+        record: { ...record, version: 3, totalFiles: 2 },
+      },
+    });
+  });
+  await waitFor(() => {
+    const messages = queryClient.getQueryData<{
+      pages: { resources: { fileChangeRecord?: { version?: number } }[] }[];
+    }>(chatMessagesKey("file-card-chat"));
+    expect(messages?.pages[0]?.resources[0]?.fileChangeRecord?.version).toBe(3);
+  });
+  expect(
+    screen.queryByRole("region", { name: "已编辑 2 个文件" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "业务报告" })).toHaveAttribute(
+    "href",
+    "https://example.com/report",
+  );
   queryClient.clear();
 });
