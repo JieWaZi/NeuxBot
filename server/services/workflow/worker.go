@@ -99,9 +99,10 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	}
 	configuration := execution.ExecutionConfiguration{Resolved: true, RuntimeID: defaults.RuntimeID, AccountID: defaults.AccountID, Model: defaults.Model, Reasoning: defaults.Reasoning, PermissionLevel: defaults.PermissionLevel}
 	schema, _ := options["schema"].(map[string]any)
+	resultInstruction := ""
 	if len(schema) > 0 {
 		encoded, _ := json.Marshal(schema)
-		prompt += "\n\nRead the Worker Results guide linked from the host-provided ally skill; resolve its relative link from the supplied SKILL.md directory. " +
+		resultInstruction = "Read the Worker Results guide linked from the host-provided ally skill; resolve its relative link from the supplied SKILL.md directory. " +
 			"Complete the actual work, read workflow.results.schema for this attempt, then invoke workflow.results.submit with a stable requestId through the host-selected capability transport. " +
 			"When ally_capabilities MCP is injected, use workflow_results_schema and workflow_results_submit with their advertised input schemas. Otherwise follow the host-provided CLI transport and current execution context. Do not switch transports to bypass an error. " +
 			"Submit data as the actual JSON value matching this schema, without an invented wrapper or extra JSON encoding: " + string(encoded) +
@@ -124,6 +125,10 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	encoded, _ := json.Marshal(internalWorkspace)
 	create.AdditionalWorkingDirectories = []string{internalWorkspace.RootDirectory}
 	contextInstructions := []workinput.Instruction{{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "本次运行固定内部工作区：" + string(encoded) + "\nChat 当前工作目录仅承载本次智能体执行。脚本统一放 scriptsDirectory；长期状态放 stateDirectory；缓存放 cacheDirectory；临时辅助文件放 temporaryDirectory；本次业务成果默认放 runDirectory。所有脚本和辅助文件必须位于 rootDirectory 内，不得自行创建 /tmp 或 ~/xxx 等外部目录。只有用户明确指定外部业务目录时，业务文件才允许写到该目录；不得把脚本、缓存、状态或临时文件放到外部业务目录。"}}
+	// 宿主结果协议只进入智能体上下文，聊天正文保留节点的业务要求。
+	if resultInstruction != "" {
+		contextInstructions = append(contextInstructions, workinput.Instruction{Name: constants.WorkflowResultsInstructionFileName, Content: resultInstruction})
+	}
 	accepted, err := a.Executions.Start(ctx, execution.WorkIntent{AutomaticRunID: input.Run.AutomaticRunID, ExecutionID: input.Effect.ExecutionID, ClientRequestID: input.Effect.ID, Chat: execution.ChatTarget{Create: create}, Input: execution.WorkInput{Actor: "workflow", Content: prompt, ContextInstructions: contextInstructions}, Options: execution.WorkOptions{ConfigurationResolved: true, RuntimeID: configuration.RuntimeID, AccountID: configuration.AccountID, Model: configuration.Model, Reasoning: configuration.Reasoning, PermissionLevel: defaults.PermissionLevel, WorkspaceReadOnly: defaults.WorkspaceReadOnly, SessionPolicy: constants.RuntimeSessionPolicyNew, ToolCapabilities: tools, AllowedConnectorIDs: allowedConnectors, AllowedAgentDomains: &domains}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
 	if err != nil {
 		return WorkerReceipt{}, err

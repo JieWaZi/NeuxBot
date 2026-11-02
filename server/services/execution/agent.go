@@ -44,6 +44,7 @@ func agentIdentity(value string) string {
 }
 
 func (m *service) prepareAgent(plan *agentapi.SessionPlan, turn *agentapi.TurnInput, session agentapi.SessionDirective, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, facts *executionMessageFacts, automaticRunIDs ...string) (func(), func(), func(agentapi.Result), error) {
+	appendCurrentWorkflowResults(plan, turn)
 	if m.agent == nil {
 		return nil, nil, nil, nil
 	}
@@ -195,6 +196,25 @@ func (m *service) prepareAgent(plan *agentapi.SessionPlan, turn *agentapi.TurnIn
 		}
 	}
 	return activate, func() { revoke(); m.elicitations.finishQuestions(chat.ID, executionID) }, settle, nil
+}
+
+// appendCurrentWorkflowResults 将本次节点结果协议放入模型输入，避免原生指令文件的加载预算截断契约。
+// 只投影宿主固定命名的执行说明，不改写接纳请求中的业务消息与权威 Chat 正文。
+func appendCurrentWorkflowResults(plan *agentapi.SessionPlan, turn *agentapi.TurnInput) {
+	if !slices.ContainsFunc(plan.Instructions, func(instruction agentapi.Instruction) bool {
+		return instruction.Name == constants.WorkflowResultsInstructionFileName
+	}) {
+		return
+	}
+	stable := make([]agentapi.Instruction, 0, len(plan.Instructions))
+	for _, instruction := range plan.Instructions {
+		if instruction.Name == constants.WorkflowResultsInstructionFileName {
+			turn.Message.Text += "\n\n<workflow-results-context>\n" + instruction.Content + "\n</workflow-results-context>"
+		} else {
+			stable = append(stable, instruction)
+		}
+	}
+	plan.Instructions = stable
 }
 
 // appendCurrentWorkflowReferences 将当前轮引用写入实际发送的消息，原生续聊即使不重载 Instructions 也能获得准确目标。

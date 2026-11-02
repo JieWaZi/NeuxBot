@@ -66,20 +66,38 @@ func TestCoreWorkerDispatchAlignsStructuredPromptWithResultBindings(t *testing.T
 			if !reflect.DeepEqual(operations, []string{"workflow.results.schema", "workflow.results.submit"}) {
 				t.Fatalf("structured worker lost its actual attempt result bindings: %+v", operations)
 			}
-			prompt := intent.Input.Content
-			for _, required := range []string{"Worker Results", "host-provided ally skill", "workflow.results.schema", "workflow.results.submit", "requestId", "When ally_capabilities MCP is injected", "workflow_results_submit", "Final chat text is not a result submission"} {
-				if !strings.Contains(prompt, required) {
-					t.Fatalf("structured dispatch does not direct the worker through its result capability (%s): %s", required, prompt)
+			if intent.Input.Content != "Verify the original evidence." {
+				t.Fatalf("host result instructions entered the visible business message: %s", intent.Input.Content)
+			}
+			resultInstructions := []string{}
+			for _, instruction := range intent.Input.ContextInstructions {
+				if instruction.Name == "WORKFLOW_RESULTS.md" {
+					resultInstructions = append(resultInstructions, instruction.Content)
 				}
 			}
-			if !strings.HasPrefix(prompt, "Verify the original evidence.") || strings.Contains(prompt, "Return exactly one JSON value") {
-				t.Fatalf("structured worker still receives competing final-text instructions: %s", prompt)
+			if len(resultInstructions) != 1 {
+				t.Fatalf("worker needs exactly one model-only result contract: %+v", intent.Input.ContextInstructions)
+			}
+			prompt := resultInstructions[0]
+			for _, required := range []string{"Worker Results", "host-provided ally skill", "workflow.results.schema", "workflow.results.submit", "stable requestId", "When ally_capabilities MCP is injected", "workflow_results_schema", "workflow_results_submit", "Otherwise follow the host-provided CLI transport", "Do not switch transports to bypass an error", "without an invented wrapper or extra JSON encoding", "Final chat text is not a result submission", "An accepted candidate cannot be replaced", "finish this execution so the host can confirm node success separately"} {
+				if !strings.Contains(prompt, required) {
+					t.Fatalf("model-only context lost result contract %q: %s", required, prompt)
+				}
+			}
+			const schemaJSON = `{"properties":{"verified":{"type":"boolean"}},"required":["verified"],"type":"object"}`
+			if !strings.Contains(prompt, schemaJSON) || strings.Contains(prompt, "Return exactly one JSON value") {
+				t.Fatalf("worker lost its complete result schema or received competing final-text instructions: %s", prompt)
 			}
 			delete(options, "schema")
 			effect.Boundary.Arguments[1] = workflowdsl.JSONValue(options)
 			_, err = adapter.Dispatch(context.Background(), WorkerDispatch{Effect: effect, Run: workerTestRun(t, "review", runtimeID)})
 			if err != nil || port.intent.Input.Content != "Verify the original evidence." || len(port.intent.Options.ToolCapabilities) != 0 {
 				t.Fatalf("plain worker result contract changed: %+v %v", port.intent, err)
+			}
+			for _, instruction := range port.intent.Input.ContextInstructions {
+				if instruction.Name == "WORKFLOW_RESULTS.md" {
+					t.Fatal("void worker received a structured result contract")
+				}
 			}
 		})
 	}

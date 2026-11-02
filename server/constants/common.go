@@ -96,6 +96,8 @@ const (
 	WorkflowWorkspaceDirectoryName = "workflow-workspaces"
 	// WorkflowWorkspaceInstructionFileName 是创作与节点共用的目录约束指令名。
 	WorkflowWorkspaceInstructionFileName = "WORKFLOW_WORKSPACE.md"
+	// WorkflowResultsInstructionFileName 是节点结果提交协议的智能体上下文名。
+	WorkflowResultsInstructionFileName = "WORKFLOW_RESULTS.md"
 	// WorkflowScriptsDirectoryName 保存工作流草稿及版本脚本副本。
 	WorkflowScriptsDirectoryName = "scripts"
 	// WorkflowStateDirectoryName 保存工作流跨运行的配置与状态。

@@ -2,11 +2,14 @@ package execution
 
 import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agentcap "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 
 	"context"
 	"encoding/json"
 	"errors"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -213,29 +216,114 @@ func TestContinuationSubmissionReceiptSurvivesJournalReloadAndRejectsChangedInpu
 }
 
 func TestContextInstructionsStayOutOfUserMessageAndTitle(t *testing.T) {
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, t.TempDir(), runtime)
-	accepted, err := manager.execution.Start(context.Background(), WorkIntent{
-		ClientRequestID: "context-only", ExecutionID: util.New(),
-		Chat:      ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},
-		Input:     WorkInput{Actor: "user", Content: "你是谁", ContextInstructions: []workinput.Instruction{{Name: "DELIVERY.md", Content: "结果自动发送到已批准的接收方。"}}},
-		Options:   WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
-		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitForChatTerminal(t, manager, accepted.Chat.ID)
-	if accepted.Chat.Title != "你是谁" || len(runtime.requests) != 1 || runtime.requests[0].Message.Text != "你是谁" {
-		t.Fatalf("执行说明污染消息或标题: %+v %+v", accepted.Chat, runtime.requests)
-	}
-	found := false
-	for _, instruction := range runtime.requests[0].Instructions {
-		if instruction.Name == "DELIVERY.md" && instruction.Content == "结果自动发送到已批准的接收方。" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("执行上下文未传给智能体")
+	for scenario, business := range map[string]string{"user": "你是谁", "workflow": "核验原始资料", "void-worker": "保存业务文件"} {
+		t.Run(scenario, func(t *testing.T) {
+			actor := "workflow"
+			if scenario == "user" {
+				actor = "user"
+			}
+			runtime := &fakeRuntime{}
+			root := t.TempDir()
+			manager := newMessageTestService(t, root, runtime)
+			// 使用真实能力准备链路，只有最终原生消费者由同步 Runtime 替代。
+			preparation := agentPreparationFixture(t)
+			core := manager.execution.(*service)
+			core.agent, core.agentEndpoint, core.agentBinary = preparation.agent, preparation.agentEndpoint, preparation.agentBinary
+			core.agentSessions = preparation.agentSessions
+			instruction := workinput.Instruction{Name: "DELIVERY.md", Content: "结果自动发送到已批准的接收方。"}
+			var capabilities []ToolCapability
+			workingDirectory := t.TempDir()
+			if scenario == "void-worker" {
+				instruction = workinput.Instruction{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "本次业务成果放运行目录。"}
+			}
+			if scenario == "workflow" {
+				// 两种合法来源都超过默认项目文档预算，结果契约不能依赖静态文件的尾部。
+				if err := manager.profiles.UpdateWakerDocument(context.Background(), "waker-1", constants.ProfileDocumentKindIdentity, strings.Repeat("profile context\n", 4096), nowMillis()); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(workingDirectory, "AGENTS.md"), []byte(strings.Repeat("project context\n", 4096)), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				instruction = workinput.Instruction{Name: constants.WorkflowResultsInstructionFileName, Content: `Read workflow.results.schema, then invoke workflow.results.submit with a stable requestId. Submit the actual JSON value matching {"type":"object","properties":{"verified":{"type":"boolean"}},"required":["verified"]}. Final chat text is not a result submission.`}
+				capabilities = []ToolCapability{{ID: "workflow.result", Name: "工作流结果", Bindings: []agentcap.Binding{agentPreparationBinding(t, "workflow.results.schema"), agentPreparationBinding(t, "workflow.results.submit")}}}
+			}
+			accepted, err := manager.execution.Start(context.Background(), WorkIntent{
+				ClientRequestID: "context-only", ExecutionID: util.New(),
+				Chat:      ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: workingDirectory}},
+				Input:     WorkInput{Actor: actor, Content: business, ContextInstructions: []workinput.Instruction{instruction}},
+				Options:   WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyNew, ToolCapabilities: capabilities},
+				Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitForChatTerminal(t, manager, accepted.Chat.ID)
+			if accepted.Chat.Title != business || len(runtime.requests) != 1 {
+				t.Fatalf("执行说明污染标题或未到达模型: %+v %+v", accepted.Chat, runtime.requests)
+			}
+			request := runtime.requests[0]
+			if !strings.HasPrefix(request.Message.Text, business+"\n\n") || !strings.Contains(request.Message.Text, "<neuxbot-execution-context>") {
+				t.Fatalf("真实能力准备丢失业务输入或本轮执行上下文: %s", request.Message.Text)
+			}
+			found := false
+			staticBytes := 0
+			for _, actual := range request.Instructions {
+				staticBytes += len(actual.Content)
+				if actual.Name == instruction.Name && actual.Content == instruction.Content {
+					found = true
+				}
+			}
+			if scenario == "workflow" {
+				if !strings.Contains(request.Message.Text, instruction.Content) {
+					t.Fatal("结果契约与完整 Schema 仅存在于可能截断的静态文件，未进入本轮模型输入")
+				}
+				if found || strings.Count(request.Message.Text, instruction.Content) != 1 || staticBytes <= 32<<10 {
+					t.Fatalf("结果契约未从超预算静态指令中完整移入唯一动态输入: found=%v staticBytes=%d", found, staticBytes)
+				}
+			} else if !found || strings.Contains(request.Message.Text, "<workflow-results-context>") {
+				t.Fatal("普通聊天或无结构化结果的 Worker 上下文发生变化")
+			}
+			store, err := eventlog.NewStore(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			records, err := store.ReadAll(accepted.Chat.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found = false
+			for _, record := range records {
+				if record.Type != constants.ChatEventTypeUserMessageCreated || record.MessageID != accepted.Execution.UserMessageID {
+					continue
+				}
+				var data eventlog.MessageCreatedData
+				if err := json.Unmarshal(record.Data, &data); err != nil {
+					t.Fatal(err)
+				}
+				if data.Content != business || data.Actor != actor {
+					t.Fatalf("宿主上下文进入权威用户消息: %+v", data)
+				}
+				found = true
+			}
+			if !found {
+				t.Fatal("缺少权威用户消息")
+			}
+			messages, err := messageview.ReplayPublicMessages(records)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found = false
+			for _, message := range messages {
+				if message.ID == accepted.Execution.UserMessageID {
+					if message.Content != business {
+						t.Fatalf("宿主上下文进入公开聊天消息: %+v", message)
+					}
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("缺少公开用户消息")
+			}
+		})
 	}
 }
