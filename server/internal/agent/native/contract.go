@@ -134,7 +134,7 @@ type Limits struct {
 	MaxOutputBytes     int           // MaxOutputBytes 是最终候选正文上限。
 	MaxEventBytes      int           // MaxEventBytes 是单个规范事件上限。
 	MaxEvents          int           // MaxEvents 是本轮事件数量上限。
-	MaxTotalEventBytes int           // MaxTotalEventBytes 是本轮事件累计字节上限。
+	MaxTotalEventBytes int           // MaxTotalEventBytes 限制本轮参数快照新增字节及其他事件完整字节的累计量。
 	DeliveryTimeout    time.Duration // DeliveryTimeout 是一次观察与交互交付期限。
 	InteractionTimeout time.Duration // InteractionTimeout 是等待人工交互的独立期限。
 	InactivityTimeout  time.Duration // InactivityTimeout 是 Prompt 无原生活动且无待处理交互时的最长等待。
@@ -301,7 +301,7 @@ type ToolEvent struct {
 	Status    string          // Status 是原生活动阶段。
 	Text      string          // Text 是有界活动摘要。
 	Update    bool            // Update 表示既有调用的更新，false 表示首次调用。
-	Input     json.RawMessage // Input 是公开工具参数 JSON，nil 表示未提供。
+	Input     json.RawMessage // Input 是公开工具参数的完整替换快照，nil 表示未提供。
 	Output    json.RawMessage // Output 是公开工具结果 JSON，nil 表示未提供。
 	Content   []ContentBlock  // Content 是标准工具正文、差异及终端引用。
 	Locations []Location      // Locations 是工具声明的文件位置。

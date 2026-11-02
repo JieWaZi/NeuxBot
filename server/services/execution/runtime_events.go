@@ -37,15 +37,25 @@ type pendingRuntimeMessage struct {
 	messageRevision int64
 }
 
+// pendingRuntimeToolInput 保存一个输入来源的最新参数及其原始应用位置。
+type pendingRuntimeToolInput struct {
+	// fields 包含稳定工具身份和本事件尚未被后续快照替换的参数字段。
+	fields map[string]json.RawMessage
+	// updateIndex 是该输入所属进度事件的位置，纯参数快照位于此进度事件之前。
+	updateIndex int
+	// withUpdate 表示参数须与该位置的原始元数据在同一事件中应用。
+	withUpdate bool
+}
+
 // pendingRuntimeTool 保存同一工具的累计参数快照或有序进度批次。
 type pendingRuntimeTool struct {
 	// invocationID 是这组工具更新所属的 Runtime 调用。
 	invocationID string
 	// toolID 是待提交状态所属的稳定工具调用身份。
 	toolID string
-	// fields 按字段替换保存当前完整载荷，省略字段沿用前值。
-	fields map[string]json.RawMessage
-	// updates 按交付顺序保留工具正文和执行进度，不能按输入快照覆盖。
+	// inputs 仅保存每个参数字段的最新来源事件，保留参数原始身份上下文。
+	inputs []pendingRuntimeToolInput
+	// updates 按交付顺序保留剥离累计参数后的工具正文和执行进度，不能按快照覆盖。
 	updates []eventlog.RuntimeMessageContent
 	// updateBytes 限制本次工具进度批次占用的原始载荷字节。
 	updateBytes int
@@ -352,28 +362,10 @@ func (s *runtimeEventSink) acceptToolInputSnapshotLocked(invocationID string, ev
 	if err := json.Unmarshal(event.Data, &fields); err != nil {
 		return status_error.RuntimeProtocolIncompatible
 	}
-	toolID := runtimeToolID(fields)
 	if fields["content"] != nil || fields["output"] != nil || fields["rawOutput"] != nil {
 		return status_error.RuntimeProtocolIncompatible
 	}
-	if s.pending != nil || s.pendingTool != nil && (s.pendingTool.toolID != toolID || s.pendingTool.invocationID != invocationID || s.pendingTool.updates != nil) {
-		if err := s.flushLocked(); err != nil {
-			return err
-		}
-	}
-	if toolID == "" {
-		return s.commitMessageLocked(constants.ChatEventTypeAssistantMessage, invocationID,
-			[]eventlog.RuntimeMessageContent{runtimeMessageContent(event)}, revision)
-	}
-	if s.pendingTool == nil {
-		s.pendingTool = &pendingRuntimeTool{invocationID: invocationID, toolID: toolID, fields: fields, messageRevision: revision}
-		return nil
-	}
-	for key, value := range fields {
-		s.pendingTool.fields[key] = value
-	}
-	s.pendingTool.messageRevision = revision
-	return nil
+	return s.appendToolFieldsLocked(invocationID, event, revision, fields)
 }
 
 // appendToolUpdateLocked 批量保存同一工具的有序正文和执行进度，不把它们当参数快照覆盖。
@@ -382,8 +374,13 @@ func (s *runtimeEventSink) appendToolUpdateLocked(invocationID string, event age
 	if err := json.Unmarshal(event.Data, &fields); err != nil {
 		return status_error.RuntimeProtocolIncompatible
 	}
+	return s.appendToolFieldsLocked(invocationID, event, revision, fields)
+}
+
+// appendToolFieldsLocked 仅覆盖参数字段，其余快照字段与工具进度一起按原始顺序提交。
+func (s *runtimeEventSink) appendToolFieldsLocked(invocationID string, event agentapi.Event, revision int64, fields map[string]json.RawMessage) error {
 	toolID := runtimeToolID(fields)
-	if s.pending != nil || s.pendingTool != nil && (s.pendingTool.toolID != toolID || s.pendingTool.invocationID != invocationID || s.pendingTool.fields != nil) {
+	if s.pending != nil || s.pendingTool != nil && (s.pendingTool.toolID != toolID || s.pendingTool.invocationID != invocationID) {
 		if err := s.flushLocked(); err != nil {
 			return err
 		}
@@ -394,8 +391,59 @@ func (s *runtimeEventSink) appendToolUpdateLocked(invocationID string, event age
 	if s.pendingTool == nil {
 		s.pendingTool = &pendingRuntimeTool{invocationID: invocationID, toolID: toolID}
 	}
-	s.pendingTool.updates = append(s.pendingTool.updates, runtimeMessageContent(event))
-	s.pendingTool.updateBytes += len(event.Data)
+	// 混合事件中的参数是替换快照，正文和扩展元数据仍是有序进度。
+	// 二者分开保存，防止每个字符都重复持久化不断增长的完整参数。
+	progress := event
+	var inputFields map[string]json.RawMessage
+	for _, key := range []string{"rawInput", "input"} {
+		if value, present := fields[key]; present {
+			if inputFields == nil {
+				identity, _ := json.Marshal(toolID)
+				inputFields = map[string]json.RawMessage{"toolCallId": identity}
+			}
+			inputFields[key] = value
+			delete(fields, key)
+		}
+	}
+	if inputFields != nil {
+		data, err := json.Marshal(fields)
+		if err != nil {
+			return status_error.RuntimeEventEncodingFailed
+		}
+		progress.Data = data
+	}
+	// 纯参数快照只需保留最新输入；名称、状态、位置和扩展字段保持原始交付顺序。
+	keepProgress := event.Type != agentapi.EventTypeToolInputSnapshot || inputFields == nil
+	for key := range fields {
+		switch key {
+		case "id", "tool_use_id", "toolCallId", "tool_call_id", "call_id":
+		default:
+			keepProgress = true
+		}
+	}
+	if inputFields != nil {
+		// 每个参数字段只保留最新来源；两种规范输入字段交替出现时仍各自在原事件上下文中投影。
+		retained := s.pendingTool.inputs[:0]
+		for _, input := range s.pendingTool.inputs {
+			for key := range inputFields {
+				if key != "toolCallId" {
+					s.liveCheckpointBytes = max(0, s.liveCheckpointBytes-len(input.fields[key]))
+					delete(input.fields, key)
+				}
+			}
+			if len(input.fields) > 1 {
+				retained = append(retained, input)
+			}
+		}
+		clear(s.pendingTool.inputs[len(retained):])
+		s.pendingTool.inputs = append(retained, pendingRuntimeToolInput{
+			fields: inputFields, updateIndex: len(s.pendingTool.updates), withUpdate: keepProgress,
+		})
+	}
+	if keepProgress {
+		s.pendingTool.updates = append(s.pendingTool.updates, runtimeMessageContent(progress))
+		s.pendingTool.updateBytes += len(progress.Data)
+	}
 	s.pendingTool.messageRevision = revision
 	if len(s.pendingTool.updates) >= runtimeToolUpdateBatchSize || s.pendingTool.updateBytes >= runtimeToolUpdateBatchBytes {
 		return s.flushToolLocked()
@@ -415,13 +463,41 @@ func (s *runtimeEventSink) flushToolLocked() error {
 		return nil
 	}
 	pending := s.pendingTool
-	content := pending.updates
-	if content == nil {
-		data, err := json.Marshal(pending.fields)
-		if err != nil {
-			return status_error.RuntimeEventEncodingFailed
+	content := make([]eventlog.RuntimeMessageContent, 0, len(pending.updates)+len(pending.inputs))
+	inputIndex := 0
+	for index := 0; index <= len(pending.updates); index++ {
+		var update eventlog.RuntimeMessageContent
+		if index < len(pending.updates) {
+			update = pending.updates[index]
 		}
-		content = []eventlog.RuntimeMessageContent{{Type: agentapi.EventTypeToolInputSnapshot, Data: data}}
+		for inputIndex < len(pending.inputs) && pending.inputs[inputIndex].updateIndex == index {
+			input := pending.inputs[inputIndex]
+			if input.withUpdate {
+				// 同事件身份字段会影响参数的安全投影，必须把最新参数放回原事件而非提前或延后应用。
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(update.Data, &fields); err != nil {
+					return status_error.RuntimeProtocolIncompatible
+				}
+				for key, value := range input.fields {
+					fields[key] = value
+				}
+				data, err := json.Marshal(fields)
+				if err != nil {
+					return status_error.RuntimeEventEncodingFailed
+				}
+				update.Data = data
+			} else {
+				data, err := json.Marshal(input.fields)
+				if err != nil {
+					return status_error.RuntimeEventEncodingFailed
+				}
+				content = append(content, eventlog.RuntimeMessageContent{Type: agentapi.EventTypeToolInputSnapshot, Data: data})
+			}
+			inputIndex++
+		}
+		if index < len(pending.updates) {
+			content = append(content, update)
+		}
 	}
 	s.pendingTool = nil
 	return s.commitMessageLocked(constants.ChatEventTypeAssistantMessage, pending.invocationID,
