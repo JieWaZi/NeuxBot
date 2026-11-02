@@ -2539,3 +2539,38 @@ func TestConnectionRejectsConcurrentPrompt(t *testing.T) {
 		t.Fatal("active prompt did not finish")
 	}
 }
+
+// 原生问答结束后必须恢复机器无活动预算，不能因曾经等待人工而永久暂停。
+func TestNativeAnswerRestartsInactivityBudget(t *testing.T) {
+	agent := newFixtureAgent()
+	agent.prompt = func(ctx context.Context, prompt sdk.PromptRequest) (sdk.PromptResponse, error) {
+		_, err := agent.connection.Load().RequestPermission(ctx, sdk.RequestPermissionRequest{SessionId: prompt.SessionId, ToolCall: sdk.ToolCallUpdate{ToolCallId: "read", Title: sdk.Ptr("Read")}, Options: []sdk.PermissionOption{{OptionId: "allow", Kind: sdk.PermissionOptionKindAllowOnce, Name: "Allow"}}})
+		if err != nil {
+			return sdk.PromptResponse{}, err
+		}
+		<-ctx.Done()
+		return sdk.PromptResponse{}, ctx.Err()
+	}
+	driver := newConnectionForAgent(t, agent)
+	connection, err := driver.Open(context.Background(), openRequest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close(context.Background())
+	answered := false
+	sink := &recordingSink{interact: func(ctx context.Context, request InteractionRequest) (InteractionResponse, error) {
+		select {
+		case <-time.After(80 * time.Millisecond):
+			answered = true
+			return InteractionResponse{Invocation: request.Invocation, ID: request.ID, Action: InteractionAccept, OptionID: "allow"}, nil
+		case <-ctx.Done():
+			return InteractionResponse{}, ctx.Err()
+		}
+	}}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	result := connection.Prompt(ctx, TurnRequest{Input: Input{Text: "read"}, Limits: Limits{InactivityTimeout: 20 * time.Millisecond}}, sink)
+	if !answered || result.Fault == nil || result.Fault.Code != FaultInactivityTimeout {
+		t.Fatalf("input wait did not pause and resume inactivity: answered=%v result=%+v", answered, result)
+	}
+}

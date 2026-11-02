@@ -1415,12 +1415,12 @@ func (p compiledExecution) Spec() executionSpec { return cloneExecution(p.spec) 
 
 // DefaultLimits 返回首批工程保护值，累计预算不等同于 ACP 排队预算。
 func defaultLimits() native.Limits {
-	return native.Limits{MaxOutputBytes: 1 << 20, MaxEventBytes: 1 << 20, MaxEvents: 16384, MaxTotalEventBytes: 64 << 20, DeliveryTimeout: 5 * time.Second, InteractionTimeout: 5 * time.Minute, InactivityTimeout: 10 * time.Minute}
+	return native.Limits{MaxOutputBytes: 1 << 20, MaxEventBytes: 1 << 20, MaxEvents: 16384, MaxTotalEventBytes: 64 << 20, DeliveryTimeout: 5 * time.Second, InactivityTimeout: 10 * time.Minute}
 }
 
 // NormalizeLimits 补全零值并拒绝负值。
 func normalizeLimits(v, defaults native.Limits) (native.Limits, error) {
-	if v.MaxOutputBytes < 0 || v.MaxEventBytes < 0 || v.MaxEvents < 0 || v.MaxTotalEventBytes < 0 || v.DeliveryTimeout < 0 || v.InteractionTimeout < 0 || v.InactivityTimeout < 0 {
+	if v.MaxOutputBytes < 0 || v.MaxEventBytes < 0 || v.MaxEvents < 0 || v.MaxTotalEventBytes < 0 || v.DeliveryTimeout < 0 || v.InactivityTimeout < 0 {
 		return v, bad("negative execution budget")
 	}
 	if v.MaxOutputBytes == 0 {
@@ -1437,9 +1437,6 @@ func normalizeLimits(v, defaults native.Limits) (native.Limits, error) {
 	}
 	if v.DeliveryTimeout == 0 {
 		v.DeliveryTimeout = defaults.DeliveryTimeout
-	}
-	if v.InteractionTimeout == 0 {
-		v.InteractionTimeout = defaults.InteractionTimeout
 	}
 	if v.InactivityTimeout == 0 {
 		v.InactivityTimeout = defaults.InactivityTimeout
@@ -2142,7 +2139,8 @@ func (s *eventSink) Interact(requestCtx context.Context, request native.Interact
 		s.mu.Unlock()
 		return empty, err
 	}
-	handlerCtx, cancel := context.WithTimeout(s.call.ctx, s.spec.Limits.InteractionTimeout)
+	// 人工决定跟随所属 Turn 与原生请求存续，不使用机器交付或无活动期限。
+	handlerCtx, cancel := context.WithCancel(s.call.ctx)
 	stopRequestCancellation := context.AfterFunc(requestCtx, cancel)
 	if len(s.activeInteractions) == 0 {
 		s.interactionsDone = make(chan struct{})

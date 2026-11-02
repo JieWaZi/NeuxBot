@@ -1,5 +1,8 @@
 package constants
 
+// ChatInteractionProjectionTimeoutMillis 限制已提交交互事实的查询投影收尾，不限制人工等待。
+const ChatInteractionProjectionTimeoutMillis = 10_000
+
 // KnowledgeLibraryScanBatchSize 限制目录搜索与活动任务恢复每批读取的库元数据。
 const KnowledgeLibraryScanBatchSize = 100
 

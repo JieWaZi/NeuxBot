@@ -2478,6 +2478,68 @@ describe("useChatRuntime queue", () => {
     expect(runtimeAdapter.current?.messages).toEqual([]);
     expect(runtimeAdapter.current?.convertMessage).toBeTypeOf("function");
   });
+  it("Scene恢复以新摘要移除已在别处处理的待办，保留摘要之后的新请求", async () => {
+    const { result, rerender } = renderHook(
+      ({
+        active,
+        snapshotSequence,
+      }: {
+        active: boolean;
+        snapshotSequence: number;
+      }) =>
+        useChatRuntime({
+          ...runtimeOptions("chat-1"),
+          queueActive: active,
+          initialInteractionSequence: snapshotSequence,
+          initialPendingApprovals: [],
+          initialPendingElicitations: [],
+        }),
+      { initialProps: { active: true, snapshotSequence: 1 }, wrapper },
+    );
+    act(() => {
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "approval.requested",
+        approvalRequest: {
+          approvalId: "approval-old",
+          title: "批准读取",
+          options: [],
+        },
+      });
+      subscriptionOptions.current?.onEvent({
+        sequence: 3,
+        type: "elicitation.requested",
+        elicitationRequest: {
+          elicitationId: "question-old",
+          mode: "form",
+          message: "选择来源",
+        },
+      });
+    });
+    expect(result.current.pendingApprovals).toHaveLength(1);
+    expect(result.current.pendingElicitations).toHaveLength(1);
+    rerender({ active: false, snapshotSequence: 1 });
+    // 隐藏期间另一个窗口处理两项请求，恢复摘要已经包含其处理事实。
+    rerender({ active: true, snapshotSequence: 5 });
+    expect(result.current.pendingApprovals).toEqual([]);
+    expect(result.current.pendingElicitations).toEqual([]);
+    act(() => {
+      subscriptionOptions.current?.onEvent({
+        sequence: 6,
+        type: "elicitation.requested",
+        elicitationRequest: {
+          elicitationId: "question-new",
+          mode: "form",
+          message: "选择交付方式",
+        },
+      });
+    });
+    // 旧摘要不能吞掉其游标之后到达的问题。
+    rerender({ active: true, snapshotSequence: 5 });
+    expect(result.current.pendingElicitations).toEqual([
+      expect.objectContaining({ elicitationId: "question-new" }),
+    ]);
+  });
 });
 
 describe("chat send failure", () => {

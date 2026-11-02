@@ -94,6 +94,8 @@ type ChatRuntimeOptions = {
   chatId?: string;
   messageSource: ChatMessageSource;
   activeExecutionId?: string;
+  /** 人工待办摘要的权威日志游标，与消息历史游标分别对账。 */
+  initialInteractionSequence?: number;
   initialPendingApprovals?: PendingApproval[];
   initialPendingElicitations?: PendingElicitation[];
   isLoading: boolean;
@@ -314,12 +316,22 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       }
     }
     for (const approval of overlay.added) {
-      if (approval.approvalId && !resolved.has(approval.approvalId)) {
+      if (
+        approval.approvalId &&
+        !resolved.has(approval.approvalId) &&
+        (approval.requestedSequence ?? 0) >
+          (options.initialInteractionSequence ?? 0)
+      ) {
         approvals.set(approval.approvalId, approval);
       }
     }
     return [...approvals.values()];
-  }, [approvalOverlay, options.chatId, options.initialPendingApprovals]);
+  }, [
+    approvalOverlay,
+    options.chatId,
+    options.initialPendingApprovals,
+    options.initialInteractionSequence,
+  ]);
   useEffect(() => {
     approvalPendingRef.current = pendingApprovals.length > 0;
   }, [pendingApprovals]);
@@ -341,13 +353,20 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     for (const elicitation of overlay.added) {
       if (
         elicitation.elicitationId &&
-        !resolved.has(elicitation.elicitationId)
+        !resolved.has(elicitation.elicitationId) &&
+        (elicitation.requestedSequence ?? 0) >
+          (options.initialInteractionSequence ?? 0)
       ) {
         elicitations.set(elicitation.elicitationId, elicitation);
       }
     }
     return [...elicitations.values()];
-  }, [elicitationOverlay, options.chatId, options.initialPendingElicitations]);
+  }, [
+    elicitationOverlay,
+    options.chatId,
+    options.initialPendingElicitations,
+    options.initialInteractionSequence,
+  ]);
 
   const messages = useMemo(() => {
     const overlayMessages = overlayMatchesScope(
@@ -1023,6 +1042,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
               name: option.name,
             })),
             requestedAt: event.recordedAt,
+            requestedSequence: event.sequence,
           };
           setApprovalOverlay((current) => {
             const added =
@@ -1078,6 +1098,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
             requestedSchema: elicitationRequest.requestedSchema,
             url: elicitationRequest.url,
             requestedAt: event.recordedAt,
+            requestedSequence: event.sequence,
           };
           setElicitationOverlay((current) => {
             const added =

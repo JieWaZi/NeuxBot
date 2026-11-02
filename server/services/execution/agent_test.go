@@ -48,8 +48,9 @@ func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	binary, err := os.Executable()
-	if err != nil {
+	// 本用例只验证传输装配，不把含竞态检测器的测试程序复制进技能包。
+	binary := filepath.Join(t.TempDir(), "allycli")
+	if err := os.WriteFile(binary, []byte("test CLI file fixture"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
@@ -81,8 +82,9 @@ func TestWorkflowResultSelectsOnlySupportedTransport(t *testing.T) {
 		t.Run(runtimeID, func(t *testing.T) {
 			registry := capability.New(nil)
 			defer registry.Close()
-			binary, err := os.Executable()
-			if err != nil {
+			// 本用例只验证传输装配，CLI 内容不参与执行。
+			binary := filepath.Join(t.TempDir(), "allycli")
+			if err := os.WriteFile(binary, []byte("test CLI file fixture"), 0o700); err != nil {
 				t.Fatal(err)
 			}
 			journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}

@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -24,12 +25,23 @@ import {
 import "@/shared/i18n";
 import { client } from "@/shared/api/generated/client.gen";
 import { TooltipProvider } from "@/shared/ui/tooltip";
+import type { subscribeChat } from "@/shared/api/events";
 import type * as SceneWorkspace from "@/shared/workspace/app-scene-workspace";
 import { chatWorkspaceHandlers } from "../test/chat-workspace-handlers";
 import { WorkflowChatPane } from "./workflow-chat-pane";
 import { ChatQueueProvider, WorkbenchProvider } from "@/modules/chat";
 
-vi.mock("@/shared/api/events", () => ({ subscribeChat: () => () => {} }));
+type ChatSubscription = Parameters<typeof subscribeChat>[1];
+const chatSubscriptions = vi.hoisted(() => new Map<string, ChatSubscription>());
+vi.mock("@/shared/api/events", () => ({
+  subscribeChat: (chatId: string, options: ChatSubscription) => {
+    chatSubscriptions.set(chatId, options);
+    return () => {
+      if (chatSubscriptions.get(chatId) === options)
+        chatSubscriptions.delete(chatId);
+    };
+  },
+}));
 
 const scene = vi.hoisted(() => ({ active: true }));
 vi.mock("@/shared/workspace/app-scene-workspace", async (importOriginal) => ({
@@ -53,6 +65,7 @@ beforeAll(() => {
 });
 beforeEach(() => {
   localStorage.clear();
+  chatSubscriptions.clear();
   server.use(...chatWorkspaceHandlers("http://creation.test"));
 });
 afterEach(() => {
@@ -476,6 +489,273 @@ it("工作流对话仅在活跃场景处理本 Chat 的原生请求，默认不�
   expect(approvals).toEqual([]);
   await user.click(screen.getByRole("button", { name: /允许本次/ }));
   await waitFor(() => expect(approvals).toEqual([{ optionId: "allow-1" }]));
+  queryClient.clear();
+});
+
+it("工作流创作通过实时事件呈现 WorkBuddy 三题并提交原 Chat 后继续执行", async () => {
+  const answers: unknown[] = [];
+  const pendingElicitations: unknown[] = [];
+  const snapshot = {
+    id: "creation-live-chat",
+    activeExecutionId: "creation-live-execution",
+    latestSequence: 1,
+    lastRuntimeId: "workbuddy",
+    lastModel: "deepseek-v4.1-flash",
+    lastPermissionLevel: "full-access",
+    pendingElicitations,
+  };
+  server.use(
+    http.get(`${api}/runtimes`, () =>
+      HttpResponse.json({
+        resources: [
+          {
+            id: "workbuddy",
+            name: "WorkBuddy",
+            enabled: true,
+            state: "ready",
+            isDefault: true,
+            defaultModel: "deepseek-v4.1-flash",
+            defaultPermissionLevel: "full-access",
+            models: [
+              {
+                id: "deepseek-v4.1-flash",
+                name: "DeepSeek",
+                permissionLevels: ["full-access"],
+              },
+            ],
+          },
+        ],
+      }),
+    ),
+    http.get(`${api}/chats/creation-live-chat`, () =>
+      HttpResponse.json({ chat: snapshot }),
+    ),
+    http.get(`${api}/chats/creation-live-chat/messages`, () =>
+      HttpResponse.json({
+        resources: [],
+        latestSequence: snapshot.latestSequence,
+      }),
+    ),
+    http.put(
+      `${api}/chats/creation-live-chat/elicitations/native-question`,
+      async ({ request }) => {
+        answers.push(await request.json());
+        return HttpResponse.json({});
+      },
+    ),
+  );
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  render(
+    <QueryClientProvider client={queryClient}>
+      <WorkbenchProvider>
+        <ChatQueueProvider>
+          <TooltipProvider>
+            <MemoryRouter>
+              <WorkflowChatPane
+                id="flow-1"
+                session={{ id: "creation-1", chatId: "creation-live-chat" }}
+                onNewChat={() => {}}
+                mainContent={{
+                  contentId: "test-canvas",
+                  title: "画布",
+                  content: <div>工作流画布</div>,
+                }}
+              />
+            </MemoryRouter>
+          </TooltipProvider>
+        </ChatQueueProvider>
+      </WorkbenchProvider>
+    </QueryClientProvider>,
+  );
+  await waitFor(() =>
+    expect(chatSubscriptions.has("creation-live-chat")).toBe(true),
+  );
+  expect(
+    screen.queryByText("Please answer the following questions."),
+  ).not.toBeInTheDocument();
+  const requestedEvent = {
+    sequence: 2,
+    type: "elicitation.requested",
+    elicitationRequest: {
+      elicitationId: "native-question",
+      mode: "form",
+      message: "Please answer the following questions.",
+      requestedSchema: {
+        type: "object",
+        properties: {
+          question_0: {
+            type: "array",
+            title: "数据源",
+            description: "从哪些类型的数据源抓取 AI 资讯？",
+            uniqueItems: true,
+            items: {
+              anyOf: [
+                {
+                  const: "主流科技媒体",
+                  title: "主流科技媒体",
+                  description: "TechCrunch、The Verge",
+                },
+                {
+                  const: "官方博客与论文",
+                  title: "官方博客与论文",
+                  description: "官方博客、arXiv",
+                },
+                {
+                  const: "技术社区",
+                  title: "技术社区",
+                  description: "Hacker News、Reddit",
+                },
+                {
+                  const: "中文科技媒体",
+                  title: "中文科技媒体",
+                  description: "机器之心、量子位",
+                },
+              ],
+            },
+          },
+          question_0_custom: {
+            type: "string",
+            title: "Other",
+            _meta: {
+              _askUserQuestionCustomAnswer: {
+                isCustomAnswer: true,
+                questionId: "question_0",
+              },
+            },
+          },
+          question_1: {
+            type: "string",
+            title: "时间范围",
+            description: "汇总覆盖多长时间范围？",
+            oneOf: [
+              { const: "过去 24 小时", title: "过去 24 小时" },
+              { const: "近 7 天", title: "近 7 天" },
+              { const: "近 3 天", title: "近 3 天" },
+            ],
+          },
+          question_1_custom: {
+            type: "string",
+            title: "Other",
+            _meta: {
+              _askUserQuestionCustomAnswer: {
+                isCustomAnswer: true,
+                questionId: "question_1",
+              },
+            },
+          },
+          question_2: {
+            type: "string",
+            title: "交付方式",
+            description: "总结结果以什么形式交付？",
+            oneOf: [
+              { const: "仅返回聊天摘要", title: "仅返回聊天摘要" },
+              {
+                const: "生成 Markdown 报告文件",
+                title: "生成 Markdown 报告文件",
+              },
+              {
+                const: "报告文件 + IM 推送",
+                title: "报告文件 + IM 推送",
+              },
+            ],
+          },
+          question_2_custom: {
+            type: "string",
+            title: "Other",
+            _meta: {
+              _askUserQuestionCustomAnswer: {
+                isCustomAnswer: true,
+                questionId: "question_2",
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+  act(() => {
+    snapshot.latestSequence = 2;
+    pendingElicitations.push(requestedEvent.elicitationRequest);
+    // 使用原生 JSON 形状进入事件边界；RawMessage 生成类型不能表达实际对象表单。
+    chatSubscriptions
+      .get("creation-live-chat")
+      ?.onEvent(JSON.parse(JSON.stringify(requestedEvent)));
+  });
+  const source = await screen.findByRole("group", {
+    name: "从哪些类型的数据源抓取 AI 资讯？",
+  });
+  expect(source.closest("[data-chat-composer]")).toBeInTheDocument();
+  expect(source.closest("[data-chat-main-content]")).toBeNull();
+  expect(
+    screen.queryByRole("textbox", { name: /输入消息/ }),
+  ).not.toBeInTheDocument();
+  expect(answers).toEqual([]);
+  const user = userEvent.setup();
+  await user.click(
+    within(source).getByRole("button", { name: /主流科技媒体/ }),
+  );
+  await user.click(
+    within(source).getByRole("button", { name: /官方博客与论文/ }),
+  );
+  await user.click(within(source).getByRole("button", { name: "其他…" }));
+  await user.type(
+    within(source).getByRole("textbox", { name: "其他…" }),
+    "公司研究博客",
+  );
+  const time = screen.getByRole("group", { name: "汇总覆盖多长时间范围？" });
+  await user.click(within(time).getByRole("button", { name: "过去 24 小时" }));
+  await user.click(within(time).getByRole("button", { name: "近 7 天" }));
+  expect(
+    within(time).getByRole("button", { name: "过去 24 小时" }),
+  ).toHaveAttribute("aria-pressed", "false");
+  const delivery = screen.getByRole("group", {
+    name: "总结结果以什么形式交付？",
+  });
+  await user.click(
+    within(delivery).getByRole("button", { name: "生成 Markdown 报告文件" }),
+  );
+  await user.click(screen.getByRole("button", { name: "继续" }));
+  await waitFor(() =>
+    expect(answers).toEqual([
+      {
+        content: {
+          question_0: ["主流科技媒体", "官方博客与论文"],
+          question_0_custom: "公司研究博客",
+          question_1: "近 7 天",
+          question_2: "生成 Markdown 报告文件",
+        },
+        declined: false,
+      },
+    ]),
+  );
+  // 请求仍待确认时保留表单；随后交付同一 Chat 的回答事实。
+  expect(
+    screen.getByRole("group", { name: "从哪些类型的数据源抓取 AI 资讯？" }),
+  ).toBeInTheDocument();
+  act(() => {
+    snapshot.latestSequence = 3;
+    pendingElicitations.length = 0;
+    chatSubscriptions.get("creation-live-chat")?.onEvent({
+      sequence: 3,
+      type: "elicitation.resolved",
+      elicitationResolution: {
+        elicitationId: "native-question",
+        result: "accepted",
+      },
+    });
+  });
+  await waitFor(() =>
+    expect(
+      screen.queryByText("Please answer the following questions."),
+    ).not.toBeInTheDocument(),
+  );
+  expect(
+    await screen.findByRole("textbox", { name: /输入消息/ }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "停止执行" })).toBeInTheDocument();
+  expect(answers).toHaveLength(1);
   queryClient.clear();
 });
 

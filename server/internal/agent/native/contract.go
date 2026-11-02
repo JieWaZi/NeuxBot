@@ -135,8 +135,7 @@ type Limits struct {
 	MaxEventBytes      int           // MaxEventBytes 是单个规范事件上限。
 	MaxEvents          int           // MaxEvents 是本轮事件数量上限。
 	MaxTotalEventBytes int           // MaxTotalEventBytes 限制本轮参数快照新增字节及其他事件完整字节的累计量。
-	DeliveryTimeout    time.Duration // DeliveryTimeout 是一次观察与交互交付期限。
-	InteractionTimeout time.Duration // InteractionTimeout 是等待人工交互的独立期限。
+	DeliveryTimeout    time.Duration // DeliveryTimeout 是单个事件交给观察者的期限，不限制人工决定。
 	InactivityTimeout  time.Duration // InactivityTimeout 是 Prompt 无原生活动且无待处理交互时的最长等待。
 }
 

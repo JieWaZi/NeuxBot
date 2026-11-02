@@ -665,6 +665,7 @@ function TeamChatView({
     activeExecutionId: isTeamMainChat
       ? teamContext.leadActiveExecutionId
       : detailQuery.data?.chat?.activeExecutionId,
+    initialInteractionSequence: detailQuery.data?.chat?.latestSequence,
     initialPendingApprovals: detailQuery.data?.chat?.pendingApprovals,
     initialPendingElicitations: detailQuery.data?.chat?.pendingElicitations,
     isLoading: isTeamMainChat
