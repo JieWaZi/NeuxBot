@@ -124,6 +124,8 @@ func TestRuntimeFailureRetryableRequiresSafeReplay(t *testing.T) {
 		{"artifact", func(r *agentapi.Result) { r.SideEffects.Artifact = true }},
 		{"unknown session", func(r *agentapi.Result) { r.Session.State = agentapi.SessionStateUnknown }},
 		{"missing session", func(r *agentapi.Result) { r.Session.OutputID = "" }},
+		{"input timeout", func(r *agentapi.Result) { r.Failure.Code = constants.RuntimeFailureCodeInputTimeout }},
+		{"approval timeout", func(r *agentapi.Result) { r.Failure.Code = constants.RuntimeFailureCodeApprovalTimeout }},
 		{"quota", func(r *agentapi.Result) { r.Failure.Code = agentapi.FailureCodeQuotaExhausted }},
 		{"auth", func(r *agentapi.Result) { r.Failure.Code = agentapi.FailureCodeAuthRequired }},
 		{"undelivered events", func(r *agentapi.Result) { r.UndeliveredEvents = 1 }},

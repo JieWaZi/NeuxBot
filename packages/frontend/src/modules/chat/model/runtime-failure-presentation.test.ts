@@ -20,6 +20,35 @@ describe("runtimeFailurePresentation", () => {
     });
   });
 
+  it("仅人工等待超时优先使用本地化原因，其他错误保留诊断", async () => {
+    expect(
+      runtimeFailurePresentation(
+        "INPUT_TIMEOUT",
+        "waiting for user input timed out",
+      ).message,
+    ).toBe("等待回答超时");
+    expect(
+      runtimeFailurePresentation(
+        "APPROVAL_TIMEOUT",
+        "waiting for approval timed out",
+      ).message,
+    ).toBe("等待审批超时");
+    expect(
+      runtimeFailurePresentation("REQUEST_TIMEOUT", "provider request deadline")
+        .message,
+    ).toBe("provider request deadline");
+    expect(runtimeFailurePresentation("UNKNOWN", "native detail").message).toBe(
+      "native detail",
+    );
+    await i18n.changeLanguage("en-US");
+    expect(
+      runtimeFailurePresentation("INPUT_TIMEOUT", "raw detail").message,
+    ).toBe("Timed out waiting for your answer");
+    expect(
+      runtimeFailurePresentation("APPROVAL_TIMEOUT", "raw detail").message,
+    ).toBe("Timed out waiting for approval");
+  });
+
   it("提供英文错误展示文案", async () => {
     await i18n.changeLanguage("en-US");
 

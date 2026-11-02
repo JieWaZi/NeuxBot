@@ -9,7 +9,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"testing"
+	"testing/synctest"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
@@ -115,5 +117,164 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 				t.Fatalf("wrong durable resolution: %+v %v", resolved, err)
 			}
 		})
+	}
+}
+
+// interactionDeadlineJournal 保留真实JSONL，仅控制已接纳决定发布跨过截止点的时序。
+type interactionDeadlineJournal struct {
+	// Journal 保留本用例未使用的日志端口。
+	chatservice.Journal
+	// store 保存请求与处理的权威事实。
+	store *eventlog.Store
+	// published 把请求已交付的时刻通知测试。
+	published chan eventlog.Record
+	// afterResolution 在处理事实持久化后、调用方发布完成前控制交错。
+	afterResolution func()
+}
+
+func (j *interactionDeadlineJournal) append(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
+	records, err := j.store.Append(chatID, []eventlog.AppendInput{input})
+	if err != nil {
+		return eventlog.Record{}, err
+	}
+	if (input.Type == constants.ChatEventTypeElicitationResolved || input.Type == constants.ChatEventTypeApprovalResolved) && j.afterResolution != nil {
+		j.afterResolution()
+	}
+	return records[0], nil
+}
+func (j *interactionDeadlineJournal) AppendElicitationFact(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
+	return j.append(chatID, input)
+}
+func (j *interactionDeadlineJournal) AppendApprovalFact(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
+	return j.append(chatID, input)
+}
+func (j *interactionDeadlineJournal) PublishElicitationFact(_ context.Context, r eventlog.Record, _ []models.PendingElicitation) {
+	j.published <- r
+}
+func (j *interactionDeadlineJournal) PublishApprovalFact(_ context.Context, r eventlog.Record, _ []models.PendingApproval) {
+	j.published <- r
+}
+
+func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
+	for _, approval := range []bool{false, true} {
+		for _, late := range []bool{false, true} {
+			name := "input"
+			if approval {
+				name = "approval"
+			}
+			if late {
+				name += "/after_deadline"
+			} else {
+				name += "/accepted_before_deadline"
+			}
+			t.Run(name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					store, err := eventlog.NewStore(t.TempDir())
+					if err != nil {
+						t.Fatal(err)
+					}
+					chatID := "52525252525252525252525252525252"
+					if _, err := store.Create(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
+						t.Fatal(err)
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+					defer cancel()
+					journal := &interactionDeadlineJournal{store: store, published: make(chan eventlog.Record, 4), afterResolution: func() { <-ctx.Done() }}
+					inputs := newElicitationCoordinator(journal)
+					approvals := newApprovalCoordinator(journal)
+					done := make(chan bool, 1)
+					go func() {
+						if approval {
+							decision, err := approvals.handler(chatID, "execution").Request(ctx, agentapi.ApprovalRequest{Title: "批准读取", Options: []agentapi.ApprovalOption{{ID: "allow", Kind: "allow_once"}}})
+							if err != nil {
+								t.Errorf("approval: %v", err)
+							}
+							done <- !decision.Cancelled
+						} else {
+							decision, err := inputs.handler(chatID, "execution").Request(ctx, agentapi.ElicitationRequest{Mode: "form", Message: "选择交付方式", RequestedSchema: map[string]any{"type": "object"}})
+							if err != nil {
+								t.Errorf("input: %v", err)
+							}
+							done <- decision.Accepted
+						}
+					}()
+					requested := <-journal.published
+					var id string
+					if approval {
+						var data eventlog.ApprovalRequestedData
+						_ = json.Unmarshal(requested.Data, &data)
+						id = data.ApprovalID
+					} else {
+						var data eventlog.ElicitationRequestedData
+						_ = json.Unmarshal(requested.Data, &data)
+						id = data.ElicitationID
+					}
+					if late {
+						// 持有既有resolution锁延迟自动作废，验证到期本身已禁止新的用户接纳。
+						if approval {
+							pending, err := approvals.lockPendingResolution(chatID, id)
+							if err != nil {
+								t.Fatal(err)
+							}
+							<-ctx.Done()
+							_, _, err = approvals.beginResolution(chatID, id, "allow", true)
+							if !errors.Is(err, status_error.ApprovalAlreadyResolved) {
+								t.Errorf("expired approval admitted before invalidation: %v", err)
+							}
+							pending.resolutionMutex.Unlock()
+						} else {
+							pending, err := inputs.lockPendingResolution(chatID, id)
+							if err != nil {
+								t.Fatal(err)
+							}
+							<-ctx.Done()
+							_, err = inputs.beginResolution(chatID, id, true)
+							if !errors.Is(err, status_error.ElicitationAlreadyResolved) {
+								t.Errorf("expired input admitted before invalidation: %v", err)
+							}
+							pending.resolutionMutex.Unlock()
+						}
+					} else {
+						// 用户在截止前获得处理权；真实accepted日志写入后才推进到期限。
+						if approval {
+							err = approvals.resolveSelected(context.Background(), chatID, id, "allow")
+						} else {
+							err = inputs.resolveAccepted(context.Background(), chatID, id, map[string]any{})
+						}
+						if err != nil {
+							t.Fatal(err)
+						}
+					}
+					if accepted := <-done; accepted == late {
+						t.Fatalf("wrong resolution winner: accepted=%v late=%v", accepted, late)
+					}
+					if len(inputs.pendingProjection(chatID)) != 0 || len(approvals.pendingProjection(chatID)) != 0 {
+						t.Fatal("finished request remained pending")
+					}
+					records, err := store.ReadAll(chatID)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if len(records) != 3 {
+						t.Fatalf("resolution not unique: %d", len(records))
+					}
+					var resolved struct {
+						// Result 是持久化的唯一处理结果。
+						Result string `json:"result"`
+					}
+					_ = json.Unmarshal(records[2].Data, &resolved)
+					expected := "accepted"
+					if approval {
+						expected = "selected"
+					}
+					if late {
+						expected = "invalidated"
+					}
+					if resolved.Result != expected {
+						t.Fatalf("durable result=%s want=%s", resolved.Result, expected)
+					}
+				})
+			})
+		}
 	}
 }

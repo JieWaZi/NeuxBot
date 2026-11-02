@@ -119,7 +119,8 @@ type ApprovalDecision struct {
 
 // ApprovalHandler 是 Runtime 请求用户工具授权的双向端口。
 type ApprovalHandler interface {
-	// Request 阻塞到用户选择、执行取消或交互失效。
+	// Request 阻塞到用户选择、执行取消或交互失效。有效选择必须在 ctx 失效前取得接纳权；
+	// 已接纳选择的持久化与发布可以跨过期限，成功返回仍代表同一个决定。
 	Request(ctx context.Context, request ApprovalRequest) (ApprovalDecision, error)
 }
 
@@ -151,7 +152,8 @@ type ElicitationDecision struct {
 
 // ElicitationHandler 是 Runtime 请求结构化用户输入的双向端口。
 type ElicitationHandler interface {
-	// Request 阻塞到用户提交、拒绝、执行取消或交互失效。
+	// Request 阻塞到用户提交、拒绝、执行取消或交互失效。提交或拒绝必须在 ctx 失效前取得接纳权；
+	// 已接纳决定的持久化与发布可以跨过期限，成功返回仍代表同一个决定。
 	Request(ctx context.Context, request ElicitationRequest) (ElicitationDecision, error)
 }
 

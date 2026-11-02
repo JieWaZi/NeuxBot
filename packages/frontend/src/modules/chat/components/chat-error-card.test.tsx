@@ -10,6 +10,7 @@ import "@/shared/i18n";
 import { ApiError } from "@/shared/api/errors";
 import {
   ChatErrorCard,
+  MessageFailure,
   ChatErrorNotices,
   useChatHistoryError,
 } from "./chat-error-card";
@@ -289,5 +290,27 @@ describe("消息错误卡片", () => {
     fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
     expect(screen.getByRole("alert")).toHaveTextContent("第一条");
     expect(screen.queryByText("其他对话")).not.toBeInTheDocument();
+  });
+});
+
+describe("人工等待超时错误卡片", () => {
+  it.each([
+    ["INPUT_TIMEOUT", "waiting for user input timed out", "等待回答超时"],
+    ["APPROVAL_TIMEOUT", "waiting for approval timed out", "等待审批超时"],
+  ])("%s 用稳定失败码展示明确文案", (code, detail, label) => {
+    render(
+      <MessageFailure
+        message={{
+          id: "execution",
+          role: "assistant",
+          status: "failed",
+          errorCode: code,
+          errorMessage: detail,
+        }}
+        last={true}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(label);
+    expect(screen.queryByText(detail)).not.toBeInTheDocument();
   });
 });

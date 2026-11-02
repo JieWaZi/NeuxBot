@@ -2078,3 +2078,12 @@ func TestGeminiPluginFallbackDiscovery(t *testing.T) {
 	}
 	t.Logf("Gemini %s real CLI discovered production Skill projection: %s", strings.TrimSpace(string(version)), strings.TrimSpace(string(output)))
 }
+
+func TestChatResultPreservesTurnAndModelTimeoutClassification(t *testing.T) {
+	for _, code := range []native.FaultCode{native.FaultCancelled, native.FaultDriver, native.FaultInteractionRequired} {
+		result := chatResult(SessionPlan{}, SessionDirective{}, turnResult{Status: native.StatusFailed, Fault: &native.Fault{Code: code, Stage: "prompt", Message: "deadline at outer boundary", Cause: context.DeadlineExceeded}}, &chatObserver{})
+		if result.Failure == nil || result.Failure.Code != "REQUEST_TIMEOUT" || result.Failure.DisplayMessage != "context deadline exceeded" {
+			t.Fatalf("outer timeout became human timeout or cancel: %+v", result.Failure)
+		}
+	}
+}

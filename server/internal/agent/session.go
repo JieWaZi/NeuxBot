@@ -1187,7 +1187,9 @@ func chatResult(request SessionPlan, session SessionDirective, result turnResult
 		case native.FaultInactivityTimeout:
 			code = FailureCodeInactivityTimeout
 		case native.FaultCancelled:
-			code = FailureCodeContextCanceled
+			if !errors.Is(fault, context.DeadlineExceeded) {
+				code = FailureCodeContextCanceled
+			}
 		}
 		if !result.Effects.PromptAccepted {
 			stage = constants.RuntimeRunFailureStagePrepare
@@ -1380,6 +1382,8 @@ type observedEvent struct {
 type turnObserver interface {
 	Accept(context.Context, observedEvent) error
 }
+
+// turnInteractionHandler 的成功选择代表宿主已在期限内取得唯一接纳权；持久化与发布完成后的返回可晚于等待期限。
 type turnInteractionHandler interface {
 	Handle(context.Context, native.InteractionRequest) (native.InteractionResponse, error)
 }
@@ -1415,12 +1419,12 @@ func (p compiledExecution) Spec() executionSpec { return cloneExecution(p.spec) 
 
 // DefaultLimits 返回首批工程保护值，累计预算不等同于 ACP 排队预算。
 func defaultLimits() native.Limits {
-	return native.Limits{MaxOutputBytes: 1 << 20, MaxEventBytes: 1 << 20, MaxEvents: 16384, MaxTotalEventBytes: 64 << 20, DeliveryTimeout: 5 * time.Second, InactivityTimeout: 10 * time.Minute}
+	return native.Limits{MaxOutputBytes: 1 << 20, MaxEventBytes: 1 << 20, MaxEvents: 16384, MaxTotalEventBytes: 64 << 20, DeliveryTimeout: 5 * time.Second, InteractionTimeout: 5 * time.Minute, InactivityTimeout: 10 * time.Minute}
 }
 
 // NormalizeLimits 补全零值并拒绝负值。
 func normalizeLimits(v, defaults native.Limits) (native.Limits, error) {
-	if v.MaxOutputBytes < 0 || v.MaxEventBytes < 0 || v.MaxEvents < 0 || v.MaxTotalEventBytes < 0 || v.DeliveryTimeout < 0 || v.InactivityTimeout < 0 {
+	if v.MaxOutputBytes < 0 || v.MaxEventBytes < 0 || v.MaxEvents < 0 || v.MaxTotalEventBytes < 0 || v.DeliveryTimeout < 0 || v.InteractionTimeout < 0 || v.InactivityTimeout < 0 {
 		return v, bad("negative execution budget")
 	}
 	if v.MaxOutputBytes == 0 {
@@ -1437,6 +1441,9 @@ func normalizeLimits(v, defaults native.Limits) (native.Limits, error) {
 	}
 	if v.DeliveryTimeout == 0 {
 		v.DeliveryTimeout = defaults.DeliveryTimeout
+	}
+	if v.InteractionTimeout == 0 {
+		v.InteractionTimeout = defaults.InteractionTimeout
 	}
 	if v.InactivityTimeout == 0 {
 		v.InactivityTimeout = defaults.InactivityTimeout
@@ -2139,8 +2146,12 @@ func (s *eventSink) Interact(requestCtx context.Context, request native.Interact
 		s.mu.Unlock()
 		return empty, err
 	}
-	// 人工决定跟随所属 Turn 与原生请求存续，不使用机器交付或无活动期限。
-	handlerCtx, cancel := context.WithCancel(s.call.ctx)
+	// 本次等待拥有独立期限；用结构化原因区分外层调用和模型超时。
+	waitTimeout := fault(native.FaultInputTimeout, "interaction", "waiting for user input timed out", context.DeadlineExceeded)
+	if request.Kind == native.InteractionApproval {
+		waitTimeout = fault(native.FaultApprovalTimeout, "interaction", "waiting for approval timed out", context.DeadlineExceeded)
+	}
+	handlerCtx, cancel := context.WithTimeoutCause(s.call.ctx, s.spec.Limits.InteractionTimeout, waitTimeout)
 	stopRequestCancellation := context.AfterFunc(requestCtx, cancel)
 	if len(s.activeInteractions) == 0 {
 		s.interactionsDone = make(chan struct{})
@@ -2150,7 +2161,10 @@ func (s *eventSink) Interact(requestCtx context.Context, request native.Interact
 	s.mu.Unlock()
 	// 交互端口不占用事件消费锁；单请求撤销只使本问题失效。
 	response, err := handler.Handle(handlerCtx, request)
-	if err == nil {
+	waitExpired := context.Cause(handlerCtx) == waitTimeout
+	// 产品协调器拥有决定的唯一接纳点；接纳后的持久化/发布可跨过等待期限。
+	decided := err == nil && (response.Action == native.InteractionAccept || response.Action == native.InteractionDecline)
+	if err == nil && !decided {
 		err = handlerCtx.Err()
 	}
 	stopRequestCancellation()
@@ -2174,6 +2188,10 @@ func (s *eventSink) Interact(requestCtx context.Context, request native.Interact
 	}
 	if s.firstFault != nil {
 		return empty, s.firstFault
+	}
+
+	if waitExpired && !decided {
+		return empty, s.fail(waitTimeout)
 	}
 
 	if err != nil {

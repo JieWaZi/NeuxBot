@@ -136,6 +136,7 @@ type Limits struct {
 	MaxEvents          int           // MaxEvents 是本轮事件数量上限。
 	MaxTotalEventBytes int           // MaxTotalEventBytes 限制本轮参数快照新增字节及其他事件完整字节的累计量。
 	DeliveryTimeout    time.Duration // DeliveryTimeout 是单个事件交给观察者的期限，不限制人工决定。
+	InteractionTimeout time.Duration // InteractionTimeout 是单次人工输入或审批等待期限，零值采用默认五分钟。
 	InactivityTimeout  time.Duration // InactivityTimeout 是 Prompt 无原生活动且无待处理交互时的最长等待。
 }
 
@@ -444,6 +445,8 @@ const (
 	FaultDriver                 FaultCode = "driver_failed"           // FaultDriver 表示驱动执行失败。
 	FaultDelivery               FaultCode = "delivery_failed"         // FaultDelivery 表示观察交付失败。
 	FaultLimit                  FaultCode = "limit_exceeded"          // FaultLimit 表示事件预算耗尽。
+	FaultInputTimeout           FaultCode = "input_timeout"           // FaultInputTimeout 表示本次人工输入等待期限到期。
+	FaultApprovalTimeout        FaultCode = "approval_timeout"        // FaultApprovalTimeout 表示本次审批等待期限到期。
 	FaultInteractionRequired    FaultCode = "interaction_required"    // FaultInteractionRequired 表示需要人工输入。
 	FaultInactivityTimeout      FaultCode = "inactivity_timeout"      // FaultInactivityTimeout 表示原生调用超过无活动期限。
 	FaultCancelled              FaultCode = "cancelled"               // FaultCancelled 表示调用取消。

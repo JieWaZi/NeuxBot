@@ -6,6 +6,10 @@ function runtimeFailureMessage(errorCode?: string): string {
   switch (errorCode) {
     case "NETWORK_ERROR":
       return i18n.t("runtimeFailure.networkError", { ns: "chat" });
+    case "INPUT_TIMEOUT":
+      return i18n.t("runtimeFailure.inputTimeout", { ns: "chat" });
+    case "APPROVAL_TIMEOUT":
+      return i18n.t("runtimeFailure.approvalTimeout", { ns: "chat" });
     case "REQUEST_TIMEOUT":
       return i18n.t("runtimeFailure.requestTimeout", { ns: "chat" });
     case "CONTEXT_TOO_LARGE":
@@ -52,8 +56,12 @@ function runtimeFailureMessage(errorCode?: string): string {
 
 export function runtimeFailurePresentation(
   errorCode?: string,
+  detail?: string,
 ): RuntimeFailurePresentation {
   return {
-    message: runtimeFailureMessage(errorCode),
+    message:
+      errorCode === "INPUT_TIMEOUT" || errorCode === "APPROVAL_TIMEOUT"
+        ? runtimeFailureMessage(errorCode)
+        : detail?.trim() || runtimeFailureMessage(errorCode),
   };
 }

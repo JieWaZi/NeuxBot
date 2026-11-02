@@ -71,6 +71,10 @@ func FailureDisplayMessage(err error) string {
 	if err == nil {
 		return ""
 	}
+	var technical *native.Fault
+	if errors.As(err, &technical) && (technical.Code == native.FaultInputTimeout || technical.Code == native.FaultApprovalTimeout) {
+		return technical.Message
+	}
 	var requestError *acp.RequestError
 	if errors.As(err, &requestError) {
 		if message := acpFailureDetail(requestError.Data); message != "" {
@@ -247,6 +251,15 @@ func ClassifyFailure(runtimeID string, err error) FailureCode {
 
 // acpFailureCode 提升 ACP 标准错误，其余错误按 Context 或 Runtime 分类。
 func ACPFailureCode(err error) FailureCode {
+	var technical *native.Fault
+	if errors.As(err, &technical) {
+		switch technical.Code {
+		case native.FaultInputTimeout:
+			return constants.RuntimeFailureCodeInputTimeout
+		case native.FaultApprovalTimeout:
+			return constants.RuntimeFailureCodeApprovalTimeout
+		}
+	}
 	if code, ok := ErrorCode(err); ok {
 		return code
 	}

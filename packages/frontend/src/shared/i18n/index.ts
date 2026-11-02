@@ -1595,6 +1595,8 @@ const resources = {
       runtimeFailure: {
         thinkingRequired: "当前模型不支持关闭思考，请调整思考设置后重试。",
         networkError: "连接已中断，请先检查执行状态，确认后再发送。",
+        inputTimeout: "等待回答超时",
+        approvalTimeout: "等待审批超时",
         requestTimeout: "请求已超时，请先检查执行状态，确认后再发送。",
         contextTooLarge:
           "对话内容已超出模型上下文限制，请新建对话或切换支持更长上下文的模型。",
@@ -2532,6 +2534,8 @@ const resources = {
           "This model requires thinking. Adjust the thinking setting and try again.",
         networkError:
           "The connection was interrupted. Check the execution status before sending again.",
+        inputTimeout: "Timed out waiting for your answer",
+        approvalTimeout: "Timed out waiting for approval",
         requestTimeout:
           "The request timed out. Check the execution status before sending again.",
         contextTooLarge:

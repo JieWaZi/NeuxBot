@@ -438,10 +438,10 @@ export function toThreadMessage(
   const role = message.role === "assistant" ? "assistant" : "user";
   const failure =
     message.status === "failed"
-      ? runtimeFailurePresentation(message.errorCode)
+      ? runtimeFailurePresentation(message.errorCode, message.errorMessage)
       : undefined;
   const errorMessage =
-    message.errorMessage?.trim() || failure?.message || incompleteErrorText;
+    failure?.message || message.errorMessage?.trim() || incompleteErrorText;
   const isTerminal = ["completed", "failed", "canceled"].includes(
     message.status ?? "",
   );

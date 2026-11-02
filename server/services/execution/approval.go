@@ -19,6 +19,8 @@ import (
 type pendingApproval struct {
 	// resolutionMutex 串行化用户选择与执行取消，保证先获得处理权的一方形成唯一结果。
 	resolutionMutex sync.Mutex
+	// requestContext 仅约束原生交互的新决定接纳；异步软件问题不继承创建请求期限。
+	requestContext context.Context
 	// chatID 是审批所属 Chat 标识。
 	chatID string
 	// executionID 是审批所属活跃执行标识。
@@ -130,12 +132,13 @@ func (c *approvalCoordinator) request(
 	}
 	requested := approvalEventData(util.New(), request)
 	pending := &pendingApproval{
-		messageFacts: facts,
-		invocationID: request.InvocationID,
-		chatID:       chatID,
-		executionID:  executionID,
-		requested:    requested,
-		response:     make(chan agentapi.ApprovalDecision, 1),
+		requestContext: ctx,
+		messageFacts:   facts,
+		invocationID:   request.InvocationID,
+		chatID:         chatID,
+		executionID:    executionID,
+		requested:      requested,
+		response:       make(chan agentapi.ApprovalDecision, 1),
 	}
 
 	c.commitMutex.Lock()
@@ -299,6 +302,9 @@ func (c *approvalCoordinator) beginResolution(
 	defer c.mutex.Unlock()
 	pending := c.byID[approvalID]
 	if pending == nil || pending.chatID != chatID {
+		return nil, eventlog.ApprovalOptionData{}, status_error.ApprovalAlreadyResolved
+	}
+	if enforceArrivalOrder && pending.requestContext != nil && pending.requestContext.Err() != nil {
 		return nil, eventlog.ApprovalOptionData{}, status_error.ApprovalAlreadyResolved
 	}
 	order := c.orderByChat[chatID]
