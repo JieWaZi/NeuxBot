@@ -36,6 +36,10 @@ import { chatWorkspaceHandlers } from "../test/chat-workspace-handlers";
 import { installCanvasDOM } from "../test/canvas-dom";
 import { client } from "@/shared/api/generated/client.gen";
 import type { GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEvent as WorkflowEvent } from "@/shared/api/generated/types.gen";
+import type {
+  GlobalEventObserver,
+  GlobalEventResource,
+} from "@/shared/api/global-events";
 import type { ChatEvent } from "@/shared/api/events";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import type * as SceneWorkspace from "@/shared/workspace/app-scene-workspace";
@@ -62,6 +66,26 @@ const chatSubscription = vi.hoisted(() => ({
 const workflowSubscriptions = vi.hoisted(
   () => new Map<string, (event?: WorkflowEvent) => void>(),
 );
+const workflowQueryListeners = vi.hoisted(
+  () =>
+    new Set<{ resource: GlobalEventResource; observer: GlobalEventObserver }>(),
+);
+function emitWorkflowEvent(key: string, event: WorkflowEvent) {
+  for (const item of workflowQueryListeners) {
+    if ((item.resource.parentId ?? "definition") !== key) continue;
+    item.observer.onEvent({
+      protocolVersion: 1,
+      epoch: "test",
+      connectionId: "test",
+      deliverySequence: 1,
+      topic: "workflow",
+      type: "workflow.event",
+      resource: item.resource,
+      eventId: event.type ?? "event",
+      payload: event,
+    });
+  }
+}
 const playerClock = vi.hoisted(() => ({ play: vi.fn(), pause: vi.fn() }));
 // 保留真实 Player 和 Composition，只冻结媒体时钟，避免循环 SVG 刷新干扰 Chat 状态断言。
 vi.mock("@remotion/player", async (importOriginal) => {
@@ -108,7 +132,25 @@ vi.mock("@/shared/api/events", () => ({
     options: { runId?: string; onEvent: (event: WorkflowEvent) => void },
   ) => {
     const key = options.runId ?? "definition";
-    const callback = (event?: WorkflowEvent) => options.onEvent(event ?? {});
+    const callback = (
+      event: WorkflowEvent = { type: "workflow.revision.saved" },
+    ) => {
+      options.onEvent(event);
+      for (const item of workflowQueryListeners) {
+        if ((item.resource.parentId ?? "definition") !== key) continue;
+        item.observer.onEvent({
+          protocolVersion: 1,
+          epoch: "test",
+          connectionId: "test",
+          deliverySequence: 1,
+          topic: "workflow",
+          type: "workflow.event",
+          resource: item.resource,
+          eventId: event.type ?? "event",
+          payload: event,
+        });
+      }
+    };
     workflowSubscriptions.set(key, callback);
     return () => {
       if (workflowSubscriptions.get(key) === callback)
@@ -695,6 +737,7 @@ it("节点标题保存后保留已打开的模型菜单与编辑浮层", async (
         await delay(100);
         label = body.edit.fields.label;
         revision = "version-2";
+        emitWorkflowEvent("definition", { type: "workflow.revision.saved" });
         return HttpResponse.json({ revisionId: revision });
       },
     ),
@@ -840,6 +883,7 @@ it.each(["保存版本", "执行结束"])(
         HttpResponse.json({
           id: "creation",
           chatId: "creation-chat",
+          chat: { id: "creation-chat", latestSequence: 1 },
           acceptedExecutionId: "generation",
           execution: {
             id: "generation",
@@ -1465,6 +1509,7 @@ it.each([false, true])(
     let deleted = false;
     const remove = vi.fn(() => {
       deleted = true;
+      emitWorkflowEvent("definition", { type: "workflow.run.history.deleted" });
       return HttpResponse.json(true);
     });
     server.use(
@@ -1518,7 +1563,9 @@ it.each([false, true])(
       await waitFor(() =>
         expect(screen.getByRole("radio", { name: "工作流" })).toBeChecked(),
       );
-      expect(screen.getByRole("radio", { name: "执行过程" })).toBeDisabled();
+      await waitFor(() =>
+        expect(screen.getByRole("radio", { name: "执行过程" })).toBeDisabled(),
+      );
     } else {
       const next = await within(history).findByRole("link", {
         name: /第 1 次运行/,
@@ -1526,9 +1573,11 @@ it.each([false, true])(
       });
       expect(next).toHaveAttribute("href", "/workflows/flow/runs/run-2");
       await waitFor(() => expect(next).toHaveAttribute("aria-current", "page"));
-      expect(
-        within(history).queryByRole("button", { name: /删除第/ }),
-      ).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(
+          within(history).queryByRole("button", { name: /删除第/ }),
+        ).not.toBeInTheDocument(),
+      );
     }
     expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(composer);
     expect(composer).toHaveValue("保留这段草稿");
@@ -1820,6 +1869,7 @@ it("删除历史版本先确认，删除所查看版本后返回当前版本并�
   let deleted = false;
   const remove = vi.fn(() => {
     deleted = true;
+    emitWorkflowEvent("definition", { type: "workflow.revision.deleted" });
     return HttpResponse.json(true);
   });
   server.use(
@@ -1950,6 +2000,7 @@ it.each([false, true])(
           return HttpResponse.json({
             id: "creation-new",
             chatId: "chat-new",
+            chat: { id: "chat-new", latestSequence: 1 },
             acceptedExecutionId: "accepted-new",
           });
         },
@@ -2043,6 +2094,7 @@ it("对话历史复用浮层并显示默认目录，关闭时保留对话输入"
           {
             id: "conversation-1",
             chatId: "chat-1",
+            chat: { id: "chat-1", latestSequence: 1 },
             acceptedExecutionId: "accepted-1",
             lastSavedRevisionId: "version-1",
             updatedAt: 1791270100000,
@@ -2172,7 +2224,26 @@ it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并�
 
 vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
-  subscribeGlobalEvents: () => () => {},
+  subscribeGlobalEvents: (
+    topic: string,
+    resource: GlobalEventResource,
+    observer: GlobalEventObserver,
+  ) => {
+    if (topic !== "workflow") return () => {};
+    const item = { resource, observer };
+    workflowQueryListeners.add(item);
+    const key = resource.parentId ?? "definition";
+    const callback = (
+      event: WorkflowEvent = { type: "workflow.run.changed" },
+    ) => emitWorkflowEvent(key, event);
+    if (!workflowSubscriptions.has(key))
+      workflowSubscriptions.set(key, callback);
+    return () => {
+      workflowQueryListeners.delete(item);
+      if (workflowSubscriptions.get(key) === callback)
+        workflowSubscriptions.delete(key);
+    };
+  },
 }));
 
 it("创作待办通知打开指定历史会话并展开聊天", async () => {

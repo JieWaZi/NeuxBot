@@ -62,6 +62,7 @@ export function RunResultDialog({
     queryKeys: [getWorkflowRunQueryKey({ path: { id, runId } })],
     active,
     enabled: Boolean(id && runId),
+    eventTypes: ["workflow.run.changed", "workflow.worker.skip_requested"],
   });
   const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage } =
     query;

@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"errors"
 	"maps"
 	"net/url"
 	"os"
@@ -179,6 +180,13 @@ func (o *TestPluginConnector) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	if logical.Package.Integration.Authentication != nil {
 		auth, bridge, release, err := installationService().BridgeLease(logical)
+		if errors.Is(err, status_error.PluginBusy) {
+			// 同版本桥接可直接共享；仅入口需切换且被占用时回收闲置消费者，活动工作仍受保护。
+			if err := closeIdlePlugin(ctx, o.PluginID); err != nil {
+				return nil, ginx.WithStack(err)
+			}
+			auth, bridge, release, err = installationService().BridgeLease(logical)
+		}
 		if err != nil {
 			return nil, ginx.WithStack(err)
 		}

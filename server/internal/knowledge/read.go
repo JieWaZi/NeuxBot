@@ -6,20 +6,20 @@ import (
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"math"
 	"strconv"
 )
 
 // ReadBindings 对每个读、搜索和来源操作重复校验冻结范围及当前关系。
-func ReadBindings(engine *core.Engine, scope Scope, current func(context.Context, string) ([]ResourceRef, error)) []agentcapability.Binding {
+func ReadBindings(engine *core.Engine, scope Scope, current func(context.Context, string) ([]ResourceRef, error)) []capability.Binding {
 	return ProviderReadBindings(LocalReadProvider{Engine: engine}, scope, current)
 }
 
 // ProviderReadBindings 在完整资源引用上共用同一冻结与当前授权校验。
-func ProviderReadBindings(provider ReadProvider, scope Scope, current func(context.Context, string) ([]ResourceRef, error)) []agentcapability.Binding {
-	authorize := func(ctx context.Context, r agentcapability.Request, op string) (ResourceRef, error) {
+func ProviderReadBindings(provider ReadProvider, scope Scope, current func(context.Context, string) ([]ResourceRef, error)) []capability.Binding {
+	authorize := func(ctx context.Context, r capability.Request, op string) (ResourceRef, error) {
 		id, _ := r.Params["libraryId"].(string)
 		backend, _ := r.Params["backend"].(string)
 		connection, _ := r.Params["connectionId"].(string)
@@ -35,12 +35,12 @@ func ProviderReadBindings(provider ReadProvider, scope Scope, current func(conte
 		}
 		return ref, nil
 	}
-	bindings := []agentcapability.Binding{
-		{Operation: "knowledge.libraries.list", Call: func(ctx context.Context, _ agentcapability.Request) (agentcapability.Result, error) {
+	bindings := []capability.Binding{
+		{Operation: "knowledge.libraries.list", Call: func(ctx context.Context, _ capability.Request) (capability.Result, error) {
 			items := []map[string]any{}
 			now, err := current(ctx, scope.ProjectID)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			cachedCurrent := func(context.Context, string) ([]ResourceRef, error) { return now, nil }
 			for _, ref := range scope.Resources {
@@ -48,29 +48,29 @@ func ProviderReadBindings(provider ReadProvider, scope Scope, current func(conte
 					if errors.Is(err, status_error.KnowledgeForbidden) {
 						continue
 					}
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
 				lib, err := provider.Library(ctx, ref)
 				if err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
 				items = append(items, map[string]any{"ref": ref, "name": lib.Name, "kind": lib.Kind, "wikiLanguage": lib.WikiLanguage})
 			}
-			return agentcapability.Result{Data: map[string]any{"items": items, "total": len(items)}}, nil
+			return capability.Result{Data: map[string]any{"items": items, "total": len(items)}}, nil
 		}},
-		{Operation: "knowledge.pages.search", Call: func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+		{Operation: "knowledge.pages.search", Call: func(ctx context.Context, r capability.Request) (capability.Result, error) {
 			id, err := authorize(ctx, r, "search")
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			q, _ := r.Params["query"].(string)
 			offset := number(r.Params, "offset")
 			if offset < 0 {
-				return agentcapability.Result{}, status_error.KnowledgeInvalid
+				return capability.Result{}, status_error.KnowledgeInvalid
 			}
 			rows, total, err := provider.Pages(ctx, id, core.PageQuery{LibraryID: id.KnowledgeBaseID, Query: q, Status: "published", Offset: offset, Limit: 50})
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			items := []map[string]any{}
 			for _, p := range rows {
@@ -81,70 +81,70 @@ func ProviderReadBindings(provider ReadProvider, scope Scope, current func(conte
 			if search, ok := provider.(DocumentReadProvider); ok && offset == 0 && q != "" {
 				chunks, mode, e := search.SearchChunks(ctx, id, q)
 				if e != nil {
-					return agentcapability.Result{}, e
+					return capability.Result{}, e
 				}
 				if mode != "" {
 					data["chunks"] = chunks
 					data["retrievalMode"] = mode
 				}
 			}
-			return agentcapability.Result{Data: data}, nil
+			return capability.Result{Data: data}, nil
 		}},
-		{Operation: "knowledge.pages.get", Call: func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+		{Operation: "knowledge.pages.get", Call: func(ctx context.Context, r capability.Request) (capability.Result, error) {
 			id, err := authorize(ctx, r, "read")
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			pid, _ := r.Params["pageId"].(string)
 			if (pid == "") == (stringParam(r.Params, "slug") == "") {
-				return agentcapability.Result{}, status_error.KnowledgeInvalid
+				return capability.Result{}, status_error.KnowledgeInvalid
 			}
 			p, err := provider.Page(ctx, id, pid, stringParam(r.Params, "slug"))
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			if len(p.Content) > 64<<10 {
-				return agentcapability.Result{}, status_error.KnowledgeUnsupported
+				return capability.Result{}, status_error.KnowledgeUnsupported
 			}
-			return agentcapability.Result{Data: map[string]any{"ref": id, "page": p}}, nil
+			return capability.Result{Data: map[string]any{"ref": id, "page": p}}, nil
 		}},
-		{Operation: "knowledge.sources.get", Call: func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+		{Operation: "knowledge.sources.get", Call: func(ctx context.Context, r capability.Request) (capability.Result, error) {
 			id, err := authorize(ctx, r, "source")
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			sid, _ := r.Params["sourceVersionId"].(string)
 			p, err := provider.Source(ctx, id, sid)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
-			return agentcapability.Result{Data: map[string]any{"ref": id, "source": p}}, nil
+			return capability.Result{Data: map[string]any{"ref": id, "source": p}}, nil
 		}},
 	}
 	for _, operation := range []string{"knowledge.libraries.get", "knowledge.sources.list", "knowledge.sources.read", "knowledge.pages.list", "knowledge.themes.list", "knowledge.index.get", "knowledge.revisions.list", "knowledge.revisions.get", "knowledge.jobs.list", "knowledge.jobs.get", "knowledge.audit.get", "knowledge.activity.list", "knowledge.export.get"} {
-		bindings = append(bindings, agentcapability.Binding{Operation: operation, Call: func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+		bindings = append(bindings, capability.Binding{Operation: operation, Call: func(ctx context.Context, r capability.Request) (capability.Result, error) {
 			op := "read"
 			if operation == "knowledge.sources.list" || operation == "knowledge.sources.read" {
 				op = "source"
 			}
 			ref, err := authorize(ctx, r, op)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			params, err := readParams(operation, r.Params)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			extended, ok := provider.(ExtendedReadProvider)
 			if !ok {
-				return agentcapability.Result{}, status_error.KnowledgeUnsupported
+				return capability.Result{}, status_error.KnowledgeUnsupported
 			}
 			data, err := extended.ExtendedRead(ctx, ref, operation, params)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			data["ref"] = ref
-			return agentcapability.Result{Data: data}, nil
+			return capability.Result{Data: data}, nil
 		}})
 	}
 	return bindings

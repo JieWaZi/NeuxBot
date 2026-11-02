@@ -2,6 +2,7 @@ import type { ChatEvent } from "@/shared/api/events";
 
 export type ChatEventBatcher = {
   push: (event: ChatEvent, flushImmediately?: boolean) => void;
+  flush: () => void;
   close: () => void;
 };
 
@@ -10,11 +11,22 @@ export function createChatEventBatcher(
 ): ChatEventBatcher {
   let pending: ChatEvent[] = [];
   const pendingMessageIndices = new Map<string, number>();
-  let timer: number | undefined;
+  let frame: number | undefined;
+  let scheduled = false;
+  let generation = 0;
+  const cancel = () => {
+    generation++;
+    if (
+      frame !== undefined &&
+      typeof window.cancelAnimationFrame === "function"
+    )
+      window.cancelAnimationFrame(frame);
+    frame = undefined;
+    scheduled = false;
+  };
 
   const flush = () => {
-    if (timer !== undefined) window.clearTimeout(timer);
-    timer = undefined;
+    cancel();
     if (pending.length === 0) return;
     const batch = pending;
     pending = [];
@@ -36,15 +48,26 @@ export function createChatEventBatcher(
         // 快照即可，避免重复归并和重复触发 Markdown 渲染。
         pending[pendingIndex] = event;
       }
-      if (flushImmediately) {
+      if (flushImmediately || !event.transient) {
         flush();
-      } else if (timer === undefined) {
-        timer = window.setTimeout(flush, 16);
+      } else if (!scheduled) {
+        scheduled = true;
+        const current = generation;
+        if (typeof window.requestAnimationFrame !== "function") {
+          queueMicrotask(() => {
+            if (generation === current) flush();
+          });
+        } else {
+          // 同一显示帧内合并追加；不为稀疏输入额外等待后续两帧。
+          frame = window.requestAnimationFrame(() => {
+            if (generation === current) flush();
+          });
+        }
       }
     },
+    flush,
     close() {
-      if (timer !== undefined) window.clearTimeout(timer);
-      timer = undefined;
+      cancel();
       pending = [];
       pendingMessageIndices.clear();
     },

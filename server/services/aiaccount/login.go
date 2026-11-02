@@ -88,6 +88,16 @@ func (s *Service) StartLogin(ctx context.Context, id string) (Login, error) {
 	if err != nil {
 		return Login{}, err
 	}
+	// 闲置会话回收可能保存原生刷新结果，登录必须固定回收后的账号修订。
+	account, err = s.accounts.Get(ctx, id)
+	if err != nil {
+		release()
+		return Login{}, err
+	}
+	if account.AuthMode != constants.AccountAuthModeSubscription || len(account.Endpoints) != 1 || account.Endpoints[0].Protocol != constants.AccountProtocolOpenAIResponses || account.Endpoints[0].BaseURL != constants.AIAccountOpenAIURL {
+		release()
+		return Login{}, status_error.AIAccountConfigurationInvalid
+	}
 	device, err := s.oauth.Start(ctx)
 	if err != nil {
 		release()

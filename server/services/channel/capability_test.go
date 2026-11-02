@@ -10,10 +10,10 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -272,12 +272,12 @@ func TestChannelTaskCapabilityRequiresBoardReadAndRejectsLeadAssignee(t *testing
 				if binding.Operation != "team.tasks.list" {
 					continue
 				}
-				_, err := binding.Call(ctx, agentcapability.Request{Operation: binding.Operation, Params: map[string]any{}})
+				_, err := binding.Call(ctx, capability.Request{Operation: binding.Operation, Params: map[string]any{}})
 				if !errors.Is(err, cause) {
 					t.Fatalf("repository classification lost: wanted %v got %v", cause, err)
 				}
-				got := agentcapability.ErrorResponse(binding.Operation, err)
-				expected := agentcapability.ErrorResponse(binding.Operation, cause)
+				got := capability.ErrorResponse(binding.Operation, err)
+				expected := capability.ErrorResponse(binding.Operation, cause)
 				if got.Error.Code != expected.Error.Code || got.Error.Message != "The task board is temporarily unavailable." {
 					t.Fatalf("unsafe or reclassified failure: %+v", got.Error)
 				}
@@ -505,7 +505,7 @@ func TestLeaderWorkOptionsPreserveSelectedPermission(t *testing.T) {
 		for _, level := range []constants.PermissionLevel{constants.PermissionLevelDefault, constants.PermissionLevelAuto, constants.PermissionLevelFullAccess} {
 			t.Run(runtimeID+"/"+string(level), func(t *testing.T) {
 				for _, direct := range []bool{false, true} {
-					options := leaderWorkOptions(runtimeID, "model", "default", level, execution.ToolCapability{}, runtimes.Instruction{}, direct)
+					options := leaderWorkOptions(runtimeID, "model", "default", level, execution.ToolCapability{}, agentapi.Instruction{}, direct)
 					if options.PermissionLevel != level || options.WorkspaceReadOnly {
 						t.Fatalf("direct=%t selected permission=%s, actual permission=%s workspaceReadOnly=%t", direct, level, options.PermissionLevel, options.WorkspaceReadOnly)
 					}

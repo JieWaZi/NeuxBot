@@ -1,5 +1,8 @@
 import { cn } from "@/shared/lib/cn";
-import { companionAvatar } from "@/shared/companion/appearance";
+import {
+  companionAvatar,
+  companionAppearance,
+} from "@/shared/companion/appearance";
 import { CompanionAvatar } from "@/shared/companion/companion-avatar";
 import type { CompanionControl } from "@/shared/companion/companion-avatar";
 import type { CompanionActivity } from "@/shared/companion/activity";
@@ -125,6 +128,39 @@ export function Avatar({
         </button>
       </span>
     </>
+  );
+}
+
+const staticImages = import.meta.glob<string>(
+  "../../../../../vendor/companion/assets/static/*.svg",
+  { eager: true, query: "?url", import: "default" },
+);
+
+/** 普通图片头像不挂载动画引擎、播放计时器或可见性监听。 */
+export function StaticAvatar({
+  name,
+  src,
+  size = "md",
+  className,
+}: Pick<AvatarProps, "name" | "src" | "size" | "className">) {
+  const { style } = companionAppearance(companionAvatar(src, name));
+  return (
+    <img
+      src={
+        staticImages[
+          `../../../../../vendor/companion/assets/static/${style}.svg`
+        ]
+      }
+      alt=""
+      aria-hidden="true"
+      loading="lazy"
+      decoding="async"
+      className={cn(
+        "inline-block shrink-0 align-middle",
+        sizeClass[size],
+        className,
+      )}
+    />
   );
 }
 

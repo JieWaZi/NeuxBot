@@ -29,7 +29,7 @@ type WorkflowController interface {
 	DeleteRevision(context.Context, string, string, int64) error
 	// GetRevision 读取同一工作流拥有的完整版本。
 	GetRevision(context.Context, string, string) (models.WorkflowRevision, error)
-	// ListRevisions 倒序读取有界历史，不返回源码和指令。
+	// ListRevisions 倒序读取有界版本摘要，不读取源码、编译清单和指令。
 	ListRevisions(context.Context, string, int64, int) ([]models.WorkflowRevision, error)
 	// FindReceipt 读取请求的首次提交回执。
 	FindReceipt(context.Context, string, string) (models.WorkflowCommandReceipt, bool, error)
@@ -158,7 +158,7 @@ func (c *workflowController) ListRevisions(ctx context.Context, definitionID str
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	db := controllerDB(ctx, c.db).Omit("source", "bundle").Where("definition_id = ? AND deleted_at IS NULL", definitionID)
+	db := controllerDB(ctx, c.db).Select("id", "ordinal", "source_digest", "creation_session_id", "restored_from_revision_id", "created_at").Where("definition_id = ? AND deleted_at IS NULL", definitionID)
 	if before > 0 {
 		db = db.Where("ordinal < ?", before)
 	}

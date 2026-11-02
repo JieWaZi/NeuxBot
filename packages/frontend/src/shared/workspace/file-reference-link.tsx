@@ -1,9 +1,9 @@
 import {
   createContext,
-  isValidElement,
   useContext,
   useMemo,
   useState,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -16,7 +16,7 @@ import { cn } from "@/shared/lib/cn";
 import { WorkspaceFileTypeIcon } from "./workspace-file-type-icon";
 import {
   emptyFileReferenceContext,
-  fileReferenceLabel,
+  fileName,
   localFileURL,
   parseReference,
   resolveFileReference,
@@ -52,35 +52,57 @@ export function FileReferenceProvider({
   );
 }
 
-function textOf(children: ReactNode): string {
-  if (typeof children === "string" || typeof children === "number")
-    return String(children);
-  if (Array.isArray(children)) return children.map(textOf).join("");
-  if (isValidElement<{ children?: ReactNode }>(children))
-    return textOf(children.props.children);
-  return "";
+/** 读取既有授权上下文，不触发文件存在性请求。 */
+export function useFileReferenceContext() {
+  return useContext(ReferenceContext).context;
+}
+
+function isPlainPrimaryActivation(
+  event: MouseEvent<HTMLAnchorElement>,
+): boolean {
+  return (
+    event.button === 0 &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey &&
+    !event.altKey
+  );
 }
 
 export function useFileReference(
   reference: FileReferenceCandidate | undefined,
   scope?: FileReferenceContext,
+  active = true,
 ) {
   const navigation = useContext(ReferenceContext);
   const context = scope ?? navigation.context;
   return useQuery({
-    queryKey: [
-      "file-reference",
-      context,
-      reference?.path,
-      reference?.line,
-      reference?.column,
-      reference?.endLine,
-    ],
+    queryKey: ["file-reference", context, reference?.path],
     queryFn: () =>
       reference
-        ? resolveFileReference(reference, context)
+        ? resolveFileReference(
+            {
+              ...reference,
+              line: undefined,
+              column: undefined,
+              endLine: undefined,
+            },
+            context,
+          )
         : Promise.resolve({ status: "unavailable" as const }),
-    enabled: Boolean(reference && context.workspaceRoot),
+    select: (result) =>
+      result.status === "resolved"
+        ? {
+            ...result,
+            file: {
+              ...result.file,
+              line: reference?.line,
+              column: reference?.column,
+              endLine: reference?.endLine,
+            },
+          }
+        : result,
+    enabled: active && Boolean(reference && context.workspaceRoot),
     retry: false,
   });
 }
@@ -106,16 +128,9 @@ function ResolvedReferenceText({
   reference: FileReferenceCandidate;
   className?: string;
 }) {
-  const query = useFileReference(reference);
-  const file =
-    query.data?.status === "resolved"
-      ? query.data.file
-      : query.data?.status === "directory"
-        ? query.data.directory
-        : undefined;
   return (
-    <span className={className} title={file?.canonicalPath ?? reference.raw}>
-      {file?.displayPath ?? reference.raw}
+    <span className={className} title={reference.raw}>
+      {reference.raw}
     </span>
   );
 }
@@ -125,12 +140,12 @@ export function ReferenceLink({
   reference,
   children,
   className,
-  fallback,
+  title,
 }: {
   reference: Reference;
   children?: ReactNode;
   className?: string;
-  fallback?: ReactNode;
+  title?: string;
 }) {
   const navigation = useContext(ReferenceContext);
   if (reference.kind === "file")
@@ -138,7 +153,7 @@ export function ReferenceLink({
       <LocalReferenceLink
         reference={reference}
         className={className}
-        fallback={fallback}
+        title={title}
       >
         {children}
       </LocalReferenceLink>
@@ -146,13 +161,16 @@ export function ReferenceLink({
   return (
     <a
       href={reference.url}
-      title={reference.url}
+      title={title ?? reference.url}
+      target="_blank"
+      rel="noopener noreferrer"
       data-chat-link="web"
       className={cn(
         "text-link decoration-link/50 hover:decoration-link focus-visible:ring-ring rounded-xs wrap-anywhere underline underline-offset-4 transition-colors outline-none focus-visible:ring-2",
         className,
       )}
       onClick={(event) => {
+        if (event.defaultPrevented || !isPlainPrimaryActivation(event)) return;
         event.preventDefault();
         if (navigation.onOpenURL) navigation.onOpenURL(reference.url);
         else void openExternalURL(reference.url);
@@ -160,7 +178,7 @@ export function ReferenceLink({
     >
       <Link2
         aria-hidden="true"
-        className="size-icon-sm mr-1 inline-block align-middle"
+        className="size-icon-inline mr-1 inline-block align-middle"
       />
       {children || reference.url}
     </a>
@@ -171,81 +189,79 @@ function LocalReferenceLink({
   reference,
   children,
   className,
-  fallback,
+  title,
 }: {
   reference: FileReferenceCandidate;
   children?: ReactNode;
   className?: string;
-  fallback?: ReactNode;
+  title?: string;
 }) {
   const { t } = useTranslation("chat");
   const { onOpenFile } = useContext(ReferenceContext);
   const [copiedPath, setCopiedPath] = useState("");
-  const query = useFileReference(reference);
+  const query = useFileReference(reference, undefined, false);
   const result = query.isError ? undefined : query.data;
   const file = result?.status === "resolved" ? result.file : undefined;
   const directory =
     result?.status === "directory" ? result.directory : undefined;
   const target = file ?? directory;
-  // 候选在确认前始终保留原文；无法定位不是消息中的一张失败文件卡片。
-  if (!target)
-    return (
-      fallback ?? <span className={className}>{children || reference.raw}</span>
-    );
-  const label = fileReferenceLabel(target, textOf(children), reference);
-  const copied = copiedPath === target.canonicalPath;
+  const name = target?.name ?? fileName(reference.path);
+  const path = target?.canonicalPath ?? reference.path;
+  const label = children ?? reference.raw;
+  const copied = copiedPath === path;
   const copyLabel = t(copied ? "filePathCopied" : "fileCopyPath");
   const chipClassName = cn(
-    "min-h-control-sm border-border bg-muted text-foreground inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-sm border px-2 py-0.5 align-middle font-mono no-underline",
+    "min-h-control-sm border-border bg-muted inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-sm border px-2 py-0.5 align-middle font-mono no-underline",
     className,
   );
   const content = (
     <>
       <WorkspaceFileTypeIcon
-        name={target.name}
+        name={name}
         isDirectory={Boolean(directory)}
-        size={14}
+        size="var(--spacing-icon-inline)"
+        className="text-current"
       />
-      <span className="min-w-0 break-all">{label}</span>
-      {file?.line ? (
-        <span className="type-caption shrink-0">
-          :{file.line}
-          {file.endLine
-            ? `–${file.endLine}`
-            : file.column
-              ? `:${file.column}`
-              : ""}
-        </span>
-      ) : null}
+      <span className="min-w-0 truncate">{label}</span>
     </>
   );
+  // 本地目标只能经授权解析打开，修饰点击和中键不能转交系统导航。
   return (
     <span className="inline-flex max-w-full items-center gap-0.5 align-middle">
-      {file ? (
+      {!directory ? (
         <a
-          href={localFileURL(file.canonicalPath)}
+          href={localFileURL(path)}
           tabIndex={onOpenFile ? 0 : -1}
           aria-disabled={!onOpenFile}
-          title={file.canonicalPath}
+          title={title ?? path}
           data-chat-link="file"
-          data-file-path={file.canonicalPath}
+          data-file-path={path}
           className={cn(
             chipClassName,
-            "hover:border-border-strong hover:bg-canvas focus-visible:ring-ring transition-colors outline-none focus-visible:ring-2",
+            "text-link hover:border-border-strong hover:bg-canvas focus-visible:ring-ring transition-colors outline-none focus-visible:ring-2",
           )}
-          onClick={(event) => {
+          onClick={async (event) => {
+            if (event.defaultPrevented) return;
+            const activate = isPlainPrimaryActivation(event);
             event.preventDefault();
-            onOpenFile?.(file);
+            if (!activate || !onOpenFile) return;
+            const resolved = file
+              ? { status: "resolved" as const, file }
+              : (await query.refetch()).data;
+            if (resolved?.status === "resolved") onOpenFile(resolved.file);
+            else if (resolved?.status !== "directory")
+              toast.error(t("fileReference.unavailable"));
           }}
+          onAuxClick={(event) => event.preventDefault()}
         >
           {content}
         </a>
       ) : (
         <span
-          title={target.canonicalPath}
+          title={title ?? path}
           data-chat-link="directory"
-          data-directory-path={target.canonicalPath}
-          className={chipClassName}
+          data-directory-path={path}
+          className={cn(chipClassName, "text-foreground")}
         >
           {content}
         </span>
@@ -255,14 +271,22 @@ function LocalReferenceLink({
         variant="ghost"
         size="icon-sm"
         className="shrink-0"
-        aria-label={`${copyLabel}：${target.name}`}
+        aria-label={`${copyLabel}：${name}`}
         title={copyLabel}
         onClick={async (event) => {
           event.preventDefault();
           event.stopPropagation();
           try {
-            await navigator.clipboard.writeText(target.canonicalPath);
-            setCopiedPath(target.canonicalPath);
+            const resolved = target ? undefined : (await query.refetch()).data;
+            const fullPath =
+              target?.canonicalPath ??
+              (resolved?.status === "resolved"
+                ? resolved.file.canonicalPath
+                : resolved?.status === "directory"
+                  ? resolved.directory.canonicalPath
+                  : reference.path);
+            await navigator.clipboard.writeText(fullPath);
+            setCopiedPath(fullPath);
           } catch {
             toast.error(t("filePathCopyFailed"));
           }

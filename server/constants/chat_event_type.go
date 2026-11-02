@@ -37,6 +37,8 @@ const (
 	ChatEventTypeAssistantMessage ChatEventType = "assistant.message"
 	// ChatEventTypeToolMessage 表示 Runtime 已完整形成一条工具结果执行消息。
 	ChatEventTypeToolMessage ChatEventType = "tool.message"
+	// ChatEventTypeFileChanges 表示独立工作区采集结果及其不可变内容已经提交。
+	ChatEventTypeFileChanges ChatEventType = "workspace.changes"
 	// ChatEventTypeInvocationFinished 表示一次 Runtime Invocation 的实际事实已经持久化。
 	ChatEventTypeInvocationFinished ChatEventType = "invocation.finished"
 	// ChatEventTypeExecutionCompleted 表示一次执行已经成功结束。

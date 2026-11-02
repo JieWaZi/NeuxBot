@@ -15,8 +15,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcli"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	agentcli "github.com/JieWaZi/NeuxBot/server/internal/agent/cli"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -47,9 +47,9 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 	}
 	s.executions = consumerExecutionBoundary{}
 	s.chats = &consumerChatBoundary{actual: models.Execution{ID: lease.ID, ChatID: lease.ChatID, Status: constants.ExecutionStatusRunning, PermissionLevel: constants.PermissionLevelDefault}, summary: chat.ChatSummary{Chat: models.Chat{ID: lease.ChatID, ActiveExecutionID: lease.ID, AdditionalWorkingDirectories: []string{root}}}}
-	registry := agentcapability.New(nil)
+	registry := capability.New(nil)
 	defer registry.Close()
-	grant, activate, revoke, err := registry.Prepare(agentcapability.GrantSpec{ExecutionID: lease.ID, FileRoots: []string{root}, Bindings: s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer), Validate: func(context.Context) error { return nil }})
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: lease.ID, FileRoots: []string{root}, Bindings: s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer), Validate: func(context.Context) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,12 +57,12 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 	activate()
 	endpoint := httptest.NewServer(registry)
 	defer endpoint.Close()
-	connection, err := agentcapability.WriteConnection(root, "connection.json", agentcapability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: endpoint.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
+	connection, err := capability.WriteConnection(root, "connection.json", capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: endpoint.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Chdir(sub)
-	call := func(arguments []string, params any) (int, agentcapability.Response) {
+	call := func(arguments []string, params any) (int, capability.Response) {
 		t.Helper()
 		var input, output, failure bytes.Buffer
 		if params != nil {
@@ -75,7 +75,7 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 		if code != 0 {
 			body = failure.Bytes()
 		}
-		var response agentcapability.Response
+		var response capability.Response
 		if err := json.Unmarshal(body, &response); err != nil {
 			t.Fatalf("invalid CLI response: %s %s %v", &output, &failure, err)
 		}
@@ -195,19 +195,19 @@ func TestAgentConcurrentCurrentRevisionAdmissionReplaysWinner(t *testing.T) {
 	}
 	s.executions = consumerExecutionBoundary{}
 	s.chats = &consumerChatBoundary{actual: models.Execution{ID: lease.ID, ChatID: lease.ChatID, Status: constants.ExecutionStatusRunning, PermissionLevel: constants.PermissionLevelDefault}, summary: chat.ChatSummary{Chat: models.Chat{ID: lease.ChatID, ActiveExecutionID: lease.ID, AdditionalWorkingDirectories: []string{t.TempDir()}}}}
-	var start agentcapability.Binding
+	var start capability.Binding
 	for _, binding := range s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer) {
 		if binding.Operation == "workflow.runs.start" {
 			start = binding
 		}
 	}
-	request := agentcapability.Request{Operation: start.Operation, RequestID: "same", Params: map[string]any{"definitionId": definition.ID, "revisionId": "", "args": map[string]any{"text": "same"}}}
+	request := capability.Request{Operation: start.Operation, RequestID: "same", Params: map[string]any{"definitionId": definition.ID, "revisionId": "", "args": map[string]any{"text": "same"}}}
 	resume := make(chan struct{})
 	release := sync.OnceFunc(func() { close(resume) })
 	defer release()
 	paused := &pausedAgentDefinition{WorkflowController: s.store, paused: make(chan struct{}), resume: resume}
 	s.store = paused
-	firstResults, firstErrors := make(chan agentcapability.Result, 1), make(chan error, 1)
+	firstResults, firstErrors := make(chan capability.Result, 1), make(chan error, 1)
 	go func() {
 		value, err := start.Call(ctx, request)
 		firstResults <- value

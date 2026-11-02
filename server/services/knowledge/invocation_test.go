@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	keyrules "github.com/JieWaZi/NeuxBot/server/internal/integration"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -46,7 +46,7 @@ func TestIntegrationAutomaticTaskKnowledgeProvenance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := bound.Options.ToolCapabilities[0].Bindings[0].Call(ctx, agentcapability.Request{RequestID: "knowledge"})
+	result, err := bound.Options.ToolCapabilities[0].Bindings[0].Call(ctx, capability.Request{RequestID: "knowledge"})
 	if err != nil {
 		t.Fatal(err)
 	}

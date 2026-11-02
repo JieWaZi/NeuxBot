@@ -10,7 +10,7 @@ import type { FileReferenceRequest } from "@/shared/platform";
 import { FileReferenceProvider } from "@/shared/workspace/file-reference-link";
 import { WorkspaceProvider } from "@/shared/workspace/workspace-context";
 import { WorkbenchProvider, useWorkbench } from "../workbench/workbench-store";
-import { AssistantText } from "./chat-message-content";
+import { AssistantText } from "@/test/chat-markdown-context";
 import { useChatWorkspaceBindings } from "./use-chat-workspace-bindings";
 
 vi.mock("@/shared/platform", async (importOriginal) => {
@@ -98,11 +98,14 @@ describe("project link navigation", () => {
     const user = userEvent.setup();
     const root =
       "/Users/example/Library/Application Support/com.neuxally.desktop/team/7481f05f7a4a4d3ab5eb0714a9fe1465/workspace/leader";
+    const managedPath =
+      "/Users/example/Library/Application Support/com.neuxally.desktop/team/7481f05f7a4a4d3ab5eb0714a9fe1465/workspace/projects/share/a.txt";
+    const projectPath = "/Users/example/Desktop/share/a.txt";
     renderLinks(
       root,
-      "已创建 `/Users/example/Library/Application Support/com.neuxally.desktop/team/7481f05f7a4a4d3ab5eb0714a9fe1465/workspace/projects/share/a.txt`（即 `/Users/example/Desktop/share/a.txt`）。",
+      `已创建 [${managedPath}](<${managedPath}>)（即 [${projectPath}](${projectPath})）。`,
     );
-    const links = await screen.findAllByRole("link", { name: "a.txt" });
+    const links = await screen.findAllByRole("link", { name: /\/a\.txt$/ });
     for (const link of links) await user.click(link);
     await waitFor(() => {
       expect(workbenchTabs()).toEqual([

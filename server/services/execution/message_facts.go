@@ -6,8 +6,8 @@ import (
 	"sync"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -142,7 +142,7 @@ func (f *executionMessageFacts) invocation() string {
 }
 
 // record 先提交 Core 命令事实，再交接给实时投影；失败提交不进入队列。
-func (f *executionMessageFacts) record(ctx context.Context, journal chatservice.Journal, chatID, executionID string, op contract.Operation, result agentcapability.Result) error {
+func (f *executionMessageFacts) record(ctx context.Context, journal chatservice.Journal, chatID, executionID string, op capability.Operation, result capability.Result) error {
 	records, err := journal.AppendExecutionFacts(ctx, chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeAgentCommandCommitted, ExecutionID: executionID, Data: marshalData(eventlog.AgentCommandData{CommandID: result.CommandID, Operation: op.ID, Completion: op.Completion})}})
 	if err == nil {
 		f.push(records...)

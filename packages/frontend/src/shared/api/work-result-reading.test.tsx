@@ -1,4 +1,10 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { notificationIsPresented } from "./notification-presentation";
+import { chatMessageSource } from "@/modules/chat/api/chat-queries";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { useRef, useState } from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -15,7 +21,7 @@ import {
 } from "vitest";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import { ChatQueueProvider } from "@/modules/chat/runtime/chat-queue-store";
-import { useChatRuntime } from "@/modules/chat/runtime/use-chat-runtime";
+import { useChatRuntime as useProductionChatRuntime } from "@/modules/chat/runtime/use-chat-runtime";
 import { ChatThread } from "@/modules/chat/components/chat-thread";
 import { conversationKeyOf } from "@/modules/chat/model/conversation-identity";
 import { NotificationPresenter } from "@/modules/notification/components/notification-presenter";
@@ -63,6 +69,28 @@ function intersection(target: Element): IntersectionObserverEntry {
 
 const server = setupServer();
 const origin = "http://reading.test";
+
+type RuntimeFixtureOptions = Omit<
+  Parameters<typeof useProductionChatRuntime>[0],
+  "messageSource"
+> & {
+  messages: Parameters<
+    typeof useProductionChatRuntime
+  >[0]["messageSource"]["snapshot"]["messages"];
+  latestSequence: number;
+  isHistoryReady: boolean;
+};
+function useChatRuntime(options: RuntimeFixtureOptions) {
+  const queryClient = useQueryClient();
+  return useProductionChatRuntime({
+    ...options,
+    messageSource: chatMessageSource(queryClient, options.chatId, {
+      messages: options.messages,
+      latestSequence: options.latestSequence,
+      ready: options.isHistoryReady,
+    }),
+  });
+}
 const owner = "a".repeat(32);
 beforeAll(() => {
   client.setConfig({ baseUrl: origin });
@@ -83,6 +111,21 @@ afterEach(() => {
 afterAll(() => server.close());
 const selector = (receipt: Receipt) =>
   `[data-result="${receipt.reference?.messageId}"]`;
+function emitResultChange() {
+  for (const observer of eventObservers)
+    if (observerTopics.get(observer) === "work-results")
+      observer.onEvent({
+        protocolVersion: 1,
+        epoch: "epoch",
+        connectionId: "connection",
+        deliverySequence: 1,
+        topic: "work-results",
+        type: "work-results.changed",
+        resource: { kind: "chat", id: owner },
+        eventId: "result-change",
+        payload: {},
+      });
+}
 function Reader({
   message = "A",
   rendered = true,
@@ -110,7 +153,7 @@ function ProductionChat({
 }: {
   status?: "running" | "completed" | "failed";
 }) {
-  const { runtime, isRunning } = useChatRuntime({
+  const { runtime, isRunning, messages } = useChatRuntime({
     conversationKey: conversationKeyOf(`chat:${owner}`, owner),
     queueKey: owner,
     chatId: owner,
@@ -139,7 +182,7 @@ function ProductionChat({
       reasoning: "high",
       permissionLevel: "full-access",
     },
-    send: vi.fn(),
+    prepareSubmission: () => ({ accept: vi.fn() }),
     cancel: vi.fn(),
     onStarted: vi.fn(),
     onTerminal: vi.fn(),
@@ -147,6 +190,7 @@ function ProductionChat({
   return (
     <ChatThread
       runtime={runtime}
+      messages={messages}
       isRunning={isRunning}
       fileScopeChatId={owner}
       resultSource={{ chatId: owner, owner: { kind: "chat", id: owner } }}
@@ -495,6 +539,7 @@ it("只在真实结果可见后提交观察版本，A 在 B 发布后查看不�
     version: 1,
     reference: { chatId: owner, messageId: "A" },
   });
+  act(emitResultChange);
   await waitFor(() =>
     expect(
       query
@@ -529,6 +574,167 @@ it("只在真实结果可见后提交观察版本，A 在 B 发布后查看不�
     version: 2,
     reference: { chatId: owner, messageId: "B" },
   });
+});
+
+it("阅读成功只等待服务器事件对账，迟到的旧确认不会覆盖新成果", async () => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  let callback: IntersectionObserverCallback | undefined;
+  let target: Element | undefined;
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(value: IntersectionObserverCallback) {
+        callback = value;
+      }
+      observe(value: Element) {
+        target = value;
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  let latest = 1;
+  let viewedVersion = 0;
+  let finishView: () => void = () => {};
+  const read = vi.fn();
+  const viewed = vi.fn();
+  server.use(
+    http.get(`${origin}/api/v1/work-board/results/chat/${owner}`, () => {
+      read();
+      return HttpResponse.json({
+        result: {
+          ownerKind: "chat",
+          ownerId: owner,
+          latestVersion: latest,
+          viewedVersion,
+          reference: { chatId: owner, messageId: latest === 1 ? "A" : "B" },
+        },
+      });
+    }),
+    http.post(
+      `${origin}/api/v1/work-board/results/chat/${owner}/view`,
+      async ({ request }) => {
+        viewed(await request.json());
+        await new Promise<void>((resolve) => {
+          finishView = resolve;
+        });
+        viewedVersion = 1;
+        return HttpResponse.json({ success: true });
+      },
+    ),
+  );
+  const queries = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={queries}>
+      <Reader />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(target).toBeDefined());
+  act(() => {
+    if (target) callback?.([intersection(target)], {} as IntersectionObserver);
+  });
+  await waitFor(() => expect(viewed).toHaveBeenCalledTimes(1));
+  latest = 2;
+  act(emitResultChange);
+  await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+  await act(async () => {
+    finishView();
+  });
+  await waitFor(() =>
+    expect(queries.getMutationCache().getAll()[0]?.state.status).toBe(
+      "success",
+    ),
+  );
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  expect(read).toHaveBeenCalledTimes(2);
+  act(emitResultChange);
+  await waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+  const receipt = queries.getQueryCache().getAll()[0]?.state.data as {
+    result?: Receipt;
+  };
+  expect(receipt.result).toMatchObject({
+    latestVersion: 2,
+    viewedVersion: 1,
+    reference: { messageId: "B" },
+  });
+  expect(viewed).toHaveBeenLastCalledWith({
+    version: 1,
+    reference: { chatId: owner, messageId: "A" },
+  });
+  view.unmount();
+  queries.clear();
+});
+
+it("阅读失败保留未读，重新呈现后可重试同一准确版本", async () => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  const focus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  let callback: IntersectionObserverCallback | undefined;
+  let target: Element | undefined;
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(value: IntersectionObserverCallback) {
+        callback = value;
+      }
+      observe(value: Element) {
+        target = value;
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const viewed = vi.fn();
+  server.use(
+    http.get(`${origin}/api/v1/work-board/results/chat/${owner}`, () =>
+      HttpResponse.json({
+        result: {
+          ownerKind: "chat",
+          ownerId: owner,
+          latestVersion: 1,
+          viewedVersion: 0,
+          reference: { chatId: owner, messageId: "A" },
+        },
+      }),
+    ),
+    http.post(
+      `${origin}/api/v1/work-board/results/chat/${owner}/view`,
+      async ({ request }) => {
+        viewed(await request.json());
+        return viewed.mock.calls.length === 1
+          ? HttpResponse.json(
+              { message: "暂时无法确认", code: "CONFLICT" },
+              { status: 409 },
+            )
+          : HttpResponse.json({ success: true });
+      },
+    ),
+  );
+  const queries = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={queries}>
+      <Reader />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(target).toBeDefined());
+  act(() => {
+    if (target) callback?.([intersection(target)], {} as IntersectionObserver);
+  });
+  await waitFor(() =>
+    expect(queries.getMutationCache().getAll()[0]?.state.status).toBe("error"),
+  );
+  expect(viewed).toHaveBeenCalledTimes(1);
+  focus.mockReturnValue(false);
+  act(() => window.dispatchEvent(new Event("blur")));
+  focus.mockReturnValue(true);
+  act(() => window.dispatchEvent(new Event("focus")));
+  await waitFor(() => expect(viewed).toHaveBeenCalledTimes(2));
+  expect(viewed.mock.calls[1]).toEqual(viewed.mock.calls[0]);
+  view.unmount();
+  queries.clear();
 });
 
 it.each([
@@ -1112,3 +1318,127 @@ it.each(["chat", "team_thread"] as const)(
     cache.clear();
   },
 );
+
+it("晚到文件成果不能被原正文标读，精确文件卡片出现后才提交新版本", async () => {
+  vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+  const observations = new Map<Element, IntersectionObserverCallback>();
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      callback: IntersectionObserverCallback;
+      owned = new Set<Element>();
+      constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+      }
+      observe(target: Element) {
+        this.owned.add(target);
+        observations.set(target, this.callback);
+      }
+      unobserve(target: Element) {
+        this.owned.delete(target);
+        observations.delete(target);
+      }
+      disconnect() {
+        for (const target of this.owned) observations.delete(target);
+        this.owned.clear();
+      }
+    },
+  );
+  const reference = {
+    chatId: owner,
+    messageId: "final-message",
+    executionId: "final-message",
+    fileChangeRecordId: "files",
+    fileChangeRecordVersion: 2,
+  };
+  const reads = vi.fn(),
+    viewed = vi.fn();
+  server.use(
+    http.get(`${origin}/api/v1/work-board/results/chat/${owner}`, () => {
+      reads();
+      return HttpResponse.json({
+        result: {
+          ownerKind: "chat",
+          ownerId: owner,
+          latestVersion: 9,
+          viewedVersion: 7,
+          reference,
+        },
+      });
+    }),
+    http.post(
+      `${origin}/api/v1/work-board/results/chat/${owner}/view`,
+      async ({ request }) => {
+        viewed(await request.json());
+        return HttpResponse.json({ success: true });
+      },
+    ),
+  );
+  function FileReader({ showFile = false }: { showFile?: boolean }) {
+    const viewport = useRef<HTMLDivElement>(null);
+    return (
+      <>
+        <div ref={viewport}>
+          <div data-message-id="final-message">
+            <p data-work-result-body>已读过的原正文</p>
+            {showFile ? (
+              <section
+                data-work-result-body
+                data-file-change-record-id="files"
+                data-file-change-record-version="2"
+              >
+                新文件成果
+              </section>
+            ) : null}
+          </div>
+        </div>
+        <ChatWorkResultReader chatId={owner} viewport={viewport} />
+      </>
+    );
+  }
+  const query = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: React.ReactNode }) => (
+    <MemoryRouter>
+      <QueryClientProvider client={query}>{children}</QueryClientProvider>
+    </MemoryRouter>
+  );
+  const view = render(<FileReader />, { wrapper });
+  await waitFor(() => expect(reads).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    for (const [element, callback] of observations)
+      callback([intersection(element)], {} as IntersectionObserver);
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect(
+      document.querySelector('[data-work-result-version="9"]'),
+    ).not.toBeNull(),
+  );
+  const notice = {
+    id: "file-notice",
+    kind: "result" as const,
+    version: 9,
+    target: { ownerKind: "chat" as const, ownerId: owner, reference },
+  };
+  expect(notificationIsPresented(notice)).toBe(false);
+  expect(viewed).not.toHaveBeenCalled();
+  view.rerender(<FileReader showFile />);
+  await waitFor(() =>
+    expect(
+      [...observations.keys()].some(
+        (element) => element.textContent === "新文件成果",
+      ),
+    ).toBe(true),
+  );
+  expect(notificationIsPresented(notice)).toBe(true);
+  act(() => {
+    for (const [element, callback] of observations)
+      callback([intersection(element)], {} as IntersectionObserver);
+  });
+  await waitFor(() => expect(viewed).toHaveBeenCalledTimes(1));
+  expect(viewed).toHaveBeenCalledWith({ version: 9, reference });
+  view.unmount();
+  query.clear();
+});

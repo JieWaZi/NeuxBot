@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -28,7 +28,7 @@ func TestOrdinaryChatMaintenanceUsesSharedTaskAndFrozenChatSelection(t *testing.
 		execution: models.Execution{ID: "execution", UserMessageID: "user-message", RuntimeID: "codex", AccountID: "chat-account", Model: "chat-model", Reasoning: "high"},
 	}
 	s.config.Chats = current
-	var start, ingestion agentcapability.Binding
+	var start, ingestion capability.Binding
 	for _, b := range s.AgentBindings(ctx, current.chat) {
 		if b.Operation == "knowledge.wiki.maintain" {
 			start = b
@@ -40,7 +40,7 @@ func TestOrdinaryChatMaintenanceUsesSharedTaskAndFrozenChatSelection(t *testing.
 	if start.Call == nil || start.Receipt == nil {
 		t.Fatal("chat has no Wiki maintenance task entry")
 	}
-	request := agentcapability.Request{RequestID: "maintain", Params: map[string]any{"libraryId": lib.ID, "message": "发现两个同义目录；检查 concept/time 和 concept/ntp。"}}
+	request := capability.Request{RequestID: "maintain", Params: map[string]any{"libraryId": lib.ID, "message": "发现两个同义目录；检查 concept/time 和 concept/ntp。"}}
 	result, err := start.Call(ctx, request)
 	if err != nil {
 		t.Fatal(err)
@@ -50,9 +50,9 @@ func TestOrdinaryChatMaintenanceUsesSharedTaskAndFrozenChatSelection(t *testing.
 	if err != nil || !core.IsMaintenanceJob(job) || len(job.SourceVersionIDs) != 0 {
 		t.Fatalf("wrong task: %+v %v", job, err)
 	}
-	for _, recover := range []func() (agentcapability.Result, error){
-		func() (agentcapability.Result, error) { return start.Call(ctx, request) },
-		func() (agentcapability.Result, error) { return start.Receipt(ctx, request.RequestID) },
+	for _, recover := range []func() (capability.Result, error){
+		func() (capability.Result, error) { return start.Call(ctx, request) },
+		func() (capability.Result, error) { return start.Receipt(ctx, request.RequestID) },
 	} {
 		replayed, err := recover()
 		if err != nil || replayed.Data.(map[string]any)["receipt"].(*core.Receipt).JobID != job.ID {
@@ -115,7 +115,7 @@ func TestOrdinaryChatMaintenanceRejectsSourcesRemoteAndRevokedExecution(t *testi
 	ctx := context.Background()
 	current := selectedChat{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}, message: messageview.Message{ID: "message"}}
 	s.config.Chats = current
-	var start agentcapability.Binding
+	var start capability.Binding
 	for _, b := range s.AgentBindings(ctx, current.chat) {
 		if b.Operation == "knowledge.wiki.maintain" {
 			start = b
@@ -130,12 +130,12 @@ func TestOrdinaryChatMaintenanceRejectsSourcesRemoteAndRevokedExecution(t *testi
 		{"libraryId": lib.ID, "backend": "custom", "connectionId": "remote"},
 		{"libraryId": "unseen"},
 	} {
-		if _, err := start.Call(ctx, agentcapability.Request{RequestID: "invalid", Params: params}); err == nil {
+		if _, err := start.Call(ctx, capability.Request{RequestID: "invalid", Params: params}); err == nil {
 			t.Fatalf("invalid maintenance accepted: %v", params)
 		}
 	}
 	s.config.Chats = selectedChat{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "other"}}
-	if _, err := start.Call(ctx, agentcapability.Request{RequestID: "revoked", Params: map[string]any{"libraryId": lib.ID}}); !errors.Is(err, status_error.KnowledgeForbidden) {
+	if _, err := start.Call(ctx, capability.Request{RequestID: "revoked", Params: map[string]any{"libraryId": lib.ID}}); !errors.Is(err, status_error.KnowledgeForbidden) {
 		t.Fatalf("revoked execution accepted: %v", err)
 	}
 	_, total, err := s.config.Engine.ListJobs(ctx, lib.ID, 0, 10)

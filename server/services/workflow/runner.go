@@ -17,13 +17,21 @@ import (
 
 // Tick 推进一个运行的有界 Go 指令并提交检查点，外部派发始终在事务外。
 func (s *Service) Tick(ctx context.Context, id string) error {
+	_, err := s.tick(ctx, id)
+	return err
+}
+
+// tick 将本次已经核验的效果和许可交还调度者，不在事务后重复读取完整聚合。
+func (s *Service) tick(ctx context.Context, id string) (controllers.WorkflowRunState, error) {
+	var confirmed controllers.WorkflowRunState
 	s.state.Commands.Lock()
 	defer s.state.Commands.Unlock()
-	return s.transactions.Transaction(ctx, func(ctx context.Context) error {
+	err := s.transactions.Transaction(ctx, func(ctx context.Context) error {
 		state, err := s.state.OwnedRun(ctx, id)
 		if err != nil {
 			return err
 		}
+		defer func() { confirmed = state }()
 		if workflowstate.TerminalRun(state.Run.Status) {
 			return nil
 		}
@@ -314,6 +322,10 @@ func (s *Service) Tick(ctx context.Context, id string) error {
 		}
 		return s.state.CommitRun(ctx, state)
 	})
+	if err != nil {
+		return controllers.WorkflowRunState{}, err
+	}
+	return confirmed, nil
 }
 
 func prepareEffect(bundle workflowdsl.ProgramBundle, manifest workflowdsl.Manifest, state *controllers.WorkflowRunState, index int, boundary workflowdsl.EffectBoundary) error {

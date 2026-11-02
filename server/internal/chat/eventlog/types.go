@@ -49,6 +49,24 @@ type AppendInput struct {
 	Data json.RawMessage
 }
 
+// FileChangesData 只引用已经耐久保存的执行文件成果，不复制内容与文件列表。
+type FileChangesData struct {
+	// RecordID 是 Chat 自有文件成果记录的稳定身份。
+	RecordID string `json:"recordId"`
+	// Version 是独立采集记录版本。
+	Version int `json:"version"`
+	// State 区分 pending、ready、partial、unavailable 和 incomplete。
+	State string `json:"state"`
+	// Reason 是采集失败或覆盖不足的稳定原因。
+	Reason string `json:"reason,omitempty"`
+	// TotalFiles 是完整枚举后已知的净变化文件数。
+	TotalFiles int `json:"totalFiles"`
+	// Complete 表示本轮授权采集范围已完整覆盖。
+	Complete bool `json:"complete"`
+	// Truncated 表示文件列表受展示上限截断。
+	Truncated bool `json:"truncated,omitempty"`
+}
+
 // AgentCommandData 只记录安全业务动作与真实回执身份，不复制正文、路径或凭据。
 type AgentCommandData struct {
 	// CommandID 是 Core 返回并可与真实工具结果关联的命令身份。
@@ -151,6 +169,8 @@ type CodeReference struct {
 
 // MessageCreatedData 保存一条用户输入消息的完整内容。
 type MessageCreatedData struct {
+	// SubmissionID 关联调用方为这次输入提供的既有幂等身份；无标识的程序性输入为空。
+	SubmissionID string `json:"submissionId,omitempty"`
 	// Role 是消息发送方。
 	Role constants.MessageRole `json:"role"`
 	// Actor 是产生该输入的入口无关语义参与者。
@@ -349,8 +369,6 @@ type InvocationFinishedData struct {
 	WorkingDirectory string `json:"workingDirectory"`
 	// AdditionalWritableDirectories 是本次 Runtime 调用实际授权的附加读写目录。
 	AdditionalWritableDirectories []string `json:"additionalWritableDirectories,omitempty"`
-	// WorkspaceWarningCode 是本次调用发生目录能力降级时的稳定提示码。
-	WorkspaceWarningCode string `json:"workspaceWarningCode,omitempty"`
 	// Attempt 是该 Invocation 在所属 Execution 中从一开始的尝试序号。
 	Attempt int `json:"attempt"`
 	// RecoveryStrategy 是 Host 本次采用的启动或恢复策略。

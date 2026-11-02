@@ -412,7 +412,7 @@ func TestMessageViewBuilderEnrichesStreamingToolAndBuildsRunMetrics(t *testing.T
 	}
 }
 
-func TestReplayMessagesBuildsExecutionFileChangesFromFinalToolDiffs(t *testing.T) {
+func TestReplayMessagesDoesNotBuildFileOutcomesFromToolDiffs(t *testing.T) {
 	t.Parallel()
 
 	finished, _ := eventlog.MarshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
@@ -461,31 +461,17 @@ func TestReplayMessagesBuildsExecutionFileChangesFromFinalToolDiffs(t *testing.T
 	if err != nil {
 		t.Fatalf("ReplayMessages() error = %v", err)
 	}
-	if len(messages) != 1 || len(messages[0].FileChanges) != 1 {
-		t.Fatalf("FileChanges = %#v, want one successful file", messages)
+	if len(messages) != 1 || len(messages[0].FileChanges) != 0 || len(messages[0].FileChangeDiffs) != 0 || messages[0].FileChangeRecord != nil {
+		t.Fatalf("CLI diff created independent file outcome: %+v", messages)
 	}
-	change := messages[0].FileChanges[0]
-	if change.Path != "main.go" || change.AddedLines != 3 || change.DeletedLines != 2 {
-		t.Fatalf("FileChanges[0] = %#v, want main.go +3 -2", change)
+	if len(messages[0].RuntimeEvents) != 4 || messages[0].DisplayParts[0].ToolStatus != constants.MessageToolStatusCompleted {
+		t.Fatal("legacy private tool data or actual tool status lost")
 	}
-	if len(messages[0].FileChangeDiffs) != 1 {
-		t.Fatalf("FileChangeDiffs = %#v, want one execution diff", messages[0].FileChangeDiffs)
-	}
-	diff := messages[0].FileChangeDiffs[0]
-	if diff.Path != "main.go" || diff.OldContent != "a\nb\n" ||
-		diff.NewContent != "a\nc\ne\n" {
-		t.Fatalf("FileChangeDiffs[0] = %#v, want first old content and final new content", diff)
-	}
-	firstTool := messages[0].DisplayParts[0]
-	if firstTool.ToolSafeSummary == nil || len(firstTool.ToolSafeSummary.Files) != 1 ||
-		firstTool.ToolSafeSummary.Files[0].AddedLines != 2 ||
-		firstTool.ToolSafeSummary.Files[0].DeletedLines != 1 {
-		t.Fatalf("first tool summary = %#v, want final refinement only", firstTool.ToolSafeSummary)
-	}
+
 }
 
-// TestMessageSnapshotsKeepDiffRefinementsAndIsolation 覆盖延迟投影的中间快照、失败回退及快照隔离。
-func TestMessageSnapshotsKeepDiffRefinementsAndIsolation(t *testing.T) {
+// TestMessageSnapshotsKeepFileReferenceVersionsAndIsolation 覆盖独立成果轻量引用及快照隔离。
+func TestMessageSnapshotsKeepFileReferenceVersionsAndIsolation(t *testing.T) {
 	t.Parallel()
 	builder := NewMessageViewBuilder()
 	apply := func(record eventlog.Record) {
@@ -496,56 +482,31 @@ func TestMessageSnapshotsKeepDiffRefinementsAndIsolation(t *testing.T) {
 	}
 	apply(chatCreatedRecord(1, "/workspace"))
 	apply(executionCreatedRecord(2, "execution-1"))
-	edit := func(sequence int64, toolID, oldText, newText string) eventlog.Record {
-		return runtimeRecord(sequence, "execution-1", "execution-1", "invocation-1", "tool_use", map[string]any{
-			"name": "file_modify", "toolCallId": toolID,
-			"content": []any{map[string]any{
-				"type": "diff", "path": "/workspace/main.go", "oldText": oldText, "newText": newText,
-			}},
-		})
+	reference := func(sequence int64, value eventlog.FileChangesData) eventlog.Record {
+		data, _ := eventlog.MarshalData(value)
+		return eventlog.Record{Sequence: sequence, MessageID: "execution-1", ExecutionID: "execution-1", Type: constants.ChatEventTypeFileChanges, Data: data}
 	}
-	apply(edit(3, "edit-1", "a\n", "b\n"))
+	apply(reference(3, eventlog.FileChangesData{RecordID: "record", Version: 1, State: "pending"}))
 	first := builder.Messages()[0]
-	if want := []MessageFileChangeDiff{{Path: "main.go", OldContent: "a\n", NewContent: "b\n"}}; !reflect.DeepEqual(first.FileChangeDiffs, want) {
-		t.Fatalf("initial diffs = %+v, want %+v", first.FileChangeDiffs, want)
-	}
-	apply(edit(4, "edit-1", "a\n", "c\n"))
-	// 不含 diff 的后续工具更新不能清除该工具最后一次完整差异。
-	apply(runtimeRecord(5, "execution-1", "execution-1", "invocation-1", "tool_result", map[string]any{
-		"toolCallId": "edit-1", "status": "completed",
-	}))
-	apply(edit(6, "edit-2", "c\n", "d\n"))
+	apply(reference(4, eventlog.FileChangesData{RecordID: "record", Version: 2, State: "ready", TotalFiles: 1, Complete: true}))
 	current := builder.Messages()[0]
-	if want := []MessageFileChangeDiff{{Path: "main.go", OldContent: "a\n", NewContent: "d\n"}}; !reflect.DeepEqual(current.FileChangeDiffs, want) {
-		t.Fatalf("refined diffs = %+v, want %+v", current.FileChangeDiffs, want)
+	if first.FileChangeRecord == nil || first.FileChangeRecord.Version != 1 || current.FileChangeRecord == nil || current.FileChangeRecord.Version != 2 {
+		t.Fatalf("snapshot reference versions changed: old=%+v current=%+v", first.FileChangeRecord, current.FileChangeRecord)
 	}
-	if first.FileChangeDiffs[0].NewContent != "b\n" {
-		t.Fatalf("earlier snapshot mutated: %+v", first.FileChangeDiffs)
+	if current.LiveRevision != first.LiveRevision {
+		t.Fatal("independent file reference claimed body coverage")
 	}
-	apply(runtimeRecord(7, "execution-1", "execution-1", "invocation-1", "tool_result", map[string]any{
-		"toolCallId": "edit-2", "status": "failed",
-	}))
-	current = builder.Messages()[0]
-	if want := []MessageFileChangeDiff{{Path: "main.go", OldContent: "a\n", NewContent: "c\n"}}; !reflect.DeepEqual(current.FileChangeDiffs, want) {
-		t.Fatalf("diffs after tool failure = %+v, want %+v", current.FileChangeDiffs, want)
-	}
-	if want := []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1, DeletedLines: 1}}; !reflect.DeepEqual(current.FileChanges, want) {
-		t.Fatalf("summaries after tool failure = %+v, want %+v", current.FileChanges, want)
+	current.FileChangeRecord.State = "mutated"
+	if next := builder.Messages()[0]; next.FileChangeRecord.State != "ready" {
+		t.Fatal("caller mutated builder file reference")
 	}
 	public := builder.PublicMessage("execution-1")
-	privateJSON, _ := json.Marshal(current)
-	publicJSON, _ := json.Marshal(public)
-	if string(privateJSON) != string(publicJSON) || len(public.RuntimeEvents) != 0 || len(public.FileChangeDiffs) != 0 {
-		t.Fatal("public snapshot must keep the same display without private runtime events or diffs")
-	}
-	current.FileChangeDiffs[0].NewContent = "mutated"
-	current.FileChanges[0].Path = "mutated"
-	if next := builder.Messages()[0]; next.FileChangeDiffs[0].NewContent != "c\n" || next.FileChanges[0].Path != "main.go" {
-		t.Fatalf("caller mutated builder state: %+v", next)
+	if public.FileChangeRecord == nil || public.FileChangeRecord.Version != 2 || len(public.RuntimeEvents) != 0 || len(public.FileChangeDiffs) != 0 {
+		t.Fatal("public projection lost safe reference or retained private tool data")
 	}
 }
 
-// TestPublicMessageViewDiscardsRuntimeHistoryPreservingDisplay 覆盖参数流不驻留原始载荷且文件摘要即时可见。
+// TestPublicMessageViewDiscardsRuntimeHistoryPreservingDisplay 覆盖参数流不驻留原始载荷且不推导独立文件成果。
 func TestPublicMessageViewDiscardsRuntimeHistoryPreservingDisplay(t *testing.T) {
 	t.Parallel()
 	public := NewPublicMessageViewBuilder()
@@ -576,26 +537,25 @@ func TestPublicMessageViewDiscardsRuntimeHistoryPreservingDisplay(t *testing.T) 
 			"content": []any{map[string]any{"type": "diff", "path": "/workspace/main.go", "oldText": "a\n", "newText": "b\nc\n"}},
 		}))
 	}
-	wantFiles := []ToolFileChangeSummary{{Path: "main.go", AddedLines: 2, DeletedLines: 1}}
-	if got := public.PublicMessage("execution-1").FileChanges; !reflect.DeepEqual(got, wantFiles) {
-		t.Fatalf("streaming file summaries = %+v, want %+v", got, wantFiles)
+	if got := public.PublicMessage("execution-1"); len(got.FileChanges) != 0 || got.FileChangeRecord != nil {
+		t.Fatal("tool payload generated independent file outcome")
 	}
 	apply(runtimeRecord(103, "execution-1", "execution-1", "invocation-1", "tool_result", map[string]any{"toolCallId": "write-1", "status": "completed"}))
 	private := full.Messages()[0]
-	if len(private.RuntimeEvents) != 101 || !reflect.DeepEqual(private.FileChangeDiffs, []MessageFileChangeDiff{{Path: "main.go", OldContent: "a\n", NewContent: "b\nc\n"}}) {
-		t.Fatalf("default full projection lost diff support: events=%d diffs=%+v", len(private.RuntimeEvents), private.FileChangeDiffs)
+	if len(private.RuntimeEvents) != 101 || len(private.FileChangeDiffs) != 0 {
+		t.Fatalf("private canonical history or no-CLI-outcome boundary changed: events=%d diffs=%+v", len(private.RuntimeEvents), private.FileChangeDiffs)
 	}
 	if snapshot := public.Messages()[0]; len(snapshot.RuntimeEvents) != 0 || len(snapshot.FileChangeDiffs) != 0 {
 		t.Fatal("public-only snapshots retained private runtime events or diffs")
 	}
 }
 
-// TestPublicMessageViewPreservesInheritedFiles 覆盖公开增量投影保留继承摘要并释放私有差异。
-func TestPublicMessageViewPreservesInheritedFiles(t *testing.T) {
+// TestPublicMessageViewPreservesInheritedFileReference 覆盖公开增量投影保留独立成果引用并忽略旧私有差异。
+func TestPublicMessageViewPreservesInheritedFileReference(t *testing.T) {
 	t.Parallel()
 	data, err := eventlog.MarshalData(InheritedMessage{
 		SourceMessageID: "source-message",
-		Message:         Message{Role: constants.MessageRoleAssistant, Content: "已更新文件", FileChanges: []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}}},
+		Message:         Message{Role: constants.MessageRoleAssistant, Content: "已更新文件", FileChanges: []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}}, FileChangeRecord: &eventlog.FileChangesData{RecordID: "inherited-record", Version: 2, State: "ready", TotalFiles: 1}},
 		Diffs:           []MessageFileChangeDiff{{Path: "main.go", NewContent: "private content\n"}},
 	})
 	if err != nil {
@@ -606,7 +566,7 @@ func TestPublicMessageViewPreservesInheritedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	message := builder.Messages()[0]
-	if !reflect.DeepEqual(message.FileChanges, []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}}) || message.Content != "已更新文件" {
+	if len(message.FileChanges) != 0 || message.FileChangeRecord == nil || message.FileChangeRecord.RecordID != "inherited-record" || message.Content != "已更新文件" {
 		t.Fatalf("inherited public snapshot lost display: %+v", message)
 	}
 	if len(builder.messages[0].FileChangeDiffs) != 0 {
@@ -614,14 +574,15 @@ func TestPublicMessageViewPreservesInheritedFiles(t *testing.T) {
 	}
 }
 
-// TestReplayPublicMessagesPreservesInheritedFiles 验证公开历史与分叉内部历史使用相同展示事实。
-func TestReplayPublicMessagesPreservesInheritedFiles(t *testing.T) {
+// TestReplayPublicMessagesPreservesInheritedFileReference 验证公开历史与分叉内部历史使用相同的安全成果引用。
+func TestReplayPublicMessagesPreservesInheritedFileReference(t *testing.T) {
 	t.Parallel()
 	inherited, _ := eventlog.MarshalData(InheritedMessage{
 		SourceMessageID: "source-message",
 		Message: Message{
 			Inherited: true, Role: constants.MessageRoleAssistant, Content: "已更新文件",
-			FileChanges: []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}},
+			FileChanges:      []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}},
+			FileChangeRecord: &eventlog.FileChangesData{RecordID: "inherited-record", Version: 2, State: "ready", TotalFiles: 1},
 		},
 		Diffs: []MessageFileChangeDiff{{Path: "main.go", NewContent: "package main\n"}},
 	})
@@ -644,8 +605,8 @@ func TestReplayPublicMessagesPreservesInheritedFiles(t *testing.T) {
 	if string(privateJSON) != string(publicJSON) || len(public) != 2 || public[1].Content != "后续答复" {
 		t.Fatalf("public/private display mismatch: %s / %s", publicJSON, privateJSON)
 	}
-	if len(private[0].FileChangeDiffs) != 1 || private[0].FileChangeDiffs[0].NewContent != "package main\n" || len(private[1].RuntimeEvents) != 1 {
-		t.Fatal("internal replay lost inherited diffs or runtime events")
+	if len(private[0].FileChangeDiffs) != 0 || private[0].FileChangeRecord == nil || private[0].FileChangeRecord.RecordID != "inherited-record" || len(private[1].RuntimeEvents) != 1 {
+		t.Fatal("internal replay lost inherited safe reference or canonical runtime events")
 	}
 	for _, message := range public {
 		if len(message.FileChangeDiffs) != 0 || len(message.RuntimeEvents) != 0 {
@@ -654,8 +615,8 @@ func TestReplayPublicMessagesPreservesInheritedFiles(t *testing.T) {
 	}
 }
 
-// TestReplayMessagesMapsRealProjectDiffPathToWorkspaceEntry 验证消息路径可以由桌面端通过工作区入口读取。
-func TestReplayMessagesMapsRealProjectDiffPathToWorkspaceEntry(t *testing.T) {
+// TestReplayMessagesDoesNotPromoteRealProjectToolDiffToFileOutcome 验证真实项目工具 diff 仍然不构成独立文件成果。
+func TestReplayMessagesDoesNotPromoteRealProjectToolDiffToFileOutcome(t *testing.T) {
 	t.Parallel()
 
 	workspaceDirectory := filepath.Join(t.TempDir(), "chat")
@@ -692,12 +653,10 @@ func TestReplayMessagesMapsRealProjectDiffPathToWorkspaceEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReplayMessages() error = %v", err)
 	}
-	if len(messages) != 1 || len(messages[0].FileChanges) != 1 {
-		t.Fatalf("FileChanges = %#v, want one project file", messages)
+	if len(messages) != 1 || len(messages[0].FileChanges) != 0 || messages[0].FileChangeRecord != nil || len(messages[0].RuntimeEvents) != 1 {
+		t.Fatal("project tool diff must preserve canonical history without generating file outcomes")
 	}
-	if path := messages[0].FileChanges[0].Path; path != "projects/app/main.go" {
-		t.Fatalf("FileChanges[0].Path = %q, want projects/app/main.go", path)
-	}
+
 }
 
 // TestBuildToolSafeSummaryIgnoresLegacyRuntimeChanges 验证文件修改只消费标准 ACP diff。

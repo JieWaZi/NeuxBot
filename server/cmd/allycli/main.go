@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcli"
+	agentcli "github.com/JieWaZi/NeuxBot/server/internal/agent/cli"
 )
 
 func main() {

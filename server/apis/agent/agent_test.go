@@ -9,17 +9,17 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/gin-gonic/gin"
 )
 
 func TestReadUsesExecutionAuthenticationAndWritesOneProtocolEnvelope(t *testing.T) {
 	previous := global.AgentCapabilities
-	registry := agentcapability.New(nil)
+	registry := capability.New(nil)
 	global.AgentCapabilities = registry
 	t.Cleanup(func() { global.AgentCapabilities = previous; registry.Close() })
-	grant, activate, revoke, err := registry.Prepare(agentcapability.GrantSpec{ExecutionID: "active", Bindings: []agentcapability.Binding{{Operation: "im.targets.list", Call: func(context.Context, agentcapability.Request) (agentcapability.Result, error) {
-		return agentcapability.Result{}, nil
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: "active", Bindings: []capability.Binding{{Operation: "im.targets.list", Call: func(context.Context, capability.Request) (capability.Result, error) {
+		return capability.Result{}, nil
 	}}}, Validate: func(context.Context) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestReadUsesExecutionAuthenticationAndWritesOneProtocolEnvelope(t *testing.
 			if _, err := (&Read{}).Output(ctx); err != nil {
 				t.Fatal(err)
 			}
-			var response agentcapability.Response
+			var response capability.Response
 			if writer.Code != test.status || !ctx.IsAborted() || json.Unmarshal(writer.Body.Bytes(), &response) != nil || response.ProtocolVersion != constants.AgentCLIProtocolVersion || response.OK != (test.status == http.StatusOK) {
 				t.Fatalf("unexpected protocol output: status=%d body=%s", writer.Code, writer.Body)
 			}

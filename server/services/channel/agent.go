@@ -7,15 +7,14 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcommand"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func (s *service) agentTeamBindings(endpoint, leaseID string) []agentcapability.Binding {
+func (s *service) agentTeamBindings(endpoint, leaseID string) []capability.Binding {
 	scope, _ := s.capabilities.Resolve(endpoint)
 	operations := []string{"team.members.list", "team.tasks.list", "team.tasks.get"}
 	if scope.Role == constants.ChannelCapabilityRoleMember {
@@ -52,13 +51,13 @@ func (s *service) agentTeamBindings(endpoint, leaseID string) []agentcapability.
 		}
 		return owner, nil
 	}
-	result := make([]agentcapability.Binding, 0, len(operations))
+	result := make([]capability.Binding, 0, len(operations))
 	for _, id := range operations {
-		binding := agentcapability.Binding{Operation: id}
-		binding.Call = func(ctx context.Context, request agentcapability.Request) (agentcapability.Result, error) {
+		binding := capability.Binding{Operation: id}
+		binding.Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
 			owner, err := validate(ctx)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			if id == "team.members.list" {
 				members, err := s.threads.ListMembers(ctx, scope.ThreadID)
@@ -66,35 +65,35 @@ func (s *service) agentTeamBindings(endpoint, leaseID string) []agentcapability.
 				for _, member := range members {
 					items = append(items, map[string]any{"wakerId": member.WakerID, "name": member.DisplayName, "role": member.RoleName, "bio": member.Bio, "expertise": member.Expertise, "isLead": member.IsLead})
 				}
-				return agentcapability.Result{Data: map[string]any{"items": items}}, err
+				return capability.Result{Data: map[string]any{"items": items}}, err
 			}
 			input := teamAgentInput(request)
 			call := func(ctx context.Context) (channeltool.TaskOutput, error) {
 				output, err := s.toolChannelTasks(ctx, endpoint, input)
 				return output, err
 			}
-			op, _ := contract.Find(id)
+			op, _ := capability.Find(id)
 			if op.Effect != constants.AgentCLIEffectRead {
-				return agentcommand.Execute(ctx, s.commands, owner, request, func(ctx context.Context) error { _, err := call(ctx); return err })
+				return capability.Execute(ctx, s.commands, owner, request, func(ctx context.Context) error { _, err := call(ctx); return err })
 			}
 			output, err := call(ctx)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			if id == "team.tasks.list" {
-				page, err := agentcapability.Page(output.Tasks, request.Params)
-				return agentcapability.Result{Data: page}, err
+				page, err := capability.Page(output.Tasks, request.Params)
+				return capability.Result{Data: page}, err
 			}
-			return agentcapability.Result{Data: output.Task}, nil
+			return capability.Result{Data: output.Task}, nil
 		}
-		op, _ := contract.Find(id)
+		op, _ := capability.Find(id)
 		if op.Effect != constants.AgentCLIEffectRead {
-			binding.Receipt = func(ctx context.Context, requestID string) (agentcapability.Result, error) {
+			binding.Receipt = func(ctx context.Context, requestID string) (capability.Result, error) {
 				owner, err := validate(ctx)
 				if err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
-				return agentcommand.Lookup(ctx, s.commands, owner, id, requestID)
+				return capability.Lookup(ctx, s.commands, owner, id, requestID)
 			}
 		}
 		result = append(result, binding)
@@ -102,7 +101,7 @@ func (s *service) agentTeamBindings(endpoint, leaseID string) []agentcapability.
 	return result
 }
 
-func teamAgentInput(request agentcapability.Request) channeltool.TaskInput {
+func teamAgentInput(request capability.Request) channeltool.TaskInput {
 	params := map[string]any{}
 	names := map[string]string{"taskId": "task_id", "assigneeWakerId": "assignee_waker_id", "dependencyTaskIds": "dependency_task_ids", "requiresHumanReview": "requires_human_review", "directDelivery": "direct_delivery", "readyForUser": "ready_for_user"}
 	for name, value := range request.Params {

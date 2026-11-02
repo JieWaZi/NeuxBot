@@ -25,6 +25,9 @@ func (*StartPluginAuthorization) Path() string { return "/:pluginId/authorizatio
 
 // Output 创建或恢复唯一设备等待，由 Core 生命周期继续等待官方结果。
 func (o *StartPluginAuthorization) Output(ctx *gin.Context) (interface{}, error) {
+	if err := closeIdlePlugin(ctx, o.PluginID); err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	auth, extension, err := pluginAuthorizer(ctx, o.PluginID, o.WakerID, o.VersionID)
 	if err != nil {
 		return nil, ginx.WithStack(err)

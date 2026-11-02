@@ -24,23 +24,12 @@ import {
   FileReferenceText,
 } from "@/shared/workspace/file-reference-link";
 import {
-  ActionBarPrimitive,
   AssistantRuntimeProvider,
-  AuiIf,
   ComposerPrimitive,
-  MessagePrimitive,
   QueueItemPrimitive,
-  ThreadPrimitive,
-  TextMessagePartProvider,
   useAui,
   useAuiState,
   type AssistantRuntime,
-  type ThreadMessage,
-  type DataMessagePart,
-  type PartState,
-  type ReasoningMessagePartProps,
-  type ToolCallMessagePart,
-  type ToolCallMessagePartProps,
 } from "@assistant-ui/react";
 import {
   AlertTriangle,
@@ -64,9 +53,10 @@ import {
   Trash2,
 } from "lucide-react";
 import {
-  Children,
   createContext,
   useContext,
+  useEffect,
+  useLayoutEffect,
   useCallback,
   memo,
   useId,
@@ -74,7 +64,6 @@ import {
   useReducer,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
   type ComponentProps,
 } from "react";
@@ -84,13 +73,12 @@ import { motion, useReducedMotion } from "motion/react";
 import type { ResolvedFileReference } from "@/shared/workspace/file-reference";
 import { cn } from "@/shared/lib/cn";
 import { readLayoutMotionTokens } from "@/shared/lib/ui-motion-tokens";
-import { Avatar } from "@/shared/ui/avatar";
+import { Avatar, StaticAvatar } from "@/shared/ui/avatar";
 import { companionAvatar } from "@/shared/companion/appearance";
 import {
   CompanionInteraction as ComposerCompanion,
   CompanionInteractionProvider,
 } from "@/shared/ui/companion-interaction";
-import { messageCompanionActivity } from "../runtime/companion-activity";
 import { Collapsible, CollapsibleContent } from "@/shared/ui/collapsible";
 import { Button } from "@/shared/ui/button";
 import {
@@ -109,9 +97,7 @@ import {
   type AllyPathFile,
 } from "../runtime/chat-attachment-adapter";
 import {
-  CHAT_PROCESS_COMMENTARY_PART,
-  type ChatProcessCommentaryData,
-  type ChatFileChange,
+  type AllyChatMessage,
   type ChatRunMetrics,
   type ChatToolArgs,
   type ToolCategory,
@@ -153,10 +139,30 @@ import {
   type ChatFileOpenRequest,
   type ChatSkillOption,
 } from "./chat-reference-menus";
-import { AssistantText, UserText } from "./chat-message-content";
+import { AssistantMarkdown, UserMarkdown } from "./chat-message-content";
 import { ChatTurnNavigator } from "./chat-turn-navigator";
 
+import { Fragment } from "react";
+import { ExecutionFileChangesCard } from "./execution-file-changes-card";
+export { ExecutionFileChangesCard } from "./execution-file-changes-card";
+import {
+  ChatMessageProjection,
+  viewCompanionActivity,
+  isTerminalMessage,
+  type ChatMessageView,
+  type ChatPartNode,
+  type ChatToolGroup,
+  type ChatProcessGroup,
+} from "./chat-message-nodes";
+import { MarkdownVisibility } from "@/shared/markdown/visibility";
+import { useChatViewportScroll } from "./use-chat-viewport-scroll";
+type DisplayPart = NonNullable<AllyChatMessage["displayParts"]>[number];
+
 const CompanionInteraction = createContext<"waiting" | "stopping" | undefined>(
+  undefined,
+);
+
+const ProcessExpansion = createContext<Map<string, boolean> | undefined>(
   undefined,
 );
 
@@ -165,7 +171,10 @@ type ChatThreadProps = {
   forkBoundaryMessageId?: string;
   forkSourceChatId?: string;
   onOpenForkSource?: (chatId: string) => Promise<boolean>;
+  active?: boolean;
+  presentationScopeKey?: string;
   runtime: AssistantRuntime;
+  messages: readonly AllyChatMessage[];
   wakerName: string;
   wakerId?: string;
   wakerAvatar?: string;
@@ -306,43 +315,26 @@ const toolActionKeys: ToolAction[] = [
   "other",
 ];
 
-function toolArgsOf(args: ToolCallMessagePart["args"]): ChatToolArgs {
-  const value = args as Record<string, unknown>;
-  const category = toolCategoryKeys.includes(value.category as ToolCategory)
-    ? (value.category as ToolCategory)
-    : "other";
-  const status =
-    value.status === "completed" || value.status === "failed"
-      ? value.status
-      : "running";
+function toolArgsOf(part: DisplayPart): ChatToolArgs {
   return {
-    category,
-    action: toolActionKeys.includes(value.action as ToolAction)
-      ? (value.action as ToolAction)
+    category: toolCategoryKeys.includes(part.toolCategory as ToolCategory)
+      ? (part.toolCategory as ToolCategory)
       : "other",
-    label: typeof value.label === "string" ? value.label : undefined,
-    loadingLabel:
-      typeof value.loadingLabel === "string" ? value.loadingLabel : undefined,
-    safeSummary:
-      value.safeSummary && typeof value.safeSummary === "object"
-        ? (value.safeSummary as ChatToolArgs["safeSummary"])
-        : undefined,
-    approvalResult:
-      value.approvalResult && typeof value.approvalResult === "object"
-        ? (value.approvalResult as ChatToolArgs["approvalResult"])
-        : undefined,
-    status,
+    action: toolActionKeys.includes(part.toolAction as ToolAction)
+      ? (part.toolAction as ToolAction)
+      : "other",
+    label: part.toolLabel,
+    loadingLabel: part.toolLoadingLabel,
+    safeSummary: part.toolSafeSummary,
+    approvalResult: part.toolApprovalResult,
+    status:
+      part.toolStatus === "completed" || part.toolStatus === "failed"
+        ? part.toolStatus
+        : "running",
   };
 }
-
-function categoryFromTool(
-  part: Pick<ToolCallMessagePart, "args">,
-): ToolCategory {
-  const args = part.args as Record<string, unknown>;
-  const category = args.category;
-  return toolCategoryKeys.includes(category as ToolCategory)
-    ? (category as ToolCategory)
-    : "other";
+function categoryFromTool(part: DisplayPart): ToolCategory {
+  return toolArgsOf(part).category;
 }
 
 type ToolSummaryWords = {
@@ -392,32 +384,11 @@ function formatToolActivitySummary(
   return summary;
 }
 
-function statusFromTool(
-  part: Pick<ToolCallMessagePart, "args" | "isError" | "result">,
-  messageIsRunning: boolean,
-): ChatToolArgs["status"] {
-  const args = toolArgsOf(part.args);
-  if (part.isError || args.status === "failed") return "failed";
-  if (args.status === "completed" || part.result !== undefined) {
-    return "completed";
-  }
-  return messageIsRunning ? "running" : args.status;
+function statusFromTool(part: DisplayPart): ChatToolArgs["status"] {
+  return toolArgsOf(part).status;
 }
 
-function ProcessCommentaryPart({
-  part,
-}: {
-  part: DataMessagePart<ChatProcessCommentaryData>;
-}) {
-  if (part.name !== CHAT_PROCESS_COMMENTARY_PART) return null;
-  return (
-    <p className="type-chat text-foreground max-w-4xl whitespace-pre-wrap">
-      {part.data.text}
-    </p>
-  );
-}
-
-export function ReasoningPart({ text }: ReasoningMessagePartProps) {
+export function ReasoningPart({ text }: { text: string }) {
   const { t } = useTranslation("chat");
   const [expanded, setExpanded] = useState(false);
   const displayText = text.replace(/^[\r\n]+/, "");
@@ -452,18 +423,16 @@ export function ReasoningPart({ text }: ReasoningMessagePartProps) {
   );
 }
 
-export function ToolActivityRow({
-  args,
-  isError,
-  result,
-}: ToolCallMessagePartProps) {
+export const ToolActivityRow = memo(function ToolActivityRow({
+  part,
+  terminal = false,
+}: {
+  part: DisplayPart;
+  terminal?: boolean;
+}) {
   const { t } = useTranslation("chat");
-  const messageStatus = useAuiState((state) => state.message.status);
-  const toolArgs = toolArgsOf(args);
-  const toolStatus = statusFromTool(
-    { args, isError, result },
-    messageStatus?.type === "running",
-  );
+  const toolArgs = toolArgsOf(part);
+  const toolStatus = statusFromTool(part);
   const Icon = toolCategoryIcons[toolArgs.category];
   const summary = toolArgs.safeSummary;
   const fallbackLabel = t(
@@ -475,10 +444,8 @@ export function ToolActivityRow({
       : (toolArgs.label ?? fallbackLabel);
   const showFallbackTarget = !toolArgs.label && !toolArgs.loadingLabel;
   const files = summary?.files ?? [];
-  const messageIsTerminal =
-    messageStatus?.type === "complete" || messageStatus?.type === "incomplete";
   const compactFileModification =
-    messageIsTerminal &&
+    terminal &&
     toolStatus === "completed" &&
     toolArgs.category === "file_modify";
   const visibleFiles = compactFileModification ? [] : files;
@@ -604,36 +571,25 @@ export function ToolActivityRow({
       </div>
     </div>
   );
-}
+});
 
-export function WorkProcess({
-  indices,
+export const WorkProcess = memo(function WorkProcess({
+  group,
+  current = false,
+  terminal = false,
   children,
-  onOpenFileChange,
 }: {
-  indices: readonly number[];
+  group: ChatToolGroup;
+  current?: boolean;
+  terminal?: boolean;
   children?: ReactNode;
-  onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
 }) {
   const { t } = useTranslation("chat");
-  const messageContent = useAuiState((state) => state.message.content);
-  const messageStatus = useAuiState((state) => state.message.status);
-  const messageIsRunning = messageStatus?.type === "running";
-  const messageIsTerminal =
-    messageStatus?.type === "complete" || messageStatus?.type === "incomplete";
-  const [open, setOpen] = useState(false);
+  const reading = useContext(ProcessExpansion);
+  const [open, setOpen] = useState(() => reading?.get(group.key) ?? false);
   const contentId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const indexedParts = useMemo(
-    () =>
-      indices
-        .map((index) => messageContent[index])
-        .filter((part) => part !== undefined),
-    [indices, messageContent],
-  );
-  const tools = indexedParts.filter(
-    (part): part is ToolCallMessagePart => part.type === "tool-call",
-  );
+  const tools = group.nodes.map((node) => node.part);
   const categories = tools.reduce<ToolCategory[]>((ordered, tool) => {
     const category = categoryFromTool(tool);
     if (!ordered.includes(category)) ordered.push(category);
@@ -647,7 +603,7 @@ export function WorkProcess({
   for (const tool of tools) {
     const category = categoryFromTool(tool);
     // 汇总只描述活动；失败状态留在对应工具行，不生成标题级失败总结。
-    const actualStatus = statusFromTool(tool, messageIsRunning);
+    const actualStatus = statusFromTool(tool);
     const status = actualStatus === "failed" ? "completed" : actualStatus;
     let activity = activities.find(
       (item) => item.category === category && item.status === status,
@@ -656,7 +612,7 @@ export function WorkProcess({
       activity = { category, status, labels: [] };
       activities.push(activity);
     }
-    const label = toolArgsOf(tool.args).label;
+    const label = toolArgsOf(tool).label;
     if (
       (category === "mcp" || category === "skill") &&
       label &&
@@ -687,16 +643,11 @@ export function WorkProcess({
     },
   );
   const Icon = toolCategoryIcons[categories[0] ?? "other"];
-  const isCurrentToolGroup =
-    messageIsRunning && indices.at(-1) === messageContent.length - 1;
-  const isLastToolGroup =
-    indices.at(-1) ===
-    messageContent.findLastIndex((part) => part.type === "tool-call");
-  const processChildren = Children.toArray(children);
-
+  const isCurrentToolGroup = current;
   const toggleOpen = () => {
     if (open) triggerRef.current?.focus({ preventScroll: true });
-    setOpen((current) => !current);
+    reading?.set(group.key, !open);
+    setOpen(!open);
   };
 
   return (
@@ -729,22 +680,12 @@ export function WorkProcess({
         </button>
         <CollapsibleContent id={contentId} inert={!open} aria-hidden={!open}>
           <div className="mt-2 space-y-2 pl-5">
-            {processChildren.map((child, index) => (
-              <div
-                key={index}
-                className={[
-                  messageIsRunning && index < processChildren.length - 1
-                    ? "opacity-70"
-                    : "",
-                ].join(" ")}
-              >
-                {child}
-              </div>
-            ))}
-            <ExecutionFileChangesCard
-              visible={messageIsTerminal && isLastToolGroup}
-              onOpenFile={onOpenFileChange}
-            />
+            {children ??
+              group.nodes.map((node) => (
+                <div key={node.key} data-chat-node-id={node.key}>
+                  <ToolActivityRow part={node.part} terminal={terminal} />
+                </div>
+              ))}
             <button
               type="button"
               className="text-muted-foreground hover:text-foreground type-ui inline-flex items-center gap-1 py-1 transition-colors"
@@ -758,44 +699,40 @@ export function WorkProcess({
       </section>
     </Collapsible>
   );
-}
+});
 
-function groupChatPart(part: PartState) {
-  if (part.type === "tool-call") return ["group-work-process"] as const;
-  return [];
-}
-
-// 完成后只折叠过程片段，最终正文继续由原有消息 Part 渲染和标记已读。
-function isChatProcessPart(part: { type: string; name?: string }) {
-  return (
-    part.type === "reasoning" ||
-    part.type === "tool-call" ||
-    (part.type === "data" && part.name === CHAT_PROCESS_COMMENTARY_PART)
-  );
-}
-
-function groupCompletedChatPart(part: PartState) {
-  if (isChatProcessPart(part)) {
-    return ["group-completed-process", ...groupChatPart(part)] as const;
-  }
-  return [];
-}
-
-function CompletedWorkProcess({
-  children,
+const MessageWorkProcess = memo(function MessageWorkProcess({
+  group,
+  currentKey,
+  completed,
+  terminal,
+  metrics,
   showUsageMetrics,
 }: {
-  children: ReactNode;
+  group: ChatProcessGroup;
+  currentKey?: string;
+  completed: boolean;
+  terminal: boolean;
+  metrics?: ChatRunMetrics;
   showUsageMetrics: boolean;
 }) {
   const { t } = useTranslation("chat");
-  const rawMetrics = useAuiState(
-    (state) => state.message.metadata.custom?.runMetrics,
-  );
-  const metrics = runMetricsOf(rawMetrics);
   const durationMs = metrics?.durationMs;
-  const [open, setOpen] = useState(false);
+  const reading = useContext(ProcessExpansion);
+  const [expanded, setExpanded] = useState(
+    () => reading?.get(group.key) ?? false,
+  );
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const focusedInside = useRef(false);
+  // 完成前后保留同一容器，让 open → closed 触发现有高度退出动画。
+  const open = !completed || expanded;
   const contentId = useId();
+  useLayoutEffect(() => {
+    if (!open && focusedInside.current && !document.hidden) {
+      triggerRef.current?.focus({ preventScroll: true });
+      focusedInside.current = false;
+    }
+  }, [open]);
   const label =
     durationMs !== undefined
       ? t("completedProcessDuration", {
@@ -808,7 +745,11 @@ function CompletedWorkProcess({
       className="text-muted-foreground hover:text-foreground type-label min-h-control-sm inline-flex items-center gap-1 py-1 text-left transition-colors"
       aria-expanded={open}
       aria-controls={contentId}
-      onClick={() => setOpen((current) => !current)}
+      ref={triggerRef}
+      onClick={() => {
+        reading?.set(group.key, !expanded);
+        setExpanded(!expanded);
+      }}
     >
       <span>{label}</span>
       <ChevronRight
@@ -821,77 +762,106 @@ function CompletedWorkProcess({
     </button>
   );
   return (
-    <Collapsible open={open} onOpenChange={setOpen}>
-      {metrics && showUsageMetrics ? (
+    <Collapsible open={open} onOpenChange={setExpanded}>
+      {!completed ? null : metrics && showUsageMetrics ? (
         <RunMetricsTooltip metrics={metrics}>{trigger}</RunMetricsTooltip>
       ) : (
         trigger
       )}
-      <CollapsibleContent id={contentId} inert={!open} aria-hidden={!open}>
-        <div className="space-y-4 pt-2">{children}</div>
+      <CollapsibleContent
+        onFocusCapture={() => {
+          focusedInside.current = true;
+        }}
+        onBlurCapture={(event) => {
+          if (
+            event.relatedTarget instanceof Node &&
+            !event.currentTarget.contains(event.relatedTarget)
+          )
+            focusedInside.current = false;
+        }}
+        id={contentId}
+        data-motion={completed ? "presence" : "none"}
+        inert={!open}
+        aria-hidden={!open}
+      >
+        <div className={cn("space-y-4", completed && "pt-2")}>
+          {group.nodes.map((node) =>
+            "kind" in node ? (
+              <WorkProcess
+                key={node.key}
+                group={node}
+                current={!terminal && node.nodes.at(-1)?.key === currentKey}
+                terminal={terminal}
+              />
+            ) : (
+              <ChatPart key={node.key} node={node} terminal={terminal} />
+            ),
+          )}
+        </div>
       </CollapsibleContent>
-      <hr className="border-border/60 mt-2 border-0 border-t" />
+      {completed && <hr className="border-border/60 mt-2 border-0 border-t" />}
     </Collapsible>
   );
-}
+});
 
+const ChatPart = memo(function ChatPart({
+  node,
+  terminal,
+}: {
+  node: ChatPartNode;
+  terminal: boolean;
+}) {
+  const { part } = node;
+  return (
+    <div data-chat-node-id={node.key}>
+      {part.type === "text" ? (
+        <AssistantMarkdown text={part.text ?? ""} isTerminal={terminal} />
+      ) : part.type === "reasoning" ? (
+        <ReasoningPart text={part.text ?? ""} />
+      ) : part.type === "process_commentary" ? (
+        <p className="type-chat text-foreground max-w-4xl whitespace-pre-wrap">
+          {part.text}
+        </p>
+      ) : part.type === "tool" ? (
+        <ToolActivityRow part={part} terminal={terminal} />
+      ) : null}
+    </div>
+  );
+});
 function ChatMessageParts({
-  onOpenFileChange,
+  view,
   showUsageMetrics,
 }: {
-  onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
+  view: ChatMessageView;
   showUsageMetrics: boolean;
 }) {
-  const messageId = useAuiState((state) => state.message.id);
-  const isTerminal = useAuiState(
-    (state) => state.message.metadata.custom?.isTerminal === true,
-  );
-  const completed = useAuiState(
-    (state) => state.message.status?.type === "complete",
-  );
+  const terminal = isTerminalMessage(view.message);
+  const finalSegment = view.segments.at(-1);
+  const finalNode =
+    finalSegment && "kind" in finalSegment
+      ? finalSegment.nodes.at(-1)
+      : finalSegment;
+  const currentKey =
+    finalNode && "kind" in finalNode
+      ? finalNode.nodes.at(-1)?.key
+      : finalNode?.key;
   return (
     <div className="space-y-4">
-      <MessagePrimitive.GroupedParts
-        groupBy={completed ? groupCompletedChatPart : groupChatPart}
-        indicator="no-text"
-      >
-        {({ part, children }) => {
-          switch (part.type) {
-            case "group-completed-process":
-              return (
-                <CompletedWorkProcess showUsageMetrics={showUsageMetrics}>
-                  {children}
-                </CompletedWorkProcess>
-              );
-            case "group-work-process":
-              return (
-                <WorkProcess
-                  key={`${messageId}:${part.indices[0]}`}
-                  indices={part.indices}
-                  onOpenFileChange={onOpenFileChange}
-                >
-                  {children}
-                </WorkProcess>
-              );
-            case "text":
-              return <AssistantText isTerminal={isTerminal} />;
-            case "data":
-              return (
-                <ProcessCommentaryPart
-                  part={part as DataMessagePart<ChatProcessCommentaryData>}
-                />
-              );
-            case "reasoning":
-              return <ReasoningPart {...part} />;
-            case "tool-call":
-              return part.toolUI ?? <ToolActivityRow {...part} />;
-            case "indicator":
-              return null;
-            default:
-              return null;
-          }
-        }}
-      </MessagePrimitive.GroupedParts>
+      {view.segments.map((segment) =>
+        "kind" in segment ? (
+          <MessageWorkProcess
+            key={segment.key}
+            group={segment}
+            currentKey={currentKey}
+            completed={view.message.status === "completed"}
+            terminal={terminal}
+            metrics={view.message.runMetrics}
+            showUsageMetrics={showUsageMetrics}
+          />
+        ) : (
+          <ChatPart key={segment.key} node={segment} terminal={terminal} />
+        ),
+      )}
     </div>
   );
 }
@@ -927,8 +897,8 @@ function formatMessageTime(date: Date) {
   return `${year}-${month}-${day} ${messageDateTimeFormat.format(date)}`;
 }
 
-function MessageTimestamp() {
-  const createdAt = useAuiState((state) => state.message.createdAt);
+function MessageTimestamp({ timestamp }: { timestamp?: number }) {
+  const createdAt = new Date(timestamp ?? 0);
   return (
     <time
       className="text-muted-foreground type-caption tabular-nums"
@@ -937,28 +907,6 @@ function MessageTimestamp() {
       {formatMessageTime(createdAt)}
     </time>
   );
-}
-
-function isUnknownRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object";
-}
-
-function runMetricsOf(value: unknown): ChatRunMetrics | undefined {
-  if (!isUnknownRecord(value)) return undefined;
-  const source = value;
-  const numberValue = (key: string) =>
-    typeof source[key] === "number" ? source[key] : undefined;
-  return {
-    startedAt: numberValue("startedAt"),
-    durationMs: numberValue("durationMs"),
-    inputTokens: numberValue("inputTokens"),
-    outputTokens: numberValue("outputTokens"),
-    reasoningOutputTokens: numberValue("reasoningOutputTokens"),
-    cacheReadTokens: numberValue("cacheReadTokens"),
-    cacheCreationTokens: numberValue("cacheCreationTokens"),
-    contextUsedTokens: numberValue("contextUsedTokens"),
-    contextWindowTokens: numberValue("contextWindowTokens"),
-  };
 }
 
 function formatRunDuration(durationMs: number) {
@@ -1061,28 +1009,25 @@ export function RunMetricsBadge({ metrics }: { metrics: ChatRunMetrics }) {
 }
 
 export function MessageRunStatus({
+  message,
   showUsageDetails = true,
 }: {
+  message: AllyChatMessage;
   showUsageDetails?: boolean;
 }) {
-  const status = useAuiState((state) => state.message.status);
-  const isCurrentToolProcess = useAuiState(
-    (state) => state.message.content.at(-1)?.type === "tool-call",
-  );
-  const rawRunMetrics = useAuiState(
-    (state) => state.message.metadata.custom.runMetrics,
-  );
-  const runMetrics = runMetricsOf(rawRunMetrics);
-  const hasCompletedProcess = useAuiState(
-    (state) =>
-      state.message.status?.type === "complete" &&
-      state.message.content.some(isChatProcessPart),
-  );
-
-  if (status?.type === "running") {
-    return isCurrentToolProcess ? null : <AgentRunningIndicator />;
-  }
-  // 完成后的过程入口承载唯一耗时及用量详情，纯正文与失败消息仍保留底部入口。
+  const runMetrics = message.runMetrics;
+  if (!isTerminalMessage(message))
+    return message.displayParts?.at(-1)?.type === "tool" ? null : (
+      <AgentRunningIndicator />
+    );
+  const hasCompletedProcess =
+    message.status === "completed" &&
+    message.displayParts?.some(
+      (part) =>
+        part.type === "tool" ||
+        part.type === "reasoning" ||
+        part.type === "process_commentary",
+    );
   if (hasCompletedProcess || !runMetrics?.durationMs) return null;
   return showUsageDetails ? (
     <RunMetricsBadge metrics={runMetrics} />
@@ -1093,143 +1038,8 @@ export function MessageRunStatus({
   );
 }
 
-function fileChangesOf(value: unknown): ChatFileChange[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    if (!isUnknownRecord(item) || typeof item.path !== "string") return [];
-    const path = item.path.trim();
-    if (!path) return [];
-    return [
-      {
-        path,
-        addedLines:
-          typeof item.addedLines === "number" ? item.addedLines : undefined,
-        deletedLines:
-          typeof item.deletedLines === "number" ? item.deletedLines : undefined,
-      },
-    ];
-  });
-}
-
-function fileChangeDisplayPath(path: string) {
-  return path.startsWith("projects/") ? path.slice("projects/".length) : path;
-}
-
-export function ExecutionFileChangesCard({
-  visible = false,
-  onOpenFile,
-}: {
-  visible?: boolean;
-  onOpenFile?: (file: ChatFileChangeOpenRequest) => void;
-}) {
-  const { t } = useTranslation("chat");
-  const messageID = useAuiState((state) => state.message.id);
-  const isTerminal = useAuiState(
-    (state) => state.message.metadata?.custom?.isTerminal === true,
-  );
-  const rawChanges = useAuiState(
-    (state) => state.message.metadata?.custom?.fileChanges,
-  );
-  const [expandedMessageID, setExpandedMessageID] = useState<string>();
-  const expanded = expandedMessageID === messageID;
-  const changes = fileChangesOf(rawChanges);
-  const visibleChanges = expanded ? changes : changes.slice(0, 3);
-  const hiddenCount = Math.max(0, changes.length - visibleChanges.length);
-
-  if (!visible || !isTerminal || changes.length === 0) return null;
-
-  return (
-    <section
-      data-work-result-body
-      className="border-border bg-surface-elevated mt-3 overflow-hidden rounded-lg border"
-      aria-label={t("fileChanges.title", { count: changes.length })}
-    >
-      <div className="min-h-row-default flex items-center gap-2 px-3">
-        <span className="bg-muted size-control-sm grid shrink-0 place-items-center rounded-md">
-          <FilePenLine className="text-muted-foreground size-icon-md" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="type-label font-medium">
-            {t("fileChanges.title", { count: changes.length })}
-          </p>
-        </div>
-      </div>
-      <div className="border-border border-t px-3 py-2">
-        <ul className="grid gap-0.5">
-          {visibleChanges.map((file) => {
-            const displayPath = fileChangeDisplayPath(file.path);
-            const added = file.addedLines ?? 0;
-            const deleted = file.deletedLines ?? 0;
-            const content = (
-              <>
-                <code className="type-body min-w-0 truncate text-left font-mono">
-                  {displayPath}
-                </code>
-                <span className="type-body flex shrink-0 items-center gap-2 font-medium tabular-nums">
-                  {added > 0 ? (
-                    <span className="text-success">+{added}</span>
-                  ) : null}
-                  {deleted > 0 ? (
-                    <span className="text-destructive">-{deleted}</span>
-                  ) : null}
-                </span>
-              </>
-            );
-            return onOpenFile ? (
-              <li key={file.path}>
-                <button
-                  type="button"
-                  className="hover:bg-muted focus-visible:ring-ring min-h-control-sm grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 rounded-sm px-2 text-left transition-colors outline-none focus-visible:ring-2"
-                  aria-label={t("fileChanges.openFile", { path: displayPath })}
-                  onClick={() =>
-                    onOpenFile({
-                      messageId: messageID,
-                      name: file.path.split("/").at(-1) ?? file.path,
-                      path: file.path,
-                    })
-                  }
-                >
-                  {content}
-                </button>
-              </li>
-            ) : (
-              <li
-                key={file.path}
-                className="min-h-control-sm grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-2"
-              >
-                {content}
-              </li>
-            );
-          })}
-        </ul>
-        {changes.length > 3 ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="mt-1"
-            onClick={() =>
-              setExpandedMessageID((current) =>
-                current === messageID ? undefined : messageID,
-              )
-            }
-          >
-            {expanded
-              ? t("fileChanges.showLess")
-              : t("fileChanges.showMore", { count: hiddenCount })}
-            <ChevronRight
-              className={expanded ? "rotate-90" : ""}
-              aria-hidden="true"
-            />
-          </Button>
-        ) : null}
-      </div>
-    </section>
-  );
-}
-
 function UserMessage({
-  text,
+  message,
   availableSkillIds,
   availableConnectorIds,
   availablePluginIds,
@@ -1237,7 +1047,7 @@ function UserMessage({
   onOpenCodeReference,
   onOpenFile,
 }: {
-  text: string;
+  message: AllyChatMessage;
   availableSkillIds?: ReadonlySet<string>;
   availableConnectorIds?: ReadonlySet<string>;
   availablePluginIds?: ReadonlySet<string>;
@@ -1245,55 +1055,28 @@ function UserMessage({
   onOpenCodeReference?: (reference: ChatCodeReference) => void;
   onOpenFile?: (file: ChatFileOpenRequest) => void;
 }) {
-  const rawSkills = useAuiState(
-    (state) => state.message.metadata.custom.skills,
+  const skills = (message.skills ?? []).flatMap((skill) =>
+    skill.id && skill.name
+      ? [{ id: skill.id, name: skill.name, version: skill.version }]
+      : [],
   );
-  const skills = Array.isArray(rawSkills)
-    ? rawSkills.flatMap((value) => {
-        if (!value || typeof value !== "object") return [];
-        const skill = value as {
-          id?: unknown;
-          name?: unknown;
-          version?: unknown;
-        };
-        if (typeof skill.id !== "string" || typeof skill.name !== "string") {
-          return [];
-        }
-        return [{ id: skill.id, name: skill.name, version: skill.version }];
-      })
-    : [];
-  const rawConnectors = useAuiState(
-    (state) => state.message.metadata.custom.connectors,
+  const connectors = (message.connectors ?? []).flatMap((connector) =>
+    connector.id && connector.name
+      ? [{ id: connector.id, name: connector.name }]
+      : [],
   );
-  const connectors = Array.isArray(rawConnectors)
-    ? rawConnectors.flatMap((value) => {
-        if (!value || typeof value !== "object") return [];
-        const connector = value as { id?: unknown; name?: unknown };
-        if (
-          typeof connector.id !== "string" ||
-          typeof connector.name !== "string"
-        ) {
-          return [];
-        }
-        return [{ id: connector.id, name: connector.name }];
-      })
-    : [];
-  const rawPlugins = useAuiState(
-    (state) => state.message.metadata.custom.plugins,
-  );
-  const rawCodeReferences = useAuiState(
-    (state) => state.message.metadata.custom.codeReferences,
-  );
-  const codeReferences = Array.isArray(rawCodeReferences)
-    ? (rawCodeReferences as ChatCodeReference[])
-    : [];
+  const codeReferences = message.codeReferences ?? [];
   return (
-    <MessagePrimitive.Root className="group mt-6 px-6">
+    <div
+      data-message-id={message.id}
+      data-role="user"
+      className="group mt-6 px-6"
+    >
       <div className="ml-auto grid max-w-[78%] min-w-0 justify-items-end gap-2">
         <div className="bg-surface-tertiary text-foreground type-chat max-w-full min-w-0 overflow-hidden rounded-xl px-4 py-3">
           <div className="flex flex-wrap items-start gap-x-1.5 gap-y-1">
             <ChatMessagePluginReferences
-              plugins={rawPlugins}
+              plugins={message.plugins}
               wakerId={wakerId}
               availablePluginIds={availablePluginIds}
             />
@@ -1307,7 +1090,10 @@ function UserMessage({
               wakerId={wakerId}
               availableConnectorIds={availableConnectorIds}
             />
-            <ChatMessageAttachments onOpenFile={onOpenFile} />
+            <ChatMessageAttachments
+              attachments={message.attachments}
+              onOpenFile={onOpenFile}
+            />
             {codeReferences.map((reference) => {
               const wholeFile =
                 !reference.startLine &&
@@ -1331,43 +1117,45 @@ function UserMessage({
               );
             })}
             <div className="max-w-full min-w-0">
-              <TextMessagePartProvider text={text} isRunning={false}>
-                <UserText />
-              </TextMessagePartProvider>
+              <UserMarkdown text={message.content ?? ""} />
             </div>
           </div>
         </div>
-        <MessageCopyAction />
+        <MessageCopyAction message={message} />
       </div>
-    </MessagePrimitive.Root>
+    </div>
   );
 }
 
 function ParticipantMessage({
-  text,
+  message,
   avatar,
   messageAuthors,
   name,
 }: {
-  text: string;
+  message: AllyChatMessage;
   avatar?: string;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   name: string;
 }) {
   const { t } = useTranslation("chat");
-  const messageID = useAuiState((state) => state.message.id);
+  const messageID = message.id ?? "";
   const author = messageAuthors?.[messageID];
   const displayName = author?.name ?? name;
   const displayAvatar = author?.avatar ?? avatar;
   const memberReport = author?.kind === "member-report";
 
   return (
-    <MessagePrimitive.Root className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6">
+    <div
+      data-message-id={message.id}
+      data-role="user"
+      className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
+    >
       <Avatar name={displayName} src={displayAvatar} size="sm" />
       <div className="min-w-0">
         <div className="grid justify-items-start">
           <span className="type-body font-medium">{displayName}</span>
-          <MessageTimestamp />
+          <MessageTimestamp timestamp={message.createdAt} />
         </div>
         <div
           className={cn(
@@ -1393,45 +1181,57 @@ function ParticipantMessage({
             data-work-result-body
             className={memberReport ? "px-4 py-3" : undefined}
           >
-            <TextMessagePartProvider text={text} isRunning={false}>
-              <UserText />
-            </TextMessagePartProvider>
+            <UserMarkdown text={message.content ?? ""} />
           </div>
         </div>
         <div className="mt-2 flex items-center gap-1">
-          <MessageCopyAction />
+          <MessageCopyAction message={message} />
         </div>
       </div>
-    </MessagePrimitive.Root>
+    </div>
   );
 }
 
 function MessageCopyAction({
+  message,
   hideWhenRunning = false,
 }: {
+  message: AllyChatMessage;
   hideWhenRunning?: boolean;
 }) {
   const { t } = useTranslation("chat");
-
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  if (hideWhenRunning && !isTerminalMessage(message)) return null;
   return (
-    <ActionBarPrimitive.Root hideWhenRunning={hideWhenRunning} autohide="never">
-      <ActionBarPrimitive.Copy asChild>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          title={t("copy")}
-          aria-label={t("copy")}
-        >
-          <AuiIf condition={(state) => state.message.isCopied}>
-            <Check />
-          </AuiIf>
-          <AuiIf condition={(state) => !state.message.isCopied}>
-            <Copy />
-          </AuiIf>
-        </Button>
-      </ActionBarPrimitive.Copy>
-    </ActionBarPrimitive.Root>
+    <Button
+      type="button"
+      size="icon-sm"
+      variant="ghost"
+      title={t("copy")}
+      aria-label={t("copy")}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(
+            message.role === "assistant"
+              ? (message.displayParts ?? [])
+                  .filter((part) => part.type === "text")
+                  .map((part) => part.text ?? "")
+                  .join("\n")
+              : (message.content ?? ""),
+          );
+          setCopied(true);
+        } catch {
+          setCopied(false);
+        }
+      }}
+    >
+      {copied ? <Check /> : <Copy />}
+    </Button>
   );
 }
 
@@ -1478,12 +1278,18 @@ function AddAttachmentButton({
 }
 
 export function AssistantMessage({
+  view,
+  latest = false,
+  last = false,
   name,
   avatar,
   messageAuthors,
   onOpenFileChange,
   showUsageMetrics = true,
 }: {
+  view: ChatMessageView;
+  latest?: boolean;
+  last?: boolean;
   name: string;
   avatar?: string;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
@@ -1491,10 +1297,15 @@ export function AssistantMessage({
   showUsageMetrics?: boolean;
 }) {
   const { t } = useTranslation("chat");
-  const message = useAuiState((state) => state.message);
-  const messageID = message.id;
+  const message = view.message;
+  const messageID = message.id ?? "";
+  const isLatestAssistant = latest;
   const interaction = useContext(CompanionInteraction);
-  const companionActivity = messageCompanionActivity(message, interaction);
+  const companionActivity = viewCompanionActivity(
+    view,
+    isLatestAssistant,
+    interaction,
+  );
   const author = messageAuthors?.[messageID];
   const displayName = author?.name ?? name;
   const displayAvatar = author?.avatar ?? avatar;
@@ -1504,50 +1315,62 @@ export function AssistantMessage({
     : onOpenFileChange;
 
   return (
-    <MessagePrimitive.Root className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6">
-      <Avatar
-        name={displayName}
-        src={displayAvatar}
-        size="sm"
-        activity={companionActivity}
-      />
+    <div
+      data-message-id={message.id}
+      data-role="assistant"
+      className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
+    >
+      {isLatestAssistant ? (
+        <Avatar
+          name={displayName}
+          src={displayAvatar}
+          size="sm"
+          activity={companionActivity}
+        />
+      ) : (
+        <StaticAvatar name={displayName} src={displayAvatar} size="sm" />
+      )}
       <div className="min-w-0">
         <div className="grid justify-items-start">
           <span className="type-body font-medium">{displayName}</span>
-          <MessageTimestamp />
+          <MessageTimestamp timestamp={message.createdAt} />
         </div>
         <div className="mt-2 min-w-0">
-          <ChatMessageParts
-            onOpenFileChange={openFileChange}
-            showUsageMetrics={showUsageMetrics}
-          />
+          <ChatMessageParts view={view} showUsageMetrics={showUsageMetrics} />
+          {message.fileChangeRecord ? (
+            <ExecutionFileChangesCard
+              message={message}
+              chatId={author?.sourceChatId}
+              visible={isTerminalMessage(message)}
+              onOpenFile={openFileChange}
+            />
+          ) : null}
           <ChatMessageContribution messageId={messageID} />
         </div>
-        <AuiIf
-          condition={(state) =>
-            state.message.status?.type === "incomplete" &&
-            state.message.status.reason === "cancelled"
-          }
-        >
+        {message.status === "canceled" ? (
           <p className="text-muted-foreground type-body mt-2">
             {t("canceled")}
           </p>
-        </AuiIf>
-
-        <MessageFailure />
+        ) : null}
+        <MessageFailure message={message} last={last} />
 
         <div className="mt-2 flex items-center gap-1">
-          <MessageRunStatus showUsageDetails={showUsageMetrics} />
-          <MessageCopyAction hideWhenRunning />
-          <MessageForkAction />
+          <MessageRunStatus
+            message={message}
+            showUsageDetails={showUsageMetrics}
+          />
+          <MessageCopyAction message={message} hideWhenRunning />
+          <MessageForkAction message={message} />
         </div>
       </div>
-    </MessagePrimitive.Root>
+    </div>
   );
 }
 
 const ChatMessage = memo(function ChatMessage({
-  message,
+  view,
+  latest,
+  last,
   name,
   avatar,
   availableSkillIds,
@@ -1560,7 +1383,9 @@ const ChatMessage = memo(function ChatMessage({
   messageAuthors,
   showUsageMetrics,
 }: {
-  message: ThreadMessage;
+  view: ChatMessageView;
+  latest: boolean;
+  last: boolean;
   name: string;
   avatar?: string;
   availableSkillIds?: ReadonlySet<string>;
@@ -1573,21 +1398,18 @@ const ChatMessage = memo(function ChatMessage({
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   showUsageMetrics?: boolean;
 }) {
-  // 消息分支直接消费当前快照。角色相同不代表正文或成员归属没有变化。
+  const message = view.message;
   if (message.role === "user") {
-    const text = message.content
-      .flatMap((part) => (part.type === "text" ? [part.text] : []))
-      .join("\n");
-    return messageAuthors?.[message.id]?.displayAsParticipant ? (
+    return messageAuthors?.[message.id ?? ""]?.displayAsParticipant ? (
       <ParticipantMessage
-        text={text}
+        message={message}
         name={name}
         avatar={avatar}
         messageAuthors={messageAuthors}
       />
     ) : (
       <UserMessage
-        text={text}
+        message={message}
         availableSkillIds={availableSkillIds}
         availableConnectorIds={availableConnectorIds}
         availablePluginIds={availablePluginIds}
@@ -1599,6 +1421,9 @@ const ChatMessage = memo(function ChatMessage({
   }
   return message.role === "assistant" ? (
     <AssistantMessage
+      view={view}
+      latest={latest}
+      last={last}
       name={name}
       avatar={avatar}
       messageAuthors={messageAuthors}
@@ -1609,30 +1434,35 @@ const ChatMessage = memo(function ChatMessage({
 });
 
 const ChatMessageList = memo(function ChatMessageList({
-  messagesByID,
+  views,
   forkBoundaryMessageId,
   forkSourceChatId,
   onOpenForkSource,
   wakerId,
   ...props
-}: Omit<ComponentProps<typeof ChatMessage>, "message"> & {
-  messagesByID: ReadonlyMap<string, ThreadMessage>;
+}: Omit<ComponentProps<typeof ChatMessage>, "view" | "latest" | "last"> & {
+  views: readonly ChatMessageView[];
   forkBoundaryMessageId?: string;
   forkSourceChatId?: string;
   onOpenForkSource?: (chatId: string) => Promise<boolean>;
 }) {
   const { t } = useTranslation("chat");
   const [unavailableSourceId, setUnavailableSourceId] = useState<string>();
+  const latest = views.findLast(
+    (view) => view.message.role === "assistant",
+  )?.key;
   return (
-    <ThreadPrimitive.Messages>
-      {({ message }) => (
-        <>
+    <>
+      {views.map((view, index) => (
+        <Fragment key={view.key}>
           <ChatMessage
             {...props}
             wakerId={wakerId}
-            message={messagesByID.get(message.id) ?? message}
+            view={view}
+            latest={view.key === latest}
+            last={index === views.length - 1}
           />
-          {message.id === forkBoundaryMessageId && forkSourceChatId ? (
+          {view.message.id === forkBoundaryMessageId && forkSourceChatId ? (
             <div
               data-fork-history-boundary
               className="text-muted-foreground type-caption mt-8 flex items-center gap-3 px-6"
@@ -1667,9 +1497,9 @@ const ChatMessageList = memo(function ChatMessageList({
               <span aria-hidden="true" className="bg-border h-px flex-1" />
             </div>
           ) : null}
-        </>
-      )}
-    </ThreadPrimitive.Messages>
+        </Fragment>
+      ))}
+    </>
   );
 });
 
@@ -2110,6 +1940,9 @@ export function ChatThread({
   forkSourceChatId,
   onOpenForkSource,
   runtime,
+  messages,
+  active = true,
+  presentationScopeKey,
   wakerName,
   wakerId,
   wakerAvatar,
@@ -2219,39 +2052,50 @@ export function ChatThread({
   });
   const loadEarlier = historyScroll.loadEarlier;
   const loadEarlierError = historyScroll.error ? t("loadEarlierFailed") : "";
-  // 外部 Runtime 在被动 Effect 中提交消息。订阅它的已提交快照，保证
-  // Provider 与消息原语在同一快照上渲染，不依赖 SSE 或其他父级更新补帧。
-  const messageSnapshot = useSyncExternalStore(
-    runtime.thread.subscribe,
-    runtime.thread.getState,
-    runtime.thread.getState,
+  const presentationScope =
+    presentationScopeKey ??
+    fileScopeChatId ??
+    errorScopes[0] ??
+    wakerId ??
+    "global";
+  const projection = useMemo(
+    () => new ChatMessageProjection(undefined, presentationScope),
+    [presentationScope],
   );
-  const messagesByID = useMemo(
-    () =>
-      new Map(messageSnapshot.messages.map((message) => [message.id, message])),
-    [messageSnapshot.messages],
+  const readingState = useMemo(
+    () => ({ scope: presentationScope, groups: new Map<string, boolean>() }),
+    [presentationScope],
+  );
+  const views = useMemo(
+    () => projection.update(messages),
+    [projection, messages],
   );
   const centerEmptyState =
     emptyStatePosition === "center" &&
     !isHistoryLoading &&
-    messageSnapshot.messages.length === 0;
+    messages.length === 0;
   const showDirectEmptyState =
     isHistoryLoading || pinEmptyState || centerEmptyState;
-  const latestMessage = messageSnapshot.messages.at(-1);
+  useChatViewportScroll({
+    viewport: viewportRef,
+    scope: presentationScope,
+    revision: messages,
+    isHistoryAnchoring: historyScroll.isAnchoring,
+    enabled: active && presentation === "thread" && !showDirectEmptyState,
+  });
+  const latestMessage = messages.at(-1);
   const latestAuthor = latestMessage
-    ? messageAuthors?.[latestMessage.id]
+    ? messageAuthors?.[latestMessage.id ?? ""]
     : undefined;
   const companionInteraction = isWorkStopping
     ? "stopping"
     : pendingApprovals.length || pendingElicitations.length
       ? "waiting"
       : undefined;
+  const latestView = views.at(-1);
   const companionActivity =
-    latestMessage?.role === "assistant"
-      ? messageCompanionActivity(
-          { ...latestMessage, isLast: true },
-          companionInteraction,
-        )
+    latestView?.message.role === "assistant"
+      ? viewCompanionActivity(latestView, true, companionInteraction)
       : isWorkRunning
         ? "starting"
         : "idle";
@@ -2298,168 +2142,172 @@ export function ChatThread({
               }),
           }}
         >
-          <AssistantRuntimeProvider runtime={runtime}>
-            <CompanionInteractionProvider
-              scope={`${wakerId ?? ""}:${companionScopeRevision ?? 0}`}
-              activeAvatar={companionAvatar(
-                latestAuthor?.avatar ?? wakerAvatar,
-                latestAuthor?.name ?? wakerName,
+          <CompanionInteractionProvider
+            scope={`${wakerId ?? ""}:${companionScopeRevision ?? 0}`}
+            activeAvatar={companionAvatar(
+              latestAuthor?.avatar ?? wakerAvatar,
+              latestAuthor?.name ?? wakerName,
+            )}
+            activity={companionActivity}
+          >
+            <div
+              className={cn(
+                "flex h-full min-h-0 flex-col",
+                centerEmptyState && "justify-center",
               )}
-              activity={companionActivity}
             >
-              <ThreadPrimitive.Root
-                className={cn(
-                  "flex h-full min-h-0 flex-col",
-                  centerEmptyState && "justify-center",
-                )}
-              >
-                {presentation === "thread" &&
-                resultSource &&
-                !isHistoryLoading &&
-                messageSnapshot.messages.length > 0 &&
-                /^[a-f0-9]{32}$/.test(resultSource.chatId) ? (
-                  <ChatWorkResultReader
-                    chatId={resultSource.chatId}
-                    owner={resultSource.owner}
-                    viewport={viewportRef}
-                    hasEarlierMessages={hasEarlierMessages}
-                    onLoadEarlier={loadEarlier}
-                  />
-                ) : null}
-                {presentation === "thread" ? (
-                  <div
-                    className={cn(
-                      "relative flex min-h-0",
-                      centerEmptyState ? "shrink-0" : "flex-1",
-                    )}
-                  >
-                    {showDirectEmptyState ? (
-                      <div
-                        role={isHistoryLoading ? "status" : undefined}
-                        aria-busy={isHistoryLoading ? true : undefined}
-                        className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-                      >
-                        <div className="min-h-0 flex-1">{emptyState}</div>
-                        <div className="px-6">
-                          <ChatErrorNotices
-                            scopes={errorScopes}
-                            fallback={sendFailure}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <ThreadPrimitive.Viewport
-                          ref={viewportRef}
-                          data-chat-scroll-viewport
-                          onScroll={historyScroll.onScroll}
-                          className="scrollbar-hidden relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-anchor:none]"
-                        >
-                          <ThreadPrimitive.Empty>
-                            {emptyState}
-                          </ThreadPrimitive.Empty>
-                          <ChatMessageColumn>
-                            {historyError && errorScopes.length === 0 ? (
-                              <ChatErrorCard
-                                id={`history:${errorScopes.join(":")}`}
-                                message={historyError.message}
-                                onRetry={historyError.onRetry}
-                              />
-                            ) : null}
-                            {hasEarlierMessages && (
-                              <div className="flex flex-col items-center gap-1 px-6 pb-2">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={isLoadingEarlier}
-                                  onClick={() => void loadEarlier()}
-                                >
-                                  {isLoadingEarlier && (
-                                    <LoaderCircle className="animate-spin" />
-                                  )}
-                                  {t("loadEarlierMessages")}
-                                </Button>
-                                {loadEarlierError &&
-                                errorScopes.length === 0 ? (
-                                  <ChatErrorCard
-                                    id={`earlier:${errorScopes.join(":")}`}
-                                    message={loadEarlierError}
-                                    onRetry={loadEarlier}
-                                    onDismiss={historyScroll.clearError}
-                                  />
-                                ) : null}
-                              </div>
-                            )}
-                            <CompanionInteraction value={companionInteraction}>
-                              <ChatMessageList
-                                messagesByID={messagesByID}
-                                forkBoundaryMessageId={forkBoundaryMessageId}
-                                forkSourceChatId={forkSourceChatId}
-                                onOpenForkSource={onOpenForkSource}
-                                name={wakerName}
-                                avatar={wakerAvatar}
-                                availableSkillIds={availableSkillIds}
-                                availableConnectorIds={availableConnectorIds}
-                                availablePluginIds={availablePluginIds}
-                                wakerId={wakerId}
-                                messageAuthors={messageAuthors}
-                                showUsageMetrics={showUsageMetrics}
-                                onOpenCodeReference={onOpenCodeReference}
-                                onOpenFile={onOpenFile}
-                                onOpenFileChange={onOpenFileChange}
-                              />
-                            </CompanionInteraction>
-                            <div className="px-6">
-                              <ChatErrorNotices
-                                scopes={errorScopes}
-                                fallback={sendFailure}
-                              />
-                            </div>
-                          </ChatMessageColumn>
-                        </ThreadPrimitive.Viewport>
-                        <ChatTurnNavigator viewportRef={viewportRef} />
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <ChatErrorNotices
-                    scopes={errorScopes}
-                    fallback={sendFailure}
-                  />
-                )}
-                <motion.div
-                  data-chat-composer
-                  layout={animateComposerSize ? true : "position"}
-                  layoutDependency={centerEmptyState}
-                  transition={{
-                    layout: reducedMotion
-                      ? { duration: 0 }
-                      : composerLayoutTransition,
-                  }}
-                  hidden={!showComposer}
-                  className="shrink-0 bg-transparent pt-2"
+              {presentation === "thread" &&
+              resultSource &&
+              !isHistoryLoading &&
+              messages.length > 0 &&
+              /^[a-f0-9]{32}$/.test(resultSource.chatId) ? (
+                <ChatWorkResultReader
+                  chatId={resultSource.chatId}
+                  owner={resultSource.owner}
+                  viewport={viewportRef}
+                  hasEarlierMessages={hasEarlierMessages}
+                  onLoadEarlier={loadEarlier}
+                />
+              ) : null}
+              {presentation === "thread" ? (
+                <div
+                  className={cn(
+                    "relative flex min-h-0",
+                    centerEmptyState ? "shrink-0" : "flex-1",
+                  )}
                 >
-                  <div
-                    className={cn(
-                      "mx-auto w-full",
-                      presentation === "thread" && "px-6 pb-4",
-                      chatContentColumnClassName,
-                    )}
-                  >
-                    {warning ? (
-                      <div
-                        role="status"
-                        data-chat-permission-warning
-                        className="border-border bg-muted text-muted-foreground type-ui mb-2 flex w-full items-start gap-2 rounded-md border px-3 py-2"
-                      >
-                        <AlertTriangle
-                          className="text-destructive size-icon-md mt-0.5 shrink-0"
-                          strokeWidth={1.5}
+                  {showDirectEmptyState ? (
+                    <div
+                      role={isHistoryLoading ? "status" : undefined}
+                      aria-busy={isHistoryLoading ? true : undefined}
+                      className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+                    >
+                      <div className="min-h-0 flex-1">{emptyState}</div>
+                      <div className="px-6">
+                        <ChatErrorNotices
+                          scopes={errorScopes}
+                          fallback={sendFailure}
                         />
-                        <span className="min-w-0">{warning}</span>
                       </div>
-                    ) : null}
+                    </div>
+                  ) : (
+                    <>
+                      <div
+                        ref={viewportRef}
+                        data-chat-scroll-viewport
+                        onScroll={historyScroll.onScroll}
+                        className="scrollbar-hidden relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain [overflow-anchor:none]"
+                      >
+                        {messages.length === 0 ? emptyState : null}
+                        <ChatMessageColumn>
+                          {historyError && errorScopes.length === 0 ? (
+                            <ChatErrorCard
+                              id={`history:${errorScopes.join(":")}`}
+                              message={historyError.message}
+                              onRetry={historyError.onRetry}
+                            />
+                          ) : null}
+                          {hasEarlierMessages && (
+                            <div className="flex flex-col items-center gap-1 px-6 pb-2">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={isLoadingEarlier}
+                                onClick={() => void loadEarlier()}
+                              >
+                                {isLoadingEarlier && (
+                                  <LoaderCircle className="animate-spin" />
+                                )}
+                                {t("loadEarlierMessages")}
+                              </Button>
+                              {loadEarlierError && errorScopes.length === 0 ? (
+                                <ChatErrorCard
+                                  id={`earlier:${errorScopes.join(":")}`}
+                                  message={loadEarlierError}
+                                  onRetry={loadEarlier}
+                                  onDismiss={historyScroll.clearError}
+                                />
+                              ) : null}
+                            </div>
+                          )}
+                          <MarkdownVisibility value={active}>
+                            <ProcessExpansion value={readingState.groups}>
+                              <CompanionInteraction
+                                value={companionInteraction}
+                              >
+                                <ChatMessageList
+                                  views={views}
+                                  forkBoundaryMessageId={forkBoundaryMessageId}
+                                  forkSourceChatId={forkSourceChatId}
+                                  onOpenForkSource={onOpenForkSource}
+                                  name={wakerName}
+                                  avatar={wakerAvatar}
+                                  availableSkillIds={availableSkillIds}
+                                  availableConnectorIds={availableConnectorIds}
+                                  availablePluginIds={availablePluginIds}
+                                  wakerId={wakerId}
+                                  messageAuthors={messageAuthors}
+                                  showUsageMetrics={showUsageMetrics}
+                                  onOpenCodeReference={onOpenCodeReference}
+                                  onOpenFile={onOpenFile}
+                                  onOpenFileChange={onOpenFileChange}
+                                />
+                              </CompanionInteraction>
+                            </ProcessExpansion>
+                          </MarkdownVisibility>
+                          <div className="px-6">
+                            <ChatErrorNotices
+                              scopes={errorScopes}
+                              fallback={sendFailure}
+                            />
+                          </div>
+                        </ChatMessageColumn>
+                      </div>
+                      <ChatTurnNavigator
+                        viewportRef={viewportRef}
+                        messages={messages}
+                        active={active}
+                      />
+                    </>
+                  )}
+                </div>
+              ) : (
+                <ChatErrorNotices scopes={errorScopes} fallback={sendFailure} />
+              )}
+              <motion.div
+                data-chat-composer
+                layout={animateComposerSize ? true : "position"}
+                layoutDependency={centerEmptyState}
+                transition={{
+                  layout: reducedMotion
+                    ? { duration: 0 }
+                    : composerLayoutTransition,
+                }}
+                hidden={!showComposer}
+                className="shrink-0 bg-transparent"
+              >
+                <div
+                  className={cn(
+                    "mx-auto w-full",
+                    presentation === "thread" && "px-6 pb-4",
+                    chatContentColumnClassName,
+                  )}
+                >
+                  {warning ? (
+                    <div
+                      role="status"
+                      data-chat-permission-warning
+                      className="border-border bg-muted text-muted-foreground type-ui mb-2 flex w-full items-start gap-2 rounded-md border px-3 py-2"
+                    >
+                      <AlertTriangle
+                        className="text-destructive size-icon-md mt-0.5 shrink-0"
+                        strokeWidth={1.5}
+                      />
+                      <span className="min-w-0">{warning}</span>
+                    </div>
+                  ) : null}
+                  <AssistantRuntimeProvider runtime={runtime}>
                     <Composer
                       autoFocus={composerAutoFocus}
                       disabled={composerDisabled}
@@ -2508,11 +2356,11 @@ export function ChatThread({
                       isWorkStopping={isWorkStopping}
                       onStopWork={onStopWork}
                     />
-                  </div>
-                </motion.div>
-              </ThreadPrimitive.Root>
-            </CompanionInteractionProvider>
-          </AssistantRuntimeProvider>
+                  </AssistantRuntimeProvider>
+                </div>
+              </motion.div>
+            </div>
+          </CompanionInteractionProvider>
         </ChatErrorActions>
       </ChatForkContext>
     </FileReferenceProvider>

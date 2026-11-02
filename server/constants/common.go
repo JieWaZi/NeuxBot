@@ -97,10 +97,10 @@ const (
 )
 
 const (
-	// RuntimeAdditionalDirectoriesUnsupportedWarning 表示 Runtime 未能获得真实项目目录授权。
-	RuntimeAdditionalDirectoriesUnsupportedWarning = "runtime_additional_directories_unsupported"
 	// CreateRequestIDMaximumLength 是各类资源首次创建请求标识允许的最大长度。
 	CreateRequestIDMaximumLength = 64
+	// InputSubmissionIDMaximumLength 保留工作流等既有输入提交身份的最大长度。
+	InputSubmissionIDMaximumLength = 128
 	// RuntimeHistoryDefaultTurns 是新建原生会话时默认携带的最近完整对话轮数。
 	RuntimeHistoryDefaultTurns = 5
 	// RuntimeHistoryMaximumTurns 是用户可选择携带的最大完整对话轮数。
@@ -437,7 +437,7 @@ const (
 	MessageToolSafeSummaryMaxInt = 1000000
 	// MessageToolSafeSummaryMaxFiles 是单次工具调用允许公开展示的文件变更数上限。
 	MessageToolSafeSummaryMaxFiles = 100
-	// MessageFileChangeDiffMaxBytes 是单份执行 Diff 的新旧文本各自允许返回的最大字节数。
+	// MessageFileChangeDiffMaxBytes 限制旧 ACP 工具内容参与单工具安全统计的字节数，不产生文件成果。
 	MessageFileChangeDiffMaxBytes = 10 * 1024 * 1024
 )
 
@@ -650,6 +650,10 @@ const (
 const (
 	// PluginEventTopic 是插件资源唯一状态事件主题。
 	PluginEventTopic = "plugins"
+	// PluginUsageChangedEventType 表示原生消费者占用或当前执行引用变化。
+	PluginUsageChangedEventType = "plugins.usage.changed"
+	// EntityActivityChangedEventType 表示已有伙伴或团队的活动摘要变化。
+	EntityActivityChangedEventType = "entities.activity.changed"
 )
 
 // PluginStdioMode 是 Core 内部的原生 MCP 工作目录子进程模式。
@@ -728,3 +732,16 @@ const KnowledgeCLIIndexGroupLimit = 10
 
 // KnowledgeRetryAuthorityOperation 标记依核心重试回执生效的宿主授权候选。
 const KnowledgeRetryAuthorityOperation = "job.retry.authority"
+
+// PluginReferencesChangedEventType 表示输入候选的安装、启停、版本或展示身份变化。
+const PluginReferencesChangedEventType = "plugins.references.changed"
+
+// 实时消息操作只暴露规范展示事实，不传递原生工具载荷。
+const (
+	// MessageIncrementTextAppend 追加明确部件的新文本。
+	MessageIncrementTextAppend = "text_append"
+	// MessageIncrementPartType 更新已有文本部件的展示阶段。
+	MessageIncrementPartType = "part_type"
+	// MessageIncrementPartUpsert 替换或创建一个安全工具部件。
+	MessageIncrementPartUpsert = "part_upsert"
+)

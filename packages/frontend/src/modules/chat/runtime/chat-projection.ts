@@ -15,6 +15,7 @@ import type {
 import type { ChatEvent } from "@/shared/api/events";
 import type { ChatCodeReference } from "./chat-queue-store";
 import { runtimeFailurePresentation } from "../model/runtime-failure-presentation";
+import { applyChatLiveFrame } from "./chat-live";
 
 export const CHAT_PROCESS_COMMENTARY_PART = "chat.process_commentary";
 
@@ -66,9 +67,20 @@ export type ChatFileChange = ToolFileChangeSummary & { path: string };
 
 export type AllyChatMessage = ChatMessage & {
   optimistic?: boolean;
-  /** 首发已接纳但响应未带执行身份时，仅展示到首次权威历史接管。 */
-  awaitingFirstHistory?: boolean;
+  liveRevision?: number;
   codeReferences?: ChatCodeReference[];
+};
+
+/** 原领域 Query 提供已提交快照和原子持久事件接管，Runtime 不识别来源缓存键。 */
+export type ChatMessageSource = {
+  snapshot: {
+    messages: ChatMessage[];
+    latestSequence: number;
+    ready: boolean;
+  };
+  /** 返回原 Query 已覆盖的持久游标；无法证明连续时不提交部分批次。 */
+  commit: (events: readonly ChatEvent[]) => number | undefined;
+  reconcile: (signal?: AbortSignal) => Promise<number | undefined>;
 };
 
 export type ChatMessageVisibility = (message: AllyChatMessage) => boolean;
@@ -150,7 +162,7 @@ function normalizeAuthoritativeMessage(
 }
 
 function contentRevision(message: AllyChatMessage): number {
-  return message.revision ?? -1;
+  return message.liveRevision ?? message.revision ?? -1;
 }
 
 function displayPartsOf(message: AllyChatMessage): MessageDisplayPart[] {
@@ -222,6 +234,38 @@ function assistantPartsOf(
   });
 }
 
+function sameSubmittedMessage(
+  first: AllyChatMessage,
+  second: ChatMessage,
+): boolean {
+  return Boolean(
+    first.optimistic &&
+    first.submissionId &&
+    first.submissionId === second.submissionId &&
+    first.role === second.role,
+  );
+}
+
+/** 权威快照已覆盖的乐观或临时消息退出叠层，未提交的更高修订继续保留。 */
+export function uncommittedChatMessages(
+  current: readonly AllyChatMessage[],
+  authoritative: readonly ChatMessage[],
+): AllyChatMessage[] {
+  return current.filter(
+    (message) =>
+      !authoritative.some(
+        (snapshot) =>
+          (snapshot.id === message.id ||
+            sameSubmittedMessage(message, snapshot)) &&
+          (message.optimistic ||
+            ["completed", "failed", "canceled"].includes(
+              snapshot.status ?? "",
+            ) ||
+            contentRevision(snapshot) >= contentRevision(message)),
+      ),
+  );
+}
+
 export function mergeAuthoritativeMessages(
   current: AllyChatMessage[],
   authoritative: ChatMessage[],
@@ -232,20 +276,56 @@ export function mergeAuthoritativeMessages(
       .map((message) => [message.id, message]),
   );
   const merged = authoritative.map((message) => {
-    const local = currentByID.get(message.id);
-    currentByID.delete(message.id);
+    const local =
+      currentByID.get(message.id) ??
+      current.find((item) => sameSubmittedMessage(item, message));
+    currentByID.delete(local?.id ?? message.id);
     if (!local) return message;
-    if (local.optimistic) return message;
+    if (
+      local.optimistic ||
+      ["completed", "failed", "canceled"].includes(message.status ?? "")
+    )
+      return message;
     const localRevision = contentRevision(local);
-    const authoritativeRevision = message.revision ?? -1;
-    if (localRevision > authoritativeRevision) return local;
-    return message;
+    const authoritativeRevision = contentRevision(message);
+    return mergeMessageCoverage(
+      local,
+      message,
+      localRevision > authoritativeRevision,
+    );
   });
 
   for (const message of currentByID.values()) {
     merged.push(message);
   }
   return merged;
+}
+
+/** 持久元数据可以先于正文检查点到达；保留尚未被检查点覆盖的增量正文。 */
+function mergeMessageCoverage(
+  local: AllyChatMessage,
+  authoritative: ChatMessage,
+  keepLive: boolean,
+): AllyChatMessage {
+  if (keepLive && (authoritative.revision ?? -1) <= (local.revision ?? -1))
+    return local;
+  const next = keepLive
+    ? {
+        ...local,
+        ...authoritative,
+        content: local.content,
+        displayParts: local.displayParts,
+        liveRevision: local.liveRevision,
+        revision: Math.max(local.revision ?? 0, authoritative.revision ?? 0),
+      }
+    : authoritative;
+  if (
+    !["completed", "failed", "canceled"].includes(authoritative.status ?? "") &&
+    local.runMetrics &&
+    !authoritative.runMetrics
+  )
+    return { ...next, runMetrics: local.runMetrics };
+  return next;
 }
 
 function findMessageIndex(
@@ -261,29 +341,94 @@ export function applyChatEvent(
   event: ChatEvent,
   isMessageVisible: ChatMessageVisibility = () => true,
 ): AllyChatMessage[] {
+  if (event.fileChanges) {
+    const index = findMessageIndex(messages, event.fileChanges.messageId);
+    const current = messages[index];
+    if (
+      !current ||
+      (current.fileChangeRecord?.version ?? 0) >=
+        (event.fileChanges.record.version ?? 0)
+    )
+      return messages;
+    const next = [...messages];
+    next[index] = {
+      ...current,
+      fileChangeRecord: event.fileChanges.record,
+      revision: Math.max(current.revision ?? 0, event.sequence ?? 0),
+    };
+    return next;
+  }
+  if (event.live) {
+    const index = findMessageIndex(messages, event.live.messageId);
+    if (index < 0) return messages;
+    const current = messages[index];
+    if (!current) return messages;
+    const next = applyChatLiveFrame(current, event.live);
+    if (next === current) return messages;
+    const updated = [...messages];
+    updated[index] = next;
+    return updated;
+  }
   if (!event.message) return messages;
   const authoritative = normalizeAuthoritativeMessage(
     event.message,
     event.recordedAt,
   );
   if (!isMessageVisible(authoritative)) return messages;
-  const index = findMessageIndex(messages, authoritative.id);
+  const matchedIndex = findMessageIndex(messages, authoritative.id);
+  const index =
+    matchedIndex >= 0
+      ? matchedIndex
+      : messages.findIndex((item) => sameSubmittedMessage(item, authoritative));
   const currentMessage = index >= 0 ? messages[index] : undefined;
+  if (
+    currentMessage &&
+    ["completed", "failed", "canceled"].includes(currentMessage.status ?? "") &&
+    !isTerminalEvent(event)
+  )
+    return messages;
   // 执行终态是已提交的权威边界，即使修订号落后也必须接管实时快照。
   if (
     currentMessage &&
     !isTerminalEvent(event) &&
     contentRevision(currentMessage) > contentRevision(authoritative)
   ) {
-    return messages;
+    const next = [...messages];
+    next[index] = mergeMessageCoverage(currentMessage, authoritative, true);
+    return next;
   }
 
   // 流式更新只替换命中的消息，保留历史消息引用，让消费方可以跳过
   // 已稳定消息的转换和渲染。
   const next = [...messages];
-  if (index >= 0) next[index] = { ...currentMessage, ...authoritative };
+  if (currentMessage)
+    next[index] = isTerminalEvent(event)
+      ? authoritative
+      : mergeMessageCoverage(currentMessage, authoritative, false);
   else next.push(authoritative);
   return next;
+}
+
+/** 同一输入的乐观消息与权威消息在上下文接管期间保持相同的助手呈现位置。 */
+export function isLatestAssistantMessage(
+  message: Pick<ThreadMessageLike, "id" | "role" | "metadata">,
+  messages: readonly Pick<ThreadMessageLike, "id" | "role" | "metadata">[],
+): boolean {
+  const latest = messages.findLast((item) => item.role === "assistant");
+  if (!latest || message.role !== "assistant") return false;
+  if (message.id && latest.id === message.id) return true;
+  // 两个真实消息始终按真实身份区分；输入身份只补齐乐观到权威的接管窗口。
+  if (
+    (message.metadata?.isOptimistic === true) ===
+    (latest.metadata?.isOptimistic === true)
+  )
+    return false;
+  const submissionId = message.metadata?.custom?.submissionId;
+  return (
+    typeof submissionId === "string" &&
+    submissionId !== "" &&
+    latest.metadata?.custom?.submissionId === submissionId
+  );
 }
 
 export function toThreadMessage(
@@ -297,7 +442,6 @@ export function toThreadMessage(
       : undefined;
   const errorMessage =
     message.errorMessage?.trim() || failure?.message || incompleteErrorText;
-  const fileChanges = message.fileChanges ?? [];
   const isTerminal = ["completed", "failed", "canceled"].includes(
     message.status ?? "",
   );
@@ -314,6 +458,7 @@ export function toThreadMessage(
       isOptimistic: message.optimistic,
       custom: {
         isTerminal,
+        ...(message.submissionId ? { submissionId: message.submissionId } : {}),
         ...(failure
           ? {
               failureMessage: errorMessage,
@@ -323,7 +468,6 @@ export function toThreadMessage(
             }
           : {}),
         ...(message.runMetrics ? { runMetrics: message.runMetrics } : {}),
-        ...(fileChanges.length ? { fileChanges } : {}),
         ...(message.plugins?.length ? { plugins: message.plugins } : {}),
         ...(message.skills?.length ? { skills: message.skills } : {}),
         ...(message.connectors?.length

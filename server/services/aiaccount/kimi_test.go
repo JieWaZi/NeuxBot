@@ -80,14 +80,14 @@ func TestKimiSubscriptionUsesIndependentNativeHomes(t *testing.T) {
 		if !login.Complete {
 			t.Fatal("native login was not committed")
 		}
-		target, release, err := service.Prepare(context.Background(), id, constants.RuntimeIDKimi, t.TempDir(), "kimi-code/k3")
+		target, release, err := service.PrepareQueuedLease(context.Background(), id, constants.RuntimeIDKimi, t.TempDir(), "kimi-code/k3")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if target.Environment["KIMI_CODE_HOME"] != filepath.Join(dataRoot, "ai-accounts", "kimi", id) {
 			t.Fatal("subscription account reused another native home")
 		}
-		release()
+		closeAccountLease(t, release)
 		models, defaultModel, err := service.KimiSubscriptionModels(context.Background(), id)
 		if err != nil || len(models) != 1 || models[0] != "kimi-code/k3" || defaultModel != "kimi-code/k3" {
 			t.Fatalf("native Kimi models were not linked to account: %v %v %v", models, defaultModel, err)

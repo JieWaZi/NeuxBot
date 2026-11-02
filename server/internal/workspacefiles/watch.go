@@ -287,6 +287,11 @@ func (m *Manager) Watch(ctx context.Context, subject, id, relative, root string,
 					continue
 				}
 				resource, err := snapshot()
+				if err == status_error.WorkspaceResourceConflict {
+					// 文件仍在写入，保留订阅，由后续文件事件重新取得完整快照。
+					publish("recovering", nil)
+					continue
+				}
 				if err != nil {
 					publish("failed", nil)
 					return

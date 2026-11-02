@@ -1,3 +1,4 @@
+import { SnapshotDiffView, snapshotDiffText } from "./snapshot-diff-view";
 import { generateDiffFile } from "@git-diff-view/file";
 import { DiffModeEnum, DiffView } from "@git-diff-view/react";
 import "@git-diff-view/react/styles/diff-view-pure.css";
@@ -24,6 +25,7 @@ import {
 import {
   lazy,
   Suspense,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -63,6 +65,7 @@ import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
 import { cn } from "@/shared/lib/cn";
+import { ContentVisibility } from "@/shared/lib/content-visibility";
 import { Spinner } from "@/shared/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { useWorkspaceQueryEvents } from "@/shared/api/workspace-events";
@@ -111,7 +114,16 @@ type WorkspaceFileViewerProps = {
 
 // File loading remains outside the renderer and one viewer handles code, text,
 // and images.
-export function WorkspaceFileViewer({
+export function WorkspaceFileViewer(props: WorkspaceFileViewerProps) {
+  const parentVisible = useContext(ContentVisibility);
+  return (
+    <ContentVisibility value={parentVisible && props.active !== false}>
+      <WorkspaceFileViewerContent {...props} />
+    </ContentVisibility>
+  );
+}
+
+function WorkspaceFileViewerContent({
   active = true,
   readOnly = false,
   toolbarAccessory,
@@ -185,7 +197,11 @@ export function WorkspaceFileViewer({
     queryKey: ["workspace-diff", rootPath, path],
     queryFn: () => readWorkspaceDiff(rootPath, path),
     enabled:
-      mode === "diff" && !executionDiff && Boolean(rootPath) && Boolean(path),
+      active &&
+      mode === "diff" &&
+      !executionDiff &&
+      Boolean(rootPath) &&
+      Boolean(path),
   });
   const executionDiffQuery = useQuery({
     ...getChatMessageFileChangeOptions({
@@ -196,10 +212,12 @@ export function WorkspaceFileViewer({
       query: { path },
     }),
     enabled:
+      active &&
       mode === "diff" &&
       Boolean(executionDiff?.chatId) &&
       Boolean(executionDiff?.messageId) &&
       Boolean(path),
+    staleTime: Infinity,
   });
   const file = fileQuery.data;
   const externalConflict = Boolean(
@@ -225,8 +243,8 @@ export function WorkspaceFileViewer({
           ? {
               name: path.split("/").at(-1) ?? path,
               relativePath: messageDiff.path ?? path,
-              oldContent: messageDiff.oldContent ?? "",
-              newContent: messageDiff.newContent ?? "",
+              oldContent: "",
+              newContent: "",
             }
           : undefined
         : workspaceDiff,
@@ -286,7 +304,7 @@ export function WorkspaceFileViewer({
     adapter.hasOutline && renderingPreview && mode === "preview",
   );
   const diffFile = useMemo(() => {
-    if (!diff) return null;
+    if (!diff || executionDiff) return null;
     const generated = generateDiffFile(
       `${diff.relativePath} (HEAD)`,
       diff.oldContent,
@@ -300,7 +318,7 @@ export function WorkspaceFileViewer({
     if (diffMode === DiffModeEnum.Split) generated.buildSplitDiffLines();
     else generated.buildUnifiedDiffLines();
     return generated;
-  }, [diff, diffMode, extension, resolvedTheme]);
+  }, [diff, diffMode, extension, resolvedTheme, executionDiff]);
   const saveDraft = async () => {
     if (!file || saving) return;
     const savedRevision = draftRevision.current;
@@ -371,7 +389,9 @@ export function WorkspaceFileViewer({
     const content = editing
       ? draft
       : mode === "diff"
-        ? (diff?.newContent ?? "")
+        ? executionDiff && messageDiff?.comparison
+          ? snapshotDiffText(messageDiff.comparison)
+          : (diff?.newContent ?? "")
         : (file?.content ?? "");
     await navigator.clipboard.writeText(content);
     setCopied(true);
@@ -704,7 +724,9 @@ export function WorkspaceFileViewer({
         </>
       ) : null}
       <WorkspaceViewerAction
-        label={t("workspace.copyFileContent")}
+        label={t(
+          executionDiff ? "fileChanges.copyDiff" : "workspace.copyFileContent",
+        )}
         onClick={() => void copyContent()}
       >
         {copied ? <Check className="text-success" /> : <Copy />}
@@ -884,7 +906,12 @@ export function WorkspaceFileViewer({
                 document.body,
               )
             : null}
-          {mode === "diff" && diffFile ? (
+          {mode === "diff" && executionDiff && messageDiff?.comparison ? (
+            <SnapshotDiffView
+              comparison={messageDiff.comparison}
+              split={diffMode === DiffModeEnum.Split}
+            />
+          ) : mode === "diff" && diffFile ? (
             <DiffView
               diffFile={diffFile}
               diffViewMode={diffMode}

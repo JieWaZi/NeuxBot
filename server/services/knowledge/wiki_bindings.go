@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
@@ -65,7 +65,7 @@ func (in wikiCommand) ref() bridge.ResourceRef {
 }
 
 // wikiBindings 将维护工具绑定到冻结的库和权限代次，复用已有领域事务与持久回执。
-func (s *Service) wikiBindings(ctx context.Context, chat models.Chat, refs []bridge.ResourceRef, provider *frozenKnowledgeReads, pageOnly string) []agentcapability.Binding {
+func (s *Service) wikiBindings(ctx context.Context, chat models.Chat, refs []bridge.ResourceRef, provider *frozenKnowledgeReads, pageOnly string) []capability.Binding {
 	policies := map[bridge.ResourceRef]int64{}
 	for _, ref := range refs {
 		if ref.Backend != "local" && ref.Backend != "custom" {
@@ -153,29 +153,29 @@ type wikiAccess struct {
 }
 
 // wikiWriteBindings 被内部执行和发布入口共同使用，不在传输层复制知识写入逻辑。
-func (s *Service) wikiWriteBindings(access wikiAccess) []agentcapability.Binding {
-	result := []agentcapability.Binding{}
+func (s *Service) wikiWriteBindings(access wikiAccess) []capability.Binding {
+	result := []capability.Binding{}
 	for _, operation := range []string{"knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.pages.purge", "knowledge.revisions.restore", "knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry"} {
 		op := operation
 		if access.pageOnly != "" && slices.Contains([]string{"knowledge.pages.purge", "knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry"}, op) {
 			continue
 		}
-		binding := agentcapability.Binding{Operation: op}
-		binding.Call = func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+		binding := capability.Binding{Operation: op}
+		binding.Call = func(ctx context.Context, r capability.Request) (capability.Result, error) {
 			var in wikiCommand
-			if err := agentcapability.DecodeParams(r.Params, &in); err != nil {
-				return agentcapability.Result{}, err
+			if err := capability.DecodeParams(r.Params, &in); err != nil {
+				return capability.Result{}, err
 			}
 			ref := in.ref()
 			if op == "knowledge.pages.purge" || in.CanonicalPageID != "" {
 				if err := bridge.RequireLocal(ref); err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
 			}
 			if access.guard != nil && op != "knowledge.jobs.retry" {
 				release, err := access.guard(ctx, op, ref)
 				if err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
 				defer release()
 			}
@@ -185,25 +185,25 @@ func (s *Service) wikiWriteBindings(access wikiAccess) []agentcapability.Binding
 			}
 			lib, client, err := access.authorize(ctx, op, ref)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			if client != nil {
 				caps, e := client.Capabilities(ctx)
 				if e != nil {
-					return agentcapability.Result{}, bridge.MapRemoteError(e)
+					return capability.Result{}, bridge.MapRemoteError(e)
 				}
 				if !caps.Operations["write"] {
-					return agentcapability.Result{}, status_error.KnowledgeForbidden
+					return capability.Result{}, status_error.KnowledgeForbidden
 				}
 			}
 			if access.pageOnly != "" && in.PageID != "" && in.PageID != access.pageOnly {
-				return agentcapability.Result{}, status_error.KnowledgeForbidden
+				return capability.Result{}, status_error.KnowledgeForbidden
 			}
 			if access.pageOnly != "" && slices.Contains([]string{"knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.revisions.restore"}, op) && in.PageID != access.pageOnly {
-				return agentcapability.Result{}, status_error.KnowledgeForbidden
+				return capability.Result{}, status_error.KnowledgeForbidden
 			}
 			if r.RequestID == "" {
-				return agentcapability.Result{}, status_error.KnowledgeInvalid
+				return capability.Result{}, status_error.KnowledgeInvalid
 			}
 			raw, _ := json.Marshal(struct {
 				Operation string             // 实际命令身份。
@@ -222,23 +222,23 @@ func (s *Service) wikiWriteBindings(access wikiAccess) []agentcapability.Binding
 				_, priorErr := s.config.References.GetOperation(ctx, id)
 				fresh = errors.Is(priorErr, status_error.KnowledgeNotFound)
 				if priorErr != nil && !fresh {
-					return agentcapability.Result{}, priorErr
+					return capability.Result{}, priorErr
 				}
 				err = s.config.References.BeginOperation(ctx, link)
 			} else {
 				fresh, err = s.config.References.ClaimRemoteOperation(ctx, link)
 			}
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			var receipt *core.Receipt
 			if !fresh {
 				saved, e := s.config.References.GetOperation(ctx, id)
 				if e != nil {
-					return agentcapability.Result{}, e
+					return capability.Result{}, e
 				}
 				if saved.RemoteErrorCode != 0 {
-					return agentcapability.Result{}, status_error.StatusError(saved.RemoteErrorCode)
+					return capability.Result{}, status_error.StatusError(saved.RemoteErrorCode)
 				}
 				if client == nil {
 					receipt, err = s.config.Engine.GetReceipt(ctx, id)
@@ -247,23 +247,23 @@ func (s *Service) wikiWriteBindings(access wikiAccess) []agentcapability.Binding
 				}
 				if receipt != nil && err == nil {
 					if err = validateWikiReceipt(receipt, op, id, lib.ID, in, wikiReceiptTarget(saved)); err != nil {
-						return agentcapability.Result{}, err
+						return capability.Result{}, err
 					}
 					if err = s.config.References.CompleteOperation(ctx, id, receipt.LibraryID, receipt.ResourceID, receipt.JobID); err != nil {
-						return agentcapability.Result{}, err
+						return capability.Result{}, err
 					}
 					if client == nil && op == "knowledge.jobs.retry" {
 						if err = s.resume(ctx, receipt.JobID, true); err != nil {
-							return agentcapability.Result{}, err
+							return capability.Result{}, err
 						}
 					}
-					return agentcapability.Result{CommandID: r.RequestID, Replayed: true, Data: map[string]any{"ref": ref, "receipt": receipt}}, nil
+					return capability.Result{CommandID: r.RequestID, Replayed: true, Data: map[string]any{"ref": ref, "receipt": receipt}}, nil
 				}
 				if client != nil {
-					return agentcapability.Result{}, status_error.KnowledgeRemoteOutcomeUnknown
+					return capability.Result{}, status_error.KnowledgeRemoteOutcomeUnknown
 				}
 				if !errors.Is(bridge.MapError(err), status_error.KnowledgeNotFound) {
-					return agentcapability.Result{}, bridge.MapError(err)
+					return capability.Result{}, bridge.MapError(err)
 				}
 			}
 			writeContext := ctx
@@ -281,39 +281,39 @@ func (s *Service) wikiWriteBindings(access wikiAccess) []agentcapability.Binding
 					var stable interface{ Code() int64 }
 					if errors.As(mapped, &stable) {
 						if persist := s.config.References.RejectRemoteOperation(ctx, id, stable.Code()); persist != nil {
-							return agentcapability.Result{}, persist
+							return capability.Result{}, persist
 						}
 					}
 				}
-				return agentcapability.Result{}, mapped
+				return capability.Result{}, mapped
 			}
 			if err = validateWikiReceipt(receipt, op, id, lib.ID, in, ""); err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			if err = s.config.References.CompleteOperation(ctx, id, receipt.LibraryID, receipt.ResourceID, receipt.JobID); err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			if s.config.Events != nil && (client != nil || op != "knowledge.jobs.retry") {
 				_ = events.Emit(s.config.Events, "knowledge", "knowledge.changed", events.Resource{Kind: "knowledge_library", ID: lib.ID, ParentID: ref.ConnectionID}, map[string]any{"ref": ref, "requestId": id})
 			}
-			return agentcapability.Result{CommandID: r.RequestID, Data: map[string]any{"ref": ref, "receipt": receipt}}, nil
+			return capability.Result{CommandID: r.RequestID, Data: map[string]any{"ref": ref, "receipt": receipt}}, nil
 		}
-		binding.Receipt = func(ctx context.Context, id string) (agentcapability.Result, error) {
+		binding.Receipt = func(ctx context.Context, id string) (capability.Result, error) {
 			link, err := s.config.References.GetOperation(ctx, access.identity(id))
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			if link.Operation != op || link.ChatID != access.chatID || link.ExecutionID != access.executionID {
-				return agentcapability.Result{}, status_error.KnowledgeForbidden
+				return capability.Result{}, status_error.KnowledgeForbidden
 			}
 			if link.RemoteErrorCode != 0 {
-				return agentcapability.Result{}, status_error.StatusError(link.RemoteErrorCode)
+				return capability.Result{}, status_error.StatusError(link.RemoteErrorCode)
 			}
 			ref := bridge.ResourceRef{Backend: link.Backend, ConnectionID: link.ConnectionID, KnowledgeBaseID: link.KnowledgeBaseID}
 			if access.guard != nil {
 				release, e := access.guard(ctx, op, ref)
 				if e != nil {
-					return agentcapability.Result{}, e
+					return capability.Result{}, e
 				}
 				if op == "knowledge.jobs.retry" {
 					// 恢复原尝试会重新取得全部冻结授权，不能嵌套当前入口的授权读锁。
@@ -324,7 +324,7 @@ func (s *Service) wikiWriteBindings(access wikiAccess) []agentcapability.Binding
 			}
 			_, client, err := access.authorize(ctx, op, ref)
 			if err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			var receipt *core.Receipt
 			if client == nil {
@@ -334,22 +334,22 @@ func (s *Service) wikiWriteBindings(access wikiAccess) []agentcapability.Binding
 			}
 			if err != nil {
 				if client != nil && errors.Is(bridge.MapRemoteError(err), status_error.KnowledgeNotFound) {
-					return agentcapability.Result{}, status_error.KnowledgeRemoteOutcomeUnknown
+					return capability.Result{}, status_error.KnowledgeRemoteOutcomeUnknown
 				}
-				return agentcapability.Result{}, wikiBoundaryError(err, client)
+				return capability.Result{}, wikiBoundaryError(err, client)
 			}
 			if err = validateWikiReceipt(receipt, op, access.identity(id), ref.KnowledgeBaseID, wikiCommand{}, wikiReceiptTarget(link)); err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			if err = s.config.References.CompleteOperation(ctx, access.identity(id), receipt.LibraryID, receipt.ResourceID, receipt.JobID); err != nil {
-				return agentcapability.Result{}, err
+				return capability.Result{}, err
 			}
 			if client == nil && op == "knowledge.jobs.retry" {
 				if err = s.resume(ctx, receipt.JobID, true); err != nil {
-					return agentcapability.Result{}, err
+					return capability.Result{}, err
 				}
 			}
-			return agentcapability.Result{CommandID: id, Replayed: true, Data: map[string]any{"ref": ref, "receipt": receipt}}, nil
+			return capability.Result{CommandID: id, Replayed: true, Data: map[string]any{"ref": ref, "receipt": receipt}}, nil
 		}
 		result = append(result, binding)
 	}

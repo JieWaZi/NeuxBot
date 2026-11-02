@@ -1,0 +1,785 @@
+{
+  "input": "performance-ab-markdown.json.gz",
+  "environment": {
+    "node": "v22.20.0",
+    "platform": "darwin",
+    "release": "23.5.0",
+    "arch": "x64",
+    "cpu": "Intel(R) Core(TM) i9-9880H CPU @ 2.30GHz"
+  },
+  "measurement": "Actual production React Markdown components in jsdom; CPU/render/commit, no layout or paint",
+  "rows": [
+    {
+      "variant": "baseline",
+      "workload": {
+        "name": "plain-2kib",
+        "bytes": 2048,
+        "codeLines": 0,
+        "sha256": "b8f1b6cc3a97cdb16bb54b3c777e44123ef245a5813c685bac577e08f1858a89",
+        "batches": 100,
+        "inputIntervalMs": 48
+      },
+      "cold": {
+        "cpuMs": 1991.783,
+        "streamCpuMs": 1904.192,
+        "completionCpuMs": 43.602,
+        "totalWallMs": 4865.191494,
+        "completionWallMs": 26.326281000000563,
+        "commits": 1279,
+        "renderMs": 1081.3184430000374,
+        "preCompletion": {
+          "visibleCodeChars": 0,
+          "sourceCodeChars": 0,
+          "visibleBodyTextChars": 1670,
+          "expectedBodyTextChars": 1726,
+          "finalMarkerVisible": false,
+          "highlightedSpans": 0
+        },
+        "inputUpdateP95Ms": 3.993797000000086,
+        "profilerRenderP95Ms": 1.843776999993679
+      },
+      "warm": {
+        "runs": 3,
+        "cpuMs": {
+          "min": 1457.486,
+          "median": 1517.181,
+          "max": 1714.271
+        },
+        "streamCpuMs": {
+          "min": 1430.615,
+          "median": 1489.512,
+          "max": 1687.312
+        },
+        "completionCpuMs": {
+          "min": 22.817,
+          "median": 25.172,
+          "max": 25.983
+        },
+        "totalWallMs": {
+          "min": 4823.656334999998,
+          "median": 4823.7341910000005,
+          "max": 4830.545062999998
+        },
+        "completionWallMs": {
+          "min": 17.948026000000027,
+          "median": 18.21096799999941,
+          "max": 20.59522399999696
+        },
+        "commits": {
+          "min": 1312,
+          "median": 1322,
+          "max": 1340
+        },
+        "renderMs": {
+          "min": 979.7076950003247,
+          "median": 990.973769000313,
+          "max": 1010.7800570002009
+        },
+        "preCompletion": [
+          {
+            "visibleCodeChars": 0,
+            "sourceCodeChars": 0,
+            "visibleBodyTextChars": 1671,
+            "expectedBodyTextChars": 1726,
+            "finalMarkerVisible": false,
+            "highlightedSpans": 0
+          },
+          {
+            "visibleCodeChars": 0,
+            "sourceCodeChars": 0,
+            "visibleBodyTextChars": 1669,
+            "expectedBodyTextChars": 1726,
+            "finalMarkerVisible": false,
+            "highlightedSpans": 0
+          },
+          {
+            "visibleCodeChars": 0,
+            "sourceCodeChars": 0,
+            "visibleBodyTextChars": 1668,
+            "expectedBodyTextChars": 1726,
+            "finalMarkerVisible": false,
+            "highlightedSpans": 0
+          }
+        ],
+        "inputUpdateP95Ms": {
+          "min": 3.0871969999989233,
+          "median": 3.5661650000001828,
+          "max": 3.777336999999534
+        },
+        "profilerRenderP95Ms": {
+          "min": 1.686628000006749,
+          "median": 1.6948190000002796,
+          "max": 1.7338009999948554
+        }
+      },
+      "audit": [
+        {
+          "run": 0,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 286
+        },
+        {
+          "run": 1,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 287
+        },
+        {
+          "run": 2,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 287
+        },
+        {
+          "run": 3,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 285
+        }
+      ]
+    },
+    {
+      "variant": "current",
+      "workload": {
+        "name": "plain-2kib",
+        "bytes": 2048,
+        "codeLines": 0,
+        "sha256": "b8f1b6cc3a97cdb16bb54b3c777e44123ef245a5813c685bac577e08f1858a89",
+        "batches": 100,
+        "inputIntervalMs": 48
+      },
+      "cold": {
+        "cpuMs": 476.07,
+        "streamCpuMs": 400.477,
+        "completionCpuMs": 24.048,
+        "totalWallMs": 4863.435156,
+        "completionWallMs": 9.90385200000037,
+        "commits": 102,
+        "renderMs": 261.31882900001074,
+        "preCompletion": {
+          "visibleCodeChars": 0,
+          "sourceCodeChars": 0,
+          "visibleBodyTextChars": 1726,
+          "expectedBodyTextChars": 1726,
+          "finalMarkerVisible": true,
+          "highlightedSpans": 0
+        },
+        "inputUpdateP95Ms": 5.825241999999889,
+        "profilerRenderP95Ms": 4.673139999998966
+      },
+      "warm": {
+        "runs": 3,
+        "cpuMs": {
+          "min": 290.617,
+          "median": 298.518,
+          "max": 539.699
+        },
+        "streamCpuMs": {
+          "min": 273.833,
+          "median": 284.834,
+          "max": 519.686
+        },
+        "completionCpuMs": {
+          "min": 10.958,
+          "median": 12.794,
+          "max": 18.022
+        },
+        "totalWallMs": {
+          "min": 4816.732475999999,
+          "median": 4820.265411,
+          "max": 4821.062970999999
+        },
+        "completionWallMs": {
+          "min": 6.990885999999591,
+          "median": 11.87744500000008,
+          "max": 11.950901000000158
+        },
+        "commits": {
+          "min": 102,
+          "median": 102,
+          "max": 102
+        },
+        "renderMs": {
+          "min": 128.23501699999906,
+          "median": 135.0028959999663,
+          "max": 135.13639199991485
+        },
+        "preCompletion": [
+          {
+            "visibleCodeChars": 0,
+            "sourceCodeChars": 0,
+            "visibleBodyTextChars": 1726,
+            "expectedBodyTextChars": 1726,
+            "finalMarkerVisible": true,
+            "highlightedSpans": 0
+          },
+          {
+            "visibleCodeChars": 0,
+            "sourceCodeChars": 0,
+            "visibleBodyTextChars": 1726,
+            "expectedBodyTextChars": 1726,
+            "finalMarkerVisible": true,
+            "highlightedSpans": 0
+          },
+          {
+            "visibleCodeChars": 0,
+            "sourceCodeChars": 0,
+            "visibleBodyTextChars": 1726,
+            "expectedBodyTextChars": 1726,
+            "finalMarkerVisible": true,
+            "highlightedSpans": 0
+          }
+        ],
+        "inputUpdateP95Ms": {
+          "min": 3.6257449999993696,
+          "median": 3.9395039999999426,
+          "max": 4.439005000000179
+        },
+        "profilerRenderP95Ms": {
+          "min": 1.8805720000036672,
+          "median": 2.029353000003539,
+          "max": 2.1212850000119943
+        }
+      },
+      "audit": [
+        {
+          "run": 0,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        },
+        {
+          "run": 1,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        },
+        {
+          "run": 2,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        },
+        {
+          "run": 3,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "workload": {
+        "name": "short-2kib",
+        "bytes": 2048,
+        "codeLines": 24,
+        "sha256": "acab253ce0c9ac8b3c600dc6cb5eb8b36d39c0262aa3d905213ae1b71f3c1716",
+        "batches": 100,
+        "inputIntervalMs": 48
+      },
+      "cold": {
+        "cpuMs": 3973.173,
+        "streamCpuMs": 3842.782,
+        "completionCpuMs": 89.862,
+        "totalWallMs": 4909.934316999999,
+        "completionWallMs": 67.61631900000066,
+        "commits": 1234,
+        "renderMs": 1530.0102299999676,
+        "preCompletion": {
+          "visibleCodeChars": 1127,
+          "sourceCodeChars": 1127,
+          "finalMarkerVisible": false,
+          "highlightedSpans": 216
+        },
+        "inputUpdateP95Ms": 18.966795000000275,
+        "profilerRenderP95Ms": 3.7929699999940567
+      },
+      "warm": {
+        "runs": 3,
+        "cpuMs": {
+          "min": 2566.061,
+          "median": 2827.528,
+          "max": 3235.754
+        },
+        "streamCpuMs": {
+          "min": 2477.848,
+          "median": 2678.65,
+          "max": 3115.483
+        },
+        "completionCpuMs": {
+          "min": 82.868,
+          "median": 113.27,
+          "max": 147.028
+        },
+        "totalWallMs": {
+          "min": 4870.024337999999,
+          "median": 4873.009095000001,
+          "max": 4883.044469
+        },
+        "completionWallMs": {
+          "min": 61.00375600000007,
+          "median": 63.77311099999861,
+          "max": 73.71914399999878
+        },
+        "commits": {
+          "min": 1357,
+          "median": 1404,
+          "max": 1465
+        },
+        "renderMs": {
+          "min": 1313.148455999526,
+          "median": 1365.6223350000564,
+          "max": 1415.6976090003482
+        },
+        "preCompletion": [
+          {
+            "visibleCodeChars": 1127,
+            "sourceCodeChars": 1127,
+            "finalMarkerVisible": false,
+            "highlightedSpans": 216
+          },
+          {
+            "visibleCodeChars": 1127,
+            "sourceCodeChars": 1127,
+            "finalMarkerVisible": false,
+            "highlightedSpans": 216
+          },
+          {
+            "visibleCodeChars": 1127,
+            "sourceCodeChars": 1127,
+            "finalMarkerVisible": false,
+            "highlightedSpans": 216
+          }
+        ],
+        "inputUpdateP95Ms": {
+          "min": 7.269414999998844,
+          "median": 9.47327899999982,
+          "max": 11.578182000001107
+        },
+        "profilerRenderP95Ms": {
+          "min": 2.799868999991304,
+          "median": 3.2183249999980035,
+          "max": 3.2636689999817463
+        }
+      },
+      "audit": [
+        {
+          "run": 0,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 253
+        },
+        {
+          "run": 1,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 279
+        },
+        {
+          "run": 2,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 278
+        },
+        {
+          "run": 3,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 284
+        }
+      ]
+    },
+    {
+      "variant": "current",
+      "workload": {
+        "name": "short-2kib",
+        "bytes": 2048,
+        "codeLines": 24,
+        "sha256": "acab253ce0c9ac8b3c600dc6cb5eb8b36d39c0262aa3d905213ae1b71f3c1716",
+        "batches": 100,
+        "inputIntervalMs": 48
+      },
+      "cold": {
+        "cpuMs": 1528.065,
+        "streamCpuMs": 1448.91,
+        "completionCpuMs": 37.571,
+        "totalWallMs": 4854.234365,
+        "completionWallMs": 15.213256000000001,
+        "commits": 104,
+        "renderMs": 917.55657199999,
+        "preCompletion": {
+          "visibleCodeChars": 1127,
+          "sourceCodeChars": 1127,
+          "finalMarkerVisible": true,
+          "highlightedSpans": 144
+        },
+        "inputUpdateP95Ms": 11.731080000000475,
+        "profilerRenderP95Ms": 10.510973000001286
+      },
+      "warm": {
+        "runs": 3,
+        "cpuMs": {
+          "min": 670.761,
+          "median": 760.31,
+          "max": 894.808
+        },
+        "streamCpuMs": {
+          "min": 652.863,
+          "median": 742.507,
+          "max": 877.089
+        },
+        "completionCpuMs": {
+          "min": 13.815,
+          "median": 15.338,
+          "max": 16.708
+        },
+        "totalWallMs": {
+          "min": 4818.548599999998,
+          "median": 4820.930125999999,
+          "max": 4821.346691999999
+        },
+        "completionWallMs": {
+          "min": 10.194694000001618,
+          "median": 12.283825000000434,
+          "max": 13.25695099999939
+        },
+        "commits": {
+          "min": 104,
+          "median": 104,
+          "max": 104
+        },
+        "renderMs": {
+          "min": 450.69694799984427,
+          "median": 466.0072140001266,
+          "max": 500.69199699995534
+        },
+        "preCompletion": [
+          {
+            "visibleCodeChars": 1127,
+            "sourceCodeChars": 1127,
+            "finalMarkerVisible": true,
+            "highlightedSpans": 144
+          },
+          {
+            "visibleCodeChars": 1127,
+            "sourceCodeChars": 1127,
+            "finalMarkerVisible": true,
+            "highlightedSpans": 144
+          },
+          {
+            "visibleCodeChars": 1127,
+            "sourceCodeChars": 1127,
+            "finalMarkerVisible": true,
+            "highlightedSpans": 144
+          }
+        ],
+        "inputUpdateP95Ms": {
+          "min": 9.618387999998959,
+          "median": 10.580573999999615,
+          "max": 11.139971000000514
+        },
+        "profilerRenderP95Ms": {
+          "min": 7.422935999980837,
+          "median": 8.218125000004875,
+          "max": 8.766643000004478
+        }
+      },
+      "audit": [
+        {
+          "run": 0,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        },
+        {
+          "run": 1,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        },
+        {
+          "run": 2,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        },
+        {
+          "run": 3,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        }
+      ]
+    },
+    {
+      "variant": "baseline",
+      "workload": {
+        "name": "long-100kib",
+        "bytes": 102400,
+        "codeLines": 2000,
+        "sha256": "e07bbf6a10bc742e7ec9eb19a6eb4bbe23c246117a056feacb1cf2ff1aa63e10",
+        "batches": 100,
+        "inputIntervalMs": 48
+      },
+      "cold": {
+        "cpuMs": 9003.875,
+        "streamCpuMs": 5095.498,
+        "completionCpuMs": 3861.558,
+        "totalWallMs": 7661.318045999999,
+        "completionWallMs": 2783.5987670000004,
+        "commits": 1212,
+        "renderMs": 2923.529583000167,
+        "preCompletion": {
+          "visibleCodeChars": 1647,
+          "sourceCodeChars": 93999,
+          "finalMarkerVisible": false,
+          "highlightedSpans": 316
+        },
+        "inputUpdateP95Ms": 12.385851000000002,
+        "profilerRenderP95Ms": 5.219170999991547
+      },
+      "warm": {
+        "runs": 3,
+        "cpuMs": {
+          "min": 4861.542,
+          "median": 5104.812,
+          "max": 5606.566
+        },
+        "streamCpuMs": {
+          "min": 2696.421,
+          "median": 2872.236,
+          "max": 3415.969
+        },
+        "completionCpuMs": {
+          "min": 1986.814,
+          "median": 2186.541,
+          "max": 2407.034
+        },
+        "totalWallMs": {
+          "min": 6493.562447999997,
+          "median": 6498.717596000002,
+          "max": 6544.923004000002
+        },
+        "completionWallMs": {
+          "min": 1627.8648140000005,
+          "median": 1647.418404,
+          "max": 1694.5047080000004
+        },
+        "commits": {
+          "min": 1426,
+          "median": 1447,
+          "max": 1482
+        },
+        "renderMs": {
+          "min": 2725.2914530012786,
+          "median": 2776.2342740001186,
+          "max": 2915.207381000033
+        },
+        "preCompletion": [
+          {
+            "visibleCodeChars": 1887,
+            "sourceCodeChars": 93999,
+            "finalMarkerVisible": false,
+            "highlightedSpans": 363
+          },
+          {
+            "visibleCodeChars": 1975,
+            "sourceCodeChars": 93999,
+            "finalMarkerVisible": false,
+            "highlightedSpans": 379
+          },
+          {
+            "visibleCodeChars": 2023,
+            "sourceCodeChars": 93999,
+            "finalMarkerVisible": false,
+            "highlightedSpans": 388
+          }
+        ],
+        "inputUpdateP95Ms": {
+          "min": 10.007850999998482,
+          "median": 11.945838999999978,
+          "max": 12.22943800000212
+        },
+        "profilerRenderP95Ms": {
+          "min": 4.3760849999962375,
+          "median": 4.3761929999927816,
+          "max": 5.068427999969572
+        }
+      },
+      "audit": [
+        {
+          "run": 0,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 238
+        },
+        {
+          "run": 1,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 268
+        },
+        {
+          "run": 2,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 281
+        },
+        {
+          "run": 3,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 286
+        }
+      ]
+    },
+    {
+      "variant": "current",
+      "workload": {
+        "name": "long-100kib",
+        "bytes": 102400,
+        "codeLines": 2000,
+        "sha256": "e07bbf6a10bc742e7ec9eb19a6eb4bbe23c246117a056feacb1cf2ff1aa63e10",
+        "batches": 100,
+        "inputIntervalMs": 48
+      },
+      "cold": {
+        "cpuMs": 7913.392,
+        "streamCpuMs": 7319.323,
+        "completionCpuMs": 552.965,
+        "totalWallMs": 6391.159416999999,
+        "completionWallMs": 397.580747,
+        "commits": 104,
+        "renderMs": 3125.086199999746,
+        "preCompletion": {
+          "visibleCodeChars": 93999,
+          "sourceCodeChars": 93999,
+          "finalMarkerVisible": true,
+          "highlightedSpans": 12000
+        },
+        "inputUpdateP95Ms": 89.5551319999995,
+        "profilerRenderP95Ms": 58.15700000000015
+      },
+      "warm": {
+        "runs": 3,
+        "cpuMs": {
+          "min": 5492.018,
+          "median": 5595.703,
+          "max": 5731.569
+        },
+        "streamCpuMs": {
+          "min": 5122.077,
+          "median": 5233.896,
+          "max": 5321.62
+        },
+        "completionCpuMs": {
+          "min": 360.71,
+          "median": 368.934,
+          "max": 405.388
+        },
+        "totalWallMs": {
+          "min": 5783.434400000002,
+          "median": 5786.072205,
+          "max": 5935.363148999999
+        },
+        "completionWallMs": {
+          "min": 335.5588060000009,
+          "median": 345.71784299999854,
+          "max": 346.08231400000113
+        },
+        "commits": {
+          "min": 104,
+          "median": 104,
+          "max": 104
+        },
+        "renderMs": {
+          "min": 2149.512914000119,
+          "median": 2249.1346929996253,
+          "max": 2264.576011000072
+        },
+        "preCompletion": [
+          {
+            "visibleCodeChars": 93999,
+            "sourceCodeChars": 93999,
+            "finalMarkerVisible": true,
+            "highlightedSpans": 12000
+          },
+          {
+            "visibleCodeChars": 93999,
+            "sourceCodeChars": 93999,
+            "finalMarkerVisible": true,
+            "highlightedSpans": 12000
+          },
+          {
+            "visibleCodeChars": 93999,
+            "sourceCodeChars": 93999,
+            "finalMarkerVisible": true,
+            "highlightedSpans": 12000
+          }
+        ],
+        "inputUpdateP95Ms": {
+          "min": 66.68399799999679,
+          "median": 67.74619799999891,
+          "max": 72.3356309999981
+        },
+        "profilerRenderP95Ms": {
+          "min": 26.808310999942478,
+          "median": 29.529029000030278,
+          "max": 31.039970999991056
+        }
+      },
+      "audit": [
+        {
+          "run": 0,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        },
+        {
+          "run": 1,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        },
+        {
+          "run": 2,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        },
+        {
+          "run": 3,
+          "driverRenderCalls": 102,
+          "rootCreateCount": 1,
+          "mountCommits": 1,
+          "animationFrameCallbacks": 0
+        }
+      ]
+    }
+  ]
+}

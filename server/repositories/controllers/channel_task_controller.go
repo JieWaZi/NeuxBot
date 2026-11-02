@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ChannelTaskController 定义团队任务板、尝试、补充和负责人通知的持久化操作。
@@ -51,8 +53,8 @@ type ChannelTaskController interface {
 	CreateFollowUp(ctx context.Context, followUp models.ChannelTaskFollowUp) error
 	// ListPendingFollowUps 按创建顺序返回任务尚未交付的用户补充。
 	ListPendingFollowUps(ctx context.Context, taskID string) ([]models.ChannelTaskFollowUp, error)
-	// ListFollowUps 按创建顺序返回任务的全部补充，用于稳定公开负责人协调消息。
-	ListFollowUps(ctx context.Context, taskID string) ([]models.ChannelTaskFollowUp, error)
+	// ListTimelineFollowUps 按团队和可见性读取时间游标之前的有界补充窗口。
+	ListTimelineFollowUps(ctx context.Context, threadID string, taskIDs []string, beforeCreatedAt int64, beforeRole constants.MessageRole, beforeID string, limit int) ([]models.ChannelTaskFollowUp, error)
 	// MarkFollowUpsDelivered 把一批用户补充原子归属到指定任务尝试。
 	MarkFollowUpsDelivered(ctx context.Context, ids []string, attemptID string, deliveredAt int64) error
 	// ReleaseAttemptFollowUps 释放尚未成功启动的尝试已经领取的补充。
@@ -551,7 +553,7 @@ func (c *channelTaskController) FailRunningAttempt(
 	if attemptResult.RowsAffected != 1 {
 		return false, status_error.ChannelTaskAttemptStale
 	}
-	publishCommittedChange(ctx, c.db, "work-board", eventsResource("global", ""))
+	publishCommittedChange(ctx, c.db, "work-board", eventsResource("task", taskID))
 	return true, nil
 }
 
@@ -622,19 +624,62 @@ func (c *channelTaskController) ListPendingFollowUps(
 	return followUps, nil
 }
 
-// ListFollowUps 按创建顺序返回任务的全部补充。
-func (c *channelTaskController) ListFollowUps(
+// ListTimelineFollowUps 只读取当前团队可公开的待投递用户补充和负责人协调消息。
+func (c *channelTaskController) ListTimelineFollowUps(
 	ctx context.Context,
-	taskID string,
+	threadID string,
+	taskIDs []string,
+	beforeCreatedAt int64,
+	beforeRole constants.MessageRole,
+	beforeID string,
+	limit int,
 ) ([]models.ChannelTaskFollowUp, error) {
 	followUps := []models.ChannelTaskFollowUp{}
-	err := controllerDB(ctx, c.db).
-		Where("task_id = ?", taskID).
-		Order("created_at ASC, id ASC").
-		Find(&followUps).Error
-	if err != nil {
-		return nil, databaseError("list_all_channel_task_follow_ups", "task_id="+taskID, err)
+	if limit < 1 || len(taskIDs) == 0 {
+		return followUps, nil
 	}
+	db := controllerDB(ctx, c.db)
+	// 只在已确定且有固定上限的团队任务集合内读取；每项仅读有序候选窗口。
+	for _, taskID := range taskIDs {
+		window := []models.ChannelTaskFollowUp{}
+		query := db.Where("task_id = ?", taskID).Where("task_id IN (?)", db.Model(&models.ChannelTask{}).Select("id").Where("thread_id = ?", threadID)).
+			Where("actor = ? OR ((actor = ? OR actor = '') AND delivered_at IS NULL)", constants.ChannelMessageActorLead, constants.ChannelMessageActorUser)
+		if beforeCreatedAt > 0 {
+			roleRank := 0
+			if beforeRole == constants.MessageRoleAssistant {
+				roleRank = 1
+			}
+			sameTime := "CASE WHEN actor = ? THEN 1 ELSE 0 END < ?"
+			values := []interface{}{beforeCreatedAt, beforeCreatedAt, constants.ChannelMessageActorLead, roleRank}
+			if beforeID == "" {
+				sameTime = "CASE WHEN actor = ? THEN 1 ELSE 0 END <= ?"
+			} else {
+				sameTime += " OR (CASE WHEN actor = ? THEN 1 ELSE 0 END = ? AND id < ?)"
+				values = append(values, constants.ChannelMessageActorLead, roleRank, beforeID)
+			}
+			query = query.Where("created_at < ? OR (created_at = ? AND ("+sameTime+"))", values...)
+		}
+		err := query.Order(clause.OrderBy{Expression: clause.Expr{SQL: fmt.Sprintf("created_at DESC, CASE WHEN actor = '%s' THEN 1 ELSE 0 END DESC, id DESC", constants.ChannelMessageActorLead), WithoutParentheses: true}}).Limit(limit).Find(&window).Error
+		if err != nil {
+			return nil, databaseError("list_timeline_channel_task_follow_ups", "thread_id="+threadID, err)
+		}
+		followUps = append(followUps, window...)
+	}
+	// 每项候选均有界；全局合并只处理至多任务数乘以窗口上限的公开输入。
+	sort.Slice(followUps, func(left, right int) bool {
+		a, b := followUps[left], followUps[right]
+		if a.CreatedAt != b.CreatedAt {
+			return a.CreatedAt > b.CreatedAt
+		}
+		if (a.Actor == constants.ChannelMessageActorLead) != (b.Actor == constants.ChannelMessageActorLead) {
+			return a.Actor == constants.ChannelMessageActorLead
+		}
+		return a.ID > b.ID
+	})
+	if len(followUps) > limit {
+		followUps = followUps[:limit]
+	}
+
 	return followUps, nil
 }
 

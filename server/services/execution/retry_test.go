@@ -1,6 +1,8 @@
 package execution
 
 import (
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,8 +16,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -27,55 +29,60 @@ type retryTestRuntime struct {
 	// mutex 保护并发运行和测试读取的请求集合。
 	mutex sync.Mutex
 	// requests 保存真正交给 Runtime 的输入。
-	requests []runtimes.RunRequest
+	requests []recordedRun
 	// result 是每个回合返回的失败事实。
-	result runtimes.Result
+	result agentapi.Result
 	// output 是可选的已观察正文，用于证明不能仅相信失败标签。
 	output string
 	// tool 表示 Runtime 已交付工具调用，但测试故意省略结果中的副作用标记。
 	tool bool
 }
 
-func (r *retryTestRuntime) Runtimes() []runtimes.RuntimeSummary { return (&fakeRuntime{}).Runtimes() }
+func (r *retryTestRuntime) Runtimes() []agentapi.RuntimeSummary {
+	return (&fakeRuntime{}).Runtimes()
+}
 
 // ForkSession 保持测试替身与当前 Runtime 契约一致；重试用例不调用分叉。
-func (r *retryTestRuntime) ForkSession(ctx context.Context, request runtimes.ForkSessionRequest) (runtimes.ForkSessionResult, error) {
+func (r *retryTestRuntime) ForkSession(ctx context.Context, request agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
 	return (&fakeRuntime{}).ForkSession(ctx, request)
 }
 
-func (r *retryTestRuntime) Run(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
+func (r *retryTestRuntime) Run(ctx context.Context, request recordedRun, sink agentapi.EventSink) agentapi.Result {
 	r.mutex.Lock()
 	r.requests = append(r.requests, request)
 	result, output, tool := r.result, r.output, r.tool
 	r.mutex.Unlock()
 	id := util.New()
-	if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeInvocationStarted, Data: marshalData(runtimes.InvocationStartedData{InvocationID: id})}); err != nil {
-		return runtimes.Result{Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery}}
+	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: marshalData(agentapi.InvocationStartedData{InvocationID: id})}); err != nil {
+		return agentapi.Result{Failure: &agentapi.Failure{Code: agentapi.FailureCodeEventDelivery}}
 	}
 	if output != "" {
-		if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeTextDelta, Data: marshalData(map[string]string{"text": output})}); err != nil {
-			return runtimes.Result{Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery}}
+		if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeTextDelta, Data: marshalData(map[string]string{"text": output})}); err != nil {
+			return agentapi.Result{Failure: &agentapi.Failure{Code: agentapi.FailureCodeEventDelivery}}
 		}
 	}
 	if tool {
-		if err := sink.Accept(ctx, runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"id": "tool-1", "name": "Bash"})}); err != nil {
-			return runtimes.Result{Failure: &runtimes.Failure{Code: runtimes.FailureCodeEventDelivery}}
+		if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"id": "tool-1", "name": "Bash"})}); err != nil {
+			return agentapi.Result{Failure: &agentapi.Failure{Code: agentapi.FailureCodeEventDelivery}}
 		}
 	}
-	result.Facts = runtimes.InvocationFacts{InvocationID: id, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: runtimes.RuntimeIDCodex}
+	result.Facts = agentapi.InvocationFacts{InvocationID: id, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: agentapi.RuntimeIDCodex}
 	result.Session.Mode = request.Session.Mode
 	return result
 }
 
+// CloseWorkspace 的同步测试消费者已经退出，无需另行持有工作区资源。
+func (r *retryTestRuntime) CloseWorkspace(context.Context, string) error { return nil }
+
 // retryableTestResult 构造无输出、无工具且保留可靠会话的限流终态。
-func retryableTestResult() runtimes.Result {
-	return runtimes.Result{ExitCode: -1, Session: runtimes.SessionResult{OutputID: "native-session", State: runtimes.SessionStateCreated}, Failure: &runtimes.Failure{Code: runtimes.FailureCodeRateLimited, Transience: runtimes.FailureTransienceTransient}}
+func retryableTestResult() agentapi.Result {
+	return agentapi.Result{ExitCode: -1, Session: agentapi.SessionResult{OutputID: "native-session", State: agentapi.SessionStateCreated}, Failure: &agentapi.Failure{Code: agentapi.FailureCodeRateLimited, Transience: agentapi.FailureTransienceTransient}}
 }
 
 // retryTestIntent 构造直接来自用户且可进入重试流程的原始输入。
 func retryTestIntent(t *testing.T) WorkIntent {
 	t.Helper()
-	return WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "原始问题"}, Options: WorkOptions{RuntimeID: runtimes.RuntimeIDCodex, Model: "gpt-5", Reasoning: "high", PermissionLevel: runtimes.PermissionLevelFullAccess, WorkspaceReadOnly: true, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+	return WorkIntent{ClientRequestID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "原始问题"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, Model: "gpt-5", Reasoning: "high", PermissionLevel: agentapi.PermissionLevelFullAccess, WorkspaceReadOnly: true, SessionPolicy: constants.RuntimeSessionPolicyContinue}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 }
 
 // retryTestStart 提交并等待原始失败完全释放执行占位。
@@ -108,19 +115,19 @@ func TestRuntimeFailureRetryableRequiresSafeReplay(t *testing.T) {
 		// name 描述导致不安全重放的条件。
 		name string
 		// change 注入单一风险信号。
-		change func(*runtimes.Result)
+		change func(*agentapi.Result)
 	}{
-		{"visible output", func(r *runtimes.Result) { r.SideEffects.VisibleOutput = true }},
-		{"reasoning", func(r *runtimes.Result) { r.SideEffects.ReasoningOutput = true }},
-		{"tool", func(r *runtimes.Result) { r.Failure.SideEffects.ToolUse = true }},
-		{"write", func(r *runtimes.Result) { r.SideEffects.FileWrite = true }},
-		{"artifact", func(r *runtimes.Result) { r.SideEffects.Artifact = true }},
-		{"unknown session", func(r *runtimes.Result) { r.Session.State = runtimes.SessionStateUnknown }},
-		{"missing session", func(r *runtimes.Result) { r.Session.OutputID = "" }},
-		{"quota", func(r *runtimes.Result) { r.Failure.Code = runtimes.FailureCodeQuotaExhausted }},
-		{"auth", func(r *runtimes.Result) { r.Failure.Code = runtimes.FailureCodeAuthRequired }},
-		{"undelivered events", func(r *runtimes.Result) { r.UndeliveredEvents = 1 }},
-		{"undelivered bytes", func(r *runtimes.Result) { r.UndeliveredBytes = 1 }},
+		{"visible output", func(r *agentapi.Result) { r.SideEffects.VisibleOutput = true }},
+		{"reasoning", func(r *agentapi.Result) { r.SideEffects.ReasoningOutput = true }},
+		{"tool", func(r *agentapi.Result) { r.Failure.SideEffects.ToolUse = true }},
+		{"write", func(r *agentapi.Result) { r.SideEffects.FileWrite = true }},
+		{"artifact", func(r *agentapi.Result) { r.SideEffects.Artifact = true }},
+		{"unknown session", func(r *agentapi.Result) { r.Session.State = agentapi.SessionStateUnknown }},
+		{"missing session", func(r *agentapi.Result) { r.Session.OutputID = "" }},
+		{"quota", func(r *agentapi.Result) { r.Failure.Code = agentapi.FailureCodeQuotaExhausted }},
+		{"auth", func(r *agentapi.Result) { r.Failure.Code = agentapi.FailureCodeAuthRequired }},
+		{"undelivered events", func(r *agentapi.Result) { r.UndeliveredEvents = 1 }},
+		{"undelivered bytes", func(r *agentapi.Result) { r.UndeliveredBytes = 1 }},
 	}
 	if !runtimeFailureRetryable(retryableTestResult()) {
 		t.Fatal("可靠限流未允许重试")
@@ -177,7 +184,7 @@ func TestRetryExecutionRestoresInputAndHasStableChild(t *testing.T) {
 		t.Fatalf("重试不幂等：%+v %v", repeated, err)
 	}
 	runner.mutex.Lock()
-	requests := append([]runtimes.RunRequest(nil), runner.requests...)
+	requests := append([]recordedRun(nil), runner.requests...)
 	runner.mutex.Unlock()
 	if len(requests) != 2 {
 		t.Fatalf("重复派发：%d", len(requests))
@@ -186,7 +193,7 @@ func TestRetryExecutionRestoresInputAndHasStableChild(t *testing.T) {
 	if second.Message.Text != first.Message.Text || !reflect.DeepEqual(second.Message.CodeReferences, first.Message.CodeReferences) || !reflect.DeepEqual(second.Skills, first.Skills) || !reflect.DeepEqual(second.Connectors, first.Connectors) || !reflect.DeepEqual(second.Policy, first.Policy) {
 		t.Fatalf("重试改变了输入选项：\nfirst=%+v\nsecond=%+v", first, second)
 	}
-	if second.Session.Mode != runtimes.SessionModeResume || second.Session.ID != "native-session" {
+	if second.Session.Mode != agentapi.SessionModeResume || second.Session.ID != "native-session" {
 		t.Fatalf("重试重新播种了会话：%+v", second.Session)
 	}
 	if len(second.Message.Attachments) != 1 {
@@ -212,7 +219,7 @@ func TestRetryExecutionRejectsOutputAndClearedSession(t *testing.T) {
 			original := retryTestStart(t, manager, retryTestIntent(t))
 			core := manager.execution.(*service)
 			if condition == "cleared session" {
-				if _, err := core.journal.AppendExecutionFacts(context.Background(), original.Chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeNativeSessionCleared, ExecutionID: original.Execution.ID, Data: marshalData(eventlog.RuntimeSessionData{RuntimeID: runtimes.RuntimeIDCodex})}}); err != nil {
+				if _, err := core.journal.AppendExecutionFacts(context.Background(), original.Chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeNativeSessionCleared, ExecutionID: original.Execution.ID, Data: marshalData(eventlog.RuntimeSessionData{RuntimeID: agentapi.RuntimeIDCodex})}}); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -233,7 +240,7 @@ func TestRetryExecutionRejectsOutputAndClearedSession(t *testing.T) {
 // retryRaceKey 标识需要在获取旧快照后暂停的测试请求。
 type retryRaceKey struct{}
 
-// retryRaceJournal 在重试调用的第二次读取后暂停，构造普通发送先完成的真实竞争窗口。
+// retryRaceJournal 在重试用例预检读取后暂停，构造普通发送先完成的真实竞争窗口。
 type retryRaceJournal struct {
 	// Journal 复用真实权威存储和提交行为。
 	chatservice.Journal
@@ -247,7 +254,7 @@ type retryRaceJournal struct {
 
 func (j *retryRaceJournal) LoadExecutionContext(ctx context.Context, chatID string) (chatservice.ExecutionContext, error) {
 	snapshot, err := j.Journal.LoadExecutionContext(ctx, chatID)
-	if ctx.Value(retryRaceKey{}) == true && j.loads.Add(1) == 2 {
+	if ctx.Value(retryRaceKey{}) == true && j.loads.Add(1) == 1 {
 		close(j.entered)
 		select {
 		case <-j.proceed:
@@ -360,4 +367,9 @@ func TestRetryExecutionConcurrentRequestsShareOneChild(t *testing.T) {
 	if count != 3 {
 		t.Fatalf("并发请求被重复派发：%d", count)
 	}
+}
+
+// PrepareSession 让执行层显式交还资源后使用本类型的执行行为。
+func (r *retryTestRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
+	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
 }

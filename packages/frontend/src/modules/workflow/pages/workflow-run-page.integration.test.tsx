@@ -16,6 +16,7 @@ import {
 import "@/shared/i18n";
 import { installCanvasDOM } from "../test/canvas-dom";
 import { client } from "@/shared/api/generated/client.gen";
+import type { GlobalEventObserver } from "@/shared/api/global-events";
 import type {
   GetWorkflowRunResponse,
   GetWorkflowInstanceResponse,
@@ -24,17 +25,33 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 import { WorkflowRunView } from "../components/run-view";
 
 const subscription = vi.hoisted(() => ({
-  refresh: undefined as (() => void) | undefined,
+  listeners: new Set<GlobalEventObserver>(),
+  legacy: undefined as ((event?: { type: string }) => void) | undefined,
+  refresh: (event: { type: string } = { type: "workflow.run.changed" }) => {
+    subscription.legacy?.(event);
+    for (const observer of subscription.listeners)
+      observer.onEvent({
+        protocolVersion: 1,
+        epoch: "test",
+        connectionId: "test",
+        deliverySequence: 1,
+        eventId: event.type,
+        type: "workflow.event",
+        topic: "workflow",
+        resource: { kind: "workflow", id: "flow-1", parentId: "run-1" },
+        payload: event,
+      });
+  },
 }));
 vi.mock("@/shared/api/events", () => ({
   subscribeWorkflow: (
     _id: string,
     options: { onEvent: () => void; onState?: (state: "open") => void },
   ) => {
-    subscription.refresh = options.onEvent;
+    subscription.legacy = options.onEvent;
     options.onState?.("open");
     return () => {
-      subscription.refresh = undefined;
+      subscription.legacy = undefined;
     };
   },
 }));
@@ -153,6 +170,7 @@ beforeEach(() => {
       async ({ request }) => {
         answers.push(await request.json());
         snapshot = { ...snapshot, humanRequests: [] };
+        subscription.refresh();
         return HttpResponse.json({ success: true });
       },
     ),
@@ -161,6 +179,7 @@ beforeEach(() => {
       async ({ request }) => {
         permissions.push(await request.json());
         snapshot = { ...snapshot, operationRequests: [] };
+        subscription.refresh();
         return HttpResponse.json({ success: true });
       },
     ),
@@ -169,6 +188,7 @@ beforeEach(() => {
         ...snapshot,
         run: { ...snapshot.run, status: "cancelled", completedAt: 2 },
       };
+      subscription.refresh();
       return HttpResponse.json({ success: true });
     }),
   );
@@ -490,9 +510,11 @@ it("停止需要确认，并在服务端终态返回后禁用操作", async () =
   await waitFor(() =>
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
   );
-  expect(
-    screen.queryByRole("button", { name: "停止运行" }),
-  ).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "停止运行" }),
+    ).not.toBeInTheDocument(),
+  );
 });
 
 it("失败运行提供此次运行的优化入口，不显示停止或人工对账", async () => {
@@ -521,5 +543,38 @@ it("失败运行提供此次运行的优化入口，不显示停止或人工对�
 
 vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
-  subscribeGlobalEvents: () => () => {},
+  subscribeGlobalEvents: (
+    _topic: string,
+    _resource: unknown,
+    observer: GlobalEventObserver,
+  ) => {
+    subscription.listeners.add(observer);
+    return () => subscription.listeners.delete(observer);
+  },
 }));
+
+it("普通运行日志不重读整运行，状态事件和恢复仍读取权威快照", async () => {
+  snapshot.humanRequests = [];
+  snapshot.operationRequests = [];
+  let reads = 0;
+  server.use(
+    http.get(`${api}/runs/run-1`, () => {
+      reads++;
+      return HttpResponse.json(snapshot);
+    }),
+  );
+  const view = renderRun();
+  await screen.findByRole("button", { name: "输入参数" });
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  const before = reads;
+  act(() => subscription.refresh?.({ type: "workflow.log" }));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+  });
+  expect(reads).toBe(before);
+  act(() => subscription.refresh?.({ type: "workflow.run.changed" }));
+  await waitFor(() => expect(reads).toBe(before + 1));
+  view.unmount();
+});

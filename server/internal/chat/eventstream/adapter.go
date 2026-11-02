@@ -24,8 +24,12 @@ type PublicEvent struct {
 	Type constants.ChatEventType `json:"type"`
 	// ExecutionID 是事件所属执行标识；Chat 级事件为空。
 	ExecutionID string `json:"-"`
-	// Message 是该事件产生的安全消息增量快照。
+	// Live 是尚未持久化的有序安全消息增量。
+	Live *LiveMessageIncrement `json:"live,omitempty"`
+	// Message 是该持久事件产生的完整安全消息快照。
 	Message *messageview.Message `json:"message,omitempty"`
+	// FileChanges 是可晚于执行终态提交的最小成果引用，不携带历史正文。
+	FileChanges *FileChangesUpdate `json:"fileChanges,omitempty"`
 	// ExecutionStatus 是执行生命周期事件的公开状态。
 	ExecutionStatus constants.ExecutionStatus `json:"executionStatus,omitempty"`
 	// ErrorCode 是失败时供界面映射的稳定错误码。
@@ -40,6 +44,14 @@ type PublicEvent struct {
 	ElicitationRequest *eventlog.ElicitationRequestedData `json:"elicitationRequest,omitempty"`
 	// ElicitationResolution 是结构化输入处理事件携带的安全权威结果。
 	ElicitationResolution *eventlog.ElicitationResolvedData `json:"elicitationResolution,omitempty"`
+}
+
+// FileChangesUpdate 独立更新已有消息的成果元数据。
+type FileChangesUpdate struct {
+	// MessageID 是成果所属的稳定消息标识。
+	MessageID string `json:"messageId"`
+	// Record 是耐久文件结果的定位与覆盖状态。
+	Record eventlog.FileChangesData `json:"record"`
 }
 
 // Adapter 将各 Runtime 的权威日志统一转换为前端事件，封装增量状态与脱敏边界。
@@ -146,8 +158,14 @@ func (a *Adapter) apply(record eventlog.Record, emit bool) (PublicEvent, error) 
 		}
 		event.ElicitationResolution = &resolved
 	}
-	if messageID != "" {
-		a.messageRevisions[messageID] = max(a.messageRevisions[messageID], a.messageView.MessageRevision(messageID))
+	if record.Type == constants.ChatEventTypeFileChanges {
+		var reference eventlog.FileChangesData
+		if err := json.Unmarshal(record.Data, &reference); err != nil || reference.RecordID == "" || reference.Version < 1 {
+			return PublicEvent{}, status_error.ChatLogCorrupted
+		}
+		event.FileChanges = &FileChangesUpdate{MessageID: record.MessageID, Record: reference}
+	} else if messageID != "" {
+		a.messageRevisions[messageID] = max(a.messageRevisions[messageID], a.messageView.MessageLiveRevision(messageID))
 		if emit {
 			event.Message = a.messageView.PublicMessage(messageID)
 		}
@@ -201,6 +219,37 @@ func isExecutionTerminalRecord(eventType constants.ChatEventType) bool {
 // ClonePublicEvent 深拷贝公开事件中包含的可变消息数据。
 func ClonePublicEvent(event PublicEvent) PublicEvent {
 	clone := event
+	if event.FileChanges != nil {
+		update := *event.FileChanges
+		clone.FileChanges = &update
+	}
+	if event.Live != nil {
+		live := *event.Live
+		live.Updates = append([]messageview.MessageIncrement(nil), event.Live.Updates...)
+		for i, update := range live.Updates {
+			live.Updates[i].Parts = append([]messageview.MessagePartIncrement(nil), update.Parts...)
+			for j, operation := range update.Parts {
+				if operation.Part != nil {
+					part := *operation.Part
+					if part.ToolSafeSummary != nil {
+						summary := *part.ToolSafeSummary
+						summary.Files = append([]messageview.ToolFileChangeSummary(nil), summary.Files...)
+						part.ToolSafeSummary = &summary
+					}
+					if part.ToolApprovalResult != nil {
+						result := *part.ToolApprovalResult
+						part.ToolApprovalResult = &result
+					}
+					live.Updates[i].Parts[j].Part = &part
+				}
+			}
+			if update.RunMetrics != nil {
+				metrics := *update.RunMetrics
+				live.Updates[i].RunMetrics = &metrics
+			}
+		}
+		clone.Live = &live
+	}
 	if event.ApprovalRequest != nil {
 		request := *event.ApprovalRequest
 		request.Options = append([]eventlog.ApprovalOptionData(nil), request.Options...)
@@ -232,6 +281,10 @@ func ClonePublicEvent(event PublicEvent) PublicEvent {
 	}
 	if event.Message != nil {
 		message := *event.Message
+		if event.Message.Fork != nil {
+			fork := *event.Message.Fork
+			message.Fork = &fork
+		}
 		message.Attachments = append([]eventlog.AttachmentReference(nil), event.Message.Attachments...)
 		message.Skills = append([]eventlog.MessageSkillReference(nil), event.Message.Skills...)
 		message.Connectors = append([]eventlog.MessageConnectorReference(nil), event.Message.Connectors...)

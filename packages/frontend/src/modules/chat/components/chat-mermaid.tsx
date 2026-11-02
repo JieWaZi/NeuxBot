@@ -8,13 +8,22 @@ import {
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { mermaid } from "./chat-mermaid-plugin";
 
 import { Button } from "@/shared/ui/button";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { useTheme } from "@/shared/theme";
+import { ContentVisibility } from "@/shared/lib/content-visibility";
+import { Skeleton } from "@/shared/ui/skeleton";
 
 import { copyPlainText, downloadTextFile } from "./chat-markdown-export";
 import { ChatPreviewDialog } from "./chat-preview-dialog";
@@ -25,8 +34,27 @@ const MERMAID_ZOOM_MIN = 0.5;
 const MERMAID_ZOOM_MAX = 4;
 const MERMAID_ZOOM_STEP = 0.25;
 
+// 仅适配默认图元；作者明确设置的内联颜色仍由原图保留。
+// CSS 变量在实际 SVG 宿主解析，避免把品牌色或浅色常量写进生成结果。
+const MERMAID_THEME_CSS = `
+  .label, text { font-family: var(--font-sans); }
+  .node rect, .node circle, .node ellipse, .node polygon, .node path,
+  .actor, .actor-top, .actor-bottom {
+    fill: var(--muted); stroke: var(--border-strong);
+  }
+  .nodeLabel, .nodeLabel p, .label text, .edgeLabel, .edgeLabel p,
+  .messageText, .labelText, .loopText {
+    color: var(--foreground); fill: var(--foreground);
+  }
+  .flowchart-link, .messageLine0, .messageLine1, .actor-line {
+    stroke: var(--muted-foreground);
+  }
+  .edgeLabel rect, .edgeLabel .labelBkg { fill: var(--muted); }
+`;
+
 function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
   const { t } = useTranslation("chat");
+  const visible = useContext(ContentVisibility);
   const scrollRef = useRef<HTMLDivElement>(null);
   const diagramRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -35,7 +63,7 @@ function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
   useLayoutEffect(() => {
     const scroll = scrollRef.current;
     const diagram = diagramRef.current;
-    if (!scroll || !diagram || !fullscreen) return;
+    if (!visible || !scroll || !diagram) return;
 
     const svgElement = diagram.querySelector("svg");
     if (!svgElement) return;
@@ -56,7 +84,16 @@ function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
         (Number.parseFloat(style.paddingLeft) || 0) -
         (Number.parseFloat(style.paddingRight) || 0);
       if (availableWidth <= 0) return;
-      const width = Math.min(naturalWidth, availableWidth);
+      let scale = Math.min(1, availableWidth / naturalWidth);
+      if (fullscreen) {
+        const availableHeight =
+          scroll.clientHeight -
+          (Number.parseFloat(style.paddingTop) || 0) -
+          (Number.parseFloat(style.paddingBottom) || 0);
+        if (availableHeight <= 0) return;
+        scale = Math.min(scale, availableHeight / naturalHeight);
+      }
+      const width = naturalWidth * scale;
       const height = (width * naturalHeight) / naturalWidth;
       setFittedSize((current) =>
         current.width === width && current.height === height
@@ -65,10 +102,14 @@ function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
       );
     };
     measureDiagram();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measureDiagram);
+      return () => window.removeEventListener("resize", measureDiagram);
+    }
     const observer = new ResizeObserver(measureDiagram);
     observer.observe(scroll);
     return () => observer.disconnect();
-  }, [fullscreen, svg]);
+  }, [fullscreen, svg, visible]);
 
   const scaledWidth =
     fittedSize.width > 0 ? fittedSize.width * zoom : undefined;
@@ -76,10 +117,10 @@ function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
     fittedSize.height > 0 ? fittedSize.height * zoom : undefined;
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       {fullscreen && (
         <div
-          className="border-border bg-surface-elevated absolute top-4 left-4 z-10 grid gap-1 rounded-md border p-1 shadow-sm"
+          className="absolute top-4 right-4 z-10 flex items-center gap-1"
           onPointerDown={(event) => event.stopPropagation()}
         >
           <Button
@@ -128,12 +169,12 @@ function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
         ref={scrollRef}
         className={
           fullscreen
-            ? "bg-muted h-[calc(100dvh-144px)] overflow-auto rounded-lg p-4"
-            : "bg-muted h-[min(520px,60vh)] overflow-auto rounded-lg p-4"
+            ? `bg-muted h-[calc(100dvh-144px)] rounded-lg p-4 pt-16 ${zoom > 1 ? "overflow-auto" : "overflow-hidden"}`
+            : "bg-muted w-full min-w-0 rounded-lg p-4"
         }
       >
         {fullscreen ? (
-          <div className="flex w-max min-w-full justify-center">
+          <div className="flex min-h-full w-max min-w-full items-center justify-center">
             <div
               className="duration-quick ease-ui relative shrink-0"
               style={{
@@ -145,9 +186,10 @@ function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
                 ref={diagramRef}
                 role="img"
                 aria-label="Mermaid diagram"
-                className="w-fit origin-top-left [&_svg]:h-auto [&_svg]:max-w-full"
+                className="origin-top-left [&_svg]:block [&_svg]:h-auto [&_svg]:w-full [&_svg]:max-w-full"
                 style={{
                   width: fittedSize.width > 0 ? fittedSize.width : undefined,
+                  height: fittedSize.height > 0 ? fittedSize.height : undefined,
                   transform: zoom === 1 ? undefined : `scale(${zoom})`,
                 }}
                 dangerouslySetInnerHTML={{ __html: svg }}
@@ -155,12 +197,19 @@ function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
             </div>
           </div>
         ) : (
-          <div
-            role="img"
-            aria-label="Mermaid diagram"
-            className="grid size-full place-items-center [&_svg]:h-auto [&_svg]:max-h-full [&_svg]:max-w-full"
-            dangerouslySetInnerHTML={{ __html: svg }}
-          />
+          <div className="flex w-full justify-center">
+            <div
+              ref={diagramRef}
+              role="img"
+              aria-label="Mermaid diagram"
+              className="max-w-full shrink-0 [&_svg]:block [&_svg]:h-auto [&_svg]:w-full [&_svg]:max-w-full"
+              style={{
+                width: fittedSize.width || undefined,
+                height: fittedSize.height || undefined,
+              }}
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+          </div>
         )}
       </div>
     </div>
@@ -170,6 +219,7 @@ function Diagram({ fullscreen, svg }: { fullscreen?: boolean; svg: string }) {
 export function ChatMermaid({ code }: { code: string }) {
   const { t } = useTranslation("chat");
   const { resolvedTheme } = useTheme();
+  const visible = useContext(ContentVisibility);
   const reactID = useId();
   const [view, setView] = useState<MermaidView>("diagram");
   const [result, setResult] = useState({
@@ -190,9 +240,15 @@ export function ChatMermaid({ code }: { code: string }) {
 
   const mermaidTheme = resolvedTheme === "dark" ? "dark" : "default";
   useEffect(() => {
+    if (!visible || (result.code === code && result.theme === mermaidTheme))
+      return;
     let active = true;
     void mermaid
-      .getMermaid({ theme: mermaidTheme })
+      .getMermaid({
+        theme: mermaidTheme,
+        fontFamily: "var(--font-sans)",
+        themeCSS: MERMAID_THEME_CSS,
+      })
       .render(`ally-mermaid-${reactID.replaceAll(":", "")}`, code)
       .then((rendered) => {
         if (active) {
@@ -216,7 +272,7 @@ export function ChatMermaid({ code }: { code: string }) {
     return () => {
       active = false;
     };
-  }, [code, mermaidTheme, reactID, t]);
+  }, [code, mermaidTheme, reactID, t, visible, result.code, result.theme]);
 
   const resultIsCurrent = result.code === code && result.theme === mermaidTheme;
   // 新快照绘制期间保留上一版 SVG，避免异步 render 尚未完成时闪回加载占位。
@@ -239,7 +295,7 @@ export function ChatMermaid({ code }: { code: string }) {
 
   return (
     <section
-      className="border-border bg-surface-elevated rounded-lg border p-3"
+      className="bg-muted my-3 min-w-0 rounded-lg p-3"
       data-streamdown="mermaid-block"
     >
       <header className="mb-3 flex items-center justify-between gap-3">
@@ -255,21 +311,21 @@ export function ChatMermaid({ code }: { code: string }) {
             type="button"
             size="icon-sm"
             variant="ghost"
-            title={t("mermaidDownload")}
-            aria-label={t("mermaidDownload")}
-            onClick={downloadSource}
-          >
-            <Download />
-          </Button>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
             title={t("mermaidCopy")}
             aria-label={t("mermaidCopy")}
             onClick={() => void copySource()}
           >
             <Copy />
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            title={t("mermaidDownload")}
+            aria-label={t("mermaidDownload")}
+            onClick={downloadSource}
+          >
+            <Download />
           </Button>
           {view === "diagram" && svg && (
             <Button
@@ -295,9 +351,14 @@ export function ChatMermaid({ code }: { code: string }) {
       ) : svg ? (
         <Diagram svg={svg} />
       ) : (
-        <p className="text-muted-foreground type-body bg-muted rounded-lg p-4">
-          {t("mermaidLoading")}
-        </p>
+        <div
+          role="status"
+          aria-label={t("mermaidLoading")}
+          aria-busy="true"
+          className="p-4"
+        >
+          <Skeleton className="h-24 w-full" />
+        </div>
       )}
 
       <ChatPreviewDialog
@@ -305,7 +366,8 @@ export function ChatMermaid({ code }: { code: string }) {
         title={t("mermaidDiagram")}
         onOpenChange={setFullscreen}
       >
-        {fullscreen && svg ? <Diagram key={svg} fullscreen svg={svg} /> : null}
+        {/* Radix 会保留关闭动画中的 Content；图形随实际卸载一起释放。 */}
+        {svg ? <Diagram key={svg} fullscreen svg={svg} /> : null}
       </ChatPreviewDialog>
     </section>
   );

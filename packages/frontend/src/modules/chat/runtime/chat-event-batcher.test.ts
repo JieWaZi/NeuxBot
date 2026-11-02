@@ -12,11 +12,11 @@ describe("chat event batcher", () => {
     vi.useFakeTimers();
     const onBatch = vi.fn();
     const batcher = createChatEventBatcher(onBatch);
-    batcher.push({ sequence: 2 } as ChatEvent);
-    batcher.push({ sequence: 3 } as ChatEvent);
+    batcher.push({ transient: true, sequence: 2 } as ChatEvent);
+    batcher.push({ transient: true, sequence: 3 } as ChatEvent);
 
     expect(onBatch).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersToNextFrame();
     expect(onBatch).toHaveBeenCalledWith([
       expect.objectContaining({ sequence: 2 }),
       expect.objectContaining({ sequence: 3 }),
@@ -31,6 +31,7 @@ describe("chat event batcher", () => {
     for (let revision = 1; revision <= 100; revision += 1) {
       batcher.push({
         sequence: revision,
+        transient: true,
         type: "runtime.event",
         message: {
           id: "assistant-running",
@@ -42,7 +43,7 @@ describe("chat event batcher", () => {
       } as ChatEvent);
     }
 
-    vi.advanceTimersByTime(16);
+    vi.advanceTimersToNextFrame();
 
     expect(onBatch).toHaveBeenCalledTimes(1);
     expect(onBatch.mock.calls[0]?.[0]).toEqual([
@@ -57,10 +58,55 @@ describe("chat event batcher", () => {
     vi.useFakeTimers();
     const onBatch = vi.fn();
     const batcher = createChatEventBatcher(onBatch);
-    batcher.push({ sequence: 2 } as ChatEvent);
+    batcher.push({ transient: true, sequence: 2 } as ChatEvent);
     batcher.push({ sequence: 3 } as ChatEvent, true);
 
     expect(onBatch).toHaveBeenCalledTimes(1);
     expect(onBatch.mock.calls[0]?.[0]).toHaveLength(2);
+  });
+
+  it("保留同一消息的全部有序增量，下一显示帧发布，关闭后释放待交付帧", () => {
+    vi.useFakeTimers();
+    const onBatch = vi.fn();
+    const batcher = createChatEventBatcher(onBatch);
+    batcher.push({
+      transient: true,
+      live: { messageId: "message", sequence: 1 },
+    } as ChatEvent);
+    batcher.push({
+      transient: true,
+      live: { messageId: "message", sequence: 2 },
+    } as ChatEvent);
+    vi.advanceTimersByTime(1);
+    expect(onBatch).not.toHaveBeenCalled();
+    vi.advanceTimersToNextFrame();
+    expect(onBatch.mock.calls[0]?.[0]).toHaveLength(2);
+    batcher.push({ transient: true } as ChatEvent);
+    batcher.close();
+    vi.advanceTimersByTime(64);
+    expect(onBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("稀疏输入在各自下一帧交付，终态立即冲刷且没有迟到提交", () => {
+    vi.useFakeTimers();
+    const onBatch = vi.fn();
+    const batcher = createChatEventBatcher(onBatch);
+    batcher.push({ transient: true, sequence: 1 } as ChatEvent);
+    vi.advanceTimersToNextFrame();
+    expect(onBatch).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(80);
+    batcher.push({ transient: true, sequence: 2 } as ChatEvent);
+    vi.advanceTimersToNextFrame();
+    expect(onBatch).toHaveBeenCalledTimes(2);
+    batcher.push({ transient: true, sequence: 3 } as ChatEvent);
+    batcher.push({ type: "execution.completed", sequence: 4 } as ChatEvent);
+    expect(onBatch).toHaveBeenCalledTimes(3);
+    expect(onBatch.mock.calls[2]?.[0]).toEqual([
+      expect.objectContaining({ sequence: 3 }),
+      expect.objectContaining({ sequence: 4 }),
+    ]);
+    vi.advanceTimersByTime(80);
+    expect(onBatch).toHaveBeenCalledTimes(3);
+    batcher.close();
   });
 });

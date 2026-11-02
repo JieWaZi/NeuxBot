@@ -57,6 +57,29 @@ func publishProviderChange(provider string) {
 // removePluginReferences 为伙伴卸载和资源删除复用最后身份引用的清理边界。
 // CLI 清理在事务外完成；清理失败保留关系，使同一操作可以安全重试。
 func removePluginReferences(ctx context.Context, plugin, waker string, versions []models.PluginVersion, validate, remove func(context.Context) error) error {
+	retained, err := global.PluginControllerManager.InstalledVersionsExcept(ctx, plugin, waker)
+	if err != nil {
+		return err
+	}
+	if slices.ContainsFunc(retained, func(version models.PluginVersion) bool { return version.PluginID == plugin }) {
+		// 当前插件仍有其他安装时不触碰共享身份，无关插件的安装不参与身份引用判断。
+		return global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+			if err := validate(txctx); err != nil {
+				return err
+			}
+			current, err := global.PluginControllerManager.InstalledVersionsExcept(txctx, plugin, waker)
+			if err != nil {
+				return err
+			}
+			if !slices.ContainsFunc(current, func(version models.PluginVersion) bool { return version.PluginID == plugin }) {
+				return status_error.PluginVersionConflict
+			}
+			return remove(txctx)
+		})
+	}
+	if err := closeIdlePlugin(ctx, plugin); err != nil {
+		return err
+	}
 	providers := providerNames(versions)
 	guards := map[string]*authorization.ReferenceGuard{}
 	defer func() {
@@ -91,7 +114,7 @@ func removePluginReferences(ctx context.Context, plugin, waker string, versions 
 		}
 	}
 	remaining := []string{}
-	err := global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
+	err = global.TransactionControllerManager.Transaction(ctx, func(txctx context.Context) error {
 		if err := validate(txctx); err != nil {
 			return err
 		}

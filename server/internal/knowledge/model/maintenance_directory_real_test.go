@@ -1,6 +1,8 @@
 package model
 
 import (
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"context"
 	"fmt"
 	"net/http/httptest"
@@ -12,9 +14,8 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/neux-knowledge/core"
 )
 
@@ -48,14 +49,14 @@ func TestRealWikiMaintenanceDirectoryPagination(t *testing.T) {
 	ref := bridge.LocalRef(libraryID)
 	reads := bridge.ReadBindings(engine, bridge.FreezeScope("", []bridge.ResourceRef{ref}), func(context.Context, string) ([]bridge.ResourceRef, error) { return []bridge.ResourceRef{ref}, nil })
 	var listed, bodies atomic.Int32
-	var bindings []agentcapability.Binding
+	var bindings []capability.Binding
 	for _, binding := range reads {
 		if binding.Operation != "knowledge.pages.list" && binding.Operation != "knowledge.pages.get" {
 			continue
 		}
 		call := binding.Call
 		op := binding.Operation
-		binding.Call = func(ctx context.Context, r agentcapability.Request) (agentcapability.Result, error) {
+		binding.Call = func(ctx context.Context, r capability.Request) (capability.Result, error) {
 			result, err := call(ctx, r)
 			if err == nil {
 				if op == "knowledge.pages.list" {
@@ -68,22 +69,22 @@ func TestRealWikiMaintenanceDirectoryPagination(t *testing.T) {
 		}
 		bindings = append(bindings, binding)
 	}
-	sdk, err := runtimes.New(runtimes.Config{})
+	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sdk.Close(context.Background())
-	detection := sdk.Detect(ctx, runtimes.DetectRequest{RuntimeID: runtimes.RuntimeIDWorkBuddy, BaseEnvironment: os.Environ()})
-	if detection.State != runtimes.DetectionStateReady {
+	detection := sdk.Detect(ctx, agentapi.DetectRequest{RuntimeID: agentapi.RuntimeIDWorkBuddy, BaseEnvironment: os.Environ()})
+	if detection.State != agentapi.DetectionStateReady {
 		t.Fatal(detection.Diagnostics)
 	}
-	registry := agentcapability.New(nil)
+	registry := capability.New(nil)
 	defer registry.Close()
 	endpoint := httptest.NewServer(registry)
 	defer endpoint.Close()
-	runner := NewMaintenanceRunner(MaintenanceConfig{Runtime: sdk, Registry: registry, Binary: os.Getenv(constants.AgentCLIBinaryEnvironment), Endpoint: endpoint.URL + constants.AgentCLIPath, Model: "deepseek-v4.1-flash", Reasoning: "low", Prepare: func(context.Context) (runtimes.RuntimeTarget, runtimes.DetectionResult, func(), error) {
-		return runtimes.RuntimeTarget{RuntimeID: runtimes.RuntimeIDWorkBuddy, Binary: detection.ResolvedBinary}, detection, nil, nil
-	}})
+	host := maintenanceTransportHost(agentapi.RuntimeIDWorkBuddy, detection, sdk)
+	defer host.Close(context.Background())
+	runner := NewMaintenanceRunner(MaintenanceConfig{Runtime: host, Registry: registry, Binary: os.Getenv(constants.AgentCLIBinaryEnvironment), Endpoint: endpoint.URL + constants.AgentCLIPath, RuntimeID: agentapi.RuntimeIDWorkBuddy, Model: "deepseek-v4.1-flash", Reasoning: "low"})
 	report, err := runner.Run(ctx, MaintenanceRequest{JobID: "directory-transport", Bindings: bindings, Validate: func(context.Context) error { return nil }, Instructions: "This is a read-only synthetic transport check. Use only advertised knowledge commands. Do not inspect files outside the selected skill or attempt edits.", Message: "Read the selected ally skill. Use capabilities and describe for exact inputs. List ALL pages of library " + libraryID + " using knowledge pages list --limit 10 and the returned nextOffset until hasMore is false. Then read ONE listed page with knowledge pages get, and report its first line marker and the total number of listed pages. Do not read all bodies or use Python, shell pipelines, files or external services."})
 	if err != nil || listed.Load() < 21 || bodies.Load() < 1 || !strings.Contains(report, "DIRECTORY_BODY_OK") {
 		t.Fatalf("directory transport failed: listed=%d bodies=%d err=%v report=%q", listed.Load(), bodies.Load(), err, report)

@@ -4,6 +4,7 @@ export {
   chatListInfiniteOptions,
   chatMessagesInfiniteOptions,
   chatMessagesKey,
+  chatMessageSource,
   evictDeletedChatsFromCache,
   getChatOptions,
   listChatsOptions,
@@ -28,7 +29,6 @@ export const WorkspaceFileViewer = lazy(() =>
 export { WorkspaceDetailSplit } from "./components/workspace-detail-split";
 
 export { FloatingChat } from "./components/floating-chat";
-export { ChatPane } from "./components/chat-pane";
 export { ChatQueueProvider } from "./runtime/chat-queue-store";
 export { WorkbenchProvider } from "./workbench/workbench-store";
 
@@ -55,3 +55,5 @@ export type {
 export type { WorkbenchContentReference } from "./workbench/workbench-model";
 
 export { ChatComposerPanel } from "./components/chat-composer-panel";
+
+export type { ChatMessageSource } from "./runtime/chat-projection";

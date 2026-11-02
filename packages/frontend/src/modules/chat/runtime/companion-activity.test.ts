@@ -1,19 +1,19 @@
-import type { ThreadMessage } from "@assistant-ui/react";
+import type { AllyChatMessage } from "./chat-projection";
 import { describe, expect, it } from "vitest";
 import { messageCompanionActivity } from "./companion-activity";
 
-const tool = (action: string, status = "running") => ({
-  type: "tool-call" as const,
-  toolCallId: action,
-  toolName: "tool",
-  argsText: "{}",
-  args: { category: "command", action, status },
+type Part = NonNullable<AllyChatMessage["displayParts"]>[number];
+const tool = (action: string, status = "running"): Part => ({
+  type: "tool",
+  toolCategory: "command",
+  toolAction: action as Part["toolAction"],
+  toolStatus: status as Part["toolStatus"],
 });
 function message(
-  content: ThreadMessage["content"],
-  status: ThreadMessage["status"] = { type: "running" },
+  displayParts: Part[],
+  status: AllyChatMessage["status"] = "running",
 ) {
-  return { content, status, isLast: true };
+  return { displayParts, status, isLast: true };
 }
 
 describe("消息驱动形象", () => {
@@ -37,11 +37,7 @@ describe("消息驱动形象", () => {
     const latest = message([tool("execute_command")]);
     expect(messageCompanionActivity(latest)).toBe("working");
     expect(messageCompanionActivity({ ...latest, isLast: false })).toBe("idle");
-    for (const status of [
-      { type: "complete", reason: "stop" },
-      { type: "incomplete", reason: "error" },
-      { type: "incomplete", reason: "cancelled" },
-    ] as const) {
+    for (const status of ["completed", "failed", "canceled"] as const) {
       expect(
         messageCompanionActivity(
           { ...message([], status), isLast: false },
@@ -85,21 +81,12 @@ describe("消息驱动形象", () => {
   it("终态优先于残留工具与审批，等待与停止优先于运行中工具", () => {
     const content = [tool("execute_command")];
     expect(
-      messageCompanionActivity(
-        message(content, { type: "complete", reason: "stop" }),
-        "waiting",
-      ),
+      messageCompanionActivity(message(content, "completed"), "waiting"),
     ).toBe("completed");
-    expect(
-      messageCompanionActivity(
-        message(content, { type: "incomplete", reason: "error" }),
-      ),
-    ).toBe("failed");
-    expect(
-      messageCompanionActivity(
-        message(content, { type: "incomplete", reason: "cancelled" }),
-      ),
-    ).toBe("stopped");
+    expect(messageCompanionActivity(message(content, "failed"))).toBe("failed");
+    expect(messageCompanionActivity(message(content, "canceled"))).toBe(
+      "stopped",
+    );
     expect(messageCompanionActivity(message(content), "waiting")).toBe(
       "waiting",
     );

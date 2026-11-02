@@ -444,9 +444,7 @@ export function ChatWorkspaceSurface({
             }
             sidebar={
               <div className="relative h-full min-h-0 min-w-0">
-                {showActivityIndicator &&
-                identity.chatId &&
-                snapshot.isRunning ? (
+                {showActivityIndicator && snapshot.isRunning ? (
                   <span
                     className="text-muted-foreground type-caption absolute top-3 right-4 z-20 flex items-center gap-2"
                     data-chat-activity-status
@@ -544,6 +542,11 @@ export function ChatWorkspaceSurface({
           }
           workspacePanel={
             <RightWorkbench
+              parentBusy={
+                adapter.snapshot.isRunning ||
+                adapter.snapshot.pendingApprovalCount > 0 ||
+                adapter.snapshot.pendingElicitationCount > 0
+              }
               displayWidth={displayWidth}
               onAddCodeReference={onAddCodeReference}
               onEmpty={onDismissRightPanel}

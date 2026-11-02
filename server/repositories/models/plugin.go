@@ -89,6 +89,8 @@ type PluginConfiguration struct {
 	Values map[string]string `gorm:"column:values;type:text;not null;serializer:json" json:"values"`
 	// Secrets 是加密保存、仅在服务端解密使用的敏感配置。
 	Secrets []MCPSecretDefinition `gorm:"column:secrets;type:text;not null;serializer:json" json:"-"`
+	// DeliveryMaterials 是安装及授权阶段校验后加密保存的私有交付材料，不返回客户端。
+	DeliveryMaterials []MCPSecretDefinition `gorm:"column:delivery_materials;type:text;serializer:json" json:"-"`
 	// UpdatedAt 是本地配置最近修改时间。
 	UpdatedAt int64 `gorm:"column:updated_at;autoUpdateTime:milli" json:"updatedAt"`
 }
@@ -110,4 +112,34 @@ type PluginState struct {
 	PartnerAvatars map[string]string
 	// Configuration 是服务端可用共享设置。
 	Configuration PluginConfiguration
+}
+
+// PluginExecutionDeclaration 是伙伴启用安装的静态执行声明，不携带包、配置或授权材料。
+type PluginExecutionDeclaration struct {
+	// ID 是已启用插件的资源身份。
+	ID string
+	// Name 是明确选择插件时交付给智能体的资源名称。
+	Name string
+	// VersionID 是伙伴固定的不可变版本身份。
+	VersionID string
+	// Digest 是固定版本的完整程序摘要。
+	Digest string
+	// TrustedAt 是该固定版本的执行配置确认时间。
+	TrustedAt int64
+	// ConfigurationRevision 是共享配置的冻结修订，零表示尚无配置。
+	ConfigurationRevision int64
+}
+
+// PluginReference 是输入候选使用的已启用固定版本引用。
+type PluginReference struct {
+	// 插件标识
+	ID string `json:"id"`
+	// 插件名称
+	Name string `json:"name"`
+	// 插件说明
+	Description string `json:"description"`
+	// 固定版本
+	Version string `json:"version"`
+	// 版本标识
+	VersionID string `json:"versionId"`
 }

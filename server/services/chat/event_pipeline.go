@@ -189,11 +189,11 @@ func (p *queryIndexStore) getSummary(
 	}, nil
 }
 
-// readChatList 读取稳定游标页，并在首屏一并返回最近引用过的项目标识。
+// readChatList 读取稳定游标页。
 func (p *queryIndexStore) readChatList(
 	ctx context.Context,
 	input ListChatsInput,
-) (ChatList, []string, error) {
+) (ChatList, error) {
 	resources, err := p.chatController.ListByWakerBefore(
 		ctx,
 		input.WakerID,
@@ -202,7 +202,7 @@ func (p *queryIndexStore) readChatList(
 		input.Limit+1,
 	)
 	if err != nil {
-		return ChatList{}, nil, err
+		return ChatList{}, err
 	}
 	result := ChatList{Resources: resources}
 	result.HasMore = len(result.Resources) > input.Limit
@@ -214,11 +214,7 @@ func (p *queryIndexStore) readChatList(
 		result.NextBeforeUpdatedAt = last.UpdatedAt
 		result.NextBeforeID = last.ID
 	}
-	if input.BeforeUpdatedAt != 0 {
-		return result, nil, nil
-	}
-	projectIDs, err := p.chatController.ListRecentProjectIDsByWaker(ctx, input.WakerID)
-	return result, projectIDs, err
+	return result, nil
 }
 
 // ensureChatState 在主查询索引缺失时以完整权威状态尽力重建。
@@ -267,6 +263,7 @@ func (p *queryIndexStore) indexStartedMessage(
 		"latest_sequence":       chat.LatestSequence,
 		"active_execution_id":   execution.ID,
 		"last_runtime_id":       execution.RuntimeID,
+		"last_account_id":       execution.AccountID,
 		"last_model":            execution.Model,
 		"last_reasoning":        execution.Reasoning,
 		"last_permission_level": execution.PermissionLevel,

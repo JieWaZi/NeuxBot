@@ -8,9 +8,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	channeltool "github.com/JieWaZi/NeuxBot/server/internal/teamcapability"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
@@ -61,7 +61,7 @@ func leaderWorkOptions(
 	reasoning string,
 	permissionLevel constants.PermissionLevel,
 	capability execution.ToolCapability,
-	teamInstruction runtimes.Instruction,
+	teamInstruction agentapi.Instruction,
 	directExecution bool,
 ) execution.WorkOptions {
 	return execution.WorkOptions{
@@ -71,7 +71,7 @@ func leaderWorkOptions(
 		PermissionLevel:  permissionLevel,
 		SessionPolicy:    constants.RuntimeSessionPolicyContinue,
 		ToolCapabilities: []execution.ToolCapability{capability},
-		SupplementalInstructions: []runtimes.Instruction{
+		SupplementalInstructions: []agentapi.Instruction{
 			leaderTurnInstruction(teamInstruction, directExecution),
 		},
 	}
@@ -323,7 +323,7 @@ func optionalInt(value *int) int {
 
 // channelToolError 创建由能力适配统一映射为安全命令错误的中立结果。
 func channelToolError(cause error, message string) (channeltool.TaskOutput, error) {
-	return channeltool.TaskOutput{Message: message}, agentcapability.Reject(cause, message)
+	return channeltool.TaskOutput{Message: message}, capability.Reject(cause, message)
 }
 
 const leadTaskAssigneeError = "The team lead cannot be a task assignee. Complete final summaries in the coordination turn; explicit user requests to the lead run directly in the lead Chat without a task."

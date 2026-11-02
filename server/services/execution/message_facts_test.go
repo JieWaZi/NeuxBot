@@ -1,6 +1,8 @@
 package execution
 
 import (
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+
 	"context"
 	"encoding/json"
 	"reflect"
@@ -9,16 +11,18 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/runtimes"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // messageFactTestJournal 观察真实 Journal 的实时交付和初始化读取次数，不替代持久化与协调器。
 type messageFactTestJournal struct {
+	// message 是测试呈现消费者从安全增量恢复的消息状态。
+	message *messageview.Message
 	// Journal 执行真实 JSONL 与临时 SQLite 提交。
 	chatservice.Journal
 	// live 保存真实 Journal 发布的 transient 快照。
@@ -29,7 +33,7 @@ type messageFactTestJournal struct {
 
 func (j *messageFactTestJournal) PublishLive(chatID string, event eventstream.PublicEvent) {
 	j.Journal.PublishLive(chatID, event)
-	j.live <- event
+	j.live <- foldTestLive(&j.message, event)
 }
 func (j *messageFactTestJournal) ReadExecutionRecords(chatID, executionID string) ([]eventlog.Record, error) {
 	j.reads.Add(1)
@@ -43,22 +47,22 @@ type approvalFactRuntime struct {
 	// prefixSnapshots 在审批前形成已经公开但尚未持久化的高修订工具快照。
 	prefixSnapshots int
 	// nextKind 是审批后交付的工具输入或执行进度；空值表示后续没有 Runtime 事件。
-	nextKind runtimes.EventType
+	nextKind agentapi.EventType
 	// continued 表示审批决定已返回且后续增量已经进入执行层。
 	continued chan struct{}
 	// finish 让测试在读取实时与权威快照之后释放执行。
 	finish chan struct{}
 }
 
-func (r *approvalFactRuntime) Run(ctx context.Context, request runtimes.RunRequest, sink runtimes.EventSink) runtimes.Result {
+func (r *approvalFactRuntime) Run(ctx context.Context, request recordedRun, sink agentapi.EventSink) agentapi.Result {
 	invocationID := "approval-fact-invocation"
-	send := func(kind runtimes.EventType, data any) {
-		_ = sink.Accept(ctx, runtimes.Event{Type: kind, Data: marshalData(data)})
+	send := func(kind agentapi.EventType, data any) {
+		_ = sink.Accept(ctx, agentapi.Event{Type: kind, Data: marshalData(data)})
 	}
-	send(runtimes.EventTypeInvocationStarted, runtimes.InvocationStartedData{InvocationID: invocationID})
-	send(runtimes.EventTypeToolUse, map[string]any{"toolCallId": "tool", "name": "bash", "input": map[string]any{"command": "echo allowed"}})
+	send(agentapi.EventTypeInvocationStarted, agentapi.InvocationStartedData{InvocationID: invocationID})
+	send(agentapi.EventTypeToolUse, map[string]any{"toolCallId": "tool", "name": "bash", "input": map[string]any{"command": "echo allowed"}})
 	for range r.prefixSnapshots {
-		send(runtimes.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "tool", "input": map[string]any{"command": "echo allowed"}})
+		send(agentapi.EventTypeToolInputSnapshot, map[string]any{"toolCallId": "tool", "input": map[string]any{"command": "echo allowed"}})
 	}
 	approval := approvalRequest("tool")
 	approval.InvocationID = invocationID
@@ -71,12 +75,12 @@ func (r *approvalFactRuntime) Run(ctx context.Context, request runtimes.RunReque
 	case <-r.finish:
 	case <-ctx.Done():
 	}
-	send(runtimes.EventTypeToolResult, map[string]any{"toolCallId": "tool", "status": "completed"})
-	return runtimes.Result{Facts: runtimes.InvocationFacts{InvocationID: invocationID, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: runtimes.RuntimeIDCodex}}
+	send(agentapi.EventTypeToolResult, map[string]any{"toolCallId": "tool", "status": "completed"})
+	return agentapi.Result{Facts: agentapi.InvocationFacts{InvocationID: invocationID, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: agentapi.RuntimeIDCodex}}
 }
 
 func TestDurableApprovalRemainsInSubsequentLiveToolSnapshot(t *testing.T) {
-	for _, kind := range []runtimes.EventType{runtimes.EventTypeToolInputSnapshot, runtimes.EventTypeToolUpdate} {
+	for _, kind := range []agentapi.EventType{agentapi.EventTypeToolInputSnapshot, agentapi.EventTypeToolUpdate} {
 		t.Run(string(kind), func(t *testing.T) {
 			runtime := &approvalFactRuntime{nextKind: kind, continued: make(chan struct{}), finish: make(chan struct{})}
 			defer close(runtime.finish)
@@ -84,7 +88,7 @@ func TestDurableApprovalRemainsInSubsequentLiveToolSnapshot(t *testing.T) {
 			core := manager.execution.(*service)
 			observed := &messageFactTestJournal{Journal: core.journal, live: make(chan eventstream.PublicEvent, 16)}
 			core.journal = observed
-			accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行已授权测试"}, Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: runtimes.PermissionLevelDefault}})
+			accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行已授权测试"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelDefault}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -192,14 +196,14 @@ func TestLiveWindowAndFlushConsumeDurableApprovalWithoutAnotherRuntimeEvent(t *t
 	for _, boundary := range []string{"timer", "flush"} {
 		t.Run(boundary, func(t *testing.T) {
 			core, sink, journal, chatID := newMessageFactFixture(t)
-			if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
+			if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
 				t.Fatal(err)
 			}
 			<-journal.live
 			id := requestMessageFactApproval(t, core, sink, chatID, "invocation-1")
 			if boundary == "timer" {
 				sink.mutex.Lock()
-				err := sink.acceptLocked("invocation-1", runtimes.Event{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}})})
+				err := sink.acceptLocked("invocation-1", agentapi.Event{Type: agentapi.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}})})
 				if err != nil {
 					sink.mutex.Unlock()
 					t.Fatal(err)
@@ -240,11 +244,78 @@ func TestLiveWindowAndFlushConsumeDurableApprovalWithoutAnotherRuntimeEvent(t *t
 	}
 }
 
+// TestPublicSubscriptionKeepsPendingIncrementAfterApproval 验证真实审批提交不能让公开订阅丢弃待交付的工具变化。
+func TestPublicSubscriptionKeepsPendingIncrementAfterApproval(t *testing.T) {
+	core, sink, journal, chatID := newMessageFactFixture(t)
+	if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{
+		Type: agentapi.EventTypeToolUse,
+		Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"}),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	<-journal.live
+	approvalID := requestMessageFactApproval(t, core, sink, chatID, "invocation-1")
+	records, err := journal.ReadRecords(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	subscription, err := journal.Journal.(chatservice.Service).SubscribeEvents(ctx, chatID, records[len(records)-1].Sequence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Close()
+
+	func() {
+		sink.mutex.Lock()
+		defer sink.mutex.Unlock()
+		if err := sink.acceptLocked("invocation-1", agentapi.Event{
+			Type: agentapi.EventTypeToolInputSnapshot,
+			Data: marshalData(map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}}),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		// 协调器提交不等待 Sink 锁，实时窗口随后按原顺序包含工具变化和审批事实。
+		resolved := make(chan error, 1)
+		go func() { resolved <- core.ResolveApproval(ctx, chatID, approvalID, "allow-once") }()
+		select {
+		case err := <-resolved:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-ctx.Done():
+			t.Fatal("approval commit waited for the live window")
+		}
+	}()
+
+	select {
+	case event := <-subscription.Events:
+		if event.Type != constants.ChatEventTypeApprovalResolved || event.Message == nil || event.Message.Revision <= event.Message.LiveRevision {
+			t.Fatalf("approval did not preserve independent content coverage: %+v", event)
+		}
+	case <-ctx.Done():
+		t.Fatal("public subscription did not deliver the committed approval")
+	}
+	select {
+	case event := <-subscription.Events:
+		if event.Live == nil || len(event.Live.Updates) != 2 || len(event.Live.Updates[0].Parts) != 1 {
+			t.Fatalf("public subscription lost pending increments: %+v", event)
+		}
+		part := event.Live.Updates[0].Parts[0].Part
+		if part == nil || part.ToolSafeSummary == nil || part.ToolSafeSummary.Path != "main.go" {
+			t.Fatalf("pending tool target did not reach the public subscription: %+v", part)
+		}
+	case <-ctx.Done():
+		t.Fatal("committed approval hid the pending live tool increment")
+	}
+}
+
 func TestLateApprovalKeepsOriginatingInvocationWithReusedNativeToolID(t *testing.T) {
 	core, sink, journal, chatID := newMessageFactFixture(t)
 	for _, invocation := range []string{"invocation-1", "invocation-2"} {
 		sink.messageFacts.setInvocation(invocation)
-		if err := sink.acceptInvocation(context.Background(), invocation, runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
+		if err := sink.acceptInvocation(context.Background(), invocation, agentapi.Event{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
 			t.Fatal(err)
 		}
 		<-journal.live
@@ -287,7 +358,7 @@ func TestReconnectLiveCacheCatchesUpDurableApprovalWithoutRuntimeOutput(t *testi
 	core := manager.execution.(*service)
 	observed := &messageFactTestJournal{Journal: core.journal, live: make(chan eventstream.PublicEvent, 32)}
 	core.journal = observed
-	accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行后等候"}, Runtime: runtimeSelection{RuntimeID: runtimes.RuntimeIDCodex, PermissionLevel: runtimes.PermissionLevelDefault}})
+	accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "执行后等候"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelDefault}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -325,10 +396,18 @@ func TestReconnectLiveCacheCatchesUpDurableApprovalWithoutRuntimeOutput(t *testi
 	for {
 		select {
 		case event := <-subscription.Events:
-			if !event.Transient || event.Message == nil || len(event.Message.DisplayParts) == 0 {
+			if !event.Transient || event.Live == nil {
 				continue
 			}
-			if result := event.Message.DisplayParts[0].ToolApprovalResult; result != nil && result.Result == constants.ApprovalResultSelected {
+			approved := false
+			for _, update := range event.Live.Updates {
+				for _, op := range update.Parts {
+					if op.Part != nil && op.Part.ToolApprovalResult != nil && op.Part.ToolApprovalResult.Result == constants.ApprovalResultSelected {
+						approved = true
+					}
+				}
+			}
+			if approved {
 				if observed.reads.Load() != 1 {
 					t.Fatalf("external fact wake reread execution %d times", observed.reads.Load())
 				}
@@ -350,7 +429,7 @@ func TestFactWakeWaitsForFirstRuntimeMessageBeforeInitializingLiveState(t *testi
 	if err := core.ResolveApproval(context.Background(), chatID, id, "allow-once"); err != nil {
 		t.Fatal(err)
 	}
-	if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
+	if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
 		t.Fatal(err)
 	}
 	event := <-journal.live
@@ -364,7 +443,7 @@ func TestFactWakeWaitsForFirstRuntimeMessageBeforeInitializingLiveState(t *testi
 
 func TestFlushFactErrorInvalidatesPendingLiveWindow(t *testing.T) {
 	_, sink, journal, chatID := newMessageFactFixture(t)
-	if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
+	if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
 		t.Fatal(err)
 	}
 	<-journal.live
@@ -375,7 +454,7 @@ func TestFlushFactErrorInvalidatesPendingLiveWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	sink.mutex.Lock()
-	err = sink.acceptLocked("invocation-1", runtimes.Event{Type: runtimes.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}})})
+	err = sink.acceptLocked("invocation-1", agentapi.Event{Type: agentapi.EventTypeToolInputSnapshot, Data: marshalData(map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}})})
 	sink.messageFacts.push(foreign)
 	sink.mutex.Unlock()
 	if err != nil {
@@ -387,25 +466,25 @@ func TestFlushFactErrorInvalidatesPendingLiveWindow(t *testing.T) {
 	select {
 	case event := <-journal.live:
 		t.Fatalf("old live window published after Flush failed: %+v", event)
-	case <-time.After(3 * runtimeLiveSnapshotInterval):
+	case <-time.After(3 * runtimeLiveBatchInterval):
 	}
 }
 
 func TestApprovalFactsKeepPendingBatchAndNextToolRevisionsOrdered(t *testing.T) {
-	for _, pendingKind := range []runtimes.EventType{runtimes.EventTypeTextDelta, runtimes.EventTypeToolInputSnapshot} {
+	for _, pendingKind := range []agentapi.EventType{agentapi.EventTypeTextDelta, agentapi.EventTypeToolInputSnapshot} {
 		for _, boundary := range []string{"flush", "next-tool"} {
 			t.Run(string(pendingKind)+"/"+boundary, func(t *testing.T) {
 				core, sink, journal, chatID := newMessageFactFixture(t)
 				sink.messageFacts.stopDelivery()
-				if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
+				if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool", "name": "read"})}); err != nil {
 					t.Fatal(err)
 				}
 				<-journal.live
 				data := map[string]any{"text": "正在处理"}
-				if pendingKind == runtimes.EventTypeToolInputSnapshot {
+				if pendingKind == agentapi.EventTypeToolInputSnapshot {
 					data = map[string]any{"toolCallId": "tool", "input": map[string]any{"path": "main.go"}}
 				}
-				if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: pendingKind, Data: marshalData(data)}); err != nil {
+				if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: pendingKind, Data: marshalData(data)}); err != nil {
 					t.Fatal(err)
 				}
 				id := requestMessageFactApproval(t, core, sink, chatID, "invocation-1")
@@ -413,7 +492,7 @@ func TestApprovalFactsKeepPendingBatchAndNextToolRevisionsOrdered(t *testing.T) 
 					t.Fatal(err)
 				}
 				if boundary == "next-tool" {
-					if err := sink.acceptInvocation(context.Background(), "invocation-1", runtimes.Event{Type: runtimes.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool-2", "name": "read"})}); err != nil {
+					if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeToolUse, Data: marshalData(map[string]any{"toolCallId": "tool-2", "name": "read"})}); err != nil {
 						t.Fatal(err)
 					}
 				}
@@ -456,4 +535,9 @@ func TestApprovalFactsKeepPendingBatchAndNextToolRevisionsOrdered(t *testing.T) 
 			})
 		}
 	}
+}
+
+// PrepareSession 让同步测试消费者在提交前取得实际资源，保留本类型的执行行为。
+func (r *approvalFactRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
+	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
 }

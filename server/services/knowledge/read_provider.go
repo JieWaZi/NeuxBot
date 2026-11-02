@@ -5,7 +5,7 @@ import (
 	"slices"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -164,11 +164,11 @@ func (s *Service) agentReadResources(ctx context.Context, provider *frozenKnowle
 }
 
 // deniedKnowledgeReads 保留可发现的准确失败，不用空能力或本机空数据冒充远端已读。
-func deniedKnowledgeReads(err error) []agentcapability.Binding {
-	bindings := []agentcapability.Binding{}
+func deniedKnowledgeReads(err error) []capability.Binding {
+	bindings := []capability.Binding{}
 	for _, operation := range []string{"knowledge.libraries.list", "knowledge.pages.search", "knowledge.pages.get", "knowledge.sources.get"} {
-		bindings = append(bindings, agentcapability.Binding{Operation: operation, Call: func(context.Context, agentcapability.Request) (agentcapability.Result, error) {
-			return agentcapability.Result{}, err
+		bindings = append(bindings, capability.Binding{Operation: operation, Call: func(context.Context, capability.Request) (capability.Result, error) {
+			return capability.Result{}, err
 		}})
 	}
 	return bindings

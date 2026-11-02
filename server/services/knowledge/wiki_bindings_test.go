@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	bridge "github.com/JieWaZi/NeuxBot/server/internal/knowledge"
 	"github.com/JieWaZi/NeuxBot/server/internal/requestidempotency"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -30,7 +30,7 @@ func TestWikiBindingsReplaceWithAgentHistoryAndReplay(t *testing.T) {
 	chat := models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}
 	s.config.Chats = selectedChat{chat: chat}
 	bindings := s.AgentBindings(ctx, chat)
-	var replace *agentcapability.Binding
+	var replace *capability.Binding
 	for i := range bindings {
 		if bindings[i].Operation == "knowledge.pages.replace" {
 			replace = &bindings[i]
@@ -39,7 +39,7 @@ func TestWikiBindingsReplaceWithAgentHistoryAndReplay(t *testing.T) {
 	if replace == nil {
 		t.Fatal("Wiki replacement binding missing")
 	}
-	request := agentcapability.Request{Operation: replace.Operation, RequestID: "replace", Params: map[string]any{"libraryId": lib.ID, "pageId": r.ResourceID, "expectedVersion": 1, "structureVersion": lib.StructureVersion, "oldText": "旧说明", "newText": "新说明"}}
+	request := capability.Request{Operation: replace.Operation, RequestID: "replace", Params: map[string]any{"libraryId": lib.ID, "pageId": r.ResourceID, "expectedVersion": 1, "structureVersion": lib.StructureVersion, "oldText": "旧说明", "newText": "新说明"}}
 	result, err := replace.Call(ctx, request)
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +84,7 @@ func TestLibraryMaintenancePagePlacementPreservesOmittedFolderAndManualProtectio
 	if err != nil {
 		t.Fatal(err)
 	}
-	var write agentcapability.Binding
+	var write capability.Binding
 	for _, binding := range bindings {
 		if binding.Operation == "knowledge.pages.write" {
 			write = binding
@@ -108,7 +108,7 @@ func TestLibraryMaintenancePagePlacementPreservesOmittedFolderAndManualProtectio
 		if step.folder != nil {
 			params["folderId"] = *step.folder
 		}
-		if _, err := write.Call(ctx, agentcapability.Request{RequestID: step.name, Params: params}); err != nil {
+		if _, err := write.Call(ctx, capability.Request{RequestID: step.name, Params: params}); err != nil {
 			t.Fatalf("%s: %v", step.name, err)
 		}
 		page, _ = s.config.Engine.GetPage(ctx, lib.ID, page.ID)
@@ -131,7 +131,7 @@ func TestLibraryMaintenancePagePlacementPreservesOmittedFolderAndManualProtectio
 			t.Fatal("single-page scope acquired library AutoFix")
 		}
 		if binding.Operation == "knowledge.pages.write" {
-			if _, err := binding.Call(ctx, agentcapability.Request{RequestID: "single-page-move", Params: params}); !errors.Is(err, status_error.KnowledgeForbidden) {
+			if _, err := binding.Call(ctx, capability.Request{RequestID: "single-page-move", Params: params}); !errors.Is(err, status_error.KnowledgeForbidden) {
 				t.Fatalf("single-page scope changed navigation: %v", err)
 			}
 		}
@@ -143,7 +143,7 @@ func TestLibraryMaintenancePagePlacementPreservesOmittedFolderAndManualProtectio
 	page, _ = s.config.Engine.GetPage(ctx, lib.ID, page.ID)
 	currentLibrary, _ = s.config.Engine.GetLibrary(ctx, lib.ID)
 	params["expectedVersion"], params["expectedUpdatedAt"], params["structureVersion"] = page.Version, page.UpdatedAt.Format(time.RFC3339Nano), currentLibrary.StructureVersion
-	if _, err := write.Call(ctx, agentcapability.Request{RequestID: "manual-page-move", Params: params}); err == nil {
+	if _, err := write.Call(ctx, capability.Request{RequestID: "manual-page-move", Params: params}); err == nil {
 		t.Fatal("whole-library agent overwrote manual placement")
 	}
 }
@@ -165,7 +165,7 @@ func TestWikiMaintenanceCannotCreateAnotherPageByOmittingPageID(t *testing.T) {
 		if binding.Operation != "knowledge.pages.write" {
 			continue
 		}
-		_, err = binding.Call(ctx, agentcapability.Request{RequestID: "create-outside", Params: map[string]any{"libraryId": lib.ID, "expectedVersion": 0, "structureVersion": lib.StructureVersion, "slug": "outside", "title": "外部", "content": "正文", "pageType": "concept"}})
+		_, err = binding.Call(ctx, capability.Request{RequestID: "create-outside", Params: map[string]any{"libraryId": lib.ID, "expectedVersion": 0, "structureVersion": lib.StructureVersion, "slug": "outside", "title": "外部", "content": "正文", "pageType": "concept"}})
 		if !errors.Is(err, status_error.KnowledgeForbidden) {
 			t.Fatalf("omitted pageId: %v", err)
 		}
@@ -220,7 +220,7 @@ func TestWikiRemoteReplaysExplicitRejectionAndValidatesRecoveredTarget(t *testin
 			defer server.Close()
 			s.config.Connections = &readConnectionFixture{value: models.KnowledgeConnection{ID: "remote", Backend: "custom", BaseURL: server.URL, AuthMode: "bearer", Revision: 1, Enabled: true}}
 			s.config.Chats = selectedChat{chat: chat}
-			var binding agentcapability.Binding
+			var binding capability.Binding
 			for _, candidate := range s.AgentBindings(ctx, chat) {
 				if candidate.Operation == "knowledge.pages.replace" {
 					binding = candidate
@@ -229,7 +229,7 @@ func TestWikiRemoteReplaysExplicitRejectionAndValidatesRecoveredTarget(t *testin
 			if binding.Call == nil {
 				t.Fatal("remote replace missing")
 			}
-			request := agentcapability.Request{RequestID: "replace", Params: map[string]any{"backend": "custom", "connectionId": "remote", "libraryId": lib.ID, "pageId": created.ResourceID, "expectedVersion": 99, "structureVersion": lib.StructureVersion, "oldText": "旧内容", "newText": "新内容"}}
+			request := capability.Request{RequestID: "replace", Params: map[string]any{"backend": "custom", "connectionId": "remote", "libraryId": lib.ID, "pageId": created.ResourceID, "expectedVersion": 99, "structureVersion": lib.StructureVersion, "oldText": "旧内容", "newText": "新内容"}}
 			want := status_error.KnowledgeConflict
 			if mode == "unknown" {
 				want = status_error.KnowledgeRemoteOutcomeUnknown
@@ -291,7 +291,7 @@ func TestWikiRemoteCreationKeepsConfirmedResourceOnReplay(t *testing.T) {
 	defer server.Close()
 	s.config.Connections = &readConnectionFixture{value: models.KnowledgeConnection{ID: "remote", Backend: "custom", BaseURL: server.URL, AuthMode: "bearer", Revision: 1, Enabled: true}}
 	s.config.Chats = selectedChat{chat: chat}
-	var binding agentcapability.Binding
+	var binding capability.Binding
 	for _, candidate := range s.AgentBindings(ctx, chat) {
 		if candidate.Operation == "knowledge.pages.write" {
 			binding = candidate
@@ -300,7 +300,7 @@ func TestWikiRemoteCreationKeepsConfirmedResourceOnReplay(t *testing.T) {
 	if binding.Call == nil {
 		t.Fatal("page write binding missing")
 	}
-	request := agentcapability.Request{RequestID: "create", Params: map[string]any{"backend": "custom", "connectionId": "remote", "libraryId": lib.ID, "expectedVersion": 0, "structureVersion": lib.StructureVersion, "slug": "topic", "title": "主题", "summary": "简介", "content": "正文", "pageType": "concept"}}
+	request := capability.Request{RequestID: "create", Params: map[string]any{"backend": "custom", "connectionId": "remote", "libraryId": lib.ID, "expectedVersion": 0, "structureVersion": lib.StructureVersion, "slug": "topic", "title": "主题", "summary": "简介", "content": "正文", "pageType": "concept"}}
 	if _, err = binding.Call(ctx, request); err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestMaintenanceReadsWaitForPolicyWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var read agentcapability.Binding
+	var read capability.Binding
 	for _, binding := range bindings {
 		if binding.Operation == "knowledge.libraries.get" {
 			read = binding
@@ -360,7 +360,7 @@ func TestMaintenanceReadsWaitForPolicyWrite(t *testing.T) {
 		}
 	}()
 	go func() {
-		_, err := read.Call(context.Background(), agentcapability.Request{Params: map[string]any{"libraryId": lib.ID}})
+		_, err := read.Call(context.Background(), capability.Request{Params: map[string]any{"libraryId": lib.ID}})
 		result <- err
 		close(result)
 	}()
@@ -385,7 +385,7 @@ func TestWikiWholePageCommandUsesCallerReadTime(t *testing.T) {
 	}
 	chat := models.Chat{ID: "time-chat", WakerID: "waker", ActiveExecutionID: "time-execution"}
 	s.config.Chats = selectedChat{chat: chat}
-	var binding *agentcapability.Binding
+	var binding *capability.Binding
 	bindings := s.AgentBindings(ctx, chat)
 	for i := range bindings {
 		if bindings[i].Operation == "knowledge.pages.write" {
@@ -397,13 +397,13 @@ func TestWikiWholePageCommandUsesCallerReadTime(t *testing.T) {
 		t.Fatal("whole-page command missing")
 	}
 	params := map[string]any{"libraryId": lib.ID, "pageId": p.ID, "expectedVersion": p.Version, "expectedUpdatedAt": p.UpdatedAt.Add(-time.Millisecond).Format(time.RFC3339Nano), "structureVersion": lib.StructureVersion, "slug": p.Slug, "title": p.Title, "summary": p.Summary, "content": p.Content, "pageType": p.PageType}
-	_, err = binding.Call(ctx, agentcapability.Request{Operation: binding.Operation, RequestID: "agent-old-time", Params: params})
+	_, err = binding.Call(ctx, capability.Request{Operation: binding.Operation, RequestID: "agent-old-time", Params: params})
 	if !errors.Is(err, status_error.KnowledgeConflict) {
 		t.Fatalf("old agent read time error=%v", err)
 	}
 	params["expectedUpdatedAt"] = p.UpdatedAt.Format(time.RFC3339Nano)
 	params["content"] = p.Content + "，本次合法补充"
-	if _, err = binding.Call(ctx, agentcapability.Request{Operation: binding.Operation, RequestID: "agent-current-time", Params: params}); err != nil {
+	if _, err = binding.Call(ctx, capability.Request{Operation: binding.Operation, RequestID: "agent-current-time", Params: params}); err != nil {
 		t.Fatal(err)
 	}
 }

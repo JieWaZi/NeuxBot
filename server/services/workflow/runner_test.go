@@ -10,6 +10,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
+	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -294,5 +295,51 @@ func TestStructuredCandidateCannotReplaceExecutionSuccessAndCannotBeOverwritten(
 	result = runTicks(t, s, run.ID, 3)
 	if result.Status != constants.WorkflowRunStatusFailed {
 		t.Fatalf("submitted then failed counted as success: %+v", result)
+	}
+}
+
+// oneTickRunStore 计数真实运行聚合读取，并在第二次扫描前停止受管调度。
+type oneTickRunStore struct {
+	// WorkflowRunController 保留真实 SQLite 仓储和事务行为。
+	controllers.WorkflowRunController
+	// loads 记录完整运行聚合加载次数。
+	loads int
+	// scans 记录业务调度扫描次数。
+	scans int
+	// cancel 结束本用例的调度生命周期。
+	cancel context.CancelFunc
+}
+
+func (c *oneTickRunStore) LoadRunState(ctx context.Context, id string) (controllers.WorkflowRunState, error) {
+	c.loads++
+	return c.WorkflowRunController.LoadRunState(ctx, id)
+}
+func (c *oneTickRunStore) ListRunnable(ctx context.Context, limit int) ([]models.WorkflowRun, error) {
+	c.scans++
+	if c.scans > 1 {
+		c.cancel()
+		return nil, nil
+	}
+	return c.WorkflowRunController.ListRunnable(ctx, limit)
+}
+func TestRunLoopLoadsWaitingAggregateOncePerTick(t *testing.T) {
+	s, _ := workflowTestService(t)
+	definition := savedTestWorkflow(t, s, humanSource)
+	run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "waiting", Args: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runTicks(t, s, run.ID, 2)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	store := &oneTickRunStore{WorkflowRunController: s.runs, cancel: cancel}
+	owner := s.state.Owner
+	s.runs = store
+	s.state = workflowstate.New(s.store, store, s.transactions)
+	s.state.Owner = owner
+	lifecycle := &runnerLifecycle{ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	s.runLoop(lifecycle)
+	if store.loads != 1 {
+		t.Fatalf("waiting tick loaded full aggregate %d times, expected one authoritative load", store.loads)
 	}
 }

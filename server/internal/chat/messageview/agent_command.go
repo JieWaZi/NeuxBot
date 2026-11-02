@@ -5,7 +5,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability/contract"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
@@ -14,7 +14,7 @@ func (p *MessageViewBuilder) applyAgentCommand(record eventlog.Record) error {
 	if json.Unmarshal(record.Data, &command) != nil || command.CommandID == "" || record.ExecutionID == "" {
 		return status_error.ChatLogCorrupted
 	}
-	operation, exists := contract.Find(command.Operation)
+	operation, exists := capability.Find(command.Operation)
 	if !exists || command.Completion != operation.Completion {
 		return status_error.ChatLogCorrupted
 	}
@@ -60,7 +60,7 @@ func (p *MessageViewBuilder) applyCommandCaption(executionID, commandID string, 
 	if !exists {
 		return
 	}
-	operation, exists := contract.Find(fact.Operation)
+	operation, exists := capability.Find(fact.Operation)
 	if !exists || operation.DisplayLabel() == "" {
 		return
 	}

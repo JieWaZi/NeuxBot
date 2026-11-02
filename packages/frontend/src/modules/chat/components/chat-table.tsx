@@ -9,7 +9,6 @@ import {
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/shared/lib/cn";
-import { markdownTableLayoutClassName } from "@/shared/ui/markdown-table-styles";
 import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,
@@ -33,8 +32,11 @@ type ChatTableProps = ComponentPropsWithoutRef<"table"> & {
 const tableFormats: readonly TableExportFormat[] = ["markdown", "csv", "tsv"];
 
 const tableClassName = cn(
-  "type-body [&_thead]:bg-muted/60 [&_th]:text-muted-foreground [&_th]:type-ui [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_td]:px-3 [&_td]:py-2 [&_td]:align-middle [&_tr]:border-border/70 [&_tr]:border-b [&_tr:last-child]:border-b-0",
-  markdownTableLayoutClassName,
+  "type-body w-max max-w-max table-auto border-collapse [&_thead]:bg-muted/60 [&_th]:type-body [&_th]:text-muted-foreground [&_th]:px-3 [&_th]:py-1.5 [&_th:not([data-markdown-align])]:text-left [&_th]:font-medium [&_td]:px-3 [&_td]:py-1.5 [&_td]:align-middle [&_tr]:border-border/70 [&_tr]:border-b [&_tr:last-child]:border-b-0 [&_th]:min-w-24 [&_th]:max-w-xs [&_th]:break-words [&_th]:whitespace-normal [&_td]:min-w-24 [&_td]:max-w-xs [&_td]:break-words",
+  // 两侧与所属正文对齐，列间仍保留阅读间距。
+  "[&_th:first-child]:pl-0 [&_td:first-child]:pl-0 [&_th:last-child]:pr-0 [&_td:last-child]:pr-0",
+  // 比较矩阵保留自然宽度；短表及引用内的表填满所属内容列。
+  "[&:not(:has(th:nth-child(4),td:nth-child(4)))]:w-full [&:not(:has(th:nth-child(4),td:nth-child(4)))]:max-w-none [blockquote_&]:w-full [blockquote_&]:max-w-none",
 );
 
 function TableFrame({
@@ -47,10 +49,14 @@ function TableFrame({
   preview?: boolean;
   tableRef?: Ref<HTMLTableElement>;
 }) {
+  const { t } = useTranslation("chat");
   return (
     <div
+      role="region"
+      aria-label={t("tableTitle")}
+      tabIndex={0}
       className={cn(
-        "border-border bg-surface-elevated w-full min-w-0 overflow-auto rounded-lg border",
+        "border-border/70 focus-visible:ring-ring w-full max-w-full min-w-0 overflow-x-auto overscroll-x-contain rounded-sm border outline-none focus-visible:ring-2",
         preview &&
           "[&_thead]:bg-muted max-h-[calc(100dvh-144px)] [&_thead]:sticky [&_thead]:top-0 [&_thead]:z-10",
       )}
@@ -127,10 +133,10 @@ export function ChatTable({
 
   return (
     <section
-      className="border-border bg-surface-elevated my-3 flex w-full max-w-none min-w-0 flex-col self-stretch rounded-lg border p-3"
+      className="my-2 flex w-full max-w-none min-w-0 flex-col self-stretch"
       data-streamdown="table-wrapper"
     >
-      <header className="mb-3 flex items-center justify-end gap-1">
+      <header className="mb-1 flex items-center justify-end gap-1">
         <TableFormatMenu
           icon={<Copy />}
           label={t("tableCopy")}

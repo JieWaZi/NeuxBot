@@ -171,7 +171,11 @@ export function organizableSourcesOptions(ref: ResourceRef) {
       const sources: Source[] = [];
       let offset = 0;
       while (true) {
-        const page = await knowledgeClient(ref).listSources(offset, signal);
+        const page = await knowledgeClient(ref).listSources(
+          offset,
+          signal,
+          100,
+        );
         const items = page.items ?? [];
         sources.push(...items.map((item) => toSource(item, ref.backend)));
         offset += items.length;

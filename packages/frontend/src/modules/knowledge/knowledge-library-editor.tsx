@@ -63,7 +63,6 @@ export function KnowledgeLibraryEditor({
   const locked = state.pending || Boolean(state.command);
   const execution = useExecutionSelection({
     value: { ...draft.execution, reasoning: draft.execution.reasoning ?? "" },
-    requiredCapability: "isolated_text_generation",
     reasoningDefault: "minimum",
     enabled: opened && localConfiguration,
   });

@@ -62,6 +62,7 @@ export function InstanceDetails({
     ],
     active,
     enabled: Boolean(id && runId),
+    eventTypes: ["workflow.run.changed", "workflow.worker.skip_requested"],
   });
   const workerChatId =
     query.data?.chat?.chat?.id || query.data?.instance?.chatId || "";
@@ -165,7 +166,6 @@ export function InstanceDetails({
           instanceId={instance.id}
           generation={data.effect.attemptGeneration ?? 0}
           skipRequested={data.effect.skipRequested ?? false}
-          onChanged={refresh}
         />
       ) : null}
       {data?.effect?.status === "unknown" && !instance?.failure ? (
@@ -181,13 +181,10 @@ export function InstanceDetails({
             total={chat.pendingApprovals?.length ?? 1}
             submissionState={resolveApproval.isPending ? "submitting" : "idle"}
             onResolve={(approvalId, optionId) =>
-              resolveApproval.mutate(
-                {
-                  path: { chatId: chat.id ?? "", approvalId },
-                  body: { optionId },
-                },
-                { onSuccess: refresh },
-              )
+              resolveApproval.mutate({
+                path: { chatId: chat.id ?? "", approvalId },
+                body: { optionId },
+              })
             }
           />
         </div>
@@ -200,13 +197,10 @@ export function InstanceDetails({
               resolveElicitation.isPending ? "submitting" : "idle"
             }
             onResolve={(elicitationId, content, declined) =>
-              resolveElicitation.mutate(
-                {
-                  path: { chatId: chat.id ?? "", elicitationId },
-                  body: { content, declined },
-                },
-                { onSuccess: refresh },
-              )
+              resolveElicitation.mutate({
+                path: { chatId: chat.id ?? "", elicitationId },
+                body: { content, declined },
+              })
             }
           />
         </div>

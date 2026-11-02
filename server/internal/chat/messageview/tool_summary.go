@@ -114,10 +114,6 @@ func (scope workspacePathScope) safeRelativePath(rawPath string) (string, bool) 
 			continue
 		}
 		logicalPath := pathpkg.Join("projects", source.EntryName, filepath.ToSlash(relative))
-		logicalPath = truncateSummaryString(logicalPath)
-		if logicalPath == "" {
-			continue
-		}
 		sourceLength := len(normalizeWindowsPath(filepath.Clean(source.SourcePath)))
 		if sourceLength <= bestSourceLength {
 			continue
@@ -305,43 +301,6 @@ func mergeToolSafeSummary(left *ToolSafeSummary, right *ToolSafeSummary) *ToolSa
 }
 
 // messageFileChanges 把同一 Assistant 消息内的文件修改工具聚合为执行级摘要。
-func messageFileChanges(parts []MessageDisplayPart) []ToolFileChangeSummary {
-	changes := make([]ToolFileChangeSummary, 0)
-	indexes := make(map[string]int)
-	for _, part := range parts {
-		if part.Type != constants.MessageDisplayPartTool ||
-			part.ToolCategory != constants.MessageToolCategoryFileModify ||
-			part.ToolStatus == constants.MessageToolStatusFailed ||
-			part.ToolSafeSummary == nil {
-			continue
-		}
-		partChanges := part.ToolSafeSummary.Files
-		if len(partChanges) == 0 && part.ToolSafeSummary.Path != "" {
-			partChanges = []ToolFileChangeSummary{{
-				Path:         part.ToolSafeSummary.Path,
-				AddedLines:   optionalSummaryInt(part.ToolSafeSummary.AddedLines),
-				DeletedLines: optionalSummaryInt(part.ToolSafeSummary.DeletedLines),
-			}}
-		}
-		for _, change := range partChanges {
-			if _, exists := indexes[change.Path]; !exists &&
-				len(changes) >= constants.MessageToolSafeSummaryMaxFiles {
-				continue
-			}
-			changes = mergeFileChangeSummary(changes, indexes, change)
-		}
-	}
-	return changes
-}
-
-// optionalSummaryInt 把工具摘要中的可选统计转换为执行级摘要使用的零值。
-func optionalSummaryInt(value *int) int {
-	if value == nil {
-		return 0
-	}
-	return *value
-}
-
 func firstNestedDisplayString(data map[string]interface{}, keys ...string) string {
 	for _, candidate := range nestedToolObjects(data) {
 		if candidate == nil {
@@ -423,7 +382,7 @@ func safeProjectRelativePath(rawPath string, workingDirectory string) (string, b
 	if err != nil || relative == "." || strings.HasPrefix(relative, "..") || filepath.IsAbs(relative) {
 		return "", false
 	}
-	return truncateSummaryString(filepath.ToSlash(relative)), true
+	return filepath.ToSlash(relative), true
 }
 
 func safeWindowsProjectRelativePath(rawPath string, workingDirectory string) (string, bool) {
@@ -448,7 +407,7 @@ func safeWindowsProjectRelativePath(rawPath string, workingDirectory string) (st
 		return "", false
 	}
 	relative := strings.TrimPrefix(targetClean, basePrefix)
-	return truncateSummaryString(relative), true
+	return relative, true
 }
 
 func looksWindowsPath(value string) bool {

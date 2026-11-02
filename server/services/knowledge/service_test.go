@@ -5,7 +5,7 @@ import (
 	"errors"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -126,7 +126,7 @@ func TestOrdinaryChatStartsOnlyRequestedAttachmentWithoutComposerAuthorization(t
 		execution: models.Execution{ID: "execution", UserMessageID: "user-message", RuntimeID: constants.RuntimeIDCodex, AccountID: "chat-account", Model: "chosen-model", Reasoning: "high", PermissionLevel: constants.PermissionLevelFullAccess},
 	}
 	s.config.Chats = current
-	var start agentcapability.Binding
+	var start capability.Binding
 	for _, binding := range s.AgentBindings(ctx, current.chat) {
 		if binding.Operation == "knowledge.jobs.start" {
 			start = binding
@@ -135,7 +135,7 @@ func TestOrdinaryChatStartsOnlyRequestedAttachmentWithoutComposerAuthorization(t
 	if start.Call == nil || start.Receipt == nil {
 		t.Fatal("ordinary chat has no organization command")
 	}
-	request := agentcapability.Request{RequestID: "natural-request", Params: map[string]any{"libraryId": lib.ID, "attachmentIndexes": []int{1}, "message": "按主题提炼"}}
+	request := capability.Request{RequestID: "natural-request", Params: map[string]any{"libraryId": lib.ID, "attachmentIndexes": []int{1}, "message": "按主题提炼"}}
 	result, err := start.Call(ctx, request)
 	if err != nil {
 		t.Fatal(err)
@@ -157,9 +157,9 @@ func TestOrdinaryChatStartsOnlyRequestedAttachmentWithoutComposerAuthorization(t
 	if err != nil || session.RuntimeID != constants.RuntimeIDCodex || session.AccountID != "chat-account" || session.Model != "chosen-model" || session.Reasoning != "high" || !strings.Contains(session.Message, "只整理第二份附件") || !strings.Contains(session.Message, "按主题提炼") {
 		t.Fatalf("knowledge task lost chat selection or original requirements: %+v err=%v", session, err)
 	}
-	for _, recover := range []func() (agentcapability.Result, error){
-		func() (agentcapability.Result, error) { return start.Call(ctx, request) },
-		func() (agentcapability.Result, error) { return start.Receipt(ctx, request.RequestID) },
+	for _, recover := range []func() (capability.Result, error){
+		func() (capability.Result, error) { return start.Call(ctx, request) },
+		func() (capability.Result, error) { return start.Receipt(ctx, request.RequestID) },
 	} {
 		replayed, err := recover()
 		if err != nil || replayed.Data.(map[string]any)["receipt"].(*core.Receipt).ResourceID != job.ID {
@@ -187,7 +187,7 @@ func TestChatKnowledgeTasksPreserveSystemAccountInsteadOfResolvingAnotherDefault
 				if b.Operation != operation {
 					continue
 				}
-				result, err := b.Call(ctx, agentcapability.Request{RequestID: "system-account", Params: map[string]any{"libraryId": lib.ID}})
+				result, err := b.Call(ctx, capability.Request{RequestID: "system-account", Params: map[string]any{"libraryId": lib.ID}})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -212,7 +212,7 @@ func TestOrdinaryChatOrganizeRejectsExpandedScopeAndInvalidAttachments(t *testin
 	ctx := context.Background()
 	current := selectedChat{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}, message: messageview.Message{ID: "user", Attachments: []eventlog.AttachmentReference{{Name: "one.md", Path: "one.md", Managed: true}}}}
 	s.config.Chats = current
-	var start agentcapability.Binding
+	var start capability.Binding
 	for _, binding := range s.AgentBindings(ctx, current.chat) {
 		if binding.Operation == "knowledge.jobs.start" {
 			start = binding
@@ -233,13 +233,13 @@ func TestOrdinaryChatOrganizeRejectsExpandedScopeAndInvalidAttachments(t *testin
 		{"libraryId": lib.ID, "attachmentIndexes": []int{0, 0}},
 		{"libraryId": lib.ID, "attachmentIndexes": []int{-1}},
 	} {
-		if _, err := start.Call(ctx, agentcapability.Request{RequestID: "invalid", Params: params}); err == nil {
+		if _, err := start.Call(ctx, capability.Request{RequestID: "invalid", Params: params}); err == nil {
 			t.Fatalf("expanded or invalid request accepted: %v", params)
 		}
 	}
 	current.chat.ActiveExecutionID = "later-execution"
 	s.config.Chats = current
-	if _, err := start.Call(ctx, agentcapability.Request{RequestID: "stale", Params: map[string]any{"libraryId": lib.ID}}); !errors.Is(err, status_error.KnowledgeForbidden) {
+	if _, err := start.Call(ctx, capability.Request{RequestID: "stale", Params: map[string]any{"libraryId": lib.ID}}); !errors.Is(err, status_error.KnowledgeForbidden) {
 		t.Fatalf("old execution imported later message: %v", err)
 	}
 }
@@ -249,7 +249,7 @@ func TestOrdinaryChatNoopReplayDoesNotAcquireLaterPendingMaterials(t *testing.T)
 	ctx := context.Background()
 	current := selectedChat{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}, message: messageview.Message{ID: "user", Content: "整理库内待处理资料"}}
 	s.config.Chats = current
-	var start agentcapability.Binding
+	var start capability.Binding
 	for _, binding := range s.AgentBindings(ctx, current.chat) {
 		if binding.Operation == "knowledge.jobs.start" {
 			start = binding
@@ -258,7 +258,7 @@ func TestOrdinaryChatNoopReplayDoesNotAcquireLaterPendingMaterials(t *testing.T)
 	if start.Call == nil {
 		t.Fatal("ordinary chat has no organization command")
 	}
-	request := agentcapability.Request{RequestID: "empty", Params: map[string]any{"libraryId": lib.ID}}
+	request := capability.Request{RequestID: "empty", Params: map[string]any{"libraryId": lib.ID}}
 	result, err := start.Call(ctx, request)
 	if err != nil || !result.Data.(map[string]any)["noop"].(bool) {
 		t.Fatalf("first=%+v err=%v", result, err)
@@ -301,13 +301,13 @@ func TestOrdinaryChatReceiptRepairsInterruptedAcceptance(t *testing.T) {
 	if _, err := s.config.Engine.ImportSource(ctx, core.ImportSourceInput{RequestID: "source", LibraryID: lib.ID, Filename: "source.md", Bytes: []byte("Evidence")}); err != nil {
 		t.Fatal(err)
 	}
-	var start agentcapability.Binding
+	var start capability.Binding
 	for _, binding := range s.AgentBindings(ctx, current.chat) {
 		if binding.Operation == "knowledge.jobs.start" {
 			start = binding
 		}
 	}
-	request := agentcapability.Request{RequestID: "interrupted", Params: map[string]any{"libraryId": lib.ID}}
+	request := capability.Request{RequestID: "interrupted", Params: map[string]any{"libraryId": lib.ID}}
 	if _, err := start.Call(ctx, request); !errors.Is(err, status_error.DatabaseError) {
 		t.Fatalf("expected interruption after core acceptance: %v", err)
 	}
@@ -350,7 +350,7 @@ func TestExplicitChatAttachmentSelectionExcludesOtherPendingRaw(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := bound.Options.ToolCapabilities[0].Bindings[0].Call(ctx, agentcapability.Request{RequestID: "selected-job"})
+	result, err := bound.Options.ToolCapabilities[0].Bindings[0].Call(ctx, capability.Request{RequestID: "selected-job"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,5 +1,4 @@
 import {
-  type InfiniteData,
   useInfiniteQuery,
   useMutation,
   useQuery,
@@ -17,16 +16,18 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
+import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { subscribeChannel } from "@/shared/api/events";
 import { ApiError } from "@/shared/api/errors";
 import type {
   GithubComJieWaZiNeuxBotServerApisChannelsChannelThreadDetail as ChannelThreadDetail,
   GithubComJieWaZiNeuxBotServerServicesChannelTimelineMessage as ChannelTimelineMessage,
-  ListChannelTimelineResponse,
 } from "@/shared/api/generated/types.gen";
 import {
   createChannelThreadMutation,
-  fetchTeamTimelinePage,
+  commitTeamTimelineEvents,
+  commitTeamTimelineProjectionEvent,
+  reconcileTeamTimelineQuery,
   getChannelOptions,
   getChannelThreadOptions,
   getChannelThreadQueryKey,
@@ -98,6 +99,7 @@ export function TeamThreadPage({
 }: TeamThreadPageProps) {
   const [searchParams] = useSearchParams();
   const requestedTask = searchParams.get("task") ?? undefined;
+  const sceneActive = useRouteSceneActive();
   const { t } = useTranslation("team");
   const { channelId = "", threadId } = useParams();
   const navigate = useNavigate();
@@ -114,9 +116,10 @@ export function TeamThreadPage({
   );
   const handledMissingThreadRef = useRef("");
   const notifiedEventIdsRef = useRef(new Set<string>());
-  const channelQuery = useQuery(
-    getChannelOptions({ path: { channelId: channelId || "pending" } }),
-  );
+  const channelQuery = useQuery({
+    ...getChannelOptions({ path: { channelId: channelId || "pending" } }),
+    enabled: sceneActive && Boolean(channelId),
+  });
   const threadQuery = useQuery({
     ...getChannelThreadOptions({
       path: {
@@ -124,7 +127,7 @@ export function TeamThreadPage({
         threadId: threadId || "pending",
       },
     }),
-    enabled: Boolean(channelId && threadId),
+    enabled: sceneActive && Boolean(channelId && threadId),
     retry: (failureCount, error) =>
       !(error instanceof ApiError && error.status === 404) && failureCount < 2,
   });
@@ -133,8 +136,22 @@ export function TeamThreadPage({
       channelId || "pending",
       threadId || "pending",
     ),
-    enabled: Boolean(channelId && threadId),
+    enabled: sceneActive && Boolean(channelId && threadId),
   });
+  useEffect(() => {
+    if (sceneActive || !threadId) return;
+    // 隐藏只释放消费并标记原 Query 陈旧；恢复可见交由 Query 自身读取。
+    void queryClient.invalidateQueries({
+      queryKey: getChannelThreadQueryKey({ path: { channelId, threadId } }),
+      exact: true,
+      refetchType: "none",
+    });
+    void queryClient.invalidateQueries({
+      queryKey: teamQueryKeys.timelinePages(channelId, threadId),
+      exact: true,
+      refetchType: "none",
+    });
+  }, [channelId, queryClient, sceneActive, threadId]);
   useEffect(() => {
     const snapshot = threadQuery.data;
     if (!snapshot || snapshot.thread?.id !== threadId) return;
@@ -184,25 +201,22 @@ export function TeamThreadPage({
     await timelineQuery.fetchNextPage();
   }, [hasEarlierTimelineMessages, threadId, timelineQuery]);
 
-  const refreshLatestTimeline = useCallback(async () => {
-    if (!threadId) return;
-    try {
-      const latestPage = await fetchTeamTimelinePage(channelId, threadId);
-      queryClient.setQueryData<
-        InfiniteData<ListChannelTimelineResponse, string>
-      >(teamQueryKeys.timelinePages(channelId, threadId), (current) =>
-        current
-          ? {
-              ...current,
-              pages: [latestPage, ...current.pages.slice(1)],
-              pageParams: ["", ...current.pageParams.slice(1)],
-            }
-          : { pages: [latestPage], pageParams: [""] },
+  const refreshLatestTimeline = useCallback(
+    async (
+      scope: "pending" | "recovery" = "recovery",
+      signal?: AbortSignal,
+    ) => {
+      if (!threadId) return undefined;
+      return reconcileTeamTimelineQuery(
+        queryClient,
+        channelId,
+        threadId,
+        scope,
+        signal,
       );
-    } catch {
-      // 实时刷新失败时保留当前可读快照；SSE 重连或用户重试会再次拉取。
-    }
-  }, [channelId, queryClient, threadId]);
+    },
+    [channelId, queryClient, threadId],
+  );
 
   const refreshThreadDetail = useCallback(() => {
     if (threadId) {
@@ -211,29 +225,29 @@ export function TeamThreadPage({
           path: { channelId, threadId },
         }),
       });
-      void refreshLatestTimeline();
     }
-  }, [channelId, queryClient, refreshLatestTimeline, threadId]);
+  }, [channelId, queryClient, threadId]);
 
   const refreshThreadNavigation = useCallback(() => {
     void queryClient.invalidateQueries({
       queryKey: teamQueryKeys.threads(channelId),
     });
-    void queryClient.invalidateQueries({
-      queryKey: teamQueryKeys.channels(),
-    });
-    void queryClient.invalidateQueries({
-      queryKey: teamQueryKeys.channelPages(),
-    });
   }, [channelId, queryClient]);
 
-  const refreshThread = useCallback(() => {
-    refreshThreadDetail();
-    refreshThreadNavigation();
-  }, [refreshThreadDetail, refreshThreadNavigation]);
+  const eventRefreshScheduler = useMemo(
+    () =>
+      createTeamThreadRefreshScheduler({
+        refreshDetail: refreshThreadDetail,
+        refreshTimeline: () =>
+          void refreshLatestTimeline("pending").catch(() => {}),
+        refreshNavigation: refreshThreadNavigation,
+      }),
+    [refreshLatestTimeline, refreshThreadDetail, refreshThreadNavigation],
+  );
 
   const reconcileThreadSnapshot = useCallback(async () => {
     if (!threadId) return "";
+    eventRefreshScheduler.clear();
     dispatchLiveProjection({ type: "reconnect" });
     const snapshot = await queryClient.fetchQuery({
       ...getChannelThreadOptions({ path: { channelId, threadId } }),
@@ -245,31 +259,37 @@ export function TeamThreadPage({
     return snapshot.eventCursor ?? "";
   }, [
     channelId,
+    eventRefreshScheduler,
     queryClient,
     refreshLatestTimeline,
     refreshThreadNavigation,
     threadId,
   ]);
 
-  const eventRefreshScheduler = useMemo(
-    () =>
-      createTeamThreadRefreshScheduler({
-        refreshDetail: refreshThreadDetail,
-        refreshNavigation: refreshThreadNavigation,
-      }),
-    [refreshThreadDetail, refreshThreadNavigation],
-  );
-
-  useEffect(() => () => eventRefreshScheduler.clear(), [eventRefreshScheduler]);
+  useEffect(() => {
+    if (!sceneActive) eventRefreshScheduler.clear();
+    return () => eventRefreshScheduler.clear();
+  }, [eventRefreshScheduler, sceneActive]);
 
   useEffect(() => {
-    if (!threadId || projectedThreadDetail?.thread?.id !== threadId) return;
+    if (
+      !sceneActive ||
+      !threadId ||
+      projectedThreadDetail?.thread?.id !== threadId
+    )
+      return;
     const streamOperation = `team-stream:${threadId}`;
     let recovery = captureErrorNoticeRecovery(streamOperation);
     const unsubscribe = subscribeChannel(channelId, threadId, {
       after: eventCursorRef.current,
       onEvent: (event) => {
         resolveErrorNoticeRecovery(recovery);
+        commitTeamTimelineProjectionEvent(
+          queryClient,
+          channelId,
+          threadId,
+          event,
+        );
         dispatchLiveProjection({ type: "event", event });
         eventRefreshScheduler.push(event.type);
         const notice = teamEventNoticeOf(event);
@@ -298,7 +318,7 @@ export function TeamThreadPage({
           message: t("chat:runtimeFailure.networkError"),
         });
         recovery = captureErrorNoticeRecovery(streamOperation);
-        refreshThread();
+        eventRefreshScheduler.push();
       },
     });
     return unsubscribe;
@@ -306,8 +326,9 @@ export function TeamThreadPage({
     channelId,
     eventRefreshScheduler,
     projectedThreadDetail?.thread?.id,
+    queryClient,
     reconcileThreadSnapshot,
-    refreshThread,
+    sceneActive,
     t,
     threadId,
   ]);
@@ -349,7 +370,23 @@ export function TeamThreadPage({
 
   const resolvedChannel = channel ?? { id: channelId, name: t("title") };
   const tasks = projectedThreadDetail?.tasks ?? [];
+  const timeline = projectTeamTimeline(
+    [...(timelineQuery.data?.pages ?? [])]
+      .reverse()
+      .flatMap((page) => page.resources ?? []),
+  );
   const leadActivity = teamLeadActivityOf(projectedThreadDetail);
+  // 主 Chat 的已提交终态比在途团队摘要更准确，迟到摘要不能把已结束回合恢复为执行中。
+  if (
+    leadActivity.activeExecutionId &&
+    timeline.some(
+      (item) =>
+        item.coordinator &&
+        item.message.executionId === leadActivity.activeExecutionId &&
+        ["completed", "failed", "canceled"].includes(item.message.status ?? ""),
+    )
+  )
+    leadActivity.activeExecutionId = undefined;
   const isStopping = Boolean(thread?.cancelingAt) || stopWork.isPending;
   const workState = isStopping
     ? "running"
@@ -364,17 +401,13 @@ export function TeamThreadPage({
       }),
     [leadWakerId, members, projectedThreadDetail, t, threadId],
   );
-  const timeline = projectTeamTimeline(
-    [...(timelineQuery.data?.pages ?? [])]
-      .reverse()
-      .flatMap((page) => page.resources ?? []),
-  );
   const stopCurrentWork = async () => {
     if (!threadId || isStopping) return;
     try {
       await stopWork.mutateAsync({ path: { channelId, threadId } });
-    } finally {
-      refreshThread();
+    } catch (error) {
+      eventRefreshScheduler.push();
+      throw error;
     }
   };
   const terminalTaskCount = tasks.filter(
@@ -413,6 +446,28 @@ export function TeamThreadPage({
     members: teamMembers,
     name: resolvedChannel.name ?? t("title"),
     timeline,
+    messageSource: {
+      snapshot: {
+        messages: timeline.flatMap((item) =>
+          item.coordinator ? [item.message] : [],
+        ),
+        latestSequence:
+          timelineQuery.data?.pages[0]?.leadChatLatestSequence ?? 0,
+        ready: !threadId || Boolean(timelineQuery.data),
+      },
+      commit: (events) =>
+        threadId && mainChatId
+          ? commitTeamTimelineEvents(
+              queryClient,
+              channelId,
+              threadId,
+              mainChatId,
+              leadWakerId,
+              events,
+            )
+          : undefined,
+      reconcile: (signal) => refreshLatestTimeline("recovery", signal),
+    },
     hasEarlierTimelineMessages,
     isLoadingEarlierTimelineMessages,
     onLoadEarlierTimelineMessages: loadEarlierTimelineMessages,
@@ -446,7 +501,6 @@ export function TeamThreadPage({
       });
     },
     onStopWork: stopCurrentWork,
-    onThreadChanged: refreshThread,
     onThreadCreated: (createdThreadId) => {
       refreshThreadNavigation();
       navigate(`/teams/${channelId}/threads/${createdThreadId}`, {
@@ -478,7 +532,6 @@ export function TeamThreadPage({
           path: { channelId, threadId },
           body: { members: nextMembers },
         });
-        await queryClient.invalidateQueries({ queryKey });
       } catch (error) {
         queryClient.setQueryData(queryKey, previous);
         throw error;
@@ -490,7 +543,6 @@ export function TeamThreadPage({
         channelId={channelId}
         actionsDisabled={isStopping}
         members={teamMembers}
-        onChanged={refreshThread}
         tasks={tasks}
         threadId={threadId}
         loading={threadDetailLoading}

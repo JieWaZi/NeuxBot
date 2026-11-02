@@ -1,4 +1,4 @@
-import { useAuiState, type ThreadMessage } from "@assistant-ui/react";
+import type { AllyChatMessage } from "../runtime/chat-projection";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type {
   KeyboardEvent as ReactKeyboardEvent,
@@ -12,32 +12,26 @@ import { cn } from "@/shared/lib/cn";
 const TURN_MARKER_HEIGHT = 12;
 
 type ChatTurn = {
-  assistantText: string;
+  assistant?: AllyChatMessage;
   id: string;
-  userText: string;
+  user: AllyChatMessage;
 };
 
-function previewText(message?: ThreadMessage) {
+function previewText(message?: AllyChatMessage) {
   if (!message) return "";
-  return message.content
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join("\n")
-    .replace(/\s+/g, " ")
-    .trim();
+  return (message.content ?? "").replace(/\s+/g, " ").trim();
 }
 
-function chatTurns(messages: readonly ThreadMessage[]) {
+function chatTurns(messages: readonly AllyChatMessage[]) {
   const turns: ChatTurn[] = [];
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
     if (!message || message.role !== "user") continue;
     const nextMessage = messages[index + 1];
     turns.push({
-      id: message.id,
-      userText: previewText(message),
-      assistantText:
-        nextMessage?.role === "assistant" ? previewText(nextMessage) : "",
+      id: message.id ?? "",
+      user: message,
+      assistant: nextMessage?.role === "assistant" ? nextMessage : undefined,
     });
   }
   return turns;
@@ -51,11 +45,14 @@ function findMessageElement(viewport: HTMLElement, messageID: string) {
 
 function ChatTurnNavigator({
   viewportRef,
+  messages,
+  active = true,
 }: {
   viewportRef: RefObject<HTMLDivElement | null>;
+  messages: readonly AllyChatMessage[];
+  active?: boolean;
 }) {
   const { t } = useTranslation("chat");
-  const messages = useAuiState((state) => state.thread.messages);
   const turns = useMemo(() => chatTurns(messages), [messages]);
   const turnIdsKey = turns.map((turn) => encodeURIComponent(turn.id)).join("|");
   const navigatorRef = useRef<HTMLDivElement>(null);
@@ -66,7 +63,7 @@ function ChatTurnNavigator({
 
   useEffect(() => {
     const viewport = viewportRef.current;
-    if (!viewport) return;
+    if (!viewport || !active) return;
     const turnIds = turnIdsKey
       ? turnIdsKey.split("|").map(decodeURIComponent)
       : [];
@@ -94,7 +91,7 @@ function ChatTurnNavigator({
       resizeObserver.disconnect();
       if (frame) window.cancelAnimationFrame(frame);
     };
-  }, [turnIdsKey, viewportRef]);
+  }, [turnIdsKey, viewportRef, active]);
 
   useEffect(() => {
     const navigator = navigatorRef.current;
@@ -217,11 +214,11 @@ function ChatTurnNavigator({
             style={{ top: previewTop }}
           >
             <p className="type-body line-clamp-2 font-medium">
-              {previewTurn.userText || t("attachmentOnlyMessage")}
+              {previewText(previewTurn.user) || t("attachmentOnlyMessage")}
             </p>
-            {previewTurn.assistantText && (
+            {previewTurn.assistant && (
               <p className="border-border text-muted-foreground type-body mt-2 line-clamp-2 border-t pt-2">
-                {previewTurn.assistantText}
+                {previewText(previewTurn.assistant)}
               </p>
             )}
           </div>

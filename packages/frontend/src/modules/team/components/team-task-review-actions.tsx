@@ -13,7 +13,6 @@ import { reviewChannelTaskMutation } from "../api/channel-queries";
 type TeamTaskReviewActionsProps = {
   actionsDisabled: boolean;
   channelId: string;
-  onChanged: () => void;
   task: ChannelTask;
   threadId: string;
 };
@@ -21,7 +20,6 @@ type TeamTaskReviewActionsProps = {
 export function TeamTaskReviewActions({
   actionsDisabled,
   channelId,
-  onChanged,
   task,
   threadId,
 }: TeamTaskReviewActionsProps) {
@@ -40,7 +38,6 @@ export function TeamTaskReviewActions({
     setActionError("");
     try {
       await action();
-      onChanged();
       return true;
     } catch {
       setActionError(t("taskBoard.actionFailed"));

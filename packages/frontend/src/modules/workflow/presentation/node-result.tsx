@@ -6,12 +6,7 @@ import {
   useEffect,
   type ReactNode,
 } from "react";
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-  queryOptions,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, queryOptions } from "@tanstack/react-query";
 import { getByPath } from "@json-render/core";
 import { ArrowUpRight, Files, LayoutPanelTop } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -300,12 +295,10 @@ function resultChatOptions(chatId: string) {
 export function WorkflowResultMessageScope({
   chatId,
   scopeKey,
-  isRunning,
   registerMessages,
   active = true,
 }: ChatContributionScopeProps) {
   // 消息与产出顺序无关，独立产出关联事件和执行终态均对账原引用。
-  const client = useQueryClient();
   const refs = useQuery({
     ...resultChatOptions(chatId ?? ""),
     enabled: active && Boolean(chatId),
@@ -316,12 +309,7 @@ export function WorkflowResultMessageScope({
     queryKeys: [resultChatOptions(chatId || "").queryKey],
     active,
     enabled: Boolean(chatId),
-    eventTypes: [
-      "message.changed",
-      "assistant.message",
-      "tool.message",
-      "execution.",
-    ],
+    eventTypes: ["execution."],
   });
   useQueryEvents({
     topic: "work-results",
@@ -337,12 +325,6 @@ export function WorkflowResultMessageScope({
     active,
     enabled: Boolean(chatId),
   });
-  useEffect(() => {
-    if (!active || !chatId) return;
-    void client.invalidateQueries({
-      queryKey: ["workflow-chat-results", chatId],
-    });
-  }, [active, chatId, client, isRunning]);
   useEffect(
     () =>
       registerMessages((messageId) => {

@@ -34,7 +34,7 @@ func (s *service) watchAttempt(
 		retryDelay := policy.initialDelay
 		consecutiveFailures := 0
 		for {
-			subscription, err := s.chats.SubscribeEvents(watcherContext, attempt.ChatID, 0)
+			subscription, err := s.chats.SubscribeExecutionEvents(watcherContext, attempt.ChatID, attempt.ExecutionID)
 			if err != nil {
 				logAttemptWatcherError("subscribe_chat_events", attempt, threadID, err)
 				consecutiveFailures++
@@ -153,13 +153,23 @@ func (s *service) acceptAttemptTerminal(
 	threadID string,
 	event chat.PublicEvent,
 ) (bool, error) {
-	if event.Message == nil || event.Message.ExecutionID != attempt.ExecutionID ||
-		!executionTerminal(event.Message.Status) {
+	if event.ExecutionID != attempt.ExecutionID || !executionTerminal(event.ExecutionStatus) {
 		return false, nil
 	}
+	messages, err := s.chats.ReadExecutionMessages(s.lifecycleContext, attempt.ChatID, attempt.ExecutionID)
+	if err != nil {
+		return false, err
+	}
+	message := messageview.Message{ID: attempt.ExecutionID, ExecutionID: attempt.ExecutionID, Role: constants.MessageRoleAssistant, Status: event.ExecutionStatus, ErrorCode: event.ErrorCode, ErrorMessage: event.ErrorMessage}
+	for _, candidate := range messages {
+		if candidate.ExecutionID == attempt.ExecutionID && candidate.Role == constants.MessageRoleAssistant {
+			message = candidate
+		}
+	}
+	message.Status = event.ExecutionStatus
 	var terminalErr error
 	for retry := 1; retry <= constants.ChannelAttemptWatcherMaximumImmediateRetries; retry++ {
-		terminalErr = s.handleAttemptTerminal(attempt, *event.Message)
+		terminalErr = s.handleAttemptTerminal(attempt, message)
 		if terminalErr == nil {
 			return true, nil
 		}
@@ -412,23 +422,11 @@ func (s *service) attemptExecutionRecorded(
 	if attempt.ExecutionID == "" {
 		return false, nil
 	}
-	summary, err := s.chats.GetChatSummary(ctx, attempt.ChatID)
-	if err != nil {
-		return false, err
+	_, err := s.chats.ReadExecution(ctx, attempt.ChatID, attempt.ExecutionID)
+	if hasStatusErrorCode(err, status_error.ExecutionNotFound.Code()) {
+		return false, nil
 	}
-	if summary.Chat.ActiveExecutionID == attempt.ExecutionID {
-		return true, nil
-	}
-	page, err := s.chats.ReadMessageHistory(ctx, attempt.ChatID, 0, 1)
-	if err != nil {
-		return false, err
-	}
-	for _, message := range page.Resources {
-		if message.ID == attempt.ExecutionID || message.ExecutionID == attempt.ExecutionID {
-			return true, nil
-		}
-	}
-	return false, nil
+	return err == nil, err
 }
 
 // failMissingAttempt 为旧数据或损坏状态补建非空 attempt，再形成可追踪失败事实。

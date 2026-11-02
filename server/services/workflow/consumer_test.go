@@ -13,7 +13,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/agentcapability"
+	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -93,8 +93,8 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	queries.summary = chat.ChatSummary{Chat: models.Chat{ID: lease.ChatID, ActiveExecutionID: lease.ID, AdditionalWorkingDirectories: []string{approvedDirectory}}}
-	registry := agentcapability.New(nil)
-	grant, activate, revoke, err := registry.Prepare(agentcapability.GrantSpec{ExecutionID: lease.ID, Bindings: s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer), Validate: func(context.Context) error { return nil }})
+	registry := capability.New(nil)
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: lease.ID, Bindings: s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer), Validate: func(context.Context) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 			id = "workflow." + id
 		}
 		requestID, _ := input["requestId"].(string)
-		body, _ := json.Marshal(agentcapability.Request{Operation: id, RequestID: requestID, Params: params})
+		body, _ := json.Marshal(capability.Request{Operation: id, RequestID: requestID, Params: params})
 		request, _ := http.NewRequest(http.MethodPost, endpoint.URL+constants.AgentCLIPath+"/commands", bytes.NewReader(body))
 		request.Header.Set("Authorization", "Bearer "+grant.Token)
 		response, err := endpoint.Client().Do(request)

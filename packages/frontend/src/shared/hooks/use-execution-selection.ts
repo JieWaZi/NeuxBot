@@ -31,14 +31,12 @@ export function useExecutionSelection({
   runtime: fixedRuntime,
   enabled = true,
   defaults = false,
-  requiredCapability,
   reasoningDefault,
 }: {
   value: ExecutionSelection;
   runtime?: RuntimeOption;
   enabled?: boolean;
   defaults?: boolean;
-  requiredCapability?: string;
   reasoningDefault?: "minimum";
 }) {
   const runtimesQuery = useQuery({
@@ -50,12 +48,7 @@ export function useExecutionSelection({
     enabled,
   });
   const runtimes = (runtimesQuery.data?.resources ?? []).filter(
-    (item) =>
-      item.id &&
-      item.enabled &&
-      item.state === "ready" &&
-      (!requiredCapability ||
-        item.capabilities?.[requiredCapability] !== false),
+    (item) => item.id && item.enabled && item.state === "ready",
   );
   const runtimeId =
     fixedRuntime?.id ||
@@ -185,19 +178,7 @@ export function useExecutionSelection({
     accountsQuery.isPending ||
     (subscription && nativeModelsQuery.isPending) ||
     Boolean(account && effectiveModel && thinkingQuery.isPending);
-  const capabilityUnavailable = Boolean(
-    requiredCapability &&
-    !loading &&
-    (!runtime || runtime.capabilities?.[requiredCapability] === false),
-  );
-  const capabilityUnverified = Boolean(
-    requiredCapability &&
-    !loading &&
-    runtime &&
-    runtime.capabilities?.[requiredCapability] === undefined,
-  );
   const valid = Boolean(
-    !capabilityUnavailable &&
     runtime?.enabled &&
     runtime.state === "ready" &&
     (accountId === "system" || account?.hasCredential) &&
@@ -223,8 +204,6 @@ export function useExecutionSelection({
     loading,
     error,
     valid,
-    capabilityUnavailable,
-    capabilityUnverified,
   };
 }
 

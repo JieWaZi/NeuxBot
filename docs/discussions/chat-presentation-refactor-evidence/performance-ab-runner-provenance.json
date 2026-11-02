@@ -1,0 +1,9 @@
+{
+  "measuredRunnerSha256": "e8e47e1bcc3116f95b420b9f4de82f2ef299d2391f59536fa8c485d1e752d9df",
+  "recordedRunnerSha256": "e8e47e1bcc3116f95b420b9f4de82f2ef299d2391f59536fa8c485d1e752d9df",
+  "formattedRepositoryRunnerSha256": "b0fd171c3c28e5bf1ceb3bc59829d1c9702fb816d87a4ee3d9cb55c75f608361",
+  "measuredNormalizedAstSha256": "da5239c9d9e10d7727380d16475a34527531830ca1b4d5fae9f4394e318f6448",
+  "formattedNormalizedAstSha256": "da5239c9d9e10d7727380d16475a34527531830ca1b4d5fae9f4394e318f6448",
+  "normalization": "TypeScript AST without comments/positions/redundant ParenthesizedExpression; preserves identifiers, string/template/regex/numeric values, operators, const/let flags and child order",
+  "measuredRunnerArtifact": "/private/tmp/neux-chat-projection-ab-measured-runner.mjs"
+}

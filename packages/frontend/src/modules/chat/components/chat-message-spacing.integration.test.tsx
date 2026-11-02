@@ -1,49 +1,36 @@
-import {
-  AssistantRuntimeProvider,
-  ThreadPrimitive,
-  useExternalStoreRuntime,
-  type ThreadMessageLike,
-} from "@assistant-ui/react";
 import { fireEvent, render, screen } from "@testing-library/react";
+import { useMemo } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { expect, it } from "vitest";
 
 import { i18n } from "@/shared/i18n";
 import { TooltipProvider } from "@/shared/ui/tooltip";
-import { toThreadMessage } from "../runtime/chat-projection";
+import type { AllyChatMessage } from "../runtime/chat-projection";
+import { ChatMessageProjection } from "./chat-message-nodes";
 import { AssistantMessage } from "./chat-thread";
 
 function MessageHarness({
   message,
   showUsageMetrics = true,
 }: {
-  message: ThreadMessageLike;
+  message: AllyChatMessage;
   showUsageMetrics?: boolean;
 }) {
-  const runtime = useExternalStoreRuntime({
-    messages: [message],
-    convertMessage: (message) => message,
-    isRunning: message.status?.type === "running",
-    onNew: async () => {},
-  });
+  const view = useMemo(
+    () => new ChatMessageProjection().update([message])[0],
+    [message],
+  );
+  if (!view) throw new Error("missing fixture message");
   return (
     <MemoryRouter>
       <TooltipProvider>
-        <AssistantRuntimeProvider runtime={runtime}>
-          <ThreadPrimitive.Root>
-            <ThreadPrimitive.Messages
-              components={{
-                UserMessage: () => null,
-                AssistantMessage: () => (
-                  <AssistantMessage
-                    name="私人助理"
-                    showUsageMetrics={showUsageMetrics}
-                  />
-                ),
-              }}
-            />
-          </ThreadPrimitive.Root>
-        </AssistantRuntimeProvider>
+        <AssistantMessage
+          view={view}
+          name="私人助理"
+          latest
+          last
+          showUsageMetrics={showUsageMetrics}
+        />
       </TooltipProvider>
     </MemoryRouter>
   );
@@ -51,7 +38,7 @@ function MessageHarness({
 
 it("思考后的纯换行不占段落高度，也不把连续网络工具拆成多个活动组", () => {
   // 使用截图对应的实际片段顺序：思考、三个换行、工具、一个换行、工具。
-  const message = toThreadMessage({
+  const message: AllyChatMessage = {
     id: "assistant-spacing",
     role: "assistant",
     status: "running",
@@ -76,7 +63,7 @@ it("思考后的纯换行不占段落高度，也不把连续网络工具拆成�
         toolStatus: "completed",
       },
     ],
-  });
+  };
   const { container } = render(<MessageHarness message={message} />);
 
   expect(screen.getAllByRole("button", { name: "已访问网络" })).toHaveLength(1);
@@ -92,8 +79,8 @@ it("思考后的纯换行不占段落高度，也不把连续网络工具拆成�
 
 function resultMessage(
   status: "running" | "completed" | "failed" = "completed",
-) {
-  return toThreadMessage({
+): AllyChatMessage {
+  return {
     id: "assistant-result",
     role: "assistant",
     status,
@@ -111,7 +98,7 @@ function resultMessage(
       { type: "reasoning", text: "配置已经核对完成。" },
       { type: "text", text: "最终结果：配置正确。" },
     ],
-  });
+  };
 }
 
 it("完成后用一个耗时摘要收起全部过程，最终正文始终可见", () => {
@@ -144,11 +131,19 @@ it("从执行中切换为完成时自动收起过程", async () => {
   const { rerender } = render(
     <MessageHarness message={resultMessage("running")} />,
   );
-  expect(screen.getByText("先检查配置来源。")).toBeVisible();
+  const reasoning = screen.getByText("先检查配置来源。");
+  expect(reasoning).toBeVisible();
+  const process = reasoning.closest('[data-presence-layout="collapse"]');
+  expect(process).toHaveAttribute("data-state", "open");
   rerender(<MessageHarness message={resultMessage()} />);
   expect(
     await screen.findByRole("button", { name: "用时 22.0s" }),
   ).toHaveAttribute("aria-expanded", "false");
+  const toggle = screen.getByRole("button", { name: "用时 22.0s" });
+  expect(
+    document.getElementById(toggle.getAttribute("aria-controls") ?? ""),
+  ).toBe(process);
+  expect(process).toHaveAttribute("data-state", "closed");
   expect(screen.queryByText("先检查配置来源。")).not.toBeInTheDocument();
   expect(screen.getByText("最终结果：配置正确。")).toBeVisible();
 });
@@ -163,12 +158,12 @@ it("失败时保留过程，纯正文完成消息不增加空的过程入口", a
   ).not.toBeInTheDocument();
   rerender(
     <MessageHarness
-      message={toThreadMessage({
+      message={{
         id: "text-only",
         role: "assistant",
         status: "completed",
         displayParts: [{ type: "text", text: "直接回复。" }],
-      })}
+      }}
     />,
   );
   expect(await screen.findByText("直接回复。")).toBeVisible();
@@ -187,7 +182,7 @@ it("英文摘要与无耗时的历史过程入口使用对应翻译", async () =
     );
     rerender(
       <MessageHarness
-        message={toThreadMessage({
+        message={{
           id: "without-metrics",
           role: "assistant",
           status: "completed",
@@ -195,7 +190,7 @@ it("英文摘要与无耗时的历史过程入口使用对应翻译", async () =
             { type: "reasoning", text: "历史思考过程。" },
             { type: "text", text: "历史最终回复。" },
           ],
-        })}
+        }}
       />,
     );
     const toggle = await screen.findByRole("button", { name: "View process" });
@@ -221,13 +216,13 @@ it("耗时与 Token 详情合并到过程入口，键盘聚焦可查看", async 
 it("纯正文完成消息保留底部用量入口", () => {
   render(
     <MessageHarness
-      message={toThreadMessage({
+      message={{
         id: "plain-with-metrics",
         role: "assistant",
         status: "completed",
         runMetrics: { durationMs: 22_000 },
         displayParts: [{ type: "text", text: "直接回复，无中间过程。" }],
-      })}
+      }}
     />,
   );
   expect(
@@ -244,4 +239,57 @@ it("关闭用量展示时仍可展开过程，且不暴露 Token 详情", async 
   expect(screen.getAllByText(/22\.0s/)).toHaveLength(1);
   fireEvent.click(toggle);
   expect(screen.getByText("先检查配置来源。")).toBeVisible();
+});
+
+it("完成时收起过程会把工具入口中的键盘焦点还给耗时摘要", () => {
+  const view = render(<MessageHarness message={resultMessage("running")} />);
+  const tool = screen.getByRole("button", { name: "已读取文件" });
+  tool.focus();
+  expect(document.activeElement).toBe(tool);
+  view.rerender(<MessageHarness message={resultMessage()} />);
+  const summary = screen.getByRole("button", { name: "用时 22.0s" });
+  expect(document.activeElement).toBe(summary);
+  expect(summary).toHaveAttribute("aria-expanded", "false");
+});
+
+it("截图固定语料保留13.5s、过程说明、网络组、具体搜索动作、收起和最终分隔", () => {
+  render(
+    <MessageHarness
+      message={{
+        id: "screenshot-equivalence",
+        role: "assistant",
+        status: "completed",
+        runMetrics: { durationMs: 13_500 },
+        displayParts: [
+          {
+            id: "commentary",
+            type: "process_commentary",
+            text: "我会先查阅官方资料。",
+          },
+          {
+            id: "search",
+            type: "tool",
+            toolCategory: "network",
+            toolAction: "search_web",
+            toolStatus: "completed",
+            toolLabel: "搜索 OpenAI 官方资料",
+          },
+          { id: "body", type: "text", text: "已经完成核对，以下是最终答复。" },
+        ],
+      }}
+    />,
+  );
+  const duration = screen.getByRole("button", { name: "用时 13.5s" });
+  expect(duration).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByRole("separator")).toBeVisible();
+  expect(screen.getByText("已经完成核对，以下是最终答复。")).toBeVisible();
+  fireEvent.click(duration);
+  expect(screen.getByText("我会先查阅官方资料。")).toBeVisible();
+  const network = screen.getByRole("button", { name: "已访问网络" });
+  expect(network).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(network);
+  expect(screen.getByText("搜索 OpenAI 官方资料")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "收起" }));
+  expect(network).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByText("已经完成核对，以下是最终答复。")).toBeVisible();
 });

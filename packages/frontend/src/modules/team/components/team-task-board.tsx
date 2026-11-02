@@ -23,7 +23,6 @@ type TeamTaskBoardProps = {
   errorMessage?: string;
   loading?: boolean;
   members: TeamTaskMember[];
-  onChanged: () => void;
   onRetry?: () => void;
   tasks: ChannelTask[];
   threadId?: string;
@@ -47,7 +46,6 @@ function TeamTaskCard({
   actionsDisabled,
   assignee,
   channelId,
-  onChanged,
   sender,
   task,
   threadId,
@@ -56,7 +54,6 @@ function TeamTaskCard({
   actionsDisabled: boolean;
   assignee?: TeamTaskMember;
   channelId: string;
-  onChanged: () => void;
   sender?: TeamTaskMember;
   task: ChannelTask;
   threadId: string;
@@ -153,7 +150,6 @@ function TeamTaskCard({
         <TeamTaskReviewActions
           actionsDisabled={actionsDisabled}
           channelId={channelId}
-          onChanged={onChanged}
           task={task}
           threadId={threadId}
         />
@@ -178,7 +174,6 @@ export function TeamTaskBoard({
   errorMessage,
   loading = false,
   members,
-  onChanged,
   onRetry,
   tasks,
   threadId,
@@ -296,7 +291,6 @@ export function TeamTaskBoard({
                               )}
                               channelId={channelId}
                               key={task.id}
-                              onChanged={onChanged}
                               sender={memberById.get(task.senderWakerId ?? "")}
                               task={task}
                               threadId={threadId}

@@ -38,6 +38,7 @@ export function RunLogs({
     queryKeys: [options.queryKey],
     active,
     enabled: Boolean(id && runId),
+    eventTypes: ["workflow.log", "workflow.worker.skip_requested"],
   });
   const logs = query.data?.resources ?? [];
   if (!logs.length && !query.isError && page === 0) return null;

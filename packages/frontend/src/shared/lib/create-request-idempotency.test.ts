@@ -44,7 +44,7 @@ describe("create request idempotency", () => {
       text: "实现另一个功能",
       workingDirectory: "/tmp/project",
     });
-    clearStableCreateRequest(scope);
+    clearStableCreateRequest(scope, changed.clientRequestId);
     const afterSuccess = withStableCreateRequest(scope, {
       text: "实现另一个功能",
       workingDirectory: "/tmp/project",
@@ -52,6 +52,20 @@ describe("create request idempotency", () => {
 
     expect(changed.clientRequestId).not.toBe(first.clientRequestId);
     expect(afterSuccess.clientRequestId).not.toBe(changed.clientRequestId);
+  });
+
+  it("迟到的旧请求清理不能移除新请求的稳定记录", () => {
+    const scope = "chat:conditional-retire";
+    const first = withStableCreateRequest(scope, { text: "第一轮" });
+    const next = withStableCreateRequest(scope, { text: "第二轮" });
+    clearStableCreateRequest(scope, first.clientRequestId);
+    expect(
+      withStableCreateRequest(scope, { text: "第二轮" }).clientRequestId,
+    ).toBe(next.clientRequestId);
+    clearStableCreateRequest(scope, next.clientRequestId);
+    expect(
+      withStableCreateRequest(scope, { text: "第二轮" }).clientRequestId,
+    ).not.toBe(next.clientRequestId);
   });
 
   it("本地存储不可用时在当前页面内仍复用标识", () => {
@@ -66,6 +80,6 @@ describe("create request idempotency", () => {
     const retry = withStableCreateRequest(scope, { text: "继续工作" });
 
     expect(retry.clientRequestId).toBe(first.clientRequestId);
-    clearStableCreateRequest(scope);
+    clearStableCreateRequest(scope, first.clientRequestId);
   });
 });
