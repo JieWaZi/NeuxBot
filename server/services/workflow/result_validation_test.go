@@ -15,7 +15,7 @@ import (
 	"testing"
 )
 
-func TestV2RepairFailureCannotRedispatchBusiness(t *testing.T) {
+func TestRepairFailureCannotRedispatchBusiness(t *testing.T) {
 	effect := models.WorkflowEffect{Status: constants.WorkflowStepStatusFailed, ExecutionStatus: constants.ExecutionStatusCompleted, AttemptGeneration: 1, Boundary: workflowdsl.EffectBoundary{Primitive: "worker", Arguments: []workflowdsl.Value{workflowdsl.JSONValue("read"), workflowdsl.JSONValue(map[string]any{"schema": map[string]any{"type": "object"}, "retry": map[string]any{"maxAttempts": float64(4), "safety": "pure"}})}}}
 	state := controllers.WorkflowRunState{Run: models.WorkflowRun{Defaults: models.WorkflowExecutionDefaults{WorkspaceReadOnly: true}}}
 	if prepareWorkerRetry(&state, 0, effect) {
@@ -41,7 +41,7 @@ func TestHumanCandidateFilesReadInternalWorkspaceWithExternalBusinessScope(t *te
 				encoded, _ := json.Marshal(path)
 				expression = string(encoded)
 			}
-			source := runtimeV2Meta + `return await askUser('选择候选',{id:'review',label:'选择候选',phase:'work',kind:'select',choices:{fileRef:` + expression + `}});`
+			source := runtimeTestMeta + `return await askUser('选择候选',{id:'review',label:'选择候选',phase:'work',kind:'select',choices:{fileRef:` + expression + `}});`
 			definition := scopedProcessDefinition(t, s, source, business)
 			run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "candidate"})
 			if err != nil {
@@ -145,10 +145,10 @@ func TestLocalOperationDescriptorUsesActualRunDirectory(t *testing.T) {
 		}
 	}
 }
-func TestV2CandidateFileFreezesAndRejectsEscapes(t *testing.T) {
+func TestCandidateFileFreezesAndRejectsEscapes(t *testing.T) {
 	directory, _ := filepath.EvalSymlinks(t.TempDir())
 	s, _ := workflowTestService(t)
-	definition := scopedProcessDefinition(t, s, runtimeV2Meta+`return true;`, directory)
+	definition := scopedProcessDefinition(t, s, runtimeTestMeta+`return true;`, directory)
 	run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "candidate-snapshot"})
 	if err != nil {
 		t.Fatal(err)

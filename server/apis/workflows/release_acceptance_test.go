@@ -127,7 +127,7 @@ func (r *releaseFixtureRuntime) Run(ctx context.Context, request fixtureInvocati
 		return failed(err)
 	}
 
-	return agentapi.Result{Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
+	return agentapi.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
 }
 
 func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.T) {
@@ -150,7 +150,7 @@ func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "source", Source: string(source), SDKVersion: constants.WorkflowSDKVersion}); err != nil {
+			if _, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "source", Source: string(source), SDK: constants.WorkflowSDKIdentifier}); err != nil {
 				t.Fatal(err, diagnostics)
 			}
 			run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "full-f2", Args: map[string]any{"requirements": "R1 核心需求", "defects": "A/B风险，C分析失败", "environments": []string{"A", "B", "C"}, "localAcceptance": true}, Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelFullAccess}})

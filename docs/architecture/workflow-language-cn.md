@@ -6,7 +6,7 @@
 
 DSL 使用静态可分析的源码描述业务编排，Go 编译器生成 Manifest 与耐久程序。Goja 提供解析及独立 JavaScript Function 能力，编排恢复依靠持久 IR 与检查点，不依赖 JavaScript VM 栈。
 
-V2 标识为 ally.workflow/2。源码静态导出 meta 与可选 scripts，编排能力包含 worker、parallel、pipeline、askUser、workflow、action、functionTask 等。完整函数、参数、限制和示例通过当前能力发现入口读取。Python scripts 随 Revision 编入不可变 Bundle，按 JSON stdin/stdout 或文本输出协议执行；脚本内容不依赖工作目录中的可变文件。
+V2 标识为 ally.workflow。源码静态导出 meta 与可选 scripts，编排能力包含 worker、parallel、pipeline、askUser、workflow、action、functionTask 等。完整函数、参数、限制和示例通过当前能力发现入口读取。Python scripts 随 Revision 编入不可变 Bundle，按 JSON stdin/stdout 或文本输出协议执行；脚本内容不依赖工作目录中的可变文件。
 
 ## 校验
 

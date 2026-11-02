@@ -13,8 +13,7 @@ const manifest = (
   children: Hint[],
   nodes = ["analyse", "summarise"],
 ): Manifest => ({
-  formatVersion: 2,
-  sdkVersion: "ally.workflow/2",
+  sdk: "ally.workflow",
   title: "测试工作流",
   description: "",
   edges: [],

@@ -82,8 +82,7 @@ func CanvasManifestSchema() map[string]any {
 	schema["$defs"] = builder.definitions
 	manifest := builder.definitions["CanvasManifest"].(map[string]any)
 	fields := manifest["properties"].(map[string]any)
-	fields["formatVersion"] = map[string]any{"enum": []any{constants.WorkflowCanvasFormatVersion}}
-	fields["sdkVersion"] = map[string]any{"enum": []any{constants.WorkflowSDKVersion}}
+	fields["sdk"] = map[string]any{"enum": []any{constants.WorkflowSDKIdentifier}}
 	base := builder.definitions["CanvasNode"].(map[string]any)
 	baseFields := base["properties"].(map[string]any)
 	baseFields["description"] = map[string]any{"type": "string", "maxLength": constants.WorkflowNodeDescriptionMaxRunes}

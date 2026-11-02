@@ -59772,10 +59772,10 @@
       "GithubComJieWaZiNeuxBotServerApisWorkflowsValidateWorkflowSourceRequest": {
         "type": "object",
         "properties": {
-          "sdkVersion": {
+          "sdk": {
             "type": "string",
-            "description": "契约版本",
-            "x-go-field-name": "SDKVersion",
+            "description": "SDK 标识",
+            "x-go-field-name": "SDK",
             "x-tag-validate": "required,max=80"
           },
           "source": {
@@ -59787,7 +59787,7 @@
         },
         "required": [
           "source",
-          "sdkVersion"
+          "sdk"
         ],
         "description": "源码校验请求",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisWorkflowsValidateWorkflowSourceRequest",
@@ -60221,10 +60221,10 @@
             "description": "恢复来源",
             "x-go-field-name": "RestoredFromRevisionID"
           },
-          "sdkVersion": {
+          "sdk": {
             "type": "string",
-            "description": "契约版本",
-            "x-go-field-name": "SDKVersion"
+            "description": "SDK 标识",
+            "x-go-field-name": "SDK"
           },
           "sourceDigest": {
             "type": "string",
@@ -60424,10 +60424,10 @@
             "description": "宿主契约",
             "x-go-field-name": "Primitives"
           },
-          "sdkVersion": {
+          "sdk": {
             "type": "string",
-            "description": "契约版本",
-            "x-go-field-name": "SDKVersion"
+            "description": "SDK 标识",
+            "x-go-field-name": "SDK"
           }
         },
         "description": "工作流 SDK",
@@ -60454,10 +60454,10 @@
             "description": "版本标识",
             "x-go-field-name": "RevisionID"
           },
-          "sdkVersion": {
+          "sdk": {
             "type": "string",
-            "description": "契约版本",
-            "x-go-field-name": "SDKVersion"
+            "description": "SDK 标识",
+            "x-go-field-name": "SDK"
           },
           "source": {
             "type": "string",
@@ -65355,11 +65355,6 @@
             },
             "type": "array"
           },
-          "formatVersion": {
-            "enum": [
-              2
-            ]
-          },
           "inputPropertyOrder": {
             "additionalProperties": {
               "items": {
@@ -65395,9 +65390,9 @@
             },
             "type": "array"
           },
-          "sdkVersion": {
+          "sdk": {
             "enum": [
-              "ally.workflow/2"
+              "ally.workflow"
             ]
           },
           "title": {
@@ -65407,8 +65402,7 @@
         "required": [
           "title",
           "description",
-          "formatVersion",
-          "sdkVersion",
+          "sdk",
           "phases",
           "nodes",
           "edges",
@@ -65999,7 +65993,7 @@
           },
           "manifestDigest": {
             "type": "string",
-            "description": "ManifestDigest 绑定实际公开的 CanvasManifest/2 投影，与内部完整性摘要区分。",
+            "description": "ManifestDigest 绑定实际公开的 CanvasManifest 投影，与内部完整性摘要区分。",
             "x-go-field-name": "ManifestDigest"
           },
           "ordinal": {
@@ -66022,11 +66016,6 @@
             "type": "string",
             "description": "SourceDigest 绑定精确保存的源码。",
             "x-go-field-name": "SourceDigest"
-          },
-          "unchanged": {
-            "type": "boolean",
-            "description": "Unchanged 是历史回执字段，V2 显式保存始终创建新版本，值固定为 false。",
-            "x-go-field-name": "Unchanged"
           }
         },
         "description": "SaveReceipt 证明一份源码已经成为完整不可变版本。",
@@ -72538,10 +72527,10 @@
             "x-go-field-name": "ResolvedAnnotationIDs",
             "x-tag-json": "resolvedAnnotationIds,omitempty"
           },
-          "sdkVersion": {
+          "sdk": {
             "type": "string",
-            "description": "SDKVersion 是本次创作使用的原生契约。",
-            "x-go-field-name": "SDKVersion"
+            "description": "SDK 是本次创作使用的原生契约。",
+            "x-go-field-name": "SDK"
           },
           "source": {
             "type": "string",

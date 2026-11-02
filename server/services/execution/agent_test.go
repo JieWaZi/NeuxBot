@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -263,5 +265,134 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 	}
 	if _, err := os.ReadFile(filepath.Join(request.Skills[0].Path, "references", "wiki-guide.md")); err != nil {
 		t.Fatalf("skill-local knowledge reference unavailable: %v", err)
+	}
+}
+
+// agentPreparationFixture 使用真实授权表、系统技能和连接文件，仅替代 Chat 身份读取。
+func agentPreparationFixture(t *testing.T) *service {
+	t.Helper()
+	registry := capability.New(nil)
+	t.Cleanup(registry.Close)
+	binary := filepath.Join(t.TempDir(), "allycli")
+	if err := os.WriteFile(binary, []byte("test CLI file fixture"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
+	return &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+}
+
+func agentPreparationBinding(t *testing.T, operation string) capability.Binding {
+	t.Helper()
+	return capability.Binding{Operation: operation, Call: func(context.Context, capability.Request) (capability.Result, error) {
+		t.Fatal("preparation must not execute business operations")
+		return capability.Result{}, nil
+	}, Receipt: func(context.Context, string) (capability.Result, error) {
+		t.Fatal("preparation must not read business receipts")
+		return capability.Result{}, nil
+	}}
+}
+
+func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t *testing.T) {
+	// 移除共用入口的指南注入或首轮创作角色提醒，应使本回归失败。
+	targets := map[string]string{"unsupported": ""}
+	for _, base := range agentapi.BaseRuntimeIDs() {
+		targets[base] = ""
+		targets["custom-"+base] = base
+	}
+	for runtimeID, baseRuntimeID := range targets {
+		t.Run(runtimeID, func(t *testing.T) {
+			manager := agentPreparationFixture(t)
+			journal := manager.journal.(*agentTestJournal)
+			manager.agentBindings = func(models.Chat, string, []string, string) []capability.Binding {
+				return []capability.Binding{agentPreparationBinding(t, "workflow.authoring.prepare"), agentPreparationBinding(t, "workflow.source.get"), agentPreparationBinding(t, "workflow.source.save")}
+			}
+			guide, err := builtinskills.Guide("workflow.authoring")
+			if err != nil {
+				t.Fatal(err)
+			}
+			var stableInstructions []agentapi.Instruction
+			for index, message := range []string{"访问多个资讯网，然后汇总AI新闻", "改成每周一", "继续", "为什么需要汇总步骤？"} {
+				name := []string{"first-business-goal", "hot-short-edit", "restored-short-follow-up", "pure-explanation"}[index]
+				t.Run(name, func(t *testing.T) {
+					journal.chat.ActiveExecutionID = name
+					session := agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: "native-session"}
+					if index == 0 {
+						session = agentapi.SessionDirective{Mode: agentapi.SessionModeNew}
+					} else if index == 2 {
+						// Core 恢复后没有热会话文件映射，仍沿用真实原生句柄。
+						manager.agentSessions.slots = map[string]agentSessionSlot{}
+					}
+					request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: runtimeID}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: baseRuntimeID}}, Instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "Answer simple requests directly."}}}, Session: session, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: message}}}
+					_, release, settle, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, session, journal.chat, name, nil, nil, nil)
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer release()
+					settle(agentapi.Result{Session: agentapi.SessionResult{OutputID: "native-session", State: agentapi.SessionStateCreated}})
+					inline := ""
+					for _, instruction := range request.Instructions {
+						if instruction.Name == "WORKFLOW_AUTHORING.md" {
+							inline = instruction.Content
+						}
+					}
+					if inline == "" || !strings.Contains(inline, guide) {
+						t.Error("authoring preparation did not supply the complete bundled guide in stable instructions")
+					}
+					for _, required := range []string{"a bare business goal", "first message", "native CLI workflow", "Pure explanations", "saved:true"} {
+						if !strings.Contains(strings.ToLower(inline), strings.ToLower(required)) {
+							t.Errorf("inlined guide lost authoring contract %q", required)
+						}
+					}
+					if index == 0 {
+						stableInstructions = request.Instructions
+					} else if !reflect.DeepEqual(request.Instructions, stableInstructions) {
+						t.Error("turn content or restored session changed the stable authoring instructions")
+					}
+					// 热会话不重载 Instructions，新增输入仍须独立表达创作角色。
+					for _, required := range []string{"Create or modify this reusable NeuxBot workflow", "first business goal", "Do not perform the business task", "native CLI workflow", "Pure explanations need no save", "structured question", "saved receipt"} {
+						if !strings.Contains(request.Message.Text, required) {
+							t.Errorf("%s prompt lost mode contract %q", name, required)
+						}
+					}
+					if !strings.HasPrefix(request.Message.Text, message+"\n\n") || strings.Contains(request.Message.Text, guide) || request.Session != session {
+						t.Error("preparation rewrote user input, copied the full guide into this turn, or changed native continuation")
+					}
+					if runtimeID != "unsupported" {
+						if len(request.Connectors) != 1 || request.Connectors[0].RuntimeKey != "ally_capabilities" || strings.Contains(request.Message.Text, "For all NeuxBot CLI calls") {
+							t.Errorf("base/custom runtime lost its single MCP authoring transport: %+v", request.Connectors)
+						}
+					} else if len(request.Connectors) != 0 || !strings.Contains(request.Message.Text, "For all NeuxBot CLI calls") || request.LaunchEnvironment[constants.AgentCLIContextEnvironment] == "" {
+						t.Error("unknown runtime lost the authorized CLI fallback")
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestWorkflowAuthoringPreparationDoesNotOverrideOrdinaryChatOrWorker(t *testing.T) {
+	for _, operation := range []string{"", "workflow.results.schema", "workflow.results.submit", "workflow.source.get"} {
+		t.Run(operation, func(t *testing.T) {
+			manager := agentPreparationFixture(t)
+			journal := manager.journal.(*agentTestJournal)
+			var capabilities []ToolCapability
+			if operation != "" {
+				capabilities = []ToolCapability{{ID: "worker", Bindings: []capability.Binding{agentPreparationBinding(t, operation)}}}
+			}
+			request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}}, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: "访问多个资讯网，然后汇总AI新闻"}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
+			_, release, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "turn", capabilities, &[]string{}, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			if strings.Contains(request.Message.Text, "<workflow-authoring-context>") || strings.Contains(request.Message.Text, "<workflow-reference-context>") {
+				t.Fatal("ordinary chat or execution worker received the authoring role")
+			}
+			for _, instruction := range request.Instructions {
+				if instruction.Name == "WORKFLOW_AUTHORING.md" {
+					t.Fatal("non-authoring grant received the authoring guide")
+				}
+			}
+		})
 	}
 }

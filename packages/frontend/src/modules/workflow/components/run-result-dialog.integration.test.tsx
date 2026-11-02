@@ -34,8 +34,7 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
           flowContext: { triggerSource: "agent" },
         },
         manifest: {
-          formatVersion: 2,
-          sdkVersion: "ally.workflow/2",
+          sdk: "ally.workflow",
           title: "测试工作流",
           description: "",
           nodes: [],

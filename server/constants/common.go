@@ -42,6 +42,9 @@ const WorkflowInputFileDirectoryName = "workflow-inputs"
 // ManagedFilesDirectoryName 是用户主目录下受管业务文件的默认根目录名。
 const ManagedFilesDirectoryName = ".neuxally"
 
+// AgentCLIRequestIDMaximumLength 是软件能力命令与收据查询共同接受的幂等标识长度上限。
+const AgentCLIRequestIDMaximumLength = 128
+
 // RuntimeStateDirectoryName 保存当前工作区独有的智能体执行配置和状态。
 const RuntimeStateDirectoryName = "runtime"
 
@@ -59,6 +62,8 @@ const (
 	WorkflowInstanceBudget = "instances"
 	// WorkflowResultMissingCode 表示执行已结束但没有形成所需的节点结果。
 	WorkflowResultMissingCode = "RESULT_MISSING"
+	// WorkflowResultUnconfirmedCode 表示原生终止或交付事实不能确认节点产出。
+	WorkflowResultUnconfirmedCode = "RESULT_UNCONFIRMED"
 
 	// AiAccountSystemID 表示使用智能体内置登录的账号身份。
 	AiAccountSystemID = "system"

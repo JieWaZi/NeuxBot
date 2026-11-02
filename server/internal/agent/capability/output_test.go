@@ -2,6 +2,7 @@ package capability
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
@@ -30,7 +31,7 @@ func TestWorkflowV2SaveReceiptMatchesClosedOutputContract(t *testing.T) {
 }
 
 func TestWorkflowV2ValidationCanReturnPublicManifest(t *testing.T) {
-	compiled, diagnostics, err := workflowdsl.Compile(`export const meta={sdk:'ally.workflow/2',title:'契约测试',description:'只计算',phases:[{id:'work',title:'计算',detail:'返回输入'}]};return args;`)
+	compiled, diagnostics, err := workflowdsl.Compile(`export const meta={sdk:'ally.workflow',title:'契约测试',description:'只计算',phases:[{id:'work',title:'计算',detail:'返回输入'}]};return args;`)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
 	}
@@ -69,5 +70,26 @@ func TestAuthoringOutputRequiresWorkspace(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestMCPRequestIdentityMatchesCoreConstraints(t *testing.T) {
+	op, _ := Find("workflow.source.save")
+	transport := Operation{InputSchema: op.MCPInputSchema()}
+	for _, test := range []struct {
+		// id 是模型按公开工具契约构造的幂等标识。
+		id string
+		// valid 是 Core 固定协议应接受的输入集合。
+		valid bool
+	}{
+		{id: "a", valid: true}, {id: "save.request:1-2_3", valid: true},
+		{id: strings.Repeat("a", 128), valid: true},
+		{id: strings.Repeat("a", 129)}, {id: strings.Repeat("a", 200)},
+		{id: "save request 1"}, {id: "保存请求"}, {id: "_save"}, {id: ""},
+	} {
+		err := transport.Validate(map[string]any{"source": "return true;", "expectedRevisionId": "head", "requestId": test.id})
+		if (err == nil) != test.valid {
+			t.Errorf("MCP requestId %q: accepted=%v, want %v", test.id, err == nil, test.valid)
+		}
 	}
 }

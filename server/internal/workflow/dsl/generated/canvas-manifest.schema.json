@@ -616,11 +616,6 @@
           },
           "type": "array"
         },
-        "formatVersion": {
-          "enum": [
-            2
-          ]
-        },
         "inputPropertyOrder": {
           "additionalProperties": {
             "items": {
@@ -656,9 +651,9 @@
           },
           "type": "array"
         },
-        "sdkVersion": {
+        "sdk": {
           "enum": [
-            "ally.workflow/2"
+            "ally.workflow"
           ]
         },
         "title": {
@@ -668,8 +663,7 @@
       "required": [
         "title",
         "description",
-        "formatVersion",
-        "sdkVersion",
+        "sdk",
         "phases",
         "nodes",
         "edges",

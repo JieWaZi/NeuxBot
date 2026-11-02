@@ -58,6 +58,6 @@ func TestHumanWaitIsDurableDefaultNeverApprovesAndFirstAnswerWins(t *testing.T) 
 	}
 }
 
-const humanSource = `export const meta={sdk:'ally.workflow/2',title:'人工关卡',description:'恢复测试',phases:[{id:'approval',title:'确认',detail:'显式批准',canExit:true}]};
+const humanSource = `export const meta={sdk:'ally.workflow',title:'人工关卡',description:'恢复测试',phases:[{id:'approval',title:'确认',detail:'显式批准',canExit:true}]};
 const answer=await askUser('是否批准？',{id:'approve',label:'批准结果',phase:'approval',kind:'select',choices:[{value:'approve',label:'批准'},{value:'reject',label:'拒绝'}],defaultValue:'reject',allowSkip:false});
 return {approved:answer.source==='user' && answer.value==='approve',source:answer.source};`

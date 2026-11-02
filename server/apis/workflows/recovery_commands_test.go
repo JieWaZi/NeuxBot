@@ -96,7 +96,7 @@ func TestRealSideEffectRestartFailsAndPreservesEvidenceWithoutResend(t *testing.
 func TestRetryCreatesNewRunWithOriginalVersionAndEvidence(t *testing.T) {
 	s, _ := workflowTestService(t)
 	ctx := context.Background()
-	source := `export const meta={sdk:'ally.workflow/2',title:'重跑',description:'冻结原版本',phases:[{id:'one',title:'one',detail:'one',canExit:true}]};throw new Error('original failure');`
+	source := `export const meta={sdk:'ally.workflow',title:'重跑',description:'冻结原版本',phases:[{id:'one',title:'one',detail:'one',canExit:true}]};throw new Error('original failure');`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Args: map[string]any{"unchanged": true}})
 	if err != nil {
@@ -106,7 +106,7 @@ func TestRetryCreatesNewRunWithOriginalVersionAndEvidence(t *testing.T) {
 	if failed.Status != constants.WorkflowRunStatusFailed {
 		t.Fatalf("expected failed source: %+v", failed)
 	}
-	_, _, err = s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: run.RevisionID, RequestID: "update", Source: strings.Replace(source, "throw new Error('original failure');", "return 'new version';", 1), SDKVersion: constants.WorkflowSDKVersion})
+	_, _, err = s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: run.RevisionID, RequestID: "update", Source: strings.Replace(source, "throw new Error('original failure');", "return 'new version';", 1), SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,8 +129,8 @@ func TestRetryCreatesNewRunWithOriginalVersionAndEvidence(t *testing.T) {
 	}
 }
 
-func TestV2RejectsUndeclaredWorkerSkip(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow/2',title:'跳过',phases:[{id:'one',title:'one',detail:'one'}]};return await worker('等待',{id:'held',label:'等待',phase:'one',resolve:{kind:'waker',wakerId:'fixture'},skippable:true});`
+func TestRejectsUndeclaredWorkerSkip(t *testing.T) {
+	source := `export const meta={sdk:'ally.workflow',title:'跳过',phases:[{id:'one',title:'one',detail:'one'}]};return await worker('等待',{id:'held',label:'等待',phase:'one',resolve:{kind:'waker',wakerId:'fixture'},skippable:true});`
 	if _, _, err := workflowdsl.Compile(source); err == nil {
 		t.Fatal("unsupported skip policy compiled")
 	}

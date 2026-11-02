@@ -60,7 +60,7 @@ func workflowAPIDependencies(s *workflowFixture) *workflowDependencies {
 		Store: s.Store, Transactions: s.Transactions, Runs: s.Runs, CreationSessions: s.CreationSessions, State: s.State,
 		Executions: s.Executions, Chats: s.Chats, Wakers: s.Wakers, Projects: s.Projects, DataDirectory: s.DataDirectory,
 		SaveSource: func(ctx context.Context, definitionID, requestID, expectedID, source, restoredFrom string) (workflowdsl.SaveReceipt, []workflowdsl.Diagnostic, error) {
-			return s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definitionID, RequestID: requestID, ExpectedRevisionID: expectedID, Source: source, SDKVersion: constants.WorkflowSDKVersion, RestoredFromRevisionID: restoredFrom})
+			return s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definitionID, RequestID: requestID, ExpectedRevisionID: expectedID, Source: source, SDK: constants.WorkflowSDKIdentifier, RestoredFromRevisionID: restoredFrom})
 		},
 		RetryStart: func(ctx context.Context, previous models.WorkflowRun, requestID string) (models.WorkflowRun, error) {
 			return s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: previous.DefinitionID, RevisionID: previous.RevisionID, Args: previous.Args, Defaults: previous.Defaults, WorkerConfigurations: previous.WorkerConfigurations, ApprovedScope: &previous.ScopeBinding, RequestID: requestID, RetrySourceRunID: previous.ID})
@@ -84,7 +84,7 @@ func savedTestWorkflow(t *testing.T, s *workflowFixture, source string) models.W
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDKVersion: constants.WorkflowSDKVersion})
+	receipt, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatalf("compile: %v %+v", err, diagnostics)
 	}

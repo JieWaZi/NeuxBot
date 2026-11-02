@@ -139,7 +139,7 @@ func Compile(source string) (Compilation, []Diagnostic, error) {
 	c.manifest.ControlHints = c.controlHints()
 	c.projectCanvas()
 	if err := ValidateCanvas(ExportCanvas(c.manifest)); err != nil {
-		c.fail(metaExpression, "CANVAS_PROJECTION_INVALID", "source projection violates the CanvasManifest/2 contract: "+err.Error())
+		c.fail(metaExpression, "CANVAS_PROJECTION_INVALID", "source projection violates the CanvasManifest contract: "+err.Error())
 		return Compilation{}, c.diagnostics, status_error.WorkflowSourceInvalid
 	}
 	manifestJSON, _ := json.Marshal(c.manifest)
@@ -216,8 +216,8 @@ func (c *compiler) unique(node ast.Node, id string) bool {
 
 func (c *compiler) validateMeta(node ast.Node) {
 	m := c.manifest.Meta
-	if m.SDK != constants.WorkflowSDKVersion {
-		c.fail(node, "SDK_UNSUPPORTED", "meta.sdk must be "+constants.WorkflowSDKVersion)
+	if m.SDK != constants.WorkflowSDKIdentifier {
+		c.fail(node, "SDK_UNSUPPORTED", "meta.sdk must be "+constants.WorkflowSDKIdentifier)
 	}
 	if strings.TrimSpace(m.Title) == "" || len(m.Phases) == 0 {
 		c.fail(node, "META_INVALID", "title and at least one phase are required")

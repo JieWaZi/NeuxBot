@@ -33,8 +33,8 @@ type Input struct {
 	Patches []SourcePatch `json:"patches,omitempty"`
 	// Source 是完整原始源码。
 	Source string `json:"source,omitempty"`
-	// SDKVersion 是创作选择的契约版本。
-	SDKVersion string `json:"sdkVersion,omitempty"`
+	// SDK 是创作源码使用的契约身份。
+	SDK string `json:"sdk,omitempty"`
 	// RunID 是创作查询的实际运行。
 	RunID string `json:"runId,omitempty"`
 	// WorkflowID 是使用者白名单内的运行目标。

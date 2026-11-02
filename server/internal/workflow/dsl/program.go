@@ -8,7 +8,7 @@ import (
 
 // Meta 是从纯字面量解析的原生工作流声明。
 type Meta struct {
-	// SDK 是必须与宿主匹配的声明版本。
+	// SDK 是必须与宿主匹配的契约身份。
 	SDK string `json:"sdk"`
 	// Title 是内置伙伴根据用户目标生成的工作流标题。
 	Title string `json:"title"`
@@ -92,10 +92,8 @@ type ActionDeclaration struct {
 
 // Manifest 是只读画布与详情使用的源码投影。
 type Manifest struct {
-	// FormatVersion 标识由源码编译的第二版画布格式。
-	FormatVersion int `json:"formatVersion"`
-	// SDKVersion 固定此画布的语言契约。
-	SDKVersion string `json:"sdkVersion"`
+	// SDK 固定此画布的语言契约。
+	SDK string `json:"sdk"`
 	// Phases 保存源码声明的展示阶段。
 	Phases []Phase `json:"phases"`
 	// Edges 是从控制拓扑和数据引用派生的只读连线。

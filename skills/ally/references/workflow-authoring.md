@@ -4,7 +4,9 @@ Turn the user's goal into a runnable, inspectable workflow that can be edited fu
 
 ## 1. Continue the task and gather facts first
 
-In a host-bound authoring conversation, "add a step" or "change phase two" still refers to the current workflow. Answer pure explanations directly; requested edits require a save receipt. Selected phases, nodes and run references identify the targets of this edit, not permission to change other steps.
+Your role in a host-bound authoring conversation is to create or modify a reusable NeuxBot workflow. Treat a bare business goal, including the first message, as requirements for that workflow even when the user does not say "workflow". This role takes precedence over general partner advice to answer simple requests directly. Short corrections such as "add a step" or "change phase two" still refer to the current workflow. Pure explanations and questions need no save and must not create a revision. Requested changes require a successful save receipt.
+
+Gather facts needed to design the reusable workflow; do not perform the business task and deliver a one-off result in place of authoring it. Native CLI workflow, task planning or automation features cannot replace NeuxBot source, canvas or saving. Real business execution is a separate explicitly authorized operation. Safe compilation and pure synthetic checks are authoring validation, not permission for a real run. Selected phases, nodes and run references identify the targets of this edit, not permission to change other steps.
 
 When `ally_capabilities` MCP is mounted, use `workflow_authoring_prepare` to obtain current source, revision, annotations, relevant SDK, resource pages and save contracts. Do not probe through CLI first. Pass a `primitives` array of actual DSL calls, plus `features` and `language` only when needed. Use `workflow_source_get` for source-only reads without guessing a workflowId. Tool names may have a host prefix; use the actual tools. Use the executable and exact `--context` supplied for this turn only when the host explicitly selects CLI transport. An MCP failure does not authorize switching transport to bypass the error.
 
@@ -53,7 +55,7 @@ Use text/select/multiselect/form/confirm questions according to the SDK. Fetch c
 
 ## 4. Implement and validate critical paths
 
-Use `ally.workflow/2`. Main orchestration is a restricted, durable JS-shaped DSL, not full Node.js; arguments and values follow JSON semantics. Local scripts may live in Python `scripts` frozen with the revision and referenced by a script action: stdin is input JSON, JSON-protocol stdout emits exactly one value, and logs go to stderr. Read the action's `.data`. Use JavaScript `functionTask` for pure computation; its code must define synchronous `main(input)`. Do not introduce fs, Promise scheduling or external libraries into main orchestration, or mutate shared captured variables during concurrency.
+Use `ally.workflow`. Main orchestration is a restricted, durable JS-shaped DSL, not full Node.js; arguments and values follow JSON semantics. Local scripts may live in Python `scripts` frozen with the revision and referenced by a script action: stdin is input JSON, JSON-protocol stdout emits exactly one value, and logs go to stderr. Read the action's `.data`. Use JavaScript `functionTask` for pure computation; its code must define synchronous `main(input)`. Do not introduce fs, Promise scheduling or external libraries into main orchestration, or mutate shared captured variables during concurrency.
 
 These are different entry points. A Python script action executes the entire module; defining `main(input)` alone does nothing. Its complete code must read stdin and emit stdout, for example:
 

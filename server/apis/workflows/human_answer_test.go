@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestV2HumanAnswerRequiresOriginalSnapshotCAS(t *testing.T) {
+func TestHumanAnswerRequiresOriginalSnapshotCAS(t *testing.T) {
 	s, _ := workflowTestService(t)
 	definition := savedTestWorkflow(t, s, humanSource)
 	run, err := s.StartRun(context.Background(), workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start"})

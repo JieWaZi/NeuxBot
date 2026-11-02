@@ -406,7 +406,7 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 					return scope, status_error.WorkflowCapabilityUnsupported.WithField("capability", "worker_retry_requires_readonly")
 				}
 				if retry["safety"] == "idempotent" {
-					// V1 Core 没有逐工具的幂等键强制端口，声明不能代替真实去重。
+					// Core 没有逐工具的幂等键强制端口，声明不能代替真实去重。
 					return scope, status_error.WorkflowCapabilityUnsupported.WithField("capability", "worker_retry_idempotency_enforcement")
 				}
 			}

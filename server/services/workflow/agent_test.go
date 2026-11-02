@@ -26,7 +26,7 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 	ctx := context.Background()
 	s, _ := workflowTestService(t)
 	s.dataDirectory = t.TempDir()
-	source := `export const meta={sdk:'ally.workflow/2',title:'文件交付',description:'交付本次报告',inputSchema:{type:'object',properties:{files:{type:'array',title:'报告',description:'选择本次报告。',items:{type:'string',format:'file'}},note:{type:'string',title:'备注',description:'填写备注。'}},required:['files']},outputSchema:{type:'string',format:'file'},phases:[{id:'deliver',title:'交付',detail:'交付报告文件',canExit:true}]};phase('deliver');return args.files[0];`
+	source := `export const meta={sdk:'ally.workflow',title:'文件交付',description:'交付本次报告',inputSchema:{type:'object',properties:{files:{type:'array',title:'报告',description:'选择本次报告。',items:{type:'string',format:'file'}},note:{type:'string',title:'备注',description:'填写备注。'}},required:['files']},outputSchema:{type:'string',format:'file'},phases:[{id:'deliver',title:'交付',detail:'交付报告文件',canExit:true}]};phase('deliver');return args.files[0];`
 	definition := savedTestWorkflow(t, s, source)
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -129,7 +129,7 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 		t.Fatalf("current revision admission failed: %+v", current)
 	}
 	changedSource := strings.Replace(source, "交付本次报告", "交付更新后的报告", 1)
-	saved, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: definition.CurrentRevisionID, RequestID: "new-head", Source: changedSource, SDKVersion: constants.WorkflowSDKVersion})
+	saved, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: definition.CurrentRevisionID, RequestID: "new-head", Source: changedSource, SDK: constants.WorkflowSDKIdentifier})
 	if err != nil || saved.RevisionID == definition.CurrentRevisionID {
 		t.Fatalf("new revision was not created: %+v %v", saved, err)
 	}
@@ -226,7 +226,7 @@ func TestAgentConcurrentCurrentRevisionAdmissionReplaysWinner(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("first admission did not read its revision")
 	}
-	saved, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: definition.CurrentRevisionID, RequestID: "revision", Source: strings.Replace(source, "纯计算验收", "第二版", 1), SDKVersion: constants.WorkflowSDKVersion})
+	saved, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: definition.CurrentRevisionID, RequestID: "revision", Source: strings.Replace(source, "纯计算验收", "第二版", 1), SDK: constants.WorkflowSDKIdentifier})
 	if err != nil || saved.RevisionID == definition.CurrentRevisionID {
 		t.Fatalf("new revision was not created: %+v %v", saved, err)
 	}

@@ -130,8 +130,14 @@ func (m *service) prepareAgent(plan *agentapi.SessionPlan, turn *agentapi.TurnIn
 	// 工具绑定是确定的场景事实，不让模型从用户短句猜测当前入口。
 	for _, binding := range bindings {
 		if binding.Operation == "workflow.source.save" {
+			// 正式指南进入稳定计划；每轮提醒只补充角色，热续聊无需重复整份指南。
+			guide, err := builtinskills.Guide("workflow.authoring")
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			plan.Instructions = append(plan.Instructions, agentapi.Instruction{Name: "WORKFLOW_AUTHORING.md", Content: fmt.Sprintf("Apply this host-bound workflow authoring role instead of general instructions to immediately perform business requests. The required guide below is supplied from %q; resolve its relative references from %q.\n\n%s", filepath.Join(skill, "references", "workflow-authoring.md"), filepath.Join(skill, "references"), guide)})
 			appendCurrentWorkflowReferences(plan, turn)
-			turn.Message.Text += "\n\n<workflow-authoring-context>This is the bound workflow authoring conversation. Short edits, corrections, and follow-up instructions still target this workflow. Use workflow.authoring.prepare or workflow.source.get through this execution's capability transport to obtain the bound workflow and current revision; no workflow ID is needed for that read. Implement requested changes through workflow.source.save and its actual saved receipt. A chat description or local file alone does not update the canvas. Pure questions may be answered without a save; do not invent edits. Use existing Wakers from resources. Ask missing consequential choices through the structured question tool in the chat composer. Never report saving or checks as successful without their receipts. Read original run evidence before optimizing a referenced failure.</workflow-authoring-context>"
+			turn.Message.Text += "\n\n<workflow-authoring-context>Create or modify this reusable NeuxBot workflow: the first business goal and short follow-ups are authoring requirements. Do not perform the business task or substitute native CLI workflow features. Follow WORKFLOW_AUTHORING.md; start changes with workflow.authoring.prepare through this execution's selected capability transport, then workflow.source.save and its actual saved receipt. Pure explanations need no save. Resolve missing consequential choices with the structured question tool in the chat composer. Never claim saving, checks or delivery without evidence.</workflow-authoring-context>"
 			break
 		}
 	}

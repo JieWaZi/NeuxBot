@@ -16,8 +16,7 @@ import { installCanvasDOM } from "../test/canvas-dom";
 import { WorkflowInputNode } from "./workflow-input-node";
 
 const manifest: Manifest = {
-  formatVersion: 2,
-  sdkVersion: "ally.workflow/2",
+  sdk: "ally.workflow",
   title: "测试工作流",
   description: "",
   edges: [],

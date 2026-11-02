@@ -21,12 +21,12 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-const runtimeV2Meta = `export const meta={sdk:'ally.workflow/2',title:'V2',description:'runtime',phases:[{id:'work',title:'执行',detail:'流程'}]};`
+const runtimeTestMeta = `export const meta={sdk:'ally.workflow',title:'工作流',description:'runtime',phases:[{id:'work',title:'执行',detail:'流程'}]};`
 
 func TestRunWorkspaceUsesWorkflowIdentityAndPrivateRunDirectory(t *testing.T) {
 	s, _ := workflowTestService(t)
 	s.dataDirectory = t.TempDir()
-	definition := savedTestWorkflow(t, s, runtimeV2Meta+`return true;`)
+	definition := savedTestWorkflow(t, s, runtimeTestMeta+`return true;`)
 	first, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "first"})
 	if err != nil {
 		t.Fatal(err)
@@ -51,7 +51,7 @@ func TestRunWorkspaceUsesWorkflowIdentityAndPrivateRunDirectory(t *testing.T) {
 func TestRelativeOutputsUseRunDirectoryWithoutNameFallback(t *testing.T) {
 	s, _ := workflowTestService(t)
 	business, _ := filepath.EvalSymlinks(t.TempDir())
-	definition := scopedProcessDefinition(t, s, runtimeV2Meta+`return true;`, business)
+	definition := scopedProcessDefinition(t, s, runtimeTestMeta+`return true;`, business)
 	run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "relative-output"})
 	if err != nil {
 		t.Fatal(err)
@@ -97,8 +97,8 @@ func TestRelativeChildResultsFreezeChildRunDirectory(t *testing.T) {
 	s, _ := workflowTestService(t)
 	ctx := context.Background()
 	business, _ := filepath.EvalSymlinks(t.TempDir())
-	parent := scopedProcessDefinition(t, s, runtimeV2Meta+`return true;`, business)
-	child := savedTestWorkflow(t, s, strings.Replace(runtimeV2Meta, "phases:", "outputSchema:{type:'string',format:'file'},phases:", 1)+`return 'report.txt';`)
+	parent := scopedProcessDefinition(t, s, runtimeTestMeta+`return true;`, business)
+	child := savedTestWorkflow(t, s, strings.Replace(runtimeTestMeta, "phases:", "outputSchema:{type:'string',format:'file'},phases:", 1)+`return 'report.txt';`)
 	parentRun, err := s.StartRun(ctx, StartRunCommand{DefinitionID: parent.ID, RequestID: "parent"})
 	if err != nil {
 		t.Fatal(err)
@@ -140,8 +140,8 @@ func TestChildRunRelativeFileInputsUseParentRunDirectory(t *testing.T) {
 	s, _ := workflowTestService(t)
 	ctx := context.Background()
 	business, _ := filepath.EvalSymlinks(t.TempDir())
-	parent := scopedProcessDefinition(t, s, runtimeV2Meta+`return true;`, business)
-	child := savedTestWorkflow(t, s, strings.Replace(runtimeV2Meta, "phases:", "inputSchema:{type:'string',format:'file'},phases:", 1)+`return args;`)
+	parent := scopedProcessDefinition(t, s, runtimeTestMeta+`return true;`, business)
+	child := savedTestWorkflow(t, s, strings.Replace(runtimeTestMeta, "phases:", "inputSchema:{type:'string',format:'file'},phases:", 1)+`return args;`)
 	parentRun, err := s.StartRun(ctx, StartRunCommand{DefinitionID: parent.ID, RequestID: "parent"})
 	if err != nil {
 		t.Fatal(err)
@@ -179,7 +179,7 @@ func TestChildRunFreezesParentInternalFileWithExplicitBusinessScope(t *testing.T
 	s, _ := workflowTestService(t)
 	ctx := context.Background()
 	business, _ := filepath.EvalSymlinks(t.TempDir())
-	source := strings.Replace(runtimeV2Meta, "phases:", "inputSchema:{type:'string',format:'file'},phases:", 1) + `return args;`
+	source := strings.Replace(runtimeTestMeta, "phases:", "inputSchema:{type:'string',format:'file'},phases:", 1) + `return args;`
 	parent := scopedProcessDefinition(t, s, source, business)
 	child := savedTestWorkflow(t, s, source)
 	upload, err := s.UploadFile(ctx, parent.ID, "", "input.txt", bytes.NewBufferString("frozen parent input"))
@@ -228,9 +228,9 @@ func TestParentDownloadsFrozenChildWorkflowFileResults(t *testing.T) {
 				path = "'report.txt'"
 			}
 			code, _ := json.Marshal("import json,pathlib,sys\np=pathlib.Path(json.load(sys.stdin)['path'])\np.write_bytes(b'child report bytes')\njson.dump(str(p),sys.stdout)")
-			childSource := strings.Replace(runtimeV2Meta, "phases:", "outputSchema:"+schema+",actions:[{id:'write',type:'script',scriptId:'write',label:'生成成果',risk:'write'}],phases:", 1) + `export const scripts={write:{language:'python',protocol:'json',code:` + string(code) + `}};const output=await action('write',{id:'write-file',label:'生成成果',phase:'work',input:{path:` + path + `}});return ` + result + `;`
+			childSource := strings.Replace(runtimeTestMeta, "phases:", "outputSchema:"+schema+",actions:[{id:'write',type:'script',scriptId:'write',label:'生成成果',risk:'write'}],phases:", 1) + `export const scripts={write:{language:'python',protocol:'json',code:` + string(code) + `}};const output=await action('write',{id:'write-file',label:'生成成果',phase:'work',input:{path:` + path + `}});return ` + result + `;`
 			child := savedTestWorkflow(t, s, childSource)
-			parentSource := strings.Replace(runtimeV2Meta, "phases:", "outputSchema:"+schema+",phases:", 1) + `const child=await workflow('` + child.ID + `',{id:'child-call',label:'调用子流程',phase:'work'});return child.result;`
+			parentSource := strings.Replace(runtimeTestMeta, "phases:", "outputSchema:"+schema+",phases:", 1) + `const child=await workflow('` + child.ID + `',{id:'child-call',label:'调用子流程',phase:'work'});return child.result;`
 			parent := savedTestWorkflow(t, s, parentSource)
 			run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: parent.ID, RequestID: "parent", Defaults: models.WorkflowExecutionDefaults{PermissionLevel: constants.PermissionLevelFullAccess}})
 			if err != nil {
@@ -299,8 +299,8 @@ func TestChildFileResultDoesNotAuthorizeOutsideDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	path, _ := json.Marshal(outside)
-	child := savedTestWorkflow(t, s, strings.Replace(runtimeV2Meta, "phases:", "outputSchema:{type:'string',format:'file'},phases:", 1)+`return `+string(path)+`;`)
-	parent := savedTestWorkflow(t, s, strings.Replace(runtimeV2Meta, "phases:", "outputSchema:{type:'string',format:'file'},phases:", 1)+`const child=await workflow('`+child.ID+`',{id:'child-call',label:'调用子流程',phase:'work'});return child.result;`)
+	child := savedTestWorkflow(t, s, strings.Replace(runtimeTestMeta, "phases:", "outputSchema:{type:'string',format:'file'},phases:", 1)+`return `+string(path)+`;`)
+	parent := savedTestWorkflow(t, s, strings.Replace(runtimeTestMeta, "phases:", "outputSchema:{type:'string',format:'file'},phases:", 1)+`const child=await workflow('`+child.ID+`',{id:'child-call',label:'调用子流程',phase:'work'});return child.result;`)
 	run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: parent.ID, RequestID: "outside"})
 	if err != nil {
 		t.Fatal(err)
@@ -321,7 +321,7 @@ func TestChildFileResultDoesNotAuthorizeOutsideDirectories(t *testing.T) {
 func TestDeclaredOutputsUseOnlyBusinessScopeAndInternalWorkspace(t *testing.T) {
 	s, _ := workflowTestService(t)
 	business, _ := filepath.EvalSymlinks(t.TempDir())
-	definition := scopedProcessDefinition(t, s, runtimeV2Meta+`return true;`, business)
+	definition := scopedProcessDefinition(t, s, runtimeTestMeta+`return true;`, business)
 	run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "outputs"})
 	if err != nil {
 		t.Fatal(err)
@@ -360,7 +360,7 @@ func TestDeclaredOutputsUseOnlyBusinessScopeAndInternalWorkspace(t *testing.T) {
 func TestDeclaredOutputsRejectMissingMalformedAndMismatchedWorkspace(t *testing.T) {
 	s, _ := workflowTestService(t)
 	business, _ := filepath.EvalSymlinks(t.TempDir())
-	definition := scopedProcessDefinition(t, s, runtimeV2Meta+`return true;`, business)
+	definition := scopedProcessDefinition(t, s, runtimeTestMeta+`return true;`, business)
 	run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "invalid-output-workspace"})
 	if err != nil {
 		t.Fatal(err)
@@ -414,7 +414,7 @@ func TestPythonScriptUsesManagedSourceCwdAndTemporaryFiles(t *testing.T) {
 	}
 	s, _ := workflowTestService(t)
 	s.dataDirectory, s.pythonExecutable = t.TempDir(), python
-	definition := savedTestWorkflow(t, s, runtimeV2Meta+`return true;`)
+	definition := savedTestWorkflow(t, s, runtimeTestMeta+`return true;`)
 	run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "script"})
 	if err != nil {
 		t.Fatal(err)
@@ -447,12 +447,12 @@ func TestPythonScriptUsesManagedSourceCwdAndTemporaryFiles(t *testing.T) {
 	}
 }
 
-func TestV2SourcePatchCASAndReplaySQLite(t *testing.T) {
+func TestSourcePatchCASAndReplaySQLite(t *testing.T) {
 	s, store := workflowTestService(t)
 	ctx := context.Background()
-	definition := savedTestWorkflow(t, s, runtimeV2Meta+`return 'first';`)
+	definition := savedTestWorkflow(t, s, runtimeTestMeta+`return 'first';`)
 	base, _ := store.GetRevision(ctx, definition.ID, definition.CurrentRevisionID)
-	command := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "patch", ExpectedRevisionID: base.ID, BaseSourceDigest: base.SourceDigest, Patches: []SourcePatch{{Search: "'first'", Replace: "'second'"}}, SDKVersion: constants.WorkflowSDKVersion}
+	command := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "patch", ExpectedRevisionID: base.ID, BaseSourceDigest: base.SourceDigest, Patches: []SourcePatch{{Search: "'first'", Replace: "'second'"}}, SDK: constants.WorkflowSDKIdentifier}
 	first, _, err := s.SaveSource(ctx, command)
 	if err != nil {
 		t.Fatal(err)
@@ -466,20 +466,20 @@ func TestV2SourcePatchCASAndReplaySQLite(t *testing.T) {
 		t.Fatal("stale CAS accepted")
 	}
 	revision, _ := store.GetRevision(ctx, definition.ID, first.RevisionID)
-	command = SaveSourceCommand{DefinitionID: definition.ID, RequestID: "same", ExpectedRevisionID: first.RevisionID, Source: revision.Source, SDKVersion: constants.WorkflowSDKVersion}
+	command = SaveSourceCommand{DefinitionID: definition.ID, RequestID: "same", ExpectedRevisionID: first.RevisionID, Source: revision.Source, SDK: constants.WorkflowSDKIdentifier}
 	next, _, err := s.SaveSource(ctx, command)
 	if err != nil || next.RevisionID == first.RevisionID {
 		t.Fatal(next, err)
 	}
 }
-func TestV2PythonJSONStdinAndStrictProtocol(t *testing.T) {
+func TestPythonJSONStdinAndStrictProtocol(t *testing.T) {
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Skip(err)
 	}
 	s, _ := workflowTestService(t)
 	s.pythonExecutable = python
-	definition := savedTestWorkflow(t, s, runtimeV2Meta+`return true;`)
+	definition := savedTestWorkflow(t, s, runtimeTestMeta+`return true;`)
 	run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "protocol"})
 	if err != nil {
 		t.Fatal(err)
@@ -501,7 +501,7 @@ func TestV2PythonJSONStdinAndStrictProtocol(t *testing.T) {
 		t.Fatal("multiple JSON values accepted")
 	}
 }
-func TestV2TypedHumanAnswers(t *testing.T) {
+func TestTypedHumanAnswers(t *testing.T) {
 	options := map[string]any{"kind": "select", "choices": []any{map[string]any{"value": "a", "label": "A"}}}
 	if ValidateHumanAnswer(options, "a") != nil || ValidateHumanAnswer(options, "A") == nil {
 		t.Fatal("selection did not use stable key")

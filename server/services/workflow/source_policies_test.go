@@ -12,7 +12,7 @@ import (
 
 func TestSaveWorkerSchemaWithoutExtraMeta(t *testing.T) {
 	service, _ := workflowTestService(t)
-	source := `export const meta={sdk:'ally.workflow/2',title:'分析',description:'报告',phases:[{id:'work',title:'分析',detail:'形成结论'}]};return await worker('分析',{id:'analysis',label:'分析',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'string'}});`
+	source := `export const meta={sdk:'ally.workflow',title:'分析',description:'报告',phases:[{id:'work',title:'分析',detail:'形成结论'}]};return await worker('分析',{id:'analysis',label:'分析',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'string'}});`
 	definition := savedTestWorkflow(t, service, source)
 	if definition.CurrentRevisionID == "" {
 		t.Fatal("worker schema did not save")
@@ -21,7 +21,7 @@ func TestSaveWorkerSchemaWithoutExtraMeta(t *testing.T) {
 
 func TestSourcePoliciesRejectUnsupportedNativeBeforeSave(t *testing.T) {
 	service := &Service{}
-	compiled, diagnostics, err := workflowdsl.Compile(`export const meta={sdk:'ally.workflow/2',title:'复核',description:'复核',phases:[{id:'check',title:'检查',detail:'检查'}]};
+	compiled, diagnostics, err := workflowdsl.Compile(`export const meta={sdk:'ally.workflow',title:'复核',description:'复核',phases:[{id:'check',title:'检查',detail:'检查'}]};
 phase('check');
 const result=await worker('复核',{id:'review',phase:'check',label:'复核',resolve:{kind:'waker',wakerId:'one'},toolPolicy:{connectors:{mode:'allowlist',connectorIds:[]},nativeTools:{mode:'allowlist',capabilityIds:[]}}});
 return result;`)

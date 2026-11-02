@@ -47,6 +47,8 @@ type WorkerReceipt struct {
 	Text string
 	// ErrorCode 是执行失败的稳定错误码。
 	ErrorCode string
+	// OutputFailure 保留无法确认产出的终止与交付证据，不改写真实执行状态。
+	OutputFailure *workflowdsl.Value
 }
 
 // WorkerPort 复用真实 Execution 的接纳、查询和停止，测试可在此窄边界控制时间。
@@ -126,6 +128,12 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	if err != nil {
 		return WorkerReceipt{}, err
 	}
+	if accepted.Execution.Status == constants.ExecutionStatusCompleted {
+		// 接纳重放可能已经终止；与后续观察共用同一产出完整性判定。
+		effect := input.Effect
+		effect.ChatID = accepted.Chat.ID
+		return a.Inspect(ctx, effect)
+	}
 	return WorkerReceipt{ChatID: accepted.Chat.ID, ExecutionID: accepted.Execution.ID, Status: accepted.Execution.Status}, nil
 }
 
@@ -150,6 +158,24 @@ func (a CoreWorkerAdapter) Inspect(ctx context.Context, effect models.WorkflowEf
 	}
 	receipt := WorkerReceipt{ChatID: chatID, ExecutionID: state.InitialExecution.ID, Status: state.InitialExecution.Status, ErrorCode: state.InitialExecution.ErrorCode}
 	if receipt.Status == constants.ExecutionStatusCompleted {
+		outcome, err := a.Chats.ReadExecutionOutcome(ctx, chatID, effect.ExecutionID)
+		if err != nil {
+			return receipt, err
+		}
+		reason := outcome.TerminationReason
+		if reason == constants.RuntimeTerminationReasonUnspecified {
+			reason = constants.RuntimeTerminationReasonUnknown
+		}
+		if reason != constants.RuntimeTerminationReasonNormal || outcome.FailureCode != constants.RuntimeFailureCodeUnspecified {
+			failure := workflowdsl.JSONValue(map[string]any{
+				"code":              constants.WorkflowResultUnconfirmedCode,
+				"terminationReason": string(reason), "stopReason": outcome.StopReason,
+				"failureCode": string(outcome.FailureCode), "failureStage": outcome.FailureStage,
+				"failureMessage": boundedFailureText(outcome.FailureMessage),
+			})
+			receipt.OutputFailure = &failure
+			return receipt, nil
+		}
 		messages, err := a.Chats.ReadExecutionMessages(ctx, chatID, effect.ExecutionID)
 		if err != nil {
 			return receipt, err
@@ -256,8 +282,14 @@ func prepareWorkerRetry(state *controllers.WorkflowRunState, fiberIndex int, pre
 	if previous.ExecutionStatus != constants.ExecutionStatusFailed && previous.ExecutionStatus != constants.ExecutionStatusCompleted {
 		return false
 	}
+	if previous.Failure != nil {
+		failure, _ := previous.Failure.Data.(map[string]any)
+		if failure["code"] == constants.WorkflowResultUnconfirmedCode {
+			return false
+		}
+	}
 	options := workflowstate.BoundaryOptions(previous.Boundary)
-	// 已完成的业务执行仅允许无工具格式纠正，耗尽后不能通过普通节点重试重跑业务。
+	// 已完成的业务执行仅允许独立文本通道格式纠正，耗尽后不能通过普通节点重试重跑业务。
 	if schema, _ := options["schema"].(map[string]any); len(schema) > 0 && previous.ExecutionStatus == constants.ExecutionStatusCompleted {
 		return false
 	}
@@ -405,6 +437,11 @@ func (s *Service) finishEffect(ctx context.Context, effect models.WorkflowEffect
 			}
 			// 取消未收敛不能把未知 Runtime 结果伪装成已经跳过。
 			return status_error.WorkflowStateConflict
+		}
+		if receipt.OutputFailure != nil {
+			current.Status = constants.WorkflowStepStatusFailed
+			current.Failure = receipt.OutputFailure
+			return nil
 		}
 		if failure != nil {
 			current.Status = constants.WorkflowStepStatusFailed

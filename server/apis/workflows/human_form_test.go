@@ -12,7 +12,7 @@ import (
 
 func TestHumanFormValidatesTypedAnswersAndNeverSubmitsDefaults(t *testing.T) {
 	s, _ := workflowTestService(t)
-	source := `export const meta={sdk:'ally.workflow/2',title:'会议资料表单',phases:[{id:'inputs',title:'收集资料',detail:'用户提交后继续',canExit:true}]};
+	source := `export const meta={sdk:'ally.workflow',title:'会议资料表单',phases:[{id:'inputs',title:'收集资料',detail:'用户提交后继续',canExit:true}]};
 const answer=await askUser('填写会议资料', {id:'meeting_input',label:'会议资料',phase:'inputs',kind:'form',schema:{type:'object',properties:{name:{type:'string','x-ui-control':'input'},format:{type:'string',enum:['brief','full'],'x-ui-control':'radio','x-ui-labels':['简洁','完整']},topics:{type:'array',items:{type:'string',enum:['agenda','materials']},uniqueItems:true,'x-ui-control':'checkboxes'},confirmed:{type:'boolean','x-ui-control':'switch'},notes:{type:'string','x-ui-control':'textarea'}},required:['name','format','topics','confirmed','notes'],additionalProperties:false},defaultValue:{name:'周会',format:'brief',topics:['agenda'],confirmed:false,notes:''},allowSkip:true});
 return {approved:answer.source==='user' && answer.value.confirmed===true, source:answer.source, value:answer.value};`
 	definition := savedTestWorkflow(t, s, source)

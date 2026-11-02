@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-const v2Meta = `export const meta={sdk:'ally.workflow/2',title:'V2',description:'契约',phases:[{id:'work',title:'执行',detail:'流程'}]`
+const contractTestMeta = `export const meta={sdk:'ally.workflow',title:'工作流',description:'契约',phases:[{id:'work',title:'执行',detail:'流程'}]`
 
-func TestV2RejectsDynamicNodeLabelsBeforeCanvasProjection(t *testing.T) {
-	source := v2Meta + `};return await pipeline(args.candidates,[async(previous,candidate)=>await worker(candidate.text,{id:'review',label:'审阅 '+candidate.title,phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'reviews'});`
+func TestRejectsDynamicNodeLabelsBeforeCanvasProjection(t *testing.T) {
+	source := contractTestMeta + `};return await pipeline(args.candidates,[async(previous,candidate)=>await worker(candidate.text,{id:'review',label:'审阅 '+candidate.title,phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'reviews'});`
 	compiled, diagnostics, err := Compile(source)
 	if err == nil {
 		t.Fatalf("dynamic label leaked into saved canvas: %+v", ExportCanvas(compiled.Manifest).Nodes)
@@ -23,10 +23,10 @@ func TestV2RejectsDynamicNodeLabelsBeforeCanvasProjection(t *testing.T) {
 	t.Fatalf("missing actionable static label diagnostic: %+v", diagnostics)
 }
 
-func TestV2StaticBusinessLabelsRemainReadableInPipelines(t *testing.T) {
+func TestStaticBusinessLabelsRemainReadableInPipelines(t *testing.T) {
 	for _, label := range []string{"'审阅方案'", "BUSINESS_LABEL", "`审阅方案`"} {
 		t.Run(label, func(t *testing.T) {
-			source := v2Meta + `};const BUSINESS_LABEL='审阅方案';return await pipeline(args.candidates,[async(previous,candidate)=>await worker(candidate.text,{id:'review',label:` + label + `,phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'reviews'});`
+			source := contractTestMeta + `};const BUSINESS_LABEL='审阅方案';return await pipeline(args.candidates,[async(previous,candidate)=>await worker(candidate.text,{id:'review',label:` + label + `,phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'reviews'});`
 			compiled, diagnostics, err := Compile(source)
 			if err != nil {
 				t.Fatalf("static business label rejected: %v %+v", err, diagnostics)
@@ -67,8 +67,8 @@ func TestWorkflowReviewAuthoringExampleCompilesDynamicSelection(t *testing.T) {
 	t.Fatal("dynamic selection missing")
 }
 
-func TestV2CanvasBusinessDescription(t *testing.T) {
-	source := v2Meta + `};const value=await functionTask({id:'fn',label:'整理候选',description:'将查询结果整理为可供选择的方案',phase:'work',language:'javascript',code:'function main(){return []}'});return value;`
+func TestCanvasBusinessDescription(t *testing.T) {
+	source := contractTestMeta + `};const value=await functionTask({id:'fn',label:'整理候选',description:'将查询结果整理为可供选择的方案',phase:'work',language:'javascript',code:'function main(){return []}'});return value;`
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
@@ -88,8 +88,8 @@ func TestV2CanvasBusinessDescription(t *testing.T) {
 	t.Fatal("node missing")
 }
 
-func TestV2StaticScriptsAndDynamicHumanCompile(t *testing.T) {
-	source := v2Meta + `,actions:[{id:'list',type:'script',scriptId:'candidates',label:'候选',risk:'read'}]};
+func TestStaticScriptsAndDynamicHumanCompile(t *testing.T) {
+	source := contractTestMeta + `,actions:[{id:'list',type:'script',scriptId:'candidates',label:'候选',risk:'read'}]};
 export const scripts={candidates:{language:'python',protocol:'json',code:String.raw` + "`" + `import json,sys
 json.dump({"items":[{"value":"a","label":"A"}],"literal":"\\n"},sys.stdout)
 ` + "`" + `}};
@@ -99,14 +99,14 @@ const result=await worker(choice.value,{id:'analyze',label:'分析',phase:'work'
 return result;`
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {
-		t.Fatalf("V2 sample rejected: %v %+v", err, diagnostics)
+		t.Fatalf("workflow sample rejected: %v %+v", err, diagnostics)
 	}
 	wire, _ := json.Marshal(compiled)
 	var got map[string]any
 	_ = json.Unmarshal(wire, &got)
 	manifest := got["manifest"].(map[string]any)
-	if manifest["formatVersion"] != float64(2) || manifest["sdkVersion"] != "ally.workflow/2" {
-		t.Fatalf("missing V2 identity: %s", wire)
+	if manifest["sdk"] != "ally.workflow" {
+		t.Fatalf("missing workflow contract identity: %s", wire)
 	}
 	scripts := got["bundle"].(map[string]any)["scripts"].(map[string]any)
 	code := scripts["candidates"].(map[string]any)["code"].(string)
@@ -115,7 +115,7 @@ return result;`
 	}
 }
 
-func TestV2RejectsComputedStaticExportsAndInvalidHumanPolicies(t *testing.T) {
+func TestRejectsComputedStaticExportsAndInvalidHumanPolicies(t *testing.T) {
 	for _, tail := range []string{
 		`};export const scripts={s:{language:'python',protocol:'json',code:String.raw` + "`" + `${args.code}` + "`" + `}};return true;`,
 		`};export const scripts={s:{language:'python',protocol:'json',code:getCode()}};return true;`,
@@ -125,14 +125,14 @@ func TestV2RejectsComputedStaticExportsAndInvalidHumanPolicies(t *testing.T) {
 		`};await askUser('x',{id:'ask',label:'问',phase:'work',kind:'select',choices:[{value:'a',label:'A'},{value:'a',label:'B'}]});return true;`,
 		`};await functionTask({id:'fn',label:'检查',phase:'work',language:'javascript',code:'function main(){return true}',successCondition:{path:'bad',equals:true}});return true;`,
 	} {
-		if _, diagnostics, err := Compile(v2Meta + tail); err == nil || len(diagnostics) == 0 {
-			t.Fatalf("invalid V2 source accepted: %s", tail)
+		if _, diagnostics, err := Compile(contractTestMeta + tail); err == nil || len(diagnostics) == 0 {
+			t.Fatalf("invalid workflow source accepted: %s", tail)
 		}
 	}
 }
 
-func TestV2CanvasPreservesDynamicDependenciesAndControlBranches(t *testing.T) {
-	source := v2Meta + `};
+func TestCanvasPreservesDynamicDependenciesAndControlBranches(t *testing.T) {
+	source := contractTestMeta + `};
 const listed=await worker('list',{id:'listed',label:'列举',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'object'}});
 if(args.confirm){await askUser('选',{id:'choose',label:'选择',phase:'work',kind:'select',choices:listed.items});}else{await worker('other',{id:'other',label:'其他',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});}
 return listed;`
@@ -165,7 +165,7 @@ return listed;`
 	}
 }
 
-func TestV2SuccessConditionDistinguishesMissingAndNull(t *testing.T) {
+func TestSuccessConditionDistinguishesMissingAndNull(t *testing.T) {
 	data := map[string]any{"valid": false, "nullable": nil, "a/b": map[string]any{"~": []any{true}}}
 	for _, test := range []struct {
 		// condition 是针对真实业务返回的检查声明。
@@ -187,9 +187,9 @@ func TestV2SuccessConditionDistinguishesMissingAndNull(t *testing.T) {
 	}
 }
 
-func TestV2SDKPublishesTypedProtocol(t *testing.T) {
+func TestSDKPublishesTypedProtocol(t *testing.T) {
 	declarations := string(SDKOutputs()["workflow.d.ts"])
-	for _, required := range []string{"sdk:'ally.workflow/2'", "status:'answered'|'skipped'|'timed_out'", "kind:'text'|'select'|'multiselect'|'form'|'confirm'", "choices?:", "successCondition?:", "protocol:'json'|'text'", "runStartedAt:number", "output:Json"} {
+	for _, required := range []string{"sdk:'ally.workflow'", "status:'answered'|'skipped'|'timed_out'", "kind:'text'|'select'|'multiselect'|'form'|'confirm'", "choices?:", "successCondition?:", "protocol:'json'|'text'", "runStartedAt:number", "output:Json"} {
 		if !strings.Contains(declarations, required) {
 			t.Errorf("generated SDK missing %q", required)
 		}
@@ -199,12 +199,12 @@ func TestV2SDKPublishesTypedProtocol(t *testing.T) {
 	}
 }
 
-func TestV2StaticExportBoundaryAndUnknownMetadata(t *testing.T) {
+func TestStaticExportBoundaryAndUnknownMetadata(t *testing.T) {
 	for _, source := range []string{
-		v2Meta + `,unknownField:true};return 1;`,
-		strings.Replace(v2Meta, "title:'V2'", "title:`V2`", 1) + `};return 1;`,
-		v2Meta + `};export const actions={};return 1;`,
-		v2Meta + `};await askUser('x',{id:'x',label:'x',phase:'work',kind:'select'});return 1;`,
+		contractTestMeta + `,unknownField:true};return 1;`,
+		strings.Replace(contractTestMeta, "title:'工作流'", "title:`工作流`", 1) + `};return 1;`,
+		contractTestMeta + `};export const actions={};return 1;`,
+		contractTestMeta + `};await askUser('x',{id:'x',label:'x',phase:'work',kind:'select'});return 1;`,
 	} {
 		if _, diagnostics, err := Compile(source); err == nil || len(diagnostics) == 0 {
 			t.Fatalf("invalid static contract accepted: %s", source)
@@ -212,8 +212,8 @@ func TestV2StaticExportBoundaryAndUnknownMetadata(t *testing.T) {
 	}
 }
 
-func TestV2CanvasPublicSchemaRejectsUnknownExecutionAndDanglingDependencies(t *testing.T) {
-	compiled, diagnostics, err := Compile(v2Meta + `};return await worker('x',{id:'work-node',label:'执行',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`)
+func TestCanvasPublicSchemaRejectsUnknownExecutionAndDanglingDependencies(t *testing.T) {
+	compiled, diagnostics, err := Compile(contractTestMeta + `};return await worker('x',{id:'work-node',label:'执行',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
 	}
@@ -236,8 +236,8 @@ func TestV2CanvasPublicSchemaRejectsUnknownExecutionAndDanglingDependencies(t *t
 	}
 }
 
-func TestV2CanvasJoinIsVisibleAndHasNoDanglingEdges(t *testing.T) {
-	source := v2Meta + `};const handle=startWorkflow('child',{id:'start',label:'启动',phase:'work',mode:'joined'});const result=await joinWorkflow(handle);return result.output;`
+func TestCanvasJoinIsVisibleAndHasNoDanglingEdges(t *testing.T) {
+	source := contractTestMeta + `};const handle=startWorkflow('child',{id:'start',label:'启动',phase:'work',mode:'joined'});const result=await joinWorkflow(handle);return result.output;`
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
@@ -260,8 +260,8 @@ func TestV2CanvasJoinIsVisibleAndHasNoDanglingEdges(t *testing.T) {
 	}
 }
 
-func TestV2CanvasDependenciesRespectLexicalShadowingAndCallbackLocals(t *testing.T) {
-	source := v2Meta + `};
+func TestCanvasDependenciesRespectLexicalShadowingAndCallbackLocals(t *testing.T) {
+	source := contractTestMeta + `};
 const result=await worker('outer',{id:'outer',label:'外层',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'object'}});
 {const result=await worker('inner',{id:'inner',label:'内层',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'object'}});}
 await askUser('选择',{id:'choice',label:'选择',phase:'work',kind:'select',choices:result.items});
@@ -289,8 +289,8 @@ return result;`
 	}
 }
 
-func TestV2CanvasDigestMatchesPublicProjection(t *testing.T) {
-	compiled, diagnostics, err := Compile(v2Meta + `};return true;`)
+func TestCanvasDigestMatchesPublicProjection(t *testing.T) {
+	compiled, diagnostics, err := Compile(contractTestMeta + `};return true;`)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
 	}
@@ -306,8 +306,8 @@ func TestV2CanvasDigestMatchesPublicProjection(t *testing.T) {
 	}
 }
 
-func TestV2CanvasPipelineUsesSequentialStageEdgesAndParameterDependencies(t *testing.T) {
-	source := v2Meta + `};const items=await worker('items',{id:'items',label:'输入',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'array'}});return await pipeline(items,[async(item)=>await worker(item,{id:'first',label:'第一步',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'object'}}),async(previous)=>await worker(previous,{id:'second',label:'第二步',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'stages'});`
+func TestCanvasPipelineUsesSequentialStageEdgesAndParameterDependencies(t *testing.T) {
+	source := contractTestMeta + `};const items=await worker('items',{id:'items',label:'输入',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'array'}});return await pipeline(items,[async(item)=>await worker(item,{id:'first',label:'第一步',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'object'}}),async(previous)=>await worker(previous,{id:'second',label:'第二步',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'stages'});`
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
@@ -339,8 +339,8 @@ func TestV2CanvasPipelineUsesSequentialStageEdgesAndParameterDependencies(t *tes
 	}
 }
 
-func TestV2CompleteDesignExampleCompilesWithoutPresentationDeclarations(t *testing.T) {
-	source, err := os.ReadFile("testdata/v2-candidates.workflow.js")
+func TestCompleteDesignExampleCompilesWithoutPresentationDeclarations(t *testing.T) {
+	source, err := os.ReadFile("testdata/candidates.workflow.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,8 +356,8 @@ func TestV2CompleteDesignExampleCompilesWithoutPresentationDeclarations(t *testi
 	}
 }
 
-func TestV2DesignFlowReplaysTypedHumanAndDirectWorkerValuesAcrossCheckpoints(t *testing.T) {
-	source, err := os.ReadFile("testdata/v2-candidates.workflow.js")
+func TestDesignFlowReplaysTypedHumanAndDirectWorkerValuesAcrossCheckpoints(t *testing.T) {
+	source, err := os.ReadFile("testdata/candidates.workflow.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +394,7 @@ func TestV2DesignFlowReplaysTypedHumanAndDirectWorkerValuesAcrossCheckpoints(t *
 		}
 	})
 	if state.Failure != nil {
-		t.Fatalf("V2 replay failed: %+v", state.Failure)
+		t.Fatalf("workflow replay failed: %+v", state.Failure)
 	}
 	result, _ := state.Result.JSON()
 	wire, _ := json.Marshal(result)
@@ -403,8 +403,8 @@ func TestV2DesignFlowReplaysTypedHumanAndDirectWorkerValuesAcrossCheckpoints(t *
 	}
 }
 
-func TestV2CanvasTracksPureCallbackCapturedDependencies(t *testing.T) {
-	source := v2Meta + `};const listed=await worker('list',{id:'listed',label:'列表',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'array'}});const query=await askUser('过滤',{id:'query',label:'过滤',phase:'work',kind:'text'});const filtered=listed.filter(item=>item.label.includes(query.value));return await askUser('选择',{id:'choose',label:'选择',phase:'work',kind:'select',choices:filtered});`
+func TestCanvasTracksPureCallbackCapturedDependencies(t *testing.T) {
+	source := contractTestMeta + `};const listed=await worker('list',{id:'listed',label:'列表',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'array'}});const query=await askUser('过滤',{id:'query',label:'过滤',phase:'work',kind:'text'});const filtered=listed.filter(item=>item.label.includes(query.value));return await askUser('选择',{id:'choose',label:'选择',phase:'work',kind:'select',choices:filtered});`
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
@@ -423,8 +423,8 @@ func TestV2CanvasTracksPureCallbackCapturedDependencies(t *testing.T) {
 	}
 }
 
-func TestV2CanvasBusinessDescriptionFallsBackOnlyToActionDeclaration(t *testing.T) {
-	source := v2Meta + `,actions:[{id:'fetch',type:'http',label:'获取资料',description:'读取候选方案供用户筛选',risk:'read',allowedOrigins:['https://example.com'],methods:['GET']}]};await action('fetch',{id:'fetch-node',label:'获取资料',phase:'work'});await action('fetch',{id:'override',label:'获取资料',description:'读取本次项目的候选方案',phase:'work'});return await worker('分析',{id:'analyze',label:'分析资料',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`
+func TestCanvasBusinessDescriptionFallsBackOnlyToActionDeclaration(t *testing.T) {
+	source := contractTestMeta + `,actions:[{id:'fetch',type:'http',label:'获取资料',description:'读取候选方案供用户筛选',risk:'read',allowedOrigins:['https://example.com'],methods:['GET']}]};await action('fetch',{id:'fetch-node',label:'获取资料',phase:'work'});await action('fetch',{id:'override',label:'获取资料',description:'读取本次项目的候选方案',phase:'work'});return await worker('分析',{id:'analyze',label:'分析资料',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
@@ -441,8 +441,8 @@ func TestV2CanvasBusinessDescriptionFallsBackOnlyToActionDeclaration(t *testing.
 	}
 }
 
-func TestV2NodeDescriptionIsStaticBoundedAndEditable(t *testing.T) {
-	base := v2Meta + `};return await worker('分析',{id:'analyze',label:'分析',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`
+func TestNodeDescriptionIsStaticBoundedAndEditable(t *testing.T) {
+	base := contractTestMeta + `};return await worker('分析',{id:'analyze',label:'分析',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`
 	for _, value := range []string{`args.description`, `123`, `'` + strings.Repeat("文", 501) + `'`} {
 		source := strings.Replace(base, "label:'分析'", "label:'分析',description:"+value, 1)
 		if _, diagnostics, err := Compile(source); err == nil || len(diagnostics) == 0 {
@@ -463,8 +463,8 @@ func TestV2NodeDescriptionIsStaticBoundedAndEditable(t *testing.T) {
 	}
 }
 
-func TestV2CanvasFinallyFollowsEitherTryPath(t *testing.T) {
-	source := v2Meta + `};try{await worker('body',{id:'body',label:'主体',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});}catch(error){await worker('recover',{id:'recover',label:'恢复',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});}finally{await worker('cleanup',{id:'cleanup',label:'收尾',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});}return true;`
+func TestCanvasFinallyFollowsEitherTryPath(t *testing.T) {
+	source := contractTestMeta + `};try{await worker('body',{id:'body',label:'主体',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});}catch(error){await worker('recover',{id:'recover',label:'恢复',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});}finally{await worker('cleanup',{id:'cleanup',label:'收尾',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});}return true;`
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
@@ -487,8 +487,8 @@ func TestV2CanvasFinallyFollowsEitherTryPath(t *testing.T) {
 	}
 }
 
-func TestV2CanvasReturnWaitsForFinally(t *testing.T) {
-	source := v2Meta + `};try{await worker('body',{id:'body',label:'主体',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});return true;}finally{await worker('cleanup',{id:'cleanup',label:'收尾',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});}`
+func TestCanvasReturnWaitsForFinally(t *testing.T) {
+	source := contractTestMeta + `};try{await worker('body',{id:'body',label:'主体',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});return true;}finally{await worker('cleanup',{id:'cleanup',label:'收尾',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});}`
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
@@ -509,9 +509,9 @@ func TestV2CanvasReturnWaitsForFinally(t *testing.T) {
 	}
 }
 
-func TestV2RejectsRemovedPresentationDesign(t *testing.T) {
+func TestRejectsRemovedPresentationDesign(t *testing.T) {
 	for _, field := range []string{"nodeResultPages:{}", "nodeResultFiles:{}", "nodeResultPageOmissions:{}", "inputPage:null"} {
-		source := v2Meta + "," + field + `};return true;`
+		source := contractTestMeta + "," + field + `};return true;`
 		if _, diagnostics, err := Compile(source); err == nil || len(diagnostics) == 0 {
 			t.Errorf("removed display design accepted: %s", field)
 		}
@@ -529,8 +529,8 @@ func TestV2RejectsRemovedPresentationDesign(t *testing.T) {
 	}
 }
 
-func TestV2MultistepFixturePreservesThreeNodesPerPhase(t *testing.T) {
-	source, err := os.ReadFile("testdata/v2-multistep.workflow.js")
+func TestMultistepFixturePreservesThreeNodesPerPhase(t *testing.T) {
+	source, err := os.ReadFile("testdata/multistep.workflow.js")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -590,5 +590,45 @@ func TestV2MultistepFixturePreservesThreeNodesPerPhase(t *testing.T) {
 	gate := nodes["acceptance-gate"]
 	if gate.SuccessCondition == nil || gate.SuccessCondition.Path != "/valid" || gate.SuccessCondition.Equals != true {
 		t.Fatalf("controlled failure check lost: %+v", gate.SuccessCondition)
+	}
+}
+
+func TestCompilerAcceptsUnversionedSDK(t *testing.T) {
+	source := `export const meta={sdk:'ally.workflow',title:'工作流',phases:[{id:'work',title:'执行',detail:'流程'}]};return true;`
+	if _, diagnostics, err := Compile(source); err != nil {
+		t.Fatalf("SDK identity rejected: %v %+v", err, diagnostics)
+	}
+}
+
+func TestCanvasUsesSingleUnversionedContract(t *testing.T) {
+	compiled, diagnostics, err := Compile(contractTestMeta + `};return true;`)
+	if err != nil {
+		t.Fatalf("%v %+v", err, diagnostics)
+	}
+	wire, err := json.Marshal(ExportCanvas(compiled.Manifest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var public map[string]any
+	if err := json.Unmarshal(wire, &public); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"formatVersion", "sdkVersion"} {
+		if _, present := public[field]; present {
+			t.Fatalf("version discriminator still published: %s", wire)
+		}
+	}
+	if public["sdk"] != "ally.workflow" {
+		t.Fatalf("missing SDK identity: %s", wire)
+	}
+	if err := ValidateJSON(CanvasManifestSchema(), public); err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"formatVersion", "sdkVersion"} {
+		public[field] = 2
+		if err := ValidateJSON(CanvasManifestSchema(), public); err == nil {
+			t.Fatalf("version discriminator accepted: %s", field)
+		}
+		delete(public, field)
 	}
 }

@@ -59,8 +59,7 @@ it("运行只收集参数，区分必填与选填并沿用已保存配置", asyn
           revision={{
             id: "version-1",
             manifest: {
-              formatVersion: 2,
-              sdkVersion: "ally.workflow/2",
+              sdk: "ally.workflow",
               description: "",
               phases: [],
               nodes: [],
@@ -184,8 +183,7 @@ it.each([true, false])(
             revision={{
               id: "version-1",
               manifest: {
-                formatVersion: 2,
-                sdkVersion: "ally.workflow/2",
+                sdk: "ally.workflow",
                 title: "无会话工作流",
                 description: "",
                 controls: [],
@@ -264,8 +262,7 @@ it.each([false, true])(
             revision={{
               id: "version-local",
               manifest: {
-                formatVersion: 2,
-                sdkVersion: "ally.workflow/2",
+                sdk: "ally.workflow",
                 title: "本地",
                 description: "",
                 controls: [],

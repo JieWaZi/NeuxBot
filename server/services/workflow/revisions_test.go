@@ -62,7 +62,7 @@ func TestFailedSaveRollsBackRevisionPointerAndSuccessEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.store = receiptFailingStore{WorkflowController: store}
-	if _, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: workflowTestSource(t), SDKVersion: constants.WorkflowSDKVersion}); err == nil {
+	if _, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: workflowTestSource(t), SDK: constants.WorkflowSDKIdentifier}); err == nil {
 		t.Fatal("save should fail")
 	}
 	definition, err = store.GetDefinition(ctx, definition.ID)
@@ -86,7 +86,7 @@ func TestExplicitSaveAlwaysCreatesNewRevision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	save := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: workflowTestSource(t), SDKVersion: constants.WorkflowSDKVersion}
+	save := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: workflowTestSource(t), SDK: constants.WorkflowSDKIdentifier}
 	first, _, err := s.SaveSource(ctx, save)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestExplicitSaveAlwaysCreatesNewRevision(t *testing.T) {
 	save.RequestID = "save-again"
 	save.ExpectedRevisionID = first.RevisionID
 	unchanged, _, err := s.SaveSource(ctx, save)
-	if err != nil || unchanged.Unchanged || unchanged.RevisionID == first.RevisionID {
+	if err != nil || unchanged.RevisionID == first.RevisionID {
 		t.Fatalf("unchanged: %+v %v", unchanged, err)
 	}
 	history, err := store.ListRevisions(ctx, definition.ID, 0, 50)

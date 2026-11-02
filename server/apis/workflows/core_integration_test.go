@@ -113,7 +113,7 @@ func (r *fixtureRuntime) Run(ctx context.Context, request fixtureInvocation, sin
 		return failed(err)
 	}
 
-	return agentapi.Result{Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
+	return agentapi.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
 }
 
 // fixtureEnvironment 返回真实 Core 会校验的固定能力目录，不替代接纳逻辑。
@@ -400,7 +400,7 @@ func TestF1WholeCoreWeeklyRestartFailedRevisionThenActualWriteRead(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: string(source), SDKVersion: constants.WorkflowSDKVersion}); err != nil {
+	if _, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: string(source), SDK: constants.WorkflowSDKIdentifier}); err != nil {
 		t.Fatal(err, diagnostics)
 	}
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "run", Args: map[string]any{"weekNotes": "完成导出；依赖待确认；下周灰度"}, Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelFullAccess}})
@@ -505,7 +505,7 @@ func TestWorkerSystemControlReferenceRunsThroughCoreWithoutMissingConnector(t *t
 	runtime := &fixtureRuntime{calls: map[string]int{}}
 	s, _ := openCoreWorkflowFixture(t, directory, runtime)
 	ctx := context.Background()
-	source := `export const meta={sdk:'ally.workflow/2',title:'内部能力',description:'系统结果提交不属于业务工具白名单',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('整理',{id:'facts',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object'},toolPolicy:{connectors:{mode:'allowlist',connectorIds:[]}}});`
+	source := `export const meta={sdk:'ally.workflow',title:'内部能力',description:'系统结果提交不属于业务工具白名单',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('整理',{id:'facts',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object'},toolPolicy:{connectors:{mode:'allowlist',connectorIds:[]}}});`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "system-reference", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelFullAccess}})
 	if err != nil {

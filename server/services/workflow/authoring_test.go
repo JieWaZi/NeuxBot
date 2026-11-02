@@ -131,7 +131,7 @@ func TestAuthoringCLICombinesPreparationAndSavesWithDurableReceipt(t *testing.T)
 			t.Fatalf("invalid query lacks legal choices: %+v", response)
 		}
 	}
-	source := `export const meta={sdk:'ally.workflow/2',title:'Echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string',title:'Text',description:'Text to echo.'}},required:['text']},outputSchema:{type:'string'},phases:[{id:'echo',title:'Echo',detail:'Echo input',canExit:true}]};phase('echo');return await functionTask({id:'echo_text',label:'Echo text',phase:'echo',language:'javascript',input:args.text,code:'function main(input){return input;}'});`
+	source := `export const meta={sdk:'ally.workflow',title:'Echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string',title:'Text',description:'Text to echo.'}},required:['text']},outputSchema:{type:'string'},phases:[{id:'echo',title:'Echo',detail:'Echo input',canExit:true}]};phase('echo');return await functionTask({id:'echo_text',label:'Echo text',phase:'echo',language:'javascript',input:args.text,code:'function main(input){return input;}'});`
 	invalid := strings.Replace(source, "language:'javascript'", "outputSchema:meta.outputSchema,language:'javascript'", 1)
 	code, rejected := call([]string{"workflow", "source", "save", "--input", "-", "--request-id", "invalid"}, map[string]any{
 		"source": invalid, "expectedRevisionId": "",
@@ -180,8 +180,8 @@ func TestAuthoringCLICombinesPreparationAndSavesWithDurableReceipt(t *testing.T)
 	code, unchanged := call([]string{"workflow", "source", "save", "--input", "-", "--request-id", "unchanged"}, map[string]any{
 		"source": source, "expectedRevisionId": revision,
 	})
-	if code != 0 || unchanged.Data.(map[string]any)["unchanged"] != false || unchanged.Data.(map[string]any)["revisionId"] == revision {
-		t.Fatalf("unchanged save created a new revision: %+v", unchanged)
+	if code != 0 || unchanged.Data.(map[string]any)["unchanged"] != nil || unchanged.Data.(map[string]any)["revisionId"] == revision {
+		t.Fatalf("same source save did not create a new revision: %+v", unchanged)
 	}
 	for _, include := range []bool{false, true} {
 		code, preview := call([]string{"workflow", "source", "validate", "--input", "-"}, map[string]any{
@@ -341,7 +341,7 @@ func TestAuthoringCapabilityFollowsExecutionAndRejectsLateSave(t *testing.T) {
 		t.Fatalf("旧执行仍有权限: %+v", response)
 	}
 	// 直接进入保存事务，模拟初次能力校验后执行才被替换或结束。
-	command := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "late-save", Source: workflowTestSource(t), SDKVersion: constants.WorkflowSDKVersion, CreationSessionID: "creation", CreationExecutionID: "authoring", CreationToken: "private"}
+	command := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "late-save", Source: workflowTestSource(t), SDK: constants.WorkflowSDKIdentifier, CreationSessionID: "creation", CreationExecutionID: "authoring", CreationToken: "private"}
 	if _, _, err := s.SaveSource(ctx, command); err != status_error.WorkflowAuthoringSuperseded {
 		t.Fatalf("迟到保存未阻止: %v", err)
 	}

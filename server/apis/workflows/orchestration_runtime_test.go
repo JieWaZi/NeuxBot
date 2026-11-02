@@ -66,7 +66,7 @@ func TestWorkflowAuthoringAndWorkerUseIndependentRuntimeHost(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	directory := t.TempDir()
-	source := `export const meta={sdk:'ally.workflow/2',title:'独立宿主',description:'通过真实CLI提交节点成果',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('核对冻结版本',{id:'facts',label:'核对',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object',properties:{verified:{type:'boolean'}},required:['verified']},toolPolicy:{connectors:{mode:'allowlist',connectorIds:[]}}});`
+	source := `export const meta={sdk:'ally.workflow',title:'独立宿主',description:'通过真实CLI提交节点成果',phases:[{id:'work',title:'执行',detail:'提交结果',canExit:true}]};return await worker('核对冻结版本',{id:'facts',label:'核对',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker'},schema:{type:'object',properties:{verified:{type:'boolean'}},required:['verified']},toolPolicy:{connectors:{mode:'allowlist',connectorIds:[]}}});`
 	workerStarted := make(chan struct{}, 1)
 	releaseWorker := make(chan struct{})
 	outcomes := make(chan error, 2)
@@ -77,7 +77,7 @@ func TestWorkflowAuthoringAndWorkerUseIndependentRuntimeHost(t *testing.T) {
 		}
 		var err error
 		if strings.Contains(turn.Input.Text, "创作宿主测试") {
-			_, err = call([]string{"workflow", "source", "save", "--request-id", "driver-save"}, map[string]any{"source": source, "sdkVersion": constants.WorkflowSDKVersion, "expectedRevisionId": ""})
+			_, err = call([]string{"workflow", "source", "save", "--request-id", "driver-save"}, map[string]any{"source": source, "sdk": constants.WorkflowSDKIdentifier, "expectedRevisionId": ""})
 			if err == nil {
 				if _, denied := call([]string{"workflow", "results", "schema"}, nil); denied == nil {
 					err = status_error.WorkflowStateInvalid
@@ -170,7 +170,7 @@ func TestWorkflowAuthoringAndWorkerUseIndependentRuntimeHost(t *testing.T) {
 	if err != nil || pending.Run.Status == constants.WorkflowRunStatusSucceeded {
 		t.Fatalf("接纳被误判成成果完成: %+v %v", pending.Run, err)
 	}
-	newRevision, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: definition.CurrentRevisionID, RequestID: "later-revision", Source: strings.Replace(source, "独立宿主", "后续版本", 1), SDKVersion: constants.WorkflowSDKVersion})
+	newRevision, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: definition.CurrentRevisionID, RequestID: "later-revision", Source: strings.Replace(source, "独立宿主", "后续版本", 1), SDK: constants.WorkflowSDKIdentifier})
 	if err != nil || newRevision.RevisionID == run.RevisionID {
 		t.Fatalf("后续版本保存失败: %+v %v %v", newRevision, diagnostics, err)
 	}

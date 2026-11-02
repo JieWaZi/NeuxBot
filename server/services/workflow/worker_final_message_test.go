@@ -15,6 +15,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/NeuxBot/server/services/execution"
@@ -26,6 +27,8 @@ type workerDispatchExecution struct {
 	execution.Service
 	// intent 是适配器实际提交的中立工作意图。
 	intent execution.WorkIntent
+	// status 可模拟幂等重放返回已经完成的首次执行。
+	status constants.ExecutionStatus
 }
 
 func (*workerDispatchExecution) ValidateConfiguration(context.Context, execution.ExecutionConfiguration) error {
@@ -34,7 +37,11 @@ func (*workerDispatchExecution) ValidateConfiguration(context.Context, execution
 
 func (e *workerDispatchExecution) Start(_ context.Context, intent execution.WorkIntent) (execution.AcceptedExecution, error) {
 	e.intent = intent
-	return execution.AcceptedExecution{Chat: models.Chat{ID: "worker-chat"}, Execution: models.Execution{ID: intent.ExecutionID, Status: constants.ExecutionStatusRunning}}, nil
+	status := e.status
+	if status == "" {
+		status = constants.ExecutionStatusRunning
+	}
+	return execution.AcceptedExecution{Chat: models.Chat{ID: "worker-chat"}, Execution: models.Execution{ID: intent.ExecutionID, Status: status}}, nil
 }
 
 func TestCoreWorkerDispatchAlignsStructuredPromptWithResultBindings(t *testing.T) {
@@ -168,10 +175,18 @@ type finalMessageChat struct {
 	chat.Module
 	// executions 记录适配器查询的准确执行身份。
 	executions []string
+	// outcome 是指定执行的原生终止与失败事实。
+	outcome chat.ExecutionOutcome
 }
 
 func (c *finalMessageChat) ReadInitialExecution(context.Context, string) (chat.InitialExecutionState, error) {
 	return chat.InitialExecutionState{CreateRequestID: "attempt", InitialExecution: &models.Execution{ID: "first", Status: constants.ExecutionStatusCompleted}}, nil
+}
+func (c *finalMessageChat) ReadExecutionOutcome(_ context.Context, chatID, executionID string) (chat.ExecutionOutcome, error) {
+	if chatID != "worker-chat" || executionID != "first" {
+		return chat.ExecutionOutcome{}, status_error.ExecutionNotFound
+	}
+	return c.outcome, nil
 }
 func (c *finalMessageChat) ReadExecutionMessages(_ context.Context, _ string, executionID string) ([]messageview.Message, error) {
 	c.executions = append(c.executions, executionID)
@@ -182,7 +197,7 @@ func (c *finalMessageChat) ReadExecutionMessages(_ context.Context, _ string, ex
 	}, nil
 }
 func TestCoreWorkerAdapterKeepsFinalMessageAcrossHistoryAndContinuedChat(t *testing.T) {
-	port := &finalMessageChat{}
+	port := &finalMessageChat{outcome: chat.ExecutionOutcome{TerminationReason: constants.RuntimeTerminationReasonNormal}}
 	adapter := CoreWorkerAdapter{Chats: port}
 	receipt, err := adapter.Inspect(context.Background(), models.WorkflowEffect{ID: "attempt", ChatID: "worker-chat", ExecutionID: "first"})
 	if err != nil {
@@ -190,5 +205,112 @@ func TestCoreWorkerAdapterKeepsFinalMessageAcrossHistoryAndContinuedChat(t *test
 	}
 	if !receipt.FinalPresent || receipt.FinalMessageID != "final" || receipt.Text != "最终正文" || !reflect.DeepEqual(port.executions, []string{"first"}) {
 		t.Fatalf("wrong final message: %+v executions=%v", receipt, port.executions)
+	}
+}
+
+func TestCoreWorkerAdapterRejectsUnconfirmedCompletedOutput(t *testing.T) {
+	for _, test := range []struct {
+		// name 是原生终止或交付故障场景。
+		name string
+		// reason 是权威终止原因，空值模拟缺少终止证据。
+		reason constants.RuntimeTerminationReason
+		// failure 保留与终止原因独立的交付故障。
+		failure constants.RuntimeFailureCode
+	}{
+		{name: "truncated", reason: constants.RuntimeTerminationReasonTruncated},
+		{name: "turn-limit", reason: constants.RuntimeTerminationReasonTurnLimit},
+		{name: "refusal", reason: constants.RuntimeTerminationReasonRefusal},
+		{name: "unknown", reason: constants.RuntimeTerminationReasonUnknown},
+		{name: "missing-termination"},
+		{name: "delivery-failed", reason: constants.RuntimeTerminationReasonNormal, failure: constants.RuntimeFailureCodeEventDelivery},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			port := &finalMessageChat{outcome: chat.ExecutionOutcome{TerminationReason: test.reason, FailureCode: test.failure}}
+			receipt, err := (CoreWorkerAdapter{Chats: port}).Inspect(context.Background(), models.WorkflowEffect{ID: "attempt", ChatID: "worker-chat", ExecutionID: "first"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if receipt.Status != constants.ExecutionStatusCompleted || receipt.FinalPresent {
+				t.Fatalf("unconfirmed completion became a usable worker result: %+v", receipt)
+			}
+			if receipt.OutputFailure == nil {
+				t.Fatal("missing durable completion evidence")
+			}
+			failure, _ := receipt.OutputFailure.Data.(map[string]any)
+			reason := string(test.reason)
+			if reason == "" {
+				reason = "unknown"
+			}
+			if failure["code"] != "RESULT_UNCONFIRMED" || failure["terminationReason"] != reason || failure["failureCode"] != string(test.failure) {
+				t.Fatalf("completion evidence changed: %+v", failure)
+			}
+		})
+	}
+}
+
+func TestUnconfirmedWorkerOutputCannotUseCandidateRepairOrRetry(t *testing.T) {
+	for _, structured := range []bool{false, true} {
+		t.Run(map[bool]string{false: "text", true: "candidate"}[structured], func(t *testing.T) {
+			s, _ := workflowTestService(t)
+			s.worker = &retryWorker{}
+			schema := ""
+			if structured {
+				schema = ",schema:{type:'object'}"
+			}
+			definition := savedTestWorkflow(t, s, runtimeTestMeta+`return await worker('read',{id:'read',label:'读取',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},retry:{maxAttempts:2,safety:'pure'}`+schema+`});`)
+			ctx := context.Background()
+			run, err := s.StartRun(ctx, StartRunCommand{DefinitionID: definition.ID, RequestID: "unconfirmed", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "fixture", WorkspaceReadOnly: true}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			runTicks(t, s, run.ID, 1)
+			state, err := s.runs.LoadRunState(ctx, run.ID)
+			if err != nil || len(state.Effects) != 1 {
+				t.Fatalf("missing worker: %+v %v", state, err)
+			}
+			effect := state.Effects[0]
+			if structured {
+				err = s.state.MutateEffect(ctx, run.ID, effect.ID, func(_ context.Context, _ *controllers.WorkflowRunState, current *models.WorkflowEffect) error {
+					candidate := workflowdsl.JSONValue(map[string]any{"verified": true})
+					current.Candidate = &candidate
+					return nil
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			s.repairOutput = func(context.Context, models.WorkflowExecutionDefaults, map[string]any, string) (string, error) {
+				t.Fatal("unconfirmed output invoked format repair")
+				return "{}", nil
+			}
+			failure := workflowdsl.JSONValue(map[string]any{"code": constants.WorkflowResultUnconfirmedCode, "terminationReason": "truncated"})
+			receipt := WorkerReceipt{ExecutionID: effect.ExecutionID, Status: constants.ExecutionStatusCompleted, Text: "{}", FinalPresent: true, OutputFailure: &failure}
+			receipt, err = s.repairWorkerOutput(ctx, run, effect, receipt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.finishEffect(ctx, effect, receipt, nil)
+			runTicks(t, s, run.ID, 3)
+			state, err = s.runs.LoadRunState(ctx, run.ID)
+			if err != nil || state.Run.Status != constants.WorkflowRunStatusFailed || len(state.Effects) != 1 || state.Effects[0].Status != constants.WorkflowStepStatusFailed || state.Effects[0].ExecutionStatus != constants.ExecutionStatusCompleted || state.Effects[0].OutputRepairs != 0 {
+				t.Fatalf("unconfirmed outcome advanced or retried: %+v %v", state, err)
+			}
+			if state.Effects[0].Failure == nil || structured && state.Effects[0].Candidate == nil {
+				t.Fatal("original evidence was discarded")
+			}
+		})
+	}
+}
+
+func TestCoreWorkerDispatchReplayedCompletionVerifiesOutcome(t *testing.T) {
+	port := &workerDispatchExecution{status: constants.ExecutionStatusCompleted}
+	queries := &finalMessageChat{outcome: chat.ExecutionOutcome{TerminationReason: constants.RuntimeTerminationReasonTruncated}}
+	effect := models.WorkflowEffect{ID: "attempt", ExecutionID: "first", Boundary: workflowdsl.EffectBoundary{NodeID: "read", Arguments: []workflowdsl.Value{workflowdsl.JSONValue("read"), workflowdsl.JSONValue(map[string]any{"resolve": map[string]any{"wakerId": "fixture"}})}}}
+	receipt, err := (CoreWorkerAdapter{Executions: port, Chats: queries}).Dispatch(context.Background(), WorkerDispatch{Run: workerTestRun(t, "read", "codex"), Effect: effect})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Status != constants.ExecutionStatusCompleted || receipt.OutputFailure == nil || receipt.FinalPresent {
+		t.Fatalf("completed replay bypassed outcome verification: %+v", receipt)
 	}
 }

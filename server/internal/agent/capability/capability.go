@@ -294,7 +294,10 @@ func ErrorResponse(operation string, err error) Response {
 	return Response{ProtocolVersion: constants.AgentCLIProtocolVersion, Operation: operation, Error: &Failure{Code: code, Message: message, EffectState: state, RetryAdvice: advice, Details: details}}
 }
 
-var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,` + strconv.Itoa(constants.AgentCLIRequestIDMaximumLength-1) + `}$`)
+
+// ValidRequestID 校验 CLI、MCP 与收据查询共同使用的幂等标识。
+func ValidRequestID(value string) bool { return requestIDPattern.MatchString(value) }
 
 // ServeHTTP 接纳只使用短期执行认证的固定命令协议。
 func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
@@ -379,7 +382,7 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 			writeFailure(w, id, status_error.AgentOperationForbidden)
 			return
 		}
-		if !requestIDPattern.MatchString(key) {
+		if !ValidRequestID(key) {
 			writeFailure(w, id, status_error.AgentInputInvalid)
 			return
 		}
@@ -412,7 +415,7 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 			writeFailure(w, input.Operation, err)
 			return
 		}
-		if op.Effect != constants.AgentCLIEffectRead && !requestIDPattern.MatchString(input.RequestID) {
+		if op.Effect != constants.AgentCLIEffectRead && !ValidRequestID(input.RequestID) {
 			writeFailure(w, input.Operation, status_error.AgentInputInvalid)
 			return
 		}

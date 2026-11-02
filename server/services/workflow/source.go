@@ -32,8 +32,8 @@ type SaveSourceCommand struct {
 	Patches []SourcePatch `json:"patches,omitempty"`
 	// Source 是不裁剪和不格式化的完整创作源码。
 	Source string `json:"source"`
-	// SDKVersion 是本次创作使用的原生契约。
-	SDKVersion string `json:"sdkVersion"`
+	// SDK 是本次创作使用的原生契约。
+	SDK string `json:"sdk"`
 	// CreationSessionID 是服务端校验租约后填入的创作身份。
 	CreationSessionID string `json:"-"`
 	// RestoredFromRevisionID 是恢复操作的来源版本。
@@ -52,7 +52,7 @@ type SourcePatch struct {
 
 // SaveSource 同时提交源码、投影、程序、当前指针、回执与事件。
 func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (workflowdsl.SaveReceipt, []workflowdsl.Diagnostic, error) {
-	if command.RequestID == "" || len(command.RequestID) > 128 || command.SDKVersion != constants.WorkflowSDKVersion {
+	if command.RequestID == "" || len(command.RequestID) > 128 || command.SDK != constants.WorkflowSDKIdentifier {
 		return workflowdsl.SaveReceipt{}, nil, status_error.BadRequest
 	}
 	digest := workflowstate.Digest(struct {
@@ -60,7 +60,7 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 		Expected string
 		// Source 是精确源码。
 		Source string
-		// SDK 是契约版本。
+		// SDK 是本次保存的契约身份。
 		SDK string
 		// Restored 是恢复来源。
 		Restored string
@@ -70,7 +70,7 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 		Base string
 		// Patches 是精确替换载荷。
 		Patches []SourcePatch
-	}{command.ExpectedRevisionID, command.Source, command.SDKVersion, command.RestoredFromRevisionID, command.ResolvedAnnotationIDs, command.BaseSourceDigest, command.Patches})
+	}{command.ExpectedRevisionID, command.Source, command.SDK, command.RestoredFromRevisionID, command.ResolvedAnnotationIDs, command.BaseSourceDigest, command.Patches})
 	if len(command.Patches) > 0 {
 		if command.Source != "" || command.BaseSourceDigest == "" || command.ExpectedRevisionID == "" {
 			return workflowdsl.SaveReceipt{}, nil, status_error.BadRequest
@@ -140,7 +140,7 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 		if definition.CurrentRevisionID != command.ExpectedRevisionID {
 			return status_error.WorkflowRevisionConflict
 		}
-		revision := models.WorkflowRevision{ID: util.New(), DefinitionID: definition.ID, Ordinal: definition.Ordinal + 1, Source: command.Source, SourceDigest: compiled.SourceDigest, ManifestDigest: compiled.ManifestDigest, IRDigest: compiled.IRDigest, SDKVersion: constants.WorkflowSDKVersion, CompilerVersion: constants.WorkflowCompilerVersion, IRVersion: constants.WorkflowIRVersion, Manifest: compiled.Manifest, Bundle: compiled.Bundle, CreationSessionID: command.CreationSessionID, RestoredFromRevisionID: command.RestoredFromRevisionID}
+		revision := models.WorkflowRevision{ID: util.New(), DefinitionID: definition.ID, Ordinal: definition.Ordinal + 1, Source: command.Source, SourceDigest: compiled.SourceDigest, ManifestDigest: compiled.ManifestDigest, IRDigest: compiled.IRDigest, SDK: constants.WorkflowSDKIdentifier, CompilerVersion: constants.WorkflowCompilerVersion, IRVersion: constants.WorkflowIRVersion, Manifest: compiled.Manifest, Bundle: compiled.Bundle, CreationSessionID: command.CreationSessionID, RestoredFromRevisionID: command.RestoredFromRevisionID}
 		if err := s.store.CreateRevision(ctx, revision); err != nil {
 			return err
 		}
@@ -232,7 +232,7 @@ func (s *Service) validateSourcePolicies(ctx context.Context, manifest workflowd
 }
 
 func verifyRevision(revision models.WorkflowRevision) error {
-	if revision.SDKVersion != constants.WorkflowSDKVersion || revision.IRVersion != constants.WorkflowIRVersion || revision.Bundle.Version != constants.WorkflowIRVersion {
+	if revision.SDK != constants.WorkflowSDKIdentifier || revision.IRVersion != constants.WorkflowIRVersion || revision.Bundle.Version != constants.WorkflowIRVersion {
 		return status_error.WorkflowCapabilityUnsupported.WithField("capability", "workflow_revision_version")
 	}
 	manifest, err := json.Marshal(revision.Manifest)

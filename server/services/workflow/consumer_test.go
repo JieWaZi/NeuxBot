@@ -61,7 +61,7 @@ func TestConsumerCLIScopesReplayActualDefaultsAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: other.ID, RequestID: "save", Source: strings.Replace(workflowTestSource(t), "纯计算验收", "另一个流程", 1), SDKVersion: constants.WorkflowSDKVersion})
+	receipt, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: other.ID, RequestID: "save", Source: strings.Replace(workflowTestSource(t), "纯计算验收", "另一个流程", 1), SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatal(err)
 	}

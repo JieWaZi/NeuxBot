@@ -3,6 +3,7 @@ package files
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -129,13 +130,13 @@ func TestIntegrationAutomaticTaskAPIFileOwnerIsolation(t *testing.T) {
 	if err := ValidateReference(directory, definition, task, upload.Reference, false, "key-a"); err != nil {
 		t.Fatal(err)
 	}
-	for _, owner := range []string{"key-b", "legacy"} {
+	for _, owner := range []string{"key-b", "task-token"} {
 		if err := ValidateReference(directory, definition, task, upload.Reference, false, owner); err == nil {
 			t.Fatal("cross owner reference accepted", owner)
 		}
 	}
 	if err := ValidateReference(directory, definition, task, upload.Reference, false); err == nil {
-		t.Fatal("legacy task token adopted integration upload")
+		t.Fatal("taskToken task token adopted integration upload")
 	}
 	if _, err := Materialize(ctx, directory, definition, task, util.New(), scope, upload.Reference, "key-b"); err == nil {
 		t.Fatal("cross owner file copied into workflow")
@@ -143,12 +144,12 @@ func TestIntegrationAutomaticTaskAPIFileOwnerIsolation(t *testing.T) {
 	if _, err := Materialize(ctx, directory, definition, task, util.New(), scope, upload.Reference, "key-a"); err != nil {
 		t.Fatal(err)
 	}
-	legacy, err := Save(ctx, directory, definition, task, "legacy.md", bytes.NewReader([]byte("legacy")))
+	taskToken, err := Save(ctx, directory, definition, task, "task-token.md", bytes.NewReader([]byte("task-token")))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ValidateReference(directory, definition, task, legacy.Reference, false, "key-a"); err == nil {
-		t.Fatal("integration key adopted old token upload")
+	if err := ValidateReference(directory, definition, task, taskToken.Reference, false, "key-a"); err == nil {
+		t.Fatal("integration key adopted task token upload")
 	}
 }
 
@@ -222,5 +223,41 @@ func TestWorkspaceSeparatesRunsAndKeepsSharedState(t *testing.T) {
 	}
 	if _, err := PrepareWorkspace(managed, workflowID, "../outside"); err == nil {
 		t.Fatal("invalid run identity accepted")
+	}
+}
+
+func TestUploadRequiresPersistedOwner(t *testing.T) {
+	ctx := context.Background()
+	directory, definition, task := t.TempDir(), util.New(), util.New()
+	upload, err := Save(ctx, directory, definition, task, "input.md", strings.NewReader("input"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, err := storePath(directory, definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := filepath.Glob(filepath.Join(root, "*", "metadata.json"))
+	if err != nil || len(paths) != 1 {
+		t.Fatalf("missing stored metadata: %v %v", paths, err)
+	}
+	data, err := os.ReadFile(paths[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata storedUpload
+	if err := json.Unmarshal(data, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	metadata.OwnerKeyID = ""
+	data, err = json.Marshal(metadata)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(paths[0], data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateReference(directory, definition, task, upload.Reference, false); err == nil {
+		t.Fatal("upload with missing ownership was accepted")
 	}
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestV2CanvasReferencesResolveAuthoritativeRevisionLabels(t *testing.T) {
+func TestCanvasReferencesResolveAuthoritativeRevisionLabels(t *testing.T) {
 	s, store := workflowTestService(t)
 	definition := savedTestWorkflow(t, s, workflowTestSource(t))
 	ctx := context.Background()

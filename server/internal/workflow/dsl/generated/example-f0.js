@@ -1,5 +1,5 @@
 export const meta = {
-  sdk: 'ally.workflow/2', title: '纯计算验收', description: '组合输入并返回真实计算结果',
+  sdk: 'ally.workflow', title: '纯计算验收', description: '组合输入并返回真实计算结果',
   inputSchema: { type: 'object', required: ['text'], properties: {
     text: { type: 'string' }, repeat: { type: 'integer', minimum: 1, maximum: 5, default: 2 },
     uppercase: { type: 'boolean', default: true }, suffix: { type: 'string', default: '!' }

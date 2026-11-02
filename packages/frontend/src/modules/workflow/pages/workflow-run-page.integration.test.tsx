@@ -97,8 +97,7 @@ beforeEach(() => {
       args: { client: "A" },
     },
     manifest: {
-      formatVersion: 2,
-      sdkVersion: "ally.workflow/2",
+      sdk: "ally.workflow",
       description: "",
       controls: [],
       edges: [],
@@ -263,8 +262,7 @@ it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入�
   snapshot.humanRequests = [];
   snapshot.operationRequests = [];
   snapshot.manifest = {
-    formatVersion: 2,
-    sdkVersion: "ally.workflow/2",
+    sdk: "ally.workflow",
     title: "测试工作流",
     description: "",
     phases: [],

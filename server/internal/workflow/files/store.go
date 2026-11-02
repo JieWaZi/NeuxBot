@@ -34,7 +34,7 @@ type Upload struct {
 type storedUpload struct {
 	// Upload 保存可公开的引用与元数据。
 	Upload
-	// OwnerKeyID 固定集成主体；legacy 和 managed 分别表示旧任务 Token 与本机输入。
+	// OwnerKeyID 固定集成主体；task-token 和 managed 分别表示任务令牌与本机输入。
 	OwnerKeyID string `json:"ownerKeyId"`
 	// TaskID 为空表示由 Core 管理入口上传，否则只允许该任务的 API 使用。
 	TaskID string `json:"taskId"`
@@ -154,10 +154,7 @@ func open(dataDirectory, definitionID, taskID, reference string, allowManaged bo
 		return nil, storedUpload{}, status_error.WorkflowFileInvalid
 	}
 	owner := upload.OwnerKeyID
-	if owner == "" {
-		owner = uploadOwner(upload.TaskID, nil)
-	}
-	if owner != uploadOwner(taskID, ownerKeyIDs) && !(allowManaged && upload.TaskID == "" && owner == "managed") {
+	if owner != uploadOwner(taskID, ownerKeyIDs) && !(allowManaged && upload.TaskID == "" && owner == constants.WorkflowUploadManagedOwner) {
 		return nil, storedUpload{}, status_error.WorkflowFileInvalid
 	}
 	file, err := root.Open(filepath.Join(id, "content"))
@@ -369,13 +366,13 @@ func ValidateAPIInputFiles(dataDirectory, definitionID, taskID string, schema ma
 	return nil
 }
 
-// uploadOwner 保持存量元数据的明确 legacy 语义，新 Key 不继承空归属文件。
+// uploadOwner 根据当前入口确定归属；集成密钥、任务令牌与本机上传彼此隔离。
 func uploadOwner(taskID string, owners []string) string {
 	if len(owners) > 0 && owners[0] != "" {
 		return owners[0]
 	}
 	if taskID == "" {
-		return "managed"
+		return constants.WorkflowUploadManagedOwner
 	}
-	return "legacy"
+	return constants.WorkflowUploadTaskTokenOwner
 }

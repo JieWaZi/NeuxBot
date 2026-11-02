@@ -136,20 +136,20 @@ func TestWorkflowReviewExampleReportsCoverageAndRejectsMissingItem(t *testing.T)
 	}
 }
 
-// v2TextWorker 只替代模型边界，脚本与持久调度使用真实实现。
-type v2TextWorker struct {
+// textResultWorker 只替代模型边界，脚本与持久调度使用真实实现。
+type textResultWorker struct {
 	// retryWorker 提供配置解析与取消测试端口。
 	retryWorker
 }
 
-func (*v2TextWorker) Dispatch(_ context.Context, input WorkerDispatch) (WorkerReceipt, error) {
+func (*textResultWorker) Dispatch(_ context.Context, input WorkerDispatch) (WorkerReceipt, error) {
 	return WorkerReceipt{ExecutionID: input.Effect.ExecutionID, Status: constants.ExecutionStatusCompleted, FinalPresent: true, Text: `{"analysisText":"a 分析"}`}, nil
 }
-func TestV2ScriptHumanWorkerBusinessCheckFlow(t *testing.T) {
+func TestScriptHumanWorkerBusinessCheckFlow(t *testing.T) {
 	s, _ := workflowTestService(t)
-	s.worker = &v2TextWorker{}
+	s.worker = &textResultWorker{}
 	directory, _ := filepath.EvalSymlinks(t.TempDir())
-	source := `export const meta={sdk:'ally.workflow/2',title:'V2闭环',description:'脚本候选',phases:[{id:'work',title:'工作',detail:'执行'}],actions:[{id:'list',type:'script',scriptId:'list',label:'查询',risk:'read'},{id:'verify',type:'script',scriptId:'verify',label:'检查',risk:'read'}]};
+	source := `export const meta={sdk:'ally.workflow',title:'工作流闭环',description:'脚本候选',phases:[{id:'work',title:'工作',detail:'执行'}],actions:[{id:'list',type:'script',scriptId:'list',label:'查询',risk:'read'},{id:'verify',type:'script',scriptId:'verify',label:'检查',risk:'read'}]};
  export const scripts={list:{language:'python',protocol:'json',code:'import json,sys\njson.dump({"items":[{"value":"a","label":"候选甲"}]},sys.stdout)'},verify:{language:'python',protocol:'json',code:'import json,sys\nx=json.load(sys.stdin)\njson.dump({"valid":x["selected"] in x["text"]},sys.stdout)'}};
  const listed=await action('list',{id:'list-node',label:'查询',phase:'work',input:false});
  const selected=await askUser('选择',{id:'choose',label:'选择',phase:'work',kind:'select',choices:listed.data.items});

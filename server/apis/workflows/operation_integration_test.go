@@ -103,7 +103,7 @@ func TestWorkflowLocalProcessHelper(t *testing.T) {
 }
 
 func processWorkflowSource(code string) string {
-	return `export const meta={sdk:'ally.workflow/2',title:'进程验收',description:'真实隔离进程',phases:[{id:'compute',title:'计算',detail:'真实执行',canExit:true}]};phase('compute');` + code
+	return `export const meta={sdk:'ally.workflow',title:'进程验收',description:'真实隔离进程',phases:[{id:'compute',title:'计算',detail:'真实执行',canExit:true}]};phase('compute');` + code
 }
 
 func waitWorkflow(t *testing.T, s *workflowFixture, id string, condition func(controllers.WorkflowRunState) bool) controllers.WorkflowRunState {
@@ -145,7 +145,7 @@ func scopedProcessDefinition(t *testing.T, s *workflowFixture, source, directory
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, diagnostics, err := s.SaveSource(context.Background(), workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save-scope", Source: source, SDKVersion: constants.WorkflowSDKVersion})
+	_, diagnostics, err := s.SaveSource(context.Background(), workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save-scope", Source: source, SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
 	}

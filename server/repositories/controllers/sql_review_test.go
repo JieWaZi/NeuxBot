@@ -205,8 +205,8 @@ func TestIMDependencyGraphBatchesChildrenAndIgnoresHistory(t *testing.T) {
 		}
 		return models.WorkflowRevision{ID: id, DefinitionID: definition, Ordinal: ordinal, Manifest: compiled.Manifest, Bundle: compiled.Bundle}
 	}
-	meta := `export const meta={sdk:'ally.workflow/1',title:'父流程',description:'调用子流程',phases:[{id:'phase',title:'调用',detail:'调用子流程',canExit:true}]};`
-	leaf := compile("leaf-version", "leaf", `export const meta={sdk:'ally.workflow/1',title:'微信依赖',description:'发送',phases:[{id:'phase',title:'发送',detail:'交付',canExit:true}],actions:[{id:'send',label:'发送微信',description:'交付结果',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]};export const actions={send:async(ctx,input)=>await ctx.callTool({callId:'send',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'binding',content:'正文'}})};return await action('send',{id:'deliver',label:'发送结果',phase:'phase'});`, 1)
+	meta := `export const meta={sdk:'ally.workflow',title:'父流程',description:'调用子流程',phases:[{id:'phase',title:'调用',detail:'调用子流程',canExit:true}]};`
+	leaf := compile("leaf-version", "leaf", `export const meta={sdk:'ally.workflow',title:'微信依赖',description:'发送',phases:[{id:'phase',title:'发送',detail:'交付',canExit:true}],actions:[{id:'send',label:'发送微信',description:'交付结果',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]};const actions={send:async(ctx,input)=>await ctx.callTool({callId:'send',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'binding',content:'正文'}})};return await action('send',{id:'deliver',label:'发送结果',phase:'phase'});`, 1)
 	definitions := []models.WorkflowDefinition{{ID: "parent", CurrentRevisionID: "parent-version"}, {ID: "leaf", CurrentRevisionID: leaf.ID}}
 	revisions := []models.WorkflowRevision{leaf}
 	var body strings.Builder
@@ -228,7 +228,7 @@ func TestIMDependencyGraphBatchesChildrenAndIgnoresHistory(t *testing.T) {
 		revisions = append(revisions, revision)
 	}
 	// 上述切片共享测试数据，重新编译持久化的有效叶版本。
-	revisions[0] = compile(leaf.ID, "leaf", `export const meta={sdk:'ally.workflow/1',title:'发送',description:'发送',phases:[{id:'phase',title:'发送',detail:'交付',canExit:true}],actions:[{id:'send',label:'发送',description:'交付',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012'],imTargetIds:['binding']}]};export const actions={send:async(ctx,input)=>null};return await action('send',{id:'deliver',label:'发送',phase:'phase'});`, 1)
+	revisions[0] = compile(leaf.ID, "leaf", `export const meta={sdk:'ally.workflow',title:'发送',description:'发送',phases:[{id:'phase',title:'发送',detail:'交付',canExit:true}],actions:[{id:'send',label:'发送',description:'交付',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012'],imTargetIds:['binding']}]};const actions={send:async(ctx,input)=>null};return await action('send',{id:'deliver',label:'发送',phase:'phase'});`, 1)
 	for _, value := range []any{&definitions, &revisions} {
 		if err := db.CreateInBatches(value, 25).Error; err != nil {
 			t.Fatal(err)

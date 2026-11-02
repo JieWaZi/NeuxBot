@@ -87,8 +87,7 @@ it("脚本详情使用可读风险标签，不泄漏翻译键或内部标识", (
         },
       }}
       manifest={{
-        formatVersion: 2,
-        sdkVersion: "ally.workflow/2",
+        sdk: "ally.workflow",
         title: "报告",
         description: "",
         phases: [],

@@ -52,7 +52,7 @@ func TestDeleteRevisionRemovesHistoryButPreservesPinnedRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	newVersion, _, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "second", ExpectedRevisionID: definition.CurrentRevisionID, Source: strings.Replace(humanSource, "人工关卡", "新版人工关卡", 1), SDKVersion: constants.WorkflowSDKVersion})
+	newVersion, _, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "second", ExpectedRevisionID: definition.CurrentRevisionID, Source: strings.Replace(humanSource, "人工关卡", "新版人工关卡", 1), SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatal(err)
 	}

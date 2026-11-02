@@ -21,7 +21,7 @@ func (r retryEvidenceStore) LoadRunState(context.Context, string) (controllers.W
 	return r.original, nil
 }
 
-func TestV2RetryReuseEvidenceBoundaries(t *testing.T) {
+func TestRetryReuseEvidenceBoundaries(t *testing.T) {
 	for _, kind := range []string{"worker", "revision", "input", "path", "scope", "configuration", "failed", "unknown", "candidate", "file", "action", "select", "confirm", "invalid-selection", "skipped"} {
 		t.Run(kind, func(t *testing.T) {
 			options := map[string]any{}

@@ -25,8 +25,8 @@ type WorkflowSourceResponse struct {
 	Source string `json:"source"`
 	// 源码摘要
 	SourceDigest string `json:"sourceDigest"`
-	// 契约版本
-	SDKVersion string `json:"sdkVersion"`
+	// SDK 标识
+	SDK string `json:"sdk"`
 	// 操作实现
 	ActionDetails map[string]workflowdsl.ActionSourceDetail `json:"actionDetails,omitempty"`
 }
@@ -52,5 +52,5 @@ func (o *GetWorkflowSource) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	return WorkflowSourceResponse{RevisionID: revision.ID, Source: revision.Source, SourceDigest: revision.SourceDigest, SDKVersion: revision.SDKVersion, ActionDetails: details}, nil
+	return WorkflowSourceResponse{RevisionID: revision.ID, Source: revision.Source, SourceDigest: revision.SourceDigest, SDK: revision.SDK, ActionDetails: details}, nil
 }

@@ -1,5 +1,5 @@
 export const meta = {
-  sdk:'ally.workflow/2',title:'多客户环境发布预审',
+  sdk:'ally.workflow',title:'多客户环境发布预审',
   description:'材料补全、逐环境分析与处置、返修和人工审批、真实本地验收与报告；通知只生成草稿。',
   inputSchema:{type:'object',required:['requirements','defects'],properties:{
     requirements:{type:'string'},defects:{type:'string'},environments:{type:'array',items:{type:'string'},default:[]},

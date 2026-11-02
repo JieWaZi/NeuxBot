@@ -2,7 +2,7 @@
 // 保存前通过 authoring prepare 解析真实伙伴资源，并替换下方 waker-example；它不是可用资源 ID。
 // 需要宿主配置的 Python 解释器；运行时由用户选择审阅范围。
 export const meta = {
-  sdk: 'ally.workflow/2',
+  sdk: 'ally.workflow',
   title: '候选审阅示例',
   description: '选择虚构候选，逐项审阅并独立复核，明确报告覆盖范围和失败项。',
   phases: [

@@ -6,7 +6,7 @@ import (
 )
 
 func TestOnlyActualTopLevelMetaAndScriptsExportsAreAccepted(t *testing.T) {
-	meta := `const meta={sdk:'ally.workflow/2',title:'test',description:'test',phases:[{id:'one',title:'one',detail:'one',canExit:true}]};`
+	meta := `const meta={sdk:'ally.workflow',title:'test',description:'test',phases:[{id:'one',title:'one',detail:'one',canExit:true}]};`
 	for _, source := range []string{
 		meta + `export const scripts={};return true;`,
 		`if(true){export ` + meta + `}return true;`,

@@ -39,8 +39,8 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 	if err := s.validateCreationExecution(ctx, session, scope.Token); err != nil {
 		return nil, err
 	}
-	if input.SDKVersion != "" && input.SDKVersion != constants.WorkflowSDKVersion {
-		return nil, status_error.WorkflowCapabilityUnsupported.WithField("capability", "sdk_version")
+	if input.SDK != "" && input.SDK != constants.WorkflowSDKIdentifier {
+		return nil, status_error.WorkflowCapabilityUnsupported.WithField("capability", "sdk_identity")
 	}
 	switch input.Action {
 	case constants.WorkflowActionQuery:
@@ -51,7 +51,7 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 			return s.prepareAuthoring(ctx, scope, session, input)
 		case constants.WorkflowQuerySDK:
 			content, err := workflowdsl.SDKTopic(input.Topic)
-			return map[string]any{"version": constants.WorkflowSDKVersion, "topic": input.Topic, "content": content}, err
+			return map[string]any{"sdk": constants.WorkflowSDKIdentifier, "topic": input.Topic, "content": content}, err
 		case constants.WorkflowQueryExamples:
 			source, err := workflowdsl.SDKExample(input.Topic)
 			return map[string]any{"source": source, "guidance": "Replace all example resource IDs with actual query resources results; validate complete source before saving."}, err
@@ -82,7 +82,7 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 		if err != nil {
 			return nil, err
 		}
-		return map[string]any{"workflowId": definition.ID, "revisionId": revisionID, "currentRevisionId": definition.CurrentRevisionID, "source": source, "sourceDigest": digest, "sdkVersion": constants.WorkflowSDKVersion, "workspace": workspace}, nil
+		return map[string]any{"workflowId": definition.ID, "revisionId": revisionID, "currentRevisionId": definition.CurrentRevisionID, "source": source, "sourceDigest": digest, "sdk": constants.WorkflowSDKIdentifier, "workspace": workspace}, nil
 	case constants.WorkflowActionSourceValidate:
 		compiled, diagnostics, err := workflowdsl.Compile(input.Source)
 		if err == nil {
@@ -110,7 +110,7 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 		for i, p := range input.Patches {
 			patches[i] = SourcePatch{Search: p.Search, Replace: p.Replace}
 		}
-		receipt, diagnostics, err := s.SaveSource(ctx, SaveSourceCommand{Patches: patches, BaseSourceDigest: input.BaseSourceDigest, DefinitionID: session.DefinitionID, RequestID: input.RequestID, ExpectedRevisionID: input.ExpectedRevisionID, Source: input.Source, SDKVersion: input.SDKVersion, CreationSessionID: session.ID, CreationExecutionID: session.ActiveExecutionID, CreationToken: scope.Token, ResolvedAnnotationIDs: input.ResolvedAnnotationIDs})
+		receipt, diagnostics, err := s.SaveSource(ctx, SaveSourceCommand{Patches: patches, BaseSourceDigest: input.BaseSourceDigest, DefinitionID: session.DefinitionID, RequestID: input.RequestID, ExpectedRevisionID: input.ExpectedRevisionID, Source: input.Source, SDK: input.SDK, CreationSessionID: session.ID, CreationExecutionID: session.ActiveExecutionID, CreationToken: scope.Token, ResolvedAnnotationIDs: input.ResolvedAnnotationIDs})
 		if err != nil {
 			if diagnostics == nil {
 				diagnostics = []workflowdsl.Diagnostic{}
@@ -438,7 +438,7 @@ func (s *Service) resourcesCatalog(ctx context.Context, definitionID string) (ma
 		return nil, err
 	}
 	pythonPath, pythonErr := s.resolvePython(ctx)
-	resources := map[string]any{"builtinActions": []map[string]any{{"id": constants.IMBuiltinConnectorID, "name": "IM 交付", "toolName": constants.IMBuiltinToolName, "description": "工作流内置交付操作，经 Runner 持久效果边界直接调用，不需要安装 MCP 连接器。"}}, "sdkVersion": constants.WorkflowSDKVersion, "toolPolicyCapabilities": workflowToolPolicyCapabilities(), "functionLanguages": []map[string]any{{"language": "javascript", "available": true, "executionModes": []string{"pure"}}, {"language": "python", "available": pythonErr == nil, "executable": pythonPath, "executionModes": []string{"trusted_local"}}}}
+	resources := map[string]any{"builtinActions": []map[string]any{{"id": constants.IMBuiltinConnectorID, "name": "IM 交付", "toolName": constants.IMBuiltinToolName, "description": "工作流内置交付操作，经 Runner 持久效果边界直接调用，不需要安装 MCP 连接器。"}}, "sdk": constants.WorkflowSDKIdentifier, "toolPolicyCapabilities": workflowToolPolicyCapabilities(), "functionLanguages": []map[string]any{{"language": "javascript", "available": true, "executionModes": []string{"pure"}}, {"language": "python", "available": pythonErr == nil, "executable": pythonPath, "executionModes": []string{"trusted_local"}}}}
 	resources["scriptLanguages"] = []map[string]any{{"language": "python", "available": pythonErr == nil, "executable": pythonPath, "protocols": []string{"json", "text"}}}
 	if s.wakers != nil {
 		wakers, err := s.wakers.List(ctx, "", 100, 0)

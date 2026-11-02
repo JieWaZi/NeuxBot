@@ -7,11 +7,11 @@ import (
 	"testing"
 )
 
-func TestV2OutputRepairBudgetPersistsWithoutBusinessRerun(t *testing.T) {
+func TestOutputRepairBudgetPersistsWithoutBusinessRerun(t *testing.T) {
 	s, _ := workflowTestService(t)
 	worker := &retryWorker{}
 	s.worker = worker
-	definition := savedTestWorkflow(t, s, runtimeV2Meta+`return await worker('read',{id:'read',label:'读取',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'object'}});`)
+	definition := savedTestWorkflow(t, s, runtimeTestMeta+`return await worker('read',{id:'read',label:'读取',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'object'}});`)
 	run, err := s.StartRun(context.Background(), StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "fixture"}})
 	if err != nil {
 		t.Fatal(err)

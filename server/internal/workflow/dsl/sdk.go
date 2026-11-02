@@ -59,11 +59,11 @@ func SDKOutputs() map[string][]byte {
 		declarations.WriteByte('\n')
 	}
 	registry, _ := json.MarshalIndent(struct {
-		// SDK 是此生成结果的契约版本。
+		// SDK 是此生成结果的契约身份。
 		SDK string `json:"sdk"`
 		// Primitives 是声明与宿主共同使用的契约清单。
 		Primitives []PrimitiveContract `json:"primitives"`
-	}{constants.WorkflowSDKVersion, Registry()}, "", "  ")
+	}{constants.WorkflowSDKIdentifier, Registry()}, "", "  ")
 	knowledge := sdkCreationKnowledge()
 	canvasSchema, _ := json.MarshalIndent(CanvasManifestSchema(), "", "  ")
 	outputs := map[string][]byte{"canvas-manifest.schema.json": append(canvasSchema, '\n'), "workflow.d.ts": []byte(declarations.String()), "registry.json": append(registry, '\n'), "creation-knowledge.md": []byte(knowledge)}

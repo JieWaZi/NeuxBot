@@ -25,7 +25,7 @@ maintenance task.
 | A precise page correction, or execution inside an existing maintenance task | [Wiki maintenance and page revision](references/wiki-maintenance.md) |
 | Ingestion followed by Wiki maintenance | [Combined requests](references/wiki-guide.md#combined-requests) |
 | Observe an admitted knowledge task and deliver its final summary | [Knowledge task results](references/wiki-guide.md#knowledge-task-results) |
-| Create, edit or diagnose the host-bound workflow, including short follow-ups | [Workflow authoring](references/workflow-authoring.md) |
+| Host-bound workflow goals from the first message, edits and short follow-ups | [Workflow authoring](references/workflow-authoring.md) |
 | Execute an explicitly authorized existing workflow | [Workflow execution](references/workflow-execution.md) |
 | Submit the current workflow worker attempt's structured output | [Worker results](references/workflow-results.md) |
 
@@ -63,10 +63,11 @@ reference's spelling. `--library` and `--libraryId` are not `--library-id`.
   contracts, authorization and receipts as CLI. When using CLI, include the
   exact `--context <execution-file>` supplied for this turn; do not reuse a
   prior turn's environment or edit connection files.
-- A bound workflow authoring conversation stays in authoring mode for short
-  corrections and follow-ups. Read the bound source without inventing an ID.
-  Requested edits must reach a successful save receipt; prose and local files
-  alone do not update the workflow or canvas. Pure questions need no save.
+- In a host-bound workflow authoring conversation, business goals describe a
+  reusable workflow to create or modify, starting with the first message. Follow
+  the authoring guide supplied in the host instructions. Native CLI workflow
+  features or a one-off business result cannot replace the NeuxBot save receipt.
+  Pure explanations need no save; short corrections stay in authoring mode.
 
 - In a workflow execution with injected MCP, use its tools and input schemas
   directly. Authoring starts with `workflow_authoring_prepare`; reuse its

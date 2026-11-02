@@ -97,7 +97,7 @@ func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 			mutation := op.Effect != constants.AgentCLIEffectRead
 			if mutation {
 				delete(params, "requestId")
-				if requestID == "" || len(requestID) > 200 || strings.TrimSpace(requestID) != requestID {
+				if !capability.ValidRequestID(requestID) {
 					return mcpResponse(capability.ErrorResponse(op.ID, status_error.AgentInputInvalid)), nil
 				}
 			}
@@ -136,7 +136,7 @@ func newMCPServer(ctx context.Context, path string) (*mcp.Server, error) {
 	}{
 		{"capabilities", "List operations authorized for this execution.", map[string]any{"type": "object", "properties": map[string]any{}, "additionalProperties": false}, func(map[string]any) string { return "/capabilities" }},
 		{"guide", "Read one authorized task guide.", map[string]any{"type": "object", "properties": map[string]any{"guideId": map[string]any{"type": "string", "minLength": 1}}, "required": []string{"guideId"}, "additionalProperties": false}, func(p map[string]any) string { return "/guides/" + url.PathEscape(p["guideId"].(string)) }},
-		{"receipts_get", "Query the original mutation receipt; never start a replacement operation after a timeout.", map[string]any{"type": "object", "properties": map[string]any{"operation": map[string]any{"type": "string", "minLength": 1}, "requestId": map[string]any{"type": "string", "minLength": 1}}, "required": []string{"operation", "requestId"}, "additionalProperties": false}, func(p map[string]any) string { return receiptPath(p["operation"].(string), p["requestId"].(string)) }},
+		{"receipts_get", "Query the original mutation receipt; never start a replacement operation after a timeout.", map[string]any{"type": "object", "properties": map[string]any{"operation": map[string]any{"type": "string", "minLength": 1}, "requestId": capability.RequestIDSchema()}, "required": []string{"operation", "requestId"}, "additionalProperties": false}, func(p map[string]any) string { return receiptPath(p["operation"].(string), p["requestId"].(string)) }},
 	} {
 		server.AddTool(&mcp.Tool{Name: entry.name, Description: entry.description, InputSchema: entry.schema, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			params := map[string]any{}

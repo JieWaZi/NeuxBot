@@ -14,7 +14,7 @@ import (
 
 // repairWorkerOutput 在业务执行成功后使用独立文本通道修正格式，预算先落盘再调用。
 func (s *Service) repairWorkerOutput(ctx context.Context, run models.WorkflowRun, effect models.WorkflowEffect, receipt WorkerReceipt) (WorkerReceipt, error) {
-	if receipt.Status != constants.ExecutionStatusCompleted {
+	if receipt.Status != constants.ExecutionStatusCompleted || receipt.OutputFailure != nil {
 		return receipt, nil
 	}
 	schema, _ := effect.Boundary.Arguments[1].Data.(map[string]any)["schema"].(map[string]any)

@@ -9,7 +9,7 @@ import (
 	"github.com/dop251/goja/ast"
 )
 
-// CanvasManifest 是编译器对外提供的第二版只读画布，不包含内部调度或旧投影字段。
+// CanvasManifest 是编译器对外提供的只读画布，不包含内部调度字段。
 type CanvasManifest struct {
 	// Title 是当前版本的业务名称。
 	Title string `json:"title"`
@@ -20,10 +20,8 @@ type CanvasManifest struct {
 	// Actions 是只读动作声明，供详情显示能力与风险。
 	Actions []ActionDeclaration `json:"actions,omitempty"`
 
-	// FormatVersion 是宿主支持的画布文档版本。
-	FormatVersion int `json:"formatVersion"`
-	// SDKVersion 指明权威源码的语言契约。
-	SDKVersion string `json:"sdkVersion"`
+	// SDK 指明权威源码的语言契约。
+	SDK string `json:"sdk"`
 	// Phases 是用户可读的展示阶段。
 	Phases []CanvasPhase `json:"phases"`
 	// Nodes 是从完整源码派生的节点模板。
@@ -76,7 +74,7 @@ type CanvasNode struct {
 
 // ExportCanvas 从冻结的内部编译产物提取公开画布，避免向页面暴露第二套旧字段。
 func ExportCanvas(manifest Manifest) CanvasManifest {
-	result := CanvasManifest{Title: manifest.Meta.Title, Description: manifest.Meta.Description, InputPropertyOrder: manifest.InputPropertyOrder, Actions: manifest.Meta.Actions, FormatVersion: manifest.FormatVersion, SDKVersion: manifest.SDKVersion, Phases: []CanvasPhase{}, Nodes: []CanvasNode{}, Edges: manifest.Edges, Controls: manifest.Controls, Scripts: manifest.Scripts, InputSchema: manifest.InputSchema, OutputSchema: manifest.OutputSchema}
+	result := CanvasManifest{Title: manifest.Meta.Title, Description: manifest.Meta.Description, InputPropertyOrder: manifest.InputPropertyOrder, Actions: manifest.Meta.Actions, SDK: manifest.SDK, Phases: []CanvasPhase{}, Nodes: []CanvasNode{}, Edges: manifest.Edges, Controls: manifest.Controls, Scripts: manifest.Scripts, InputSchema: manifest.InputSchema, OutputSchema: manifest.OutputSchema}
 	for _, phase := range manifest.Phases {
 		result.Phases = append(result.Phases, CanvasPhase{ID: phase.ID, Title: phase.Title, Detail: phase.Detail})
 	}
@@ -150,8 +148,7 @@ type canvasProjector struct {
 
 func (c *compiler) projectCanvas() {
 	m := &c.manifest
-	m.FormatVersion = constants.WorkflowCanvasFormatVersion
-	m.SDKVersion = constants.WorkflowSDKVersion
+	m.SDK = constants.WorkflowSDKIdentifier
 	m.Phases = m.Meta.Phases
 	m.InputSchema = m.Meta.InputSchema
 	m.OutputSchema = m.Meta.OutputSchema

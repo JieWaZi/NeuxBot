@@ -338,8 +338,8 @@ func workflowAgentInput(request capability.Request) workflowtool.Input {
 		input.Action = constants.WorkflowActionSourceValidate
 	case "workflow.source.save":
 		input.Action = constants.WorkflowActionSourceUpsert
-		if input.SDKVersion == "" {
-			input.SDKVersion = constants.WorkflowSDKVersion
+		if input.SDK == "" {
+			input.SDK = constants.WorkflowSDKIdentifier
 		}
 	case "workflow.sdk.get":
 		input.Action, input.Type = constants.WorkflowActionQuery, constants.WorkflowQuerySDK

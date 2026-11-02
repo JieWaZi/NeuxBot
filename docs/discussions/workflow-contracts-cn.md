@@ -1,6 +1,6 @@
-# Workflow V2 契约详细设计
+# Workflow 契约详细设计
 
-本文是 [V2 架构与设计](workflow-v2-design-cn.md)的实现契约，尚未落地。明确编排语言、Python 执行、MCP/CLI、Skill、画布投影及运行叠加；以下 V2 字段、接口和示例是设计规范，不是当前生成 SDK 已支持的能力。
+本文是 [工作流架构与设计](workflow-design-cn.md)的实现契约，尚未落地。明确编排语言、Python 执行、MCP/CLI、Skill、画布投影及运行叠加；以下工作流字段、接口和示例是设计规范，不是当前生成 SDK 已支持的能力。
 
 ## 1. 引言
 
@@ -8,7 +8,7 @@
 
 | 问题                        | 采用方案                                                                          |
 | --------------------------- | --------------------------------------------------------------------------------- |
-| 工作流源码用 Python 还是 JS | **JS 形式的封闭 DSL** 描述编排，Go Core 编译和调度；不依赖 Node 执行整个工作流    |
+|工作流源码用 Python 还是 JS | **JS 形式的封闭 DSL** 描述编排，Go Core 编译和调度；不依赖 Node 执行整个工作流   |
 | 本地任务用什么              | **Python 优先**承担查询、文件、下载、转换与校验；纯小计算可用 DSL/JS functionTask |
 | 画布 Schema 谁生成          | **Core 编译器**由源码生成；Agent 不同时维护可写图 JSON                            |
 | 对 Agent 用 CLI 还是 MCP    | **MCP 优先，CLI 兼容兜底**；共用 Operation、授权和回执，不实现两套业务            |
@@ -19,7 +19,7 @@
 
 参考流程的权威源码是 JS，其中内嵌 Python 并通过 action 调用；另有 worker、askUser、phase 和 return。因此，看到大量 Python 执行不能推导出工作流语言就是 Python。
 
-实际工具历史可确认读取、完整源码保存、补丁保存和运行诊断的载荷。尚未取得参考产品完整 MCP tools/list 或内部编译器；原生 Workflow Skill 的 agent()、缓存和限制不自动适用于 WakerFlow。本文据可观测行为与 NeuxBot 代码独立确定 V2 契约。
+实际工具历史可确认读取、完整源码保存、补丁保存和运行诊断的载荷。尚未取得参考产品完整 MCP tools/list 或内部编译器；原生 Workflow Skill 的 agent()、缓存和限制不自动适用于 WakerFlow。本文据可观测行为与 NeuxBot 代码独立确定工作流契约。
 
 代码依据包括 [Operation 目录](../../server/internal/agent/capability/catalog.go)、[授权与回执](../../server/internal/agent/capability/capability.go)、[CLI](../../server/internal/agent/cli/cli.go)、[Runtime MCP](../../server/internal/agent/native/connection.go)、[会话挂载与恢复](../../server/internal/agent/native/connection.go)、[系统能力注入](../../server/services/execution/agent.go)、[DSL 契约](../../server/internal/workflow/dsl/sdk.go)和 [Manifest](../../server/internal/workflow/dsl/program.go)。
 
@@ -43,7 +43,7 @@ flowchart LR
 - Python 程序是明确的节点代码，负责真实 IO 或计算；默认使用宿主配置的解释器，不假设用户已经安装任意依赖。
 - Go 负责状态、进程、版本和副作用。暂停问答或重启后恢复不依赖 JS/Python 调用栈。
 - 时间与随机数保持耐久语义：flowContext.runStartedAt 固定为本次运行开始时间，DSL Date 以该时间求值，Math.random 禁用；真实当前时间或随机种子显式作为数据输入。长 Python 程序只在节点边界可恢复，需要细粒度恢复就拆成多个显式动作，不能宣称可恢复 Python 栈。
-- V2 首版不引入第二套 Python 编排 DSL。Python 中不得隐藏调用伙伴、偷偷弹用户问题或自行驱动另一套 Run；这些行为须进入可见宿主原语。
+-工作流首版不引入第二套 Python 编排 DSL。Python 中不得隐藏调用伙伴、偷偷弹用户问题或自行驱动另一套 Run；这些行为须进入可见宿主原语。
 
 ### 2.2 为什么选择 MCP 优先
 
@@ -84,13 +84,13 @@ CLI 命令在启动时固定本次连接，`--context <session-file>` 与宿主�
 
 ### 4.1 DSL 文件结构
 
-V2 源码允许两种静态导出：`meta` 与可选 `scripts`。meta 是不含计算的静态 JS 对象字面量：允许 JS 的引号和属性书写形式，但值只能为 JSON 值，禁止引用变量、函数调用、展开、getter 和模板插值；scripts 是命名脚本定义，code 允许普通字符串或无插值的 `String.raw` 模板。后者由编译器提取原文字节，不执行 String.raw 或用户 JS。除此以外不开放任意模块导出、import、require 或 Node 全局。
+工作流源码允许两种静态导出：`meta` 与可选 `scripts`。meta 是不含计算的静态 JS 对象字面量：允许 JS 的引号和属性书写形式，但值只能为 JSON 值，禁止引用变量、函数调用、展开、getter 和模板插值；scripts 是命名脚本定义，code 允许普通字符串或无插值的 `String.raw` 模板。后者由编译器提取原文字节，不执行 String.raw 或用户 JS。除此以外不开放任意模块导出、import、require 或 Node 全局。
 
 每个 scriptId 在当前版本唯一，language 首期为 python，protocol 为 json 或 text。解释器引用来自当前获准资源。项目脚本导入后完整字节进入版本源码；以后项目文件变化不改变原 Revision。
 
 ```javascript
 export const meta = {
-  sdk: "ally.workflow/2",
+  sdk: "ally.workflow",
   title: "选择候选并分析",
   description: "脚本提供选项，用户决定，伙伴分析并校验",
   inputSchema: {
@@ -231,7 +231,7 @@ const verified = await action("verify", {
 return { analysisText: analysis.analysisText, valid: verified.data.valid };
 ```
 
-该示例是 V2 规范样本，`waker-example` 必须由真实资源发现结果替换；不能直接用 V1 编译器验收。它描述的是文本契约检查，不证明分析内容在语义上正确。
+该示例是工作流规范样本，`waker-example` 必须由真实资源发现结果替换；不能直接用 旧编译器验收。它描述的是文本契约检查，不证明分析内容在语义上正确。
 
 ### 4.2 原语返回值必须固定
 
@@ -247,7 +247,7 @@ return { analysisText: analysis.analysisText, valid: verified.data.valid };
 
 common NodeOptions 包含 `id/label/phase` 和可选 `successCondition`。successCondition 针对**业务数据**：action.data、worker 的直接结果、functionTask 返回值；不针对进程外壳。首版只支持 JSON Pointer path 和 JSON 字面值 equals，条件失败产生 BUSINESS_CHECK_FAILED。
 
-并行、管道按输入顺序返回，显式 failureMode 为 fail-fast 或 collect-null；V2 默认 fail-fast，collect-null 失败项为 null 且保留实际错误实例。普通 JSON null 不自动等于失败。逐项错误仍归原 NodeInstance/Effect；GroupRun 只保存 itemIndex、failedInstanceId、skippedStageIds 等引用，查询从这些身份补齐诊断，公开返回数组仍为结果或 null，不塞入另一种错误对象。并行 callback 捕获按值传递，不用外部共享可变变量传结果。
+并行、管道按输入顺序返回，显式 failureMode 为 fail-fast 或 collect-null；工作流默认 fail-fast，collect-null 失败项为 null 且保留实际错误实例。普通 JSON null 不自动等于失败。逐项错误仍归原 NodeInstance/Effect；GroupRun 只保存 itemIndex、failedInstanceId、skippedStageIds 等引用，查询从这些身份补齐诊断，公开返回数组仍为结果或 null，不塞入另一种错误对象。并行 callback 捕获按值传递，不用外部共享可变变量传结果。
 
 ### 4.3 Python 执行协议
 
@@ -256,11 +256,11 @@ common NodeOptions 包含 `id/label/phase` 和可选 `successCondition`。succes
 - argv 是独立数组，参数不经过 shell；env 与 secretEnv 分开。stderr 是日志，进程状态、日志引用和业务 data 分开保存。
 - 主程序可自行读取 stdin，不强制 Python 必须实现 def main；现有 functionTask 的函数协议仍独立。程序需要的依赖来自所选解释器环境，不运行中自动 pip install。
 - json 输出较大时通过声明文件传递并返回受管引用；截断 stdout 不能作为成功 JSON。输出预算沿用并通过生成契约发布，超限为显式失败。
-- 子进程只能由 Run 的 Effect 驱动。脚本中自己控制伙伴和用户交互的隐藏编排不属于 V2 支持范围。
+- 子进程只能由 Run 的 Effect 驱动。脚本中自己控制伙伴和用户交互的隐藏编排不属于工作流支持范围。
 
 ### 4.4 人工决策协议
 
-HumanOptions 的 V2 字段为：`kind`、`choices`、`allowCustom`、`schema`、`minSelections`、`maxSelections`、`defaultValue`、`allowSkip`、`timeoutMs`、`onTimeout`。kind 为 text/select/multiselect/form/confirm；select/multiselect 的 choices 可以是 `{value,label}` 数组或请求归属的候选文件引用。kind=form 使用 schema，不能再同时声明 choices。
+HumanOptions 的工作流字段为：`kind`、`choices`、`allowCustom`、`schema`、`minSelections`、`maxSelections`、`defaultValue`、`allowSkip`、`timeoutMs`、`onTimeout`。kind 为 text/select/multiselect/form/confirm；select/multiselect 的 choices 可以是 `{value,label}` 数组或请求归属的候选文件引用。kind=form 使用 schema，不能再同时声明 choices。
 
 HumanAnswer 包含 `questionId/status/source/value?`。status 为 answered/skipped/timed_out；source 为 user/user_skip/timeout/cache_replay，缓存回放保留原答案来源引用。运行取消使请求 cancelled，并以取消异常中断 DSL，不伪装成普通答案继续执行。
 
@@ -348,9 +348,9 @@ MCP 工具名采用稳定下划线名，业务身份仍为 Operation ID；这里
 
 首次保存 expectedRevisionId 明确传空字符串；patch 必须有基准摘要。完整源码允许基准摘要缺省，但 expectedRevisionId 始终 CAS。显式 workflowId 只作绑定一致性断言，不授予其他对象访问权。
 
-回执查询在 V2 Operation Catalog 中作为读取元操作统一描述，调用已有回执查询机制，不新增另一套领域回执。MCP 保存参数中的 requestId 与 CLI 的 `--request-id` 都映射为统一请求身份；内容变化换新身份，响应丢失只查询旧回执。CLI 的 `--source` 从本机获准文件读取完整 UTF-8 内容，Core 接到的是 source 文本；MCP 不新增任意本机 sourcePath 读取能力。
+回执查询在工作流Operation Catalog 中作为读取元操作统一描述，调用已有回执查询机制，不新增另一套领域回执。MCP 保存参数中的 requestId 与 CLI 的 `--request-id` 都映射为统一请求身份；内容变化换新身份，响应丢失只查询旧回执。CLI 的 `--source` 从本机获准文件读取完整 UTF-8 内容，Core 接到的是 source 文本；MCP 不新增任意本机 sourcePath 读取能力。
 
-业务响应沿用独立于 DSL SDK 的协议版本，不能把 ally.workflow/2 误当 Agent CLI protocolVersion：
+业务响应沿用独立于 DSL SDK 的协议版本，不能把 ally.workflow 误当 Agent CLI protocolVersion：
 
 ```typescript
 type CommandResponse<T> =
@@ -389,13 +389,13 @@ MCP structuredContent 与 CLI JSON 使用同一业务响应，MCP text 只提供
 | 契约                    | 权威生成者                           | 谁可以改变                           |
 | ----------------------- | ------------------------------------ | ------------------------------------ |
 | Workflow Source         | 创作 Agent 或用户源码编辑，Core 保存 | 通过版本提交                         |
-| CanvasManifest/2        | Core 编译器                          | 修改源码后重新编译；不接受独立图写入 |
+| CanvasManifest        | Core 编译器                          | 修改源码后重新编译；不接受独立图写入 |
 | WorkflowRunProjection/2 | Run、Instance、Effect、HumanRequest  | 对应业务事务和事件                   |
 | 视口、折叠与选择        | 前端局部状态                         | 用户本机交互，不参与调度             |
 
 定义和运行不是两份可写图。ResultViewSpec 也不是画布 Schema；它负责报告布局，不负责节点顺序和执行。
 
-### 5.2 CanvasManifest/2 类型
+### 5.2 CanvasManifest 类型
 
 ```typescript
 interface CanvasDocument {
@@ -406,8 +406,7 @@ interface CanvasDocument {
   manifest: CanvasManifest;
 }
 interface CanvasManifest {
-  formatVersion: 2;
-  sdkVersion: "ally.workflow/2";
+  sdk: "ally.workflow";
   phases: Array<{ id: string; title: string; detail: string }>;
   nodes: CanvasNode[];
   edges: Array<{
@@ -526,8 +525,7 @@ Json、JsonSchema、ToolPolicy 与 SourceRange 使用同源生成类型，不在
   "sourceDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "manifestDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "manifest": {
-    "formatVersion": 2,
-    "sdkVersion": "ally.workflow/2",
+    "sdk": "ally.workflow",
     "phases": [
       {
         "id": "work",
@@ -854,7 +852,7 @@ Json、JsonSchema、ToolPolicy 与 SourceRange 使用同源生成类型，不在
 
 ### 5.4 运行叠加和问题数据
 
-WorkflowRunProjection 至少包含 `formatVersion:2/runId/revisionId/version/cursor/status/instances/pendingQuestions/outputs`。instances 用 `instanceId/nodeId/iterationPath/attemptId/status/inputRef/outputRef/failure/reusedFrom` 定位，不把同一循环模板的多个实例合并成一个可编辑节点。
+WorkflowRunProjection 至少包含 `runId/revisionId/version/cursor/status/instances/pendingQuestions/outputs`。instances 用 `instanceId/nodeId/iterationPath/attemptId/status/inputRef/outputRef/failure/reusedFrom` 定位，不把同一循环模板的多个实例合并成一个可编辑节点。
 
 pendingQuestions 的完整运行快照包含 questionId、owner、nodeId、instanceId、questionVersion、prompt、kind、choices 或 snapshotRef、snapshotDigest、schema、allowCustom、minSelections、maxSelections、status、defaultValue、allowSkip、timeoutMs、onTimeout、expiresAt；答复和前端草稿分别处理。owner 是 authoring Execution 或 Run Instance 的封闭联合，不由前端随意改绑。
 
@@ -868,15 +866,15 @@ pendingQuestions 的完整运行快照包含 questionId、owner、nodeId、insta
 
 创作原生 AskUserQuestion/Form Elicitation 经现有交互适配登记为 owner.kind:authoring、executionId/definitionId 绑定；运行 askUser 为 owner.kind:run、runId/instanceId 绑定。前端按 owner 统一呈现在画布侧，不能让原生问题回落左侧聊天。
 
-系统 `ally` 的创作模式指南负责方法；实际签名和允许工具仍来自生成契约。沿用 `workflow-authoring.md`、`workflow-execution.md`、`workflow-results.md` 等模式资源，补充产品 V2 内容；不把不同版本指南混装，也不让每个定义产生自己的 Skill 副本。
+系统 `ally` 的创作模式指南负责方法；实际签名和允许工具仍来自生成契约。沿用 `workflow-authoring.md`、`workflow-execution.md`、`workflow-results.md` 等模式资源，补充产品工作流内容；不把不同版本指南混装，也不让每个定义产生自己的 Skill 副本。
 
 ### 6.2 创作模式指南草案
 
 以下是拟替换的模式资源核心内容，不是要求本次助手调用这些工具：
 
-> 当前任务处于 NeuxBot 工作流创作。始终使用宿主绑定的工作流，不把它降级为普通文件写作。
+> 当前任务处于 NeuxBot工作流创作。始终使用宿主绑定的工作流，不把它降级为普通文件写作。
 >
-> 先读取当前源码、基准版本和需要的真实资源；宿主已提供的内容直接复用。使用产品 V2 的 worker/action/askUser，不套用原生 CLI Workflow 的 agent()。
+> 先读取当前源码、基准版本和需要的真实资源；宿主已提供的内容直接复用。使用产品工作流的 worker/action/askUser，不套用原生 CLI Workflow 的 agent()。
 >
 > 已知参数自动组织；脚本能查询的先查；仍需用户决定的必要信息通过创作问题协议请求，用户在画布侧回答。创作问答不写成每次运行的节点。
 >
@@ -900,13 +898,13 @@ MCP 模式指南给直接工具示例；CLI 模式由同一规则生成对应命
 - Python 程序、结果 Spec 和动态候选都按不可信内容校验；本地执行能力按真实许可说明，不声称文件系统隔离。
 - 日志记录采用最小、脱敏的契约/对象/版本/回执/输入摘要和诊断；不默认把原生模型思考、全量业务数据或秘密内容持久化作为产品功能。
 
-## 8. 兼容与落地顺序
+## 8. 契约与落地顺序
 
-先发布 V2 Registry/Schema 和样本，再实现统一工具适配、语言与脚本协议、画布/问答投影、结果和恢复。修改各模块必须通过同一批契约样本，不让前端、Skill、CLI 和 MCP 分别猜测字段。
+先发布工作流Registry/Schema 和样本，再实现统一工具适配、语言与脚本协议、画布/问答投影、结果和恢复。修改各模块必须通过同一批契约样本，不让前端、Skill、CLI 和 MCP 分别猜测字段。
 
 MCP 不改变全局产品的授权边界，也不替换现有对外集成服务。当前后端约定的软件能力仍由系统 ally 和自有 allycli 交付，内部 MCP 是这套能力的受管适配，不另装任意第三方桥。
 
-旧 V1 定义和运行保持原契约；V2 才启用这里的新返回值、scripts 导出、HumanOptions、Manifest 和工具参数。旧数据不能在展示时静默解释成 V2。
+工作流只使用本文的当前契约，不提供旧 SDK、旧画布结构或历史数据的迁移、回退与兼容路径。
 
 ## 9. 不确定性与验证
 
@@ -920,4 +918,4 @@ MCP 不改变全局产品的授权边界，也不替换现有对外集成服务�
 | Schema 输出纠正的 Runtime 能力                | 验收项；复用共享独立文本调用，只传 Schema 与候选，不注入工作流业务能力；校验格式与持久预算  |
 | 大集合、长画布和日志的实际预算                | 性能项；沿用已有限制并用同等任务测量，发布确定常量和超限行为        |
 
-本轮应验证文档链接/格式、JSON 示例、DSL 样本的 JS 包装语法和 Python 静态语法、画布例子的 ID/连线/引用一致性。它们只证明设计工件内部一致，不代表 V2 编译器、MCP 适配或真实模型已通过。
+本轮应验证文档链接/格式、JSON 示例、DSL 样本的 JS 包装语法和 Python 静态语法、画布例子的 ID/连线/引用一致性。它们只证明设计工件内部一致，不代表工作流编译器、MCP 适配或真实模型已通过。

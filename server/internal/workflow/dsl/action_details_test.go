@@ -6,7 +6,7 @@ import (
 )
 
 func TestInspectActionSourcesPreservesDynamicCallsAndHandlerText(t *testing.T) {
-	source := "// 中文😀：保持 UTF-8 位置\n" + `export const meta={sdk:'ally.workflow/2',title:'操作',description:'检查操作细节',phases:[{id:'read',title:'读取',detail:'获取数据',canExit:true}],actions:[
+	source := "// 中文😀：保持 UTF-8 位置\n" + `export const meta={sdk:'ally.workflow',title:'操作',description:'检查操作细节',phases:[{id:'read',title:'读取',detail:'获取数据',canExit:true}],actions:[
 {id:'fetch',label:'获取评论',description:'分页读取',risk:'read',type:'builtin',handler:'fetchComments'},
 {id:'script',label:'调用脚本',description:'外部脚本',risk:'read',type:'script',executable:'python3',workingDirectory:'workflow_scope'},
 {id:'http',label:'请求接口',description:'HTTP',risk:'read',type:'http',allowedOrigins:['https://example.com'],methods:['GET']}]};

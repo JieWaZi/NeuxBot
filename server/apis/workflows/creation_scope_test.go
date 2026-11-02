@@ -50,7 +50,7 @@ func TestCreationCLIQueriesGuidanceAndSavesThroughAuthorizedCommands(t *testing.
 			{[]string{"workflow", "resources", "list"}, map[string]any{"kind": "imTargets"}},
 			{[]string{"workflow", "source", "get"}, nil},
 			{[]string{"workflow", "source", "validate"}, map[string]any{"source": source}},
-			{[]string{"workflow", "source", "save", "--request-id", "query-save"}, map[string]any{"source": source, "sdkVersion": constants.WorkflowSDKVersion, "expectedRevisionId": ""}},
+			{[]string{"workflow", "source", "save", "--request-id", "query-save"}, map[string]any{"source": source, "sdk": constants.WorkflowSDKIdentifier, "expectedRevisionId": ""}},
 		} {
 			if _, err := fixtureCLI(ctx, request, command.args, command.input); err != nil {
 				outcomes <- err
@@ -219,7 +219,7 @@ func (r *creationScopeRuntime) Run(ctx context.Context, request fixtureInvocatio
 	if r.duringRun != nil {
 		r.duringRun(ctx, request)
 	}
-	return agentapi.Result{ProtocolHealthy: true, Facts: agentapi.InvocationFacts{InvocationID: id, RuntimeID: "codex", BaseRuntimeID: "codex"}}
+	return agentapi.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, ProtocolHealthy: true, Facts: agentapi.InvocationFacts{InvocationID: id, RuntimeID: "codex", BaseRuntimeID: "codex"}}
 }
 
 func TestCreationScopeManagedAndExplicitDirectory(t *testing.T) {

@@ -346,10 +346,8 @@ type SaveReceipt struct {
 	Ordinal int64 `json:"ordinal"`
 	// SourceDigest 绑定精确保存的源码。
 	SourceDigest string `json:"sourceDigest"`
-	// ManifestDigest 绑定实际公开的 CanvasManifest/2 投影，与内部完整性摘要区分。
+	// ManifestDigest 绑定实际公开的 CanvasManifest 投影，与内部完整性摘要区分。
 	ManifestDigest string `json:"manifestDigest"`
-	// Unchanged 是历史回执字段，V2 显式保存始终创建新版本，值固定为 false。
-	Unchanged bool `json:"unchanged"`
 	// Replayed 表示返回同一请求的原提交回执。
 	Replayed bool `json:"replayed"`
 }

@@ -30,7 +30,7 @@ interface WorkflowLimits {
   /** Total run deadline in milliseconds. */
   timeoutMs?: number;
 }
-interface WorkflowMeta {sdk:'ally.workflow/2';title:string;description:string;whenToUse?:string;inputSchema?:Schema;outputSchema?:Schema;phases:Array<{id:string;title:string;detail:string;next?:string[];canExit?:boolean}>;actions?:ActionDeclaration[];limits?:WorkflowLimits}
+interface WorkflowMeta {sdk:'ally.workflow';title:string;description:string;whenToUse?:string;inputSchema?:Schema;outputSchema?:Schema;phases:Array<{id:string;title:string;detail:string;next?:string[];canExit?:boolean}>;actions?:ActionDeclaration[];limits?:WorkflowLimits}
 declare const args: Json;
 declare const flowContext: Readonly<{workflowId:string;revisionId:string;runId:string;workflowName:string;runStartedAt:number;parentRunId:string|null;retrySourceRunId:string|null;triggerSource:'manual'|'schedule'|'local_api'|'agent'|'child';scope:{projectId:string|null;workingDirectory:string};workspace:Readonly<{rootDirectory:string;scriptsDirectory:string;stateDirectory:string;cacheDirectory:string;temporaryDirectory:string;runsDirectory:string;runDirectory:string}>}>;
 declare function phase(id: string): void;

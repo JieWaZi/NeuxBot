@@ -1,5 +1,5 @@
 export const meta = {
-  sdk: "ally.workflow/2",
+  sdk: "ally.workflow",
   title: "选择候选并分析",
   description: "脚本提供选项，用户决定，伙伴分析并校验",
   inputSchema: {

@@ -65,7 +65,7 @@ func TestRejectedWorkerWithParameterizedMissingChatFailsWithoutReconciliation(t 
 	worker := &uncertainWorker{missingExecution: true}
 	service.Worker = worker
 	service.Service = workflow.New(service.Config)
-	definition := savedTestWorkflow(t, service, `export const meta={sdk:'ally.workflow/2',title:'启动拒绝',description:'没有外部效果',phases:[{id:'work',title:'执行',detail:'检查失败',canExit:true}]};return await worker('整理',{id:'worker',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`)
+	definition := savedTestWorkflow(t, service, `export const meta={sdk:'ally.workflow',title:'启动拒绝',description:'没有外部效果',phases:[{id:'work',title:'执行',detail:'检查失败',canExit:true}]};return await worker('整理',{id:'worker',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`)
 	run, err := service.StartRun(context.Background(), workflow.StartRunCommand{
 		DefinitionID: definition.ID, RequestID: "start",
 		Defaults: models.WorkflowExecutionDefaults{RuntimeID: "fixture"},
@@ -108,7 +108,7 @@ func TestLostWorkerReceiptFailsWithoutUserReconciliationOrResend(t *testing.T) {
 	worker := &uncertainWorker{inspectUnavailable: true}
 	service.Worker = worker
 	service.Service = workflow.New(service.Config)
-	definition := savedTestWorkflow(t, service, `export const meta={sdk:'ally.workflow/2',title:'未知执行',description:'失败后优化',phases:[{id:'work',title:'执行',detail:'执行',canExit:true}]};return await worker('work',{id:'worker',label:'执行',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'string'}});`)
+	definition := savedTestWorkflow(t, service, `export const meta={sdk:'ally.workflow',title:'未知执行',description:'失败后优化',phases:[{id:'work',title:'执行',detail:'执行',canExit:true}]};return await worker('work',{id:'worker',label:'执行',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},schema:{type:'string'}});`)
 	ctx := context.Background()
 	run, err := service.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "fixture"}})
 	if err != nil {
@@ -150,7 +150,7 @@ func TestLostDispatchResponseReconcilesAlreadyAcceptedExecution(t *testing.T) {
 	worker := &uncertainWorker{}
 	service.Worker = worker
 	service.Service = workflow.New(service.Config)
-	definition := savedTestWorkflow(t, service, `export const meta={sdk:'ally.workflow/2',title:'对账',description:'绑定原身份',phases:[{id:'work',title:'执行',detail:'恢复',canExit:true}]};return await worker('work',{id:'worker',label:'执行',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`)
+	definition := savedTestWorkflow(t, service, `export const meta={sdk:'ally.workflow',title:'对账',description:'绑定原身份',phases:[{id:'work',title:'执行',detail:'恢复',canExit:true}]};return await worker('work',{id:'worker',label:'执行',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}});`)
 	run, err := service.StartRun(context.Background(), workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "fixture"}})
 	if err != nil {
 		t.Fatal(err)
@@ -209,7 +209,7 @@ func TestUncertainResultAutomaticallyCancelsParallelWorker(t *testing.T) {
 	worker := &failingParallelWorker{holding: &holdingWorker{changed: make(chan struct{}, 8)}, uncertain: &uncertainWorker{inspectUnavailable: true}}
 	s.Worker = worker
 	s.Service = workflow.New(s.Config)
-	source := `export const meta={sdk:'ally.workflow/2',title:'并行失败',description:'自动停止其他步骤',phases:[{id:'work',title:'执行',detail:'并行',canExit:true}]};return await parallel([async()=>await worker('hold',{id:'held',label:'在途',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}}),async()=>await worker('fail',{id:'broken',label:'断联',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'both',concurrency:2});`
+	source := `export const meta={sdk:'ally.workflow',title:'并行失败',description:'自动停止其他步骤',phases:[{id:'work',title:'执行',detail:'并行',canExit:true}]};return await parallel([async()=>await worker('hold',{id:'held',label:'在途',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}}),async()=>await worker('fail',{id:'broken',label:'断联',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})],{id:'both',concurrency:2});`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "parallel", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "fixture"}})
 	if err != nil {

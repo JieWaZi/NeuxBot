@@ -1,4 +1,4 @@
-# NeuxBot Workflow SDK ally.workflow/2
+# NeuxBot Workflow SDK ally.workflow
 
 The source is authoritative. Use stable ASCII IDs for phases, nodes, groups and actions. Never change an existing ID just to rename its label. Meta is a pure JSON literal. Worker identities, schemas and tool policies must be statically resolvable.
 
@@ -39,7 +39,7 @@ Name every node label for its business purpose in the user's language. Labels, d
 
 Workers return final text without schema, or matching JSON directly with schema. There is no data/content/analysis wrapper; values can be read by later nodes and the final return.
 
-V2 exports static meta and optional scripts. Each script has language:python, protocol:json or text, and complete code as a string or interpolation-free String.raw template. Code bytes are frozen in the revision. A script action references scriptId. The host executes the Python module directly; it does not call main(input). A file containing only def main(input): is incomplete for a script action. Read stdin and write stdout at module entry. The host writes the complete input JSON value to stdin (missing input is null, false/0/empty string remain values). JSON stdout must contain exactly one value; stderr is logs. Text stdout is returned as a string. No automatic pip install. Script actions return {data,durationMs,process}.
+Workflow exports static meta and optional scripts. Each script has language:python, protocol:json or text, and complete code as a string or interpolation-free String.raw template. Code bytes are frozen in the revision. A script action references scriptId. The host executes the Python module directly; it does not call main(input). A file containing only def main(input): is incomplete for a script action. Read stdin and write stdout at module entry. The host writes the complete input JSON value to stdin (missing input is null, false/0/empty string remain values). JSON stdout must contain exactly one value; stderr is logs. Text stdout is returned as a string. No automatic pip install. Script actions return {data,durationMs,process}.
 
 Minimal complete protocol: this module reads and echoes any one JSON value, including false, 0, empty string and null. Replace only the business processing when adapting it:
 

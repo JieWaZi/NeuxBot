@@ -42,8 +42,8 @@ type WorkflowRevisionResponse struct {
 	SourceDigest string `json:"sourceDigest"`
 	// 画布摘要
 	ManifestDigest string `json:"manifestDigest"`
-	// 契约版本
-	SDKVersion string `json:"sdkVersion"`
+	// SDK 标识
+	SDK string `json:"sdk"`
 	// 编译器版本
 	CompilerVersion string `json:"compilerVersion"`
 	// 创作会话
@@ -58,7 +58,7 @@ type WorkflowRevisionResponse struct {
 
 // publicRevision 仅输出源码派生的封闭画布，不泄露 Runner 内部结构和脚本字节。
 func publicRevision(revision models.WorkflowRevision) *WorkflowRevisionResponse {
-	return &WorkflowRevisionResponse{ID: revision.ID, DefinitionID: revision.DefinitionID, Ordinal: revision.Ordinal, SourceDigest: revision.SourceDigest, ManifestDigest: workflowdsl.CanvasDigest(workflowdsl.ExportCanvas(revision.Manifest)), SDKVersion: revision.SDKVersion, CompilerVersion: revision.CompilerVersion, CreationSessionID: revision.CreationSessionID, RestoredFromRevisionID: revision.RestoredFromRevisionID, CreatedAt: revision.CreatedAt, Manifest: workflowdsl.ExportCanvas(revision.Manifest)}
+	return &WorkflowRevisionResponse{ID: revision.ID, DefinitionID: revision.DefinitionID, Ordinal: revision.Ordinal, SourceDigest: revision.SourceDigest, ManifestDigest: workflowdsl.CanvasDigest(workflowdsl.ExportCanvas(revision.Manifest)), SDK: revision.SDK, CompilerVersion: revision.CompilerVersion, CreationSessionID: revision.CreationSessionID, RestoredFromRevisionID: revision.RestoredFromRevisionID, CreatedAt: revision.CreatedAt, Manifest: workflowdsl.ExportCanvas(revision.Manifest)}
 }
 
 func (*GetWorkflow) Path() string { return "/:id" }

@@ -1,5 +1,5 @@
 export const meta = {
-  sdk: 'ally.workflow/2',
+  sdk: 'ally.workflow',
   title: 'weekly-report',
   description: '把本周口述要点汇总成简洁版工作周报（进展 / 风险 / 下周计划），草稿经你确认后写入本地 Markdown 文件',
   whenToUse: '每周需要提交个人工作周报时使用。输入本周原始要点（无需整理），流程负责提取事实、补齐背景、生成草稿、等你确认后定稿落盘。',

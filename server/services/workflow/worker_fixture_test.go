@@ -79,5 +79,5 @@ func holdingSource(concurrency int) string {
 	if concurrency == 8 {
 		limit = "8"
 	}
-	return `export const meta={sdk:'ally.workflow/2',title:'并发预算',description:'真实派发边界',limits:{concurrency:` + limit + `},phases:[{id:'work',title:'工作',detail:'限制同时派发',canExit:true}]};const values=await parallel(args.items.map(item=>async()=>await worker(String(item),{id:'held',label:'受控等待',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})),{id:'batch',concurrency:8});return values;`
+	return `export const meta={sdk:'ally.workflow',title:'并发预算',description:'真实派发边界',limits:{concurrency:` + limit + `},phases:[{id:'work',title:'工作',detail:'限制同时派发',canExit:true}]};const values=await parallel(args.items.map(item=>async()=>await worker(String(item),{id:'held',label:'受控等待',phase:'work',resolve:{kind:'waker',wakerId:'fixture'}})),{id:'batch',concurrency:8});return values;`
 }

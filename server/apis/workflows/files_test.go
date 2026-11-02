@@ -48,8 +48,8 @@ func TestCoreFileUploadBindingPreservesRuntimeInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := `export const meta={sdk:'ally.workflow/2',title:'文件',description:'交付文件',inputSchema:{type:'string',format:'file'},outputSchema:{type:'string',format:'file'},phases:[{id:'deliver',title:'交付',detail:'交付文件',canExit:true}]};phase('deliver');return args;`
-	if _, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDKVersion: constants.WorkflowSDKVersion}); err != nil {
+	source := `export const meta={sdk:'ally.workflow',title:'文件',description:'交付文件',inputSchema:{type:'string',format:'file'},outputSchema:{type:'string',format:'file'},phases:[{id:'deliver',title:'交付',detail:'交付文件',canExit:true}]};phase('deliver');return args;`
+	if _, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDK: constants.WorkflowSDKIdentifier}); err != nil {
 		t.Fatalf("%v: %+v", err, diagnostics)
 	}
 	var body bytes.Buffer

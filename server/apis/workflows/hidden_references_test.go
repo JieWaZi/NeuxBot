@@ -11,7 +11,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 )
 
-func TestV2CreationReferencesStayHiddenAndPersistForReplay(t *testing.T) {
+func TestCreationReferencesStayHiddenAndPersistForReplay(t *testing.T) {
 	runtime := &creationScopeRuntime{requests: make(chan fixtureInvocation, 3)}
 	s, close := openCoreWorkflowPorts(t, t.TempDir(), runtime, fixtureEnvironment{})
 	defer close()

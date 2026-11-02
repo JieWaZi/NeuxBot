@@ -148,7 +148,7 @@ func catalog() []Operation {
 			choices("features", workflowcatalog.Features(), false),
 			choice("language", []string{"javascript", "python"}, false)),
 		operation("workflow.source.validate", "Optional preflight; returns diagnostics and a compact summary. Request includeManifest only when the full projection is needed.", read, immediate, "workflow.authoring", text("source", true), scalar("includeManifest", "boolean", false)),
-		operation("workflow.source.save", "Compile, validate and CAS-save source or exact patches as a new revision. Same requestId replays its receipt. A successful saved receipt is final; no separate commit is needed.", mutation, immediate, "workflow.authoring", text("source", false), text("expectedRevisionId", true), text("sdkVersion", false), text("workflowId", false), text("baseSourceDigest", false), Field{Name: "patches", Schema: map[string]any{"type": "array", "minItems": 1, "maxItems": 100, "items": map[string]any{"type": "object", "properties": map[string]any{"search": map[string]any{"type": "string", "minLength": 1}, "replace": map[string]any{"type": "string"}}, "required": []string{"search", "replace"}, "additionalProperties": false}}}, list("resolvedAnnotationIds")),
+		operation("workflow.source.save", "Compile, validate and CAS-save source or exact patches as a new revision. Same requestId replays its receipt. A successful saved receipt is final; no separate commit is needed.", mutation, immediate, "workflow.authoring", text("source", false), text("expectedRevisionId", true), text("sdk", false), text("workflowId", false), text("baseSourceDigest", false), Field{Name: "patches", Schema: map[string]any{"type": "array", "minItems": 1, "maxItems": 100, "items": map[string]any{"type": "object", "properties": map[string]any{"search": map[string]any{"type": "string", "minLength": 1}, "replace": map[string]any{"type": "string"}}, "required": []string{"search", "replace"}, "additionalProperties": false}}}, list("resolvedAnnotationIds")),
 		operation("workflow.sdk.get", "Read one authorized SDK topic or example; discovery lists exact names and primitive mappings.", read, immediate, "workflow.authoring",
 			choice("topic", append(workflowcatalog.TopicNames(), workflowcatalog.Examples()...), true),
 			Field{Name: "kind", Schema: map[string]any{
@@ -361,7 +361,7 @@ func outputSchema(id string) map[string]any {
 	case "knowledge.pages.write", "knowledge.pages.replace", "knowledge.pages.rename", "knowledge.pages.delete", "knowledge.pages.purge", "knowledge.revisions.restore", "knowledge.themes.write", "knowledge.sources.import", "knowledge.jobs.retry":
 		return object("ref", "receipt")
 	case "workflow.source.get":
-		schema := object("workflowId", "revisionId", "currentRevisionId", "source", "sourceDigest", "sdkVersion", "workspace")
+		schema := object("workflowId", "revisionId", "currentRevisionId", "source", "sourceDigest", "sdk", "workspace")
 		properties := schema["properties"].(map[string]any)
 		workspace := object("rootDirectory", "scriptsDirectory", "stateDirectory", "cacheDirectory", "temporaryDirectory", "runsDirectory")
 		fields := workspace["properties"].(map[string]any)
@@ -375,9 +375,9 @@ func outputSchema(id string) map[string]any {
 	case "workflow.source.validate":
 		return object("valid", "diagnostics", "summary", "manifest", "error")
 	case "workflow.source.save":
-		return object("saved", "definitionId", "revisionId", "ordinal", "sourceDigest", "manifestDigest", "unchanged", "replayed")
+		return object("saved", "definitionId", "revisionId", "ordinal", "sourceDigest", "manifestDigest", "replayed")
 	case "workflow.sdk.get":
-		return object("version", "topic", "content", "source", "guidance")
+		return object("sdk", "topic", "content", "source", "guidance")
 	case "workflow.resources.list":
 		return object("kind", "items", "nextCursor", "toolPolicyCapabilities")
 	case "workflow.definitions.describe":

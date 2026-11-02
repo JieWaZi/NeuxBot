@@ -12,7 +12,7 @@ import (
 )
 
 func testMachineSource(body string) string {
-	return `export const meta={sdk:'ally.workflow/2',title:'行为测试',description:'测试真实 Go 程序',phases:[{id:'main',title:'主流程',detail:'测试',canExit:true}]};` + body
+	return `export const meta={sdk:'ally.workflow',title:'行为测试',description:'测试真实 Go 程序',phases:[{id:'main',title:'主流程',detail:'测试',canExit:true}]};` + body
 }
 
 func runTestMachine(t *testing.T, source string, args any, handler func(EffectBoundary) Value) MachineState {

@@ -1,5 +1,5 @@
 export const meta = {
-  sdk: 'ally.workflow/2',
+  sdk: 'ally.workflow',
   title: '虚构候选评估与多步骤验收',
   description: '三个阶段各含三个步骤：生成候选、人工选择与伙伴分析、核验与可控重试。仅使用虚构数据。',
   inputSchema: {type:'object',properties:{
@@ -33,7 +33,7 @@ json.dump({"valid":isinstance(x["analysis"],str) and len(x["analysis"].strip())>
   retryGate:{language:'python',protocol:'json',code:String.raw`import json,sys,pathlib,re,tempfile
 x=json.load(sys.stdin)
 key=re.sub(r'[^a-zA-Z0-9_-]','_',x["demoKey"])[:80]
-root=pathlib.Path(tempfile.gettempdir())/'workflow-v2-multistep-acceptance'
+root=pathlib.Path(tempfile.gettempdir())/'workflow-multistep-acceptance'
 root.mkdir(parents=True,exist_ok=True)
 marker=root/(key+'.once-failed')
 first=bool(x["simulateFailure"]) and not marker.exists()

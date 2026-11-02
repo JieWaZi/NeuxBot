@@ -5566,9 +5566,9 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsSkipWorkerCommand = {
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsValidateWorkflowSourceRequest = {
     /**
-     * 契约版本
+     * SDK 标识
      */
-    sdkVersion: string;
+    sdk: string;
     /**
      * 完整源码
      */
@@ -5798,9 +5798,9 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionResponse =
      */
     restoredFromRevisionId?: string;
     /**
-     * 契约版本
+     * SDK 标识
      */
-    sdkVersion?: string;
+    sdk?: string;
     /**
      * 源码摘要
      */
@@ -5920,9 +5920,9 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowSdkResponse = {
      */
     primitives?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslPrimitiveContract>;
     /**
-     * 契约版本
+     * SDK 标识
      */
-    sdkVersion?: string;
+    sdk?: string;
 };
 
 /**
@@ -5940,9 +5940,9 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowSourceResponse = {
      */
     revisionId?: string;
     /**
-     * 契约版本
+     * SDK 标识
      */
-    sdkVersion?: string;
+    sdk?: string;
     /**
      * 原始源码
      */
@@ -8754,7 +8754,6 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest = {
     controls: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasControl>;
     description: string;
     edges: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasEdge>;
-    formatVersion: 2;
     inputPropertyOrder?: {
         [key: string]: Array<string>;
     };
@@ -8767,7 +8766,7 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest = {
     };
     phases: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasPhase>;
     scripts: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslScriptSummary>;
-    sdkVersion: 'ally.workflow/2';
+    sdk: 'ally.workflow';
     title: string;
 };
 
@@ -8974,7 +8973,7 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt = {
      */
     definitionId?: string;
     /**
-     * ManifestDigest 绑定实际公开的 CanvasManifest/2 投影，与内部完整性摘要区分。
+     * ManifestDigest 绑定实际公开的 CanvasManifest 投影，与内部完整性摘要区分。
      */
     manifestDigest?: string;
     /**
@@ -8993,10 +8992,6 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt = {
      * SourceDigest 绑定精确保存的源码。
      */
     sourceDigest?: string;
-    /**
-     * Unchanged 是历史回执字段，V2 显式保存始终创建新版本，值固定为 false。
-     */
-    unchanged?: boolean;
 };
 
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslScriptSummary = {
@@ -12804,9 +12799,9 @@ export type GithubComJieWaZiNeuxBotServerServicesWorkflowSaveSourceCommand = {
      */
     resolvedAnnotationIds?: Array<string>;
     /**
-     * SDKVersion 是本次创作使用的原生契约。
+     * SDK 是本次创作使用的原生契约。
      */
-    sdkVersion?: string;
+    sdk?: string;
     /**
      * Source 是不裁剪和不格式化的完整创作源码。
      */
