@@ -1182,8 +1182,6 @@ func chatResult(request SessionPlan, session SessionDirective, result turnResult
 			code = FailureCodeUnsupportedCapability
 		case native.FaultDelivery:
 			code = FailureCodeEventDelivery
-		case native.FaultLimit:
-			code = FailureCodeFrameTooLarge
 		case native.FaultInactivityTimeout:
 			code = FailureCodeInactivityTimeout
 		case native.FaultCancelled:
@@ -1889,14 +1887,14 @@ type eventSink struct {
 	collector          *outputCollector              // collector 仅收集有界最终候选。
 	sequence           uint64                        // sequence 是本轮交付顺序。
 	bytes              int                           // bytes 累计参数快照新增字节及其他事件的完整字节。
-	events             int                           // events 是累计已接收事件数量。
+	events             int                           // events 是离散事实与空/重复无进展通知的累计数量。
 	closed             bool                          // closed 拒绝 Prompt 返回后的迟到生产。
 	effects            Effects                       // effects 保存真实输入与工具事实。
 	firstFault         *native.Fault                 // firstFault 保存同步消费的首个故障。
 	deliveryFault      *native.Fault                 // deliveryFault 独立保存观察交付故障。
 	interactions       map[string]bool               // interactions 保存有界已回答请求身份。
-	toolNames          map[string]string             // toolNames 以有界调用身份关联已获授权的工具名称。
-	toolInputs         map[string]json.RawMessage    // toolInputs 保存本轮工具最近参数，累计保留量受已计费字节约束。
+	tools              map[string]toolEventState     // tools 保存授权与预算共用的最近工具事实，身份和字节均有界。
+	messageState       messageEventState             // messageState 保存当前消息的计数边界，不保留正文。
 	activeInteractions map[string]context.CancelFunc // activeInteractions 允许 finish 撤销并等待已接纳的交互。
 	interactionsDone   chan struct{}                 // interactionsDone 在当前活动交互全部退出时关闭。
 	cleanupTimeout     time.Duration                 // cleanupTimeout 限制 Prompt 返回后的交互收敛等待。
@@ -1905,7 +1903,7 @@ type eventSink struct {
 }
 
 func newSink(call *Turn, session *Session, spec executionSpec, options turnOptions, cleanupTimeout time.Duration, logger *slog.Logger) *eventSink {
-	return &eventSink{session: session, call: call, spec: spec, options: options, collector: newCollector(spec.Policies.Output, spec.Limits), interactions: make(map[string]bool), toolNames: make(map[string]string), toolInputs: make(map[string]json.RawMessage), activeInteractions: make(map[string]context.CancelFunc), cleanupTimeout: cleanupTimeout, logger: logger, promptStarted: time.Now()}
+	return &eventSink{session: session, call: call, spec: spec, options: options, collector: newCollector(spec.Policies.Output, spec.Limits), interactions: make(map[string]bool), tools: make(map[string]toolEventState), activeInteractions: make(map[string]context.CancelFunc), cleanupTimeout: cleanupTimeout, logger: logger, promptStarted: time.Now()}
 }
 func (s *eventSink) fail(f *native.Fault) error {
 	if s.firstFault == nil {
@@ -1979,23 +1977,26 @@ func (s *eventSink) Accept(_ context.Context, event native.Event) error {
 	// 只抵扣与紧邻上一快照相同的前缀；独立工具、改写、清空后重建仍计新增字节，预算不退款。
 	reusedInputBytes := 0
 	if event.Kind == native.EventTool && event.Tool != nil && event.Tool.Input != nil {
-		previous := s.toolInputs[event.Tool.ID]
+		previous := s.tools[event.Tool.ID].input
 		for reusedInputBytes < len(previous) && reusedInputBytes < len(event.Tool.Input) && previous[reusedInputBytes] == event.Tool.Input[reusedInputBytes] {
 			reusedInputBytes++
 		}
 	}
 	chargedBytes := size - reusedInputBytes
 	if size > s.spec.Limits.MaxEventBytes {
-		return s.fail(fault(native.FaultLimit, "event", "event delivery budget exceeded: single event bytes", nil))
+		return s.fail(eventLimit(native.LimitSingleEventBytes, "event", "event delivery budget exceeded: single event bytes"))
 	}
-	if s.events >= s.spec.Limits.MaxEvents {
-		return s.fail(fault(native.FaultLimit, "event", "event delivery budget exceeded: event count", nil))
+	discrete := s.discreteEvent(event)
+	if discrete && s.events >= s.spec.Limits.MaxEvents {
+		return s.fail(eventLimit(native.LimitEventCount, "event", "event delivery budget exceeded: discrete event count"))
 	}
 	if chargedBytes > s.spec.Limits.MaxTotalEventBytes-s.bytes {
-		return s.fail(fault(native.FaultLimit, "event", "event delivery budget exceeded: cumulative event bytes", nil))
+		return s.fail(eventLimit(native.LimitTotalEventBytes, "event", "event delivery budget exceeded: cumulative event bytes"))
 	}
 	var err error
-	s.events++
+	if discrete {
+		s.events++
+	}
 	s.bytes += chargedBytes
 	switch event.Kind {
 	case native.EventPromptAccepted:
@@ -2006,6 +2007,7 @@ func (s *eventSink) Accept(_ context.Context, event native.Event) error {
 		if err = s.collector.Accept(*event.Message); err != nil {
 			return s.fail(asFault(err, native.FaultProtocol, "output", "invalid assistant message"))
 		}
+		s.rememberMessage(*event.Message)
 	case native.EventThinking:
 		if !s.effects.PromptAccepted {
 			return s.fail(fault(native.FaultProtocol, "event", "thinking event before prompt acceptance", nil))
@@ -2019,21 +2021,17 @@ func (s *eventSink) Accept(_ context.Context, event native.Event) error {
 			return s.fail(fault(native.FaultProtocol, "event", "tool activity identity missing", nil))
 		}
 		name := event.Tool.Name
-		if previous, known := s.toolNames[event.Tool.ID]; known {
+		if previous, known := s.tools[event.Tool.ID]; known {
 			if name == "" {
-				name = previous
-			} else if previous != "" && previous != name {
+				name = previous.name
+			} else if previous.name != "" && previous.name != name {
 				return s.fail(fault(native.FaultProtocol, "event", "tool activity identity changed tool name", nil))
 			}
 		}
 		if s.spec.Policies.Tools.Mode != native.ToolsAllowAll && !s.toolAllowed(name) {
 			return s.fail(fault(native.FaultProtocol, "event", "driver emitted unauthorized tool activity", nil))
 		}
-		s.toolNames[event.Tool.ID] = name
-		if event.Tool.Input != nil {
-			// 观察者取得独立事件副本，不能通过修改其参数影响下一事件的预算。
-			s.toolInputs[event.Tool.ID] = slices.Clone(event.Tool.Input)
-		}
+		s.rememberTool(*event.Tool, name)
 	case native.EventUsage:
 		if !s.effects.PromptAccepted || event.Usage == nil {
 			return s.fail(fault(native.FaultProtocol, "event", "usage event before prompt acceptance or without payload", nil))
@@ -2215,8 +2213,14 @@ func (s *eventSink) Interact(requestCtx context.Context, request native.Interact
 
 // reserveInteractionBudget 与普通事件共用本轮总量，不把交互身份集合变成另一条无界缓存。
 func (s *eventSink) reserveInteractionBudget(size int) error {
-	if size > s.spec.Limits.MaxEventBytes || s.events >= s.spec.Limits.MaxEvents || size > s.spec.Limits.MaxTotalEventBytes-s.bytes {
-		return s.fail(fault(native.FaultLimit, "interaction", "interaction delivery budget exceeded", nil))
+	if size > s.spec.Limits.MaxEventBytes {
+		return s.fail(eventLimit(native.LimitSingleEventBytes, "interaction", "interaction delivery budget exceeded: single event bytes"))
+	}
+	if s.events >= s.spec.Limits.MaxEvents {
+		return s.fail(eventLimit(native.LimitEventCount, "interaction", "interaction delivery budget exceeded: discrete event count"))
+	}
+	if size > s.spec.Limits.MaxTotalEventBytes-s.bytes {
+		return s.fail(eventLimit(native.LimitTotalEventBytes, "interaction", "interaction delivery budget exceeded: cumulative event bytes"))
 	}
 	s.events++
 	s.bytes += size

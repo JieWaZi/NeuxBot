@@ -32,6 +32,8 @@ const (
 	FailureCodeContextCanceled = constants.RuntimeFailureCodeContextCanceled
 	// FailureCodeEventDelivery 表示 Event Sink 失败或超时。
 	FailureCodeEventDelivery = constants.RuntimeFailureCodeEventDelivery
+	// FailureCodeEventBudgetExceeded 表示本轮事件数量或累计载荷超过保护预算。
+	FailureCodeEventBudgetExceeded = constants.RuntimeFailureCodeEventBudgetExceeded
 	// FailureCodeFrameTooLarge 表示单个协议帧超过硬限制。
 	FailureCodeFrameTooLarge = constants.RuntimeFailureCodeFrameTooLarge
 	// FailureCodeInactivityTimeout 表示 Runtime 超过允许时间没有原始进程活动。
@@ -254,6 +256,13 @@ func ACPFailureCode(err error) FailureCode {
 	var technical *native.Fault
 	if errors.As(err, &technical) {
 		switch technical.Code {
+		case native.FaultLimit:
+			switch technical.Limit {
+			case native.LimitEventCount, native.LimitTotalEventBytes:
+				return FailureCodeEventBudgetExceeded
+			default:
+				return FailureCodeFrameTooLarge
+			}
 		case native.FaultInputTimeout:
 			return constants.RuntimeFailureCodeInputTimeout
 		case native.FaultApprovalTimeout:

@@ -133,7 +133,7 @@ const (
 type Limits struct {
 	MaxOutputBytes     int           // MaxOutputBytes 是最终候选正文上限。
 	MaxEventBytes      int           // MaxEventBytes 是单个规范事件上限。
-	MaxEvents          int           // MaxEvents 是本轮事件数量上限。
+	MaxEvents          int           // MaxEvents 限制本轮离散事实与空/重复无进展通知数量，不按正文、思考或参数流的小包数量计费。
 	MaxTotalEventBytes int           // MaxTotalEventBytes 限制本轮参数快照新增字节及其他事件完整字节的累计量。
 	DeliveryTimeout    time.Duration // DeliveryTimeout 是单个事件交给观察者的期限，不限制人工决定。
 	InteractionTimeout time.Duration // InteractionTimeout 是单次人工输入或审批等待期限，零值采用默认五分钟。
@@ -454,9 +454,19 @@ const (
 	FaultProtocol               FaultCode = "protocol_error"          // FaultProtocol 表示驱动契约损坏。
 )
 
+// LimitKind 区分单事件与本轮累计预算，不能通过技术错误文本推测。
+type LimitKind string
+
+const (
+	LimitSingleEventBytes LimitKind = "single_event_bytes" // LimitSingleEventBytes 表示单个规范事件过大。
+	LimitEventCount       LimitKind = "event_count"        // LimitEventCount 表示离散事实与无进展通知数量耗尽。
+	LimitTotalEventBytes  LimitKind = "total_event_bytes"  // LimitTotalEventBytes 表示本轮累计规范载荷耗尽。
+)
+
 // Fault 在模块边界保留准确技术语义，宿主只转换一次。
 type Fault struct {
 	Code    FaultCode // Code 是稳定技术错误码。
+	Limit   LimitKind // Limit 是 FaultLimit 的预算维度，空值保留其他原生限制的既有分类。
 	Stage   string    // Stage 是故障发生阶段。
 	Message string    // Message 是无秘密的英文技术说明。
 	Cause   error     `json:"-"` // Cause 是仅供根因判断的底层错误，不进入默认 JSON。

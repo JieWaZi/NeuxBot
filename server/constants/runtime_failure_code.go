@@ -40,6 +40,8 @@ const (
 	RuntimeFailureCodeContextCanceled RuntimeFailureCode = "CONTEXT_CANCELED"
 	// RuntimeFailureCodeEventDelivery 表示 Event Sink 失败或超时。
 	RuntimeFailureCodeEventDelivery RuntimeFailureCode = "EVENT_DELIVERY_FAILED"
+	// RuntimeFailureCodeEventBudgetExceeded 表示本轮事件数量或累计载荷超过保护预算。
+	RuntimeFailureCodeEventBudgetExceeded RuntimeFailureCode = "EVENT_BUDGET_EXCEEDED"
 	// RuntimeFailureCodeFrameTooLarge 表示单个协议帧超过硬限制。
 	RuntimeFailureCodeFrameTooLarge RuntimeFailureCode = "FRAME_TOO_LARGE"
 	// RuntimeFailureCodeInactivityTimeout 表示 Runtime 超过允许时间没有原始进程活动。

@@ -2574,3 +2574,92 @@ func TestNativeAnswerRestartsInactivityBudget(t *testing.T) {
 		t.Fatalf("input wait did not pause and resume inactivity: answered=%v result=%+v", answered, result)
 	}
 }
+
+// TestCanonicalTerminalDeltaKeepsOrderWithoutDuplicatingFacts 已知终端增量补齐正文，标准内容、完整结果和终态保持原有单份事实。
+func TestCanonicalTerminalDeltaKeepsOrderWithoutDuplicatingFacts(t *testing.T) {
+	agent := newFixtureAgent()
+	agent.prompt = func(ctx context.Context, request sdk.PromptRequest) (sdk.PromptResponse, error) {
+		meta := func(data string) map[string]any {
+			return map[string]any{"terminal_output_delta": map[string]any{"terminal_id": "command", "data": data}, "private": "must-not-cross"}
+		}
+		updates := []sdk.SessionUpdate{
+			sdk.StartToolCall("command", "Run", sdk.WithStartStatus(sdk.ToolCallStatusInProgress)),
+			{ToolCallUpdate: &sdk.SessionToolCallUpdate{ToolCallId: "command", Meta: meta("first\n")}},
+			{AgentMessageChunk: &sdk.SessionUpdateAgentMessageChunk{MessageId: sdk.Ptr("commentary"), Content: sdk.TextBlock("between")}},
+			{ToolCallUpdate: &sdk.SessionToolCallUpdate{ToolCallId: "command", Meta: meta("public\n"), Content: []sdk.ToolCallContent{sdk.ToolContent(sdk.TextBlock("public\n"))}}},
+			{ToolCallUpdate: &sdk.SessionToolCallUpdate{ToolCallId: "command", Meta: meta("opaque"), RawOutput: map[string]any{"result": "opaque"}}},
+			{ToolCallUpdate: &sdk.SessionToolCallUpdate{ToolCallId: "command", Meta: meta("completed snapshot"), Status: sdk.Ptr(sdk.ToolCallStatusCompleted), RawOutput: map[string]any{"formatted_output": "first\npublic\n", "exit_code": 0}}},
+			{ToolCallUpdate: &sdk.SessionToolCallUpdate{ToolCallId: "command", Meta: meta("late terminal mirror"), Status: sdk.Ptr(sdk.ToolCallStatusCompleted)}},
+		}
+		for _, update := range updates {
+			if err := agent.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: request.SessionId, Update: update}); err != nil {
+				return sdk.PromptResponse{}, err
+			}
+		}
+		return sdk.PromptResponse{StopReason: sdk.StopReasonEndTurn}, nil
+	}
+	fixture := newConnectionForAgent(t, agent)
+	session, err := fixture.Open(context.Background(), openRequest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := &recordingSink{}
+	result := session.Prompt(context.Background(), TurnRequest{Input: Input{Text: "terminal output"}}, sink)
+	if result.Status != StatusCompleted {
+		t.Fatal(result)
+	}
+	events := sink.snapshot()
+	if len(events) != 8 {
+		t.Fatalf("events duplicated or lost: %d", len(events))
+	}
+	if events[2].Tool == nil || events[2].Tool.Text != "first\n" || len(events[2].Tool.Content) != 1 || events[2].Tool.Content[0].Text != "first\n" {
+		t.Fatalf("terminal delta lost: %+v", events[2])
+	}
+	if events[3].Message == nil || events[3].Message.Delta != "between" {
+		t.Fatal("interleaved assistant message moved")
+	}
+	if events[4].Tool == nil || len(events[4].Tool.Content) != 1 || events[4].Tool.Text != "public\n" {
+		t.Fatal("standard content duplicated")
+	}
+	if events[5].Tool == nil || events[5].Tool.Output == nil || len(events[5].Tool.Content) != 0 {
+		t.Fatal("raw result became another delta")
+	}
+	if events[6].Tool == nil || events[6].Tool.Status != "completed" || events[6].Tool.Output == nil || len(events[6].Tool.Content) != 0 {
+		t.Fatal("terminal result duplicated")
+	}
+	if events[7].Tool == nil || events[7].Tool.Status != "completed" || len(events[7].Tool.Content) != 0 {
+		t.Fatal("terminal mirror became a new delta")
+	}
+}
+
+// TestCanonicalTerminalDeltaRejectsUnprovenMetadata 未知、空或身份不匹配的元数据不制造正文进展。
+func TestCanonicalTerminalDeltaRejectsUnprovenMetadata(t *testing.T) {
+	for name, meta := range map[string]map[string]any{
+		"unknown":        {"private": map[string]any{"terminal_id": "command", "data": "hidden"}},
+		"full-output":    {"terminal_output": map[string]any{"terminal_id": "command", "data": "snapshot"}},
+		"empty":          {"terminal_output_delta": map[string]any{"terminal_id": "command", "data": ""}},
+		"wrong-tool":     {"terminal_output_delta": map[string]any{"terminal_id": "other", "data": "wrong"}},
+		"missing-tool":   {"terminal_output_delta": map[string]any{"data": "unowned"}},
+		"invalid-data":   {"terminal_output_delta": map[string]any{"terminal_id": "command", "data": 12}},
+		"invalid-object": {"terminal_output_delta": "unstructured"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			agent := newFixtureAgent()
+			agent.prompt = func(ctx context.Context, request sdk.PromptRequest) (sdk.PromptResponse, error) {
+				err := agent.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: request.SessionId, Update: sdk.SessionUpdate{ToolCallUpdate: &sdk.SessionToolCallUpdate{ToolCallId: "command", Meta: meta}}})
+				return sdk.PromptResponse{StopReason: sdk.StopReasonEndTurn}, err
+			}
+			fixture := newConnectionForAgent(t, agent)
+			session, err := fixture.Open(context.Background(), openRequest(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			sink := &recordingSink{}
+			result := session.Prompt(context.Background(), TurnRequest{Input: Input{Text: "metadata"}}, sink)
+			events := sink.snapshot()
+			if result.Status != StatusCompleted || len(events) != 2 || events[1].Tool == nil || events[1].Tool.Text != "" || len(events[1].Tool.Content) != 0 {
+				t.Fatalf("unproven metadata became content: %+v %+v", result, events)
+			}
+		})
+	}
+}

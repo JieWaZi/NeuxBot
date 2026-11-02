@@ -1610,6 +1610,8 @@ const resources = {
           "当前智能体无法继续这段对话。确认后可携带近期消息，在这里继续。",
         upstreamUnavailable: "模型服务暂时不可用，请稍后重试。",
         eventDeliveryFailed: "回复接收中断，请检查执行结果后再发送。",
+        eventBudgetExceeded:
+          "本轮执行信息超过保护上限，执行已中止，请检查执行结果。",
         frameTooLarge: "返回的数据过大，执行已中止，请检查执行结果。",
         inactivityTimeout: "执行长时间没有响应，已中止，请检查执行结果。",
         policyUnsupported: "当前智能体不支持所选权限，请调整权限设置。",
@@ -2553,6 +2555,8 @@ const resources = {
           "The model service is temporarily unavailable. Please retry later.",
         eventDeliveryFailed:
           "The reply was interrupted. Check the execution result before sending again.",
+        eventBudgetExceeded:
+          "Execution information exceeded the safety limit. Execution stopped; check the result.",
         frameTooLarge:
           "The response was too large and execution stopped. Check the execution result.",
         inactivityTimeout:

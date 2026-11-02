@@ -24,6 +24,8 @@ func (v RuntimeFailureCode) String() string {
 		return "CONTEXT_CANCELED"
 	case RuntimeFailureCodeContextTooLarge:
 		return "CONTEXT_TOO_LARGE"
+	case RuntimeFailureCodeEventBudgetExceeded:
+		return "EVENT_BUDGET_EXCEEDED"
 	case RuntimeFailureCodeEventDelivery:
 		return "EVENT_DELIVERY_FAILED"
 	case RuntimeFailureCodeExecutionFailed:
@@ -86,6 +88,8 @@ func (v RuntimeFailureCode) Label() string {
 		return "RuntimeFailureCodeContextCanceled 表示调用方 Context 结束了 Invocation。"
 	case RuntimeFailureCodeContextTooLarge:
 		return "RuntimeFailureCodeContextTooLarge 表示当前上下文超过所选模型限制。"
+	case RuntimeFailureCodeEventBudgetExceeded:
+		return "RuntimeFailureCodeEventBudgetExceeded 表示本轮事件数量或累计载荷超过保护预算。"
 	case RuntimeFailureCodeEventDelivery:
 		return "RuntimeFailureCodeEventDelivery 表示 Event Sink 失败或超时。"
 	case RuntimeFailureCodeExecutionFailed:
@@ -137,7 +141,7 @@ func (v RuntimeFailureCode) Label() string {
 }
 
 func (v RuntimeFailureCode) Values() []enum.Enum {
-	return []enum.Enum{RuntimeFailureCodeUnspecified, RuntimeFailureCodeApprovalTimeout, RuntimeFailureCodeAuthRequired, RuntimeFailureCodeContextCanceled, RuntimeFailureCodeContextTooLarge, RuntimeFailureCodeEventDelivery, RuntimeFailureCodeExecutionFailed, RuntimeFailureCodeFrameTooLarge, RuntimeFailureCodeInactivityTimeout, RuntimeFailureCodeInputTimeout, RuntimeFailureCodeInvalidRequest, RuntimeFailureCodeInvocationClosed, RuntimeFailureCodeModelUnavailable, RuntimeFailureCodeNetworkError, RuntimeFailureCodePlanUpgradeRequired, RuntimeFailureCodePolicyUnsupported, RuntimeFailureCodeProcessExited, RuntimeFailureCodeProtocolIncompatible, RuntimeFailureCodeQuotaExhausted, RuntimeFailureCodeRateLimited, RuntimeFailureCodeRequestTimeout, RuntimeFailureCodeRuntimeIncompatible, RuntimeFailureCodeRuntimeNotFound, RuntimeFailureCodeRuntimeUnavailable, RuntimeFailureCodeSessionNotFound, RuntimeFailureCodeSpawnFailed, RuntimeFailureCodeUnsupportedCapability, RuntimeFailureCodeUpstreamUnavailable}
+	return []enum.Enum{RuntimeFailureCodeUnspecified, RuntimeFailureCodeApprovalTimeout, RuntimeFailureCodeAuthRequired, RuntimeFailureCodeContextCanceled, RuntimeFailureCodeContextTooLarge, RuntimeFailureCodeEventBudgetExceeded, RuntimeFailureCodeEventDelivery, RuntimeFailureCodeExecutionFailed, RuntimeFailureCodeFrameTooLarge, RuntimeFailureCodeInactivityTimeout, RuntimeFailureCodeInputTimeout, RuntimeFailureCodeInvalidRequest, RuntimeFailureCodeInvocationClosed, RuntimeFailureCodeModelUnavailable, RuntimeFailureCodeNetworkError, RuntimeFailureCodePlanUpgradeRequired, RuntimeFailureCodePolicyUnsupported, RuntimeFailureCodeProcessExited, RuntimeFailureCodeProtocolIncompatible, RuntimeFailureCodeQuotaExhausted, RuntimeFailureCodeRateLimited, RuntimeFailureCodeRequestTimeout, RuntimeFailureCodeRuntimeIncompatible, RuntimeFailureCodeRuntimeNotFound, RuntimeFailureCodeRuntimeUnavailable, RuntimeFailureCodeSessionNotFound, RuntimeFailureCodeSpawnFailed, RuntimeFailureCodeUnsupportedCapability, RuntimeFailureCodeUpstreamUnavailable}
 }
 
 func (v RuntimeFailureCode) Type() string {
@@ -146,7 +150,7 @@ func (v RuntimeFailureCode) Type() string {
 
 func (v RuntimeFailureCode) MarshalText() ([]byte, error) {
 	switch v {
-	case RuntimeFailureCodeUnspecified, RuntimeFailureCodeApprovalTimeout, RuntimeFailureCodeAuthRequired, RuntimeFailureCodeContextCanceled, RuntimeFailureCodeContextTooLarge, RuntimeFailureCodeEventDelivery, RuntimeFailureCodeExecutionFailed, RuntimeFailureCodeFrameTooLarge, RuntimeFailureCodeInactivityTimeout, RuntimeFailureCodeInputTimeout, RuntimeFailureCodeInvalidRequest, RuntimeFailureCodeInvocationClosed, RuntimeFailureCodeModelUnavailable, RuntimeFailureCodeNetworkError, RuntimeFailureCodePlanUpgradeRequired, RuntimeFailureCodePolicyUnsupported, RuntimeFailureCodeProcessExited, RuntimeFailureCodeProtocolIncompatible, RuntimeFailureCodeQuotaExhausted, RuntimeFailureCodeRateLimited, RuntimeFailureCodeRequestTimeout, RuntimeFailureCodeRuntimeIncompatible, RuntimeFailureCodeRuntimeNotFound, RuntimeFailureCodeRuntimeUnavailable, RuntimeFailureCodeSessionNotFound, RuntimeFailureCodeSpawnFailed, RuntimeFailureCodeUnsupportedCapability, RuntimeFailureCodeUpstreamUnavailable:
+	case RuntimeFailureCodeUnspecified, RuntimeFailureCodeApprovalTimeout, RuntimeFailureCodeAuthRequired, RuntimeFailureCodeContextCanceled, RuntimeFailureCodeContextTooLarge, RuntimeFailureCodeEventBudgetExceeded, RuntimeFailureCodeEventDelivery, RuntimeFailureCodeExecutionFailed, RuntimeFailureCodeFrameTooLarge, RuntimeFailureCodeInactivityTimeout, RuntimeFailureCodeInputTimeout, RuntimeFailureCodeInvalidRequest, RuntimeFailureCodeInvocationClosed, RuntimeFailureCodeModelUnavailable, RuntimeFailureCodeNetworkError, RuntimeFailureCodePlanUpgradeRequired, RuntimeFailureCodePolicyUnsupported, RuntimeFailureCodeProcessExited, RuntimeFailureCodeProtocolIncompatible, RuntimeFailureCodeQuotaExhausted, RuntimeFailureCodeRateLimited, RuntimeFailureCodeRequestTimeout, RuntimeFailureCodeRuntimeIncompatible, RuntimeFailureCodeRuntimeNotFound, RuntimeFailureCodeRuntimeUnavailable, RuntimeFailureCodeSessionNotFound, RuntimeFailureCodeSpawnFailed, RuntimeFailureCodeUnsupportedCapability, RuntimeFailureCodeUpstreamUnavailable:
 		return []byte(v.String()), nil
 	default:
 		return nil, enum.InvalidTypeError
@@ -165,6 +169,8 @@ func (v *RuntimeFailureCode) UnmarshalText(text []byte) error {
 		*v = RuntimeFailureCodeContextCanceled
 	case RuntimeFailureCodeContextTooLarge.String():
 		*v = RuntimeFailureCodeContextTooLarge
+	case RuntimeFailureCodeEventBudgetExceeded.String():
+		*v = RuntimeFailureCodeEventBudgetExceeded
 	case RuntimeFailureCodeEventDelivery.String():
 		*v = RuntimeFailureCodeEventDelivery
 	case RuntimeFailureCodeExecutionFailed.String():

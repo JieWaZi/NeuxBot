@@ -20,7 +20,7 @@ describe("runtimeFailurePresentation", () => {
     });
   });
 
-  it("仅人工等待超时优先使用本地化原因，其他错误保留诊断", async () => {
+  it("人工等待超时优先使用本地化原因，其他错误保留诊断", async () => {
     expect(
       runtimeFailurePresentation(
         "INPUT_TIMEOUT",
@@ -56,5 +56,24 @@ describe("runtimeFailurePresentation", () => {
       message:
         "Your current quota has been exhausted. Switch models, or retry after your quota resets.",
     });
+  });
+
+  it("事件预算耗尽使用准确的本地化提示，并保留单帧超大的独立分类", async () => {
+    expect(
+      runtimeFailurePresentation(
+        "EVENT_BUDGET_EXCEEDED",
+        "limit_exceeded: event count",
+      ).message,
+    ).toBe("本轮执行信息超过保护上限，执行已中止，请检查执行结果。");
+    expect(runtimeFailurePresentation("FRAME_TOO_LARGE").message).toBe(
+      "返回的数据过大，执行已中止，请检查执行结果。",
+    );
+    await i18n.changeLanguage("en-US");
+    expect(
+      runtimeFailurePresentation("EVENT_BUDGET_EXCEEDED", "raw diagnostic")
+        .message,
+    ).toBe(
+      "Execution information exceeded the safety limit. Execution stopped; check the result.",
+    );
   });
 });

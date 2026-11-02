@@ -30,6 +30,8 @@ function runtimeFailureMessage(errorCode?: string): string {
       return i18n.t("runtimeFailure.upstreamUnavailable", { ns: "chat" });
     case "EVENT_DELIVERY_FAILED":
       return i18n.t("runtimeFailure.eventDeliveryFailed", { ns: "chat" });
+    case "EVENT_BUDGET_EXCEEDED":
+      return i18n.t("runtimeFailure.eventBudgetExceeded", { ns: "chat" });
     case "FRAME_TOO_LARGE":
       return i18n.t("runtimeFailure.frameTooLarge", { ns: "chat" });
     case "INACTIVITY_TIMEOUT":
@@ -60,7 +62,9 @@ export function runtimeFailurePresentation(
 ): RuntimeFailurePresentation {
   return {
     message:
-      errorCode === "INPUT_TIMEOUT" || errorCode === "APPROVAL_TIMEOUT"
+      errorCode === "INPUT_TIMEOUT" ||
+      errorCode === "APPROVAL_TIMEOUT" ||
+      errorCode === "EVENT_BUDGET_EXCEEDED"
         ? runtimeFailureMessage(errorCode)
         : detail?.trim() || runtimeFailureMessage(errorCode),
   };
