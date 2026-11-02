@@ -200,7 +200,7 @@ jobs:
       - run: go test ./...
         if: ${{ !cancelled() && steps.go.outcome == 'success' && steps.node.outcome == 'success' }}
         working-directory: server
-      - run: go test ./internal/agent -run '^TestRuntimeDependencyBoundaries$'
+      - run: go test ./internal/agent -run '^TestAgentDependencyBoundaries$'
         id: runtime-boundaries
         working-directory: server
         if: ${{ !cancelled() && steps.go.outcome == 'success' }}

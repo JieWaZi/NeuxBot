@@ -1228,6 +1228,12 @@ func TestForkClosesSourceBeforeNativeDispatch(t *testing.T) {
 	}
 	waitForChatTerminal(t, manager, first.Chat.ID)
 	core := manager.execution.(*service)
+	// 分叉继承不可变文件结果，需在模型终态之外等待后台文件收尾。
+	wait, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	if err := core.CancelAndWait(wait, first.Chat.ID); err != nil {
+		t.Fatal(err)
+	}
 	input := chatservice.ForkInput{ChatID: first.Chat.ID, ExecutionID: first.Execution.ID, ClientRequestID: "close-before-dispatch"}
 	runtime.closeError = status_error.RuntimeShutdownFailed
 	if _, err = core.ForkChat(ctx, input); !errors.Is(err, status_error.RuntimeShutdownFailed) {
@@ -1274,6 +1280,12 @@ func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
 				t.Fatal(err)
 			}
 			waitForChatTerminal(t, manager, first.Chat.ID)
+			// 模型终态先于文件结果发布；本用例只验证已完成分叉的原生插件范围。
+			wait, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			if err := manager.execution.CancelAndWait(wait, first.Chat.ID); err != nil {
+				t.Fatal(err)
+			}
 			child, err := manager.execution.ForkChat(context.Background(), chatservice.ForkInput{ChatID: first.Chat.ID, ExecutionID: first.Execution.ID, ClientRequestID: "fork-scope"})
 			if err != nil {
 				t.Fatal(err)
