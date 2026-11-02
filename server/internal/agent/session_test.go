@@ -2039,3 +2039,113 @@ func TestRuntimeCloseRetriesActiveRunCleanupWithoutErasingFault(t *testing.T) {
 		t.Fatalf("run cleanup=%v attempts=%d", got.CleanupFault, attempts.Load())
 	}
 }
+
+// TestGrowingToolInputSnapshotsDoNotSpendRepeatedPrefixBudget 复现参数逐字符增长与推理分片交错，验证完整事件仍在默认预算内交付。
+func TestGrowingToolInputSnapshotsDoNotSpendRepeatedPrefixBudget(t *testing.T) {
+	const updates = 9000
+	seen, latest := 0, 0
+	seenThinking, seenEvents := 0, 0
+	driver := &fakeDriver{caps: caps(), open: func(context.Context, native.OpenRequest) (NativeConnection, error) {
+		return &fakeSession{prompt: func(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
+			if err := sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted}); err != nil {
+				return native.TurnResult{Status: native.StatusFailed}
+			}
+			for i := 1; i <= updates; i++ {
+				if i%3 != 0 {
+					if err := sink.Accept(ctx, native.Event{Kind: native.EventThinking, Text: "reason"}); err != nil {
+						return native.TurnResult{Status: native.StatusFailed}
+					}
+				}
+				input := []byte(`{"content":"` + strings.Repeat("x", i*2) + `"}`)
+				event := native.Event{Kind: native.EventTool, Tool: &native.ToolEvent{ID: "write", Name: "write", Update: i > 1, Status: "in_progress", Input: input, Content: []native.ContentBlock{{Type: "text", Text: "progress"}}}}
+				if err := sink.Accept(ctx, event); err != nil {
+					return native.TurnResult{Status: native.StatusFailed}
+				}
+			}
+			if err := sink.Accept(ctx, native.Event{Kind: native.EventTool, Tool: &native.ToolEvent{ID: "write", Update: true, Status: "completed", Output: []byte(`{"saved":true}`)}}); err != nil {
+				return native.TurnResult{Status: native.StatusFailed}
+			}
+			_ = sink.Accept(ctx, native.Event{Kind: native.EventAssistantMessage, Message: &native.AssistantMessage{MessageID: "answer", Phase: native.PhaseFinal, Delta: "saved", Complete: true}})
+			return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn}
+		}}, nil
+	}}
+	runtime := started(t, driver, func(c *testConfig) { c.Grants.AllowAllTools = true })
+	input := spec()
+	input.Policies.Tools = native.ToolPolicy{Mode: native.ToolsAllowAll}
+	result := runTurn(runtime, context.Background(), input, turnOptions{Observer: observerFunc(func(_ context.Context, e observedEvent) error {
+		seenEvents++
+		if e.NativeEvent.Kind == native.EventThinking {
+			seenThinking++
+			if e.NativeEvent.Text != "reason" {
+				t.Fatalf("thinking fragment changed at %d", seenThinking)
+			}
+		}
+		if tool := e.NativeEvent.Tool; tool != nil && tool.Input != nil {
+			seen++
+			var data map[string]string
+			if err := json.Unmarshal(tool.Input, &data); err != nil {
+				return err
+			}
+			latest = len(data["content"])
+			if latest != seen*2 || len(tool.Content) != 1 || tool.Content[0].Text != "progress" {
+				t.Fatalf("snapshot or progress changed at %d", seen)
+			}
+			tool.Input[0] = '!'
+		}
+		return nil
+	})})
+	if result.Status != native.StatusCompleted || seen != updates || latest != 18000 || seenThinking != 6000 || seenEvents != 15003 {
+		t.Fatalf("growing input failed: status=%s fault=%v observed=%d latest=%d thinking=%d events=%d", result.Status, result.Fault, seen, latest, seenThinking, seenEvents)
+	}
+	t.Logf("observed: events=%d tool_inputs=%d thinking=%d latest_content_bytes=%d", seenEvents, seen, seenThinking, latest)
+}
+
+// TestToolSnapshotAccountingStillBoundsNewData 单条大帧、独立参数、结果、正文及事件洪泛仍受原预算约束。
+func TestToolSnapshotAccountingStillBoundsNewData(t *testing.T) {
+	for _, scenario := range []string{"single", "replaced", "different-tools", "content", "output", "events", "clear-and-regrow"} {
+		t.Run(scenario, func(t *testing.T) {
+			driver := &fakeDriver{caps: caps(), open: func(context.Context, native.OpenRequest) (NativeConnection, error) {
+				return &fakeSession{prompt: func(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
+					_ = sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted})
+					for i := 0; i < 100; i++ {
+						tool := &native.ToolEvent{ID: "write", Name: "write", Update: i > 0, Input: []byte(`"` + strings.Repeat("x", 4000) + `"`)}
+						switch scenario {
+						case "single":
+							if i > 0 {
+								tool.Input = []byte(`"` + strings.Repeat("x", 9000) + `"`)
+							}
+						case "replaced":
+							tool.Input = []byte(`"` + strings.Repeat(string(rune('a'+i%20)), 4000) + `"`)
+						case "different-tools":
+							tool.ID = fmtRevision(uint64(i + 1))
+						case "content":
+							tool.Content = []native.ContentBlock{{Type: "text", Text: strings.Repeat("x", 4000)}}
+						case "output":
+							tool.Output = tool.Input
+						case "clear-and-regrow":
+							if i%2 == 1 {
+								tool.Input = []byte("null")
+							}
+						}
+						if err := sink.Accept(ctx, native.Event{Kind: native.EventTool, Tool: tool}); err != nil {
+							return native.TurnResult{Status: native.StatusFailed}
+						}
+					}
+					return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn}
+				}}, nil
+			}}
+			runtime := started(t, driver, func(c *testConfig) { c.Grants.AllowAllTools = true })
+			input := spec()
+			input.Policies.Tools = native.ToolPolicy{Mode: native.ToolsAllowAll}
+			input.Limits = native.Limits{MaxOutputBytes: 128, MaxEventBytes: 8192, MaxTotalEventBytes: 16384, MaxEvents: 1000}
+			if scenario == "events" {
+				input.Limits.MaxEvents = 16
+			}
+			result := invokeTurn(runtime, context.Background(), input)
+			requireCode(t, result.Fault, native.FaultLimit)
+			if !result.Effects.ToolActivity {
+				t.Fatal("budget failure lost the real tool activity")
+			}
+		})
+	}
+}

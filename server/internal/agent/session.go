@@ -1884,7 +1884,7 @@ type eventSink struct {
 	options            turnOptions                   // options 是本轮观察与交互端口。
 	collector          *outputCollector              // collector 仅收集有界最终候选。
 	sequence           uint64                        // sequence 是本轮交付顺序。
-	bytes              int                           // bytes 是累计已接收事件字节。
+	bytes              int                           // bytes 累计参数快照新增字节及其他事件的完整字节。
 	events             int                           // events 是累计已接收事件数量。
 	closed             bool                          // closed 拒绝 Prompt 返回后的迟到生产。
 	effects            Effects                       // effects 保存真实输入与工具事实。
@@ -1892,6 +1892,7 @@ type eventSink struct {
 	deliveryFault      *native.Fault                 // deliveryFault 独立保存观察交付故障。
 	interactions       map[string]bool               // interactions 保存有界已回答请求身份。
 	toolNames          map[string]string             // toolNames 以有界调用身份关联已获授权的工具名称。
+	toolInputs         map[string]json.RawMessage    // toolInputs 保存本轮工具最近参数，累计保留量受已计费字节约束。
 	activeInteractions map[string]context.CancelFunc // activeInteractions 允许 finish 撤销并等待已接纳的交互。
 	interactionsDone   chan struct{}                 // interactionsDone 在当前活动交互全部退出时关闭。
 	cleanupTimeout     time.Duration                 // cleanupTimeout 限制 Prompt 返回后的交互收敛等待。
@@ -1900,7 +1901,7 @@ type eventSink struct {
 }
 
 func newSink(call *Turn, session *Session, spec executionSpec, options turnOptions, cleanupTimeout time.Duration, logger *slog.Logger) *eventSink {
-	return &eventSink{session: session, call: call, spec: spec, options: options, collector: newCollector(spec.Policies.Output, spec.Limits), interactions: make(map[string]bool), toolNames: make(map[string]string), activeInteractions: make(map[string]context.CancelFunc), cleanupTimeout: cleanupTimeout, logger: logger, promptStarted: time.Now()}
+	return &eventSink{session: session, call: call, spec: spec, options: options, collector: newCollector(spec.Policies.Output, spec.Limits), interactions: make(map[string]bool), toolNames: make(map[string]string), toolInputs: make(map[string]json.RawMessage), activeInteractions: make(map[string]context.CancelFunc), cleanupTimeout: cleanupTimeout, logger: logger, promptStarted: time.Now()}
 }
 func (s *eventSink) fail(f *native.Fault) error {
 	if s.firstFault == nil {
@@ -1970,12 +1971,28 @@ func (s *eventSink) Accept(_ context.Context, event native.Event) error {
 		event.Usage = &usage
 		size += 58
 	}
-	if size > s.spec.Limits.MaxEventBytes || s.events >= s.spec.Limits.MaxEvents || size > s.spec.Limits.MaxTotalEventBytes-s.bytes {
-		return s.fail(fault(native.FaultLimit, "event", "event delivery budget exceeded", nil))
+	// 参数是同一工具的替换快照，不是每次都新增一份业务正文。
+	// 只抵扣与紧邻上一快照相同的前缀；独立工具、改写、清空后重建仍计新增字节，预算不退款。
+	reusedInputBytes := 0
+	if event.Kind == native.EventTool && event.Tool != nil && event.Tool.Input != nil {
+		previous := s.toolInputs[event.Tool.ID]
+		for reusedInputBytes < len(previous) && reusedInputBytes < len(event.Tool.Input) && previous[reusedInputBytes] == event.Tool.Input[reusedInputBytes] {
+			reusedInputBytes++
+		}
+	}
+	chargedBytes := size - reusedInputBytes
+	if size > s.spec.Limits.MaxEventBytes {
+		return s.fail(fault(native.FaultLimit, "event", "event delivery budget exceeded: single event bytes", nil))
+	}
+	if s.events >= s.spec.Limits.MaxEvents {
+		return s.fail(fault(native.FaultLimit, "event", "event delivery budget exceeded: event count", nil))
+	}
+	if chargedBytes > s.spec.Limits.MaxTotalEventBytes-s.bytes {
+		return s.fail(fault(native.FaultLimit, "event", "event delivery budget exceeded: cumulative event bytes", nil))
 	}
 	var err error
 	s.events++
-	s.bytes += size
+	s.bytes += chargedBytes
 	switch event.Kind {
 	case native.EventPromptAccepted:
 	case native.EventAssistantMessage:
@@ -2009,6 +2026,10 @@ func (s *eventSink) Accept(_ context.Context, event native.Event) error {
 			return s.fail(fault(native.FaultProtocol, "event", "driver emitted unauthorized tool activity", nil))
 		}
 		s.toolNames[event.Tool.ID] = name
+		if event.Tool.Input != nil {
+			// 观察者取得独立事件副本，不能通过修改其参数影响下一事件的预算。
+			s.toolInputs[event.Tool.ID] = slices.Clone(event.Tool.Input)
+		}
 	case native.EventUsage:
 		if !s.effects.PromptAccepted || event.Usage == nil {
 			return s.fail(fault(native.FaultProtocol, "event", "usage event before prompt acceptance or without payload", nil))
