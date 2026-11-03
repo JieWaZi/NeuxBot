@@ -2,6 +2,8 @@
 
 状态：调研后的设计草案；不代表已实现或已完成真实平台验收。
 
+专项证据：[用量审计](../../discussions/provider-runtime-parity/usage-audit-cn.md)、[运行时与模型错误审计](../../discussions/provider-runtime-parity/runtime-models-errors-audit-cn.md)、[账号与界面审计](../../discussions/provider-runtime-parity/accounts-ui-audit-cn.md)。独立设计审查已完成，无待用户决定的实施问题。
+
 ## 目标与依据
 
 用户要求以 OpenBot 的服务商、账号、运行时、模型选择、错误和用量体验为目标，在独立工作区完成调研、规格、实现和验收；允许替换存在问题的旧设计。特别要求核实 Token、费用与账号额度的准确性。子任务统一使用 GPT‑6.1 high。
