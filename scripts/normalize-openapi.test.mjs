@@ -50,12 +50,35 @@ test("画布节点联合直接来自 DSL 生成契约且无外部引用", () => 
   const directory = mkdtempSync(path.join(tmpdir(), "ally-canvas-api-"));
   try {
     const file = path.join(directory, "spec.json");
-    writeFileSync(file, JSON.stringify({components:{schemas:{WorkflowDslCanvasManifest:{type:"object",properties:{oldInternalMeta:{}}}}}}));
-    execFileSync(process.execPath,[fileURLToPath(new URL("./normalize-openapi.mjs",import.meta.url)),file]);
-    const schemas=JSON.parse(readFileSync(file,"utf8")).components.schemas;
-    assert.equal(schemas.WorkflowDslCanvasManifest.properties.oldInternalMeta,undefined);
+    writeFileSync(
+      file,
+      JSON.stringify({
+        components: {
+          schemas: {
+            WorkflowDslCanvasManifest: {
+              type: "object",
+              properties: { oldInternalMeta: {} },
+            },
+          },
+        },
+      }),
+    );
+    execFileSync(process.execPath, [
+      fileURLToPath(new URL("./normalize-openapi.mjs", import.meta.url)),
+      file,
+    ]);
+    const schemas = JSON.parse(readFileSync(file, "utf8")).components.schemas;
+    assert.equal(
+      schemas.WorkflowDslCanvasManifest.properties.oldInternalMeta,
+      undefined,
+    );
     assert.ok(schemas.WorkflowDslCanvasNode.oneOf.length >= 9);
-    assert.equal(JSON.stringify(schemas).includes("#/$defs/"),false);
-    assert.match(JSON.stringify(schemas.WorkflowDslCanvasNode),/CanvasExecutionWorker/);
-  } finally {rmSync(directory,{recursive:true,force:true});}
+    assert.equal(JSON.stringify(schemas).includes("#/$defs/"), false);
+    assert.match(
+      JSON.stringify(schemas.WorkflowDslCanvasNode),
+      /CanvasExecutionWorker/,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

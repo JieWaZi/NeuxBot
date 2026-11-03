@@ -139,6 +139,8 @@ func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			directory := t.TempDir()
+			// 业务范围不包含应用数据库与文件快照，避免各步骤重复采集测试宿主自身。
+			businessDirectory := t.TempDir()
 			runtime := &releaseFixtureRuntime{fixtureRuntime: &fixtureRuntime{calls: map[string]int{}}, releaseB: make(chan struct{}), emptyBlocking: emptyBlocking}
 			s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
 			runtime.service = s
@@ -146,7 +148,7 @@ func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "full-release", Title: "多环境预审", CreationWakerID: "fixture-waker", ScopeBinding: models.WorkflowScopeBinding{WorkingDirectory: directory}})
+			definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "full-release", Title: "多环境预审", CreationWakerID: "fixture-waker", ScopeBinding: models.WorkflowScopeBinding{WorkingDirectory: businessDirectory}})
 			if err != nil {
 				t.Fatal(err)
 			}

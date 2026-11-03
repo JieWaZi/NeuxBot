@@ -418,6 +418,8 @@ it("用户答案提交失败时保留弹层和答案供重试", async () => {
 
 it("默认答案不自动提交；业务跳过与操作许可分别提交真实契约", async () => {
   const user = userEvent.setup();
+  const operationRequests = snapshot.operationRequests;
+  snapshot.operationRequests = [];
   renderRun();
   await screen.findByText("是否批准客户 A 的风险？", undefined, {
     timeout: 5000,
@@ -432,7 +434,12 @@ it("默认答案不自动提交；业务跳过与操作许可分别提交真实�
     requestId: expect.any(String),
   });
   expect(permissions).toEqual([]);
-  await user.click(screen.getByRole("button", { name: "拒绝此次操作" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  snapshot = { ...snapshot, operationRequests };
+  act(() => subscription.refresh());
+  await user.click(await screen.findByRole("button", { name: "拒绝此次操作" }));
   await waitFor(() => expect(permissions).toHaveLength(1));
   expect(permissions[0]).toMatchObject({
     allowed: false,
