@@ -55,7 +55,7 @@
 
 ### 后端交付门槛（消费接口，不假称当前已有）
 
-1. 模型计划提供 `RuntimeModelOption.configurationKnown/fastSupported/defaultFast`、执行与默认配置 `fast/defaultFast`，账号 native models 返回 `options/accountId/runtimeId/detectedAt`。保留 `false | true | undefined`；`undefined` 表示继承原生/默认，不等于关闭。Query identity 必须含 runtime、account、安装/配置修订和认证身份代次；普通 token 轮换不变。
+1. 模型计划提供 `RuntimeModelOption.configurationKnown/fastSupported/defaultFast`、执行与默认配置 `fast/defaultFast`，账号 native models 返回 `options/accountId/runtimeId/detectedAt`。保留 `false | true | undefined`；`undefined` 表示新选择的继承意图，不等于关闭；后端按模型计划在最终主体模型明确支持时解析默认。切不支持模型清undefined，不能写false代替清除或从Runtime defaultFast再填回候选；未知仍禁用应用。Query identity 必须含 runtime、account、安装/配置修订和认证身份代次；普通 token 轮换不变。
 2. 安装计划提供 `GET /runtimes/:runtimeId/install-offers`、`POST .../install`、`GET .../install-operation`、`POST .../install-cancel`、`POST .../restart`。UI 只消费 `managed/external/unsupported/blocked` disposition 和 operation phase，不用 `RefreshOne` 冒充更新/重启。若最终 DTO 未提供实际 maintenance action 能力，先在安装任务补齐窄字段再接按钮，不由页面猜版本/平台。
 3. 额度计划提供 `GET /runtimes/:runtimeId/quota?accountId=...`、`POST .../quota/refresh`：主体、status/reason、nullable snapshot、observedAt、stale。该计划只读，没有消耗 credit 的 reset API；本计划的 reset banner 指真实窗口重置时间，仅展示真实额度重置时间，不实现重置/兑换额度动作。
 4. 连接状态复用已探测 Runtime 的 `state/auth/diagnostics` 与匹配默认账号；`hasCredential` 只代表保存了凭据。若需要将非默认受管账号标为已连接，账号领域须先提供该主体的已验证 `runtimeId/accountId/state/observedAt/stale` 窄摘要，沿既有查询返回，不新建 provider 状态库。未有该证据的账号显示已保存/待验证，不以一次模型列表或另一个账号探测补证；无凭据也不能推导系统原生账号未连接。旧验证证据必须显示stale，不隐藏时效。
@@ -120,7 +120,7 @@
 - Produces: `ExecutionProviderModelControl({value,candidate,onCandidateChange,catalog,runtimes,accounts,disabled?,onCommit?,onOpenProvider?})`。`value/candidate`为上述draft，`catalog:ExecutionSelectionState`由外层对候选调用Task 1 Hook得到；`onCandidateChange(next:ExecutionSelectionDraft)`只更新本地候选，`onCommit(next:ExecutionSelectionDraft)`每次确认只调用一次。Hook不得在事件回调中调用。
 - 外层只持本次候选、组件只持open/search；打开复制value到候选，关闭丢弃未提交候选，禁止复制目录或账号事实。provider/account选择只切候选，模型/effort/Fast更新候选，底部单一“应用”原子提交后关闭，Esc/点击外部不提交；没有onCommit的只读调用隐藏可改Fast/应用操作。
 
-- [ ] **Step 1: RED。** 打开→A切B→选model/effort/Fast→应用只一次完整onCommit；Esc/外部关闭零调用；B空强度清旧值、B不支持Fast清候选；已支持Fast关闭提交false，切不支持模型清除旧true；unknown禁用应用且可刷新；只读调用无onCommit时无可改Fast；搜索中文输入法Enter不误提交。
+- [ ] **Step 1: RED。** 打开→A切B→选model/effort/Fast→应用只一次完整onCommit；Esc/外部关闭零调用；B空强度清旧值、B不支持Fast清候选；已支持Fast关闭提交false，切不支持模型清除旧true，Runtime默认true也不使候选回生true；unknown禁用应用且可刷新；只读调用无onCommit时无可改Fast；搜索中文输入法Enter不误提交。
 - [ ] **Step 2: 运行失败测试。** `pnpm --dir packages/frontend test src/shared/lib/execution-selection-draft.test.ts src/shared/ui/execution-provider-model-control.test.tsx`。
 - [ ] **Step 3: 实现单Popover。** `PopoverContent width="wide" variant="selection"`限制视口；provider/account rail独立滚动、model区搜索与列表、底部effort/Fast共享层次；窄浮层以自身容器重排为上方rail与下方模型，控件不缩字体/命中区。搜索只搜当前主体模型，空/加载/错误独立；Radix/RadioGroup/Select/Switch复用现件，不复制通用选择器。焦点打开到搜索/当前项，方向键/Tab可遍历，Esc还原触发器；容器自身无整块focus框。
 - [ ] **Step 4: 同命令至PASS，加 `src/shared/ui/execution-model-control.test.tsx`。** 检查键盘选项、焦点恢复与控件可访问名称，不测试排版实现细节。
@@ -135,7 +135,7 @@
 - Consumes: Task 4 `onCommit(next)`→现 `updateExecutionSelection(patch)`。`ChatExecutionSelectionPatch`增加 `fast?:boolean`，整组runtime/account/model/reasoning/fast一次传入；permission沿既有控件保持。
 - Produces: 普通聊天草稿 `ChatViewState.fast?:boolean`、团队 `TeamMemberExecutionConfig.fast?:boolean`；提交/排队/重试参数采用模型计划已生成fast合同，不用 `||` 覆盖false。当前执行摘要继续读冻结last/accepted值，下一轮候选只写草稿。合并patch用`Object.hasOwn(patch, "fast")`区分缺字段与显式清继承值，不用`?? current.fast`把旧true留住；完整候选始终包含fast键，跨账号/不支持模型切换时可清成undefined。
 
-- [ ] **Step 1: RED。** 普通新聊天提交完整组合且false不丢；旧聊天切runtime/account仍走现sessionSwitch确认，一次应用无错配中间态；取消sessionSwitch保持原值；团队只更新指定成员一次；切聊天/成员后不串draft；设置改默认不重写已接纳执行。
+- [ ] **Step 1: RED。** 普通新聊天提交完整组合且false不丢；旧聊天切runtime/account仍走现sessionSwitch确认，一次应用无错配中间态；取消sessionSwitch保持原值；团队只更新指定成员一次；切聊天/成员后不串draft；设置改默认不重写已接纳执行；A true切B不支持后，完整候选清undefined，序列化省略fast且model=B，后端Start按模型计划可接纳；历史重试不读取当前draft的Fast。
 - [ ] **Step 2: 运行失败测试。** `pnpm --dir packages/frontend test src/modules/chat/components/chat-composer-controls.test.tsx src/modules/chat/model/use-chat-view-state.test.tsx src/modules/chat/runtime/chat-composer.integration.test.tsx`，需要团队入口时定向加入 `src/app/pages/team-thread-page.integration.test.tsx`。
 - [ ] **Step 3: 用新控件替换composer两独立入口。** `useChatComposerControls`公开单一组合控件；保留`ExecutionRuntimeControl/ExecutionModelControl`其他真实调用者，不强迫不在范围内的配置表单迁移。移除旧composer按账号/模型分别patch的竞争路径，外层候选目录查询只有一个owner。保持ChatEffortEffects读已选模型真实选项，禁止未知能力触发最大强度效果。
 - [ ] **Step 4: 同命令至PASS。** 若触及排队/重试/fork序列化，运行对应既有定向用例，断言false/nil与账号身份实际交付，不只断言控件状态。

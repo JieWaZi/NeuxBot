@@ -17,7 +17,7 @@ NeuxBot 与 acp-go 均使用独立工作区的 `codex/provider-runtime-parity` �
 | 模型、Fast、账号目录和结构错误       | 计划已审查，未实施                  | [模型能力计划](../../superpowers/plans/2026-11-03-provider-model-capabilities.md)                  |
 | 账号额度与重置时间                   | 计划已审查，未实施                  | [额度计划](../../superpowers/plans/2026-11-03-provider-account-quota.md)                           |
 | 受管安装、更新与重启                 | 计划已审查，未实施                  | [安装计划](../../superpowers/plans/2026-11-03-managed-provider-runtimes.md)                        |
-| 耐久统计和费用估算                   | 计划待审查，未实施           | [统计计划](../../superpowers/plans/2026-11-03-provider-usage-analytics.md)                                                                    |
+| 耐久统计和费用估算                   | 计划已审查，未实施           | [统计计划](../../superpowers/plans/2026-11-03-provider-usage-analytics.md)                                                                    |
 | 服务商详情、模型选择、统计与配额界面 | 计划已审查，未实施                  | [界面计划](../../superpowers/plans/2026-11-03-provider-ui.md)与[界面审计](accounts-ui-audit-cn.md) |
 | 集成及真实验收                       | 未完成                              | 后续逐provider/平台记录                                                                            |
 

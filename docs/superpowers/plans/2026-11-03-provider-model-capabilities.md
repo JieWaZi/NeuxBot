@@ -31,7 +31,7 @@
 
 ## 审查后固定的边界
 
-- 新执行接纳时解析Runtime默认Fast并冻结；旧历史nil保持当时原生默认，不按今天的默认回填。
+- 新选择仅在尚未冻结、Fast=nil且最终主体与模型明确支持Fast时继承Runtime defaultFast并冻结；不支持或未知保留nil。显式true/false一律按当前模型严格校验。已冻结值与旧历史nil不再读取当前默认。
 - 原生确有serviceTier回执才通过 `acp-go/effective-service-tier` metadata传递；新增acpmeta写入/读取helper，返回value与known。没有原生回执保持未知，不能用desired fast推算。
 - 目录/额度的认证身份代次在显式登录或替换认证配置时变化，自动token刷新不变；使用账号领域明确字段或既有等价事实，禁止用token哈希和普通UpdatedAt。
 
@@ -43,6 +43,7 @@
 
 - Produces: Codex 和 Claude 的逐模型配置目录通过已存在的 `WithModelConfigOptions` 声明 `fast` select，值为 `on`/`off`；仅模型确实支持时提供。Codex在适配器内部保存真实 service tier ID，读取新 `serviceTiers`、兼容原生旧 `additionalSpeedTiers`，名称不冒充ID。
 - Produces: Codex新建/恢复/每轮原生请求准确传递当前tier；`off`明确发送原生清除值，`nil`不强行覆盖原生默认。需要显式JSON null时使用非生成封装，或修生成器表达可空语义，不手改生成文件。
+- Produces: `acpmeta`为 `acp-go/effective-service-tier` 提供写入/读取helper，返回value与known；只有原生确有serviceTier回执才写入，没有回执保持未知，不能由desired fast推算。
 - Consumes/produces: 保留现有 `errorKind`，Kimi原生402映射billing_error；Pi只在原生有结构字段时映射，未知文本不强归类。session missing必须携带resource与resourceId。
 - Produces: `acpmeta`增加命名空间`acp-go/error-recovery`的typed helper，字段`ResetAtUnixMS *int64`、`RetryAfterMS *int64`、`Source string`；只接受有界非负整数。原生适配器仅在实际结构化字段有证据时写入，不解析stderr推导时间，不支持的原生来源保留缺失；helper的fixture不冒充真实provider支持。
 
@@ -61,9 +62,10 @@
 - Produces: `ModelOption.ConfigurationKnown bool`、`ModelOption.FastSupported bool`、`ModelOption.DefaultFast *bool`，从模型自己的目录读取；对应 RuntimeModelOption JSON为 `configurationKnown`、`fastSupported`、`defaultFast`。
 - Produces: `Fast *bool` 沿 Runtime默认值、执行选择、SessionPlan的Profile、native.Profile及冻结Execution/Chat选择传递；JSON `fast`，默认设置 `defaultFast`。`native.Configuration.ActualFast *bool` 和现有 InvocationFacts.ServiceTier 反映实际原生回执（tier不能由宿主猜值）。
 - Consumes: ACP `fast` select on/off；先设置模型，再强度，再Fast，并在最终回执重新核对所有请求值。未知/不支持的显式Fast请求返回Unsupported。
+- 默认解析复用 `Resolved/ConfigurationResolved` 边界，在最终账号和模型确定后归一化；普通Start与ResolveConfiguration共享同一语义。Runtime默认只对目标主体模型生效，不以系统默认账号目录替代受管账号能力。失败重试、fork、历史恢复和工作流冻结配置沿用快照，审计retry.go的历史来源标记，防止旧nil误入默认解析。模型目录DefaultFast是原生事实，不作为另一份宿主默认；native只验证已解析选择，不重新读取Runtime默认。
 - 兼容摘要、chat续接比较、retry/fork与工作流/自动任务共用的配置序列化全部保留Fast三态。没有显式Fast的旧数据仍按原生默认处理。
 
-- [ ] **Step 1: RED覆盖目录三态和真实配置。** A有high、B明确空、C未知，B/C不借用A；on/off/nil假原生请求及回执不同；后续setter回退模型/强度失败；Fast变化不能热复用旧配置；冻结后更改默认不影响执行。
+- [ ] **Step 1: RED覆盖目录三态和真实配置。** A有high、B明确空、C未知，B/C不借用A；on/off/nil假原生请求及回执不同；后续setter回退模型/强度失败；Fast变化不能热复用旧配置；冻结后更改默认不影响执行。Runtime默认true/false与目标A支持/B不支持/C未知的nil/true/false矩阵：仅A的未冻结nil继承，B/C的nil保持nil、显式值拒绝；Runtime默认nil不复制模型DefaultFast。普通Start验证Execution、execution.created、SessionPlan三者一致；旧JSON无fast及冻结nil/false经retry/fork/工作流不回填，账号目录不串用。
 - [ ] **Step 2: 运行对应agent/native/runtime_options/execution测试正则并记录失败。**
 - [ ] **Step 3: 实现字段与映射。** 追踪每个现有Reasoning传播点，按职责加入Fast，不能漏retry/fork；未知与空保留ConfigurationKnown，删除按len回退到全局强度的逻辑。
 - [ ] **Step 4: 生成契约并定向验证。** gofmt；运行受影响Go包的相应用例，`pnpm api:generate`；检查生成文件无非预期契约漂移。依赖使用两个worktree的临时Go workspace。
