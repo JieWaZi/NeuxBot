@@ -58,6 +58,14 @@ Session 同步交付全部原始事件，不增设计时合并队列，也不改
 
 Execution 的[消息持久化](../../services/execution/runtime_events.go)在有界批次内仅保留各工具最新参数，并按原交付顺序保存正文和进度；参数保留在其原事件的身份与状态上下文中。实时投影与耐久重放必须得到相同的消息视图。
 
+## 用量观察与最终交付
+
+`native.Usage.Reported` 保留 acp-go 当前 Prompt 的累计消费快照，消费与上下文独立替换，通知与最终回执不相加。缺少最终回执、原生失败、取消或交付失败时仍返回此前有效观察；无元数据的旧数字不伪造字段缺失性或完整性。来源、分类及 Provider 支持以[用量快照](../../../docs/architecture/runtimes-and-accounts-cn.md#用量快照)为准。
+
+Session 对流式事件与最终观察者交付均深复制 Usage 及其可空计数，观察者不能改写权威结果。最终交付在当前 Turn 释放前使用独立五秒期限，继续受同一个 sink 的单事件、累计字节与事件数预算限制；超限保留结果中的消费和原停止状态，将交付故障单独记录，不重放 Prompt。
+
+产品 `UsageData` 保留既有 turn/context 数字与新快照声明；Execution sink 独立覆盖分量并随唯一正常收尾归档。未知历史、失败和取消回放及继承身份的本地验证见[用量基础验收](../../../docs/discussions/provider-runtime-parity/usage-foundation-acceptance-cn.md)。全局去重、统计和费用不属于 Agent 的快照职责。
+
 ## Context、授权与关闭
 
 取得准备句柄后，调用方立即登记 Close。冷资源取得受准备 Context 取消约束；取消不能遗弃仍可能返回的资源，迟到部分结果仍经 Bind 交还 Session。成功冷 Bind 和热准备返回前解除短接纳 Context 的取消转发，Run 使用执行 Context；接纳请求结束不能取消已经交给后台的执行。未运行冷准备回收，未运行热准备保留原消费者。

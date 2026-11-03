@@ -2,11 +2,13 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -124,5 +126,75 @@ func TestCommittedInteractionResolutionSurvivesRequestCancellation(t *testing.T)
 				t.Fatalf("committed resolution left stale user action: %+v", indexed)
 			}
 		})
+	}
+}
+
+// TestUsageFoundationForkPreservesOriginWithoutNewConsumption 验证带用量的父回合只继承身份和展示，不创建子消费事实。
+func TestUsageFoundationForkPreservesOriginWithoutNewConsumption(t *testing.T) {
+	manager, parent := forkFixture(t)
+	root, err := manager.storage.ChatWorkspace(parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := manager.logStore.Append(parent, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "spent", Data: marshalData(eventlog.ExecutionCreatedData{RuntimeID: "custom-codex", Model: "model"})},
+		{Type: constants.ChatEventTypeExecutionStarted, InvocationID: "spent-invocation"},
+		{Type: constants.ChatEventTypeInvocationFinished, Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "custom-codex", WorkingDirectory: root, SessionOutputID: "native-parent", ForkMode: "turn", ForkPosition: "turn-spent"})},
+		{Type: constants.ChatEventTypeExecutionCompleted, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted, Usage: json.RawMessage(`{"turn":{"input_tokens":250,"output_tokens":30,"known_fields":["input_tokens","output_tokens"],"complete":false,"source":"fixture.requests","coverage":"observed_requests"}}`)})},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	parentRecords, err := manager.ReadExecutionRecords(parent, "spent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parentMessages, err := messageview.ReplayMessages(parentRecords)
+	if err != nil || len(parentMessages) != 1 || parentMessages[0].RunMetrics == nil || parentMessages[0].RunMetrics.InputTokens != 250 {
+		t.Fatalf("parent usage fixture missing: %+v error=%v", parentMessages, err)
+	}
+	child, err := manager.ForkChat(ctx, ForkInput{ChatID: parent, ExecutionID: "spent", ClientRequestID: "usage-origin"}, NativeFork{Execute: func(_ context.Context, input NativeForkInput) (string, error) {
+		if input.Invocation.ForkPosition != "turn-spent" {
+			t.Fatalf("wrong fork boundary: %+v", input.Invocation)
+		}
+		return "native-child", nil
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	records, err := manager.logStore.ReadAll(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, record := range records {
+		switch record.Type {
+		case constants.ChatEventTypeExecutionCreated, constants.ChatEventTypeExecutionStarted, constants.ChatEventTypeInvocationFinished, constants.ChatEventTypeExecutionCompleted, constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
+			t.Fatalf("fork created execution or consumption fact: %+v", record)
+		case constants.ChatEventTypeMessageInherited:
+			var inherited messageview.InheritedMessage
+			if err := json.Unmarshal(record.Data, &inherited); err != nil {
+				t.Fatal(err)
+			}
+			if inherited.SourceMessageID != "spent" {
+				continue
+			}
+			found = true
+			if !inherited.Inherited || inherited.SourceChatID != parent || inherited.ID == "spent" || inherited.RunMetrics != nil {
+				t.Fatalf("inherited usage or origin corrupted: %+v", inherited)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("source message identity missing")
+	}
+	page, err := manager.ReadMessageHistory(ctx, child, 0, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range page.Resources {
+		if !message.Inherited || message.RunMetrics != nil {
+			t.Fatalf("public inherited history gained new consumption: %+v", message)
+		}
 	}
 }

@@ -1471,3 +1471,50 @@ func TestUsageFoundationArchiveMergesComponents(t *testing.T) {
 		})
 	}
 }
+
+// TestUsageFoundationRepeatedFinalSnapshotArchivesOnce 验证同一调用重复观察最终快照不相加，中间快照不落日志。
+func TestUsageFoundationRepeatedFinalSnapshotArchivesOnce(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	chatID := "acacacacacacacacacacacacacacacac"
+	if _, err = store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, _ := newRuntimeEventSinkForTest(store, chatID)
+	partial := `{"turn":{"input_tokens":100,"output_tokens":10,"known_fields":["input_tokens","output_tokens"],"complete":false,"source":"fixture.partial","coverage":"observed_requests"}}`
+	final := `{"turn":{"input_tokens":250,"output_tokens":30,"known_fields":["input_tokens","output_tokens"],"complete":true,"source":"fixture.final","coverage":"native_turn"}}`
+	for _, data := range []string{partial, final, final} {
+		if err = sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeUsage, Data: json.RawMessage(data)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	before, err := store.ReadAll(chatID)
+	if err != nil || len(before) != 3 {
+		t.Fatalf("intermediate usage persisted: records=%d error=%v", len(before), err)
+	}
+	// 合法执行路径只提交一次业务终态；重复最终观察不是另一次执行结束。
+	if _, err = store.Append(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "execution-1", Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted, Usage: sink.Usage()})}}); err != nil {
+		t.Fatal(err)
+	}
+	records, err := store.ReadAll(chatID)
+	if err != nil || len(records) != 4 {
+		t.Fatalf("terminal archive count: records=%d error=%v", len(records), err)
+	}
+	var finished eventlog.ExecutionFinishedData
+	if err = json.Unmarshal(records[3].Data, &finished); err != nil {
+		t.Fatal(err)
+	}
+	var archived agentapi.UsageData
+	if err = json.Unmarshal(finished.Usage, &archived); err != nil {
+		t.Fatal(err)
+	}
+	if archived.Turn == nil || archived.Turn.InputTokens != 250 || archived.Turn.OutputTokens != 30 || archived.Turn.Complete == nil || !*archived.Turn.Complete || archived.Turn.Source != "fixture.final" {
+		t.Fatalf("final snapshot replaced incorrectly: %s", finished.Usage)
+	}
+	messages, err := messageview.ReplayMessages(records)
+	if err != nil || len(messages) != 1 || messages[0].RunMetrics == nil || messages[0].RunMetrics.InputTokens != 250 || messages[0].RunMetrics.OutputTokens != 30 {
+		t.Fatalf("replay duplicated consumption: %+v error=%v", messages, err)
+	}
+}

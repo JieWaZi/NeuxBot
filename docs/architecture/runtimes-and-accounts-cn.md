@@ -66,6 +66,27 @@ Codex 原生令牌刷新通过随机能力路径的回环端点交给宿主。�
 
 模型 ID、显示名称、上下文与思考菜单分别保存。菜单来自所选账号和模型的真实能力；不把其他模型的选项当作当前能力。切换账号后重新校验模型、权限和原生会话可续接条件。
 
+## 用量快照
+
+原生消费与上下文分别保存。`acp-go/turn-usage` 元数据携带当前 Prompt 的累计消费快照：五类可空计数区分未知和明确零，`source` 保留原生来源，`coverage` 声明覆盖范围，`complete` 声明是否覆盖产品整轮消费，`model` 只取原生明确报告。`complete=true` 不表示五类字段均已报告；推理是输出子集，不再加入输出。消费专用通知的 `contextKnown=false`，其标准 Used/Size 占位值不构成上下文证据。
+
+| Provider | 快照来源与覆盖范围 | 完整性边界 |
+| --- | --- | --- |
+| Codex | 线程累计差分，`native_turn`；恢复首轮只归属首次 last 及后续已知增量 | 可靠轮前基线、成功且未发生异常回退时才完整；字段回退保留高水位并失效后续检查点 |
+| Claude | assistant 消息快照和 result 结算，`main_loop`；结果替换同批消息，后续 steering 批次累计 | 始终部分；未证明包含 subagent 消费 |
+| Pi | 已观察请求累计，`observed_requests` | 始终部分；相同数值不能证明同一请求，不按值去重 |
+| Kimi | 当前 Prompt offset 内 wire 可用时为唯一权威，否则保留 native 回执；wire 为 `observed_requests` | 始终部分；坏尾行或扫描失败保留已解析消费 |
+| Cursor | 当前 stop generation 的 hook 消费，`observed_requests` | 始终部分；缺缓存分类时不推导已知非缓存输入 |
+| 其他已注册 Runtime | 沿用既有标准 ACP 用量和上下文 | 本阶段没有新增上述来源、字段缺失性与完整性证据；不能推定为零或完整 |
+
+上述支持表示适配器与本地 fixture 已实现的合同，不代表每个已安装 CLI 版本、真实模型或平台已经验收。Codex 没有显式 counter epoch 的回退仍可能保守低计。标准 ACP 必填数字无法表达未知，读取新快照时应以可空分类为准；无元数据的旧用量不补来源或完整性。元数据若经默认 JSON 浮点解码，计数超过 `2^53-1` 即拒绝；直接 `int64` 或 `json.Number` 才能保留更大且合法的精确整数。
+
+`native.Connection` 分别替换消费和上下文，不累加通知与最终回执；无效最终用量不能抹除此前有效观察。失败、取消与交付故障保留已有消费及原终态。Session 深复制快照后交付，流式与最终交付共享同一事件预算，最终交付受独立期限保护。
+
+产品事件在既有数字之外保存 `known_fields`、`complete`、`source`、`coverage`、`model`。Execution sink 只在内存替换最后 turn/context，合法生命周期收尾时将原始 JSON 随终态归档；历史回放保持数字，旧日志不回填确定性。既有消息指标仍以数字投影为主。fork 继承消息清除运行指标，权威继承快照保留直接来源 Chat/消息身份，不创建新的执行消费事实。这里没有全局调用回执聚合或费用计算，也不承诺任意二次调用 `CommitTerminal` 的物理日志去重。
+
+本地证据及依赖尚未发布的边界见[用量基础验收](../discussions/provider-runtime-parity/usage-foundation-acceptance-cn.md)。
+
 ## 权限与交互
 
 产品三级权限由 Runtime 映射到原生策略。Qoder 与 Qoder CN 通过官方 `--acp` stdio 入口接入，按会话实际声明的模式提供默认、自动审批与完全访问；旧版未声明自动审批时不展示，不提供只读模式。自动审批仍受模型风险审查、原生规则和能力限制；完全访问也不能代替用户回答业务问题。
