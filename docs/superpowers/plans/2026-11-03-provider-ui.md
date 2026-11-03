@@ -162,16 +162,22 @@
 
 **Files:** Create `packages/frontend/src/modules/usage/index.ts`、`api/usage-queries.ts`、`.test.tsx`、`model/usage-filters.ts`、`.test.ts`、`pages/usage-page.tsx`、`.test.tsx`、`components/usage-report.tsx`、`.test.tsx`；Create `shared/i18n/usage.ts`；Modify `shared/i18n/index.ts`、`modules/settings/settings-navigation.ts`、`pages/settings-scene.tsx`、`app/layout/app-shell.tsx`、`app/scenes/settings-route.ts`及直接受影响tests。
 
+消息展示同任务修改 `packages/frontend/src/modules/chat/runtime/chat-projection.ts`、`chat-projection.test.ts`、`components/chat-continuation.ts`、`chat-continuation.test.ts`、`components/chat-thread.tsx`、`chat-thread.test.tsx`；仅接线既有指标/Tooltip，不创建新统计源。
+
 **Interfaces:**
 
 - Consumes: 统计子项目 summary/groups 生成合同，见前述门槛；waker筛选通过模块公开 `listWakersOptions` 在app装配传入，不从usage直接导入waker内部。
 - Produces: `/settings/usage?from=<ms>&to=<ms>&timezone=<IANA>&waker=<id>&groupBy=day|model|waker&metric=cost|tokens`；重复waker参数表示多选。`parseUsageFilters(search,now)`、`usageFiltersSearch(filters)`纯函数，默认最近30个本地日（含今日，to为次日本地零点）；服务端负责按timezone分桶，前端不得用24h毫秒假设替代DST日期边界。
 - Produces: `UsagePage({search,onSearchChange,wakerOptions})`；app从`modules/usage`公开入口装配为SettingsScene的`usageContent`，沿IM现模式注入，settings不跨模块内部导入。
 - Produces: `usageSummaryOptions(filters)`、`usageGroupsOptions({...filters,snapshot,groupBy,limit:50,cursor?})`包装最终生成Options；`UsageReport({summary,groups,metric,onMetricChange,onLoadMore})`只读后端事实。
+- Consumes: [统计计划Task 6](2026-11-03-provider-usage-analytics.md)生成的`MessageRunMetrics.tokenUsage`，含nullable tokens/knownTokens、complete、sources/coverages、missingUsageInvocations/incompleteUsageInvocations与两个完整total/已知total；映射到前端既有RunMetrics时保留全部缺失语义，旧五个数字只供兼容，不能充当已知/完整证据。消息投影来自同execution规范Invocation receipts，不再将execution最后快照视为全部；Context仍独立取最近有效快照。
+- Produces: `chat-continuation`按ExecutionID和消息修订先替换重复/迟到快照，再合并不同execution的TokenUsage；完整分量只有所有应计贡献已知且覆盖完整时才给完整和，有未知时只给已知小计和partial。它只呈现后端事实，不写回receipt，也不作为全局summary来源；同Invocation的临时观察与规范终态不能重复相加。
 
 - [ ] **Step 1: RED。** range/时区/waker/groupBy进URL及key；同日期不同timezone不能共cache；费用与Token切换不扫描聊天；fixture混USD/CNY、API估算/原生金额、未知与已知0、partial、missing/unpriced/incomplete计数均按合同展示；reasoning不加到output；API费用估算不能称订阅账单。summary返回snapshot后才查询groups和分页；筛选变化清空snapshot/cursor，分组变化清空cursor，snapshot过期重新获取summary；迟到旧snapshot不能覆盖新筛选。分页后不重算准确总计，后端summary.metrics保持权威。
-- [ ] **Step 2: 运行失败测试。** `pnpm --dir packages/frontend test src/modules/usage/model/usage-filters.test.ts src/modules/usage/api/usage-queries.test.tsx src/modules/usage/pages/usage-page.test.tsx src/modules/usage/components/usage-report.test.tsx`。
+- [ ] **Step 1a: 消息指标RED。** chat-projection实时/历史fixture映射保留tokenUsage元数据及真实0；Tooltip显示已知0，不用truthy隐藏。续接完整100+未知→完整值unknown、已知小计100且partial；0+0→已知0；两段未知→unknown；非零complete=false仍部分，legacy完整性未声明。两个Invocation合计与后端fixture一致，重复消息修订/同execution续接替换不重加；reasoning是output子集不另加总，Context取末段有效快照且不相加。
+- [ ] **Step 2: 运行失败测试。** `pnpm --dir packages/frontend test src/modules/usage/model/usage-filters.test.ts src/modules/usage/api/usage-queries.test.tsx src/modules/usage/pages/usage-page.test.tsx src/modules/usage/components/usage-report.test.tsx`；消息行为单独运行 `pnpm --dir packages/frontend test src/modules/chat/runtime/chat-projection.test.ts src/modules/chat/components/chat-continuation.test.ts src/modules/chat/components/chat-thread.test.tsx`，不运行全量。
 - [ ] **Step 3: 实现页面。** ResourcePageToolbar组合DateRangePicker、SearchableMultiSelect伙伴、groupBy/metric共享选择；默认费用视图。展示按currency+valuation区分的金额小计/来源、每日走势、模型/伙伴/日期明细与可展开Token分量。走势用原生SVG+语义Token，不引入图表库；提供同值可访问表格，缺失日期/未知金额不画0消费。只对已知金额格式化，不用浮点把不同来源decimal总和重新计费。未知total展示“已知小计”和不完整含义；reasoning标输出子集；coverage说明历史范围/索引partial及未定价，不追加重复副标签。
+- [ ] **Step 3a: 接通消息投影、续接与Tooltip。** chat-projection原样映射生成的tokenUsage，迟到版本遵守已有消息修订；chat-continuation移除将未知经`?? 0`变成普通完整数字的合并，按ExecutionID/修订幂等派生完整和与已知小计。chat-thread的RunMetricsTooltip以presence显示真实0、以一个必要覆盖说明表达partial/source，并展示两个规范total或其已知小计，未知历史不升级完整；不堆叠重复副标签、不从Context推消费。前后端使用相同语义fixture，不增加第三份执行/统计事实。
 - [ ] **Step 4: 同命令至PASS。** 模拟服务端时区桶与迟到旧筛选响应，验证新筛选不展示旧分组；首次Skeleton、后台错误保留数据、空结果与无采集覆盖不同。消费统计项目注册的同一全局WS逻辑topic `usage`、resource `{kind:"global"}`、事件 `usage.changed`；由`useQueryEvents`精确失效summary/groups，隐藏只标stale，恢复一次对账，不永久polling。端与服务端topic白名单由统计项目同步，页面不自行绕开白名单。
 - [ ] **Step 5: 自审提交。** Commit `feat: add usage costs and completeness report`。
 

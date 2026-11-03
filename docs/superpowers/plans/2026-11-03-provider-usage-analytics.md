@@ -57,7 +57,7 @@
 **Interfaces:**
 
 - `usage.Attribution{Kind,ChatID,ExecutionID,WakerID,TaskID}`；Kind支持chat、knowledge_generation、knowledge_maintenance、workflow_output、other，没有伙伴证据时WakerID为空。
-- `usage.Receipt`：ID/SchemaVersion/Attribution/InvocationID；RuntimeID/BaseRuntimeID/RuntimeVersion/AccountID/BillingProviderID；SelectedModel/ActualModel/ServiceTier；StartedAt/FinishedAt；Outcome/PromptAccepted/OutcomeUnknown；`Tokens *Tokens`、`Costs []Cost`、`Estimate *Estimate`。新ID直接使用32位InvocationID，不再生成第二个消费ID。
+- `usage.Receipt`：ID/SchemaVersion/Attribution/InvocationID；RuntimeID/BaseRuntimeID/RuntimeVersion/AccountID/BillingProviderID；SelectedModel/ActualModel/ServiceTier；StartedAt/FinishedAt；Outcome/PromptAccepted/OutcomeUnknown；`Tokens *Tokens`、`Costs []Cost`、`Estimate *Estimate`。InvocationID保留现有`sessionID/revision`原值；ID使用既有`(requestidempotency.Identity{ID: InvocationID}).ResourceID("usage-receipt")`确定性生成32位存储键。所有写入/归档/重建复用此键，不迁移Agent调用身份；dispatch存储键使用独立usage-dispatch命名空间。
 - `Tokens`的Input/CacheRead/CacheWrite/Output/Reasoning均为`*int64`，另有Source/Coverage/Model和`Complete *bool`；Context不在此类型。
 - `Cost`包含Amount/Currency/Source/Origin/Valuation/Scope/CounterID/ObservationID/Coverage/Model/PriceVersion及`Complete *bool`；`Estimate`含`Costs []Cost`、CatalogVersion、CatalogCheckedAt、PriceSources、UnpricedRequests、Reasons。任务1仅定义合同，不计算金额。
 - `ValidateReceipt(Receipt) error`、`CanonicalReceiptHash(Receipt) (string,error)`；`Dispatch`仅含InvocationID、Attribution、冻结runtime/account/model/provider及StartedAt，不保存任务状态机。
@@ -84,10 +84,10 @@
 - Recorder实现Begin/Finish/Archive，与Journal相同入参；Chat Config注入`ArchiveChats(context.Context,[]string) error`回调。此阶段不依赖索引；Task 5再接提交后投影。
 
 - [ ] **Step 1: 写RED。** `TestInvocationReceiptsAreNotExecutionSnapshot`：同execution两个调用100、150保留两条，兼容Usage不再加；`TestStandaloneUsageFailureDoesNotReplayPrompt`：Begin失败不Prompt、Finish失败Prompt仅一次、先释放账号资源再补写；`TestUsageSurvivesTerminalFailure`：取消/失败/Flush失败已有消费、隐藏handoff也归档且无用户消息。打开失败无消费不造零receipt；未知接纳单列unknown。
-- [ ] **Step 2: 写耐久/删除RED。** 调用JSONL写失败→同ID/hash恢复归档；两源都有时幂等、异hash拒绝；两源皆失败保留同Session pending引用，重试只写日志。进程内补写成功与崩溃后只能indeterminate分别测试。删除成功/DB失败/Stage回滚/恢复/伙伴及团队删除均先归档再Stage；Archive失败源文件保持。fork继承不生receipt，retry新Invocation正常生receipt。
+- [ ] **Step 2: 写耐久/删除RED。** 调用JSONL写失败→同ID/hash恢复归档；两源都有时幂等、异hash拒绝；两源皆失败保留同Session pending引用，重试只写日志。持续失败后真实账号/插件资源已释放，管理操作不得假busy；新聊天/独立调用不覆盖旧receipt、不占用纯日志owner的运行容量；恢复后旧新receipt各计一次。生产格式sessionID/revision经JSONL/归档/索引重建身份不变。进程内补写成功与崩溃后只能indeterminate分别测试。删除成功/DB失败/Stage回滚/恢复/伙伴及团队删除均先归档再Stage；Archive失败源文件保持。fork继承不生receipt，retry新Invocation正常生receipt。
 - [ ] **Step 3: 运行RED。** `go test ./internal/agent ./services/execution ./services/chat ./services/usage ./internal/chat/eventlog ./internal/knowledge/model -run 'Usage|InvocationReceipt|Handoff|Archive' -count=1`；只扩展实际涉及的具体用例，不运行全量。
 - [ ] **Step 4: 实现唯一采集与持久化。** Session在Prompt返回、sink.finish/settle后冻结实际用量/配置，包含失败和取消。聊天由recordInvocationResult一次append规范receipt；该写失败则Recorder.Archive写同receipt恢复归档，任一耐久后Confirm。独立GenerateText/ExecuteTask在Prompt前Begin，结束以WithoutCancel+5秒预算Finish；Begin失败禁止提交输入。归属覆盖知识生成、维护、workflow output与无归属other，不猜伙伴。hidden handoff按独立Invocation归属父execution，不因隐藏而漏计。
-- [ ] **Step 5: 实现未耐久所有权。** Session只保留同一frozen receipt的待确认引用；Close先释放真实原生/授权资源，再有界补写，不制造第二执行状态机。不forget尚未完成补写的owner；现Manager清理路径覆盖临时及聊天这两类已无活跃Turn的owner。取消不能阻止收尾。没有任何耐久源时，崩溃后只能从原dispatch/execution起始事实报告unknown；不声称可重建Token。
+- [ ] **Step 5: 实现未耐久所有权。** Session只保留同一frozen receipt的待确认引用；Close先释放真实原生/授权资源，再有界补写，不制造第二执行状态机。资源清理成功且仅剩pending时，同一owner继续留在owners供现有10秒清理循环重试，但从temporary移除、从workspaces按指针相等条件解除；新工作获得新owner，不能覆盖旧pending。未释放的真实资源仍遵守原busy约束；pure-pending owner不因declared账号/插件/runtime标签阻塞管理操作。只扩展现有重试循环筛选此类闲置owner，不新增循环/进程池。为待确认receipt预留有界容量（256），实际Prompt前取得、耐久确认后释放，未进入Prompt或无需receipt的分支必须释放预留；容量不足返回UsageRecordingFailed且不提交Prompt，不伪装账号busy或Runtime不可用。关闭后补写不持有Manager锁等待I/O，成功才forget旧owner，且不得删掉同workspace的新owner。取消不能阻止收尾。没有任何耐久源时，崩溃后只能从原dispatch/execution起始事实报告unknown；不声称可重建Token。
 - [ ] **Step 6: 实现删除前归档并GREEN。** Chat操作锁与既有后台owner等待后、Stage之前分批Archive；文件I/O不进入SQLite事务；删除失败留下归档无害。运行Step 3及具体delete/fork/retry回归；gofmt、自审并提交。完成条件：不重发Prompt、不丢已耐久消费、不把进程内pending误报为可恢复历史。
 
 ### Task 3: acp-go独立原生费用观察
@@ -135,7 +135,7 @@
 **Interfaces:**
 
 - 注册`usage_receipts`：ID主键、ReceiptHash、RecordKind(dispatch/receipt)、SchemaVersion/SourceKind、全部冻结归属和runtime/account/provider/model/tier、StartedAt/FinishedAt/OccurredAt、Outcome/PromptAccepted/OutcomeUnknown、五项nullable Token、TokenSource/Coverage/Complete、Costs/Estimate(serializer)、CreatedAt/UpdatedAt。OccurredAt取最终消费结束时间；dispatch用开始时间计覆盖缺口。
-- 同一派生表投影dispatch的窄行：其ID由requestidempotency按usage-dispatch+InvocationID确定，InvocationID原样保留，Token/金额为空；最终receipt使用原receipt.ID另行插入，不更新dispatch行。消费聚合只读RecordKind=receipt；indeterminate覆盖用同表索引支持的NOT EXISTS判断同InvocationID在同snapshot下是否已有receipt，不JOIN、不将dispatch算零消费。增加(InvocationID,RecordKind)索引保证存在性判断；这只是append-only源证据索引，不复制执行状态机。
+- 同一派生表投影dispatch的窄行：其ID由`(requestidempotency.Identity{ID: InvocationID}).ResourceID("usage-dispatch")`确定，InvocationID原样保留，Token/金额为空；最终receipt使用原receipt.ID另行插入，不更新dispatch行。消费聚合只读RecordKind=receipt；indeterminate覆盖用同表索引支持的NOT EXISTS判断同InvocationID在同snapshot下是否已有receipt，不JOIN、不将dispatch算零消费。增加(InvocationID,RecordKind)索引保证存在性判断；这只是append-only源证据索引，不复制执行状态机。
 - 技术`usage_index_state`只存generation/schema/source cursors/rebuild状态，不保存第二份Token/费用；覆盖缺失查询仍从上面的单表证据得到。legacy已接纳但缺终态的执行也提取同类dispatch证据，不伪造未知接纳为消费。
 - `UsageController.InsertReceipt(context.Context,models.UsageReceipt) (bool,error)`；`CaptureSnapshot(context.Context) (UsageSnapshot,error)`；`Summary(context.Context,UsageFilter,UsageSnapshot) (UsageSummary,error)`；`ListGroupKeys(context.Context,UsageFilter,UsageSnapshot,constants.UsageGroupBy,UsageGroupCursor,int) (UsageGroupKeyPage,error)`；`ReadReceiptBatch(context.Context,UsageFilter,UsageSnapshot,UsageReceiptCursor,int) ([]UsageAggregateRow,error)`。Repository结果是聚合值，HTTP DTO仍在API。
 - Recorder增加`ProjectChatInvocation(context.Context,usage.Receipt) error`、`Reconcile(context.Context) error`，生产复用为聊天提交、独立收尾、删除归档和启动恢复。
@@ -144,13 +144,13 @@
 - [ ] **Step 2: 写legacy/fork RED。** 旧execution最多一条确定ID（requestidempotency按chat+execution派生），不猜多Invocation分配；只读取JSON实际存在的数值键，omitempty缺失字段nil、Complete=nil；存在新版receipt时不再叠加旧execution Usage；message.inherited/ForkInvocation不导入。无usage已接纳调用为缺失，历史background无源时次数unknown。删除前复用同一提取器归档legacy。
 - [ ] **Step 3: 运行RED。** `go test ./repositories/controllers ./services/usage ./services/chat -run 'Usage|Archive|Legacy' -count=1`。
 - [ ] **Step 4: 实现幂等投影和恢复。** 数据只由JSONL或usage journal投影；重复不触发事件。索引不随Chat/Waker/账号级联删除。基础索引`(occurred_at,id)`和`(waker_id,occurred_at,id)`；模型索引仅真实计划使用时保留。分批恢复和cursor可续，不在事务内读文件。重建未完/完整行损坏/持久失败必须partial。
-- [ ] **Step 5: 实现稳定snapshot并GREEN。** 同代只插入不可变行，Repository内部以SQLite max(rowid)高水位限定快照，receipt聚合和dispatch的NOT EXISTS两侧均加该上限；generation随重建改变，外部opaque snapshot/cursor绑定generation、过滤和分组。历史导入与新记录不能改同snapshot已有结果；包括dispatch后迟到receipt不能改变旧snapshot的indeterminate数。不得以毫秒created_at代替唯一高水位，不持有长读事务。gofmt、Step 3回归、自审提交；完成条件：可重建、删除保留、缺失覆盖诚实。
+- [ ] **Step 5: 实现稳定snapshot并GREEN。** 同代只插入不可变行，Repository内部以SQLite max(rowid)高水位限定快照，receipt聚合和dispatch的NOT EXISTS两侧均加该上限；generation随重建改变，外部opaque snapshot只绑定generation、高水位、日期/时区/伙伴过滤及有效期；group cursor另绑定该snapshot、groupBy与排序。summary→day→model共享snapshot成功，跨过滤复用snapshot或跨分组复用cursor返回稳定错误。历史导入与新记录不能改同snapshot已有结果；包括dispatch后迟到receipt不能改变旧snapshot的indeterminate数。不得以毫秒created_at代替唯一高水位，不持有长读事务。gofmt、Step 3回归、自审提交；完成条件：可重建、删除保留、缺失覆盖诚实。
 
-### Task 6: 聚合API、全局事件与生成契约
+### Task 6: 聚合API、消息指标、全局事件与生成契约
 
 **Dependencies:** Task 5；[UI计划](2026-11-03-provider-ui.md)仅消费此合同。
 
-**Files:** Create `server/apis/usage/{usage.go,get_usage_summary.go,list_usage_groups.go}`及对应测试；Modify `server/apis/root.go`、`server/repositories/controllers/usage_controller.go`及SQL性能测试；`server/apis/events/{protocol.go,sources.go}`和对应测试；`packages/platform-contracts/src/core-event-protocol.ts`及测试；桌面现固定事件通道文件只改usage白名单所需范围；执行API生成命令产生OpenAPI和前端generated文件。
+**Files:** Create `server/apis/usage/{usage.go,get_usage_summary.go,list_usage_groups.go}`及对应测试；Modify `server/apis/root.go`、`server/repositories/controllers/usage_controller.go`及SQL性能测试；`server/internal/usage/receipt.go`及聚合测试、`server/internal/chat/messageview/{types.go,message_view.go,message_increment.go}`及直接对应消息/增量/历史重放测试；`server/apis/events/{protocol.go,sources.go}`和对应测试；`packages/platform-contracts/src/core-event-protocol.ts`及测试；桌面现固定事件通道文件只改usage白名单所需范围；执行API生成命令产生OpenAPI和前端generated文件。
 
 **Interfaces:**
 
@@ -159,13 +159,17 @@
 - 两响应固定顶层`range`、`snapshot`、`coverage`、`metrics`；groups另有`groups:[{key,label?,metrics}]`、totalGroups/nextCursor/hasMore。coverage为state(ready/partial/rebuilding)、earliestRetainedAt、legacyBackgroundUnknown、indeterminateInvocations、reasons。
 - metrics为invocations/completedInvocations/failedInvocations/cancelledInvocations、missingUsageInvocations/incompleteUsageInvocations/unpricedInvocations；tokens与knownTokens各含input/cacheRead/cacheWrite/output/reasoning；totalWithoutCacheRead/totalWithCacheRead与knownTotalWithoutCacheRead/knownTotalWithCacheRead；amounts及独立comparisonAmounts。
 - amounts项为currency/valuation/origin/source/amount(decimal string)/coveredInvocations/unknownInvocations/complete/priceVersions；只有不重叠选择后的金额进入amounts。各Token及完整total为nullable，known小计保留已观测值；reasoning不再加入任何总量。两total分别I+W+O和I+R+W+O。计数用invocations，不冒称消息数。
+- 消息展示复用`internal/usage`纯值聚合：`AggregateTokens(receipts []Receipt) (TokenSummary,error)`按Receipt.ID及规范hash去重，`TokenSummary`给出与上述metrics同语义的tokens/knownTokens、两种total/knownTotal、`Complete *bool`、Sources/Coverages及missingUsageInvocations/incompleteUsageInvocations（JSON统一为complete/sources/coverages及前述lowerCamel键）；没有任何已知分量时该分量的已知小计也保持nil。全局API和消息投影复用这一规则，不各写未知转零的算法。`MessageRunMetrics`保留现五个数字兼容字段，新增可空`TokenUsage *usage.TokenSummary`（JSON `tokenUsage`）为展示新合同；旧数字仅兼容，不足以判定presence/complete。
+- `messageview`按同execution的规范invocation.finished receipts派生TokenUsage，重复终态/重放不叠加；execution最后Usage不能再被宣称全部Invocation合计。旧日志按Task 5的legacy提取语义提供已知小计，省略分量及Complete保持unknown，不因成功终态或非零数字升级为完整；不得另写消息用量权威。实时消息增量与历史重放使用同一派生入口；Context仍是最近有效快照，独立于消费、不相加。续接呈现先按ExecutionID和已有消息修订去重/替换，再合并不同execution的summary；同execution后续修订不是另一份消费，不能重复相加。消息展示聚合不得作为全局统计来源。
 - 现全局WS新增逻辑topic usage，resource=global、type=usage.changed；payload仅indexGeneration与安全失效时间范围。只在索引提交后发布，重复receipt不发布；首次/重连/缺口查询对账，不新增连接或轮询。
 
 - [ ] **Step 1: 写API/SQL RED。** DST、月底、半开边界与过滤校验；1万/10万条真实SQLite，模型/伙伴多组limit+cursor准确总数；并发插入/历史导入不改已有snapshot；未知与明确0、两种total、partial金额和币种口径。只读当前页伙伴名称，有界批量，不N+1；已删除伙伴显示保留ID与删除状态。
 - [ ] **Step 2: 写事件RED。** usage白名单/本机认证/全局资源形状、commit后恰好一次、事务失败和duplicate无事件、重建批次合并失效、断线后读取快照。不得把usage强塞现resources的skill/connector资源形状。
-- [ ] **Step 3: 运行RED。** `go test ./apis/usage ./apis/events ./repositories/controllers -run 'Usage' -count=1`；执行platform-contracts对应事件测试。
+- [ ] **Step 2a: 写消息投影RED。** 同execution两个规范Invocation 100+150→完整250，重复receipt/终态/重放仍250；完整100+未知→完整值nil、已知小计100且partial；真实0+0→已知0，两段未知→unknown；非零且Complete=false仍partial；旧日志Complete未声明、缺字段nil。assert实时增量与重启重放相同，KnownFields/Complete/Source/Coverage到达TokenUsage，reasoning不二加、Context不累加，execution兼容最后Usage不另加一次。
+- [ ] **Step 3: 运行RED。** `go test ./apis/usage ./apis/events ./repositories/controllers -run 'Usage' -count=1`；`go test ./internal/usage ./internal/chat/messageview -run 'Usage|RunMetrics|TokenSummary' -count=1`；执行platform-contracts对应事件测试。
 - [ ] **Step 4: 实现有界单表查询。** SQL先按日期/伙伴过滤。Summary按512行keyset流式累计固定币种/口径桶；day使用IANA真实UTC日边界，最多367桶，不假定一天24h。model/waker先单表GROUP BY准确计数和稳定身份limit+1候选，再对本页候选批量读窄列累计，不建无界模型map。金额big.Rat累计；Token SUM仅作已知小计，同时保留缺失数。EXPLAIN QUERY PLAN证明窄日期/伙伴命中相应索引；SQL次数随批次和候选窗口增长，不逐行补名称。
-- [ ] **Step 5: 生成并GREEN。** gofmt；`pnpm api:generate`和对应生成契约检查，核对getUsageSummary/listUsageGroups及生成Options/QueryKey实际名称；执行Step 3和受影响事件测试。UI同步本合同，禁止手写generated或用as补造字段。
+- [ ] **Step 4a: 接通既有消息指标。** 在messageview的规范Invocation事实消费点与applyUsage职责内接入上述纯值聚合，保留receipt身份幂等及元数据；legacy展示使用同提取规则，旧数字不作完整性证据。扩展既有MessageRunMetrics与增量投影，不新增消息消费事件、状态源或第二执行/统计循环；实时尚未规范归档的观察只作同Invocation临时替换，不能和终态receipt加两次。
+- [ ] **Step 5: 生成并GREEN。** gofmt；`pnpm api:generate`和对应生成契约检查，核对getUsageSummary/listUsageGroups及生成Options/QueryKey实际名称，并确认MessageRunMetrics.tokenUsage的nullable/complete/source/coverage/已知小计字段完整生成；执行Step 3和受影响事件测试。UI同步本合同，禁止手写generated或用as补造字段。
 - [ ] **Step 6: 自审并提交。** 完成条件：UI可用同snapshot读取metrics和groups，未知/partial明确、金额不双加、准确总数不是预览；提交附真实SQL计划、查询次数和定向测试，不声称真实平台通过。
 
 ### Task 7: 边界缺口验证与已实现文档

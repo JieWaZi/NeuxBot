@@ -36,11 +36,13 @@
 ### Task 1: acp-go 用量快照与原生计数修复
 
 **Files:**
+
 - Create: acp-go `pkg/acpmeta/usage.go`、`pkg/acpmeta/usage_test.go`。
 - Modify: acp-go `pkg/codex/event_handler.go`、`pkg/codex/session.go`、`pkg/codex/prompt.go` 及相应测试；`pkg/claude/usage.go`、`pkg/claude/events.go`、`pkg/claude/session.go` 及相应测试。
 - Inspect/modify only when needed: acp-go `pkg/pi/usage.go`、`pkg/pi/events.go`、`pkg/kimi/usage.go`、`pkg/cursor/context_usage.go` 与对应原生 prompt 终态路径。
 
 **Interfaces:**
+
 - Produces: `acpmeta.TurnUsage`：`InputTokens`, `CacheReadTokens`, `CacheWriteTokens`, `OutputTokens`, `ReasoningTokens` 均为 `*int64`；`Source string` 标识原生来源；`Coverage string` 记录 native_turn、main_loop 或 observed_requests；`Complete bool` 明确覆盖整轮（main_loop不能冒充整轮完整）；`ContextKnown bool` 区分伴随通知是否有真实上下文；`Model string` 仅在原生明确报告时填入。
 - Produces: `acpmeta.WithTurnUsage(meta map[string]any, usage TurnUsage) map[string]any` 和 `acpmeta.ReadTurnUsage(meta map[string]any) (TurnUsage, bool)`；命名空间 `acp-go/turn-usage`。
 - 标准 `SessionUsageUpdate.Meta` 携带本轮累计快照；没有真实上下文时 Used/Size 为 0 且 ContextKnown=false，宿主不可把它展示为真实上下文零。已有真实上下文通知保留原义。普通 PromptResponse.Usage 继续兼容现有消费者，不能只修元数据而保留错误的最终计数。
@@ -55,11 +57,13 @@
 ### Task 2: NeuxBot 保存部分用量与完整性
 
 **Files:**
+
 - Modify: `server/internal/agent/native/contract.go`、`native/connection.go`、`native/connection_test.go`。
 - Modify: `server/internal/agent/contract.go`、`session.go` 及相关测试。
 - Modify: `server/services/execution/runtime_events.go`、`runtime_events_test.go`、必要的终态集成测试。
 
 **Interfaces:**
+
 - Consumes: Task 1 的 `acpmeta.TurnUsage` 与 `ReadTurnUsage`。
 - Produces: native.Usage 保留现有数值字段并添加 `Reported *acpmeta.TurnUsage`，这是一份同次快照的来源/缺失性，不是另一个累加器。
 - Produces: `agent.TurnUsageData` 保留现有JSON数值键以兼容历史；增加 `KnownFields []string`、`Complete *bool`、`Source string`、`Coverage string`、`Model string`。KnownFields使用现有蛇形Token键；nil Complete表示旧记录未声明，不能当完整。
@@ -74,13 +78,15 @@
 ### Task 3: 跨原生边界用量回归与文档
 
 **Files:**
+
 - Modify: `server/internal/agent/native/connection_test.go`、`server/services/execution/runtime_events_test.go`、`server/services/chat/journal_test.go`（只在边界缺口需要时）。
+- Modify: acp-go `pkg/acpmeta/usage.go`、`usage_test.go`，解决Task 1审查保留的JSON浮点整数精度边界。
 - Modify: `docs/architecture/runtimes-and-accounts-cn.md`、`server/internal/agent/README.md`。
 - Create: `docs/discussions/provider-runtime-parity/usage-foundation-acceptance-cn.md`。
 
 **Interfaces:** Consumes Task 1/2 的快照合同与现有执行终态；不新增生产接口。
 
-- [ ] **Step 1: 补跨层缺口用例。** 同一invocation部分更新→最终更新→重复终态只存一次；失败/取消已有消费仍可回放；fork继承记录不算新调用的约束为后续聚合保留身份。只在现有测试未覆盖时补测试。
+- [ ] **Step 1: 补跨层缺口用例。** 同一invocation部分更新→最终更新→重复终态只存一次；失败/取消已有消费仍可回放；fork继承记录不算新调用的约束为后续聚合保留身份。只在现有测试未覆盖时补测试。JSON默认解码将2^53+1舍入为2^53，先以真实往返取得RED，再使float64路径拒绝大于2^53-1的值；精确int64/json.Number路径继续按其真实范围校验。
 - [ ] **Step 2: 执行最窄回归并记录输出。** 使用具体测试正则运行涉及的native/execution/chat包；不重复运行已经验证且未变化的包。
 - [ ] **Step 3: 更新已实现架构与验收记录。** 明确新增元数据、旧记录未知、支持provider矩阵、实际基线和修复commit，真实平台/模型未验证状态单列。
 - [ ] **Step 4: 检查文档与差异。** `node scripts/check-docs.mjs` 和 `git diff --check`；修复本次问题。
