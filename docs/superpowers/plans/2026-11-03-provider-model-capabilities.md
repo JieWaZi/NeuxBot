@@ -29,6 +29,12 @@
 - 默认值更改不能改变已接纳的执行；恢复旧 session 必须考虑 Fast 的兼容性。
 - 资源不存在错误可能指文件/其他 session，余额不足也不能显示成有重置时间的套餐耗尽。
 
+## 审查后固定的边界
+
+- 新执行接纳时解析Runtime默认Fast并冻结；旧历史nil保持当时原生默认，不按今天的默认回填。
+- 原生确有serviceTier回执才通过 `acp-go/effective-service-tier` metadata传递；新增acpmeta写入/读取helper，返回value与known。没有原生回执保持未知，不能用desired fast推算。
+- 目录/额度的认证身份代次在显式登录或替换认证配置时变化，自动token刷新不变；使用账号领域明确字段或既有等价事实，禁止用token哈希和普通UpdatedAt。
+
 ### Task 1: acp-go Codex Fast 与结构错误语义
 
 **Files:** acp-go `pkg/codex/config.go`、`agent.go`、`session.go`、`appserver_client.go` 和对应配置/请求/假服务测试；`pkg/claude/config.go` 仅补统一语义所需的 metadata；`pkg/acpmeta/model.go` 与模型metadata测试；`pkg/kimi/outcome.go`、`pkg/pi/events.go` 及对应错误测试。

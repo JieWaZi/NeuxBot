@@ -41,7 +41,7 @@
 - Inspect/modify only when needed: acp-go `pkg/pi/usage.go`、`pkg/pi/events.go`、`pkg/kimi/usage.go`、`pkg/cursor/context_usage.go` 与对应原生 prompt 终态路径。
 
 **Interfaces:**
-- Produces: `acpmeta.TurnUsage`：`InputTokens`, `CacheReadTokens`, `CacheWriteTokens`, `OutputTokens`, `ReasoningTokens` 均为 `*int64`；`Source string` 标识原生来源；`Complete bool` 明确覆盖整轮；`ContextKnown bool` 区分伴随通知是否有真实上下文；`Model string` 仅在原生明确报告时填入。
+- Produces: `acpmeta.TurnUsage`：`InputTokens`, `CacheReadTokens`, `CacheWriteTokens`, `OutputTokens`, `ReasoningTokens` 均为 `*int64`；`Source string` 标识原生来源；`Coverage string` 记录 native_turn、main_loop 或 observed_requests；`Complete bool` 明确覆盖整轮（main_loop不能冒充整轮完整）；`ContextKnown bool` 区分伴随通知是否有真实上下文；`Model string` 仅在原生明确报告时填入。
 - Produces: `acpmeta.WithTurnUsage(meta map[string]any, usage TurnUsage) map[string]any` 和 `acpmeta.ReadTurnUsage(meta map[string]any) (TurnUsage, bool)`；命名空间 `acp-go/turn-usage`。
 - 标准 `SessionUsageUpdate.Meta` 携带本轮累计快照；没有真实上下文时 Used/Size 为 0 且 ContextKnown=false，宿主不可把它展示为真实上下文零。已有真实上下文通知保留原义。普通 PromptResponse.Usage 继续兼容现有消费者，不能只修元数据而保留错误的最终计数。
 - 快照属于当前 Prompt 的 session/generation；重复通知替换，不产生新消费。最终结果的 Meta 同时携带相同来源/完整性。SDK 生成结构不改动。
@@ -62,7 +62,7 @@
 **Interfaces:**
 - Consumes: Task 1 的 `acpmeta.TurnUsage` 与 `ReadTurnUsage`。
 - Produces: native.Usage 保留现有数值字段并添加 `Reported *acpmeta.TurnUsage`，这是一份同次快照的来源/缺失性，不是另一个累加器。
-- Produces: `agent.TurnUsageData` 保留现有JSON数值键以兼容历史；增加 `KnownFields []string`、`Complete *bool`、`Source string`、`Model string`。KnownFields使用现有蛇形Token键；nil Complete表示旧记录未声明，不能当完整。
+- Produces: `agent.TurnUsageData` 保留现有JSON数值键以兼容历史；增加 `KnownFields []string`、`Complete *bool`、`Source string`、`Coverage string`、`Model string`。KnownFields使用现有蛇形Token键；nil Complete表示旧记录未声明，不能当完整。
 - `UsageData.Turn` 与 `UsageData.Context` 分别覆盖更新，只有提供该分量时才覆盖，不以仅含context的新事件清掉turn。
 
 - [ ] **Step 1: 写失败用例。** 用真实SDK pipe模拟部分usage后错误/取消，最终TurnResult保留Token和context；用量事件先turn后context，归档仍有turn；缺失cache分量与已知0往返可区分；最终PromptResponse替换部分快照，不把二者相加。
