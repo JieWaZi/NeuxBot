@@ -79,6 +79,12 @@ const (
 	// @errZH 发送目标未声明为工作流依赖，请通过优化工作流补充发送目标范围
 	// @errEN delivery target is not declared as a workflow dependency; optimize the workflow to declare its target scope
 	WorkflowIMTargetNotDeclared
+	// @errZH 节点自动重试要求只读执行，当前节点配置允许写入
+	// @errEN automatic worker retry requires read-only execution; the node configuration permits writes
+	WorkflowRetryRequiresReadOnly
+	// @errZH 当前执行能力无法保证节点重试幂等，请调整重试策略
+	// @errEN worker retry idempotency cannot be enforced by the current execution capabilities
+	WorkflowRetryIdempotencyUnsupported
 )
 
 const (

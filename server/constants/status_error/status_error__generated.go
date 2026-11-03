@@ -101,6 +101,10 @@ func (v StatusError) Key() string {
 		return "WorkflowFileInvalid"
 	case WorkflowIMTargetNotDeclared:
 		return "WorkflowIMTargetNotDeclared"
+	case WorkflowRetryRequiresReadOnly:
+		return "WorkflowRetryRequiresReadOnly"
+	case WorkflowRetryIdempotencyUnsupported:
+		return "WorkflowRetryIdempotencyUnsupported"
 	case IMConfigurationInvalid:
 		return "IMConfigurationInvalid"
 	case IMFileInvalid:
@@ -590,6 +594,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowBudgetExceeded:               "workflow execution budget is exhausted",
 			WorkflowFileInvalid:                  "invalid workflow file reference, name, or ownership",
 			WorkflowIMTargetNotDeclared:          "delivery target is not declared as a workflow dependency; optimize the workflow to declare its target scope",
+			WorkflowRetryRequiresReadOnly:        "automatic worker retry requires read-only execution; the node configuration permits writes",
+			WorkflowRetryIdempotencyUnsupported:  "worker retry idempotency cannot be enforced by the current execution capabilities",
 			IMConfigurationInvalid:               "im configuration is invalid",
 			IMFileInvalid:                        "im file is missing, outside scope, or too large",
 			PluginManifestInvalid:                "plugin manifest is invalid or its format version is unsupported",
@@ -837,6 +843,8 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			WorkflowBudgetExceeded:               "工作流运行预算已经耗尽",
 			WorkflowFileInvalid:                  "工作流文件引用、文件名或所属范围不合法",
 			WorkflowIMTargetNotDeclared:          "发送目标未声明为工作流依赖，请通过优化工作流补充发送目标范围",
+			WorkflowRetryRequiresReadOnly:        "节点自动重试要求只读执行，当前节点配置允许写入",
+			WorkflowRetryIdempotencyUnsupported:  "当前执行能力无法保证节点重试幂等，请调整重试策略",
 			IMConfigurationInvalid:               "IM 配置不完整或执行目标不可用",
 			IMFileInvalid:                        "IM 文件不存在、超出范围或过大",
 			PluginManifestInvalid:                "插件清单无效或格式版本不受支持",

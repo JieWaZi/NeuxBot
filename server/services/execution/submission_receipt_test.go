@@ -327,3 +327,30 @@ func TestContextInstructionsStayOutOfUserMessageAndTitle(t *testing.T) {
 		})
 	}
 }
+
+func TestSteerRelationSurvivesExecutionAndHistoryReplay(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir(), &fakeRuntime{})
+	accepted, err := manager.execution.Start(context.Background(), WorkIntent{
+		ClientRequestID: "steer-test",
+		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}},
+		Input:           WorkInput{Actor: "user", Content: "追加要求", SteerExecutionID: "previous"},
+		Options:         WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelAuto},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForChatTerminal(t, manager, accepted.Chat.ID)
+	detail, err := manager.chats.(chatservice.Module).ReadMessageHistory(context.Background(), accepted.Chat.ID, 0, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, message := range detail.Resources {
+		if message.ID == accepted.Execution.ID {
+			if message.SteerExecutionID != "previous" {
+				t.Fatalf("steer relation lost: %+v", message)
+			}
+			return
+		}
+	}
+	t.Fatal("missing assistant message")
+}

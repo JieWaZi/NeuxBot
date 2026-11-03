@@ -88,9 +88,15 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 		if err == nil {
 			err = s.validateSourcePolicies(ctx, compiled.Manifest)
 		}
+		if err == nil {
+			var configurationDiagnostics []workflowdsl.Diagnostic
+			configurationDiagnostics, err = validateWorkerRetryPolicies(compiled.Manifest, &session.Defaults)
+			diagnostics = append(diagnostics, configurationDiagnostics...)
+		}
 		result := map[string]any{"valid": err == nil, "diagnostics": diagnostics}
 		if err != nil {
 			result["error"] = err.Error()
+			result["errorCode"] = workflowstate.ErrorKey(err)
 		}
 		if err == nil {
 			result["summary"] = map[string]any{
@@ -253,10 +259,23 @@ func (s *Service) prepareAuthoring(
 		op, _ := capability.Find(id)
 		operations = append(operations, op)
 	}
-	return map[string]any{
+	result := map[string]any{
 		"workflow": source, "annotations": annotationPage, "topics": topics, "guideIds": guides,
 		"content": content.String(), "resources": resources, "operations": operations,
-	}, nil
+	}
+	if slices.Contains(input.Primitives, "worker") {
+		policies := map[string]any{}
+		for _, safety := range []string{"pure", "idempotent"} {
+			policy := workerRetryPolicy(safety, &session.Defaults)
+			capability := map[string]any{"supported": policy == 0}
+			if policy != 0 {
+				capability["errorCode"] = policy.Key()
+			}
+			policies[safety] = capability
+		}
+		result["execution"] = map[string]any{"defaults": session.Defaults, "workerRetry": policies}
+	}
+	return result, nil
 }
 
 // BindConsumer 签发用户选择的单回合能力，并只向中立 Core 绑定受限 CLI 能力。

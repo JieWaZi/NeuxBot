@@ -1,3 +1,5 @@
+import { messageCompanionActivity } from "../runtime/companion-activity";
+import { chatContinuations, type ChatContinuation } from "./chat-continuation";
 import { ChatMessagePluginReferences } from "./chat-plugin-reference";
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
 import type { ChatResultSource } from "@/shared/api/notification-presentation";
@@ -845,9 +847,11 @@ const ChatPart = memo(function ChatPart({
 });
 function ChatMessageParts({
   view,
+  metrics = view.message.runMetrics,
   showUsageMetrics,
 }: {
   view: ChatMessageView;
+  metrics?: ChatRunMetrics;
   showUsageMetrics: boolean;
 }) {
   const terminal = isTerminalMessage(view.message);
@@ -870,7 +874,7 @@ function ChatMessageParts({
             currentKey={currentKey}
             completed={view.message.status === "completed"}
             terminal={terminal}
-            metrics={view.message.runMetrics}
+            metrics={metrics}
             showUsageMetrics={showUsageMetrics}
           />
         ) : (
@@ -1294,6 +1298,7 @@ function AddAttachmentButton({
 
 export function AssistantMessage({
   view,
+  continuation,
   latest = false,
   last = false,
   name,
@@ -1304,6 +1309,7 @@ export function AssistantMessage({
   showFileChanges = true,
 }: {
   view: ChatMessageView;
+  continuation?: ChatContinuation;
   latest?: boolean;
   last?: boolean;
   name: string;
@@ -1318,11 +1324,12 @@ export function AssistantMessage({
   const messageID = message.id ?? "";
   const isLatestAssistant = latest;
   const interaction = useContext(CompanionInteraction);
-  const companionActivity = viewCompanionActivity(
-    view,
-    isLatestAssistant,
-    interaction,
-  );
+  const companionActivity = continuation?.activityMessage
+    ? messageCompanionActivity(
+        { ...continuation.activityMessage, isLast: isLatestAssistant },
+        interaction,
+      )
+    : viewCompanionActivity(view, isLatestAssistant, interaction);
   const author = messageAuthors?.[messageID];
   const displayName = author?.name ?? name;
   const displayAvatar = author?.avatar ?? avatar;
@@ -1337,7 +1344,9 @@ export function AssistantMessage({
       data-role="assistant"
       className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
     >
-      {isLatestAssistant ? (
+      {continuation?.continuation ? (
+        <div aria-hidden="true" />
+      ) : isLatestAssistant ? (
         <Avatar
           name={displayName}
           src={displayAvatar}
@@ -1348,12 +1357,18 @@ export function AssistantMessage({
         <StaticAvatar name={displayName} src={displayAvatar} size="sm" />
       )}
       <div className="min-w-0">
-        <div className="grid justify-items-start">
-          <span className="type-body font-medium">{displayName}</span>
-          <MessageTimestamp timestamp={message.createdAt} />
-        </div>
+        {!continuation?.continuation ? (
+          <div className="grid justify-items-start">
+            <span className="type-body font-medium">{displayName}</span>
+            <MessageTimestamp timestamp={message.createdAt} />
+          </div>
+        ) : null}
         <div className="mt-2 min-w-0">
-          <ChatMessageParts view={view} showUsageMetrics={showUsageMetrics} />
+          <ChatMessageParts
+            view={view}
+            metrics={continuation?.footerMessage.runMetrics}
+            showUsageMetrics={showUsageMetrics}
+          />
           {showFileChanges && message.fileChangeRecord ? (
             <ExecutionFileChangesCard
               message={message}
@@ -1364,21 +1379,33 @@ export function AssistantMessage({
           ) : null}
           <ChatMessageContribution messageId={messageID} />
         </div>
-        {message.status === "canceled" ? (
+        {message.status === "canceled" && !continuation?.continued ? (
           <p className="text-muted-foreground type-body mt-2">
             {t("canceled")}
           </p>
         ) : null}
         <MessageFailure message={message} last={last} />
 
-        <div className="mt-2 flex items-center gap-1">
-          <MessageRunStatus
-            message={message}
-            showUsageDetails={showUsageMetrics}
-          />
-          <MessageCopyAction message={message} hideWhenRunning />
-          <MessageForkAction message={message} />
-        </div>
+        {!continuation?.continued ? (
+          <div className="mt-2 flex items-center gap-1">
+            <MessageRunStatus
+              message={
+                continuation
+                  ? {
+                      ...message,
+                      runMetrics: continuation.footerMessage.runMetrics,
+                    }
+                  : message
+              }
+              showUsageDetails={showUsageMetrics}
+            />
+            <MessageCopyAction
+              message={continuation?.footerMessage ?? message}
+              hideWhenRunning
+            />
+            <MessageForkAction message={message} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -1386,6 +1413,7 @@ export function AssistantMessage({
 
 const ChatMessage = memo(function ChatMessage({
   view,
+  continuation,
   latest,
   last,
   name,
@@ -1402,6 +1430,7 @@ const ChatMessage = memo(function ChatMessage({
   showFileChanges,
 }: {
   view: ChatMessageView;
+  continuation?: ChatContinuation;
   latest: boolean;
   last: boolean;
   name: string;
@@ -1441,6 +1470,7 @@ const ChatMessage = memo(function ChatMessage({
   return message.role === "assistant" ? (
     <AssistantMessage
       view={view}
+      continuation={continuation}
       latest={latest}
       last={last}
       name={name}
@@ -1460,7 +1490,10 @@ const ChatMessageList = memo(function ChatMessageList({
   onOpenForkSource,
   wakerId,
   ...props
-}: Omit<ComponentProps<typeof ChatMessage>, "view" | "latest" | "last"> & {
+}: Omit<
+  ComponentProps<typeof ChatMessage>,
+  "view" | "latest" | "last" | "continuation"
+> & {
   views: readonly ChatMessageView[];
   forkBoundaryMessageId?: string;
   forkSourceChatId?: string;
@@ -1468,9 +1501,8 @@ const ChatMessageList = memo(function ChatMessageList({
 }) {
   const { t } = useTranslation("chat");
   const [unavailableSourceId, setUnavailableSourceId] = useState<string>();
-  const latest = views.findLast(
-    (view) => view.message.role === "assistant",
-  )?.key;
+  const continuations = chatContinuations(views.map((view) => view.message));
+  const latest = views.findLast((view) => view.message.role === "assistant");
   return (
     <>
       {views.map((view, index) => (
@@ -1479,7 +1511,12 @@ const ChatMessageList = memo(function ChatMessageList({
             {...props}
             wakerId={wakerId}
             view={view}
-            latest={view.key === latest}
+            continuation={continuations.get(view.message.id ?? "")}
+            latest={
+              view.key === latest?.key ||
+              continuations.get(view.message.id ?? "")?.activityMessage?.id ===
+                latest?.message.id
+            }
             last={index === views.length - 1}
           />
           {view.message.id === forkBoundaryMessageId && forkSourceChatId ? (

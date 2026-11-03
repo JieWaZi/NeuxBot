@@ -810,6 +810,7 @@ func (worker *collector) captureEntry(ctx context.Context, root *os.Root, path s
 		current, err := f.Stat()
 		if err != nil || !os.SameFile(info, current) || info.Size() != current.Size() || !info.ModTime().Equal(current.ModTime()) {
 			value.Content = "unreadable"
+			value.Fingerprint = ""
 			return value, nil
 		}
 	}

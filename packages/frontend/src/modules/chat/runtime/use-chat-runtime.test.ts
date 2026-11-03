@@ -2639,3 +2639,201 @@ describe("chat send failure", () => {
     },
   );
 });
+
+it.each(["enqueue", "promote"] as const)(
+  "%s steer 保留接续身份并在交接时抑制取消收尾",
+  async (mode) => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const options = runtimeOptions("chat-steer");
+    options.messages = [
+      {
+        id: "assistant-old",
+        executionId: "execution-1",
+        role: "assistant",
+        status: "running",
+      },
+    ];
+    options.send = vi.fn().mockResolvedValue({
+      chat: { id: "chat-steer" },
+      execution: { id: "execution-2", status: "running" },
+    });
+    const { result } = renderHook(() => useChatRuntime(options), {
+      wrapper: TestProviders,
+    });
+    act(() => {
+      runtimeAdapter.current?.queue?.enqueue(queuedMessage, {
+        steer: mode === "enqueue",
+      });
+    });
+    if (mode === "promote")
+      act(() => {
+        const id = runtimeAdapter.current?.queue?.items?.[0]?.id;
+        if (id) runtimeAdapter.current?.queue?.steer(id);
+      });
+    expect(options.cancel).toHaveBeenCalledTimes(1);
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "execution.canceled",
+        executionStatus: "canceled",
+        message: {
+          id: "assistant-old",
+          executionId: "execution-1",
+          role: "assistant",
+          status: "canceled",
+          revision: 2,
+        },
+      }),
+    );
+    await waitFor(() => expect(options.send).toHaveBeenCalledTimes(1));
+    expect(options.send).toHaveBeenCalledWith(
+      expect.any(String),
+      "chat-steer",
+      [],
+      expect.objectContaining({ steerExecutionId: "execution-1" }),
+    );
+    expect(
+      result.current.messages.find(
+        (message) =>
+          message.role === "assistant" && message.executionId === "execution-2",
+      )?.steerExecutionId,
+    ).toBe("execution-1");
+  },
+);
+
+it("steer 追加发送失败后恢复前段取消状态，不残留连续工作标记", async () => {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const options = runtimeOptions("chat-steer-rejected");
+  options.messages = [
+    {
+      id: "old",
+      executionId: "execution-1",
+      role: "assistant",
+      status: "running",
+    },
+  ];
+  options.send = vi.fn().mockRejectedValue(new Error("send rejected"));
+  const { result, rerender } = renderHook(() => useChatRuntime(options), {
+    wrapper: TestProviders,
+  });
+  act(() =>
+    runtimeAdapter.current?.queue?.enqueue(queuedMessage, { steer: true }),
+  );
+  expect(
+    result.current.messages.find((message) => message.id === "old")
+      ?.steerPending,
+  ).toBe(true);
+  act(() =>
+    subscriptionOptions.current?.onEvent({
+      sequence: 2,
+      type: "execution.canceled",
+      executionStatus: "canceled",
+      message: {
+        id: "old",
+        executionId: "execution-1",
+        role: "assistant",
+        status: "canceled",
+        revision: 2,
+      },
+    }),
+  );
+  options.messages = [
+    {
+      id: "old",
+      executionId: "execution-1",
+      role: "assistant",
+      status: "canceled",
+      revision: 2,
+    },
+  ];
+  options.latestSequence = 2;
+  options.activeExecutionId = undefined;
+  rerender();
+  await waitFor(() => expect(options.send).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(result.current.messages).toHaveLength(1));
+  expect(result.current.messages[0]).toMatchObject({
+    id: "old",
+    status: "canceled",
+  });
+  expect(result.current.messages[0]?.steerPending).not.toBe(true);
+});
+
+it.each(["enqueue", "promote", "stale-enqueue", "stale-promote"] as const)(
+  "%s steer 在原输入尚未返回执行 ID 时按提交身份接续",
+  async (mode) => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const options = runtimeOptions("chat-steer-pending");
+    options.activeExecutionId = mode.startsWith("stale")
+      ? "stale-prior"
+      : undefined;
+    options.messages = [
+      {
+        id: "previous",
+        executionId: "stale-prior",
+        role: "assistant",
+        status: "completed",
+      },
+    ];
+    let acceptFirst: ((result: MessageResult) => void) | undefined;
+    const firstReceipt = new Promise<MessageResult>((resolve) => {
+      acceptFirst = resolve;
+    });
+    options.send = vi
+      .fn()
+      .mockReturnValueOnce(firstReceipt)
+      .mockResolvedValue({
+        chat: { id: "chat-steer-pending" },
+        execution: { id: "next", status: "running" },
+      });
+    renderHook(() => useChatRuntime(options), { wrapper: TestProviders });
+    act(() => {
+      void runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    act(() =>
+      runtimeAdapter.current?.queue?.enqueue(queuedMessage, {
+        steer: mode.endsWith("enqueue"),
+      }),
+    );
+    if (mode.endsWith("promote"))
+      act(() => {
+        const id = runtimeAdapter.current?.queue?.items?.[0]?.id;
+        if (id) runtimeAdapter.current?.queue?.steer(id);
+      });
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "execution.canceled",
+        executionStatus: "canceled",
+        message: {
+          id: "accepted-old",
+          submissionId: "input:chat-steer-pending",
+          executionId: "accepted-run",
+          role: "assistant",
+          status: "canceled",
+          revision: 2,
+        },
+      }),
+    );
+    await waitFor(() => expect(options.send).toHaveBeenCalledTimes(2));
+    expect(options.send).toHaveBeenNthCalledWith(
+      2,
+      expect.any(String),
+      "chat-steer-pending",
+      [],
+      expect.objectContaining({ steerExecutionId: "accepted-run" }),
+    );
+    await act(async () => {
+      acceptFirst?.({
+        chat: { id: "chat-steer-pending" },
+        execution: { id: "accepted-run", status: "canceled" },
+      });
+      await firstReceipt;
+    });
+  },
+);

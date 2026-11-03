@@ -30,6 +30,9 @@ export type ChatSubmissionPreparer = (
 ) => PreparedChatSubmission;
 
 export type ChatSendSelection = {
+  steerExecutionId?: string;
+  /** 原输入尚未取得执行身份时，出队前沿其提交身份解析。 */
+  steerSubmissionId?: string;
   accountId?: string;
   runtimeId: string;
   model: string;
@@ -111,12 +114,23 @@ export class ChatQueueStore {
     return head;
   }
 
-  promote(queueKey: string, entryId: string) {
+  promote(
+    queueKey: string,
+    entryId: string,
+    steer?: Pick<ChatSendSelection, "steerExecutionId" | "steerSubmissionId">,
+  ) {
     const current = this.getEntries(queueKey);
     const target = current.find((entry) => entry.id === entryId);
-    if (!target || current[0]?.id === entryId) return;
+    if (!target) return;
     this.update(queueKey, [
-      target,
+      {
+        ...target,
+        selection: {
+          ...target.selection,
+          steerExecutionId: steer?.steerExecutionId,
+          steerSubmissionId: steer?.steerSubmissionId,
+        },
+      },
       ...current.filter((entry) => entry.id !== entryId),
     ]);
   }

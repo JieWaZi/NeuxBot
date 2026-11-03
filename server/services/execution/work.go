@@ -35,6 +35,9 @@ import (
 
 // userMessage 保存需要进入权威日志的一条用户消息。
 type userMessage struct {
+	// SteerExecutionID 是本次追加输入所接续的执行，不改变各轮真实生命周期。
+	SteerExecutionID string `json:",omitempty"`
+
 	// Actor 是产生输入的入口无关语义参与者。
 	Actor string
 	// Text 是消息正文。
@@ -1507,6 +1510,7 @@ func startedMessageEvents(
 			ExecutionID:  execution.ID,
 			InvocationID: invocationID,
 			Data: marshalData(eventlog.ExecutionCreatedData{
+				SteerExecutionID:  request.message.SteerExecutionID,
 				AutomaticRunID:    execution.AutomaticRunID,
 				PluginResources:   execution.PluginResources,
 				NativePluginScope: request.nativePluginScope,

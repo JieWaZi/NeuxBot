@@ -833,6 +833,7 @@ function ChatView({
       selection,
     ) => {
       const message = {
+        steerExecutionId: selection?.steerExecutionId,
         text,
         accountId: selection?.accountId ?? "system",
         runtimeId: selection?.runtimeId ?? "",

@@ -3,6 +3,9 @@ package workinput
 
 // Input 保存一次工作输入和有序能力引用。
 type Input struct {
+	// SteerExecutionID 是追加输入所接续的执行标识，仅用于连续工作展示。
+	SteerExecutionID string `json:"steerExecutionId,omitempty"`
+
 	// SubmissionID 是耐久调用者稳定复用的本次输入身份，空值不启用续发去重。
 	SubmissionID string `json:"submissionId,omitempty"`
 	// Actor 是产生本次输入的中立参与者标识。

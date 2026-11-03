@@ -118,6 +118,20 @@ func sdkSections() []sdkSection {
 				"tools to create and read deliverable files, and verify existence and nonempty content.",
 		},
 		{
+			id:     "worker-retry",
+			topics: []string{"worker"},
+			content: "Worker retry syntax is not proof that the current execution supports it. Read " +
+				"execution.defaults and execution.workerRetry from workflow.authoring.prepare before " +
+				"declaring retry. Automatic pure retry requires workspaceReadOnly=true; permissionLevel " +
+				"and a pure declaration do not enable that constraint. Idempotent worker retry is " +
+				"unsupported because the host cannot enforce per-tool deduplication. Validate and save " +
+				"report every incompatible node for the current authoring configuration; run admission " +
+				"checks the actual configuration again. Read-only workspace mode does not prove that " +
+				"external tools are free of side effects. Preserve requested retry behavior and ask the " +
+				"user before changing it or execution permissions; do not bypass a rejection by adding " +
+				"replacement worker calls, loops or relabeling the task as pure.",
+		},
+		{
 			id:     "results",
 			topics: []string{"worker"},
 			content: "A structured worker must invoke workflow.results.submit through the host-provided " +

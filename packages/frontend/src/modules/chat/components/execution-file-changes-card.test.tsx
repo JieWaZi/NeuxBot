@@ -217,12 +217,28 @@ describe("independent workspace outcome", () => {
     );
     expect(readSummary).toHaveBeenCalledTimes(1);
   });
-  it("pending不读半成品，晚到版本主动读新成果且失败可见", async () => {
+  it.each(["pending", "ready", "partial", "unavailable", "incomplete"])(
+    "%s 没有确认的文件变更时不展示卡片也不读取摘要",
+    (state) => {
+      const view = mount({
+        ...message,
+        fileChangeRecord: {
+          ...message.fileChangeRecord,
+          state,
+          totalFiles: 0,
+          complete: state === "ready",
+        },
+      });
+      expect(view.container).toBeEmptyDOMElement();
+      expect(readSummary).not.toHaveBeenCalled();
+    },
+  );
+  it("pending不读半成品，晚到真实变更主动读新成果且失败可见", async () => {
     readSummary.mockResolvedValue({
       state: "partial",
       complete: false,
-      totalFiles: 0,
-      files: [],
+      totalFiles: 1,
+      files: [{ rootId: "r", path: "changed.txt", content: "text" }],
     });
     const pending = {
       ...message,
@@ -230,11 +246,11 @@ describe("independent workspace outcome", () => {
         ...message.fileChangeRecord,
         state: "pending",
         version: 1,
+        totalFiles: 0,
       },
     };
     const view = mount(pending);
-    expect(screen.getByText("正在采集文件改动…")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "查看变更" })).toBeDisabled();
+    expect(view.container).toBeEmptyDOMElement();
     expect(readSummary).not.toHaveBeenCalled();
     view.rerender(<ExecutionFileChangesCard visible message={message} />);
     await screen.findByText("部分范围未覆盖");

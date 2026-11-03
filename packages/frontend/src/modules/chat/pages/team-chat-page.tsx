@@ -755,6 +755,7 @@ function TeamChatView({
       const memberChatId = activeMemberTab?.chatId;
       if (memberChatId) {
         const body = {
+          steerExecutionId: selection?.steerExecutionId,
           text,
           accountId:
             selection?.accountId ?? executionSelection.selection.accountId,

@@ -177,7 +177,7 @@ func TestFailedRoundPublishesReadableErrorAsUnreadResult(t *testing.T) {
 	}
 }
 
-func TestFileResultReferenceRequiresVisibleCardButEmptyReadyKeepsBodyVersion(t *testing.T) {
+func TestFileResultReferenceRequiresConfirmedChanges(t *testing.T) {
 	for _, test := range []struct {
 		// name 标识实际文件交付或可见采集状态。
 		name string
@@ -187,7 +187,7 @@ func TestFileResultReferenceRequiresVisibleCardButEmptyReadyKeepsBodyVersion(t *
 		files int
 		// visible 表示该结果必须通过文件卡片确认阅读。
 		visible bool
-	}{{"pending", "pending", 0, false}, {"no_changes", "ready", 0, false}, {"files", "ready", 2, true}, {"partial", "partial", 0, true}, {"unavailable", "unavailable", 0, true}, {"incomplete", "incomplete", 0, true}} {
+	}{{"pending", "pending", 0, false}, {"no_changes", "ready", 0, false}, {"files", "ready", 2, true}, {"partial", "partial", 0, false}, {"partial_files", "partial", 2, true}, {"unavailable", "unavailable", 0, false}, {"incomplete", "incomplete", 0, false}} {
 		t.Run(test.name, func(t *testing.T) {
 			store, err := eventlog.NewStore(t.TempDir())
 			if err != nil {

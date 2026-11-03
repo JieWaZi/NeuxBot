@@ -401,15 +401,6 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 	}
 	for _, node := range revision.Manifest.Nodes {
 		if node.Kind == "worker" {
-			if retry, _ := node.Options["retry"].(map[string]any); len(retry) > 0 {
-				if retry["safety"] == "pure" && !defaults.WorkspaceReadOnly {
-					return scope, status_error.WorkflowCapabilityUnsupported.WithField("capability", "worker_retry_requires_readonly")
-				}
-				if retry["safety"] == "idempotent" {
-					// Core 没有逐工具的幂等键强制端口，声明不能代替真实去重。
-					return scope, status_error.WorkflowCapabilityUnsupported.WithField("capability", "worker_retry_idempotency_enforcement")
-				}
-			}
 			resolve, _ := node.Options["resolve"].(map[string]any)
 			wakerID, _ := resolve["wakerId"].(string)
 			if s.wakers != nil {
@@ -430,6 +421,9 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 			}
 			resolved, err := s.worker.ResolveAdmission(ctx, node.Options, nodeDefaults, command.WorkerConfigurations != nil)
 			if err != nil {
+				return scope, err
+			}
+			if _, err := workerRetryDiagnostic(node, &resolved); err != nil {
 				return scope, err
 			}
 			// 从既有执行调用工作流时，节点配置不能扩大调用者冻结的权限。

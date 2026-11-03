@@ -279,9 +279,59 @@ func workerConnectorAllowlist(options map[string]any) (*[]string, error) {
 	return &allowed, nil
 }
 
+// workerRetryPolicy 是创作预检、配置检查和运行接纳共用的重试能力判定。
+// 未提供执行配置时只检查宿主确定不支持的策略，不把源码导入当作运行接纳。
+func workerRetryPolicy(safety string, configuration *models.WorkflowExecutionDefaults) status_error.StatusError {
+	if safety == "idempotent" {
+		// 声明幂等键不能代替逐工具去重，当前宿主尚无此强制端口。
+		return status_error.WorkflowRetryIdempotencyUnsupported
+	}
+	if safety == "pure" && configuration != nil && !configuration.WorkspaceReadOnly {
+		return status_error.WorkflowRetryRequiresReadOnly
+	}
+	return 0
+}
+
+func workerRetryDiagnostic(node workflowdsl.Node, configuration *models.WorkflowExecutionDefaults) (workflowdsl.Diagnostic, error) {
+	retry, _ := node.Options["retry"].(map[string]any)
+	safety, _ := retry["safety"].(string)
+	policy := workerRetryPolicy(safety, configuration)
+	if policy == 0 {
+		return workflowdsl.Diagnostic{}, nil
+	}
+	message := "Automatic worker retry requires workspaceReadOnly=true in the effective node configuration."
+	hint := "Read execution.workerRetry and execution.defaults from workflow.authoring.prepare. A pure declaration does not enable read-only execution. Ask the user before changing permissions or removing requested retry behavior; do not emulate retries with extra worker calls."
+	if policy == status_error.WorkflowRetryIdempotencyUnsupported {
+		message = "The host cannot enforce per-tool idempotency for automatic worker retry."
+		hint = "An idempotencyKey declaration does not prove deduplication. Ask the user how to revise the requested retry behavior; do not relabel the task as pure or add replacement worker calls to bypass this restriction."
+	}
+	diagnostic := workflowdsl.Diagnostic{Code: policy.Key(), Severity: "error", Message: message, Range: node.Range, NodeID: node.ID, Field: "retry", Hint: hint}
+	return diagnostic, policy.WithField("node", node.Label).WithField("nodeId", node.ID)
+}
+
+// validateWorkerRetryPolicies 一次返回全部冲突节点，避免创作逐个发现同类问题。
+func validateWorkerRetryPolicies(manifest workflowdsl.Manifest, configuration *models.WorkflowExecutionDefaults) ([]workflowdsl.Diagnostic, error) {
+	diagnostics := []workflowdsl.Diagnostic{}
+	var first error
+	for _, node := range manifest.Nodes {
+		if node.Kind != "worker" {
+			continue
+		}
+		diagnostic, err := workerRetryDiagnostic(node, configuration)
+		if err != nil {
+			diagnostics = append(diagnostics, diagnostic)
+			if first == nil {
+				first = err
+			}
+		}
+	}
+	return diagnostics, first
+}
+
 // prepareWorkerRetry 保留旧收据，只在实际 Execution 已终止且声明只读重试时创建新 outbox。
 func prepareWorkerRetry(state *controllers.WorkflowRunState, fiberIndex int, previous models.WorkflowEffect) bool {
-	if previous.Boundary.Primitive != "worker" || previous.Status != constants.WorkflowStepStatusFailed || previous.SkipRequested || !state.Run.Defaults.WorkspaceReadOnly {
+	configuration, frozen := state.Run.WorkerConfigurations[previous.Boundary.NodeID]
+	if previous.Boundary.Primitive != "worker" || previous.Status != constants.WorkflowStepStatusFailed || previous.SkipRequested || !frozen || !configuration.WorkspaceReadOnly {
 		return false
 	}
 	if previous.ExecutionStatus != constants.ExecutionStatusFailed && previous.ExecutionStatus != constants.ExecutionStatusCompleted {

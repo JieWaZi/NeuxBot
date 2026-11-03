@@ -16,10 +16,18 @@ import (
 )
 
 func TestRepairFailureCannotRedispatchBusiness(t *testing.T) {
-	effect := models.WorkflowEffect{Status: constants.WorkflowStepStatusFailed, ExecutionStatus: constants.ExecutionStatusCompleted, AttemptGeneration: 1, Boundary: workflowdsl.EffectBoundary{Primitive: "worker", Arguments: []workflowdsl.Value{workflowdsl.JSONValue("read"), workflowdsl.JSONValue(map[string]any{"schema": map[string]any{"type": "object"}, "retry": map[string]any{"maxAttempts": float64(4), "safety": "pure"}})}}}
-	state := controllers.WorkflowRunState{Run: models.WorkflowRun{Defaults: models.WorkflowExecutionDefaults{WorkspaceReadOnly: true}}}
+	effect := models.WorkflowEffect{Status: constants.WorkflowStepStatusFailed, ExecutionStatus: constants.ExecutionStatusCompleted, AttemptGeneration: 1, Boundary: workflowdsl.EffectBoundary{NodeID: "read", Primitive: "worker", Arguments: []workflowdsl.Value{workflowdsl.JSONValue("read"), workflowdsl.JSONValue(map[string]any{"schema": map[string]any{"type": "object"}, "retry": map[string]any{"maxAttempts": float64(4), "safety": "pure"}})}}}
+	state := controllers.WorkflowRunState{
+		Run:    models.WorkflowRun{WorkerConfigurations: map[string]models.WorkflowExecutionDefaults{"read": {WorkspaceReadOnly: true}}},
+		Fibers: []models.WorkflowFiber{{}},
+	}
 	if prepareWorkerRetry(&state, 0, effect) {
 		t.Fatal("format failure retried business execution")
+	}
+	// 同一冻结配置允许普通失败重试，证明上面的拒绝来自结构化结果保护。
+	effect.ExecutionStatus = constants.ExecutionStatusFailed
+	if !prepareWorkerRetry(&state, 0, effect) || len(state.Effects) != 1 || state.Effects[0].AttemptGeneration != 2 {
+		t.Fatal("ordinary failure did not retry with the frozen read-only configuration")
 	}
 }
 

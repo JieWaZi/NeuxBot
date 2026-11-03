@@ -103,6 +103,7 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 	defer s.state.Commands.Unlock()
 	var saved workflowdsl.SaveReceipt
 	err = s.transactions.Transaction(ctx, func(ctx context.Context) error {
+		var configuration *models.WorkflowExecutionDefaults
 		if command.CreationSessionID != "" {
 			if s.creationSessions == nil {
 				return status_error.WorkflowCapabilityUnsupported
@@ -117,6 +118,7 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 			if err := s.validateCreationExecution(ctx, session, command.CreationToken); err != nil {
 				return err
 			}
+			configuration = &session.Defaults
 		}
 		receipt, found, err := s.store.FindReceipt(ctx, command.DefinitionID, command.RequestID)
 		if err != nil {
@@ -132,6 +134,12 @@ func (s *Service) SaveSource(ctx context.Context, command SaveSourceCommand) (wo
 			}
 			saved.Replayed = true
 			return nil
+		}
+		// 先恢复已有回执；新的保存必须满足当前创作配置，但不重写原保存事实。
+		configurationDiagnostics, err := validateWorkerRetryPolicies(compiled.Manifest, configuration)
+		if err != nil {
+			diagnostics = configurationDiagnostics
+			return err
 		}
 		definition, err := s.store.GetDefinition(ctx, command.DefinitionID)
 		if err != nil {
@@ -273,6 +281,9 @@ func (s *Service) ValidateTargetConfiguration(ctx context.Context, definitionID,
 	}
 	if !constants.SelectablePermissionLevel(defaults.PermissionLevel) {
 		return definition, revision, status_error.BadRequest
+	}
+	if _, err := validateWorkerRetryPolicies(revision.Manifest, &defaults); err != nil {
+		return definition, revision, err
 	}
 	for _, node := range revision.Manifest.Nodes {
 		if node.Kind != "worker" {

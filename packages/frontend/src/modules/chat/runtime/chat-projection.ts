@@ -67,6 +67,8 @@ export type ChatFileChange = ToolFileChangeSummary & { path: string };
 
 export type AllyChatMessage = ChatMessage & {
   optimistic?: boolean;
+  /** 仅覆盖队列交接窗口；持久关系由下一执行的 steerExecutionId 表达。 */
+  steerPending?: boolean;
   liveRevision?: number;
   codeReferences?: ChatCodeReference[];
 };

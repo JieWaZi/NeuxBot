@@ -377,8 +377,32 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       ? overlay.messages
       : [];
     const localMessages = mergeLocalMessages(handoffMessages, overlayMessages);
-    return mergeAuthoritativeMessages(localMessages, history.messages);
-  }, [handoffMessages, options.chatId, history.messages, overlay]);
+    const merged = mergeAuthoritativeMessages(localMessages, history.messages);
+    const pendingSteers = new Set(
+      queuedEntries
+        .map((entry) => entry.selection.steerExecutionId)
+        .filter(Boolean),
+    );
+    const pendingSteerSubmissions = new Set(
+      queuedEntries
+        .map((entry) => entry.selection.steerSubmissionId)
+        .filter(Boolean),
+    );
+    return merged.map((message) =>
+      message.role === "assistant" &&
+      ((message.executionId && pendingSteers.has(message.executionId)) ||
+        (message.submissionId &&
+          pendingSteerSubmissions.has(message.submissionId)))
+        ? { ...message, steerPending: true }
+        : message,
+    );
+  }, [
+    handoffMessages,
+    options.chatId,
+    history.messages,
+    overlay,
+    queuedEntries,
+  ]);
   const isRunning = Boolean(
     (sending?.queueKey === options.queueKey &&
       !messages.some(
@@ -535,6 +559,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           role: "assistant",
           content: "",
           status: "pending",
+          steerExecutionId: snapshot.selection.steerExecutionId,
           createdAt: now,
           updatedAt: now,
           optimistic: true,
@@ -801,11 +826,25 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       if (approvalPendingRef.current) return;
       const head = queueStore.take(queueKey);
       if (!head) return;
+      const steerExecutionId =
+        head.selection.steerExecutionId ??
+        (head.selection.steerSubmissionId
+          ? [
+              ...sourceRef.current.snapshot.messages,
+              ...overlayRef.current.messages,
+              ...handoffMessagesRef.current,
+            ].find(
+              (message) =>
+                message.role === "assistant" &&
+                message.submissionId === head.selection.steerSubmissionId &&
+                message.executionId,
+            )?.executionId
+          : undefined);
       void submit(head.message, {
         conversationKey: options.conversationKey,
         queueKey,
         chatId: head.chatId,
-        selection: head.selection,
+        selection: { ...head.selection, steerExecutionId },
         prepareSubmission: head.prepareSubmission ?? prepareSubmission,
       });
     },
@@ -1214,6 +1253,19 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     [currentSnapshot, submit],
   );
   const queue = useMemo<ExternalThreadQueueAdapter>(() => {
+    const currentAssistant = messages.findLast(
+      (item) =>
+        item.role === "assistant" &&
+        ["pending", "running"].includes(item.status ?? ""),
+    );
+    const steerTarget = isRunning
+      ? {
+          steerExecutionId: currentAssistant
+            ? currentAssistant.executionId
+            : options.activeExecutionId,
+          steerSubmissionId: currentAssistant?.submissionId,
+        }
+      : {};
     return {
       items: options.serverManagedQueue
         ? []
@@ -1230,7 +1282,10 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           prompt: promptOf(message),
           message,
           chatId: currentSnapshot.chatId,
-          selection: currentSnapshot.selection,
+          selection: {
+            ...currentSnapshot.selection,
+            ...(steer ? steerTarget : {}),
+          },
           prepareSubmission: currentSnapshot.prepareSubmission,
         };
         messageAcceptedRef.current?.();
@@ -1252,7 +1307,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         const current = queueStore.getEntries(queueKey);
         const target = current.find((item) => item.id === queueItemID);
         if (!target) return;
-        queueStore.promote(queueKey, queueItemID);
+        queueStore.promote(queueKey, queueItemID, steerTarget);
         if (isRunning) void cancel();
         else advanceQueue(queueKey);
       },
@@ -1271,6 +1326,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     cancel,
     queueKey,
     queuedEntries,
+    messages,
+    options.activeExecutionId,
     queueStore,
     submit,
     options.serverManagedQueue,

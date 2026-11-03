@@ -133,6 +133,9 @@ type MessageFork struct {
 
 // Message 是从权威事件重放出的聊天消息视图。
 type Message struct {
+	// 接续执行标识
+	SteerExecutionID string `json:"steerExecutionId,omitempty"`
+
 	// 分叉能力
 	Fork *MessageFork `json:"fork,omitempty"`
 	// Inherited 标记从来源会话复制的历史，不计作本会话的新执行。

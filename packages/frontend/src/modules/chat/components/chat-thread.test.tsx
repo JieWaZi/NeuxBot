@@ -1225,3 +1225,49 @@ describe("assistant message shell", () => {
     expect(screen.getByRole("status").children).toHaveLength(9);
   });
 });
+
+describe("steer 连续工作展示", () => {
+  const projection = new ChatMessageProjection();
+  const message: AllyChatMessage = {
+    id: "steered",
+    role: "assistant",
+    status: "canceled",
+    executionId: "run-steered",
+    displayParts: [{ id: "body", type: "text", text: "继续之前的工作" }],
+    runMetrics: { durationMs: 9000 },
+  };
+  it("中间段保留正文并隐藏取消提示、耗时、复制及分叉操作", () => {
+    const view = projection.update([message])[0];
+    if (!view) throw new Error("missing test message");
+    render(
+      <TooltipProvider>
+        <PureAssistantMessage
+          name="伙伴"
+          view={view}
+          continuation={{
+            continued: true,
+            continuation: false,
+            footerMessage: message,
+          }}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("继续之前的工作")).toBeVisible();
+    expect(screen.queryByText("执行已取消")).not.toBeInTheDocument();
+    expect(screen.queryByText("9s")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "复制" }),
+    ).not.toBeInTheDocument();
+  });
+  it("普通停止仍显示取消提示与复制操作", () => {
+    const view = projection.update([message])[0];
+    if (!view) throw new Error("missing test message");
+    render(
+      <TooltipProvider>
+        <PureAssistantMessage name="伙伴" view={view} />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("执行已取消")).toBeVisible();
+    expect(screen.getByRole("button", { name: "复制" })).toBeVisible();
+  });
+});
