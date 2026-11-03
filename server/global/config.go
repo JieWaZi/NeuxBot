@@ -33,6 +33,7 @@ import (
 
 	managedskills "github.com/JieWaZi/NeuxBot/server/internal/skills"
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
+	"github.com/JieWaZi/NeuxBot/server/internal/sqlite"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -309,6 +310,9 @@ func loadDB(ctx context.Context, configuration *Configuration) error {
 	if err != nil {
 		return mapCoreError("initialize_application_database", status_error.CoreDatabaseInitializationFailed, err)
 	}
+	if err := sqlite.ProtectTransactions(database.DB); err != nil {
+		return err
+	}
 
 	EventHub = events.New()
 	AgentCapabilities = capability.New(builtinskills.Guide)
@@ -582,7 +586,8 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	IMService = imservice.New(imservice.Config{Events: EventHub, Store: IMControllerManager, Transactions: TransactionControllerManager, Executions: ExecutionService, Chats: ChatService, Teams: ChannelService, Channels: ChannelControllerManager, Threads: ChannelThreadControllerManager, TeamTasks: ChannelTaskControllerManager, DataDirectory: configuration.ManagedFilesDirectory})
 	WorkflowState = workflowstate.New(WorkflowControllerManager, WorkflowRunControllerManager, TransactionControllerManager)
 	WorkflowService = workflow.New(workflow.Config{
-		Commands: controllers.NewAgentCommandController(DB), Events: EventHub,
+		RepairOutput: repairWorkflowOutput,
+		Commands:     controllers.NewAgentCommandController(DB), Events: EventHub,
 		State:            WorkflowState,
 		Resources:        workflowResources,
 		IMCall:           IMService.WorkflowCall,

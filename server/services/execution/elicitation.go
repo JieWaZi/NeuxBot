@@ -22,6 +22,8 @@ import (
 type pendingElicitation struct {
 	// resolutionMutex 串行化用户提交与执行取消，保证先获得处理权的一方形成唯一结果。
 	resolutionMutex sync.Mutex
+	// requestContext 仅约束原生交互的新决定接纳；异步软件问题不继承创建请求期限。
+	requestContext context.Context
 	// chatID 是结构化输入所属 Chat 标识。
 	chatID string
 	// executionID 是结构化输入所属活跃执行标识。
@@ -145,12 +147,13 @@ func (c *elicitationCoordinator) request(
 	}
 	requested := elicitationEventData(util.New(), request)
 	pending := &pendingElicitation{
-		messageFacts: facts,
-		invocationID: request.InvocationID,
-		chatID:       chatID,
-		executionID:  executionID,
-		requested:    requested,
-		response:     make(chan agentapi.ElicitationDecision, 1),
+		requestContext: ctx,
+		messageFacts:   facts,
+		invocationID:   request.InvocationID,
+		chatID:         chatID,
+		executionID:    executionID,
+		requested:      requested,
+		response:       make(chan agentapi.ElicitationDecision, 1),
 	}
 
 	c.commitMutex.Lock()
@@ -349,6 +352,9 @@ func (c *elicitationCoordinator) beginResolution(
 	defer c.mutex.Unlock()
 	pending := c.byID[elicitationID]
 	if pending == nil || pending.chatID != chatID {
+		return nil, status_error.ElicitationAlreadyResolved
+	}
+	if enforceArrivalOrder && pending.requestContext != nil && pending.requestContext.Err() != nil {
 		return nil, status_error.ElicitationAlreadyResolved
 	}
 	order := c.orderByChat[chatID]

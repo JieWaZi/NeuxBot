@@ -97,28 +97,33 @@ beforeEach(() => {
       args: { client: "A" },
     },
     manifest: {
-      meta: {
-        title: "发布预审",
-        phases: [
-          { id: "review", title: "环境预审", detail: "客户环境的风险分析" },
-        ],
-      },
+      sdk: "ally.workflow",
+      description: "",
+      controls: [],
+      edges: [],
+      scripts: [],
+      phases: [
+        { id: "review", title: "环境预审", detail: "客户环境的风险分析" },
+      ],
+      title: "发布预审",
       nodes: [
         {
+          execution: { resolve: { kind: "waker", wakerId: "real-waker" } },
+          inputs: [],
           id: "analyse",
-          labelTemplate: "风险分析模板",
+          label: "风险分析模板",
           kind: "worker",
           phaseId: "review",
-          options: { resolve: { kind: "waker", wakerId: "real-waker" } },
         },
         {
+          execution: { resolve: { kind: "waker", wakerId: "real-waker" } },
+          inputs: [],
           id: "unreached",
-          labelTemplate: "尚未开始的写入",
+          label: "尚未开始的写入",
           kind: "worker",
           phaseId: "review",
         },
       ],
-      groups: [{ id: "environments", kind: "pipeline" }],
     },
     instances: [instance.instance ?? {}],
     instanceCount: 1,
@@ -133,11 +138,15 @@ beforeEach(() => {
     humanRequests: [
       {
         id: "human-1",
+        questionVersion: 1,
+        snapshotDigest: "frozen",
         instanceId: "actual-1",
         status: "waiting",
         prompt: "是否批准客户 A 的风险？",
         options: {
-          options: [
+          kind: "select",
+          allowCustom: true,
+          choices: [
             { value: "approve", label: "批准" },
             { value: "deny", label: "否决" },
           ],
@@ -158,10 +167,16 @@ beforeEach(() => {
     ],
   };
   server.use(
+    http.get(`${api}/runs/:runId/node-results`, () =>
+      HttpResponse.json({ items: [], total: 0 }),
+    ),
     http.get("http://workflow.test/api/v1/wakers/real-waker", () =>
       HttpResponse.json({ id: "real-waker", name: "验收伙伴" }),
     ),
     http.get(`${api}/runs/run-1`, () => HttpResponse.json(snapshot)),
+    http.get(`${api}/events/history`, () =>
+      HttpResponse.json({ resources: [] }),
+    ),
     http.get(`${api}/runs/run-1/instances/actual-1`, () =>
       HttpResponse.json(instance),
     ),
@@ -200,14 +215,18 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
-function renderRun() {
+function renderRun(request?: string) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <MemoryRouter initialEntries={["/workflows/flow-1/runs/run-1"]}>
+        <MemoryRouter
+          initialEntries={[
+            `/workflows/flow-1/runs/run-1${request ? `?request=${request}` : ""}`,
+          ]}
+        >
           <Routes>
             <Route
               path="/workflows/:workflowId/runs/:runId"
@@ -243,18 +262,23 @@ it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入�
   snapshot.humanRequests = [];
   snapshot.operationRequests = [];
   snapshot.manifest = {
+    sdk: "ally.workflow",
+    title: "测试工作流",
+    description: "",
+    phases: [],
+    nodes: [],
+    controls: [],
+    edges: [],
+    scripts: [],
     ...snapshot.manifest,
     inputPropertyOrder: { "": ["client", "enabled", "count", "note"] },
-    meta: {
-      ...snapshot.manifest?.meta,
-      inputSchema: {
-        type: "object",
-        properties: {
-          client: { type: "string", title: "客户", default: "默认客户" },
-          enabled: { type: "boolean", title: "发送通知", default: true },
-          count: { type: "integer", title: "条目数", default: 10 },
-          note: { type: "string", title: "备注" },
-        },
+    inputSchema: {
+      type: "object",
+      properties: {
+        client: { type: "string", title: "客户", default: "默认客户" },
+        enabled: { type: "boolean", title: "发送通知", default: true },
+        count: { type: "integer", title: "条目数", default: 10 },
+        note: { type: "string", title: "备注" },
       },
     },
   };
@@ -270,7 +294,7 @@ it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入�
   localStorage.setItem(
     "ally.workflow.last-run-inputs.flow-1",
     JSON.stringify({
-      schema: JSON.stringify(snapshot.manifest.meta?.inputSchema, null, 2),
+      schema: JSON.stringify(snapshot.manifest?.inputSchema, null, 2),
       args: { client: "上次保存的客户" },
     }),
   );
@@ -288,7 +312,15 @@ it("执行输入节点使用冻结参数，弹窗只读且不读取保存输入�
   expect(dialog).toHaveAttribute("data-workflow-input-details", "true");
   expect(dialog).not.toHaveClass("fixed");
   expect(document.body).not.toHaveAttribute("data-scroll-locked");
-  expect(within(dialog).getByText("本次运行备注")).toBeInTheDocument();
+  const inputJSON = dialog.querySelector("pre");
+  expect(inputJSON).not.toBeNull();
+  expect(JSON.parse(inputJSON?.textContent ?? "")).toEqual({
+    client: "实际客户",
+    enabled: false,
+    count: 0,
+    note: "本次运行备注",
+  });
+  expect(inputJSON).toHaveClass("max-h-80", "overflow-auto");
   expect(within(dialog).queryByText("默认客户")).not.toBeInTheDocument();
   expect(within(dialog).queryByText("上次保存的客户")).not.toBeInTheDocument();
   expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
@@ -333,8 +365,61 @@ it("后台查询失败保留运行画布与人工输入草稿，就近重试后�
   ).toBe(input);
 });
 
+it.each([
+  ["提交答案", undefined],
+  ["跳过", undefined],
+  ["提交答案", "human:human-1"],
+  ["跳过", "human:human-1"],
+] as const)(
+  "用户%s成功后收起弹层，仍可手动查看节点详情（请求入口=%s）",
+  async (action, request) => {
+    const user = userEvent.setup();
+    snapshot.operationRequests = [];
+    renderRun(request);
+    await screen.findByText("是否批准客户 A 的风险？", undefined, {
+      timeout: 5000,
+    });
+    await user.click(screen.getByRole("button", { name: action }));
+    await waitFor(() => expect(answers).toHaveLength(1));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    await user.click(screen.getByRole("button", { name: "选择 风险分析模板" }));
+    expect(
+      await screen.findByRole("dialog", { name: "客户 A 风险分析" }),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "提交答案" }),
+      ).not.toBeInTheDocument(),
+    );
+  },
+);
+
+it("用户答案提交失败时保留弹层和答案供重试", async () => {
+  const user = userEvent.setup();
+  snapshot.operationRequests = [];
+  server.use(
+    http.post(`${api}/runs/run-1/humans/human-1/answer`, () =>
+      HttpResponse.json({ message: "提交失败" }, { status: 503 }),
+    ),
+  );
+  renderRun();
+  const input = await screen.findByRole("textbox", {
+    name: "也可以直接填写修改意见或其他回答",
+  });
+  await user.type(input, "需要补充说明");
+  await user.click(screen.getByRole("button", { name: "提交答案" }));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  expect(input).toHaveValue("需要补充说明");
+  expect(screen.getByRole("button", { name: "提交答案" })).toBeEnabled();
+});
+
 it("默认答案不自动提交；业务跳过与操作许可分别提交真实契约", async () => {
   const user = userEvent.setup();
+  const operationRequests = snapshot.operationRequests;
+  snapshot.operationRequests = [];
   renderRun();
   await screen.findByText("是否批准客户 A 的风险？", undefined, {
     timeout: 5000,
@@ -349,7 +434,12 @@ it("默认答案不自动提交；业务跳过与操作许可分别提交真实�
     requestId: expect.any(String),
   });
   expect(permissions).toEqual([]);
-  await user.click(screen.getByRole("button", { name: "拒绝此次操作" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+  );
+  snapshot = { ...snapshot, operationRequests };
+  act(() => subscription.refresh());
+  await user.click(await screen.findByRole("button", { name: "拒绝此次操作" }));
   await waitFor(() => expect(permissions).toHaveLength(1));
   expect(permissions[0]).toMatchObject({
     allowed: false,
@@ -366,10 +456,13 @@ it("人工输入支持五种控件，预填默认值只在用户确认后提交�
     humanRequests: [
       {
         id: "human-1",
+        questionVersion: 1,
+        snapshotDigest: "frozen",
         instanceId: "actual-1",
         status: "waiting",
         prompt: "填写会议资料",
         options: {
+          kind: "form",
           schema: {
             type: "object",
             properties: {
@@ -457,7 +550,7 @@ it("画布区分未执行模板，节点展示实际执行项，SSE 刷新最终
   );
   renderRun();
   await screen.findByText("尚未开始的写入");
-  expect(await screen.findByText("验收伙伴")).toBeInTheDocument();
+  expect((await screen.findAllByText("验收伙伴")).length).toBeGreaterThan(0);
   expect(screen.getByText("未执行")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "选择 风险分析模板" }));
   expect(
@@ -488,7 +581,7 @@ it("画布区分未执行模板，节点展示实际执行项，SSE 刷新最终
   act(() => subscription.refresh?.());
   await user.click(screen.getByRole("link", { name: "查看执行结果" }));
   expect(
-    await screen.findByRole("dialog", { name: "执行详情 · 发布预审" }),
+    await screen.findByRole("dialog", { name: "运行详情 · 发布预审" }),
   ).toBeInTheDocument();
   await waitFor(() =>
     expect(screen.getByText(/"decision": "不予发布"/)).toBeInTheDocument(),

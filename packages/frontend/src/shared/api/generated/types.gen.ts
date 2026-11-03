@@ -853,6 +853,10 @@ export type GithubComJieWaZiNeuxBotServerApisChatsMessageRequest = {
      */
     startNewSession?: boolean;
     /**
+     * 接续执行标识
+     */
+    steerExecutionId?: string;
+    /**
      * 自动总结旧会话时使用的模型。
      */
     summaryModel?: string;
@@ -864,10 +868,6 @@ export type GithubComJieWaZiNeuxBotServerApisChatsMessageRequest = {
      * 消息正文
      */
     text: string;
-    /**
-     * 工作流列表
-     */
-    workflowIds?: Array<string>;
 };
 
 /**
@@ -5302,6 +5302,10 @@ export type GithubComJieWaZiNeuxBotServerApisWorkBoardWorkResultResponse = {
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand = {
     /**
+     * 问题版本
+     */
+    questionVersion: number;
+    /**
      * 提交标识
      */
     requestId?: string;
@@ -5309,6 +5313,10 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand = {
      * 明确跳过
      */
     skip?: boolean;
+    /**
+     * 候选摘要
+     */
+    snapshotDigest: string;
     /**
      * 真实答案
      */
@@ -5331,6 +5339,24 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerOperationCommand = {
      * 请求标识
      */
     requestId: string;
+};
+
+/**
+ * CanvasReference 固定用户选中的画布版本及业务目标。
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsCanvasReference = {
+    /**
+     * 稳定标识
+     */
+    id?: string;
+    /**
+     * 目标类型
+     */
+    kind?: string;
+    /**
+     * 引用版本
+     */
+    revisionId?: string;
 };
 
 /**
@@ -5401,6 +5427,29 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsRetryRunCommand = {
 };
 
 /**
+ * 工作流创作消息
+ * RunReference 固定本次优化所依据的原运行证据。
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsRunReference = {
+    /**
+     * 关联实例
+     */
+    instanceId?: string;
+    /**
+     * 原版本
+     */
+    revisionId?: string;
+    /**
+     * 原运行
+     */
+    runId?: string;
+    /**
+     * 可见摘要
+     */
+    summary?: string;
+};
+
+/**
  * 触发配置请求
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsSaveWorkflowTriggersCommand = {
@@ -5438,13 +5487,17 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsSavedWorkflowTriggers = {
 };
 
 /**
- * 工作流创作消息
+ * SendCreationMessageCommand 是一轮创作的可见输入与引用。
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsSendCreationMessageCommand = {
     /**
      * 消息附件
      */
     attachments?: Array<GithubComJieWaZiNeuxBotServerInternalWorkinputAttachment>;
+    /**
+     * 画布引用
+     */
+    canvasReferences?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsCanvasReference>;
     /**
      * 代码引用
      */
@@ -5471,6 +5524,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsSendCreationMessageCommand
      * 请求标识
      */
     requestId?: string;
+    runReference?: GithubComJieWaZiNeuxBotServerApisWorkflowsRunReference & unknown;
     /**
      * 创作会话
      */
@@ -5516,9 +5570,9 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsSkipWorkerCommand = {
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsValidateWorkflowSourceRequest = {
     /**
-     * 契约版本
+     * SDK 标识
      */
-    sdkVersion: string;
+    sdk: string;
     /**
      * 完整源码
      */
@@ -5552,56 +5606,6 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowAnnotationRequest 
 };
 
 /**
- * 工作流文件预览
- */
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowArtifactResponse = {
-    /**
-     * 候选路径
-     */
-    candidate?: string;
-    /**
-     * 内容变化
-     */
-    changed?: boolean;
-    /**
-     * 检查时间
-     */
-    checkedAt?: number;
-    /**
-     * 编码内容
-     */
-    dataUrl?: string;
-    /**
-     * 内容摘要
-     */
-    digest?: string;
-    /**
-     * 媒体类型
-     */
-    mediaType?: string;
-    /**
-     * 失败原因
-     */
-    reason?: string;
-    /**
-     * 相对路径
-     */
-    relativePath?: string;
-    /**
-     * 文件大小
-     */
-    size?: number;
-    /**
-     * 文本内容
-     */
-    text?: string;
-    /**
-     * 校验通过
-     */
-    verified?: boolean;
-};
-
-/**
  * 工作流详情
  */
 export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowDetailResponse = {
@@ -5614,7 +5618,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowDetailResponse = {
      */
     creationSessions?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowCreationSession>;
     definition?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition & unknown;
-    revision?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRevision & unknown;
+    revision?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionResponse & unknown;
 };
 
 /**
@@ -5699,113 +5703,51 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowListResponse = {
 };
 
 /**
- * 节点产出条目
+ * 原版本重试计划
  */
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultItem = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRetryPlan = {
     /**
-     * 实例标题
+     * 可否重试
      */
-    label?: string;
+    allowed?: boolean;
     /**
-     * 实例路径
+     * 并发版本
      */
-    path?: string;
-    reference?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference & unknown;
-    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
+    expectedVersion?: number;
+    /**
+     * 节点计划
+     */
+    items?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRetryPlanItem>;
+    /**
+     * 原版本标识
+     */
+    revisionId?: string;
+    /**
+     * 原运行标识
+     */
+    runId?: string;
 };
 
 /**
- * 节点产出引用
+ * 重试计划条目
  */
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference = {
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRetryPlanItem = {
     /**
-     * 尝试标识
+     * 处理方式
      */
-    attemptId?: string;
+    action?: string;
     /**
      * 实例标识
      */
     instanceId?: string;
     /**
-     * 最终消息
-     */
-    messageId?: string;
-    /**
-     * 运行标识
-     */
-    runId?: string;
-    /**
-     * 产出标题
-     */
-    title?: string;
-    /**
-     * 工作流标识
-     */
-    workflowId?: string;
-};
-
-/**
- * 节点产出详情
- */
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultResponse = {
-    /**
-     * 尝试代际
-     */
-    attemptGeneration?: number;
-    /**
-     * 对话标识
-     */
-    chatId?: string;
-    /**
-     * 执行标识
-     */
-    executionId?: string;
-    fileView?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslFileResultDefinition & unknown;
-    /**
-     * 可用文件
-     */
-    files?: Array<GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile>;
-    /**
-     * 源码节点
+     * 节点标识
      */
     nodeId?: string;
-    page?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition & unknown;
     /**
-     * 结果存在
+     * 处理原因
      */
-    present?: boolean;
-    reference?: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference & unknown;
-    /**
-     * 成功结果
-     */
-    result?: unknown;
-    /**
-     * 冻结版本
-     */
-    revisionId?: string;
-    status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
-    /**
-     * 文件目录
-     */
-    workingDirectory?: string;
-};
-
-/**
- * 节点产出列表
- */
-export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultsResponse = {
-    /**
-     * 实例条目
-     */
-    items?: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultItem>;
-    /**
-     * 后续偏移
-     */
-    nextOffset?: number;
-    /**
-     * 实例总数
-     */
-    total?: number;
+    reason?: string;
 };
 
 /**
@@ -5820,6 +5762,53 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionListRespon
      * 版本游标
      */
     nextBefore?: number;
+};
+
+/**
+ * 工作流版本详情
+ */
+export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionResponse = {
+    /**
+     * 编译器版本
+     */
+    compilerVersion?: string;
+    /**
+     * 保存时间
+     */
+    createdAt?: number;
+    /**
+     * 创作会话
+     */
+    creationSessionId?: string;
+    /**
+     * 工作流标识
+     */
+    definitionId?: string;
+    /**
+     * 版本标识
+     */
+    id?: string;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest & unknown;
+    /**
+     * 画布摘要
+     */
+    manifestDigest?: string;
+    /**
+     * 版本序号
+     */
+    ordinal?: number;
+    /**
+     * 恢复来源
+     */
+    restoredFromRevisionId?: string;
+    /**
+     * SDK 标识
+     */
+    sdk?: string;
+    /**
+     * 源码摘要
+     */
+    sourceDigest?: string;
 };
 
 /**
@@ -5861,7 +5850,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse 
      */
     children?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun>;
     /**
-     * 文件产物
+     * 成果文件
      */
     files?: Array<GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile>;
     /**
@@ -5876,7 +5865,11 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse 
      * 节点实例
      */
     instances?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowNodeInstance>;
-    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest & unknown;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest & unknown;
+    /**
+     * 画布摘要
+     */
+    manifestDigest?: string;
     /**
      * 后续游标
      */
@@ -5890,6 +5883,10 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse 
      */
     operationRequests?: Array<GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequest>;
     run?: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun & unknown;
+    /**
+     * 源码摘要
+     */
+    sourceDigest?: string;
 };
 
 /**
@@ -5927,9 +5924,9 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowSdkResponse = {
      */
     primitives?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslPrimitiveContract>;
     /**
-     * 契约版本
+     * SDK 标识
      */
-    sdkVersion?: string;
+    sdk?: string;
 };
 
 /**
@@ -5947,9 +5944,9 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowSourceResponse = {
      */
     revisionId?: string;
     /**
-     * 契约版本
+     * SDK 标识
      */
-    sdkVersion?: string;
+    sdk?: string;
     /**
      * 原始源码
      */
@@ -6000,7 +5997,7 @@ export type GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowValidationResponse
      * 编译诊断
      */
     diagnostics?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslDiagnostic>;
-    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest & unknown;
+    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest & unknown;
     /**
      * 校验通过
      */
@@ -6984,24 +6981,6 @@ export type GithubComJieWaZiNeuxBotServerConstantsWorkResultOwnerKind = '' | 'ch
 
 /**
  * >
- * * `break` - WorkflowControlKindBreak 表示离开当前循环。
- * * `continue` - WorkflowControlKindContinue 表示进入下一轮循环。
- * * `decision` - WorkflowControlKindDecision 表示互斥判断，包括短路表达式。
- * * `join_workflow` - WorkflowControlKindJoinWorkflow 表示显式等待此前启动的子流程。
- * * `loop` - WorkflowControlKindLoop 表示条件或逐项循环。
- * * `node` - WorkflowControlKindNode 表示一个已有身份的宿主调用。
- * * `parallel` - WorkflowControlKindParallel 表示独立任务分发和等待全部任务结束。
- * * `pipeline` - WorkflowControlKindPipeline 表示每个输入独立按步骤推进。
- * * `return` - WorkflowControlKindReturn 表示当前主流程返回。
- * * `task_return` - WorkflowControlKindTaskReturn 表示当前任务完成，仍参加所属分组的汇合。
- * * `throw` - WorkflowControlKindThrow 表示抛出异常。
- * * `try` - WorkflowControlKindTry 表示正常路径和异常处理路径。
- *
- */
-export type GithubComJieWaZiNeuxBotServerConstantsWorkflowControlKind = 'break' | 'continue' | 'decision' | 'join_workflow' | 'loop' | 'node' | 'parallel' | 'pipeline' | 'return' | 'task_return' | 'throw' | 'try';
-
-/**
- * >
  * * `` - WorkflowInputSourceUnspecified 表示尚未配置参数来源。
  * * `api` - WorkflowInputSourceAPI 使用每次调用显式提供的值。
  * * `fixed` - WorkflowInputSourceFixed 使用任务保存的固定 JSON 值。
@@ -7528,6 +7507,10 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessage = {
      */
     sourceWakerId?: string;
     status?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
+    /**
+     * 接续执行标识
+     */
+    steerExecutionId?: string;
     /**
      * 输入提交标识
      */
@@ -8690,69 +8673,26 @@ export type GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod = {
     steps?: Array<string>;
 };
 
-/**
- * ActionDeclaration 冻结确定性动作允许使用的宿主能力。
- */
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration = {
-    /**
-     * AllowedOrigins 限制 HTTP 目标源。
-     */
     allowedOrigins?: Array<string>;
-    /**
-     * ConnectorIDs 限制内置处理器可代理的连接器。
-     */
     connectorIds?: Array<string>;
-    /**
-     * Description 是业务用途说明。
-     */
-    description?: string;
-    /**
-     * Executable 固定 argv 命令的可执行文件。
-     */
+    description: string;
     executable?: string;
-    /**
-     * Handler 指向内置动作的源码处理函数。
-     */
     handler?: string;
-    /**
-     * ID 是动作稳定身份。
-     */
-    id?: string;
-    /**
-     * IMTargetIDs 声明动态 IM 投递可使用的聊天身份，固定目标另从编译程序派生。
-     */
+    id: string;
     imTargetIds?: Array<string>;
-    /**
-     * InputSchema 校验动作输入。
-     */
     inputSchema?: {
         [key: string]: unknown;
     };
-    /**
-     * Label 是用户可读名称。
-     */
-    label?: string;
-    /**
-     * Methods 限制允许的 HTTP 方法。
-     */
+    interpreter?: string;
+    label: string;
     methods?: Array<string>;
-    /**
-     * OutputSchema 校验动作输出。
-     */
     outputSchema?: {
         [key: string]: unknown;
     };
-    /**
-     * Risk 是读取、写入或外部效果的展示分类。
-     */
-    risk?: string;
-    /**
-     * Type 选择 HTTP、argv 命令或内置处理器。
-     */
-    type?: string;
-    /**
-     * WorkingDirectory 固定命令只能使用批准的流程目录。
-     */
+    risk: string;
+    scriptId?: string;
+    type: string;
     workingDirectory?: string;
 };
 
@@ -8789,58 +8729,172 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslBinding = {
     value?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslValue & unknown;
 };
 
-/**
- * ControlBranch 是控制结构内的一条静态路径或任务模板。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlBranch = {
-    /**
-     * Hints 是此路径依次执行的控制结构，空数组表示直接通过。
-     */
-    hints?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlHint>;
-    /**
-     * Label 是 true、false、body、catch、finally 或任务序号等路径语义。
-     */
-    label?: string;
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasBranch = {
+    children: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasControl>;
+    label: string;
 };
 
-/**
- * ControlHint 是固定 AST 派生的只读控制结构，分支内顺序与原始求值顺序一致。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlHint = {
-    /**
-     * Branches 保存互斥分支、独立任务、管道步骤或异常处理块。
-     */
-    branches?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlBranch>;
-    /**
-     * Concurrency 是分组声明或宿主默认的最大并发数，非分组结构省略。
-     */
-    concurrency?: number;
-    /**
-     * Condition 保留判断或迭代对象的原始源码，用于解释路径条件。
-     */
-    condition?: string;
-    /**
-     * FailureMode 是分组失败后的真实收敛策略，非分组结构省略。
-     */
-    failureMode?: string;
-    /**
-     * GroupID 关联原始 parallel 或 pipeline 的稳定身份。
-     */
-    groupId?: string;
-    /**
-     * ID 是当前 revision 内确定的控制结构身份，不用作运行实例或跨版本节点身份。
-     */
-    id?: string;
-    kind?: GithubComJieWaZiNeuxBotServerConstantsWorkflowControlKind & unknown;
-    /**
-     * NodeID 关联已有的可编辑调用模板；逻辑门本身不能编辑。
-     */
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasControl = {
+    branches: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasBranch>;
+    conditionExpression?: string;
+    id: string;
+    kind: 'call' | 'sequence' | 'decision' | 'parallel' | 'pipeline' | 'loop' | 'try';
     nodeId?: string;
-    /**
-     * PhaseID 为调用与退出指定展示阶段，复合结构由其子调用确定阶段。
-     */
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasEdge = {
+    bindingPath?: string;
+    condition?: string;
+    from: string;
+    id: string;
+    kind: 'control' | 'data';
+    to: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput = {
+    dependsOn: Array<string>;
+    expression: string;
+    target: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasManifest = {
+    actions?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration>;
+    controls: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasControl>;
+    description: string;
+    edges: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasEdge>;
+    inputPropertyOrder?: {
+        [key: string]: Array<string>;
+    };
+    inputSchema?: {
+        [key: string]: unknown;
+    };
+    nodes: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasNode>;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phases: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasPhase>;
+    scripts: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslScriptSummary>;
+    sdk: 'ally.workflow';
+    title: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasNode = {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionInput;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'input';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
     phaseId?: string;
-    range?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange & unknown;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionResult;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'result';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionWorker;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'worker';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+    successCondition?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSuccessCondition;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionAskUser;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'askUser';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionAction;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'action';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+    successCondition?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSuccessCondition;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionFunctionTask;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'functionTask';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+    successCondition?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSuccessCondition;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionWorkflow;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'workflow';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionStartWorkflow;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'startWorkflow';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+} | {
+    description?: string;
+    execution: GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionJoinWorkflow;
+    id: string;
+    inputs: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasInput>;
+    kind: 'joinWorkflow';
+    label: string;
+    outputSchema?: {
+        [key: string]: unknown;
+    };
+    phaseId?: string;
+    sourceRange?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasPhase = {
+    detail: string;
+    id: string;
+    title: string;
 };
 
 /**
@@ -8875,49 +8929,6 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslDiagnostic = {
 };
 
 /**
- * DisplayEdge 表达阶段声明的展示连线。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslDisplayEdge = {
-    /**
-     * From 是起点阶段身份。
-     */
-    from?: string;
-    /**
-     * To 是终点阶段身份。
-     */
-    to?: string;
-};
-
-/**
- * FileResultDefinition 声明文件产出入口，文件清单由节点 Schema 和成功结果派生。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslFileResultDefinition = {
-    /**
-     * Description 是文件交付的简短说明，不复制文件正文。
-     */
-    description?: string;
-    /**
-     * Title 是产出卡片和文件查看标签的名称。
-     */
-    title?: string;
-};
-
-/**
- * Group 描述静态并行和管道调用。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslGroup = {
-    /**
-     * ID 是分组的稳定身份。
-     */
-    id?: string;
-    /**
-     * Kind 区分并行与逐项管道。
-     */
-    kind?: string;
-    range?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange & unknown;
-};
-
-/**
  * Limits 保存创作声明的运行预算。
  */
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits = {
@@ -8937,196 +8948,6 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits = {
      * TimeoutMillis 限制运行总耗时。
      */
     timeoutMs?: number;
-};
-
-/**
- * Manifest 是只读画布与详情使用的源码投影。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest = {
-    /**
-     * ControlHints 保留源码的控制结构与调用身份，不参与调度或成为第二份编辑数据。
-     */
-    controlHints?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslControlHint>;
-    /**
-     * DisplayEdges 是阶段间展示关系。
-     */
-    displayEdges?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslDisplayEdge>;
-    /**
-     * Groups 是并行或管道分组模板。
-     */
-    groups?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslGroup>;
-    /**
-     * InputPropertyOrder 按输入 Schema 的 JSON Pointer 保留源码属性声明顺序，仅用于只读表单布局。
-     */
-    inputPropertyOrder?: {
-        [key: string]: Array<string>;
-    };
-    meta?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslMeta & unknown;
-    /**
-     * Nodes 是按源码位置排列的调用模板。
-     */
-    nodes?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslNode>;
-};
-
-/**
- * Meta 是从纯字面量解析的原生工作流声明。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslMeta = {
-    /**
-     * Actions 是源码允许调用的确定性动作声明。
-     */
-    actions?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration>;
-    /**
-     * Description 描述工作流的业务结果。
-     */
-    description?: string;
-    inputPage?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition & unknown;
-    /**
-     * InputSchema 校验运行参数。
-     */
-    inputSchema?: {
-        [key: string]: unknown;
-    };
-    limits?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslLimits & unknown;
-    /**
-     * NodeResultFiles 声明以真实文件交付的伙伴产出，复用宿主文件查看器。
-     */
-    nodeResultFiles?: {
-        [key: string]: GithubComJieWaZiNeuxBotServerInternalWorkflowDslFileResultDefinition;
-    };
-    /**
-     * NodeResultPageOmissions 记录逐个评估伙伴输出后无需展示页面的具体理由。
-     */
-    nodeResultPageOmissions?: {
-        [key: string]: string;
-    };
-    /**
-     * NodeResultPages 按稳定节点身份声明需要向用户展示的产出页面。
-     */
-    nodeResultPages?: {
-        [key: string]: GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition;
-    };
-    /**
-     * OutputSchema 校验最终返回值。
-     */
-    outputSchema?: {
-        [key: string]: unknown;
-    };
-    /**
-     * Phases 是稳定身份的展示阶段。
-     */
-    phases?: Array<GithubComJieWaZiNeuxBotServerInternalWorkflowDslPhase>;
-    /**
-     * SDK 是必须与宿主匹配的声明版本。
-     */
-    sdk?: string;
-    /**
-     * Title 是内置伙伴根据用户目标生成的工作流标题。
-     */
-    title?: string;
-    /**
-     * WhenToUse 描述适合启动此流程的场景。
-     */
-    whenToUse?: string;
-};
-
-/**
- * Node 是一个稳定的源码调用模板。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslNode = {
-    /**
-     * GroupID 是所属并行或管道模板。
-     */
-    groupId?: string;
-    /**
-     * ID 是跨版本保持的节点身份。
-     */
-    id?: string;
-    /**
-     * Kind 是 SDK primitive 名称。
-     */
-    kind?: string;
-    /**
-     * LabelTemplate 保留动态标题的原始模板。
-     */
-    labelTemplate?: string;
-    /**
-     * LoopDepth 是源码嵌套循环层数。
-     */
-    loopDepth?: number;
-    /**
-     * Options 是静态可解析的配置，不含凭据值。
-     */
-    options?: {
-        [key: string]: unknown;
-    };
-    /**
-     * PhaseID 是显式阶段引用。
-     */
-    phaseId?: string;
-    /**
-     * PromptTemplate 保留 prompt 的源码文本。
-     */
-    promptTemplate?: string;
-    range?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange & unknown;
-};
-
-/**
- * PageDefinition 冻结创作时确定的组件目录和原生 json-render Spec。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslPageDefinition = {
-    /**
-     * CatalogDigest 冻结编译时的组件属性契约，防止同版本目录漂移。
-     */
-    catalogDigest?: string;
-    /**
-     * CatalogVersion 是只读产出或输入组件的冻结目录版本。
-     */
-    catalogVersion?: string;
-    /**
-     * Description 是面向用户的页面说明。
-     */
-    description?: string;
-    /**
-     * FormatVersion 是宿主支持的页面文档版本。
-     */
-    formatVersion?: number;
-    /**
-     * Spec 是原生 root/elements 文档，禁止执行脚本或声明外部操作。
-     */
-    spec?: {
-        [key: string]: unknown;
-    };
-    /**
-     * Title 是页面标题。
-     */
-    title?: string;
-};
-
-/**
- * Phase 是源码声明的阶段身份与显示关系。
- */
-export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslPhase = {
-    /**
-     * CanExit 表示此阶段允许流程结束。
-     */
-    canExit?: boolean;
-    /**
-     * Detail 是阶段职责的完整说明。
-     */
-    detail?: string;
-    /**
-     * ID 是跨版本保持的阶段身份。
-     */
-    id?: string;
-    /**
-     * Next 是展示上的后继阶段身份。
-     */
-    next?: Array<string>;
-    /**
-     * Title 是阶段标题。
-     */
-    title?: string;
 };
 
 /**
@@ -9160,6 +8981,10 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt = {
      */
     definitionId?: string;
     /**
+     * ManifestDigest 绑定实际公开的 CanvasManifest 投影，与内部完整性摘要区分。
+     */
+    manifestDigest?: string;
+    /**
      * Ordinal 是用户可见版本序号。
      */
     ordinal?: number;
@@ -9175,10 +9000,13 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt = {
      * SourceDigest 绑定精确保存的源码。
      */
     sourceDigest?: string;
-    /**
-     * Unchanged 表示新请求的源码与当前版完全相同。
-     */
-    unchanged?: boolean;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslScriptSummary = {
+    digest: string;
+    id: string;
+    language: 'python';
+    protocol: 'json' | 'text';
 };
 
 /**
@@ -9205,30 +9033,20 @@ export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceEdit = {
     target?: string;
 };
 
-/**
- * SourcePosition 同时保留 UTF-8 字节位置和编辑器的 UTF-16 行列。
- */
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition = {
-    /**
-     * Column 是编辑器的一基 UTF-16 列号。
-     */
-    column?: number;
-    /**
-     * Line 是编辑器的一基行号。
-     */
-    line?: number;
-    /**
-     * Offset 是原始源码的零基 UTF-8 字节偏移。
-     */
-    offset?: number;
+    column: number;
+    line: number;
+    offset: number;
 };
 
-/**
- * SourceRange 指向原始源码中的半开范围。
- */
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourceRange = {
-    end?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition & unknown;
-    start?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition & unknown;
+    end: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition;
+    start: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSourcePosition;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslSuccessCondition = {
+    equals: unknown;
+    path: string;
 };
 
 /**
@@ -11912,6 +11730,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowEffect = {
      */
     instanceId?: string;
     /**
+     * OutputRepairs 是已持久接纳的无工具输出纠正次数，重启不重置。
+     */
+    outputRepairs?: number;
+    /**
      * RunID 是所属运行。
      */
     runId?: string;
@@ -12020,9 +11842,17 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowHumanRequest 
      */
     prompt?: string;
     /**
+     * QuestionVersion 是当前冻结问题的乐观并发版本。
+     */
+    questionVersion?: number;
+    /**
      * RunID 是所属运行。
      */
     runId?: string;
+    /**
+     * SnapshotDigest 绑定不可变候选快照的精确内容。
+     */
+    snapshotDigest?: string;
     /**
      * Source 区分 user、skip 和 timeout。
      */
@@ -12114,6 +11944,12 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowNodeInstance 
      */
     phaseId?: string;
     /**
+     * ReusedFrom 记录同版本重试复用的原始证据身份。
+     */
+    reusedFrom?: {
+        [key: string]: unknown;
+    };
+    /**
      * RunID 是所属运行。
      */
     runId?: string;
@@ -12171,61 +12007,6 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowOperationRequ
      */
     runId?: string;
     status?: GithubComJieWaZiNeuxBotServerConstantsWorkflowStepStatus & unknown;
-};
-
-/**
- * WorkflowRevision 是原始源码、投影与 Go 指令的不可变绑定。
- */
-export type GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRevision = {
-    /**
-     * CompilerVersion 是保存时固定的编译器版本。
-     */
-    compilerVersion?: string;
-    /**
-     * CreatedAt 是版本提交时间的 Unix 毫秒。
-     */
-    createdAt?: number;
-    /**
-     * CreationSessionID 关联产生此版本的真实创作会话。
-     */
-    creationSessionId?: string;
-    /**
-     * DefinitionID 是所属工作流身份。
-     */
-    definitionId?: string;
-    /**
-     * ID 是不可变版本身份。
-     */
-    id?: string;
-    /**
-     * IRDigest 绑定此版本的执行指令。
-     */
-    irDigest?: string;
-    /**
-     * IRVersion 是保存时固定的持久指令格式版本。
-     */
-    irVersion?: number;
-    manifest?: GithubComJieWaZiNeuxBotServerInternalWorkflowDslManifest & unknown;
-    /**
-     * ManifestDigest 绑定此版本的只读投影。
-     */
-    manifestDigest?: string;
-    /**
-     * Ordinal 是所属工作流内单调增加的版本序号。
-     */
-    ordinal?: number;
-    /**
-     * RestoredFromRevisionID 记录恢复的原版本，不移动历史指针。
-     */
-    restoredFromRevisionId?: string;
-    /**
-     * SDKVersion 是创作源码的原生契约版本。
-     */
-    sdkVersion?: string;
-    /**
-     * SourceDigest 是原始源码字节摘要。
-     */
-    sourceDigest?: string;
 };
 
 /**
@@ -13006,9 +12787,17 @@ export type GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile = {
  */
 export type GithubComJieWaZiNeuxBotServerServicesWorkflowSaveSourceCommand = {
     /**
+     * BaseSourceDigest 是补丁对应的精确基准摘要。
+     */
+    baseSourceDigest?: string;
+    /**
      * ExpectedRevisionID 是保存前读取到的当前版本。
      */
     expectedRevisionId?: string;
+    /**
+     * Patches 是按顺序应用的唯一文本替换。
+     */
+    patches?: Array<GithubComJieWaZiNeuxBotServerServicesWorkflowSourcePatch>;
     /**
      * RequestID 是同一保存内容的幂等身份。
      */
@@ -13018,13 +12807,27 @@ export type GithubComJieWaZiNeuxBotServerServicesWorkflowSaveSourceCommand = {
      */
     resolvedAnnotationIds?: Array<string>;
     /**
-     * SDKVersion 是本次创作使用的原生契约。
+     * SDK 是本次创作使用的原生契约。
      */
-    sdkVersion?: string;
+    sdk?: string;
     /**
      * Source 是不裁剪和不格式化的完整创作源码。
      */
     source?: string;
+};
+
+/**
+ * SourcePatch 描述一次必须唯一匹配的精确源码替换。
+ */
+export type GithubComJieWaZiNeuxBotServerServicesWorkflowSourcePatch = {
+    /**
+     * Replace 是替换后的完整字节串。
+     */
+    replace?: string;
+    /**
+     * Search 是基准源码中必须恰好出现一次的字节串。
+     */
+    search?: string;
 };
 
 /**
@@ -14152,6 +13955,96 @@ export type GithubComShrewxGinxPkgStatuserrorStatusErr = {
 
 export type TimeTime = string;
 
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionAction = {
+    actionId: string;
+    actionType: 'script';
+    scriptId: string;
+} | {
+    actionId: string;
+    actionType: 'script';
+    executable: string;
+} | {
+    actionId: string;
+    actionType: 'http';
+    allowedOrigins: Array<string>;
+    methods: Array<string>;
+} | {
+    actionId: string;
+    actionType: 'builtin';
+    handler: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionAskUser = {
+    allowCustom?: boolean;
+    allowSkip?: boolean;
+    kind: 'text' | 'select' | 'multiselect' | 'form' | 'confirm';
+    maxSelections?: number;
+    minSelections?: number;
+    onTimeout?: 'fail' | 'skip' | 'default';
+    promptTemplate?: string;
+    schema?: {
+        [key: string]: unknown;
+    };
+    timeoutMs?: number;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionFunctionTask = {
+    codeDigest: string;
+    executionMode: 'pure' | 'trusted_local';
+    language: 'javascript' | 'python';
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionInput = {
+    target: 'args';
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionJoinWorkflow = {
+    handleExpression: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionResult = {
+    target: 'result';
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionStartWorkflow = {
+    definitionId: string;
+    mode: 'joined' | 'detached';
+    revisionId?: string;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionWorker = {
+    promptTemplate?: string;
+    resolve: {
+        accountId?: string;
+        kind: 'waker';
+        model?: string;
+        permissionLevel?: 'default' | 'auto' | 'full-access';
+        reasoning?: string;
+        runtimeId?: string;
+        wakerId: string;
+    };
+    toolPolicy?: {
+        connectors?: {
+            mode: 'inherit';
+        } | {
+            connectorIds: Array<string>;
+            mode: 'allowlist';
+        };
+        nativeTools?: {
+            mode: 'inherit';
+        } | {
+            capabilityIds: Array<string>;
+            mode: 'allowlist';
+        };
+    };
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslCanvasExecutionWorkflow = {
+    definitionId: string;
+    mode: 'joined' | 'detached';
+    revisionId?: string;
+};
+
 export type ReadData = {
     body?: never;
     path?: never;
@@ -14200,6 +14093,8 @@ export type ReadErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -14425,9 +14320,11 @@ export type ReadErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -14526,6 +14423,8 @@ export type CommandErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -14751,9 +14650,11 @@ export type CommandErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -15033,6 +14934,8 @@ export type StartAiAccountLoginErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -15258,9 +15161,11 @@ export type StartAiAccountLoginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -15368,6 +15273,8 @@ export type CancelAiAccountLoginErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -15593,9 +15500,11 @@ export type CancelAiAccountLoginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -15901,6 +15810,8 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -16126,9 +16037,11 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -16318,6 +16231,8 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -16543,9 +16458,11 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -16649,6 +16566,8 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -16874,9 +16793,11 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -17702,68 +17623,10 @@ export type CreateChatData = {
 export type CreateChatErrors = {
     /**
      * >
-     * * `[AgentInputInvalid][40000009001]`
      * * `[BadRequest][40000000001]`
-     * * `[SkillContentInvalid][40000000013]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
      *
      */
     400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AgentContextUnauthorized][40100009001]`
-     *
-     */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AgentOperationForbidden][40300009001]`
-     *
-     */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AgentReceiptNotFound][40400009001]`
-     * * `[WorkflowFileNotFound][40400003002]`
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AgentCommandOutcomeUnknown][40900009001]`
-     * * `[AgentCommandRequestConflict][40900009002]`
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowFenceConflict][40900003004]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[InternalServerError][50000000001]`
-     * * `[SkillUnavailable][50000000008]`
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AgentConnectionUnavailable][50300009001]`
-     *
-     */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type CreateChatError = CreateChatErrors[keyof CreateChatErrors];
@@ -18070,68 +17933,10 @@ export type SendMessageData = {
 export type SendMessageErrors = {
     /**
      * >
-     * * `[AgentInputInvalid][40000009001]`
      * * `[BadRequest][40000000001]`
-     * * `[SkillContentInvalid][40000000013]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
      *
      */
     400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AgentContextUnauthorized][40100009001]`
-     *
-     */
-    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AgentOperationForbidden][40300009001]`
-     *
-     */
-    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AgentReceiptNotFound][40400009001]`
-     * * `[WorkflowFileNotFound][40400003002]`
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AgentCommandOutcomeUnknown][40900009001]`
-     * * `[AgentCommandRequestConflict][40900009002]`
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowFenceConflict][40900003004]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[InternalServerError][50000000001]`
-     * * `[SkillUnavailable][50000000008]`
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[AgentConnectionUnavailable][50300009001]`
-     *
-     */
-    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type SendMessageError = SendMessageErrors[keyof SendMessageErrors];
@@ -18529,6 +18334,8 @@ export type StreamEventsErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -18754,9 +18561,11 @@ export type StreamEventsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -19560,6 +19369,8 @@ export type UpdateMcpServiceErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -19785,9 +19596,11 @@ export type UpdateMcpServiceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -19985,6 +19798,8 @@ export type UpdateApiServiceErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -20210,9 +20025,11 @@ export type UpdateApiServiceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -28762,6 +28579,8 @@ export type ListPluginsErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -28987,9 +28806,11 @@ export type ListPluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -29314,6 +29135,8 @@ export type PrepareCatalogPluginErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -29539,9 +29362,11 @@ export type PrepareCatalogPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -29879,6 +29704,8 @@ export type GetPluginErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -30104,9 +29931,11 @@ export type GetPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -30805,6 +30634,8 @@ export type InstallPluginErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -31030,9 +30861,11 @@ export type InstallPluginErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -32134,6 +31967,8 @@ export type SetAutomaticTaskApiErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -32359,9 +32194,11 @@ export type SetAutomaticTaskApiErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -32853,6 +32690,8 @@ export type ListAutomaticTasksErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -33078,9 +32917,11 @@ export type ListAutomaticTasksErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -33251,6 +33092,8 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -33476,9 +33319,11 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -33615,6 +33460,8 @@ export type DeleteAutomaticTaskErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -33840,9 +33687,11 @@ export type DeleteAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -33950,6 +33799,8 @@ export type GetAutomaticTaskErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -34175,9 +34026,11 @@ export type GetAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -34436,6 +34289,8 @@ export type ListAutomaticRunsErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -34661,9 +34516,11 @@ export type ListAutomaticRunsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -34771,6 +34628,8 @@ export type TriggerAutomaticTaskErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -34996,9 +34855,11 @@ export type TriggerAutomaticTaskErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -35545,6 +35406,8 @@ export type ListWakerPluginsErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -35770,9 +35633,11 @@ export type ListWakerPluginsErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -37003,99 +36868,6 @@ export type CreateWorkflowData = {
 export type CreateWorkflowErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WakerNotFound][40400000001]`
-     * * `[WorkflowFileNotFound][40400003002]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WakerNameConflict][40900000002]`
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type CreateWorkflowError = CreateWorkflowErrors[keyof CreateWorkflowErrors];
-
-export type CreateWorkflowResponses = {
-    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition;
-};
-
-export type CreateWorkflowResponse = CreateWorkflowResponses[keyof CreateWorkflowResponses];
-
-export type GetWorkflowChatResultsData = {
-    body?: never;
-    path?: never;
-    query: {
-        /**
-         * 对话标识
-         */
-        chatId: string;
-    };
-    url: '/api/v1/workflows/chat-results';
-};
-
-export type GetWorkflowChatResultsResponses = {
-    200: Array<GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultReference>;
-};
-
-export type GetWorkflowChatResultsResponse = GetWorkflowChatResultsResponses[keyof GetWorkflowChatResultsResponses];
-
-export type GetWorkflowSdkData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/v1/workflows/sdk';
-};
-
-export type GetWorkflowSdkResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowSdkResponse;
-};
-
-export type GetWorkflowSdkResponse = GetWorkflowSdkResponses[keyof GetWorkflowSdkResponses];
-
-export type DeleteWorkflowData = {
-    body: GithubComJieWaZiNeuxBotServerApisWorkflowsDeleteWorkflowBody & unknown;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}';
-};
-
-export type DeleteWorkflowErrors = {
-    /**
-     * >
      * * `[AIAccountConfigurationInvalid][40000000020]`
      * * `[AgentInputInvalid][40000009001]`
      * * `[AutomaticScheduleInvalid][40000001001]`
@@ -37134,6 +36906,8 @@ export type DeleteWorkflowErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -37359,9 +37133,359 @@ export type DeleteWorkflowErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type CreateWorkflowError = CreateWorkflowErrors[keyof CreateWorkflowErrors];
+
+export type CreateWorkflowResponses = {
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowDefinition;
+};
+
+export type CreateWorkflowResponse = CreateWorkflowResponses[keyof CreateWorkflowResponses];
+
+export type GetWorkflowSdkData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/workflows/sdk';
+};
+
+export type GetWorkflowSdkResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowSdkResponse;
+};
+
+export type GetWorkflowSdkResponse = GetWorkflowSdkResponses[keyof GetWorkflowSdkResponses];
+
+export type DeleteWorkflowData = {
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsDeleteWorkflowBody & unknown;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}';
+};
+
+export type DeleteWorkflowErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -37450,126 +37574,6 @@ export type CreateWorkflowAnnotationData = {
 export type CreateWorkflowAnnotationErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type CreateWorkflowAnnotationError = CreateWorkflowAnnotationErrors[keyof CreateWorkflowAnnotationErrors];
-
-export type CreateWorkflowAnnotationResponses = {
-    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowAnnotation;
-};
-
-export type CreateWorkflowAnnotationResponse = CreateWorkflowAnnotationResponses[keyof CreateWorkflowAnnotationResponses];
-
-export type EditWorkflowConfigurationData = {
-    body: GithubComJieWaZiNeuxBotServerApisWorkflowsEditConfigurationCommand & unknown;
-    path: {
-        /**
-         * ID 是路由中的工作流稳定身份。
-         */
-        id: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}/configuration';
-};
-
-export type EditWorkflowConfigurationErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type EditWorkflowConfigurationError = EditWorkflowConfigurationErrors[keyof EditWorkflowConfigurationErrors];
-
-export type EditWorkflowConfigurationResponses = {
-    200: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt;
-};
-
-export type EditWorkflowConfigurationResponse = EditWorkflowConfigurationResponses[keyof EditWorkflowConfigurationResponses];
-
-export type SendWorkflowCreationMessageData = {
-    body: GithubComJieWaZiNeuxBotServerApisWorkflowsSendCreationMessageCommand & unknown;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}/creation/messages';
-};
-
-export type SendWorkflowCreationMessageErrors = {
-    /**
-     * >
      * * `[AIAccountConfigurationInvalid][40000000020]`
      * * `[AgentInputInvalid][40000009001]`
      * * `[AutomaticScheduleInvalid][40000001001]`
@@ -37608,6 +37612,8 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -37833,9 +37839,681 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type CreateWorkflowAnnotationError = CreateWorkflowAnnotationErrors[keyof CreateWorkflowAnnotationErrors];
+
+export type CreateWorkflowAnnotationResponses = {
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowAnnotation;
+};
+
+export type CreateWorkflowAnnotationResponse = CreateWorkflowAnnotationResponses[keyof CreateWorkflowAnnotationResponses];
+
+export type EditWorkflowConfigurationData = {
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsEditConfigurationCommand & unknown;
+    path: {
+        /**
+         * ID 是路由中的工作流稳定身份。
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/configuration';
+};
+
+export type EditWorkflowConfigurationErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type EditWorkflowConfigurationError = EditWorkflowConfigurationErrors[keyof EditWorkflowConfigurationErrors];
+
+export type EditWorkflowConfigurationResponses = {
+    200: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt;
+};
+
+export type EditWorkflowConfigurationResponse = EditWorkflowConfigurationResponses[keyof EditWorkflowConfigurationResponses];
+
+export type SendWorkflowCreationMessageData = {
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsSendCreationMessageCommand & unknown;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/creation/messages';
+};
+
+export type SendWorkflowCreationMessageErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -37989,617 +38667,6 @@ export type RestoreWorkflowRevisionData = {
 export type RestoreWorkflowRevisionErrors = {
     /**
      * >
-     * * `[BadRequest][40000000001]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type RestoreWorkflowRevisionError = RestoreWorkflowRevisionErrors[keyof RestoreWorkflowRevisionErrors];
-
-export type RestoreWorkflowRevisionResponses = {
-    200: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt;
-};
-
-export type RestoreWorkflowRevisionResponse = RestoreWorkflowRevisionResponses[keyof RestoreWorkflowRevisionResponses];
-
-export type ListWorkflowRevisionsData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-    };
-    query?: {
-        /**
-         * 版本游标
-         */
-        before?: number;
-        /**
-         * 每页条数
-         */
-        limit?: number;
-    };
-    url: '/api/v1/workflows/{id}/revisions';
-};
-
-export type ListWorkflowRevisionsResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionListResponse;
-};
-
-export type ListWorkflowRevisionsResponse = ListWorkflowRevisionsResponses[keyof ListWorkflowRevisionsResponses];
-
-export type DeleteWorkflowRevisionData = {
-    body?: never;
-    path: {
-        /**
-         * ID 是所属工作流身份。
-         */
-        id: string;
-        /**
-         * RevisionID 是需要删除的历史版本身份。
-         */
-        revisionId: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}/revisions/{revisionId}';
-};
-
-export type DeleteWorkflowRevisionErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type DeleteWorkflowRevisionError = DeleteWorkflowRevisionErrors[keyof DeleteWorkflowRevisionErrors];
-
-export type DeleteWorkflowRevisionResponses = {
-    200: boolean;
-};
-
-export type DeleteWorkflowRevisionResponse = DeleteWorkflowRevisionResponses[keyof DeleteWorkflowRevisionResponses];
-
-export type ListWorkflowRunsData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-    };
-    query?: {
-        /**
-         * 时间游标
-         */
-        before?: number;
-        /**
-         * 身份游标
-         */
-        beforeId?: string;
-        /**
-         * 每页条数
-         */
-        limit?: number;
-    };
-    url: '/api/v1/workflows/{id}/runs';
-};
-
-export type ListWorkflowRunsResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunListResponse;
-};
-
-export type ListWorkflowRunsResponse = ListWorkflowRunsResponses[keyof ListWorkflowRunsResponses];
-
-export type StartWorkflowRunData = {
-    body: GithubComJieWaZiNeuxBotServerServicesWorkflowStartRunCommand & unknown;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}/runs';
-};
-
-export type StartWorkflowRunErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type StartWorkflowRunError = StartWorkflowRunErrors[keyof StartWorkflowRunErrors];
-
-export type StartWorkflowRunResponses = {
-    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun;
-};
-
-export type StartWorkflowRunResponse = StartWorkflowRunResponses[keyof StartWorkflowRunResponses];
-
-export type DeleteWorkflowRunData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}/runs/{runId}';
-};
-
-export type DeleteWorkflowRunErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type DeleteWorkflowRunError = DeleteWorkflowRunErrors[keyof DeleteWorkflowRunErrors];
-
-export type DeleteWorkflowRunResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type DeleteWorkflowRunResponse = DeleteWorkflowRunResponses[keyof DeleteWorkflowRunResponses];
-
-export type GetWorkflowRunData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query?: {
-        /**
-         * 实例游标
-         */
-        offset?: number;
-    };
-    url: '/api/v1/workflows/{id}/runs/{runId}';
-};
-
-export type GetWorkflowRunErrors = {
-    /**
-     * >
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type GetWorkflowRunError = GetWorkflowRunErrors[keyof GetWorkflowRunErrors];
-
-export type GetWorkflowRunResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse;
-};
-
-export type GetWorkflowRunResponse = GetWorkflowRunResponses[keyof GetWorkflowRunResponses];
-
-export type GetWorkflowArtifactData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query: {
-        /**
-         * 先前摘要
-         */
-        expectedDigest?: string;
-        /**
-         * 候选路径
-         */
-        path: string;
-    };
-    url: '/api/v1/workflows/{id}/runs/{runId}/artifact';
-};
-
-export type GetWorkflowArtifactErrors = {
-    /**
-     * >
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[OperationCanceled][40800000001]`
-     *
-     */
-    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileStorageError][50000003005]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type GetWorkflowArtifactError = GetWorkflowArtifactErrors[keyof GetWorkflowArtifactErrors];
-
-export type GetWorkflowArtifactResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowArtifactResponse;
-};
-
-export type GetWorkflowArtifactResponse = GetWorkflowArtifactResponses[keyof GetWorkflowArtifactResponses];
-
-export type CancelWorkflowRunData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}/runs/{runId}/cancel';
-};
-
-export type CancelWorkflowRunErrors = {
-    /**
-     * >
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFenceConflict][40900003004]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type CancelWorkflowRunError = CancelWorkflowRunErrors[keyof CancelWorkflowRunErrors];
-
-export type CancelWorkflowRunResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type CancelWorkflowRunResponse = CancelWorkflowRunResponses[keyof CancelWorkflowRunResponses];
-
-export type DownloadWorkflowFileData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query?: {
-        /**
-         * 执行尝试
-         */
-        attemptId?: string;
-        /**
-         * 产物标识
-         */
-        fileId?: string;
-        /**
-         * 节点实例
-         */
-        instanceId?: string;
-        /**
-         * 文件路径
-         */
-        path?: string;
-    };
-    url: '/api/v1/workflows/{id}/runs/{runId}/file';
-};
-
-export type DownloadWorkflowFileErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type DownloadWorkflowFileError = DownloadWorkflowFileErrors[keyof DownloadWorkflowFileErrors];
-
-export type DownloadWorkflowFileResponses = {
-    200: GithubComShrewxGinxAttachment;
-};
-
-export type DownloadWorkflowFileResponse = DownloadWorkflowFileResponses[keyof DownloadWorkflowFileResponses];
-
-export type AnswerWorkflowHumanData = {
-    body: GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand & unknown;
-    path: {
-        /**
-         * 请求标识
-         */
-        humanId: string;
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}/runs/{runId}/humans/{humanId}/answer';
-};
-
-export type AnswerWorkflowHumanErrors = {
-    /**
-     * >
-     * * `[BadRequest][40000000001]`
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowCapabilityUnsupported][40000003003]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowResourceInvalid][40000003004]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     * * `[WorkflowSourceInvalid][40000003001]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowAuthoringFinished][40900003007]`
-     * * `[WorkflowAuthoringSuperseded][40900003006]`
-     * * `[WorkflowFenceConflict][40900003004]`
-     * * `[WorkflowRequestConflict][40900003002]`
-     * * `[WorkflowRevisionConflict][40900003001]`
-     * * `[WorkflowStateConflict][40900003003]`
-     *
-     */
-    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowCancelled][50000003002]`
-     * * `[WorkflowEffectFailed][50000003001]`
-     * * `[WorkflowFileStorageError][50000003005]`
-     * * `[WorkflowStateInvalid][50000003004]`
-     *
-     */
-    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type AnswerWorkflowHumanError = AnswerWorkflowHumanErrors[keyof AnswerWorkflowHumanErrors];
-
-export type AnswerWorkflowHumanResponses = {
-    200: GithubComShrewxGinxCommonResponse;
-};
-
-export type AnswerWorkflowHumanResponse = AnswerWorkflowHumanResponses[keyof AnswerWorkflowHumanResponses];
-
-export type GetWorkflowInstanceData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 实例标识
-         */
-        instanceId: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}/runs/{runId}/instances/{instanceId}';
-};
-
-export type GetWorkflowInstanceErrors = {
-    /**
-     * >
      * * `[AIAccountConfigurationInvalid][40000000020]`
      * * `[AgentInputInvalid][40000009001]`
      * * `[AutomaticScheduleInvalid][40000001001]`
@@ -38638,6 +38705,8 @@ export type GetWorkflowInstanceErrors = {
      * * `[WorkflowFileInvalid][40000003006]`
      * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
      * * `[WorkspacePathInvalid][40000007102]`
@@ -38863,9 +38932,1872 @@ export type GetWorkflowInstanceErrors = {
      * * `[RuntimeUnavailable][50000000006]`
      * * `[SkillStorageError][50000000031]`
      * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type RestoreWorkflowRevisionError = RestoreWorkflowRevisionErrors[keyof RestoreWorkflowRevisionErrors];
+
+export type RestoreWorkflowRevisionResponses = {
+    200: GithubComJieWaZiNeuxBotServerInternalWorkflowDslSaveReceipt;
+};
+
+export type RestoreWorkflowRevisionResponse = RestoreWorkflowRevisionResponses[keyof RestoreWorkflowRevisionResponses];
+
+export type ListWorkflowRevisionsData = {
+    body?: never;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+    };
+    query?: {
+        /**
+         * 版本游标
+         */
+        before?: number;
+        /**
+         * 每页条数
+         */
+        limit?: number;
+    };
+    url: '/api/v1/workflows/{id}/revisions';
+};
+
+export type ListWorkflowRevisionsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRevisionListResponse;
+};
+
+export type ListWorkflowRevisionsResponse = ListWorkflowRevisionsResponses[keyof ListWorkflowRevisionsResponses];
+
+export type DeleteWorkflowRevisionData = {
+    body?: never;
+    path: {
+        /**
+         * ID 是所属工作流身份。
+         */
+        id: string;
+        /**
+         * RevisionID 是需要删除的历史版本身份。
+         */
+        revisionId: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/revisions/{revisionId}';
+};
+
+export type DeleteWorkflowRevisionErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type DeleteWorkflowRevisionError = DeleteWorkflowRevisionErrors[keyof DeleteWorkflowRevisionErrors];
+
+export type DeleteWorkflowRevisionResponses = {
+    200: boolean;
+};
+
+export type DeleteWorkflowRevisionResponse = DeleteWorkflowRevisionResponses[keyof DeleteWorkflowRevisionResponses];
+
+export type ListWorkflowRunsData = {
+    body?: never;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+    };
+    query?: {
+        /**
+         * 时间游标
+         */
+        before?: number;
+        /**
+         * 身份游标
+         */
+        beforeId?: string;
+        /**
+         * 每页条数
+         */
+        limit?: number;
+    };
+    url: '/api/v1/workflows/{id}/runs';
+};
+
+export type ListWorkflowRunsResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunListResponse;
+};
+
+export type ListWorkflowRunsResponse = ListWorkflowRunsResponses[keyof ListWorkflowRunsResponses];
+
+export type StartWorkflowRunData = {
+    body: GithubComJieWaZiNeuxBotServerServicesWorkflowStartRunCommand & unknown;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/runs';
+};
+
+export type StartWorkflowRunErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type StartWorkflowRunError = StartWorkflowRunErrors[keyof StartWorkflowRunErrors];
+
+export type StartWorkflowRunResponses = {
+    200: GithubComJieWaZiNeuxBotServerRepositoriesModelsWorkflowRun;
+};
+
+export type StartWorkflowRunResponse = StartWorkflowRunResponses[keyof StartWorkflowRunResponses];
+
+export type DeleteWorkflowRunData = {
+    body?: never;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+        /**
+         * 运行标识
+         */
+        runId: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/runs/{runId}';
+};
+
+export type DeleteWorkflowRunErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type DeleteWorkflowRunError = DeleteWorkflowRunErrors[keyof DeleteWorkflowRunErrors];
+
+export type DeleteWorkflowRunResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type DeleteWorkflowRunResponse = DeleteWorkflowRunResponses[keyof DeleteWorkflowRunResponses];
+
+export type GetWorkflowRunData = {
+    body?: never;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+        /**
+         * 运行标识
+         */
+        runId: string;
+    };
+    query?: {
+        /**
+         * 实例游标
+         */
+        offset?: number;
+    };
+    url: '/api/v1/workflows/{id}/runs/{runId}';
+};
+
+export type GetWorkflowRunErrors = {
+    /**
+     * >
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkflowStateConflict][40900003003]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkflowStateInvalid][50000003004]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type GetWorkflowRunError = GetWorkflowRunErrors[keyof GetWorkflowRunErrors];
+
+export type GetWorkflowRunResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRunDetailResponse;
+};
+
+export type GetWorkflowRunResponse = GetWorkflowRunResponses[keyof GetWorkflowRunResponses];
+
+export type CancelWorkflowRunData = {
+    body?: never;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+        /**
+         * 运行标识
+         */
+        runId: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/runs/{runId}/cancel';
+};
+
+export type CancelWorkflowRunErrors = {
+    /**
+     * >
+     * * `[WorkflowNotFound][40400003001]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkflowFenceConflict][40900003004]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkflowStateInvalid][50000003004]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type CancelWorkflowRunError = CancelWorkflowRunErrors[keyof CancelWorkflowRunErrors];
+
+export type CancelWorkflowRunResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type CancelWorkflowRunResponse = CancelWorkflowRunResponses[keyof CancelWorkflowRunResponses];
+
+export type AnswerWorkflowHumanData = {
+    body: GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerHumanCommand & unknown;
+    path: {
+        /**
+         * 请求标识
+         */
+        humanId: string;
+        /**
+         * 工作流标识
+         */
+        id: string;
+        /**
+         * 运行标识
+         */
+        runId: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/runs/{runId}/humans/{humanId}/answer';
+};
+
+export type AnswerWorkflowHumanErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
+     * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type AnswerWorkflowHumanError = AnswerWorkflowHumanErrors[keyof AnswerWorkflowHumanErrors];
+
+export type AnswerWorkflowHumanResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type AnswerWorkflowHumanResponse = AnswerWorkflowHumanResponses[keyof AnswerWorkflowHumanResponses];
+
+export type GetWorkflowInstanceData = {
+    body?: never;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+        /**
+         * 实例标识
+         */
+        instanceId: string;
+        /**
+         * 运行标识
+         */
+        runId: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/runs/{runId}/instances/{instanceId}';
+};
+
+export type GetWorkflowInstanceErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
+     * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
+     * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
+     * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
+     * * `[WorkflowSchemaInvalid][40000003002]`
+     * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
+     * * `[WorkflowAuthoringFinished][40900003007]`
+     * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
+     * * `[WorkflowRequestConflict][40900003002]`
+     * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
      * * `[WorkflowTimeout][50000003003]`
      * * `[WorkspaceGitFailed][50000007107]`
@@ -38916,56 +40848,6 @@ export type GetWorkflowInstanceResponses = {
 
 export type GetWorkflowInstanceResponse = GetWorkflowInstanceResponses[keyof GetWorkflowInstanceResponses];
 
-export type GetWorkflowNodeResultData = {
-    body?: never;
-    path: {
-        /**
-         * 尝试标识
-         */
-        attemptId: string;
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 实例标识
-         */
-        instanceId: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query?: never;
-    url: '/api/v1/workflows/{id}/runs/{runId}/instances/{instanceId}/results/{attemptId}';
-};
-
-export type GetWorkflowNodeResultErrors = {
-    /**
-     * >
-     * * `[WorkflowBudgetExceeded][40000003005]`
-     * * `[WorkflowFileInvalid][40000003006]`
-     * * `[WorkflowSchemaInvalid][40000003002]`
-     *
-     */
-    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
-    /**
-     * >
-     * * `[WorkflowFileNotFound][40400003002]`
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type GetWorkflowNodeResultError = GetWorkflowNodeResultErrors[keyof GetWorkflowNodeResultErrors];
-
-export type GetWorkflowNodeResultResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultResponse;
-};
-
-export type GetWorkflowNodeResultResponse = GetWorkflowNodeResultResponses[keyof GetWorkflowNodeResultResponses];
-
 export type SkipWorkflowWorkerData = {
     body: GithubComJieWaZiNeuxBotServerApisWorkflowsSkipWorkerCommand & unknown;
     path: {
@@ -38989,43 +40871,316 @@ export type SkipWorkflowWorkerData = {
 export type SkipWorkflowWorkerErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
      * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
      * * `[WorkflowBudgetExceeded][40000003005]`
      * * `[WorkflowCapabilityUnsupported][40000003003]`
      * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
     400: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
      * * `[WorkflowFileNotFound][40400003002]`
      * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
      * * `[WorkflowRequestConflict][40900003002]`
      * * `[WorkflowRevisionConflict][40900003001]`
      * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type SkipWorkflowWorkerError = SkipWorkflowWorkerErrors[keyof SkipWorkflowWorkerErrors];
@@ -39035,48 +41190,6 @@ export type SkipWorkflowWorkerResponses = {
 };
 
 export type SkipWorkflowWorkerResponse = SkipWorkflowWorkerResponses[keyof SkipWorkflowWorkerResponses];
-
-export type ListWorkflowNodeResultsData = {
-    body?: never;
-    path: {
-        /**
-         * 工作流标识
-         */
-        id: string;
-        /**
-         * 运行标识
-         */
-        runId: string;
-    };
-    query: {
-        /**
-         * 节点标识
-         */
-        nodeId: string;
-        /**
-         * 分页偏移
-         */
-        offset?: number;
-    };
-    url: '/api/v1/workflows/{id}/runs/{runId}/node-results';
-};
-
-export type ListWorkflowNodeResultsErrors = {
-    /**
-     * >
-     * * `[WorkflowNotFound][40400003001]`
-     *
-     */
-    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
-};
-
-export type ListWorkflowNodeResultsError = ListWorkflowNodeResultsErrors[keyof ListWorkflowNodeResultsErrors];
-
-export type ListWorkflowNodeResultsResponses = {
-    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowNodeResultsResponse;
-};
-
-export type ListWorkflowNodeResultsResponse = ListWorkflowNodeResultsResponses[keyof ListWorkflowNodeResultsResponses];
 
 export type AnswerWorkflowOperationData = {
     body: GithubComJieWaZiNeuxBotServerApisWorkflowsAnswerOperationCommand & unknown;
@@ -39101,43 +41214,316 @@ export type AnswerWorkflowOperationData = {
 export type AnswerWorkflowOperationErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
      * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
      * * `[WorkflowBudgetExceeded][40000003005]`
      * * `[WorkflowCapabilityUnsupported][40000003003]`
      * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
     400: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
      * * `[WorkflowFileNotFound][40400003002]`
      * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
      * * `[WorkflowFenceConflict][40900003004]`
      * * `[WorkflowRequestConflict][40900003002]`
      * * `[WorkflowRevisionConflict][40900003001]`
      * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type AnswerWorkflowOperationError = AnswerWorkflowOperationErrors[keyof AnswerWorkflowOperationErrors];
@@ -39167,42 +41553,316 @@ export type RetryWorkflowRunData = {
 export type RetryWorkflowRunErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
      * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
      * * `[WorkflowBudgetExceeded][40000003005]`
      * * `[WorkflowCapabilityUnsupported][40000003003]`
      * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
     400: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
      * * `[WorkflowFileNotFound][40400003002]`
      * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
      *
      */
     404: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
      * * `[WorkflowRequestConflict][40900003002]`
      * * `[WorkflowRevisionConflict][40900003001]`
      * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
      * * `[WorkflowCancelled][50000003002]`
      * * `[WorkflowEffectFailed][50000003001]`
      * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type RetryWorkflowRunError = RetryWorkflowRunErrors[keyof RetryWorkflowRunErrors];
@@ -39212,6 +41872,39 @@ export type RetryWorkflowRunResponses = {
 };
 
 export type RetryWorkflowRunResponse = RetryWorkflowRunResponses[keyof RetryWorkflowRunResponses];
+
+export type GetWorkflowRetryPlanData = {
+    body?: never;
+    path: {
+        /**
+         * 工作流标识
+         */
+        id: string;
+        /**
+         * 原运行标识
+         */
+        runId: string;
+    };
+    query?: never;
+    url: '/api/v1/workflows/{id}/runs/{runId}/retry-plan';
+};
+
+export type GetWorkflowRetryPlanErrors = {
+    /**
+     * >
+     * * `[WorkflowNotFound][40400003001]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type GetWorkflowRetryPlanError = GetWorkflowRetryPlanErrors[keyof GetWorkflowRetryPlanErrors];
+
+export type GetWorkflowRetryPlanResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisWorkflowsWorkflowRetryPlan;
+};
+
+export type GetWorkflowRetryPlanResponse = GetWorkflowRetryPlanResponses[keyof GetWorkflowRetryPlanResponses];
 
 export type GetWorkflowSourceData = {
     body?: never;
@@ -39269,29 +41962,316 @@ export type SaveWorkflowSourceData = {
 export type SaveWorkflowSourceErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     * * `[AgentInputInvalid][40000009001]`
+     * * `[AutomaticScheduleInvalid][40000001001]`
+     * * `[AutomaticTaskInputInvalid][40000001003]`
+     * * `[AutomaticTaskWorkspaceInvalid][40000001002]`
      * * `[BadRequest][40000000001]`
+     * * `[ChannelLeadInvalid][40000000019]`
+     * * `[ChannelMemberCountInvalid][40000000018]`
+     * * `[ChatEventCursorInvalid][40000000011]`
+     * * `[ChatIDInvalid][40000000010]`
+     * * `[ChatMessageCursorInvalid][40000000012]`
+     * * `[IMConfigurationInvalid][40000004001]`
+     * * `[IMFileInvalid][40000004002]`
+     * * `[IntegrationInvalid][40000009601]`
+     * * `[KnowledgeInvalid][40000009501]`
+     * * `[MemoryEmbeddingConflict][40000000009]`
+     * * `[MemoryEmbeddingNotConfigured][40000000007]`
+     * * `[MemoryProjectNotBound][40000000008]`
+     * * `[MessageAttachmentInvalid][40000000017]`
+     * * `[PluginContentInvalid][40000006502]`
+     * * `[PluginContentLimitExceeded][40000006503]`
+     * * `[PluginManifestInvalid][40000006501]`
+     * * `[ProfileDocumentEncodingInvalid][40000000004]`
+     * * `[ProfileDocumentKindInvalid][40000000002]`
+     * * `[ProfileDocumentTooLarge][40000000003]`
+     * * `[RuntimeNotRegistered][40000002001]`
+     * * `[SkillContentInvalid][40000000013]`
+     * * `[SkillContentLimitExceeded][40000000014]`
+     * * `[SkillImportFailed][40000000006]`
+     * * `[SkillImportIntegrityInvalid][40000000016]`
+     * * `[SkillImportSourceInvalid][40000000015]`
+     * * `[TerminalInvalid][40000007109]`
+     * * `[WakerDeleteConfirmationMismatch][40000000005]`
+     * * `[WorkflowBudgetExceeded][40000003005]`
      * * `[WorkflowCapabilityUnsupported][40000003003]`
+     * * `[WorkflowFileInvalid][40000003006]`
+     * * `[WorkflowIMTargetNotDeclared][40000003007]`
      * * `[WorkflowResourceInvalid][40000003004]`
+     * * `[WorkflowRetryIdempotencyUnsupported][40000003009]`
+     * * `[WorkflowRetryRequiresReadOnly][40000003008]`
      * * `[WorkflowSchemaInvalid][40000003002]`
      * * `[WorkflowSourceInvalid][40000003001]`
+     * * `[WorkspacePathInvalid][40000007102]`
      *
      */
     400: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[AgentContextUnauthorized][40100009001]`
+     * * `[AutomaticTaskTokenInvalid][40100001001]`
+     * * `[IMLoginRequired][40100004001]`
+     * * `[IntegrationUnauthorized][40100009601]`
+     * * `[KnowledgeRemoteUnauthorized][40100009501]`
+     * * `[MemoryContextUnauthorized][40100000002]`
+     * * `[Unauthorized][40100000001]`
+     *
+     */
+    401: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentOperationForbidden][40300009001]`
+     * * `[IMChatNotAuthorized][40300004001]`
+     * * `[IMTargetNotAuthorized][40300004003]`
+     * * `[IMWorkflowDeliveryNotAllowed][40300004002]`
+     * * `[IntegrationForbidden][40300009601]`
+     * * `[KnowledgeForbidden][40300009501]`
+     * * `[PluginForbidden][40300006501]`
+     * * `[TerminalForbidden][40300007111]`
+     * * `[WorkspaceScopeInvalid][40300007101]`
+     *
+     */
+    403: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountNotFound][40400000017]`
+     * * `[AgentReceiptNotFound][40400009001]`
+     * * `[AutomaticRunNotFound][40400000019]`
+     * * `[AutomaticTaskNotFound][40400000018]`
+     * * `[ChannelMemberNotFound][40400000014]`
+     * * `[ChannelNotFound][40400000012]`
+     * * `[ChannelTaskAttemptNotFound][40400000016]`
+     * * `[ChannelTaskNotFound][40400000015]`
+     * * `[ChannelThreadNotFound][40400000013]`
+     * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatNotFound][40400000005]`
+     * * `[ExecutionNotFound][40400000004]`
+     * * `[IMResourceNotFound][40400004001]`
+     * * `[IMTargetUnavailable][40400004002]`
+     * * `[IntegrationNotFound][40400009601]`
+     * * `[KnowledgeNotFound][40400009501]`
+     * * `[MCPConnectorNotFound][40400000009]`
+     * * `[MemoryNotFound][40400000010]`
+     * * `[PluginNotFound][40400006501]`
+     * * `[ProfileDocumentNotFound][40400000003]`
+     * * `[ProjectNotFound][40400000006]`
+     * * `[RolePresetNotFound][40400000002]`
+     * * `[SkillNotFound][40400000007]`
+     * * `[SkillVersionNotFound][40400000008]`
+     * * `[TerminalNotFound][40400007110]`
+     * * `[WakerNotFound][40400000001]`
+     * * `[WorkflowFileNotFound][40400003002]`
+     * * `[WorkflowNotFound][40400003001]`
+     * * `[WorkspaceResourceNotFound][40400007103]`
+     *
+     */
+    404: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountNameConflict][40900000030]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     * * `[AgentCommandOutcomeUnknown][40900009001]`
+     * * `[AgentCommandRequestConflict][40900009002]`
+     * * `[ApprovalAlreadyResolved][40900000014]`
+     * * `[AutomaticTaskAdmissionRevoked][40900000037]`
+     * * `[AutomaticTaskBusy][40900000033]`
+     * * `[AutomaticTaskDisabled][40900000034]`
+     * * `[AutomaticTaskInputChanged][40900003005]`
+     * * `[AutomaticTaskRequestConflict][40900000035]`
+     * * `[AutomaticTaskRevisionConflict][40900000036]`
+     * * `[BuiltInMCPConnectorCannotDelete][40900000011]`
+     * * `[BuiltInMCPConnectorReadOnly][40900000012]`
+     * * `[BuiltInSkillCannotUninstall][40900000009]`
+     * * `[ChannelHasActiveWork][40900000017]`
+     * * `[ChannelNameConflict][40900000016]`
+     * * `[ChannelTaskAttemptStale][40900000021]`
+     * * `[ChannelTaskLimitReached][40900000019]`
+     * * `[ChannelTaskRetryLimitReached][40900000020]`
+     * * `[ChannelTaskStateConflict][40900000018]`
+     * * `[ChatForkIndeterminate][40900000026]`
+     * * `[ChatForkUnavailable][40900000025]`
+     * * `[ChatHasActiveExecution][40900000006]`
+     * * `[Conflict][40900000001]`
+     * * `[CreateRequestConflict][40900000023]`
+     * * `[CreateRequestInProgress][40900000022]`
+     * * `[DefaultWakerCannotDelete][40900000024]`
+     * * `[ElicitationAlreadyResolved][40900000015]`
+     * * `[ExecutionRetryInProgress][40900000032]`
+     * * `[ExecutionRetryUnavailable][40900000031]`
+     * * `[IMConfigurationConflict][40900004001]`
+     * * `[IMConnectionDisabled][40900004006]`
+     * * `[IMConnectionHasWorkflowDependencies][40900004005]`
+     * * `[IMConnectionInUse][40900004004]`
+     * * `[IMConnectionReplaced][40900004007]`
+     * * `[IMDeliveryContextUnavailable][40900004002]`
+     * * `[IMDeliveryRetryUnsafe][40900004003]`
+     * * `[IntegrationConflict][40900009601]`
+     * * `[KnowledgeCancelled][40900009502]`
+     * * `[KnowledgeConflict][40900009501]`
+     * * `[KnowledgeFolderHasChildren][40900009503]`
+     * * `[KnowledgeFolderHasPages][40900009504]`
+     * * `[MCPConnectorNameConflict][40900000010]`
+     * * `[MCPConnectorTrustRequired][40900000013]`
+     * * `[PluginBusy][40900006505]`
+     * * `[PluginConfigurationConflict][40900006502]`
+     * * `[PluginNotReady][40900006503]`
+     * * `[PluginSkillConflict][40900006504]`
+     * * `[PluginVersionConflict][40900006501]`
+     * * `[ProjectNameConflict][40900000007]`
+     * * `[RolePresetNameConflict][40900000003]`
+     * * `[SkillNameConflict][40900000008]`
+     * * `[SystemRolePresetReadOnly][40900000004]`
+     * * `[WakerHasRunningWork][40900000005]`
+     * * `[WakerNameConflict][40900000002]`
      * * `[WorkflowAuthoringFinished][40900003007]`
      * * `[WorkflowAuthoringSuperseded][40900003006]`
+     * * `[WorkflowFenceConflict][40900003004]`
      * * `[WorkflowRequestConflict][40900003002]`
      * * `[WorkflowRevisionConflict][40900003001]`
+     * * `[WorkflowStateConflict][40900003003]`
+     * * `[WorkspaceResourceConflict][40900007104]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
+     * * `[WorkspaceResourceTooLarge][41300007105]`
+     *
+     */
+    413: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeCandidateInvalid][42200009501]`
+     * * `[KnowledgeEmbeddingNotConfigured][42200009503]`
+     * * `[KnowledgeUnsupported][42200009502]`
+     *
+     */
+    422: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AutomaticTaskRateLimited][42900001001]`
+     *
+     */
+    429: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountLoginFailed][50000000048]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[AgentContextStorageError][50000009001]`
+     * * `[AutomaticTaskAPIUnavailable][50000001003]`
+     * * `[AutomaticTaskServiceInvalid][50000001001]`
+     * * `[AutomaticTaskTokenGenerationFailed][50000001002]`
+     * * `[BuiltinRolePresetDefinitionInvalid][50000002001]`
+     * * `[ChannelToolDescriptorInvalid][50000002002]`
+     * * `[ChatDirectoryOwnershipInvalid][50000000007]`
+     * * `[ChatEventStreamUnavailable][50000000038]`
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[ChatLogRecordInvalid][50000000016]`
+     * * `[ChatServiceNotStarted][50000000003]`
+     * * `[CoreChannelInitializationFailed][50000000042]`
+     * * `[CoreChatInitializationFailed][50000000028]`
+     * * `[CoreConfigurationInvalid][50000000023]`
+     * * `[CoreDataDirectoryError][50000000024]`
+     * * `[CoreDatabaseInitializationFailed][50000000025]`
+     * * `[CoreMemoryInitializationFailed][50000000026]`
+     * * `[CoreRuntimeInitializationFailed][50000000027]`
+     * * `[CoreShutdownFailed][50000000029]`
+     * * `[CoreTokenGenerationFailed][50000000030]`
+     * * `[DatabaseError][50000000002]`
+     * * `[IMCredentialError][50000004001]`
+     * * `[IntegrationCredentialError][50000009601]`
+     * * `[InternalServerError][50000000001]`
+     * * `[KnowledgeStorageError][50000009501]`
+     * * `[MCPConnectorCredentialError][50000000022]`
+     * * `[ManagedWorkspaceError][50000000033]`
+     * * `[MemoryContextTokenGenerationFailed][50000000020]`
+     * * `[MemoryCredentialError][50000000019]`
+     * * `[MemoryEmbeddingRequestFailed][50000000017]`
+     * * `[MemoryEmbeddingResponseInvalid][50000000018]`
+     * * `[MemoryEmbeddingTestFailed][50000000010]`
+     * * `[MemoryMCPEndpointFailed][50000000021]`
+     * * `[MemoryReindexFailed][50000000009]`
+     * * `[MemoryServiceUnavailable][50000000036]`
+     * * `[MessageAttachmentStorageError][50000000032]`
+     * * `[PluginStorageError][50000006501]`
+     * * `[ProfileArchiveGenerationFailed][50000000037]`
+     * * `[ProjectServiceUnavailable][50000000034]`
+     * * `[ProjectSourceUnavailable][50000000005]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     * * `[RuntimeEnvironmentServiceUnavailable][50000000035]`
+     * * `[RuntimeEventEncodingFailed][50000000039]`
+     * * `[RuntimeEventQueueOverflow][50000000050]`
+     * * `[RuntimeExecutionFailed][50000000045]`
+     * * `[RuntimeHandoffInvalid][50000000049]`
+     * * `[RuntimeInactivityTimeout][50000000013]`
+     * * `[RuntimePolicyUnsupported][50000000011]`
+     * * `[RuntimeProtocolIncompatible][50000000012]`
+     * * `[RuntimeSessionNotFound][50000000043]`
+     * * `[RuntimeShutdownFailed][50000000041]`
+     * * `[RuntimeUnavailable][50000000006]`
+     * * `[SkillStorageError][50000000031]`
+     * * `[SkillUnavailable][50000000008]`
+     * * `[WorkflowBusinessCheckFailed][50000003006]`
+     * * `[WorkflowCancelled][50000003002]`
+     * * `[WorkflowEffectFailed][50000003001]`
+     * * `[WorkflowFileStorageError][50000003005]`
+     * * `[WorkflowHumanRequestTimedOut][50000003007]`
      * * `[WorkflowStateInvalid][50000003004]`
+     * * `[WorkflowTimeout][50000003003]`
+     * * `[WorkspaceGitFailed][50000007107]`
+     * * `[WorkspaceStorageFailed][50000007106]`
      *
      */
     500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountModelsResponseInvalid][50200000004]`
+     * * `[AIAccountModelsUnavailable][50200000003]`
+     * * `[IMPlatformUnavailable][50200004001]`
+     * * `[IMProtocolInvalid][50200004002]`
+     * * `[KnowledgeEmbeddingResponseInvalid][50200009602]`
+     * * `[KnowledgeEmbeddingUnavailable][50200009601]`
+     * * `[KnowledgeRemoteIncompatible][50200009502]`
+     * * `[KnowledgeRemoteUnreachable][50200009501]`
+     * * `[MCPConnectorProtocolInvalid][50200000002]`
+     * * `[MemoryEmbeddingUnavailable][50200000001]`
+     * * `[PluginAuthorizationFailed][50200006501]`
+     * * `[PluginDistributionUnavailable][50200006502]`
+     *
+     */
+    502: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AgentConnectionUnavailable][50300009001]`
+     * * `[DatabaseBusy][50300001001]`
+     * * `[IMServiceUnavailable][50300004001]`
+     * * `[IntegrationListenerError][50300009601]`
+     * * `[TerminalUnavailable][50300007108]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[KnowledgeRemoteOutcomeUnknown][50400009501]`
+     *
+     */
+    504: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type SaveWorkflowSourceError = SaveWorkflowSourceErrors[keyof SaveWorkflowSourceErrors];

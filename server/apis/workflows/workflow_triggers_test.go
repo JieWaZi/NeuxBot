@@ -182,7 +182,7 @@ func triggerWorkflowFixture(t *testing.T, h *triggerHarness, source string) (mod
 	if err := h.store.CreateDefinition(ctx, definition); err != nil {
 		t.Fatal(err)
 	}
-	saved, diagnostics, err := h.workflows.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDKVersion: constants.WorkflowSDKVersion})
+	saved, diagnostics, err := h.workflows.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatalf("%v: %+v", err, diagnostics)
 	}

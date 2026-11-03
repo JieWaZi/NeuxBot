@@ -34,6 +34,8 @@ type Service struct {
 	state *workflowstate.Coordinator
 	// runner 是显式 Start 创建的受管后台生命周期。
 	runner *runnerLifecycle
+	// repairOutput 只使用已证明禁用业务工具的独立文本通道。
+	repairOutput func(context.Context, models.WorkflowExecutionDefaults, map[string]any, string) (string, error)
 	// worker 是既有 Execution Core 的窄适配端口。
 	worker WorkerPort
 	// creationSessions 保存创作会话与批注。
@@ -74,6 +76,8 @@ type Config struct {
 	Store controllers.WorkflowController
 	// Runs 是运行 Repository。
 	Runs controllers.WorkflowRunController
+	// RepairOutput 通过独立文本调用最多纠正两次输出格式，不注入工作流业务能力。
+	RepairOutput func(context.Context, models.WorkflowExecutionDefaults, map[string]any, string) (string, error)
 	// Worker 是真实执行与结果对账端口。
 	Worker WorkerPort
 	// CreationSessions 是创作仓储。
@@ -106,7 +110,7 @@ type Config struct {
 
 // New 只构造服务，不启动任何后台流程。
 func New(config Config) *Service {
-	return &Service{commands: config.Commands, events: config.Events, store: config.Store, transactions: config.Transactions, runs: config.Runs, state: config.State, worker: config.Worker, creationSessions: config.CreationSessions, consumers: config.Consumers, executions: config.Executions, chats: config.Chats, wakers: config.Wakers, resources: config.Resources, pythonExecutable: config.PythonExecutable, connectors: config.Connectors, dataDirectory: config.DataDirectory, projects: config.Projects, imCall: config.IMCall, imValidate: config.IMValidate}
+	return &Service{repairOutput: config.RepairOutput, commands: config.Commands, events: config.Events, store: config.Store, transactions: config.Transactions, runs: config.Runs, state: config.State, worker: config.Worker, creationSessions: config.CreationSessions, consumers: config.Consumers, executions: config.Executions, chats: config.Chats, wakers: config.Wakers, resources: config.Resources, pythonExecutable: config.PythonExecutable, connectors: config.Connectors, dataDirectory: config.DataDirectory, projects: config.Projects, imCall: config.IMCall, imValidate: config.IMValidate}
 }
 
 // runnerLifecycle 拥有调度循环、在途派发和取消生命周期。

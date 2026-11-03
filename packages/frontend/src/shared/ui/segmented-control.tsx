@@ -3,12 +3,13 @@ import { useRef, type KeyboardEvent, type ReactNode } from "react";
 
 import { cn } from "@/shared/lib/cn";
 import { OverviewCard } from "./overview-card";
+import { SegmentedControlHighlight } from "./segmented-control-highlight";
 
 const segmentedControlVariants = cva("items-stretch", {
   variants: {
     appearance: {
       segments:
-        "bg-button-fill inline-flex w-fit gap-0.5 rounded-control p-0.5",
+        "bg-button-fill relative isolate inline-flex w-fit gap-0.5 rounded-control p-0.5",
       cards:
         "grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3",
       underline: "inline-flex min-w-0 items-stretch gap-4",
@@ -41,7 +42,7 @@ const segmentedControlVariants = cva("items-stretch", {
 });
 
 const segmentedOptionVariants = cva(
-  "duration-quick ease-ui focus-visible:ring-status-success-content flex min-w-0 font-normal transition-[background-color,border-color,color] outline-none focus-visible:ring-2 [&_svg]:shrink-0",
+  "duration-quick ease-ui focus-visible:ring-status-success-content flex min-w-0 font-normal transition-[background-color,border-color,color,opacity] outline-none focus-visible:ring-2 [&_svg]:shrink-0",
   {
     variants: {
       appearance: {
@@ -106,6 +107,7 @@ export function SegmentedControl<T extends string>({
     event: KeyboardEvent<HTMLButtonElement>,
     currentIndex: number,
   ) => {
+    if (disabled) return;
     const enabledOptions = options
       .map((option, index) => ({ index, option }))
       .filter(({ option }) => !option.disabled);
@@ -197,8 +199,13 @@ export function SegmentedControl<T extends string>({
                   ? "text-content-primary font-medium"
                   : "text-content-secondary hover:text-content-primary"
                 : selected
-                  ? "bg-surface-raised text-content-primary font-medium"
-                  : "text-button-content hover:bg-button-fill-hover active:bg-button-fill-pressed",
+                  ? cn(
+                      "text-content-primary font-medium",
+                      appearance !== "segments" && "bg-surface-raised",
+                    )
+                  : appearance === "segments"
+                    ? "text-button-content opacity-70 [@media(hover:hover)_and_(pointer:fine)]:hover:opacity-90"
+                    : "text-button-content hover:bg-button-fill-hover active:bg-button-fill-pressed",
               option.disabled && "pointer-events-none opacity-45",
             )}
           >
@@ -218,6 +225,35 @@ export function SegmentedControl<T extends string>({
           </button>
         );
       })}
+      {appearance === "segments" ? (
+        <SegmentedControlHighlight
+          optionRefs={segmentRefs}
+          value={value}
+          layoutKey={JSON.stringify([
+            options.map(({ value, label }) => [value, label]),
+            size,
+            distribution,
+          ])}
+          className={cn(
+            segmentedControlVariants({ appearance, size, distribution }),
+            "bg-surface-raised text-content-primary pointer-events-none absolute inset-0 w-full",
+          )}
+        >
+          {options.map((option) => (
+            <span
+              key={option.value}
+              className={cn(
+                segmentedOptionVariants({ appearance, size, distribution }),
+                option.value === value && "font-medium",
+                option.disabled && "opacity-45",
+              )}
+            >
+              {option.icon}
+              <span className="whitespace-nowrap">{option.label}</span>
+            </span>
+          ))}
+        </SegmentedControlHighlight>
+      ) : null}
     </div>
   );
 }

@@ -15,8 +15,8 @@ type GetWorkflowSDK struct {
 
 // 工作流 SDK
 type WorkflowSDKResponse struct {
-	// 契约版本
-	SDKVersion string `json:"sdkVersion"`
+	// SDK 标识
+	SDK string `json:"sdk"`
 	// 类型声明
 	Declarations string `json:"declarations"`
 	// 创作知识
@@ -27,5 +27,5 @@ type WorkflowSDKResponse struct {
 
 func (*GetWorkflowSDK) Path() string { return "/sdk" }
 func (*GetWorkflowSDK) Output(*gin.Context) (interface{}, error) {
-	return WorkflowSDKResponse{SDKVersion: constants.WorkflowSDKVersion, Declarations: workflowdsl.SDKArtifact("workflow.d.ts"), Knowledge: workflowdsl.SDKArtifact("creation-knowledge.md"), Primitives: workflowdsl.Registry()}, nil
+	return WorkflowSDKResponse{SDK: constants.WorkflowSDKIdentifier, Declarations: workflowdsl.SDKArtifact("workflow.d.ts"), Knowledge: workflowdsl.SDKArtifact("creation-knowledge.md"), Primitives: workflowdsl.Registry()}, nil
 }

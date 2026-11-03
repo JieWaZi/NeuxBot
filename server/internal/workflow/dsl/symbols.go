@@ -124,7 +124,7 @@ func (c *compiler) symbolStatement(statement ast.Statement, scope *symbolScope) 
 			if id, ok := binding.Target.(*ast.Identifier); ok {
 				name = id.Name.String()
 			}
-			if name == "actions" {
+			if name == "actions" || name == "scripts" {
 				c.symbolDeclare(binding.Target, scope)
 				continue
 			}

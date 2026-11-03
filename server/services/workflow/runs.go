@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"os"
@@ -20,7 +21,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
-	workflowfunction "github.com/JieWaZi/NeuxBot/server/internal/workflow/function"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -108,10 +108,27 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 		return models.WorkflowRun{}, err
 	}
 	preparedID := requestidempotency.Identity{ID: command.RequestID}.ResourceID("workflow-run", definition.ID)
-	configurations := make(map[string]models.WorkflowExecutionDefaults)
-	scope, err := s.prepareAdmission(ctx, definition, preparedRevision, command, preparedID, configurations)
+	workspace, err := workflowfiles.PrepareWorkspace(s.dataDirectory, definition.ID, preparedID)
 	if err != nil {
 		return models.WorkflowRun{}, err
+	}
+	configurations := make(map[string]models.WorkflowExecutionDefaults)
+	scope, err := s.prepareAdmission(ctx, definition, preparedRevision, command, configurations)
+	if err != nil {
+		return models.WorkflowRun{}, err
+	}
+	pythonPath := ""
+	needsPython := len(preparedRevision.Bundle.Scripts) > 0
+	for _, node := range preparedRevision.Manifest.Nodes {
+		if node.Kind == "functionTask" && node.Options["language"] == "python" {
+			needsPython = true
+		}
+	}
+	if needsPython {
+		pythonPath, err = s.resolvePython(ctx)
+		if err != nil {
+			return models.WorkflowRun{}, err
+		}
 	}
 	s.state.Commands.Lock()
 	defer s.state.Commands.Unlock()
@@ -132,7 +149,7 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 	if err := workflowdsl.ValidateJSON(preparedRevision.Manifest.Meta.InputSchema, args); err != nil {
 		return models.WorkflowRun{}, err
 	}
-	preparedArgs, err := s.prepareInputFiles(ctx, command, preparedRevision, preparedID, scope, args)
+	preparedArgs, err := s.prepareInputFiles(ctx, command, preparedRevision, preparedID, workspace, scope, args)
 	if err != nil {
 		return models.WorkflowRun{}, err
 	}
@@ -236,6 +253,13 @@ func (s *Service) StartRun(ctx context.Context, command StartRunCommand) (models
 			retryID = command.RetrySourceRunID
 		}
 		flowContext := map[string]any{"runId": id, "workflowId": definition.ID, "revisionId": revision.ID, "runStartedAt": now, "workflowName": revision.Manifest.Meta.Title, "parentRunId": parentID, "retrySourceRunId": retryID, "triggerSource": source, "scope": map[string]any{"projectId": scope.ProjectID, "workingDirectory": scope.WorkingDirectory}}
+		workspaceJSON, _ := json.Marshal(workspace)
+		workspaceValue := map[string]any{}
+		_ = json.Unmarshal(workspaceJSON, &workspaceValue)
+		flowContext["workspace"] = workspaceValue
+		if pythonPath != "" {
+			flowContext["pythonExecutable"] = pythonPath
+		}
 		if command.ConsumerLeaseID != "" {
 			flowContext["consumerLeaseId"] = command.ConsumerLeaseID
 		}
@@ -316,7 +340,7 @@ func (s *Service) CancelRun(ctx context.Context, id string) error {
 	})
 }
 
-func (s *Service) prepareAdmission(ctx context.Context, definition models.WorkflowDefinition, revision models.WorkflowRevision, command StartRunCommand, runID string, configurations map[string]models.WorkflowExecutionDefaults) (models.WorkflowScopeBinding, error) {
+func (s *Service) prepareAdmission(ctx context.Context, definition models.WorkflowDefinition, revision models.WorkflowRevision, command StartRunCommand, configurations map[string]models.WorkflowExecutionDefaults) (models.WorkflowScopeBinding, error) {
 	scope := definition.ScopeBinding
 	if err := s.validateSourcePolicies(ctx, revision.Manifest); err != nil {
 		return scope, err
@@ -361,7 +385,7 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 	}
 	if scope.WorkingDirectory == "" && s.dataDirectory != "" {
 		var err error
-		scope.WorkingDirectory, err = workflowfiles.PrepareManagedWorkspace(s.dataDirectory, runID)
+		scope.WorkingDirectory, err = workflowfiles.PrepareManagedWorkspace(s.dataDirectory, definition.ID)
 		if err != nil {
 			return scope, err
 		}
@@ -377,15 +401,6 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 	}
 	for _, node := range revision.Manifest.Nodes {
 		if node.Kind == "worker" {
-			if retry, _ := node.Options["retry"].(map[string]any); len(retry) > 0 {
-				if retry["safety"] == "pure" && !defaults.WorkspaceReadOnly {
-					return scope, status_error.WorkflowCapabilityUnsupported.WithField("capability", "worker_retry_requires_readonly")
-				}
-				if retry["safety"] == "idempotent" {
-					// V1 Core 没有逐工具的幂等键强制端口，声明不能代替真实去重。
-					return scope, status_error.WorkflowCapabilityUnsupported.WithField("capability", "worker_retry_idempotency_enforcement")
-				}
-			}
 			resolve, _ := node.Options["resolve"].(map[string]any)
 			wakerID, _ := resolve["wakerId"].(string)
 			if s.wakers != nil {
@@ -408,6 +423,9 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 			if err != nil {
 				return scope, err
 			}
+			if _, err := workerRetryDiagnostic(node, &resolved); err != nil {
+				return scope, err
+			}
 			// 从既有执行调用工作流时，节点配置不能扩大调用者冻结的权限。
 			if command.ConsumerLeaseID != "" {
 				levels := map[constants.PermissionLevel]int{
@@ -425,12 +443,7 @@ func (s *Service) prepareAdmission(ctx context.Context, definition models.Workfl
 			if node.Options["executionMode"] != "trusted_local" || defaults.WorkspaceReadOnly {
 				return scope, status_error.WorkflowCapabilityUnsupported.WithField("capability", "python_pure_isolation")
 			}
-			if s.pythonExecutable == "" {
-				return scope, status_error.WorkflowResourceInvalid.WithField("field", "workflowPythonExecutable")
-			}
-			if err := workflowfunction.PythonVersion(ctx, s.pythonExecutable); err != nil {
-				return scope, err
-			}
+
 		}
 	}
 	return scope, nil
@@ -444,27 +457,76 @@ func (s *Service) UploadFile(ctx context.Context, definitionID, taskID, name str
 	return workflowfiles.Save(ctx, s.dataDirectory, definitionID, taskID, name, input)
 }
 
-func (s *Service) prepareInputFiles(ctx context.Context, command StartRunCommand, revision models.WorkflowRevision, runID string, scope models.WorkflowScopeBinding, args any) (any, error) {
+func (s *Service) prepareInputFiles(ctx context.Context, command StartRunCommand, revision models.WorkflowRevision, runID string, workspace workflowfiles.Workspace, scope models.WorkflowScopeBinding, args any) (any, error) {
 	return workflowdsl.MapFiles(revision.Manifest.Meta.InputSchema, args, func(pointer, reference string) (string, error) {
 		if strings.HasPrefix(reference, constants.WorkflowFileReferencePrefix) {
-			return workflowfiles.Materialize(ctx, s.dataDirectory, command.DefinitionID, command.InputFileTaskID, runID, scope.WorkingDirectory, reference, command.InputFileOwnerKeyID)
+			return workflowfiles.Materialize(ctx, s.dataDirectory, command.DefinitionID, command.InputFileTaskID, runID, workspace.RootDirectory, reference, command.InputFileOwnerKeyID)
 		}
-		if len(command.InputFileRoots) > 0 {
-			frozen, err := workflowfiles.FreezeLocalInput(ctx, command.InputFileRoots, reference, scope.WorkingDirectory, runID, pointer)
-			return frozen.Path, err
+		roots := command.InputFileRoots
+		if len(roots) == 0 {
+			roots = []string{scope.WorkingDirectory, workspace.RootDirectory}
+			ownerWorkspace := workspace
+			// 子流程和明确重跑只继承已接纳来源的内部输入，不接受模型增补目录。
+			sourceID := command.ParentRunID
+			if sourceID == "" {
+				sourceID = command.RetrySourceRunID
+			}
+			if sourceID != "" {
+				source, err := s.runs.GetRun(ctx, sourceID)
+				if err != nil {
+					return "", err
+				}
+				if command.ParentRunID == "" && source.DefinitionID != command.DefinitionID {
+					return "", status_error.WorkflowStateConflict
+				}
+				sourceWorkspace, err := runWorkspace(source)
+				if err != nil {
+					return "", err
+				}
+				roots = append(roots, sourceWorkspace.RootDirectory)
+				ownerWorkspace = sourceWorkspace
+			}
+			reference = ownerWorkspace.ResolveRunReference(reference)
 		}
-		// 子工作流和明确的重新运行可以使用父运行已冻结且仍在批准范围内的真实文件。
-		file, err := workflowfiles.OpenScopeFile(scope.WorkingDirectory, reference)
-		if err != nil {
-			return "", err
-		}
-		defer file.Close()
-		path := reference
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(scope.WorkingDirectory, path)
-		}
-		return path, nil
+		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, reference, workspace.RootDirectory, runID, pointer)
+		return frozen.Path, err
 	})
+}
+
+// runWorkspace 要求接纳时冻结的完整目录事实，并校验当前目录归属。
+func runWorkspace(run models.WorkflowRun) (workflowfiles.Workspace, error) {
+	workspace, err := workflowfiles.ParseWorkspace(run.Context["workspace"], run.DefinitionID, run.ID)
+	if err != nil {
+		return workflowfiles.Workspace{}, err
+	}
+	prepared, err := workflowfiles.PrepareWorkspace(filepath.Dir(filepath.Dir(workspace.RootDirectory)), run.DefinitionID, run.ID)
+	if err != nil {
+		return workflowfiles.Workspace{}, err
+	}
+	if workspace != prepared {
+		return workflowfiles.Workspace{}, status_error.WorkflowStateConflict.WithField("field", "workspace")
+	}
+	return workspace, nil
+}
+
+// openRunFile 只读取冻结业务范围和宿主内部目录中的文件，不接受结果自报的额外授权。
+func openRunFile(run models.WorkflowRun, candidate string) (*os.File, error) {
+	workspace, err := workflowfiles.ParseWorkspace(run.Context["workspace"], run.DefinitionID, run.ID)
+	if err != nil {
+		return nil, err
+	}
+	candidate = workspace.ResolveRunReference(candidate)
+	directories := []string{run.ScopeBinding.WorkingDirectory, workspace.RootDirectory}
+	for _, directory := range directories {
+		file, err := workflowfiles.OpenScopeFile(directory, candidate)
+		if err == nil {
+			return file, nil
+		}
+		if errors.Is(err, status_error.WorkflowBudgetExceeded) || errors.Is(err, status_error.WorkflowFileInvalid) {
+			return nil, err
+		}
+	}
+	return nil, status_error.WorkflowFileNotFound
 }
 
 // OutputFile 是最终输出 schema 中明确声明的可下载文件。
@@ -516,7 +578,7 @@ func InspectOutputFiles(run models.WorkflowRun, schema map[string]any, result an
 		if media := mime.TypeByExtension(filepath.Ext(path)); media != "" {
 			view.MediaType = media
 		}
-		file, err := workflowfiles.OpenScopeFile(run.ScopeBinding.WorkingDirectory, path)
+		file, err := openRunFile(run, path)
 		if err == nil {
 			info, statErr := file.Stat()
 			if statErr == nil {
@@ -550,7 +612,7 @@ func (s *Service) OpenOutputFile(ctx context.Context, definitionID, runID, fileI
 func OpenDeclaredOutputFile(run models.WorkflowRun, schema map[string]any, result any, fileID string) (*os.File, string, error) {
 	for pointer, path := range workflowdsl.FileValues(schema, result) {
 		if outputFileID(pointer) == fileID {
-			file, err := workflowfiles.OpenScopeFile(run.ScopeBinding.WorkingDirectory, path)
+			file, err := openRunFile(run, path)
 			return file, filepath.Base(path), err
 		}
 	}

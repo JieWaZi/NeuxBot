@@ -1,5 +1,8 @@
 package constants
 
+// ChatInteractionProjectionTimeoutMillis 限制已提交交互事实的查询投影收尾，不限制人工等待。
+const ChatInteractionProjectionTimeoutMillis = 10_000
+
 // KnowledgeLibraryScanBatchSize 限制目录搜索与活动任务恢复每批读取的库元数据。
 const KnowledgeLibraryScanBatchSize = 100
 
@@ -42,6 +45,9 @@ const WorkflowInputFileDirectoryName = "workflow-inputs"
 // ManagedFilesDirectoryName 是用户主目录下受管业务文件的默认根目录名。
 const ManagedFilesDirectoryName = ".neuxally"
 
+// AgentCLIRequestIDMaximumLength 是软件能力命令与收据查询共同接受的幂等标识长度上限。
+const AgentCLIRequestIDMaximumLength = 128
+
 // RuntimeStateDirectoryName 保存当前工作区独有的智能体执行配置和状态。
 const RuntimeStateDirectoryName = "runtime"
 
@@ -59,6 +65,8 @@ const (
 	WorkflowInstanceBudget = "instances"
 	// WorkflowResultMissingCode 表示执行已结束但没有形成所需的节点结果。
 	WorkflowResultMissingCode = "RESULT_MISSING"
+	// WorkflowResultUnconfirmedCode 表示原生终止或交付事实不能确认节点产出。
+	WorkflowResultUnconfirmedCode = "RESULT_UNCONFIRMED"
 
 	// AiAccountSystemID 表示使用智能体内置登录的账号身份。
 	AiAccountSystemID = "system"
@@ -84,8 +92,34 @@ const (
 )
 
 const (
-	// WorkflowWorkspaceDirectoryName 是作者和运行独立受管工作区的父目录。
+	// WorkflowWorkspaceDirectoryName 是工作流稳定身份对应的受管文件父目录。
 	WorkflowWorkspaceDirectoryName = "workflow-workspaces"
+	// WorkflowWorkspaceInstructionFileName 是创作与节点共用的目录约束指令名。
+	WorkflowWorkspaceInstructionFileName = "WORKFLOW_WORKSPACE.md"
+	// WorkflowResultsInstructionFileName 是节点结果提交协议的智能体上下文名。
+	WorkflowResultsInstructionFileName = "WORKFLOW_RESULTS.md"
+	// WorkflowScriptsDirectoryName 保存工作流草稿及版本脚本副本。
+	WorkflowScriptsDirectoryName = "scripts"
+	// WorkflowStateDirectoryName 保存工作流跨运行的配置与状态。
+	WorkflowStateDirectoryName = "state"
+	// WorkflowCacheDirectoryName 保存工作流跨运行的缓存。
+	WorkflowCacheDirectoryName = "cache"
+	// WorkflowTemporaryDirectoryName 保存工作流内部临时文件。
+	WorkflowTemporaryDirectoryName = "tmp"
+	// WorkflowRunsDirectoryName 隔离每次运行的默认业务文件。
+	WorkflowRunsDirectoryName = "runs"
+	// WorkflowRootEnvironment 向本地脚本提供工作流内部根。
+	WorkflowRootEnvironment = "ALLY_WORKFLOW_ROOT"
+	// WorkflowScriptsEnvironment 向本地脚本提供脚本副本目录。
+	WorkflowScriptsEnvironment = "ALLY_WORKFLOW_SCRIPTS_DIR"
+	// WorkflowStateEnvironment 向本地脚本提供配置与状态目录。
+	WorkflowStateEnvironment = "ALLY_WORKFLOW_STATE_DIR"
+	// WorkflowCacheEnvironment 向本地脚本提供缓存目录。
+	WorkflowCacheEnvironment = "ALLY_WORKFLOW_CACHE_DIR"
+	// WorkflowTemporaryEnvironment 向本地脚本提供临时目录。
+	WorkflowTemporaryEnvironment = "ALLY_WORKFLOW_TEMP_DIR"
+	// WorkflowRunEnvironment 向本地脚本提供本次运行目录。
+	WorkflowRunEnvironment = "ALLY_WORKFLOW_RUN_DIR"
 	// ApplicationName 是 Core 对外报告的产品名称。
 	ApplicationName = "NeuxBot"
 	// CoreDefaultHost 是桌面 Core 默认监听的回环地址。
@@ -594,8 +628,6 @@ const (
 	BuiltinWorkflowMCPConnectorTimeoutMS = int64(30_000)
 	// WorkflowMCPToolName 是所有工作流场景共用的模型可见工具名。
 	WorkflowMCPToolName = "workflow"
-	// WorkflowResultPageDecisionInstructions 要求创作时逐个评估伙伴输出，不能省略展示决策。
-	WorkflowResultPageDecisionInstructions = "Every worker, including workers inside loops, branches and parallel groups, requires exactly one output declaration: meta.nodeResultPages[id] for composed in-app reading, meta.nodeResultFiles[id] with a readable title for actual file delivery, or meta.nodeResultPageOmissions[id] with a concrete reason for internal technical/control data without reading value or output the user explicitly declined to display. Intermediate output is not automatically exempt. File delivery uses static type:string, format:file schemas, or arrays/objects of these references, and the existing file viewer. Keep the report's prose, evidence and coverage in the actual file. Select the presentation feature only for composed pages; preparation includes its Catalog. Reuse that content and query the presentation topic only if it is missing. Revisit the declaration when the user changes the deliverable."
 	// WorkflowActionQuery 按本次能力返回知识或动作契约。
 	WorkflowActionQuery = "query"
 	// WorkflowActionSourceGet 读取绑定工作流源码。

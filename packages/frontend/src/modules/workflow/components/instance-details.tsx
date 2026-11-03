@@ -1,3 +1,5 @@
+import { humanAnswerLabel } from "../model/human-answer";
+import type { HumanRequest } from "../model/types";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -18,23 +20,58 @@ import {
 import { WorkerReference } from "./worker-reference";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { getWorkflowInstanceOptions } from "../api/workflow-queries";
-import { jsonText } from "../model/types";
-import { WorkflowArtifacts } from "./workflow-artifacts";
 import { SkipWorkerControl } from "./recovery-controls";
 import { record } from "../model/types";
 import { WorkflowLoadingState, WorkflowQueryError } from "./query-feedback";
 import { WorkflowFailure } from "./failure-details";
+import { RunJsonValue } from "./run-json-value";
 
-export function WorkflowResult({ value }: { value: unknown }) {
+export function WorkflowResult({
+  value,
+  schema,
+}: {
+  value: unknown;
+  schema?: Record<string, unknown>;
+}) {
   const { t } = useTranslation("workflow");
   if (value == null)
     return <p className="text-muted-foreground type-body">{t("emptyValue")}</p>;
-  return typeof value === "string" && value.length <= 100_000 ? (
-    <ReadOnlyMarkdown source={value} />
-  ) : (
-    <pre className="bg-muted type-body overflow-auto rounded-lg p-4 whitespace-pre-wrap">
-      {jsonText(value)}
-    </pre>
+  if (typeof value === "string") return <ReadOnlyMarkdown source={value} />;
+  if (Array.isArray(value))
+    return (
+      <ul className="grid gap-2">
+        {value.map((item, index) => (
+          <li key={index}>
+            <WorkflowResult value={item} schema={record(schema?.items)} />
+          </li>
+        ))}
+      </ul>
+    );
+  const fields = record(value);
+  if (fields)
+    return (
+      <dl className="grid min-w-0 gap-3">
+        {Object.entries(fields).map(([key, item]) => {
+          const field = record(record(schema?.properties)?.[key]);
+          return (
+            <div key={key} className="grid min-w-0 gap-1">
+              <dt className="text-content-secondary type-caption font-medium">
+                {typeof field?.title === "string" ? field.title : key}
+              </dt>
+              <dd className="type-body min-w-0 break-words">
+                <WorkflowResult value={item} schema={field} />
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+    );
+  return (
+    <p className="type-body">
+      {typeof value === "boolean"
+        ? t(value ? "valueTrue" : "valueFalse")
+        : String(value)}
+    </p>
   );
 }
 
@@ -42,10 +79,12 @@ export function InstanceDetails({
   id,
   runId,
   instanceId,
+  human,
 }: {
   id: string;
   runId: string;
   instanceId: string;
+  human?: HumanRequest;
 }) {
   const { t, i18n } = useTranslation("workflow");
   const active = useRouteSceneActive();
@@ -84,6 +123,25 @@ export function InstanceDetails({
   );
   const data = query.data;
   const instance = data?.instance;
+  const firstInput = instance?.input?.[0]?.data;
+  const evaluatedOptions = record(
+    instance?.input?.[instance.kind === "action" ? 1 : 0]?.data,
+  );
+  const businessInput =
+    instance?.kind === "worker" || instance?.kind === "askUser"
+      ? typeof firstInput === "string"
+        ? firstInput
+        : undefined
+      : evaluatedOptions?.input;
+  const resultEnvelope = record(instance?.output);
+  const businessOutput =
+    instance?.kind === "askUser"
+      ? humanAnswerLabel(resultEnvelope?.value, human)
+      : instance?.kind === "action" &&
+          resultEnvelope &&
+          Object.hasOwn(resultEnvelope, "data")
+        ? resultEnvelope.data
+        : instance?.output;
   const chat = data?.chat?.chat;
   const currentExecution = Boolean(
     instance?.executionId && chat?.activeExecutionId === instance.executionId,
@@ -207,71 +265,50 @@ export function InstanceDetails({
       ) : null}
       {instance ? (
         <>
-          {instance.input?.length &&
+          {businessInput !== undefined &&
           (instance.kind !== "askUser" || instance.completedAt) ? (
-            <section className="grid gap-3">
-              <h3 className="text-muted-foreground type-label font-medium">
+            <section className="grid gap-2">
+              <h3 className="text-muted-foreground type-body font-medium">
                 {t(
                   instance.kind === "worker" || instance.kind === "askUser"
                     ? "instruction"
                     : "stepInputs",
                 )}
               </h3>
-              <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-4">
-                <WorkflowResult
-                  value={
-                    instance.kind === "worker" ||
-                    instance.kind === "askUser" ||
-                    instance.input?.length === 1
-                      ? instance.input?.[0]?.data
-                      : instance.input?.map((item) => item.data)
-                  }
-                />
-              </div>
+              {instance.kind === "worker" || instance.kind === "askUser" ? (
+                <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-3">
+                  <WorkflowResult value={businessInput} />
+                </div>
+              ) : (
+                <RunJsonValue value={businessInput} />
+              )}
             </section>
           ) : null}
           {instance.completedAt ||
           instance.failure ||
           instance.output != null ? (
-            <div className="grid gap-3">
-              <h3 className="type-label font-medium">
+            <div className="grid gap-2">
+              <h3 className="type-body font-medium">
                 {instance.failure ? t("failure") : t("output")}
               </h3>
-              <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-4">
-                {instance.failure ? (
+              {instance.failure ? (
+                <div className="bg-card max-h-80 overflow-y-auto rounded-lg p-3">
                   <WorkflowFailure value={instance.failure.data} />
-                ) : (
-                  <WorkflowResult value={instance.output} />
-                )}
-              </div>
+                </div>
+              ) : businessOutput == null ? (
+                <p className="text-muted-foreground type-body">
+                  {t("emptyValue")}
+                </p>
+              ) : (
+                <RunJsonValue value={businessOutput} />
+              )}
             </div>
           ) : null}
         </>
       ) : null}
-      {data?.actionCalls?.length ? (
-        <section className="grid gap-3">
-          <h3 className="type-label font-medium">{t("actionReceipts")}</h3>
-          {data.actionCalls.map((call) => (
-            <details key={call.id} className="bg-surface-module rounded-lg p-4">
-              <summary className="type-body cursor-pointer">
-                {call.callId} · {call.toolName} ·{" "}
-                {call.status ? t(`status.${call.status}`) : ""}
-              </summary>
-              <div className="mt-3 grid gap-3">
-                <WorkflowResult value={call.input} />
-                {call.failure ? (
-                  <WorkflowFailure value={call.failure.data} />
-                ) : (
-                  <WorkflowResult value={call.result} />
-                )}
-              </div>
-            </details>
-          ))}
-        </section>
-      ) : null}
       {(data?.attempts?.length ?? 0) > 1 ? (
-        <section className="grid gap-3">
-          <h3 className="type-label font-medium">{t("attemptHistory")}</h3>
+        <section className="grid gap-2">
+          <h3 className="type-body font-medium">{t("attemptHistory")}</h3>
           {data?.attempts?.map((attempt) => (
             <details
               key={attempt.id}
@@ -282,9 +319,6 @@ export function InstanceDetails({
                 {attempt.status ? t(`status.${attempt.status}`) : ""}
               </summary>
               <div className="mt-3 grid gap-2">
-                <p className="text-muted-foreground type-caption break-all">
-                  {attempt.executionId}
-                </p>
                 {attempt.chatId ? (
                   <Link
                     to={`/chats/${attempt.chatId}`}
@@ -300,9 +334,6 @@ export function InstanceDetails({
             </details>
           ))}
         </section>
-      ) : null}
-      {instance ? (
-        <WorkflowArtifacts id={id} runId={runId} values={[instance.output]} />
       ) : null}
     </section>
   );

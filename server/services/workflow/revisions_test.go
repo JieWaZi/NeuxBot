@@ -32,7 +32,7 @@ func workflowTestService(t *testing.T) (*Service, controllers.WorkflowController
 		}
 	})
 	store := controllers.NewWorkflowController(database.DB)
-	return workflowTestNew(Config{Commands: controllers.NewAgentCommandController(database.DB), Store: store, CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}), store
+	return workflowTestNew(Config{DataDirectory: t.TempDir(), Commands: controllers.NewAgentCommandController(database.DB), Store: store, CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}), store
 }
 
 func workflowTestSource(t *testing.T) string {
@@ -62,7 +62,7 @@ func TestFailedSaveRollsBackRevisionPointerAndSuccessEvent(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.store = receiptFailingStore{WorkflowController: store}
-	if _, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: workflowTestSource(t), SDKVersion: constants.WorkflowSDKVersion}); err == nil {
+	if _, _, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: workflowTestSource(t), SDK: constants.WorkflowSDKIdentifier}); err == nil {
 		t.Fatal("save should fail")
 	}
 	definition, err = store.GetDefinition(ctx, definition.ID)
@@ -79,14 +79,14 @@ func TestFailedSaveRollsBackRevisionPointerAndSuccessEvent(t *testing.T) {
 	}
 }
 
-func TestUnchangedSourceCreatesReceiptWithoutVersionNoise(t *testing.T) {
+func TestExplicitSaveAlwaysCreatesNewRevision(t *testing.T) {
 	s, store := workflowTestService(t)
 	ctx := context.Background()
 	definition, err := fixtureDefinition(ctx, s.store, definitionFixture{RequestID: "create", Title: "空定义"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	save := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: workflowTestSource(t), SDKVersion: constants.WorkflowSDKVersion}
+	save := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: workflowTestSource(t), SDK: constants.WorkflowSDKIdentifier}
 	first, _, err := s.SaveSource(ctx, save)
 	if err != nil {
 		t.Fatal(err)
@@ -94,12 +94,12 @@ func TestUnchangedSourceCreatesReceiptWithoutVersionNoise(t *testing.T) {
 	save.RequestID = "save-again"
 	save.ExpectedRevisionID = first.RevisionID
 	unchanged, _, err := s.SaveSource(ctx, save)
-	if err != nil || !unchanged.Unchanged || unchanged.RevisionID != first.RevisionID {
+	if err != nil || unchanged.RevisionID == first.RevisionID {
 		t.Fatalf("unchanged: %+v %v", unchanged, err)
 	}
 	history, err := store.ListRevisions(ctx, definition.ID, 0, 50)
-	if err != nil || len(history) != 1 {
-		t.Fatal("unchanged source created extra history")
+	if err != nil || len(history) != 2 {
+		t.Fatal("explicit save did not create history")
 	}
 }
 

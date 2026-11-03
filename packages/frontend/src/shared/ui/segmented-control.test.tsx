@@ -28,14 +28,17 @@ it("SegmentedControl 使用统一轨道样式并支持键盘切换", async () =>
   const waker = screen.getByRole("radio", { name: "伙伴" });
   const team = screen.getByRole("radio", { name: "团队" });
   expect(waker).toHaveAttribute("aria-checked", "true");
-  expect(waker).toHaveClass(
+  expect(waker).toHaveClass("rounded-control-inner", "font-medium");
+  expect(waker).not.toHaveClass("bg-surface-raised", "shadow-xs");
+  expect(group.querySelector("[data-segmented-highlight]")).toHaveClass(
     "bg-surface-raised",
-    "rounded-control-inner",
-    "font-medium",
   );
-  expect(waker).not.toHaveClass("shadow-xs");
   expect(team).toHaveAttribute("aria-checked", "false");
-  expect(team).toHaveClass("text-button-content");
+  expect(team).toHaveClass("text-button-content", "opacity-70");
+  expect(team).not.toHaveClass(
+    "hover:bg-button-fill-hover",
+    "active:bg-button-fill-pressed",
+  );
 
   waker.focus();
   await user.keyboard("{ArrowRight}");

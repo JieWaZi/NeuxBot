@@ -15,7 +15,7 @@ import (
 
 func TestCreationRunsGetIncludesPersistedToolFailureAndOriginalIdentity(t *testing.T) {
 	s, _ := workflowTestService(t)
-	source := `export const meta={sdk:'ally.workflow/1',title:'发送诊断',description:'保留原调用失败',phases:[{id:'delivery-phase',title:'发送',detail:'发送',canExit:true}],actions:[{id:'send',label:'发送',description:'发送微信',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]};export const actions={send:async(ctx,input)=>await ctx.callTool({callId:'original-call',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'target',content:'正文'}})};return await action('send',{id:'deliver',label:'发送微信',phase:'delivery-phase'});`
+	source := `export const meta={sdk:'ally.workflow',title:'发送诊断',description:'保留原调用失败',phases:[{id:'delivery-phase',title:'发送',detail:'发送',canExit:true}],actions:[{id:'send',label:'发送',description:'发送微信',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]};const actions={send:async(ctx,input)=>await ctx.callTool({callId:'original-call',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'target',content:'正文'}})};return await action('send',{id:'deliver',label:'发送微信',phase:'delivery-phase'});`
 	d := savedTestWorkflow(t, s, source)
 	s.imValidate = func(context.Context, string) error { return nil }
 	calls := 0
@@ -73,7 +73,7 @@ func TestToolFailureKeepsCauseAndDeliveryEvidence(t *testing.T) {
 func TestLateDeterministicReceiptCannotChangeConfirmedTerminalResult(t *testing.T) {
 	ctx := context.Background()
 	s, _ := workflowTestService(t)
-	source := `export const meta={sdk:'ally.workflow/1',title:'终态收据',description:'终态不可覆盖',phases:[{id:'compute',title:'计算',detail:'计算',canExit:true}]};const value=await functionTask({id:'once',label:'计算结果',phase:'compute',language:'javascript',input:{},code:'function main(){return 0;}'});return value;`
+	source := `export const meta={sdk:'ally.workflow',title:'终态收据',description:'终态不可覆盖',phases:[{id:'compute',title:'计算',detail:'计算',canExit:true}]};const value=await functionTask({id:'once',label:'计算结果',phase:'compute',language:'javascript',input:{},code:'function main(){return 0;}'});return value;`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, StartRunCommand{DefinitionID: definition.ID, RequestID: "start"})
 	if err != nil {

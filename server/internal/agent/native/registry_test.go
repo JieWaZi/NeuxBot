@@ -87,7 +87,8 @@ func TestQoderProcessConfig(t *testing.T) {
 			deadline := time.Now().Add(3 * time.Second)
 			for time.Now().Before(deadline) {
 				data, err = os.ReadFile(out)
-				if err == nil && len(data) > 0 {
+				// Shell 的 printf 可能分次写入，首行出现不代表三行配置已全部落盘。
+				if err == nil && strings.Count(string(data), "\n") >= 3 {
 					break
 				}
 				time.Sleep(10 * time.Millisecond)

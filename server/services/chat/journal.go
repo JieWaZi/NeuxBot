@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 
@@ -493,7 +494,10 @@ func (m *service) PublishApprovalFact(
 	record eventlog.Record,
 	pending []models.PendingApproval,
 ) {
-	m.queryIndexes.updateChatIndex(ctx, record.ChatID, record.Sequence-1, map[string]any{
+	// 权威事实已经提交；原请求取消不能撤销其投影与通知发布，收尾仍有独立期限。
+	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), constants.ChatInteractionProjectionTimeoutMillis*time.Millisecond)
+	defer cancel()
+	m.queryIndexes.updateChatIndex(commitCtx, record.ChatID, record.Sequence-1, map[string]any{
 		"waiting_approval":  len(pending) > 0,
 		"pending_approvals": string(marshalData(pending)),
 		"latest_sequence":   record.Sequence,
@@ -520,7 +524,10 @@ func (m *service) PublishElicitationFact(
 	record eventlog.Record,
 	pending []models.PendingElicitation,
 ) {
-	m.queryIndexes.updateChatIndex(ctx, record.ChatID, record.Sequence-1, map[string]any{
+	// 权威事实已经提交；原请求取消不能撤销其投影与通知发布，收尾仍有独立期限。
+	commitCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), constants.ChatInteractionProjectionTimeoutMillis*time.Millisecond)
+	defer cancel()
+	m.queryIndexes.updateChatIndex(commitCtx, record.ChatID, record.Sequence-1, map[string]any{
 		"waiting_elicitation":  len(pending) > 0,
 		"pending_elicitations": string(marshalData(pending)),
 		"latest_sequence":      record.Sequence,

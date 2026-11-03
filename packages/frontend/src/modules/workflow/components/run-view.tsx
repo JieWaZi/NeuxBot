@@ -1,4 +1,4 @@
-import { NodeOutputCard } from "../presentation/node-result";
+import { RetryRunDialog } from "./retry-run-dialog";
 import { useNotificationPresentation } from "@/shared/api/notification-presentation";
 import { keepPreviousData, useMutation, useQuery } from "@tanstack/react-query";
 import { Square, WandSparkles } from "lucide-react";
@@ -114,12 +114,25 @@ export function WorkflowRunView({
   const terminal = ["succeeded", "failed", "cancelled"].includes(
     run?.status ?? "",
   );
-  const closeDetails = () => {
+  const closeDetails = (
+    expectedInstanceId?: string,
+    answeredRequestId?: string,
+  ) => {
     setParams(
       (previous) => {
+        if (
+          expectedInstanceId &&
+          previous.get("instance") !== expectedInstanceId
+        )
+          return previous;
         const next = new URLSearchParams(previous);
         next.delete("instance");
         next.delete("node");
+        if (
+          answeredRequestId &&
+          next.get("request")?.split(":").at(-1) === answeredRequestId
+        )
+          next.delete("request");
         return next;
       },
       { replace: true },
@@ -203,6 +216,9 @@ export function WorkflowRunView({
   const actions = (
     <div className="flex items-center gap-2">
       {terminal && run?.status !== "succeeded" ? (
+        <RetryRunDialog id={id} runId={runId} manifest={query.data?.manifest} />
+      ) : null}
+      {terminal && run?.status !== "succeeded" ? (
         <Button size="sm" variant="surface" asChild>
           <Link to={`/workflows/${id}?tab=canvas&optimizeRun=${runId}`}>
             <WandSparkles />
@@ -284,31 +300,9 @@ export function WorkflowRunView({
                 open:
                   active && !switching && inputRunId === runId && !resultOpen,
                 onOpenChange: (open) => setInputRunId(open ? runId : undefined),
-                content: (
-                  <RunInputValues
-                    manifest={query.data.manifest}
-                    args={run?.args}
-                  />
-                ),
+                content: <RunInputValues args={run?.args} />,
               }}
               nodeCounts={query.data.nodeCounts ?? []}
-              nodeOutput={(node) => {
-                const page =
-                  query.data?.manifest?.meta?.nodeResultPages?.[node.id ?? ""];
-                const files =
-                  query.data?.manifest?.meta?.nodeResultFiles?.[node.id ?? ""];
-                return page || files ? (
-                  <NodeOutputCard
-                    id={id}
-                    runId={runId}
-                    nodeId={node.id ?? ""}
-                    title={files?.title ?? page?.title}
-                    files={Boolean(files)}
-                    active={active && !switching}
-                    version={query.data?.run?.version}
-                  />
-                ) : null;
-              }}
               selected={
                 active && !switching && !resultOpen
                   ? (params.get("node") ?? instance?.nodeId)
@@ -361,6 +355,10 @@ export function WorkflowRunView({
                         id={id}
                         runId={runId}
                         human={human}
+                        onAnswered={() => {
+                          if (human.id) prompted.current.add(human.id);
+                          closeDetails(human.instanceId, human.id);
+                        }}
                       />
                     ))}
                   {instanceId ? (
@@ -369,6 +367,9 @@ export function WorkflowRunView({
                       id={id}
                       runId={runId}
                       instanceId={instanceId}
+                      human={query.data?.humanRequests?.find(
+                        (request) => request.instanceId === instanceId,
+                      )}
                     />
                   ) : (
                     <p className="text-content-muted type-body">

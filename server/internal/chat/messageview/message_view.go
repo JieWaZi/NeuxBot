@@ -376,23 +376,25 @@ func (p *MessageViewBuilder) applyExecutionCreated(record eventlog.Record) (stri
 			message.Fork = &MessageFork{ReasonCode: "session_missing"}
 			message.ExecutionID = record.ExecutionID
 			message.SubmissionID = data.SubmissionID
+			message.SteerExecutionID = data.SteerExecutionID
 			message.Status = constants.ExecutionStatusPending
 			message.Revision = max(message.Revision+1, record.Sequence)
 			message.UpdatedAt = record.RecordedAt
 			return message.ID, nil
 		}
 		message := Message{
-			ID:              messageID,
-			Fork:            &MessageFork{ReasonCode: "session_missing"},
-			SubmissionID:    data.SubmissionID,
-			Role:            constants.MessageRoleAssistant,
-			Revision:        record.Sequence,
-			LiveRevision:    record.Sequence,
-			CreatedSequence: record.Sequence,
-			ExecutionID:     record.ExecutionID,
-			Status:          constants.ExecutionStatusPending,
-			CreatedAt:       record.RecordedAt,
-			UpdatedAt:       record.RecordedAt,
+			ID:               messageID,
+			Fork:             &MessageFork{ReasonCode: "session_missing"},
+			SteerExecutionID: data.SteerExecutionID,
+			SubmissionID:     data.SubmissionID,
+			Role:             constants.MessageRoleAssistant,
+			Revision:         record.Sequence,
+			LiveRevision:     record.Sequence,
+			CreatedSequence:  record.Sequence,
+			ExecutionID:      record.ExecutionID,
+			Status:           constants.ExecutionStatusPending,
+			CreatedAt:        record.RecordedAt,
+			UpdatedAt:        record.RecordedAt,
 		}
 		p.messageIndexes[message.ID] = len(p.messages)
 		p.messages = append(p.messages, message)

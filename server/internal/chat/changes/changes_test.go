@@ -413,7 +413,7 @@ func TestBoundsUnavailableGitCancellationAndLargeFiles(t *testing.T) {
 		capture := begin(t, owned, "chat-budget", []string{root}, Options{Limits: Limits{MaxChatBytes: 2}})
 		write(t, root, "file.txt", "after too large\n")
 		summary := finish(t, capture)
-		if summary.State != "partial" || summary.Complete || summary.Files[0].Added != nil {
+		if summary.State != "partial" || summary.Complete || summary.TotalFiles != 0 || len(summary.Files) != 0 {
 			t.Fatalf("space exhaustion hidden: %#v", summary)
 		}
 	})
@@ -490,6 +490,54 @@ func TestBoundedDiffPlanCountsAndContext(t *testing.T) {
 	}
 }
 
+func TestStorageBudgetPreservesConfirmedFingerprintChanges(t *testing.T) {
+	for _, modify := range []bool{false, true} {
+		t.Run(fmt.Sprint(modify), func(t *testing.T) {
+			root, owned := t.TempDir(), t.TempDir()
+			write(t, root, "large.txt", "before contents\n")
+			capture := begin(t, owned, "fingerprint-change", []string{root}, Options{Limits: Limits{MaxTextBytes: 1, MaxChatBytes: 2}})
+			want := 0
+			if modify {
+				write(t, root, "large.txt", "after contents!\n")
+				want = 1
+			}
+			summary := finish(t, capture)
+			if summary.State != "partial" || summary.Complete || summary.TotalFiles != want || len(summary.Files) != want {
+				t.Fatalf("fingerprint evidence lost under storage budget: %#v", summary)
+			}
+			if modify {
+				file := summary.Files[0]
+				if file.Path != "large.txt" || file.Status != "modified" || file.Content != "unreadable" || file.Added != nil || file.Deleted != nil {
+					t.Fatalf("confirmed change fabricated readable contents: %#v", file)
+				}
+			}
+		})
+	}
+}
+
+func TestCaptureBudgetDoesNotTurnUnchangedFilesIntoEdits(t *testing.T) {
+	for _, modify := range []bool{false, true} {
+		t.Run(fmt.Sprint(modify), func(t *testing.T) {
+			root, owned := t.TempDir(), t.TempDir()
+			write(t, root, "a.txt", "before\n")
+			write(t, root, "installer.dmg", strings.Repeat("x", 64))
+			capture := begin(t, owned, "budget", []string{root}, Options{Limits: Limits{MaxCaptureBytes: 16}})
+			want := 0
+			if modify {
+				write(t, root, "a.txt", "after\n")
+				want = 1
+			}
+			summary := finish(t, capture)
+			if summary.Complete || summary.State != "partial" || summary.TotalFiles != want || len(summary.Files) != want {
+				t.Fatalf("unknown content counted as edits: %#v", summary)
+			}
+			if want == 1 && summary.Files[0].Path != "a.txt" {
+				t.Fatalf("confirmed edit lost: %#v", summary.Files)
+			}
+		})
+	}
+}
+
 func TestUnreadableAndReplacedRootsRemainPartial(t *testing.T) {
 	t.Run("unreadable", func(t *testing.T) {
 		root, owned := t.TempDir(), t.TempDir()
@@ -501,7 +549,7 @@ func TestUnreadableAndReplacedRootsRemainPartial(t *testing.T) {
 		defer os.Chmod(path, 0600)
 		capture := begin(t, owned, "unreadable", []string{root}, Options{})
 		summary := finish(t, capture)
-		if summary.Complete || summary.State != "partial" || len(summary.Files) != 1 || summary.Files[0].Content != "unreadable" || summary.Files[0].Added != nil {
+		if summary.Complete || summary.State != "partial" || summary.TotalFiles != 0 || len(summary.Files) != 0 {
 			t.Fatalf("unreadable coverage fabricated: %#v", summary)
 		}
 	})
@@ -518,10 +566,8 @@ func TestUnreadableAndReplacedRootsRemainPartial(t *testing.T) {
 		if summary.Complete || summary.State != "partial" {
 			t.Fatalf("root replacement silently rebound: %#v", summary)
 		}
-		for _, file := range summary.Files {
-			if file.Path == "new.txt" || file.Content != "unreadable" {
-				t.Fatalf("replacement directory captured: %#v", file)
-			}
+		if summary.TotalFiles != 0 || len(summary.Files) != 0 {
+			t.Fatalf("replacement directory fabricated changes: %#v", summary)
 		}
 	})
 }

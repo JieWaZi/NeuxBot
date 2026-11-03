@@ -11,6 +11,7 @@ import (
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -48,6 +49,11 @@ func (o *AnswerWorkflowHuman) Output(ctx *gin.Context) (interface{}, error) {
 
 // 流程输入回答
 type AnswerHumanCommand struct {
+	// 问题版本
+	QuestionVersion int64 `json:"questionVersion" validate:"required,min=1"`
+	// 候选摘要
+	SnapshotDigest string `json:"snapshotDigest" validate:"required,len=64"`
+
 	// 运行标识
 	RunID string `json:"-"`
 	// 请求标识
@@ -101,6 +107,9 @@ func answerHuman(ctx context.Context, d *workflowDependencies, command AnswerHum
 			return status_error.WorkflowNotFound
 		}
 		human := &state.Humans[index]
+		if command.QuestionVersion != human.QuestionVersion || command.SnapshotDigest != human.SnapshotDigest {
+			return status_error.WorkflowStateConflict
+		}
 		if human.Status != constants.WorkflowStepStatusWaiting {
 			return status_error.WorkflowStateConflict
 		}
@@ -114,8 +123,8 @@ func answerHuman(ctx context.Context, d *workflowDependencies, command AnswerHum
 				return status_error.WorkflowStateConflict
 			}
 			human.Status = constants.WorkflowStepStatusSkipped
-			human.Source = "skip"
-			human.Value = workflowstate.HumanFallback(human.Options)
+			human.Source = "user_skip"
+			human.Value = nil
 		} else {
 			if err := validateHumanAnswer(human.Options, command.Value); err != nil {
 				return err
@@ -133,6 +142,10 @@ func answerHuman(ctx context.Context, d *workflowDependencies, command AnswerHum
 }
 
 func validateHumanAnswer(options map[string]any, value any) error {
+
+	if kind, _ := options["kind"].(string); kind != "" {
+		return workflow.ValidateHumanAnswer(options, value)
+	}
 	if schema, structured := options["schema"].(map[string]any); structured {
 		return workflowdsl.ValidateJSON(schema, value)
 	}

@@ -1,65 +1,8 @@
 export const meta = {
-  sdk: 'ally.workflow/1',
+  sdk: 'ally.workflow',
   title: 'weekly-report',
   description: '把本周口述要点汇总成简洁版工作周报（进展 / 风险 / 下周计划），草稿经你确认后写入本地 Markdown 文件',
   whenToUse: '每周需要提交个人工作周报时使用。输入本周原始要点（无需整理），流程负责提取事实、补齐背景、生成草稿、等你确认后定稿落盘。',
-  nodeResultPages: {
-    facts: { formatVersion: 1, catalogVersion: 'workflow-result-v1', title: '本周事实', spec: { root: 'page', elements: {
-      page: { type: 'Page', props: { width: 'readable' }, children: ['heading', 'summary', 'facts'] },
-      heading: { type: 'Heading', props: { value: '本周事实', level: 'h1' } },
-      summary: { type: 'Text', props: { value: { $state: '/result/overallSummary' } } },
-      facts: { type: 'Collection', props: { items: { $state: '/result/facts' }, pageSize: 10 }, children: ['statement', 'kind', 'evidence'] },
-      statement: { type: 'Text', props: { value: { $item: 'statement' } } },
-      kind: { type: 'KeyValue', props: { label: '类型', value: { $item: 'kind' } } },
-      evidence: { type: 'KeyValue', props: { label: '证据', value: { $item: 'evidence' } } }
-    } } },
-    background: { formatVersion: 1, catalogVersion: 'workflow-result-v1', title: '相关背景', spec: { root: 'page', elements: {
-      page: { type: 'Page', props: { width: 'readable' }, children: ['heading', 'items'] },
-      heading: { type: 'Heading', props: { value: '相关背景', level: 'h1' } },
-      items: { type: 'Collection', props: { items: { $state: '/result/items' }, pageSize: 10 }, children: ['title', 'insight', 'relevance'] },
-      title: { type: 'Heading', props: { value: { $item: 'title' }, level: 'h2' } },
-      insight: { type: 'Text', props: { value: { $item: 'insight' } } },
-      relevance: { type: 'KeyValue', props: { label: '与本周工作的关联', value: { $item: 'whyItMatters' } } }
-    } } },
-    'draft-report': { formatVersion: 1, catalogVersion: 'workflow-result-v1', title: '周报草稿', spec: { root: 'page', elements: {
-      page: { type: 'Page', props: { width: 'readable' }, children: ['body'] },
-      body: { type: 'Markdown', props: { value: { $state: '/result/markdown' } } }
-    } } },
-    critique: { formatVersion: 1, catalogVersion: 'workflow-result-v1', title: '草稿复核', spec: { root: 'page', elements: {
-      page: { type: 'Page', props: { width: 'readable' }, children: ['heading', 'verdict', 'gaps', 'wording', 'fixes'] },
-      heading: { type: 'Heading', props: { value: '草稿复核', level: 'h1' } },
-      verdict: { type: 'KeyValue', props: { label: '复核结论', value: { $state: '/result/verdict' } } },
-      gaps: { type: 'Section', props: { title: '遗漏事实' }, children: ['gap-list'] },
-      'gap-list': { type: 'Collection', props: { items: { $state: '/result/coverageGaps' }, pageSize: 10 }, children: ['gap'] },
-      gap: { type: 'Text', props: { value: { $item: '' } } },
-      wording: { type: 'Section', props: { title: '表述问题' }, children: ['wording-list'] },
-      'wording-list': { type: 'Collection', props: { items: { $state: '/result/wordingIssues' }, pageSize: 10 }, children: ['issue'] },
-      issue: { type: 'Text', props: { value: { $item: '' } } },
-      fixes: { type: 'Section', props: { title: '必须修正' }, children: ['fix-list'] },
-      'fix-list': { type: 'Collection', props: { items: { $state: '/result/mustFix' }, pageSize: 10 }, children: ['fix'] },
-      fix: { type: 'Text', props: { value: { $item: '' } } }
-    } } },
-    'revise-report': { formatVersion: 1, catalogVersion: 'workflow-result-v1', title: '修订周报', spec: { root: 'page', elements: {
-      page: { type: 'Page', props: { width: 'readable' }, children: ['body'] },
-      body: { type: 'Markdown', props: { value: { $state: '/result/markdown' } } }
-    } } },
-    'write-report': { formatVersion: 1, catalogVersion: 'workflow-result-v1', title: '周报写入', spec: { root: 'page', elements: {
-      page: { type: 'Page', props: { width: 'readable' }, children: ['heading', 'written', 'path', 'note'] },
-      heading: { type: 'Heading', props: { value: '周报写入', level: 'h1' } },
-      written: { type: 'KeyValue', props: { label: '写入成功', value: { $state: '/result/written' } } },
-      path: { type: 'KeyValue', props: { label: '文件路径', value: { $state: '/result/reportPath' } } },
-      note: { type: 'Text', props: { value: { $state: '/result/note' } } }
-    } } },
-    'verify-report': { formatVersion: 1, catalogVersion: 'workflow-result-v1', title: '落盘校验', spec: { root: 'page', elements: {
-      page: { type: 'Page', props: { width: 'readable' }, children: ['heading', 'ok', 'exists', 'sections', 'issues'] },
-      heading: { type: 'Heading', props: { value: '落盘校验', level: 'h1' } },
-      ok: { type: 'KeyValue', props: { label: '校验通过', value: { $state: '/result/ok' } } },
-      exists: { type: 'KeyValue', props: { label: '文件存在', value: { $state: '/result/exists' } } },
-      sections: { type: 'KeyValue', props: { label: '三段结构完整', value: { $state: '/result/hasAllSections' } } },
-      issues: { type: 'Collection', props: { items: { $state: '/result/issues' }, pageSize: 10 }, children: ['issue'] },
-      issue: { type: 'Text', props: { value: { $item: '' } } }
-    } } }
-  },
   inputSchema: {
     type: 'object',
     required: ['weekNotes'],
@@ -323,9 +266,9 @@ phase('review')
 while (!approved) {
   const confirm = await askUser(
     `周报草稿已生成（第 ${rounds} 轮，${critique ? '自检结论：' + critique.verdict : '自检未完成'}）：\n\n${draft.markdown}\n\n${(critique?.coverageGaps ?? []).length ? '⚠ 自检发现素材里有 ' + critique.coverageGaps.length + ' 条事项没写进周报：\n' + critique.coverageGaps.join('\n') + '\n' : ''}${(draft.omitted ?? []).length ? '\n已省略的素材：\n' + draft.omitted.join('\n') + '\n' : ''}\n选「定稿」即写入文件；选「需要修改」我再问你改哪里；也可以直接在这条输入里写修改意见。`,
-    { id: 'review-draft', label: '展示草稿并等待你定稿或提出修改', phase: 'review', options: [{ value: 'approve', label: '定稿' }, { value: 'revise', label: '需要修改' }], defaultValue: 'reject', allowSkip: false }
+    { id: 'review-draft', label: '展示草稿并等待你定稿或提出修改', phase: 'review', kind: 'select',allowCustom: true,choices: [{ value: 'approve', label: '定稿' }, { value: 'revise', label: '需要修改' }], defaultValue: 'revise', allowSkip: false }
   )
-  if (!confirm.skipped && confirm.value === 'approve') {
+  if (confirm.status === 'answered' && confirm.value === 'approve') {
     approved = true
     break
   }
@@ -339,7 +282,7 @@ while (!approved) {
       '请说明要调整的地方，例如：某条进展补上具体指标 / 把某个风险提到第一条 / 下周计划压缩到 3 条 / 语气更书面。可直接输入，多条用换行分隔。',
       { id: 'revision-note', label: '收集具体修改意见', phase: 'review' }
     )
-    note = detail.skipped ? '' : detail.value
+    note = detail.status !== 'answered' ? '' : detail.value
   }
   revisionNote = note || '按自检意见补齐漏项即可'
   log('按你的意见重新生成草稿。')

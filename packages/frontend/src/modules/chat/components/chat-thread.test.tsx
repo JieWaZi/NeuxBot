@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   ReasoningMessagePartProps,
@@ -55,10 +56,6 @@ const { messageState } = vi.hoisted(() => ({
       content: [] as ThreadAssistantMessagePart[],
     } as MockMessageState,
   },
-}));
-
-vi.mock("./execution-file-changes-card", () => ({
-  ExecutionFileChangesCard: () => null,
 }));
 
 type DisplayPart = NonNullable<AllyChatMessage["displayParts"]>[number];
@@ -278,6 +275,21 @@ describe("chat work process", () => {
         name: "已读取工作流、检查工作流、保存工作流",
       }),
     ).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("终态未收到工具结果时，折叠摘要显示中断而非已完成", () => {
+    messageState.current.content = [toolPart("command", "running")];
+    render(
+      <WorkProcess indices={[0]}>
+        <div>详细过程</div>
+      </WorkProcess>,
+    );
+    const toggle = screen.getByRole("button", { name: "已中断：执行命令" });
+    expect(toggle).toHaveAttribute("aria-busy", "false");
+    expect(toggle).not.toHaveAttribute("data-running-shimmer");
+    expect(
+      screen.queryByRole("button", { name: "已执行命令" }),
+    ).not.toBeInTheDocument();
   });
   it("摘要按首次出现顺序合并工具类别，不展示计数和过程消息", () => {
     messageState.current = {
@@ -675,6 +687,44 @@ describe("chat work process", () => {
     );
   });
 
+  it.each(["error", "cancelled"] as const)(
+    "%s 终态中没有结果的工具显示中断，保留已完成工具事实",
+    (reason) => {
+      messageState.current = {
+        ...messageState.current,
+        status: { type: "incomplete", reason },
+      };
+      const props = {
+        type: "tool-call" as const,
+        toolCallId: "unfinished",
+        toolName: "Bash",
+        args: {
+          category: "command",
+          status: "running",
+          label: "执行命令",
+          loadingLabel: "正在执行命令…",
+        },
+        argsText: "{}",
+        status: { type: "running" as const },
+        addResult: vi.fn(),
+        resume: vi.fn(),
+        respondToApproval: vi.fn(),
+      } satisfies ToolCallMessagePartProps;
+      const { rerender } = render(<ToolActivityRow {...props} />);
+      expect(screen.getByText("已中断：")).toBeVisible();
+      expect(screen.queryByText("正在执行命令…")).not.toBeInTheDocument();
+      rerender(
+        <ToolActivityRow
+          {...props}
+          args={{ ...props.args, status: "completed" }}
+          result={{}}
+        />,
+      );
+      expect(screen.queryByText("已中断：")).not.toBeInTheDocument();
+      expect(screen.getByText("执行命令")).toBeVisible();
+    },
+  );
+
   it("工具行展示语义短语和安全摘要，不展示原始工具名或结果正文", () => {
     messageState.current = {
       ...messageState.current,
@@ -1023,6 +1073,41 @@ describe("chat work process", () => {
 });
 
 describe("execution file changes", () => {
+  it.each([
+    { name: "默认展示", showFileChanges: undefined, visible: true },
+    { name: "按入口关闭", showFileChanges: false, visible: false },
+  ])("$name执行文件变更卡片并保留正文", ({ showFileChanges, visible }) => {
+    const view = new ChatMessageProjection().update([
+      {
+        id: "file-result",
+        role: "assistant",
+        status: "completed",
+        displayParts: [{ id: "body", type: "text", text: "已交付业务报告" }],
+        fileChangeRecord: {
+          recordId: "snapshot",
+          version: 2,
+          state: "ready",
+          totalFiles: 1,
+          complete: true,
+        },
+      },
+    ])[0];
+    if (!view) throw new Error("missing test message");
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <PureAssistantMessage
+          view={view}
+          name="测试伙伴"
+          showFileChanges={showFileChanges}
+        />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText("已交付业务报告")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: "已编辑 1 个文件" }) !== null,
+    ).toBe(visible);
+  });
+
   // 快照成果卡片的终态、展开与按需 Diff 由 execution-file-changes-card.test.tsx 验证。
   it("有文件改动时不在复制按钮后展示独立入口", () => {
     messageState.current = {
@@ -1138,5 +1223,51 @@ describe("assistant message shell", () => {
     expect(screen.getByText("飞速运转")).toBeVisible();
     expect(screen.getByRole("status")).toHaveClass("agent-grid-spinner");
     expect(screen.getByRole("status").children).toHaveLength(9);
+  });
+});
+
+describe("steer 连续工作展示", () => {
+  const projection = new ChatMessageProjection();
+  const message: AllyChatMessage = {
+    id: "steered",
+    role: "assistant",
+    status: "canceled",
+    executionId: "run-steered",
+    displayParts: [{ id: "body", type: "text", text: "继续之前的工作" }],
+    runMetrics: { durationMs: 9000 },
+  };
+  it("中间段保留正文并隐藏取消提示、耗时、复制及分叉操作", () => {
+    const view = projection.update([message])[0];
+    if (!view) throw new Error("missing test message");
+    render(
+      <TooltipProvider>
+        <PureAssistantMessage
+          name="伙伴"
+          view={view}
+          continuation={{
+            continued: true,
+            continuation: false,
+            footerMessage: message,
+          }}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("继续之前的工作")).toBeVisible();
+    expect(screen.queryByText("执行已取消")).not.toBeInTheDocument();
+    expect(screen.queryByText("9s")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "复制" }),
+    ).not.toBeInTheDocument();
+  });
+  it("普通停止仍显示取消提示与复制操作", () => {
+    const view = projection.update([message])[0];
+    if (!view) throw new Error("missing test message");
+    render(
+      <TooltipProvider>
+        <PureAssistantMessage name="伙伴" view={view} />
+      </TooltipProvider>,
+    );
+    expect(screen.getByText("执行已取消")).toBeVisible();
+    expect(screen.getByRole("button", { name: "复制" })).toBeVisible();
   });
 });

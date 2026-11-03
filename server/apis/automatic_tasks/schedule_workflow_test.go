@@ -30,7 +30,7 @@ func workflowTask(t *testing.T, h *testHarness, source string) (models.WorkflowD
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, diagnostics, err := h.workflows.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDKVersion: constants.WorkflowSDKVersion})
+	first, diagnostics, err := h.workflows.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatalf("%v: %+v", err, diagnostics)
 	}
@@ -42,7 +42,7 @@ func workflowTask(t *testing.T, h *testHarness, source string) (models.WorkflowD
 func TestWorkflowAPIUploadsUseManagedRootSeparateFromProgramData(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	source := `export const meta = {sdk:'ally.workflow/1',title:'输入文件',inputSchema:{type:'object',properties:{document:{type:'string',format:'file'}},required:['document']},phases:[{id:'read',title:'读取文件',detail:'接纳文件输入',canExit:true}]};phase('read');return args.document;`
+	source := `export const meta = {sdk:'ally.workflow',title:'输入文件',inputSchema:{type:'object',properties:{document:{type:'string',format:'file'}},required:['document']},phases:[{id:'read',title:'读取文件',detail:'接纳文件输入',canExit:true}]};phase('read');return args.document;`
 	definition, config := workflowTask(t, h, source)
 	config.WorkflowInputBindings = map[string]workflowinput.Binding{"document": {Source: constants.WorkflowInputSourceAPI}}
 	saved, err := h.service.SaveConfiguration(ctx, h.wakerID, "", 0, config, true)
@@ -102,7 +102,7 @@ func TestWorkflowOccurrenceFreezesVersionAndReconcilesAcceptedReceipt(t *testing
 	if first.Configuration.WorkflowRevisionID != definition.CurrentRevisionID || first.Configuration.WorkflowRevisionPolicy != constants.WorkflowRevisionPolicyPinned {
 		t.Fatal("occurrence was not frozen")
 	}
-	secondRevision, _, err := h.workflows.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "new", ExpectedRevisionID: definition.CurrentRevisionID, Source: strings.Replace(string(data), "parts.join(' ')", "parts.join('-')", 1), SDKVersion: constants.WorkflowSDKVersion})
+	secondRevision, _, err := h.workflows.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "new", ExpectedRevisionID: definition.CurrentRevisionID, Source: strings.Replace(string(data), "parts.join(' ')", "parts.join('-')", 1), SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestWorkflowOccurrenceFreezesVersionAndReconcilesAcceptedReceipt(t *testing
 func TestWorkflowWaitingKeepsSlotAndPinnedPolicyRejectsWrongOwner(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	source := `export const meta = {sdk:'ally.workflow/1',title:'等待输入',inputSchema:{type:'object',properties:{text:{type:'string'}}},phases:[{id:'review',title:'审核',detail:'人工审核',canExit:true}]};phase('review');const answer = await askUser('审核 '+args.text,{id:'approve',phase:'review',label:'确认',options:[{value:'yes',label:'是'},{value:'no',label:'否'}]});return answer;`
+	source := `export const meta = {sdk:'ally.workflow',title:'等待输入',inputSchema:{type:'object',properties:{text:{type:'string'}}},phases:[{id:'review',title:'审核',detail:'人工审核',canExit:true}]};phase('review');const answer = await askUser('审核 '+args.text,{id:'approve',phase:'review',label:'确认',kind:'select',choices:[{value:'yes',label:'是'},{value:'no',label:'否'}]});return answer;`
 	definition, config := workflowTask(t, h, source)
 	config.WorkflowRevisionPolicy = constants.WorkflowRevisionPolicyPinned
 	config.WorkflowRevisionID = definition.CurrentRevisionID

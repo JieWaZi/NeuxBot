@@ -27,7 +27,7 @@ func TestSourceSaveReplayConflictAndImmutableRestore(t *testing.T) {
 	if _, err := createDefinition(ctx, workflowAPIDependencies(s), command); !errors.Is(err, status_error.WorkflowRequestConflict) {
 		t.Fatalf("create conflict: %v", err)
 	}
-	save := workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save-1", Source: workflowTestSource(t), SDKVersion: constants.WorkflowSDKVersion}
+	save := workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save-1", Source: workflowTestSource(t), SDK: constants.WorkflowSDKIdentifier}
 	first, diagnostics, err := s.SaveSource(ctx, save)
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)

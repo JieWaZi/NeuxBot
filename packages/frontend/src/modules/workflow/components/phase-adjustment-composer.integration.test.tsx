@@ -140,7 +140,7 @@ it("阶段完整 Composer 的模型、思考、权限与附件选择实际进入
       <PhaseAdjustmentComposer
         id="flow"
         revisionId="version-3"
-        phase={{ id: "prepare", title: "准备会议" }}
+        phase={{ detail: "", id: "prepare", title: "准备会议" }}
         ordinal={1}
         defaults={{ runtimeId: "codex" }}
         onAccepted={accepted}
@@ -270,7 +270,7 @@ it("阶段账号切换沿用聊天的上下文确认并真实提交，不覆盖�
       <PhaseAdjustmentComposer
         id="flow"
         revisionId="version-3"
-        phase={{ id: "prepare", title: "准备会议" }}
+        phase={{ detail: "", id: "prepare", title: "准备会议" }}
         ordinal={1}
         session={{ id: "session-1", chatId: "chat-1" }}
         defaults={{ runtimeId: "codex", accountId: "system" }}
@@ -329,7 +329,7 @@ it("已有创作正在执行时阶段输入等待空闲，仍展示完整配置�
       <PhaseAdjustmentComposer
         id="flow"
         revisionId="version-3"
-        phase={{ id: "prepare", title: "准备会议" }}
+        phase={{ detail: "", id: "prepare", title: "准备会议" }}
         ordinal={1}
         session={{ id: "session-1", chatId: "chat-1" }}
         defaults={{ runtimeId: "codex" }}
@@ -398,7 +398,7 @@ it("阶段要求绑定基准版本与稳定阶段，发送失败后保留输入�
       <PhaseAdjustmentComposer
         id="flow"
         revisionId="version-3"
-        phase={{ id: "prepare", title: "准备会议" }}
+        phase={{ detail: "", id: "prepare", title: "准备会议" }}
         ordinal={2}
         session={{ id: "session-1", chatId: "chat-1", defaults }}
         defaults={defaults}
@@ -470,7 +470,7 @@ it.each(["http", "network"] as const)(
         <PhaseAdjustmentComposer
           id="flow"
           revisionId="version-3"
-          phase={{ id: "prepare", title: "准备会议" }}
+          phase={{ detail: "", id: "prepare", title: "准备会议" }}
           ordinal={1}
           defaults={{ runtimeId: "codex" }}
           onAccepted={accepted}
@@ -519,7 +519,7 @@ it("阶段调整沿用聊天默认配置并使用当前模型新建会话", asyn
       <PhaseAdjustmentComposer
         id="flow"
         revisionId="version-3"
-        phase={{ id: "prepare", title: "准备会议" }}
+        phase={{ detail: "", id: "prepare", title: "准备会议" }}
         ordinal={2}
         defaults={defaults}
         onAccepted={accepted}
@@ -578,7 +578,7 @@ it("阶段输入沿用聊天键盘交互：Shift+Enter 换行，普通 Enter 发
       <PhaseAdjustmentComposer
         id="flow"
         revisionId="version-3"
-        phase={{ id: "prepare", title: "准备会议" }}
+        phase={{ detail: "", id: "prepare", title: "准备会议" }}
         ordinal={1}
         defaults={{ runtimeId: "codex" }}
         onAccepted={() => {}}
@@ -632,7 +632,7 @@ it("阶段输入复用聊天的中文输入法保护，确认候选字的 Enter 
       <PhaseAdjustmentComposer
         id="flow"
         revisionId="version-3"
-        phase={{ id: "prepare", title: "准备会议" }}
+        phase={{ detail: "", id: "prepare", title: "准备会议" }}
         ordinal={1}
         defaults={{ runtimeId: "codex" }}
         onAccepted={() => {}}

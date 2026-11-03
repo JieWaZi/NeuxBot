@@ -1,4 +1,3 @@
-import { catalogDigests } from "@/shared/presentation/catalog-digests.generated";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -360,72 +359,4 @@ describe("workflow schema inputs", () => {
     expect(screen.getByLabelText(/Name/)).toBeInTheDocument();
     expect(screen.getByLabelText(/Count/)).toHaveAttribute("type", "number");
   });
-});
-
-it("renders an agent layout with schema-owned fields and preserves typed draft values", () => {
-  const schema = {
-    type: "object",
-    properties: {
-      "a/b~c": { type: "integer", title: "计数" },
-      enabled: { type: "boolean", title: "开关", "x-ui": { widget: "switch" } },
-    },
-  };
-  function Example() {
-    const [value, setValue] = useState<unknown>({ "a/b~c": 0, enabled: false });
-    return (
-      <>
-        <SchemaForm
-          schema={schema}
-          value={value}
-          onChange={setValue}
-          inputPage={{
-            formatVersion: 1,
-            catalogVersion: "workflow-input-v1",
-            catalogDigest: catalogDigests["workflow-input-v1"],
-            spec: {
-              root: "grid",
-              elements: {
-                grid: {
-                  type: "Grid",
-                  props: { columns: 2 },
-                  children: ["enabled", "count"],
-                },
-                enabled: { type: "Field", props: { path: "/args/enabled" } },
-                count: { type: "Field", props: { path: "/args/a~1b~0c" } },
-              },
-            },
-          }}
-        />
-        <output>{JSON.stringify(value)}</output>
-      </>
-    );
-  }
-  render(<Example />);
-  expect(screen.getByRole("spinbutton", { name: "计数" })).toHaveValue(0);
-  fireEvent.change(screen.getByRole("spinbutton", { name: "计数" }), {
-    target: { value: "2" },
-  });
-  expect(screen.getByRole("status")).toHaveTextContent('"a/b~c":2');
-  expect(screen.getByRole("status")).toHaveTextContent('"enabled":false');
-});
-
-it("falls back to schema-owned fields when an input catalog contract is unavailable", () => {
-  render(
-    <SchemaForm
-      schema={{
-        type: "object",
-        properties: { title: { type: "string", title: "标题" } },
-      }}
-      value={{ title: "保留参数" }}
-      onChange={vi.fn()}
-      inputPage={{
-        formatVersion: 1,
-        catalogVersion: "workflow-input-v1",
-        catalogDigest: "old-contract",
-        spec: { root: "unavailable", elements: {} },
-      }}
-    />,
-  );
-  expect(screen.getByRole("alert")).toHaveTextContent("已使用默认表单");
-  expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue("保留参数");
 });

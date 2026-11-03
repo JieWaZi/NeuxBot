@@ -79,6 +79,11 @@ func (m *service) acquireChatSessionResources(ctx context.Context, state message
 		return partial, status_error.BadRequest
 	}
 	partial.Connectors = runtimeConnectorResources(runtimeConnectors)
+	for _, connector := range sessionPlan.Connectors {
+		if connector.ID == "neuxbot-internal-capabilities" {
+			partial.Connectors = append(partial.Connectors, agentapi.Connector{ID: connector.ID, Name: connector.Name, RuntimeKey: connector.RuntimeKey, Transport: connector.Transport, Command: connector.Command, Arguments: slices.Clone(connector.Arguments)})
+		}
+	}
 	runtimeSource := partial.Target
 	agentEnvironment := launchEnvironment
 	if request.runtime.AccountID != "" {

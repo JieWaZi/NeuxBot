@@ -1,7 +1,11 @@
 import { useTranslation } from "react-i18next";
-import { jsonText, record } from "../model/types";
+import { record } from "../model/types";
 
 const reasons = [
+  {
+    code: "WorkflowBusinessCheckFailed",
+    key: "failureCauses.businessCheckFailed",
+  },
   {
     code: "WorkflowIMTargetNotDeclared",
     key: "failureCauses.undeclaredTarget",
@@ -25,7 +29,7 @@ const reasons = [
   { code: "IMFileInvalid", key: "failureCauses.fileInvalid" },
 ] as const;
 
-/** 先展示稳定原因和处理办法，完整源码位置及发送证据保留在详情中。 */
+/** 先展示稳定原因和处理办法，不将内部协议封套直接呈现给用户。 */
 export function WorkflowFailure({ value }: { value: unknown }) {
   const { t } = useTranslation("workflow");
   const failure = record(value) ?? {};
@@ -55,14 +59,11 @@ export function WorkflowFailure({ value }: { value: unknown }) {
           })}
         </p>
       ) : null}
-      <details>
-        <summary className="text-muted-foreground type-body cursor-pointer">
-          {t("failureDetails")}
-        </summary>
-        <pre className="bg-muted type-body mt-3 overflow-auto rounded-lg p-4 whitespace-pre-wrap">
-          {jsonText(value)}
-        </pre>
-      </details>
+      {typeof failure.message === "string" ? (
+        <p className="type-body whitespace-pre-wrap">{failure.message}</p>
+      ) : typeof cause.message === "string" ? (
+        <p className="type-body whitespace-pre-wrap">{cause.message}</p>
+      ) : null}
     </div>
   );
 }

@@ -23,8 +23,8 @@ type ValidateWorkflowSource struct {
 type ValidateWorkflowSourceRequest struct {
 	// 完整源码
 	Source string `json:"source" validate:"required,max=1048576"`
-	// 契约版本
-	SDKVersion string `json:"sdkVersion" validate:"required,max=80"`
+	// SDK 标识
+	SDK string `json:"sdk" validate:"required,max=80"`
 }
 
 // 源码校验结果
@@ -34,7 +34,7 @@ type WorkflowValidationResponse struct {
 	// 编译诊断
 	Diagnostics []workflowdsl.Diagnostic `json:"diagnostics"`
 	// 源码投影
-	Manifest *workflowdsl.Manifest `json:"manifest"`
+	Manifest *workflowdsl.CanvasManifest `json:"manifest"`
 }
 
 func (*ValidateWorkflowSource) Path() string { return "/:id/validate" }
@@ -42,13 +42,14 @@ func (o *ValidateWorkflowSource) Output(ctx *gin.Context) (interface{}, error) {
 	if _, err := global.WorkflowControllerManager.GetDefinition(ctx, o.ID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	if o.Body.SDKVersion != constants.WorkflowSDKVersion {
+	if o.Body.SDK != constants.WorkflowSDKIdentifier {
 		return nil, ginx.WithStack(status_error.WorkflowSourceInvalid)
 	}
 	compiled, diagnostics, err := workflowdsl.Compile(o.Body.Source)
 	response := WorkflowValidationResponse{Valid: err == nil, Diagnostics: diagnostics}
 	if err == nil {
-		response.Manifest = &compiled.Manifest
+		canvas := workflowdsl.ExportCanvas(compiled.Manifest)
+		response.Manifest = &canvas
 	}
 	return response, nil
 }

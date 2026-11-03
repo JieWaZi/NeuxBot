@@ -8,7 +8,7 @@ import (
 )
 
 const simpleSource = `export const meta = {
- sdk: 'ally.workflow/1', title: '纯计算', description: '计算字符串',
+ sdk: 'ally.workflow', title: '纯计算', description: '计算字符串',
  inputSchema: {type:'object', required:['text'], properties:{text:{type:'string'},repeat:{type:'integer',minimum:1,maximum:5,default:2}}},
  outputSchema: {type:'object',required:['message','length','repeat'],properties:{message:{type:'string'},length:{type:'integer'},repeat:{type:'integer'}}},
  phases: [{id:'prepare',title:'准备',detail:'整理输入',next:['compose']},{id:'compose',title:'组合',detail:'组合并返回',canExit:true}]
@@ -23,7 +23,7 @@ return {message, length:message.length, repeat:args.repeat};`
 func TestCompileFunctionAcceptsTenMinuteTimeout(t *testing.T) {
 	for _, timeout := range []string{"600000", "600001"} {
 		t.Run(timeout, func(t *testing.T) {
-			source := `export const meta={sdk:'ally.workflow/1',title:'脚本期限',description:'十分钟',phases:[{id:'work',title:'执行',detail:'计算',canExit:true}]};return await functionTask({id:'script',label:'计算',phase:'work',language:'javascript',code:'function main(input){return input;}',input:1,timeoutMs:` + timeout + `});`
+			source := `export const meta={sdk:'ally.workflow',title:'脚本期限',description:'十分钟',phases:[{id:'work',title:'执行',detail:'计算',canExit:true}]};return await functionTask({id:'script',label:'计算',phase:'work',language:'javascript',code:'function main(input){return input;}',input:1,timeoutMs:` + timeout + `});`
 			_, diagnostics, err := Compile(source)
 			if timeout == "600000" {
 				if err != nil {
@@ -39,7 +39,7 @@ func TestCompileFunctionAcceptsTenMinuteTimeout(t *testing.T) {
 }
 
 func TestCompileWorkerDoesNotExposeNodeTimeout(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow/1',title:'伙伴期限',description:'无独立期限',phases:[{id:'work',title:'执行',detail:'伙伴任务',canExit:true}]};return await worker('work',{id:'work',label:'执行',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},timeoutMs:600000});`
+	source := `export const meta={sdk:'ally.workflow',title:'伙伴期限',description:'无独立期限',phases:[{id:'work',title:'执行',detail:'伙伴任务',canExit:true}]};return await worker('work',{id:'work',label:'执行',phase:'work',resolve:{kind:'waker',wakerId:'fixture'},timeoutMs:600000});`
 	_, diagnostics, err := Compile(source)
 	if err == nil || len(diagnostics) == 0 || diagnostics[0].Code != "OPTION_UNKNOWN" {
 		t.Fatalf("worker timeoutMs was accepted: %v %+v", err, diagnostics)
@@ -47,7 +47,7 @@ func TestCompileWorkerDoesNotExposeNodeTimeout(t *testing.T) {
 }
 
 func TestCompileChecksMinimumInstanceBudgetWithoutCountingAlternativeBranches(t *testing.T) {
-	meta := `export const meta={sdk:'ally.workflow/1',title:'实例预算',description:'保存前校验',limits:{concurrency:1,maxInstances:1},phases:[{id:'work',title:'工作',detail:'任务',canExit:true}]};`
+	meta := `export const meta={sdk:'ally.workflow',title:'实例预算',description:'保存前校验',limits:{concurrency:1,maxInstances:1},phases:[{id:'work',title:'工作',detail:'任务',canExit:true}]};`
 	first := `await askUser('第一步',{id:'first',label:'第一步',phase:'work'});`
 	second := `await askUser('第二步',{id:'second',label:'第二步',phase:'work'});`
 	for _, test := range []struct {
@@ -90,11 +90,14 @@ func TestCompileBindsFullNormalizedWeeklySource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%v: %+v", err, diagnostics)
 	}
-	if len(compiled.Manifest.Meta.Phases) != 4 || len(compiled.Manifest.Nodes) != 9 || len(compiled.Manifest.Groups) != 1 {
+	if len(compiled.Manifest.Meta.Phases) != 4 || len(compiled.Manifest.Nodes) != 11 || len(compiled.Manifest.Groups) != 1 {
 		t.Fatalf("lost reference capabilities: %+v", compiled.Manifest)
 	}
 	workers, humans := 0, 0
 	for _, node := range compiled.Manifest.Nodes {
+		if node.Kind == "input" || node.Kind == "result" {
+			continue
+		}
 		if node.Kind == "worker" {
 			workers++
 		}
@@ -145,7 +148,7 @@ func TestCompileRejectsInvalidJavaScriptFunctionBeforeSave(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			source := `export const meta = {sdk:'ally.workflow/1',title:'Function 校验',description:'保存前拒绝无效入口',phases:[{id:'compute',title:'计算',detail:'真实入口',canExit:true}]}; phase('compute'); const value = await functionTask({id:'compute_value',label:'计算',phase:'compute',language:'javascript',code:` + string(encoded) + `,input:args}); return value;`
+			source := `export const meta = {sdk:'ally.workflow',title:'Function 校验',description:'保存前拒绝无效入口',phases:[{id:'compute',title:'计算',detail:'真实入口',canExit:true}]}; phase('compute'); const value = await functionTask({id:'compute_value',label:'计算',phase:'compute',language:'javascript',code:` + string(encoded) + `,input:args}); return value;`
 			_, diagnostics, err := Compile(source)
 			if err == nil || len(diagnostics) == 0 {
 				t.Fatalf("invalid Function was saved without diagnostics: %v %+v", err, diagnostics)
@@ -166,14 +169,14 @@ func TestCompileFullEnvironmentReleaseContracts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("complete F2 source: %v %+v", err, diagnostics)
 	}
-	if len(compiled.Manifest.Meta.Phases) != 5 || len(compiled.Manifest.Groups) != 3 || len(compiled.Manifest.Nodes) != 14 {
+	if len(compiled.Manifest.Meta.Phases) != 5 || len(compiled.Manifest.Groups) != 3 || len(compiled.Manifest.Nodes) != 16 {
 		t.Fatalf("full F2 templates lost: phases=%d groups=%d nodes=%d", len(compiled.Manifest.Meta.Phases), len(compiled.Manifest.Groups), len(compiled.Manifest.Nodes))
 	}
 }
 
 func TestCompileRejectsInvalidContractsBeforeSaving(t *testing.T) {
 	cases := map[string]string{
-		"sdk":           strings.Replace(simpleSource, "ally.workflow/1", "unknown/1", 1),
+		"sdk":           strings.Replace(simpleSource, "ally.workflow", "unknown/1", 1),
 		"literal":       strings.Replace(simpleSource, "title: '纯计算'", "title: args.title", 1),
 		"duplicate":     strings.Replace(simpleSource, "id:'compose'", "id:'prepare'", 1),
 		"phase":         strings.Replace(simpleSource, "phase('prepare')", "phase('missing')", 1),

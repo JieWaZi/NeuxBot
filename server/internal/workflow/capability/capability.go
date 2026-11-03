@@ -27,10 +27,14 @@ type Input struct {
 	RequestID string `json:"requestId,omitempty"`
 	// ExpectedRevisionID 是创作读取的当前版本。
 	ExpectedRevisionID string `json:"expectedRevisionId,omitempty"`
+	// BaseSourceDigest 是精确补丁所依赖的源码摘要。
+	BaseSourceDigest string `json:"baseSourceDigest,omitempty"`
+	// Patches 是顺序执行的唯一匹配替换。
+	Patches []SourcePatch `json:"patches,omitempty"`
 	// Source 是完整原始源码。
 	Source string `json:"source,omitempty"`
-	// SDKVersion 是创作选择的契约版本。
-	SDKVersion string `json:"sdkVersion,omitempty"`
+	// SDK 是创作源码使用的契约身份。
+	SDK string `json:"sdk,omitempty"`
 	// RunID 是创作查询的实际运行。
 	RunID string `json:"runId,omitempty"`
 	// WorkflowID 是使用者白名单内的运行目标。
@@ -100,4 +104,12 @@ func Allows(scope constants.WorkflowCapabilityScope, input Input) bool {
 // Capabilities 只用于内部授权探测，不向模型发布第二份命令目录。
 func Capabilities(scope constants.WorkflowCapabilityScope) map[string]any {
 	return map[string]any{"scope": scope}
+}
+
+// SourcePatch 是完整源码的精确文本补丁。
+type SourcePatch struct {
+	// Search 是必须唯一匹配的原始字节。
+	Search string `json:"search"`
+	// Replace 是用于替换的新字节。
+	Replace string `json:"replace"`
 }

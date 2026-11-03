@@ -157,6 +157,8 @@ func (WorkflowGroupRun) TableName() string { return "workflow_group_runs" }
 
 // WorkflowNodeInstance 是一个源码职责在实际项、轮次和分支中的执行。
 type WorkflowNodeInstance struct {
+	// ReusedFrom 记录同版本重试复用的原始证据身份。
+	ReusedFrom map[string]any `gorm:"serializer:json;type:text" json:"reusedFrom,omitempty"`
 	// Input 是效果求值后冻结的真实参数，不包含能力令牌。
 	Input []workflowdsl.Value `gorm:"serializer:json;type:text" json:"input"`
 	// Options 是节点配置快照，凭据只允许引用身份。
@@ -207,6 +209,8 @@ func (WorkflowNodeInstance) TableName() string { return "workflow_node_instances
 
 // WorkflowEffect 是派发前持久保存的 outbox 与不可变效果收据。
 type WorkflowEffect struct {
+	// OutputRepairs 是已持久接纳的无工具输出纠正次数，重启不重置。
+	OutputRepairs int `json:"outputRepairs"`
 	// FinalMessageID 绑定本次成功执行的权威最终助手消息，续聊不会替换此锚点。
 	FinalMessageID string `json:"finalMessageId,omitempty"`
 	// BuiltinState 是独立内置 handler 的持久 Go 帧。
@@ -257,6 +261,11 @@ func (WorkflowEffect) TableName() string { return "workflow_effects" }
 
 // WorkflowHumanRequest 是业务输入，不复用 Runtime 的内存交互请求。
 type WorkflowHumanRequest struct {
+	// QuestionVersion 是当前冻结问题的乐观并发版本。
+	QuestionVersion int64 `json:"questionVersion"`
+	// SnapshotDigest 绑定不可变候选快照的精确内容。
+	SnapshotDigest string `json:"snapshotDigest"`
+
 	// ID 是人工请求身份。
 	ID string `gorm:"type:varchar(32);primaryKey" json:"id"`
 	// RunID 是所属运行。

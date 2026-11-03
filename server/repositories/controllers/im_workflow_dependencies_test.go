@@ -26,7 +26,7 @@ func TestIMDeletionConfirmsCurrentReferencesAndProtectsActiveFrozenVersion(t *te
 	if err := store.DiscoverBinding(ctx, models.IMBinding{ID: "target", ConnectionID: "connection", ExternalChatID: "user"}); err != nil {
 		t.Fatal(err)
 	}
-	source := `export const meta={sdk:'ally.workflow/1',title:'依赖流程',description:'发送',phases:[{id:'delivery-phase',title:'发送',detail:'交付',canExit:true}],actions:[{id:'send',label:'发送',description:'发送微信',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]}; export const actions={send:async(ctx,input)=>await ctx.callTool({callId:'send',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'target',content:'正文'}})};return await action('send',{id:'deliver',label:'发送微信',phase:'delivery-phase'});`
+	source := `export const meta={sdk:'ally.workflow',title:'依赖流程',description:'发送',phases:[{id:'delivery-phase',title:'发送',detail:'交付',canExit:true}],actions:[{id:'send',label:'发送',description:'发送微信',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]}; const actions={send:async(ctx,input)=>await ctx.callTool({callId:'send',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'target',content:'正文'}})};return await action('send',{id:'deliver',label:'发送微信',phase:'delivery-phase'});`
 	compiled, _, err := workflowdsl.Compile(source)
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestIMDeletionConfirmsCurrentReferencesAndProtectsActiveFrozenVersion(t *te
 	if err := db.Model(&models.WorkflowRun{}).Where("id = ?", "running").Update("status", constants.WorkflowRunStatusSucceeded).Error; err != nil {
 		t.Fatal(err)
 	}
-	parentSource := `export const meta={sdk:'ally.workflow/1',title:'父流程',description:'调用旧版本',phases:[{id:'parent-phase',title:'运行',detail:'调用子流程',canExit:true}]};return await workflow('flow',{id:'child-call',label:'子流程发送',phase:'parent-phase',revisionId:'revision'});`
+	parentSource := `export const meta={sdk:'ally.workflow',title:'父流程',description:'调用旧版本',phases:[{id:'parent-phase',title:'运行',detail:'调用子流程',canExit:true}]};return await workflow('flow',{id:'child-call',label:'子流程发送',phase:'parent-phase',revisionId:'revision'});`
 	parent, _, err := workflowdsl.Compile(parentSource)
 	if err != nil {
 		t.Fatal(err)

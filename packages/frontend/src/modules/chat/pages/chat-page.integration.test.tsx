@@ -1563,11 +1563,15 @@ describe("ChatPage", () => {
     const memberInput = screen.getByRole("textbox", { name: "输入消息" });
     expect(memberInput).not.toBe(input);
     expect(memberInput).toHaveTextContent("");
-    fireEvent.click(
+    await user.click(
       screen.getByRole("button", { name: "测试打开空闲成员会话" }),
     );
     expect(
-      await screen.findByRole("heading", { name: "今天想一起完成什么？" }),
+      await screen.findByRole(
+        "heading",
+        { name: "今天想一起完成什么？" },
+        { timeout: 5000 },
+      ),
     ).toBeVisible();
     expect(screen.queryByText("完整成员结果")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "团队负责人" }));

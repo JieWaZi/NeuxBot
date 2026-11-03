@@ -117,6 +117,16 @@ func (c *Capture) compare(ctx context.Context) error {
 			if aOK && bOK && sameEntry(a, b) {
 				continue
 			}
+			// 内容采集失败只说明覆盖不完整；完整指纹仍可证明未保存 Blob 的大文件变更。
+			fingerprintChanged := a.Fingerprint != "" && b.Fingerprint != "" && a.Fingerprint != b.Fingerprint
+			if aOK && bOK && (a.Blob == "" || b.Blob == "") && !fingerprintChanged && (a.Mode == 0 || b.Mode == 0 || a.Mode == b.Mode) {
+				continue
+			}
+			// 未枚举到的路径可能只是超出采集范围，不能据此断言新增或删除。
+			if !aOK && (coveredBy(path, before.Missing) || coveredBy(path, before.Boundaries)) || !bOK && (coveredBy(path, after.Missing) || coveredBy(path, after.Boundaries)) {
+				summary.Complete = false
+				continue
+			}
 			value := comparison{file: File{RootID: root.ID, Path: path, AbsolutePath: filepath.Join(root.Path, filepath.FromSlash(path)), Status: "modified", Content: "text"}}
 			if aOK {
 				v := a
@@ -131,10 +141,6 @@ func (c *Capture) compare(ctx context.Context) error {
 			}
 			if !bOK {
 				value.file.Status = "deleted"
-			}
-			if !aOK && (coveredBy(path, before.Missing) || coveredBy(path, before.Boundaries)) || !bOK && (coveredBy(path, after.Missing) || coveredBy(path, after.Boundaries)) {
-				value.file.Content = "unreadable"
-				summary.Complete = false
 			}
 			for _, side := range []*entry{value.before, value.after} {
 				if side == nil {

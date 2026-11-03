@@ -1682,3 +1682,15 @@ func TestMessageViewTextAppendsToInheritedSeed(t *testing.T) {
 		t.Fatalf("inherited text seed lost: %+v", after)
 	}
 }
+
+func TestReplayMessagesPreservesSteerContinuation(t *testing.T) {
+	messages, err := ReplayMessages([]eventlog.Record{
+		{Sequence: 1, Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "next", Data: json.RawMessage(`{"steerExecutionId":"previous"}`)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 1 || messages[0].SteerExecutionID != "previous" {
+		t.Fatalf("steer relation lost on replay: %+v", messages)
+	}
+}

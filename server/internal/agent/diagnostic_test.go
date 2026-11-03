@@ -2,9 +2,11 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
 	acp "github.com/JieWaZi/acp-go/sdk"
@@ -223,5 +225,28 @@ func tName(cause error) string {
 		return "exported field"
 	default:
 		return "custom JSON"
+	}
+}
+
+func TestHumanWaitTimeoutClassificationAcrossRuntimes(t *testing.T) {
+	for _, runtimeID := range []string{RuntimeIDCodex, RuntimeIDWorkBuddy, RuntimeIDClaude, RuntimeIDCursor, RuntimeIDKimi, RuntimeIDPi} {
+		for _, code := range []native.FaultCode{native.FaultInputTimeout, native.FaultApprovalTimeout} {
+			t.Run(runtimeID+"/"+string(code), func(t *testing.T) {
+				want, message := constants.RuntimeFailureCodeInputTimeout, "waiting for user input timed out"
+				if code == native.FaultApprovalTimeout {
+					want, message = constants.RuntimeFailureCodeApprovalTimeout, "waiting for approval timed out"
+				}
+				err := fmt.Errorf("prompt: %w", &native.Fault{Code: code, Stage: "interaction", Message: message, Cause: context.DeadlineExceeded})
+				if got := ClassifyFailure(runtimeID, err); got != want {
+					t.Fatalf("code=%s want=%s", got, want)
+				}
+				if got := FailureDisplayMessage(err); got != message {
+					t.Fatalf("message=%q want=%q", got, message)
+				}
+				if got := ClassifyFailure(runtimeID, context.DeadlineExceeded); got != constants.RuntimeFailureCodeRequestTimeout {
+					t.Fatalf("model deadline misclassified: %s", got)
+				}
+			})
+		}
 	}
 }

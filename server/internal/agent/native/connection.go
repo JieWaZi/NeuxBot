@@ -1217,6 +1217,18 @@ func (s *Connection) SessionUpdate(ctx context.Context, n sdk.SessionNotificatio
 			tool.Status = string(*update.Status)
 		}
 		rawInput, rawOutput = update.RawInput, update.RawOutput
+		// Codex 的 terminal_output_delta 扩展把原始追加字节放在指定终端身份下。
+		// 仅补齐缺少标准正文的流式通知；标准 Content、完整结果及终态不再重放为增量。
+		terminal := tool.Status == "completed" || tool.Status == "failed" || tool.Status == "cancelled"
+		if len(tool.Content) == 0 && rawOutput == nil && !terminal {
+			if delta, ok := update.Meta["terminal_output_delta"].(map[string]any); ok {
+				terminalID, _ := delta["terminal_id"].(string)
+				data, _ := delta["data"].(string)
+				if terminalID != "" && terminalID == tool.ID && data != "" {
+					tool.Content = []ContentBlock{{Type: "text", Text: data}}
+				}
+			}
+		}
 	}
 	if tool == nil {
 		return nil

@@ -11,8 +11,3 @@ export const WorkflowRunPage = lazy(() =>
     default: module.WorkflowRunPage,
   })),
 );
-
-export {
-  WorkflowResultContent,
-  WorkflowResultMessageScope,
-} from "./presentation/node-result";

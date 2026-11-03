@@ -29,10 +29,29 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
           id: "run",
           status: "succeeded",
           completedAt: 100,
-          result: "最终结果",
+          args: { client: "客户 A", enabled: false, nested: { count: 0 } },
+          result: { summary: "最终结果", items: ["第一项", "第二项"] },
           flowContext: { triggerSource: "agent" },
         },
-        manifest: { meta: { phases: [{ id: "fetch", title: "读取评论" }] } },
+        manifest: {
+          sdk: "ally.workflow",
+          title: "测试工作流",
+          description: "",
+          nodes: [],
+          controls: [],
+          edges: [],
+          scripts: [],
+          phases: [{ detail: "", id: "fetch", title: "读取评论" }],
+        },
+        files: [
+          { id: "ready-file", name: "report.md", size: 2048, available: true },
+          {
+            id: "missing-file",
+            name: "missing.csv",
+            size: 0,
+            available: false,
+          },
+        ],
         instances: [
           {
             id: "step",
@@ -56,7 +75,7 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
           kind: "functionTask",
           status: "succeeded",
           completedAt: 100,
-          input: [{ data: "真实评论输入" }],
+          input: [{ data: { input: "真实评论输入", code: "private-code" } }],
           output: "真实评论输出",
         },
       });
@@ -74,11 +93,30 @@ it("展开摘要步骤时读取真实输入输出，不把列表省略字段显�
     </QueryClientProvider>,
   );
   const summary = await screen.findByText(/整理评论结果/);
+  const inputs = screen.getByText(/"client": "客户 A"/);
+  expect(JSON.parse(inputs.textContent ?? "")).toEqual({
+    client: "客户 A",
+    enabled: false,
+    nested: { count: 0 },
+  });
+  const output = screen.getByText(/"summary": "最终结果"/);
+  expect(JSON.parse(output.textContent ?? "")).toEqual({
+    summary: "最终结果",
+    items: ["第一项", "第二项"],
+  });
+  expect(inputs.closest("pre")).toHaveClass("max-h-80", "overflow-auto");
+  expect(output.closest("pre")).toHaveClass("max-h-80", "overflow-auto");
   expect(screen.getByText("对话调用")).toBeInTheDocument();
   expect(detail).not.toHaveBeenCalled();
+  expect(screen.getByText("report.md")).toBeInTheDocument();
+  expect(screen.getByText("2 KB")).toBeInTheDocument();
+  expect(screen.getByText("missing.csv")).toBeInTheDocument();
+  expect(
+    screen.getByText("文件已移除或不在本次运行的允许目录内。"),
+  ).toBeInTheDocument();
   await user.click(summary);
-  expect(await screen.findByText("真实评论输出")).toBeInTheDocument();
-  expect(screen.getByText("真实评论输入")).toBeInTheDocument();
+  expect(await screen.findByText('"真实评论输出"')).toBeInTheDocument();
+  expect(screen.getByText('"真实评论输入"')).toBeInTheDocument();
   expect(screen.queryByText("null")).not.toBeInTheDocument();
 });
 
@@ -86,3 +124,5 @@ vi.mock("@/shared/api/global-events", () => ({
   registerCoreConnectionRecovery: () => () => {},
   subscribeGlobalEvents: () => () => {},
 }));
+
+vi.mock("@/shared/api/use-query-events", () => ({ useQueryEvents: () => {} }));

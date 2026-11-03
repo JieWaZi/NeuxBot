@@ -1,24 +1,18 @@
 package constants
 
 const (
-	// WorkflowPageMaximumBytes 限制单页面字面量体积。
-	WorkflowPageMaximumBytes = 128 * 1024
-	// WorkflowPagesMaximumBytes 限制同版本节点页面总大小。
-	WorkflowPagesMaximumBytes = 512 * 1024
-	// WorkflowPageMaximumElements 限制静态组件数量。
-	WorkflowPageMaximumElements = 256
-	// WorkflowPageMaximumDepth 限制组件及表达式嵌套。
-	WorkflowPageMaximumDepth = 32
-	// WorkflowPageFormatVersion 是原生页面文档版本。
-	WorkflowPageFormatVersion = 1
-	// WorkflowResultCatalogVersion 是只读节点产出的组件目录版本。
-	WorkflowResultCatalogVersion = "workflow-result-v1"
-	// WorkflowInputCatalogVersion 是参数输入的组件目录版本。
-	WorkflowInputCatalogVersion = "workflow-input-v1"
-	// WorkflowSDKVersion 是创作源码与宿主共同支持的原生契约版本。
-	WorkflowSDKVersion = "ally.workflow/1"
+	// WorkflowUploadTaskTokenOwner 标识由任务令牌上传的文件归属。
+	WorkflowUploadTaskTokenOwner = "task-token"
+	// WorkflowUploadManagedOwner 标识本机管理入口上传的文件归属。
+	WorkflowUploadManagedOwner = "managed"
+	// WorkflowHumanMaximumChoices 限制单次用户决策的候选数量。
+	WorkflowHumanMaximumChoices = 500
+	// WorkflowHumanChoicesLimitBytes 限制冻结候选快照字节数。
+	WorkflowHumanChoicesLimitBytes = 256 * 1024
+	// WorkflowSDKIdentifier 是创作源码与宿主共同使用的 SDK 身份。
+	WorkflowSDKIdentifier = "ally.workflow"
 	// WorkflowCompilerVersion 是编译产物中固定的编译器版本。
-	WorkflowCompilerVersion = "1.0.0"
+	WorkflowCompilerVersion = "2.0.0"
 	// WorkflowIRVersion 是可持久化 Go 指令格式的版本。
 	WorkflowIRVersion = 1
 	// WorkflowSourceLimitBytes 限制单份创作源码的 UTF-8 大小。
@@ -104,3 +98,6 @@ const WorkflowMCPRuntimeKey = "ally_workflow"
 
 // WorkflowFailureStopRequestedField 在外部结果未知期间保留用户已经发出的停止意图。
 const WorkflowFailureStopRequestedField = "stopRequested"
+
+// WorkflowNodeDescriptionMaxRunes 限制节点卡片业务说明的 Unicode 字符数。
+const WorkflowNodeDescriptionMaxRunes = 500

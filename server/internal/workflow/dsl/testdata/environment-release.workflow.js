@@ -1,73 +1,6 @@
 export const meta = {
-  sdk:'ally.workflow/1',title:'多客户环境发布预审',
+  sdk:'ally.workflow',title:'多客户环境发布预审',
   description:'材料补全、逐环境分析与处置、返修和人工审批、真实本地验收与报告；通知只生成草稿。',
-  nodeResultPages:{
-    'check-materials':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'材料核查',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['heading','summary','missing']},
-      heading:{type:'Heading',props:{value:'材料核查',level:'h1'}},
-      summary:{type:'Text',props:{value:{$state:'/result/summary'}}},
-      missing:{type:'Section',props:{title:'待补全字段'},children:['missing-list']},
-      'missing-list':{type:'Collection',props:{items:{$state:'/result/missingFields'},pageSize:10},children:['field']},
-      field:{type:'Text',props:{value:{$item:''}}}
-    }}},
-    'coverage-environment':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'需求覆盖',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['heading','summary','total','covered','gaps']},
-      heading:{type:'Heading',props:{value:'需求覆盖',level:'h1'}},
-      summary:{type:'Text',props:{value:{$state:'/result/summary'}}},
-      total:{type:'Metric',props:{label:'需求总数',value:{$state:'/result/total'},unit:'项'}},
-      covered:{type:'Metric',props:{label:'已覆盖',value:{$state:'/result/coveredCount'},unit:'项'}},
-      gaps:{type:'Collection',props:{items:{$state:'/result/highPriorityGaps'},pageSize:10},children:['requirement','reason']},
-      requirement:{type:'Heading',props:{value:{$item:'requirement'},level:'h2'}},
-      reason:{type:'Text',props:{value:{$item:'reason'}}}
-    }}},
-    'risk-environment':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'缺陷风险',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['heading','summary','blocking','risks']},
-      heading:{type:'Heading',props:{value:'缺陷风险',level:'h1'}},
-      summary:{type:'Text',props:{value:{$state:'/result/summary'}}},
-      blocking:{type:'KeyValue',props:{label:'存在发布阻塞',value:{$state:'/result/blocking'}}},
-      risks:{type:'Collection',props:{items:{$state:'/result/highRiskItems'},pageSize:10},children:['title','severity','impact','reason']},
-      title:{type:'Heading',props:{value:{$item:'title'},level:'h2'}},
-      severity:{type:'KeyValue',props:{label:'风险等级',value:{$item:'severity'}}},
-      impact:{type:'KeyValue',props:{label:'影响',value:{$item:'impact'}}},
-      reason:{type:'Text',props:{value:{$item:'reason'}}}
-    }}},
-    'recommend-item':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'处置建议',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['heading','action','risk','note']},
-      heading:{type:'Heading',props:{value:'处置建议',level:'h1'}},
-      action:{type:'Text',props:{value:{$state:'/result/action'}}},
-      risk:{type:'KeyValue',props:{label:'预计剩余风险',value:{$state:'/result/residualRisk'}}},
-      note:{type:'Text',props:{value:{$state:'/result/note'}}}
-    }}},
-    'revise-item':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'修订建议',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['heading','action','risk','note']},
-      heading:{type:'Heading',props:{value:'修订建议',level:'h1'}},
-      action:{type:'Text',props:{value:{$state:'/result/action'}}},
-      risk:{type:'KeyValue',props:{label:'预计剩余风险',value:{$state:'/result/residualRisk'}}},
-      note:{type:'Text',props:{value:{$state:'/result/note'}}}
-    }}},
-    'release-report':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'发布预审报告',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['decision','body']},
-      decision:{type:'KeyValue',props:{label:'报告结论',value:{$state:'/result/decision'}}},
-      body:{type:'Markdown',props:{value:{$state:'/result/markdown'}}}
-    }}},
-    'revise-report-facts':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'修订预审报告',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['decision','body']},
-      decision:{type:'KeyValue',props:{label:'报告结论',value:{$state:'/result/decision'}}},
-      body:{type:'Markdown',props:{value:{$state:'/result/markdown'}}}
-    }}},
-    'notification-draft':{formatVersion:1,catalogVersion:'workflow-result-v1',title:'通知草稿',spec:{root:'page',elements:{
-      page:{type:'Page',props:{width:'readable'},children:['subject','body','recipients']},
-      subject:{type:'Heading',props:{value:{$state:'/result/subject'},level:'h1'}},
-      body:{type:'Text',props:{value:{$state:'/result/body'}}},
-      recipients:{type:'Section',props:{title:'建议收件角色'},children:['recipient-list']},
-      'recipient-list':{type:'Collection',props:{items:{$state:'/result/recipients'},pageSize:10},children:['recipient']},
-      recipient:{type:'Text',props:{value:{$item:''}}}
-    }}}
-  },
-  nodeResultPageOmissions:{
-    'execute-item':'只提交临时验收文件的写入标记，文件不是用户交付物；执行事实由报告汇总',
-    'verify-item':'只提交临时验收文件的布尔核验标记；实际执行和验证数量由权威报告汇总'
-  },
   inputSchema:{type:'object',required:['requirements','defects'],properties:{
     requirements:{type:'string'},defects:{type:'string'},environments:{type:'array',items:{type:'string'},default:[]},
     iterationName:{type:'string',default:''},releaseDate:{type:'string',default:''},riskThreshold:{type:'integer',minimum:1,default:1},
@@ -121,8 +54,8 @@ const threshold=args.riskThreshold;
 const results=await pipeline(envList,[
   async(previous,environment,index)=>{
     const analyses=await parallel([
-      ()=>worker(`环境=${environment}；需求覆盖分析。上下文=${JSON.stringify(context)}。逐条统计，列出该环境的高优缺口并保留依据。${GUARD}`,{id:'coverage-environment',label:'需求覆盖 '+environment,phase:'analyse',schema:COVERAGE_SCHEMA,resolve:WAKER}),
-      ()=>worker(`环境=${environment}；缺陷风险分析。上下文=${JSON.stringify(context)}。列出高风险、发布阻塞及具体原因；缺少事实明确写出。${GUARD}`,{id:'risk-environment',label:'缺陷风险 '+environment,phase:'analyse',schema:RISK_SCHEMA,resolve:WAKER})
+      ()=>worker(`环境=${environment}；需求覆盖分析。上下文=${JSON.stringify(context)}。逐条统计，列出该环境的高优缺口并保留依据。${GUARD}`,{id:'coverage-environment',label:'分析需求覆盖',phase:'analyse',schema:COVERAGE_SCHEMA,resolve:WAKER}),
+      ()=>worker(`环境=${environment}；缺陷风险分析。上下文=${JSON.stringify(context)}。列出高风险、发布阻塞及具体原因；缺少事实明确写出。${GUARD}`,{id:'risk-environment',label:'分析缺陷风险',phase:'analyse',schema:RISK_SCHEMA,resolve:WAKER})
     ],{id:'analyse-pair',failureMode:'collect-null'});
     if(!analyses[0]||!analyses[1])throw {code:'ENVIRONMENT_ANALYSIS_FAILED',environment};
     return {environment,coverage:analyses[0],risk:analyses[1]};
@@ -133,7 +66,7 @@ const results=await pipeline(envList,[
       ...previous.coverage.highPriorityGaps.map((value,i)=>({id:environment+'-gap-'+i,item:value.requirement,reason:value.reason,impact:'需求未覆盖'}))
     ];
     const suggestions=await parallel(items.map(item=>async()=>{
-      const suggestion=await worker(`环境=${environment}；单项处置建议。条目=${JSON.stringify(item)}。上下文=${JSON.stringify(context)}。输出建议和预测剩余风险；当前尚未执行任何处置。${GUARD}`,{id:'recommend-item',label:'处置建议 '+item.item,phase:'mitigate',schema:MITIGATION_SCHEMA,resolve:WAKER});
+      const suggestion=await worker(`环境=${environment}；单项处置建议。条目=${JSON.stringify(item)}。上下文=${JSON.stringify(context)}。输出建议和预测剩余风险；当前尚未执行任何处置。${GUARD}`,{id:'recommend-item',label:'形成处置建议',phase:'mitigate',schema:MITIGATION_SCHEMA,resolve:WAKER});
       if(!suggestion)throw {code:'MITIGATION_FAILED',environment,item:item.id};
       return {id:item.id,item:item.item,reason:item.reason,action:suggestion.action,residualRisk:suggestion.residualRisk,note:suggestion.note,recommended:true,executed:false,verified:false};
     }),{id:'mitigate-items',failureMode:'collect-null'});
@@ -156,12 +89,12 @@ const results=await pipeline(envList,[
       let round=0;
       while(!resolved&&round<3){
         round++;
-        const answer=await askUser(`环境=${environment}；条目=${item.item}；建议=${item.action}；剩余风险=${item.residualRisk}；原因=${item.reason}；说明=${item.note}。只有显式批准才允许后续本地验收。也可提出修改或否决理由。`,{id:'approve-item',label:'逐项审批 '+environment+' '+item.item,phase:'approve',options:[{value:'approve',label:'批准'},{value:'deny',label:'否决'},{value:'rework',label:'返修'}],defaultValue:'deny',allowSkip:true});
+        const answer=await askUser(`环境=${environment}；条目=${item.item}；建议=${item.action}；剩余风险=${item.residualRisk}；原因=${item.reason}；说明=${item.note}。只有显式批准才允许后续本地验收。也可提出修改或否决理由。`,{id:'approve-item',label:'逐项审批建议',phase:'approve',kind:'select',choices:[{value:'approve',label:'批准'},{value:'deny',label:'否决'},{value:'rework',label:'返修'}],defaultValue:'deny',allowSkip:true});
         if(answer.source==='user'&&answer.value==='rework'&&round<3){
-          const note=await askUser('请填写本条处置建议的具体修改意见。',{id:'rework-note',label:'返修说明 '+environment,phase:'approve',allowSkip:false});
+          const note=await askUser('请填写本条处置建议的具体修改意见。',{id:'rework-note',label:'填写返修说明',phase:'approve',allowSkip:false});
           const old=item;
           try{
-            const revised=await worker(`环境=${environment}；返修条目=${JSON.stringify(old)}；修改意见=${String(note.value)}。上下文=${JSON.stringify(context)}。保留事实，不声称已执行。${GUARD}`,{id:'revise-item',label:'返修处置建议 '+environment,phase:'mitigate',schema:MITIGATION_SCHEMA,resolve:WAKER});
+            const revised=await worker(`环境=${environment}；返修条目=${JSON.stringify(old)}；修改意见=${String(note.value)}。上下文=${JSON.stringify(context)}。保留事实，不声称已执行。${GUARD}`,{id:'revise-item',label:'返修处置建议',phase:'mitigate',schema:MITIGATION_SCHEMA,resolve:WAKER});
             if(revised)item={id:old.id,item:old.item,reason:old.reason,action:revised.action,residualRisk:revised.residualRisk,note:revised.note,recommended:old.recommended,executed:false,verified:false};
           }catch(failure){item=old;log({environment,message:'返修失败，保留原建议',failure});}
           continue;
@@ -172,10 +105,10 @@ const results=await pipeline(envList,[
         if(approved&&args.localAcceptance&&!previous.emptyBlocking){
           const payload={environment,itemId:item.id,action:item.action,accepted:true};
           const path=flowContext.scope.workingDirectory+'/acceptance/'+item.id+'.json';
-          const execution=await worker(`只在工作流获准目录实际写入 ${path}，内容必须精确为 ${JSON.stringify(payload)}。需要时创建目录，使用实际文件工具，禁止修改任何其他目录或调用外部系统。提交真实 written 与 artifactPath。`,{id:'execute-item',label:'本地执行 '+environment,phase:'mitigate',schema:EXECUTION_SCHEMA,resolve:WAKER});
+          const execution=await worker(`只在工作流获准目录实际写入 ${path}，内容必须精确为 ${JSON.stringify(payload)}。需要时创建目录，使用实际文件工具，禁止修改任何其他目录或调用外部系统。提交真实 written 与 artifactPath。`,{id:'execute-item',label:'本地执行处置',phase:'mitigate',schema:EXECUTION_SCHEMA,resolve:WAKER});
           let verification=null;
           if(execution&&execution.written){
-            verification=await worker(`独立用真实文件工具读取 ${path}。精确内容应为 ${JSON.stringify(payload)}。仅在文件存在且实际内容相符时报告 exists/matches/verified=true。不得修改文件或联系外部系统。`,{id:'verify-item',label:'独立验证 '+environment,phase:'mitigate',schema:VERIFICATION_SCHEMA,resolve:WAKER});
+            verification=await worker(`独立用真实文件工具读取 ${path}。精确内容应为 ${JSON.stringify(payload)}。仅在文件存在且实际内容相符时报告 exists/matches/verified=true。不得修改文件或联系外部系统。`,{id:'verify-item',label:'独立验证结果',phase:'mitigate',schema:VERIFICATION_SCHEMA,resolve:WAKER});
           }
           executions.push({environment,itemId:item.id,executed:!!(execution&&execution.written),verified:!!(verification&&verification.exists&&verification.matches&&verification.verified),execution,verification});
         }

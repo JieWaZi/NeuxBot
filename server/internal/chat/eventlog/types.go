@@ -197,6 +197,9 @@ type MessageCreatedData struct {
 
 // ExecutionCreatedData 保存一次执行创建时冻结的选择。
 type ExecutionCreatedData struct {
+	// SteerExecutionID 保存追加输入与上一执行的展示关联。
+	SteerExecutionID string `json:"steerExecutionId,omitempty"`
+
 	// AutomaticRunID 是服务端冻结的自动任务来源，随原执行事实恢复。
 	AutomaticRunID string `json:"automaticRunId,omitempty"`
 	// SubmissionID 是入口无关的稳定输入身份，写入同一权威执行事实。

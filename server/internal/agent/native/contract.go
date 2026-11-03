@@ -133,10 +133,10 @@ const (
 type Limits struct {
 	MaxOutputBytes     int           // MaxOutputBytes 是最终候选正文上限。
 	MaxEventBytes      int           // MaxEventBytes 是单个规范事件上限。
-	MaxEvents          int           // MaxEvents 是本轮事件数量上限。
-	MaxTotalEventBytes int           // MaxTotalEventBytes 是本轮事件累计字节上限。
-	DeliveryTimeout    time.Duration // DeliveryTimeout 是一次观察与交互交付期限。
-	InteractionTimeout time.Duration // InteractionTimeout 是等待人工交互的独立期限。
+	MaxEvents          int           // MaxEvents 限制本轮离散事实与空/重复无进展通知数量，不按正文、思考或参数流的小包数量计费。
+	MaxTotalEventBytes int           // MaxTotalEventBytes 限制本轮参数快照新增字节及其他事件完整字节的累计量。
+	DeliveryTimeout    time.Duration // DeliveryTimeout 是单个事件交给观察者的期限，不限制人工决定。
+	InteractionTimeout time.Duration // InteractionTimeout 是单次人工输入或审批等待期限，零值采用默认五分钟。
 	InactivityTimeout  time.Duration // InactivityTimeout 是 Prompt 无原生活动且无待处理交互时的最长等待。
 }
 
@@ -301,7 +301,7 @@ type ToolEvent struct {
 	Status    string          // Status 是原生活动阶段。
 	Text      string          // Text 是有界活动摘要。
 	Update    bool            // Update 表示既有调用的更新，false 表示首次调用。
-	Input     json.RawMessage // Input 是公开工具参数 JSON，nil 表示未提供。
+	Input     json.RawMessage // Input 是公开工具参数的完整替换快照，nil 表示未提供。
 	Output    json.RawMessage // Output 是公开工具结果 JSON，nil 表示未提供。
 	Content   []ContentBlock  // Content 是标准工具正文、差异及终端引用。
 	Locations []Location      // Locations 是工具声明的文件位置。
@@ -445,6 +445,8 @@ const (
 	FaultDriver                 FaultCode = "driver_failed"           // FaultDriver 表示驱动执行失败。
 	FaultDelivery               FaultCode = "delivery_failed"         // FaultDelivery 表示观察交付失败。
 	FaultLimit                  FaultCode = "limit_exceeded"          // FaultLimit 表示事件预算耗尽。
+	FaultInputTimeout           FaultCode = "input_timeout"           // FaultInputTimeout 表示本次人工输入等待期限到期。
+	FaultApprovalTimeout        FaultCode = "approval_timeout"        // FaultApprovalTimeout 表示本次审批等待期限到期。
 	FaultInteractionRequired    FaultCode = "interaction_required"    // FaultInteractionRequired 表示需要人工输入。
 	FaultInactivityTimeout      FaultCode = "inactivity_timeout"      // FaultInactivityTimeout 表示原生调用超过无活动期限。
 	FaultCancelled              FaultCode = "cancelled"               // FaultCancelled 表示调用取消。
@@ -452,9 +454,19 @@ const (
 	FaultProtocol               FaultCode = "protocol_error"          // FaultProtocol 表示驱动契约损坏。
 )
 
+// LimitKind 区分单事件与本轮累计预算，不能通过技术错误文本推测。
+type LimitKind string
+
+const (
+	LimitSingleEventBytes LimitKind = "single_event_bytes" // LimitSingleEventBytes 表示单个规范事件过大。
+	LimitEventCount       LimitKind = "event_count"        // LimitEventCount 表示离散事实与无进展通知数量耗尽。
+	LimitTotalEventBytes  LimitKind = "total_event_bytes"  // LimitTotalEventBytes 表示本轮累计规范载荷耗尽。
+)
+
 // Fault 在模块边界保留准确技术语义，宿主只转换一次。
 type Fault struct {
 	Code    FaultCode // Code 是稳定技术错误码。
+	Limit   LimitKind // Limit 是 FaultLimit 的预算维度，空值保留其他原生限制的既有分类。
 	Stage   string    // Stage 是故障发生阶段。
 	Message string    // Message 是无秘密的英文技术说明。
 	Cause   error     `json:"-"` // Cause 是仅供根因判断的底层错误，不进入默认 JSON。

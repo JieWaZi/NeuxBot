@@ -1,6 +1,9 @@
 package models
 
-import "github.com/shrewx/ginx/pkg/dbhelper"
+import (
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
+	"github.com/shrewx/ginx/pkg/dbhelper"
+)
 
 func init() {
 	dbhelper.RegisterTable(&WorkflowCreationSession{})
@@ -25,6 +28,8 @@ type WorkflowCreationSession struct {
 	RequestID string `json:"requestId"`
 	// Content 是尚未形成 Core 接纳收据的完整用户要求。
 	Content string `gorm:"type:text;not null" json:"-"`
+	// ContextInstructions 是当前轮已验证引用的执行上下文，与接纳锚点同存，不进入用户消息。
+	ContextInstructions []workinput.Instruction `gorm:"serializer:json;type:text" json:"-"`
 	// Defaults 是本轮用户选择的真实执行配置。
 	Defaults WorkflowExecutionDefaults `gorm:"serializer:json;type:text;not null" json:"defaults"`
 	// AuthToken 是当前轮能力凭证，不向 API 公开。

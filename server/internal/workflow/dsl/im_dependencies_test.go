@@ -8,7 +8,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
-const imDependencySource = `export const meta={sdk:'ally.workflow/1',title:'微信依赖',description:'发送',phases:[{id:'delivery-phase',title:'发送',detail:'交付',canExit:true}],actions:[{id:'send',label:'发送微信',description:'交付结果',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]}; export const actions={send:async(ctx,input)=>{const target='chat'; return await ctx.callTool({callId:'send',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:target,content:input.content}})}};const operation='send';return await action(operation,{id:'deliver',label:'发送结果',phase:'delivery-phase',input:args});`
+const imDependencySource = `export const meta={sdk:'ally.workflow',title:'微信依赖',description:'发送',phases:[{id:'delivery-phase',title:'发送',detail:'交付',canExit:true}],actions:[{id:'send',label:'发送微信',description:'交付结果',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]}; const actions={send:async(ctx,input)=>{const target='chat'; return await ctx.callTool({callId:'send',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:target,content:input.content}})}};const operation='send';return await action(operation,{id:'deliver',label:'发送结果',phase:'delivery-phase',input:args});`
 
 func TestIMDependenciesUseCompiledCallsAndRejectUndeclaredDynamicTargets(t *testing.T) {
 	compiled, diagnostics, err := Compile(imDependencySource)
@@ -63,7 +63,7 @@ func TestIMDependenciesPreserveLexicalBindingsAndTaskCaptures(t *testing.T) {
 
 func TestChildDependenciesMatchRealLexicalInvocation(t *testing.T) {
 	for _, call := range []string{"workflow", "startWorkflow"} {
-		source := `export const meta={sdk:'ally.workflow/1',title:'父流程',description:'调用子流程',phases:[{id:'phase',title:'调用',detail:'调用子流程',canExit:true}]};const child='actual';{const child='unrelated';}return `
+		source := `export const meta={sdk:'ally.workflow',title:'父流程',description:'调用子流程',phases:[{id:'phase',title:'调用',detail:'调用子流程',canExit:true}]};const child='actual';{const child='unrelated';}return `
 		if call == "workflow" {
 			source += "await "
 		}
@@ -82,7 +82,7 @@ func TestChildDependenciesMatchRealLexicalInvocation(t *testing.T) {
 			t.Fatalf("静态依赖与实际调用不同: %+v %+v", dependencies, boundary)
 		}
 	}
-	source := `export const meta={sdk:'ally.workflow/1',title:'父流程',description:'异步调用子流程',phases:[{id:'phase',title:'调用',detail:'调用子流程',canExit:true}]};const child='actual';{const child='unrelated';}return await parallel([async()=>await workflow(child,{id:'child-call',label:'子流程',phase:'phase'})],{id:'children'});`
+	source := `export const meta={sdk:'ally.workflow',title:'父流程',description:'异步调用子流程',phases:[{id:'phase',title:'调用',detail:'调用子流程',canExit:true}]};const child='actual';{const child='unrelated';}return await parallel([async()=>await workflow(child,{id:'child-call',label:'子流程',phase:'phase'})],{id:'children'});`
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {
 		t.Fatalf("异步子流程源码不可编译: %v %+v", err, diagnostics)
@@ -204,7 +204,7 @@ func TestChildLexicalIdentityAndPinnedRevisionMatchManifestAndMachine(t *testing
 		"const child='unused';const revision='unused-revision';{const child='actual';const revision='fixed';return await workflow(child,{id:'child-call',label:'子流程',phase:'phase',revisionId:revision});}",
 		"{const child='actual';const revision='fixed';return await workflow(child,{id:'child-call',label:'子流程',phase:'phase',revisionId:revision});}",
 	} {
-		source := `export const meta={sdk:'ally.workflow/1',title:'父流程',description:'固定子版本',phases:[{id:'phase',title:'调用',detail:'调用子流程',canExit:true}]};` + body
+		source := `export const meta={sdk:'ally.workflow',title:'父流程',description:'固定子版本',phases:[{id:'phase',title:'调用',detail:'调用子流程',canExit:true}]};` + body
 		compiled, diagnostics, err := Compile(source)
 		if err != nil {
 			t.Fatalf("真正固定的局部资源被拒绝: %v %+v", err, diagnostics)
@@ -219,7 +219,7 @@ func TestChildLexicalIdentityAndPinnedRevisionMatchManifestAndMachine(t *testing
 }
 
 func TestActionLexicalIdentitySelectsActualDependencyAndHandler(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow/1',title:'发送',description:'实际动作',phases:[{id:'phase',title:'发送',detail:'发送消息',canExit:true}],actions:[{id:'send',label:'原发送',description:'原目标',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']},{id:'other',label:'实际发送',description:'实际目标',risk:'external',type:'builtin',handler:'other',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]};export const actions={send:async(ctx,input)=>await ctx.callTool({callId:'send',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'original',content:'正文'}}),other:async(ctx,input)=>await ctx.callTool({callId:'send',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'actual',content:'正文'}})};const operation='send';{const operation='other';return await action(operation,{id:'deliver',label:'发送',phase:'phase'});}`
+	source := `export const meta={sdk:'ally.workflow',title:'发送',description:'实际动作',phases:[{id:'phase',title:'发送',detail:'发送消息',canExit:true}],actions:[{id:'send',label:'原发送',description:'原目标',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012']},{id:'other',label:'实际发送',description:'实际目标',risk:'external',type:'builtin',handler:'other',connectorIds:['b17d96aa55314c33ab46c172e8cab012']}]};const actions={send:async(ctx,input)=>await ctx.callTool({callId:'send',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'original',content:'正文'}}),other:async(ctx,input)=>await ctx.callTool({callId:'send',connectorId:'b17d96aa55314c33ab46c172e8cab012',toolName:'im_delivery',input:{action:'deliveries.create',targetId:'actual',content:'正文'}})};const operation='send';{const operation='other';return await action(operation,{id:'deliver',label:'发送',phase:'phase'});}`
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {
 		t.Fatalf("合法局部动作不可编译: %v %+v", err, diagnostics)

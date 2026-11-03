@@ -1,3 +1,5 @@
+import { messageCompanionActivity } from "../runtime/companion-activity";
+import { chatContinuations, type ChatContinuation } from "./chat-continuation";
 import { ChatMessagePluginReferences } from "./chat-plugin-reference";
 import { useChatHistoryScroll } from "./use-chat-history-scroll";
 import type { ChatResultSource } from "@/shared/api/notification-presentation";
@@ -126,6 +128,7 @@ import {
 import {
   ChatComposerInput,
   type ChatMemberMentionOption,
+  type ChatComposerContextReference,
 } from "./chat-composer-input";
 import { chatContentColumnClassName } from "./chat-layout";
 import {
@@ -185,6 +188,7 @@ type ChatThreadProps = {
   isWorkStopping?: boolean;
   onStopWork?: () => void;
   showUsageMetrics?: boolean;
+  showFileChanges?: boolean;
   emptyState: ReactNode;
   emptyStatePosition?: "center" | "fill";
   /** 画布首发时同步输入框的位置与宽度，保留同一编辑器实例。 */
@@ -195,6 +199,8 @@ type ChatThreadProps = {
   composerSettings?: ReactNode;
   composerActions?: ReactNode;
   composerEffects?: ReactNode;
+  composerReferences?: ChatComposerContextReference[];
+  onComposerReferencesChange?: (ids: string[]) => void;
   renderComposerContextStrip?: () => ReactNode;
   composerSkills?: ChatSkillOption[];
   composerSkillsError?: boolean;
@@ -337,9 +343,12 @@ function categoryFromTool(part: DisplayPart): ToolCategory {
   return toolArgsOf(part).category;
 }
 
+type ToolActivityStatus = ChatToolArgs["status"] | "interrupted";
+
 type ToolSummaryWords = {
   completedPrefix: string;
   runningPrefix: string;
+  interruptedPrefix: string;
   file: string;
   verbs: Record<ToolCategory, string>;
 };
@@ -355,7 +364,7 @@ function isFileToolCategory(category: ToolCategory) {
 function formatToolActivitySummary(
   activities: readonly {
     category: ToolCategory;
-    status: ChatToolArgs["status"];
+    status: ToolActivityStatus;
     label?: string;
   }[],
   words: ToolSummaryWords,
@@ -366,9 +375,11 @@ function formatToolActivitySummary(
     if (!previous || previous.status !== activity.status) {
       if (previous) summary += "，";
       summary +=
-        activity.status === "running"
-          ? words.runningPrefix
-          : words.completedPrefix;
+        activity.status === "interrupted"
+          ? words.interruptedPrefix
+          : activity.status === "running"
+            ? words.runningPrefix
+            : words.completedPrefix;
     }
     summary += activity.label || words.verbs[activity.category];
     const next = activities[index + 1];
@@ -384,8 +395,12 @@ function formatToolActivitySummary(
   return summary;
 }
 
-function statusFromTool(part: DisplayPart): ChatToolArgs["status"] {
-  return toolArgsOf(part).status;
+function statusFromTool(
+  part: DisplayPart,
+  terminal: boolean,
+): ToolActivityStatus {
+  const status = toolArgsOf(part).status;
+  return terminal && status === "running" ? "interrupted" : status;
 }
 
 export function ReasoningPart({ text }: { text: string }) {
@@ -432,7 +447,7 @@ export const ToolActivityRow = memo(function ToolActivityRow({
 }) {
   const { t } = useTranslation("chat");
   const toolArgs = toolArgsOf(part);
-  const toolStatus = statusFromTool(part);
+  const toolStatus = statusFromTool(part, terminal);
   const Icon = toolCategoryIcons[toolArgs.category];
   const summary = toolArgs.safeSummary;
   const fallbackLabel = t(
@@ -489,6 +504,9 @@ export const ToolActivityRow = memo(function ToolActivityRow({
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 truncate">
+            {toolStatus === "interrupted" ? (
+              <span>{t("toolActivitySummary.interruptedPrefix")}</span>
+            ) : null}
             {toolStatus === "failed" ? (
               <span className="sr-only">
                 {t("toolActivitySummary.failedPrefix")}
@@ -597,13 +615,13 @@ export const WorkProcess = memo(function WorkProcess({
   }, []);
   const activities: {
     category: ToolCategory;
-    status: ChatToolArgs["status"];
+    status: ToolActivityStatus;
     labels: string[];
   }[] = [];
   for (const tool of tools) {
     const category = categoryFromTool(tool);
     // 汇总只描述活动；失败状态留在对应工具行，不生成标题级失败总结。
-    const actualStatus = statusFromTool(tool);
+    const actualStatus = statusFromTool(tool, terminal);
     const status = actualStatus === "failed" ? "completed" : actualStatus;
     let activity = activities.find(
       (item) => item.category === category && item.status === status,
@@ -629,6 +647,7 @@ export const WorkProcess = memo(function WorkProcess({
     {
       completedPrefix: t("toolActivitySummary.completedPrefix"),
       runningPrefix: t("toolActivitySummary.runningPrefix"),
+      interruptedPrefix: t("toolActivitySummary.interruptedPrefix"),
       file: t("toolActivitySummary.file"),
       verbs: {
         file_read: t("toolActivitySummary.verb.file_read"),
@@ -830,9 +849,11 @@ const ChatPart = memo(function ChatPart({
 });
 function ChatMessageParts({
   view,
+  metrics = view.message.runMetrics,
   showUsageMetrics,
 }: {
   view: ChatMessageView;
+  metrics?: ChatRunMetrics;
   showUsageMetrics: boolean;
 }) {
   const terminal = isTerminalMessage(view.message);
@@ -855,7 +876,7 @@ function ChatMessageParts({
             currentKey={currentKey}
             completed={view.message.status === "completed"}
             terminal={terminal}
-            metrics={view.message.runMetrics}
+            metrics={metrics}
             showUsageMetrics={showUsageMetrics}
           />
         ) : (
@@ -1279,6 +1300,7 @@ function AddAttachmentButton({
 
 export function AssistantMessage({
   view,
+  continuation,
   latest = false,
   last = false,
   name,
@@ -1286,8 +1308,10 @@ export function AssistantMessage({
   messageAuthors,
   onOpenFileChange,
   showUsageMetrics = true,
+  showFileChanges = true,
 }: {
   view: ChatMessageView;
+  continuation?: ChatContinuation;
   latest?: boolean;
   last?: boolean;
   name: string;
@@ -1295,17 +1319,19 @@ export function AssistantMessage({
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
   showUsageMetrics?: boolean;
+  showFileChanges?: boolean;
 }) {
   const { t } = useTranslation("chat");
   const message = view.message;
   const messageID = message.id ?? "";
   const isLatestAssistant = latest;
   const interaction = useContext(CompanionInteraction);
-  const companionActivity = viewCompanionActivity(
-    view,
-    isLatestAssistant,
-    interaction,
-  );
+  const companionActivity = continuation?.activityMessage
+    ? messageCompanionActivity(
+        { ...continuation.activityMessage, isLast: isLatestAssistant },
+        interaction,
+      )
+    : viewCompanionActivity(view, isLatestAssistant, interaction);
   const author = messageAuthors?.[messageID];
   const displayName = author?.name ?? name;
   const displayAvatar = author?.avatar ?? avatar;
@@ -1320,7 +1346,9 @@ export function AssistantMessage({
       data-role="assistant"
       className="group mt-6 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-3 px-6"
     >
-      {isLatestAssistant ? (
+      {continuation?.continuation ? (
+        <div aria-hidden="true" />
+      ) : isLatestAssistant ? (
         <Avatar
           name={displayName}
           src={displayAvatar}
@@ -1331,13 +1359,19 @@ export function AssistantMessage({
         <StaticAvatar name={displayName} src={displayAvatar} size="sm" />
       )}
       <div className="min-w-0">
-        <div className="grid justify-items-start">
-          <span className="type-body font-medium">{displayName}</span>
-          <MessageTimestamp timestamp={message.createdAt} />
-        </div>
+        {!continuation?.continuation ? (
+          <div className="grid justify-items-start">
+            <span className="type-body font-medium">{displayName}</span>
+            <MessageTimestamp timestamp={message.createdAt} />
+          </div>
+        ) : null}
         <div className="mt-2 min-w-0">
-          <ChatMessageParts view={view} showUsageMetrics={showUsageMetrics} />
-          {message.fileChangeRecord ? (
+          <ChatMessageParts
+            view={view}
+            metrics={continuation?.footerMessage.runMetrics}
+            showUsageMetrics={showUsageMetrics}
+          />
+          {showFileChanges && message.fileChangeRecord ? (
             <ExecutionFileChangesCard
               message={message}
               chatId={author?.sourceChatId}
@@ -1347,21 +1381,33 @@ export function AssistantMessage({
           ) : null}
           <ChatMessageContribution messageId={messageID} />
         </div>
-        {message.status === "canceled" ? (
+        {message.status === "canceled" && !continuation?.continued ? (
           <p className="text-muted-foreground type-body mt-2">
             {t("canceled")}
           </p>
         ) : null}
         <MessageFailure message={message} last={last} />
 
-        <div className="mt-2 flex items-center gap-1">
-          <MessageRunStatus
-            message={message}
-            showUsageDetails={showUsageMetrics}
-          />
-          <MessageCopyAction message={message} hideWhenRunning />
-          <MessageForkAction message={message} />
-        </div>
+        {!continuation?.continued ? (
+          <div className="mt-2 flex items-center gap-1">
+            <MessageRunStatus
+              message={
+                continuation
+                  ? {
+                      ...message,
+                      runMetrics: continuation.footerMessage.runMetrics,
+                    }
+                  : message
+              }
+              showUsageDetails={showUsageMetrics}
+            />
+            <MessageCopyAction
+              message={continuation?.footerMessage ?? message}
+              hideWhenRunning
+            />
+            <MessageForkAction message={message} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -1369,6 +1415,7 @@ export function AssistantMessage({
 
 const ChatMessage = memo(function ChatMessage({
   view,
+  continuation,
   latest,
   last,
   name,
@@ -1382,8 +1429,10 @@ const ChatMessage = memo(function ChatMessage({
   onOpenFileChange,
   messageAuthors,
   showUsageMetrics,
+  showFileChanges,
 }: {
   view: ChatMessageView;
+  continuation?: ChatContinuation;
   latest: boolean;
   last: boolean;
   name: string;
@@ -1397,6 +1446,7 @@ const ChatMessage = memo(function ChatMessage({
   onOpenFileChange?: (file: ChatFileChangeOpenRequest) => void;
   messageAuthors?: Readonly<Record<string, ChatMessageAuthor>>;
   showUsageMetrics?: boolean;
+  showFileChanges?: boolean;
 }) {
   const message = view.message;
   if (message.role === "user") {
@@ -1422,6 +1472,7 @@ const ChatMessage = memo(function ChatMessage({
   return message.role === "assistant" ? (
     <AssistantMessage
       view={view}
+      continuation={continuation}
       latest={latest}
       last={last}
       name={name}
@@ -1429,6 +1480,7 @@ const ChatMessage = memo(function ChatMessage({
       messageAuthors={messageAuthors}
       onOpenFileChange={onOpenFileChange}
       showUsageMetrics={showUsageMetrics}
+      showFileChanges={showFileChanges}
     />
   ) : null;
 });
@@ -1440,7 +1492,10 @@ const ChatMessageList = memo(function ChatMessageList({
   onOpenForkSource,
   wakerId,
   ...props
-}: Omit<ComponentProps<typeof ChatMessage>, "view" | "latest" | "last"> & {
+}: Omit<
+  ComponentProps<typeof ChatMessage>,
+  "view" | "latest" | "last" | "continuation"
+> & {
   views: readonly ChatMessageView[];
   forkBoundaryMessageId?: string;
   forkSourceChatId?: string;
@@ -1448,9 +1503,8 @@ const ChatMessageList = memo(function ChatMessageList({
 }) {
   const { t } = useTranslation("chat");
   const [unavailableSourceId, setUnavailableSourceId] = useState<string>();
-  const latest = views.findLast(
-    (view) => view.message.role === "assistant",
-  )?.key;
+  const continuations = chatContinuations(views.map((view) => view.message));
+  const latest = views.findLast((view) => view.message.role === "assistant");
   return (
     <>
       {views.map((view, index) => (
@@ -1459,7 +1513,12 @@ const ChatMessageList = memo(function ChatMessageList({
             {...props}
             wakerId={wakerId}
             view={view}
-            latest={view.key === latest}
+            continuation={continuations.get(view.message.id ?? "")}
+            latest={
+              view.key === latest?.key ||
+              continuations.get(view.message.id ?? "")?.activityMessage?.id ===
+                latest?.message.id
+            }
             last={index === views.length - 1}
           />
           {view.message.id === forkBoundaryMessageId && forkSourceChatId ? (
@@ -1534,6 +1593,8 @@ const Composer = memo(function Composer({
   settings,
   actions,
   effects,
+  contextReferences,
+  onContextReferencesChange,
   renderContextStrip,
   skills,
   skillsError,
@@ -1581,6 +1642,8 @@ const Composer = memo(function Composer({
   settings?: ReactNode;
   actions?: ReactNode;
   effects?: ReactNode;
+  contextReferences?: ChatComposerContextReference[];
+  onContextReferencesChange?: (ids: string[]) => void;
   renderContextStrip?: () => ReactNode;
   skills: ChatSkillOption[];
   skillsError: boolean;
@@ -1777,94 +1840,87 @@ const Composer = memo(function Composer({
               submissionState={approvalSubmissionState}
               onResolve={onResolveApproval}
             />
-          ) : (
-            <>
-              <ComposerInputBody>
-                <ChatComposerInput
-                  autoFocus={autoFocus}
+          ) : null}
+          {/* 待处理交互只隐藏输入区，保留当前文档、建议消费状态与发送恢复状态。 */}
+          <div hidden={Boolean(currentElicitation || currentApproval)}>
+            <ComposerInputBody data-chat-composer-input-body>
+              <ChatComposerInput
+                contextReferences={contextReferences}
+                onContextReferencesChange={onContextReferencesChange}
+                autoFocus={autoFocus}
+                disabled={
+                  isWorkStopping ||
+                  disabled ||
+                  Boolean(currentElicitation || currentApproval)
+                }
+                placeholder={t("placeholder")}
+                ariaLabel={t("messageInput")}
+                skills={skills}
+                skillsError={skillsError}
+                plugins={plugins}
+                pluginsError={pluginsError}
+                selectedPluginIds={selectedPluginIds}
+                onPluginSelectionChange={onPluginSelectionChange}
+                connectors={connectors}
+                connectorsError={connectorsError}
+                fileRoots={fileRoots}
+                fileScopePath={fileScopePath}
+                fileScopeChatId={fileScopeChatId}
+                members={members}
+                selectedSkillIds={selectedSkillIds}
+                selectedConnectorIds={selectedConnectorIds}
+                onSkillSelectionChange={onSkillSelectionChange}
+                onConnectorSelectionChange={onConnectorSelectionChange}
+                onMemberMentionChange={onMemberMentionChange}
+                onAttachmentAdd={async (path) => {
+                  await aui.composer.addAttachment(pathFile(path));
+                }}
+                onAttachmentsChange={refreshComposer}
+                onValueChange={refreshComposer}
+                onOpenFile={onOpenFile}
+                onAttachmentsRemove={async (paths) => {
+                  const removedPaths = new Set(paths);
+                  const attachments = aui.composer.getState().attachments;
+                  for (
+                    let index = attachments.length - 1;
+                    index >= 0;
+                    index--
+                  ) {
+                    const attachment = attachments[index];
+                    const sourcePath = (
+                      attachment?.file as AllyPathFile | undefined
+                    )?.allySourcePath;
+                    if (!sourcePath || !removedPaths.has(sourcePath)) continue;
+                    await aui.composer.attachment({ index }).remove();
+                  }
+                }}
+                onSend={() => {
+                  if (!prepareComposerSend()) return;
+                  aui.composer.send();
+                }}
+                codeReferenceRequest={codeReferenceRequest}
+                onCodeReferencesChange={onCodeReferencesChange}
+                draft={draft}
+                clearRevision={clearRevision}
+                restoreRevision={restoreRevision}
+                className="placeholder:text-muted-foreground type-label resize-none bg-transparent outline-none disabled:opacity-55"
+              />
+            </ComposerInputBody>
+            <div className="min-h-control-lg flex items-center justify-between gap-2 px-2 pb-2">
+              <div className="flex min-w-0 items-center gap-1">
+                <AddAttachmentButton
                   disabled={isWorkStopping || disabled}
-                  placeholder={t("placeholder")}
-                  ariaLabel={t("messageInput")}
-                  skills={skills}
-                  skillsError={skillsError}
-                  plugins={plugins}
-                  pluginsError={pluginsError}
-                  selectedPluginIds={selectedPluginIds}
-                  onPluginSelectionChange={onPluginSelectionChange}
-                  connectors={connectors}
-                  connectorsError={connectorsError}
-                  fileRoots={fileRoots}
-                  fileScopePath={fileScopePath}
-                  fileScopeChatId={fileScopeChatId}
-                  members={members}
-                  selectedSkillIds={selectedSkillIds}
-                  selectedConnectorIds={selectedConnectorIds}
-                  onSkillSelectionChange={onSkillSelectionChange}
-                  onConnectorSelectionChange={onConnectorSelectionChange}
-                  onMemberMentionChange={onMemberMentionChange}
-                  onAttachmentAdd={async (path) => {
-                    await aui.composer.addAttachment(pathFile(path));
-                  }}
                   onAttachmentsChange={refreshComposer}
-                  onValueChange={refreshComposer}
-                  onOpenFile={onOpenFile}
-                  onAttachmentsRemove={async (paths) => {
-                    const removedPaths = new Set(paths);
-                    const attachments = aui.composer.getState().attachments;
-                    for (
-                      let index = attachments.length - 1;
-                      index >= 0;
-                      index--
-                    ) {
-                      const attachment = attachments[index];
-                      const sourcePath = (
-                        attachment?.file as AllyPathFile | undefined
-                      )?.allySourcePath;
-                      if (!sourcePath || !removedPaths.has(sourcePath))
-                        continue;
-                      await aui.composer.attachment({ index }).remove();
-                    }
-                  }}
-                  onSend={() => {
-                    if (!prepareComposerSend()) return;
-                    aui.composer.send();
-                  }}
-                  codeReferenceRequest={codeReferenceRequest}
-                  onCodeReferencesChange={onCodeReferencesChange}
-                  draft={draft}
-                  clearRevision={clearRevision}
-                  restoreRevision={restoreRevision}
-                  className="placeholder:text-muted-foreground type-label resize-none bg-transparent outline-none disabled:opacity-55"
                 />
-              </ComposerInputBody>
-              <div className="min-h-control-lg flex items-center justify-between gap-2 px-2 pb-2">
-                <div className="flex min-w-0 items-center gap-1">
-                  <AddAttachmentButton
-                    disabled={isWorkStopping || disabled}
-                    onAttachmentsChange={refreshComposer}
-                  />
-                  {actions}
-                  <ComposerContextUsage
-                    metrics={contextMetrics}
-                    visible={showUsageMetrics}
-                  />
-                </div>
-                <div className="flex shrink-0 items-center gap-1">
-                  {primaryAction === "stop" && effectiveIsRunning ? (
-                    <ComposerPrimitive.Cancel asChild>
-                      <ComposerStopButton
-                        aria-label={
-                          isWorkStopping ? t("team.stoppingWork") : t("stop")
-                        }
-                        title={
-                          isWorkStopping ? t("team.stoppingWork") : t("stop")
-                        }
-                        data-chat-primary-action="stop"
-                        loading={isWorkStopping}
-                      />
-                    </ComposerPrimitive.Cancel>
-                  ) : null}
-                  {primaryAction === "stop" && !effectiveIsRunning ? (
+                {actions}
+                <ComposerContextUsage
+                  metrics={contextMetrics}
+                  visible={showUsageMetrics}
+                />
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                {primaryAction === "stop" && effectiveIsRunning ? (
+                  <ComposerPrimitive.Cancel asChild>
                     <ComposerStopButton
                       aria-label={
                         isWorkStopping ? t("team.stoppingWork") : t("stop")
@@ -1874,37 +1930,45 @@ const Composer = memo(function Composer({
                       }
                       data-chat-primary-action="stop"
                       loading={isWorkStopping}
-                      onClick={onStopWork}
                     />
-                  ) : null}
-                  {primaryAction === "send" ? (
-                    <ComposerPrimitive.Send asChild>
-                      <ComposerSendButton
-                        aria-label={t("send")}
-                        title={t("send")}
-                        disabled={disabled || !composerCanSend}
-                        data-chat-primary-action="send"
-                        onClickCapture={prepareComposerSend}
-                      />
-                    </ComposerPrimitive.Send>
-                  ) : null}
-                  {primaryAction === "queue" ? (
-                    <ComposerPrimitive.Send asChild>
-                      <ComposerSendButton
-                        aria-label={t("addToQueue")}
-                        title={t("addToQueue")}
-                        data-chat-primary-action="send"
-                        disabled={
-                          isWorkStopping || disabled || !composerCanSend
-                        }
-                        onClickCapture={prepareComposerSend}
-                      />
-                    </ComposerPrimitive.Send>
-                  ) : null}
-                </div>
+                  </ComposerPrimitive.Cancel>
+                ) : null}
+                {primaryAction === "stop" && !effectiveIsRunning ? (
+                  <ComposerStopButton
+                    aria-label={
+                      isWorkStopping ? t("team.stoppingWork") : t("stop")
+                    }
+                    title={isWorkStopping ? t("team.stoppingWork") : t("stop")}
+                    data-chat-primary-action="stop"
+                    loading={isWorkStopping}
+                    onClick={onStopWork}
+                  />
+                ) : null}
+                {primaryAction === "send" ? (
+                  <ComposerPrimitive.Send asChild>
+                    <ComposerSendButton
+                      aria-label={t("send")}
+                      title={t("send")}
+                      disabled={disabled || !composerCanSend}
+                      data-chat-primary-action="send"
+                      onClickCapture={prepareComposerSend}
+                    />
+                  </ComposerPrimitive.Send>
+                ) : null}
+                {primaryAction === "queue" ? (
+                  <ComposerPrimitive.Send asChild>
+                    <ComposerSendButton
+                      aria-label={t("addToQueue")}
+                      title={t("addToQueue")}
+                      data-chat-primary-action="send"
+                      disabled={isWorkStopping || disabled || !composerCanSend}
+                      onClickCapture={prepareComposerSend}
+                    />
+                  </ComposerPrimitive.Send>
+                ) : null}
               </div>
-            </>
-          )}
+            </div>
+          </div>
         </ComposerSurface>
       </ComposerPrimitive.Root>
       <div
@@ -1961,6 +2025,8 @@ export function ChatThread({
   composerSettings,
   composerActions,
   composerEffects,
+  composerReferences,
+  onComposerReferencesChange,
   renderComposerContextStrip,
   composerSkills = emptyList,
   composerSkillsError = false,
@@ -2003,6 +2069,7 @@ export function ChatThread({
   onOpenFileChange,
   contextMetrics,
   showUsageMetrics = true,
+  showFileChanges = true,
   hasEarlierMessages,
   isLoadingEarlier,
   onLoadEarlier,
@@ -2249,6 +2316,7 @@ export function ChatThread({
                                   wakerId={wakerId}
                                   messageAuthors={messageAuthors}
                                   showUsageMetrics={showUsageMetrics}
+                                  showFileChanges={showFileChanges}
                                   onOpenCodeReference={onOpenCodeReference}
                                   onOpenFile={onOpenFile}
                                   onOpenFileChange={onOpenFileChange}
@@ -2315,6 +2383,8 @@ export function ChatThread({
                       settings={composerSettings}
                       actions={composerActions}
                       effects={composerEffects}
+                      contextReferences={composerReferences}
+                      onContextReferencesChange={onComposerReferencesChange}
                       renderContextStrip={renderComposerContextStrip}
                       skills={composerSkills}
                       skillsError={composerSkillsError}

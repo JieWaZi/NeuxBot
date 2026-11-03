@@ -61,7 +61,9 @@ beforeEach(() => {
     "ResizeObserver",
     class {
       constructor(private readonly callback: () => void) {}
-      observe() {
+      observe(element: Element) {
+        // 此处只驱动图形视口；共享 Tab 的尺寸监听由组件自身测试覆盖。
+        if (element.closest('[role="radiogroup"]')) return;
         resizeCallbacks.add(this.callback);
       }
       disconnect() {

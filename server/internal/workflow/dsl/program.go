@@ -8,7 +8,7 @@ import (
 
 // Meta 是从纯字面量解析的原生工作流声明。
 type Meta struct {
-	// SDK 是必须与宿主匹配的声明版本。
+	// SDK 是必须与宿主匹配的契约身份。
 	SDK string `json:"sdk"`
 	// Title 是内置伙伴根据用户目标生成的工作流标题。
 	Title string `json:"title"`
@@ -20,14 +20,6 @@ type Meta struct {
 	InputSchema map[string]any `json:"inputSchema,omitempty"`
 	// OutputSchema 校验最终返回值。
 	OutputSchema map[string]any `json:"outputSchema,omitempty"`
-	// NodeResultPages 按稳定节点身份声明需要向用户展示的产出页面。
-	NodeResultPages map[string]PageDefinition `json:"nodeResultPages,omitempty"`
-	// NodeResultFiles 声明以真实文件交付的伙伴产出，复用宿主文件查看器。
-	NodeResultFiles map[string]FileResultDefinition `json:"nodeResultFiles,omitempty"`
-	// NodeResultPageOmissions 记录逐个评估伙伴输出后无需展示页面的具体理由。
-	NodeResultPageOmissions map[string]string `json:"nodeResultPageOmissions,omitempty"`
-	// InputPage 是可选的启动参数布局，字段语义仍由 InputSchema 决定。
-	InputPage *PageDefinition `json:"inputPage,omitempty"`
 	// Phases 是稳定身份的展示阶段。
 	Phases []Phase `json:"phases"`
 	// Actions 是源码允许调用的确定性动作声明。
@@ -82,6 +74,10 @@ type ActionDeclaration struct {
 	AllowedOrigins []string `json:"allowedOrigins,omitempty"`
 	// Methods 限制允许的 HTTP 方法。
 	Methods []string `json:"methods,omitempty"`
+	// ScriptID 引用当前版本内冻结的静态 Python 程序。
+	ScriptID string `json:"scriptId,omitempty"`
+	// Interpreter 引用已配置且获准的 Python 解释器环境。
+	Interpreter string `json:"interpreter,omitempty"`
 	// Executable 固定 argv 命令的可执行文件。
 	Executable string `json:"executable,omitempty"`
 	// WorkingDirectory 固定命令只能使用批准的流程目录。
@@ -96,6 +92,20 @@ type ActionDeclaration struct {
 
 // Manifest 是只读画布与详情使用的源码投影。
 type Manifest struct {
+	// SDK 固定此画布的语言契约。
+	SDK string `json:"sdk"`
+	// Phases 保存源码声明的展示阶段。
+	Phases []Phase `json:"phases"`
+	// Edges 是从控制拓扑和数据引用派生的只读连线。
+	Edges []CanvasEdge `json:"edges"`
+	// Controls 保留源码的嵌套控制拓扑。
+	Controls []CanvasControl `json:"controls"`
+	// Scripts 只公开脚本元信息，不复制源码字节。
+	Scripts []ScriptSummary `json:"scripts"`
+	// InputSchema 是启动参数的真实契约。
+	InputSchema map[string]any `json:"inputSchema,omitempty"`
+	// OutputSchema 是最终业务结果的真实契约。
+	OutputSchema map[string]any `json:"outputSchema,omitempty"`
 	// InputPropertyOrder 按输入 Schema 的 JSON Pointer 保留源码属性声明顺序，仅用于只读表单布局。
 	InputPropertyOrder map[string][]string `json:"inputPropertyOrder,omitempty"`
 	// Meta 是源码的完整声明。
@@ -152,13 +162,27 @@ type DisplayEdge struct {
 
 // Node 是一个稳定的源码调用模板。
 type Node struct {
+	// Description 是源码声明的业务作用说明，不从执行参数推断。
+	Description string `json:"description,omitempty"`
+	// Label 是静态解析后供画布展示的业务名称。
+	Label string `json:"label"`
+	// SourceRange 定位同版本原始源码。
+	SourceRange *SourceRange `json:"sourceRange,omitempty"`
+	// Inputs 保留输入表达式及已知上游节点身份。
+	Inputs []CanvasInput `json:"inputs"`
+	// OutputSchema 描述节点直接业务返回值。
+	OutputSchema map[string]any `json:"outputSchema,omitempty"`
+	// SuccessCondition 描述显式业务检查。
+	SuccessCondition *SuccessCondition `json:"successCondition,omitempty"`
+	// Execution 是按节点类型由源码提取的只读实现信息。
+	Execution map[string]any `json:"execution"`
 	// ID 是跨版本保持的节点身份。
 	ID string `json:"id"`
 	// Kind 是 SDK primitive 名称。
 	Kind string `json:"kind"`
 	// PhaseID 是显式阶段引用。
 	PhaseID string `json:"phaseId"`
-	// LabelTemplate 保留动态标题的原始模板。
+	// LabelTemplate 保存静态解析后的业务名称，不保存动态表达式。
 	LabelTemplate string `json:"labelTemplate"`
 	// PromptTemplate 保留 prompt 的源码文本。
 	PromptTemplate string `json:"promptTemplate,omitempty"`
@@ -184,6 +208,8 @@ type Group struct {
 
 // ProgramBundle 包含主流程和独立 callback 程序。
 type ProgramBundle struct {
+	// Scripts 保存当前不可变版本的完整静态脚本字节。
+	Scripts map[string]ScriptDefinition `json:"scripts,omitempty"`
 	// Version 是序列化指令格式版本。
 	Version int `json:"version"`
 	// Entry 是主流程程序身份。

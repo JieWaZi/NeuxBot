@@ -62,7 +62,7 @@ func dependencies() *workflowDependencies {
 		Projects:         global.ProjectControllerManager,
 		DataDirectory:    global.Config.ManagedFilesDirectory,
 		SaveSource: func(ctx context.Context, definitionID, requestID, expectedID, source, restoredFrom string) (workflowdsl.SaveReceipt, []workflowdsl.Diagnostic, error) {
-			return global.WorkflowService.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definitionID, RequestID: requestID, ExpectedRevisionID: expectedID, Source: source, SDKVersion: constants.WorkflowSDKVersion, RestoredFromRevisionID: restoredFrom})
+			return global.WorkflowService.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definitionID, RequestID: requestID, ExpectedRevisionID: expectedID, Source: source, SDK: constants.WorkflowSDKIdentifier, RestoredFromRevisionID: restoredFrom})
 		},
 		RetryStart: func(ctx context.Context, source models.WorkflowRun, requestID string) (models.WorkflowRun, error) {
 			return global.WorkflowService.StartRun(ctx, workflow.StartRunCommand{DefinitionID: source.DefinitionID, RevisionID: source.RevisionID, Args: source.Args, Defaults: source.Defaults, WorkerConfigurations: source.WorkerConfigurations, ApprovedScope: &source.ScopeBinding, RequestID: requestID, RetrySourceRunID: source.ID})

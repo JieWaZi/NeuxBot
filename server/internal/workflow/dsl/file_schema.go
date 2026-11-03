@@ -8,50 +8,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
-// schemaDeclaresFiles 只检查可从根结果到达的文件声明，不把未使用的定义或普通字符串当文件。
-func schemaDeclaresFiles(schema map[string]any) bool {
-	inspection := newSchemaInspection(schema)
-	visited := map[string]bool{}
-	var visit func(string) bool
-	visit = func(path string) bool {
-		if visited[path] {
-			return false
-		}
-		visited[path] = true
-		current := inspection.schema(path)
-		if current == nil {
-			return false
-		}
-		if current["format"] == constants.WorkflowFileFormat {
-			return true
-		}
-		if ref, ok := current["$ref"].(string); ok && strings.HasPrefix(ref, "#/") && visit(ref[1:]) {
-			return true
-		}
-		properties, _ := current["properties"].(map[string]any)
-		for key := range properties {
-			if visit(path + "/properties/" + pointerKey(key)) {
-				return true
-			}
-		}
-		for _, keyword := range []string{"items", "additionalProperties"} {
-			if visit(path + "/" + keyword) {
-				return true
-			}
-		}
-		for _, keyword := range []string{"prefixItems", "allOf", "oneOf", "anyOf"} {
-			branches, _ := current[keyword].([]any)
-			for index := range branches {
-				if visit(path + "/" + keyword + "/" + strconv.Itoa(index)) {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	return visit("")
-}
-
 // FileValues 返回当前 JSON 中由 schema 明确声明的文件字段，键为 JSON Pointer。
 func FileValues(schema map[string]any, value any) map[string]string {
 	s := newSchemaInspection(schema)

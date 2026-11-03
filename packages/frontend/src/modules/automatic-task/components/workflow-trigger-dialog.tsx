@@ -106,7 +106,7 @@ export function WorkflowTriggerDialog({
               name={definition.data.definition.title ?? ""}
               revisionId={definition.data.revision.id ?? ""}
               schema={
-                definition.data.revision.manifest?.meta?.inputSchema ?? {}
+                definition.data.revision.manifest?.inputSchema ?? {}
               }
               onCancel={() => onOpenChange(false)}
               onSaved={(tasks) => {
@@ -209,7 +209,7 @@ function WorkflowTriggerForm({
     }),
   );
   const selectedSchema =
-    chosen.data?.revision?.manifest?.meta?.inputSchema ?? schema;
+    chosen.data?.revision?.manifest?.inputSchema ?? schema;
   const save = useMutation(
     withLocalErrorMutation(saveWorkflowTriggersMutation()),
   );

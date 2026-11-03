@@ -428,18 +428,20 @@ export function ChatWorkspaceSurface({
             resizeLabel={mainContent?.resizeLabel ?? t("workspace.resizePanel")}
             main={
               <div
-                className="h-full min-h-0 min-w-0 flex-1"
+                className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
                 data-chat-main-content={mainContent?.contentId}
                 aria-label={mainContent?.title}
                 aria-hidden={!sceneActive || fullView || Boolean(canvasInput)}
                 inert={!sceneActive || fullView || Boolean(canvasInput)}
               >
-                {typeof mainContent?.content === "function"
-                  ? mainContent.content(
-                      sceneActive && !fullView && !canvasInput,
-                      { scopeKey: identity.scopeKey },
-                    )
-                  : mainContent?.content}
+                <div className="min-h-0 flex-1">
+                  {typeof mainContent?.content === "function"
+                    ? mainContent.content(
+                        sceneActive && !fullView && !canvasInput,
+                        { scopeKey: identity.scopeKey },
+                      )
+                    : mainContent?.content}
+                </div>
               </div>
             }
             sidebar={

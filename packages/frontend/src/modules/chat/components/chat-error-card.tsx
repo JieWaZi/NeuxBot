@@ -199,9 +199,8 @@ export function MessageFailure({
   if (message.status !== "failed") return null;
   const executionId = message.executionId || message.id || "";
   const text =
-    message.errorMessage?.trim() ||
-    runtimeFailurePresentation(message.errorCode).message ||
-    t("executionIncomplete");
+    runtimeFailurePresentation(message.errorCode, message.errorMessage)
+      .message || t("executionIncomplete");
   const canRetry = message.retryable === true && last && actions.retry;
   const canRecover =
     message.errorCode === "SESSION_NOT_FOUND" && last && actions.recover;

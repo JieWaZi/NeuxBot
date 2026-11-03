@@ -48,7 +48,6 @@ import {
   ChatQueueProvider,
   WorkbenchProvider,
 } from "@/modules/chat";
-import { WorkflowResultContent } from "../presentation/node-result";
 import { WorkflowDetailPage } from "./workflow-detail-page";
 import { WorkflowListPage } from "./workflow-list-page";
 import { ResourcesPage } from "@/app/pages/resources-page";
@@ -235,26 +234,36 @@ beforeEach(() => {
           id: "version-1",
           ordinal: 1,
           manifest: {
-            meta: {
-              phases: [{ id: "prepare", title: "准备输入" }],
-              inputSchema: {
-                type: "object",
-                properties: {
-                  material: {
-                    type: "string",
-                    title: "材料",
-                    description: "粘贴需要整理的会议材料",
-                  },
+            sdk: "ally.workflow",
+            title: "测试工作流",
+            description: "",
+            controls: [],
+            edges: [],
+            scripts: [],
+            phases: [{ detail: "", id: "prepare", title: "准备输入" }],
+            inputSchema: {
+              type: "object",
+              properties: {
+                material: {
+                  type: "string",
+                  title: "材料",
+                  description: "粘贴需要整理的会议材料",
                 },
-                required: ["material"],
               },
+              required: ["material"],
             },
             nodes: [
               {
+                execution: {
+                  codeDigest: "fixture",
+                  executionMode: "pure",
+                  language: "javascript",
+                },
+                inputs: [],
                 id: "prepare-input",
                 phaseId: "prepare",
                 kind: "functionTask",
-                labelTemplate: "生成材料",
+                label: "生成材料",
               },
             ],
           },
@@ -271,7 +280,7 @@ beforeEach(() => {
       HttpResponse.json({
         revisionId: "version-1",
         source: "export const meta = {};",
-        sdkVersion: "ally.workflow/1",
+        sdk: "ally.workflow",
       }),
     ),
   );
@@ -295,7 +304,7 @@ function renderScene(
   const content = () => (
     <QueryClientProvider client={queryClient}>
       <WorkbenchProvider>
-        <ChatContributionsProvider value={{ Content: WorkflowResultContent }}>
+        <ChatContributionsProvider value={{}}>
           <ChatQueueProvider>
             <TooltipProvider>
               <MemoryRouter initialEntries={[path]}>
@@ -486,7 +495,19 @@ it.each(["未保存版本", "空 Manifest"])(
           definition: { id: "flow", title: "审批验收" },
           revision:
             emptyState === "空 Manifest"
-              ? { id: "version-1", manifest: { meta: {}, nodes: [] } }
+              ? {
+                  id: "version-1",
+                  manifest: {
+                    sdk: "ally.workflow",
+                    title: "测试工作流",
+                    description: "",
+                    phases: [],
+                    controls: [],
+                    edges: [],
+                    scripts: [],
+                    nodes: [],
+                  },
+                }
               : undefined,
         });
       }),
@@ -612,13 +633,25 @@ it("消息链接打开右侧工作台后保留主容器内的画布和节点浮�
           id: "version-1",
           ordinal: 1,
           manifest: {
-            meta: { phases: [{ id: "prepare", title: "准备输入" }] },
+            sdk: "ally.workflow",
+            title: "测试工作流",
+            description: "",
+            controls: [],
+            edges: [],
+            scripts: [],
+            phases: [{ detail: "", id: "prepare", title: "准备输入" }],
             nodes: [
               {
+                execution: {
+                  codeDigest: "fixture",
+                  executionMode: "pure",
+                  language: "javascript",
+                },
+                inputs: [],
                 id: "prepare-input",
                 phaseId: "prepare",
                 kind: "functionTask",
-                labelTemplate: "生成材料",
+                label: "生成材料",
               },
             ],
           },
@@ -665,7 +698,7 @@ it("消息链接打开右侧工作台后保留主容器内的画布和节点浮�
   ).toBeInTheDocument();
 });
 
-it("节点标题保存后保留已打开的模型菜单与编辑浮层", async () => {
+it("节点标题保存后保留业务编辑浮层，不暴露执行模型菜单", async () => {
   let revision = "version-1";
   let label = "生成议程";
   server.use(
@@ -706,22 +739,29 @@ it("节点标题保存后保留已打开的模型菜单与编辑浮层", async (
           id: revision,
           ordinal: revision === "version-1" ? 1 : 2,
           manifest: {
-            meta: { phases: [{ id: "prepare", title: "准备输入" }] },
+            sdk: "ally.workflow",
+            title: "测试工作流",
+            description: "",
+            controls: [],
+            edges: [],
+            scripts: [],
+            phases: [{ detail: "", id: "prepare", title: "准备输入" }],
             nodes: [
               {
-                id: "agenda",
-                phaseId: "prepare",
-                kind: "worker",
-                labelTemplate: label,
-                promptTemplate: "生成议程",
-                options: {
+                execution: {
                   resolve: {
                     kind: "waker",
                     wakerId: "ally",
                     runtimeId: "codex",
                     model: "model-a",
                   },
+                  promptTemplate: "生成议程",
                 },
+                inputs: [],
+                id: "agenda",
+                phaseId: "prepare",
+                kind: "worker",
+                label: label,
               },
             ],
           },
@@ -760,15 +800,12 @@ it("节点标题保存后保留已打开的模型菜单与编辑浮层", async (
   ).not.toBeInTheDocument();
   await user.clear(title);
   await user.type(title, "周会议程");
-  await user.click(
-    await within(editor).findByRole("button", {
-      name: "模型 A",
-    }),
-  );
-  await screen.findByRole("dialog", { name: "选择模型" });
+  await user.tab();
   await waitFor(() => expect(revision).toBe("version-2"));
   await waitFor(() => expect(editor).toHaveAttribute("aria-label", "周会议程"));
-  expect(screen.getByRole("dialog", { name: "选择模型" })).toBeInTheDocument();
+  expect(
+    screen.queryByRole("dialog", { name: "选择模型" }),
+  ).not.toBeInTheDocument();
   expect(title).toBeInTheDocument();
   expect(title).toHaveValue("周会议程");
 });
@@ -900,13 +937,25 @@ it.each(["保存版本", "执行结束"])(
             ? {
                 id: "generated-version",
                 manifest: {
-                  meta: { phases: [{ id: "prepare", title: "准备会议" }] },
+                  sdk: "ally.workflow",
+                  title: "测试工作流",
+                  description: "",
+                  controls: [],
+                  edges: [],
+                  scripts: [],
+                  phases: [{ detail: "", id: "prepare", title: "准备会议" }],
                   nodes: [
                     {
+                      execution: {
+                        codeDigest: "fixture",
+                        executionMode: "pure",
+                        language: "javascript",
+                      },
+                      inputs: [],
                       id: "materials",
                       phaseId: "prepare",
                       kind: "functionTask",
-                      labelTemplate: "生成材料",
+                      label: "生成材料",
                     },
                   ],
                 },
@@ -1127,83 +1176,6 @@ it("窄主容器中会话可展开且分隔线支持键盘调整", async () => {
   ).not.toBeInTheDocument();
 });
 
-it("执行画布的文件产出 Card 点击后在当前工作台打开产出 Tab", async () => {
-  const reference = {
-    workflowId: "a".repeat(32),
-    runId: "b".repeat(32),
-    instanceId: "c".repeat(32),
-    attemptId: "d".repeat(32),
-    title: "今日缺陷报告长图",
-  };
-  const resultRequested = vi.fn();
-  server.use(
-    http.get(`${origin}/api/v1/workflows/flow/runs`, () =>
-      HttpResponse.json({ items: [{ id: "run-1", status: "succeeded" }] }),
-    ),
-    http.get(`${origin}/api/v1/workflows/flow/runs/run-1`, () =>
-      HttpResponse.json({
-        run: { id: "run-1", status: "succeeded", version: 1 },
-        manifest: {
-          meta: {
-            phases: [{ id: "report", title: "生成报告" }],
-            nodeResultFiles: { write_report: { title: reference.title } },
-          },
-          nodes: [
-            {
-              id: "write_report",
-              phaseId: "report",
-              kind: "worker",
-              labelTemplate: "生成长图",
-            },
-          ],
-        },
-        nodeCounts: [{ nodeId: "write_report", succeeded: 1, total: 1 }],
-      }),
-    ),
-    http.get(`${origin}/api/v1/workflows/flow/runs/run-1/node-results`, () =>
-      HttpResponse.json({
-        total: 1,
-        items: [{ reference, status: "succeeded" }],
-      }),
-    ),
-    http.get(
-      `${origin}/api/v1/workflows/${reference.workflowId}/runs/${reference.runId}/instances/${reference.instanceId}/results/${reference.attemptId}`,
-      () => {
-        resultRequested();
-        return HttpResponse.json({
-          present: true,
-          reference,
-          fileView: { title: reference.title },
-          result: "long-report.png",
-          files: [
-            {
-              id: "image",
-              name: "long-report.png",
-              field: "",
-              mediaType: "image/png",
-              available: false,
-            },
-          ],
-        });
-      },
-    ),
-  );
-  const user = userEvent.setup();
-  renderScene("/workflows/flow/runs/run-1");
-  const output = await screen.findByRole("button", {
-    name: /今日缺陷报告长图.*已生成文件/,
-  });
-  expect(output).toBeEnabled();
-  await user.click(output);
-  await waitFor(() => expect(resultRequested).toHaveBeenCalledOnce());
-  expect(
-    screen.getByRole("tab", { name: reference.title }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("button", { name: /^long-report.png/ }),
-  ).toBeInTheDocument();
-});
-
 it("顶部切换工作流与执行过程，Dock 保留操作入口与历史窗格", async () => {
   server.use(
     http.get(`${origin}/api/v1/workflows/flow/runs`, () =>
@@ -1212,7 +1184,16 @@ it("顶部切换工作流与执行过程，Dock 保留操作入口与历史窗�
     http.get(`${origin}/api/v1/workflows/flow/runs/run-1`, () =>
       HttpResponse.json({
         run: { id: "run-1", status: "succeeded" },
-        manifest: { nodes: [] },
+        manifest: {
+          sdk: "ally.workflow",
+          title: "测试工作流",
+          description: "",
+          phases: [],
+          controls: [],
+          edges: [],
+          scripts: [],
+          nodes: [],
+        },
       }),
     ),
   );
@@ -1292,7 +1273,16 @@ it("输入节点与 Dock 共用运行表单，关闭后保留草稿并在运行�
           status: "succeeded",
           args: { material: "新的会议材料" },
         },
-        manifest: { meta: { phases: [] }, nodes: [] },
+        manifest: {
+          sdk: "ally.workflow",
+          title: "测试工作流",
+          description: "",
+          controls: [],
+          edges: [],
+          scripts: [],
+          phases: [],
+          nodes: [],
+        },
       }),
     ),
   );
@@ -1368,13 +1358,25 @@ it("切换执行记录保留画布实例，等待时显示加载轮廓并隔离�
   });
   const requested = vi.fn();
   const manifest = {
-    meta: { phases: [{ id: "prepare", title: "准备输入" }] },
+    sdk: "ally.workflow",
+    title: "测试工作流",
+    description: "",
+    controls: [],
+    edges: [],
+    scripts: [],
+    phases: [{ detail: "", id: "prepare", title: "准备输入" }],
     nodes: [
       {
+        execution: {
+          codeDigest: "fixture",
+          executionMode: "pure",
+          language: "javascript",
+        },
+        inputs: [],
         id: "prepare-input",
         phaseId: "prepare",
         kind: "functionTask",
-        labelTemplate: "生成材料",
+        label: "生成材料",
       },
     ],
   };
@@ -1452,7 +1454,16 @@ it("直接打开执行地址仍可从顶部返回工作流画布", async () => {
     http.get(`${origin}/api/v1/workflows/flow/runs/run-1`, () =>
       HttpResponse.json({
         run: { id: "run-1", status: "succeeded" },
-        manifest: { nodes: [] },
+        manifest: {
+          sdk: "ally.workflow",
+          title: "测试工作流",
+          description: "",
+          phases: [],
+          controls: [],
+          edges: [],
+          scripts: [],
+          nodes: [],
+        },
       }),
     ),
   );
@@ -1487,7 +1498,16 @@ it("运行失败事件同步刷新执行记录状态，不继续显示等待处�
     http.get(`${origin}/api/v1/workflows/flow/runs/run-1`, () =>
       HttpResponse.json({
         run: { id: "run-1", status },
-        manifest: { nodes: [] },
+        manifest: {
+          sdk: "ally.workflow",
+          title: "测试工作流",
+          description: "",
+          phases: [],
+          controls: [],
+          edges: [],
+          scripts: [],
+          nodes: [],
+        },
       }),
     ),
   );
@@ -1531,7 +1551,16 @@ it.each([false, true])(
             id: params.runId,
             status: params.runId === "run-1" ? "succeeded" : "waiting",
           },
-          manifest: { nodes: [] },
+          manifest: {
+            sdk: "ally.workflow",
+            title: "测试工作流",
+            description: "",
+            phases: [],
+            controls: [],
+            edges: [],
+            scripts: [],
+            nodes: [],
+          },
         }),
       ),
       http.delete(`${origin}/api/v1/workflows/flow/runs/run-1`, remove),
@@ -1595,7 +1624,16 @@ it("取消删除不提交，删除失败保留执行记录和就地错误", asyn
     http.get(`${origin}/api/v1/workflows/flow/runs/run-1`, () =>
       HttpResponse.json({
         run: { id: "run-1", status: "failed" },
-        manifest: { nodes: [] },
+        manifest: {
+          sdk: "ally.workflow",
+          title: "测试工作流",
+          description: "",
+          phases: [],
+          controls: [],
+          edges: [],
+          scripts: [],
+          nodes: [],
+        },
       }),
     ),
     http.delete(`${origin}/api/v1/workflows/flow/runs/run-1`, remove),
@@ -1816,7 +1854,16 @@ it("历史版本的恢复入口绑定所查看版本，确认后按当前版本�
         revision: {
           id: revisionId,
           ordinal: Number(revisionId.split("-")[1]),
-          manifest: { meta: { phases: [] }, nodes: [] },
+          manifest: {
+            sdk: "ally.workflow",
+            title: "测试工作流",
+            description: "",
+            controls: [],
+            edges: [],
+            scripts: [],
+            phases: [],
+            nodes: [],
+          },
         },
       });
     }),
@@ -1883,7 +1930,16 @@ it("删除历史版本先确认，删除所查看版本后返回当前版本并�
         revision: {
           id:
             new URL(request.url).searchParams.get("revisionId") || "version-2",
-          manifest: { meta: { phases: [] }, nodes: [] },
+          manifest: {
+            sdk: "ally.workflow",
+            title: "测试工作流",
+            description: "",
+            controls: [],
+            edges: [],
+            scripts: [],
+            phases: [],
+            nodes: [],
+          },
         },
       }),
     ),
@@ -1946,13 +2002,25 @@ it.each([false, true])(
           revision: {
             id: "version-1",
             manifest: {
-              meta: { phases: [{ id: "prepare", title: "准备输入" }] },
+              sdk: "ally.workflow",
+              title: "测试工作流",
+              description: "",
+              controls: [],
+              edges: [],
+              scripts: [],
+              phases: [{ detail: "", id: "prepare", title: "准备输入" }],
               nodes: [
                 {
+                  execution: {
+                    codeDigest: "fixture",
+                    executionMode: "pure",
+                    language: "javascript",
+                  },
+                  inputs: [],
                   id: "prepare-input",
                   phaseId: "prepare",
                   kind: "functionTask",
-                  labelTemplate: "生成材料",
+                  label: "生成材料",
                 },
               ],
             },
@@ -2088,7 +2156,16 @@ it("对话历史复用浮层并显示默认目录，关闭时保留对话输入"
         definition: { id: "flow", title: "审批验收" },
         revision: {
           id: "version-1",
-          manifest: { meta: { phases: [] }, nodes: [] },
+          manifest: {
+            sdk: "ally.workflow",
+            title: "测试工作流",
+            description: "",
+            controls: [],
+            edges: [],
+            scripts: [],
+            phases: [],
+            nodes: [],
+          },
         },
         creationSessions: [
           {
@@ -2145,13 +2222,25 @@ it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并�
           id: "latest",
           ordinal: 2,
           manifest: {
-            meta: { phases: [{ id: "prepare", title: "最新阶段" }] },
+            sdk: "ally.workflow",
+            title: "测试工作流",
+            description: "",
+            controls: [],
+            edges: [],
+            scripts: [],
+            phases: [{ detail: "", id: "prepare", title: "最新阶段" }],
             nodes: [
               {
+                execution: {
+                  codeDigest: "fixture",
+                  executionMode: "pure",
+                  language: "javascript",
+                },
+                inputs: [],
                 id: "latest-node",
                 phaseId: "prepare",
                 kind: "functionTask",
-                labelTemplate: "最新节点",
+                label: "最新节点",
               },
             ],
           },
@@ -2324,3 +2413,130 @@ it("创作待办通知打开指定历史会话并展开聊天", async () => {
     screen.getByText("等待你的确认").closest('[aria-hidden="true"]'),
   ).toHaveClass("invisible");
 });
+
+it.each(["failed", "cancelled"])(
+  "执行记录行直接重试%s运行，成功和进行中记录无入口",
+  async (status) => {
+    const submitted: unknown[] = [];
+    const requested: string[] = [];
+    server.use(
+      http.get(`${origin}/api/v1/wakers/:wakerId/plugins`, () =>
+        HttpResponse.json({ resources: [] }),
+      ),
+      http.get(`${origin}/api/v1/workflows/flow/runs`, () =>
+        HttpResponse.json({
+          items: [
+            { id: "failed", status: "failed" },
+            { id: "cancelled", status: "cancelled" },
+            { id: "success", status: "succeeded" },
+            { id: "running", status: "running" },
+          ],
+        }),
+      ),
+      http.get(
+        `${origin}/api/v1/workflows/flow/runs/:runId/retry-plan`,
+        ({ params }) => {
+          requested.push(String(params.runId));
+          return HttpResponse.json({
+            runId: params.runId,
+            revisionId: "original",
+            expectedVersion: 9,
+            allowed: true,
+            items: [
+              {
+                instanceId: "old-step",
+                nodeId: "internal-node",
+                action: "rerun",
+                reason: "重新检查业务结果",
+              },
+            ],
+          });
+        },
+      ),
+      http.post(
+        `${origin}/api/v1/workflows/flow/runs/:runId/retry`,
+        async ({ request, params }) => {
+          submitted.push({ runId: params.runId, body: await request.json() });
+          return HttpResponse.json({ id: "retried" });
+        },
+      ),
+      http.get(`${origin}/api/v1/workflows/flow/runs/:runId`, ({ params }) =>
+        HttpResponse.json({
+          run: {
+            id: params.runId,
+            status: params.runId === "retried" ? "succeeded" : "failed",
+          },
+          manifest: {
+            sdk: "ally.workflow",
+            title: "重试",
+            description: "",
+            phases: [],
+            nodes: [
+              {
+                id: "internal-node",
+                kind: "functionTask",
+                label: "历史版本审核步骤",
+                inputs: [],
+                execution: {
+                  language: "javascript",
+                  executionMode: "pure",
+                  codeDigest: "fixture",
+                },
+              },
+            ],
+            edges: [],
+            controls: [],
+            scripts: [],
+          },
+        }),
+      ),
+    );
+    function Location() {
+      return <output aria-label="当前位置">{useLocation().pathname}</output>;
+    }
+    const user = userEvent.setup();
+    renderScene("/workflows/flow?tab=runs", undefined, undefined, <Location />);
+    const history = await screen.findByRole("complementary", {
+      name: "执行记录",
+    });
+    await within(history).findByRole("button", { name: "重试第4次运行" });
+    expect(
+      within(history).getByRole("button", { name: "重试第3次运行" }),
+    ).toBeInTheDocument();
+    expect(
+      within(history).queryByRole("button", { name: "重试第2次运行" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(history).queryByRole("button", { name: "重试第1次运行" }),
+    ).not.toBeInTheDocument();
+    expect(requested).toEqual([]);
+    await user.click(
+      within(history).getByRole("button", {
+        name: status === "failed" ? "重试第4次运行" : "重试第3次运行",
+      }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "原版本重试计划" });
+    await within(dialog).findByText("重新检查业务结果");
+    expect(requested).toEqual([status]);
+    expect(
+      await within(dialog).findByText("历史版本审核步骤"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText(/internal-node|生成材料/),
+    ).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "重新运行" }));
+    await waitFor(() =>
+      expect(submitted).toEqual([
+        {
+          runId: status,
+          body: { requestId: expect.any(String), expectedVersion: 9 },
+        },
+      ]),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText("当前位置")).toHaveTextContent(
+        "/workflows/flow/runs/retried",
+      ),
+    );
+  },
+);

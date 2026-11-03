@@ -30,31 +30,10 @@ This is a candidate responsibility split, not a mandatory three-phase template. 
 - Never mark initial credentials “optional” solely because a cache might exist. Define and verify the actual setup path and behavior when configuration is missing.
 - Give business inputs concise labels and useful defaults. Do not introduce project, keyword, or output-format selectors without a corresponding user need.
 
+Internal storage is not a business input. Reuse `workflow.workspace` from preparation and `flowContext.workspace` during a run; Python uses the host's `ALLY_WORKFLOW_STATE_DIR` and `ALLY_WORKFLOW_CACHE_DIR`. Put persistent token/configuration state and caches there with private permissions. Do not invent `storage_dir`/`cache_dir` defaults such as `~/PingCodeWiki` or ask the user to select internal directories. If the user wants synchronized Wiki documents in a chosen folder, that folder is an explicit business output destination; keep the synchronization script, token cache and internal state in the workflow workspace.
+
 ## Evidence and failures
 
 Implement credential and token storage with appropriate local permissions, atomic updates, expiry handling, and bounded retry behavior. Verify the API's actual invalid-token response. Do not expose secrets in commands, logs, source, or downloadable artifacts. Surface missing setup, incomplete pagination, and empty matches distinctly.
 
 A simulated endpoint may verify cache reuse and pagination logic. It does not verify real credentials, permissions, or the external API. Deliver the saved workflow with that distinction intact.
-
-## Command examples
-
-Use the common rules in [SKILL.md](../SKILL.md). Prepare deterministic API work
-with the API/credential guidance; add `worker` only for requested reasoning:
-
-```sh
-allycli workflow authoring prepare --primitives functionTask --features api-retrieval,files
-```
-
-Implement against verified API documentation and write complete source to
-`workflow.js`. The initial identifier/secret remain declared business inputs,
-not shell arguments or source constants. Optional preflight and authorized save:
-
-```sh
-allycli workflow source validate --source workflow.js
-allycli workflow source save --source workflow.js --expected-revision-id revision-example --request-id api-source-save-01
-allycli receipts get --operation workflow.source.save --request-id api-source-save-01
-```
-
-Use the actual revision from preparation. This creates the workflow; a user-
-authorized run uses [execution](workflow-execution.md#command-examples) with
-inputs matching its revision. `allycli` has no generic HTTP/API passthrough.

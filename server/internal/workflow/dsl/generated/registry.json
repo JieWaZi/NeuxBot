@@ -1,5 +1,5 @@
 {
-  "sdk": "ally.workflow/1",
+  "sdk": "ally.workflow",
   "primitives": [
     {
       "name": "phase",
@@ -15,7 +15,7 @@
     },
     {
       "name": "worker",
-      "signature": "declare function worker\u003cT extends Json = string\u003e(prompt: string, options: VisualNode \u0026 WorkerOptions): Promise\u003cT | null\u003e;",
+      "signature": "declare function worker\u003cT extends Json = string\u003e(prompt: string, options: VisualNode \u0026 WorkerOptions): Promise\u003cT\u003e;",
       "awaitRequired": true,
       "hostCapability": "worker"
     },

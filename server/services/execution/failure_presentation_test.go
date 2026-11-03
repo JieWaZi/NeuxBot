@@ -3,7 +3,13 @@ package execution
 import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
+	"context"
+	"encoding/json"
 	"errors"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -96,5 +102,46 @@ func TestRuntimeStartErrorRetainsBusinessErrorsAndPlainFallback(t *testing.T) {
 	}
 	if err := runtimeStartError(agentapi.Result{}); !errors.Is(err, status_error.RuntimeUnavailable) {
 		t.Fatalf("missing failure = %v, want runtime unavailable", err)
+	}
+}
+
+// 人工等待期限在原始调用事实与执行终态中保留同一个明确原因，不能退化为模型超时。
+func TestHumanWaitTimeoutInvocationAndExecutionShareCause(t *testing.T) {
+	for _, code := range []native.FaultCode{native.FaultInputTimeout, native.FaultApprovalTimeout} {
+		t.Run(string(code), func(t *testing.T) {
+			message := "waiting for user input timed out"
+			if code == native.FaultApprovalTimeout {
+				message = "waiting for approval timed out"
+			}
+			fault := &native.Fault{Code: code, Stage: "interaction", Message: message, Cause: context.DeadlineExceeded}
+			result := agentapi.Result{Failure: &agentapi.Failure{Code: agentapi.ClassifyFailure(agentapi.RuntimeIDWorkBuddy, fault), Stage: constants.RuntimeACPFailureStagePrompt, Message: fault.Error(), DisplayMessage: agentapi.FailureDisplayMessage(fault), Transience: agentapi.FailureTransiencePermanent}}
+			store, err := eventlog.NewStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			chat := models.Chat{ID: "53535353535353535353535353535353"}
+			if _, err := store.Create(chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
+				t.Fatal(err)
+			}
+			manager := &service{journal: &runtimeEventTestJournal{store: store}}
+			if err := manager.recordInvocationResult(chat, t.TempDir(), models.Execution{ID: "execution"}, result, 1, constants.InvocationRecoveryInitial, constants.InvocationTriggerUnspecified); err != nil {
+				t.Fatal(err)
+			}
+			records, err := store.ReadAll(chat.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var invocation eventlog.InvocationFinishedData
+			if len(records) != 2 || json.Unmarshal(records[1].Data, &invocation) != nil {
+				t.Fatalf("missing invocation: %+v", records)
+			}
+			status, errorCode, errorMessage := executionResultStatus(result)
+			if status != constants.ExecutionStatusFailed || errorCode != string(invocation.FailureCode) || errorMessage != message || !strings.Contains(invocation.FailureMessage, message) {
+				t.Fatalf("inconsistent facts: invocation=%+v execution=%s/%s/%s", invocation, status, errorCode, errorMessage)
+			}
+			if runtimeFailureRetryable(result) {
+				t.Fatal("human waiting deadline permitted replay")
+			}
+		})
 	}
 }

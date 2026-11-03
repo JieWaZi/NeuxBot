@@ -1,4 +1,5 @@
-import { useMutation } from "@tanstack/react-query";
+import type { SendWorkflowCreationMessageData } from "@/shared/api/generated/types.gen";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   RetainedChatPageContent,
@@ -12,8 +13,32 @@ import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
 import {
   sendWorkflowCreationMessageMutation,
   createWorkflowMutation,
+  getWorkflowRunOptions,
 } from "../api/workflow-queries";
 import type { ExecutionDefaults } from "../model/types";
+
+type CanvasReference = NonNullable<
+  SendWorkflowCreationMessageData["body"]["canvasReferences"]
+>[number] & { kind: "phase" | "node"; id: string; revisionId: string };
+const referenceKey = (reference: CanvasReference) =>
+  JSON.stringify([reference.revisionId, reference.kind, reference.id]);
+
+function referenceFromKey(key: string): CanvasReference[] {
+  try {
+    const value: unknown = JSON.parse(key);
+    if (
+      !Array.isArray(value) ||
+      value.length !== 3 ||
+      typeof value[0] !== "string" ||
+      (value[1] !== "phase" && value[1] !== "node") ||
+      typeof value[2] !== "string"
+    )
+      return [];
+    return [{ revisionId: value[0], kind: value[1], id: value[2] }];
+  } catch {
+    return [];
+  }
+}
 
 /** 工作流只负责 scoped 发送；对话界面完整复用普通 Chat。 */
 export function WorkflowChatPane({
@@ -29,6 +54,11 @@ export function WorkflowChatPane({
   onNewChat,
   wakerId,
   draft,
+  optimizeRunId,
+  canvasReferences = [],
+  canvasReferenceLabels = {},
+  onCanvasReferencesChange,
+  onCanvasReferencesSent,
   emptyState,
   isHistoryLoading = false,
   onConfigurationChange,
@@ -47,6 +77,11 @@ export function WorkflowChatPane({
   onNewChat: () => void;
   wakerId?: string;
   draft?: string;
+  optimizeRunId?: string;
+  canvasReferences?: CanvasReference[];
+  canvasReferenceLabels?: Record<string, string>;
+  onCanvasReferencesChange?: (targets: CanvasReference[]) => void;
+  onCanvasReferencesSent?: () => void;
   emptyState?: ChatWorkspaceEntry["emptyState"];
   isHistoryLoading?: boolean;
   onConfigurationChange?: (defaults: ExecutionDefaults | undefined) => void;
@@ -54,6 +89,11 @@ export function WorkflowChatPane({
   onFirstMessageSubmitted?: () => void;
 }) {
   const { t } = useTranslation("workflow");
+  const canvasReferenceKey = JSON.stringify(canvasReferences);
+  const visibleCanvasReferenceKey = useRef(canvasReferenceKey);
+  useLayoutEffect(() => {
+    visibleCanvasReferenceKey.current = canvasReferenceKey;
+  }, [canvasReferenceKey]);
   const send = useMutation(
     withLocalErrorMutation(sendWorkflowCreationMessageMutation()),
   );
@@ -69,6 +109,18 @@ export function WorkflowChatPane({
     chatId: string;
   }>();
   const active = useRouteSceneActive();
+  const reference = useQuery({
+    ...getWorkflowRunOptions({ path: { id, runId: optimizeRunId ?? "" } }),
+    enabled: active && Boolean(optimizeRunId) && id !== "new",
+  });
+  const sourceRun = reference.data?.run;
+  const runReference =
+    optimizeRunId && sourceRun?.id === optimizeRunId
+      ? {
+          runId: optimizeRunId,
+          revisionId: sourceRun.revisionId,
+        }
+      : undefined;
   const scopeKey = session?.chatId
     ? `chat:${session.chatId}`
     : `draft:workflow:${draftScopeId}:${conversationKey ?? "default"}`;
@@ -105,6 +157,7 @@ export function WorkflowChatPane({
         mainContent,
         canvasInput: id === "new" && !firstMessageSubmitted,
         showSummary: false,
+        showFileChanges: false,
         history,
         onNewChat,
         onAccepted: (result) => {
@@ -123,11 +176,29 @@ export function WorkflowChatPane({
             onCreated?.(createdDefinition.current);
         },
         draft,
+        isSendDisabled: Boolean(optimizeRunId && !runReference),
+        composerReferences: canvasReferences.map((reference) => ({
+          id: referenceKey(reference),
+          label:
+            canvasReferenceLabels[`${reference.kind}:${reference.id}`] ??
+            reference.id,
+        })),
+        onComposerReferencesChange: (ids) => {
+          const remaining = new Set(ids);
+          if (
+            remaining.size === canvasReferences.length &&
+            canvasReferences.every((reference) =>
+              remaining.has(referenceKey(reference)),
+            )
+          )
+            return;
+          onCanvasReferencesChange?.(ids.flatMap(referenceFromKey));
+        },
         emptyState,
         isHistoryLoading,
         onConfigurationChange,
         onRunningChange,
-        prepareSubmission: (message) => {
+        prepareSubmission: (message, targetChatId) => {
           const {
             text,
             runtimeId,
@@ -139,8 +210,15 @@ export function WorkflowChatPane({
           } = message;
           const body = {
             ...input,
-            sessionId: session?.id,
+            sessionId: targetChatId
+              ? (acceptedSessions.current.get(targetChatId) ??
+                (session?.chatId === targetChatId ? session.id : undefined))
+              : session?.id,
             content: text,
+            runReference,
+            canvasReferences: canvasReferences.length
+              ? canvasReferences
+              : undefined,
             defaults: {
               runtimeId,
               accountId,
@@ -156,9 +234,14 @@ export function WorkflowChatPane({
               ? previousRequest
               : { signature, id: crypto.randomUUID() };
           requests.current.set(scopeKey, request);
+          let confirmed = false;
           return {
             submissionId: request.id,
             confirmAccepted: () => {
+              if (confirmed) return;
+              confirmed = true;
+              if (visibleCanvasReferenceKey.current === canvasReferenceKey)
+                onCanvasReferencesSent?.();
               if (requests.current.get(scopeKey) === request)
                 requests.current.delete(scopeKey);
             },

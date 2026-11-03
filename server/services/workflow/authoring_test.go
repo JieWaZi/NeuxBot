@@ -16,6 +16,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
 	agentcli "github.com/JieWaZi/NeuxBot/server/internal/agent/cli"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/chat"
 )
@@ -130,7 +131,7 @@ func TestAuthoringCLICombinesPreparationAndSavesWithDurableReceipt(t *testing.T)
 			t.Fatalf("invalid query lacks legal choices: %+v", response)
 		}
 	}
-	source := `export const meta={sdk:'ally.workflow/1',title:'Echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string',title:'Text',description:'Text to echo.'}},required:['text']},outputSchema:{type:'string'},phases:[{id:'echo',title:'Echo',detail:'Echo input',canExit:true}]};phase('echo');return await functionTask({id:'echo_text',label:'Echo text',phase:'echo',language:'javascript',input:args.text,code:'function main(input){return input;}'});`
+	source := `export const meta={sdk:'ally.workflow',title:'Echo',description:'Echo input',inputSchema:{type:'object',properties:{text:{type:'string',title:'Text',description:'Text to echo.'}},required:['text']},outputSchema:{type:'string'},phases:[{id:'echo',title:'Echo',detail:'Echo input',canExit:true}]};phase('echo');return await functionTask({id:'echo_text',label:'Echo text',phase:'echo',language:'javascript',input:args.text,code:'function main(input){return input;}'});`
 	invalid := strings.Replace(source, "language:'javascript'", "outputSchema:meta.outputSchema,language:'javascript'", 1)
 	code, rejected := call([]string{"workflow", "source", "save", "--input", "-", "--request-id", "invalid"}, map[string]any{
 		"source": invalid, "expectedRevisionId": "",
@@ -179,8 +180,8 @@ func TestAuthoringCLICombinesPreparationAndSavesWithDurableReceipt(t *testing.T)
 	code, unchanged := call([]string{"workflow", "source", "save", "--input", "-", "--request-id", "unchanged"}, map[string]any{
 		"source": source, "expectedRevisionId": revision,
 	})
-	if code != 0 || unchanged.Data.(map[string]any)["unchanged"] != true || unchanged.Data.(map[string]any)["revisionId"] != revision {
-		t.Fatalf("unchanged save created a new revision: %+v", unchanged)
+	if code != 0 || unchanged.Data.(map[string]any)["unchanged"] != nil || unchanged.Data.(map[string]any)["revisionId"] == revision {
+		t.Fatalf("same source save did not create a new revision: %+v", unchanged)
 	}
 	for _, include := range []bool{false, true} {
 		code, preview := call([]string{"workflow", "source", "validate", "--input", "-"}, map[string]any{
@@ -235,12 +236,7 @@ func TestAuthoringPreparationIncludesOnlySelectedResourcesAndGuides(t *testing.T
 			t.Fatalf("missing bounded resource page: %s: %v", kind, resources)
 		}
 	}
-	content := data["content"].(string)
-	if len(resources) != 4 || len(data["guideIds"].([]any)) != 2 ||
-		!strings.Contains(content, "# Choose the actual deliverable") ||
-		strings.Count(content, constants.WorkflowResultPageDecisionInstructions) != 1 ||
-		strings.Count(content, "saved:true, revisionId and sourceDigest") != 1 ||
-		strings.Contains(content, "# Workflow SDK: presentation") {
+	if len(resources) != 5 || len(data["guideIds"].([]any)) != 2 {
 		t.Fatalf("selected features failed to choose guidance: %v", data)
 	}
 	for _, tc := range []struct {
@@ -248,11 +244,8 @@ func TestAuthoringPreparationIncludesOnlySelectedResourcesAndGuides(t *testing.T
 		primitive string
 		// feature 是只应加载对应资料的业务能力。
 		feature string
-		// wantPresentation 表示必须包含完整页面 Catalog。
-		wantPresentation bool
 	}{
 		{primitive: "functionTask", feature: "files"},
-		{primitive: "worker", feature: "presentation", wantPresentation: true},
 	} {
 		t.Run(tc.primitive+"/"+tc.feature, func(t *testing.T) {
 			code, prepared := call([]string{"workflow", "authoring", "prepare", "--primitives", tc.primitive, "--features", tc.feature}, nil)
@@ -263,8 +256,7 @@ func TestAuthoringPreparationIncludesOnlySelectedResourcesAndGuides(t *testing.T
 			content := data["content"].(string)
 			t.Logf("%s/%s authoring guidance: %d bytes", tc.primitive, tc.feature, len(content))
 			if len(data["guideIds"].([]any)) != 1 ||
-				strings.Contains(content, "# Choose the actual deliverable") ||
-				strings.Contains(content, "# Workflow SDK: presentation") != tc.wantPresentation {
+				strings.Contains(content, "# Choose the actual deliverable") {
 				t.Fatalf("preparation included unrelated guidance: %v", data["guideIds"])
 			}
 			if tc.primitive == "functionTask" &&
@@ -349,7 +341,7 @@ func TestAuthoringCapabilityFollowsExecutionAndRejectsLateSave(t *testing.T) {
 		t.Fatalf("旧执行仍有权限: %+v", response)
 	}
 	// 直接进入保存事务，模拟初次能力校验后执行才被替换或结束。
-	command := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "late-save", Source: workflowTestSource(t), SDKVersion: constants.WorkflowSDKVersion, CreationSessionID: "creation", CreationExecutionID: "authoring", CreationToken: "private"}
+	command := SaveSourceCommand{DefinitionID: definition.ID, RequestID: "late-save", Source: workflowTestSource(t), SDK: constants.WorkflowSDKIdentifier, CreationSessionID: "creation", CreationExecutionID: "authoring", CreationToken: "private"}
 	if _, _, err := s.SaveSource(ctx, command); err != status_error.WorkflowAuthoringSuperseded {
 		t.Fatalf("迟到保存未阻止: %v", err)
 	}
@@ -370,5 +362,67 @@ func TestAuthoringCapabilityFollowsExecutionAndRejectsLateSave(t *testing.T) {
 	code, response = call([]string{"workflow", "source", "get"}, nil)
 	if code == 0 || response.Error == nil || response.Error.Code != status_error.WorkflowAuthoringSuperseded.Key() {
 		t.Fatalf("旧凭证仍有权限: %+v", response)
+	}
+}
+
+// TestAuthoringWorkspaceIsBoundToWorkflow 验证准备和源码读取返回同一宿主目录，不受业务输出目录影响。
+func TestAuthoringWorkspaceIsBoundToWorkflow(t *testing.T) {
+	for _, external := range []bool{false, true} {
+		t.Run(fmt.Sprint(external), func(t *testing.T) {
+			s, _ := workflowTestService(t)
+			scope := models.WorkflowScopeBinding{}
+			if external {
+				scope.WorkingDirectory = t.TempDir()
+			}
+			definition, err := fixtureDefinition(context.Background(), s.store, definitionFixture{Title: "工作流目录", ScopeBinding: scope})
+			if err != nil {
+				t.Fatal(err)
+			}
+			call := authoringTestCLI(t, s, models.WorkflowCreationSession{ID: "creation", ActiveExecutionID: "authoring", DefinitionID: definition.ID, AuthToken: "private"})
+			expected, err := filepath.EvalSymlinks(s.dataDirectory)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expected = filepath.Join(expected, constants.WorkflowWorkspaceDirectoryName, definition.ID)
+			for _, operation := range []string{"workflow.authoring.prepare", "workflow.source.get"} {
+				args := []string{"workflow", "source", "get"}
+				if operation == "workflow.authoring.prepare" {
+					args = []string{"workflow", "authoring", "prepare", "--primitives", "action"}
+				}
+				code, response := call(args, nil)
+				if code != 0 {
+					t.Fatalf("%s: %+v", operation, response.Error)
+				}
+				data := response.Data.(map[string]any)
+				op, _ := capability.Find(operation)
+				if err := workflowdsl.ValidateJSON(op.OutputSchema, data); err != nil {
+					t.Fatalf("MCP output schema rejects workspace: %v", err)
+				}
+				if operation == "workflow.authoring.prepare" {
+					data = data["workflow"].(map[string]any)
+				}
+				workspace, ok := data["workspace"].(map[string]any)
+				if !ok || workspace["rootDirectory"] != expected {
+					t.Fatalf("%s must return the actual workflow workspace: %v", operation, data)
+				}
+				for field, name := range map[string]string{"scriptsDirectory": "scripts", "stateDirectory": "state", "cacheDirectory": "cache", "temporaryDirectory": "tmp", "runsDirectory": "runs"} {
+					path, ok := workspace[field].(string)
+					if !ok || path != filepath.Join(expected, name) {
+						t.Fatalf("%s: %s=%v", operation, field, workspace[field])
+					}
+					info, err := os.Stat(path)
+					if err != nil || !info.IsDir() {
+						t.Fatalf("advertised directory is unavailable: %s %v", path, err)
+					}
+				}
+				if _, has := workspace["runDirectory"]; has {
+					t.Fatal("authoring invented a run directory")
+				}
+			}
+			current, err := s.store.GetDefinition(context.Background(), definition.ID)
+			if err != nil || current.ScopeBinding != scope {
+				t.Fatalf("internal workspace replaced user business scope: %+v %v", current.ScopeBinding, err)
+			}
+		})
 	}
 }

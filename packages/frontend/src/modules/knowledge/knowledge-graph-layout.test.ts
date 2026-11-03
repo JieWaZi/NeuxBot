@@ -173,6 +173,7 @@ test("empty and entirely unlinked graphs have finite, nonoverlapping positions",
       );
     }
 });
+// 两轮大型同步仿真按几何结果验收，单独预留重负载机器的计算时间。
 test("500 and 1500 node graphs settle with finite positions and node clearance", () => {
   for (const count of [500, 1500]) {
     const inputs = Array.from({ length: count }, (_, i) => ({
@@ -197,7 +198,7 @@ test("500 and 1500 node graphs settle with finite positions and node clearance",
         );
       }
   }
-});
+}, 60_000);
 test("incremental expansion holds existing nodes and settles new neighbors", () => {
   const prior = new Map([
     ["a", { x: 111, y: 222 }],

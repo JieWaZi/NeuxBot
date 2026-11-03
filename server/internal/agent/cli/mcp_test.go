@@ -1,0 +1,316 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"net/http/httptest"
+	"path/filepath"
+	"sync/atomic"
+	"testing"
+
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+func TestMCPBridgePreservesPreDispatchValidationFailure(t *testing.T) {
+	registry := capability.New(nil)
+	defer registry.Close()
+	var failValidation atomic.Bool
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: "save-execution", Validate: func(context.Context) error {
+		if failValidation.Load() {
+			return status_error.DatabaseError
+		}
+		return nil
+	}, Bindings: []capability.Binding{{Operation: "workflow.source.save", Call: func(context.Context, capability.Request) (capability.Result, error) {
+		t.Error("pre-dispatch failure must not reach the mutation")
+		return capability.Result{}, nil
+	}, Receipt: func(context.Context, string) (capability.Result, error) {
+		t.Error("pre-dispatch failure must not query a mutation receipt")
+		return capability.Result{}, nil
+	}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	activate()
+	defer revoke()
+	httpServer := httptest.NewServer(registry)
+	defer httpServer.Close()
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := capability.WriteConnection(directory, "save.json", capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: httpServer.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge, err := newMCPServer(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := mcp.NewInMemoryTransports()
+	serverSession, err := bridge.Connect(context.Background(), a, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	peer := mcp.NewClient(&mcp.Implementation{Name: "validation-failure-test", Version: "1"}, nil)
+	session, err := peer.Connect(context.Background(), b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	listing, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outputSchema map[string]any
+	for _, tool := range listing.Tools {
+		if tool.Name == "workflow_source_save" {
+			raw, _ := json.Marshal(tool.OutputSchema)
+			if err := json.Unmarshal(raw, &outputSchema); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if outputSchema == nil {
+		t.Fatal("bound save tool missing")
+	}
+	failValidation.Store(true)
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "workflow_source_save", Arguments: map[string]any{"requestId": "save-once", "source": "return true;", "expectedRevisionId": "head"}})
+	if err != nil {
+		t.Fatalf("MCP schema masked the original validation failure: %v", err)
+	}
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if err := workflowdsl.ValidateJSON(outputSchema, wire); err != nil {
+		t.Fatalf("validation failure violates advertised MCP output schema: %v response=%s", err, raw)
+	}
+	var response capability.Response
+	if err := json.Unmarshal(raw, &response); err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || response.OK || response.Operation != "workflow.source.save" || response.Error == nil || response.Error.Code != status_error.DatabaseError.Key() || response.Error.EffectState != "not_accepted" || response.Error.RetryAdvice != "none" {
+		t.Fatalf("original failure or acceptance state changed at MCP bridge: %s", raw)
+	}
+}
+
+func TestMCPBridgeUsesBoundOperationsAndRotatesSessionGrant(t *testing.T) {
+	workspace, err := workflowfiles.PrepareWorkspace(t.TempDir(), util.New(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := capability.New(nil)
+	defer registry.Close()
+	calls := 0
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: "first", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(_ context.Context, req capability.Request) (capability.Result, error) {
+		calls++
+		return capability.Result{Data: map[string]any{"workflowId": "bound", "source": "source", "workspace": workspace}}, nil
+	}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	activate()
+	defer revoke()
+	httpServer := httptest.NewServer(registry)
+	defer httpServer.Close()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	connection := capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: httpServer.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token}
+	path, err := capability.WriteConnection(dir, "first.json", connection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge, err := newMCPServer(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := mcp.NewInMemoryTransports()
+	serverSession, err := bridge.Connect(context.Background(), a, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	peer := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
+	session, err := peer.Connect(context.Background(), b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	listing, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, tool := range listing.Tools {
+		if tool.Name == "workflow_source_get" {
+			found = true
+		}
+		if tool.Name == "workflow_source_save" {
+			t.Fatal("unbound write tool exposed")
+		}
+	}
+	if !found {
+		t.Fatal("bound source tool missing")
+	}
+	call := func() *mcp.CallToolResult {
+		result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "workflow_source_get", Arguments: map[string]any{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+	result := call()
+	if result.IsError || calls != 1 {
+		t.Fatalf("call=%+v count=%d", result, calls)
+	}
+	body, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response capability.Response
+	if err := json.Unmarshal(body, &response); err != nil {
+		t.Fatal(err)
+	}
+	data := response.Data.(map[string]any)
+	received, ok := data["workspace"].(map[string]any)
+	if !ok || received["rootDirectory"] != workspace.RootDirectory || received["scriptsDirectory"] != workspace.ScriptsDirectory || received["temporaryDirectory"] != workspace.TemporaryDirectory {
+		t.Fatalf("MCP lost the host-owned storage layout: %s", body)
+	}
+	revoke()
+	if result := call(); !result.IsError || calls != 1 {
+		t.Fatal("revoked turn retained MCP access")
+	}
+	next, activateNext, revokeNext, err := registry.Prepare(capability.GrantSpec{ExecutionID: "second", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, capability.Request) (capability.Result, error) {
+		calls++
+		return capability.Result{Data: map[string]any{"workflowId": "bound", "source": "second-source", "workspace": workspace}}, nil
+	}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	activateNext()
+	defer revokeNext()
+	connection.GrantID, connection.Token = next.ID, next.Token
+	if _, err := capability.WriteConnection(dir, "first.json", connection); err != nil {
+		t.Fatal(err)
+	}
+	result = call()
+	raw, _ := json.Marshal(result.StructuredContent)
+	if result.IsError || calls != 2 {
+		t.Fatalf("hot session did not acquire current turn grant: %s calls=%d", raw, calls)
+	}
+	revokeNext()
+	if result := call(); !result.IsError || calls != 2 {
+		t.Fatal("second revoked turn retained MCP access")
+	}
+}
+
+func TestMCPBridgeReturnsSavedRevisionWithManifestDigest(t *testing.T) {
+	registry := capability.New(nil)
+	defer registry.Close()
+	receipt := workflowdsl.SaveReceipt{DefinitionID: "workflow", RevisionID: "revision", Ordinal: 2, SourceDigest: "source-digest", ManifestDigest: "canvas-digest"}
+	encoded, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var data map[string]any
+	if err := json.Unmarshal(encoded, &data); err != nil {
+		t.Fatal(err)
+	}
+	data["saved"] = true
+	calls := 0
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: "save-execution", Validate: func(context.Context) error { return nil }, Bindings: []capability.Binding{{Operation: "workflow.source.save", Call: func(_ context.Context, request capability.Request) (capability.Result, error) {
+		calls++
+		if request.RequestID != "save-once" {
+			t.Errorf("request identity changed: %+v", request)
+		}
+		return capability.Result{CommandID: "command", Data: data}, nil
+	}, Receipt: func(context.Context, string) (capability.Result, error) {
+		return capability.Result{CommandID: "command", Data: data}, nil
+	}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	activate()
+	defer revoke()
+	httpServer := httptest.NewServer(registry)
+	defer httpServer.Close()
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := capability.WriteConnection(directory, "save.json", capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: httpServer.URL + constants.AgentCLIPath, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bridge, err := newMCPServer(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := mcp.NewInMemoryTransports()
+	serverSession, err := bridge.Connect(context.Background(), a, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer serverSession.Close()
+	peer := mcp.NewClient(&mcp.Implementation{Name: "save-test", Version: "1"}, nil)
+	session, err := peer.Connect(context.Background(), b, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	listing, err := session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outputSchema map[string]any
+	for _, tool := range listing.Tools {
+		if tool.Name == "workflow_source_save" {
+			raw, _ := json.Marshal(tool.OutputSchema)
+			if err := json.Unmarshal(raw, &outputSchema); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if outputSchema == nil {
+		t.Fatal("save tool missing output schema")
+	}
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "workflow_source_save", Arguments: map[string]any{"requestId": "save-once", "source": "return true;", "expectedRevisionId": "head"}})
+	if err != nil {
+		t.Fatalf("saved revision rejected by MCP output schema: %v", err)
+	}
+	if result.IsError || calls != 1 {
+		t.Fatalf("MCP reports error after successful save: result=%+v calls=%d", result, calls)
+	}
+	raw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wire any
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if err := workflowdsl.ValidateJSON(outputSchema, wire); err != nil {
+		t.Fatalf("actual MCP response violates its advertised output schema: %v", err)
+	}
+	var response capability.Response
+	if err := json.Unmarshal(raw, &response); err != nil {
+		t.Fatal(err)
+	}
+	returned, ok := response.Data.(map[string]any)
+	if !response.OK || !ok || returned["saved"] != true || returned["manifestDigest"] != receipt.ManifestDigest || returned["revisionId"] != receipt.RevisionID {
+		t.Fatalf("save receipt changed: %s", raw)
+	}
+}

@@ -1,4 +1,3 @@
-import type { PageDefinition } from "@/shared/presentation/catalog";
 import { useMutation } from "@tanstack/react-query";
 import { useId, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -8,6 +7,7 @@ import {
   localApiErrorMessage,
   withLocalErrorMutation,
 } from "@/shared/api/local-error-surface";
+import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
 import { Button } from "@/shared/ui/button";
 import { DialogFooter } from "@/shared/ui/dialog";
 import { startWorkflowRunMutation } from "../api/workflow-queries";
@@ -39,25 +39,52 @@ export function RunForm({
   const { t } = useTranslation("workflow");
   const formId = useId();
   const navigate = useNavigate();
-  const schema = revision.manifest?.meta?.inputSchema ?? {
+  const schema = revision.manifest?.inputSchema ?? {
     type: "object",
     properties: {},
   };
   const [args, setArgs] = useState<unknown>(() => lastRunInputs(id, schema));
   const start = useMutation(withLocalErrorMutation(startWorkflowRunMutation()));
+  // 源码导入的工作流可能没有创作会话，运行配置直接复用共享目录解析。
+  const savedConfiguration = Boolean(defaults?.runtimeId);
+  const needsRuntimeDefault = revision.manifest?.nodes.some(
+    (node) => node.kind === "worker" && !node.execution.resolve.runtimeId,
+  );
+  const resolveConfiguration = !savedConfiguration && needsRuntimeDefault;
+  const execution = useExecutionSelection({
+    value: defaults ?? {},
+    defaults: true,
+    enabled: Boolean(container && resolveConfiguration),
+  });
+  const runDefaults = !resolveConfiguration
+    ? (defaults ?? {})
+    : execution.valid
+      ? { ...defaults, ...execution.selection }
+      : undefined;
+  const configurationUnavailable =
+    resolveConfiguration && !execution.loading && !execution.valid;
   const validity = useSchemaFormValidity();
   const [request, setRequest] = useState<{ content: string; id: string }>();
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!validity.valid || start.isPending) return;
-    const content = jsonText({ args, defaults, revisionId: revision.id });
+    if (!validity.valid || start.isPending || !runDefaults) return;
+    const content = jsonText({
+      args,
+      defaults: runDefaults,
+      revisionId: revision.id,
+    });
     const requestId =
       request?.content === content ? request.id : crypto.randomUUID();
     setRequest({ content, id: requestId });
     try {
       const run = await start.mutateAsync({
         path: { id },
-        body: { requestId, revisionId: revision.id, args, defaults },
+        body: {
+          requestId,
+          revisionId: revision.id,
+          args,
+          defaults: runDefaults,
+        },
       });
       if (run.id) {
         rememberRunInputs(id, schema, args);
@@ -82,10 +109,6 @@ export function RunForm({
             className="grid min-h-0 gap-5 overflow-y-auto overscroll-contain px-6 pb-4"
           >
             <SchemaForm
-              inputPage={
-                revision?.manifest?.meta?.inputPage as
-                  PageDefinition | undefined
-              }
               fileWorkflowId={id}
               compact
               fieldOrder={revision.manifest?.inputPropertyOrder}
@@ -94,6 +117,16 @@ export function RunForm({
               onChange={setArgs}
               onValidityChange={validity.onValidityChange}
             />
+            {configurationUnavailable ? (
+              <p role="alert" className="text-destructive type-body">
+                {execution.error
+                  ? localApiErrorMessage(
+                      execution.error,
+                      t("runConfigurationUnavailable"),
+                    )
+                  : t("runConfigurationUnavailable")}
+              </p>
+            ) : null}
             {start.error ? (
               <p role="alert" className="text-destructive type-body">
                 {localApiErrorMessage(start.error, t("startError"))}
@@ -104,7 +137,7 @@ export function RunForm({
             <Button
               type="submit"
               form={formId}
-              disabled={start.isPending || !validity.valid}
+              disabled={start.isPending || !validity.valid || !runDefaults}
             >
               {t("run")}
             </Button>

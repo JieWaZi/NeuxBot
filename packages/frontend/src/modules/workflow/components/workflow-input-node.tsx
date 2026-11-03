@@ -6,7 +6,7 @@ import { jsonText, record, type Manifest } from "../model/types";
 
 /** 参数顺序来自冻结版本；运行视图只展示本次实际提交的字段。 */
 export function workflowInputFields(manifest: Manifest, args?: unknown) {
-  const schema = manifest.meta?.inputSchema;
+  const schema = manifest.inputSchema;
   const properties = record(schema?.properties) ?? {};
   const values = args === undefined ? undefined : (record(args) ?? {});
   const keys = values ? Object.keys(values) : Object.keys(properties);

@@ -28,7 +28,6 @@ pnpm dev:native
 | Go API、枚举及 OpenAPI | `pnpm api:generate`、`pnpm api:check`                                     |
 | 系统技能               | `pnpm skills:generate`、`pnpm skills:check`                               |
 | 工作流语言与知识       | `pnpm workflow:sdk:generate`、`pnpm workflow:sdk:check`                   |
-| 结构化呈现目录         | `pnpm workflow:presentation:generate`、`pnpm workflow:presentation:check` |
 | 伙伴渲染源             | `pnpm companion:generate`、`pnpm companion:check`                         |
 | Pi Bridge              | `pnpm pi:bridge:generate`、`pnpm pi:bridge:check`                         |
 | 完整验证               | `pnpm check`                                                              |

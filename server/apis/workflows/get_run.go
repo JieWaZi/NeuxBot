@@ -26,12 +26,16 @@ type GetWorkflowRun struct {
 
 // 运行详情
 type WorkflowRunDetailResponse struct {
-	// 文件产物
+	// 成果文件
 	Files []workflow.OutputFile `json:"files"`
 	// 节点状态汇总
 	NodeCounts []controllers.WorkflowNodeCount `json:"nodeCounts"`
+	// 源码摘要
+	SourceDigest string `json:"sourceDigest"`
+	// 画布摘要
+	ManifestDigest string `json:"manifestDigest"`
 	// 编译清单
-	Manifest workflowdsl.Manifest `json:"manifest"`
+	Manifest workflowdsl.CanvasManifest `json:"manifest"`
 	// 子运行
 	Children []models.WorkflowRun `json:"children"`
 	// 运行信息
@@ -77,7 +81,7 @@ func (o *GetWorkflowRun) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	response := WorkflowRunDetailResponse{Run: run, Manifest: revision.Manifest, Children: children, HumanRequests: humans, OperationRequests: operations, InstanceCount: int(total), Instances: instances}
+	response := WorkflowRunDetailResponse{SourceDigest: revision.SourceDigest, ManifestDigest: workflowdsl.CanvasDigest(workflowdsl.ExportCanvas(revision.Manifest)), Run: run, Manifest: workflowdsl.ExportCanvas(revision.Manifest), Children: children, HumanRequests: humans, OperationRequests: operations, InstanceCount: int(total), Instances: instances}
 	response.Files = []workflow.OutputFile{}
 	if run.Status == constants.WorkflowRunStatusSucceeded {
 		response.Files = workflow.InspectOutputFiles(run, revision.Manifest.Meta.OutputSchema, run.Result)

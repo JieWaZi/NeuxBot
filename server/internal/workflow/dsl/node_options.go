@@ -2,6 +2,7 @@ package dsl
 
 import (
 	"math"
+	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/dop251/goja/ast"
@@ -10,8 +11,14 @@ import (
 
 func (c *compiler) validateNodeOptions(node ast.Node, kind string, opts map[string]any) {
 	allowed := map[string]bool{}
-	for _, key := range []string{"id", "label", "phase", "inputs", "outputs"} {
+	for _, key := range []string{"id", "label", "description", "phase", "inputs", "outputs", "successCondition"} {
 		allowed[key] = true
+	}
+	if value, found := opts["description"]; found {
+		text, ok := value.(string)
+		if !ok || utf8.RuneCountInString(text) > constants.WorkflowNodeDescriptionMaxRunes {
+			c.fail(node, "OPTION_TYPE_INVALID", "description must be a static string within the host character limit")
+		}
 	}
 	if kind != "worker" {
 		allowed["timeoutMs"] = true
@@ -19,9 +26,9 @@ func (c *compiler) validateNodeOptions(node ast.Node, kind string, opts map[stri
 	var fields []string
 	switch kind {
 	case "worker":
-		fields = []string{"resolve", "schema", "toolPolicy", "skippable", "retry"}
+		fields = []string{"resolve", "schema", "toolPolicy", "retry"}
 	case "askUser":
-		fields = []string{"options", "multiSelect", "defaultValue", "allowSkip", "schema"}
+		fields = []string{"kind", "choices", "allowCustom", "minSelections", "maxSelections", "onTimeout", "defaultValue", "allowSkip", "schema"}
 	case "functionTask":
 		fields = []string{"language", "code", "input", "outputSchema", "executionMode"}
 	case "workflow", "startWorkflow":
@@ -44,7 +51,7 @@ func (c *compiler) validateNodeOptions(node ast.Node, kind string, opts map[stri
 			}
 		}
 	}
-	for _, key := range []string{"skippable", "multiSelect", "allowSkip"} {
+	for _, key := range []string{"skippable", "allowCustom", "allowSkip"} {
 		if value, found := opts[key]; found {
 			if _, ok := value.(bool); !ok {
 				c.fail(node, "OPTION_TYPE_INVALID", key+" must be a boolean")
@@ -138,51 +145,20 @@ func (c *compiler) validateNodeOptions(node ast.Node, kind string, opts map[stri
 		}
 	}
 	if kind == "askUser" {
-		schema, structured := opts["schema"].(map[string]any)
-		if structured {
-			if _, found := opts["options"]; found {
-				c.fail(node, "HUMAN_OPTIONS_INVALID", "schema and quick-answer options cannot be combined")
-			}
-			if _, found := opts["multiSelect"]; found {
-				c.fail(node, "HUMAN_OPTIONS_INVALID", "schema declares its own array fields")
-			}
+		c.validateHumanOptions(node, opts)
+	}
+	if condition, found := opts["successCondition"]; found {
+		fields, ok := condition.(map[string]any)
+		path, pathOK := fields["path"].(string)
+		_, equalsOK := fields["equals"]
+		if !ok || len(fields) != 2 || !pathOK || !equalsOK || !validJSONPointer(path) {
+			c.fail(node, "SUCCESS_CONDITION_INVALID", "successCondition requires a JSON Pointer path and a literal equals value")
 		}
-		if value, found := opts["options"]; found {
-			options, ok := value.([]any)
-			if !ok || len(options) > 64 {
-				c.fail(node, "HUMAN_OPTIONS_INVALID", "options must contain at most 64 value/label objects")
-			} else {
-				seen := map[string]bool{}
-				for _, item := range options {
-					option, ok := item.(map[string]any)
-					if !ok {
-						c.fail(node, "HUMAN_OPTIONS_INVALID", "each option requires a value and label")
-						continue
-					}
-					value, _ := option["value"].(string)
-					label, _ := option["label"].(string)
-					if value == "" || label == "" || seen[value] || len(option) != 2 {
-						c.fail(node, "HUMAN_OPTIONS_INVALID", "option values must be unique and labels nonempty")
-					}
-					seen[value] = true
-				}
-			}
-		}
-		if value, found := opts["defaultValue"]; found {
-			multi, _ := opts["multiSelect"].(bool)
-			if structured {
-				if err := ValidateJSON(schema, value); err != nil {
-					c.fail(node, "HUMAN_DEFAULT_INVALID", "form default must match its schema")
-				}
-			} else if multi {
-				if !stringArray(value) {
-					c.fail(node, "HUMAN_DEFAULT_INVALID", "multi-select default must be an array of strings")
-				}
-			} else if _, ok := value.(string); !ok {
-				c.fail(node, "HUMAN_DEFAULT_INVALID", "single-select default must be a string")
-			}
+		if kind != "action" && kind != "worker" && kind != "functionTask" {
+			c.fail(node, "SUCCESS_CONDITION_INVALID", "successCondition is available only for action, worker and functionTask")
 		}
 	}
+
 	if kind == "functionTask" {
 		if opts["language"] == "javascript" {
 			if code, ok := opts["code"].(string); ok && code != "" {

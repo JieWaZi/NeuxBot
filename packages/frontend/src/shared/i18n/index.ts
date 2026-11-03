@@ -1474,6 +1474,7 @@ const resources = {
       toolActivitySummary: {
         completedPrefix: "已",
         runningPrefix: "正在",
+        interruptedPrefix: "已中断：",
         failedPrefix: "失败：",
         file: "文件",
         verb: {
@@ -1594,6 +1595,8 @@ const resources = {
       runtimeFailure: {
         thinkingRequired: "当前模型不支持关闭思考，请调整思考设置后重试。",
         networkError: "连接已中断，请先检查执行状态，确认后再发送。",
+        inputTimeout: "等待回答超时",
+        approvalTimeout: "等待审批超时",
         requestTimeout: "请求已超时，请先检查执行状态，确认后再发送。",
         contextTooLarge:
           "对话内容已超出模型上下文限制，请新建对话或切换支持更长上下文的模型。",
@@ -1607,6 +1610,8 @@ const resources = {
           "当前智能体无法继续这段对话。确认后可携带近期消息，在这里继续。",
         upstreamUnavailable: "模型服务暂时不可用，请稍后重试。",
         eventDeliveryFailed: "回复接收中断，请检查执行结果后再发送。",
+        eventBudgetExceeded:
+          "本轮执行信息超过保护上限，执行已中止，请检查执行结果。",
         frameTooLarge: "返回的数据过大，执行已中止，请检查执行结果。",
         inactivityTimeout: "执行长时间没有响应，已中止，请检查执行结果。",
         policyUnsupported: "当前智能体不支持所选权限，请调整权限设置。",
@@ -2531,6 +2536,8 @@ const resources = {
           "This model requires thinking. Adjust the thinking setting and try again.",
         networkError:
           "The connection was interrupted. Check the execution status before sending again.",
+        inputTimeout: "Timed out waiting for your answer",
+        approvalTimeout: "Timed out waiting for approval",
         requestTimeout:
           "The request timed out. Check the execution status before sending again.",
         contextTooLarge:
@@ -2548,6 +2555,8 @@ const resources = {
           "The model service is temporarily unavailable. Please retry later.",
         eventDeliveryFailed:
           "The reply was interrupted. Check the execution result before sending again.",
+        eventBudgetExceeded:
+          "Execution information exceeded the safety limit. Execution stopped; check the result.",
         frameTooLarge:
           "The response was too large and execution stopped. Check the execution result.",
         inactivityTimeout:

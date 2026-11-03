@@ -6,6 +6,10 @@ function runtimeFailureMessage(errorCode?: string): string {
   switch (errorCode) {
     case "NETWORK_ERROR":
       return i18n.t("runtimeFailure.networkError", { ns: "chat" });
+    case "INPUT_TIMEOUT":
+      return i18n.t("runtimeFailure.inputTimeout", { ns: "chat" });
+    case "APPROVAL_TIMEOUT":
+      return i18n.t("runtimeFailure.approvalTimeout", { ns: "chat" });
     case "REQUEST_TIMEOUT":
       return i18n.t("runtimeFailure.requestTimeout", { ns: "chat" });
     case "CONTEXT_TOO_LARGE":
@@ -26,6 +30,8 @@ function runtimeFailureMessage(errorCode?: string): string {
       return i18n.t("runtimeFailure.upstreamUnavailable", { ns: "chat" });
     case "EVENT_DELIVERY_FAILED":
       return i18n.t("runtimeFailure.eventDeliveryFailed", { ns: "chat" });
+    case "EVENT_BUDGET_EXCEEDED":
+      return i18n.t("runtimeFailure.eventBudgetExceeded", { ns: "chat" });
     case "FRAME_TOO_LARGE":
       return i18n.t("runtimeFailure.frameTooLarge", { ns: "chat" });
     case "INACTIVITY_TIMEOUT":
@@ -52,8 +58,14 @@ function runtimeFailureMessage(errorCode?: string): string {
 
 export function runtimeFailurePresentation(
   errorCode?: string,
+  detail?: string,
 ): RuntimeFailurePresentation {
   return {
-    message: runtimeFailureMessage(errorCode),
+    message:
+      errorCode === "INPUT_TIMEOUT" ||
+      errorCode === "APPROVAL_TIMEOUT" ||
+      errorCode === "EVENT_BUDGET_EXCEEDED"
+        ? runtimeFailureMessage(errorCode)
+        : detail?.trim() || runtimeFailureMessage(errorCode),
   };
 }

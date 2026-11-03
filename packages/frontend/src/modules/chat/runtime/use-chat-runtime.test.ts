@@ -219,6 +219,101 @@ describe("useChatRuntime queue", () => {
     notices.unmount();
   });
 
+  it.each(["completed", "failed", "canceled"] as const)(
+    "断线后仅 REST %s 权威终态也能清除同次执行的运行占位",
+    async (status) => {
+      const options = runtimeOptions("chat-rest-terminal");
+      const { result, rerender } = renderHook(
+        (current: RuntimeOptions) => useChatRuntime(current),
+        { wrapper, initialProps: options },
+      );
+      act(() =>
+        subscriptionOptions.current?.onEvent({
+          type: "assistant.message",
+          sequence: 2,
+          message: {
+            id: "assistant-1",
+            role: "assistant",
+            executionId: "execution-1",
+            status: "running",
+            revision: 10,
+          },
+        }),
+      );
+      await waitFor(() => expect(projectedMessages.current).toHaveLength(1));
+      act(() => subscriptionOptions.current?.onUnavailable?.());
+      expect(result.current.isRunning).toBe(true);
+      expect(options.cancel).not.toHaveBeenCalled();
+      rerender({
+        ...options,
+        latestSequence: 3,
+        messages: [
+          {
+            id: "assistant-1",
+            role: "assistant",
+            executionId: "execution-1",
+            status,
+            revision: 9,
+          },
+        ],
+      });
+      await waitFor(() => expect(result.current.isRunning).toBe(false));
+      expect(projectedMessages.current).toEqual([
+        expect.objectContaining({
+          id: "assistant-1",
+          status: expect.objectContaining({
+            type: status === "completed" ? "complete" : "incomplete",
+          }),
+        }),
+      ]);
+    },
+  );
+
+  it("旧执行的 REST 终态不能清除新执行的实时运行占位", async () => {
+    const options = runtimeOptions("chat-new-execution");
+    const { result, rerender } = renderHook(
+      (current: RuntimeOptions) => useChatRuntime(current),
+      { wrapper, initialProps: options },
+    );
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        type: "assistant.message",
+        sequence: 2,
+        message: {
+          id: "assistant-new",
+          role: "assistant",
+          executionId: "execution-2",
+          status: "running",
+          revision: 10,
+        },
+      }),
+    );
+    await waitFor(() => expect(projectedMessages.current).toHaveLength(1));
+    rerender({
+      ...options,
+      activeExecutionId: undefined,
+      latestSequence: 3,
+      messages: [
+        {
+          id: "assistant-old",
+          role: "assistant",
+          executionId: "execution-1",
+          status: "failed",
+          revision: 11,
+        },
+      ],
+    });
+    expect(result.current.isRunning).toBe(true);
+    expect(projectedMessages.current).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "assistant-new",
+          status: { type: "running" },
+        }),
+      ]),
+    );
+  });
+
   it("隐藏会话暂停实时历史消费，重新可见时恢复原会话订阅", () => {
     const options = runtimeOptions("chat-hidden");
     const { rerender } = renderHook(
@@ -927,6 +1022,32 @@ describe("useChatRuntime queue", () => {
 
     rerender({ queueKey: "chat-1" });
     expect(runtimeAdapter.current?.queue?.items).toHaveLength(1);
+  });
+
+  it("队列保留入队时的领域提交上下文，后续改选不会改写原请求", async () => {
+    const sent: string[] = [];
+    const { rerender } = renderHook(
+      ({ reference, running }: { reference: string; running: boolean }) =>
+        useChatRuntime({
+          ...runtimeOptions("chat-frozen-context"),
+          activeExecutionId: running ? "execution-1" : undefined,
+          send: async () => {
+            sent.push(reference);
+            return {
+              chat: { id: "chat-frozen-context" },
+              execution: { id: "execution-2", status: "running" },
+            };
+          },
+        }),
+      { initialProps: { reference: "phase-A", running: true }, wrapper },
+    );
+    act(() => {
+      runtimeAdapter.current?.queue?.enqueue(queuedMessage, { steer: false });
+    });
+    rerender({ reference: "phase-B", running: true });
+    expect(sent).toEqual([]);
+    rerender({ reference: "phase-B", running: false });
+    await waitFor(() => expect(sent).toEqual(["phase-A"]));
   });
 
   it("保留的 Scene 隐藏后暂停出队，当前执行结束不取消运行，返回时只发送一次", async () => {
@@ -2357,6 +2478,68 @@ describe("useChatRuntime queue", () => {
     expect(runtimeAdapter.current?.messages).toEqual([]);
     expect(runtimeAdapter.current?.convertMessage).toBeTypeOf("function");
   });
+  it("Scene恢复以新摘要移除已在别处处理的待办，保留摘要之后的新请求", async () => {
+    const { result, rerender } = renderHook(
+      ({
+        active,
+        snapshotSequence,
+      }: {
+        active: boolean;
+        snapshotSequence: number;
+      }) =>
+        useChatRuntime({
+          ...runtimeOptions("chat-1"),
+          queueActive: active,
+          initialInteractionSequence: snapshotSequence,
+          initialPendingApprovals: [],
+          initialPendingElicitations: [],
+        }),
+      { initialProps: { active: true, snapshotSequence: 1 }, wrapper },
+    );
+    act(() => {
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "approval.requested",
+        approvalRequest: {
+          approvalId: "approval-old",
+          title: "批准读取",
+          options: [],
+        },
+      });
+      subscriptionOptions.current?.onEvent({
+        sequence: 3,
+        type: "elicitation.requested",
+        elicitationRequest: {
+          elicitationId: "question-old",
+          mode: "form",
+          message: "选择来源",
+        },
+      });
+    });
+    expect(result.current.pendingApprovals).toHaveLength(1);
+    expect(result.current.pendingElicitations).toHaveLength(1);
+    rerender({ active: false, snapshotSequence: 1 });
+    // 隐藏期间另一个窗口处理两项请求，恢复摘要已经包含其处理事实。
+    rerender({ active: true, snapshotSequence: 5 });
+    expect(result.current.pendingApprovals).toEqual([]);
+    expect(result.current.pendingElicitations).toEqual([]);
+    act(() => {
+      subscriptionOptions.current?.onEvent({
+        sequence: 6,
+        type: "elicitation.requested",
+        elicitationRequest: {
+          elicitationId: "question-new",
+          mode: "form",
+          message: "选择交付方式",
+        },
+      });
+    });
+    // 旧摘要不能吞掉其游标之后到达的问题。
+    rerender({ active: true, snapshotSequence: 5 });
+    expect(result.current.pendingElicitations).toEqual([
+      expect.objectContaining({ elicitationId: "question-new" }),
+    ]);
+  });
 });
 
 describe("chat send failure", () => {
@@ -2456,3 +2639,201 @@ describe("chat send failure", () => {
     },
   );
 });
+
+it.each(["enqueue", "promote"] as const)(
+  "%s steer 保留接续身份并在交接时抑制取消收尾",
+  async (mode) => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const options = runtimeOptions("chat-steer");
+    options.messages = [
+      {
+        id: "assistant-old",
+        executionId: "execution-1",
+        role: "assistant",
+        status: "running",
+      },
+    ];
+    options.send = vi.fn().mockResolvedValue({
+      chat: { id: "chat-steer" },
+      execution: { id: "execution-2", status: "running" },
+    });
+    const { result } = renderHook(() => useChatRuntime(options), {
+      wrapper: TestProviders,
+    });
+    act(() => {
+      runtimeAdapter.current?.queue?.enqueue(queuedMessage, {
+        steer: mode === "enqueue",
+      });
+    });
+    if (mode === "promote")
+      act(() => {
+        const id = runtimeAdapter.current?.queue?.items?.[0]?.id;
+        if (id) runtimeAdapter.current?.queue?.steer(id);
+      });
+    expect(options.cancel).toHaveBeenCalledTimes(1);
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "execution.canceled",
+        executionStatus: "canceled",
+        message: {
+          id: "assistant-old",
+          executionId: "execution-1",
+          role: "assistant",
+          status: "canceled",
+          revision: 2,
+        },
+      }),
+    );
+    await waitFor(() => expect(options.send).toHaveBeenCalledTimes(1));
+    expect(options.send).toHaveBeenCalledWith(
+      expect.any(String),
+      "chat-steer",
+      [],
+      expect.objectContaining({ steerExecutionId: "execution-1" }),
+    );
+    expect(
+      result.current.messages.find(
+        (message) =>
+          message.role === "assistant" && message.executionId === "execution-2",
+      )?.steerExecutionId,
+    ).toBe("execution-1");
+  },
+);
+
+it("steer 追加发送失败后恢复前段取消状态，不残留连续工作标记", async () => {
+  queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const options = runtimeOptions("chat-steer-rejected");
+  options.messages = [
+    {
+      id: "old",
+      executionId: "execution-1",
+      role: "assistant",
+      status: "running",
+    },
+  ];
+  options.send = vi.fn().mockRejectedValue(new Error("send rejected"));
+  const { result, rerender } = renderHook(() => useChatRuntime(options), {
+    wrapper: TestProviders,
+  });
+  act(() =>
+    runtimeAdapter.current?.queue?.enqueue(queuedMessage, { steer: true }),
+  );
+  expect(
+    result.current.messages.find((message) => message.id === "old")
+      ?.steerPending,
+  ).toBe(true);
+  act(() =>
+    subscriptionOptions.current?.onEvent({
+      sequence: 2,
+      type: "execution.canceled",
+      executionStatus: "canceled",
+      message: {
+        id: "old",
+        executionId: "execution-1",
+        role: "assistant",
+        status: "canceled",
+        revision: 2,
+      },
+    }),
+  );
+  options.messages = [
+    {
+      id: "old",
+      executionId: "execution-1",
+      role: "assistant",
+      status: "canceled",
+      revision: 2,
+    },
+  ];
+  options.latestSequence = 2;
+  options.activeExecutionId = undefined;
+  rerender();
+  await waitFor(() => expect(options.send).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(result.current.messages).toHaveLength(1));
+  expect(result.current.messages[0]).toMatchObject({
+    id: "old",
+    status: "canceled",
+  });
+  expect(result.current.messages[0]?.steerPending).not.toBe(true);
+});
+
+it.each(["enqueue", "promote", "stale-enqueue", "stale-promote"] as const)(
+  "%s steer 在原输入尚未返回执行 ID 时按提交身份接续",
+  async (mode) => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const options = runtimeOptions("chat-steer-pending");
+    options.activeExecutionId = mode.startsWith("stale")
+      ? "stale-prior"
+      : undefined;
+    options.messages = [
+      {
+        id: "previous",
+        executionId: "stale-prior",
+        role: "assistant",
+        status: "completed",
+      },
+    ];
+    let acceptFirst: ((result: MessageResult) => void) | undefined;
+    const firstReceipt = new Promise<MessageResult>((resolve) => {
+      acceptFirst = resolve;
+    });
+    options.send = vi
+      .fn()
+      .mockReturnValueOnce(firstReceipt)
+      .mockResolvedValue({
+        chat: { id: "chat-steer-pending" },
+        execution: { id: "next", status: "running" },
+      });
+    renderHook(() => useChatRuntime(options), { wrapper: TestProviders });
+    act(() => {
+      void runtimeAdapter.current?.onNew?.(queuedMessage);
+    });
+    act(() =>
+      runtimeAdapter.current?.queue?.enqueue(queuedMessage, {
+        steer: mode.endsWith("enqueue"),
+      }),
+    );
+    if (mode.endsWith("promote"))
+      act(() => {
+        const id = runtimeAdapter.current?.queue?.items?.[0]?.id;
+        if (id) runtimeAdapter.current?.queue?.steer(id);
+      });
+    act(() =>
+      subscriptionOptions.current?.onEvent({
+        sequence: 2,
+        type: "execution.canceled",
+        executionStatus: "canceled",
+        message: {
+          id: "accepted-old",
+          submissionId: "input:chat-steer-pending",
+          executionId: "accepted-run",
+          role: "assistant",
+          status: "canceled",
+          revision: 2,
+        },
+      }),
+    );
+    await waitFor(() => expect(options.send).toHaveBeenCalledTimes(2));
+    expect(options.send).toHaveBeenNthCalledWith(
+      2,
+      expect.any(String),
+      "chat-steer-pending",
+      [],
+      expect.objectContaining({ steerExecutionId: "accepted-run" }),
+    );
+    await act(async () => {
+      acceptFirst?.({
+        chat: { id: "chat-steer-pending" },
+        execution: { id: "accepted-run", status: "canceled" },
+      });
+      await firstReceipt;
+    });
+  },
+);

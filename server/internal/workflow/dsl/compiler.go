@@ -1,6 +1,7 @@
 package dsl
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -100,11 +101,14 @@ func Compile(source string) (Compilation, []Diagnostic, error) {
 			c.fail(metaExpression, "META_LITERAL_REQUIRED", "meta must contain only JSON literals")
 		} else {
 			encoded, _ := json.Marshal(value)
-			if json.Unmarshal(encoded, &c.manifest.Meta) != nil {
+			decoder := json.NewDecoder(bytes.NewReader(encoded))
+			decoder.DisallowUnknownFields()
+			if decoder.Decode(&c.manifest.Meta) != nil {
 				c.fail(metaExpression, "META_INVALID", "meta fields have invalid types")
 			}
 		}
 	}
+	c.compileScripts()
 	c.validateMeta(metaExpression)
 	c.manifest.InputPropertyOrder = inputPropertyOrder(metaExpression)
 	c.validateSymbols()
@@ -116,7 +120,6 @@ func Compile(source string) (Compilation, []Diagnostic, error) {
 	b.emit(Instruction{Op: constants.WorkflowOpReturn, Expression: literalExpression(nil)})
 	c.bundle.Programs["main"] = Program{Code: b.code, Async: true}
 	c.validateResourceIdentities()
-	c.validatePages(metaExpression)
 	if _, err := IMTargetDependencies(c.manifest, c.bundle); err != nil {
 		c.fail(metaExpression, "IM_TARGET_DEPENDENCY_REQUIRED", "IM calls with dynamic targets must declare imTargetIds on their builtin action")
 	}
@@ -134,6 +137,11 @@ func Compile(source string) (Compilation, []Diagnostic, error) {
 		return Compilation{}, c.diagnostics, status_error.WorkflowSourceInvalid
 	}
 	c.manifest.ControlHints = c.controlHints()
+	c.projectCanvas()
+	if err := ValidateCanvas(ExportCanvas(c.manifest)); err != nil {
+		c.fail(metaExpression, "CANVAS_PROJECTION_INVALID", "source projection violates the CanvasManifest contract: "+err.Error())
+		return Compilation{}, c.diagnostics, status_error.WorkflowSourceInvalid
+	}
 	manifestJSON, _ := json.Marshal(c.manifest)
 	irJSON, _ := json.Marshal(c.bundle)
 	return Compilation{Manifest: c.manifest, Bundle: c.bundle, SourceDigest: Digest([]byte(source)), ManifestDigest: Digest(manifestJSON), IRDigest: Digest(irJSON)}, []Diagnostic{}, nil
@@ -208,8 +216,8 @@ func (c *compiler) unique(node ast.Node, id string) bool {
 
 func (c *compiler) validateMeta(node ast.Node) {
 	m := c.manifest.Meta
-	if m.SDK != constants.WorkflowSDKVersion {
-		c.fail(node, "SDK_UNSUPPORTED", "meta.sdk must be "+constants.WorkflowSDKVersion)
+	if m.SDK != constants.WorkflowSDKIdentifier {
+		c.fail(node, "SDK_UNSUPPORTED", "meta.sdk must be "+constants.WorkflowSDKIdentifier)
 	}
 	if strings.TrimSpace(m.Title) == "" || len(m.Phases) == 0 {
 		c.fail(node, "META_INVALID", "title and at least one phase are required")
@@ -246,7 +254,7 @@ func (c *compiler) validateMeta(node ast.Node) {
 	}
 	for _, a := range m.Actions {
 		c.unique(node, a.ID)
-		if a.Label == "" || a.Description == "" || (a.Risk != "read" && a.Risk != "write" && a.Risk != "external") {
+		if a.Label == "" || (a.Risk != "read" && a.Risk != "write" && a.Risk != "external") {
 			c.fail(node, "ACTION_INVALID", "action requires label, description and read/write/external risk")
 		}
 		switch a.Type {
@@ -255,8 +263,12 @@ func (c *compiler) validateMeta(node ast.Node) {
 				c.fail(node, "ACTION_INVALID", "HTTP action requires allowedOrigins and methods")
 			}
 		case "script":
-			if a.Executable == "" || a.WorkingDirectory != "workflow_scope" {
-				c.fail(node, "ACTION_INVALID", "script action requires an executable and workflow_scope")
+			if a.ScriptID != "" {
+				if a.Executable != "" || c.bundle.Scripts[a.ScriptID].Code == "" {
+					c.fail(node, "ACTION_INVALID", "scriptId must reference one static script and cannot combine with executable")
+				}
+			} else if a.Executable == "" || a.WorkingDirectory != "workflow_scope" {
+				c.fail(node, "ACTION_INVALID", "script action requires scriptId or executable with workflow_scope")
 			}
 		case "builtin":
 			if a.Handler == "" {
@@ -354,7 +366,7 @@ func (c *compiler) literal(expression ast.Expression, references bool, seen map[
 		}
 		return values, true
 	case *ast.TemplateLiteral:
-		if len(x.Expressions) == 0 && x.Tag == nil {
+		if references && len(x.Expressions) == 0 && x.Tag == nil {
 			return x.Elements[0].Parsed.String(), true
 		}
 	}
@@ -530,7 +542,7 @@ func (b *codeBuilder) statement(statement ast.Statement) {
 }
 
 func (b *codeBuilder) binding(binding *ast.Binding, constant bool, location SourceRange) {
-	if id, ok := binding.Target.(*ast.Identifier); ok && id.Name.String() == "actions" {
+	if id, ok := binding.Target.(*ast.Identifier); ok && (id.Name.String() == "actions" || id.Name.String() == "scripts") {
 		return
 	}
 	value := b.expression(binding.Initializer)
@@ -935,10 +947,7 @@ func (b *codeBuilder) hostCall(call *ast.CallExpression, awaited bool) *Expressi
 			prompt = c.fragment(call.ArgumentList[0])
 		}
 		if label == "" {
-			label = c.optionFragment(call, index, "label")
-			if label == "" {
-				c.fail(call, "LABEL_REQUIRED", "node label is required")
-			}
+			c.fail(call, "LABEL_REQUIRED", "node label must be a nonempty static string")
 		}
 		if name == "worker" {
 			resolve, ok := opts["resolve"].(map[string]any)
@@ -1068,7 +1077,7 @@ func (c *compiler) staticOptions(call *ast.CallExpression, index int) map[string
 				}
 			}
 			switch key {
-			case "input", "args", "url", "method", "headers", "body", "env", "label":
+			case "input", "args", "url", "method", "headers", "body", "env", "choices", "defaultValue":
 			default:
 				c.fail(p.Value, "STATIC_OPTION_REQUIRED", "SDK option must be static: "+key)
 				diagnostic := &c.diagnostics[len(c.diagnostics)-1]

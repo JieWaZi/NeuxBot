@@ -106,16 +106,16 @@ func EditSource(source string, edit SourceEdit) (string, error) {
 		if call != nil && len(call.ArgumentList) > index {
 			object, _ = call.ArgumentList[index].(*ast.ObjectLiteral)
 		}
-		for _, key := range []string{"label", "timeoutMs", "inputs", "outputs"} {
+		for _, key := range []string{"label", "description", "timeoutMs", "inputs", "outputs", "successCondition"} {
 			allowed[key] = true
 		}
 		switch selected.Kind {
 		case "worker":
-			for _, key := range []string{"resolve", "toolPolicy", "schema", "skippable", "retry"} {
+			for _, key := range []string{"resolve", "toolPolicy", "schema", "retry"} {
 				allowed[key] = true
 			}
 		case "askUser":
-			for _, key := range []string{"options", "multiSelect", "defaultValue", "allowSkip", "schema"} {
+			for _, key := range []string{"kind", "choices", "allowCustom", "minSelections", "maxSelections", "onTimeout", "defaultValue", "allowSkip", "schema"} {
 				allowed[key] = true
 			}
 		case "functionTask":

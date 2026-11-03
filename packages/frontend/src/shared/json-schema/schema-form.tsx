@@ -1,6 +1,3 @@
-import type { Spec } from "@json-render/core";
-import { InputRenderer } from "@/shared/presentation/input-renderer";
-import type { PageDefinition } from "@/shared/presentation/catalog";
 import {
   createContext,
   useContext,
@@ -170,7 +167,6 @@ export function SchemaForm(
   props: SchemaFormProps & {
     compact?: boolean;
     fileWorkflowId?: string;
-    inputPage?: PageDefinition;
   },
 ) {
   const inherited = useContext(CompactSchemaContext);
@@ -178,128 +174,9 @@ export function SchemaForm(
   return (
     <FileWorkflowContext.Provider value={props.fileWorkflowId ?? workflowId}>
       <CompactSchemaContext.Provider value={props.compact ?? inherited}>
-        <SchemaFormPresentation {...props} />
+        <SchemaFormFields {...props} />
       </CompactSchemaContext.Provider>
     </FileWorkflowContext.Provider>
-  );
-}
-
-/** 字段仍复用现有控件与校验，布局树统一交给 json-render。 */
-function SchemaFormPresentation(
-  props: SchemaFormProps & { inputPage?: PageDefinition },
-) {
-  const root = props.rootSchema ?? props.schema;
-  const schema = mergeObjectBranches(
-    resolveLocalSchema(props.schema, root),
-    root,
-  );
-  const properties = record(schema.properties);
-  const orderPath =
-    typeof props.schema.$ref === "string" && props.schema.$ref.startsWith("#/")
-      ? props.schema.$ref.slice(1)
-      : (props.schemaPath ?? "");
-  const keys =
-    schema.type === "object" &&
-    !schema.oneOf &&
-    !schema.anyOf &&
-    properties &&
-    (props.path ?? "args").split("/").length < 16
-      ? Array.from(
-          new Set([
-            ...(props.fieldOrder?.[orderPath] ?? []).filter(
-              (key) => key in properties,
-            ),
-            ...Object.keys(properties),
-          ]),
-        )
-      : [];
-  const spec: Spec = {
-    root: "layout",
-    elements: {
-      layout: {
-        type: "Stack",
-        props: { gap: "medium" },
-        children: keys.length
-          ? keys.map((_, index) => `field-${index}`)
-          : ["root-field"],
-      },
-    },
-  };
-  if (keys.length)
-    keys.forEach((key, index) => {
-      spec.elements[`field-${index}`] = {
-        type: "Field",
-        props: {
-          path: `/args/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`,
-        },
-      };
-    });
-  else
-    spec.elements["root-field"] = { type: "Field", props: { path: "/args" } };
-  return (
-    <InputRenderer
-      spec={spec}
-      page={props.inputPage}
-      value={props.value}
-      renderField={(pointer) => {
-        if (pointer === "/args") return <SchemaFormFields {...props} />;
-        const relative = pointer.slice(5);
-        const segments = relative
-          .slice(1)
-          .split("/")
-          .map((part) => part.replaceAll("~1", "/").replaceAll("~0", "~"));
-        let field = schema;
-        let required = false;
-        let fieldSchemaPath = orderPath;
-        for (const key of segments) {
-          required =
-            Array.isArray(field.required) && field.required.includes(key);
-          field = resolveLocalSchema(
-            record(record(field.properties)?.[key]) ?? {},
-            root,
-          );
-          fieldSchemaPath += `/properties/${key.replaceAll("~", "~0").replaceAll("/", "~1")}`;
-        }
-        const fieldValue = segments.reduce<unknown>((value, key) => {
-          const object = record(value);
-          return object && Object.hasOwn(object, key) ? object[key] : undefined;
-        }, props.value);
-        return (
-          <SchemaField
-            name={segments.at(-1) ?? "args"}
-            path={`${props.path ?? "args"}/${segments.join("/")}`}
-            schema={field}
-            rootSchema={root}
-            fieldOrder={props.fieldOrder}
-            schemaPath={fieldSchemaPath}
-            required={required}
-            provided={fieldValue !== undefined}
-            value={fieldValue}
-            onValidityChange={props.onValidityChange}
-            onChange={(next, provided) => {
-              const replace = (value: unknown, depth: number): unknown => {
-                const key = segments[depth] ?? "";
-                const object = record(value) ?? {};
-                const entries = Object.entries(object).filter(
-                  ([name]) => name !== key,
-                );
-                if (depth < segments.length - 1)
-                  entries.push([
-                    key,
-                    replace(
-                      Object.hasOwn(object, key) ? object[key] : undefined,
-                      depth + 1,
-                    ),
-                  ]);
-                else if (provided) entries.push([key, next]);
-                return Object.fromEntries(entries);
-              };
-              props.onChange(replace(props.value, 0));
-            }}
-          />
-        );
-      }}
-    />
   );
 }
 

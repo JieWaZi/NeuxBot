@@ -1,6 +1,8 @@
 // Package catalog 提供发现契约与 SDK 组合共用的工作流创作目录，不依赖编译器或存储。
 package catalog
 
+import "slices"
+
 // Topic 描述一个可查询主题及其对应的原生调用。
 type Topic struct {
 	// ID 是 sdk get 接纳的稳定主题名。
@@ -23,7 +25,6 @@ func Topics() []Topic {
 		{ID: "schema", Primitives: []string{}},
 		{ID: "saving", Primitives: []string{}},
 		{ID: "budgets", Primitives: []string{}},
-		{ID: "presentation", Primitives: []string{}},
 		{ID: "im", Primitives: []string{}},
 	}
 }
@@ -57,19 +58,32 @@ func Primitives() []string {
 	return result
 }
 
-// Examples 返回可编译的完整示例目录。
+// ExampleSources 返回当前可创作示例的仓库权威路径；集成测试夹具不作为模型范例。
+func ExampleSources() map[string]string {
+	return map[string]string{
+		"f0":     "server/internal/workflow/dsl/testdata/f0.workflow.js",
+		"review": "skills/ally/references/workflow-review-example.workflow.js",
+	}
+}
+
+// Examples 返回经过当前编译与执行验证的完整示例目录。
 func Examples() []string {
-	return []string{"f0", "weekly-report", "environment-review", "environment-release"}
+	result := []string{}
+	for topic := range ExampleSources() {
+		result = append(result, topic)
+	}
+	slices.Sort(result)
+	return result
 }
 
 // ResourceKinds 返回创作资源查询实际支持的类别。
 func ResourceKinds() []string {
-	return []string{"wakers", "runtimes", "accounts", "connectors", "workflows", "projects", "functionLanguages", "toolPolicyCapabilities", "builtinActions", "imTargets"}
+	return []string{"wakers", "runtimes", "accounts", "connectors", "workflows", "projects", "functionLanguages", "scriptLanguages", "toolPolicyCapabilities", "builtinActions", "imTargets"}
 }
 
 // Features 返回需要额外资料或外部目标的创作能力。
 func Features() []string {
-	return []string{"schema", "presentation", "files", "api-retrieval", "budgets", "im"}
+	return []string{"schema", "files", "api-retrieval", "budgets", "im"}
 }
 
 // AuthoringTopics 根据声明的调用和能力组合主题，公共资料只出现一次。
@@ -82,7 +96,7 @@ func AuthoringTopics(primitives, features []string) []string {
 	}
 	for _, feature := range features {
 		switch feature {
-		case "schema", "presentation", "budgets":
+		case "schema", "budgets":
 			selected[feature] = true
 		case "im":
 			selected["action"] = true

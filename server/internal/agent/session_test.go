@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	native "github.com/JieWaZi/NeuxBot/server/internal/agent/native"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
@@ -17,6 +18,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -1612,7 +1614,7 @@ func TestObserverDeadlineAndInteractionRequiredAreDistinct(t *testing.T) {
 	}
 }
 
-func TestInteractionUsesIndependentDeadline(t *testing.T) {
+func TestInteractionIgnoresDeliveryDeadlineAndRespectsTurnDeadline(t *testing.T) {
 	d := &fakeDriver{caps: caps(), open: func(context.Context, native.OpenRequest) (NativeConnection, error) {
 		return &fakeSession{prompt: func(ctx context.Context, req native.TurnRequest, s native.EventSink) native.TurnResult {
 			_ = s.Accept(ctx, native.Event{Kind: native.EventPromptAccepted})
@@ -1629,7 +1631,6 @@ func TestInteractionUsesIndependentDeadline(t *testing.T) {
 	in := spec()
 	in.Policies.Interaction = InteractionInteractive
 	in.Limits.DeliveryTimeout = time.Millisecond
-	in.Limits.InteractionTimeout = 100 * time.Millisecond
 	handler := interactionFunc(func(ctx context.Context, req native.InteractionRequest) (native.InteractionResponse, error) {
 		select {
 		case <-time.After(10 * time.Millisecond):
@@ -1642,9 +1643,12 @@ func TestInteractionUsesIndependentDeadline(t *testing.T) {
 	if got.Status != native.StatusCompleted {
 		t.Fatalf("observer deadline incorrectly limited user input: %#v", got)
 	}
-	in.Limits.InteractionTimeout = time.Millisecond
-	got = runTurn(rt, context.Background(), in, turnOptions{InteractionHandler: handler})
-	requireCode(t, got.Fault, native.FaultInteractionRequired)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+	got = runTurn(rt, ctx, in, turnOptions{InteractionHandler: handler})
+	if got.Status != native.StatusCancelled {
+		t.Fatalf("turn deadline did not revoke human waiting: %#v", got)
+	}
 }
 
 func TestToolStatusUpdateCanOmitPreviouslyAuthorizedName(t *testing.T) {
@@ -1710,7 +1714,6 @@ func TestCancelledInteractionDoesNotCancelHealthyTurnOrAcceptLateReply(t *testin
 	rt := started(t, d, nil)
 	in := spec()
 	in.Policies.Interaction = InteractionInteractive
-	in.Limits.InteractionTimeout = 20 * time.Millisecond
 	got := runTurn(rt, context.Background(), in, turnOptions{InteractionHandler: interactionFunc(func(ctx context.Context, req native.InteractionRequest) (native.InteractionResponse, error) {
 		close(entered)
 		<-ctx.Done()
@@ -2037,5 +2040,330 @@ func TestRuntimeCloseRetriesActiveRunCleanupWithoutErasingFault(t *testing.T) {
 	got := <-done
 	if !errors.Is(got.CleanupFault, boom) || attempts.Load() != 2 {
 		t.Fatalf("run cleanup=%v attempts=%d", got.CleanupFault, attempts.Load())
+	}
+}
+
+// TestGrowingToolInputSnapshotsDoNotSpendRepeatedPrefixBudget 复现参数逐字符增长与推理分片交错，验证完整事件仍在默认预算内交付。
+func TestGrowingToolInputSnapshotsDoNotSpendRepeatedPrefixBudget(t *testing.T) {
+	const updates = 9000
+	seen, latest := 0, 0
+	seenThinking, seenEvents := 0, 0
+	driver := &fakeDriver{caps: caps(), open: func(context.Context, native.OpenRequest) (NativeConnection, error) {
+		return &fakeSession{prompt: func(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
+			if err := sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted}); err != nil {
+				return native.TurnResult{Status: native.StatusFailed}
+			}
+			for i := 1; i <= updates; i++ {
+				if i%3 != 0 {
+					if err := sink.Accept(ctx, native.Event{Kind: native.EventThinking, Text: "reason"}); err != nil {
+						return native.TurnResult{Status: native.StatusFailed}
+					}
+				}
+				input := []byte(`{"content":"` + strings.Repeat("x", i*2) + `"}`)
+				event := native.Event{Kind: native.EventTool, Tool: &native.ToolEvent{ID: "write", Name: "write", Update: i > 1, Status: "in_progress", Input: input, Content: []native.ContentBlock{{Type: "text", Text: "progress"}}}}
+				if err := sink.Accept(ctx, event); err != nil {
+					return native.TurnResult{Status: native.StatusFailed}
+				}
+			}
+			if err := sink.Accept(ctx, native.Event{Kind: native.EventTool, Tool: &native.ToolEvent{ID: "write", Update: true, Status: "completed", Output: []byte(`{"saved":true}`)}}); err != nil {
+				return native.TurnResult{Status: native.StatusFailed}
+			}
+			_ = sink.Accept(ctx, native.Event{Kind: native.EventAssistantMessage, Message: &native.AssistantMessage{MessageID: "answer", Phase: native.PhaseFinal, Delta: "saved", Complete: true}})
+			return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn}
+		}}, nil
+	}}
+	runtime := started(t, driver, func(c *testConfig) { c.Grants.AllowAllTools = true })
+	input := spec()
+	input.Policies.Tools = native.ToolPolicy{Mode: native.ToolsAllowAll}
+	result := runTurn(runtime, context.Background(), input, turnOptions{Observer: observerFunc(func(_ context.Context, e observedEvent) error {
+		seenEvents++
+		if e.NativeEvent.Kind == native.EventThinking {
+			seenThinking++
+			if e.NativeEvent.Text != "reason" {
+				t.Fatalf("thinking fragment changed at %d", seenThinking)
+			}
+		}
+		if tool := e.NativeEvent.Tool; tool != nil && tool.Input != nil {
+			seen++
+			var data map[string]string
+			if err := json.Unmarshal(tool.Input, &data); err != nil {
+				return err
+			}
+			latest = len(data["content"])
+			if latest != seen*2 || len(tool.Content) != 1 || tool.Content[0].Text != "progress" {
+				t.Fatalf("snapshot or progress changed at %d", seen)
+			}
+			tool.Input[0] = '!'
+		}
+		return nil
+	})})
+	if result.Status != native.StatusCompleted || seen != updates || latest != 18000 || seenThinking != 6000 || seenEvents != 15003 {
+		t.Fatalf("growing input failed: status=%s fault=%v observed=%d latest=%d thinking=%d events=%d", result.Status, result.Fault, seen, latest, seenThinking, seenEvents)
+	}
+	t.Logf("observed: events=%d tool_inputs=%d thinking=%d latest_content_bytes=%d", seenEvents, seen, seenThinking, latest)
+}
+
+// TestToolSnapshotAccountingStillBoundsNewData 单条大帧、独立参数、结果、正文及事件洪泛仍受原预算约束。
+func TestToolSnapshotAccountingStillBoundsNewData(t *testing.T) {
+	for _, scenario := range []string{"single", "replaced", "different-tools", "content", "output", "events", "clear-and-regrow"} {
+		t.Run(scenario, func(t *testing.T) {
+			driver := &fakeDriver{caps: caps(), open: func(context.Context, native.OpenRequest) (NativeConnection, error) {
+				return &fakeSession{prompt: func(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
+					_ = sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted})
+					for i := 0; i < 100; i++ {
+						tool := &native.ToolEvent{ID: "write", Name: "write", Update: i > 0, Input: []byte(`"` + strings.Repeat("x", 4000) + `"`)}
+						switch scenario {
+						case "single":
+							if i > 0 {
+								tool.Input = []byte(`"` + strings.Repeat("x", 9000) + `"`)
+							}
+						case "replaced":
+							tool.Input = []byte(`"` + strings.Repeat(string(rune('a'+i%20)), 4000) + `"`)
+						case "different-tools":
+							tool.ID = fmtRevision(uint64(i + 1))
+						case "content":
+							tool.Content = []native.ContentBlock{{Type: "text", Text: strings.Repeat("x", 4000)}}
+						case "output":
+							tool.Output = tool.Input
+						case "clear-and-regrow":
+							if i%2 == 1 {
+								tool.Input = []byte("null")
+							}
+						}
+						if err := sink.Accept(ctx, native.Event{Kind: native.EventTool, Tool: tool}); err != nil {
+							return native.TurnResult{Status: native.StatusFailed}
+						}
+					}
+					return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn}
+				}}, nil
+			}}
+			runtime := started(t, driver, func(c *testConfig) { c.Grants.AllowAllTools = true })
+			input := spec()
+			input.Policies.Tools = native.ToolPolicy{Mode: native.ToolsAllowAll}
+			input.Limits = native.Limits{MaxOutputBytes: 128, MaxEventBytes: 8192, MaxTotalEventBytes: 16384, MaxEvents: 1000}
+			if scenario == "events" {
+				input.Limits.MaxEvents = 16
+			}
+			result := invokeTurn(runtime, context.Background(), input)
+			requireCode(t, result.Fault, native.FaultLimit)
+			if !result.Effects.ToolActivity {
+				t.Fatal("budget failure lost the real tool activity")
+			}
+		})
+	}
+}
+
+// 人工等待有独立五分钟期限；期限前回答继续执行，到期只报告本类交互原因。
+func TestInteractionDefaultDeadlineAndAnswerBeforeExpiry(t *testing.T) {
+	for _, kind := range []native.InteractionKind{native.InteractionInput, native.InteractionApproval} {
+		for _, wait := range []time.Duration{4*time.Minute + 59*time.Second, 6 * time.Minute} {
+			t.Run(string(kind)+"/"+wait.String(), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					driver := &fakeDriver{caps: caps(), open: func(context.Context, native.OpenRequest) (NativeConnection, error) {
+						return &fakeSession{prompt: func(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
+							_ = sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted})
+							response, err := sink.Interact(ctx, native.InteractionRequest{ID: "human", Kind: kind, ToolName: "read"})
+							if err != nil {
+								return native.TurnResult{Status: native.StatusFailed, StopReason: native.StopFailed}
+							}
+							if response.Action != native.InteractionAccept {
+								t.Errorf("valid answer not accepted: %+v", response)
+							}
+							_ = sink.Accept(ctx, native.Event{Kind: native.EventAssistantMessage, Message: &native.AssistantMessage{MessageID: "answer", Phase: native.PhaseFinal, Delta: "已采纳回答", Complete: true}})
+							return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn}
+						}}, nil
+					}}
+					runtime := started(t, driver, func(config *testConfig) { config.Grants.AllowAllTools = true })
+					input := spec()
+					input.Policies.Interaction = InteractionInteractive
+					input.Policies.Tools = native.ToolPolicy{Mode: native.ToolsAllowAll}
+					start := time.Now()
+					result := runTurn(runtime, context.Background(), input, turnOptions{InteractionHandler: interactionFunc(func(ctx context.Context, request native.InteractionRequest) (native.InteractionResponse, error) {
+						select {
+						case <-time.After(wait):
+							return native.InteractionResponse{Invocation: request.Invocation, ID: request.ID, Action: native.InteractionAccept}, nil
+						case <-ctx.Done():
+							return native.InteractionResponse{}, ctx.Err()
+						}
+					})})
+					if wait < 5*time.Minute {
+						if result.Status != native.StatusCompleted || result.Fault != nil {
+							t.Fatalf("answer before deadline failed: %+v", result)
+						}
+						return
+					}
+					code, message := "INPUT_TIMEOUT", "waiting for user input timed out"
+					if kind == native.InteractionApproval {
+						code, message = "APPROVAL_TIMEOUT", "waiting for approval timed out"
+					}
+					product := chatResult(SessionPlan{}, SessionDirective{}, result, &chatObserver{})
+					if time.Since(start) != 5*time.Minute || result.Status != native.StatusFailed || product.Failure == nil || string(product.Failure.Code) != code || product.Failure.DisplayMessage != message || !strings.Contains(product.Failure.Message, message) {
+						t.Fatalf("wrong human deadline result: elapsed=%s raw=%+v product=%+v", time.Since(start), result, product.Failure)
+					}
+				})
+			})
+		}
+	}
+}
+
+func TestSessionCloseRevokesPendingHumanInteraction(t *testing.T) {
+	entered := make(chan struct{})
+	driver := &fakeDriver{caps: caps(), open: func(context.Context, native.OpenRequest) (NativeConnection, error) {
+		return &fakeSession{prompt: func(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
+			_ = sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted})
+			response, err := sink.Interact(ctx, native.InteractionRequest{ID: "pending", Kind: native.InteractionInput})
+			if !errors.Is(err, context.Canceled) || response.Action == native.InteractionAccept {
+				t.Errorf("closed turn accepted late answer: %+v %v", response, err)
+			}
+			return native.TurnResult{Status: native.StatusCancelled, StopReason: native.StopCancelled}
+		}}, nil
+	}}
+	runtime := started(t, driver, nil)
+	input := spec()
+	input.Policies.Interaction = InteractionInteractive
+	done := make(chan turnResult, 1)
+	go func() {
+		done <- runTurn(runtime, context.Background(), input, turnOptions{InteractionHandler: interactionFunc(func(ctx context.Context, request native.InteractionRequest) (native.InteractionResponse, error) {
+			close(entered)
+			<-ctx.Done()
+			return native.InteractionResponse{Invocation: request.Invocation, ID: request.ID, Action: native.InteractionAccept}, nil
+		})})
+	}()
+	<-entered
+	closing, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := runtime.Close(closing); err != nil {
+		t.Fatal(err)
+	}
+	if result := <-done; result.Status != native.StatusCancelled {
+		t.Fatalf("close lost cancellation: %+v", result)
+	}
+}
+
+func TestUndeliverableHumanInputFailsWithoutWaiting(t *testing.T) {
+	for _, policy := range []InteractionPolicy{InteractionInteractive, InteractionUnattended} {
+		t.Run(string(policy), func(t *testing.T) {
+			driver := &fakeDriver{caps: caps(), open: func(context.Context, native.OpenRequest) (NativeConnection, error) {
+				return &fakeSession{prompt: func(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
+					_ = sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted})
+					_, _ = sink.Interact(ctx, native.InteractionRequest{ID: "undeliverable", Kind: native.InteractionInput})
+					return native.TurnResult{Status: native.StatusCancelled, StopReason: native.StopCancelled}
+				}}, nil
+			}}
+			runtime := started(t, driver, nil)
+			input := spec()
+			input.Policies.Interaction = policy
+			result := runTurn(runtime, context.Background(), input, turnOptions{})
+			requireCode(t, result.Fault, native.FaultInteractionRequired)
+		})
+	}
+}
+
+// 宿主已接纳的决定可以跨过自身期限，但原生撤销和整个调用取消始终优先。
+func TestInteractionDecisionAcrossDeadlineAndCancellation(t *testing.T) {
+	for _, kind := range []native.InteractionKind{native.InteractionInput, native.InteractionApproval} {
+		for _, scenario := range []string{"accepted", "declined", "native_cancelled", "turn_cancelled", "delivery_deadline"} {
+			t.Run(string(kind)+"/"+scenario, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					turnCtx, cancelTurn := context.WithCancel(context.Background())
+					defer cancelTurn()
+					var cancelRequest context.CancelFunc
+					driver := &fakeDriver{caps: caps(), open: func(context.Context, native.OpenRequest) (NativeConnection, error) {
+						return &fakeSession{prompt: func(ctx context.Context, _ native.TurnRequest, sink native.EventSink) native.TurnResult {
+							_ = sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted})
+							requestCtx, cancel := context.WithCancel(ctx)
+							cancelRequest = cancel
+							defer cancel()
+							response, err := sink.Interact(requestCtx, native.InteractionRequest{ID: "human", Kind: kind, ToolName: "read"})
+							switch scenario {
+							case "native_cancelled", "turn_cancelled":
+								if !errors.Is(err, context.Canceled) || response.Action == native.InteractionAccept {
+									t.Errorf("cancel lost priority: %+v %v", response, err)
+								}
+							case "delivery_deadline":
+								if !errors.Is(err, context.DeadlineExceeded) {
+									t.Errorf("lost delivery error: %v", err)
+								}
+								return native.TurnResult{Status: native.StatusFailed, StopReason: native.StopFailed}
+							default:
+								want := native.InteractionAccept
+								if scenario == "declined" {
+									want = native.InteractionDecline
+								}
+								if err != nil || response.Action != want {
+									t.Errorf("admitted decision lost: %+v %v", response, err)
+								}
+							}
+							if ctx.Err() != nil {
+								return native.TurnResult{Status: native.StatusCancelled, StopReason: native.StopCancelled}
+							}
+							_ = sink.Accept(ctx, native.Event{Kind: native.EventAssistantMessage, Message: &native.AssistantMessage{MessageID: "answer", Phase: native.PhaseFinal, Delta: "继续执行", Complete: true}})
+							return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn}
+						}}, nil
+					}}
+					runtime := started(t, driver, func(config *testConfig) { config.Grants.AllowAllTools = true })
+					input := spec()
+					input.Policies.Interaction = InteractionInteractive
+					input.Policies.Tools = native.ToolPolicy{Mode: native.ToolsAllowAll}
+					result := runTurn(runtime, turnCtx, input, turnOptions{InteractionHandler: interactionFunc(func(ctx context.Context, request native.InteractionRequest) (native.InteractionResponse, error) {
+						if scenario == "delivery_deadline" {
+							return native.InteractionResponse{}, context.DeadlineExceeded
+						}
+						// 模拟协调器在截止前取得接纳权，之后等待持久化/发布跨过本次期限。
+						time.Sleep(4 * time.Minute)
+						if ctx.Err() != nil {
+							t.Error("admission already expired")
+						}
+						<-ctx.Done()
+						if scenario == "native_cancelled" {
+							cancelRequest()
+						}
+						if scenario == "turn_cancelled" {
+							cancelTurn()
+						}
+						action := native.InteractionAccept
+						if scenario == "declined" {
+							action = native.InteractionDecline
+						}
+						return native.InteractionResponse{Invocation: request.Invocation, ID: request.ID, Action: action}, nil
+					})})
+					product := chatResult(SessionPlan{}, SessionDirective{}, result, &chatObserver{})
+					switch scenario {
+					case "turn_cancelled":
+						if product.Failure == nil || product.Failure.Code != FailureCodeContextCanceled {
+							t.Fatalf("turn cancellation=%+v", product.Failure)
+						}
+					case "delivery_deadline":
+						requireCode(t, result.Fault, native.FaultInteractionRequired)
+						if product.Failure == nil || product.Failure.Code != constants.RuntimeFailureCodeRequestTimeout {
+							t.Fatalf("delivery failure became human timeout: %+v", product.Failure)
+						}
+					default:
+						if result.Status != native.StatusCompleted || result.Fault != nil {
+							t.Fatalf("healthy turn failed: %+v", result)
+						}
+					}
+				})
+			})
+		}
+	}
+}
+
+func TestInteractionTimeoutNormalization(t *testing.T) {
+	for _, configured := range []time.Duration{0, time.Second, -time.Second} {
+		limits, err := normalizeLimits(native.Limits{InteractionTimeout: configured}, defaultLimits())
+		if configured < 0 {
+			if err == nil {
+				t.Fatal("negative interaction deadline accepted")
+			}
+			continue
+		}
+		want := configured
+		if want == 0 {
+			want = 5 * time.Minute
+		}
+		if err != nil || limits.InteractionTimeout != want {
+			t.Fatalf("timeout=%s error=%v want=%s", limits.InteractionTimeout, err, want)
+		}
 	}
 }

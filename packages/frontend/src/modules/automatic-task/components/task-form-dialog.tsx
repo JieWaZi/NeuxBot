@@ -243,7 +243,7 @@ export function TaskForm({
   const updateWorkflow = useMutation(
     withLocalErrorMutation(updateWorkflowAutomaticTaskMutation()),
   );
-  const schema = workflow.data?.revision?.manifest?.meta?.inputSchema ?? {};
+  const schema = workflow.data?.revision?.manifest?.inputSchema ?? {};
   const create = useMutation(
     withLocalErrorMutation(createAutomaticTaskMutation()),
   );

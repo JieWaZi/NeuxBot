@@ -329,8 +329,8 @@ func BenchmarkSQLIMDependencies(b *testing.B) {
 	for _, width := range []int{10, 100, 1000} {
 		b.Run(fmt.Sprintf("Children%d", width), func(b *testing.B) {
 			db := newTestDB(b).Session(&gorm.Session{Logger: logger.Discard})
-			meta := `export const meta={sdk:'ally.workflow/1',title:'调用',description:'子流程',phases:[{id:'phase',title:'调用',detail:'调用',canExit:true}]};`
-			leafSource := `export const meta={sdk:'ally.workflow/1',title:'发送',description:'发送',phases:[{id:'phase',title:'发送',detail:'发送',canExit:true}],actions:[{id:'send',label:'发送',description:'发送',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012'],imTargetIds:['target']}]};export const actions={send:async(ctx,input)=>null};return await action('send',{id:'deliver',label:'发送',phase:'phase'});`
+			meta := `export const meta={sdk:'ally.workflow',title:'调用',description:'子流程',phases:[{id:'phase',title:'调用',detail:'调用',canExit:true}]};`
+			leafSource := `export const meta={sdk:'ally.workflow',title:'发送',description:'发送',phases:[{id:'phase',title:'发送',detail:'发送',canExit:true}],actions:[{id:'send',label:'发送',description:'发送',risk:'external',type:'builtin',handler:'send',connectorIds:['b17d96aa55314c33ab46c172e8cab012'],imTargetIds:['target']}]};const actions={send:async(ctx,input)=>null};return await action('send',{id:'deliver',label:'发送',phase:'phase'});`
 			leaf, _, err := workflowdsl.Compile(leafSource)
 			if err != nil {
 				b.Fatal(err)

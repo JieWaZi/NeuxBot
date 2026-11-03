@@ -62,8 +62,8 @@ type WorkflowRevision struct {
 	ManifestDigest string `gorm:"type:varchar(64);not null" json:"manifestDigest"`
 	// IRDigest 绑定此版本的执行指令。
 	IRDigest string `gorm:"type:varchar(64);not null" json:"irDigest"`
-	// SDKVersion 是创作源码的原生契约版本。
-	SDKVersion string `gorm:"type:varchar(80);not null" json:"sdkVersion"`
+	// SDK 是创作源码使用的契约身份。
+	SDK string `gorm:"type:varchar(80);not null" json:"sdk"`
 	// CompilerVersion 是保存时固定的编译器版本。
 	CompilerVersion string `gorm:"type:varchar(80);not null" json:"compilerVersion"`
 	// IRVersion 是保存时固定的持久指令格式版本。

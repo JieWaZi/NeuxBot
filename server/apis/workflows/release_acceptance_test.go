@@ -127,7 +127,7 @@ func (r *releaseFixtureRuntime) Run(ctx context.Context, request fixtureInvocati
 		return failed(err)
 	}
 
-	return agentapi.Result{Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
+	return agentapi.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
 }
 
 func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.T) {
@@ -139,6 +139,8 @@ func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			directory := t.TempDir()
+			// 业务范围不包含应用数据库与文件快照，避免各步骤重复采集测试宿主自身。
+			businessDirectory := t.TempDir()
 			runtime := &releaseFixtureRuntime{fixtureRuntime: &fixtureRuntime{calls: map[string]int{}}, releaseB: make(chan struct{}), emptyBlocking: emptyBlocking}
 			s, _ := openCoreWorkflowPorts(t, directory, runtime, fixtureEnvironment{})
 			runtime.service = s
@@ -146,11 +148,11 @@ func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "full-release", Title: "多环境预审", CreationWakerID: "fixture-waker", ScopeBinding: models.WorkflowScopeBinding{WorkingDirectory: directory}})
+			definition, err := createDefinition(ctx, workflowAPIDependencies(s), CreateDefinitionCommand{RequestID: "full-release", Title: "多环境预审", CreationWakerID: "fixture-waker", ScopeBinding: models.WorkflowScopeBinding{WorkingDirectory: businessDirectory}})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "source", Source: string(source), SDKVersion: constants.WorkflowSDKVersion}); err != nil {
+			if _, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "source", Source: string(source), SDK: constants.WorkflowSDKIdentifier}); err != nil {
 				t.Fatal(err, diagnostics)
 			}
 			run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "full-f2", Args: map[string]any{"requirements": "R1 核心需求", "defects": "A/B风险，C分析失败", "environments": []string{"A", "B", "C"}, "localAcceptance": true}, Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex", AccountID: "system", Model: "fixture", PermissionLevel: constants.PermissionLevelFullAccess}})
@@ -173,7 +175,7 @@ func TestF2WholeCoreMaterialsReworkPipelineRealFilesAndBlockingGuard(t *testing.
 				t.Helper()
 				state := awaitFixtureState(t, s, run.ID, func(state controllers.WorkflowRunState) bool { return pending(state, node, environment).ID != "" })
 				human := pending(state, node, environment)
-				if err := answerHuman(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: util.New(), Value: value, Skip: skip}); err != nil {
+				if err := answerHumanFixture(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: human.ID, RequestID: util.New(), Value: value, Skip: skip}); err != nil {
 					t.Fatal(err)
 				}
 			}

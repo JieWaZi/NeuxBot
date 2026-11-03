@@ -61,6 +61,8 @@ type CreateChatSpec struct {
 	ProjectID string
 	// WorkingDirectory 是用户授权的临时目录，项目 Chat 为空。
 	WorkingDirectory string
+	// AdditionalWorkingDirectories 是宿主业务入口追加的受管目录，外部输入不能扩大工作范围。
+	AdditionalWorkingDirectories []string `json:"-"`
 }
 
 // PrepareChatGroupIntent 描述团队首发前需要成组建立的一人一个成员 Chat。
@@ -201,13 +203,14 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		clientRequestID: intent.ClientRequestID,
 		chatID:          intent.Chat.ChatID,
 		message: userMessage{
-			Actor:          intent.Input.Actor,
-			Text:           intent.Input.Content,
-			Attachments:    append([]AttachmentInput(nil), intent.Input.Attachments...),
-			CodeReferences: append([]CodeReferenceInput(nil), intent.Input.CodeReferences...),
-			SkillIDs:       append([]string(nil), intent.Input.SkillIDs...),
-			ConnectorIDs:   append([]string(nil), intent.Input.ConnectorIDs...),
-			PluginIDs:      append([]string(nil), intent.Input.PluginIDs...),
+			Actor:            intent.Input.Actor,
+			SteerExecutionID: intent.Input.SteerExecutionID,
+			Text:             intent.Input.Content,
+			Attachments:      append([]AttachmentInput(nil), intent.Input.Attachments...),
+			CodeReferences:   append([]CodeReferenceInput(nil), intent.Input.CodeReferences...),
+			SkillIDs:         append([]string(nil), intent.Input.SkillIDs...),
+			ConnectorIDs:     append([]string(nil), intent.Input.ConnectorIDs...),
+			PluginIDs:        append([]string(nil), intent.Input.PluginIDs...),
 		},
 		runtime: runtimeSelection{
 			ConfigurationResolved: intent.Options.ConfigurationResolved,
@@ -236,10 +239,11 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 	}
 	if intent.Chat.Create != nil {
 		request.create = &pendingChat{
-			hiddenFromWakerHistory: intent.Chat.Create.HiddenFromWakerHistory,
-			wakerID:                intent.Chat.Create.WakerID,
-			projectID:              intent.Chat.Create.ProjectID,
-			workingDirectory:       intent.Chat.Create.WorkingDirectory,
+			hiddenFromWakerHistory:       intent.Chat.Create.HiddenFromWakerHistory,
+			wakerID:                      intent.Chat.Create.WakerID,
+			projectID:                    intent.Chat.Create.ProjectID,
+			workingDirectory:             intent.Chat.Create.WorkingDirectory,
+			additionalWorkingDirectories: append([]string(nil), intent.Chat.Create.AdditionalWorkingDirectories...),
 		}
 	}
 	for _, instruction := range intent.Input.ContextInstructions {

@@ -12,7 +12,7 @@ import (
 )
 
 func testMachineSource(body string) string {
-	return `export const meta={sdk:'ally.workflow/1',title:'行为测试',description:'测试真实 Go 程序',phases:[{id:'main',title:'主流程',detail:'测试',canExit:true}]};` + body
+	return `export const meta={sdk:'ally.workflow',title:'行为测试',description:'测试真实 Go 程序',phases:[{id:'main',title:'主流程',detail:'测试',canExit:true}]};` + body
 }
 
 func runTestMachine(t *testing.T, source string, args any, handler func(EffectBoundary) Value) MachineState {
@@ -234,7 +234,7 @@ func TestAwaitPreservesArrayObjectAndTemplateEvaluationOrder(t *testing.T) {
 }
 
 func TestBuiltinHandlerHasIndependentContextAndCannotCaptureMainScope(t *testing.T) {
-	source := testMachineSource(`export const actions={echo:async(ctx,input)=>{const result=await ctx.callTool({callId:'echo',connectorId:'fixture',toolName:'echo',input});ctx.log(result);return result}};return null;`)
+	source := testMachineSource(`const actions={echo:async(ctx,input)=>{const result=await ctx.callTool({callId:'echo',connectorId:'fixture',toolName:'echo',input});ctx.log(result);return result}};return null;`)
 	source = strings.Replace(source, "phases:", "actions:[{id:'echo-action',label:'echo',description:'echo input',risk:'read',type:'builtin',handler:'echo',connectorIds:['fixture']}],phases:", 1)
 	compiled, diagnostics, err := Compile(source)
 	if err != nil {

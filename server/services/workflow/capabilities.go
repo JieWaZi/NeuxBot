@@ -21,6 +21,7 @@ import (
 	workflowtool "github.com/JieWaZi/NeuxBot/server/internal/workflow/capability"
 	workflowcatalog "github.com/JieWaZi/NeuxBot/server/internal/workflow/catalog"
 	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
+	workflowfiles "github.com/JieWaZi/NeuxBot/server/internal/workflow/files"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -38,8 +39,8 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 	if err := s.validateCreationExecution(ctx, session, scope.Token); err != nil {
 		return nil, err
 	}
-	if input.SDKVersion != "" && input.SDKVersion != constants.WorkflowSDKVersion {
-		return nil, status_error.WorkflowCapabilityUnsupported.WithField("capability", "sdk_version")
+	if input.SDK != "" && input.SDK != constants.WorkflowSDKIdentifier {
+		return nil, status_error.WorkflowCapabilityUnsupported.WithField("capability", "sdk_identity")
 	}
 	switch input.Action {
 	case constants.WorkflowActionQuery:
@@ -50,7 +51,7 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 			return s.prepareAuthoring(ctx, scope, session, input)
 		case constants.WorkflowQuerySDK:
 			content, err := workflowdsl.SDKTopic(input.Topic)
-			return map[string]any{"version": constants.WorkflowSDKVersion, "topic": input.Topic, "content": content}, err
+			return map[string]any{"sdk": constants.WorkflowSDKIdentifier, "topic": input.Topic, "content": content}, err
 		case constants.WorkflowQueryExamples:
 			source, err := workflowdsl.SDKExample(input.Topic)
 			return map[string]any{"source": source, "guidance": "Replace all example resource IDs with actual query resources results; validate complete source before saving."}, err
@@ -77,15 +78,25 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 			source = revision.Source
 			digest = revision.SourceDigest
 		}
-		return map[string]any{"workflowId": definition.ID, "revisionId": revisionID, "currentRevisionId": definition.CurrentRevisionID, "source": source, "sourceDigest": digest, "sdkVersion": constants.WorkflowSDKVersion}, nil
+		workspace, err := workflowfiles.PrepareWorkspace(s.dataDirectory, definition.ID, "")
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"workflowId": definition.ID, "revisionId": revisionID, "currentRevisionId": definition.CurrentRevisionID, "source": source, "sourceDigest": digest, "sdk": constants.WorkflowSDKIdentifier, "workspace": workspace}, nil
 	case constants.WorkflowActionSourceValidate:
-		compiled, diagnostics, err := workflowdsl.CompileForAuthoring(input.Source)
+		compiled, diagnostics, err := workflowdsl.Compile(input.Source)
 		if err == nil {
 			err = s.validateSourcePolicies(ctx, compiled.Manifest)
+		}
+		if err == nil {
+			var configurationDiagnostics []workflowdsl.Diagnostic
+			configurationDiagnostics, err = validateWorkerRetryPolicies(compiled.Manifest, &session.Defaults)
+			diagnostics = append(diagnostics, configurationDiagnostics...)
 		}
 		result := map[string]any{"valid": err == nil, "diagnostics": diagnostics}
 		if err != nil {
 			result["error"] = err.Error()
+			result["errorCode"] = workflowstate.ErrorKey(err)
 		}
 		if err == nil {
 			result["summary"] = map[string]any{
@@ -93,12 +104,19 @@ func (s *Service) handleCreationTool(ctx context.Context, scope workflowtool.Sco
 				"phases": len(compiled.Manifest.Meta.Phases), "sourceDigest": compiled.SourceDigest,
 			}
 			if input.IncludeManifest {
-				result["manifest"] = compiled.Manifest
+				result["manifest"] = workflowdsl.ExportCanvas(compiled.Manifest)
 			}
 		}
 		return result, nil
 	case constants.WorkflowActionSourceUpsert:
-		receipt, diagnostics, err := s.SaveSource(ctx, SaveSourceCommand{DefinitionID: session.DefinitionID, RequestID: input.RequestID, ExpectedRevisionID: input.ExpectedRevisionID, Source: input.Source, SDKVersion: input.SDKVersion, CreationSessionID: session.ID, CreationExecutionID: session.ActiveExecutionID, CreationToken: scope.Token, ResolvedAnnotationIDs: input.ResolvedAnnotationIDs})
+		if input.WorkflowID != "" && input.WorkflowID != session.DefinitionID {
+			return nil, status_error.WorkflowStateConflict
+		}
+		patches := make([]SourcePatch, len(input.Patches))
+		for i, p := range input.Patches {
+			patches[i] = SourcePatch{Search: p.Search, Replace: p.Replace}
+		}
+		receipt, diagnostics, err := s.SaveSource(ctx, SaveSourceCommand{Patches: patches, BaseSourceDigest: input.BaseSourceDigest, DefinitionID: session.DefinitionID, RequestID: input.RequestID, ExpectedRevisionID: input.ExpectedRevisionID, Source: input.Source, SDK: input.SDK, CreationSessionID: session.ID, CreationExecutionID: session.ActiveExecutionID, CreationToken: scope.Token, ResolvedAnnotationIDs: input.ResolvedAnnotationIDs})
 		if err != nil {
 			if diagnostics == nil {
 				diagnostics = []workflowdsl.Diagnostic{}
@@ -187,10 +205,10 @@ func (s *Service) prepareAuthoring(
 		resourceKinds = append(resourceKinds, "wakers", "runtimes", "accounts")
 	}
 	if slices.Contains(input.Primitives, "action") || slices.Contains(input.Features, "im") {
-		resourceKinds = append(resourceKinds, "builtinActions")
+		resourceKinds = append(resourceKinds, "builtinActions", "scriptLanguages")
 	}
 	if input.Language == "python" {
-		resourceKinds = append(resourceKinds, "functionLanguages")
+		resourceKinds = append(resourceKinds, "functionLanguages", "scriptLanguages")
 	}
 	for _, primitive := range input.Primitives {
 		if workflowcatalog.PrimitiveTopics()[primitive] == "workflow" {
@@ -241,10 +259,23 @@ func (s *Service) prepareAuthoring(
 		op, _ := capability.Find(id)
 		operations = append(operations, op)
 	}
-	return map[string]any{
+	result := map[string]any{
 		"workflow": source, "annotations": annotationPage, "topics": topics, "guideIds": guides,
 		"content": content.String(), "resources": resources, "operations": operations,
-	}, nil
+	}
+	if slices.Contains(input.Primitives, "worker") {
+		policies := map[string]any{}
+		for _, safety := range []string{"pure", "idempotent"} {
+			policy := workerRetryPolicy(safety, &session.Defaults)
+			capability := map[string]any{"supported": policy == 0}
+			if policy != 0 {
+				capability["errorCode"] = policy.Key()
+			}
+			policies[safety] = capability
+		}
+		result["execution"] = map[string]any{"defaults": session.Defaults, "workerRetry": policies}
+	}
+	return result, nil
 }
 
 // BindConsumer 签发用户选择的单回合能力，并只向中立 Core 绑定受限 CLI 能力。
@@ -425,7 +456,9 @@ func (s *Service) resourcesCatalog(ctx context.Context, definitionID string) (ma
 	if err != nil {
 		return nil, err
 	}
-	resources := map[string]any{"builtinActions": []map[string]any{{"id": constants.IMBuiltinConnectorID, "name": "IM 交付", "toolName": constants.IMBuiltinToolName, "description": "工作流内置交付操作，经 Runner 持久效果边界直接调用，不需要安装 MCP 连接器。"}}, "sdkVersion": constants.WorkflowSDKVersion, "toolPolicyCapabilities": workflowToolPolicyCapabilities(), "functionLanguages": []map[string]any{{"language": "javascript", "available": true, "executionModes": []string{"pure"}}, {"language": "python", "available": s.pythonExecutable != "", "executionModes": []string{"trusted_local"}}}}
+	pythonPath, pythonErr := s.resolvePython(ctx)
+	resources := map[string]any{"builtinActions": []map[string]any{{"id": constants.IMBuiltinConnectorID, "name": "IM 交付", "toolName": constants.IMBuiltinToolName, "description": "工作流内置交付操作，经 Runner 持久效果边界直接调用，不需要安装 MCP 连接器。"}}, "sdk": constants.WorkflowSDKIdentifier, "toolPolicyCapabilities": workflowToolPolicyCapabilities(), "functionLanguages": []map[string]any{{"language": "javascript", "available": true, "executionModes": []string{"pure"}}, {"language": "python", "available": pythonErr == nil, "executable": pythonPath, "executionModes": []string{"trusted_local"}}}}
+	resources["scriptLanguages"] = []map[string]any{{"language": "python", "available": pythonErr == nil, "executable": pythonPath, "protocols": []string{"json", "text"}}}
 	if s.wakers != nil {
 		wakers, err := s.wakers.List(ctx, "", 100, 0)
 		if err != nil {
@@ -694,7 +727,7 @@ func (s *Service) handleTool(ctx context.Context, scope workflowtool.Scope, inpu
 		if input.Type == constants.WorkflowQueryCapabilities {
 			return workflowtool.Capabilities(scope.Kind), nil
 		}
-		return map[string]any{"schema": schema, "nodeId": effect.Boundary.NodeID, "guidance": "Complete actual work, then call allycli workflow results submit with data matching this schema. A final reply is not a structured result. Submission remains a candidate until this execution succeeds."}, nil
+		return map[string]any{"schema": schema, "nodeId": effect.Boundary.NodeID, "guidance": "Complete actual work, then invoke workflow.results.submit through the host-provided capability transport with data matching this schema and a stable requestId. When ally_capabilities MCP is injected, use workflow_results_submit and its advertised input schema. A final reply is not a structured result. Submission remains a candidate until this execution succeeds."}, nil
 	}
 	encoded, err := json.Marshal(input.Data)
 	if err != nil || len(encoded) > constants.WorkflowOutputLimitBytes {

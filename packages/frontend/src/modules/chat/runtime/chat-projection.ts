@@ -67,6 +67,8 @@ export type ChatFileChange = ToolFileChangeSummary & { path: string };
 
 export type AllyChatMessage = ChatMessage & {
   optimistic?: boolean;
+  /** 仅覆盖队列交接窗口；持久关系由下一执行的 steerExecutionId 表达。 */
+  steerPending?: boolean;
   liveRevision?: number;
   codeReferences?: ChatCodeReference[];
 };
@@ -438,10 +440,10 @@ export function toThreadMessage(
   const role = message.role === "assistant" ? "assistant" : "user";
   const failure =
     message.status === "failed"
-      ? runtimeFailurePresentation(message.errorCode)
+      ? runtimeFailurePresentation(message.errorCode, message.errorMessage)
       : undefined;
   const errorMessage =
-    message.errorMessage?.trim() || failure?.message || incompleteErrorText;
+    failure?.message || message.errorMessage?.trim() || incompleteErrorText;
   const isTerminal = ["completed", "failed", "canceled"].includes(
     message.status ?? "",
   );

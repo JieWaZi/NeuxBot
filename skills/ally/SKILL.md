@@ -25,14 +25,17 @@ maintenance task.
 | A precise page correction, or execution inside an existing maintenance task | [Wiki maintenance and page revision](references/wiki-maintenance.md) |
 | Ingestion followed by Wiki maintenance | [Combined requests](references/wiki-guide.md#combined-requests) |
 | Observe an admitted knowledge task and deliver its final summary | [Knowledge task results](references/wiki-guide.md#knowledge-task-results) |
+| Host-bound workflow goals from the first message, edits and short follow-ups | [Workflow authoring](references/workflow-authoring.md) |
+| Execute an explicitly authorized existing workflow | [Workflow execution](references/workflow-execution.md) |
+| Submit the current workflow worker attempt's structured output | [Worker results](references/workflow-results.md) |
 
 For other domains, read the relevant guide advertised by the current capability.
 
 ## Command syntax and examples
 
-Read the matching reference below before the first domain call. Each reference
-contains shell examples and complete JSON input examples for its task. In all
-shell blocks, replace the leading `allycli` with the exact quoted executable
+When the host selects CLI transport, read the matching reference below before
+the first domain call. These references contain shell examples and complete
+JSON input examples for their tasks. In all shell blocks, replace the leading `allycli` with the exact quoted executable
 path described above. Examples use POSIX shell syntax; use the current shell's
 quoting and redirection on Windows. Example IDs, paths, versions and request
 identities are fictional: use discovered resources and values from actual reads.
@@ -50,27 +53,33 @@ reference's spelling. `--library` and `--libraryId` are not `--library-id`.
 | Knowledge lookup, ingestion and maintenance task | [Knowledge](references/wiki-guide.md#command-examples) |
 | Page/directory repair inside the authorized scope | [Wiki repair](references/wiki-maintenance.md#command-examples) |
 | Message/file delivery | [IM delivery](references/im-delivery.md#command-examples) |
-| Workflow creation/editing | [Authoring](references/workflow-authoring.md#command-examples) |
-| Workflow runs | [Execution](references/workflow-execution.md#command-examples) |
-| Worker result submission | [Results](references/workflow-results.md#command-examples) |
-| Workflow file delivery | [Output](references/output-delivery.md#command-examples) |
-| Workflow API retrieval | [API retrieval](references/api-retrieval.md#command-examples) |
 | Team coordination/reporting | [Lead](references/team-lead.md#command-examples), [member](references/team-member.md#command-examples) |
 | Durable memory | [Memory](references/memory.md#command-examples) |
 | Structured questions | [Questions](references/user-questions.md#command-examples) |
 
 ## Discover and invoke
 
-- Run `allycli capabilities` at first use in an execution. Discover only the
-  needed operations and reuse results. Use the reference example when it covers
-  the needed input shape. Read `describe <operation-id>` only for missing input
-  shapes, constraints or completion details; it owns the live contract.
-  On `AgentInputInvalid`, read the exact subcommand `--help` or `describe` once, correct the call and reuse that
-  contract. Do not trial alternate flag spellings or treat a parse failure as
-  an empty business result.
-- For workflow creation/editing, use `workflow authoring prepare --primitives
-  <actual DSL calls>` when advertised. Reuse its guides, SDK and save contracts.
-  Read `guide <guide-id>` only for relevant instructions not already supplied.
+- Prefer the injected `ally_capabilities` MCP tools. They use the same operation
+  contracts, authorization and receipts as CLI. When using CLI, include the
+  exact `--context <execution-file>` supplied for this turn; do not reuse a
+  prior turn's environment or edit connection files.
+- In a host-bound workflow authoring conversation, business goals describe a
+  reusable workflow to create or modify, starting with the first message. Follow
+  the authoring guide supplied in the host instructions. Native CLI workflow
+  features or a one-off business result cannot replace the NeuxBot save receipt.
+  Pure explanations need no save; short corrections stay in authoring mode.
+
+- In a workflow execution with injected MCP, use its tools and input schemas
+  directly. Authoring starts with `workflow_authoring_prepare`; reuse its
+  guides, SDK and save contracts. Do not bootstrap CLI discovery alongside MCP
+  or switch transports to bypass a tool error.
+- When the host selects CLI transport, run `allycli capabilities` at first use.
+  Discover only needed operations; `describe <operation-id>` owns their inputs,
+  limits and completion semantics. Read `guide <guide-id>` only for relevant
+  guidance not already supplied. On `AgentInputInvalid`, read the exact
+  subcommand `--help` or `describe` once and correct the call; do not trial
+  alternate flag spellings or treat a parse failure as an empty business result.
+  The following flag syntax applies to CLI.
 - Use short scalar flags or UTF-8 JSON through `--input <file>` / `--input -`.
   Keep long content and secrets out of shell command strings.
 - Choose a stable `--request-id` before a mutation. If its outcome is unknown,

@@ -14,6 +14,10 @@ const (
 	RuntimeFailureCodeNetworkError RuntimeFailureCode = "NETWORK_ERROR"
 	// RuntimeFailureCodeRequestTimeout 表示请求超过期限，不等同于用户停止。
 	RuntimeFailureCodeRequestTimeout RuntimeFailureCode = "REQUEST_TIMEOUT"
+	// RuntimeFailureCodeInputTimeout 表示本次等待用户回答的期限到期。
+	RuntimeFailureCodeInputTimeout RuntimeFailureCode = "INPUT_TIMEOUT"
+	// RuntimeFailureCodeApprovalTimeout 表示本次等待用户审批的期限到期。
+	RuntimeFailureCodeApprovalTimeout RuntimeFailureCode = "APPROVAL_TIMEOUT"
 	// RuntimeFailureCodeContextTooLarge 表示当前上下文超过所选模型限制。
 	RuntimeFailureCodeContextTooLarge RuntimeFailureCode = "CONTEXT_TOO_LARGE"
 	// RuntimeFailureCodeRuntimeNotFound 表示请求的开放 Runtime ID 未注册。
@@ -36,6 +40,8 @@ const (
 	RuntimeFailureCodeContextCanceled RuntimeFailureCode = "CONTEXT_CANCELED"
 	// RuntimeFailureCodeEventDelivery 表示 Event Sink 失败或超时。
 	RuntimeFailureCodeEventDelivery RuntimeFailureCode = "EVENT_DELIVERY_FAILED"
+	// RuntimeFailureCodeEventBudgetExceeded 表示本轮事件数量或累计载荷超过保护预算。
+	RuntimeFailureCodeEventBudgetExceeded RuntimeFailureCode = "EVENT_BUDGET_EXCEEDED"
 	// RuntimeFailureCodeFrameTooLarge 表示单个协议帧超过硬限制。
 	RuntimeFailureCodeFrameTooLarge RuntimeFailureCode = "FRAME_TOO_LARGE"
 	// RuntimeFailureCodeInactivityTimeout 表示 Runtime 超过允许时间没有原始进程活动。

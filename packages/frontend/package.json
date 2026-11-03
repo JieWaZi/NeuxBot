@@ -54,8 +54,6 @@
     "@hey-api/client-fetch": "0.13.1",
     "@hey-api/openapi-ts": "0.99.0",
     "@hookform/resolvers": "5.5.7",
-    "@json-render/core": "0.21.0",
-    "@json-render/react": "0.21.0",
     "@lezer/highlight": "^1.2.4",
     "@lobehub/icons": "^5.15.0",
     "@ncdai/react-wheel-picker": "1.2.2",

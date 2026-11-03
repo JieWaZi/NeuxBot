@@ -88,7 +88,7 @@ func (r *admissionConfigurationRuntime) Run(ctx context.Context, request fixture
 			return agentapi.Result{ExitCode: 1}
 		}
 	}
-	return agentapi.Result{Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
+	return agentapi.Result{StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal, Facts: agentapi.InvocationFacts{InvocationID: invocation, RuntimeID: "codex", BaseRuntimeID: "codex"}, ProtocolHealthy: true}
 }
 
 func TestWorkerAdmissionFreezesDefaultsAcrossHumanWaitAndRestart(t *testing.T) {
@@ -111,7 +111,7 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 	runtime := &admissionConfigurationRuntime{observations: make(chan observedWorkerConfiguration, 2), final: &final}
 	environment := &mutableAdmissionEnvironment{initialReasoning: reasoning}
 	s, _ := openCoreWorkflowPorts(t, t.TempDir(), runtime, environment)
-	source := `export const meta={sdk:'ally.workflow/1',title:'配置冻结',description:'等待后恢复',nodeResultPageOmissions:{first:'只返回默认配置冻结测试的控制值',second:'只返回显式配置冻结测试的控制值'},phases:[{id:'work',title:'执行',detail:'冻结默认配置',canExit:true}]};const answer=await askUser('继续？',{id:'wait',label:'等待',phase:'work'});const first=await worker('第一项',{id:'first',label:'继承默认',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex'}});const second=await worker('第二项',{id:'second',label:'显式模型',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex',model:'override',permissionLevel:'full-access'}});if(answer.value==='fail'){throw 'RETRY_TEST';}return [first,second];`
+	source := `export const meta={sdk:'ally.workflow',title:'配置冻结',description:'等待后恢复',phases:[{id:'work',title:'执行',detail:'冻结默认配置',canExit:true}]};const answer=await askUser('继续？',{id:'wait',label:'等待',phase:'work'});const first=await worker('第一项',{id:'first',label:'继承默认',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex'}});const second=await worker('第二项',{id:'second',label:'显式模型',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex',model:'override',permissionLevel:'full-access'}});if(answer.value==='fail'){throw 'RETRY_TEST';}return [first,second];`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex"}})
 	if err != nil {
@@ -133,7 +133,7 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(restored.Close)
-	if err := answerHuman(ctx, workflowAPIDependencies(restored), AnswerHumanCommand{RunID: run.ID, HumanID: state.Humans[0].ID, RequestID: "answer", Value: "fail"}); err != nil {
+	if err := answerHumanFixture(ctx, workflowAPIDependencies(restored), AnswerHumanCommand{RunID: run.ID, HumanID: state.Humans[0].ID, RequestID: "answer", Value: "fail"}); err != nil {
 		t.Fatal(err)
 	}
 	state = awaitFixtureState(t, restored, run.ID, func(state controllers.WorkflowRunState) bool {
@@ -160,28 +160,34 @@ func testWorkerAdmissionFrozenConfiguration(t *testing.T, reasoning string) {
 		t.Fatal(err)
 	}
 	retryState := awaitFixtureState(t, restored, retried.ID, func(state controllers.WorkflowRunState) bool { return len(state.Humans) == 1 })
-	if err := answerHuman(ctx, workflowAPIDependencies(restored), AnswerHumanCommand{RunID: retried.ID, HumanID: retryState.Humans[0].ID, RequestID: "retry-answer", Value: "continue"}); err != nil {
+	if err := answerHumanFixture(ctx, workflowAPIDependencies(restored), AnswerHumanCommand{RunID: retried.ID, HumanID: retryState.Humans[0].ID, RequestID: "retry-answer", Value: "continue"}); err != nil {
 		t.Fatal(err)
 	}
 	awaitFixtureState(t, restored, retried.ID, func(state controllers.WorkflowRunState) bool {
 		return state.Run.Status == constants.WorkflowRunStatusSucceeded
 	})
-	for index, model := range []string{"fixture", "override"} {
-		permission := agentapi.PermissionLevelDefault
-		if index == 1 {
-			permission = agentapi.PermissionLevelFullAccess
-		}
-		var actual observedWorkerConfiguration
-		select {
-		case actual = <-runtime.observations:
-		case <-time.After(5 * time.Second):
-			t.Fatalf("worker %d was not dispatched: status=%s failure=%+v", index, state.Run.Status, state.Run.Failure)
-		}
-		configurationMatches := actual.model == model && actual.reasoning == reasoning && actual.permission == permission
-		if actual.account != "" || !configurationMatches {
-			t.Fatalf("retry changed the original resolved configuration: %+v", actual)
+	finalState, err := restored.Runs.LoadRunState(ctx, retried.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reused := 0
+	for _, instance := range finalState.Instances {
+		if len(instance.ReusedFrom) > 0 {
+			reused++
 		}
 	}
+	if reused != 2 {
+		t.Fatalf("retry did not reuse matching worker results: %+v", finalState.Instances)
+	}
+	if len(runtime.observations) != 0 {
+		t.Fatal("reused worker dispatched again")
+	}
+	for node, configuration := range finalState.Run.WorkerConfigurations {
+		if configuration.Reasoning != reasoning || configuration.RuntimeID != "codex" {
+			t.Fatalf("retry changed frozen config %s: %+v", node, configuration)
+		}
+	}
+
 }
 
 func TestWorkerNodePermissionCannotEscalateConsumer(t *testing.T) {
@@ -190,7 +196,7 @@ func TestWorkerNodePermissionCannotEscalateConsumer(t *testing.T) {
 		observations: make(chan observedWorkerConfiguration, 1), final: &final,
 	}
 	s, _ := openCoreWorkflowPorts(t, t.TempDir(), runtime, fixtureEnvironment{})
-	source := `export const meta={sdk:'ally.workflow/1',title:'节点权限',description:'调用权限边界',nodeResultPageOmissions:{task:'只返回权限边界测试的控制值'},phases:[{id:'work',title:'执行',detail:'验证权限',canExit:true}]};return await worker('整理关注项',{id:'task',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex',permissionLevel:'full-access'}});`
+	source := `export const meta={sdk:'ally.workflow',title:'节点权限',description:'调用权限边界',phases:[{id:'work',title:'执行',detail:'验证权限',canExit:true}]};return await worker('整理关注项',{id:'task',label:'整理',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex',permissionLevel:'full-access'}});`
 	definition := savedTestWorkflow(t, s, source)
 	_, err := s.StartRun(context.Background(), workflow.StartRunCommand{
 		DefinitionID: definition.ID, RequestID: "consumer", ConsumerLeaseID: "caller",
@@ -219,7 +225,7 @@ func TestPlainWorkerRequiresFinalAndPreservesExplicitEmptyResult(t *testing.T) {
 			}
 			runtime := &admissionConfigurationRuntime{observations: make(chan observedWorkerConfiguration, 1), final: final}
 			s, _ := openCoreWorkflowPorts(t, t.TempDir(), runtime, fixtureEnvironment{})
-			source := `export const meta={sdk:'ally.workflow/1',title:'最终结果',description:'真实执行结果',nodeResultPageOmissions:{task:'只返回最终消息协议测试的控制值'},phases:[{id:'work',title:'执行',detail:'检查 final',canExit:true}]};return await worker('完成任务',{id:'task',label:'任务',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex'}});`
+			source := `export const meta={sdk:'ally.workflow',title:'最终结果',description:'真实执行结果',phases:[{id:'work',title:'执行',detail:'检查 final',canExit:true}]};return await worker('完成任务',{id:'task',label:'任务',phase:'work',resolve:{kind:'waker',wakerId:'fixture-waker',runtimeId:'codex'}});`
 			definition := savedTestWorkflow(t, s, source)
 			run, err := s.StartRun(context.Background(), workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "codex"}})
 			if err != nil {

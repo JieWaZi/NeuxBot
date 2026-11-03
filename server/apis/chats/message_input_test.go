@@ -24,3 +24,14 @@ func TestSendMessagePreservesSubmissionIdentityAtHTTPBoundary(t *testing.T) {
 		t.Fatal("creation must retain its one existing request identity")
 	}
 }
+
+func TestMessagePreservesSteerExecution(t *testing.T) {
+	var request SendMessageRequest
+	if err := json.Unmarshal([]byte(`{"steerExecutionId":" previous ","text":"追加要求"}`), &request); err != nil {
+		t.Fatal(err)
+	}
+	input, _ := request.workInput()
+	if input.SteerExecutionID != "previous" {
+		t.Fatalf("steer identity = %q", input.SteerExecutionID)
+	}
+}

@@ -64,8 +64,6 @@ type WorkflowRunController interface {
 	CreateRun(context.Context, models.WorkflowRun, models.WorkflowFiber) error
 	// GetEffect 读取 scoped 工具绑定的效果。
 	GetEffect(context.Context, string) (models.WorkflowEffect, error)
-	// ListNodeInstances 分页读取指定节点的全部实例，不依赖运行详情的首个窗口。
-	ListNodeInstances(context.Context, string, string, int, int) ([]models.WorkflowNodeInstance, int64, error)
 	// ListChatAttempts 读取独立 worker Chat 绑定的效果，不读取消息或返回候选结果。
 	ListChatAttempts(context.Context, string) ([]models.WorkflowEffect, error)
 	// ListInstanceAttempts 按代际读取节点全部至多五次独立尝试，包含旧失败证据。
@@ -379,8 +377,8 @@ func (c *workflowRunController) CommitRunState(ctx context.Context, value Workfl
 	columns := [][]string{
 		{"state", "status", "boundary", "waiting_id", "stage_index"},
 		{"results", "finished", "status", "failure"},
-		{"status", "chat_id", "execution_id", "effect_id", "attempt_generation", "output", "failure", "completed_at"},
-		{"status", "chat_id", "final_message_id", "execution_status", "child_run_id", "candidate", "result", "failure", "deadline_at", "builtin_state", "slot_reserved", "skip_requested"},
+		{"status", "chat_id", "execution_id", "effect_id", "attempt_generation", "output", "failure", "completed_at", "reused_from"},
+		{"status", "chat_id", "final_message_id", "execution_status", "child_run_id", "candidate", "result", "failure", "deadline_at", "builtin_state", "slot_reserved", "skip_requested", "output_repairs"},
 		{"status", "value", "source", "answered_at"},
 		{"status", "allowed", "answered_at"},
 		{"status", "result", "failure"},
@@ -461,17 +459,4 @@ func (c *workflowRunController) ListChatAttempts(ctx context.Context, chatID str
 		return nil, databaseError("list_workflow_chat_attempts", chatID, err)
 	}
 	return values, nil
-}
-
-func (c *workflowRunController) ListNodeInstances(ctx context.Context, runID, nodeID string, limit, offset int) ([]models.WorkflowNodeInstance, int64, error) {
-	values := []models.WorkflowNodeInstance{}
-	query := controllerDB(ctx, c.db).Model(&models.WorkflowNodeInstance{}).Where("run_id = ? AND node_id = ?", runID, nodeID)
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, databaseError("count_workflow_node_instances", runID, err)
-	}
-	if err := query.Order("created_at ASC, id ASC").Limit(limit).Offset(offset).Find(&values).Error; err != nil {
-		return nil, 0, databaseError("list_workflow_node_instances", runID, err)
-	}
-	return values, total, nil
 }

@@ -45,6 +45,8 @@ import {
   useChatQueueStore,
   type ChatSendSelection,
   type QueuedChatEntry,
+  type PreparedChatSubmission,
+  type ChatSubmissionPreparer,
 } from "./chat-queue-store";
 import {
   classifyChatSendFailure,
@@ -82,14 +84,7 @@ import type {
 const COMPOSER_MESSAGES: readonly ThreadMessageLike[] = [];
 const convertComposerMessage = (message: ThreadMessageLike) => message;
 
-/** 请求适配层同步确定真实输入身份；接纳命令沿用同一份请求。 */
-export type PreparedChatSubmission = {
-  /** 普通 HTTP 输入复用已有幂等身份；无身份的领域入口保持缺省。 */
-  submissionId?: string;
-  /** 权威消息或成功回执确认接纳后，按本命令身份退役重试记录；重复确认无副作用。 */
-  confirmAccepted?: () => void;
-  accept: () => Promise<MessageResult>;
-};
+export type { PreparedChatSubmission } from "./chat-queue-store";
 
 type ChatRuntimeOptions = {
   conversationKey: ChatScopeKey;
@@ -99,6 +94,8 @@ type ChatRuntimeOptions = {
   chatId?: string;
   messageSource: ChatMessageSource;
   activeExecutionId?: string;
+  /** 人工待办摘要的权威日志游标，与消息历史游标分别对账。 */
+  initialInteractionSequence?: number;
   initialPendingApprovals?: PendingApproval[];
   initialPendingElicitations?: PendingElicitation[];
   isLoading: boolean;
@@ -112,12 +109,7 @@ type ChatRuntimeOptions = {
   onMessageAccepted?: () => void;
   onMessageRejected?: (selection: ChatSendSelection) => void;
   onApprovalRequested?: (approval: PendingApproval) => void;
-  prepareSubmission: (
-    text: string,
-    chatId?: string,
-    attachmentPaths?: string[],
-    selection?: ChatSendSelection,
-  ) => PreparedChatSubmission;
+  prepareSubmission: ChatSubmissionPreparer;
   cancel: () => Promise<void>;
   onSettled?: (
     result: MessageResult,
@@ -145,6 +137,7 @@ type SendSnapshot = {
   queueKey: string;
   chatId?: string;
   selection: ChatSendSelection;
+  prepareSubmission: ChatSubmissionPreparer;
 };
 
 function textOf(message: AppendMessage): string {
@@ -323,12 +316,22 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       }
     }
     for (const approval of overlay.added) {
-      if (approval.approvalId && !resolved.has(approval.approvalId)) {
+      if (
+        approval.approvalId &&
+        !resolved.has(approval.approvalId) &&
+        (approval.requestedSequence ?? 0) >
+          (options.initialInteractionSequence ?? 0)
+      ) {
         approvals.set(approval.approvalId, approval);
       }
     }
     return [...approvals.values()];
-  }, [approvalOverlay, options.chatId, options.initialPendingApprovals]);
+  }, [
+    approvalOverlay,
+    options.chatId,
+    options.initialPendingApprovals,
+    options.initialInteractionSequence,
+  ]);
   useEffect(() => {
     approvalPendingRef.current = pendingApprovals.length > 0;
   }, [pendingApprovals]);
@@ -350,13 +353,20 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     for (const elicitation of overlay.added) {
       if (
         elicitation.elicitationId &&
-        !resolved.has(elicitation.elicitationId)
+        !resolved.has(elicitation.elicitationId) &&
+        (elicitation.requestedSequence ?? 0) >
+          (options.initialInteractionSequence ?? 0)
       ) {
         elicitations.set(elicitation.elicitationId, elicitation);
       }
     }
     return [...elicitations.values()];
-  }, [elicitationOverlay, options.chatId, options.initialPendingElicitations]);
+  }, [
+    elicitationOverlay,
+    options.chatId,
+    options.initialPendingElicitations,
+    options.initialInteractionSequence,
+  ]);
 
   const messages = useMemo(() => {
     const overlayMessages = overlayMatchesScope(
@@ -367,8 +377,32 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       ? overlay.messages
       : [];
     const localMessages = mergeLocalMessages(handoffMessages, overlayMessages);
-    return mergeAuthoritativeMessages(localMessages, history.messages);
-  }, [handoffMessages, options.chatId, history.messages, overlay]);
+    const merged = mergeAuthoritativeMessages(localMessages, history.messages);
+    const pendingSteers = new Set(
+      queuedEntries
+        .map((entry) => entry.selection.steerExecutionId)
+        .filter(Boolean),
+    );
+    const pendingSteerSubmissions = new Set(
+      queuedEntries
+        .map((entry) => entry.selection.steerSubmissionId)
+        .filter(Boolean),
+    );
+    return merged.map((message) =>
+      message.role === "assistant" &&
+      ((message.executionId && pendingSteers.has(message.executionId)) ||
+        (message.submissionId &&
+          pendingSteerSubmissions.has(message.submissionId)))
+        ? { ...message, steerPending: true }
+        : message,
+    );
+  }, [
+    handoffMessages,
+    options.chatId,
+    history.messages,
+    overlay,
+    queuedEntries,
+  ]);
   const isRunning = Boolean(
     (sending?.queueKey === options.queueKey &&
       !messages.some(
@@ -468,7 +502,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
             : "");
       if (!text) return;
 
-      const prepared = prepareSubmission(
+      const prepared = snapshot.prepareSubmission(
         text,
         snapshot.chatId,
         attachmentPaths,
@@ -525,6 +559,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           role: "assistant",
           content: "",
           status: "pending",
+          steerExecutionId: snapshot.selection.steerExecutionId,
           createdAt: now,
           updatedAt: now,
           optimistic: true,
@@ -738,7 +773,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       attachmentOnlyText,
       onSettled,
       referenceOnlyText,
-      prepareSubmission,
       confirmSubmission,
       reconcileHistory,
       queueStore,
@@ -750,6 +784,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       conversationKey: options.conversationKey,
       queueKey: options.queueKey,
       chatId: options.chatId,
+      prepareSubmission,
       selection: {
         ...options.selection,
         skillIds: options.selection.skillIds
@@ -767,9 +802,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         connectorIds: options.selection.connectorIds
           ? [...options.selection.connectorIds]
           : undefined,
-        workflowIds: options.selection.workflowIds
-          ? [...options.selection.workflowIds]
-          : undefined,
         selectedConnectors: options.selection.selectedConnectors?.map(
           (connector) => ({ ...connector }),
         ),
@@ -783,6 +815,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       options.conversationKey,
       options.queueKey,
       options.selection,
+      prepareSubmission,
     ],
   );
   const advanceQueue = useCallback(
@@ -793,11 +826,26 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       if (approvalPendingRef.current) return;
       const head = queueStore.take(queueKey);
       if (!head) return;
+      const steerExecutionId =
+        head.selection.steerExecutionId ??
+        (head.selection.steerSubmissionId
+          ? [
+              ...sourceRef.current.snapshot.messages,
+              ...overlayRef.current.messages,
+              ...handoffMessagesRef.current,
+            ].find(
+              (message) =>
+                message.role === "assistant" &&
+                message.submissionId === head.selection.steerSubmissionId &&
+                message.executionId,
+            )?.executionId
+          : undefined);
       void submit(head.message, {
         conversationKey: options.conversationKey,
         queueKey,
         chatId: head.chatId,
-        selection: head.selection,
+        selection: { ...head.selection, steerExecutionId },
+        prepareSubmission: head.prepareSubmission ?? prepareSubmission,
       });
     },
     [
@@ -806,6 +854,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       options.queueKey,
       queueStore,
       submit,
+      prepareSubmission,
     ],
   );
 
@@ -1032,6 +1081,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
               name: option.name,
             })),
             requestedAt: event.recordedAt,
+            requestedSequence: event.sequence,
           };
           setApprovalOverlay((current) => {
             const added =
@@ -1087,6 +1137,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
             requestedSchema: elicitationRequest.requestedSchema,
             url: elicitationRequest.url,
             requestedAt: event.recordedAt,
+            requestedSequence: event.sequence,
           };
           setElicitationOverlay((current) => {
             const added =
@@ -1202,6 +1253,19 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     [currentSnapshot, submit],
   );
   const queue = useMemo<ExternalThreadQueueAdapter>(() => {
+    const currentAssistant = messages.findLast(
+      (item) =>
+        item.role === "assistant" &&
+        ["pending", "running"].includes(item.status ?? ""),
+    );
+    const steerTarget = isRunning
+      ? {
+          steerExecutionId: currentAssistant
+            ? currentAssistant.executionId
+            : options.activeExecutionId,
+          steerSubmissionId: currentAssistant?.submissionId,
+        }
+      : {};
     return {
       items: options.serverManagedQueue
         ? []
@@ -1218,7 +1282,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           prompt: promptOf(message),
           message,
           chatId: currentSnapshot.chatId,
-          selection: currentSnapshot.selection,
+          selection: {
+            ...currentSnapshot.selection,
+            ...(steer ? steerTarget : {}),
+          },
+          prepareSubmission: currentSnapshot.prepareSubmission,
         };
         messageAcceptedRef.current?.();
         const current = queueStore.getEntries(queueKey);
@@ -1239,7 +1307,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
         const current = queueStore.getEntries(queueKey);
         const target = current.find((item) => item.id === queueItemID);
         if (!target) return;
-        queueStore.promote(queueKey, queueItemID);
+        queueStore.promote(queueKey, queueItemID, steerTarget);
         if (isRunning) void cancel();
         else advanceQueue(queueKey);
       },
@@ -1258,6 +1326,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     cancel,
     queueKey,
     queuedEntries,
+    messages,
+    options.activeExecutionId,
     queueStore,
     submit,
     options.serverManagedQueue,

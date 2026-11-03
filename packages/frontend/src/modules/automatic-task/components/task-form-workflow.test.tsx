@@ -38,14 +38,12 @@ vi.mock("@/shared/api/generated/sdk.gen", async (original) => ({
       revision: {
         id: "v1",
         manifest: {
-          meta: {
-            inputSchema: {
-              type: "object",
-              required: ["text"],
-              properties: {
-                text: { type: "string", title: "示例文本" },
-                repeat: { type: "integer", default: 2 },
-              },
+          inputSchema: {
+            type: "object",
+            required: ["text"],
+            properties: {
+              text: { type: "string", title: "示例文本" },
+              repeat: { type: "integer", default: 2 },
             },
           },
         },

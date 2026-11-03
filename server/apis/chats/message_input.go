@@ -9,6 +9,9 @@ import (
 
 // 消息请求
 type MessageRequest struct {
+	// 接续执行标识
+	SteerExecutionID string `json:"steerExecutionId,omitempty" validate:"max=32"`
+
 	// AccountID 是本次冻结的账号标识；空值使用智能体默认配置。
 	AccountID string `json:"accountId,omitempty" validate:"max=32"`
 	// 消息正文
@@ -39,8 +42,6 @@ type MessageRequest struct {
 	PluginIDs []string `json:"pluginIds,omitempty" validate:"max=100,dive,max=32"`
 	// 连接器列表
 	ConnectorIDs []string `json:"connectorIds" validate:"max=100,dive,max=32"`
-	// 工作流列表
-	WorkflowIDs []string `json:"workflowIds,omitempty" validate:"max=100,dive,max=32"`
 	// 代码引用
 	CodeReferences []MessageCodeReference `json:"codeReferences" validate:"max=100,dive"`
 }
@@ -84,13 +85,14 @@ func (r MessageRequest) workInput() (execution.WorkInput, execution.WorkOptions)
 		})
 	}
 	return execution.WorkInput{
-			Actor:          "user",
-			Content:        r.Text,
-			Attachments:    attachments,
-			SkillIDs:       append([]string(nil), r.SkillIDs...),
-			ConnectorIDs:   append([]string(nil), r.ConnectorIDs...),
-			PluginIDs:      append([]string(nil), r.PluginIDs...),
-			CodeReferences: references,
+			Actor:            "user",
+			SteerExecutionID: strings.TrimSpace(r.SteerExecutionID),
+			Content:          r.Text,
+			Attachments:      attachments,
+			SkillIDs:         append([]string(nil), r.SkillIDs...),
+			ConnectorIDs:     append([]string(nil), r.ConnectorIDs...),
+			PluginIDs:        append([]string(nil), r.PluginIDs...),
+			CodeReferences:   references,
 		}, execution.WorkOptions{
 			AccountID: strings.TrimSpace(r.AccountID),
 			RuntimeID: strings.TrimSpace(r.RuntimeID),

@@ -35,7 +35,9 @@ export function ExecutionFileChangesCard({
   const active = useContext(ContentVisibility);
   const owner = chatId ?? scope.chatId;
   const reference = message.fileChangeRecord;
-  const empty = reference?.state === "ready" && reference.totalFiles === 0;
+  // 授权范围与采集状态不是编辑证据；确认有净变更后才展示文件成果。
+  const empty =
+    reference?.state === "pending" || (reference?.totalFiles ?? 0) <= 0;
   const element = useRef<HTMLElement>(null);
   const [activated, setActivated] = useState(false);
   useEffect(() => {
@@ -81,13 +83,7 @@ export function ExecutionFileChangesCard({
     state === "partial" ||
     state === "incomplete" ||
     summary.data?.complete === false;
-  if (
-    state === "ready" &&
-    !summary.isPending &&
-    !summary.isError &&
-    count === 0
-  )
-    return null;
+  if (count <= 0) return null;
   const rows = expanded ? files : files.slice(0, 3);
   // 仅在列表完整且每项行数已知时汇总，未知统计不能当作零。
   const totals =

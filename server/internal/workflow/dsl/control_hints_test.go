@@ -8,7 +8,7 @@ import (
 )
 
 func TestControlHintsPreserveExclusiveBranchesGroupsAndSource(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow/1',title:'画布拓扑',description:'保留真实控制关系',phases:[{id:'work',title:'工作',detail:'任务',canExit:true}]};
+	source := `export const meta={sdk:'ally.workflow',title:'画布拓扑',description:'保留真实控制关系',phases:[{id:'work',title:'工作',detail:'任务',canExit:true}]};
 phase('work');
 if(args.审核通过){
  await parallel([
@@ -54,7 +54,7 @@ await askUser('交付',{id:'deliver',label:'交付',phase:'work'});return true;`
 }
 
 func TestControlHintsTrackShortCircuitLoopAndDynamicTaskTemplates(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow/1',title:'短路与循环',description:'不可伪造运行分支',phases:[{id:'work',title:'工作',detail:'任务',canExit:true}]};
+	source := `export const meta={sdk:'ally.workflow',title:'短路与循环',description:'不可伪造运行分支',phases:[{id:'work',title:'工作',detail:'任务',canExit:true}]};
 const callbacks=[async()=>args.reference];
 await parallel(callbacks,{id:'referenced_tasks'});
 args.ready && await askUser('条件任务',{id:'conditional',label:'条件任务',phase:'work'});
@@ -86,7 +86,7 @@ return true;`
 }
 
 func TestControlHintsKeepForUpdateSeparateFromContinue(t *testing.T) {
-	source := `export const meta={sdk:'ally.workflow/1',title:'循环更新',description:'continue 仍执行更新',phases:[{id:'work',title:'工作',detail:'循环',canExit:true}]};
+	source := `export const meta={sdk:'ally.workflow',title:'循环更新',description:'continue 仍执行更新',phases:[{id:'work',title:'工作',detail:'循环',canExit:true}]};
 for(let i=0;i<args.count;await askUser('更新',{id:'update',label:'更新',phase:'work'})){
  i++;
  if(args.skip){continue;}
@@ -119,6 +119,9 @@ func assertControlNodeCoverage(t *testing.T, manifest Manifest) {
 	}
 	visit(manifest.ControlHints)
 	for _, node := range manifest.Nodes {
+		if node.Kind == "input" || node.Kind == "result" {
+			continue
+		}
 		if counts[node.ID] != 1 {
 			t.Fatalf("node %s appears %d times in control projection", node.ID, counts[node.ID])
 		}

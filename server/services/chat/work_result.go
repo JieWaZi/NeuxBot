@@ -63,7 +63,7 @@ func resultFromRecords(records []eventlog.Record, messageID string) (*models.Wor
 			if json.Unmarshal(r.Data, &reference) != nil {
 				return nil, status_error.ChatLogCorrupted
 			}
-			// 没有净变化的 ready 状态不产生可读文件交付，保留原正文版本与引用。
+			// 没有确认的净变化时不产生可读文件交付，采集状态不前移正文版本。
 			fileResult, fileReference = nil, nil
 			if reference.State != "pending" && fileResultNeedsPresentation(reference) {
 				fileResult, fileReference = r, &reference
@@ -106,9 +106,9 @@ func resultFromRecords(records []eventlog.Record, messageID string) (*models.Wor
 	return nil, nil
 }
 
-// fileResultNeedsPresentation 只为实际文件交付或需要用户看到的采集边界绑定卡片阅读身份。
+// fileResultNeedsPresentation 只为确认有净变更的文件交付绑定卡片阅读身份。
 func fileResultNeedsPresentation(reference eventlog.FileChangesData) bool {
-	return reference.TotalFiles > 0 || reference.State == "partial" || reference.State == "unavailable" || reference.State == "incomplete"
+	return reference.TotalFiles > 0
 }
 
 // publishResult 与查询投影使用同一短事务，阅读事实在重建中保持不变。

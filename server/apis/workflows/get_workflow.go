@@ -2,6 +2,7 @@ package workflows
 
 import (
 	"github.com/JieWaZi/NeuxBot/server/global"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -26,7 +27,38 @@ type WorkflowDetailResponse struct {
 	// 修改批注
 	Annotations []models.WorkflowAnnotation `json:"annotations"`
 	// 选中版本
-	Revision *models.WorkflowRevision `json:"revision"`
+	Revision *WorkflowRevisionResponse `json:"revision"`
+}
+
+// 工作流版本详情
+type WorkflowRevisionResponse struct {
+	// 版本标识
+	ID string `json:"id"`
+	// 工作流标识
+	DefinitionID string `json:"definitionId"`
+	// 版本序号
+	Ordinal int64 `json:"ordinal"`
+	// 源码摘要
+	SourceDigest string `json:"sourceDigest"`
+	// 画布摘要
+	ManifestDigest string `json:"manifestDigest"`
+	// SDK 标识
+	SDK string `json:"sdk"`
+	// 编译器版本
+	CompilerVersion string `json:"compilerVersion"`
+	// 创作会话
+	CreationSessionID string `json:"creationSessionId"`
+	// 恢复来源
+	RestoredFromRevisionID string `json:"restoredFromRevisionId"`
+	// 保存时间
+	CreatedAt int64 `json:"createdAt"`
+	// 画布投影
+	Manifest workflowdsl.CanvasManifest `json:"manifest"`
+}
+
+// publicRevision 仅输出源码派生的封闭画布，不泄露 Runner 内部结构和脚本字节。
+func publicRevision(revision models.WorkflowRevision) *WorkflowRevisionResponse {
+	return &WorkflowRevisionResponse{ID: revision.ID, DefinitionID: revision.DefinitionID, Ordinal: revision.Ordinal, SourceDigest: revision.SourceDigest, ManifestDigest: workflowdsl.CanvasDigest(workflowdsl.ExportCanvas(revision.Manifest)), SDK: revision.SDK, CompilerVersion: revision.CompilerVersion, CreationSessionID: revision.CreationSessionID, RestoredFromRevisionID: revision.RestoredFromRevisionID, CreatedAt: revision.CreatedAt, Manifest: workflowdsl.ExportCanvas(revision.Manifest)}
 }
 
 func (*GetWorkflow) Path() string { return "/:id" }
@@ -53,7 +85,7 @@ func (o *GetWorkflow) Output(ctx *gin.Context) (interface{}, error) {
 		if err != nil {
 			return nil, ginx.WithStack(err)
 		}
-		response.Revision = &revision
+		response.Revision = publicRevision(revision)
 	}
 	return response, nil
 }

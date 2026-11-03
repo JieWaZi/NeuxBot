@@ -35,7 +35,7 @@ func TestOperationApprovalIsIndependentAndFirstAnswerWins(t *testing.T) {
 	if _, err = os.Stat(target); !os.IsNotExist(err) {
 		t.Fatal("operation executed without permission")
 	}
-	if err = answerHuman(context.Background(), workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: operation.ID, RequestID: "business-answer", Value: "approve"}); err == nil {
+	if err = answerHumanFixture(context.Background(), workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: operation.ID, RequestID: "business-answer", Value: "approve"}); err == nil {
 		t.Fatal("business answer authorized operation")
 	}
 	command := AnswerOperationCommand{RunID: run.ID, OperationID: operation.ID, RequestID: "allow", DescriptorDigest: operation.DescriptorDigest, Allowed: true}
@@ -103,7 +103,7 @@ func TestWorkflowLocalProcessHelper(t *testing.T) {
 }
 
 func processWorkflowSource(code string) string {
-	return `export const meta={sdk:'ally.workflow/1',title:'进程验收',description:'真实隔离进程',phases:[{id:'compute',title:'计算',detail:'真实执行',canExit:true}]};phase('compute');` + code
+	return `export const meta={sdk:'ally.workflow',title:'进程验收',description:'真实隔离进程',phases:[{id:'compute',title:'计算',detail:'真实执行',canExit:true}]};phase('compute');` + code
 }
 
 func waitWorkflow(t *testing.T, s *workflowFixture, id string, condition func(controllers.WorkflowRunState) bool) controllers.WorkflowRunState {
@@ -145,7 +145,7 @@ func scopedProcessDefinition(t *testing.T, s *workflowFixture, source, directory
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, diagnostics, err := s.SaveSource(context.Background(), workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save-scope", Source: source, SDKVersion: constants.WorkflowSDKVersion})
+	_, diagnostics, err := s.SaveSource(context.Background(), workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save-scope", Source: source, SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatalf("%v %+v", err, diagnostics)
 	}

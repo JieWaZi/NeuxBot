@@ -22,7 +22,7 @@ func saveChildFixture(t *testing.T, s *workflowFixture, directory, source string
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: util.New(), Source: source, SDKVersion: constants.WorkflowSDKVersion})
+	receipt, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: util.New(), Source: source, SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatalf("save child fixture: %v diagnostics=%v", err, diagnostics)
 	}
@@ -36,7 +36,7 @@ func TestChildHandleRestartKeepsSingleFrozenChildAndActualResult(t *testing.T) {
 	runtime := &fixtureRuntime{calls: map[string]int{}}
 	s, close := openCoreWorkflowFixture(t, directory, runtime)
 	child := saveChildFixture(t, s, directory, strings.Replace(humanSource, "return {approved:", "return {input:args.message,parent:flowContext.parentRunId,approved:", 1))
-	source := `export const meta={sdk:'ally.workflow/1',title:'先启动再等待',description:'冻结与恢复',phases:[{id:'main',title:'子任务',detail:'独立持久句柄',canExit:true}]}; const handle=startWorkflow(` + strconv.Quote(child.ID) + `,{id:'spawn',label:'启动子任务',phase:'main',mode:'joined',revisionId:` + strconv.Quote(child.CurrentRevisionID) + `,args:{message:'frozen-input'}});const result=await joinWorkflow(handle);return result;`
+	source := `export const meta={sdk:'ally.workflow',title:'先启动再等待',description:'冻结与恢复',phases:[{id:'main',title:'子任务',detail:'独立持久句柄',canExit:true}]}; const handle=startWorkflow(` + strconv.Quote(child.ID) + `,{id:'spawn',label:'启动子任务',phase:'main',mode:'joined',revisionId:` + strconv.Quote(child.CurrentRevisionID) + `,args:{message:'frozen-input'}});const result=await joinWorkflow(handle);return result;`
 	parent := saveChildFixture(t, s, directory, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: parent.ID, RequestID: "parent-run"})
 	if err != nil {
@@ -58,7 +58,7 @@ func TestChildHandleRestartKeepsSingleFrozenChildAndActualResult(t *testing.T) {
 		t.Fatal("missing actual child request", err)
 	}
 	humanID := state.Humans[0].ID
-	if _, _, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: child.ID, ExpectedRevisionID: child.CurrentRevisionID, RequestID: "new-child-version", Source: strings.Replace(humanSource, "人工关卡", "新版人工关卡", 1), SDKVersion: constants.WorkflowSDKVersion}); err != nil {
+	if _, _, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: child.ID, ExpectedRevisionID: child.CurrentRevisionID, RequestID: "new-child-version", Source: strings.Replace(humanSource, "人工关卡", "新版人工关卡", 1), SDK: constants.WorkflowSDKIdentifier}); err != nil {
 		t.Fatal(err)
 	}
 	close()
@@ -69,7 +69,7 @@ func TestChildHandleRestartKeepsSingleFrozenChildAndActualResult(t *testing.T) {
 	if state.Humans[0].ID != humanID || state.Run.RevisionID != child.CurrentRevisionID || state.Run.ScopeBinding.WorkingDirectory != run.ScopeBinding.WorkingDirectory {
 		t.Fatal("child identity, revision or approved scope changed")
 	}
-	if err := answerHuman(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: childRun.ID, HumanID: humanID, RequestID: "explicit-child-answer", Value: "approve"}); err != nil {
+	if err := answerHumanFixture(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: childRun.ID, HumanID: humanID, RequestID: "explicit-child-answer", Value: "approve"}); err != nil {
 		t.Fatal(err)
 	}
 	state = awaitFixtureState(t, s, run.ID, func(state controllers.WorkflowRunState) bool { return workflowstate.TerminalRun(state.Run.Status) })
@@ -86,7 +86,7 @@ func TestJoinedChildCancellationLeavesDetachedChildAvailable(t *testing.T) {
 	directory := t.TempDir()
 	s, _ := openCoreWorkflowFixture(t, directory, &fixtureRuntime{calls: map[string]int{}})
 	child := saveChildFixture(t, s, directory, humanSource)
-	source := `export const meta={sdk:'ally.workflow/1',title:'后台与跟随子任务',description:'取消边界',phases:[{id:'main',title:'子任务',detail:'生命周期',canExit:true}]};startWorkflow(` + strconv.Quote(child.ID) + `,{id:'joined',label:'跟随子任务',phase:'main',mode:'joined'});startWorkflow(` + strconv.Quote(child.ID) + `,{id:'detached',label:'后台子任务',phase:'main',mode:'detached'});return {started:true};`
+	source := `export const meta={sdk:'ally.workflow',title:'后台与跟随子任务',description:'取消边界',phases:[{id:'main',title:'子任务',detail:'生命周期',canExit:true}]};startWorkflow(` + strconv.Quote(child.ID) + `,{id:'joined',label:'跟随子任务',phase:'main',mode:'joined'});startWorkflow(` + strconv.Quote(child.ID) + `,{id:'detached',label:'后台子任务',phase:'main',mode:'detached'});return {started:true};`
 	parent := saveChildFixture(t, s, directory, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: parent.ID, RequestID: "parent"})
 	if err != nil {
@@ -121,7 +121,7 @@ func TestJoinedChildCancellationLeavesDetachedChildAvailable(t *testing.T) {
 		if err != nil || childRun.Status != constants.WorkflowRunStatusWaiting || len(childState.Humans) != 1 {
 			t.Fatal("detached child lost its durable request", err)
 		}
-		if err := answerHuman(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: childRun.ID, HumanID: childState.Humans[0].ID, RequestID: "detached-answer", Value: "approve"}); err != nil {
+		if err := answerHumanFixture(ctx, workflowAPIDependencies(s), AnswerHumanCommand{RunID: childRun.ID, HumanID: childState.Humans[0].ID, RequestID: "detached-answer", Value: "approve"}); err != nil {
 			t.Fatal(err)
 		}
 		finished := awaitFixtureState(t, s, childRun.ID, func(state controllers.WorkflowRunState) bool { return workflowstate.TerminalRun(state.Run.Status) })
@@ -136,8 +136,8 @@ func TestRecursiveWorkflowIsRejectedBeforeCreatingSecondRun(t *testing.T) {
 	directory := t.TempDir()
 	s, _ := openCoreWorkflowFixture(t, directory, &fixtureRuntime{calls: map[string]int{}})
 	definition := saveChildFixture(t, s, directory, humanSource)
-	source := `export const meta={sdk:'ally.workflow/1',title:'递归拒绝',description:'循环调用',phases:[{id:'main',title:'调用',detail:'拒绝递归',canExit:true}]};return await workflow(` + strconv.Quote(definition.ID) + `,{id:'recursive',label:'递归',phase:'main'});`
-	if _, _, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: definition.CurrentRevisionID, RequestID: "recursive-source", Source: source, SDKVersion: constants.WorkflowSDKVersion}); err != nil {
+	source := `export const meta={sdk:'ally.workflow',title:'递归拒绝',description:'循环调用',phases:[{id:'main',title:'调用',detail:'拒绝递归',canExit:true}]};return await workflow(` + strconv.Quote(definition.ID) + `,{id:'recursive',label:'递归',phase:'main'});`
+	if _, _, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: definition.CurrentRevisionID, RequestID: "recursive-source", Source: source, SDK: constants.WorkflowSDKIdentifier}); err != nil {
 		t.Fatal(err)
 	}
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "recursive-run"})
@@ -156,7 +156,7 @@ func TestJoinedChildTimeoutSettlesChildBeforeCatchReturns(t *testing.T) {
 	directory := t.TempDir()
 	s, _ := openCoreWorkflowFixture(t, directory, &fixtureRuntime{calls: map[string]int{}})
 	child := saveChildFixture(t, s, directory, humanSource)
-	source := `export const meta={sdk:'ally.workflow/1',title:'子任务超时',description:'捕获前停止子任务',phases:[{id:'main',title:'子任务',detail:'超时治理',canExit:true}]};try { await workflow(` + strconv.Quote(child.ID) + `,{id:'child',label:'等待子任务',phase:'main'}); } catch(failure) { return {caught:true}; } return {caught:false};`
+	source := `export const meta={sdk:'ally.workflow',title:'子任务超时',description:'捕获前停止子任务',phases:[{id:'main',title:'子任务',detail:'超时治理',canExit:true}]};try { await workflow(` + strconv.Quote(child.ID) + `,{id:'child',label:'等待子任务',phase:'main'}); } catch(failure) { return {caught:true}; } return {caught:false};`
 	parent := saveChildFixture(t, s, directory, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: parent.ID, RequestID: "timeout-parent"})
 	if err != nil {
@@ -192,9 +192,9 @@ func TestUnobservedJoinedChildFailureFailsParent(t *testing.T) {
 	ctx := context.Background()
 	directory := t.TempDir()
 	s, _ := openCoreWorkflowFixture(t, directory, &fixtureRuntime{calls: map[string]int{}})
-	childSource := `export const meta={sdk:'ally.workflow/1',title:'失败子任务',description:'未等待的失败仍传播',phases:[{id:'main',title:'子任务',detail:'失败传播',canExit:true}]};throw {code:'CHILD_FAILED'};`
+	childSource := `export const meta={sdk:'ally.workflow',title:'失败子任务',description:'未等待的失败仍传播',phases:[{id:'main',title:'子任务',detail:'失败传播',canExit:true}]};throw {code:'CHILD_FAILED'};`
 	child := saveChildFixture(t, s, directory, childSource)
-	source := `export const meta={sdk:'ally.workflow/1',title:'未等待的跟随任务',description:'不能隐藏子任务失败',phases:[{id:'main',title:'子任务',detail:'失败传播',canExit:true}]};startWorkflow(` + strconv.Quote(child.ID) + `,{id:'child',label:'跟随任务',phase:'main',mode:'joined'});return {started:true};`
+	source := `export const meta={sdk:'ally.workflow',title:'未等待的跟随任务',description:'不能隐藏子任务失败',phases:[{id:'main',title:'子任务',detail:'失败传播',canExit:true}]};startWorkflow(` + strconv.Quote(child.ID) + `,{id:'child',label:'跟随任务',phase:'main',mode:'joined'});return {started:true};`
 	parent := saveChildFixture(t, s, directory, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: parent.ID, RequestID: "unobserved-child-parent"})
 	if err != nil {

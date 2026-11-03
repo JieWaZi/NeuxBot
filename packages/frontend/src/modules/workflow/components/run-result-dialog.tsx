@@ -7,18 +7,16 @@ import { useTranslation } from "react-i18next";
 import { getWorkflowRun } from "@/shared/api/generated/sdk.gen";
 import { Button } from "@/shared/ui/button";
 import { Badge } from "@/shared/ui/badge";
-import { Card } from "@/shared/ui/card";
 import { Dialog, DialogContent } from "@/shared/ui/dialog";
-import { ReadOnlyField } from "@/shared/ui/read-only-field";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { getWorkflowRunQueryKey } from "../api/workflow-queries";
 import { jsonText, record } from "../model/types";
 import { runOriginKey } from "../model/run-presentation";
-import { InstanceDetails, WorkflowResult } from "./instance-details";
+import { InstanceDetails } from "./instance-details";
+import { RunJsonValue } from "./run-json-value";
 import { WorkflowFailure } from "./failure-details";
 import { workflowStatusAppearance } from "../model/status-presentation";
 import { cn } from "@/shared/lib/cn";
-import { WorkflowArtifacts } from "./workflow-artifacts";
 import { RunLogs } from "./run-logs";
 import { WorkflowLoadingState, WorkflowQueryError } from "./query-feedback";
 
@@ -100,7 +98,7 @@ export function RunResultDialog({
   return (
     <Dialog open={active && open} onOpenChange={onOpenChange}>
       <DialogContent
-        title={t("executionDetail", { title: manifest?.meta?.title ?? "" })}
+        title={t("executionDetail", { title: manifest?.title ?? "" })}
         description={t("executionDetailHelp")}
         size="xl"
         layout="form"
@@ -142,85 +140,23 @@ export function RunResultDialog({
                     })}
                   </span>
                 ) : null}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="ml-auto"
-                  disabled={query.hasNextPage || query.isFetching}
-                  onClick={() =>
-                    void navigator.clipboard.writeText(
-                      jsonText({
-                        run,
-                        phases: manifest?.meta?.phases,
-                        instances,
-                      }),
-                    )
-                  }
-                >
-                  <Copy />
-                  {t("copyRunRecord")}
-                </Button>
               </div>
               <p className="text-muted-foreground type-caption break-all">
                 {run.createdAt
                   ? new Date(run.createdAt).toLocaleString(i18n.language)
                   : ""}
               </p>
-              <section className="@container/run-inputs grid min-w-0 gap-3">
+              <section className="grid min-w-0 gap-3">
                 <h3 className="type-title font-semibold">{t("runInputs")}</h3>
                 {Object.keys(input).length ? (
-                  <Card asChild variant="section">
-                    <dl className="grid grid-cols-1 gap-x-6 gap-y-4 @min-[36rem]/run-inputs:grid-cols-2">
-                      {Object.entries(input).map(([key, value]) => {
-                        const field = record(
-                          record(manifest?.meta?.inputSchema?.properties)?.[
-                            key
-                          ],
-                        );
-                        const structured =
-                          value != null && typeof value === "object";
-                        return (
-                          <ReadOnlyField
-                            key={key}
-                            label={
-                              typeof field?.title === "string"
-                                ? field.title
-                                : typeof field?.description === "string"
-                                  ? field.description
-                                  : key
-                            }
-                            className={cn(
-                              (structured ||
-                                (typeof value === "string" &&
-                                  value.includes("\n"))) &&
-                                "col-span-full",
-                            )}
-                          >
-                            {value == null ? (
-                              <span className="text-content-secondary">
-                                {t("emptyValue")}
-                              </span>
-                            ) : typeof value === "string" ? (
-                              value
-                            ) : structured ? (
-                              <pre className="type-body [overflow-wrap:anywhere] whitespace-pre-wrap">
-                                {jsonText(value)}
-                              </pre>
-                            ) : (
-                              jsonText(value)
-                            )}
-                          </ReadOnlyField>
-                        );
-                      })}
-                    </dl>
-                  </Card>
+                  <RunJsonValue value={input} />
                 ) : (
                   <p className="text-muted-foreground type-body">
                     {t("noInputs")}
                   </p>
                 )}
               </section>
-              {(manifest?.meta?.phases ?? []).map((phase, index) => {
+              {(manifest?.phases ?? []).map((phase, index) => {
                 const steps = instances.filter(
                   (instance) => instance.phaseId === phase.id,
                 );
@@ -275,6 +211,10 @@ export function RunResultDialog({
                                 id={id}
                                 runId={runId}
                                 instanceId={instance.id}
+                                human={data?.humanRequests?.find(
+                                  (request) =>
+                                    request.instanceId === instance.id,
+                                )}
                               />
                             </div>
                           ) : null}
@@ -317,17 +257,39 @@ export function RunResultDialog({
                     {run.failure ? (
                       <WorkflowFailure value={run.failure.data} />
                     ) : (
-                      <WorkflowResult value={run.result} />
+                      <RunJsonValue value={run.result} />
                     )}
                   </div>
                 )}
-                <WorkflowArtifacts
-                  files={data?.files}
-                  id={id}
-                  runId={runId}
-                  values={[run.result]}
-                />
               </section>
+              {data?.files?.length ? (
+                <section className="grid gap-3">
+                  <h3 className="type-title font-semibold">
+                    {t("resultPage.filesTitle")}
+                  </h3>
+                  <ul className="grid gap-2">
+                    {data.files.map((file) => (
+                      <li
+                        key={file.id}
+                        className="bg-card flex flex-wrap items-center justify-between gap-3 rounded-lg p-3"
+                      >
+                        <span className="type-body min-w-0 break-all">
+                          {file.name}
+                        </span>
+                        <span className="text-muted-foreground type-caption">
+                          {file.available
+                            ? t("resultPage.fileSize", {
+                                size: new Intl.NumberFormat(i18n.language, {
+                                  maximumFractionDigits: 1,
+                                }).format((file.size ?? 0) / 1024),
+                              })
+                            : t("outputFileUnavailable")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
               <RunLogs
                 key={runId}
                 id={id}

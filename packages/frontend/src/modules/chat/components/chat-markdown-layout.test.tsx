@@ -128,8 +128,14 @@ it("少于四列表铺满，四列表保留自然宽度，引用内的四列表�
     expect(getComputedStyle(table).fontSize).toBe("13px");
     const first = table.querySelector("th:first-child");
     const last = table.querySelector("th:last-child");
-    expect(first && getComputedStyle(first).paddingLeft).toBe("0px");
-    expect(last && getComputedStyle(last).paddingRight).toBe("0px");
+    for (const cell of [first, last, ...table.querySelectorAll("td")]) {
+      expect(cell).not.toBeNull();
+      if (!cell) continue;
+      const style = getComputedStyle(cell);
+      expect(style.paddingInline).toBe("calc(var(--spacing) * 3)");
+      expect(style.paddingLeft).not.toBe("0px");
+      expect(style.paddingRight).not.toBe("0px");
+    }
     if (first) {
       // jsdom 不把 logical padding 映射到 physical used value；核对实际生成规则和 Token。
       const style = getComputedStyle(first);
@@ -159,6 +165,26 @@ it("少于四列表铺满，四列表保留自然宽度，引用内的四列表�
   }
 });
 
+it("表格操作悬浮在右上角，不为工具栏占据独立布局行", () => {
+  render(
+    <AssistantMarkdown
+      text={"| 项目 | 内容 |\n| --- | --- |\n| 版本 | 26.1 |"}
+    />,
+  );
+  const table = screen.getByRole("table");
+  const frame = table.closest("section");
+  const actions = frame?.querySelector("header");
+  expect(frame && getComputedStyle(frame).position).toBe("relative");
+  expect(actions).not.toBeNull();
+  if (!actions) return;
+  const style = getComputedStyle(actions);
+  expect(style.position).toBe("absolute");
+  expect(style.top).toBe("var(--spacing)");
+  expect(style.right).toBe("var(--spacing)");
+  expect(style.opacity).toBe("0");
+  expect(style.pointerEvents).toBe("none");
+});
+
 it("宽表按键盘顺序到达横向滚动区，列对齐与完整预览不受影响", async () => {
   const user = userEvent.setup();
   render(
@@ -178,7 +204,8 @@ it("宽表按键盘顺序到达横向滚动区，列对齐与完整预览不受�
   expect(screen.getByRole("button", { name: "全屏查看" })).toHaveFocus();
   await user.tab();
   expect(screen.getByRole("region", { name: "表格" })).toHaveFocus();
-  await user.click(screen.getByRole("button", { name: "全屏查看" }));
+  await user.tab({ shift: true });
+  await user.keyboard("{Enter}");
   const dialog = screen.getByRole("dialog", { name: "表格" });
   expect(within(dialog).getAllByRole("columnheader")).toHaveLength(4);
   expect(

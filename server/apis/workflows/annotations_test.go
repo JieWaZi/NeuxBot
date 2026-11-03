@@ -41,12 +41,12 @@ func TestAnnotationReplayAndSourceReceiptResolveExactlyOnce(t *testing.T) {
 	if err != nil || len(annotations) != 1 || annotations[0].ResolvedRevisionID != "" {
 		t.Fatalf("invalid creation changed annotations: %+v %v", annotations, err)
 	}
-	saved, _, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "resolve-unchanged", ExpectedRevisionID: revision.ID, Source: revision.Source, SDKVersion: constants.WorkflowSDKVersion, ResolvedAnnotationIDs: []string{first.ID}})
-	if err != nil || !saved.Unchanged || saved.RevisionID != revision.ID {
+	saved, _, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "resolve-unchanged", ExpectedRevisionID: revision.ID, Source: revision.Source, SDK: constants.WorkflowSDKIdentifier, ResolvedAnnotationIDs: []string{first.ID}})
+	if err != nil || saved.RevisionID == revision.ID {
 		t.Fatalf("unchanged source failed to record resolution: %+v %v", saved, err)
 	}
 	annotations, err = s.CreationSessions.ListAnnotations(ctx, definition.ID)
-	if err != nil || annotations[0].ResolvedRevisionID != revision.ID {
+	if err != nil || annotations[0].ResolvedRevisionID != saved.RevisionID {
 		t.Fatalf("save did not resolve bound annotation: %+v %v", annotations, err)
 	}
 	events, err := store.ListEvents(ctx, definition.ID, 0, 100)

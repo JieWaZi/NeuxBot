@@ -36,13 +36,25 @@ it.each(["button", "escape"])(
           <WorkflowCanvas
             listMode
             manifest={{
-              meta: { phases: [{ id: "phase", title: "执行" }] },
+              sdk: "ally.workflow",
+              title: "测试工作流",
+              description: "",
+              controls: [],
+              edges: [],
+              scripts: [],
+              phases: [{ detail: "", id: "phase", title: "执行" }],
               nodes: [
                 {
+                  execution: {
+                    codeDigest: "fixture",
+                    executionMode: "pure",
+                    language: "javascript",
+                  },
+                  inputs: [],
                   id: "node",
                   phaseId: "phase",
                   kind: "functionTask",
-                  labelTemplate: "核对评论",
+                  label: "核对评论",
                 },
               ],
             }}

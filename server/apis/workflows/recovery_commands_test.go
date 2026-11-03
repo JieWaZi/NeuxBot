@@ -11,6 +11,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	workflowdsl "github.com/JieWaZi/NeuxBot/server/internal/workflow/dsl"
 	workflowstate "github.com/JieWaZi/NeuxBot/server/internal/workflow/state"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -38,7 +39,7 @@ func openRecoveryWorkflow(t *testing.T, databasePath string) (*workflowFixture, 
 		})
 	}
 	t.Cleanup(close)
-	return workflowTestNew(workflow.Config{Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}), close
+	return workflowTestNew(workflow.Config{Store: controllers.NewWorkflowController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)), DataDirectory: filepath.Dir(databasePath)}), close
 }
 
 func TestRealSideEffectRestartFailsAndPreservesEvidenceWithoutResend(t *testing.T) {
@@ -95,7 +96,7 @@ func TestRealSideEffectRestartFailsAndPreservesEvidenceWithoutResend(t *testing.
 func TestRetryCreatesNewRunWithOriginalVersionAndEvidence(t *testing.T) {
 	s, _ := workflowTestService(t)
 	ctx := context.Background()
-	source := `export const meta={sdk:'ally.workflow/1',title:'重跑',description:'冻结原版本',phases:[{id:'one',title:'one',detail:'one',canExit:true}]};throw new Error('original failure');`
+	source := `export const meta={sdk:'ally.workflow',title:'重跑',description:'冻结原版本',phases:[{id:'one',title:'one',detail:'one',canExit:true}]};throw new Error('original failure');`
 	definition := savedTestWorkflow(t, s, source)
 	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Args: map[string]any{"unchanged": true}})
 	if err != nil {
@@ -105,7 +106,7 @@ func TestRetryCreatesNewRunWithOriginalVersionAndEvidence(t *testing.T) {
 	if failed.Status != constants.WorkflowRunStatusFailed {
 		t.Fatalf("expected failed source: %+v", failed)
 	}
-	_, _, err = s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: run.RevisionID, RequestID: "update", Source: strings.Replace(source, "throw new Error('original failure');", "return 'new version';", 1), SDKVersion: constants.WorkflowSDKVersion})
+	_, _, err = s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, ExpectedRevisionID: run.RevisionID, RequestID: "update", Source: strings.Replace(source, "throw new Error('original failure');", "return 'new version';", 1), SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,40 +129,10 @@ func TestRetryCreatesNewRunWithOriginalVersionAndEvidence(t *testing.T) {
 	}
 }
 
-func TestSkippableWorkerStopsActualDispatchBeforeNullResult(t *testing.T) {
-	ctx := context.Background()
-	s, _ := workflowTestService(t)
-	worker := &holdingWorker{changed: make(chan struct{}, 8)}
-	s.Worker = worker
-	s.Service = workflow.New(s.Config)
-	source := `export const meta={sdk:'ally.workflow/1',title:'跳过',description:'取消收敛',nodeResultPageOmissions:{held:'只返回步骤跳过与取消测试的控制值'},phases:[{id:'one',title:'one',detail:'one',canExit:true}]};const value=await worker('等待',{id:'held',label:'可跳过步骤',phase:'one',resolve:{kind:'waker',wakerId:'fixture'},skippable:true});return {value};`
-	definition := savedTestWorkflow(t, s, source)
-	run, err := s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start", Defaults: models.WorkflowExecutionDefaults{RuntimeID: "fixture"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = s.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(s.Close)
-	waitActiveWorkers(t, worker, 1)
-	state, err := s.Runs.LoadRunState(ctx, run.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	command := SkipWorkerCommand{RunID: run.ID, InstanceID: state.Instances[0].ID, RequestID: "skip", AttemptGeneration: 1}
-	if err = skipWorker(ctx, workflowAPIDependencies(s), command); err != nil {
-		t.Fatal(err)
-	}
-	if err = skipWorker(ctx, workflowAPIDependencies(s), command); err != nil {
-		t.Fatal("skip replay failed", err)
-	}
-	result := waitWorkflow(t, s, run.ID, func(state controllers.WorkflowRunState) bool { return workflowstate.TerminalRun(state.Run.Status) })
-	worker.mutex.Lock()
-	active := worker.active
-	worker.mutex.Unlock()
-	if active != 0 || result.Run.Status != constants.WorkflowRunStatusSucceeded || result.Instances[0].Status != constants.WorkflowStepStatusSkipped || result.Run.Result.(map[string]any)["value"] != nil {
-		t.Fatalf("skip formed a false terminal result: active=%d run=%+v instances=%+v", active, result.Run, result.Instances)
+func TestRejectsUndeclaredWorkerSkip(t *testing.T) {
+	source := `export const meta={sdk:'ally.workflow',title:'跳过',phases:[{id:'one',title:'one',detail:'one'}]};return await worker('等待',{id:'held',label:'等待',phase:'one',resolve:{kind:'waker',wakerId:'fixture'},skippable:true});`
+	if _, _, err := workflowdsl.Compile(source); err == nil {
+		t.Fatal("unsupported skip policy compiled")
 	}
 }
 
@@ -170,9 +141,9 @@ func TestHumanFallbackKeepsSkipAndTimeoutSources(t *testing.T) {
 		t.Run(source, func(t *testing.T) {
 			s, _ := workflowTestService(t)
 			text := strings.Replace(humanSource, "allowSkip:false", "allowSkip:true", 1)
-			text = strings.Replace(text, "source:answer.source", "source:answer.source,value:answer.value,skipped:answer.skipped", 1)
+			text = strings.Replace(text, "source:answer.source", "source:answer.source,value:answer.value,skipped:answer.status!=='answered'", 1)
 			if source == "timeout" {
-				text = strings.Replace(text, "allowSkip:true", "allowSkip:true,timeoutMs:1", 1)
+				text = strings.Replace(text, "allowSkip:true", "allowSkip:true,timeoutMs:1,onTimeout:'default'", 1)
 			}
 			definition := savedTestWorkflow(t, s, text)
 			run, err := s.StartRun(context.Background(), workflow.StartRunCommand{DefinitionID: definition.ID, RequestID: "start"})
@@ -182,7 +153,7 @@ func TestHumanFallbackKeepsSkipAndTimeoutSources(t *testing.T) {
 			runTicks(t, s, run.ID, 1)
 			state, _ := s.Runs.LoadRunState(context.Background(), run.ID)
 			if source == "skip" {
-				if err := answerHuman(context.Background(), workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: state.Humans[0].ID, RequestID: "skip", Skip: true}); err != nil {
+				if err := answerHumanFixture(context.Background(), workflowAPIDependencies(s), AnswerHumanCommand{RunID: run.ID, HumanID: state.Humans[0].ID, RequestID: "skip", Skip: true}); err != nil {
 					t.Fatal(err)
 				}
 			} else {
@@ -190,7 +161,7 @@ func TestHumanFallbackKeepsSkipAndTimeoutSources(t *testing.T) {
 			}
 			result := runTicks(t, s, run.ID, 3)
 			data, _ := result.Result.(map[string]any)
-			if result.Status != constants.WorkflowRunStatusSucceeded || data["value"] != "reject" || data["source"] != source || data["skipped"] != true || data["approved"] != false {
+			if result.Status != constants.WorkflowRunStatusSucceeded || data["source"] != map[string]string{"skip": "user_skip", "timeout": "timeout"}[source] || data["skipped"] != true || data["approved"] != false {
 				t.Fatalf("fallback changed approval meaning: %+v", result)
 			}
 		})

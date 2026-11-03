@@ -301,7 +301,7 @@ func (c *compiler) validateExports(meta ast.Node) {
 				break
 			}
 			identifier, ok := declaration.List[0].Target.(*ast.Identifier)
-			if !ok || (identifier.Name.String() != "meta" && identifier.Name.String() != "actions") {
+			if !ok || (identifier.Name.String() != "meta" && identifier.Name.String() != "scripts") {
 				break
 			}
 			exported[identifier.Name.String()]++
@@ -309,14 +309,14 @@ func (c *compiler) validateExports(meta ast.Node) {
 			break
 		}
 		if !matched {
-			c.diagnostics = append(c.diagnostics, Diagnostic{Code: "EXPORT_UNSUPPORTED", Severity: "error", Message: "only a single top-level const meta or const actions declaration may be exported", Range: SourceRange{Start: positionAt(c.parsed.source, offset), End: positionAt(c.parsed.source, offset+len("export"))}})
+			c.diagnostics = append(c.diagnostics, Diagnostic{Code: "EXPORT_UNSUPPORTED", Severity: "error", Message: "only a single top-level const meta or const scripts declaration may be exported", Range: SourceRange{Start: positionAt(c.parsed.source, offset), End: positionAt(c.parsed.source, offset+len("export"))}})
 		}
 	}
 	if exported["meta"] != 1 {
 		c.fail(meta, "META_EXPORT_REQUIRED", "exactly one top-level meta declaration must be exported")
 	}
-	if _, declared := c.constants["actions"]; declared && exported["actions"] != 1 {
-		c.fail(c.constants["actions"], "ACTIONS_EXPORT_REQUIRED", "actions handlers must be exported explicitly")
+	if _, declared := c.constants["scripts"]; declared && exported["scripts"] != 1 {
+		c.fail(c.constants["scripts"], "SCRIPTS_EXPORT_REQUIRED", "scripts must be exported explicitly")
 	}
 }
 
@@ -346,8 +346,8 @@ type SaveReceipt struct {
 	Ordinal int64 `json:"ordinal"`
 	// SourceDigest 绑定精确保存的源码。
 	SourceDigest string `json:"sourceDigest"`
-	// Unchanged 表示新请求的源码与当前版完全相同。
-	Unchanged bool `json:"unchanged"`
+	// ManifestDigest 绑定实际公开的 CanvasManifest 投影，与内部完整性摘要区分。
+	ManifestDigest string `json:"manifestDigest"`
 	// Replayed 表示返回同一请求的原提交回执。
 	Replayed bool `json:"replayed"`
 }

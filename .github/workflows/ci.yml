@@ -58,8 +58,6 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: pnpm workflow:sdk:check
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-      - run: pnpm workflow:presentation:check
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: pnpm api:check
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
 

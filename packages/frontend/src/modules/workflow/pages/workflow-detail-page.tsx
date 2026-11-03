@@ -80,9 +80,9 @@ import { WorkflowChatPane } from "../components/workflow-chat-pane";
 import { WorkflowChatHistory } from "../components/workflow-chat-history";
 import { NodeInspector } from "../components/node-inspector";
 import { PhaseAdjustmentComposer } from "../components/phase-adjustment-composer";
+import { RetryRunDialog } from "../components/retry-run-dialog";
 import { RunForm } from "../components/run-form";
 import { WorkflowInputNode } from "../components/workflow-input-node";
-import { ResultOpenScope } from "../presentation/node-result";
 import { WorkflowCanvas } from "../components/workflow-canvas";
 import { WorkflowCanvasPlaceholder } from "../components/workflow-canvas-placeholder";
 import { WorkflowDetailDock } from "../components/workflow-detail-dock";
@@ -197,6 +197,13 @@ export function WorkflowDetailPage() {
   );
   const [basicOpen, setBasicOpen] = useState(false);
   const [creationDraft, setCreationDraft] = useState("");
+  const [targetSelection, setTargetSelection] = useState<{
+    scope: string;
+    targets: { kind: "phase" | "node"; id: string }[];
+  }>({ scope: "", targets: [] });
+  const targetScope = `${id}:${detail.data?.revision?.id ?? ""}`;
+  const selectedTargets =
+    targetSelection.scope === targetScope ? targetSelection.targets : [];
   const optimizeRun = params.get("optimizeRun");
   const requestedChat = params.get("chat");
   const requestedInteraction = params.get("request");
@@ -475,6 +482,15 @@ export function WorkflowDetailPage() {
           >
             <WorkflowCanvas
               hasDock
+              selectedTargets={selectedTargets}
+              onSelectTargets={
+                !revisionId
+                  ? (targets) => {
+                      setChatExpanded(true);
+                      setTargetSelection({ scope: targetScope, targets });
+                    }
+                  : undefined
+              }
               manifest={revision.manifest}
               inputNode={
                 <WorkflowInputNode
@@ -501,7 +517,7 @@ export function WorkflowDetailPage() {
                         revisionId={revision.id ?? ""}
                         phase={phase}
                         ordinal={
-                          (revision.manifest?.meta?.phases?.findIndex(
+                          (revision.manifest?.phases?.findIndex(
                             (item) => item.id === phase.id,
                           ) ?? 0) + 1
                         }
@@ -660,6 +676,16 @@ export function WorkflowDetailPage() {
                     </Link>
                   </Button>
                   <div className="flex items-center justify-self-end p-1">
+                    {run.id &&
+                    (run.status === "failed" || run.status === "cancelled") ? (
+                      <div className="p-1">
+                        <RetryRunDialog
+                          id={id}
+                          runId={run.id}
+                          runNumber={runItems.length - index}
+                        />
+                      </div>
+                    ) : null}
                     <div className="p-1">
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -941,6 +967,44 @@ export function WorkflowDetailPage() {
       onCreated={(definitionId) =>
         navigate(`/workflows/${definitionId}`, { replace: true })
       }
+      canvasReferences={selectedTargets.map((target) => ({
+        ...target,
+        revisionId: revision?.id ?? "",
+      }))}
+      canvasReferenceLabels={Object.fromEntries(
+        selectedTargets.map((target) => [
+          `${target.kind}:${target.id}`,
+          target.kind === "phase"
+            ? (revision?.manifest?.phases.find(
+                (phase) => phase.id === target.id,
+              )?.title ?? target.id)
+            : (revision?.manifest?.nodes.find((node) => node.id === target.id)
+                ?.label ?? target.id),
+        ]),
+      )}
+      onCanvasReferencesChange={(references) =>
+        setTargetSelection({
+          scope: targetScope,
+          targets: references
+            .filter(
+              (reference) =>
+                revision &&
+                reference.revisionId === revision.id &&
+                (reference.kind === "phase"
+                  ? revision.manifest?.phases.some(
+                      (phase) => phase.id === reference.id,
+                    )
+                  : revision.manifest?.nodes.some(
+                      (node) => node.id === reference.id,
+                    )),
+            )
+            .map(({ kind, id }) => ({ kind, id })),
+        })
+      }
+      onCanvasReferencesSent={() =>
+        setTargetSelection({ scope: targetScope, targets: [] })
+      }
+      optimizeRunId={params.get("optimizeRun") ?? undefined}
       conversationKey={String(conversationGeneration)}
       onSession={(sessionId) => {
         setCreationDraft("");
@@ -955,11 +1019,7 @@ export function WorkflowDetailPage() {
         title: t("canvas"),
         chatExpanded,
         resizeLabel: t("resizeChat"),
-        content: (canvasActive, context) => (
-          <ResultOpenScope scopeKey={context?.scopeKey ?? "workflow-canvas"}>
-            {canvas(canvasActive)}
-          </ResultOpenScope>
-        ),
+        content: (canvasActive) => canvas(canvasActive),
       }}
       history={
         <WorkflowChatHistory
@@ -1033,7 +1093,7 @@ export function WorkflowDetailPage() {
           key={`run-${revision.id}`}
           id={id}
           revision={revision}
-          defaults={detail.data?.creationSessions?.[0]?.defaults}
+          defaults={phaseDefaults}
           container={runInputContainer}
           onClose={() => setRunning(false)}
         />

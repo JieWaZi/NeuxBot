@@ -58,6 +58,7 @@ import {
   type ChatWorkspaceAdapter,
 } from "../components/chat-workspace-surface";
 import { ChatThread } from "../components/chat-thread";
+import type { ChatComposerContextReference } from "../components/chat-composer-input";
 import { useChatWorkspaceHost } from "../components/chat-contributions";
 import { useChatComposerControls } from "../components/chat-composer-controls";
 import {
@@ -117,6 +118,7 @@ export type ChatWorkspaceEntry = {
   /** 首条输入在完整画布内居中，发送后在主容器内展开会话与业务内容。 */
   canvasInput?: boolean;
   showSummary?: boolean;
+  showFileChanges?: boolean;
   active?: boolean;
   defaults?: ExecutionSelection;
   scopeKey: string;
@@ -124,6 +126,8 @@ export type ChatWorkspaceEntry = {
   directoryLabel: string;
   mainContent?: ChatWorkspaceMainContent;
   draft?: string;
+  composerReferences?: ChatComposerContextReference[];
+  onComposerReferencesChange?: (ids: string[]) => void;
   emptyState?:
     | ReactNode
     | ((context: {
@@ -133,7 +137,10 @@ export type ChatWorkspaceEntry = {
       }) => ReactNode);
   isHistoryLoading?: boolean;
   isSendDisabled?: boolean;
-  prepareSubmission: (message: ChatMessageRequest) => PreparedChatSubmission;
+  prepareSubmission: (
+    message: ChatMessageRequest,
+    targetChatId?: string,
+  ) => PreparedChatSubmission;
   onAccepted: (result: AcceptedExecution) => void;
   onRefresh?: () => void;
   onConfigurationChange?: (selection: ChatSendSelection | undefined) => void;
@@ -750,6 +757,7 @@ function ChatView({
       ready: !activeChatId || Boolean(messagesQuery.data),
     }),
     activeExecutionId: detailQuery.data?.chat?.activeExecutionId,
+    initialInteractionSequence: detailQuery.data?.chat?.latestSequence,
     initialPendingApprovals: detailQuery.data?.chat?.pendingApprovals,
     initialPendingElicitations: detailQuery.data?.chat?.pendingElicitations,
     isLoading: Boolean(
@@ -827,6 +835,7 @@ function ChatView({
       selection,
     ) => {
       const message = {
+        steerExecutionId: selection?.steerExecutionId,
         text,
         accountId: selection?.accountId ?? "system",
         runtimeId: selection?.runtimeId ?? "",
@@ -868,7 +877,7 @@ function ChatView({
             }
           : {}),
       };
-      if (entry) return entry.prepareSubmission(body);
+      if (entry) return entry.prepareSubmission(body, targetChatId);
       if (targetChatId) {
         const requestScope = `${workspaceScopeKey}:send:${targetChatId}`;
         const prepared = withStableCreateRequest(requestScope, body);
@@ -1192,6 +1201,7 @@ function ChatView({
       streamState: chatRuntime.streamState,
     },
     thread: {
+      showFileChanges: entry?.showFileChanges,
       fileScopeChatId: activeChatId,
       resultSource:
         activeChatId && !entry
@@ -1230,6 +1240,8 @@ function ChatView({
       composerEffects,
       composerDraft: entry?.draft,
       renderComposerContextStrip,
+      composerReferences: entry?.composerReferences,
+      onComposerReferencesChange: entry?.onComposerReferencesChange,
       composerSkills: enabledSkills,
       composerSkillsError: skillsQuery.isError,
       composerPlugins: enabledPlugins,

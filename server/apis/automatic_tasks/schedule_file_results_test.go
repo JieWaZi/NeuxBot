@@ -19,7 +19,7 @@ import (
 func TestTaskFileUploadRunResultAndDownload(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	source := `export const meta={sdk:'ally.workflow/1',title:'文件交付',description:'读取文件并交付真实产物',inputSchema:{type:'object',required:['document'],properties:{document:{type:'string',format:'file'}}},outputSchema:{type:'object',required:['report'],properties:{report:{type:'string',format:'file'}}},phases:[{id:'deliver',title:'交付',detail:'交付文件',canExit:true}]};phase('deliver');return {report:args.document};`
+	source := `export const meta={sdk:'ally.workflow',title:'文件交付',description:'读取文件并交付真实产物',inputSchema:{type:'object',required:['document'],properties:{document:{type:'string',format:'file'}}},outputSchema:{type:'object',required:['report'],properties:{report:{type:'string',format:'file'}}},phases:[{id:'deliver',title:'交付',detail:'交付文件',canExit:true}]};phase('deliver');return {report:args.document};`
 	_, config := workflowTask(t, h, source)
 	config.WorkflowInputBindings = map[string]workflowinput.Binding{"document": {Source: constants.WorkflowInputSourceAPI}}
 	saved, err := h.service.SaveConfiguration(ctx, h.wakerID, "", 0, config, true)

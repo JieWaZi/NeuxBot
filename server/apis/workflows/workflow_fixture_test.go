@@ -42,7 +42,7 @@ func workflowTestService(t *testing.T) (*workflowFixture, controllers.WorkflowCo
 		}
 	})
 	store := controllers.NewWorkflowController(database.DB)
-	return workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Store: store, CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}), store
+	return workflowTestNew(workflow.Config{Commands: controllers.NewAgentCommandController(database.DB), Store: store, CreationSessions: controllers.NewWorkflowCreationController(database.DB), Consumers: controllers.NewWorkflowConsumerController(database.DB), Runs: controllers.NewWorkflowRunController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB)), DataDirectory: t.TempDir()}), store
 }
 
 func workflowTestSource(t *testing.T) string {
@@ -60,7 +60,7 @@ func workflowAPIDependencies(s *workflowFixture) *workflowDependencies {
 		Store: s.Store, Transactions: s.Transactions, Runs: s.Runs, CreationSessions: s.CreationSessions, State: s.State,
 		Executions: s.Executions, Chats: s.Chats, Wakers: s.Wakers, Projects: s.Projects, DataDirectory: s.DataDirectory,
 		SaveSource: func(ctx context.Context, definitionID, requestID, expectedID, source, restoredFrom string) (workflowdsl.SaveReceipt, []workflowdsl.Diagnostic, error) {
-			return s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definitionID, RequestID: requestID, ExpectedRevisionID: expectedID, Source: source, SDKVersion: constants.WorkflowSDKVersion, RestoredFromRevisionID: restoredFrom})
+			return s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definitionID, RequestID: requestID, ExpectedRevisionID: expectedID, Source: source, SDK: constants.WorkflowSDKIdentifier, RestoredFromRevisionID: restoredFrom})
 		},
 		RetryStart: func(ctx context.Context, previous models.WorkflowRun, requestID string) (models.WorkflowRun, error) {
 			return s.StartRun(ctx, workflow.StartRunCommand{DefinitionID: previous.DefinitionID, RevisionID: previous.RevisionID, Args: previous.Args, Defaults: previous.Defaults, WorkerConfigurations: previous.WorkerConfigurations, ApprovedScope: &previous.ScopeBinding, RequestID: requestID, RetrySourceRunID: previous.ID})
@@ -84,7 +84,7 @@ func savedTestWorkflow(t *testing.T, s *workflowFixture, source string) models.W
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDKVersion: constants.WorkflowSDKVersion})
+	receipt, diagnostics, err := s.SaveSource(ctx, workflow.SaveSourceCommand{DefinitionID: definition.ID, RequestID: "save", Source: source, SDK: constants.WorkflowSDKIdentifier})
 	if err != nil {
 		t.Fatalf("compile: %v %+v", err, diagnostics)
 	}
@@ -160,3 +160,18 @@ func (w *controlledWorker) recordedPrompts() []string {
 }
 
 func (w *controlledWorker) Cancel(context.Context, models.WorkflowEffect) error { return nil }
+
+// answerHumanFixture 为既有回归场景读取真实问题快照后提交其CAS身份。
+func answerHumanFixture(ctx context.Context, d *workflowDependencies, command AnswerHumanCommand) error {
+	state, err := d.Runs.LoadRunState(ctx, command.RunID)
+	if err == nil {
+		for _, human := range state.Humans {
+			if human.ID == command.HumanID {
+				command.QuestionVersion = human.QuestionVersion
+				command.SnapshotDigest = human.SnapshotDigest
+				break
+			}
+		}
+	}
+	return answerHuman(ctx, d, command)
+}

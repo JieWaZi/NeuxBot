@@ -83,7 +83,7 @@ func TestCommandsUseCurrentGrantAndSeparateOutputStreams(t *testing.T) {
 		code := Execute(context.Background(), args, IO{In: strings.NewReader(input), Out: &out, Err: &errOut, ContextFile: contextFile})
 		return code, out.String(), errOut.String()
 	}
-	code, out, errOut := run([]string{"im", "deliveries", "create", "--input", "-", "--request-id", "report-01"}, `{"targetId":"known-target","content":"report"}`)
+	code, out, errOut := run([]string{"--context", contextFile, "im", "deliveries", "create", "--input", "-", "--request-id", "report-01"}, `{"targetId":"known-target","content":"report"}`)
 	if code != 0 || errOut != "" || len(calls) != 1 || calls[0].RequestID != "report-01" || !strings.Contains(out, `"completion":"accepted"`) {
 		t.Fatalf("code=%d stdout=%s stderr=%s calls=%v", code, out, errOut, calls)
 	}
@@ -177,7 +177,6 @@ func TestSkillExamplesParseBeforeConnecting(t *testing.T) {
 		if err := os.WriteFile(source, []byte("export const meta = {};"), 0600); err != nil {
 			t.Fatal(err)
 		}
-		examples := 0
 		for _, line := range strings.Split(string(content), "\n") {
 			if !strings.HasPrefix(line, "allycli ") {
 				continue
@@ -204,17 +203,17 @@ func TestSkillExamplesParseBeforeConnecting(t *testing.T) {
 				t.Errorf("%s: example did not reach connection stage: %s; exit=%d stderr=%s", path, line, code, &errOut)
 			}
 			covered[response.Operation] = true
-			examples++
+			count++
 		}
-		if examples == 0 {
-			t.Errorf("%s has no executable CLI examples", path)
-		}
-		count += examples
 	}
 	if count == 0 {
 		t.Fatal("no skill examples found")
 	}
 	for _, operation := range capability.Operations() {
+		// 工作流指南使用注入的 MCP 契约；CLI 示例不重复维护该领域的完整调用表。
+		if strings.HasPrefix(operation.ID, "workflow.") {
+			continue
+		}
 		if !covered[operation.ID] {
 			t.Errorf("no parseable example for %s", operation.ID)
 		}

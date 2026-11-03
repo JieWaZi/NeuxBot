@@ -239,7 +239,11 @@ func (s *Service) prepareAgentRunInput(ctx context.Context, owner string, reques
 		}
 		reference = filepath.Clean(reference)
 		if prepared.directory == "" {
-			directory, err := os.MkdirTemp(s.dataDirectory, "workflow-input-staging-")
+			workspace, err := workflowfiles.PrepareWorkspace(s.dataDirectory, input.WorkflowID, "")
+			if err != nil {
+				return "", err
+			}
+			directory, err := os.MkdirTemp(workspace.TemporaryDirectory, "workflow-input-staging-")
 			if err != nil {
 				logx.Errorf("prepare frozen agent inputs failed: error=%v", err)
 				return "", status_error.WorkflowFileStorageError
@@ -334,8 +338,8 @@ func workflowAgentInput(request capability.Request) workflowtool.Input {
 		input.Action = constants.WorkflowActionSourceValidate
 	case "workflow.source.save":
 		input.Action = constants.WorkflowActionSourceUpsert
-		if input.SDKVersion == "" {
-			input.SDKVersion = constants.WorkflowSDKVersion
+		if input.SDK == "" {
+			input.SDK = constants.WorkflowSDKIdentifier
 		}
 	case "workflow.sdk.get":
 		input.Action, input.Type = constants.WorkflowActionQuery, constants.WorkflowQuerySDK
