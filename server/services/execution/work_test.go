@@ -768,12 +768,24 @@ func TestWorkIntentCommitBeforeDispatchPersistsPendingFactsBeforeRuntimeAccepts(
 	}
 	close(runtime.proceed)
 	waitForChatTerminal(t, manager, accepted.Chat.ID)
+	// 文件成果允许在执行终态之后追加，先等待真实后台收尾再检查持久事实。
+	wait, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := manager.execution.CancelAndWait(wait, accepted.Chat.ID); err != nil {
+		t.Fatal(err)
+	}
 	records, err = store.ReadAll(accepted.Chat.ID)
 	if err != nil {
 		t.Fatalf("ReadAll() after Runtime accept error = %v", err)
 	}
-	if records[3].Type != constants.ChatEventTypeExecutionStarted ||
-		records[len(records)-1].Type != constants.ChatEventTypeExecutionCompleted {
+	completed := 0
+	for _, record := range records {
+		if record.Type == constants.ChatEventTypeExecutionCompleted && record.ExecutionID == accepted.Execution.ID {
+			completed++
+		}
+	}
+	if len(records) < 5 || records[3].Type != constants.ChatEventTypeExecutionStarted ||
+		records[3].ExecutionID != accepted.Execution.ID || completed != 1 {
 		t.Fatalf("post-dispatch facts = %+v", records)
 	}
 }
