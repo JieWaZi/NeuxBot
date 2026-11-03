@@ -40,9 +40,11 @@
 **Files:** acp-go `pkg/codex/config.go`、`agent.go`、`session.go`、`appserver_client.go` 和对应配置/请求/假服务测试；`pkg/claude/config.go` 仅补统一语义所需的 metadata；`pkg/acpmeta/model.go` 与模型metadata测试；`pkg/kimi/outcome.go`、`pkg/pi/events.go` 及对应错误测试。
 
 **Interfaces:**
+
 - Produces: Codex 和 Claude 的逐模型配置目录通过已存在的 `WithModelConfigOptions` 声明 `fast` select，值为 `on`/`off`；仅模型确实支持时提供。Codex在适配器内部保存真实 service tier ID，读取新 `serviceTiers`、兼容原生旧 `additionalSpeedTiers`，名称不冒充ID。
 - Produces: Codex新建/恢复/每轮原生请求准确传递当前tier；`off`明确发送原生清除值，`nil`不强行覆盖原生默认。需要显式JSON null时使用非生成封装，或修生成器表达可空语义，不手改生成文件。
 - Consumes/produces: 保留现有 `errorKind`，Kimi原生402映射billing_error；Pi只在原生有结构字段时映射，未知文本不强归类。session missing必须携带resource与resourceId。
+- Produces: `acpmeta`增加命名空间`acp-go/error-recovery`的typed helper，字段`ResetAtUnixMS *int64`、`RetryAfterMS *int64`、`Source string`；只接受有界非负整数。原生适配器仅在实际结构化字段有证据时写入，不解析stderr推导时间，不支持的原生来源保留缺失；helper的fixture不冒充真实provider支持。
 
 - [ ] **Step 1: 新增RED。** fake model/list返回tier ID `priority-v2`/Name `Fast`，选择on后的turn/start保持model且tier为priority-v2；off发送null；不支持模型不提供Fast；模型切换不带旧tier。Kimi402与429区分；未知Pi错误保持unknown。
 - [ ] **Step 2: 运行新增定向测试并记录失败。** `go test ./pkg/codex ./pkg/claude ./pkg/acpmeta ./pkg/kimi ./pkg/pi -run '<新增测试正则>' -count=1`。
@@ -55,6 +57,7 @@
 **Files:** `server/internal/agent/config.go`、`catalog.go`、`contract.go`、`native/contract.go`、`native/registry.go`、`native/connection.go`、`session.go`；`server/repositories/models/runtime_environment.go`、`execution.go`、`chat.go`；`server/services/execution` 中选择、接纳、重试和fork配置相关文件；`server/apis/runtime_options`、`server/apis/chats` 和实际共享执行选项DTO；相关测试与生成契约。
 
 **Interfaces:**
+
 - Produces: `ModelOption.ConfigurationKnown bool`、`ModelOption.FastSupported bool`、`ModelOption.DefaultFast *bool`，从模型自己的目录读取；对应 RuntimeModelOption JSON为 `configurationKnown`、`fastSupported`、`defaultFast`。
 - Produces: `Fast *bool` 沿 Runtime默认值、执行选择、SessionPlan的Profile、native.Profile及冻结Execution/Chat选择传递；JSON `fast`，默认设置 `defaultFast`。`native.Configuration.ActualFast *bool` 和现有 InvocationFacts.ServiceTier 反映实际原生回执（tier不能由宿主猜值）。
 - Consumes: ACP `fast` select on/off；先设置模型，再强度，再Fast，并在最终回执重新核对所有请求值。未知/不支持的显式Fast请求返回Unsupported。
@@ -68,15 +71,17 @@
 
 ### Task 3: 账号模型目录身份与错误恢复信息
 
-**Files:** `server/apis/ai_accounts/native_models.go`、`native_models_test.go`、`server/services/aiaccount/capabilities.go` 及相关测试；`server/internal/agent/diagnostic.go`、`server/constants/runtime_failure_code.go`、错误定义及生成输出；`packages/frontend/src/modules/chat/model/runtime-failure-presentation.ts`、`shared/api/runtime-queries.ts` 和相关测试。
+**Files:** `server/apis/ai_accounts/native_models.go`、`native_models_test.go`、`server/services/aiaccount/capabilities.go` 及相关测试；`server/internal/agent/{diagnostic,contract,session}.go`、必要native失败元数据映射、`server/constants/runtime_failure_code.go`、错误定义及生成输出；`server/services/execution/lifecycle.go`、`server/internal/chat/eventlog/types.go`、`server/internal/chat/messageview/{types,message_view}.go`及相关投影测试；`packages/frontend/src/modules/chat/model/runtime-failure-presentation.ts`、`shared/api/runtime-queries.ts` 和相关测试。
 
 **Interfaces:**
+
 - Consumes: 既有 `AIAccountService.DetectModel`，所有账号目录查询使用请求账号的共享租约与原生环境，不能返回Runtime默认账号的Detection冒充结果。
 - Produces: `GetAIAccountNativeModelsResponse` 保留models/defaultModel，并增加 `Options []RuntimeModelOption`、`DetectedAt int64`、`AccountID string`、`RuntimeID string`；系统账号查询使用Runtime原有明确作用域。前端Query key包含runtime/account/config revision，旧主体响应不能写新主体缓存。
 - Produces: `BILLING_ERROR`独立失败码，UI提示余额/计费入口；quota仅有真实reset证据才显示时间。`-32002`只有resource=session及匹配当前session时才映射SessionNotFound，其他资源保持原错误。
+- Produces: 窄`FailureRecovery`摘要包含`RuntimeID`、`AccountID`、`ResetAtUnixMS *int64`、`RetryAfterMS *int64`、`Source`。主体取本次已冻结执行/实际绑定调用，不从今天的Runtime默认或composer读取；未知主体保留空。时间只消费Task1结构化metadata，缺失不是0。沿agent.Result.Failure→invocation/execution权威终态→messageview.Message→生成DTO贯通，同一摘要实时与历史重放一致；不把凭据、stderr或完整启动信息加入摘要。旧日志无法确定主体时仅保留通用失败，不能关联当前账号额度。现有execution兼容字段可保留，但不是第二份失败可变权威。
 - 提交证据不充足时不增加可重试结论；原有PromptAccepted表示宿主接纳，文档不能把它当CLI已执行证明。
 
-- [ ] **Step 1: RED覆盖账号与错误。** A/B fake账号不同目录，B查询从B启动资源取得；A迟到响应不覆盖B；目录失败不跨主体回退；billing/quota不同文案；文件与别的session的-32002不退休当前session。
+- [ ] **Step 1: RED覆盖账号与错误。** A/B fake账号不同目录，B查询从B启动资源取得；A迟到响应不覆盖B；目录失败不跨主体回退；billing/quota不同文案；文件与别的session的-32002不退休当前session。失败后切账号仍保留原冻结主体；reset/retryAfter经日志重启重放仍一致；无时间证据与旧未知主体保持缺失；原始错误文本不能生成时间。
 - [ ] **Step 2: 运行具体API/native/diagnostic和前端Query测试记录失败。**
 - [ ] **Step 3: 复用租约实现目录，修错误分类与作用域。** 不添加永久轮询或额外全局连接，不读取真实凭据进行验证。
 - [ ] **Step 4: 生成API/枚举并运行定向回归、前端类型检查。** 生成命令遵循项目脚本；只修本任务产生的失败。
