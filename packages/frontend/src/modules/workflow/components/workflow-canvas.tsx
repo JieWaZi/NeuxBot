@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import {
   useEffect,
+  useId,
+  useMemo,
   useRef,
   useState,
   type FocusEvent,
@@ -36,6 +38,7 @@ import type {
 } from "../model/types";
 import { WorkerReference } from "./worker-reference";
 import { CanvasDetail } from "./canvas-detail";
+import { workflowConnectionPath } from "../model/canvas-routing";
 
 const nodeIcons: Record<string, typeof Bot> = {
   worker: Bot,
@@ -46,6 +49,7 @@ const nodeIcons: Record<string, typeof Bot> = {
   startWorkflow: Workflow,
   joinWorkflow: Workflow,
 };
+
 export function NodeKind({
   kind,
   label,
@@ -117,6 +121,7 @@ export function WorkflowCanvas({
 }) {
   const { t } = useTranslation("workflow");
   const active = useRouteSceneActive() && contentActive;
+  const interactionHintId = useId();
   const [visible, setVisible] = useState(
     () => document.visibilityState !== "hidden",
   );
@@ -135,22 +140,51 @@ export function WorkflowCanvas({
     | undefined
   >(undefined);
   const [view, setView] = useState({ x: 24, y: 24, scale: 1 });
-  const [measuredHeight, setMeasuredHeight] = useState(360);
+  const [viewportWidth, setViewportWidth] = useState(1440);
+  const [inputHeight, setInputHeight] = useState(336);
   const [phaseHeights, setPhaseHeights] = useState<Record<string, number>>({});
-  const phases = manifest.phases ?? [];
   const hasInput = Boolean(inputNode);
-  const phaseLayouts = workflowCanvasLayout(manifest, hasInput);
-  const lastPhase = phaseLayouts.at(-1);
-  const width = lastPhase
-    ? lastPhase.left + lastPhase.width + 24
-    : workflowInputNodeWidth + 48;
-  const edges = workflowPhaseEdges(manifest);
-  const phaseIndex = (id?: string) =>
-    phases.findIndex((phase) => phase.id === id);
-  const backEdges = edges.filter(
-    (edge) => phaseIndex(edge.from) >= phaseIndex(edge.to),
-  );
-  const height = Math.max(360, measuredHeight + backEdges.length * 32 + 24);
+  // 连线寻路只取决于业务拓扑与实测尺寸，平移、缩放和选择不重复执行 A*。
+  const { phaseLayouts, width, height, inputPath, connections } =
+    useMemo(() => {
+      const phaseLayouts = workflowCanvasLayout(manifest, hasInput, {
+        maxWidth: viewportWidth,
+        phaseHeights,
+        inputHeight,
+      });
+      const inputBounds = {
+        left: 24,
+        top: 24,
+        width: workflowInputNodeWidth,
+        height: inputHeight,
+      };
+      const bounds = hasInput ? [inputBounds, ...phaseLayouts] : phaseLayouts;
+      const width = Math.max(
+        328,
+        ...bounds.map((item) => item.left + item.width + 24),
+      );
+      const contentBottom = Math.max(
+        24,
+        ...bounds.map((item) => item.top + item.height),
+      );
+      const connections = workflowPhaseEdges(manifest).flatMap((edge) => {
+        const source = phaseLayouts.find((item) => item.phase.id === edge.from);
+        const target = phaseLayouts.find((item) => item.phase.id === edge.to);
+        return source && target
+          ? [{ ...edge, path: workflowConnectionPath(source, target, bounds) }]
+          : [];
+      });
+      return {
+        phaseLayouts,
+        width,
+        height: Math.max(360, contentBottom + 48),
+        inputPath:
+          hasInput && phaseLayouts[0]
+            ? workflowConnectionPath(inputBounds, phaseLayouts[0], bounds)
+            : undefined,
+        connections,
+      };
+    }, [manifest, hasInput, viewportWidth, phaseHeights, inputHeight]);
   const initialFit = useRef(false);
   const userMoved = useRef(false);
   useEffect(() => {
@@ -170,7 +204,7 @@ export function WorkflowCanvas({
     );
     setView({
       x: Math.max(24, (box.width - width * scale) / 2),
-      y: (box.height - height * scale) / 2,
+      y: Math.max(24, (box.height - height * scale) / 2),
       scale,
     });
   };
@@ -184,6 +218,7 @@ export function WorkflowCanvas({
     let fitted = false;
     const observer = new ResizeObserver((entries) => {
       const box = entries[0]?.contentRect;
+      if (box && box.width > 0) setViewportWidth(box.width);
       if (
         box &&
         box.width > 0 &&
@@ -218,12 +253,8 @@ export function WorkflowCanvas({
           ]),
         ),
       );
-      setMeasuredHeight(
-        Math.max(
-          360,
-          ...items.map((item) => item.offsetTop + item.offsetHeight + 24),
-        ),
-      );
+      const input = element.querySelector<HTMLElement>("[data-workflow-input]");
+      if (input) setInputHeight(input.offsetHeight);
     });
     for (const item of items) observer.observe(item);
     return () => observer.disconnect();
@@ -360,6 +391,7 @@ export function WorkflowCanvas({
     if (
       onSelectTargets &&
       event.button === 0 &&
+      event.shiftKey &&
       !event.altKey &&
       !spacePan.current
     ) {
@@ -418,6 +450,7 @@ export function WorkflowCanvas({
   };
   const inputAnchor = hasInput ? (
     <div
+      data-workflow-input
       data-workflow-layout-item
       onFocus={revealFocusedItem}
       className="min-w-0"
@@ -701,7 +734,7 @@ export function WorkflowCanvas({
     );
   };
   const content = phaseLayouts.map(
-    ({ phase, left, width: phaseWidth, items }, index) => {
+    ({ phase, left, top, width: phaseWidth, items }, index) => {
       const card = (
         <section
           key={phase.id}
@@ -720,7 +753,7 @@ export function WorkflowCanvas({
               : {
                   position: "absolute",
                   left,
-                  top: 24,
+                  top,
                   width: phaseWidth,
                 }
           }
@@ -795,7 +828,12 @@ export function WorkflowCanvas({
     );
   return (
     <div
-      className="bg-surface-canvas surface-pattern-dots surface-pattern-dots-canvas relative min-h-0 min-w-0 flex-1 cursor-grab overflow-clip active:cursor-grabbing"
+      className={cn(
+        "bg-surface-canvas surface-pattern-dots surface-pattern-dots-canvas group/workflow-canvas relative min-h-0 min-w-0 flex-1 overflow-clip",
+        selectionRect
+          ? "cursor-crosshair"
+          : "cursor-grab active:cursor-grabbing",
+      )}
       style={{
         backgroundPosition: `${view.x}px ${view.y}px`,
         backgroundSize: `${20 * view.scale}px ${20 * view.scale}px`,
@@ -804,6 +842,7 @@ export function WorkflowCanvas({
       data-workflow-motion={active && visible}
       tabIndex={0}
       aria-label={t("graph")}
+      aria-describedby={interactionHintId}
       onPointerDown={down}
       onKeyUp={(event) => {
         if (event.code === "Space") spacePan.current = false;
@@ -916,17 +955,17 @@ export function WorkflowCanvas({
           height={height}
           aria-hidden="true"
         >
-          {hasInput && phaseLayouts[0] ? (
+          {inputPath ? (
             <g data-workflow-connector="input">
               <path
-                d={`M${24 + workflowInputNodeWidth + 4} 56 H${phaseLayouts[0].left - 4}`}
+                d={inputPath}
                 className="workflow-connection-base"
                 stroke="currentColor"
                 strokeWidth="1.5"
                 fill="none"
               />
               <path
-                d={`M${24 + workflowInputNodeWidth + 4} 56 H${phaseLayouts[0].left - 4}`}
+                d={inputPath}
                 className="workflow-connection-flow stroke-accent"
                 strokeWidth="1.5"
                 strokeLinecap="round"
@@ -934,49 +973,24 @@ export function WorkflowCanvas({
               />
             </g>
           ) : null}
-          {edges.map((edge) => {
-            const from = phases.findIndex((phase) => phase.id === edge.from);
-            const to = phases.findIndex((phase) => phase.id === edge.to);
-            if (from < 0 || to < 0) return null;
-            const source = phaseLayouts[from];
-            const target = phaseLayouts[to];
-            if (!source || !target) return null;
-            const x1 = source.left + source.width;
-            const x2 = target.left;
-            const back = from >= to;
-            const lane =
-              measuredHeight +
-              24 +
-              backEdges.findIndex(
-                (item) => item.from === edge.from && item.to === edge.to,
-              ) *
-                32;
-            const sourceBottom = 24 + (phaseHeights[edge.from ?? ""] ?? 336);
-            const targetBottom = 24 + (phaseHeights[edge.to ?? ""] ?? 336);
-            const middleFrom = source.left + source.width / 2,
-              middleTo = target.left + target.width / 2;
-            const path = back
-              ? `M${middleFrom} ${sourceBottom + 4} V${lane - 12} Q${middleFrom} ${lane} ${middleFrom - 12} ${lane} H${middleTo + 12} Q${middleTo} ${lane} ${middleTo} ${lane - 12} V${targetBottom + 8}`
-              : `M${x1 + 4} 56 C${x1 + 24} 56 ${x2 - 24} 56 ${x2 - 4} 56`;
-            return (
-              <g key={`${edge.from}:${edge.to}`}>
-                <path
-                  d={path}
-                  className="workflow-connection-base"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  fill="none"
-                />
-                <path
-                  d={path}
-                  className="workflow-connection-flow stroke-accent"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  fill="none"
-                />
-              </g>
-            );
-          })}
+          {connections.map(({ from, to, path }) => (
+            <g key={`${from}:${to}`}>
+              <path
+                d={path}
+                className="workflow-connection-base"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                fill="none"
+              />
+              <path
+                d={path}
+                className="workflow-connection-flow stroke-accent"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                fill="none"
+              />
+            </g>
+          ))}
         </svg>
         {input}
         {content}
@@ -1001,6 +1015,14 @@ export function WorkflowCanvas({
         onFit={() => fit()}
         labels={{ zoomIn: t("zoomIn"), zoomOut: t("zoomOut"), fit: t("fit") }}
       />
+      <div className="h-control-sm pointer-events-none absolute right-4 bottom-6 left-24 z-10 flex items-center">
+        <span
+          id={interactionHintId}
+          className="text-muted-foreground type-caption group-focus-visible/workflow-canvas:text-content-primary group-focus-visible/workflow-canvas:font-medium"
+        >
+          {t(onSelectTargets ? "canvasSelectionHint" : "canvasPanHint")}
+        </span>
+      </div>
     </div>
   );
 }

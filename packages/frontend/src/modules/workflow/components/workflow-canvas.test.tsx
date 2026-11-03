@@ -14,6 +14,7 @@ import { WorkflowCanvas } from "./workflow-canvas";
 import type { Manifest } from "../model/types";
 import { installCanvasDOM } from "../test/canvas-dom";
 import { WorkflowInputNode } from "./workflow-input-node";
+import * as canvasRouting from "../model/canvas-routing";
 
 const manifest: Manifest = {
   sdk: "ally.workflow",
@@ -74,6 +75,162 @@ const manifest: Manifest = {
   ],
 };
 
+it("容器缩窄后阶段换行，跨行依赖与输入连线跟随新位置", async () => {
+  let width = 1200;
+  const restore = installCanvasDOM(() => width);
+  const source: Manifest = {
+    ...manifest,
+    controls: [],
+    phases: [
+      { id: "first", title: "采集", detail: "" },
+      { id: "second", title: "汇总", detail: "" },
+    ],
+    nodes: manifest.nodes.map((node, index) => ({
+      ...node,
+      phaseId: index === 0 ? "first" : "second",
+    })),
+    edges: [{ id: "next", kind: "control", from: "left", to: "right" }],
+  };
+  const view = render(
+    <WorkflowCanvas
+      manifest={source}
+      onSelect={vi.fn()}
+      inputNode={<button>输入参数</button>}
+    />,
+  );
+  try {
+    const first = view.container.querySelector<HTMLElement>(
+      '[data-workflow-phase="first"]',
+    );
+    const second = view.container.querySelector<HTMLElement>(
+      '[data-workflow-phase="second"]',
+    );
+    if (!first || !second) throw new Error("阶段未挂载");
+    await waitFor(() => expect(second.style.top).toBe(first.style.top));
+    width = 640;
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => {
+      expect(Number.parseFloat(second.style.top)).toBeGreaterThan(
+        Number.parseFloat(first.style.top) + first.offsetHeight,
+      );
+      expect(first.style.left).toBe("24px");
+      expect(second.style.left).toBe("24px");
+    });
+    const paths = [
+      ...view.container.querySelectorAll<SVGPathElement>(
+        "svg > g > .workflow-connection-base",
+      ),
+    ];
+    expect(paths).toHaveLength(2);
+    for (const path of paths) {
+      expect(path.getAttribute("d")).toContain("V");
+      expect(path.getAttribute("d")).not.toContain("H");
+      expect(path.getAttribute("d")).not.toMatch(/NaN|undefined/);
+    }
+    const graph = second.parentElement;
+    if (!graph) throw new Error("画布内容未挂载");
+    expect(Number.parseFloat(graph.style.height)).toBeGreaterThan(
+      Number.parseFloat(second.style.top) + second.offsetHeight,
+    );
+  } finally {
+    view.unmount();
+    restore();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("平移缩放与选择复用连线路径，容器布局变化才重新计算", async () => {
+  let width = 400;
+  const restore = installCanvasDOM(() => width);
+  vi.stubGlobal("PointerEvent", MouseEvent);
+  const routing = vi.spyOn(canvasRouting, "workflowConnectionPath");
+  const source: Manifest = {
+    ...manifest,
+    controls: [],
+    phases: [
+      { id: "first", title: "采集", detail: "" },
+      { id: "second", title: "汇总", detail: "" },
+    ],
+    nodes: manifest.nodes.map((node, index) => ({
+      ...node,
+      phaseId: index === 0 ? "first" : "second",
+    })),
+    edges: [{ id: "next", kind: "control", from: "left", to: "right" }],
+  };
+  const props = { manifest: source, onSelect: vi.fn() };
+  const view = render(<WorkflowCanvas {...props} />);
+  try {
+    await waitFor(() =>
+      expect(routing.mock.calls.at(-1)?.[0].height).toBe(600),
+    );
+    const canvas = screen.getByLabelText("画布");
+    Object.defineProperty(canvas, "setPointerCapture", { value: () => {} });
+    const calls = routing.mock.calls.length;
+    fireEvent.pointerDown(canvas, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(canvas, { clientX: 160, clientY: 140 });
+    fireEvent.pointerUp(canvas);
+    fireEvent.wheel(canvas, { deltaY: 20 });
+    await userEvent.click(screen.getByRole("button", { name: "放大" }));
+    view.rerender(
+      <WorkflowCanvas
+        {...props}
+        selectedTargets={[{ kind: "phase", id: "first" }]}
+      />,
+    );
+    expect(routing).toHaveBeenCalledTimes(calls);
+    width = 1200;
+    fireEvent(window, new Event("resize"));
+    await waitFor(() =>
+      expect(routing.mock.calls.length).toBeGreaterThan(calls),
+    );
+  } finally {
+    view.unmount();
+    routing.mockRestore();
+    restore();
+    vi.unstubAllGlobals();
+  }
+});
+
+it("跨多行依赖和回边绕开中间阶段，回边从上方就近返回", async () => {
+  const restore = installCanvasDOM(() => 400);
+  const source: Manifest = {
+    ...manifest,
+    controls: [],
+    phases: [
+      { id: "first", title: "第一阶段", detail: "" },
+      { id: "middle", title: "第二阶段", detail: "" },
+      { id: "last", title: "第三阶段", detail: "" },
+    ],
+    nodes: manifest.nodes.map((node, index) => ({
+      ...node,
+      phaseId: index === 0 ? "first" : "last",
+    })),
+    edges: [
+      { id: "skip", kind: "control", from: "left", to: "right" },
+      { id: "retry", kind: "control", from: "right", to: "left" },
+    ],
+  };
+  const view = render(<WorkflowCanvas manifest={source} onSelect={vi.fn()} />);
+  try {
+    await waitFor(() => {
+      const paths = [
+        ...view.container.querySelectorAll<SVGPathElement>(
+          "svg > g > .workflow-connection-base",
+        ),
+      ];
+      expect(paths).toHaveLength(2);
+      expect(paths[0]?.getAttribute("d")).toMatch(/^M164 628 /);
+      expect(paths[0]?.getAttribute("d")).toMatch(/V1412$/);
+      expect(paths[1]?.getAttribute("d")).toMatch(/^M164 1412 /);
+      expect(paths[1]?.getAttribute("d")).toMatch(/V628$/);
+    });
+  } finally {
+    view.unmount();
+    restore();
+    vi.unstubAllGlobals();
+  }
+});
+
 it("默认拖动空白即可移动画布，节点与缩放按钮保留点击行为", async () => {
   const restore = installCanvasDOM();
   vi.stubGlobal("PointerEvent", MouseEvent);
@@ -81,6 +238,8 @@ it("默认拖动空白即可移动画布，节点与缩放按钮保留点击行�
   const view = render(<WorkflowCanvas manifest={manifest} onSelect={select} />);
   try {
     const canvas = screen.getByLabelText("画布");
+    expect(screen.getByText("拖动空白处平移")).toBeVisible();
+    expect(screen.queryByText(/Shift＋拖动框选/)).not.toBeInTheDocument();
     Object.defineProperty(canvas, "setPointerCapture", {
       configurable: true,
       value: () => {},
@@ -483,7 +642,7 @@ it("下拉候选在外部Portal内点击时不会被画布平移抢走指针", a
 });
 
 it.each(["canvas", "window"])(
-  "Space在%s失焦后恢复默认矩形框选，没有节点勾选控件",
+  "Space在%s失焦后左键平移，Shift左键框选，操作提示可直接看到",
   async (surface) => {
     const restore = installCanvasDOM();
     vi.stubGlobal("PointerEvent", MouseEvent);
@@ -524,13 +683,42 @@ it.each(["canvas", "window"])(
       fireEvent.keyDown(canvas, { key: " ", code: "Space" });
       if (surface === "canvas") fireEvent.blur(canvas);
       else window.dispatchEvent(new Event("blur"));
+      const graph = canvas.querySelector<HTMLElement>(
+        'div[style*="transform"]',
+      );
+      const before = graph?.style.transform;
       fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
-      fireEvent.pointerMove(canvas, { clientX: 800, clientY: 600 });
+      fireEvent.pointerMove(canvas, { clientX: 100, clientY: 80 });
       fireEvent.pointerUp(canvas);
+      expect(selected).not.toHaveBeenCalled();
+      expect(graph?.style.transform).not.toBe(before);
+      const beforeWheel = graph?.style.transform.match(
+        /translate\(([-\d.]+)px,([-\d.]+)px\)/,
+      );
+      if (!beforeWheel) throw new Error("画布平移位置缺失");
+      fireEvent.wheel(canvas, { deltaX: 24, deltaY: 32 });
+      expect(graph?.style.transform).toContain(
+        `translate(${Number(beforeWheel[1]) - 24}px,${Number(beforeWheel[2]) - 32}px)`,
+      );
+      expect(selected).not.toHaveBeenCalled();
+      const moved = graph?.style.transform;
+      fireEvent.pointerDown(canvas, {
+        button: 0,
+        shiftKey: true,
+        clientX: 50,
+        clientY: 50,
+      });
+      fireEvent.pointerMove(canvas, { clientX: 800, clientY: 600 });
+      expect(canvas).toHaveClass("cursor-crosshair");
+      fireEvent.pointerUp(canvas);
+      expect(graph?.style.transform).toBe(moved);
       expect(selected).toHaveBeenLastCalledWith([
         { kind: "phase", id: "work" },
         { kind: "phase", id: "result" },
       ]);
+      const hint = screen.getByText("拖动空白处平移 · Shift＋拖动框选");
+      expect(canvas).toHaveAttribute("aria-describedby", hint.id);
+      expect(hint).toBeVisible();
     } finally {
       view.unmount();
       restore();
@@ -561,7 +749,12 @@ it("框选中按Escape取消后松开鼠标不会重新选中阶段", () => {
     Object.defineProperty(phase, "getBoundingClientRect", {
       value: () => new DOMRect(100, 100, 250, 400),
     });
-    fireEvent.pointerDown(canvas, { button: 0, clientX: 50, clientY: 50 });
+    fireEvent.pointerDown(canvas, {
+      button: 0,
+      shiftKey: true,
+      clientX: 50,
+      clientY: 50,
+    });
     fireEvent.pointerMove(canvas, { clientX: 800, clientY: 600 });
     fireEvent.keyDown(canvas, { key: "Escape" });
     expect(selected).toHaveBeenCalledExactlyOnceWith([]);

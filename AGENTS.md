@@ -17,6 +17,7 @@ Avoid unnecessary secondary labels and descriptions.Let the layout do the explai
 - 复用已有模块、共享组件和语义 Token；不增加重复的业务事实、连接或状态源。
 - SQL 默认单表查询，JOIN 仅限确有必要且提供查询计划与测试证据的情况；完整硬规则见 [后端约定](docs/development/backend-cn.md#5-gorm-和-sqlite)。
 - 普通 Card 使用语义背景、排版和留白分层，无常驻边框与阴影；轮廓用于选中、焦点、错误等明确状态。
+- 焦点样式遵循 `shared/styles` 基线与共享控件规范，禁止依赖或恢复浏览器默认焦点外框（如黄色／橙色系统轮廓、`outline: auto`、`-webkit-focus-ring-color`）。鼠标点击、拖动及其触发的 `focus()` 不得给画布、滚动区或布局容器添加整块外框；键盘焦点通过 `focus-visible` 与语义 Token 在控件或局部操作提示上呈现。
 - 新增或修改 Go 结构体时检查全部字段，每个字段须有准确中文注释。OpenAPI 字段采用简短业务标签。
 - 生成文件只通过对应命令更新，不手工编辑或扩大检查例外。
 - 注释解释当前职责、约束和设计理由；第三方版权与许可声明准确保留。

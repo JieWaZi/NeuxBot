@@ -204,19 +204,6 @@ export function WorkflowDetailPage() {
   const targetScope = `${id}:${detail.data?.revision?.id ?? ""}`;
   const selectedTargets =
     targetSelection.scope === targetScope ? targetSelection.targets : [];
-  const toggleTarget = (target: { kind: "phase" | "node"; id: string }) => {
-    setChatExpanded(true);
-    setTargetSelection({
-      scope: targetScope,
-      targets: selectedTargets.some(
-        (item) => item.kind === target.kind && item.id === target.id,
-      )
-        ? selectedTargets.filter(
-            (item) => item.kind !== target.kind || item.id !== target.id,
-          )
-        : [...selectedTargets, target],
-    });
-  };
   const optimizeRun = params.get("optimizeRun");
   const requestedChat = params.get("chat");
   const requestedInteraction = params.get("request");
@@ -995,7 +982,25 @@ export function WorkflowDetailPage() {
                 ?.label ?? target.id),
         ]),
       )}
-      onRemoveCanvasReference={toggleTarget}
+      onCanvasReferencesChange={(references) =>
+        setTargetSelection({
+          scope: targetScope,
+          targets: references
+            .filter(
+              (reference) =>
+                revision &&
+                reference.revisionId === revision.id &&
+                (reference.kind === "phase"
+                  ? revision.manifest?.phases.some(
+                      (phase) => phase.id === reference.id,
+                    )
+                  : revision.manifest?.nodes.some(
+                      (node) => node.id === reference.id,
+                    )),
+            )
+            .map(({ kind, id }) => ({ kind, id })),
+        })
+      }
       onCanvasReferencesSent={() =>
         setTargetSelection({ scope: targetScope, targets: [] })
       }

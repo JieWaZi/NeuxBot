@@ -313,6 +313,19 @@
   box-sizing: border-box;
 }
 
+@layer base {
+  /* 统一关闭浏览器默认焦点外框，避免可聚焦容器出现系统颜色的整块轮廓。 */
+  :focus {
+    outline: none;
+  }
+
+  /* 原生链接与控件仍有语义键盘提示，共享控件可用自身样式覆盖。 */
+  :where(a[href], button, input, textarea, select, summary):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
 :focus,
 :focus-visible,
 :focus-within {

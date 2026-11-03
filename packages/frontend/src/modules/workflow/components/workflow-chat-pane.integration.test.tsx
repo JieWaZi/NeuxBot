@@ -11,7 +11,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 import {
   afterAll,
@@ -999,89 +999,142 @@ it("优化建议只填入正文，发送时仍携带原运行引用", async () =
   queryClient.clear();
 });
 
-it("阶段引用位于输入正文内部，删除后仅发送仍可见的引用", async () => {
-  const bodies: unknown[] = [];
-  server.use(
-    http.post(
-      `${api}/workflows/flow-chips/creation/messages`,
-      async ({ request }) => {
-        bodies.push(await request.json());
-        return HttpResponse.json({
-          id: "session-chips",
-          chatId: "chat-chips",
-          acceptedExecutionId: "execution-chips",
-          execution: { id: "execution-chips", status: "completed" },
-        });
-      },
-    ),
-    http.get(`${api}/chats/chat-chips`, () =>
-      HttpResponse.json({ chat: { id: "chat-chips" } }),
-    ),
-    http.get(`${api}/chats/chat-chips/messages`, () =>
-      HttpResponse.json({ resources: [] }),
-    ),
-  );
-  function Content() {
-    const [refs, setRefs] = useState([
-      { revisionId: "revision", kind: "phase" as const, id: "prepare" },
-      { revisionId: "revision", kind: "phase" as const, id: "review" },
-    ]);
-    return (
-      <WorkflowChatPane
-        id="flow-chips"
-        canvasReferences={refs}
-        canvasReferenceLabels={{
-          "phase:prepare": "准备材料",
-          "phase:review": "检查材料",
-        }}
-        onRemoveCanvasReference={(ref) =>
-          setRefs((values) => values.filter((item) => item.id !== ref.id))
-        }
-        onCanvasReferencesSent={() => setRefs([])}
-        draft="增加完整性检查"
-        onNewChat={() => {}}
-        mainContent={{
-          contentId: "chips-canvas",
-          title: "画布",
-          content: <div>流程</div>,
-        }}
-      />
+it.each(["send", "retry", "undo"] as const)(
+  "阶段引用与可见正文同步，支持删除、拒绝重试和撤销（%s）",
+  async (scenario) => {
+    const rejectFirst = scenario === "retry";
+    const bodies: unknown[] = [];
+    server.use(
+      http.post(
+        `${api}/workflows/flow-chips/creation/messages`,
+        async ({ request }) => {
+          bodies.push(await request.json());
+          if (rejectFirst && bodies.length === 1)
+            return HttpResponse.json({ message: "发送失败" }, { status: 503 });
+          return HttpResponse.json({
+            id: "session-chips",
+            chatId: "chat-chips",
+            acceptedExecutionId: "execution-chips",
+            execution: { id: "execution-chips", status: "completed" },
+          });
+        },
+      ),
+      http.get(`${api}/chats/chat-chips`, () =>
+        HttpResponse.json({ chat: { id: "chat-chips" } }),
+      ),
+      http.get(`${api}/chats/chat-chips/messages`, () =>
+        HttpResponse.json({ resources: [] }),
+      ),
     );
-  }
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  render(
-    <QueryClientProvider client={client}>
-      <WorkbenchProvider>
-        <ChatQueueProvider>
-          <TooltipProvider>
-            <MemoryRouter>
-              <Content />
-            </MemoryRouter>
-          </TooltipProvider>
-        </ChatQueueProvider>
-      </WorkbenchProvider>
-    </QueryClientProvider>,
-  );
-  const first = await screen.findByText("准备材料");
-  const body = first.closest("[data-chat-composer-input-body]");
-  expect(body).not.toBeNull();
-  expect(body?.querySelector("[contenteditable=true]")).toBeTruthy();
-  await userEvent.click(
-    screen.getByRole("button", { name: "移除准备材料引用" }),
-  );
-  expect(bodies).toEqual([]);
-  expect(screen.queryByText("准备材料")).not.toBeInTheDocument();
-  const send = screen.getByRole("button", { name: "发送消息" });
-  await waitFor(() => expect(send).toBeEnabled());
-  await userEvent.click(send);
-  await waitFor(() => expect(bodies).toHaveLength(1));
-  expect(bodies[0]).toHaveProperty("canvasReferences", [
-    { revisionId: "revision", kind: "phase", id: "review" },
-  ]);
-  client.clear();
-});
+    function Content() {
+      const [refs, setRefs] = useState<
+        NonNullable<ComponentProps<typeof WorkflowChatPane>["canvasReferences"]>
+      >([
+        { revisionId: "revision", kind: "phase" as const, id: "prepare" },
+        { revisionId: "revision", kind: "phase" as const, id: "review" },
+      ]);
+      return (
+        <>
+          <button
+            onClick={() =>
+              setRefs([{ revisionId: "revision", kind: "phase", id: "review" }])
+            }
+          >
+            引用检查材料
+          </button>
+          <WorkflowChatPane
+            id="flow-chips"
+            canvasReferences={refs}
+            canvasReferenceLabels={{
+              "phase:prepare": "准备材料",
+              "phase:review": "检查材料",
+            }}
+            onCanvasReferencesChange={setRefs}
+            onCanvasReferencesSent={() => setRefs([])}
+            draft="增加完整性检查"
+            onNewChat={() => {}}
+            mainContent={{
+              contentId: "chips-canvas",
+              title: "画布",
+              content: <div>流程</div>,
+            }}
+          />
+        </>
+      );
+    }
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <WorkbenchProvider>
+          <ChatQueueProvider>
+            <TooltipProvider>
+              <MemoryRouter>
+                <Content />
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </WorkbenchProvider>
+      </QueryClientProvider>,
+    );
+    const first = await screen.findByText("准备材料");
+    const input = screen.getByRole("textbox", { name: /输入消息/ });
+    expect(first.closest("[contenteditable=true]")).toBe(input);
+    expect(first).toHaveAttribute(
+      "data-chat-composer-reference-type",
+      "context",
+    );
+    expect(
+      screen.queryByRole("button", { name: "移除准备材料引用" }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(input);
+    if (scenario === "undo")
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    fireEvent.keyDown(input, { key: "a", code: "KeyA", ctrlKey: true });
+    fireEvent.keyDown(input, { key: "Backspace" });
+    expect(bodies).toEqual([]);
+    expect(screen.queryByText("准备材料")).not.toBeInTheDocument();
+    expect(screen.queryByText("检查材料")).not.toBeInTheDocument();
+    if (scenario === "undo") {
+      fireEvent.keyDown(input, { key: "z", code: "KeyZ", ctrlKey: true });
+      await waitFor(() =>
+        expect(within(input).getByText("准备材料")).toBeInTheDocument(),
+      );
+    } else {
+      await userEvent.click(
+        screen.getByRole("button", { name: "引用检查材料" }),
+      );
+      await waitFor(() =>
+        expect(within(input).getByText("检查材料")).toBeInTheDocument(),
+      );
+      await userEvent.type(input, "增加完整性检查");
+    }
+    const send = screen.getByRole("button", { name: "发送消息" });
+    await waitFor(() => expect(send).toBeEnabled());
+    await userEvent.click(send);
+    await waitFor(() => expect(bodies).toHaveLength(1));
+    expect(bodies[0]).toHaveProperty(
+      "canvasReferences",
+      scenario === "undo"
+        ? [
+            { revisionId: "revision", kind: "phase", id: "prepare" },
+            { revisionId: "revision", kind: "phase", id: "review" },
+          ]
+        : [{ revisionId: "revision", kind: "phase", id: "review" }],
+    );
+    expect(bodies[0]).toHaveProperty("content", "增加完整性检查");
+    if (rejectFirst) {
+      await waitFor(() => expect(send).toBeEnabled());
+      expect(within(input).getByText("检查材料")).toBeInTheDocument();
+      expect(input).toHaveTextContent("增加完整性检查");
+      await userEvent.click(send);
+      await waitFor(() => expect(bodies).toHaveLength(2));
+      expect(bodies[1]).toEqual(bodies[0]);
+    }
+    client.clear();
+  },
+);
 
 it("已有创作接纳直接交付完整聊天快照，不补读详情或刷新版本运行目录", async () => {
   let detailReads = 0;

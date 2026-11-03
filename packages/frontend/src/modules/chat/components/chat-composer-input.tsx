@@ -48,6 +48,13 @@ type MentionItem = {
   referenceType: "file" | "skill" | "connector" | "plugin" | "code" | "member";
 };
 const fileReferenceLimit = 20;
+const contextReferenceSync = "chatContextReferenceSync";
+
+export type ChatComposerContextReference = {
+  id: string;
+  label: string;
+};
+const noContextReferences: ChatComposerContextReference[] = [];
 
 export type ChatMemberMentionOption = {
   description?: string;
@@ -85,6 +92,8 @@ type ChatComposerInputProps = {
   onSend?: () => void;
   codeReferenceRequest?: ChatCodeReference;
   onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
+  contextReferences?: ChatComposerContextReference[];
+  onContextReferencesChange?: (ids: string[]) => void;
   draft?: string;
   clearRevision?: number;
   restoreRevision?: number;
@@ -331,7 +340,7 @@ function renderSuggestion(
 }
 
 /**
- * 使用 TipTap Mention 节点承载文件、Skill 和 MCP 连接器引用。
+ * 使用 TipTap Mention 节点承载文件、Skill、MCP 和业务上下文引用。
  * Mention 是原子节点，因此正文与引用共享同一条编辑器文档，不会因 React 列表重排。
  */
 export function ChatComposerInput({
@@ -364,6 +373,8 @@ export function ChatComposerInput({
   onSend,
   codeReferenceRequest,
   onCodeReferencesChange,
+  contextReferences = noContextReferences,
+  onContextReferencesChange,
   draft,
   clearRevision = 0,
   restoreRevision = 0,
@@ -385,6 +396,7 @@ export function ChatComposerInput({
     onValueChange,
     onSend,
     onCodeReferencesChange,
+    onContextReferencesChange,
   });
   const selectedSkillIdsRef = useRef(selectedSkillIds);
   const selectedConnectorIdsRef = useRef(selectedConnectorIds);
@@ -432,6 +444,7 @@ export function ChatComposerInput({
       onValueChange,
       onSend,
       onCodeReferencesChange,
+      onContextReferencesChange,
     };
     selectedSkillIdsRef.current = selectedSkillIds;
     selectedConnectorIdsRef.current = selectedConnectorIds;
@@ -449,6 +462,8 @@ export function ChatComposerInput({
     disabledRef.current = disabled;
   }, [
     aui,
+    contextReferences,
+    onContextReferencesChange,
     plugins,
     selectedPluginIds,
     pluginsError,
@@ -864,12 +879,13 @@ export function ChatComposerInput({
         },
       },
     },
-    onUpdate: ({ editor: nextEditor }) => {
+    onUpdate: ({ editor: nextEditor, transaction }) => {
       const text = extractText(nextEditor);
       const codeReferences: ChatCodeReference[] = [];
       const skillIDs = new Set<string>();
       const pluginIDs = new Set<string>();
       const connectorIDs = new Set<string>();
+      const contextIDs = new Set<string>();
       let memberID = "";
       nextEditor.state.doc.descendants((node) => {
         if (node.type.name !== "mention") return;
@@ -891,6 +907,9 @@ export function ChatComposerInput({
             break;
           case "connector":
             if (referenceID) connectorIDs.add(referenceID);
+            break;
+          case "context":
+            if (referenceID) contextIDs.add(referenceID);
             break;
           case "code":
             codeReferences.push({
@@ -917,6 +936,10 @@ export function ChatComposerInput({
         Array.from(connectorIDs),
       );
       callbacksRef.current.onCodeReferencesChange?.(codeReferences);
+      if (transaction.docChanged && !transaction.getMeta(contextReferenceSync))
+        callbacksRef.current.onContextReferencesChange?.(
+          Array.from(contextIDs),
+        );
       callbacksRef.current.onMemberMentionChange?.(memberID || undefined);
       callbacksRef.current.onValueChange?.();
     },
@@ -934,15 +957,19 @@ export function ChatComposerInput({
       if (editor.isDestroyed) return;
       handledDraftRef.current = draft;
       // 外部建议也是编辑器文档，由 onUpdate 同步普通 Chat 的发送状态。
-      editor.commands.setContent({
-        type: "doc",
-        content: [
-          {
-            type: "paragraph",
-            content: draft ? [{ type: "text", text: draft }] : [],
-          },
-        ],
-      });
+      editor
+        .chain()
+        .setMeta(contextReferenceSync, true)
+        .setContent({
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: draft ? [{ type: "text", text: draft }] : [],
+            },
+          ],
+        })
+        .run();
     };
     if (editor.isInitialized) applyDraft();
     else editor.on("create", applyDraft);
@@ -955,7 +982,7 @@ export function ChatComposerInput({
     if (!editor || handledClearRevisionRef.current === clearRevision) return;
     handledClearRevisionRef.current = clearRevision;
     sentDocumentRef.current = editor.getJSON();
-    editor.commands.clearContent();
+    editor.chain().setMeta(contextReferenceSync, true).clearContent().run();
   }, [clearRevision, editor]);
 
   useLayoutEffect(() => {
@@ -964,8 +991,83 @@ export function ChatComposerInput({
     handledRestoreRevisionRef.current = restoreRevision;
     const sentDocument = sentDocumentRef.current;
     sentDocumentRef.current = undefined;
-    if (sentDocument) editor.commands.setContent(sentDocument);
+    if (sentDocument)
+      editor
+        .chain()
+        .setMeta(contextReferenceSync, true)
+        .setContent(sentDocument)
+        .run();
   }, [editor, restoreRevision]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const sync = () => {
+      if (editor.isDestroyed) return;
+      const references = contextReferences;
+      const expected = new Map(
+        references.map((reference) => [reference.id, reference]),
+      );
+      const existing = new Set<string>();
+      const positions: {
+        position: number;
+        size: number;
+        id: string;
+        label: string;
+      }[] = [];
+      editor.state.doc.descendants((node, position) => {
+        if (
+          node.type.name !== "mention" ||
+          node.attrs.referenceType !== "context"
+        )
+          return;
+        positions.push({
+          position,
+          size: node.nodeSize,
+          id: String(node.attrs.id),
+          label: String(node.attrs.label),
+        });
+      });
+      // 外部选择是文档投影，不额外占据撤销历史；撤销用户删除仍会回写真实选择。
+      const transaction = editor.state.tr
+        .setMeta(contextReferenceSync, true)
+        .setMeta("addToHistory", false);
+      for (const item of positions.reverse()) {
+        const reference = expected.get(item.id);
+        if (!reference || existing.has(item.id))
+          transaction.delete(item.position, item.position + item.size);
+        else {
+          existing.add(item.id);
+          if (item.label !== reference.label)
+            transaction.setNodeMarkup(item.position, undefined, {
+              ...editor.state.doc.nodeAt(item.position)?.attrs,
+              label: reference.label,
+            });
+        }
+      }
+      const mention = editor.schema.nodes.mention;
+      if (!mention) return;
+      const additions = references.filter(
+        (reference) => !existing.has(reference.id),
+      );
+      if (additions.length)
+        transaction.insert(
+          transaction.selection.from,
+          additions.map((reference) =>
+            mention.create({
+              ...reference,
+              referenceType: "context",
+              mentionSuggestionChar: "",
+            }),
+          ),
+        );
+      if (transaction.docChanged) editor.view.dispatch(transaction);
+    };
+    if (editor.isInitialized) sync();
+    else editor.on("create", sync);
+    return () => {
+      editor.off("create", sync);
+    };
+  }, [contextReferences, editor, draft, clearRevision, restoreRevision]);
 
   const codeReferenceCandidate = parseReference(
     codeReferenceRequest?.path ?? "",

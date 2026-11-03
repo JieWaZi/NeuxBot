@@ -173,3 +173,60 @@ it("keeps pipeline stages sequential and projects each phase without losing cros
     },
   ]);
 });
+
+it("按行宽整体换行，并按本行最高阶段为下一行留出空间", () => {
+  const source = manifest([]);
+  source.phases = Array.from({ length: 5 }, (_, index) => ({
+    id: `phase-${index}`,
+    title: `阶段 ${index}`,
+    detail: "",
+  }));
+  const layouts = workflowCanvasLayout(source, false, {
+    maxWidth: 700,
+    phaseHeights: { "phase-0": 500, "phase-1": 200 },
+  });
+  expect(layouts.map(({ left, top }) => [left, top])).toEqual([
+    [24, 24],
+    [368, 24],
+    [24, 620],
+    [368, 620],
+    [24, 1052],
+  ]);
+});
+
+it("宽容器仍限制每行最大宽度，输入入口参与第一行占位和高度", () => {
+  const source = manifest([]);
+  source.phases = Array.from({ length: 5 }, (_, index) => ({
+    id: `phase-${index}`,
+    title: `阶段 ${index}`,
+    detail: "",
+  }));
+  const layouts = workflowCanvasLayout(source, true, {
+    maxWidth: 2400,
+    inputHeight: 600,
+  });
+  expect(layouts.map(({ left, top }) => [left, top])).toEqual([
+    [368, 24],
+    [712, 24],
+    [1056, 24],
+    [24, 720],
+    [368, 720],
+  ]);
+});
+
+it("过宽的并行阶段独占一行，保留其分支结构且不生成空白首行", () => {
+  const source = manifest([
+    {
+      id: "parallel",
+      kind: "parallel",
+      branches: [
+        { label: "1", children: [node("analyse")] },
+        { label: "2", children: [node("summarise")] },
+      ],
+    },
+  ]);
+  const layouts = workflowCanvasLayout(source, false, { maxWidth: 320 });
+  expect(layouts[0]).toMatchObject({ left: 24, top: 24, width: 552 });
+  expect(layouts[0]?.items[0]).toMatchObject({ kind: "parallel", columns: 2 });
+  expect(layouts[1]).toMatchObject({ left: 24, top: 456 });
+});

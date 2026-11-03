@@ -128,6 +128,7 @@ import {
 import {
   ChatComposerInput,
   type ChatMemberMentionOption,
+  type ChatComposerContextReference,
 } from "./chat-composer-input";
 import { chatContentColumnClassName } from "./chat-layout";
 import {
@@ -198,7 +199,8 @@ type ChatThreadProps = {
   composerSettings?: ReactNode;
   composerActions?: ReactNode;
   composerEffects?: ReactNode;
-  inlineComposerContext?: ReactNode;
+  composerReferences?: ChatComposerContextReference[];
+  onComposerReferencesChange?: (ids: string[]) => void;
   renderComposerContextStrip?: () => ReactNode;
   composerSkills?: ChatSkillOption[];
   composerSkillsError?: boolean;
@@ -1591,7 +1593,8 @@ const Composer = memo(function Composer({
   settings,
   actions,
   effects,
-  inlineContext,
+  contextReferences,
+  onContextReferencesChange,
   renderContextStrip,
   skills,
   skillsError,
@@ -1639,7 +1642,8 @@ const Composer = memo(function Composer({
   settings?: ReactNode;
   actions?: ReactNode;
   effects?: ReactNode;
-  inlineContext?: ReactNode;
+  contextReferences?: ChatComposerContextReference[];
+  onContextReferencesChange?: (ids: string[]) => void;
   renderContextStrip?: () => ReactNode;
   skills: ChatSkillOption[];
   skillsError: boolean;
@@ -1840,8 +1844,9 @@ const Composer = memo(function Composer({
           {/* 待处理交互只隐藏输入区，保留当前文档、建议消费状态与发送恢复状态。 */}
           <div hidden={Boolean(currentElicitation || currentApproval)}>
             <ComposerInputBody data-chat-composer-input-body>
-              {inlineContext}
               <ChatComposerInput
+                contextReferences={contextReferences}
+                onContextReferencesChange={onContextReferencesChange}
                 autoFocus={autoFocus}
                 disabled={
                   isWorkStopping ||
@@ -2020,7 +2025,8 @@ export function ChatThread({
   composerSettings,
   composerActions,
   composerEffects,
-  inlineComposerContext,
+  composerReferences,
+  onComposerReferencesChange,
   renderComposerContextStrip,
   composerSkills = emptyList,
   composerSkillsError = false,
@@ -2377,7 +2383,8 @@ export function ChatThread({
                       settings={composerSettings}
                       actions={composerActions}
                       effects={composerEffects}
-                      inlineContext={inlineComposerContext}
+                      contextReferences={composerReferences}
+                      onContextReferencesChange={onComposerReferencesChange}
                       renderContextStrip={renderComposerContextStrip}
                       skills={composerSkills}
                       skillsError={composerSkillsError}

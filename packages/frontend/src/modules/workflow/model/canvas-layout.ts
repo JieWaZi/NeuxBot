@@ -22,8 +22,23 @@ const columnCount = (items: CanvasItem[]) =>
 export const workflowInputNodeWidth = 280;
 
 /** 只使用编译器提供的真实控制路径；节点标题与分组 ID 不用于猜测并发。 */
-export function workflowCanvasLayout(manifest: Manifest, includeInput = false) {
+export function workflowCanvasLayout(
+  manifest: Manifest,
+  includeInput = false,
+  {
+    maxWidth = 1440,
+    phaseHeights = {},
+    inputHeight = 336,
+  }: {
+    maxWidth?: number;
+    phaseHeights?: Record<string, number>;
+    inputHeight?: number;
+  } = {},
+) {
+  const rowWidth = Math.min(1440, Math.max(328, maxWidth));
   let left = 24 + (includeInput ? workflowInputNodeWidth + 64 : 0);
+  let top = 24;
+  let rowHeight = includeInput ? inputHeight : 0;
   return (manifest.phases ?? []).map((phase) => {
     const nodes = (manifest.nodes ?? [])
       .filter((node) => node.phaseId === phase.id)
@@ -83,7 +98,15 @@ export function workflowCanvasLayout(manifest: Manifest, includeInput = false) {
         items.push({ id: node.id, kind: "node", node, columns: 1 });
     const columns = columnCount(items);
     const width = 32 + columns * 248 + (columns - 1) * 24;
-    const layout = { phase, items, width, left };
+    // 阶段整体换行，过宽的并行阶段独占一行，保留真实分支结构。
+    if (left > 24 && left + width + 24 > rowWidth) {
+      top += rowHeight + 96;
+      left = 24;
+      rowHeight = 0;
+    }
+    const height = phaseHeights[phase.id] ?? 336;
+    const layout = { phase, items, width, height, left, top };
+    rowHeight = Math.max(rowHeight, height);
     left += width + 64;
     return layout;
   });

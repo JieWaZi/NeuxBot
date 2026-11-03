@@ -58,6 +58,7 @@ import {
   type ChatWorkspaceAdapter,
 } from "../components/chat-workspace-surface";
 import { ChatThread } from "../components/chat-thread";
+import type { ChatComposerContextReference } from "../components/chat-composer-input";
 import { useChatWorkspaceHost } from "../components/chat-contributions";
 import { useChatComposerControls } from "../components/chat-composer-controls";
 import {
@@ -125,7 +126,8 @@ export type ChatWorkspaceEntry = {
   directoryLabel: string;
   mainContent?: ChatWorkspaceMainContent;
   draft?: string;
-  composerContext?: ReactNode;
+  composerReferences?: ChatComposerContextReference[];
+  onComposerReferencesChange?: (ids: string[]) => void;
   emptyState?:
     | ReactNode
     | ((context: {
@@ -1238,7 +1240,8 @@ function ChatView({
       composerEffects,
       composerDraft: entry?.draft,
       renderComposerContextStrip,
-      inlineComposerContext: entry?.composerContext,
+      composerReferences: entry?.composerReferences,
+      onComposerReferencesChange: entry?.onComposerReferencesChange,
       composerSkills: enabledSkills,
       composerSkillsError: skillsQuery.isError,
       composerPlugins: enabledPlugins,

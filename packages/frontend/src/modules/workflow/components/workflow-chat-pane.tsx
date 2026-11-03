@@ -1,6 +1,4 @@
 import type { SendWorkflowCreationMessageData } from "@/shared/api/generated/types.gen";
-import { Button } from "@/shared/ui/button";
-import { X } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
@@ -22,6 +20,25 @@ import type { ExecutionDefaults } from "../model/types";
 type CanvasReference = NonNullable<
   SendWorkflowCreationMessageData["body"]["canvasReferences"]
 >[number] & { kind: "phase" | "node"; id: string; revisionId: string };
+const referenceKey = (reference: CanvasReference) =>
+  JSON.stringify([reference.revisionId, reference.kind, reference.id]);
+
+function referenceFromKey(key: string): CanvasReference[] {
+  try {
+    const value: unknown = JSON.parse(key);
+    if (
+      !Array.isArray(value) ||
+      value.length !== 3 ||
+      typeof value[0] !== "string" ||
+      (value[1] !== "phase" && value[1] !== "node") ||
+      typeof value[2] !== "string"
+    )
+      return [];
+    return [{ revisionId: value[0], kind: value[1], id: value[2] }];
+  } catch {
+    return [];
+  }
+}
 
 /** 工作流只负责 scoped 发送；对话界面完整复用普通 Chat。 */
 export function WorkflowChatPane({
@@ -40,7 +57,7 @@ export function WorkflowChatPane({
   optimizeRunId,
   canvasReferences = [],
   canvasReferenceLabels = {},
-  onRemoveCanvasReference,
+  onCanvasReferencesChange,
   onCanvasReferencesSent,
   emptyState,
   isHistoryLoading = false,
@@ -63,7 +80,7 @@ export function WorkflowChatPane({
   optimizeRunId?: string;
   canvasReferences?: CanvasReference[];
   canvasReferenceLabels?: Record<string, string>;
-  onRemoveCanvasReference?: (target: CanvasReference) => void;
+  onCanvasReferencesChange?: (targets: CanvasReference[]) => void;
   onCanvasReferencesSent?: () => void;
   emptyState?: ChatWorkspaceEntry["emptyState"];
   isHistoryLoading?: boolean;
@@ -160,40 +177,23 @@ export function WorkflowChatPane({
         },
         draft,
         isSendDisabled: Boolean(optimizeRunId && !runReference),
-        composerContext: (
-          <>
-            {canvasReferences.length ? (
-              <div className="flex flex-wrap gap-2">
-                {canvasReferences.map((reference) => (
-                  <span
-                    key={`${reference.kind}:${reference.id}`}
-                    className="bg-accent-surface type-caption rounded-control inline-flex max-w-full items-center gap-1 pl-2"
-                  >
-                    <span className="min-w-0 truncate">
-                      {canvasReferenceLabels[
-                        `${reference.kind}:${reference.id}`
-                      ] ?? reference.id}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t("removeReference", {
-                        label:
-                          canvasReferenceLabels[
-                            `${reference.kind}:${reference.id}`
-                          ] ?? reference.id,
-                      })}
-                      onClick={() => onRemoveCanvasReference?.(reference)}
-                    >
-                      <X />
-                    </Button>
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </>
-        ),
+        composerReferences: canvasReferences.map((reference) => ({
+          id: referenceKey(reference),
+          label:
+            canvasReferenceLabels[`${reference.kind}:${reference.id}`] ??
+            reference.id,
+        })),
+        onComposerReferencesChange: (ids) => {
+          const remaining = new Set(ids);
+          if (
+            remaining.size === canvasReferences.length &&
+            canvasReferences.every((reference) =>
+              remaining.has(referenceKey(reference)),
+            )
+          )
+            return;
+          onCanvasReferencesChange?.(ids.flatMap(referenceFromKey));
+        },
         emptyState,
         isHistoryLoading,
         onConfigurationChange,
