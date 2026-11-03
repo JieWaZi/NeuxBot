@@ -25,6 +25,33 @@ type messageEventState struct {
 	phase native.MessagePhase // phase 是当前消息最后明确提供的阶段。
 }
 
+// usagePayloadBytes 让流式与最终用量按相同标量和元数据字符串规则核算字节。
+func usagePayloadBytes(usage native.Usage) int {
+	size := 58
+	if reported := usage.Reported; reported != nil {
+		size += 42 + len(reported.Source) + len(reported.Coverage) + len(reported.Model)
+	}
+	return size
+}
+
+// reserveEventBudget 在调用方持锁时共用本轮预算；错误交由调用方保留原终态或中止流式交付。
+func (s *eventSink) reserveEventBudget(size, chargedBytes int, discrete bool) *native.Fault {
+	if size > s.spec.Limits.MaxEventBytes {
+		return eventLimit(native.LimitSingleEventBytes, "event", "event delivery budget exceeded: single event bytes")
+	}
+	if discrete && s.events >= s.spec.Limits.MaxEvents {
+		return eventLimit(native.LimitEventCount, "event", "event delivery budget exceeded: discrete event count")
+	}
+	if chargedBytes > s.spec.Limits.MaxTotalEventBytes-s.bytes {
+		return eventLimit(native.LimitTotalEventBytes, "event", "event delivery budget exceeded: cumulative event bytes")
+	}
+	if discrete {
+		s.events++
+	}
+	s.bytes += chargedBytes
+	return nil
+}
+
 // discreteEvent 区分需要计数的事实边界与只按字节核算的流式载荷。
 // 同步交付不积压原始片段；其固定处理开销仍逐条计入累计字节，空/重复无进展通知仍逐条计数。
 func (s *eventSink) discreteEvent(event native.Event) bool {

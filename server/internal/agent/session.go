@@ -413,24 +413,7 @@ func (p *PreparedTurn) run(ctx context.Context, input TurnInput, observer turnOb
 	}
 	s, t := p.session, p.turn
 	defer s.finishTurn(t)
-	// 最终用量也是当前回合的交付；完成之前不能让下一回合替换计划或连接。
-	defer func() {
-		if unattended || observer == nil || (!result.Usage.Known && !result.Usage.ContextKnown) {
-			return
-		}
-		delivery, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		err := observer.Accept(delivery, observedEvent{Invocation: t.ref, NativeEvent: native.Event{Kind: native.EventUsage, Usage: &result.Usage}})
-		cancel()
-		if err != nil && result.DeliveryFault == nil {
-			result.DeliveryFault = fault(native.FaultDelivery, "usage", "final usage delivery failed", err)
-			s.mu.Lock()
-			s.retiring = true
-			s.mu.Unlock()
-			if cleanup := s.releaseWithBudget(); result.CleanupFault == nil {
-				result.CleanupFault = cleanup
-			}
-		}
-	}()
+
 	s.mu.Lock()
 	prior, priorCancel := t.ctx, t.cancel
 	runCtx, runCancel := context.WithCancelCause(ctx)
@@ -526,9 +509,37 @@ func (p *PreparedTurn) run(ctx context.Context, input TurnInput, observer turnOb
 	options := turnOptions{Observer: observer, UserInputState: input.UserInputState, InteractionHandler: chatInteraction{approval: input.ApprovalHandler, input: input.ElicitationHandler, readOnly: plan.Policy.Execution.WorkspaceReadOnly}}
 	return s.executeTurn(t, frozen, options)
 }
-func (s *Session) executeTurn(t *Turn, frozen executionSpec, options turnOptions) turnResult {
-	result := turnResult{Invocation: t.ref, Status: native.StatusFailed, StopReason: native.StopFailed, Output: Output{Status: OutputUnavailable, Reliability: ReliabilityUnverified}}
+func (s *Session) executeTurn(t *Turn, frozen executionSpec, options turnOptions) (result turnResult) {
+	result = turnResult{Invocation: t.ref, Status: native.StatusFailed, StopReason: native.StopFailed, Output: Output{Status: OutputUnavailable, Reliability: ReliabilityUnverified}}
 	sink := newSink(t, s, frozen, options, s.manager.config.CleanupTimeout, s.manager.config.Logger)
+	// 最终用量也是当前回合的交付；完成之前不能让下一回合替换计划或连接。
+	defer func() {
+		if frozen.Policies.Interaction == InteractionUnattended || options.Observer == nil || (!result.Usage.Known && !result.Usage.ContextKnown) {
+			return
+		}
+		usage := result.Usage.Clone()
+		size := 32 + len(native.EventUsage) + usagePayloadBytes(usage)
+		sink.mu.Lock()
+		budgetFault := sink.reserveEventBudget(size, size, true)
+		sink.mu.Unlock()
+		var err error
+		if budgetFault != nil {
+			err = budgetFault
+		} else {
+			delivery, cancel := context.WithTimeout(context.WithoutCancel(t.ctx), 5*time.Second)
+			err = options.Observer.Accept(delivery, observedEvent{Invocation: t.ref, NativeEvent: native.Event{Kind: native.EventUsage, Usage: &usage}})
+			cancel()
+		}
+		if err != nil && result.DeliveryFault == nil {
+			result.DeliveryFault = fault(native.FaultDelivery, "usage", "final usage delivery failed", err)
+			s.mu.Lock()
+			s.retiring = true
+			s.mu.Unlock()
+			if cleanup := s.releaseWithBudget(); result.CleanupFault == nil {
+				result.CleanupFault = cleanup
+			}
+		}
+	}()
 	raw := s.connection.Prompt(t.ctx, native.TurnRequest{Invocation: t.ref, Input: frozen.Input, Limits: frozen.Limits, UserInputState: options.UserInputState}, sink)
 	if s.resources != nil && s.resources.taskResources != nil {
 		s.resources.taskResources.Revoke()
@@ -1989,10 +2000,7 @@ func (s *eventSink) Accept(_ context.Context, event native.Event) error {
 	if event.Usage != nil {
 		usage := event.Usage.Clone()
 		event.Usage = &usage
-		size += 58
-		if reported := usage.Reported; reported != nil {
-			size += 42 + len(reported.Source) + len(reported.Coverage) + len(reported.Model)
-		}
+		size += usagePayloadBytes(usage)
 	}
 	// 参数是同一工具的替换快照，不是每次都新增一份业务正文。
 	// 只抵扣与紧邻上一快照相同的前缀；独立工具、改写、清空后重建仍计新增字节，预算不退款。
@@ -2004,21 +2012,10 @@ func (s *eventSink) Accept(_ context.Context, event native.Event) error {
 		}
 	}
 	chargedBytes := size - reusedInputBytes
-	if size > s.spec.Limits.MaxEventBytes {
-		return s.fail(eventLimit(native.LimitSingleEventBytes, "event", "event delivery budget exceeded: single event bytes"))
-	}
-	discrete := s.discreteEvent(event)
-	if discrete && s.events >= s.spec.Limits.MaxEvents {
-		return s.fail(eventLimit(native.LimitEventCount, "event", "event delivery budget exceeded: discrete event count"))
-	}
-	if chargedBytes > s.spec.Limits.MaxTotalEventBytes-s.bytes {
-		return s.fail(eventLimit(native.LimitTotalEventBytes, "event", "event delivery budget exceeded: cumulative event bytes"))
+	if budgetFault := s.reserveEventBudget(size, chargedBytes, s.discreteEvent(event)); budgetFault != nil {
+		return s.fail(budgetFault)
 	}
 	var err error
-	if discrete {
-		s.events++
-	}
-	s.bytes += chargedBytes
 	switch event.Kind {
 	case native.EventPromptAccepted:
 	case native.EventAssistantMessage:

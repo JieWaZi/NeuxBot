@@ -653,3 +653,93 @@ func TestUsageFoundationFinalObserverTerminals(t *testing.T) {
 		})
 	}
 }
+
+// TestUsageFinalFixObserverOwnership 验证仅最终回执的用量交付副本不允许观察者改写返回结果。
+func TestUsageFinalFixObserverOwnership(t *testing.T) {
+	a := newNativeIntegrationAgent()
+	var prompts atomic.Int32
+	a.prompt = func(context.Context, sdk.PromptRequest) (sdk.PromptResponse, error) {
+		prompts.Add(1)
+		reported := acpmeta.TurnUsage{InputTokens: sdk.Ptr(int64(100)), OutputTokens: sdk.Ptr(int64(10)), Source: "fixture.final", Coverage: "native_turn", Complete: true}
+		return sdk.PromptResponse{StopReason: sdk.StopReasonEndTurn, Meta: acpmeta.WithTurnUsage(nil, reported)}, nil
+	}
+	manager := newNativeIntegrationManager(t, func(context.Context, native.OpenRequest) (sdk.Agent, error) { return a, nil }, nil)
+	manager.Start(context.Background())
+	observed := 0
+	observer := observerFunc(func(_ context.Context, event observedEvent) error {
+		if usage := event.NativeEvent.Usage; usage != nil {
+			observed++
+			usage.Reported.Source = "mutated"
+			*usage.Reported.OutputTokens = 999
+			usage.InputTokens, usage.OutputTokens, usage.Known = 888, 777, false
+		}
+		return nil
+	})
+	result := runNativeIntegration(t, manager, context.Background(), nativeIntegrationPlan(t.TempDir()), SessionDirective{Mode: SessionModeNew}, TurnInput{Message: Message{Text: "work"}}, SessionResources{}, resourcePreparation{}, observer, false)
+	if observed != 1 || prompts.Load() != 1 || result.Status != native.StatusCompleted || !result.Usage.Known || result.Usage.InputTokens != 100 || result.Usage.OutputTokens != 10 || result.Usage.Reported == nil || result.Usage.Reported.Source != "fixture.final" || *result.Usage.Reported.OutputTokens != 10 {
+		t.Fatalf("final observer mutated authoritative usage: prompts=%d observed=%d result=%+v", prompts.Load(), observed, result)
+	}
+}
+
+// TestUsageFinalFixMetadataBudget 验证仅最终回执的元数据受单事件和累计字节预算约束，原终态与消费不被清除。
+func TestUsageFinalFixMetadataBudget(t *testing.T) {
+	for _, budget := range []string{"single", "total"} {
+		for _, terminal := range []string{"completed", "cancelled", "failed"} {
+			t.Run(budget+"/"+terminal, func(t *testing.T) {
+				a := newNativeIntegrationAgent()
+				var prompts atomic.Int32
+				source := strings.Repeat("s", 600)
+				wantLimit := native.LimitSingleEventBytes
+				if budget == "total" {
+					source, wantLimit = strings.Repeat("s", 300), native.LimitTotalEventBytes
+				}
+				a.prompt = func(ctx context.Context, request sdk.PromptRequest) (sdk.PromptResponse, error) {
+					prompts.Add(1)
+					if budget == "total" {
+						if err := a.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: request.SessionId, Update: sdk.SessionUpdate{AgentThoughtChunk: &sdk.SessionUpdateAgentThoughtChunk{Content: sdk.TextBlock(strings.Repeat("x", 100))}}}); err != nil {
+							return sdk.PromptResponse{}, err
+						}
+					}
+					stop := sdk.StopReasonEndTurn
+					if terminal == "cancelled" {
+						stop = sdk.StopReasonCancelled
+					} else if terminal == "failed" {
+						stop = sdk.StopReason("future_reason")
+					}
+					reported := acpmeta.TurnUsage{InputTokens: sdk.Ptr(int64(100)), OutputTokens: sdk.Ptr(int64(10)), Source: source, Coverage: "native_turn", Complete: true}
+					return sdk.PromptResponse{StopReason: stop, Meta: acpmeta.WithTurnUsage(nil, reported)}, nil
+				}
+				manager := newNativeIntegrationManager(t, func(context.Context, native.OpenRequest) (sdk.Agent, error) { return a, nil }, nil)
+				manager.config.Limits = native.Limits{MaxOutputBytes: 128, MaxEventBytes: 512, MaxTotalEventBytes: 512}
+				manager.Start(context.Background())
+				observed := 0
+				observer := observerFunc(func(_ context.Context, event observedEvent) error {
+					if event.NativeEvent.Usage != nil {
+						observed++
+					}
+					return nil
+				})
+				result := runNativeIntegration(t, manager, context.Background(), nativeIntegrationPlan(t.TempDir()), SessionDirective{Mode: SessionModeNew}, TurnInput{Message: Message{Text: "work"}}, SessionResources{}, resourcePreparation{}, observer, false)
+				wantStatus := native.StatusCompleted
+				if terminal == "cancelled" {
+					wantStatus = native.StatusCancelled
+				} else if terminal == "failed" {
+					wantStatus = native.StatusFailed
+				}
+				if observed != 0 || result.DeliveryFault == nil || result.DeliveryFault.Code != native.FaultDelivery {
+					t.Fatalf("oversize final metadata delivered: observed=%d result=%+v", observed, result)
+				}
+				var limit *native.Fault
+				if !errors.As(result.DeliveryFault.Cause, &limit) || limit.Code != native.FaultLimit || limit.Limit != wantLimit {
+					t.Fatalf("wrong final budget fault: %+v", result.DeliveryFault)
+				}
+				if prompts.Load() != 1 || result.Status != wantStatus || !result.Usage.Known || result.Usage.InputTokens != 100 || result.Usage.OutputTokens != 10 || result.Usage.Reported == nil || result.Usage.Reported.Source != source {
+					t.Fatalf("budget erased consumption or terminal: prompts=%d result=%+v", prompts.Load(), result)
+				}
+				if terminal == "failed" && (result.Fault == nil || result.Fault.Code != native.FaultProtocol) {
+					t.Fatalf("original failure replaced: %+v", result)
+				}
+			})
+		}
+	}
+}
