@@ -337,31 +337,30 @@ type Connection struct {
 
 // turnState 保存本轮交付、取消和故障，不保存累计正文。
 type turnState struct {
-	request             TurnRequest        // request 提供有效调用与修订身份。
-	sink                EventSink          // sink 是本轮同步有界交付端口。
-	ctx                 context.Context    // ctx 控制交付及原生 Prompt。
-	cancel              context.CancelFunc // cancel 在交付失败时停止本轮。
-	err                 error              // err 保存首个交付或交互错误。
-	interactionSeq      uint64             // interactionSeq 为同一工具的多次审批分配独立请求身份。
-	activity            chan struct{}      // activity 合并原生更新与交互状态变化，供无活动监视器重置。
-	pendingInput        int                // pendingInput 统计等待中的交互，不将人工等待误判为原生静默。
-	inputDone           chan struct{}      // inputDone 在当前已接纳交互全部退出时关闭，结束回合先等待该边界。
-	contextKnown        bool               // contextKnown 表示已经收到公开上下文快照。
-	contextTokens       int64              // contextTokens 是最后一次公开ACP上下文快照，不累计回合用量。
-	contextWindowTokens int64              // contextWindowTokens 是原生公开报告的上下文窗口大小。
-	planStarted         bool               // planStarted 表示本轮标准计划已经投射过首次事实。
-	planCompleted       bool               // planCompleted 表示本轮标准计划已投射完成或移除。
-	lastMessageID       string             // lastMessageID 是排空通知后最后出现的助手身份。
-	lastPhase           MessagePhase       // lastPhase 保留该消息已知阶段，避免空边界抹掉过程分类。
-	completionEligible  bool               // completionEligible 只在最后正文之后没有工具、思考或过程消息时成立。
+	request            TurnRequest        // request 提供有效调用与修订身份。
+	sink               EventSink          // sink 是本轮同步有界交付端口。
+	ctx                context.Context    // ctx 控制交付及原生 Prompt。
+	cancel             context.CancelFunc // cancel 在交付失败时停止本轮。
+	err                error              // err 保存首个交付或交互错误。
+	interactionSeq     uint64             // interactionSeq 为同一工具的多次审批分配独立请求身份。
+	activity           chan struct{}      // activity 合并原生更新与交互状态变化，供无活动监视器重置。
+	pendingInput       int                // pendingInput 统计等待中的交互，不将人工等待误判为原生静默。
+	inputDone          chan struct{}      // inputDone 在当前已接纳交互全部退出时关闭，结束回合先等待该边界。
+	usage              Usage              // usage 分别保存本轮最后累计消费与最后真实上下文快照。
+	planStarted        bool               // planStarted 表示本轮标准计划已经投射过首次事实。
+	planCompleted      bool               // planCompleted 表示本轮标准计划已投射完成或移除。
+	lastMessageID      string             // lastMessageID 是排空通知后最后出现的助手身份。
+	lastPhase          MessagePhase       // lastPhase 保留该消息已知阶段，避免空边界抹掉过程分类。
+	completionEligible bool               // completionEligible 只在最后正文之后没有工具、思考或过程消息时成立。
 }
 
 var _ sdk.Client = (*Connection)(nil)
 
 // Prompt 发送冻结的首次贡献及本轮文本，响应返回前依赖 SDK 水位排空通知；最终资源关闭由宿主调用 Close。
 func (s *Connection) Prompt(ctx context.Context, r TurnRequest, sink EventSink) TurnResult {
+	var observedUsage Usage
 	failed := func(f *Fault) TurnResult {
-		return TurnResult{Status: StatusFailed, StopReason: StopFailed, Fault: f, Configuration: s.configuration, NativeSession: NativeSessionInfo{Handle: string(s.nativeID), Resumable: s.nativeResumable, ForkMode: s.forkMode}}
+		return TurnResult{Status: StatusFailed, StopReason: StopFailed, Fault: f, Usage: observedUsage, Configuration: s.configuration, NativeSession: NativeSessionInfo{Handle: string(s.nativeID), Resumable: s.nativeResumable, ForkMode: s.forkMode}}
 	}
 	if sink == nil || strings.TrimSpace(r.Input.Text) == "" && len(r.Input.Attachments) == 0 && len(r.Input.CodeReferences) == 0 {
 		return failed(fault(FaultInvalidSpec, "prompt", "ACP prompt requires input and a sink", nil))
@@ -421,13 +420,11 @@ func (s *Connection) Prompt(ctx context.Context, r TurnRequest, sink EventSink) 
 		}
 	}
 	var deliveryErr error
-	var contextTokens, contextWindowTokens int64
-	var contextKnown bool
 	for {
 		s.deliveryMu.Lock()
 		s.mu.Lock()
 		if turn.pendingInput == 0 {
-			deliveryErr, contextTokens, contextWindowTokens, contextKnown = turn.err, turn.contextTokens, turn.contextWindowTokens, turn.contextKnown
+			deliveryErr, observedUsage = turn.err, turn.usage
 			s.turn = nil
 			s.mu.Unlock()
 			s.deliveryMu.Unlock()
@@ -446,6 +443,30 @@ func (s *Connection) Prompt(ctx context.Context, r TurnRequest, sink EventSink) 
 		// 原生响应后仍可能等待人工端口退出，该阶段的真实取消也属于本轮。
 		cancellationCause = context.Cause(turnCtx)
 	}
+	var responseUsageFault *Fault
+	if err == nil {
+		if usage := response.Usage; usage != nil {
+			if usage.InputTokens < 0 || usage.OutputTokens < 0 || usage.ThoughtTokens != nil && *usage.ThoughtTokens < 0 || usage.CachedReadTokens != nil && *usage.CachedReadTokens < 0 || usage.CachedWriteTokens != nil && *usage.CachedWriteTokens < 0 {
+				responseUsageFault = fault(FaultProtocol, "usage", "ACP prompt usage contains negative tokens", nil)
+			}
+		}
+		if reported, ok := acpmeta.ReadTurnUsage(response.Meta); ok && responseUsageFault == nil {
+			observedUsage = mergeUsage(observedUsage, usageFromReported(reported))
+		} else if usage := response.Usage; usage != nil && responseUsageFault == nil {
+			final := Usage{Known: true, InputTokens: int64(usage.InputTokens), OutputTokens: int64(usage.OutputTokens)}
+			if usage.ThoughtTokens != nil {
+				final.ThoughtTokens = int64(*usage.ThoughtTokens)
+			}
+			if usage.CachedReadTokens != nil {
+				final.CachedReadTokens = int64(*usage.CachedReadTokens)
+			}
+			if usage.CachedWriteTokens != nil {
+				final.CachedWriteTokens = int64(*usage.CachedWriteTokens)
+			}
+			observedUsage = mergeUsage(observedUsage, final)
+		}
+	}
+
 	if deliveryErr != nil {
 		var f *Fault
 		if !errors.As(deliveryErr, &f) {
@@ -454,12 +475,12 @@ func (s *Connection) Prompt(ctx context.Context, r TurnRequest, sink EventSink) 
 		return failed(f)
 	}
 	if cancellationCause != nil {
-		return TurnResult{Status: StatusCancelled, StopReason: StopCancelled, Fault: fault(FaultCancelled, "prompt", "ACP prompt cancelled", cancellationCause), Configuration: s.configuration, NativeSession: NativeSessionInfo{Handle: string(s.nativeID), Resumable: s.nativeResumable, ForkMode: s.forkMode}}
+		return TurnResult{Status: StatusCancelled, StopReason: StopCancelled, Usage: observedUsage, Fault: fault(FaultCancelled, "prompt", "ACP prompt cancelled", cancellationCause), Configuration: s.configuration, NativeSession: NativeSessionInfo{Handle: string(s.nativeID), Resumable: s.nativeResumable, ForkMode: s.forkMode}}
 	}
 	if err != nil {
 		return failed(fault(FaultDriver, "prompt", "ACP prompt failed", err))
 	}
-	result := TurnResult{Status: StatusCompleted, NativeSession: NativeSessionInfo{Handle: string(s.nativeID), Resumable: s.nativeResumable, ForkMode: s.forkMode, ForkPosition: acpmeta.ForkPosition(response.Meta)}, Usage: Usage{ContextKnown: contextKnown, ContextTokens: contextTokens, ContextWindowTokens: contextWindowTokens}, Configuration: s.configuration}
+	result := TurnResult{Status: StatusCompleted, NativeSession: NativeSessionInfo{Handle: string(s.nativeID), Resumable: s.nativeResumable, ForkMode: s.forkMode, ForkPosition: acpmeta.ForkPosition(response.Meta)}, Usage: observedUsage, Configuration: s.configuration}
 	switch response.StopReason {
 	case sdk.StopReasonEndTurn:
 		result.StopReason = StopEndTurn
@@ -473,24 +494,45 @@ func (s *Connection) Prompt(ctx context.Context, r TurnRequest, sink EventSink) 
 	default:
 		return failed(fault(FaultProtocol, "prompt", "ACP stop reason is unsupported", nil))
 	}
-	if usage := response.Usage; usage != nil {
-		if usage.InputTokens < 0 || usage.OutputTokens < 0 || usage.ThoughtTokens != nil && *usage.ThoughtTokens < 0 || usage.CachedReadTokens != nil && *usage.CachedReadTokens < 0 || usage.CachedWriteTokens != nil && *usage.CachedWriteTokens < 0 {
-			return failed(fault(FaultProtocol, "usage", "ACP prompt usage contains negative tokens", nil))
-		}
-		result.Usage.Known = true
-		result.Usage.InputTokens = int64(usage.InputTokens)
-		result.Usage.OutputTokens = int64(usage.OutputTokens)
-		if usage.ThoughtTokens != nil {
-			result.Usage.ThoughtTokens = int64(*usage.ThoughtTokens)
-		}
-		if usage.CachedReadTokens != nil {
-			result.Usage.CachedReadTokens = int64(*usage.CachedReadTokens)
-		}
-		if usage.CachedWriteTokens != nil {
-			result.Usage.CachedWriteTokens = int64(*usage.CachedWriteTokens)
-		}
+
+	if responseUsageFault != nil {
+		return failed(responseUsageFault)
 	}
 	return result
+}
+
+// usageFromReported 将同次规范快照投影到兼容数字，未知分量仍由 Reported 中的 nil 表达。
+func usageFromReported(reported acpmeta.TurnUsage) Usage {
+	usage := Usage{Known: true, Reported: &reported}
+	if reported.InputTokens != nil {
+		usage.InputTokens = *reported.InputTokens
+	}
+	if reported.OutputTokens != nil {
+		usage.OutputTokens = *reported.OutputTokens
+	}
+	if reported.ReasoningTokens != nil {
+		usage.ThoughtTokens = *reported.ReasoningTokens
+	}
+	if reported.CacheReadTokens != nil {
+		usage.CachedReadTokens = *reported.CacheReadTokens
+	}
+	if reported.CacheWriteTokens != nil {
+		usage.CachedWriteTokens = *reported.CacheWriteTokens
+	}
+	return usage
+}
+
+// mergeUsage 分别替换消费与上下文，不把累计快照相加，也不让单分量更新清除另一分量。
+func mergeUsage(previous, current Usage) Usage {
+	if current.Known {
+		contextKnown, contextTokens, contextWindow := previous.ContextKnown, previous.ContextTokens, previous.ContextWindowTokens
+		previous = current
+		previous.ContextKnown, previous.ContextTokens, previous.ContextWindowTokens = contextKnown, contextTokens, contextWindow
+	}
+	if current.ContextKnown {
+		previous.ContextKnown, previous.ContextTokens, previous.ContextWindowTokens = true, current.ContextTokens, current.ContextWindowTokens
+	}
+	return previous
 }
 
 func (s *Connection) stop() {
@@ -575,6 +617,10 @@ func (s *Connection) deliver(event Event) error {
 		turn.completionEligible = false
 	}
 	s.mu.Unlock()
+	if event.Usage != nil {
+		usage := event.Usage.Clone()
+		event.Usage = &usage
+	}
 	err := turn.sink.Accept(turn.ctx, event)
 	if err != nil {
 		err = fault(FaultDelivery, "delivery", "ACP event delivery failed", err)
@@ -1165,20 +1211,28 @@ func (s *Connection) SessionUpdate(ctx context.Context, n sdk.SessionNotificatio
 		return s.deliver(Event{Kind: EventAssistantMessage, Message: message})
 	}
 	if usage := n.Update.UsageUpdate; usage != nil {
-		if usage.Used < 0 || usage.Size < 0 {
-			err := fault(FaultProtocol, "usage", "ACP context usage or window is negative", nil)
-			s.failTurn(turn, err)
-			return err
+		current := Usage{}
+		reported, hasReported := acpmeta.ReadTurnUsage(usage.Meta)
+		if hasReported {
+			current = usageFromReported(reported)
+		}
+		// 新合同以 ContextKnown 区分必填数字占位；旧上下文通知继续按标准字段解释。
+		if !hasReported || reported.ContextKnown {
+			if usage.Used < 0 || usage.Size < 0 {
+				err := fault(FaultProtocol, "usage", "ACP context usage or window is negative", nil)
+				s.failTurn(turn, err)
+				return err
+			}
+			current.ContextKnown, current.ContextTokens, current.ContextWindowTokens = true, int64(usage.Used), int64(usage.Size)
 		}
 		s.mu.Lock()
 		if s.turn == turn {
-			turn.contextTokens = int64(usage.Used)
-			turn.contextWindowTokens = int64(usage.Size)
-			turn.contextKnown = true
+			turn.usage = mergeUsage(turn.usage, current)
 		}
 		s.mu.Unlock()
-		return s.deliver(Event{Kind: EventUsage, Usage: &Usage{ContextKnown: true, ContextTokens: int64(usage.Used), ContextWindowTokens: int64(usage.Size)}})
+		return s.deliver(Event{Kind: EventUsage, Usage: &current})
 	}
+
 	if chunk := n.Update.AgentThoughtChunk; chunk != nil {
 		if chunk.Content.Text != nil {
 			return s.deliver(Event{Kind: EventThinking, Text: chunk.Content.Text.Text})

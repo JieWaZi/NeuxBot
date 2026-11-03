@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 // InvocationRef 标识一次调用及其所属会话修订。
@@ -163,15 +165,31 @@ const (
 
 // Usage 区分本轮用量和最后上下文快照。
 type Usage struct {
-	Known               bool  // Known 表示本轮原生用量已报告，false 时不能把零值作为真实用量。
-	InputTokens         int64 // InputTokens 是协议报告的本轮输入部分；缓存组成按对应字段保留。
-	OutputTokens        int64 // OutputTokens 是本轮输出用量。
-	ThoughtTokens       int64 // ThoughtTokens 是原生报告的本轮推理输出用量。
-	CachedReadTokens    int64 // CachedReadTokens 是本轮缓存读取的输入用量。
-	CachedWriteTokens   int64 // CachedWriteTokens 是本轮缓存写入的输入用量。
-	ContextKnown        bool  // ContextKnown 表示最后上下文快照已报告。
-	ContextTokens       int64 // ContextTokens 是最后一次模型请求的上下文快照，不累计回合用量。
-	ContextWindowTokens int64 // ContextWindowTokens 是原生报告的上下文窗口容量，零值表示未提供。
+	Reported            *acpmeta.TurnUsage // Reported 是同次累计快照的来源、覆盖与字段缺失性，不作为另一份消费累加。
+	Known               bool               // Known 表示本轮原生用量已报告，false 时不能把零值作为真实用量。
+	InputTokens         int64              // InputTokens 是协议报告的本轮输入部分；缓存组成按对应字段保留。
+	OutputTokens        int64              // OutputTokens 是本轮输出用量。
+	ThoughtTokens       int64              // ThoughtTokens 是原生报告的本轮推理输出用量。
+	CachedReadTokens    int64              // CachedReadTokens 是本轮缓存读取的输入用量。
+	CachedWriteTokens   int64              // CachedWriteTokens 是本轮缓存写入的输入用量。
+	ContextKnown        bool               // ContextKnown 表示最后上下文快照已报告。
+	ContextTokens       int64              // ContextTokens 是最后一次模型请求的上下文快照，不累计回合用量。
+	ContextWindowTokens int64              // ContextWindowTokens 是原生报告的上下文窗口容量，零值表示未提供。
+}
+
+// Clone 复制用量及可空元数据，避免观察者改写本轮已保留的原生快照。
+func (usage Usage) Clone() Usage {
+	if usage.Reported != nil {
+		reported := *usage.Reported
+		for _, target := range []**int64{&reported.InputTokens, &reported.OutputTokens, &reported.ReasoningTokens, &reported.CacheReadTokens, &reported.CacheWriteTokens} {
+			if *target != nil {
+				value := **target
+				*target = &value
+			}
+		}
+		usage.Reported = &reported
+	}
+	return usage
 }
 
 // Configuration 保存原生目录或配置写入回执确认的实际选择。

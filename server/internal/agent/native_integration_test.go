@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	sdk "github.com/JieWaZi/acp-go/sdk"
 )
 
@@ -582,5 +583,73 @@ func TestInvokeForwardsInactivityBudget(t *testing.T) {
 	result := runNativeIntegration(t, r, ctx, nativeIntegrationPlan(root), SessionDirective{Mode: SessionModeNew}, TurnInput{Message: Message{Text: "answer"}}, SessionResources{Target: RuntimeTarget{RuntimeID: "codex", Isolated: true, CloseAfterRun: true}}, resourcePreparation{}, nil, true)
 	if result.Fault == nil || result.Fault.Code != native.FaultInactivityTimeout || result.Status != native.StatusFailed || !result.Effects.PromptAccepted || !result.Effects.OutcomeUnknown {
 		t.Fatalf("wrong inactivity outcome: %+v", result)
+	}
+}
+
+// TestUsageFoundationFinalObserverTerminals 验证真实 Session 在失败和取消后通过原 observer 交付消费及上下文。
+func TestUsageFoundationFinalObserverTerminals(t *testing.T) {
+	for _, terminal := range []string{"error", "cancel", "delivery_error"} {
+		t.Run(terminal, func(t *testing.T) {
+			a := newNativeIntegrationAgent()
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			delivered := make(chan struct{})
+			a.prompt = func(nativeCtx context.Context, request sdk.PromptRequest) (sdk.PromptResponse, error) {
+				reported := acpmeta.TurnUsage{InputTokens: sdk.Ptr(int64(100)), OutputTokens: sdk.Ptr(int64(10)), Source: "fixture.requests", Coverage: "observed_requests", ContextKnown: true}
+				if err := a.connection.Load().SessionUpdate(nativeCtx, sdk.SessionNotification{SessionId: request.SessionId, Update: sdk.SessionUpdate{UsageUpdate: &sdk.SessionUsageUpdate{Used: 900, Size: 64000, Meta: acpmeta.WithTurnUsage(nil, reported)}}}); err != nil {
+					return sdk.PromptResponse{}, err
+				}
+				select {
+				case <-delivered:
+				case <-nativeCtx.Done():
+					return sdk.PromptResponse{}, nativeCtx.Err()
+				}
+				if terminal == "error" {
+					return sdk.PromptResponse{}, errors.New("native failed")
+				}
+				<-nativeCtx.Done()
+				return sdk.PromptResponse{}, nativeCtx.Err()
+			}
+			manager := newNativeIntegrationManager(t, func(context.Context, native.OpenRequest) (sdk.Agent, error) { return a, nil }, nil)
+			manager.Start(ctx)
+			var usages []UsageData
+			observer := observerFunc(func(delivery context.Context, event observedEvent) error {
+				if event.NativeEvent.Usage == nil {
+					return nil
+				}
+				if err := delivery.Err(); err != nil {
+					return err
+				}
+				usages = append(usages, chatUsage(*event.NativeEvent.Usage))
+				if len(usages) == 1 {
+					close(delivered)
+					if terminal == "cancel" {
+						cancel()
+					}
+					if terminal == "delivery_error" {
+						return errors.New("observer rejected update")
+					}
+				}
+				return nil
+			})
+			result := runNativeIntegration(t, manager, ctx, nativeIntegrationPlan(t.TempDir()), SessionDirective{Mode: SessionModeNew}, TurnInput{Message: Message{Text: "work"}}, SessionResources{}, resourcePreparation{}, observer, false)
+			wantStatus := native.StatusFailed
+			if terminal == "cancel" {
+				wantStatus = native.StatusCancelled
+			}
+			if result.Status != wantStatus || result.Usage.InputTokens != 100 || !result.Usage.ContextKnown {
+				t.Fatalf("terminal changed or usage lost: %+v", result)
+			}
+			if terminal == "delivery_error" && result.DeliveryFault == nil {
+				t.Fatalf("delivery fault lost: %+v", result)
+			}
+			if len(usages) != 2 {
+				t.Fatalf("final usage not delivered: %+v", usages)
+			}
+			final := usages[1]
+			if final.Turn == nil || final.Context == nil || final.Turn.InputTokens != 100 || final.Turn.OutputTokens != 10 || final.Turn.Complete == nil || *final.Turn.Complete || final.Turn.Coverage != "observed_requests" || final.Context.UsedTokens != 900 || final.Context.WindowTokens != 64000 {
+				t.Fatalf("final metadata lost: %+v", final)
+			}
+		})
 	}
 }

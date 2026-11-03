@@ -9,6 +9,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	native "github.com/JieWaZi/NeuxBot/server/internal/agent/native"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	"io"
 	"log/slog"
 	"os"
@@ -2366,4 +2367,83 @@ func TestInteractionTimeoutNormalization(t *testing.T) {
 			t.Fatalf("timeout=%s error=%v want=%s", limits.InteractionTimeout, err, want)
 		}
 	}
+}
+
+// TestUsageFoundationMetadataRoundTrip 区分缺失缓存与已知零，旧用量不获得完整性声明。
+func TestUsageFoundationMetadataRoundTrip(t *testing.T) {
+	for _, value := range []string{
+		`{"Known":true,"InputTokens":100,"OutputTokens":10,"Reported":{"inputTokens":100,"outputTokens":10,"source":"fixture.requests","coverage":"main_loop","complete":false,"model":"reported-model"}}`,
+		`{"Known":true,"InputTokens":100,"OutputTokens":10,"Reported":{"inputTokens":100,"outputTokens":10,"cacheReadTokens":0,"source":"fixture.final","coverage":"native_turn","complete":true}}`,
+		`{"Known":true,"InputTokens":100,"OutputTokens":10,"Reported":{"inputTokens":100,"outputTokens":10,"cacheReadTokens":0,"cacheWriteTokens":0,"reasoningTokens":0,"source":"fixture.final","coverage":"native_turn","complete":true}}`,
+		`{"Known":true,"InputTokens":100,"OutputTokens":10}`,
+	} {
+		var usage native.Usage
+		if err := json.Unmarshal([]byte(value), &usage); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(chatUsage(usage))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var data map[string]map[string]any
+		if err := json.Unmarshal(encoded, &data); err != nil {
+			t.Fatal(err)
+		}
+		turn := data["turn"]
+		if turn["input_tokens"] != float64(100) || turn["output_tokens"] != float64(10) {
+			t.Fatalf("numeric compatibility lost: %s", encoded)
+		}
+		if !strings.Contains(value, "Reported") {
+			if _, ok := turn["known_fields"]; ok {
+				t.Fatalf("legacy certainty fabricated: %s", encoded)
+			}
+			if _, ok := turn["complete"]; ok {
+				t.Fatalf("legacy completeness fabricated: %s", encoded)
+			}
+			continue
+		}
+		wantFields := []any{"input_tokens", "output_tokens"}
+		if strings.Contains(value, "cacheReadTokens") {
+			wantFields = []any{"input_tokens", "cache_read_tokens", "output_tokens"}
+		}
+		if strings.Contains(value, "cacheWriteTokens") {
+			wantFields = []any{"input_tokens", "cache_read_tokens", "cache_creation_tokens", "output_tokens", "reasoning_output_tokens"}
+		}
+		if !reflect.DeepEqual(turn["known_fields"], wantFields) {
+			t.Fatalf("field presence lost: %s", encoded)
+		}
+		if strings.Contains(value, "main_loop") {
+			if turn["complete"] != false || turn["coverage"] != "main_loop" || turn["source"] != "fixture.requests" || turn["model"] != "reported-model" {
+				t.Fatalf("partial metadata lost: %s", encoded)
+			}
+		} else if turn["complete"] != true || turn["coverage"] != "native_turn" {
+			t.Fatalf("complete metadata lost: %s", encoded)
+		}
+	}
+}
+
+// TestUsageFoundationMetadataOwnershipAndBudget 验证新增元数据遵守既有观察隔离与事件字节预算。
+func TestUsageFoundationMetadataOwnershipAndBudget(t *testing.T) {
+	t.Run("ownership", func(t *testing.T) {
+		output := int64(10)
+		reported := &acpmeta.TurnUsage{OutputTokens: &output, Source: "fixture.requests", Coverage: "observed_requests"}
+		result := runEventBudgetTurn(t, native.Limits{}, func(ctx context.Context, sink native.EventSink) error {
+			return sink.Accept(ctx, native.Event{Kind: native.EventUsage, Usage: &native.Usage{Known: true, OutputTokens: 10, Reported: reported}})
+		}, observerFunc(func(_ context.Context, event observedEvent) error {
+			if event.NativeEvent.Usage != nil {
+				event.NativeEvent.Usage.Reported.Source = "mutated"
+				*event.NativeEvent.Usage.Reported.OutputTokens = 999
+			}
+			return nil
+		}))
+		if result.Fault != nil || reported.Source != "fixture.requests" || output != 10 {
+			t.Fatalf("observer mutated native snapshot: result=%+v reported=%+v output=%d", result, reported, output)
+		}
+	})
+	t.Run("budget", func(t *testing.T) {
+		result := runEventBudgetTurn(t, native.Limits{MaxEventBytes: 1000}, func(ctx context.Context, sink native.EventSink) error {
+			return sink.Accept(ctx, native.Event{Kind: native.EventUsage, Usage: &native.Usage{Known: true, Reported: &acpmeta.TurnUsage{Source: strings.Repeat("s", 2000)}}})
+		}, nil)
+		requireCode(t, result.Fault, native.FaultLimit)
+	})
 }

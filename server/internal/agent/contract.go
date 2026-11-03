@@ -448,7 +448,7 @@ type UsageData struct {
 
 // TurnUsageData 保存一次 Turn 内按统一语义归一化的 Token 用量。
 type TurnUsageData struct {
-	// InputTokens 是扣除缓存读取后的非缓存输入 Token 数。
+	// InputTokens 是不含缓存读取与写入的非缓存输入 Token 数。
 	InputTokens int64 `json:"input_tokens,omitempty"`
 	// CacheReadTokens 是由 Runtime 缓存命中的输入 Token 数。
 	CacheReadTokens int64 `json:"cache_read_tokens,omitempty"`
@@ -456,8 +456,18 @@ type TurnUsageData struct {
 	CacheCreationTokens int64 `json:"cache_creation_tokens,omitempty"`
 	// OutputTokens 是 Runtime 报告的输出 Token 数。
 	OutputTokens int64 `json:"output_tokens,omitempty"`
-	// ReasoningOutputTokens 是 Runtime 单独报告的推理输出 Token 数。
+	// ReasoningOutputTokens 是 Runtime 单独报告的输出 Token 推理子集，不再累加到输出。
 	ReasoningOutputTokens int64 `json:"reasoning_output_tokens,omitempty"`
+	// KnownFields 使用现有 Token JSON 键列出原生明确报告的分量；旧记录不补造。
+	KnownFields []string `json:"known_fields,omitempty"`
+	// Complete 表示是否覆盖整轮消费；nil 表示旧记录未声明。
+	Complete *bool `json:"complete,omitempty"`
+	// Source 是原生累计快照来源。
+	Source string `json:"source,omitempty"`
+	// Coverage 是原生声明的消费覆盖范围。
+	Coverage string `json:"coverage,omitempty"`
+	// Model 仅保存原生明确报告的模型。
+	Model string `json:"model,omitempty"`
 }
 
 // ContextUsageData 保存当前原生 Session 的上下文占用快照。

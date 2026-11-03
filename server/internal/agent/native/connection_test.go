@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	sdk "github.com/JieWaZi/acp-go/sdk"
 	"io"
 	"log/slog"
@@ -2661,5 +2662,127 @@ func TestCanonicalTerminalDeltaRejectsUnprovenMetadata(t *testing.T) {
 				t.Fatalf("unproven metadata became content: %+v %+v", result, events)
 			}
 		})
+	}
+}
+
+// TestUsageFoundationTerminals 验证真实 SDK 管道中的消费在失败、取消和交付错误后仍保留。
+func TestUsageFoundationTerminals(t *testing.T) {
+	for _, terminal := range []string{"error", "cancel", "cancel_response", "delivery_error", "unsupported_stop", "negative_final"} {
+		t.Run(terminal, func(t *testing.T) {
+			a := newFixtureAgent()
+			delivered := make(chan struct{})
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			a.prompt = func(nativeCtx context.Context, p sdk.PromptRequest) (sdk.PromptResponse, error) {
+				for _, update := range []*sdk.SessionUsageUpdate{
+					{Used: 900, Size: 64000},
+					{Meta: acpmeta.WithTurnUsage(nil, acpmeta.TurnUsage{InputTokens: sdk.Ptr(int64(100)), OutputTokens: sdk.Ptr(int64(10)), Source: "fixture.requests", Coverage: "observed_requests"})},
+				} {
+					if err := a.connection.Load().SessionUpdate(nativeCtx, sdk.SessionNotification{SessionId: p.SessionId, Update: sdk.SessionUpdate{UsageUpdate: update}}); err != nil {
+						return sdk.PromptResponse{}, err
+					}
+				}
+				select {
+				case <-delivered:
+				case <-nativeCtx.Done():
+					return sdk.PromptResponse{}, nativeCtx.Err()
+				}
+				switch terminal {
+				case "error":
+					return sdk.PromptResponse{}, errors.New("native failure after consumption")
+				case "cancel", "delivery_error":
+					<-nativeCtx.Done()
+					return sdk.PromptResponse{}, nativeCtx.Err()
+				case "cancel_response":
+					return sdk.PromptResponse{StopReason: sdk.StopReasonCancelled}, nil
+				case "unsupported_stop":
+					return sdk.PromptResponse{StopReason: sdk.StopReason("future_reason")}, nil
+				default:
+					return sdk.PromptResponse{StopReason: sdk.StopReasonEndTurn, Usage: &sdk.Usage{InputTokens: -1}}, nil
+				}
+			}
+			driver := newConnectionForAgent(t, a)
+			session, err := driver.Open(ctx, openRequest(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			count := 0
+			sink := &recordingSink{accept: func(_ context.Context, event Event) error {
+				if event.Kind != EventUsage {
+					return nil
+				}
+				count++
+				if count != 2 {
+					return nil
+				}
+				close(delivered)
+				if terminal == "cancel" {
+					cancel()
+				}
+				if terminal == "delivery_error" {
+					return errors.New("sink rejected usage")
+				}
+				return nil
+			}}
+			result := session.Prompt(ctx, TurnRequest{Input: Input{Text: "work"}}, sink)
+			wantStatus := StatusFailed
+			if terminal == "cancel" || terminal == "cancel_response" {
+				wantStatus = StatusCancelled
+			}
+			if result.Status != wantStatus {
+				t.Fatalf("terminal status changed: %+v", result)
+			}
+			if terminal == "delivery_error" && (result.Fault == nil || result.Fault.Code != FaultDelivery) {
+				t.Fatalf("delivery fault changed: %+v", result)
+			}
+			if !result.Usage.Known || result.Usage.InputTokens != 100 || result.Usage.OutputTokens != 10 || !result.Usage.ContextKnown || result.Usage.ContextTokens != 900 || result.Usage.ContextWindowTokens != 64000 {
+				t.Fatalf("observed usage lost on %s: %+v", terminal, result.Usage)
+			}
+		})
+	}
+}
+
+// TestUsageFoundationFinalSnapshotReplacesPartial 防止最终快照重复计数及无上下文通知伪造上下文零。
+func TestUsageFoundationFinalSnapshotReplacesPartial(t *testing.T) {
+	a := newFixtureAgent()
+	a.prompt = func(ctx context.Context, p sdk.PromptRequest) (sdk.PromptResponse, error) {
+		partial := acpmeta.TurnUsage{InputTokens: sdk.Ptr(int64(100)), OutputTokens: sdk.Ptr(int64(10)), Source: "fixture.requests", Coverage: "observed_requests"}
+		for range 2 {
+			if err := a.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: p.SessionId, Update: sdk.SessionUpdate{UsageUpdate: &sdk.SessionUsageUpdate{Meta: acpmeta.WithTurnUsage(nil, partial)}}}); err != nil {
+				return sdk.PromptResponse{}, err
+			}
+		}
+		final := acpmeta.TurnUsage{InputTokens: sdk.Ptr(int64(250)), OutputTokens: sdk.Ptr(int64(30)), CacheReadTokens: sdk.Ptr(int64(0)), Source: "fixture.final", Coverage: "native_turn", Complete: true, Model: "reported-model"}
+		return sdk.PromptResponse{StopReason: sdk.StopReasonEndTurn, Usage: &sdk.Usage{InputTokens: 250, OutputTokens: 30}, Meta: acpmeta.WithTurnUsage(nil, final)}, nil
+	}
+	driver := newConnectionForAgent(t, a)
+	session, err := driver.Open(context.Background(), openRequest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sink := &recordingSink{}
+	result := session.Prompt(context.Background(), TurnRequest{Input: Input{Text: "work"}}, sink)
+	if result.Status != StatusCompleted || !result.Usage.Known || result.Usage.InputTokens != 250 || result.Usage.OutputTokens != 30 || result.Usage.ContextKnown {
+		t.Fatalf("final snapshot changed: %+v", result)
+	}
+	for _, event := range sink.snapshot() {
+		if event.Usage != nil && (!event.Usage.Known || event.Usage.InputTokens != 100 || event.Usage.ContextKnown) {
+			t.Fatalf("consumption notification misread: %+v", event.Usage)
+		}
+	}
+	encoded, err := json.Marshal(result.Usage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var snapshot map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	var reported acpmeta.TurnUsage
+	if err := json.Unmarshal(snapshot["Reported"], &reported); err != nil {
+		t.Fatalf("reported final missing: %s: %v", encoded, err)
+	}
+	if reported.Source != "fixture.final" || reported.Coverage != "native_turn" || !reported.Complete || reported.Model != "reported-model" || reported.CacheReadTokens == nil || *reported.CacheReadTokens != 0 || reported.CacheWriteTokens != nil {
+		t.Fatalf("metadata lost: %+v", reported)
 	}
 }

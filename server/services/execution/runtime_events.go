@@ -111,7 +111,7 @@ type runtimeEventSink struct {
 	pending *pendingRuntimeMessage
 	// pendingTool 合并累计参数或收集有界进度批次，避免每个 Token 同步落盘。
 	pendingTool *pendingRuntimeTool
-	// usage 保存 Runtime 最后一次报告的规范化 Token 用量。
+	// usage 分别保存 Runtime 最后一次报告的累计消费与上下文快照。
 	usage json.RawMessage
 	// messageRevision 保存实时消息视图已经分配的最后修订号。
 	messageRevision int64
@@ -180,8 +180,27 @@ func (s *runtimeEventSink) acceptLocked(
 	}
 	switch cloned.Type {
 	case agentapi.EventTypeUsage:
-		// Usage 可能由 Runtime 高频覆盖报告；只保留最后一次并在执行终态写入一次。
-		s.usage = append(json.RawMessage(nil), cloned.Data...)
+		// 分量独立替换并在终态归档；原始 JSON 保留字段缺失性，不补造历史完整性。
+		components := make(map[string]json.RawMessage)
+		if len(s.usage) > 0 {
+			if err := json.Unmarshal(s.usage, &components); err != nil {
+				return err
+			}
+		}
+		var update map[string]json.RawMessage
+		if err := json.Unmarshal(cloned.Data, &update); err != nil {
+			return err
+		}
+		for key, value := range update {
+			if string(value) != "null" {
+				components[key] = value
+			}
+		}
+		encoded, err := json.Marshal(components)
+		if err != nil {
+			return err
+		}
+		s.usage = encoded
 		return nil
 	case agentapi.EventTypeTextDelta,
 		agentapi.EventTypeCommentaryDelta,
@@ -646,7 +665,7 @@ func (s *runtimeEventSink) commitMessageLocked(
 	return nil
 }
 
-// Usage 返回 Runtime 最后一次报告的 Token 用量防御性副本。
+// Usage 返回已合并的消费与上下文快照防御性副本。
 func (s *runtimeEventSink) Usage() json.RawMessage {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

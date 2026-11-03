@@ -1408,3 +1408,66 @@ func TestRuntimeEventSinkKeepsInputProjectionContext(t *testing.T) {
 		}
 	}
 }
+
+// TestUsageFoundationArchiveMergesComponents 验证用量分量独立覆盖且终态归档保留原始元数据。
+func TestUsageFoundationArchiveMergesComponents(t *testing.T) {
+	for _, terminal := range []constants.ChatEventType{constants.ChatEventTypeExecutionCompleted, constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled} {
+		t.Run(string(terminal), func(t *testing.T) {
+			store, err := eventlog.NewStore(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			chatID := "abababababababababababababababab"
+			if _, err := store.Create(chatID, activeChatInputs()); err != nil {
+				t.Fatal(err)
+			}
+			sink, _ := newRuntimeEventSinkForTest(store, chatID)
+			for _, data := range []string{
+				`{"turn":{"input_tokens":100,"output_tokens":10,"known_fields":["input_tokens","cache_read_tokens","output_tokens"],"complete":false,"source":"fixture.requests","coverage":"main_loop"}}`,
+				`{"context":{"used_tokens":900,"window_tokens":64000}}`,
+			} {
+				if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeUsage, Data: json.RawMessage(data)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var usage map[string]json.RawMessage
+			if err := json.Unmarshal(sink.Usage(), &usage); err != nil {
+				t.Fatal(err)
+			}
+			if len(usage["turn"]) == 0 || len(usage["context"]) == 0 {
+				t.Fatalf("component erased: %s", sink.Usage())
+			}
+			if _, err := store.Append(chatID, []eventlog.AppendInput{{Type: terminal, ExecutionID: "execution-1", Data: marshalData(eventlog.ExecutionFinishedData{Usage: sink.Usage()})}}); err != nil {
+				t.Fatal(err)
+			}
+			records, err := store.ReadAll(chatID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var finished eventlog.ExecutionFinishedData
+			if err := json.Unmarshal(records[len(records)-1].Data, &finished); err != nil {
+				t.Fatal(err)
+			}
+			if string(finished.Usage) != string(sink.Usage()) {
+				t.Fatalf("terminal metadata lost: %s", finished.Usage)
+			}
+			messages, err := messageview.ReplayMessages(records)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(messages) != 1 || messages[0].RunMetrics == nil || messages[0].RunMetrics.InputTokens != 100 || messages[0].RunMetrics.OutputTokens != 10 || messages[0].RunMetrics.ContextUsedTokens != 900 {
+				t.Fatalf("archive replay lost usage: %+v", messages)
+			}
+			if err := sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeUsage, Data: json.RawMessage(`{"turn":{"output_tokens":12}}`)}); err != nil {
+				t.Fatal(err)
+			}
+			var legacy map[string]map[string]any
+			if err := json.Unmarshal(sink.Usage(), &legacy); err != nil {
+				t.Fatal(err)
+			}
+			if legacy["context"]["used_tokens"] != float64(900) || legacy["turn"]["output_tokens"] != float64(12) || legacy["turn"]["complete"] != nil || legacy["turn"]["known_fields"] != nil {
+				t.Fatalf("legacy certainty fabricated: %s", sink.Usage())
+			}
+		})
+	}
+}

@@ -1137,6 +1137,24 @@ func chatUsage(usage native.Usage) UsageData {
 	data := UsageData{}
 	if usage.Known {
 		data.Turn = &TurnUsageData{InputTokens: usage.InputTokens, OutputTokens: usage.OutputTokens, CacheReadTokens: usage.CachedReadTokens, CacheCreationTokens: usage.CachedWriteTokens, ReasoningOutputTokens: usage.ThoughtTokens}
+		if reported := usage.Reported; reported != nil {
+			complete := reported.Complete
+			data.Turn.Complete, data.Turn.Source, data.Turn.Coverage, data.Turn.Model = &complete, reported.Source, reported.Coverage, reported.Model
+			for _, field := range []struct {
+				name  string // name 是兼容的 Token JSON 键。
+				value *int64 // value 为 nil 时表示该分量未知。
+			}{
+				{"input_tokens", reported.InputTokens},
+				{"cache_read_tokens", reported.CacheReadTokens},
+				{"cache_creation_tokens", reported.CacheWriteTokens},
+				{"output_tokens", reported.OutputTokens},
+				{"reasoning_output_tokens", reported.ReasoningTokens},
+			} {
+				if field.value != nil {
+					data.Turn.KnownFields = append(data.Turn.KnownFields, field.name)
+				}
+			}
+		}
 	}
 	if usage.ContextKnown {
 		data.Context = &ContextUsageData{UsedTokens: usage.ContextTokens, WindowTokens: usage.ContextWindowTokens}
@@ -1969,9 +1987,12 @@ func (s *eventSink) Accept(_ context.Context, event native.Event) error {
 		size += len(tool.ID) + len(tool.Name) + len(tool.Title) + len(tool.Kind) + len(tool.Status) + len(tool.Text) + len(tool.Input) + len(tool.Output) + contentBytes
 	}
 	if event.Usage != nil {
-		usage := *event.Usage
+		usage := event.Usage.Clone()
 		event.Usage = &usage
 		size += 58
+		if reported := usage.Reported; reported != nil {
+			size += 42 + len(reported.Source) + len(reported.Coverage) + len(reported.Model)
+		}
 	}
 	// 参数是同一工具的替换快照，不是每次都新增一份业务正文。
 	// 只抵扣与紧邻上一快照相同的前缀；独立工具、改写、清空后重建仍计新增字节，预算不退款。

@@ -483,7 +483,7 @@ func TestChatHostDeliversFinalPromptResponseUsage(t *testing.T) {
 	if usage == nil || usage.Turn == nil || usage.Context == nil {
 		t.Fatalf("missing final prompt response usage: events=%+v", sink.events)
 	}
-	if *usage.Turn != (TurnUsageData{InputTokens: 11, OutputTokens: 13, CacheReadTokens: 17, CacheCreationTokens: 19, ReasoningOutputTokens: 23}) || *usage.Context != (ContextUsageData{UsedTokens: 29, WindowTokens: 31}) {
+	if !reflect.DeepEqual(*usage.Turn, TurnUsageData{InputTokens: 11, OutputTokens: 13, CacheReadTokens: 17, CacheCreationTokens: 19, ReasoningOutputTokens: 23}) || *usage.Context != (ContextUsageData{UsedTokens: 29, WindowTokens: 31}) {
 		t.Fatalf("usage=%+v context=%+v", usage.Turn, usage.Context)
 	}
 }
