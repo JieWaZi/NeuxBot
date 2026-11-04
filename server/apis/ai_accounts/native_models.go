@@ -1,14 +1,14 @@
 package ai_accounts
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -55,10 +55,12 @@ func (a *GetAIAccountNativeModels) Output(ctx *gin.Context) (interface{}, error)
 	if environment.BaseRuntimeID != constants.RuntimeIDCodex {
 		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
 	}
-	// Codex 的目录由运行时环境刷新持久化；读取菜单不抢占正在执行的订阅账号。
-	result := environment.Detection
+	result, err := global.RuntimeEnvironmentService.ReadModelCatalog(ctx, environment.RuntimeID, account.ID, false)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	response := GetAIAccountNativeModelsResponse{Models: []string{}}
-	if !persistedModelDirectoryAvailable(result) {
+	if !codexAccountCatalogAvailable(result, account.ID) {
 		return response, nil
 	}
 	for _, model := range result.Models {
@@ -66,19 +68,11 @@ func (a *GetAIAccountNativeModels) Output(ctx *gin.Context) (interface{}, error)
 			response.Models = append(response.Models, model.ID)
 		}
 	}
-	response.DefaultModel = result.DetectedDefaultModel
+	response.DefaultModel = result.DefaultID
 	return response, nil
 }
 
-// persistedModelDirectoryAvailable 允许查询刷新失败时明确保留下来的上次成功目录。
-func persistedModelDirectoryAvailable(result agentapi.DetectionResult) bool {
-	if result.State != agentapi.DetectionStateReady {
-		return false
-	}
-	unavailable, retained := false, false
-	for _, diagnostic := range result.Diagnostics {
-		unavailable = unavailable || diagnostic.Code == agentapi.DiagnosticCodeACPOptionsUnavailable
-		retained = retained || diagnostic.Code == agentapi.DiagnosticCodeACPOptionsFallback
-	}
-	return !unavailable || retained && len(result.Models) > 0
+// The existing model endpoints may serve the last successful read for this exact account.
+func codexAccountCatalogAvailable(result runtimeenvironment.AccountModelCatalog, accountID string) bool {
+	return result.AccountID == accountID && (result.State == agent.CatalogFresh || result.State == agent.CatalogStale)
 }

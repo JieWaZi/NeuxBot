@@ -5,20 +5,29 @@ import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { AIAccountsSection } from "./ai-accounts-section";
 import "@/shared/i18n";
 
-const { create, update, preview, refresh, accounts, list, readCredential } =
-  vi.hoisted(() => ({
-    list: vi.fn(),
-    create: vi.fn(async () => ({ id: "new-account" })),
-    update: vi.fn(async () => ({})),
-    preview: vi.fn(async () => ({
-      resources: [] as Array<{ id: string; name: string }>,
-    })),
-    refresh: vi.fn(async () => ({
-      resources: [] as Array<{ id: string; name: string }>,
-    })),
-    accounts: { current: [] as Array<Record<string, unknown>> },
-    readCredential: vi.fn(async () => ({ data: { apiKey: "saved-secret" } })),
-  }));
+const {
+  create,
+  update,
+  preview,
+  refresh,
+  accounts,
+  list,
+  readCredential,
+  logout,
+} = vi.hoisted(() => ({
+  list: vi.fn(),
+  create: vi.fn(async () => ({ id: "new-account" })),
+  update: vi.fn(async () => ({})),
+  logout: vi.fn(async () => ({})),
+  preview: vi.fn(async () => ({
+    resources: [] as Array<{ id: string; name: string }>,
+  })),
+  refresh: vi.fn(async () => ({
+    resources: [] as Array<{ id: string; name: string }>,
+  })),
+  accounts: { current: [] as Array<Record<string, unknown>> },
+  readCredential: vi.fn(async () => ({ data: { apiKey: "saved-secret" } })),
+}));
 vi.mock("@/shared/api/generated/sdk.gen", () => ({
   getAiAccountCredential: readCredential,
 }));
@@ -30,6 +39,7 @@ vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
   previewAiAccountModelsMutation: () => ({ mutationFn: preview }),
   refreshAiAccountModelsMutation: () => ({ mutationFn: refresh }),
   deleteAiAccountMutation: () => ({ mutationFn: vi.fn() }),
+  logoutAiAccountMutation: () => ({ mutationFn: logout }),
 }));
 class ResizeObserverStub {
   observe() {}
@@ -53,6 +63,7 @@ afterAll(() => {
 beforeEach(() => {
   create.mockClear();
   update.mockClear();
+  logout.mockClear();
   preview.mockReset().mockResolvedValue({ resources: [] });
   refresh.mockReset().mockResolvedValue({ resources: [] });
   readCredential
@@ -909,4 +920,46 @@ it("编辑保留原生自定义推理 ID 并原样提交", async () => {
       expect.anything(),
     ),
   );
+});
+
+it("退出 ChatGPT 登录保留账号并刷新登录状态", async () => {
+  const account = {
+    id: "chatgpt-account",
+    name: "工作账号",
+    authMode: "subscription",
+    revision: 3,
+    hasCredential: true,
+    endpoints: [
+      { protocol: "openai-responses", baseUrl: "https://api.openai.com/v1" },
+    ],
+  };
+  accounts.current = [account];
+  logout.mockImplementationOnce(async () => {
+    accounts.current = [{ ...account, hasCredential: false, revision: 4 }];
+    return {};
+  });
+  const user = userEvent.setup();
+  renderAccounts();
+  await user.click(
+    await screen.findByRole("button", { name: "展开账号 工作账号" }),
+  );
+  await user.click(screen.getByRole("button", { name: "退出登录" }));
+  expect(
+    screen.getByRole("dialog", { name: "退出账号 工作账号 的登录" }),
+  ).toBeVisible();
+  expect(logout).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "退出登录" }));
+  await waitFor(() =>
+    expect(logout).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: { accountId: account.id },
+        query: { revision: 3 },
+      }),
+      expect.anything(),
+    ),
+  );
+  await waitFor(() =>
+    expect(screen.getByText("待登录", { exact: false })).toBeVisible(),
+  );
+  expect(screen.getByText("工作账号")).toBeVisible();
 });

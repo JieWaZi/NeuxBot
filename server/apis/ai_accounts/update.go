@@ -1,6 +1,7 @@
 package ai_accounts
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -92,6 +93,16 @@ func (a *UpdateAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 	if err := validateEndpoints(current.AuthMode, a.Body.Endpoints); err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	if current.Revision != a.Body.Revision {
+		return nil, ginx.WithStack(status_error.AIAccountRevisionConflict)
+	}
+	authChanged := a.Body.APIKey != "" || !slices.Equal(current.Endpoints, a.Body.Endpoints)
+	previous := current
+	if authChanged {
+		if err := global.AIAccountService.RemoveCodexCredentialFiles(current); err != nil {
+			return nil, ginx.WithStack(err)
+		}
+	}
 	current.Name, current.Endpoints, current.Revision = a.Body.Name, a.Body.Endpoints, a.Body.Revision
 	current.CustomModels = append([]string(nil), a.Body.CustomModels...)
 	current.ModelContextSizes = a.Body.ModelContextSizes
@@ -104,6 +115,9 @@ func (a *UpdateAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 	current.DefaultReasoning = a.Body.DefaultReasoning
 	if err := global.AIAccountControllerManager.Update(ctx, current, a.Body.APIKey); err != nil {
 		return nil, ginx.WithStack(err)
+	}
+	if authChanged {
+		global.AIAccountService.InvalidateCodexAuth(ctx, previous)
 	}
 	return ginx.CommonSuccessResponse(), nil
 }

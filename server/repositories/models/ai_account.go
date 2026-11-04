@@ -40,6 +40,8 @@ type AIAccount struct {
 	LiveAuthPath string `gorm:"type:text;not null;default:''" json:"-"`
 	// Revision 用于更新冲突检测和隔离进程缓存。
 	Revision int64 `gorm:"not null" json:"revision"`
+	// 认证代次
+	AuthGeneration uint64 `gorm:"not null;default:1" json:"authGeneration"`
 	// CredentialCiphertext 是绑定账号身份加密后的 Key 或订阅令牌，不对外返回。
 	CredentialCiphertext string `gorm:"type:text;not null" json:"-"`
 	// HasCredential 表示已保存 API Key 或完整订阅令牌。

@@ -41,9 +41,16 @@ func (a *DeleteAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	if account.Revision != a.Revision {
+		return nil, ginx.WithStack(status_error.AIAccountRevisionConflict)
+	}
+	if err := global.AIAccountService.RemoveCodexCredentialFiles(account); err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	if err := global.AIAccountControllerManager.Delete(ctx, a.AccountID, a.Revision); err != nil {
 		return nil, ginx.WithStack(err)
 	}
+	global.AIAccountService.InvalidateCodexAuth(ctx, account)
 	if account.AuthMode == constants.AccountAuthModeSubscription && len(account.Endpoints) == 1 && account.Endpoints[0].BaseURL == constants.AIAccountKimiURL {
 		global.AIAccountService.RemoveKimiHome(account.ID)
 	}

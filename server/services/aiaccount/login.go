@@ -248,6 +248,9 @@ func (s *Service) advanceLogin(ctx context.Context, id string, job *loginJob) (L
 		if existing.ID == id || existing.AuthMode != constants.AccountAuthModeSubscription || !existing.HasCredential {
 			continue
 		}
+		if _, ok := accountEndpoint(existing, constants.RuntimeIDCodex); !ok {
+			continue
+		}
 		secret, readErr := s.accounts.Credential(ctx, existing.ID)
 		if readErr != nil {
 			return Login{}, readErr
@@ -280,9 +283,13 @@ func (s *Service) advanceLogin(ctx context.Context, id string, job *loginJob) (L
 	}
 	credential := codexCredential{Tokens: *job.tokens, LastRefresh: time.Now().UTC()}
 	encoded, _ := json.Marshal(credential)
-	if err := s.accounts.StoreCredential(ctx, id, current.Revision, string(encoded), ""); err != nil {
+	if err := s.RemoveCodexCredentialFiles(current); err != nil {
 		return Login{}, err
 	}
+	if err := s.accounts.StoreLoginCredential(ctx, id, current.Revision, string(encoded)); err != nil {
+		return Login{}, err
+	}
+	s.InvalidateCodexAuth(ctx, current)
 	job.tokens = nil
 	job.snapshotMutex.Lock()
 	job.view.Complete = true
@@ -387,13 +394,24 @@ func (s *Service) prepareSubscription(ctx context.Context, account *models.AIAcc
 	if homeErr != nil {
 		return homeErr
 	}
-	path := filepath.Join(home, "auth.json")
-	live := codexLiveAuth{LastRefresh: credential.LastRefresh, Tokens: codexLiveTokens{IDToken: credential.Tokens.IDToken, AccessToken: credential.Tokens.AccessToken, RefreshToken: credential.Tokens.RefreshToken, AccountID: credential.Tokens.AccountID()}}
-	data, _ := json.Marshal(live)
-	if err := accountconfig.WriteFile(path, data); err != nil {
-		return err
+	return writeCodexChatGPTCredential(home, credential)
+}
+
+func writeCodexChatGPTCredential(home string, credential codexCredential) error {
+	live := struct {
+		// Mode fixes file-backed ChatGPT authentication in the native home.
+		Mode string `json:"auth_mode"`
+		codexLiveAuth
+	}{
+		Mode: "chatgpt",
+		codexLiveAuth: codexLiveAuth{LastRefresh: credential.LastRefresh, Tokens: codexLiveTokens{
+			IDToken: credential.Tokens.IDToken, AccessToken: credential.Tokens.AccessToken,
+			RefreshToken: credential.Tokens.RefreshToken, AccountID: credential.Tokens.AccountID(),
+		}},
 	}
-	return nil
+	data, _ := json.Marshal(live)
+	defer clear(data)
+	return accountconfig.WriteFile(filepath.Join(home, "auth.json"), data)
 }
 
 // refreshSubscription 合并同一旧令牌的并发刷新，并在返回原生进程前保存新凭据。

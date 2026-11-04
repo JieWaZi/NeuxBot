@@ -310,6 +310,13 @@ func TestReauthenticationRejectsDifferentIdentity(t *testing.T) {
 
 func TestCoreLoginCompletesAndPublishesWithoutRendererPolling(t *testing.T) {
 	service, account, _ := subscriptionFixture(t)
+	kimi := models.AIAccount{
+		ID: "fedcba9876543210fedcba9876543210", Name: "Kimi subscription", AuthMode: constants.AccountAuthModeSubscription,
+		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAICompletions, BaseURL: constants.AIAccountKimiURL}},
+	}
+	if err := service.accounts.Create(t.Context(), kimi, kimiCredentialMarker); err != nil {
+		t.Fatal(err)
+	}
 	hub := events.New()
 	defer hub.Close()
 	service.SetEventPublisher(hub)

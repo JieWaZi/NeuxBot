@@ -12,6 +12,7 @@ func init() {
 	Router.Register(&GetAIAccountThinking{})
 	Router.Register(&GetAIAccountNativeModels{})
 	Router.Register(&GetAIAccountCredential{})
+	Router.Register(&LogoutAIAccount{})
 	Router.Register(&PreviewAIAccountModels{})
 	Router.Register(&CreateAIAccount{})
 	Router.Register(&UpdateAIAccount{})

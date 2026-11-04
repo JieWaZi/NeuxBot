@@ -397,3 +397,36 @@ func TestKimiUsesNativeChatProviderWithEditableContext(t *testing.T) {
 		t.Fatal("Kimi context override was not projected")
 	}
 }
+
+func TestCodexNativeConfigBindsAudienceWithoutPuttingKeyInOverrides(t *testing.T) {
+	home := t.TempDir()
+	config, err := PrepareCodexHome(home, Spec{
+		AuthMode: constants.AccountAuthModeAPIKey,
+		BaseURL:  "https://api.deepseek.com",
+		APIKey:   "fixture-secret",
+		Model:    "deepseek-flash",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, selected := config.Overrides["model"]; selected {
+		t.Fatal("account authority overwrote the requested native model")
+	}
+	providerID := strings.Trim(string(config.Overrides["model_provider"]), "\"")
+	var provider map[string]any
+	if err := json.Unmarshal(config.Overrides["model_providers."+providerID], &provider); err != nil {
+		t.Fatal(err)
+	}
+	keyVariable, _ := provider["env_key"].(string)
+	if provider["base_url"] != "https://api.deepseek.com" || config.Environment[keyVariable] != "fixture-secret" {
+		t.Fatal("native startup authority did not bind the selected endpoint and credential")
+	}
+	encoded, _ := json.Marshal(config.Overrides)
+	data, err := os.ReadFile(filepath.Join(home, "config.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "fixture-secret") || strings.Contains(string(data), "fixture-secret") {
+		t.Fatal("the selected key entered native config or startup arguments")
+	}
+}

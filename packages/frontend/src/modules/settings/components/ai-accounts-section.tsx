@@ -22,6 +22,7 @@ import {
   deleteAiAccountMutation,
   listAiAccountsOptions,
   listAiAccountsQueryKey,
+  logoutAiAccountMutation,
   previewAiAccountModelsMutation,
   refreshAiAccountModelsMutation,
   updateAiAccountMutation,
@@ -1166,14 +1167,21 @@ function AccountRow({
   onEdit,
   onDelete,
   onLogin,
+  onLogout,
 }: {
   account: AIAccount;
   onEdit: () => void;
   onDelete: () => void;
   onLogin: () => void;
+  onLogout: () => void;
 }) {
   const { t } = useTranslation("aiAccounts");
   const [expanded, setExpanded] = useState(false);
+  const canLogout =
+    account.authMode === "subscription" &&
+    account.hasCredential &&
+    account.endpoints?.[0]?.protocol === "openai-responses" &&
+    account.endpoints[0].baseUrl === officialEndpoints["openai-responses"];
   const summary = account.endpoints?.[0]
     ? t(`protocol.${account.endpoints[0].protocol}`)
     : "";
@@ -1253,9 +1261,16 @@ function AccountRow({
                 · {t(account.hasCredential ? "configured" : "needsLogin")}
               </span>
               {account.authMode === "subscription" ? (
-                <Button size="sm" variant="ghost" onClick={onLogin}>
-                  {t(account.hasCredential ? "reauth" : "login")}
-                </Button>
+                <div className="flex flex-wrap gap-1">
+                  {canLogout ? (
+                    <Button size="sm" variant="ghost" onClick={onLogout}>
+                      {t("logout")}
+                    </Button>
+                  ) : null}
+                  <Button size="sm" variant="ghost" onClick={onLogin}>
+                    {t(account.hasCredential ? "reauth" : "login")}
+                  </Button>
+                </div>
               ) : null}
             </div>
           </SettingsFieldRow>
@@ -1282,10 +1297,16 @@ export function AIAccountsSection() {
   const queryClient = useQueryClient();
   const accounts = useQuery(listAiAccountsOptions(withLocalErrorSurface({})));
   const remove = useMutation(withLocalErrorMutation(deleteAiAccountMutation()));
+  const logout = useMutation(withLocalErrorMutation(logoutAiAccountMutation()));
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<AIAccount | "new">();
-  const [deleting, setDeleting] = useState<AIAccount>();
+  const [confirming, setConfirming] = useState<{
+    account: AIAccount;
+    action: "delete" | "logout";
+  }>();
   const [loginAccount, setLoginAccount] = useState<string>();
+  const isLogout = confirming?.action === "logout";
+  const confirmMutation = isLogout ? logout : remove;
   const filtered = (accounts.data?.resources ?? []).filter((account) =>
     `${account.name} ${account.endpoints?.[0]?.baseUrl ?? ""}`
       .toLowerCase()
@@ -1350,9 +1371,13 @@ export function AIAccountsSection() {
                 onEdit={() => setEditing(account)}
                 onDelete={() => {
                   remove.reset();
-                  setDeleting(account);
+                  setConfirming({ account, action: "delete" });
                 }}
                 onLogin={() => setLoginAccount(account.id)}
+                onLogout={() => {
+                  logout.reset();
+                  setConfirming({ account, action: "logout" });
+                }}
               />
             ))}
           </div>
@@ -1381,40 +1406,44 @@ export function AIAccountsSection() {
         ) : null}
       </Dialog>
       <Dialog
-        open={Boolean(deleting)}
+        open={Boolean(confirming)}
         onOpenChange={(open) => {
-          if (!open) setDeleting(undefined);
+          if (!open) setConfirming(undefined);
         }}
       >
-        {deleting ? (
+        {confirming ? (
           <DialogContent
-            title={t("deleteNamed", { name: deleting.name })}
-            description={t("deleteDescription")}
+            title={t(isLogout ? "logoutNamed" : "deleteNamed", {
+              name: confirming.account.name,
+            })}
+            description={t(
+              isLogout ? "logoutDescription" : "deleteDescription",
+            )}
           >
-            {remove.error ? (
+            {confirmMutation.error ? (
               <p role="alert" className="type-body text-destructive px-6 pb-4">
-                {remove.error.message}
+                {confirmMutation.error.message}
               </p>
             ) : null}
             <DialogFooter>
               <Button
                 variant="secondary"
-                disabled={remove.isPending}
-                onClick={() => setDeleting(undefined)}
+                disabled={confirmMutation.isPending}
+                onClick={() => setConfirming(undefined)}
               >
                 {t("common:cancel")}
               </Button>
               <Button
                 variant="danger"
-                disabled={remove.isPending}
+                disabled={confirmMutation.isPending}
                 onClick={() =>
-                  void remove
+                  void confirmMutation
                     .mutateAsync({
-                      path: { accountId: deleting.id ?? "" },
-                      query: { revision: deleting.revision ?? 0 },
+                      path: { accountId: confirming.account.id ?? "" },
+                      query: { revision: confirming.account.revision ?? 0 },
                     })
                     .then(() => {
-                      setDeleting(undefined);
+                      setConfirming(undefined);
                       return queryClient.invalidateQueries({
                         queryKey: listAiAccountsQueryKey(),
                       });
@@ -1422,7 +1451,7 @@ export function AIAccountsSection() {
                     .catch(() => undefined)
                 }
               >
-                {t("common:delete")}
+                {t(isLogout ? "logout" : "common:delete")}
               </Button>
             </DialogFooter>
           </DialogContent>

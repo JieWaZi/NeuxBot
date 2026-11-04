@@ -90,34 +90,56 @@ func readCodexSystemCredential(ctx context.Context, home string) (string, [sha25
 	if err := ctx.Err(); err != nil {
 		return "", noProof, err
 	}
+	credential, err := readCodexChatGPTCredential(home)
+	if err != nil {
+		return "", noProof, err
+	}
+	if err := ctx.Err(); err != nil {
+		return "", noProof, err
+	}
+	scope, _ := json.Marshal([]string{"codex-system-chatgpt-v1", home, credential.Tokens.Identity()})
+	digest := sha256.Sum256(scope)
+	return "codex-system:" + hex.EncodeToString(digest[:]), sha256.Sum256([]byte(credential.Tokens.AccessToken)), nil
+}
+
+// readCodexAuthFile reads only the regular file actually selected by the canonical home.
+func readCodexAuthFile(home string) ([]byte, error) {
 	canonical, err := filepath.EvalSymlinks(home)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", noProof, status_error.RuntimeAuthRequired
+		return nil, status_error.RuntimeAuthRequired
 	}
 	if err != nil || canonical != home {
-		return "", noProof, status_error.AIAccountCredentialError
+		return nil, status_error.AIAccountCredentialError
 	}
 	path := filepath.Join(home, "auth.json")
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return "", noProof, status_error.RuntimeAuthRequired
+		return nil, status_error.RuntimeAuthRequired
 	}
 	const maxAuthBytes = 1 << 20
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxAuthBytes {
-		return "", noProof, status_error.AIAccountCredentialError
+		return nil, status_error.AIAccountCredentialError
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return "", noProof, status_error.AIAccountCredentialError
+		return nil, status_error.AIAccountCredentialError
 	}
 	defer file.Close()
 	opened, err := file.Stat()
 	if err != nil || !os.SameFile(info, opened) {
-		return "", noProof, status_error.AIAccountCredentialError
+		return nil, status_error.AIAccountCredentialError
 	}
 	data, err := io.ReadAll(io.LimitReader(file, maxAuthBytes+1))
 	if err != nil || len(data) > maxAuthBytes {
-		return "", noProof, status_error.AIAccountCredentialError
+		return nil, status_error.AIAccountCredentialError
+	}
+	return data, nil
+}
+
+func readCodexChatGPTCredential(home string) (codexCredential, error) {
+	data, err := readCodexAuthFile(home)
+	if err != nil {
+		return codexCredential{}, err
 	}
 	defer clear(data)
 	var auth struct {
@@ -126,19 +148,18 @@ func readCodexSystemCredential(ctx context.Context, home string) (string, [sha25
 		codexLiveAuth
 	}
 	if json.Unmarshal(data, &auth) != nil {
-		return "", noProof, status_error.AIAccountCredentialError
+		return codexCredential{}, status_error.AIAccountCredentialError
 	}
 	if auth.Mode != "" && auth.Mode != "chatgpt" || auth.APIKey != nil && *auth.APIKey != "" {
-		return "", noProof, status_error.RuntimeAuthRequired
+		return codexCredential{}, status_error.RuntimeAuthRequired
 	}
-	tokens := codexoauth.Tokens{IDToken: auth.Tokens.IDToken, AccessToken: auth.Tokens.AccessToken, RefreshToken: auth.Tokens.RefreshToken}
+	tokens := auth.codexLiveAuth.oauthTokens()
 	if !tokens.Valid() || tokens.AccountID() != auth.Tokens.AccountID {
-		return "", noProof, status_error.AIAccountCredentialError
+		return codexCredential{}, status_error.AIAccountCredentialError
 	}
-	if err := ctx.Err(); err != nil {
-		return "", noProof, err
-	}
-	scope, _ := json.Marshal([]string{"codex-system-chatgpt-v1", home, tokens.Identity()})
-	digest := sha256.Sum256(scope)
-	return "codex-system:" + hex.EncodeToString(digest[:]), sha256.Sum256([]byte(tokens.AccessToken)), nil
+	return codexCredential{Tokens: tokens, LastRefresh: auth.LastRefresh}, nil
+}
+
+func (auth codexLiveAuth) oauthTokens() codexoauth.Tokens {
+	return codexoauth.Tokens{IDToken: auth.Tokens.IDToken, AccessToken: auth.Tokens.AccessToken, RefreshToken: auth.Tokens.RefreshToken}
 }

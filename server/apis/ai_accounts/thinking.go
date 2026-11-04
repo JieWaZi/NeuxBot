@@ -1,14 +1,14 @@
 package ai_accounts
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -77,26 +77,44 @@ func (a *GetAIAccountThinking) Output(ctx *gin.Context) (interface{}, error) {
 			return nil, ginx.WithStack(status_error.BadRequest)
 		}
 	}
-	result := environment.Detection
-	useSavedDirectory := account.AuthMode == constants.AccountAuthModeSubscription && environment.BaseRuntimeID == constants.RuntimeIDCodex
-	if useSavedDirectory {
-		// 订阅模型菜单沿用保存的目录及模型专属档位，不等待账号执行租约。
-		if _, err := global.AIAccountService.ValidateSelection(ctx.Request.Context(), account.ID, environment.BaseRuntimeID, a.Model, ""); err != nil {
-			return nil, ginx.WithStack(err)
-		}
-	} else {
-		// API Key 与账号私有原生模型不能借用系统账号的能力快照。
-		result, err = global.AIAccountService.DetectModel(ctx.Request.Context(), global.RuntimeCatalog, account.ID, environment, a.Model)
+	response := GetAIAccountThinkingResponse{Options: []AccountThinkingOption{}}
+	if environment.BaseRuntimeID == constants.RuntimeIDCodex {
+		catalog, err := global.RuntimeEnvironmentService.ReadModelCatalog(ctx, environment.RuntimeID, account.ID, false)
 		if err != nil {
 			return nil, ginx.WithStack(err)
 		}
+		if !codexAccountCatalogAvailable(catalog, account.ID) {
+			return response, nil
+		}
+		for _, row := range catalog.Models {
+			if row.ID != a.Model || row.Config == nil || slices.Contains(row.Config.UnknownOptionIDs, "reasoning_effort") {
+				continue
+			}
+			response.Available = true
+			for _, setting := range row.Config.Options {
+				if setting.ID != "reasoning_effort" {
+					continue
+				}
+				for _, choice := range setting.Choices {
+					if choice.ID != "" {
+						response.Options = append(response.Options, AccountThinkingOption{ID: choice.ID, Name: choice.Name})
+					}
+				}
+				break
+			}
+			break
+		}
+		return response, nil
 	}
-	response := GetAIAccountThinkingResponse{Options: []AccountThinkingOption{}}
+	result, err := global.AIAccountService.DetectModel(ctx.Request.Context(), global.RuntimeCatalog, account.ID, environment, a.Model)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
 	if result.State != agentapi.DetectionStateReady {
 		return response, nil
 	}
 	for _, diagnostic := range result.Diagnostics {
-		if diagnostic.Code == agentapi.DiagnosticCodeACPOptionsUnavailable && !(useSavedDirectory && persistedModelDirectoryAvailable(result)) {
+		if diagnostic.Code == agentapi.DiagnosticCodeACPOptionsUnavailable {
 			return response, nil
 		}
 	}

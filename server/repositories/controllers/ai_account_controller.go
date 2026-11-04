@@ -7,6 +7,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -19,8 +20,12 @@ import (
 
 // AIAccountController 读写账号元数据，并只向执行侧解密凭据。
 type AIAccountController interface {
-	// StoreCredential 按版本原子保存完整凭据与最近一次原生认证文件位置。
+	// StoreCredential 按版本保存同一身份的刷新结果与原生认证文件位置。
 	StoreCredential(context.Context, string, int64, string, string) error
+	// StoreLoginCredential 按版本保存新授权并递增认证代次。
+	StoreLoginCredential(context.Context, string, int64, string) error
+	// ClearCredential 按版本移除凭据并递增认证代次。
+	ClearCredential(context.Context, string, int64) error
 	// List 返回全部不含凭据的账号。
 	List(context.Context) ([]models.AIAccount, error)
 	// Get 返回账号元数据。
@@ -69,6 +74,7 @@ func (c *aiAccountController) Get(ctx context.Context, id string) (models.AIAcco
 // Create 加密凭据并保存新账号。
 func (c *aiAccountController) Create(ctx context.Context, account models.AIAccount, secret string) error {
 	account.Revision = 1
+	account.AuthGeneration = 1
 	account.HasCredential = secret != ""
 	if secret != "" {
 		encrypted, err := c.encrypt(ctx, account.ID, secret)
@@ -90,8 +96,19 @@ func (c *aiAccountController) Create(ctx context.Context, account models.AIAccou
 func (c *aiAccountController) Update(ctx context.Context, account models.AIAccount, secret string) error {
 	fields := []string{"Name", "Endpoints", "ModelCatalog", "SelectedModels", "CustomModels", "ModelContextSizes", "ModelDisplayNames", "ModelReasoningLevels", "ClaudeModelRoles", "DefaultModel", "DefaultReasoning", "Revision", "UpdatedAt"}
 	revision := account.Revision
+	current, err := c.Get(ctx, account.ID)
+	if err != nil {
+		return err
+	}
+	if current.Revision != revision {
+		return status_error.AIAccountRevisionConflict
+	}
 	account.Revision++
 	account.UpdatedAt = time.Now().UnixMilli()
+	if secret != "" || !slices.Equal(current.Endpoints, account.Endpoints) {
+		account.AuthGeneration = current.AuthGeneration + 1
+		fields = append(fields, "AuthGeneration")
+	}
 	if secret != "" {
 		encrypted, err := c.encrypt(ctx, account.ID, secret)
 		if err != nil {
@@ -207,7 +224,38 @@ func (c *aiAccountController) StoreCredential(ctx context.Context, id string, re
 	if err != nil {
 		return err
 	}
-	result := controllerDB(ctx, c.db).Model(&models.AIAccount{}).Where("id = ? AND revision = ?", id, revision).Updates(map[string]any{"credential_ciphertext": encrypted, "has_credential": true, "live_auth_path": path, "revision": revision + 1, "updated_at": time.Now().UnixMilli()})
+	return c.writeCredential(ctx, id, revision, map[string]any{
+		"credential_ciphertext": encrypted, "has_credential": true, "live_auth_path": path,
+	})
+}
+
+// StoreLoginCredential 保存显式登录并使旧的认证代次失效。
+func (c *aiAccountController) StoreLoginCredential(ctx context.Context, id string, revision int64, secret string) error {
+	if secret == "" {
+		return status_error.AIAccountCredentialError
+	}
+	encrypted, err := c.encrypt(ctx, id, secret)
+	if err != nil {
+		return err
+	}
+	return c.writeCredential(ctx, id, revision, map[string]any{
+		"credential_ciphertext": encrypted, "has_credential": true, "live_auth_path": "",
+		"auth_generation": gorm.Expr("auth_generation + 1"),
+	})
+}
+
+// ClearCredential 清除选定账号的凭据，并使旧的认证代次失效。
+func (c *aiAccountController) ClearCredential(ctx context.Context, id string, revision int64) error {
+	return c.writeCredential(ctx, id, revision, map[string]any{
+		"credential_ciphertext": "", "has_credential": false, "live_auth_path": "",
+		"auth_generation": gorm.Expr("auth_generation + 1"),
+	})
+}
+
+func (c *aiAccountController) writeCredential(ctx context.Context, id string, revision int64, fields map[string]any) error {
+	fields["revision"] = revision + 1
+	fields["updated_at"] = time.Now().UnixMilli()
+	result := controllerDB(ctx, c.db).Model(&models.AIAccount{}).Where("id = ? AND revision = ?", id, revision).Updates(fields)
 	if result.Error != nil {
 		return databaseError("store_ai_account_credential", id, result.Error)
 	}

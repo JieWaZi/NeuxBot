@@ -1,143 +1,114 @@
 package ai_accounts
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
 	"context"
-	"errors"
 	"net/http/httptest"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
+	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
 	"github.com/gin-gonic/gin"
 )
 
-func codexSubscriptionQueryFixture(t *testing.T) string {
+type codexAccountCatalogStub struct {
+	// Service retains unrelated runtime operations.
+	runtimeenvironment.Service
+	// read checks the selected account and returns its native discovery result.
+	read func(string, string, bool) runtimeenvironment.AccountModelCatalog
+}
+
+func (s codexAccountCatalogStub) ReadModelCatalog(_ context.Context, runtimeID, accountID string, refresh bool) (runtimeenvironment.AccountModelCatalog, error) {
+	return s.read(runtimeID, accountID, refresh), nil
+}
+
+func codexAccountQueryFixture(t *testing.T, mode constants.AccountAuthMode, state string) string {
 	t.Helper()
-	oldAccounts, oldEnvironments, oldService := global.AIAccountControllerManager, global.RuntimeEnvironmentControllerManager, global.AIAccountService
+	oldAccounts, oldEnvironments := global.AIAccountControllerManager, global.RuntimeEnvironmentControllerManager
+	oldService, oldCatalog := global.AIAccountService, global.RuntimeEnvironmentService
 	t.Cleanup(func() {
-		global.AIAccountControllerManager, global.RuntimeEnvironmentControllerManager, global.AIAccountService = oldAccounts, oldEnvironments, oldService
+		global.AIAccountControllerManager, global.RuntimeEnvironmentControllerManager = oldAccounts, oldEnvironments
+		global.AIAccountService, global.RuntimeEnvironmentService = oldService, oldCatalog
 	})
 	id := "0123456789abcdef0123456789abcdef"
 	global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{
-		ID: id, AuthMode: constants.AccountAuthModeSubscription, HasCredential: true,
+		ID: id, AuthMode: mode, HasCredential: true, SelectedModels: []string{"account-model"},
 		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}},
 	}}
+	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager)
 	global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{
 		RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true,
 		Detection: agentapi.DetectionResult{
-			State: agentapi.DetectionStateReady, DetectedDefaultModel: "saved-model",
-			Models: []agentapi.ModelOption{{ID: "saved-model", ReasoningOptions: []agentapi.ReasoningOption{{ID: "high", Name: "High"}}}},
+			State: agentapi.DetectionStateReady, DetectedDefaultModel: "other-account-model",
+			Models: []agentapi.ModelOption{{ID: "other-account-model"}},
 		},
 	}}
-	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager)
-	release, err := global.AIAccountService.Exclusive(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(release)
+	global.RuntimeEnvironmentService = codexAccountCatalogStub{read: func(runtimeID, accountID string, refresh bool) runtimeenvironment.AccountModelCatalog {
+		t.Helper()
+		if runtimeID != constants.RuntimeIDCodex || accountID != id || refresh {
+			t.Fatal("query changed the selected native catalog identity")
+		}
+		return runtimeenvironment.AccountModelCatalog{
+			AccountID: id,
+			ModelCatalogSnapshot: agent.ModelCatalogSnapshot{
+				State: state,
+				AgentModelCatalog: agent.AgentModelCatalog{
+					DefaultID: "account-model",
+					Models: []agent.AgentChoice{{ID: "account-model", Config: &agent.AgentModelConfig{
+						Options: []agent.AgentSessionOption{{ID: "reasoning_effort", Choices: []agent.AgentChoice{{ID: "high", Name: "High"}}}},
+					}}},
+				},
+			},
+		}
+	}}
 	return id
 }
 
-func TestCodexSubscriptionQueriesReadSnapshotDuringAccountUse(t *testing.T) {
-	for _, scenario := range []string{"saved-directory", "failed-refresh-retains-directory"} {
-		t.Run(scenario, func(t *testing.T) {
-			id := codexSubscriptionQueryFixture(t)
-			if scenario == "failed-refresh-retains-directory" {
-				environment, err := global.RuntimeEnvironmentControllerManager.Get(context.Background(), constants.RuntimeIDCodex)
-				if err != nil {
-					t.Fatal(err)
-				}
-				environment.Detection.Capabilities = agentapi.CapabilitySet{agentapi.CapabilityDynamicModels: true}
-				environment.Detection = agentapi.PreservePreviousOptionsOnFailure(environment.Detection, agentapi.DetectionResult{
-					State: agentapi.DetectionStateReady, Diagnostics: []agentapi.Diagnostic{{Code: agentapi.DiagnosticCodeACPOptionsUnavailable}},
-				})
-				global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: environment}
+func TestCodexAccountQueriesOnlyReadSelectedNativeCatalog(t *testing.T) {
+	for _, state := range []string{agent.CatalogFresh, agent.CatalogStale, agent.CatalogUnavailable, agent.CatalogSignedOut} {
+		t.Run(state, func(t *testing.T) {
+			id := codexAccountQueryFixture(t, constants.AccountAuthModeSubscription, state)
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest("GET", "/", nil)
+			value, err := (&GetAIAccountNativeModels{AccountID: id, RuntimeID: constants.RuntimeIDCodex}).Output(ctx)
+			if err != nil {
+				t.Fatal(err)
 			}
-			for _, query := range []string{"models", "thinking", "models", "thinking"} {
-				t.Run(query, func(t *testing.T) {
-					ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-					requestContext, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-					defer cancel()
-					ctx.Request = httptest.NewRequest("GET", "/", nil).WithContext(requestContext)
-					if query == "models" {
-						value, err := (&GetAIAccountNativeModels{AccountID: id, RuntimeID: constants.RuntimeIDCodex}).Output(ctx)
-						if err != nil {
-							t.Fatalf("saved models query waited for active account instead of reading snapshot: %v", err)
-						}
-						response := value.(GetAIAccountNativeModelsResponse)
-						if !reflect.DeepEqual(response.Models, []string{"saved-model"}) || response.DefaultModel != "saved-model" {
-							t.Fatalf("snapshot model directory was lost: %+v", response)
-						}
-					} else {
-						value, err := (&GetAIAccountThinking{AccountID: id, RuntimeID: constants.RuntimeIDCodex, Model: "saved-model"}).Output(ctx)
-						if err != nil {
-							t.Fatalf("saved thinking query waited for active account instead of reading snapshot: %v", err)
-						}
-						response := value.(GetAIAccountThinkingResponse)
-						if !response.Available || !reflect.DeepEqual(response.Options, []AccountThinkingOption{{ID: "high", Name: "High"}}) {
-							t.Fatalf("snapshot reasoning menu was lost: %+v", response)
-						}
-					}
-				})
+			models := value.(GetAIAccountNativeModelsResponse)
+			value, err = (&GetAIAccountThinking{AccountID: id, RuntimeID: constants.RuntimeIDCodex, Model: "account-model"}).Output(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			thinking := value.(GetAIAccountThinkingResponse)
+			if state == agent.CatalogFresh || state == agent.CatalogStale {
+				if !reflect.DeepEqual(models.Models, []string{"account-model"}) || models.DefaultModel != "account-model" {
+					t.Fatalf("selected catalog lost its identity: %+v", models)
+				}
+				if !thinking.Available || !reflect.DeepEqual(thinking.Options, []AccountThinkingOption{{ID: "high", Name: "High"}}) {
+					t.Fatalf("selected model lost its reasoning catalog: %+v", thinking)
+				}
+			} else if len(models.Models) != 0 || models.DefaultModel != "" || thinking.Available {
+				t.Fatalf("unavailable account used another catalog: %+v %+v", models, thinking)
 			}
 		})
 	}
 }
 
-func TestCodexSubscriptionQueriesDoNotProbeMissingSnapshot(t *testing.T) {
-	id := codexSubscriptionQueryFixture(t)
-	for _, snapshot := range []agentapi.DetectionResult{
-		{},
-		{State: agentapi.DetectionStateReady},
-		{
-			State:       agentapi.DetectionStateReady,
-			Models:      []agentapi.ModelOption{{ID: "saved-model"}},
-			Diagnostics: []agentapi.Diagnostic{{Code: agentapi.DiagnosticCodeACPOptionsUnavailable}},
-		},
-	} {
-		global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{
-			RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true, Detection: snapshot,
-		}}
-		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-		requestContext, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-		ctx.Request = httptest.NewRequest("GET", "/", nil).WithContext(requestContext)
-		value, err := (&GetAIAccountNativeModels{AccountID: id, RuntimeID: constants.RuntimeIDCodex}).Output(ctx)
-		if err != nil || len(value.(GetAIAccountNativeModelsResponse).Models) != 0 {
-			cancel()
-			t.Fatalf("missing directory should be empty without probing: value=%v error=%v", value, err)
-		}
-		value, err = (&GetAIAccountThinking{AccountID: id, RuntimeID: constants.RuntimeIDCodex, Model: "saved-model"}).Output(ctx)
-		cancel()
-		if err != nil || value.(GetAIAccountThinkingResponse).Available {
-			t.Fatalf("missing model capabilities should remain unavailable without probing: value=%v error=%v", value, err)
-		}
-	}
-}
-
-func TestAPIKeyThinkingDoesNotBorrowSubscriptionSnapshot(t *testing.T) {
-	id := codexSubscriptionQueryFixture(t)
-	global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{
-		ID: id, AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, SelectedModels: []string{"saved-model"},
-		Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolOpenAIResponses, BaseURL: constants.AIAccountOpenAIURL}},
-	}}
-	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager)
-	release, err := global.AIAccountService.Exclusive(id)
+func TestCodexAPIKeyThinkingUsesSelectedNativeCatalog(t *testing.T) {
+	id := codexAccountQueryFixture(t, constants.AccountAuthModeAPIKey, agent.CatalogFresh)
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Request = httptest.NewRequest("GET", "/", nil)
+	value, err := (&GetAIAccountThinking{AccountID: id, RuntimeID: constants.RuntimeIDCodex, Model: "account-model"}).Output(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer release()
-	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-	requestContext, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	defer cancel()
-	ctx.Request = httptest.NewRequest("GET", "/", nil).WithContext(requestContext)
-	_, err = (&GetAIAccountThinking{AccountID: id, RuntimeID: constants.RuntimeIDCodex, Model: "saved-model"}).Output(ctx)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("API Key capabilities must remain account-specific instead of borrowing the subscription snapshot: %v", err)
+	thinking := value.(GetAIAccountThinkingResponse)
+	if !thinking.Available || !reflect.DeepEqual(thinking.Options, []AccountThinkingOption{{ID: "high", Name: "High"}}) {
+		t.Fatalf("API key used a catalog other than its own: %+v", thinking)
 	}
 }

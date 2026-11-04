@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"path/filepath"
 	"sync"
 	"time"
@@ -34,8 +33,12 @@ type Service struct {
 	mutex sync.Mutex
 	// readers 统计共享执行租约；负数仅表示配置修改或登录等独占使用。
 	readers map[string]int
+	// pendingWriters blocks new readers while an exclusive change closes idle owners.
+	pendingWriters map[string]bool
 	// closeIdleSessions 通过原生会话所有者回收闲置账号租约，不复制执行状态。
 	closeIdleSessions func(context.Context, string) error
+	// invalidateCodexAuth fences native consumers and cached reads after a durable mutation.
+	invalidateCodexAuth func(context.Context, string, uint64)
 	// credentials 仅在准备、刷新和回收时串行同账号凭据，不覆盖模型调用。
 	credentials sync.Map
 	// leaseChanged 在租约释放时唤醒能力查询和后台调用，不轮询账号使用状态。
@@ -50,6 +53,8 @@ type Service struct {
 	workers sync.WaitGroup
 	// publisher 交付不含凭据的账号授权进度。
 	publisher events.Publisher
+	// dataDirectory contains the managed Codex native homes.
+	dataDirectory string
 	// kimiDataDirectory 持久隔离每个 Kimi 订阅账号的原生登录和会话数据。
 	kimiDataDirectory string
 }
@@ -58,6 +63,7 @@ type Service struct {
 func New(accounts controllers.AIAccountController, dataDirectory ...string) *Service {
 	service := &Service{oauth: codexoauth.New(), accounts: accounts, readers: map[string]int{}, jobs: map[string]*loginJob{}}
 	if len(dataDirectory) > 0 {
+		service.dataDirectory = dataDirectory[0]
 		service.kimiDataDirectory = filepath.Join(dataDirectory[0], "ai-accounts", "kimi")
 	}
 	return service
@@ -97,22 +103,41 @@ func (s *Service) SetIdleSessionCloser(closeIdle func(context.Context, string) e
 
 // Exclusive 为账号设置修改或登录获取独占租约，先回收仍持有共享租约的闲置会话。
 func (s *Service) Exclusive(id string) (func(), error) {
-	release, err := s.acquire(id, true)
-	if !errors.Is(err, status_error.AIAccountBusy) {
-		return release, err
-	}
 	s.mutex.Lock()
-	closeIdle, readers := s.closeIdleSessions, s.readers[id]
-	s.mutex.Unlock()
-	if closeIdle == nil || readers <= 0 {
-		return nil, err
+	if s.pendingWriters[id] || s.readers[id] < 0 {
+		s.mutex.Unlock()
+		return nil, status_error.AIAccountBusy
 	}
+	if s.readers[id] == 0 {
+		release := s.grantLeaseLocked(id, true)
+		s.mutex.Unlock()
+		return release, nil
+	}
+	closeIdle := s.closeIdleSessions
+	if closeIdle == nil {
+		s.mutex.Unlock()
+		return nil, status_error.AIAccountBusy
+	}
+	if s.pendingWriters == nil {
+		s.pendingWriters = make(map[string]bool)
+	}
+	s.pendingWriters[id] = true
+	s.mutex.Unlock()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := closeIdle(ctx, id); err != nil {
+	err := closeIdle(ctx, id)
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	delete(s.pendingWriters, id)
+	s.notifyLeaseChangedLocked()
+	if err != nil {
 		return nil, err
 	}
-	return s.acquire(id, true)
+	if s.readers[id] != 0 {
+		return nil, status_error.AIAccountBusy
+	}
+	return s.grantLeaseLocked(id, true), nil
 }
 
 func (s *Service) acquire(id string, exclusive bool) (func(), error) {
@@ -127,7 +152,7 @@ func (s *Service) acquireLease(ctx context.Context, id string, exclusive, wait b
 			return nil, err
 		}
 		current := s.readers[id]
-		if current >= 0 && (!exclusive || current == 0) {
+		if !s.pendingWriters[id] && current >= 0 && (!exclusive || current == 0) {
 			break
 		}
 		if !wait {
@@ -146,11 +171,14 @@ func (s *Service) acquireLease(ctx context.Context, id string, exclusive, wait b
 		}
 	}
 	defer s.mutex.Unlock()
-	current := s.readers[id]
+	return s.grantLeaseLocked(id, exclusive), nil
+}
+
+func (s *Service) grantLeaseLocked(id string, exclusive bool) func() {
 	if exclusive {
 		s.readers[id] = -1
 	} else {
-		s.readers[id] = current + 1
+		s.readers[id]++
 	}
 	var once sync.Once
 	return func() {
@@ -165,12 +193,16 @@ func (s *Service) acquireLease(ctx context.Context, id string, exclusive, wait b
 					delete(s.readers, id)
 				}
 			}
-			if s.leaseChanged != nil {
-				close(s.leaseChanged)
-				s.leaseChanged = nil
-			}
+			s.notifyLeaseChangedLocked()
 		})
-	}, nil
+	}
+}
+
+func (s *Service) notifyLeaseChangedLocked() {
+	if s.leaseChanged != nil {
+		close(s.leaseChanged)
+		s.leaseChanged = nil
+	}
 }
 
 // Validate 只确认关联的账号存在，不限制协议、登录状态或智能体种类。

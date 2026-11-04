@@ -2,8 +2,10 @@
 package accountconfig
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
@@ -121,40 +124,20 @@ func Prepare(workspace string, spec Spec) (map[string]string, error) {
 	}
 	env := HomeEnvironment(spec.RuntimeID, home)
 	env[constants.AIAccountIdentityEnvironment] = spec.ID + ":" + strconv.FormatInt(spec.Revision, 10)
-	if spec.AuthMode == constants.AccountAuthModeSubscription {
-		if spec.RuntimeID != constants.RuntimeIDCodex {
-			return nil, status_error.AIAccountConfigurationInvalid
-		}
-		if err := WriteFile(filepath.Join(home, "config.toml"), []byte("cli_auth_credentials_store = \"file\"\n")); err != nil {
+	if spec.RuntimeID == constants.RuntimeIDCodex {
+		config, err := PrepareCodexHome(home, spec)
+		if err != nil {
 			return nil, err
 		}
+		maps.Copy(env, config.Environment)
 		return env, nil
+	}
+	if spec.AuthMode == constants.AccountAuthModeSubscription {
+		return nil, status_error.AIAccountConfigurationInvalid
 	}
 	var filename string
 	var content []byte
 	switch spec.RuntimeID {
-	case constants.RuntimeIDCodex:
-		filename = "config.toml"
-		content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\ndisable_response_storage = true\n[model_providers.custom]\nname = \"NeuxBot\"\nbase_url = %s\nwire_api = \"responses\"\nrequires_openai_auth = true\n", strconv.Quote(spec.Model), strconv.Quote(spec.BaseURL)))
-		if spec.Model != "" {
-			catalog, err := codexCatalog(spec)
-			if err != nil {
-				return nil, storageError(err)
-			}
-			catalogPath := filepath.Join(home, "models.json")
-			if err := WriteFile(catalogPath, catalog); err != nil {
-				return nil, err
-			}
-			if isOfficialDeepSeekEndpoint(spec.BaseURL) {
-				content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\nmodel_catalog_json = %s\npreferred_auth_method = \"apikey\"\nforced_login_method = \"api\"\ndisable_response_storage = true\n[model_providers.custom]\nname = \"DeepSeek\"\nbase_url = %s\nwire_api = \"responses\"\nexperimental_bearer_token = %s\n", strconv.Quote(spec.Model), strconv.Quote(catalogPath), strconv.Quote(spec.BaseURL), strconv.Quote(spec.APIKey)))
-			} else {
-				content = []byte(fmt.Sprintf("cli_auth_credentials_store = \"file\"\nmodel = %s\nmodel_provider = \"custom\"\nmodel_catalog_json = %s\ndisable_response_storage = true\n[model_providers.custom]\nname = \"NeuxBot\"\nbase_url = %s\nwire_api = \"responses\"\nrequires_openai_auth = true\n", strconv.Quote(spec.Model), strconv.Quote(catalogPath), strconv.Quote(spec.BaseURL)))
-			}
-		}
-		auth, _ := json.Marshal(map[string]string{"OPENAI_API_KEY": spec.APIKey})
-		if err := WriteFile(filepath.Join(home, "auth.json"), auth); err != nil {
-			return nil, err
-		}
 	case constants.RuntimeIDClaude:
 		filename = "settings.json"
 		keyName := "ANTHROPIC_AUTH_TOKEN"
@@ -224,6 +207,79 @@ func Prepare(workspace string, spec Spec) (map[string]string, error) {
 		return nil, err
 	}
 	return env, nil
+}
+
+// CodexHomeConfig carries the selected account's credential and native configuration inputs.
+type CodexHomeConfig struct {
+	// Environment carries the account key only when the native provider requires it.
+	Environment map[string]string
+	// Overrides protect the selected endpoint and auth source at native startup and session open.
+	Overrides map[string]json.RawMessage
+}
+
+// PrepareCodexHome writes the selected provider settings to an existing owned home.
+func PrepareCodexHome(home string, spec Spec) (CodexHomeConfig, error) {
+	authority := map[string]any{"cli_auth_credentials_store": "file"}
+	result := CodexHomeConfig{Overrides: make(map[string]json.RawMessage)}
+	switch spec.AuthMode {
+	case constants.AccountAuthModeSubscription:
+		authority["forced_login_method"] = "chatgpt"
+		authority["model_provider"] = "openai"
+		authority["chatgpt_base_url"] = "https://chatgpt.com/backend-api/"
+	case constants.AccountAuthModeAPIKey:
+		const providerID = "neux_managed"
+		const keyVariable = "NEUX_CODEX_ACCOUNT_API_KEY"
+		name := "NeuxBot"
+		if isOfficialDeepSeekEndpoint(spec.BaseURL) {
+			name = "DeepSeek"
+		}
+		provider := map[string]any{
+			"name": name, "base_url": spec.BaseURL, "wire_api": "responses", "env_key": keyVariable,
+			"requires_openai_auth": name != "DeepSeek",
+		}
+		authority["forced_login_method"] = "api"
+		authority["model_provider"] = providerID
+		authority["disable_response_storage"] = true
+		authority["model_providers"] = map[string]any{providerID: provider}
+		result.Environment = map[string]string{keyVariable: spec.APIKey}
+		if spec.Model != "" {
+			catalog, err := codexCatalog(spec)
+			if err != nil {
+				return CodexHomeConfig{}, storageError(err)
+			}
+			catalogPath := filepath.Join(home, "models.json")
+			if err := WriteFile(catalogPath, catalog); err != nil {
+				return CodexHomeConfig{}, err
+			}
+			authority["model_catalog_json"] = catalogPath
+		}
+		auth, _ := json.Marshal(map[string]string{"auth_mode": "apikey", "OPENAI_API_KEY": spec.APIKey})
+		defer clear(auth)
+		if err := WriteFile(filepath.Join(home, "auth.json"), auth); err != nil {
+			return CodexHomeConfig{}, err
+		}
+		result.Overrides["model_providers."+providerID], _ = json.Marshal(provider)
+	default:
+		return CodexHomeConfig{}, status_error.AIAccountConfigurationInvalid
+	}
+	for key, value := range authority {
+		if key != "model_providers" {
+			result.Overrides[key], _ = json.Marshal(value)
+		}
+	}
+	// The model default belongs to the native home. The effective requested
+	// model and reasoning belong to the caller opening a native session.
+	if spec.Model != "" {
+		authority["model"] = spec.Model
+	}
+	var config bytes.Buffer
+	if err := toml.NewEncoder(&config).Encode(authority); err != nil {
+		return CodexHomeConfig{}, storageError(err)
+	}
+	if err := WriteFile(filepath.Join(home, "config.toml"), config.Bytes()); err != nil {
+		return CodexHomeConfig{}, err
+	}
+	return result, nil
 }
 
 // Home 返回聊天独有的原生配置目录，不因账号切换改动 CLI 的会话存储位置。
