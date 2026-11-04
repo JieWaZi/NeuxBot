@@ -1,5 +1,8 @@
 import { minimumReasoning } from "@/shared/lib/runtime-reasoning";
-import { listRuntimesOptions } from "@/shared/api/runtime-queries";
+import {
+  codexModelCatalogOptions,
+  listRuntimesOptions,
+} from "@/shared/api/runtime-queries";
 import { useQuery } from "@tanstack/react-query";
 
 import { listAiAccountsOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
@@ -22,6 +25,7 @@ export type ExecutionSelection = {
   accountId?: string;
   model?: string;
   reasoning?: string;
+  fast?: boolean;
   permissionLevel?: string;
 };
 
@@ -67,6 +71,38 @@ export function useExecutionSelection({
   const accountId = value.accountId || runtime?.defaultAccountId || "system";
   const account = accounts.find((item) => item.id === accountId);
   const subscription = account?.authMode === "subscription";
+  const codex = (runtime?.baseRuntimeId || runtimeId) === "codex";
+  const codexInstalled = runtime?.installed ?? runtime?.state === "ready";
+  const codexCatalog = useQuery({
+    ...codexModelCatalogOptions({
+      runtimeId,
+      accountId,
+      authGeneration: account?.authGeneration,
+      modelConfiguration:
+        account?.authMode === "api-key"
+          ? [
+              account.selectedModels,
+              account.modelDisplayNames,
+              account.modelReasoningLevels,
+            ]
+          : undefined,
+      version: runtime?.version,
+      binary: runtime?.resolvedBinary || runtime?.binary,
+      prefixArgs: runtime?.prefixArgs,
+      configHome: accountId === "system" ? runtime?.configHome : undefined,
+    }),
+    enabled: Boolean(
+      enabled && codex && codexInstalled && (accountId === "system" || account),
+    ),
+  });
+  const codexCatalogReady = codexCatalog.data?.state === "fresh";
+  const codexCatalogState = codex
+    ? codexCatalog.isError
+      ? codexCatalog.data
+        ? "stale"
+        : "unavailable"
+      : codexCatalog.data?.state
+    : undefined;
   const nativeModelsQuery = useQuery({
     queryKey: [
       "account-native-models",
@@ -86,18 +122,26 @@ export function useExecutionSelection({
       );
       return data;
     },
-    enabled: Boolean(enabled && subscription && runtime?.enabled),
+    enabled: Boolean(enabled && !codex && subscription && runtime?.enabled),
     staleTime: 5 * 60 * 1000,
   });
-  const models = account
-    ? (subscription
-        ? (nativeModelsQuery.data?.models ?? [])
-        : (account.selectedModels ?? [])
-      ).map((id) => ({ id, name: account.modelDisplayNames?.[id] || id }))
-    : (runtime?.models ?? []);
-  const preferredModel = account
-    ? account.defaultModel || nativeModelsQuery.data?.defaultModel
-    : runtime?.defaultModel;
+  const models = codex
+    ? (codexCatalog.data?.models ?? [])
+    : account
+      ? (subscription
+          ? (nativeModelsQuery.data?.models ?? [])
+          : (account.selectedModels ?? [])
+        ).map((id) => ({ id, name: account.modelDisplayNames?.[id] || id }))
+      : (runtime?.models ?? []);
+  const configuredAccount =
+    accountId === (runtime?.defaultAccountId || "system");
+  const preferredModel = codex
+    ? (configuredAccount && runtime?.defaultModel) ||
+      account?.defaultModel ||
+      codexCatalog.data?.defaultModel
+    : account
+      ? account.defaultModel || nativeModelsQuery.data?.defaultModel
+      : runtime?.defaultModel;
   const defaultModel =
     models.find((item) => item.id === preferredModel)?.id ||
     models[0]?.id ||
@@ -130,22 +174,30 @@ export function useExecutionSelection({
       );
       return data;
     },
-    enabled: Boolean(enabled && account && runtime?.enabled && effectiveModel),
+    enabled: Boolean(
+      enabled && !codex && account && runtime?.enabled && effectiveModel,
+    ),
     staleTime: 5 * 60 * 1000,
   });
-  const runtimeModel = runtime?.models?.find(
-    (item) => item.id === effectiveModel,
-  );
-  const reasoningOptions = account
-    ? thinkingQuery.data?.available
-      ? (thinkingQuery.data.options ?? [])
-      : []
-    : runtimeModel?.reasoningOptions?.length
-      ? runtimeModel.reasoningOptions
-      : (runtime?.reasoningOptions ?? []);
-  const preferredReasoning = account
-    ? account.defaultReasoning
-    : runtime?.defaultReasoning;
+  const runtimeModel = (
+    codex ? codexCatalog.data?.models : runtime?.models
+  )?.find((item) => item.id === effectiveModel);
+  const reasoningOptions = codex
+    ? (runtimeModel?.reasoningOptions ?? [])
+    : account
+      ? thinkingQuery.data?.available
+        ? (thinkingQuery.data.options ?? [])
+        : []
+      : runtimeModel?.reasoningOptions?.length
+        ? runtimeModel.reasoningOptions
+        : (runtime?.reasoningOptions ?? []);
+  const preferredReasoning = codex
+    ? configuredAccount && effectiveModel === runtime?.defaultModel
+      ? runtime?.defaultReasoning || runtimeModel?.defaultReasoning
+      : runtimeModel?.defaultReasoning
+    : account
+      ? account.defaultReasoning
+      : runtime?.defaultReasoning;
   const requestedReasoning =
     reasoningDefault === "minimum"
       ? value.reasoning || minimumReasoning(reasoningOptions)
@@ -153,13 +205,22 @@ export function useExecutionSelection({
         (reasoningOptions.find((item) => item.id === preferredReasoning)?.id ||
           ""));
   const reasoning =
-    defaults && !reasoningOptions.some((item) => item.id === requestedReasoning)
-      ? account
-        ? ""
-        : reasoningOptions[0]?.id || ""
+    defaults &&
+    requestedReasoning &&
+    !reasoningOptions.some((item) => item.id === requestedReasoning)
+      ? codex
+        ? reasoningOptions.find(
+            (item) => item.id === runtimeModel?.defaultReasoning,
+          )?.id || ""
+        : account
+          ? ""
+          : reasoningOptions[0]?.id || ""
       : requestedReasoning;
   const supportedPermissions = runtimeModel
-    ? modelPermissionLevels(runtime?.models, effectiveModel)
+    ? modelPermissionLevels(
+        codex ? codexCatalog.data?.models : runtime?.models,
+        effectiveModel,
+      )
     : runtimeDefaultPermissionLevels(runtime ?? {});
   const permissionLevel =
     permissionLevelOf(value.permissionLevel) ??
@@ -167,22 +228,39 @@ export function useExecutionSelection({
       permissionLevelOf(runtime?.defaultPermissionLevel) ?? "default",
       supportedPermissions,
     );
-  const selection = { runtimeId, accountId, model, reasoning, permissionLevel };
+  const fastSupported = Boolean(codex && runtimeModel?.fastSupported);
+  const fast = fastSupported ? value.fast : undefined;
+  const selection = {
+    runtimeId,
+    accountId,
+    model,
+    reasoning,
+    permissionLevel,
+    fast,
+  };
   const error =
     runtimesQuery.error ||
     accountsQuery.error ||
     nativeModelsQuery.error ||
-    thinkingQuery.error;
+    thinkingQuery.error ||
+    codexCatalog.error;
   const loading =
     (!fixedRuntime && runtimesQuery.isPending) ||
     accountsQuery.isPending ||
-    (subscription && nativeModelsQuery.isPending) ||
-    Boolean(account && effectiveModel && thinkingQuery.isPending);
+    Boolean(
+      codex &&
+      codexInstalled &&
+      (accountId === "system" || account) &&
+      codexCatalog.isPending,
+    ) ||
+    (!codex && subscription && nativeModelsQuery.isPending) ||
+    Boolean(!codex && account && effectiveModel && thinkingQuery.isPending);
   const valid = Boolean(
     runtime?.enabled &&
     runtime.state === "ready" &&
     (accountId === "system" || account?.hasCredential) &&
     (!model || models.some((item) => item.id === model)) &&
+    (!codex || (codexCatalogReady && runtimeModel?.configurationKnown)) &&
     (!reasoning || reasoningOptions.some((item) => item.id === reasoning)) &&
     supportedPermissions.has(permissionLevel) &&
     !loading &&
@@ -190,6 +268,11 @@ export function useExecutionSelection({
   );
   return {
     selection,
+    codex,
+    codexCatalogState,
+    refreshCodexCatalog: codexCatalog.refetch,
+    codexCatalogPending: codex && codexCatalog.isLoading,
+    fastSupported,
     effectiveModel,
     runtime,
     runtimes,

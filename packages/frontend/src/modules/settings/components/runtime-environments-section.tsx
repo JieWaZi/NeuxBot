@@ -1,4 +1,7 @@
-import { listRuntimesOptions } from "@/shared/api/runtime-queries";
+import {
+  codexModelCatalogQueryKey,
+  listRuntimesOptions,
+} from "@/shared/api/runtime-queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   withLocalErrorMutation,
@@ -82,6 +85,7 @@ type RuntimeDraft = {
   customModels: string[];
   defaultModel: string;
   defaultReasoning: string;
+  defaultFast?: boolean;
   defaultPermissionLevel: PermissionLevel;
   prefixArgs: string;
 };
@@ -135,6 +139,7 @@ function runtimeDraft(runtime: RuntimeOption): RuntimeDraft {
     customModels: [...(runtime.customModels ?? [])],
     defaultModel: runtime.defaultModel ?? "",
     defaultReasoning: runtime.defaultReasoning ?? "",
+    defaultFast: runtime.defaultFast,
     defaultPermissionLevel:
       permissionLevelOf(runtime.defaultPermissionLevel) ?? "auto",
     prefixArgs: formatCommandLineArguments(runtime.prefixArgs ?? []),
@@ -175,6 +180,7 @@ function normalizedRuntimeDraft(
   runtime: RuntimeOption,
   draft: RuntimeDraft,
 ): RuntimeDraft {
+  if ((runtime.baseRuntimeId || runtime.id) === "codex") return draft;
   const models = modelsForDraft(runtime, draft);
   const defaultModel = models.some((model) => model.id === draft.defaultModel)
     ? draft.defaultModel
@@ -207,6 +213,7 @@ function runtimeBody(
     customModels: draft.customModels,
     defaultModel: draft.defaultModel,
     defaultReasoning: draft.defaultReasoning,
+    defaultFast: draft.defaultFast,
     defaultPermissionLevel: draft.defaultPermissionLevel,
   };
 }
@@ -235,6 +242,7 @@ function RuntimeEnvironmentRow({
   const invalidate = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: listRuntimesQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: codexModelCatalogQueryKey }),
       queryClient.invalidateQueries({ queryKey: listAiAccountsQueryKey() }),
     ]);
   };
@@ -262,6 +270,7 @@ function RuntimeEnvironmentRow({
       accountId: draft.defaultAccountId || "system",
       model: draft.defaultModel || undefined,
       reasoning: draft.defaultReasoning,
+      fast: draft.defaultFast,
       permissionLevel: draft.defaultPermissionLevel,
     },
     enabled: true,
@@ -337,11 +346,21 @@ function RuntimeEnvironmentRow({
     },
   };
   const issue = issueKind ? issueMessages[issueKind] : undefined;
-  const normalizedDraft = {
-    ...draft,
-    defaultModel: selection.selection.model,
-    defaultReasoning: selection.selection.reasoning,
-  };
+  const normalizedDraft =
+    selection.codex && selection.codexCatalogState !== "fresh"
+      ? draft
+      : {
+          ...draft,
+          defaultModel: selection.selection.model,
+          defaultReasoning: selection.selection.reasoning,
+          defaultFast: selection.selection.fast,
+        };
+  const changedCodexDefaults =
+    selection.codex &&
+    (draft.defaultAccountId !== (runtime.defaultAccountId ?? "") ||
+      draft.defaultModel !== (runtime.defaultModel ?? "") ||
+      draft.defaultReasoning !== (runtime.defaultReasoning ?? "") ||
+      draft.defaultFast !== runtime.defaultFast);
   const installations = (runtime.installations ?? []).filter(
     (installation): installation is typeof installation & { path: string } =>
       Boolean(installation.path),
@@ -545,6 +564,7 @@ function RuntimeEnvironmentRow({
       <CollapsibleContent>
         <div className="border-border-subtle border-t p-4">
           <ExecutionConfigurationFields
+            fastEnabled
             state={selection}
             runtimeHidden
             permissionHidden
@@ -604,6 +624,7 @@ function RuntimeEnvironmentRow({
                   next.accountId === "system" ? "" : next.accountId,
                 defaultModel: next.model,
                 defaultReasoning: next.reasoning,
+                defaultFast: next.fast,
                 defaultPermissionLevel: next.permissionLevel,
               }))
             }
@@ -620,7 +641,7 @@ function RuntimeEnvironmentRow({
                   ? t("runtimeEnvironment.status.loginRequired")
                   : usingPreviousOptions
                     ? "模型目录刷新失败，已保留上次结果"
-                    : optionsUnavailable
+                    : optionsUnavailable && !selection.codex
                       ? "模型目录刷新失败，当前使用 Default 兜底"
                       : ready
                         ? `已发现${version ? ` · ${version}` : ""}`
@@ -640,7 +661,12 @@ function RuntimeEnvironmentRow({
               </Button>
               <Button
                 size="sm"
-                disabled={pending || !draft.binary.trim()}
+                disabled={
+                  pending ||
+                  !draft.binary.trim() ||
+                  (changedCodexDefaults &&
+                    selection.codexCatalogState !== "fresh")
+                }
                 onClick={() => mutate(normalizedDraft)}
               >
                 保存

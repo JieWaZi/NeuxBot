@@ -12,6 +12,26 @@ import (
 
 // 模型选项
 type RuntimeModelOption struct {
+	// 描述
+	Description string `json:"description,omitempty"`
+	// 分组标识
+	Group string `json:"group,omitempty"`
+	// 分组名称
+	GroupName string `json:"groupName,omitempty"`
+	// 默认推理
+	DefaultReasoning string `json:"defaultReasoning,omitempty"`
+	// 已确认逐模型设置
+	ConfigurationKnown bool `json:"configurationKnown"`
+	// 支持 Fast
+	FastSupported bool `json:"fastSupported"`
+	// 原生默认 Fast
+	DefaultFast *bool `json:"defaultFast,omitempty"`
+	// 输入类型
+	InputModalities []string `json:"inputModalities,omitempty"`
+	// 原生服务档位
+	ServiceTiers []RuntimeReasoningOption `json:"serviceTiers,omitempty"`
+	// 原生默认服务档位
+	DefaultServiceTier *string `json:"defaultServiceTier,omitempty"`
 	// 标识
 	ID string `json:"id"`
 	// 名称
@@ -84,6 +104,8 @@ type RuntimeOption struct {
 	DefaultModel string `json:"defaultModel"`
 	// 默认推理
 	DefaultReasoning string `json:"defaultReasoning"`
+	// 默认 Fast
+	DefaultFast *bool `json:"defaultFast,omitempty"`
 	// 默认权限
 	DefaultPermissionLevel constants.PermissionLevel `json:"defaultPermissionLevel"`
 	// 自定义模型
@@ -154,6 +176,9 @@ func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 		environment.DefaultModel,
 		environment.DefaultReasoning,
 	)
+	if environment.BaseRuntimeID == agentapi.RuntimeIDCodex {
+		defaultModel, defaultReasoning = environment.DefaultModel, environment.DefaultReasoning
+	}
 	availableModels := agentapi.AvailableModels(detection, environment.CustomModels)
 	detectedModelIDs := make(map[string]struct{}, len(detection.Models))
 	for _, model := range detection.Models {
@@ -199,6 +224,7 @@ func runtimeOption(environment models.RuntimeEnvironment) RuntimeOption {
 		Auth:                   string(detection.Auth),
 		DefaultModel:           defaultModel,
 		DefaultReasoning:       defaultReasoning,
+		DefaultFast:            environment.DefaultFast,
 		DefaultPermissionLevel: environment.DefaultPermissionLevel,
 		CustomModels:           append([]string(nil), environment.CustomModels...),
 		Models:                 models,

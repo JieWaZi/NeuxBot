@@ -12,6 +12,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 const {
   accounts,
   nativeModels,
+  modelCatalog,
   refreshAll,
   refreshOne,
   runtimes,
@@ -20,6 +21,7 @@ const {
 } = vi.hoisted(() => ({
   accounts: { current: [] as Array<Record<string, unknown>> },
   nativeModels: vi.fn(),
+  modelCatalog: vi.fn(),
   refreshAll: vi.fn(async () => undefined),
   refreshOne: vi.fn(async () => undefined),
   runtimes: { current: [] as Array<Record<string, unknown>> },
@@ -29,6 +31,7 @@ const {
 
 vi.mock("@/shared/api/generated/sdk.gen", () => ({
   getAiAccountNativeModels: nativeModels,
+  getRuntimeModelCatalog: modelCatalog,
   getAiAccountThinking: thinking,
 }));
 
@@ -106,6 +109,39 @@ beforeEach(() => {
   refreshOne.mockClear();
   updateRuntime.mockClear();
   nativeModels.mockReset();
+  modelCatalog.mockImplementation(async ({ path, query }) => {
+    const runtime = runtimes.current.find((item) => item.id === path.runtimeId);
+    const account = accounts.current.find(
+      (item) => item.id === query.accountId,
+    );
+    const systemModels = (runtime?.models ?? []) as Array<
+      Record<string, unknown>
+    >;
+    const rows =
+      query.accountId === "system"
+        ? systemModels
+        : account?.authMode === "subscription"
+          ? [{ id: "gpt-native", name: "gpt-native", reasoningOptions: [] }]
+          : ((account?.selectedModels ?? []) as string[]).map((id) => ({
+              id,
+              name: id,
+              reasoningOptions: [{ id: "max", name: "Max" }],
+            }));
+    return {
+      data: {
+        runtimeId: path.runtimeId,
+        accountId: query.accountId,
+        state: "fresh",
+        defaultModel:
+          query.accountId === "system" ? runtime?.defaultModel : rows[0]?.id,
+        models: rows.map((row) => ({
+          ...row,
+          configurationKnown: true,
+          fastSupported: row.id === "gpt-5",
+        })),
+      },
+    };
+  });
   thinking.mockReset();
   accounts.current = [];
   runtimes.current = [
@@ -300,7 +336,7 @@ describe("RuntimeEnvironmentsSection", () => {
     expect(account).toHaveTextContent("DeepSeek");
 
     const model = screen.getByRole("combobox", { name: "默认模型" });
-    expect(model).toHaveTextContent("deepseek-flash");
+    await waitFor(() => expect(model).toHaveTextContent("deepseek-flash"));
     model.focus();
     await user.keyboard("{Enter}");
     expect(
@@ -310,10 +346,10 @@ describe("RuntimeEnvironmentsSection", () => {
     await user.keyboard("{Escape}");
 
     await waitFor(() =>
-      expect(thinking).toHaveBeenCalledWith(
+      expect(modelCatalog).toHaveBeenCalledWith(
         expect.objectContaining({
-          path: { accountId: "deepseek-account" },
-          query: { runtimeId: "codex", model: "deepseek-flash" },
+          path: { runtimeId: "codex" },
+          query: { accountId: "deepseek-account" },
         }),
       ),
     );
@@ -379,10 +415,10 @@ describe("RuntimeEnvironmentsSection", () => {
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
     const model = screen.getByRole("combobox", { name: "默认模型" });
     await waitFor(() => expect(model).toHaveTextContent("gpt-native"));
-    expect(nativeModels).toHaveBeenCalledWith(
+    expect(modelCatalog).toHaveBeenCalledWith(
       expect.objectContaining({
-        path: { accountId: "subscription-account" },
-        query: { runtimeId: "codex" },
+        path: { runtimeId: "codex" },
+        query: { accountId: "subscription-account" },
       }),
     );
     expect(
@@ -392,10 +428,10 @@ describe("RuntimeEnvironmentsSection", () => {
     account.focus();
     await user.keyboard("{Enter}{Home}{Enter}");
     expect(account).toHaveTextContent("内置账号");
-    expect(model).toHaveTextContent("GPT-5");
+    await waitFor(() => expect(model).toHaveTextContent("GPT-5"));
     expect(
       screen.getByRole("combobox", { name: "默认推理强度" }),
-    ).toHaveTextContent("High");
+    ).toHaveTextContent("默认");
   });
 
   it("展开区域与行内操作相互独立，使用键盘也能展开和收起", async () => {
@@ -669,6 +705,30 @@ describe("RuntimeEnvironmentsSection", () => {
     expect(screen.queryByText("pi-acp")).not.toBeInTheDocument();
   });
 
+  it("Fast 默认值明确关闭时保存 false", async () => {
+    runtimes.current[0] = { ...runtimes.current[0], defaultFast: true };
+    const user = userEvent.setup();
+    renderSection(
+      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "展开Codex智能体设置" }),
+    );
+    const fast = await screen.findByRole("combobox", { name: "Fast" });
+    fast.focus();
+    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("option", { name: "关闭" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(updateRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.objectContaining({ defaultFast: false }),
+        }),
+        expect.anything(),
+      ),
+    );
+  });
+
   it("切换环境默认模型时只展示该 ACP 模型支持的 Thinking", async () => {
     const user = userEvent.setup();
     const queryClient = new QueryClient({
@@ -687,7 +747,7 @@ describe("RuntimeEnvironmentsSection", () => {
     const reasoning = screen.getByRole("combobox", {
       name: "默认推理强度",
     });
-    expect(reasoning).toHaveTextContent("Low");
+    expect(reasoning).toHaveTextContent("默认");
     reasoning.focus();
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
     expect(reasoning).toHaveTextContent("Low");

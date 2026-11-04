@@ -118,6 +118,8 @@ type WorkOptions struct {
 	Model string
 	// Reasoning 是本次使用的推理强度。
 	Reasoning string
+	// Fast 是本轮明确选择的 Fast 开关。
+	Fast *bool
 	// PermissionLevel 是本次执行冻结的跨 Runtime 产品权限等级。
 	PermissionLevel constants.PermissionLevel
 	// WorkspaceReadOnly 表示 Runtime 只能读取工作区，不能请求或执行文件修改。
@@ -221,6 +223,7 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 			RuntimeID:             intent.Options.RuntimeID,
 			Model:                 intent.Options.Model,
 			Reasoning:             intent.Options.Reasoning,
+			Fast:                  intent.Options.Fast,
 			PermissionLevel:       intent.Options.PermissionLevel,
 			WorkspaceReadOnly:     intent.Options.WorkspaceReadOnly,
 			SessionPolicy:         intent.Options.SessionPolicy,

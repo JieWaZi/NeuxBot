@@ -96,8 +96,10 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 		t.Fatal(err)
 	}
 	summary := agentapi.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}
+	fastOn, fastOff := true, false
 	environment := nativeFixtureEnvironment{entry: models.RuntimeEnvironment{
-		RuntimeID: "codex", BaseRuntimeID: "codex", Enabled: true, Binary: executable, PrefixArgs: []string{"-test.run=^TestNativeExecutionCodexChild$", "--"},
+		DefaultFast: &fastOn,
+		RuntimeID:   "codex", BaseRuntimeID: "codex", Enabled: true, Binary: executable, PrefixArgs: []string{"-test.run=^TestNativeExecutionCodexChild$", "--"},
 		Detection: agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: summary, ResolvedBinary: executable,
 			Models: []agentapi.ModelOption{{ID: "fixture-model", PermissionLevels: []constants.PermissionLevel{constants.PermissionLevelAuto}}}},
 	}}
@@ -153,13 +155,13 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	}
 	core, chats, store, closeRuntime := open()
 	defer func() { closeRuntime() }()
-	options := WorkOptions{RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}
+	options := WorkOptions{RuntimeID: "codex", Model: "fixture-model", Reasoning: "high", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}
 	first, err := core.Start(ctx, WorkIntent{ClientRequestID: "codex-native-first", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}},
 		Input: WorkInput{Actor: "user", Content: "first-success"}, Options: options})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.Execution.Status != constants.ExecutionStatusRunning {
+	if first.Execution.Status != constants.ExecutionStatusRunning || first.Execution.Fast == nil || !*first.Execution.Fast {
 		t.Fatalf("start = %+v", first.Execution)
 	}
 	waitNativeProductStatus(t, ctx, store, first, constants.ExecutionStatusCompleted)
@@ -192,6 +194,7 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 		t.Fatalf("Chat history: %+v %v", history, err)
 	}
 
+	options.Model, options.Reasoning, options.Fast = "fixture-other", "medium", &fastOff
 	held, err := core.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID},
 		Input: WorkInput{Actor: "user", Content: "hold-for-stream"}, Options: options})
 	if err != nil {
@@ -218,6 +221,10 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitNativeProductStatus(t, ctx, store, held, constants.ExecutionStatusCanceled)
+	heldInput, _, err := store.ReadHostInputConsumption(ctx, agent.HostInputRef{ChatID: held.Chat.ID, HostInvocationID: held.Execution.ID})
+	if err != nil || heldInput.Session != input.Session || held.Execution.Fast == nil || *held.Execution.Fast {
+		t.Fatalf("model/Fast edit replaced the thread or lost explicit false: %+v %+v %v", heldInput, held.Execution, err)
+	}
 
 	failed, err := core.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID},
 		Input: WorkInput{Actor: "user", Content: "provider-failure"}, Options: options, Admission: constants.ExecutionAdmissionCommitBeforeDispatch})
@@ -234,6 +241,10 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	t.Setenv("PWD", filepath.Join(root, "second-host-directory"))
 	t.Setenv("NEUX_EXECUTION_FIXTURE_BASE_VALUE", "inherited-second")
 	core, chats, store, closeRuntime = open()
+	reloaded, err := chats.LoadExecutionChat(ctx, first.Chat.ID)
+	if err != nil || reloaded.LastFast == nil || *reloaded.LastFast {
+		t.Fatalf("Chat restart lost explicit Fast=false: %+v %v", reloaded.LastFast, err)
+	}
 	resumed, err := core.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID},
 		Input: WorkInput{Actor: "user", Content: "cold-resume-current-only"}, Options: options})
 	if err != nil {
@@ -253,7 +264,15 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	if !strings.Contains(string(body), `"method":"thread/resume"`) || accounts.Load() != 2 {
 		t.Fatalf("native trace did not resume once: %s", body)
 	}
-	for _, line := range strings.Split(string(body), "\n") {
+	traceLines := strings.Split(string(body), "\n")
+	if !slices.ContainsFunc(traceLines, func(line string) bool {
+		return strings.Contains(line, "first-success") && strings.Contains(line, `"effort":"high"`) && strings.Contains(line, `"serviceTier":"fixture-priority"`)
+	}) || !slices.ContainsFunc(traceLines, func(line string) bool {
+		return strings.Contains(line, "cold-resume-current-only") && strings.Contains(line, `"model":"fixture-other"`) && strings.Contains(line, `"serviceTier":null`)
+	}) {
+		t.Fatalf("requested model, effort or Fast did not reach the actual turn/start frame: %s", body)
+	}
+	for _, line := range traceLines {
 		if strings.Contains(line, "cold-resume-current-only") && strings.Contains(line, "first-success") {
 			t.Fatalf("resume replayed previous input: %s", line)
 		}
@@ -367,7 +386,14 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 		case "account/read":
 			ack(map[string]any{"account": nil, "requiresOpenaiAuth": false})
 		case "model/list":
-			ack(map[string]any{"data": []any{map[string]any{"id": "fixture-model", "model": "fixture-model", "displayName": "Fixture", "isDefault": true}}})
+			ack(map[string]any{"data": []any{
+				map[string]any{"id": "fixture-model", "model": "fixture-model", "displayName": "Fixture", "isDefault": true,
+					"supportedReasoningEfforts": []any{map[string]any{"reasoningEffort": "high"}},
+					"serviceTiers":              []any{map[string]any{"id": "fixture-priority", "name": "Fast"}}},
+				map[string]any{"id": "fixture-other", "model": "fixture-other", "displayName": "Other",
+					"supportedReasoningEfforts": []any{map[string]any{"reasoningEffort": "medium"}},
+					"serviceTiers":              []any{map[string]any{"id": "other-priority", "name": "Fast"}}},
+			}})
 		case "config/read":
 			ack(map[string]any{"config": map[string]any{}})
 		case "thread/start", "thread/resume":

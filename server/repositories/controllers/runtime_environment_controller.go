@@ -154,6 +154,7 @@ func (c *runtimeEnvironmentController) UpdateConfiguration(
 			"DefaultModel",
 			"DefaultAccountID",
 			"DefaultReasoning",
+			"DefaultFast",
 			"DefaultPermissionLevel",
 		).
 		Updates(&environment).Error

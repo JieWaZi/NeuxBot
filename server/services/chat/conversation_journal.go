@@ -362,6 +362,7 @@ func (m *service) ProjectTurnAdmission(ctx context.Context, turn StartedTurn, re
 	}
 	chat.ActiveExecutionID, chat.LastAccountID, chat.LastRuntimeID = execution.ID, execution.AccountID, execution.RuntimeID
 	chat.LastModel, chat.LastReasoning, chat.LastPermissionLevel = execution.Model, execution.Reasoning, execution.PermissionLevel
+	chat.LastFast = execution.Fast
 	execution.Status, execution.UpdatedAt = constants.ExecutionStatusRunning, receipt.RecordedAt
 	execution.Revision++
 	m.queryIndexes.indexStartedMessage(context.WithoutCancel(ctx), turn.NewChat, chat, execution, receipt.First-1)

@@ -3,10 +3,12 @@ package runtimeenvironment
 
 import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +26,10 @@ import (
 
 // Service 提供运行时环境条目的初始化和探测生命周期能力。
 type Service interface {
+	// ReadModelCatalog 读取指定账号的原生模型与能力。
+	ReadModelCatalog(context.Context, string, string, bool) (AccountModelCatalog, error)
+	// InvalidateModelCatalog 移除已撤销认证代次的发现结果。
+	InvalidateModelCatalog(string, uint64)
 	// Start 对账内置 Runtime 并启动后台探测生命周期。
 	Start(ctx context.Context) error
 	// Close 取消后台探测并等待所有资源退出。
@@ -42,6 +48,10 @@ type Service interface {
 
 // Config 声明运行时环境服务所需的外部依赖。
 type Config struct {
+	// ProviderRuntime 提供与执行共享的原生进程所有者。
+	ProviderRuntime *agent.ProviderRuntime
+	// ResolveCodexAccount 解析受管 Codex 账号的稳定认证选择。
+	ResolveCodexAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
 	// Accounts 为所选默认账号提供受管配置。
 	Accounts *aiaccount.Service
 	// AccountWorkspaceDirectory 保存仅用于探测的受管工作区。
@@ -58,6 +68,10 @@ type Config struct {
 
 // service 是运行时环境服务的生命周期和并发协调实现。
 type service struct {
+	// modelCatalog 保存按账号隔离的原生模型发现结果。
+	modelCatalog *agent.ModelCatalog
+	// resolveCodexAccount 复用受管账号认证选择。
+	resolveCodexAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
 	// accounts 生成默认账号的受管探测配置。
 	accounts *aiaccount.Service
 	// accountWorkspaceDirectory 是认证探测的受管目录。
@@ -121,6 +135,10 @@ func New(config Config) (Service, error) {
 	}
 	concrete := created.(*service)
 	concrete.accounts = config.Accounts
+	if config.ProviderRuntime != nil {
+		concrete.modelCatalog = agent.NewModelCatalog(config.ProviderRuntime)
+	}
+	concrete.resolveCodexAccount = config.ResolveCodexAccount
 	concrete.accountWorkspaceDirectory = config.AccountWorkspaceDirectory
 	concrete.eventPublisher = config.Events
 	return concrete, nil
@@ -360,10 +378,21 @@ func (s *service) persistDetection(
 	detection agentapi.DetectionResult,
 	detectedAt int64,
 ) error {
-	detection = agentapi.PreservePreviousOptionsOnFailure(
-		environment.Detection,
-		detection,
-	)
+	codexCatalog := environment.BaseRuntimeID == constants.RuntimeIDCodex && s.modelCatalog != nil
+	if codexCatalog {
+		current, err := s.environments.Get(ctx, environment.RuntimeID)
+		if err != nil {
+			return err
+		}
+		// A response from the prior account or launch cannot update the new selection.
+		if current.DefaultAccountID != environment.DefaultAccountID || current.Binary != environment.Binary ||
+			current.ConfigHome != environment.ConfigHome || !slices.Equal(current.PrefixArgs, environment.PrefixArgs) {
+			return nil
+		}
+		environment = current
+	} else {
+		detection = agentapi.PreservePreviousOptionsOnFailure(environment.Detection, detection)
+	}
 	defaultModel, defaultReasoning := agentapi.NormalizeDetectedDefaults(
 		detection,
 		environment.CustomModels,
@@ -398,10 +427,10 @@ func (s *service) persistDetection(
 	if environment.Binary == firstBinary(environment.Detection.Runtime.BinaryCandidates) && detection.ResolvedBinary != "" {
 		fields["binary"] = detection.ResolvedBinary
 	}
-	if defaultModel != environment.DefaultModel {
+	if defaultModel != environment.DefaultModel && !codexCatalog {
 		fields["default_model"] = defaultModel
 	}
-	if defaultReasoning != environment.DefaultReasoning {
+	if defaultReasoning != environment.DefaultReasoning && !codexCatalog {
 		fields["default_reasoning"] = defaultReasoning
 	}
 	if nextPermission != environment.DefaultPermissionLevel {
@@ -456,6 +485,9 @@ func (s *service) detect(
 			}
 		}
 		return result
+	}
+	if summary.BaseRuntimeID == constants.RuntimeIDCodex && s.modelCatalog != nil {
+		return finish(s.detectCodex(ctx, summary, environment, request))
 	}
 	if environment.DefaultAccountID != "" && s.accounts != nil {
 		workspace := filepath.Join(s.accountWorkspaceDirectory, summary.ID)

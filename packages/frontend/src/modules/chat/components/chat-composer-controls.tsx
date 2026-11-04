@@ -36,6 +36,7 @@ export type ChatExecutionSelectionPatch = Partial<{
   model: string;
   permissionLevel: PermissionLevel;
   reasoning: string;
+  fast: boolean | null;
   runtimeId: string;
 }>;
 
@@ -45,6 +46,11 @@ type ChatComposerControlsProps = {
   activeChatId?: string;
   availableReasoningOptions?: RuntimeReasoningOption[];
   modelOptionsOverride?: RuntimeModelOption[];
+  codexCatalogState?: string;
+  codexCatalogPending?: boolean;
+  refreshCodexCatalog?: () => unknown;
+  fastSupported?: boolean;
+  selectedFast?: boolean;
   thinkingPending?: boolean;
   historicalRuntime?: RuntimeOption;
   historicalRuntimeDisabled: boolean;
@@ -77,6 +83,11 @@ export function useChatComposerControls({
   activeChatId,
   availableReasoningOptions,
   modelOptionsOverride,
+  codexCatalogState,
+  codexCatalogPending,
+  refreshCodexCatalog,
+  fastSupported,
+  selectedFast,
   thinkingPending,
   historicalRuntime,
   historicalRuntimeDisabled,
@@ -112,17 +123,19 @@ export function useChatComposerControls({
     accountId: string,
   ) => {
     const account = accounts.find((item) => item.id === accountId);
+    const codex = (runtime.baseRuntimeId || runtime.id) === "codex";
     updateExecutionSelection({
       accountId,
+      fast: null,
       model:
-        account?.authMode === "subscription"
+        codex || account?.authMode === "subscription"
           ? ""
           : account?.defaultModel ||
             account?.selectedModels?.[0] ||
             runtime.defaultModel ||
             "",
       permissionLevel: selectedPermissionLevel,
-      reasoning: account ? "" : (runtime.defaultReasoning ?? ""),
+      reasoning: codex || account ? "" : (runtime.defaultReasoning ?? ""),
       runtimeId: runtime.id ?? "",
     });
   };
@@ -220,15 +233,39 @@ export function useChatComposerControls({
       ) : null}
     </>
   );
+  const codex =
+    (selectedRuntime?.baseRuntimeId || selectedRuntime?.id) === "codex";
   const modelControl =
-    selectedModelName || selectedAccount ? (
+    codex && codexCatalogState && codexCatalogState !== "fresh" ? (
+      <Button
+        size="sm"
+        variant="ghost"
+        disabled={codexCatalogPending}
+        onClick={() => void refreshCodexCatalog?.()}
+      >
+        {t(
+          codexCatalogState === "stale"
+            ? "common:executionSelection.catalogStale"
+            : codexCatalogState === "signed_out"
+              ? "common:executionSelection.catalogSignedOut"
+              : "common:executionSelection.catalogUnavailable",
+        )}
+      </Button>
+    ) : selectedModelName || selectedAccount || codex ? (
       <ExecutionModelControl
         selectedModelName={selectedModelName}
         selectedModel={selectedModel}
         models={modelOptions}
         selectedReasoning={selectedReasoning}
         reasoningOptions={availableReasoningOptions}
-        thinkingPending={thinkingPending}
+        thinkingPending={thinkingPending || codexCatalogPending}
+        disabled={codex && codexCatalogState !== "fresh"}
+        fast={selectedFast}
+        onFastChange={
+          fastSupported
+            ? (fast) => updateExecutionSelection({ fast: fast ?? null })
+            : undefined
+        }
         allowDefaultReasoning={Boolean(selectedAccount)}
         defaultReasoning={
           selectedAccount?.defaultReasoning || selectedRuntime?.defaultReasoning
@@ -237,22 +274,25 @@ export function useChatComposerControls({
           const nextModelOption = modelOptions.find(
             (item) => item.id === model,
           );
-          const nextReasoningOptions = selectedAccount
-            ? nextModelOption?.reasoningOptions
-            : nextModelOption?.reasoningOptions?.length
-              ? nextModelOption.reasoningOptions
-              : selectedRuntime?.reasoningOptions;
-          const reasoning = selectedAccount
-            ? ""
-            : (nextReasoningOptions?.find(
-                (item) => item.id === selectedRuntime?.defaultReasoning,
-              )?.id ??
-              nextReasoningOptions?.[0]?.id ??
-              "");
+          const nextReasoningOptions =
+            codex || selectedAccount
+              ? nextModelOption?.reasoningOptions
+              : nextModelOption?.reasoningOptions?.length
+                ? nextModelOption.reasoningOptions
+                : selectedRuntime?.reasoningOptions;
+          const reasoning =
+            codex || selectedAccount
+              ? ""
+              : (nextReasoningOptions?.find(
+                  (item) => item.id === selectedRuntime?.defaultReasoning,
+                )?.id ??
+                nextReasoningOptions?.[0]?.id ??
+                "");
           updateExecutionSelection({
             model,
             permissionLevel: selectedPermissionLevel,
             reasoning,
+            fast: null,
           });
         }}
         onReasoningChange={(reasoning) =>

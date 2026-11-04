@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"slices"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -14,6 +15,63 @@ type SessionSetting struct {
 	Value AgentOptionValue
 }
 
+// CodexTurnSelection carries requested per-turn overrides and an unresolved host default.
+type CodexTurnSelection struct {
+	// Reasoning is the native effort ID, or empty for provider defaults.
+	Reasoning string
+	// Fast is explicit on/off, or nil to inherit.
+	Fast *bool
+	// DefaultFast applies only if this model advertises native Fast support.
+	DefaultFast *bool
+}
+
+type codexTurnConfigurer interface {
+	configureCodexTurn(context.Context, string, string, string, *bool) ([]AgentSessionOption, error)
+}
+
+func (t *Turn) applyCodexSettings(client AgentClient, request ThreadRequest) error {
+	codex, ok := client.(codexTurnConfigurer)
+	if !ok {
+		return status_error.RuntimePolicyUnsupported
+	}
+	settings := request.CodexSettings
+	model := request.Connection.Account.Model
+	fast := settings.Fast
+	if fast == nil && settings.DefaultFast != nil {
+		for _, option := range t.effective.Options {
+			if option.ID != "model" {
+				continue
+			}
+			target := model
+			if target == "" {
+				target = option.Value.ID
+			}
+			if slices.ContainsFunc(option.Choices, func(choice AgentChoice) bool {
+				return choice.ID == target && choice.FastServiceTier != ""
+			}) {
+				fast = settings.DefaultFast
+			}
+		}
+	}
+	revision := t.sessionOptionsRevision()
+	options, err := codex.configureCodexTurn(t.ctx, t.binding.Session.SessionID, model, settings.Reasoning, fast)
+	if err != nil {
+		return err
+	}
+	t.applyOptionReceipt(revision, options)
+	t.effective.requestedFast = fast
+	return nil
+}
+
+// RequestedFast reports the frozen intent from the native setter, independently of native observation.
+func (t *Turn) RequestedFast() *bool {
+	if t.effective.requestedFast == nil {
+		return nil
+	}
+	value := *t.effective.requestedFast
+	return &value
+}
+
 func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 	if request.Mode != "" && request.Mode != t.effective.Mode {
 		if !slices.ContainsFunc(t.effective.Modes, func(c AgentChoice) bool { return c.ID == request.Mode }) {
@@ -22,6 +80,9 @@ func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 		if err := t.setSessionMode(client, request.Mode); err != nil {
 			return err
 		}
+	}
+	if request.CodexSettings != nil {
+		return t.applyCodexSettings(client, request)
 	}
 	settings := request.Settings
 	if model := request.Connection.Account.Model; model != "" {
@@ -136,11 +197,20 @@ func (l *ThreadLifecycle) applySessionNotification(state *threadState, generatio
 func (t *Turn) observedSession() AgentSession {
 	l, state := t.lifecycle, t.thread
 	l.mu.Lock()
-	defer l.mu.Unlock()
+	session := t.effective
 	if state.connection == t.conn && state.effective.ID == t.binding.Session.SessionID {
-		return cloneSession(state.effective)
+		session = state.effective
 	}
-	return cloneSession(t.effective)
+	l.mu.Unlock()
+	session = cloneSession(session)
+	if t.conn != nil {
+		if client, err := t.conn.Client(); err == nil {
+			if direct, ok := client.(*directAgentClient); ok {
+				session.ObservedCodexSettings = direct.observeCodexSettings(t.ctx, session.ID)
+			}
+		}
+	}
+	return session
 }
 
 func cloneSession(session AgentSession) AgentSession {
@@ -164,6 +234,11 @@ func cloneOptions(options []AgentSessionOption) []AgentSessionOption {
 func cloneChoices(choices []AgentChoice) []AgentChoice {
 	choices = slices.Clone(choices)
 	for i := range choices {
+		choices[i].InputModalities = slices.Clone(choices[i].InputModalities)
+		if tier := choices[i].DefaultServiceTier; tier != nil {
+			copied := *tier
+			choices[i].DefaultServiceTier = &copied
+		}
 		if choices[i].Config != nil {
 			cfg := *choices[i].Config
 			cfg.Options = cloneOptions(cfg.Options)

@@ -31,6 +31,8 @@ type Execution struct {
 	Model string `json:"model,omitempty"`
 	// Reasoning 是本次执行选择的推理强度标识。
 	Reasoning string `json:"reasoning,omitempty"`
+	// Fast 是本次执行冻结的 Fast 意图，空值使用原生行为。
+	Fast *bool `json:"fast,omitempty"`
 	// PermissionLevel 是本次执行冻结的跨 Runtime 产品权限等级。
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel"`
 	// WorkspaceReadOnly 表示本次 Runtime 只能读取工作区且不能申请文件修改。

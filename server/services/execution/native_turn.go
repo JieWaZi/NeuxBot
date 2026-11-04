@@ -88,7 +88,12 @@ func nativeThreadRequest(chatID string, plan agentapi.SessionPlan, request pendi
 		Summarize:    request.runtime.HistoryMode == constants.HistoryModeSummary,
 		HistoryTurns: request.runtime.HistoryTurns,
 	}
-	if plan.Policy.Reasoning != "" {
+	if thread.Connection.Account.Provider == constants.RuntimeIDCodex {
+		thread.CodexSettings = &agent.CodexTurnSelection{Reasoning: plan.Policy.Reasoning, Fast: request.runtime.Fast}
+		if !request.runtime.ConfigurationResolved {
+			thread.CodexSettings.DefaultFast = environment.DefaultFast
+		}
+	} else if plan.Policy.Reasoning != "" {
 		thread.Settings = []agent.SessionSetting{{ID: "reasoning_effort", Value: agent.AgentOptionValue{ID: plan.Policy.Reasoning}}}
 	}
 	return thread
@@ -220,6 +225,11 @@ func (m *service) startNativeExecution(
 			}
 		}
 	}()
+	if thread.CodexSettings != nil {
+		request.runtime.Fast = turn.RequestedFast()
+		work.input.runtime.Fast = request.runtime.Fast
+		work.execution.Fast = request.runtime.Fast
+	}
 	rawResources, exists := m.nativeResources.Load(state.chat.ID)
 	if !exists {
 		return AcceptedExecution{}, status_error.RuntimeUnavailable

@@ -223,6 +223,7 @@ function ChatView({
       model: string;
       permissionLevel: PermissionLevel;
       reasoning: string;
+      fast: boolean | null;
       runtimeId: string;
     }>;
     runtimeId: string;
@@ -290,6 +291,7 @@ function ChatView({
   const {
     codeReferenceRequest,
     fileSource,
+    fast,
     model,
     openedCodeReference,
     permissionLevel,
@@ -529,16 +531,24 @@ function ChatView({
           : undefined) ||
         entry?.defaults?.model ||
         undefined,
+      fast:
+        fast === null
+          ? undefined
+          : (fast ??
+            (matchesLastExecutionSelection
+              ? detailQuery.data?.chat?.lastFast
+              : undefined)),
       reasoning:
-        reasoning ||
-        (presentation === "composer"
-          ? entry?.defaults?.reasoning
-          : undefined) ||
-        (matchesLastExecutionSelection
-          ? detailQuery.data?.chat?.lastReasoning
-          : undefined) ||
-        entry?.defaults?.reasoning ||
-        undefined,
+        (model ? reasoning : undefined) ??
+        (reasoning ||
+          (presentation === "composer"
+            ? entry?.defaults?.reasoning
+            : undefined) ||
+          (matchesLastExecutionSelection
+            ? detailQuery.data?.chat?.lastReasoning
+            : undefined) ||
+          entry?.defaults?.reasoning ||
+          undefined),
       permissionLevel:
         permissionLevel ||
         (presentation === "composer"
@@ -605,6 +615,7 @@ function ChatView({
       model: string;
       permissionLevel: PermissionLevel;
       reasoning: string;
+      fast: boolean | null;
       runtimeId: string;
     }>,
   ) => {
@@ -771,6 +782,7 @@ function ChatView({
       !selectedWakerID ||
       !effectiveRuntimeID ||
       selectedPermissionUnsupported ||
+      (executionSelection.codex && !executionSelection.valid) ||
       (presentation === "composer" &&
         Boolean(detailQuery.data?.chat?.activeExecutionId)),
     ),
@@ -784,6 +796,7 @@ function ChatView({
       runtimeId: selectedRuntime?.id ?? "",
       model: selectedModel,
       reasoning: selectedReasoning,
+      fast: executionSelection.selection.fast,
       permissionLevel: selectedPermissionLevel,
       skillIds: selectedSkillIDs,
       selectedSkills,
@@ -841,6 +854,7 @@ function ChatView({
         runtimeId: selection?.runtimeId ?? "",
         model: selection?.model ?? "",
         reasoning: selection?.reasoning ?? "",
+        fast: selection?.fast,
         permissionLevel: selection?.permissionLevel ?? "auto",
         attachments: attachmentPaths.map((sourcePath) => ({ sourcePath })),
         skillIds: selection?.skillIds ?? [],
@@ -1129,6 +1143,11 @@ function ChatView({
     activeChatId,
     availableReasoningOptions,
     modelOptionsOverride: availableModels,
+    codexCatalogState: executionSelection.codexCatalogState,
+    codexCatalogPending: executionSelection.codexCatalogPending,
+    refreshCodexCatalog: executionSelection.refreshCodexCatalog,
+    fastSupported: executionSelection.fastSupported,
+    selectedFast: executionSelection.selection.fast,
     thinkingPending: Boolean(
       selectedAccount && thinkingQuery.isPending && thinkingQuery.isFetching,
     ),

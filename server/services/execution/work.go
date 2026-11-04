@@ -68,6 +68,8 @@ type runtimeSelection struct {
 	Model string
 	// Reasoning 是本次执行选择的推理强度。
 	Reasoning string
+	// Fast 是本轮可冻结的 Fast 选择。
+	Fast *bool `json:"Fast,omitempty"`
 	// PermissionLevel 是本次执行冻结的跨 Runtime 产品权限等级。
 	PermissionLevel agentapi.PermissionLevel
 	// WorkspaceReadOnly 表示 Runtime 只能读取工作区，不能请求或执行文件修改。
@@ -441,20 +443,19 @@ func (m *service) startMessage(
 			}
 		}
 	}
-	permissionModel := request.runtime.Model
-	if request.runtime.AccountID != "" {
-		known := false
-		for _, item := range agentapi.AvailableModels(runtimeEnvironment.Detection, runtimeEnvironment.CustomModels) {
-			if item.ID == permissionModel {
-				known = true
-				break
-			}
+	defaultAccountID := runtimeEnvironment.DefaultAccountID
+	if defaultAccountID == constants.AiAccountSystemID {
+		defaultAccountID = ""
+	}
+	if !request.runtime.ConfigurationResolved && request.runtime.AccountID == defaultAccountID {
+		if request.runtime.Model == "" {
+			request.runtime.Model = runtimeEnvironment.DefaultModel
 		}
-		if !known {
-			permissionModel = runtimeEnvironment.DefaultModel
+		if request.runtime.Reasoning == "" && request.runtime.Model == runtimeEnvironment.DefaultModel {
+			request.runtime.Reasoning = runtimeEnvironment.DefaultReasoning
 		}
 	}
-	if !runtimePermissionSupported(runtimeEnvironment, permissionModel, requiredPermissionLevel) {
+	if !constants.SelectablePermissionLevel(requiredPermissionLevel) {
 		return AcceptedExecution{}, status_error.BadRequest
 	}
 	// 已有对话的活跃事实来自权威 JSONL；SQLite 只保存可重建查询投影，不能反向阻断新执行。
@@ -539,6 +540,9 @@ func createRequestContent(request pendingMessage) []interface{} {
 		stableToolCapabilities(request.toolCapabilities),
 		request.supplementalInstructions,
 		request.allowedAgentDomains,
+	}
+	if request.runtime.Fast != nil {
+		content = append(content, map[string]any{"fast": *request.runtime.Fast})
 	}
 	if request.automaticRunID != "" {
 		content = append(content, map[string]any{"automaticRunId": request.automaticRunID})
@@ -793,6 +797,7 @@ func (m *service) resolveMessageChat(
 		LastAccountID:                request.runtime.AccountID,
 		LastRuntimeID:                request.runtime.RuntimeID,
 		LastModel:                    request.runtime.Model,
+		LastFast:                     request.runtime.Fast,
 		CreatedAt:                    now,
 		UpdatedAt:                    now,
 	}
@@ -1208,6 +1213,7 @@ func newExecutionIndex(
 		RuntimeID:         request.runtime.RuntimeID,
 		Model:             request.runtime.Model,
 		Reasoning:         request.runtime.Reasoning,
+		Fast:              request.runtime.Fast,
 		PermissionLevel:   request.runtime.PermissionLevel,
 		WorkspaceReadOnly: request.runtime.WorkspaceReadOnly,
 		Status:            constants.ExecutionStatusPending,
@@ -1286,6 +1292,7 @@ func startedMessageEvents(
 				RuntimeID:         request.runtime.RuntimeID,
 				Model:             request.runtime.Model,
 				Reasoning:         request.runtime.Reasoning,
+				Fast:              request.runtime.Fast,
 				PermissionLevel:   request.runtime.PermissionLevel,
 				WorkspaceReadOnly: request.runtime.WorkspaceReadOnly,
 			}),

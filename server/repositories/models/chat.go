@@ -139,6 +139,8 @@ type Chat struct {
 	LastRuntimeID string `gorm:"column:last_runtime_id;type:varchar(120);not null;default:''" json:"lastRuntimeId,omitempty"`
 	// LastReasoning 是最近一次执行或分叉边界冻结的推理强度。
 	LastReasoning string `gorm:"column:last_reasoning;type:varchar(120);not null;default:''" json:"lastReasoning,omitempty"`
+	// LastFast 是最近执行冻结的 Fast 意图。
+	LastFast *bool `gorm:"column:last_fast" json:"lastFast,omitempty"`
 	// LastModel 是最近一次执行选择的模型标识。
 	LastModel string `gorm:"column:last_model;type:varchar(200);not null;default:''" json:"lastModel,omitempty"`
 	// LastPermissionLevel 是最近一次实际发送冻结的产品权限等级。

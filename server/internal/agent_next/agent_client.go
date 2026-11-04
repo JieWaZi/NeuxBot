@@ -99,6 +99,8 @@ type AgentSessionOptions struct {
 	AdditionalDirectories []string
 	// DeveloperInstructions overrides native instructions. Nil preserves native defaults.
 	DeveloperInstructions *string
+	// CodexMode selects the sandbox before the native thread starts.
+	CodexMode string `json:",omitempty"`
 }
 
 // AgentSession reports the actual session ID and current configuration.
@@ -113,6 +115,24 @@ type AgentSession struct {
 	Modes []AgentChoice
 	// MCPStatus is not_requested, load_unverified or a provider-confirmed readiness status.
 	MCPStatus string
+	// ObservedCodexSettings is the last native thread settings receipt, independent of requested intent.
+	ObservedCodexSettings *ObservedCodexSettings
+	// requestedFast records only the tuple this Turn successfully installed.
+	requestedFast *bool
+}
+
+// ObservedCodexSettings is the last settings receipt actually reported by Codex for this thread.
+type ObservedCodexSettings struct {
+	// Source identifies the native response or notification.
+	Source string
+	// Model is the native model when reported.
+	Model *string
+	// Reasoning is the native reasoning effort when reported.
+	Reasoning *string
+	// ServiceTier is the actual tier ID, nil when unknown or explicitly null.
+	ServiceTier *string
+	// ServiceTierKnown distinguishes explicit null from omitted evidence.
+	ServiceTierKnown bool
 }
 
 // AgentSessionInfo contains the native identity and workspace of a listed session.
@@ -191,6 +211,12 @@ type AgentChoice struct {
 	GroupName string
 	// Config is the reported model configuration catalog, when known.
 	Config *AgentModelConfig
+	// FastServiceTier is the provider's exact Fast tier when one is declared.
+	FastServiceTier string
+	// DefaultServiceTier is the native default tier when supplied.
+	DefaultServiceTier *string
+	// InputModalities lists the inputs this model reports supporting.
+	InputModalities []string
 }
 
 // AgentModelConfig distinguishes a reported model setting catalog from unknown rows.
@@ -811,7 +837,17 @@ func (c *directAgentClient) sessionOptions(operation string, options AgentSessio
 			return nil, nil, status_error.RuntimePolicyUnsupported
 		}
 	}
-	return directories, acpmeta.DeveloperInstructionsMetadata(options.DeveloperInstructions), nil
+	meta := acpmeta.DeveloperInstructionsMetadata(options.DeveloperInstructions)
+	if options.CodexMode != "" {
+		if _, ok := c.native.(*codex.Client); !ok {
+			return nil, nil, status_error.RuntimePolicyUnsupported
+		}
+		if meta == nil {
+			meta = make(map[string]any)
+		}
+		maps.Copy(meta, codex.OpenSettingsMetadata(codex.OpenSettings{Mode: options.CodexMode}))
+	}
+	return directories, meta, nil
 }
 
 func (c *directAgentClient) session(id string, options []acp.SessionConfigOption, mode *acp.SessionModeState, meta map[string]any, err error) (AgentSession, error) {
@@ -968,6 +1004,35 @@ func (c *directAgentClient) ReadNativeOutcomes(ctx context.Context, id string, a
 		page.Outcomes = append(page.Outcomes, agentOutcome(outcome))
 	}
 	return page, safeAgentError(err, status_error.RuntimeExecutionFailed)
+}
+
+func (c *directAgentClient) observeCodexSettings(ctx context.Context, sessionID string) *ObservedCodexSettings {
+	native, ok := c.native.(*codex.Client)
+	if !ok {
+		return nil
+	}
+	settings, err := native.ReadSessionSettings(ctx, acp.SessionId(sessionID))
+	if err != nil || settings.Observed.Source == "" {
+		return nil
+	}
+	observed := settings.Observed
+	result := &ObservedCodexSettings{
+		Source: observed.Source, Model: observed.Model, Reasoning: observed.ReasoningEffort,
+		ServiceTierKnown: observed.ServiceTier.IsPresent(),
+	}
+	if tier, ok := observed.ServiceTier.Value(); ok {
+		result.ServiceTier = &tier
+	}
+	return result
+}
+
+func (c *directAgentClient) configureCodexTurn(ctx context.Context, sessionID, model, effort string, fast *bool) ([]AgentSessionOption, error) {
+	native, ok := c.native.(*codex.Client)
+	if !ok {
+		return nil, status_error.RuntimePolicyUnsupported
+	}
+	options, err := native.ConfigureTurn(ctx, acp.SessionId(sessionID), model, effort, fast)
+	return convertSessionOptions(options, true), safeAgentError(err, status_error.RuntimeConfigurationInvalid)
 }
 
 func (c *directAgentClient) ReadModels(ctx context.Context) (AgentModelCatalog, error) {
@@ -1152,6 +1217,8 @@ func agentChoices(options acp.SessionConfigSelectOptions, withModelConfig bool) 
 				Group: group, GroupName: groupName,
 			}
 			if withModelConfig {
+				choice.FastServiceTier, _ = codex.FastServiceTier(row.Meta)
+				choice.InputModalities, choice.DefaultServiceTier = codex.ModelNativeMetadata(row.Meta)
 				if config, known := acpmeta.ReadModelConfigCatalog(row.Meta); known {
 					choice.Config = &AgentModelConfig{Options: convertSessionOptions(config.Options, false)}
 					for _, unknown := range config.UnknownConfigIDs {

@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { RadioGroup, RadioGroupOption } from "@/shared/ui/radio-group";
 import { SearchField } from "@/shared/ui/search-field";
 import { Slider } from "@/shared/ui/slider";
+import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { Spinner } from "@/shared/ui/spinner";
 import { isMaximumReasoning } from "@/shared/lib/runtime-reasoning";
 
@@ -49,6 +50,8 @@ export function ExecutionModelControl({
   defaultReasoning = "",
   onModelChange,
   onReasoningChange,
+  fast,
+  onFastChange,
 }: {
   selectedModelName: string;
   variant?: "composer" | "field";
@@ -65,6 +68,8 @@ export function ExecutionModelControl({
   defaultReasoning?: string;
   onModelChange: (model: string) => void;
   onReasoningChange: (reasoning: string) => void;
+  fast?: boolean;
+  onFastChange?: (fast: boolean | undefined) => void;
 }) {
   const { t } = useTranslation(["chat", "common"]);
   const reducedMotion = useReducedMotion();
@@ -108,6 +113,7 @@ export function ExecutionModelControl({
     setView("reasoning");
   };
   const hasReasoning = availableOptions.length > 0 || thinkingPending;
+  const hasSettings = hasReasoning || Boolean(onFastChange);
   const fallbackReasoning = allowDefaultReasoning
     ? ""
     : availableOptions.find((option) => option.id === defaultReasoning)?.id ||
@@ -121,7 +127,7 @@ export function ExecutionModelControl({
   const reasoningName = thinkingPending
     ? t("aiAccounts:thinkingLoading")
     : choices[selectedIndex]?.name || selectedReasoning;
-  const showModels = view === "models" || !hasReasoning;
+  const showModels = view === "models" || !hasSettings;
   const maxed =
     !thinkingPending &&
     isMaximumReasoning(reasoningOptions, effectiveReasoning, defaultReasoning);
@@ -135,9 +141,7 @@ export function ExecutionModelControl({
       open={open}
       onOpenChange={(nextOpen) => {
         if (nextOpen)
-          setView(
-            variant === "field" || !hasReasoning ? "models" : "reasoning",
-          );
+          setView(variant === "field" || !hasSettings ? "models" : "reasoning");
         setModelQuery("");
         setOpen(nextOpen);
       }}
@@ -153,6 +157,7 @@ export function ExecutionModelControl({
             <span>
               {selectedModelName}
               {hasReasoning && reasoningName ? ` · ${reasoningName}` : ""}
+              {fast === true ? " · Fast" : ""}
             </span>
           </FieldControlTrigger>
         ) : (
@@ -166,7 +171,11 @@ export function ExecutionModelControl({
             className="max-w-[220px]"
             data-effort-max={maxed || undefined}
             aria-busy={thinkingPending || undefined}
-            title={[selectedModelName, hasReasoning && reasoningName]
+            title={[
+              selectedModelName,
+              hasReasoning && reasoningName,
+              fast === true && "Fast",
+            ]
               .filter(Boolean)
               .join(" · ")}
           >
@@ -188,6 +197,9 @@ export function ExecutionModelControl({
               >
                 {reasoningName}
               </span>
+            ) : null}
+            {fast === true ? (
+              <span className="text-control-highlight">Fast</span>
             ) : null}
             <ChevronDown
               aria-hidden
@@ -225,7 +237,7 @@ export function ExecutionModelControl({
           inert={!showModels}
         >
           <div className="mb-2 flex shrink-0 items-center gap-2">
-            {hasReasoning ? (
+            {hasSettings ? (
               <Button
                 type="button"
                 size="icon"
@@ -313,6 +325,7 @@ export function ExecutionModelControl({
         >
           <div className="min-w-0 text-center">
             <div
+              hidden={!hasReasoning}
               role={thinkingPending ? "status" : undefined}
               className="text-control-highlight type-label flex items-center justify-center gap-2 font-medium"
             >
@@ -379,6 +392,30 @@ export function ExecutionModelControl({
                 if (option) onReasoningChange(option.id);
               }}
             />
+          ) : null}
+          {onFastChange ? (
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <span className="type-ui">Fast</span>
+              <SegmentedControl
+                ariaLabel={t("common:executionSelection.fast")}
+                value={fast === undefined ? "inherit" : fast ? "on" : "off"}
+                options={[
+                  {
+                    value: "inherit",
+                    label: t("chat:modelPicker.defaultReasoning"),
+                  },
+                  {
+                    value: "off",
+                    label: t("common:executionSelection.fastOff"),
+                  },
+                  { value: "on", label: t("common:executionSelection.fastOn") },
+                ]}
+                disabled={disabled}
+                onValueChange={(value) =>
+                  onFastChange(value === "inherit" ? undefined : value === "on")
+                }
+              />
+            </div>
           ) : null}
         </motion.div>
       </PopoverContent>

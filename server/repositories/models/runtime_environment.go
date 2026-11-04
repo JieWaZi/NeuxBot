@@ -39,6 +39,8 @@ type RuntimeEnvironment struct {
 	DefaultModel string `gorm:"column:default_model;type:varchar(200);not null;default:''" json:"defaultModel"`
 	// DefaultReasoning 是切换到该 Runtime 时优先使用的推理强度标识。
 	DefaultReasoning string `gorm:"column:default_reasoning;type:varchar(80);not null;default:''" json:"defaultReasoning"`
+	// DefaultFast 是新执行可继承的 Fast 选择，空值使用原生行为。
+	DefaultFast *bool `gorm:"column:default_fast" json:"defaultFast,omitempty"`
 	// DefaultPermissionLevel 是该 Runtime 新执行默认使用的产品权限。
 	DefaultPermissionLevel constants.PermissionLevel `gorm:"column:default_permission_level;type:varchar(24);not null;default:'full-access'" json:"defaultPermissionLevel"`
 	// Detection 是最近一次完整且可供执行准备使用的探测快照。

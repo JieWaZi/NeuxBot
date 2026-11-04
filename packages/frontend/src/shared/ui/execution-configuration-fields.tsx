@@ -12,6 +12,7 @@ import {
   runtimeDefaultPermissionLevels,
   safeDefaultPermissionLevel,
 } from "@/shared/lib/runtime-permissions";
+import { Button } from "@/shared/ui/button";
 import { FieldLabel } from "@/shared/ui/field-label";
 import { RuntimeCliIcon } from "@/shared/ui/runtime-cli-icon";
 import {
@@ -36,6 +37,7 @@ export function ExecutionConfigurationFields({
   required = false,
   leadingField,
   helpHidden = false,
+  fastEnabled = false,
 }: {
   state: ExecutionSelectionState;
   onChange: (value: ExecutionSelectionState["selection"]) => void;
@@ -49,6 +51,7 @@ export function ExecutionConfigurationFields({
   required?: boolean;
   leadingField?: ReactNode;
   helpHidden?: boolean;
+  fastEnabled?: boolean;
 }) {
   const { t } = useTranslation("common");
   const id = useId();
@@ -63,7 +66,8 @@ export function ExecutionConfigurationFields({
       | "reasoning"
       | "permission"
       | "defaultModel"
-      | "defaultReasoning",
+      | "defaultReasoning"
+      | "fast",
     value: string,
     options: Array<{ id?: string; name?: string; disabled?: boolean }>,
     onValueChange: (value: string) => void,
@@ -153,7 +157,8 @@ export function ExecutionConfigurationFields({
             { id: "system", name: t("executionSelection.system") },
             ...state.accounts,
           ],
-          (accountId) => change({ accountId, model: "", reasoning: "" }),
+          (accountId) =>
+            change({ accountId, model: "", reasoning: "", fast: undefined }),
         )}
         {field(
           defaults ? "defaultModel" : "model",
@@ -173,6 +178,7 @@ export function ExecutionConfigurationFields({
             change({
               model: model === "__default" ? "" : model,
               reasoning: "",
+              fast: undefined,
               permissionLevel: safeDefaultPermissionLevel(
                 selection.permissionLevel,
                 runtime?.models?.some((item) => item.id === model)
@@ -180,7 +186,8 @@ export function ExecutionConfigurationFields({
                   : runtimeDefaultPermissionLevels(runtime ?? {}),
               ),
             }),
-          state.nativeModelsQuery.isFetching,
+          state.nativeModelsQuery.isFetching ||
+            (state.codex && state.codexCatalogState !== "fresh"),
         )}
         {!reasoningHidden &&
           field(
@@ -199,7 +206,32 @@ export function ExecutionConfigurationFields({
             ],
             (reasoning) =>
               change({ reasoning: reasoning === "__default" ? "" : reasoning }),
-            !reasoningOptions.length || state.thinkingQuery.isFetching,
+            !reasoningOptions.length ||
+              state.thinkingQuery.isFetching ||
+              (state.codex && state.codexCatalogState !== "fresh"),
+          )}
+        {fastEnabled &&
+          state.fastSupported &&
+          field(
+            "fast",
+            selection.fast === undefined
+              ? "__default"
+              : selection.fast
+                ? "on"
+                : "off",
+            [
+              {
+                id: "__default",
+                name: t("executionSelection.defaultReasoning"),
+              },
+              { id: "off", name: t("executionSelection.fastOff") },
+              { id: "on", name: t("executionSelection.fastOn") },
+            ],
+            (fast) =>
+              change({
+                fast: fast === "__default" ? undefined : fast === "on",
+              }),
+            state.codexCatalogState !== "fresh",
           )}
         {!permissionHidden &&
           field(
@@ -238,7 +270,29 @@ export function ExecutionConfigurationFields({
           {t("executionSelection.loading")}
         </p>
       ) : null}
-      {state.error ? (
+      {state.codexCatalogState && state.codexCatalogState !== "fresh" ? (
+        <div
+          role="status"
+          className="text-content-secondary type-caption flex items-center gap-2"
+        >
+          {t(
+            state.codexCatalogState === "stale"
+              ? "executionSelection.catalogStale"
+              : state.codexCatalogState === "signed_out"
+                ? "executionSelection.catalogSignedOut"
+                : "executionSelection.catalogUnavailable",
+          )}
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={state.codexCatalogPending}
+            onClick={() => void state.refreshCodexCatalog()}
+          >
+            {t("executionSelection.catalogRetry")}
+          </Button>
+        </div>
+      ) : null}
+      {state.error && !state.codex ? (
         <p role="alert" className="text-destructive type-caption">
           {localApiErrorMessage(state.error, t("executionSelection.loadError"))}
         </p>

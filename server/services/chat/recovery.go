@@ -334,6 +334,7 @@ func applyProjectionTail(projection *currentProjection, records []eventlog.Recor
 			projection.chat.LastRuntimeID = data.RuntimeID
 			projection.chat.LastModel = data.Model
 			projection.chat.LastReasoning = data.Reasoning
+			projection.chat.LastFast = data.Fast
 			projection.chat.LastPermissionLevel = data.PermissionLevel
 		case constants.ChatEventTypeApprovalRequested:
 			var data eventlog.ApprovalRequestedData

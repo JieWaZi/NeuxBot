@@ -219,6 +219,7 @@ func (m *service) CommitAcceptedTurn(
 	chat.LastRuntimeID = turn.Execution.RuntimeID
 	chat.LastModel = turn.Execution.Model
 	chat.LastReasoning = turn.Execution.Reasoning
+	chat.LastFast = turn.Execution.Fast
 	chat.LastPermissionLevel = turn.Execution.PermissionLevel
 	chat.UpdatedAt = last.RecordedAt
 	m.queryIndexes.indexStartedMessage(
@@ -310,6 +311,7 @@ func (m *service) CommitStartedTurn(
 	chat.LastRuntimeID = turn.Execution.RuntimeID
 	chat.LastModel = turn.Execution.Model
 	chat.LastReasoning = turn.Execution.Reasoning
+	chat.LastFast = turn.Execution.Fast
 	chat.LastPermissionLevel = turn.Execution.PermissionLevel
 	chat.UpdatedAt = last.RecordedAt
 	m.queryIndexes.indexStartedMessage(

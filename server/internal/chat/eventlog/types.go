@@ -218,6 +218,8 @@ type ExecutionCreatedData struct {
 	Model string `json:"model"`
 	// Reasoning 是本次执行选择的推理强度。
 	Reasoning string `json:"reasoning"`
+	// Fast 是本次执行冻结的 Fast 意图。
+	Fast *bool `json:"fast,omitempty"`
 	// PermissionLevel 是本次发送冻结的跨 Runtime 产品权限等级。
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel"`
 	// PluginResources 是接纳时冻结的插件身份、版本与配置修订。

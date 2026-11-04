@@ -8,6 +8,7 @@ var Router = ginx.NewRouter(ginx.Group("/runtimes"))
 
 func init() {
 	Router.Register(&ListRuntimes{})
+	Router.Register(&GetRuntimeModelCatalog{})
 	Router.Register(&RefreshRuntimes{})
 	Router.Register(&RefreshRuntime{})
 	Router.Register(&UpdateRuntimeEnvironment{})

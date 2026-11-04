@@ -37,6 +37,7 @@ export type ChatSendSelection = {
   runtimeId: string;
   model: string;
   reasoning: string;
+  fast?: boolean;
   permissionLevel: PermissionLevel;
   skillIds?: string[];
   selectedSkills?: Array<{

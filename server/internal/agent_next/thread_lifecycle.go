@@ -26,6 +26,8 @@ type ThreadRequest struct {
 	Session AgentSessionOptions
 	// Settings lists exact native selectors to apply before submission, in dependency order.
 	Settings []SessionSetting
+	// CodexSettings carries product selectors that the native client can change in place.
+	CodexSettings *CodexTurnSelection
 	// Mode selects a native execution policy, when the provider exposes modes.
 	Mode string
 	// ResourceGeneration changes when a selected connector or materialization changes in place.
@@ -191,6 +193,15 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		}
 		t.setSession(conn, binding)
 		t.effective = effective
+		if request.CodexSettings != nil {
+			client, err := conn.Client()
+			if err != nil {
+				return err
+			}
+			if err := t.applySettings(client, request); err != nil {
+				return err
+			}
+		}
 		return t.applyHandoff(binding.Handoff)
 	}
 
@@ -237,6 +248,9 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	}
 	if request.Connection.Launch.RequireNoTools && !client.Capabilities().ToolsDisabled {
 		return status_error.RuntimePolicyUnsupported
+	}
+	if request.Connection.Account.Provider == "codex" {
+		request.Session.CodexMode = request.Mode
 	}
 	var session AgentSession
 	fresh := !compatible
@@ -388,6 +402,9 @@ func (l *ThreadLifecycle) reopenHandoffSource(t *Turn, binding NativeBinding, su
 	var summary *NativeResultKey
 	client, clientErr := conn.Client()
 	if clientErr == nil {
+		if source.Thread.Connection.Account.Provider == "codex" {
+			source.Thread.Session.CodexMode = source.Thread.Mode
+		}
 		session, resumeErr := openBoundSession(ctx, client, binding.Session.SessionID, source.Thread.Session)
 		if resumeErr == nil && session.ID == binding.Session.SessionID {
 			l.attachSession(state, client, binding.Session, session)
@@ -450,6 +467,20 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 	// thread. Managed overrides and the verified account still determine compatibility.
 	connection := request.Connection
 	connection.Launch.BaseEnvironment = nil
+	if request.CodexSettings != nil && connection.Account.Provider == "codex" {
+		settings := *request.CodexSettings
+		if settings.Fast != nil {
+			fast := *settings.Fast
+			settings.Fast = &fast
+		}
+		if settings.DefaultFast != nil {
+			fast := *settings.DefaultFast
+			settings.DefaultFast = &fast
+		}
+		request.CodexSettings = &settings
+		// The native client applies model, effort and tier together before each turn.
+		connection.Account.Model = ""
+	}
 	encoded, err := json.Marshal([]any{connection, request.Session, request.Settings, request.Mode, request.ResourceGeneration})
 	if err != nil {
 		return nil, status_error.RuntimeConfigurationInvalid

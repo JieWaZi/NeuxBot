@@ -34,6 +34,8 @@ type UpdateRuntimeEnvironmentRequest struct {
 	DefaultModel string `json:"defaultModel" validate:"max=200"`
 	// 默认推理
 	DefaultReasoning string `json:"defaultReasoning" validate:"max=80"`
+	// 默认 Fast
+	DefaultFast *bool `json:"defaultFast,omitempty"`
 	// 默认权限
 	DefaultPermissionLevel constants.PermissionLevel `json:"defaultPermissionLevel" validate:"required"`
 }
@@ -95,6 +97,7 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 		CustomModels:           append([]string(nil), u.Body.CustomModels...),
 		DefaultModel:           u.Body.DefaultModel,
 		DefaultReasoning:       u.Body.DefaultReasoning,
+		DefaultFast:            u.Body.DefaultFast,
 		DefaultPermissionLevel: u.Body.DefaultPermissionLevel,
 	}
 	if err := updateRuntimeEnvironment(ctx, environment, u.Body.IsDefault); err != nil {

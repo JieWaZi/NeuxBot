@@ -346,6 +346,7 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 		state.chat.LastRuntimeID = data.ForkConfiguration.RuntimeID
 		state.chat.LastModel = data.ForkConfiguration.Model
 		state.chat.LastReasoning = data.ForkConfiguration.Reasoning
+		state.chat.LastFast = data.ForkConfiguration.Fast
 		state.chat.LastPermissionLevel = data.ForkConfiguration.PermissionLevel
 	}
 	var activeExecution *models.Execution
@@ -389,6 +390,7 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 				RuntimeID:         executionData.RuntimeID,
 				Model:             executionData.Model,
 				Reasoning:         executionData.Reasoning,
+				Fast:              executionData.Fast,
 				PermissionLevel:   executionData.PermissionLevel,
 				WorkspaceReadOnly: executionData.WorkspaceReadOnly,
 				Status:            constants.ExecutionStatusPending,
@@ -409,6 +411,7 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 			state.chat.LastRuntimeID = executionData.RuntimeID
 			state.chat.LastModel = executionData.Model
 			state.chat.LastReasoning = executionData.Reasoning
+			state.chat.LastFast = executionData.Fast
 			state.chat.LastPermissionLevel = executionData.PermissionLevel
 		case constants.ChatEventTypeExecutionStarted:
 			if activeExecution == nil || activeExecution.ID != record.ExecutionID {

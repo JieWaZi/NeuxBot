@@ -343,6 +343,43 @@ const {
 
 vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
   ...(await importOriginal<typeof GeneratedSDK>()),
+  getRuntimeModelCatalog: async ({
+    path,
+    query,
+  }: {
+    path: { runtimeId: string };
+    query: { accountId: string };
+  }) => {
+    const runtime = runtimeOptions.current.find(
+      (item) => item.id === path.runtimeId,
+    );
+    const systemModels = (runtime?.models ?? []) as Array<{
+      id: string;
+      name: string;
+    }>;
+    const accountModels =
+      query.accountId === "C" && accountCIncludesOldModel.current
+        ? ["c-model", "b-model"]
+        : [`${query.accountId.toLowerCase()}-model`];
+    const models =
+      query.accountId === "system"
+        ? systemModels
+        : accountModels.map((id) => ({
+            id,
+            name: id,
+            permissionLevels: ["default", "auto", "full-access"],
+          }));
+    return {
+      data: {
+        runtimeId: path.runtimeId,
+        accountId: query.accountId,
+        state: "fresh",
+        defaultModel:
+          query.accountId === "system" ? runtime?.defaultModel : models[0]?.id,
+        models: models.map((model) => ({ ...model, configurationKnown: true })),
+      },
+    };
+  },
   listChatMessages: async ({ path }: { path: { chatId: string } }) => {
     const { chatId } = path;
     chatMessageReads.current[chatId] =
@@ -471,6 +508,7 @@ vi.mock(
           id,
           name: `账号 ${id}`,
           authMode: "api-key",
+          hasCredential: true,
           endpoints: [
             {
               protocol: "openai-responses",

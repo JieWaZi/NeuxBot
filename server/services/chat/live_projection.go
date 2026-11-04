@@ -43,7 +43,7 @@ func (m *service) catchUpLiveProjection(ctx context.Context, chatID string) erro
 			if err := m.queryIndexes.chatController.AdvanceProjection(transactionContext, chatID, indexed.LatestSequence, map[string]any{
 				"title": current.Title, "active_execution_id": current.ActiveExecutionID,
 				"last_account_id": current.LastAccountID, "last_runtime_id": current.LastRuntimeID,
-				"last_model": current.LastModel, "last_reasoning": current.LastReasoning,
+				"last_model": current.LastModel, "last_reasoning": current.LastReasoning, "last_fast": current.LastFast,
 				"last_permission_level": current.LastPermissionLevel,
 				"waiting_approval":      current.WaitingApproval, "pending_approvals": string(marshalData(current.PendingApprovals)),
 				"waiting_elicitation": current.WaitingElicitation, "pending_elicitations": string(marshalData(current.PendingElicitations)),

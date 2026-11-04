@@ -414,3 +414,15 @@ it("表单入口有推理选项时也直接打开模型列表，选择后关闭"
   expect(picker.onModelChange).toHaveBeenCalledWith("model-b");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
+it("无推理选项的模型也可独立修改 Fast，并传递显式关闭", async () => {
+  const user = userEvent.setup();
+  const onFastChange = vi.fn();
+  renderPicker({ reasoningOptions: [], fast: true, onFastChange });
+  await user.click(screen.getByTestId("composer-model-control"));
+  const fast = screen.getByRole("radiogroup", { name: "Fast" });
+  await user.click(within(fast).getByRole("radio", { name: "关闭" }));
+  expect(onFastChange).toHaveBeenCalledWith(false);
+  await user.click(within(fast).getByRole("radio", { name: "默认" }));
+  expect(onFastChange).toHaveBeenCalledWith(undefined);
+});

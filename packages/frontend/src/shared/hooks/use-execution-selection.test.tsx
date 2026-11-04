@@ -76,26 +76,50 @@ const server = setupServer(
     }),
   ),
   http.get(
-    `${origin}/api/v1/ai-accounts/:accountId/models/native`,
-    ({ request }) => {
+    `${origin}/api/v1/runtimes/:runtimeId/models`,
+    ({ request, params }) => {
       requests.push(request.url);
-      return HttpResponse.json({
-        models: ["subscription-model"],
-        defaultModel: "subscription-model",
-      });
-    },
-  ),
-  http.get(
-    `${origin}/api/v1/ai-accounts/:accountId/thinking`,
-    ({ request }) => {
-      requests.push(request.url);
-      return HttpResponse.json({
-        available: true,
-        options: [{ id: "max", name: "Max" }],
-      });
+      return catalogResponse(
+        String(params.runtimeId),
+        new URL(request.url).searchParams.get("accountId") || "system",
+      );
     },
   ),
 );
+function catalogResponse(runtimeId: string, accountId: string) {
+  const model = (
+    id: string,
+    defaultReasoning: string,
+    efforts: string[],
+    permissionLevels = ["default", "auto", "full-access"],
+    fastSupported = false,
+  ) => ({
+    id,
+    name: id,
+    defaultReasoning,
+    configurationKnown: true,
+    permissionLevels,
+    fastSupported,
+    reasoningOptions: efforts.map((id) => ({ id })),
+  });
+  const models =
+    accountId === "work"
+      ? [model("work-model", "max", ["max"])]
+      : accountId === "subscription"
+        ? [model("subscription-model", "", [])]
+        : [
+            model("native", "high", ["high", "low"], undefined, true),
+            model("limited", "low", ["low"], ["default"]),
+          ];
+  return HttpResponse.json({
+    runtimeId,
+    accountId,
+    state: "fresh",
+    defaultModel: models[0]?.id,
+    models,
+  });
+}
+
 beforeAll(() => {
   client.setConfig({ baseUrl: origin });
   server.listen({ onUnhandledRequest: "error" });
@@ -154,7 +178,7 @@ describe("统一执行配置选择", () => {
     });
     expect(
       requests.some(
-        (url) => new URL(url).searchParams.get("model") === "work-model",
+        (url) => new URL(url).searchParams.get("accountId") === "work",
       ),
     ).toBe(true);
     rerender({ value: { runtimeId: "codex", accountId: "system" } });
@@ -172,13 +196,10 @@ describe("统一执行配置选择", () => {
     expect(result.current.models.map((item) => item.id)).toEqual([
       "subscription-model",
     ]);
-    expect(
-      requests.some((url) => url.includes("/models/native?runtimeId=codex")),
-    ).toBe(true);
+    expect(result.current.reasoningOptions).toEqual([]);
     expect(
       requests.some(
-        (url) =>
-          new URL(url).searchParams.get("model") === "subscription-model",
+        (url) => new URL(url).searchParams.get("accountId") === "subscription",
       ),
     ).toBe(true);
   });
@@ -271,4 +292,45 @@ it("知识模型默认选择真实最低档，显式高档保留，切换模型�
   expect(result.current.selection.reasoning).toBe("high");
   rerender({ value: { accountId: "system", model: "limited", reasoning: "" } });
   expect(result.current.selection.reasoning).toBe("low");
+});
+
+it("账号切换隔离迟到目录，显式关闭 Fast 保持 false", async () => {
+  let release!: () => void;
+  let entered = false;
+  const slow = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.get(
+      `${origin}/api/v1/runtimes/:runtimeId/models`,
+      async ({ request, params }) => {
+        const accountId =
+          new URL(request.url).searchParams.get("accountId") || "system";
+        if (accountId === "system") {
+          entered = true;
+          await slow;
+        }
+        return catalogResponse(String(params.runtimeId), accountId);
+      },
+    ),
+  );
+  const { result, rerender } = selection({ accountId: "system", fast: false });
+  await waitFor(() => expect(entered).toBe(true));
+  rerender({ value: { accountId: "subscription", fast: false } });
+  await waitFor(() => expect(result.current.valid).toBe(true));
+  expect(result.current.selection).toMatchObject({
+    model: "subscription-model",
+    fast: undefined,
+  });
+  release();
+  rerender({ value: { accountId: "subscription", fast: false } });
+  expect(result.current.models.map((item) => item.id)).toEqual([
+    "subscription-model",
+  ]);
+  rerender({ value: { accountId: "system", fast: false } });
+  await waitFor(() => expect(result.current.valid).toBe(true));
+  expect(result.current.selection).toMatchObject({
+    model: "native",
+    fast: false,
+  });
 });
