@@ -19,7 +19,7 @@ func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 		if !slices.ContainsFunc(t.effective.Modes, func(c AgentChoice) bool { return c.ID == request.Mode }) {
 			return status_error.RuntimePolicyUnsupported
 		}
-		if err := client.SetSessionMode(t.ctx, t.binding.Session.SessionID, request.Mode); err != nil {
+		if err := t.setSessionMode(client, request.Mode); err != nil {
 			return err
 		}
 	}
@@ -68,6 +68,28 @@ func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 	return nil
 }
 
+func (t *Turn) setSessionMode(client AgentClient, mode string) error {
+	l, state := t.lifecycle, t.thread
+	l.mu.Lock()
+	revision := state.modeRevision
+	l.mu.Unlock()
+	sessionID := t.binding.Session.SessionID
+	if err := client.SetSessionMode(t.ctx, sessionID, mode); err != nil {
+		return err
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if state.connection == t.conn && state.effective.ID == sessionID {
+		// 成功回执确认模式已被接受。并行到达的原生模式通知优先。
+		if state.modeRevision == revision {
+			state.effective.Mode = mode
+			state.modeRevision++
+		}
+		t.effective = state.effective
+	}
+	return nil
+}
+
 func (t *Turn) sessionOptionsRevision() uint64 {
 	l, state := t.lifecycle, t.thread
 	l.mu.Lock()
@@ -106,6 +128,7 @@ func (l *ThreadLifecycle) applySessionNotification(state *threadState, generatio
 	case "mode":
 		if event.Mode != "" {
 			state.effective.Mode = event.Mode
+			state.modeRevision++
 		}
 	}
 }

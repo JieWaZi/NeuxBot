@@ -61,27 +61,29 @@ type ThreadLifecycle struct {
 }
 
 type threadState struct {
-	// id is the index key for this thread.
+	// id 是线程在生命周期中的索引键。
 	id string
-	// chatID is the durable public Chat identity, empty for detached work.
+	// chatID 是持久化 Chat 标识，独立任务留空。
 	chatID string
-	// active is the actual Turn holding the seat from preparation through settlement.
+	// active 是从准备到收尾期间独占线程的 Turn。
 	active *Turn
-	// binding caches a committed native session address and its compatibility key.
+	// binding 缓存已提交的原生会话地址和兼容性依据。
 	binding *NativeBinding
-	// effective retains the session configuration needed to reuse a compatible process.
+	// effective 保存复用兼容原生进程所需的会话设置。
 	effective AgentSession
-	// optionsRevision prevents a synchronous request from overwriting newer native observations.
+	// optionsRevision 防止设置回执覆盖更新的原生选项通知。
 	optionsRevision uint64
-	// generation fences callbacks emitted by a prior connection using the same native session ID.
+	// modeRevision 让模式设置回执保留其间收到的原生模式通知。
+	modeRevision uint64
+	// generation 排除复用同一原生会话标识的旧连接回调。
 	generation uint64
-	// connection is a reference to the process owner in ProviderRuntime.
+	// connection 引用 ProviderRuntime 中的原生进程所有者。
 	connection *providerConnection
-	// reader owns the wait for independently arriving native results.
+	// reader 等待独立到达的原生结果。
 	reader *nativeOutcomeReader
-	// closing prevents replacements from overtaking cleanup.
+	// closing 阻止替换操作越过清理。
 	closing bool
-	// closeMu serializes cleanup attempts on the same connection reference.
+	// closeMu 串行化同一连接的清理尝试。
 	closeMu sync.Mutex
 }
 
@@ -338,6 +340,7 @@ func (l *ThreadLifecycle) attachSession(state *threadState, client AgentClient, 
 	l.mu.Lock()
 	state.effective = effective
 	state.optionsRevision = 0
+	state.modeRevision = 0
 	if client.Capabilities().NativeOutcomes {
 		state.reader = l.startNativeOutcomeReader(client, state, key)
 	}
