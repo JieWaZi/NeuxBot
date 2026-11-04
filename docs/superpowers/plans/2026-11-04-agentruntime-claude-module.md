@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 本任务在 Codex 完整模块提交及聚焦审查关闭后实施；沿用其真实共享合同，不预建三家同义接口。
+- 用户已授权三家在独立 worktree 并行；本任务从已提交共同基线开始，遵守[五项审查与并行边界](../../discussions/agentruntime-rebuild/module-review-cn.md)。未验收的 Codex 合同不能作为整体验收证据。
 - 实现者必须实际阅读 OpenBot `f44dbe116c89a944f8d7d085e092c967b3fce0df` 对应 owning 源码与测试，不能只读摘要。以原生声明交叉验证其兼容判断。
 - 用户指定开发使用 GPT-6.1 Sol high；Terra 仅用于简单工作和核对，不能替代产品实现。实现者不派生子代理，根协调安排独立 review。
 - 整个模块重构、验证、立即提交后再审查；不把字段、helper 或注释翻译单独当作重构交付。
@@ -50,7 +50,7 @@
 
 **Read first:** OpenBot `docs/architecture/providers.md`、`src/backend/claude-client.ts`、`claude-workspace-sandbox.ts`、`provider-drivers.ts` 的 Claude 段、`cli.ts` 的版本 gate、`agent/thread-lifecycle.ts`、`agent/usage-collection.ts`、`provider-history.ts` 的 Claude 路径，以及 `scripts/claude-usage-resume-e2e.ts` 和对应 conformance 测试。读 acp-go 当前 Claude owning 主流程与直接生产消费者；已存在的研究笔记只是导航。
 
-**Scope:** `pkg/claude` 全部手写生产职责及必要回归、模块 README/UPSTREAM，`pkg/acpmeta` 必须共享的窄合同及直接调用编译适配。不修改 NeuxBot 产品模块，不重写其他 CLI。
+**Scope:** `pkg/claude` 全部手写生产职责及必要回归、模块 README/UPSTREAM 和必要直接调用编译适配。共享 `pkg/acpmeta` / SDK 变更先向主线提出具体合同与消费者，由主线指定实现者统一修改；不在本分支建立同义公共合同。不修改 NeuxBot 产品模块，不重写其他 CLI。
 
 **Interfaces:** 消费 Codex 模块已交付的原生指令入口/能力声明、模型选项事实与管理合同；其中配额使用 `acpmeta.AccountUsageMethod` 的 `_account/usage`，窗口单位明确为秒。对外仍提供实际 ACP 构造与会话入口；额外认证/后台/计数事实通过协商的技术扩展或明确返回合同，宿主不解析 Claude 原始 JSON。新增共享声明需给出消费者及真实 wire 证据。
 
