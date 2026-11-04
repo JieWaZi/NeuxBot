@@ -243,6 +243,18 @@ it("新用户检测到 CLI 后必须保存默认选择，保留原配置且不�
   );
 });
 
+it("目录已就绪但尚未选择模型时提示选择模型", async () => {
+  api.read.mockResolvedValue({
+    ...found,
+    resources: found.resources?.map((runtime) => ({
+      ...runtime,
+      defaultModel: "",
+    })),
+  });
+  mount();
+  expect(await screen.findByText("选择模型", { selector: "p" })).toBeVisible();
+});
+
 it("多个安装版本必须显式选择，不能直接沿用 PATH 结果进入", async () => {
   api.read.mockResolvedValue(multipleVersions);
   const user = userEvent.setup();

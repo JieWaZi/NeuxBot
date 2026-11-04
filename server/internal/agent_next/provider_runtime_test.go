@@ -651,6 +651,10 @@ func TestProviderRuntimeChild(t *testing.T) {
 			case "thread/fork":
 				reply["result"] = map[string]any{"thread": map[string]any{"id": "fixture-child"}, "model": "fixture-model"}
 			case "model/list":
+				if os.Getenv("FIXTURE_CODEX_MALFORMED_MODELS") != "" {
+					reply["result"] = map[string]any{}
+					break
+				}
 				reply["result"] = map[string]any{"data": []any{map[string]any{
 					"id": "internal-model-id", "model": "fixture-model", "displayName": "Fixture",
 					"isDefault": true, "defaultReasoningEffort": "medium",

@@ -40,7 +40,11 @@ func TestCodexCatalogUsesManagementOnlyAndPartitionsAccounts(t *testing.T) {
 func TestCodexCatalogKeepsOnlySameIdentityStaleAndClearsOnSignOut(t *testing.T) {
 	request := providerTestRequest(t, "codex")
 	var failure error
+	malformed := false
 	runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: func(context.Context, AccountRequest) (AccountLease, error) {
+		if malformed {
+			return AccountLease{Environment: map[string]string{"FIXTURE_CODEX_MALFORMED_MODELS": "true"}}, nil
+		}
 		return AccountLease{}, failure
 	}})
 	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
@@ -52,11 +56,12 @@ func TestCodexCatalogKeepsOnlySameIdentityStaleAndClearsOnSignOut(t *testing.T) 
 	if fresh.State != CatalogFresh || len(fresh.Models) == 0 {
 		t.Fatalf("catalog = %+v", fresh)
 	}
-	failure = status_error.RuntimeUnavailable
+	malformed = true
 	stale := read(true)
 	if stale.State != CatalogStale || stale.DetectedAt != fresh.DetectedAt || len(stale.Models) != len(fresh.Models) {
 		t.Fatalf("refresh erased prior evidence: %+v", stale)
 	}
+	malformed = false
 	failure = status_error.RuntimeAuthRequired
 	if signedOut := read(true); signedOut.State != CatalogSignedOut || signedOut.Models != nil {
 		t.Fatalf("signed-out cache exposed models: %+v", signedOut)

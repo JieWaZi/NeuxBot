@@ -67,12 +67,19 @@ function runtimeConfiguration(
   };
 }
 
+function modelCatalogReady(runtime?: RuntimeOption) {
+  return Boolean(
+    runtime?.installed &&
+    runtime.state === "ready" &&
+    runtime.models?.some((item) => item.id) &&
+    !runtime.diagnostics?.some(
+      (item) => item.code === "ACP_OPTIONS_UNAVAILABLE",
+    ),
+  );
+}
+
 function modelSelectionReady(runtime?: RuntimeOption) {
-  if (!runtime?.installed || runtime.state !== "ready") return false;
-  if (
-    runtime.diagnostics?.some((item) => item.code === "ACP_OPTIONS_UNAVAILABLE")
-  )
-    return false;
+  if (!runtime || !modelCatalogReady(runtime)) return false;
   const model = runtime.models?.find(
     (item) => item.id && item.id === runtime.defaultModel,
   );
@@ -504,11 +511,13 @@ function CliSetup({
                     ? t("onboarding.checking")
                     : !versionReady
                       ? t("onboarding.chooseVersionBeforeModel")
-                      : !modelSelectionReady(configured)
-                        ? t("onboarding.modelsUnavailable")
-                        : t("onboarding.modelsFound", {
-                            count: runtime.models?.length ?? 0,
-                          })}
+                      : modelCatalogReady(runtime) && !model
+                        ? t("onboarding.chooseModel")
+                        : !modelSelectionReady(configured)
+                          ? t("onboarding.modelsUnavailable")
+                          : t("onboarding.modelsFound", {
+                              count: runtime.models?.length ?? 0,
+                            })}
                 </p>
               </div>
               {permissions.size > 0 && (
