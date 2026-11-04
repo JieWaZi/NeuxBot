@@ -65,15 +65,24 @@ func (p *MessageViewBuilder) ReplaceStoredContent(stored agent.StoredMessage, cu
 	return nil
 }
 
-// SetNativeUsage exposes only primary counters from one canonical result.
+// SetNativeUsage exposes primary counters only when the native result covers the turn.
 func (p *MessageViewBuilder) SetNativeUsage(messageID string, usage *acpmeta.TurnUsage) {
 	index, ok := p.messageIndexes[messageID]
-	if !ok || usage == nil {
+	if !ok {
 		return
 	}
 	message := &p.messages[index]
+	complete := usage != nil && usage.Complete
 	if message.RunMetrics == nil {
+		if !complete {
+			return
+		}
 		message.RunMetrics = &MessageRunMetrics{}
+	}
+	if !complete {
+		// The public numeric fields have no coverage annotation. Clear only the
+		// token counters when new evidence no longer covers the whole turn.
+		usage = &acpmeta.TurnUsage{}
 	}
 	metrics := message.RunMetrics
 	metrics.InputTokens = knownCounter(usage.InputTokens)

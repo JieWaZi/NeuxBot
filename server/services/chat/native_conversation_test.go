@@ -160,7 +160,7 @@ func TestChatNativeAdmissionStreamsTerminalAndReopens(t *testing.T) {
 	if err := store.CommitNativeResult(ctx, agent.NativeResult{
 		Key: key, StopReason: "end_turn", FinalMessage: &agent.NativeFinalMessage{ID: "native-message", Text: "final"},
 		Turn: acpmeta.NativeTurn{InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost, Status: acpmeta.NativeTurnCompleted,
-			ConsumedInputIDs: []string{"input"}, Usage: &acpmeta.TurnUsage{InputTokens: &inputTokens, Source: "fixture"}},
+			ConsumedInputIDs: []string{"input"}, Usage: &acpmeta.TurnUsage{InputTokens: &inputTokens, Coverage: "last_request", Source: "fixture"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestChatNativeAdmissionStreamsTerminalAndReopens(t *testing.T) {
 				continue
 			}
 			if event.Message == nil || event.Message.Content != "final" || event.Message.RunMetrics == nil ||
-				event.Message.RunMetrics.InputTokens != inputTokens || event.Sequence <= settled.Version {
+				event.Message.RunMetrics.StartedAt == 0 || event.Message.RunMetrics.InputTokens != 0 || event.Sequence <= settled.Version {
 				t.Fatalf("terminal event = %+v message = %+v", event, event.Message)
 			}
 			goto reopen
@@ -228,12 +228,17 @@ reopen:
 	}
 	message := history.Resources[0]
 	if message.Content != "final" || message.Status != constants.ExecutionStatusCompleted ||
-		message.RunMetrics == nil || message.RunMetrics.InputTokens != inputTokens || !history.HasMore {
+		message.RunMetrics == nil || message.RunMetrics.StartedAt == 0 || message.RunMetrics.InputTokens != 0 || !history.HasMore {
 		t.Fatalf("recovered assistant message = %+v", message)
 	}
 	summary, err := chats.GetChatSummary(ctx, id)
 	if err != nil || summary.Chat.ActiveExecutionID != "" || summary.Chat.LastEndedExecutionID != "exec" {
 		t.Fatalf("recovered summary = %+v, err = %v", summary, err)
+	}
+	canonical, err := reopened.ReadNativeResult(ctx, key)
+	if err != nil || canonical.Turn.Usage == nil || canonical.Turn.Usage.InputTokens == nil ||
+		*canonical.Turn.Usage.InputTokens != inputTokens || canonical.Turn.Usage.Complete || canonical.Turn.Usage.Coverage != "last_request" {
+		t.Fatalf("archived partial usage = %+v, err = %v", canonical.Turn.Usage, err)
 	}
 	outcome, err := chats.ReadExecutionOutcome(ctx, id, "exec")
 	if err != nil || outcome.InvocationID != "prompt" || outcome.TerminationReason != constants.RuntimeTerminationReasonNormal {

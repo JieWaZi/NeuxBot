@@ -182,12 +182,13 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 		t.Fatalf("durable admission/consumption: input=%+v consumption=%+v err=%v", input, consumed, err)
 	}
 	result, err := store.ReadNativeResult(ctx, consumed.Result)
-	if err != nil || result.Turn.Usage == nil || result.Turn.Usage.InputTokens == nil || *result.Turn.Usage.InputTokens != 15 {
-		t.Fatalf("native usage missing: %+v %v", result.Turn.Usage, err)
+	if err != nil || result.Turn.Usage == nil || result.Turn.Usage.InputTokens == nil || *result.Turn.Usage.InputTokens != 15 ||
+		result.Turn.Usage.Complete || result.Turn.Usage.Coverage != "last_request" {
+		t.Fatalf("canonical partial usage = %+v, err = %v", result.Turn.Usage, err)
 	}
 	history, err := chats.ReadMessageHistory(ctx, first.Chat.ID, 0, 10)
 	if err != nil || len(history.Resources) != 2 || history.Resources[1].Content != "fixture reply" ||
-		history.Resources[1].RunMetrics == nil || history.Resources[1].RunMetrics.InputTokens != 15 {
+		history.Resources[1].RunMetrics == nil || history.Resources[1].RunMetrics.StartedAt == 0 || history.Resources[1].RunMetrics.InputTokens != 0 {
 		t.Fatalf("Chat history: %+v %v", history, err)
 	}
 
