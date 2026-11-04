@@ -767,3 +767,23 @@ const (
 	// @errEN terminal session is not authorized
 	TerminalForbidden StatusError = http.StatusForbidden*1e8 + 7111
 )
+
+const (
+	// @errZH 对话已更新，请重新读取后重试
+	// @errEN the conversation version changed; reload before retrying
+	ChatLogVersionConflict StatusError = http.StatusConflict*1e8 + 7201
+
+	// @errZH 同一对话提交标识不能用于不同内容
+	// @errEN a conversation commit identity cannot be reused with different content
+	ChatLogIdempotencyConflict StatusError = http.StatusConflict*1e8 + 7202
+
+	// @errZH 原生结果或输入消费关系尚未持久提交
+	// @errEN the native outcome or its input consumption has not been committed
+	ChatLogNativeOutcomePending StatusError = http.StatusConflict*1e8 + 7203
+)
+
+const (
+	// @errZH 对话消息不存在
+	// @errEN the conversation message does not exist
+	ChatMessageNotFound StatusError = http.StatusNotFound*1e8 + 7201
+)

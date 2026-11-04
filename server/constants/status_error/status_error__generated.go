@@ -209,6 +209,8 @@ func (v StatusError) Key() string {
 		return "WorkspaceResourceNotFound"
 	case TerminalNotFound:
 		return "TerminalNotFound"
+	case ChatMessageNotFound:
+		return "ChatMessageNotFound"
 	case AgentReceiptNotFound:
 		return "AgentReceiptNotFound"
 	case KnowledgeNotFound:
@@ -335,6 +337,12 @@ func (v StatusError) Key() string {
 		return "PluginBusy"
 	case WorkspaceResourceConflict:
 		return "WorkspaceResourceConflict"
+	case ChatLogVersionConflict:
+		return "ChatLogVersionConflict"
+	case ChatLogIdempotencyConflict:
+		return "ChatLogIdempotencyConflict"
+	case ChatLogNativeOutcomePending:
+		return "ChatLogNativeOutcomePending"
 	case AgentCommandOutcomeUnknown:
 		return "AgentCommandOutcomeUnknown"
 	case AgentCommandRequestConflict:
@@ -648,6 +656,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginNotFound:                       "plugin or version was not found",
 			WorkspaceResourceNotFound:            "workspace resource was not found",
 			TerminalNotFound:                     "terminal session was not found or has ended",
+			ChatMessageNotFound:                  "the conversation message does not exist",
 			AgentReceiptNotFound:                 "command acceptance receipt was not found in the current scope",
 			KnowledgeNotFound:                    "knowledge resource not found",
 			IntegrationNotFound:                  "integration record was not found",
@@ -711,6 +720,9 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginSkillConflict:                  "skills with the same declared name have different content",
 			PluginBusy:                           "shared account is in use by work or authorization; try again after it exits",
 			WorkspaceResourceConflict:            "workspace resource changed; read it again",
+			ChatLogVersionConflict:               "the conversation version changed; reload before retrying",
+			ChatLogIdempotencyConflict:           "a conversation commit identity cannot be reused with different content",
+			ChatLogNativeOutcomePending:          "the native outcome or its input consumption has not been committed",
 			AgentCommandOutcomeUnknown:           "command outcome is uncertain; inspect the original request receipt",
 			AgentCommandRequestConflict:          "command request identifier was already used with different content",
 			KnowledgeConflict:                    "knowledge version or request content has changed",
@@ -897,6 +909,7 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginNotFound:                       "插件或版本不存在",
 			WorkspaceResourceNotFound:            "工作区资源不存在",
 			TerminalNotFound:                     "终端会话不存在或已结束",
+			ChatMessageNotFound:                  "对话消息不存在",
 			AgentReceiptNotFound:                 "当前范围内尚无该命令的接纳回执",
 			KnowledgeNotFound:                    "知识资源不存在",
 			IntegrationNotFound:                  "未找到对应的 API 集成记录",
@@ -960,6 +973,9 @@ func GetStatusErrorMap() map[string]map[StatusError]string {
 			PluginSkillConflict:                  "技能声明名称相同但内容不同，请调整已启用的技能或插件",
 			PluginBusy:                           "认证进程或工作仍在使用共享账号，请稍后重试",
 			WorkspaceResourceConflict:            "工作区资源已变化，请重新读取",
+			ChatLogVersionConflict:               "对话已更新，请重新读取后重试",
+			ChatLogIdempotencyConflict:           "同一对话提交标识不能用于不同内容",
+			ChatLogNativeOutcomePending:          "原生结果或输入消费关系尚未持久提交",
 			AgentCommandOutcomeUnknown:           "软件能力命令提交结果尚不确定，请查询原请求回执",
 			AgentCommandRequestConflict:          "同一命令请求标识不能用于不同内容",
 			KnowledgeConflict:                    "知识版本或请求内容已变化，请刷新后重试",
