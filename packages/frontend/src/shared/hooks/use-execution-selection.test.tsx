@@ -512,3 +512,66 @@ it.each([
     expect(result.current.catalogPending).toBe(false);
   },
 );
+
+it.each([
+  { state: "ready", enabled: true },
+  { state: "ready", enabled: false },
+  { state: "unavailable", enabled: true },
+])(
+  "默认模型按目录回退，执行仍要求 ready + enabled ($state / $enabled)",
+  async ({ state, enabled }) => {
+    server.use(
+      http.get(`${origin}/api/v1/runtimes`, () =>
+        HttpResponse.json({
+          resources: [
+            {
+              id: "claude",
+              enabled,
+              state,
+              installed: true,
+              defaultAccountId: "anthropic",
+              defaultModel: "retired-runtime-model",
+            },
+          ],
+        }),
+      ),
+      http.get(`${origin}/api/v1/ai-accounts`, () =>
+        HttpResponse.json({
+          resources: [
+            {
+              id: "anthropic",
+              authMode: "api-key",
+              hasCredential: true,
+              defaultModel: "retired-account-model",
+              endpoints: [{ protocol: "anthropic-messages" }],
+            },
+          ],
+        }),
+      ),
+      http.get(`${origin}/api/v1/runtimes/claude/models`, () =>
+        HttpResponse.json({
+          runtimeId: "claude",
+          accountId: "anthropic",
+          state: "fresh",
+          defaultModel: "native-default",
+          models: ["first", "native-default"].map((id) => ({
+            id,
+            configurationKnown: true,
+            permissionLevels: ["default"],
+          })),
+        }),
+      ),
+    );
+    const { result } = selection(
+      {
+        runtimeId: "claude",
+        accountId: "anthropic",
+        model: "retired-runtime-model",
+      },
+      true,
+    );
+    await waitFor(() => expect(result.current.configurationValid).toBe(true));
+    expect(result.current.valid).toBe(state === "ready" && enabled);
+    expect(result.current.selection.model).toBe("native-default");
+  },
+);

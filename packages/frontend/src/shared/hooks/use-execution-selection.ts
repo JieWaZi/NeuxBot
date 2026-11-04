@@ -66,11 +66,13 @@ function nativeCatalogIdentity(
 function resolveModel(
   value: ExecutionSelection,
   models: RuntimeModelOption[],
-  preferredModel?: string,
-  defaults?: boolean,
+  preferredModels: ReadonlyArray<string | undefined>,
+  defaults: boolean,
 ) {
   const fallback =
-    models.find((item) => item.id === preferredModel)?.id ||
+    preferredModels.find(
+      (candidate) => candidate && models.some((item) => item.id === candidate),
+    ) ||
     models[0]?.id ||
     "";
   const requested = value.model ?? fallback;
@@ -103,14 +105,14 @@ function resolveNativeSelection({
   const models = catalog?.models ?? [];
   const configuredAccount =
     accountId === (runtime?.defaultAccountId || "system");
-  const preferredModel =
-    (configuredAccount && runtime?.defaultModel) ||
-    account?.defaultModel ||
-    catalog?.defaultModel;
   const { model, effectiveModel } = resolveModel(
     value,
     models,
-    preferredModel,
+    [
+      configuredAccount ? runtime?.defaultModel : undefined,
+      account?.defaultModel,
+      catalog?.defaultModel,
+    ],
     defaults,
   );
   const modelOption = effectiveModel
@@ -143,8 +145,8 @@ function resolveNativeSelection({
       supportedPermissions,
     );
   const fastSupported = Boolean(modelOption?.fastSupported);
-  const configurationValid = Boolean(
-    runtime?.state === "ready" &&
+  const modelConfigurationValid = Boolean(
+    runtime &&
     (accountId === "system" || account?.hasCredential) &&
     catalog?.state === "fresh" &&
     modelOption?.configurationKnown &&
@@ -165,12 +167,9 @@ function resolveNativeSelection({
     supportedPermissions,
     fastSupported,
     configurationKnown: modelOption?.configurationKnown === true,
-    configurationValid,
-    valid: Boolean(
-      runtime?.enabled &&
-      configurationValid &&
-      supportedPermissions.has(permissionLevel),
-    ),
+    modelConfigurationValid,
+    configurationValid:
+      modelConfigurationValid && supportedPermissions.has(permissionLevel),
   };
 }
 
@@ -237,9 +236,14 @@ export function useNativeExecutionSelections(
       defaults || target.value.fast === undefined || resolved.fastSupported;
     return {
       selection: resolved.selection,
-      valid: Boolean(resolved.valid && settled),
+      valid: Boolean(
+        resolved.configurationValid &&
+        settled &&
+        target.runtime?.enabled &&
+        target.runtime.state === "ready",
+      ),
       supportedPermissions:
-        resolved.configurationValid && settled && validFast
+        resolved.modelConfigurationValid && settled && validFast
           ? resolved.supportedPermissions
           : new Set<PermissionLevel>(),
       pending: query && query.fetchStatus !== "idle",
@@ -380,7 +384,7 @@ export function useExecutionSelection({
         model: nativeSelection.selection.model,
         effectiveModel: nativeSelection.effectiveModel,
       }
-    : resolveModel(value, models, preferredModel, defaults);
+    : resolveModel(value, models, [preferredModel], defaults);
   const thinkingQuery = useQuery({
     queryKey: [
       "account-thinking",
@@ -498,14 +502,12 @@ export function useExecutionSelection({
       effectiveModel &&
       thinkingQuery.isPending,
     );
-  const valid =
+  const configurationValid =
     !loading &&
     !error &&
     (nativeSelection
-      ? nativeSelection.valid && !catalogPending
+      ? nativeSelection.configurationValid && !catalogPending
       : Boolean(
-          runtime?.enabled &&
-          runtime.state === "ready" &&
           (accountId === "system" || account?.hasCredential) &&
           (!model || models.some((item) => item.id === model)) &&
           (!reasoning ||
@@ -533,7 +535,10 @@ export function useExecutionSelection({
     thinkingQuery,
     loading,
     error,
-    valid,
+    configurationValid,
+    valid: Boolean(
+      configurationValid && runtime?.enabled && runtime.state === "ready",
+    ),
   };
 }
 

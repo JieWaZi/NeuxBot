@@ -356,7 +356,7 @@ function RuntimeEnvironmentRow({
   };
   const issue = issueKind ? issueMessages[issueKind] : undefined;
   const normalizedDraft =
-    selection.usesNativeCatalog && !selection.valid
+    selection.usesNativeCatalog && !selection.configurationValid
       ? draft
       : {
           ...draft,
@@ -682,7 +682,7 @@ function RuntimeEnvironmentRow({
                   pending ||
                   !draft.binary.trim() ||
                   (selection.usesNativeCatalog &&
-                    !selection.valid &&
+                    !selection.configurationValid &&
                     (changedNativeDefaults || !changedNativeLaunch))
                 }
                 onClick={() => mutate(normalizedDraft)}

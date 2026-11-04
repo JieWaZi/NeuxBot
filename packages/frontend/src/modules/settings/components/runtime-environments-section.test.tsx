@@ -772,6 +772,89 @@ describe("RuntimeEnvironmentsSection", () => {
     },
   );
 
+  it.each([
+    { state: "ready", enabled: false },
+    { state: "unavailable", enabled: true },
+  ])(
+    "在 $state / $enabled 状态下仍可保存已经确认的默认设置",
+    async ({ state, enabled }) => {
+      const recoveringAccount = state === "unavailable";
+      runtimes.current = [
+        {
+          ...runtimes.current[0],
+          id: "claude",
+          enabled,
+          state,
+          defaultAccountId: recoveringAccount ? "old-account" : "",
+          defaultModel: "original",
+          defaultReasoning: "",
+          defaultPermissionLevel: "default",
+        },
+      ];
+      if (recoveringAccount) {
+        accounts.current = ["old-account", "new-account"].map((id) => ({
+          id,
+          name: id,
+          authMode: "api-key",
+          hasCredential: true,
+          endpoints: [{ protocol: "anthropic-messages" }],
+        }));
+      }
+      modelCatalog.mockImplementation(async ({ path, query }) => ({
+        data: {
+          runtimeId: path.runtimeId,
+          accountId: query.accountId,
+          state: query.accountId === "old-account" ? "signed_out" : "fresh",
+          defaultModel: "original",
+          models: ["original", "second"].map((id) => ({
+            id,
+            name: id,
+            configurationKnown: true,
+            permissionLevels: ["default"],
+          })),
+        },
+      }));
+      const user = userEvent.setup();
+      renderSection(
+        new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+      );
+      await user.click(
+        await screen.findByRole("button", { name: "展开Claude智能体设置" }),
+      );
+      if (recoveringAccount) {
+        const account = screen.getByRole("combobox", { name: "账号" });
+        await waitFor(() => expect(account).toHaveTextContent("old-account"));
+        account.focus();
+        await user.keyboard("{Enter}");
+        await user.click(
+          await screen.findByRole("option", { name: "new-account" }),
+        );
+      }
+      const model = screen.getByRole("combobox", { name: "默认模型" });
+      await waitFor(() => expect(model).toBeEnabled());
+      model.focus();
+      await user.keyboard("{Enter}");
+      await user.click(screen.getByRole("option", { name: "second" }));
+      expect(model).toHaveTextContent("second");
+      const save = screen.getByRole("button", { name: "保存" });
+      expect(save).toBeEnabled();
+      await user.click(save);
+      await waitFor(() =>
+        expect(updateRuntime).toHaveBeenCalledWith(
+          expect.objectContaining({
+            path: { runtimeId: "claude" },
+            body: expect.objectContaining({
+              enabled,
+              defaultAccountId: recoveringAccount ? "new-account" : "",
+              defaultModel: "second",
+            }),
+          }),
+          expect.anything(),
+        ),
+      );
+    },
+  );
+
   it("目录已更新但逐模型配置未知时阻止保存", async () => {
     runtimes.current = [
       { ...runtimes.current[0], id: "claude", defaultModel: "unconfirmed" },
