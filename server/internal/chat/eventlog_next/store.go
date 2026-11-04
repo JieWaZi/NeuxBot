@@ -25,6 +25,8 @@ type Store struct {
 	root string
 	// catalog preserves the ordinary and team Chat path layout.
 	catalog *chatstorage.Catalog
+	// admissions serializes same-session claims across public and private streams.
+	admissions [streamShards]sync.Mutex
 	// reverseMu serializes first-use recovery for inverse input queries.
 	reverseMu sync.Mutex
 	// reverseReady marks initial reverse projection validation.
@@ -54,6 +56,7 @@ func NewStore(root string) (*Store, error) {
 	s.indexes.path = filepath.Join(s.root, indexFilename)
 	for i := range s.chats {
 		s.chats[i].indexes, s.natives[i].indexes = &s.indexes, &s.indexes
+		s.chats[i].store, s.natives[i].store = s, s
 	}
 	return s, nil
 }
@@ -97,17 +100,26 @@ func (s *Store) Commit(ctx context.Context, batch agent.ConversationBatch) (agen
 		return agent.CommitReceipt{}, status_error.ChatLogRecordInvalid
 	}
 	rows := make([]diskRow, 0, len(batch.Changes))
+	var inputs []agent.HostInput
 	for i := range batch.Changes {
 		row := diskRow{Chat: &batch.Changes[i]}
 		if !validDiskRow(row, true) {
 			return agent.CommitReceipt{}, status_error.ChatLogRecordInvalid
 		}
 		rows = append(rows, row)
+		if row.Chat.Input != nil {
+			inputs = append(inputs, *row.Chat.Input)
+		}
 	}
 	raw, hash, err := marshalRows(rows)
 	if err != nil {
 		return agent.CommitReceipt{}, err
 	}
+	check, release, err := s.prepareInputClaims(ctx, inputs)
+	if err != nil {
+		return agent.CommitReceipt{}, err
+	}
+	defer release()
 	slot := s.chatSlot(batch.ChatID)
 	slot.mu.Lock()
 	defer slot.mu.Unlock()
@@ -131,6 +143,9 @@ func (s *Store) Commit(ctx context.Context, batch agent.ConversationBatch) (agen
 	}
 	if batch.ExpectedVersion != idx.version() {
 		return agent.CommitReceipt{}, status_error.ChatLogVersionConflict
+	}
+	if err := check(); err != nil {
+		return agent.CommitReceipt{}, err
 	}
 	if err := s.validateChatBatch(ctx, path, idx, batch.Changes); err != nil {
 		return agent.CommitReceipt{}, err
@@ -192,6 +207,16 @@ func (s *Store) validateChatBatch(ctx context.Context, path string, idx *streamI
 			if change.Binding.Cleared && (binding == nil || binding.Cleared || binding.Session != change.Binding.Session) {
 				return status_error.ChatLogRecordInvalid
 			}
+			if handoff := change.Binding.Handoff; handoff != nil && handoff.Claim != nil {
+				claim := handoff.Claim
+				input, err := findAdmittedInput(file, idx, inputs, claim.HostInvocationID)
+				if err != nil {
+					return err
+				}
+				if input == nil || input.Session != change.Binding.Session || input.AdapterInputID != claim.AdapterInputID {
+					return status_error.ChatLogRecordInvalid
+				}
+			}
 			binding = change.Binding
 		case change.Input != nil:
 			input := change.Input
@@ -213,19 +238,9 @@ func (s *Store) validateChatBatch(ctx context.Context, path string, idx *streamI
 			if consumed[host] || old.Cursor != 0 {
 				return status_error.ChatLogIdempotencyConflict
 			}
-			input := inputs[host]
-			if input == nil {
-				pos, err := idx.lookup("host <> '' AND host = ? AND kind = ?", host, indexInput)
-				if err != nil {
-					return err
-				}
-				if pos.Cursor > 0 {
-					row, err := readDiskRow(file, pos.Where)
-					if err != nil || row.Chat == nil || row.Chat.Input == nil {
-						return status_error.ChatLogCorrupted
-					}
-					input = row.Chat.Input
-				}
+			input, err := findAdmittedInput(file, idx, inputs, host)
+			if err != nil {
+				return err
 			}
 			result, err := s.readNativeTerminal(ctx, change.Consumption.Result)
 			if err != nil {
@@ -255,6 +270,21 @@ func (s *Store) validateChatBatch(ctx context.Context, path string, idx *streamI
 		}
 	}
 	return nil
+}
+
+func findAdmittedInput(file *os.File, idx *streamIndex, inputs map[string]*agent.HostInput, host string) (*agent.HostInput, error) {
+	if input := inputs[host]; input != nil {
+		return input, nil
+	}
+	pos, err := idx.lookup("host <> '' AND host = ? AND kind = ?", host, indexInput)
+	if err != nil || pos.Cursor == 0 {
+		return nil, err
+	}
+	row, err := readDiskRow(file, pos.Where)
+	if err != nil || row.Chat == nil || row.Chat.Input == nil {
+		return nil, status_error.ChatLogCorrupted
+	}
+	return row.Chat.Input, nil
 }
 
 func validDiskRow(row diskRow, chat bool) bool {
@@ -320,7 +350,7 @@ func validChatChange(change agent.ConversationChange) bool {
 		count++
 	}
 	if b := change.Binding; b != nil {
-		if !validNativeSession(b.Session) || b.Cleared && len(b.Configuration) > 0 {
+		if !validNativeSession(b.Session) || b.Cleared && (len(b.Configuration) > 0 || b.Handoff != nil) || !validHandoff(b.Handoff) {
 			return false
 		}
 		count++
@@ -345,6 +375,7 @@ func describe(row diskRow, where location, at int64) rowIndex {
 	switch {
 	case row.Fragment != nil:
 		r.Native, r.Message, r.Content = nativeRowID(row.Fragment.Key), row.Fragment.MessageID, row.Fragment.Change.ContentType
+		r.Revision = row.Fragment.Change.Revision
 		switch row.Fragment.Change.Kind {
 		case agent.MessageAppend:
 			r.Kind = indexNativeTextAppend
@@ -355,6 +386,8 @@ func describe(row diskRow, where location, at int64) rowIndex {
 			if row.Fragment.Patch != nil {
 				r.PatchBase = row.Fragment.Patch.Base
 			}
+		case agent.MessageClassify:
+			r.Kind = indexNativeClassification
 		case agent.MessageEvent:
 			r.Kind, r.Tool = indexNativeEvent, row.Fragment.Change.ToolCallID
 		}
@@ -363,6 +396,12 @@ func describe(row diskRow, where location, at int64) rowIndex {
 		r.Adapter = adapterRowID(row.DetachedInput.Session, row.DetachedInput.AdapterInputID)
 	case row.Terminal != nil:
 		r.Kind, r.Native = indexNativeTerminal, nativeRowID(row.Terminal.Result.Key)
+		if row.Terminal.Body != nil {
+			r.Message = row.Terminal.Body.MessageID
+		}
+		if row.Terminal.Result.FinalMessage != nil {
+			r.Message = row.Terminal.Result.FinalMessage.ID
+		}
 	case row.Chat.Fact != nil:
 		f := row.Chat.Fact
 		r.Message, r.Execution = f.MessageID, f.ExecutionID
@@ -392,8 +431,10 @@ func describe(row diskRow, where location, at int64) rowIndex {
 		switch m.Kind {
 		case agent.MessageNativeFragment:
 			r.Kind = indexAssistantMessage
+			r.Project, r.DisplayLink = m, true
 		case agent.MessageNativeFinal:
 			r.Kind = indexTextReplace
+			r.Project, r.DisplayLink = m, true
 		case agent.MessageComplete:
 			r.Kind = indexMessageComplete
 		}
@@ -441,3 +482,20 @@ func (s *Store) Delete(chatID string) error {
 
 // Close releases the derived index connection and any private fallback files.
 func (s *Store) Close() { s.indexes.close() }
+
+func validHandoff(h *agent.NativeHandoff) bool {
+	if h == nil {
+		return true
+	}
+	if len(h.History) > constants.RuntimeHistoryMaximumTurns ||
+		(h.Summary != nil && !validNativeKey(*h.Summary)) ||
+		(h.Claim != nil && (!validID(h.Claim.HostInvocationID) || !validID(h.Claim.AdapterInputID))) {
+		return false
+	}
+	for _, pair := range h.History {
+		if !validID(pair.UserMessageID) || !validID(pair.AssistantMessageID) {
+			return false
+		}
+	}
+	return len(h.History) > 0 || h.Summary != nil
+}

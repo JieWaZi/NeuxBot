@@ -154,7 +154,7 @@ func TestPagingRebuildsDerivedIndexAndReplaysMessageChanges(t *testing.T) {
 			t.Fatalf("older = %+v, %v", older, err)
 		}
 		got := older.Messages[0]
-		if got.ID != "a1" || got.Text != "corrected" || !got.Complete || len(got.Parts) != 2 || got.Parts[0].ToolCallID != "tool" || string(got.Parts[0].Data) != `{"n":2}` {
+		if got.ID != "a1" || got.Text != "corrected" || !got.Complete || len(got.Parts) != 2 || got.Parts[1].ToolCallID != "tool" || string(got.Parts[1].Data) != `{"n":2}` {
 			t.Fatalf("folded message = %+v", got)
 		}
 		tail, err := store.ReadChanges(ctx, chatID, 5, 2)
@@ -575,10 +575,10 @@ func TestLocatorQueriesSeekByMessageCursorAndAdapter(t *testing.T) {
 	}{
 		{"SELECT * FROM conversation_messages WHERE stream=1 AND cursor<100 ORDER BY cursor DESC LIMIT 21", "conversation_anchors_cursor"},
 		{"SELECT * FROM conversation_messages WHERE stream=1 AND cursor<100 AND history=1 ORDER BY cursor DESC LIMIT 21", "conversation_anchors_history"},
-		{"SELECT * FROM conversation_positions INDEXED BY conversation_row_message WHERE stream=1 AND message_ref<>0 AND message_ref=2 ORDER BY cursor", "conversation_row_message"},
+		{"SELECT * FROM conversation_positions INDEXED BY conversation_row_message WHERE stream=1 AND message_ref<>0 AND NOT display_link AND message_ref=2 ORDER BY cursor", "conversation_row_message"},
 		{"SELECT * FROM conversation_positions INDEXED BY conversation_row_execution WHERE stream=1 AND execution_ref<>0 AND execution_ref=5 ORDER BY cursor", "conversation_row_execution"},
 		{"SELECT * FROM conversation_positions WHERE adapter IS NOT NULL AND adapter IN (x'01',x'02')", "conversation_row_adapter"},
-		{"SELECT * FROM conversation_positions INDEXED BY conversation_row_native WHERE stream=1 AND native IS NOT NULL AND native=x'01' AND message='' AND kind=9", "conversation_row_native"},
+		{"SELECT * FROM conversation_positions INDEXED BY conversation_row_native WHERE stream=1 AND native_ref<>0 AND native_ref=1 AND kind=9 AND lane_ref=2", "conversation_row_native"},
 	}
 	err := s.indexes.with(ctx, func(db *gorm.DB) error {
 		for _, p := range plans {
@@ -598,7 +598,7 @@ func TestLocatorQueriesSeekByMessageCursorAndAdapter(t *testing.T) {
 			if p.want == "conversation_row_execution" && !strings.Contains(rows[0].Detail, "execution_ref=?") {
 				t.Fatalf("execution query must seek the exact key: %+v", rows)
 			}
-			if p.want == "conversation_row_native" && !strings.Contains(rows[0].Detail, "native=?") {
+			if p.want == "conversation_row_native" && !strings.Contains(rows[0].Detail, "native_ref=?") {
 				t.Fatalf("native query must seek the exact key: %+v", rows)
 			}
 			t.Log(rows[0].Detail)
@@ -699,5 +699,365 @@ func TestHistoryUsesExplicitAssistantIdentityOnce(t *testing.T) {
 	m, err := s.ReadMessage(ctx, chatID, "reply")
 	if err != nil || m.Text != "answer" || !m.Complete {
 		t.Fatalf("assistant reply %+v, %v", m, err)
+	}
+}
+
+func TestRevisionLiveLocatorUnlink(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	s := openTestStore(t, root)
+	writeBatch(t, s, "create", 0, fact(constants.ChatEventTypeCreated, "", ""))
+	path, _ := s.IndexPath(chatID)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	first := writeBatch(t, s, "next", 1, fact(constants.ChatEventTypeUserMessageCreated, "user", `{"content":"hello"}`))
+	for range 2 {
+		page, err := s.ReadMessages(ctx, agent.MessageQuery{ChatID: chatID, Limit: 1})
+		t.Logf("same owner: page %+v error=%v", page, err)
+		if err != nil || len(page.Messages) != 1 || page.Messages[0].Text != "hello" {
+			t.Fatalf("same owner lost durable page: %+v %v", page, err)
+		}
+	}
+	second := writeBatch(t, s, "next", 1, fact(constants.ChatEventTypeUserMessageCreated, "user", `{"content":"hello"}`))
+	if first != second {
+		t.Fatal(first, second)
+	}
+	t.Logf("same owner: authoritative receipt recovered %+v", second)
+}
+
+func TestRevisionRejectsDuplicateAdapterAdmission(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	sess := agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "s"}
+	a := agent.HostInput{Session: sess, HostInvocationID: "H1", AdapterInputID: "input", ExecutionID: "e1"}
+	b := agent.HostInput{Session: sess, HostInvocationID: "H2", AdapterInputID: "input", ExecutionID: "e2"}
+	writeBatch(t, s, "gate1", 0, fact(constants.ChatEventTypeCreated, "", ""),
+		agent.ConversationChange{Binding: &agent.NativeBinding{Session: sess}}, agent.ConversationChange{Input: &a})
+	if _, err := s.Commit(ctx, agent.ConversationBatch{ChatID: chatID, Key: "gate2", ExpectedVersion: 3, Changes: []agent.ConversationChange{{Input: &b}}}); !errors.Is(err, status_error.ChatLogIdempotencyConflict) {
+		t.Fatalf("duplicate admission wrote authority: %v", err)
+	}
+	got, err := s.ReadNativeInputs(ctx, sess, []string{"input"})
+	t.Logf("durable adapter owner=%+v err=%v", got, err)
+	if err != nil || len(got) != 1 || got[0].Input != a {
+		t.Fatal(got, err)
+	}
+}
+
+func TestRevisionNativeMessageScopedReplace(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	k := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "s"}, InvocationID: "p"}
+	receipt := writeBatch(t, s, "create", 0, fact(constants.ChatEventTypeCreated, "", ""))
+	for i, part := range []struct {
+		lane, text string
+		kind       agent.MessageChangeKind
+	}{
+		{"native-a", "kept", agent.MessageAppend},
+		{"native-b", "obsolete", agent.MessageAppend},
+		{"native-b", "new", agent.MessageReplace},
+	} {
+		id := strconv.Itoa(i)
+		rng, err := s.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: k, CommitKey: id, MessageID: part.lane, Changes: []agent.MessageChange{{Kind: part.kind, Text: part.text}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipt = writeBatch(t, s, "ref"+id, receipt.Version, agent.ConversationChange{Message: &agent.MessageChange{MessageID: "assistant", Kind: agent.MessageNativeFragment, Fragments: &rng}})
+	}
+	page, err := s.ReadMessages(ctx, agent.MessageQuery{ChatID: chatID, Limit: 1})
+	if err != nil || len(page.Messages) != 1 || page.Messages[0].Text != "keptnew" {
+		t.Fatal(page, err)
+	}
+
+}
+
+func TestRevisionSuffixCorrectionReusesPrefix(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	k := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "s"}, InvocationID: "p"}
+	prefix := strings.Repeat("durable-prefix!", 2048)
+	_, err := s.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: k, CommitKey: "prefix", MessageID: "native", Changes: []agent.MessageChange{{Kind: agent.MessageAppend, Text: prefix}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, path := s.nativeStream(k)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := agent.NativeResult{Key: k, Turn: acpmeta.NativeTurn{InvocationID: "p", Origin: acpmeta.NativeTurnOriginProvider, Status: acpmeta.NativeTurnCompleted}, FinalMessage: &agent.NativeFinalMessage{ID: "native", Text: prefix + "!"}}
+	if err := s.CommitNativeResult(ctx, result); err != nil {
+		t.Fatal(err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	copies := bytes.Count(after, []byte(prefix))
+	if copies != 1 || len(after)-len(before) > 1024 {
+		t.Fatal(copies, len(after)-len(before))
+	}
+	got, err := s.ReadNativeResult(ctx, k)
+	if err != nil || got.FinalMessage == nil || got.FinalMessage.Text != prefix+"!" {
+		t.Fatal(got, err)
+	}
+	writeBatch(t, s, "public", 0, fact(constants.ChatEventTypeCreated, "", ""),
+		agent.ConversationChange{Message: &agent.MessageChange{MessageID: "answer", Kind: agent.MessageNativeFinal, Result: &k}})
+	page, err := s.ReadMessages(ctx, agent.MessageQuery{ChatID: chatID, Limit: 1})
+	if err != nil || len(page.Messages) != 1 || page.Messages[0].Text != prefix+"!" {
+		t.Fatalf("public suffix reconstruction: %d messages, %v", len(page.Messages), err)
+	}
+	t.Logf("1 new byte, 30 KiB known prefix stored %d times, authority grew by %d bytes", copies, len(after)-len(before))
+}
+
+func TestRevisionLateClassificationReachesEarlierDurableFragments(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "native"}, InvocationID: "P"}
+	receipt := writeBatch(t, s, "create", 0, fact(constants.ChatEventTypeCreated, "", ""))
+	appendRange := func(command, lane string, changes ...agent.MessageChange) agent.NativeFragmentRange {
+		t.Helper()
+		ref, err := s.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: key, CommitKey: command, MessageID: lane, Changes: changes})
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipt = writeBatch(t, s, "link-"+command, receipt.Version, agent.ConversationChange{Message: &agent.MessageChange{
+			MessageID: "assistant", Kind: agent.MessageNativeFragment, Fragments: &ref,
+		}})
+		return ref
+	}
+	early := strings.Repeat("a", 8192)
+	late := strings.Repeat("b", 3072)
+	appendRange("early", "native-progress", agent.MessageChange{Kind: agent.MessageAppend, Text: early})
+	before, err := s.ReadMessage(ctx, chatID, "assistant")
+	if err != nil || before.Text != early {
+		t.Fatalf("initial persisted text %+v %v", before, err)
+	}
+	ref := appendRange("late", "native-progress",
+		agent.MessageChange{Kind: agent.MessageClassify, ContentType: constants.RuntimeEventTypeCommentaryDelta, Revision: 11},
+		agent.MessageChange{Kind: agent.MessageAppend, Text: late})
+	appendRange("answer", "native-answer", agent.MessageChange{Kind: agent.MessageAppend, Text: "actual answer"})
+	replay, err := s.ReadNativeFragments(ctx, ref)
+	if err != nil || len(replay) != 2 || replay[0].Kind != agent.MessageClassify {
+		t.Fatalf("durable phase replay %+v %v", replay, err)
+	}
+	index, err := s.IndexPath(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(index); err != nil {
+		t.Fatal(err)
+	}
+	message, err := s.ReadMessage(ctx, chatID, "assistant")
+	if err != nil || message.Text != "actual answer" || message.Revision != 11 || len(message.Parts) != 3 {
+		t.Fatalf("classification after rebuilding %+v %v", message, err)
+	}
+	if message.Parts[0].Type != constants.RuntimeEventTypeCommentaryDelta || message.Parts[0].Text != early ||
+		message.Parts[1].Type != constants.RuntimeEventTypeCommentaryDelta || message.Parts[1].Text != late {
+		t.Fatal("late classification did not reach both durable pieces")
+	}
+}
+
+func TestRevisionProjectionDoesNotVisitSupersededRelationships(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "native"}, InvocationID: "P"}
+	receipt := writeBatch(t, s, "create", 0, fact(constants.ChatEventTypeCreated, "", ""))
+	for j := 0; j < 64; j++ {
+		id := strconv.Itoa(j)
+		ref, err := s.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: key, CommitKey: id, MessageID: "native",
+			Changes: []agent.MessageChange{{Kind: agent.MessageReplace, Text: "old-" + id}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipt = writeBatch(t, s, "link-"+id, receipt.Version, agent.ConversationChange{Message: &agent.MessageChange{
+			MessageID: "assistant", Kind: agent.MessageNativeFragment, Fragments: &ref,
+		}})
+	}
+	if err := s.CommitNativeResult(ctx, agent.NativeResult{Key: key,
+		Turn:         acpmeta.NativeTurn{InvocationID: "P", Origin: acpmeta.NativeTurnOriginProvider, Status: acpmeta.NativeTurnCompleted},
+		FinalMessage: &agent.NativeFinalMessage{ID: "native", Text: "current"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	writeBatch(t, s, "finish", receipt.Version, agent.ConversationChange{Message: &agent.MessageChange{
+		MessageID: "assistant", Kind: agent.MessageNativeFinal, Result: &key,
+	}})
+	assertCurrent := func() {
+		t.Helper()
+		message, err := s.ReadMessage(ctx, chatID, "assistant")
+		if err != nil || message.Text != "current" || len(message.Parts) != 1 {
+			t.Fatalf("message %+v, %v", message, err)
+		}
+		r, err := s.openChat(ctx, chatID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.close()
+		anchor, err := r.index.anchor("assistant")
+		if err != nil {
+			t.Fatal(err)
+		}
+		facts, err := r.index.forMessages([]int64{anchor.Ref})
+		if err != nil || len(facts[anchor.Ref]) != 0 {
+			t.Fatalf("page traverses old references: %d %v", len(facts[anchor.Ref]), err)
+		}
+		display, err := r.index.displayForMessages([]int64{anchor.Ref})
+		if err != nil || len(display[anchor.Ref]) != 1 {
+			t.Fatalf("effective projection rows: %d %v", len(display[anchor.Ref]), err)
+		}
+	}
+	assertCurrent()
+	index, err := s.IndexPath(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(index); err != nil {
+		t.Fatal(err)
+	}
+	assertCurrent()
+	history, err := s.ReadChanges(ctx, chatID, 1, 100)
+	if err != nil || len(history.Records) != 65 || history.Records[0].Change.Message.Fragments == nil {
+		t.Fatalf("raw replay %d %v", len(history.Records), err)
+	}
+}
+
+func TestRevisionAdapterFenceSerializesPublicAndDetachedAdmission(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	s := openTestStore(t, root)
+	session := agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "native"}
+	public := agent.HostInput{Session: session, HostInvocationID: "public", AdapterInputID: "same", ExecutionID: "execution"}
+	detached := agent.HostInput{Session: session, HostInvocationID: "detached", AdapterInputID: "same"}
+	publicBatch := agent.ConversationBatch{ChatID: chatID, Key: "public", Changes: []agent.ConversationChange{
+		fact(constants.ChatEventTypeCreated, "", ""), {Binding: &agent.NativeBinding{Session: session}}, {Input: &public},
+	}}
+	results := make(chan error, 2)
+	var group sync.WaitGroup
+	group.Go(func() { _, err := s.Commit(ctx, publicBatch); results <- err })
+	group.Go(func() { results <- s.CommitDetachedInput(ctx, detached) })
+	group.Wait()
+	close(results)
+	var accepted, conflicts int
+	for err := range results {
+		if err == nil {
+			accepted++
+		} else if errors.Is(err, status_error.ChatLogIdempotencyConflict) {
+			conflicts++
+		} else {
+			t.Fatal(err)
+		}
+	}
+	if accepted != 1 || conflicts != 1 {
+		t.Fatalf("accepted %d, conflicts %d", accepted, conflicts)
+	}
+	inputs, err := s.ReadNativeInputs(ctx, session, []string{"same"})
+	if err != nil || len(inputs) != 1 {
+		t.Fatalf("durable owner %+v, %v", inputs, err)
+	}
+	path, _ := s.IndexPath(chatID)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	otherID := "fedcba9876543210fedcba9876543210"
+	public.HostInvocationID = "different-chat"
+	publicBatch.ChatID = otherID
+	if _, err := s.Commit(ctx, publicBatch); !errors.Is(err, status_error.ChatLogIdempotencyConflict) {
+		t.Fatalf("lost fence after locator rebuild: %v", err)
+	}
+	if version, err := s.ReadVersion(ctx, otherID); err != nil || version != 0 {
+		t.Fatalf("failed claim published Chat %d %v", version, err)
+	}
+}
+
+func TestRevisionNativeLocatorsInternLongIdentity(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	k := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: strings.Repeat("s", 128), SessionID: strings.Repeat("n", 128)}, InvocationID: "P"}
+	id := strings.Repeat("m", 128)
+	for _, text := range []string{"one", "two", "three"} {
+		if _, err := s.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: k, CommitKey: text, MessageID: id,
+			Changes: []agent.MessageChange{{Kind: agent.MessageAppend, Text: text}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := s.indexes.with(ctx, func(db *gorm.DB) error {
+		var rows []rowIndex
+		if err := db.Where("native_ref <> 0").Find(&rows).Error; err != nil {
+			return err
+		}
+		var identities []nativeIdentityLocator
+		var messages []nativeMessageLocator
+		if err := db.Find(&identities).Error; err != nil {
+			return err
+		}
+		if err := db.Find(&messages).Error; err != nil {
+			return err
+		}
+		if len(rows) != 3 || len(identities) != 1 || len(messages) != 1 || string(messages[0].Message) != id {
+			t.Fatalf("positions=%d identities=%d messages=%+v", len(rows), len(identities), messages)
+		}
+		for _, row := range rows {
+			if len(row.Native) > 0 || row.Message != "" || row.NativeRef != identities[0].Ref || row.LaneRef != messages[0].Ref {
+				t.Fatalf("noncompact position %+v", row)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRevisionHandoffClaimRequiresExactDurableInput(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	session := agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "native"}
+	binding := agent.NativeBinding{Session: session, Handoff: &agent.NativeHandoff{History: []agent.HandoffPair{{UserMessageID: "u", AssistantMessageID: "a"}}}}
+	input := agent.HostInput{Session: session, HostInvocationID: "H", AdapterInputID: "adapter", ExecutionID: "execution"}
+	writeBatch(t, s, "create", 0, fact(constants.ChatEventTypeCreated, "", ""), agent.ConversationChange{Binding: &binding}, agent.ConversationChange{Input: &input})
+	ref := agent.HostInputRef{ChatID: chatID, HostInvocationID: "H"}
+	got, relation, err := s.ReadHostInputConsumption(ctx, ref)
+	if err != nil || relation != nil || got != input {
+		t.Fatalf("unconsumed input %+v %+v %v", got, relation, err)
+	}
+	binding.Handoff.Claim = &agent.HandoffClaim{HostInvocationID: "H", AdapterInputID: "wrong"}
+	invalid := agent.ConversationBatch{ChatID: chatID, Key: "claim", ExpectedVersion: 3, Changes: []agent.ConversationChange{{Binding: &binding}}}
+	if _, err := s.Commit(ctx, invalid); !errors.Is(err, status_error.ChatLogRecordInvalid) {
+		t.Fatalf("wrong binding claim accepted: %v", err)
+	}
+	binding.Handoff.Claim.AdapterInputID = "adapter"
+	writeBatch(t, s, "claim", 3, agent.ConversationChange{Binding: &binding})
+	gotBinding, err := s.ReadBinding(ctx, chatID)
+	if err != nil || gotBinding == nil || gotBinding.Handoff == nil || gotBinding.Handoff.Claim == nil ||
+		*gotBinding.Handoff.Claim != *binding.Handoff.Claim {
+		t.Fatalf("binding claim %+v %v", gotBinding, err)
+	}
+}
+
+func TestRevisionDelayedReferenceDoesNotResurrectSupersededBody(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "native"}, InvocationID: "P"}
+	commit := func(command, body string, kind agent.MessageChangeKind) agent.NativeFragmentRange {
+		t.Helper()
+		r, err := s.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: key, CommitKey: command, MessageID: "lane",
+			Changes: []agent.MessageChange{{Kind: kind, Text: body}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	old := commit("old", "old", agent.MessageAppend)
+	replacement := commit("replace", "corrected", agent.MessageReplace)
+	following := commit("following", " tail", agent.MessageAppend)
+	link := func(r agent.NativeFragmentRange) agent.ConversationChange {
+		return agent.ConversationChange{Message: &agent.MessageChange{MessageID: "a", Kind: agent.MessageNativeFragment, Fragments: &r}}
+	}
+	writeBatch(t, s, "first", 0, fact(constants.ChatEventTypeCreated, "", ""), link(replacement), link(following))
+	writeBatch(t, s, "late", 3, link(old), link(replacement))
+	got, err := s.ReadMessage(ctx, chatID, "a")
+	if err != nil || got.Text != "corrected tail" {
+		t.Fatalf("late link changed current version: %+v %v", got, err)
 	}
 }

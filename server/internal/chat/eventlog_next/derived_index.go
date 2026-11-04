@@ -9,9 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 	storesqlite "github.com/JieWaZi/NeuxBot/server/internal/sqlite"
 	glebarez "github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -20,7 +18,7 @@ import (
 )
 
 const (
-	indexFilename   = "conversation-index-v2.sqlite"
+	indexFilename   = "conversation-index-v3.sqlite"
 	indexWriteBatch = 128
 	indexReadBatch  = 256
 )
@@ -33,6 +31,8 @@ type indexDB struct {
 	path string
 	// db is opened lazily and shared across all streams.
 	db *gorm.DB
+	// identity is the actual active SQLite file, independent of its name.
+	identity os.FileInfo
 	// epoch changes when database replacement invalidates the reverse lookup coverage.
 	epoch uint64
 	// dirty contains authoritative streams whose latest commit did not update this database.
@@ -82,6 +82,8 @@ type messageAnchor struct {
 	ExecutionRef int64 `gorm:"index:conversation_anchors_execution,priority:2"`
 	// Kind identifies the anchor's originating event.
 	Kind indexKind
+	// Revision is the greatest producer revision linked to this public message.
+	Revision int64
 	// History marks an inherited or successfully completed candidate.
 	History bool `gorm:"index:conversation_anchors_history,priority:2"`
 }
@@ -124,12 +126,19 @@ func migrateIndex(db *gorm.DB) error {
 		return err
 	}
 	// Composite position and digest keys are the table keys, avoiding a second rowid tree.
-	return db.Set("gorm:table_options", "WITHOUT ROWID").AutoMigrate(&indexBatch{}, &rowIndex{}, &executionLocator{})
+	return db.Set("gorm:table_options", "WITHOUT ROWID").AutoMigrate(&indexBatch{}, &rowIndex{}, &executionLocator{}, &nativeIdentityLocator{}, &nativeMessageLocator{}, &displayPosition{})
 }
 
 func (i *indexDB) open() error {
 	if i.db != nil {
-		return nil
+		path := i.path
+		if i.temporary != "" {
+			path = filepath.Join(i.temporary, indexFilename)
+		}
+		if current, err := os.Lstat(path); err == nil && i.identity != nil && os.SameFile(i.identity, current) {
+			return nil
+		}
+		i.reset()
 	}
 	if err := os.MkdirAll(filepath.Dir(i.path), 0700); err == nil {
 		info, statErr := os.Lstat(i.path)
@@ -142,6 +151,7 @@ func (i *indexDB) open() error {
 		if statErr == nil && info.Mode().IsRegular() {
 			if db, err := openIndexFile(i.path); err == nil {
 				i.db = db
+				i.identity, _ = os.Stat(i.path)
 				return nil
 			}
 			// This path has only derived data. Never remove an unexpected directory or symlink.
@@ -150,6 +160,7 @@ func (i *indexDB) open() error {
 				_ = file.Close()
 				if db, err := openIndexFile(i.path); err == nil {
 					i.db = db
+					i.identity, _ = os.Stat(i.path)
 					return nil
 				}
 			}
@@ -165,11 +176,13 @@ func (i *indexDB) open() error {
 		return status_error.ChatLogIndexCorrupted
 	}
 	i.db, i.temporary = db, dir
+	i.identity, _ = os.Stat(filepath.Join(dir, indexFilename))
 	return nil
 }
 
 func (i *indexDB) reset() {
 	i.epoch++
+	i.identity = nil
 	if i.db != nil {
 		if pool, err := i.db.DB(); err == nil {
 			_ = pool.Close()
@@ -198,6 +211,13 @@ func (i *indexDB) with(ctx context.Context, fn func(*gorm.DB) error) error {
 		return err
 	}
 	if err := fn(i.db.WithContext(ctx)); err != nil {
+		var driverErr interface{ Code() int }
+		if errors.As(err, &driverErr) {
+			switch driverErr.Code() & 0xff {
+			case 10, 11, 26: // SQLITE_IOERR, SQLITE_CORRUPT, SQLITE_NOTADB.
+				i.reset()
+			}
+		}
 		if c := contextError(ctx); c != nil {
 			return c
 		}
@@ -214,13 +234,22 @@ type streamIndex struct {
 	ctx context.Context
 	// coverage is the committed prefix made available to readers.
 	coverage streamCoverage
+	// epoch ties the compact stream identity to its database generation.
+	epoch uint64
+	// located says coverage has been checked against this database.
+	located bool
 }
 
 func (i *streamIndex) version() int64 { return i.coverage.Version }
 func (i *streamIndex) size() int64    { return i.coverage.Size }
 
 func (i *streamIndex) query(fn func(*gorm.DB) error) error {
-	return i.db.with(i.ctx, fn)
+	return i.db.with(i.ctx, func(db *gorm.DB) error {
+		if i.located && i.epoch != i.db.epoch {
+			return status_error.ChatLogIndexCorrupted
+		}
+		return fn(db)
+	})
 }
 
 func (i *streamIndex) batch(path, key string) (batchHeader, bool, error) {
@@ -307,7 +336,7 @@ func (i *streamIndex) forMessages(refs []int64) (map[int64][]rowIndex, error) {
 				if j > 0 {
 					sql.WriteString(" UNION ALL ")
 				}
-				sql.WriteString("SELECT * FROM conversation_positions INDEXED BY conversation_row_message WHERE stream = ? AND message_ref <> 0 AND message_ref = ?")
+				sql.WriteString("SELECT * FROM conversation_positions INDEXED BY conversation_row_message WHERE stream = ? AND message_ref <> 0 AND NOT display_link AND message_ref = ?")
 				args = append(args, i.coverage.Stream, ref)
 			}
 			sql.WriteString(" ORDER BY message_ref,cursor")
@@ -361,27 +390,29 @@ func (i *streamIndex) anchors(before int64, limit int, history bool) ([]messageA
 	return result, err
 }
 
-func (i *streamIndex) nativeText(key []byte, message string) ([]rowIndex, error) {
+func (i *streamIndex) nativeText(key []byte, message string, includeCommentary bool) ([]rowIndex, error) {
 	var rows []rowIndex
 	err := i.query(func(db *gorm.DB) error {
-		var start rowIndex
-		where := "stream = ? AND native IS NOT NULL AND native = ? AND message = ?"
-		source := func() *gorm.DB {
-			return db.Table("conversation_positions INDEXED BY conversation_row_native").Where(where, i.coverage.Stream, key, message)
+		identity, lane, err := findNativeRefs(db, i.coverage.Stream, key, message)
+		if err != nil || lane == 0 {
+			return err
 		}
-		if err := source().
-			Where("kind = ?", indexNativeTextReplace).Order("cursor DESC").Limit(1).Find(&start).Error; err != nil {
+		source := func() *gorm.DB {
+			return db.Table("conversation_positions INDEXED BY conversation_row_native").
+				Where("stream = ? AND native_ref <> 0 AND native_ref = ? AND lane_ref = ?", i.coverage.Stream, identity, lane)
+		}
+		var last rowIndex
+		if err := source().Where("kind = ?", indexNativeTextReplace).Order("cursor DESC").Limit(1).Find(&last).Error; err != nil {
 			return err
 		}
 		return source().Where("kind IN ? AND content IN ? AND cursor >= ?",
-			[]indexKind{indexNativeTextAppend, indexNativeTextReplace}, []string{"", string(constants.RuntimeEventTypeTextDelta)}, start.Cursor).
+			[]indexKind{indexNativeTextAppend, indexNativeTextReplace}, nativeTextContents(includeCommentary), last.Cursor).
 			Order("cursor").Find(&rows).Error
 	})
 	return rows, err
 }
-
 func clearIndexStream(db *gorm.DB, stream int64) error {
-	for _, table := range []any{&streamCoverage{}, &rowIndex{}, &indexBatch{}, &messageAnchor{}, &executionLocator{}} {
+	for _, table := range []any{&streamCoverage{}, &rowIndex{}, &indexBatch{}, &messageAnchor{}, &executionLocator{}, &nativeIdentityLocator{}, &nativeMessageLocator{}, &displayPosition{}} {
 		if err := db.Where("stream = ?", stream).Delete(table).Error; err != nil {
 			return err
 		}
@@ -404,6 +435,9 @@ func (i *indexDB) delete(ctx context.Context, path string) {
 
 func indexRows(db *gorm.DB, stream int64, entries []rowIndex, headers []batchHeader) error {
 	if len(entries) > 0 {
+		if err := internNativeIdentities(db, stream, entries); err != nil {
+			return err
+		}
 		if err := internIndexIdentities(db, stream, entries); err != nil {
 			return err
 		}
@@ -411,6 +445,9 @@ func indexRows(db *gorm.DB, stream int64, entries []rowIndex, headers []batchHea
 			return err
 		}
 		if err := db.CreateInBatches(entries, indexWriteBatch).Error; err != nil {
+			return err
+		}
+		if err := indexDisplay(db, stream, entries); err != nil {
 			return err
 		}
 	}
@@ -631,16 +668,20 @@ func (i *streamIndex) publish(info os.FileInfo, rows []rowIndex, header batchHea
 
 func (i *streamIndex) loadCoverage() error {
 	path := i.coverage.Path
-	load := func(db *gorm.DB) error { return db.Where("path = ?", path).Limit(1).Find(&i.coverage).Error }
-	err := i.query(load)
+	load := func(db *gorm.DB) error {
+		i.coverage = streamCoverage{Path: path}
+		if err := db.Where("path = ?", path).Limit(1).Find(&i.coverage).Error; err != nil {
+			return err
+		}
+		i.located, i.epoch = true, i.db.epoch
+		return nil
+	}
+	err := i.db.with(i.ctx, load)
 	if errors.Is(err, status_error.ChatLogIndexCorrupted) {
 		i.db.mu.Lock()
 		i.db.reset()
 		i.db.mu.Unlock()
-		err = i.query(load)
-	}
-	if i.coverage.Path == "" {
-		i.coverage.Path = path
+		err = i.db.with(i.ctx, load)
 	}
 	return err
 }
@@ -690,44 +731,17 @@ func (i *streamIndex) hostRows(host string) ([]rowIndex, error) {
 	return rows, err
 }
 
-const nativeSeek = "SELECT * FROM conversation_positions INDEXED BY conversation_row_native WHERE stream = ? AND native IS NOT NULL AND native = ? AND message = ?"
-
-func (i *streamIndex) nativeTerminals(keys [][]byte) ([]rowIndex, error) {
-	var result []rowIndex
-	err := i.query(func(db *gorm.DB) error {
-		// Independent equality seeks avoid an index range scan for a blob IN expression.
-		const batch = 64
-		for start := 0; start < len(keys); start += batch {
-			end := min(start+batch, len(keys))
-			var sql strings.Builder
-			args := make([]any, 0, (end-start)*4)
-			for j, key := range keys[start:end] {
-				if j > 0 {
-					sql.WriteString(" UNION ALL ")
-				}
-				sql.WriteString(nativeSeek + " AND kind = ?")
-				args = append(args, i.coverage.Stream, key, "", indexNativeTerminal)
-			}
-			var rows []rowIndex
-			if err := db.Raw(sql.String(), args...).Scan(&rows).Error; err != nil {
-				return err
-			}
-			result = append(result, rows...)
-		}
-		return nil
-	})
-	return result, err
-}
-
 type nativeBodyLookup struct {
-	// Key identifies the outcome that owns the retained body.
-	Key agent.NativeResultKey
-	// Body is the exact validated range from that terminal.
-	Body nativeBody
+	// identity is the canonical invocation locator.
+	identity int64
+	// lane is the canonical native message locator.
+	lane int64
+	// body is the durable range from the terminal.
+	body nativeBody
 }
 
-func (i *streamIndex) bodyPositions(wanted []nativeBodyLookup) (map[string][]rowIndex, error) {
-	out := make(map[string][]rowIndex, len(wanted))
+func (i *streamIndex) bodyPositions(wanted []nativeBodyLookup) (map[int64][]rowIndex, error) {
+	out := make(map[int64][]rowIndex, len(wanted))
 	if len(wanted) == 0 {
 		return out, nil
 	}
@@ -736,14 +750,15 @@ func (i *streamIndex) bodyPositions(wanted []nativeBodyLookup) (map[string][]row
 		for start := 0; start < len(wanted); start += batch {
 			end := min(start+batch, len(wanted))
 			var sql strings.Builder
-			args := make([]any, 0, (end-start)*9)
-			for j, entry := range wanted[start:end] {
+			args := make([]any, 0, (end-start)*10)
+			for j, e := range wanted[start:end] {
 				if j > 0 {
 					sql.WriteString(" UNION ALL ")
 				}
-				sql.WriteString(nativeSeek + " AND kind IN (?,?) AND content IN (?,?) AND cursor BETWEEN ? AND ?")
-				args = append(args, i.coverage.Stream, nativeRowID(entry.Key), entry.Body.MessageID,
-					indexNativeTextAppend, indexNativeTextReplace, "", string(constants.RuntimeEventTypeTextDelta), entry.Body.First, entry.Body.Last)
+				sql.WriteString("SELECT * FROM conversation_positions INDEXED BY conversation_row_native WHERE stream = ? AND native_ref <> 0 AND native_ref = ? AND lane_ref = ? AND kind IN (?,?) AND content IN (?,?,?) AND cursor BETWEEN ? AND ?")
+				contents := nativeTextContents(e.body.IncludeCommentary)
+				args = append(args, i.coverage.Stream, e.identity, e.lane, indexNativeTextAppend, indexNativeTextReplace,
+					contents[0], contents[1], contents[2], e.body.First, e.body.Last)
 			}
 			sql.WriteString(" ORDER BY cursor")
 			var rows []rowIndex
@@ -751,8 +766,7 @@ func (i *streamIndex) bodyPositions(wanted []nativeBodyLookup) (map[string][]row
 				return err
 			}
 			for _, row := range rows {
-				id := string(row.Native)
-				out[id] = append(out[id], row)
+				out[row.LaneRef] = append(out[row.LaneRef], row)
 			}
 		}
 		return nil
@@ -835,8 +849,15 @@ func (i *streamIndex) nativePosition(key []byte, kind indexKind, message, tool s
 		return out, nil
 	}
 	err := i.query(func(db *gorm.DB) error {
+		identity, lane, err := findNativeRefs(db, i.coverage.Stream, key, message)
+		if err != nil || identity == 0 || (message != "" && lane == 0) {
+			return err
+		}
 		query := db.Table("conversation_positions INDEXED BY conversation_row_native").
-			Where("stream = ? AND native IS NOT NULL AND native = ? AND message = ? AND kind = ?", i.coverage.Stream, key, message, kind)
+			Where("stream = ? AND native_ref <> 0 AND native_ref = ? AND kind = ?", i.coverage.Stream, identity, kind)
+		if message != "" {
+			query = query.Where("lane_ref = ?", lane)
+		}
 		if tool != "" {
 			query = query.Where("tool = ?", tool)
 		}

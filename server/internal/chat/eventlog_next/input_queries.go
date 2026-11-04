@@ -10,6 +10,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	"gorm.io/gorm"
 )
 
 const nativeDirectory = "native-conversations"
@@ -37,6 +38,9 @@ func (s *Store) ReadVersion(ctx context.Context, chatID string) (int64, error) {
 func (s *Store) ensureReverseCoverage(ctx context.Context) error {
 	s.reverseMu.Lock()
 	defer s.reverseMu.Unlock()
+	if err := s.indexes.with(ctx, func(*gorm.DB) error { return nil }); err != nil {
+		return err
+	}
 	epoch, dirty := s.indexes.reverseState()
 	if !s.reverseReady || s.reverseEpoch != epoch {
 		if err := s.catalog.Refresh(); err != nil {
@@ -53,7 +57,13 @@ func (s *Store) ensureReverseCoverage(ctx context.Context) error {
 				return err
 			}
 		}
-		s.reverseEpoch, dirty = s.indexes.reverseState()
+		var after uint64
+		after, dirty = s.indexes.reverseState()
+		if after != epoch {
+			s.reverseReady = false
+			return status_error.ChatLogIndexCorrupted
+		}
+		s.reverseEpoch = after
 		s.reverseReady = true
 	}
 	for _, path := range dirty {
@@ -72,6 +82,30 @@ func (s *Store) ensureReverseCoverage(ctx context.Context) error {
 			continue
 		}
 		if _, err := s.ReadVersion(ctx, strings.TrimSuffix(filepath.Base(path), ".jsonl")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Store) prepareNativeCoverage(ctx context.Context) error {
+	entries, err := os.ReadDir(filepath.Join(s.root, nativeDirectory))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return status_error.ChatLogError
+	}
+	for _, entry := range entries {
+		base := entry.Name()
+		if entry.IsDir() || filepath.Ext(base) != ".jsonl" {
+			continue
+		}
+		shard, err := strconv.ParseUint(strings.TrimSuffix(base, ".jsonl"), 16, 8)
+		if err != nil || shard >= streamShards {
+			continue
+		}
+		if err := s.loadNativeShard(ctx, int(shard), filepath.Join(s.root, nativeBucketPath(int(shard)))); err != nil {
 			return err
 		}
 	}
@@ -183,4 +217,64 @@ func (s *Store) readAdmissionRows(ctx context.Context, session agent.NativeSessi
 		out[id] = agent.DurableHostInput{Ref: agent.HostInputRef{ChatID: chatID, HostInvocationID: input.HostInvocationID}, Input: *input}
 	}
 	return nil
+}
+
+// prepareInputClaims acquires admission locks in bucket order, before any stream lock.
+// SQLite checks ownership only after the caller has handled an existing command receipt.
+func (s *Store) prepareInputClaims(ctx context.Context, inputs []agent.HostInput) (func() error, func(), error) {
+	noop := func() {}
+	if len(inputs) == 0 {
+		return func() error { return nil }, noop, nil
+	}
+	var locked [streamShards]bool
+	keys := make([][]byte, 0, len(inputs))
+	seen := make(map[string]bool, len(inputs))
+	for _, input := range inputs {
+		locked[nativeShard(input.Session)] = true
+		key := adapterRowID(input.Session, input.AdapterInputID)
+		if seen[string(key)] {
+			return nil, noop, status_error.ChatLogIdempotencyConflict
+		}
+		seen[string(key)] = true
+		keys = append(keys, key)
+	}
+	for shard, hold := range locked {
+		if hold {
+			s.admissions[shard].Lock()
+		}
+	}
+	release := func() {
+		for shard := len(locked) - 1; shard >= 0; shard-- {
+			if locked[shard] {
+				s.admissions[shard].Unlock()
+			}
+		}
+	}
+	if err := s.ensureReverseCoverage(ctx); err != nil {
+		release()
+		return nil, noop, err
+	}
+	epoch, _ := s.indexes.reverseState()
+	check := func() error {
+		var row rowIndex
+		var changed bool
+		err := s.indexes.with(ctx, func(db *gorm.DB) error {
+			changed = epoch != s.indexes.epoch
+			if changed {
+				return nil
+			}
+			return db.Select("cursor").Where("adapter IS NOT NULL AND adapter IN ?", keys).Limit(1).Find(&row).Error
+		})
+		if err != nil {
+			return err
+		}
+		if changed {
+			return status_error.ChatLogIndexCorrupted
+		}
+		if row.Cursor != 0 {
+			return status_error.ChatLogIdempotencyConflict
+		}
+		return nil
+	}
+	return check, release, nil
 }

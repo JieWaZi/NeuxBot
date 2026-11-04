@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"hash"
 	"os"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
+	"gorm.io/gorm"
 )
 
 const maximumToolPatchDepth = 8
@@ -59,6 +59,10 @@ type nativeBody struct {
 	First int64 `json:"f"`
 	// Last is the inclusive end of the effective native text range.
 	Last int64 `json:"l"`
+	// IncludeCommentary retains prior commentary if an exact later classification promoted it.
+	IncludeCommentary bool `json:"c,omitempty"`
+	// Tail is the exact suffix added by the terminal after the retained prefix.
+	Tail string `json:"s,omitempty"`
 	// Digest authenticates the complete reconstructed text.
 	Digest [32]byte `json:"d"`
 }
@@ -98,6 +102,8 @@ func validNativeFragment(f nativeFragment) bool {
 				p.Depth <= maximumToolPatchDepth && p.Prefix >= 0 && p.Suffix >= 0
 		}
 		return json.Valid(m.Data)
+	case agent.MessageClassify:
+		return (m.ContentType == constants.RuntimeEventTypeTextDelta || m.ContentType == constants.RuntimeEventTypeCommentaryDelta) && m.Text == "" && m.ToolCallID == "" && len(m.Data) == 0 && f.Patch == nil
 	case agent.MessageEvent:
 		if m.Text != "" || f.Patch != nil || !json.Valid(m.Data) {
 			return false
@@ -116,6 +122,9 @@ func isFinalText(t constants.RuntimeEventType) bool {
 	return t == "" || t == constants.RuntimeEventTypeTextDelta
 }
 
+func isClassifiableText(t constants.RuntimeEventType) bool {
+	return isFinalText(t) || t == constants.RuntimeEventTypeCommentaryDelta
+}
 func isTextContent(t constants.RuntimeEventType) bool {
 	return isFinalText(t) || t == constants.RuntimeEventTypeCommentaryDelta || t == constants.RuntimeEventTypeThinkingDelta
 }
@@ -158,11 +167,13 @@ func nativeRowID(key agent.NativeResultKey) []byte {
 }
 func nativeID(key agent.NativeResultKey) string { return hex.EncodeToString(nativeRowID(key)) }
 
+func nativeShard(session agent.NativeSessionKey) int {
+	data, _ := json.Marshal(session)
+	return int(sha256.Sum256(data)[0] % streamShards)
+}
 func (s *Store) nativeStream(key agent.NativeResultKey) (*streamSlot, string) {
-	data, _ := json.Marshal(key.Session)
-	shard := sha256.Sum256(data)[0] % streamShards
-	path := filepath.Join(s.root, nativeDirectory, fmt.Sprintf("%02x.jsonl", shard))
-	return &s.natives[shard], path
+	shard := nativeShard(key.Session)
+	return &s.natives[shard], filepath.Join(s.root, nativeBucketPath(shard))
 }
 
 func (s *Store) CommitNativeFragments(ctx context.Context, batch agent.NativeFragmentBatch) (agent.NativeFragmentRange, error) {
@@ -343,7 +354,15 @@ func (s *Store) visitNativeRange(ctx context.Context, r agent.NativeFragmentRang
 	if !validNativeRange(r) || r.Last > idx.version() {
 		return status_error.ChatLogNativeOutcomePending
 	}
-	id := nativeRowID(r.Key)
+	var identity, lane int64
+	err = idx.query(func(db *gorm.DB) error {
+		var e error
+		identity, lane, e = findNativeRefs(db, idx.coverage.Stream, nativeRowID(r.Key), r.MessageID)
+		return e
+	})
+	if err != nil {
+		return err
+	}
 	rows, err := idx.between(r.First, r.Last)
 	if err != nil {
 		return err
@@ -352,7 +371,7 @@ func (s *Store) visitNativeRange(ctx context.Context, r agent.NativeFragmentRang
 		return status_error.ChatLogCorrupted
 	}
 	for _, row := range rows {
-		if row.Kind < indexNativeTextAppend || row.Kind > indexNativeEvent || !bytes.Equal(row.Native, id) || row.Message != r.MessageID {
+		if identity == 0 || lane == 0 || row.NativeRef != identity || row.LaneRef != lane || !isNativeFragmentKind(row.Kind) {
 			return status_error.ChatLogRecordInvalid
 		}
 	}
@@ -429,7 +448,12 @@ func (s *Store) CommitNativeResult(ctx context.Context, result agent.NativeResul
 }
 
 func findNativeBody(ctx context.Context, path string, idx *streamIndex, key agent.NativeResultKey, final *agent.NativeFinalMessage) (*nativeBody, error) {
-	ranges, err := idx.nativeText(nativeRowID(key), final.ID)
+	classification, err := idx.nativePosition(nativeRowID(key), indexNativeClassification, final.ID, "")
+	if err != nil {
+		return nil, err
+	}
+	includeCommentary := classification.Content == constants.RuntimeEventTypeTextDelta
+	ranges, err := idx.nativeText(nativeRowID(key), final.ID, includeCommentary)
 	if err != nil {
 		return nil, err
 	}
@@ -442,31 +466,37 @@ func findNativeBody(ctx context.Context, path string, idx *streamIndex, key agen
 	}
 	defer file.Close()
 	h := sha256.New()
-	if err := collectNativeText(ctx, file, key, final.ID, ranges, h, nil); err != nil {
+	length, err := collectNativeText(ctx, file, key, final.ID, ranges, h, nil)
+	if err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256([]byte(final.Text))
-	if !bytes.Equal(h.Sum(nil), sum[:]) {
+	if length > len(final.Text) {
 		return nil, nil
 	}
-	return &nativeBody{MessageID: final.ID, First: ranges[0].Cursor, Last: ranges[len(ranges)-1].Cursor, Digest: sum}, nil
+	prefix := sha256.Sum256([]byte(final.Text[:length]))
+	if !bytes.Equal(h.Sum(nil), prefix[:]) {
+		return nil, nil
+	}
+	return &nativeBody{MessageID: final.ID, First: ranges[0].Cursor, Last: ranges[len(ranges)-1].Cursor, Digest: sha256.Sum256([]byte(final.Text)), Tail: final.Text[length:], IncludeCommentary: includeCommentary}, nil
 }
 
-func collectNativeText(ctx context.Context, file *os.File, key agent.NativeResultKey, message string, rows []rowIndex, h hash.Hash, b *strings.Builder) error {
+func collectNativeText(ctx context.Context, file *os.File, key agent.NativeResultKey, message string, rows []rowIndex, h hash.Hash, b *strings.Builder) (int, error) {
+	var length int
 	for _, pos := range rows {
 		if err := contextError(ctx); err != nil {
-			return err
+			return 0, err
 		}
 		row, err := readDiskRow(file, pos.Where)
-		if err != nil || row.Fragment == nil || row.Fragment.Key != key || row.Fragment.MessageID != message || !isFinalText(row.Fragment.Change.ContentType) {
-			return status_error.ChatLogCorrupted
+		if err != nil || row.Fragment == nil || row.Fragment.Key != key || row.Fragment.MessageID != message || !isClassifiableText(row.Fragment.Change.ContentType) {
+			return 0, status_error.ChatLogCorrupted
 		}
+		length += len(row.Fragment.Change.Text)
 		_, _ = h.Write([]byte(row.Fragment.Change.Text))
 		if b != nil {
 			b.WriteString(row.Fragment.Change.Text)
 		}
 	}
-	return nil
+	return length, nil
 }
 
 func (s *Store) readNativeTerminal(ctx context.Context, key agent.NativeResultKey) (nativeTerminal, error) {
@@ -511,7 +541,7 @@ func (s *Store) readTerminal(ctx context.Context, key agent.NativeResultKey, bod
 	if !body || t.Body == nil {
 		return t, nil
 	}
-	cursors, err := idx.nativeText(id, t.Body.MessageID)
+	cursors, err := idx.nativeText(id, t.Body.MessageID, t.Body.IncludeCommentary)
 	if err != nil {
 		return nativeTerminal{}, err
 	}
@@ -530,9 +560,11 @@ func readNativeBody(ctx context.Context, file *os.File, key agent.NativeResultKe
 		return nil, status_error.ChatLogCorrupted
 	}
 	h, text := sha256.New(), new(strings.Builder)
-	if err := collectNativeText(ctx, file, key, body.MessageID, rows, h, text); err != nil {
+	if _, err := collectNativeText(ctx, file, key, body.MessageID, rows, h, text); err != nil {
 		return nil, err
 	}
+	_, _ = h.Write([]byte(body.Tail))
+	text.WriteString(body.Tail)
 	if !bytes.Equal(h.Sum(nil), body.Digest[:]) {
 		return nil, status_error.ChatLogCorrupted
 	}
@@ -559,9 +591,9 @@ func (s *Store) ConfirmNativeResult(ctx context.Context, key agent.NativeResultK
 		if ref.ChatID == "" {
 			input, err = s.readDetachedInput(ctx, key.Session, ref.HostInvocationID)
 		} else {
-			var relation agent.InputConsumption
-			input, relation, err = s.readHostRelation(ctx, ref)
-			if err == nil && relation.Result != key {
+			var relation *agent.InputConsumption
+			input, relation, err = s.ReadHostInputConsumption(ctx, ref)
+			if err == nil && (relation == nil || relation.Result != key) {
 				return status_error.ChatLogNativeOutcomePending
 			}
 		}
@@ -600,6 +632,11 @@ func (s *Store) CommitDetachedInput(ctx context.Context, input agent.HostInput) 
 	if err != nil {
 		return err
 	}
+	check, release, err := s.prepareInputClaims(ctx, []agent.HostInput{input})
+	if err != nil {
+		return err
+	}
+	defer release()
 	slot, path := s.nativeStream(agent.NativeResultKey{Session: input.Session})
 	slot.mu.Lock()
 	defer slot.mu.Unlock()
@@ -616,6 +653,9 @@ func (s *Store) CommitDetachedInput(ctx context.Context, input agent.HostInput) 
 			return status_error.ChatLogIdempotencyConflict
 		}
 		return nil
+	}
+	if err := check(); err != nil {
+		return err
 	}
 	header := makeHeader(key, request, idx.version(), 1)
 	return slot.append(ctx, path, idx, header, []diskRow{row}, raw)
@@ -647,4 +687,8 @@ func (s *Store) readDetachedInput(ctx context.Context, session agent.NativeSessi
 		return input, status_error.ChatLogCorrupted
 	}
 	return *row.DetachedInput, nil
+}
+
+func isNativeFragmentKind(k indexKind) bool {
+	return k == indexNativeClassification || (k >= indexNativeTextAppend && k <= indexNativeEvent)
 }

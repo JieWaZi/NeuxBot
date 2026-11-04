@@ -19,6 +19,8 @@ type ConversationStore interface {
 	// ReadBinding returns nil when the Chat has no usable durable binding.
 	ReadBinding(context.Context, string) (*NativeBinding, error)
 	ReadTurn(context.Context, string, string) ([]ConversationRecord, error)
+	// ReadHostInputConsumption returns the admitted input and its relation when known.
+	ReadHostInputConsumption(context.Context, HostInputRef) (HostInput, *InputConsumption, error)
 	CommitDetachedInput(context.Context, HostInput) error
 	CommitNativeFragments(context.Context, NativeFragmentBatch) (NativeFragmentRange, error)
 	ReadNativeFragments(context.Context, NativeFragmentRange) ([]MessageChange, error)
@@ -99,6 +101,10 @@ const (
 	MessageNativeFinal    MessageChangeKind = "native_final"
 	MessageNativeFragment MessageChangeKind = "native_fragment"
 	MessageEvent          MessageChangeKind = "event"
+
+	// MessageClassify changes text/commentary presentation for the exact native message.
+	// It has ContentType and no body, and is linked like any native fragment batch.
+	MessageClassify MessageChangeKind = "classify"
 )
 
 // MessageChange stores a bounded fragment, complete replacement, or canonical reference.
@@ -221,6 +227,34 @@ type NativeBinding struct {
 	Cleared bool `json:"cleared,omitempty"`
 	// Configuration contains the safe effective settings and compatibility evidence.
 	Configuration json.RawMessage `json:"configuration,omitempty"`
+	// Handoff retains the exact source and any input claim for a replacement session.
+	Handoff *NativeHandoff `json:"handoff,omitempty"`
+}
+
+// NativeHandoff contains references to a frozen replacement-session history input.
+type NativeHandoff struct {
+	// History lists completed user/assistant pairs from oldest to newest.
+	History []HandoffPair `json:"history,omitempty"`
+	// Summary points to the optional canonical native summary.
+	Summary *NativeResultKey `json:"summary,omitempty"`
+	// Claim names the admitted host input that attempted to send this handoff.
+	Claim *HandoffClaim `json:"claim,omitempty"`
+}
+
+// HandoffPair identifies one completed user and assistant exchange.
+type HandoffPair struct {
+	// UserMessageID identifies the preserved user input.
+	UserMessageID string `json:"userMessageId"`
+	// AssistantMessageID identifies the preserved completed reply.
+	AssistantMessageID string `json:"assistantMessageId"`
+}
+
+// HandoffClaim identifies the admitted input that owns the handoff attempt.
+type HandoffClaim struct {
+	// HostInvocationID identifies the admitted host input.
+	HostInvocationID string `json:"hostInvocationId"`
+	// AdapterInputID preserves the adapter identity frozen by BeforeSubmit.
+	AdapterInputID string `json:"adapterInputId"`
 }
 
 // HostInput captures identity before submission without asserting native acceptance.

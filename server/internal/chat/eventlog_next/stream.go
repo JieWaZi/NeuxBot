@@ -19,12 +19,14 @@ import (
 	"gorm.io/gorm"
 )
 
-// streamSlot serializes one shard and bounds the number of warm metadata indexes.
+// streamSlot serializes authority access for one shard.
 type streamSlot struct {
 	// mu protects writes, recovery and reads of the same stream.
 	mu sync.Mutex
 	// indexes is the shared disk-backed positioning owner.
 	indexes *indexDB
+	// store resolves native dependencies before rebuilding a public stream.
+	store *Store
 }
 
 // diskRow is one version-2 semantic operation.
@@ -42,7 +44,7 @@ type diskRow struct {
 // rowIndex stores just enough identity to select an exact read.
 type rowIndex struct {
 	// Stream is the compact technical stream reference.
-	Stream int64 `gorm:"primaryKey;autoIncrement:false;index:conversation_row_message,priority:1,where:message_ref <> 0;index:conversation_row_execution,priority:1,where:execution_ref <> 0;index:conversation_row_host,priority:1,where:host <> '';index:conversation_row_native,priority:1,where:native IS NOT NULL"`
+	Stream int64 `gorm:"primaryKey;autoIncrement:false;index:conversation_row_message,priority:1,where:message_ref <> 0 AND NOT display_link;index:conversation_row_execution,priority:1,where:execution_ref <> 0;index:conversation_row_host,priority:1,where:host <> '';index:conversation_row_native,priority:1,where:native_ref <> 0"`
 	// Cursor is the logical position within the authoritative stream.
 	Cursor int64 `gorm:"primaryKey;autoIncrement:false;index:conversation_row_message,priority:3;index:conversation_row_execution,priority:3;index:conversation_row_host,priority:4;index:conversation_row_native,priority:5"`
 	// Where locates the exact raw JSON row in the stream.
@@ -51,8 +53,8 @@ type rowIndex struct {
 	At int64
 	// LegacyStart is the legacy decoding scope cursor, or zero for a v2 row.
 	LegacyStart int64
-	// Message is interned for public rows and retained directly only in native buckets.
-	Message string `gorm:"index:conversation_row_native,priority:3"`
+	// Message is supplied by the authority and interned before indexing.
+	Message string `gorm:"-"`
 	// MessageRef is the compact reference to the public message anchor.
 	MessageRef int64 `gorm:"index:conversation_row_message,priority:2"`
 	// Execution is the authoritative identity supplied to the index writer.
@@ -61,12 +63,22 @@ type rowIndex struct {
 	ExecutionRef int64 `gorm:"index:conversation_row_execution,priority:2"`
 	// Host identifies the associated host input.
 	Host string `gorm:"index:conversation_row_host,priority:2"`
-	// Native is a binary digest of the canonical native identity, absent on public rows.
-	Native []byte `gorm:"index:conversation_row_native,priority:2"`
+	// Native is the authoritative native identity supplied to the index writer.
+	Native []byte `gorm:"-"`
+	// NativeRef is the first cursor for this native invocation or detached input.
+	NativeRef int64 `gorm:"index:conversation_row_native,priority:2"`
+	// LaneRef is the first cursor for this native message.
+	LaneRef int64 `gorm:"index:conversation_row_native,priority:4"`
+	// Project is the original committed reference, used only when deriving effective display.
+	Project *agent.MessageChange `gorm:"-"`
+	// Revision is the producer-assigned revision of a native change.
+	Revision int64
+	// DisplayLink excludes native reference rows from ordinary message positions.
+	DisplayLink bool
 	// Tool identifies the tool affected by this row.
 	Tool string
 	// Kind drives derived index projections.
-	Kind indexKind `gorm:"index:conversation_row_host,priority:3;index:conversation_row_native,priority:4"`
+	Kind indexKind `gorm:"index:conversation_row_host,priority:3;index:conversation_row_native,priority:3"`
 	// Content distinguishes final text and each kind of tool or reasoning segment.
 	Content constants.RuntimeEventType
 	// Adapter addresses a durable input by its frozen session and adapter ID.
@@ -98,6 +110,7 @@ const (
 	indexNativeTool
 	indexNativeEvent
 	indexDetachedInput
+	indexNativeClassification
 )
 
 func contextError(ctx context.Context) error {
@@ -122,6 +135,7 @@ func (s *streamSlot) load(ctx context.Context, path string, legacy bool) (*strea
 	idx := &streamIndex{db: s.indexes, ctx: ctx, coverage: streamCoverage{Path: rel}}
 	info, err := os.Stat(path)
 	if errors.Is(err, os.ErrNotExist) {
+		s.indexes.markDirty(rel, false)
 		return idx, nil
 	}
 	if err != nil || !info.Mode().IsRegular() {
@@ -131,7 +145,17 @@ func (s *streamSlot) load(ctx context.Context, path string, legacy bool) (*strea
 		return nil, err
 	}
 	if idx.coverage.Stream != 0 && idx.coverage.Size == info.Size() && idx.coverage.Stamp == info.ModTime().UnixNano() {
+		s.indexes.markDirty(rel, false)
 		return idx, nil
+	}
+	if legacy {
+		// Native authority precedes a public link. Resolve its locator before taking SQLite's transaction lock.
+		if err := s.store.prepareNativeCoverage(ctx); err != nil {
+			return nil, err
+		}
+		if err := idx.loadCoverage(); err != nil {
+			return nil, err
+		}
 	}
 	if err := idx.rebuild(path, legacy); err != nil {
 		return nil, err
@@ -315,6 +339,9 @@ func (s *streamSlot) append(ctx context.Context, path string, idx *streamIndex, 
 	if err != nil {
 		return status_error.ChatLogError
 	}
+	// A complete frame can survive an ambiguous sync error. Admission checks
+	// recover this stream before trusting the inverse input index again.
+	s.indexes.markDirty(idx.coverage.Path, true)
 	n, writeErr := file.Write(frame)
 	syncErr := file.Sync()
 	closeErr := file.Close()

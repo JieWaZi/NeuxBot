@@ -1,10 +1,10 @@
 package eventlog_next
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -247,36 +247,37 @@ func (s *Store) ReadTurn(ctx context.Context, chatID, executionID string) ([]age
 	return result, nil
 }
 
-func (s *Store) readHostRelation(ctx context.Context, ref agent.HostInputRef) (agent.HostInput, agent.InputConsumption, error) {
+// ReadHostInputConsumption reads the admission even if its native consumption is unresolved.
+func (s *Store) ReadHostInputConsumption(ctx context.Context, ref agent.HostInputRef) (agent.HostInput, *agent.InputConsumption, error) {
 	var input agent.HostInput
-	var consumption agent.InputConsumption
+	var consumption *agent.InputConsumption
 	r, err := s.openChat(ctx, ref.ChatID)
 	if err != nil {
-		return input, consumption, err
+		return input, nil, err
 	}
 	defer r.close()
 	rows, err := r.index.hostRows(ref.HostInvocationID)
 	if err != nil {
-		return input, consumption, err
-	}
-	if len(rows) != 2 {
-		return input, consumption, status_error.ChatLogNativeOutcomePending
+		return input, nil, err
 	}
 	reader := newRecordReader(r, rows)
 	for _, pos := range rows {
 		row, err := reader.get(ctx, pos)
 		if err != nil {
-			return input, consumption, err
+			return input, nil, err
 		}
 		switch {
 		case row.Change.Input != nil:
 			input = *row.Change.Input
 		case row.Change.Consumption != nil:
-			consumption = *row.Change.Consumption
+			consumption = row.Change.Consumption
 		}
 	}
-	if input.HostInvocationID != ref.HostInvocationID || consumption.HostInvocationID != ref.HostInvocationID {
-		return input, consumption, status_error.ChatLogCorrupted
+	if input.HostInvocationID == "" && consumption == nil {
+		return input, nil, status_error.ChatLogNativeOutcomePending
+	}
+	if input.HostInvocationID != ref.HostInvocationID || (consumption != nil && consumption.HostInvocationID != ref.HostInvocationID) {
+		return input, nil, status_error.ChatLogCorrupted
 	}
 	return input, consumption, nil
 }
@@ -321,43 +322,15 @@ func (s *Store) ReadMessages(ctx context.Context, q agent.MessageQuery) (agent.M
 	if err := reader.prepareLegacy(); err != nil {
 		return page, err
 	}
-	projections := make([]messageProjection, 0, len(anchors))
-	for _, anchor := range anchors {
-		rows := groups[anchor.Ref]
-		m, err := readChatMessage(ctx, reader, anchor, rows)
-		if err != nil {
-			return agent.MessagePage{}, err
-		}
-		projections = append(projections, m)
-	}
-	page.Messages, err = s.projectMessages(ctx, projections)
+	page.Messages, err = s.projectPage(ctx, reader, anchors, groups)
 	if err != nil {
 		return agent.MessagePage{}, err
 	}
 	return page, nil
 }
 
-// messageProjection joins only the Chat facts and native ranges selected for this page.
-type messageProjection struct {
-	// message carries Chat facts and later the effective native display parts.
-	message agent.StoredMessage
-	// refs is the ordered set of native range links in Chat.
-	refs []agent.NativeFragmentRange
-	// final points to the canonical calibration of this public reply.
-	final *agent.NativeResultKey
-	// firstText is the original display position of the native answer.
-	firstText int
-	// nativeParts holds effective selected operations by their display order.
-	nativeParts map[int]agent.MessageChange
-	// finalText is the reconstructed native final answer, if one exists.
-	finalText *agent.NativeFinalMessage
-	// count bounds the native display ordering for this message.
-	count int
-}
-
-func readChatMessage(ctx context.Context, reader *recordReader, anchor messageAnchor, positions []rowIndex) (messageProjection, error) {
-	var p messageProjection
-	m := agent.StoredMessage{ID: string(anchor.Message), Cursor: anchor.Cursor, Role: constants.MessageRoleAssistant}
+func readChatMessage(ctx context.Context, reader *recordReader, anchor messageAnchor, positions []rowIndex) (agent.StoredMessage, error) {
+	m := agent.StoredMessage{ID: string(anchor.Message), Cursor: anchor.Cursor, Role: constants.MessageRoleAssistant, Revision: anchor.Revision}
 	if anchor.Kind == indexUserMessage {
 		m.Role = constants.MessageRoleUser
 	}
@@ -365,35 +338,26 @@ func readChatMessage(ctx context.Context, reader *recordReader, anchor messageAn
 	for _, pos := range positions {
 		r, err := reader.get(ctx, pos)
 		if err != nil {
-			return p, err
+			return m, err
 		}
-		if fact := r.Change.Fact; fact != nil {
+		if f := r.Change.Fact; f != nil {
 			if m.ExecutionID == "" {
-				m.ExecutionID = fact.ExecutionID
+				m.ExecutionID = f.ExecutionID
 			}
-			if err := applyChatMessageFact(&m, &text, *fact); err != nil {
-				return p, err
+			if err := applyChatMessageFact(&m, &text, *f); err != nil {
+				return m, err
 			}
-			continue
 		}
-		if change := r.Change.Message; change != nil {
+		if c := r.Change.Message; c != nil {
 			if m.ExecutionID == "" {
-				m.ExecutionID = change.ExecutionID
+				m.ExecutionID = c.ExecutionID
 			}
-			m.Revision = max(m.Revision, change.Revision)
-			switch change.Kind {
-			case agent.MessageNativeFragment:
-				p.refs = append(p.refs, *change.Fragments)
-			case agent.MessageNativeFinal:
-				p.final = change.Result
-			case agent.MessageComplete:
-				m.Complete = true
-			}
+			m.Revision = max(m.Revision, c.Revision)
+			m.Complete = m.Complete || c.Kind == agent.MessageComplete
 		}
 	}
 	m.Text = text.String()
-	p.message = m
-	return p, nil
+	return m, nil
 }
 
 func applyChatMessageFact(m *agent.StoredMessage, text *strings.Builder, fact agent.ChatFact) error {
@@ -440,306 +404,207 @@ func applyChatMessageFact(m *agent.StoredMessage, text *strings.Builder, fact ag
 }
 
 // projectedNativeRow refers to a selected native operation without opening its body.
-type projectedNativeRow struct {
-	// ref identifies the canonical invocation and message.
-	ref agent.NativeFragmentRange
-	// cursor locates the change in that native stream.
-	cursor int64
-	// meta holds its kind and tool identity for choosing the effective version.
-	meta rowIndex
+// projectedPart ties a selected locator to its ordered public display slot.
+type projectedPart struct {
+	// locator comes from the current-only SQLite projection.
+	locator displayPosition
+	// message is the public page offset.
+	message int
+	// part is the offset inside that message's native parts.
+	part int
 }
 
-func (s *Store) nativePositions(ctx context.Context, refs []agent.NativeFragmentRange) ([]projectedNativeRow, error) {
-	byStream := make(map[*streamSlot][]int)
-	byRef := make([][]projectedNativeRow, len(refs))
-	for i, ref := range refs {
-		slot, _ := s.nativeStream(ref.Key)
-		byStream[slot] = append(byStream[slot], i)
+func (s *Store) projectPage(ctx context.Context, reader *recordReader, anchors []messageAnchor, groups map[int64][]rowIndex) ([]agent.StoredMessage, error) {
+	refs := make([]int64, 0, len(anchors))
+	for _, anchor := range anchors {
+		refs = append(refs, anchor.Ref)
 	}
-	for slot, indexes := range byStream {
-		if err := s.collectNativePositions(ctx, slot, refs, indexes, byRef); err != nil {
+	display, err := reader.stream.index.displayForMessages(refs)
+	if err != nil {
+		return nil, err
+	}
+	messages := make([]agent.StoredMessage, 0, len(anchors))
+	parts := make([][]agent.MessagePart, len(anchors))
+	byBucket := make(map[int][]projectedPart)
+	var anchorCursors []int64
+	for offset, anchor := range anchors {
+		m, err := readChatMessage(ctx, reader, anchor, groups[anchor.Ref])
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, m)
+		if m.ExecutionID == "" && anchor.ExecutionRef != 0 {
+			anchorCursors = append(anchorCursors, anchor.Cursor)
+		}
+		parts[offset] = make([]agent.MessagePart, len(display[anchor.Ref]))
+		for j, pos := range display[anchor.Ref] {
+			if pos.Kind != indexNativeClassification {
+				byBucket[pos.Bucket] = append(byBucket[pos.Bucket], projectedPart{pos, offset, j})
+			}
+		}
+	}
+	// An independently linked message may have no ordinary Chat fact on the page.
+	// Read its original anchor once to preserve the public execution identity.
+	anchorPositions, err := reader.stream.index.positions(anchorCursors)
+	if err != nil {
+		return nil, err
+	}
+	for offset, anchor := range anchors {
+		if messages[offset].ExecutionID != "" || anchor.ExecutionRef == 0 {
+			continue
+		}
+		original, err := reader.get(ctx, anchorPositions[anchor.Cursor])
+		if err != nil {
+			return nil, err
+		}
+		if original.Change.Message != nil {
+			messages[offset].ExecutionID = original.Change.Message.ExecutionID
+		}
+	}
+	for bucket, selected := range byBucket {
+		if err := s.readDisplayBucket(ctx, bucket, selected, parts); err != nil {
 			return nil, err
 		}
 	}
-	var rows []projectedNativeRow
-	for _, refs := range byRef {
-		rows = append(rows, refs...)
+	for offset, anchor := range anchors {
+		foldDisplay(&messages[offset], display[anchor.Ref], parts[offset])
 	}
-	return rows, nil
+	return messages, nil
 }
 
-func (s *Store) collectNativePositions(ctx context.Context, slot *streamSlot, refs []agent.NativeFragmentRange, indexes []int, out [][]projectedNativeRow) error {
-	_, path := s.nativeStream(refs[indexes[0]].Key)
+func (s *Store) readDisplayBucket(ctx context.Context, bucket int, selected []projectedPart, out [][]agent.MessagePart) error {
+	if bucket < 0 || bucket >= streamShards {
+		return status_error.ChatLogIndexCorrupted
+	}
+	slot := &s.natives[bucket]
 	slot.mu.Lock()
 	defer slot.mu.Unlock()
+	path := filepath.Join(s.root, nativeBucketPath(bucket))
 	idx, err := slot.load(ctx, path, false)
 	if err != nil {
 		return err
 	}
-	var all []int64
-	for _, i := range indexes {
-		ref := refs[i]
-		if !validNativeRange(ref) || ref.Last > idx.version() {
-			return status_error.ChatLogCorrupted
-		}
-		for cursor := ref.First; cursor <= ref.Last; cursor++ {
-			all = append(all, cursor)
-		}
+	cursors := make([]int64, 0, len(selected))
+	for _, entry := range selected {
+		cursors = append(cursors, entry.locator.NativeCursor)
 	}
-	positions, err := idx.positions(all)
+	positions, err := idx.positions(cursors)
 	if err != nil {
 		return err
 	}
-	for _, i := range indexes {
-		ref := refs[i]
-		id := nativeRowID(ref.Key)
-		rows := make([]projectedNativeRow, 0, ref.Last-ref.First+1)
-		for cursor := ref.First; cursor <= ref.Last; cursor++ {
-			row := positions[cursor]
-			if row.Kind < indexNativeTextAppend || row.Kind > indexNativeEvent || !bytes.Equal(row.Native, id) || row.Message != ref.MessageID {
-				return status_error.ChatLogCorrupted
-			}
-			rows = append(rows, projectedNativeRow{ref: ref, cursor: cursor, meta: row})
-		}
-		out[i] = rows
+	rows := make([]rowIndex, 0, len(positions))
+	for _, pos := range positions {
+		rows = append(rows, pos)
 	}
-	return nil
-}
-
-type nativeSelection struct {
-	// message is the position of the public message in the requested page.
-	message int
-	// order is the display position inside that message.
-	order int
-	// row locates the selected native operation.
-	row projectedNativeRow
-}
-
-type nativeProjectionGroup struct {
-	// path locates one shared native authority bucket.
-	path string
-	// rows are the effective fragment positions for the whole page in this bucket.
-	rows []nativeSelection
-	// finals maps one native final result to each selected public message that references it.
-	finals map[agent.NativeResultKey][]int
-}
-
-func (s *Store) projectMessages(ctx context.Context, messages []messageProjection) ([]agent.StoredMessage, error) {
-	var refs []agent.NativeFragmentRange
-	for _, p := range messages {
-		refs = append(refs, p.refs...)
-	}
-	positions, err := s.nativePositions(ctx, refs)
-	if err != nil {
-		return nil, err
-	}
-	groups := make(map[*streamSlot]*nativeProjectionGroup)
-	groupFor := func(key agent.NativeResultKey) *nativeProjectionGroup {
-		slot, path := s.nativeStream(key)
-		if groups[slot] == nil {
-			groups[slot] = &nativeProjectionGroup{path: path, finals: make(map[agent.NativeResultKey][]int)}
-		}
-		return groups[slot]
-	}
-	for m := range messages {
-		p := &messages[m]
-		for _, ref := range p.refs {
-			p.count += int(ref.Last - ref.First + 1)
-		}
-		rows := positions[:p.count]
-		positions = positions[p.count:]
-		first, selected := effectiveNativePositions(rows, p.final != nil)
-		p.firstText = first
-		for _, j := range selected {
-			row := rows[j]
-			group := groupFor(row.ref.Key)
-			group.rows = append(group.rows, nativeSelection{message: m, order: j, row: row})
-		}
-		if p.final != nil {
-			group := groupFor(*p.final)
-			group.finals[*p.final] = append(group.finals[*p.final], m)
-		}
-	}
-	for slot, group := range groups {
-		if err := readNativeProjectionGroup(ctx, slot, group, messages); err != nil {
-			return nil, err
-		}
-	}
-	result := make([]agent.StoredMessage, 0, len(messages))
-	for _, p := range messages {
-		result = append(result, foldNativeParts(p))
-	}
-	return result, nil
-}
-
-func effectiveNativePositions(rows []projectedNativeRow, final bool) (int, []int) {
-	type snapshotKey struct {
-		// native, message and tool identify the snapshot owner.
-		native, message, tool string
-		// content keeps tool input and execution snapshots independent.
-		content constants.RuntimeEventType
-	}
-	lastSnapshot := make(map[snapshotKey]int)
-	lastReplace, firstText := -1, -1
-	for i, row := range rows {
-		switch row.meta.Kind {
-		case indexNativeTool:
-			lastSnapshot[snapshotKey{string(row.meta.Native), row.meta.Message, row.meta.Tool, row.meta.Content}] = i
-		case indexNativeTextAppend, indexNativeTextReplace:
-			if !isFinalText(row.meta.Content) {
-				continue
-			}
-			if firstText < 0 {
-				firstText = i
-			}
-			if row.meta.Kind == indexNativeTextReplace {
-				lastReplace = i
-			}
-		}
-	}
-	selected := make([]int, 0, len(rows))
-	for i, row := range rows {
-		if row.meta.Kind == indexNativeTool && lastSnapshot[snapshotKey{string(row.meta.Native), row.meta.Message, row.meta.Tool, row.meta.Content}] != i {
-			continue
-		}
-		if (row.meta.Kind == indexNativeTextAppend || row.meta.Kind == indexNativeTextReplace) &&
-			isFinalText(row.meta.Content) && (final || i < lastReplace) {
-			continue
-		}
-		selected = append(selected, i)
-	}
-	if firstText < 0 {
-		firstText = len(rows)
-	}
-	return firstText, selected
-}
-
-func readNativeProjectionGroup(ctx context.Context, slot *streamSlot, group *nativeProjectionGroup, messages []messageProjection) error {
-	slot.mu.Lock()
-	defer slot.mu.Unlock()
-	idx, err := slot.load(ctx, group.path, false)
+	positions, err = idx.withPatchBases(rows)
 	if err != nil {
 		return err
 	}
-	file, err := os.Open(group.path)
+	file, err := os.Open(path)
 	if err != nil {
 		return status_error.ChatLogError
 	}
 	defer file.Close()
-	needed := make([]rowIndex, 0, len(group.rows))
-	for _, selection := range group.rows {
-		needed = append(needed, selection.row.meta)
-	}
-	positions, err := idx.withPatchBases(needed)
-	if err != nil {
-		return err
-	}
-	for _, selected := range group.rows {
+	terminals := make(map[int64]nativeTerminal)
+	var wanted []nativeBodyLookup
+	for _, entry := range selected {
 		if err := contextError(ctx); err != nil {
 			return err
 		}
-		row := selected.row
-		f, err := readFragment(file, positions, row.cursor, 0)
-		if err != nil || f.Key != row.ref.Key || f.MessageID != row.ref.MessageID {
-			return status_error.ChatLogCorrupted
+		d := entry.locator
+		pos := positions[d.NativeCursor]
+		if pos.Cursor == 0 || pos.LaneRef != d.Lane || pos.Kind != d.Kind {
+			return status_error.ChatLogIndexCorrupted
 		}
-		m := &messages[selected.message]
-		if m.nativeParts == nil {
-			m.nativeParts = make(map[int]agent.MessageChange)
-		}
-		m.nativeParts[selected.order] = f.Change
-	}
-	if len(group.finals) == 0 {
-		return nil
-	}
-	return readProjectionFinals(ctx, idx, file, group.finals, messages)
-}
-
-func readProjectionFinals(ctx context.Context, idx *streamIndex, file *os.File, finals map[agent.NativeResultKey][]int, messages []messageProjection) error {
-	keys := make([][]byte, 0, len(finals))
-	for key := range finals {
-		keys = append(keys, nativeRowID(key))
-	}
-	rows, err := idx.nativeTerminals(keys)
-	if err != nil {
-		return err
-	}
-	if len(rows) != len(finals) {
-		return status_error.ChatLogCorrupted
-	}
-	byKey := make(map[agent.NativeResultKey]nativeTerminal)
-	var bodies []nativeBodyLookup
-	for _, pos := range rows {
-		row, err := readDiskRow(file, pos.Where)
-		if err != nil || row.Terminal == nil || len(finals[row.Terminal.Result.Key]) == 0 {
-			return status_error.ChatLogCorrupted
-		}
-		t := *row.Terminal
-		byKey[t.Result.Key] = t
-		if t.Body != nil {
-			if t.Body.Last >= pos.Cursor {
+		if d.Kind == indexNativeTerminal {
+			if _, known := terminals[pos.Cursor]; known {
+				continue
+			}
+			row, err := readDiskRow(file, pos.Where)
+			if err != nil || row.Terminal == nil {
 				return status_error.ChatLogCorrupted
 			}
-			bodies = append(bodies, nativeBodyLookup{Key: t.Result.Key, Body: *t.Body})
-		}
-	}
-	locations, err := idx.bodyPositions(bodies)
-	if err != nil {
-		return err
-	}
-	for key, terminal := range byKey {
-		final := terminal.Result.FinalMessage
-		if terminal.Body != nil {
-			final, err = readNativeBody(ctx, file, key, *terminal.Body, locations[string(nativeRowID(key))])
-			if err != nil {
-				return err
+			t := *row.Terminal
+			terminals[pos.Cursor] = t
+			if t.Body != nil {
+				if t.Body.Last >= pos.Cursor {
+					return status_error.ChatLogCorrupted
+				}
+				wanted = append(wanted, nativeBodyLookup{pos.NativeRef, pos.LaneRef, *t.Body})
 			}
-		}
-		if final == nil {
-			return status_error.ChatLogCorrupted
-		}
-		for _, m := range finals[key] {
-			messages[m].finalText = final
-		}
-	}
-	return nil
-}
-
-func foldNativeParts(p messageProjection) agent.StoredMessage {
-	m := p.message
-	var text strings.Builder
-	text.WriteString(m.Text)
-	if p.finalText != nil {
-		text.Reset()
-		text.WriteString(p.finalText.Text)
-	}
-	for i := 0; i <= p.count; i++ {
-		if p.finalText != nil && i == p.firstText {
-			m.Parts = append(m.Parts, agent.MessagePart{Type: constants.RuntimeEventTypeTextDelta, Text: p.finalText.Text})
-		}
-		c, ok := p.nativeParts[i]
-		if !ok {
 			continue
 		}
-		kind := c.ContentType
+		f, err := readFragment(file, positions, pos.Cursor, 0)
+		if err != nil {
+			return err
+		}
+		kind := f.Change.ContentType
 		if kind == "" {
-			if c.Kind == agent.MessageToolSnapshot {
+			if f.Change.Kind == agent.MessageToolSnapshot {
 				kind = constants.RuntimeEventTypeToolUpdate
 			} else {
 				kind = constants.RuntimeEventTypeTextDelta
 			}
 		}
-		m.Revision = max(m.Revision, c.Revision)
-		m.Parts = append(m.Parts, agent.MessagePart{Type: kind, Text: c.Text, ToolCallID: c.ToolCallID, Data: c.Data})
-		if c.Kind == agent.MessageReplace {
-			text.Reset()
+		out[entry.message][entry.part] = agent.MessagePart{Type: kind, Text: f.Change.Text, ToolCallID: f.Change.ToolCallID, Data: f.Change.Data}
+	}
+	bodyRows, err := idx.bodyPositions(wanted)
+	if err != nil {
+		return err
+	}
+	for cursor, t := range terminals {
+		if t.Body != nil {
+			t.Result.FinalMessage, err = readNativeBody(ctx, file, t.Result.Key, *t.Body, bodyRows[positions[cursor].LaneRef])
+			if err != nil {
+				return err
+			}
+			terminals[cursor] = t
 		}
-		if kind == constants.RuntimeEventTypeTextDelta {
-			text.WriteString(c.Text)
+		if t.Result.FinalMessage == nil {
+			return status_error.ChatLogCorrupted
 		}
 	}
-	m.Text = text.String()
-	return m
+	for _, entry := range selected {
+		if entry.locator.Kind == indexNativeTerminal {
+			final := terminals[entry.locator.NativeCursor].Result.FinalMessage
+			out[entry.message][entry.part] = agent.MessagePart{Type: constants.RuntimeEventTypeTextDelta, Text: final.Text}
+		}
+	}
+	return nil
+}
+
+type displayLane struct {
+	// bucket scopes the durable native lane cursor.
+	bucket int
+	// lane is the first durable cursor of the native message.
+	lane int64
+}
+
+func foldDisplay(message *agent.StoredMessage, positions []displayPosition, parts []agent.MessagePart) {
+	classification := make(map[displayLane]constants.RuntimeEventType)
+	for _, pos := range positions {
+		if pos.Kind == indexNativeClassification {
+			classification[displayLane{pos.Bucket, pos.Lane}] = pos.Content
+		}
+	}
+	var text strings.Builder
+	text.WriteString(message.Text)
+	for j, pos := range positions {
+		if pos.Kind == indexNativeClassification {
+			continue
+		}
+		part := parts[j]
+		if pos.LaneText && pos.Kind != indexNativeTerminal {
+			if kind := classification[displayLane{pos.Bucket, pos.Lane}]; kind != "" {
+				part.Type = kind
+			}
+		}
+		message.Parts = append(message.Parts, part)
+		if part.Type == constants.RuntimeEventTypeTextDelta {
+			text.WriteString(part.Text)
+		}
+	}
+	message.Text = text.String()
 }
 
 // ReadHistoryCandidates locates completed turns without reading process or tool bodies.
@@ -825,11 +690,7 @@ func (s *Store) ReadMessage(ctx context.Context, chatID, messageID string) (agen
 	if err := reader.prepareLegacy(); err != nil {
 		return agent.StoredMessage{}, err
 	}
-	p, err := readChatMessage(ctx, reader, anchor, rows)
-	if err != nil {
-		return agent.StoredMessage{}, err
-	}
-	messages, err := s.projectMessages(ctx, []messageProjection{p})
+	messages, err := s.projectPage(ctx, reader, []messageAnchor{anchor}, groups)
 	if err != nil {
 		return agent.StoredMessage{}, err
 	}
