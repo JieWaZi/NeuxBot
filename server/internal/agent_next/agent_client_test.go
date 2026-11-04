@@ -313,10 +313,46 @@ func providerTestAccount(context.Context, AccountRequest) (AccountLease, error) 
 }
 
 type steeringProjectionFixture struct {
-	// Client supplies the unused common adapter methods.
+	// Client 提供本测试未调用的其他适配器操作。
 	native.Client
-	// steer records the direct request and provides the adapter's receipt.
+	// steer 记录直接请求并返回适配器回执。
 	steer func(context.Context, native.SteerRequest) (native.SteerResponse, error)
+	// meta 保存原生初始化时协商的元数据。
+	meta map[string]any
+}
+
+func (f steeringProjectionFixture) Initialize(context.Context, acp.InitializeRequest) (acp.InitializeResponse, error) {
+	return acp.InitializeResponse{ProtocolVersion: acp.ProtocolVersionNumber, Meta: f.meta}, nil
+}
+
+func TestProviderClientHonorsNativeSteeringAdvertisement(t *testing.T) {
+	enabled, disabled := true, false
+	for _, tc := range []struct {
+		// name 标识适配器提供的能力证据。
+		name string
+		// advertised 是可选的原生插话能力声明。
+		advertised *bool
+		// want 是直接客户端应公开的插话能力。
+		want bool
+	}{
+		{name: "absent metadata", want: true},
+		{name: "explicitly supported", advertised: &enabled, want: true},
+		{name: "explicitly unsupported", advertised: &disabled, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := steeringProjectionFixture{}
+			if tc.advertised != nil {
+				fixture.meta = map[string]any{"steering": map[string]any{"supported": *tc.advertised}}
+			}
+			client := &directAgentClient{native: fixture}
+			if err := client.initialize(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if client.Capabilities().Steer != tc.want {
+				t.Fatalf("steering capability = %t, want %t", client.Capabilities().Steer, tc.want)
+			}
+		})
+	}
 }
 
 func (f steeringProjectionFixture) Steer(ctx context.Context, req native.SteerRequest) (native.SteerResponse, error) {

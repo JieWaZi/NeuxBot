@@ -822,6 +822,11 @@ func (c *directAgentClient) initialize(ctx context.Context) error {
 		}
 	}
 	_, steer := c.native.(native.SteeringClient)
+	if metadata, ok := response.Meta["steering"].(map[string]any); ok {
+		if supported, ok := metadata["supported"].(bool); ok {
+			steer = steer && supported
+		}
+	}
 	_, compact := c.native.(native.CompactingClient)
 	_, outcomes := c.native.(native.NativeOutcomeReader)
 	c.capabilities = AgentCapabilities{
