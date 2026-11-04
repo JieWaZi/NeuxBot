@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
@@ -83,7 +82,7 @@ func (c *ModelCatalog) InvalidateAccount(accountID string, throughGeneration uin
 
 // ReadForRuntime refreshes through a management connection without opening a native thread.
 func (c *ModelCatalog) ReadForRuntime(ctx context.Context, runtimeID string, request ProviderConnectionRequest, version, accountModelFingerprint string, refresh bool) ModelCatalogSnapshot {
-	if c == nil || c.providers == nil || request.Account.Provider != constants.RuntimeIDCodex || request.Account.Subject == "" {
+	if c == nil || c.providers == nil || request.Account.Subject == "" {
 		return modelCatalogFailure(status_error.RuntimeUnavailable)
 	}
 	slot := modelCatalogSlot{runtime: runtimeID, account: providerAccount{provider: request.Account.Provider, id: request.Account.AccountID}}

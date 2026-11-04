@@ -94,7 +94,7 @@ func TestProviderRuntimeNativeInitialization(t *testing.T) {
 			trace := filepath.Join(req.Account.CWD, "trace")
 			releases := &providerReleaseTrace{}
 			runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: func(_ context.Context, account AccountRequest) (AccountLease, error) {
-				if account != req.Account {
+				if !account.Equal(req.Account) {
 					return AccountLease{}, status_error.AIAccountConfigurationInvalid
 				}
 				return AccountLease{
@@ -454,7 +454,7 @@ func TestProviderRuntimeCursorQuotaCleanupRetainsOwner(t *testing.T) {
 		CleanupTimeout: 150 * time.Millisecond,
 		AcquireAccount: func(context.Context, AccountRequest) (AccountLease, error) {
 			return AccountLease{
-				CursorQuota: &CursorQuotaLease{Endpoint: "http://127.0.0.1:1", ReadAccessToken: func(ctx context.Context) (string, error) {
+				CursorQuota: &CursorQuotaLease{NativeUserID: "7", Endpoint: "http://127.0.0.1:1", ReadAccessToken: func(ctx context.Context) (string, error) {
 					close(entered)
 					<-ctx.Done()
 					close(cancelled)

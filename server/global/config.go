@@ -462,11 +462,11 @@ func loadRuntime(ctx context.Context) error {
 		return mapCoreError("initialize_runtime_sdk", status_error.CoreRuntimeInitializationFailed, err)
 	}
 	RuntimeCatalog = sdk
-	AgentProviders = agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: AIAccountService.AcquireCodexAccount})
+	AgentProviders = agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: AIAccountService.AcquireAccount})
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
 		Accounts:                  AIAccountService,
 		ProviderRuntime:           AgentProviders,
-		ResolveCodexAccount:       AIAccountService.ResolveCodexAccount,
+		ResolveAccount:            AIAccountService.ResolveAccount,
 		AccountWorkspaceDirectory: filepath.Join(Config.DataDirectory, "account-workspaces"),
 		RuntimeCatalog:            RuntimeCatalog,
 		Environments:              RuntimeEnvironmentControllerManager,
@@ -516,12 +516,12 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	})
 	AIAccountService.SetIdleSessionCloser(AgentThreads.CloseIdleAccount)
 	providers, environments := AgentProviders, RuntimeEnvironmentService
-	AIAccountService.SetCodexAuthInvalidator(func(ctx context.Context, id string, generation uint64) {
+	AIAccountService.SetAccountAuthInvalidator(func(ctx context.Context, provider, id string, generation uint64) {
 		environments.InvalidateModelCatalog(id, generation)
 		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
 		defer cancel()
-		if err := providers.InvalidateAccount(closeCtx, constants.RuntimeIDCodex, id, generation); err != nil {
-			logx.Warn("invalidate_codex_account: ", err)
+		if err := providers.InvalidateAccount(closeCtx, provider, id, generation); err != nil {
+			logx.Warn("invalidate_provider_account: ", err)
 		}
 	})
 	executionCore, err := execution.New(execution.Config{
@@ -558,7 +558,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		},
 		Accounts:            AIAccountService,
 		Threads:             AgentThreads,
-		ResolveAccount:      AIAccountService.ResolveCodexAccount,
+		ResolveAccount:      AIAccountService.ResolveAccount,
 		RuntimeSummaries:    RuntimeCatalog.Runtimes(),
 		Journal:             chatModule,
 		DormantChats:        chatModule,

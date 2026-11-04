@@ -13,6 +13,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
@@ -346,11 +347,15 @@ func (m *service) startMessage(
 		return AcceptedExecution{}, status_error.RuntimeUnavailable
 	}
 	// Scoped entries require native enforcement over inherited MCP and plugin settings.
-	if nativeProvider(runtimeEnvironment) != constants.RuntimeIDCodex || request.allowedConnectorIDs != nil || request.allowedAgentDomains != nil {
+	if (nativeProvider(runtimeEnvironment) != constants.RuntimeIDCodex && nativeProvider(runtimeEnvironment) != constants.RuntimeIDClaude && nativeProvider(runtimeEnvironment) != constants.RuntimeIDCursor) || request.allowedConnectorIDs != nil || request.allowedAgentDomains != nil {
 		return AcceptedExecution{}, status_error.RuntimePolicyUnsupported
 	}
 	requiredPermissionLevel := request.runtime.PermissionLevel
 	if request.runtime.WorkspaceReadOnly {
+		// Approval modes and workspace write confinement do not enforce read-only access.
+		if nativeProvider(runtimeEnvironment) != constants.RuntimeIDCodex {
+			return AcceptedExecution{}, status_error.RuntimePolicyUnsupported
+		}
 		requiredPermissionLevel = constants.PermissionLevelDefault
 	}
 	// 一次性生成本轮全部稳定标识，后续 JSONL、SQLite 查询索引和 Runtime 调用共用同一身份。
@@ -430,14 +435,15 @@ func (m *service) startMessage(
 			}
 			if request.runtime.Model == "" && !request.runtime.ConfigurationResolved {
 				request.runtime.Model = account.SelectedModels[0]
-			}
-			allowed := false
-			for _, id := range account.SelectedModels {
-				if id == request.runtime.Model {
-					allowed = true
-					break
+				if nativeProvider(runtimeEnvironment) == constants.RuntimeIDClaude {
+					request.runtime.Model, _ = aiaccount.ManagedClaudeModelTarget(account, "")
 				}
 			}
+			allowed := slices.Contains(account.SelectedModels, request.runtime.Model)
+			if nativeProvider(runtimeEnvironment) == constants.RuntimeIDClaude {
+				_, allowed = aiaccount.ManagedClaudeModelTarget(account, request.runtime.Model)
+			}
+
 			if !allowed {
 				return AcceptedExecution{}, status_error.BadRequest
 			}

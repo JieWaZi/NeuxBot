@@ -22,6 +22,10 @@ const SystemAccountID = "system"
 
 // AccountRequest identifies the frozen credential selection and its native launch inputs.
 type AccountRequest struct {
+	// Executable is the selected CLI used to verify its native account identity.
+	Executable string
+	// PrefixArgs identifies the selected executable wrapper for account probes.
+	PrefixArgs []string
 	// Provider identifies the built-in runtime.
 	Provider string
 	// AccountID identifies the host account, including the explicit system account.
@@ -32,10 +36,24 @@ type AccountRequest struct {
 	AuthGeneration uint64
 	// ConfigHome is the frozen configuration root when the account authority selects it.
 	ConfigHome string
+	// NativeConfigHome preserves a provider's lexical credential scope; empty selects its native default.
+	NativeConfigHome string
+	// DataHome is the native session storage root, separate from credential identity.
+	DataHome string
+	// ConfigFingerprint freezes noncredential account settings independently of its subject.
+	ConfigFingerprint string
 	// CWD is the absolute, resolved working directory.
 	CWD string
 	// Model is the selected model when account materialization depends on it.
 	Model string
+}
+
+// Equal compares the complete frozen selection, including a wrapper's argument vector.
+func (r AccountRequest) Equal(other AccountRequest) bool {
+	return r.Executable == other.Executable && slices.Equal(r.PrefixArgs, other.PrefixArgs) &&
+		r.Provider == other.Provider && r.AccountID == other.AccountID && r.Subject == other.Subject &&
+		r.AuthGeneration == other.AuthGeneration && r.ConfigHome == other.ConfigHome && r.NativeConfigHome == other.NativeConfigHome && r.DataHome == other.DataHome &&
+		r.CWD == other.CWD && r.Model == other.Model && r.ConfigFingerprint == other.ConfigFingerprint
 }
 
 // AccountLease transfers actual account resources, including on acquisition failure.
@@ -50,6 +68,9 @@ type AccountLease struct {
 	CodexCredentialKind string
 	// VerifyCodexCredential compares the initialized Codex process proof with the selected credential.
 	VerifyCodexCredential func(context.Context, [sha256.Size]byte) error
+	// VerifyLogin checks observable external login changes immediately before submission.
+	// Providers without a same-process identity receipt cannot eliminate external switch races.
+	VerifyLogin func(context.Context) error
 	// CursorQuota optionally binds management reads to the selected native login.
 	CursorQuota *CursorQuotaLease
 	// PrepareLaunchAuth obtains any additional startup authentication resources.
@@ -60,6 +81,8 @@ type AccountLease struct {
 
 // CursorQuotaLease provides explicitly bound Dashboard credentials on demand.
 type CursorQuotaLease struct {
+	// NativeUserID is the account identifier that the exact Dashboard bearer must prove.
+	NativeUserID string
 	// Endpoint is the trusted Dashboard origin, or empty for Cursor's default.
 	Endpoint string
 	// ReadAccessToken resolves the token for this exact lease's native login.
@@ -291,6 +314,7 @@ func (r *ProviderRuntime) Open(ctx context.Context, request ProviderConnectionRe
 }
 
 func freezeProviderRequest(request ProviderConnectionRequest) ProviderConnectionRequest {
+	request.Account.PrefixArgs = slices.Clone(request.Account.PrefixArgs)
 	launch := &request.Launch
 	launch.PrefixArgs = slices.Clone(launch.PrefixArgs)
 	launch.BaseEnvironment = maps.Clone(launch.BaseEnvironment)
@@ -334,6 +358,9 @@ func (c *providerConnection) open(ctx context.Context, request ProviderConnectio
 
 func (c *providerConnection) initialize(ctx context.Context, request ProviderConnectionRequest, ports ProviderConnectionPorts) error {
 	account := request.Account
+	if account.Executable != "" && (account.Executable != request.Launch.Executable || !slices.Equal(account.PrefixArgs, request.Launch.PrefixArgs)) {
+		return status_error.AIAccountConfigurationInvalid
+	}
 	switch account.Provider {
 	case constants.RuntimeIDCodex, constants.RuntimeIDClaude, constants.RuntimeIDCursor:
 	default:
@@ -360,11 +387,18 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	}
 	if account.ConfigHome != "" && request.Launch.ConfigHome != "" {
 		root, err := resolveAgentDirectory(request.Launch.ConfigHome)
+		if (account.Provider == constants.RuntimeIDCursor || account.Provider == constants.RuntimeIDClaude) && filepath.IsAbs(request.Launch.ConfigHome) && request.Launch.ConfigHome == account.ConfigHome {
+			// The account authority admitted this canonical settings root, including an absent leaf.
+			root, err = account.ConfigHome, nil
+		}
 		if err != nil || root != account.ConfigHome {
 			return status_error.AIAccountConfigurationInvalid
 		}
 	}
 	if account.ConfigHome != "" && c.accountLease.ConfigHome != account.ConfigHome {
+		return status_error.AIAccountConfigurationInvalid
+	}
+	if account.DataHome != "" && c.accountLease.Environment["CURSOR_DATA_DIR"] != account.DataHome {
 		return status_error.AIAccountConfigurationInvalid
 	}
 	if err := ctx.Err(); err != nil {

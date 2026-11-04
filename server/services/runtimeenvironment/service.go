@@ -50,8 +50,8 @@ type Service interface {
 type Config struct {
 	// ProviderRuntime 提供与执行共享的原生进程所有者。
 	ProviderRuntime *agent.ProviderRuntime
-	// ResolveCodexAccount 解析受管 Codex 账号的稳定认证选择。
-	ResolveCodexAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
+	// ResolveAccount 解析受管 Codex 账号的稳定认证选择。
+	ResolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
 	// Accounts 为所选默认账号提供受管配置。
 	Accounts *aiaccount.Service
 	// AccountWorkspaceDirectory 保存仅用于探测的受管工作区。
@@ -70,8 +70,8 @@ type Config struct {
 type service struct {
 	// modelCatalog 保存按账号隔离的原生模型发现结果。
 	modelCatalog *agent.ModelCatalog
-	// resolveCodexAccount 复用受管账号认证选择。
-	resolveCodexAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
+	// resolveAccount 复用受管账号认证选择。
+	resolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
 	// accounts 生成默认账号的受管探测配置。
 	accounts *aiaccount.Service
 	// accountWorkspaceDirectory 是认证探测的受管目录。
@@ -138,7 +138,7 @@ func New(config Config) (Service, error) {
 	if config.ProviderRuntime != nil {
 		concrete.modelCatalog = agent.NewModelCatalog(config.ProviderRuntime)
 	}
-	concrete.resolveCodexAccount = config.ResolveCodexAccount
+	concrete.resolveAccount = config.ResolveAccount
 	concrete.accountWorkspaceDirectory = config.AccountWorkspaceDirectory
 	concrete.eventPublisher = config.Events
 	return concrete, nil
@@ -378,8 +378,8 @@ func (s *service) persistDetection(
 	detection agentapi.DetectionResult,
 	detectedAt int64,
 ) error {
-	codexCatalog := environment.BaseRuntimeID == constants.RuntimeIDCodex && s.modelCatalog != nil
-	if codexCatalog {
+	nativeCatalog := usesNativeCatalog(environment.BaseRuntimeID) && s.modelCatalog != nil
+	if nativeCatalog {
 		current, err := s.environments.Get(ctx, environment.RuntimeID)
 		if err != nil {
 			return err
@@ -427,10 +427,10 @@ func (s *service) persistDetection(
 	if environment.Binary == firstBinary(environment.Detection.Runtime.BinaryCandidates) && detection.ResolvedBinary != "" {
 		fields["binary"] = detection.ResolvedBinary
 	}
-	if defaultModel != environment.DefaultModel && !codexCatalog {
+	if defaultModel != environment.DefaultModel && !nativeCatalog {
 		fields["default_model"] = defaultModel
 	}
-	if defaultReasoning != environment.DefaultReasoning && !codexCatalog {
+	if defaultReasoning != environment.DefaultReasoning && !nativeCatalog {
 		fields["default_reasoning"] = defaultReasoning
 	}
 	if nextPermission != environment.DefaultPermissionLevel {
@@ -486,8 +486,8 @@ func (s *service) detect(
 		}
 		return result
 	}
-	if summary.BaseRuntimeID == constants.RuntimeIDCodex && s.modelCatalog != nil {
-		return finish(s.detectCodex(ctx, summary, environment, request))
+	if usesNativeCatalog(summary.BaseRuntimeID) && s.modelCatalog != nil {
+		return finish(s.detectNative(ctx, summary, environment, request))
 	}
 	if environment.DefaultAccountID != "" && s.accounts != nil {
 		workspace := filepath.Join(s.accountWorkspaceDirectory, summary.ID)
@@ -564,7 +564,7 @@ func runtimeDetectRequest(
 	homeDirectory, _ := os.UserHomeDir()
 	return agentapi.DetectRequest{UseNativeAuth: true,
 		RuntimeID:       summary.ID,
-		BaseEnvironment: os.Environ(),
+		BaseEnvironment: accountconfig.Environment(os.Environ()),
 		HomeDirectory:   homeDirectory,
 		LaunchOverride:  launchOverride,
 	}

@@ -26,8 +26,8 @@ type ThreadRequest struct {
 	Session AgentSessionOptions
 	// Settings lists exact native selectors to apply before submission, in dependency order.
 	Settings []SessionSetting
-	// CodexSettings carries product selectors that the native client can change in place.
-	CodexSettings *CodexTurnSelection
+	// Selection carries the product selectors applied through the native option catalog.
+	Selection *TurnSelection
 	// Mode selects a native execution policy, when the provider exposes modes.
 	Mode string
 	// ResourceGeneration changes when a selected connector or materialization changes in place.
@@ -196,7 +196,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		}
 		t.setSession(conn, binding)
 		t.effective = effective
-		if request.CodexSettings != nil {
+		if request.Selection != nil {
 			client, err := conn.Client()
 			if err != nil {
 				return err
@@ -470,8 +470,8 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 	// thread. Managed overrides and the verified account still determine compatibility.
 	connection := request.Connection
 	connection.Launch.BaseEnvironment = nil
-	if request.CodexSettings != nil && connection.Account.Provider == "codex" {
-		settings := *request.CodexSettings
+	if request.Selection != nil {
+		settings := *request.Selection
 		if settings.Fast != nil {
 			fast := *settings.Fast
 			settings.Fast = &fast
@@ -480,9 +480,11 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 			fast := *settings.DefaultFast
 			settings.DefaultFast = &fast
 		}
-		request.CodexSettings = &settings
-		// The native client applies model, effort and tier together before each turn.
-		connection.Account.Model = ""
+		request.Selection = &settings
+		// Codex and Claude support live model changes; Cursor keeps its process model in compatibility.
+		if connection.Account.Provider == "codex" || connection.Account.Provider == "claude" {
+			connection.Account.Model = ""
+		}
 	}
 	encoded, err := json.Marshal([]any{connection, request.Session, request.Settings, request.Mode, request.ResourceGeneration})
 	if err != nil {

@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -84,6 +85,65 @@ func TestThreadModeReceiptFollowsNativeObservationOrder(t *testing.T) {
 			lifecycle.applySessionNotification(state, 2, scope, AgentEvent{Kind: "mode", Mode: "provider-later"})
 			if got := turn.observedSession().Mode; got != "provider-later" {
 				t.Fatalf("published mode after later notification = %q", got)
+			}
+		})
+	}
+}
+
+// selectionClient models native menus that change after the model setter's receipt.
+type selectionClient struct {
+	// AgentClient supplies unrelated operations outside this boundary.
+	AgentClient
+	// calls records the actual order crossing the native client boundary.
+	calls []string
+	// options is the latest native receipt, not the host's requested tuple.
+	options []AgentSessionOption
+}
+
+func (c *selectionClient) SetSessionOption(_ context.Context, _, id string, value AgentOptionValue) ([]AgentSessionOption, error) {
+	c.calls = append(c.calls, id+"="+value.ID)
+	for i := range c.options {
+		if c.options[i].ID == id {
+			c.options[i].Value = value
+		}
+	}
+	return cloneOptions(c.options), nil
+}
+
+func (c *selectionClient) SetSessionMode(_ context.Context, _, mode string) error {
+	c.calls = append(c.calls, "mode="+mode)
+	return nil
+}
+
+func TestProviderSelectionUsesNativeOptionTypesAndAppliesModeAfterModel(t *testing.T) {
+	for _, provider := range []string{"claude", "cursor"} {
+		t.Run(provider, func(t *testing.T) {
+			fastOn, fastOff := "on", "off"
+			if provider == "cursor" {
+				fastOn, fastOff = "true", "false"
+			}
+			client := &selectionClient{options: []AgentSessionOption{
+				{ID: "model", Category: "model", Value: AgentOptionValue{ID: "old"}, Choices: []AgentChoice{{ID: "old"}, {ID: "next"}}},
+				{ID: "effort", Category: "thought_level", Value: AgentOptionValue{ID: "low"}, Choices: []AgentChoice{{ID: "low"}, {ID: "high"}}},
+				{ID: "fast", Category: "model_config", Value: AgentOptionValue{ID: fastOff}, Choices: []AgentChoice{{ID: fastOn}, {ID: fastOff}}},
+			}}
+			state := &threadState{effective: AgentSession{ID: "native", Mode: "default", Options: cloneOptions(client.options)}}
+			turn := &Turn{ctx: t.Context(), lifecycle: NewThreadLifecycle(nil, nil), thread: state,
+				binding: NativeBinding{Session: NativeSessionKey{SessionID: "native"}}, effective: state.effective}
+			fast := true
+			err := turn.applySettings(client, ThreadRequest{
+				Connection: ProviderConnectionRequest{Account: AccountRequest{Provider: provider, Model: "next"}},
+				Selection:  &TurnSelection{Reasoning: "high", Fast: &fast}, Mode: "auto",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []string{"model=next", "effort=high", "fast=" + fastOn, "mode=auto"}
+			if !reflect.DeepEqual(client.calls, want) {
+				t.Fatalf("native calls = %v, want %v", client.calls, want)
+			}
+			if got := turn.RequestedFast(); got == nil || !*got {
+				t.Fatal("accepted Fast intent lost")
 			}
 		})
 	}

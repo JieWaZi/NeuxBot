@@ -413,15 +413,13 @@ func (s *Store) CommitNativeResult(ctx context.Context, result agent.NativeResul
 	if err != nil {
 		return err
 	}
-	if result.Key.Session.Provider == "codex" {
-		terminal.Result.Attribution = s.nativeUsageAttribution(ctx, result)
-	}
+	terminal.Result.Attribution = s.nativeUsageAttribution(ctx, result)
 	id := nativeID(result.Key)
 	key := id + ":terminal"
 	slot, path := s.nativeStream(result.Key)
 	committed := false
 	defer func() {
-		if committed && result.Key.Session.Provider == "codex" {
+		if committed {
 			if notify := s.usageChanged.Load(); notify != nil {
 				(*notify)()
 			}

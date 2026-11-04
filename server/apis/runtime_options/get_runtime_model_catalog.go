@@ -55,22 +55,22 @@ func (o *GetRuntimeModelCatalog) Output(ctx *gin.Context) (interface{}, error) {
 	}
 	models := make([]RuntimeModelOption, 0, len(result.Models))
 	for _, row := range result.Models {
-		models = append(models, codexModelOption(row))
+		models = append(models, nativeModelOption(result.Provider, row))
 	}
 	return RuntimeModelCatalogResponse{
 		RuntimeID: runtimeID, AccountID: result.AccountID, AuthGeneration: result.AuthGeneration,
-		Version: result.Capabilities.Version, Source: "codex_app_server", State: result.State,
+		Version: result.Capabilities.Version, Source: result.Provider + "_native", State: result.State,
 		DetectedAt: result.DetectedAt, ErrorCode: result.ErrorCode, DefaultModel: result.DefaultID, Models: models,
 	}, nil
 }
 
-func codexModelOption(row agent.AgentChoice) RuntimeModelOption {
+func nativeModelOption(provider string, row agent.AgentChoice) RuntimeModelOption {
 	result := RuntimeModelOption{
 		ID: row.ID, Name: row.Name, Description: row.Description, Group: row.Group, GroupName: row.GroupName,
 		ConfigurationKnown: row.Config != nil && len(row.Config.UnknownOptionIDs) == 0,
 		InputModalities:    row.InputModalities, DefaultServiceTier: row.DefaultServiceTier,
 		FastSupported: row.FastServiceTier != "", ReasoningOptions: []RuntimeReasoningOption{},
-		PermissionLevels: runtimeenvironment.CodexPermissionLevels(),
+		PermissionLevels: runtimeenvironment.NativePermissionLevels(provider, row),
 	}
 	if result.FastSupported && row.DefaultServiceTier != nil {
 		fast := *row.DefaultServiceTier == row.FastServiceTier
@@ -80,13 +80,24 @@ func codexModelOption(row agent.AgentChoice) RuntimeModelOption {
 		return result
 	}
 	for _, setting := range row.Config.Options {
-		switch setting.ID {
-		case "reasoning_effort":
-			result.DefaultReasoning = setting.Value.ID
+		switch {
+		case setting.Category == "thought_level" || setting.ID == "reasoning_effort":
 			for _, choice := range setting.Choices {
+				if choice.ID == setting.Value.ID {
+					result.DefaultReasoning = setting.Value.ID
+				}
 				result.ReasoningOptions = append(result.ReasoningOptions, RuntimeReasoningOption{ID: choice.ID, Name: choice.Name})
 			}
-		case "service_tier":
+		case setting.ID == "fast":
+			result.FastSupported = true
+			if setting.Value.Bool != nil {
+				v := *setting.Value.Bool
+				result.DefaultFast = &v
+			} else if setting.Value.ID == "on" || setting.Value.ID == "off" || setting.Value.ID == "true" || setting.Value.ID == "false" {
+				v := setting.Value.ID == "on" || setting.Value.ID == "true"
+				result.DefaultFast = &v
+			}
+		case setting.ID == "service_tier":
 			for _, choice := range setting.Choices {
 				if choice.ID != "inherit" && choice.ID != "off" {
 					result.ServiceTiers = append(result.ServiceTiers, RuntimeReasoningOption{ID: choice.ID, Name: choice.Name})

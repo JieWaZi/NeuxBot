@@ -15,6 +15,20 @@ import (
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
+func TestCursorLaunchUsesSelectedConfigHome(t *testing.T) {
+	home := t.TempDir()
+	env, err := nativeLaunchEnvironment("cursor", ProviderLaunch{
+		ConfigHome:      home,
+		BaseEnvironment: map[string]string{"CURSOR_CONFIG_DIR": "/unselected"},
+	}, AccountLease{ConfigHome: home}, LaunchAuthLease{}, ResourceLease{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(env, "\n"), "CURSOR_CONFIG_DIR="+home) {
+		t.Fatalf("selected configuration root not delivered: %v", env)
+	}
+}
+
 func TestProviderClientKeepsStructuredInputAndAdmission(t *testing.T) {
 	req := providerTestRequest(t, "cursor")
 	runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: providerTestAccount})
@@ -222,7 +236,11 @@ func TestProviderClientAccountHomeAndEnvironmentAuthority(t *testing.T) {
 					}
 					if typed {
 						lease.ConfigHome = verified
-						lease.Environment[example.key] = t.TempDir()
+						if example.provider == "codex" {
+							lease.Environment[example.key] = t.TempDir()
+						} else {
+							lease.ConfigHome, _ = filepath.EvalSymlinks(verified)
+						}
 					}
 					return lease, nil
 				}})

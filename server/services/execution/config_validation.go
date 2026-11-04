@@ -9,6 +9,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -70,6 +71,9 @@ func (m *service) ResolveConfiguration(ctx context.Context, config ExecutionConf
 				return config, status_error.AIAccountConfigurationInvalid
 			}
 			config.Model = account.SelectedModels[0]
+			if environment.BaseRuntimeID == constants.RuntimeIDClaude {
+				config.Model, _ = aiaccount.ManagedClaudeModelTarget(account, "")
+			}
 			// 默认模型确定后仍按该模型校验账号声明，不能用空模型跳过推理约束。
 			if _, err := m.accounts.ValidateSelection(ctx, config.AccountID, environment.BaseRuntimeID, config.Model, config.Reasoning); err != nil {
 				return config, err

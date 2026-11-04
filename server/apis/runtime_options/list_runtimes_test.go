@@ -2,6 +2,7 @@ package runtime_options
 
 import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 
 	"reflect"
 	"testing"
@@ -115,5 +116,31 @@ func TestRuntimeOptionIncludesCustomModels(t *testing.T) {
 	}
 	if !reflect.DeepEqual(option.CustomModels, []string{"gpt-team-custom"}) {
 		t.Fatalf("CustomModels = %#v, want persisted custom model", option.CustomModels)
+	}
+}
+
+func TestNativeModelOptionPreservesProviderMenus(t *testing.T) {
+	for _, provider := range []string{"claude", "cursor"} {
+		t.Run(provider, func(t *testing.T) {
+			on, off := "on", "off"
+			if provider == "cursor" {
+				on, off = "true", "false"
+			}
+			row := agent.AgentChoice{ID: "native-model", AutoMode: provider == "claude", Config: &agent.AgentModelConfig{Options: []agent.AgentSessionOption{
+				{ID: "effort", Category: "thought_level", Value: agent.AgentOptionValue{ID: "max"}, Choices: []agent.AgentChoice{{ID: "max", Name: "Max"}}},
+				{ID: "fast", Value: agent.AgentOptionValue{ID: off}, Choices: []agent.AgentChoice{{ID: on}, {ID: off}}},
+			}}}
+			got := nativeModelOption(provider, row)
+			if !got.FastSupported || got.DefaultFast == nil || *got.DefaultFast || got.DefaultReasoning != "max" || len(got.ReasoningOptions) != 1 {
+				t.Fatalf("provider menus lost: %+v", got)
+			}
+			want := 2
+			if provider == "claude" {
+				want = 3
+			}
+			if len(got.PermissionLevels) != want {
+				t.Fatalf("permissions = %v", got.PermissionLevels)
+			}
+		})
 	}
 }

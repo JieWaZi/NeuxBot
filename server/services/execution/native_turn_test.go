@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -24,6 +25,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
+	usageservice "github.com/JieWaZi/NeuxBot/server/services/usage"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -61,10 +64,22 @@ func nativePromptFixture() agentapi.TurnInput {
 	}
 }
 
-func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
-	defer cancel()
-	root, trace := t.TempDir(), filepath.Join(t.TempDir(), "codex-trace.jsonl")
+type nativeProductFixture struct {
+	// root 是 Core 重启时复用的存储根目录。
+	root string
+	// trace 是原生子进程接收的请求日志。
+	trace string
+	// accounts 记录原生连接获取账号租约的次数。
+	accounts *atomic.Int32
+	// usage 提供从原生终态重建用量查询的 SQLite 投影。
+	usage *controllers.UsageController
+	// open 重新装配独立的 Core、Thread、Provider 和 ConversationStore。
+	open func() (Core, chatservice.Module, *eventlognext.Store, func())
+}
+
+func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, child string, permission constants.PermissionLevel) nativeProductFixture {
+	t.Helper()
+	root, trace := t.TempDir(), filepath.Join(t.TempDir(), providerID+"-trace.jsonl")
 	t.Setenv("NEUX_EXECUTION_FIXTURE_TRACE", trace)
 	t.Setenv("PWD", filepath.Join(root, "first-host-directory"))
 	t.Setenv("NEUX_EXECUTION_FIXTURE_BASE_VALUE", "inherited-first")
@@ -81,11 +96,11 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sql.Close()
+	t.Cleanup(func() { _ = sql.Close() })
 	wakers := controllers.NewWakerController(db)
 	profiles := controllers.NewProfileDocumentController(db)
 	projects := controllers.NewProjectController(db)
-	if err := wakers.Create(ctx, models.Waker{ID: "native-waker", Name: "Codex fixture"}); err != nil {
+	if err := wakers.Create(ctx, models.Waker{ID: "native-waker", Name: providerID + " fixture"}); err != nil {
 		t.Fatal(err)
 	}
 	var documents []models.WakerDocument
@@ -95,15 +110,25 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	if err := profiles.CreateWakerDocuments(ctx, documents); err != nil {
 		t.Fatal(err)
 	}
-	summary := agentapi.RuntimeSummary{ID: "codex", BaseRuntimeID: "codex", InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}
-	fastOn, fastOff := true, false
+	summary := agentapi.RuntimeSummary{ID: providerID, BaseRuntimeID: providerID, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}
+	switch providerID {
+	case "claude":
+		summary.InstructionFileName, summary.SkillDirectoryName = "CLAUDE.md", ".claude"
+	case "cursor":
+		summary.SkillDirectoryName = ".cursor"
+	}
+	model := agentapi.ModelOption{ID: "fixture-model", PermissionLevels: []constants.PermissionLevel{permission}}
+	if providerID != "codex" {
+		model.ReasoningOptions = []agentapi.ReasoningOption{{ID: "high"}, {ID: "low"}}
+	}
+	fastOn := true
 	environment := nativeFixtureEnvironment{entry: models.RuntimeEnvironment{
 		DefaultFast: &fastOn,
-		RuntimeID:   "codex", BaseRuntimeID: "codex", Enabled: true, Binary: executable, PrefixArgs: []string{"-test.run=^TestNativeExecutionCodexChild$", "--"},
+		RuntimeID:   providerID, BaseRuntimeID: providerID, Enabled: true, Binary: executable, PrefixArgs: []string{"-test.run=^" + child + "$", "--"},
 		Detection: agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: summary, ResolvedBinary: executable,
-			Models: []agentapi.ModelOption{{ID: "fixture-model", PermissionLevels: []constants.PermissionLevel{constants.PermissionLevelAuto}}}},
+			Models: []agentapi.ModelOption{model}},
 	}}
-	var accounts atomic.Int32
+	accounts := new(atomic.Int32)
 	open := func() (Core, chatservice.Module, *eventlognext.Store, func()) {
 		t.Helper()
 		store, err := eventlognext.NewStore(root)
@@ -112,7 +137,7 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 		}
 		provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{
 			AcquireAccount: func(_ context.Context, account agent.AccountRequest) (agent.AccountLease, error) {
-				if account.Provider != "codex" || account.Subject != "fixture-subject" {
+				if account.Provider != providerID || account.Subject != "fixture-subject" {
 					return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 				}
 				accounts.Add(1)
@@ -153,6 +178,15 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 			store.Close()
 		}
 	}
+	return nativeProductFixture{root: root, trace: trace, accounts: accounts, usage: controllers.NewUsageController(db), open: open}
+}
+
+func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
+	defer cancel()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	root, trace, accounts, open := fixture.root, fixture.trace, fixture.accounts, fixture.open
+	fastOff := false
 	core, chats, store, closeRuntime := open()
 	defer func() { closeRuntime() }()
 	options := WorkOptions{RuntimeID: "codex", Model: "fixture-model", Reasoning: "high", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}
@@ -200,23 +234,7 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	subscription, err := chats.SubscribeEvents(ctx, first.Chat.ID, held.Chat.LatestSequence)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer subscription.Close()
-	streamed := false
-	for !streamed {
-		select {
-		case event, ok := <-subscription.Events:
-			if !ok {
-				t.Fatal("SSE closed before native checkpoint")
-			}
-			streamed = event.Message != nil && strings.Contains(event.Message.Content, "fixture partial")
-		case <-ctx.Done():
-			t.Fatal("no native body reached the public subscription")
-		}
-	}
+	waitNativeProductStream(t, ctx, chats, held, "fixture partial")
 	if err := core.CancelExecutionAndWait(ctx, first.Chat.ID, held.Execution.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -309,8 +327,211 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 
 }
 
+func TestNativeProductClaudeAndCursorContinueAndRecover(t *testing.T) {
+	for _, provider := range []string{"claude", "cursor"} {
+		t.Run(provider, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+			defer cancel()
+			permission := constants.PermissionLevelAuto
+			if provider == "cursor" {
+				permission = constants.PermissionLevelFullAccess
+			}
+			t.Setenv("NEUX_EXECUTION_FIXTURE_PROVIDER", provider)
+			fixture := newNativeProductFixture(t, ctx, provider, "TestNativeExecutionClaudeCursorChild", permission)
+			core, chats, store, closeRuntime := fixture.open()
+			defer func() { closeRuntime() }()
+			fastOff := false
+			options := WorkOptions{RuntimeID: provider, Model: "fixture-model", Reasoning: "high", PermissionLevel: permission, SessionPolicy: constants.RuntimeSessionPolicyContinue}
+			start := func(target ChatTarget, text string) AcceptedExecution {
+				t.Helper()
+				intent := WorkIntent{Chat: target, Input: WorkInput{Actor: "user", Content: text}, Options: options}
+				if target.Create != nil {
+					intent.ClientRequestID = "native-create-" + provider
+				}
+				work, err := core.Start(ctx, intent)
+				if err != nil {
+					trace, _ := os.ReadFile(fixture.trace)
+					t.Fatalf("start %q: %v\n%s", text, err, trace)
+				}
+				return work
+			}
+			verify := func(work AcceptedExecution, want constants.ExecutionStatus) agent.NativeResultKey {
+				t.Helper()
+				waitNativeProductStatus(t, ctx, store, work, want)
+				if err := core.CancelExecutionAndWait(ctx, work.Chat.ID, work.Execution.ID); err != nil {
+					t.Fatal(err)
+				}
+				input, consumed, err := store.ReadHostInputConsumption(ctx, agent.HostInputRef{ChatID: work.Chat.ID, HostInvocationID: work.Execution.ID})
+				if err != nil || consumed == nil || input.Session.SessionID == "" {
+					t.Fatalf("durable consumption: %+v %+v %v", input, consumed, err)
+				}
+				result, err := store.ReadNativeResultMetadata(ctx, consumed.Result)
+				if err != nil || result.Attribution == nil || result.Attribution.Source != "chat" ||
+					result.Attribution.WakerID != "native-waker" || result.Attribution.ChatID != work.Chat.ID || result.Attribution.AccountID != agent.SystemAccountID {
+					t.Fatalf("native terminal attribution: %+v %v", result, err)
+				}
+				nativeStatus := acpmeta.NativeTurnCompleted
+				if want == constants.ExecutionStatusCanceled {
+					nativeStatus = acpmeta.NativeTurnCancelled
+				}
+				if result.Turn.Status != nativeStatus || !slices.Equal(result.Turn.ConsumedInputIDs, []string{input.AdapterInputID}) {
+					t.Fatalf("native status or exact input receipt: %+v", result.Turn)
+				}
+				reported := result.Turn.Usage
+				if provider == "claude" && (reported == nil || reported.InputTokens == nil || *reported.InputTokens != 43) {
+					t.Fatalf("Claude lost provider-reported usage: %+v", reported)
+				}
+				if provider == "cursor" && reported != nil {
+					t.Fatalf("Cursor invented usage for a response without counters: %+v", reported)
+				}
+				return consumed.Result
+			}
+			create := ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}}
+			readOnly := options
+			readOnly.WorkspaceReadOnly = true
+			_, err := core.Start(ctx, WorkIntent{ClientRequestID: "native-reject-read-only", Chat: create,
+				Input: WorkInput{Actor: "user", Content: "do-not-dispatch-read-only"}, Options: readOnly})
+			if !errors.Is(err, status_error.RuntimePolicyUnsupported) || fixture.accounts.Load() != 0 {
+				t.Fatalf("unsupported read-only policy reached native preparation: err=%v leases=%d", err, fixture.accounts.Load())
+			}
+			first := start(create, "first-question")
+			if first.Execution.Fast == nil || !*first.Execution.Fast {
+				t.Fatalf("model-supported default Fast was not applied: %+v", first.Execution.Fast)
+			}
+			firstResult := verify(first, constants.ExecutionStatusCompleted)
+			target := ChatTarget{ChatID: first.Chat.ID}
+			options.Fast, options.Reasoning = &fastOff, "low"
+			second := start(target, "second-question")
+			if second.Execution.Fast == nil || *second.Execution.Fast {
+				t.Fatalf("explicit Fast off was not preserved: %+v", second.Execution.Fast)
+			}
+			secondResult := verify(second, constants.ExecutionStatusCompleted)
+			if secondResult.Session != firstResult.Session || secondResult == firstResult || fixture.accounts.Load() != 1 {
+				t.Fatalf("compatible turns did not reuse one session with distinct native invocations: %+v %+v leases=%d", firstResult, secondResult, fixture.accounts.Load())
+			}
+			history, err := chats.ReadMessageHistory(ctx, first.Chat.ID, 0, 10)
+			if err != nil || len(history.Resources) != 4 || history.Resources[1].Content != "native fixture answer" ||
+				history.Resources[2].Content != "second-question" || history.Resources[3].Content != "native fixture answer" {
+				t.Fatalf("public history: %+v %v", history, err)
+			}
+
+			held := start(target, "hold-for-native-cancel")
+			waitNativeProductStream(t, ctx, chats, held, "native fixture partial")
+			if err := core.CancelExecutionAndWait(ctx, first.Chat.ID, held.Execution.ID); err != nil {
+				t.Fatal(err)
+			}
+			verify(held, constants.ExecutionStatusCanceled)
+
+			closeRuntime()
+			core, chats, store, closeRuntime = fixture.open()
+			loaded, err := chats.LoadExecutionChat(ctx, first.Chat.ID)
+			if err != nil || loaded.LastFast == nil || *loaded.LastFast {
+				t.Fatalf("reloaded settings: %+v %v", loaded.LastFast, err)
+			}
+			metrics, err := usageservice.NewService(store, fixture.usage).Summary(ctx, usageservice.Filter{
+				From: time.Now().Add(-time.Minute).UnixMilli(), To: time.Now().Add(time.Minute).UnixMilli(),
+				Timezone: "UTC", ChatID: first.Chat.ID, Source: "chat", AccountID: agent.SystemAccountID,
+			}, "")
+			if err != nil || metrics.Metrics.Invocations != 3 {
+				t.Fatalf("reopened usage should count each native call once: %+v %v", metrics, err)
+			}
+			if provider == "claude" {
+				input := metrics.Metrics.KnownTokens.Input
+				if input == nil || *input != 129 || metrics.Metrics.MissingUsageInvocations != 0 {
+					t.Fatalf("reopened Claude usage: %+v", metrics)
+				}
+			} else if metrics.Metrics.KnownTokens.Input != nil || metrics.Metrics.MissingUsageInvocations != 3 {
+				t.Fatalf("reopened Cursor calls with unknown usage: %+v", metrics)
+			}
+
+			resumed := start(target, "current-after-restart")
+			if result := verify(resumed, constants.ExecutionStatusCompleted); result.Session != firstResult.Session || fixture.accounts.Load() != 2 {
+				t.Fatalf("restarted Core did not recover the original native session: %+v leases=%d", result, fixture.accounts.Load())
+			}
+			assertNativeProviderTrace(t, provider, fixture.trace, firstResult.Session.SessionID)
+			if provider == "claude" {
+				// The native model setter downgrades Auto when the target model lacks it.
+				// This must be detected before admitting another prompt.
+				options.Model, options.Reasoning, options.Fast = "fixture-default", "", nil
+				for attempt := 1; attempt <= 2; attempt++ {
+					_, err := core.Start(ctx, WorkIntent{Chat: target, Options: options,
+						Input: WorkInput{Actor: "user", Content: "reject-auto-on-unsupported-model"}})
+					trace, readErr := os.ReadFile(fixture.trace)
+					if err == nil || readErr != nil || !strings.Contains(string(trace), `"subtype":"set_model","model":"fixture-default"`) ||
+						strings.Contains(string(trace), "reject-auto-on-unsupported-model") {
+						t.Fatalf("Claude submitted a prompt after losing Auto mode on attempt %d: err=%v traceErr=%v\n%s", attempt, err, readErr, trace)
+					}
+				}
+			}
+		})
+	}
+}
+
+func assertNativeProviderTrace(t *testing.T, provider, trace, sessionID string) {
+	t.Helper()
+	body, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := string(body)
+	requireOrder := func(parts ...string) {
+		t.Helper()
+		rest := wire
+		for _, part := range parts {
+			_, next, found := strings.Cut(rest, part)
+			if !found {
+				t.Fatalf("missing %q in native sequence %q:\n%s", part, parts, wire)
+			}
+			rest = next
+		}
+	}
+	if provider == "claude" {
+		requireOrder(`"subtype":"set_model","model":"fixture-model"`, `"effortLevel":"high"`, `"fastMode":true`,
+			`"subtype":"set_permission_mode","mode":"auto"`, "first-question", `"effortLevel":"low"`, `"fastMode":false`, "second-question",
+			"hold-for-native-cancel", `"subtype":"interrupt"`, "--resume="+sessionID, `"subtype":"set_permission_mode","mode":"auto"`, "current-after-restart")
+	} else {
+		requireOrder("launch --force acp", `"configId":"model","sessionId":"`+sessionID+`","value":"fixture-model"`, `"value":"high"`, `"value":"true"`,
+			"first-question", `"value":"low"`, `"value":"false"`, "second-question", "hold-for-native-cancel", `"method":"session/cancel"`,
+			"launch --force acp", `"method":"session/resume"`, "current-after-restart")
+	}
+	for _, line := range strings.Split(wire, "\n") {
+		if strings.Contains(line, "second-question") || strings.Contains(line, "current-after-restart") {
+			if strings.Contains(line, "first-question") || strings.Contains(line, "Recent conversation history") || strings.Contains(line, "native fixture answer") {
+				t.Fatalf("follow-up prompt replayed previous turns: %s", line)
+			}
+		}
+	}
+	for _, question := range []string{"first-question", "second-question", "hold-for-native-cancel", "current-after-restart"} {
+		if strings.Count(wire, question) != 1 {
+			t.Fatalf("prompt %q should reach the native process once: %s", question, wire)
+		}
+	}
+}
+
+func waitNativeProductStream(t *testing.T, ctx context.Context, chats chatservice.Module, held AcceptedExecution, text string) {
+	t.Helper()
+	subscription, err := chats.SubscribeEvents(ctx, held.Chat.ID, held.Chat.LatestSequence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Close()
+	for {
+		select {
+		case event, ok := <-subscription.Events:
+			if !ok {
+				t.Fatal("SSE closed before native checkpoint")
+			}
+			if event.Message != nil && strings.Contains(event.Message.Content, text) {
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal("no native body reached the public subscription")
+		}
+	}
+}
+
 type nativeFixtureEnvironment struct {
-	// entry is a frozen, locally executable Codex environment.
+	// entry 是固定到本地测试程序的智能体环境。
 	entry models.RuntimeEnvironment
 }
 
@@ -442,4 +663,204 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 		}
 	}
 	os.Exit(0)
+}
+
+func TestNativeExecutionClaudeCursorChild(t *testing.T) {
+	provider := os.Getenv("NEUX_EXECUTION_FIXTURE_PROVIDER")
+	if provider == "" {
+		return
+	}
+	if slices.Contains(os.Args, "--version") {
+		if provider == "claude" {
+			fmt.Println("2.1.309 (Claude Code)")
+		} else {
+			fmt.Println("2026.10.22-27dcf5f")
+		}
+		os.Exit(0)
+	}
+	trace, err := os.OpenFile(os.Getenv("NEUX_EXECUTION_FIXTURE_TRACE"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		os.Exit(2)
+	}
+	fmt.Fprintln(trace, "launch", strings.Join(os.Args[3:], " "))
+	scanner, out := bufio.NewScanner(os.Stdin), json.NewEncoder(os.Stdout)
+	read := func() (map[string]any, string, bool) {
+		if !scanner.Scan() {
+			return nil, "", false
+		}
+		line := scanner.Text()
+		fmt.Fprintln(trace, line)
+		var frame map[string]any
+		if json.Unmarshal(scanner.Bytes(), &frame) != nil {
+			os.Exit(2)
+		}
+		return frame, line, true
+	}
+	if provider == "claude" {
+		serveNativeExecutionClaude(out, read)
+	} else {
+		serveNativeExecutionCursor(out, read)
+	}
+	trace.Close()
+	os.Exit(0)
+}
+
+func serveNativeExecutionClaude(out *json.Encoder, read func() (map[string]any, string, bool)) {
+	cwd, _ := os.Getwd()
+	var session, active string
+	for _, arg := range os.Args {
+		for _, prefix := range []string{"--session-id=", "--resume="} {
+			if id, ok := strings.CutPrefix(arg, prefix); ok {
+				session = id
+			}
+		}
+	}
+	model := "fixture-default"
+	var effort any
+	fast := false
+	serial := 0
+	usage := map[string]any{"input_tokens": 43, "output_tokens": 7, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+	emit := func(body map[string]any) {
+		body["session_id"] = session
+		_ = out.Encode(body)
+	}
+	finish := func(text, reason string) {
+		emit(map[string]any{"type": "result", "subtype": "success", "uuid": "fixture-result-" + active,
+			"result_index": serial, "user_message_uuid": active, "terminal_reason": reason,
+			"result": text, "is_error": false, "usage": usage})
+		active = ""
+		serial++
+	}
+	for {
+		frame, line, ok := read()
+		if !ok {
+			return
+		}
+		switch frame["type"] {
+		case "control_request":
+			request := frame["request"].(map[string]any)
+			reply := map[string]any{}
+			switch request["subtype"] {
+			case "initialize":
+				emit(map[string]any{"type": "system", "subtype": "init", "cwd": cwd, "model": model,
+					"permissionMode": "default", "claude_code_version": "2.1.309"})
+				reply["models"] = []any{
+					map[string]any{"value": "fixture-default", "displayName": "Default"},
+					map[string]any{"value": "fixture-model", "displayName": "Fixture", "supportsAutoMode": true,
+						"supportsEffort": true, "supportedEffortLevels": []string{"high", "low"}, "supportsFastMode": true},
+				}
+			case "get_settings":
+				reply["applied"] = map[string]any{"model": model, "effort": effort}
+				reply["effective"] = map[string]any{"fastMode": fast}
+			case "set_model":
+				model = request["model"].(string)
+			case "apply_flag_settings":
+				settings := request["settings"].(map[string]any)
+				if value, exists := settings["effortLevel"]; exists {
+					effort = value
+				}
+				if value, exists := settings["fastMode"]; exists {
+					fast = value.(bool)
+				}
+			case "set_permission_mode":
+			case "get_context_usage":
+				reply["totalTokens"], reply["rawMaxTokens"] = 50, 1000
+			case "interrupt":
+				finish("", "aborted_streaming")
+			default:
+				os.Exit(3)
+			}
+			_ = out.Encode(map[string]any{"type": "control_response", "response": map[string]any{
+				"subtype": "success", "request_id": frame["request_id"], "response": reply,
+			}})
+		case "user":
+			active = frame["uuid"].(string)
+			held := strings.Contains(line, "hold-for-native-cancel")
+			reply := "native fixture answer"
+			if held {
+				reply = "native fixture partial"
+			}
+			emit(map[string]any{"type": "assistant", "user_message_uuid": active, "parent_tool_use_id": nil,
+				"message": map[string]any{"id": "fixture-message-" + active, "model": model, "usage": usage,
+					"content": []any{map[string]any{"type": "text", "text": reply}}}})
+			if !held {
+				finish(reply, "completed")
+			}
+		}
+	}
+}
+
+func serveNativeExecutionCursor(out *json.Encoder, read func() (map[string]any, string, bool)) {
+	session, model, effort, fast := "cursor-fixture", "fixture-default", "low", "false"
+	var held any
+	selectOption := func(id, category, current string, choices ...string) map[string]any {
+		options := make([]map[string]string, 0, len(choices))
+		for _, value := range choices {
+			options = append(options, map[string]string{"value": value, "name": value})
+		}
+		return map[string]any{"id": id, "name": id, "type": "select", "category": category, "currentValue": current, "options": options}
+	}
+	settings := func() []any {
+		return []any{selectOption("model", "model", model, "fixture-default", "fixture-model"),
+			selectOption("effort", "thought_level", effort, "low", "high"),
+			selectOption("fast", "model_config", fast, "false", "true")}
+	}
+	reply := func(id, result any) {
+		_ = out.Encode(map[string]any{"jsonrpc": "2.0", "id": id, "result": result})
+	}
+	for {
+		frame, line, ok := read()
+		if !ok {
+			return
+		}
+		id := frame["id"]
+		params, _ := frame["params"].(map[string]any)
+		switch frame["method"] {
+		case "initialize":
+			reply(id, map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{
+				"loadSession": true, "sessionCapabilities": map[string]any{"close": map[string]any{}, "resume": map[string]any{}},
+			}})
+		case "session/new", "session/resume":
+			if frame["method"] == "session/resume" && params["sessionId"] != session {
+				os.Exit(3)
+			}
+			reply(id, map[string]any{"sessionId": session, "configOptions": settings()})
+		case "session/set_config_option":
+			value := params["value"].(string)
+			switch params["configId"] {
+			case "model":
+				model = value
+			case "effort":
+				effort = value
+			case "fast":
+				fast = value
+			default:
+				os.Exit(3)
+			}
+			reply(id, map[string]any{"configOptions": settings()})
+		case "session/prompt":
+			text := "native fixture answer"
+			if strings.Contains(line, "hold-for-native-cancel") {
+				held, text = id, "native fixture partial"
+			}
+			_ = out.Encode(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{
+				"sessionId": session, "update": map[string]any{"sessionUpdate": "agent_message_chunk",
+					"content": map[string]any{"type": "text", "text": text}},
+			}})
+			if held == nil {
+				reply(id, map[string]any{"stopReason": "end_turn"})
+			}
+		case "session/cancel":
+			if held != nil {
+				reply(held, map[string]any{"stopReason": "cancelled"})
+				held = nil
+			}
+		case "session/close":
+			reply(id, map[string]any{})
+		default:
+			if id != nil {
+				os.Exit(3)
+			}
+		}
+	}
 }

@@ -12,6 +12,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	native "github.com/JieWaZi/acp-go/pkg/agent_next"
 	"github.com/JieWaZi/acp-go/pkg/agent_next/acpclient"
@@ -55,6 +56,8 @@ type AgentCapabilities struct {
 	EmbeddedContext bool
 	// AdditionalDirectories indicates native support for extra authorized workspace roots.
 	AdditionalDirectories bool
+	// MCPHTTP is the native handshake's support for streamable HTTP MCP servers.
+	MCPHTTP bool
 	// DeveloperInstructionDelivery is native, prompt_prefix or empty when unavailable.
 	DeveloperInstructionDelivery string
 	// Load indicates history-replaying session load support.
@@ -117,8 +120,6 @@ type AgentSession struct {
 	MCPStatus string
 	// ObservedCodexSettings is the last native thread settings receipt, independent of requested intent.
 	ObservedCodexSettings *ObservedCodexSettings
-	// requestedFast records only the tuple this Turn successfully installed.
-	requestedFast *bool
 }
 
 // ObservedCodexSettings is the last settings receipt actually reported by Codex for this thread.
@@ -211,6 +212,8 @@ type AgentChoice struct {
 	GroupName string
 	// Config is the reported model configuration catalog, when known.
 	Config *AgentModelConfig
+	// AutoMode reports native model support for automatic permission review.
+	AutoMode bool
 	// FastServiceTier is the provider's exact Fast tier when one is declared.
 	FastServiceTier string
 	// DefaultServiceTier is the native default tier when supplied.
@@ -622,6 +625,11 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 			Environment: env, StartupConfig: lease.CodexConfig, ConfigOverrides: config,
 		}, host)
 	case constants.RuntimeIDClaude:
+		if lease.ConfigHome != "" {
+			// Account settings have been projected into the selected lease. Native
+			// user/project JSON settings must not replace that frozen credential.
+			launch.Claude.SettingSources = []string{}
+		}
 		client.native, err = claude.NewClient(ctx, claude.Options{
 			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
 			Environment: env, Launch: claude.LaunchOptions{
@@ -641,7 +649,8 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 			readToken := quota.ReadAccessToken
 			options.Credential = binding
 			options.Dashboard = &cursor.Dashboard{
-				Endpoint: quota.Endpoint,
+				Endpoint:       quota.Endpoint,
+				ExpectedUserID: quota.NativeUserID,
 				Credential: func(ctx context.Context, requested cursor.CredentialSelection) (cursor.DashboardCredential, error) {
 					if requested != binding {
 						return cursor.DashboardCredential{}, status_error.RuntimeAuthRequired
@@ -671,6 +680,8 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		homeVariable = "CODEX_HOME"
 	case constants.RuntimeIDClaude:
 		homeVariable = "CLAUDE_CONFIG_DIR"
+	case constants.RuntimeIDCursor:
+		homeVariable = "CURSOR_CONFIG_DIR"
 	default:
 		if lease.ConfigHome != "" || launch.ConfigHome != "" {
 			return nil, status_error.RuntimeConfigurationInvalid
@@ -702,6 +713,15 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 	if err := merge(launch.BaseEnvironment); err != nil {
 		return nil, err
 	}
+	base := make([]string, 0, len(environment))
+	for key, value := range environment {
+		base = append(base, key+"="+value)
+	}
+	clear(environment)
+	for _, entry := range accountconfig.Environment(base) {
+		key, value, _ := strings.Cut(entry, "=")
+		environment[key] = value
+	}
 	if err := merge(launch.Environment); err != nil {
 		return nil, err
 	}
@@ -725,6 +745,21 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		}
 	}
 	// Only the selected launch and account can supply the provider's config root.
+	if provider == constants.RuntimeIDClaude && lease.ConfigHome != "" {
+		for key := range environment {
+			upper := strings.ToUpper(key)
+			if strings.HasPrefix(upper, "ANTHROPIC_") || strings.HasPrefix(upper, "CLAUDE_CODE_HOST_") ||
+				upper == "CLAUDE_CODE_OAUTH_TOKEN" || upper == "CLAUDE_SECURESTORAGE_CONFIG_DIR" ||
+				upper == "CLAUDE_CODE_ACCOUNT_UUID" || upper == "CLAUDE_CODE_ORGANIZATION_UUID" ||
+				upper == "CLAUDE_CODE_USE_BEDROCK" || upper == "CLAUDE_CODE_USE_VERTEX" || upper == "CLAUDE_CODE_USE_FOUNDRY" {
+				delete(environment, key)
+			}
+		}
+	}
+	if provider == constants.RuntimeIDCursor && lease.ConfigHome != "" {
+		delete(environment, "CURSOR_API_KEY")
+		delete(environment, "CURSOR_AUTH_TOKEN")
+	}
 	delete(environment, homeVariable)
 	if err := merge(lease.Environment); err != nil {
 		return nil, err
@@ -732,7 +767,17 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 	if selected := environment[homeVariable]; selected != "" {
 		home = selected
 	}
-	if lease.ConfigHome != "" {
+	_, nativeClaudeScope := lease.Environment["CLAUDE_CONFIG_DIR"]
+	nativeClaudeScope = nativeClaudeScope && provider == constants.RuntimeIDClaude
+	if nativeClaudeScope {
+		// Claude derives its Keychain scope from the lexical override. Explicitly
+		// setting its default directory selects a different account than no override.
+		home = lease.Environment["CLAUDE_CONFIG_DIR"]
+		// The account lease already validated the canonical root and preserves this
+		// lexical spelling. Requiring the directory to exist would reject first use
+		// with an environment credential before the CLI has created its settings.
+		delete(environment, "CLAUDE_CONFIG_DIR")
+	} else if lease.ConfigHome != "" {
 		home = lease.ConfigHome
 	}
 	if home != "" {
@@ -780,7 +825,8 @@ func (c *directAgentClient) initialize(ctx context.Context) error {
 	c.capabilities = AgentCapabilities{
 		ImageInput: prompt.Image, AudioInput: prompt.Audio, EmbeddedContext: prompt.EmbeddedContext,
 		AdditionalDirectories: session.AdditionalDirectories != nil, DeveloperInstructionDelivery: delivery,
-		Load: response.AgentCapabilities.LoadSession, Resume: session.Resume != nil, List: session.List != nil,
+		MCPHTTP: response.AgentCapabilities.McpCapabilities.Http,
+		Load:    response.AgentCapabilities.LoadSession, Resume: session.Resume != nil, List: session.List != nil,
 		ForkMode: acpmeta.ForkMode(response.Meta), Steer: steer, Compact: compact, NativeOutcomes: outcomes,
 		ToolsDisabled: c.requireNoTools,
 	}
@@ -1115,6 +1161,8 @@ func safeAgentError(err error, fallback status_error.StatusError) error {
 		return status_error.ChatForkIndeterminate
 	case errors.Is(err, acpclient.ErrRestartRequired):
 		return status_error.RuntimeUnavailable
+	case errors.Is(err, cursor.ErrPermissionModeUnsupported):
+		return status_error.RuntimePolicyUnsupported
 	case errors.Is(err, cursor.ErrQuotaUnauthorized), errors.Is(err, cursor.ErrQuotaCredential):
 		return status_error.RuntimeAuthRequired
 	case errors.As(err, &request) && request != nil:
@@ -1240,6 +1288,7 @@ func agentChoices(options acp.SessionConfigSelectOptions, withModelConfig bool) 
 				Group: group, GroupName: groupName,
 			}
 			if withModelConfig {
+				choice.AutoMode = claude.ModelAutoModeSupported(row.Meta)
 				choice.FastServiceTier, _ = codex.FastServiceTier(row.Meta)
 				choice.InputModalities, choice.DefaultServiceTier = codex.ModelNativeMetadata(row.Meta)
 				if config, known := acpmeta.ReadModelConfigCatalog(row.Meta); known {

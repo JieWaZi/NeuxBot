@@ -15,8 +15,8 @@ type SessionSetting struct {
 	Value AgentOptionValue
 }
 
-// CodexTurnSelection carries requested per-turn overrides and an unresolved host default.
-type CodexTurnSelection struct {
+// TurnSelection carries requested per-turn overrides and an unresolved host default.
+type TurnSelection struct {
 	// Reasoning is the native effort ID, or empty for provider defaults.
 	Reasoning string
 	// Fast is explicit on/off, or nil to inherit.
@@ -34,7 +34,7 @@ func (t *Turn) applyCodexSettings(client AgentClient, request ThreadRequest) err
 	if !ok {
 		return status_error.RuntimePolicyUnsupported
 	}
-	settings := request.CodexSettings
+	settings := request.Selection
 	model := request.Connection.Account.Model
 	fast := settings.Fast
 	if fast == nil && settings.DefaultFast != nil {
@@ -59,72 +59,131 @@ func (t *Turn) applyCodexSettings(client AgentClient, request ThreadRequest) err
 		return err
 	}
 	t.applyOptionReceipt(revision, options)
-	t.effective.requestedFast = fast
+	t.requestedFast = fast
 	return nil
 }
 
 // RequestedFast reports the frozen intent from the native setter, independently of native observation.
 func (t *Turn) RequestedFast() *bool {
-	if t.effective.requestedFast == nil {
+	if t.requestedFast == nil {
 		return nil
 	}
-	value := *t.effective.requestedFast
+	value := *t.requestedFast
 	return &value
 }
 
 func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
-	if request.Mode != "" && request.Mode != t.effective.Mode {
-		if !slices.ContainsFunc(t.effective.Modes, func(c AgentChoice) bool { return c.ID == request.Mode }) {
-			return status_error.RuntimePolicyUnsupported
-		}
-		if err := t.setSessionMode(client, request.Mode); err != nil {
+	if request.Selection != nil && request.Connection.Account.Provider == "codex" {
+		if err := t.applyCodexSettings(client, request); err != nil {
 			return err
 		}
-	}
-	if request.CodexSettings != nil {
-		return t.applyCodexSettings(client, request)
-	}
-	settings := request.Settings
-	if model := request.Connection.Account.Model; model != "" {
-		i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.Category == "model" || o.ID == "model" })
-		if i < 0 {
-			return status_error.RuntimePolicyUnsupported
+	} else {
+		if model := request.Connection.Account.Model; model != "" {
+			i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.Category == "model" || o.ID == "model" })
+			if i < 0 {
+				return status_error.RuntimePolicyUnsupported
+			}
+			id := t.effective.Options[i].ID
+			if slices.ContainsFunc(request.Settings, func(s SessionSetting) bool { return s.ID == id && (s.Value.ID != model || s.Value.Bool != nil) }) {
+				return status_error.RuntimeConfigurationInvalid
+			}
+			if err := t.applySetting(client, SessionSetting{ID: id, Value: AgentOptionValue{ID: model}}); err != nil {
+				return err
+			}
 		}
-		modelID := t.effective.Options[i].ID
-		if slices.ContainsFunc(settings, func(s SessionSetting) bool {
-			return s.ID == modelID && (s.Value.ID != model || s.Value.Bool != nil)
-		}) {
+		// Read dependent selectors only after the model receipt installs its actual menu.
+		if selection := request.Selection; selection != nil {
+			if selection.Reasoning != "" {
+				i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.Category == "thought_level" })
+				if i < 0 {
+					return status_error.RuntimePolicyUnsupported
+				}
+				if err := t.applySetting(client, SessionSetting{ID: t.effective.Options[i].ID, Value: AgentOptionValue{ID: selection.Reasoning}}); err != nil {
+					return err
+				}
+			}
+			fast := selection.Fast
+			i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.ID == "fast" })
+			if fast == nil && i >= 0 {
+				fast = selection.DefaultFast
+			}
+			if fast != nil {
+				if i < 0 {
+					return status_error.RuntimePolicyUnsupported
+				}
+				option := t.effective.Options[i]
+				value := AgentOptionValue{Bool: fast}
+				if option.Value.Bool == nil {
+					value.Bool = nil
+					value.ID = "false"
+					if *fast {
+						value.ID = "true"
+					}
+					if slices.ContainsFunc(option.Choices, func(c AgentChoice) bool { return c.ID == "on" }) {
+						value.ID = "off"
+						if *fast {
+							value.ID = "on"
+						}
+					}
+				}
+				if err := t.applySetting(client, SessionSetting{ID: option.ID, Value: value}); err != nil {
+					return err
+				}
+			}
+			t.requestedFast = fast
+		}
+		for _, setting := range request.Settings {
+			if err := t.applySetting(client, setting); err != nil {
+				return err
+			}
+		}
+	}
+	// Claude model changes can downgrade auto mode. The adapter validates the
+	// requested mode against the newly selected model before any prompt is admitted.
+	if request.Mode != "" && request.Mode != t.effective.Mode {
+		return t.setSessionMode(client, request.Mode)
+	}
+	return nil
+}
+
+func (t *Turn) applySetting(client AgentClient, setting SessionSetting) error {
+	i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.ID == setting.ID })
+	if i < 0 {
+		return status_error.RuntimePolicyUnsupported
+	}
+	option := t.effective.Options[i]
+	if setting.Value.Bool != nil {
+		if setting.Value.ID != "" || option.Value.Bool == nil {
 			return status_error.RuntimeConfigurationInvalid
 		}
-		settings = append([]SessionSetting{{ID: modelID, Value: AgentOptionValue{ID: model}}}, settings...)
+		if *setting.Value.Bool == *option.Value.Bool {
+			return nil
+		}
+	} else {
+		if setting.Value.ID != "" && setting.Value.ID == option.Value.ID {
+			return nil
+		}
+		if !slices.ContainsFunc(option.Choices, func(c AgentChoice) bool { return c.ID == setting.Value.ID }) {
+			return status_error.RuntimeConfigurationInvalid
+		}
 	}
-	for _, setting := range settings {
-		i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.ID == setting.ID })
-		if i < 0 {
-			return status_error.RuntimePolicyUnsupported
+	revision := t.sessionOptionsRevision()
+	options, err := client.SetSessionOption(t.ctx, t.binding.Session.SessionID, setting.ID, setting.Value)
+	if err != nil {
+		return err
+	}
+	t.applyOptionReceipt(revision, options)
+	observed := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.ID == setting.ID })
+	if observed < 0 {
+		return status_error.RuntimeConfigurationInvalid
+	}
+	value := t.effective.Options[observed].Value
+	if setting.Value.Bool != nil {
+		if value.Bool == nil || *value.Bool != *setting.Value.Bool {
+			return status_error.RuntimeConfigurationInvalid
 		}
-		option := t.effective.Options[i]
-		if setting.Value.Bool != nil {
-			if setting.Value.ID != "" || option.Value.Bool == nil {
-				return status_error.RuntimeConfigurationInvalid
-			}
-			if *setting.Value.Bool == *option.Value.Bool {
-				continue
-			}
-		} else {
-			if setting.Value.ID != "" && setting.Value.ID == option.Value.ID {
-				continue
-			}
-			if !slices.ContainsFunc(option.Choices, func(c AgentChoice) bool { return c.ID == setting.Value.ID }) {
-				return status_error.RuntimeConfigurationInvalid
-			}
-		}
-		revision := t.sessionOptionsRevision()
-		options, err := client.SetSessionOption(t.ctx, t.binding.Session.SessionID, setting.ID, setting.Value)
-		if err != nil {
-			return err
-		}
-		t.applyOptionReceipt(revision, options)
+	} else if value.ID != setting.Value.ID || value.Bool != nil {
+		return status_error.RuntimeConfigurationInvalid
 	}
 	return nil
 }
@@ -162,15 +221,34 @@ func (t *Turn) applyOptionReceipt(revision uint64, options []AgentSessionOption)
 	l, state := t.lifecycle, t.thread
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	t.effective.Options = options
+	applySessionOptions(&t.effective, options)
 	if state.connection != t.conn || state.effective.ID != t.binding.Session.SessionID {
 		return
 	}
 	if state.optionsRevision == revision {
-		state.effective.Options = options
+		if applySessionOptions(&state.effective, options) {
+			state.modeRevision++
+		}
 		state.optionsRevision++
 	}
 	t.effective = state.effective
+	// Dependent setters consume this request's authoritative readback. Notifications
+	// queued by an earlier setter may arrive during this call; they remain global
+	// observations but cannot replace the receipt used to configure this turn.
+	applySessionOptions(&t.effective, options)
+}
+
+// applySessionOptions keeps the native mode selector and its session view coherent.
+// A model change may downgrade permissions even when no separate mode event exists.
+func applySessionOptions(session *AgentSession, options []AgentSessionOption) bool {
+	session.Options = options
+	for _, option := range options {
+		if option.Category == "mode" && option.Value.ID != "" {
+			session.Mode = option.Value.ID
+			return true
+		}
+	}
+	return false
 }
 
 func (l *ThreadLifecycle) applySessionNotification(state *threadState, generation uint64, scope AgentScope, event AgentEvent) {
@@ -184,7 +262,9 @@ func (l *ThreadLifecycle) applySessionNotification(state *threadState, generatio
 	}
 	switch event.Kind {
 	case "settings":
-		state.effective.Options = cloneOptions(event.Options)
+		if applySessionOptions(&state.effective, cloneOptions(event.Options)) {
+			state.modeRevision++
+		}
 		state.optionsRevision++
 	case "mode":
 		if event.Mode != "" {

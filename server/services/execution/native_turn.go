@@ -70,10 +70,17 @@ func nativeThreadRequest(chatID string, plan agentapi.SessionPlan, request pendi
 		mode = "agent-full-access"
 	}
 	digest := sha256.Sum256([]byte(key))
+	// A workspace already supplied as cwd is not an additional native capability.
+	additional := make([]string, 0, len(plan.Workspace.AdditionalWritableDirectories))
+	for _, directory := range plan.Workspace.AdditionalWritableDirectories {
+		if filepath.Clean(directory) != filepath.Clean(plan.Workspace.Path) {
+			additional = append(additional, directory)
+		}
+	}
 	thread := agent.ThreadRequest{
 		ChatID: chatID,
 		Connection: agent.ProviderConnectionRequest{
-			Account: agent.AccountRequest{Provider: nativeProvider(environment), AccountID: accountID, CWD: plan.Workspace.Path, Model: plan.Policy.Model},
+			Account: agent.AccountRequest{Executable: executable, PrefixArgs: environment.PrefixArgs, Provider: nativeProvider(environment), AccountID: accountID, CWD: plan.Workspace.Path, Model: plan.Policy.Model},
 			Launch: agent.ProviderLaunch{
 				Executable: executable, PrefixArgs: environment.PrefixArgs, ConfigHome: environment.ConfigHome, BaseEnvironment: env,
 				CodexConfig: map[string]json.RawMessage{
@@ -82,20 +89,37 @@ func nativeThreadRequest(chatID string, plan agentapi.SessionPlan, request pendi
 			},
 			Resources: resources,
 		},
-		Session: agent.AgentSessionOptions{AdditionalDirectories: plan.Workspace.AdditionalWritableDirectories},
+		Session: agent.AgentSessionOptions{AdditionalDirectories: additional},
 		Mode:    mode, ResourceGeneration: binary.BigEndian.Uint64(digest[:8]),
 		ForceNew:     request.runtime.SessionPolicy == constants.RuntimeSessionPolicyNew,
 		Summarize:    request.runtime.HistoryMode == constants.HistoryModeSummary,
 		HistoryTurns: request.runtime.HistoryTurns,
 	}
-	if thread.Connection.Account.Provider == constants.RuntimeIDCodex {
-		thread.CodexSettings = &agent.CodexTurnSelection{Reasoning: plan.Policy.Reasoning, Fast: request.runtime.Fast}
-		if !request.runtime.ConfigurationResolved {
-			thread.CodexSettings.DefaultFast = environment.DefaultFast
-		}
-	} else if plan.Policy.Reasoning != "" {
-		thread.Settings = []agent.SessionSetting{{ID: "reasoning_effort", Value: agent.AgentOptionValue{ID: plan.Policy.Reasoning}}}
+	thread.Selection = &agent.TurnSelection{Reasoning: plan.Policy.Reasoning, Fast: request.runtime.Fast}
+	if !request.runtime.ConfigurationResolved {
+		thread.Selection.DefaultFast = environment.DefaultFast
 	}
+	switch thread.Connection.Account.Provider {
+	case constants.RuntimeIDClaude:
+		thread.Mode = "default"
+		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelAuto {
+			thread.Mode = "auto"
+		}
+		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelFullAccess {
+			thread.Mode = "bypassPermissions"
+		}
+	case constants.RuntimeIDCursor:
+		// Cursor's ACP policy is process-scoped; it is not a session task mode.
+		thread.Mode = ""
+		thread.Connection.Launch.CursorPermissionMode = "default"
+		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelAuto {
+			thread.Connection.Launch.CursorPermissionMode = "auto"
+		}
+		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelFullAccess {
+			thread.Connection.Launch.CursorPermissionMode = "full-access"
+		}
+	}
+
 	return thread
 }
 
@@ -249,7 +273,7 @@ func (m *service) startNativeExecution(
 			}
 		}
 	}()
-	if thread.CodexSettings != nil {
+	if thread.Selection != nil {
 		request.runtime.Fast = turn.RequestedFast()
 		work.input.runtime.Fast = request.runtime.Fast
 		work.execution.Fast = request.runtime.Fast

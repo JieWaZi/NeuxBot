@@ -94,6 +94,8 @@ const (
 
 // Turn owns the reserved thread seat until this exact input settles.
 type Turn struct {
+	// requestedFast is the per-turn selection accepted by the native settings boundary.
+	requestedFast *bool
 	// lifecycle owns the thread seat and shared process and store dependencies.
 	lifecycle *ThreadLifecycle
 	// thread is the state holding this Turn's seat.
@@ -252,6 +254,11 @@ func (t *Turn) runPrompt() TurnResult {
 }
 
 func (t *Turn) beforeSubmit(ctx context.Context, submission AgentPromptSubmission) error {
+	if verify := t.conn.accountLease.VerifyLogin; verify != nil {
+		if err := verify(ctx); err != nil {
+			return err
+		}
+	}
 	admission, receipt, err := t.recordInput(ctx, t.input, t.ports, submission)
 	if err != nil {
 		return err
@@ -295,10 +302,8 @@ func (t *Turn) recordInput(ctx context.Context, input TurnRequest, ports TurnPor
 		ExecutionID: input.ExecutionID, AssistantMessageID: input.AssistantMessageID,
 	}}
 	var err error
-	if t.binding.Session.Provider == "codex" {
-		admission.Input.Attribution = &UsageAttribution{ChatID: t.thread.chatID, AccountID: t.conn.account.id,
-			WakerID: input.UsageWakerID, Source: input.UsageSource}
-	}
+	admission.Input.Attribution = &UsageAttribution{ChatID: t.thread.chatID, AccountID: t.conn.account.id,
+		WakerID: input.UsageWakerID, Source: input.UsageSource}
 	if input.ExecutionID == "" {
 		err = t.lifecycle.store.CommitDetachedInput(ctx, admission.Input)
 	} else {
@@ -381,6 +386,11 @@ func (t *Turn) Steer(ctx context.Context, input TurnRequest, ports TurnPorts) (A
 		BeforeSubmit: func(ctx context.Context, submission AgentPromptSubmission) error {
 			if !t.matches(scope) {
 				return status_error.RuntimeUnavailable
+			}
+			if verify := t.conn.accountLease.VerifyLogin; verify != nil {
+				if err := verify(ctx); err != nil {
+					return err
+				}
 			}
 			admission, receipt, err := t.recordInput(ctx, input, ports, submission)
 			if err != nil {

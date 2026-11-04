@@ -21,6 +21,8 @@ import (
 
 // AccountModelCatalog 是指定智能体和账号的原生目录快照。
 type AccountModelCatalog struct {
+	// Provider identifies the native protocol that reported this catalog.
+	Provider string
 	// ModelCatalogSnapshot 保存原生模型和发现状态。
 	agent.ModelCatalogSnapshot
 	// AccountID 是显式账号选择，系统登录使用 system。
@@ -29,13 +31,13 @@ type AccountModelCatalog struct {
 	AuthGeneration uint64
 }
 
-// ReadModelCatalog 只发现所选 Codex 账号的模型，不创建 Chat 或发起推理。
+// ReadModelCatalog discovers the selected native account without creating a public Chat or sending a prompt.
 func (s *service) ReadModelCatalog(ctx context.Context, runtimeID, accountID string, refresh bool) (AccountModelCatalog, error) {
 	environment, err := s.environments.Get(ctx, runtimeID)
 	if err != nil {
 		return AccountModelCatalog{}, err
 	}
-	if environment.BaseRuntimeID != constants.RuntimeIDCodex {
+	if !usesNativeCatalog(environment.BaseRuntimeID) {
 		return AccountModelCatalog{}, status_error.RuntimePolicyUnsupported
 	}
 	return s.readModelCatalog(ctx, environment, accountID, refresh), nil
@@ -54,7 +56,7 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 	if accountID == "" {
 		accountID = agent.SystemAccountID
 	}
-	result := AccountModelCatalog{AccountID: accountID, ModelCatalogSnapshot: agent.ModelCatalogSnapshot{
+	result := AccountModelCatalog{Provider: environment.BaseRuntimeID, AccountID: accountID, ModelCatalogSnapshot: agent.ModelCatalogSnapshot{
 		State: agent.CatalogUnavailable, ErrorCode: "catalog_unavailable",
 	}}
 	if s.modelCatalog == nil || s.accountWorkspaceDirectory == "" {
@@ -67,19 +69,19 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 		result.ErrorCode = "runtime_unavailable"
 		return result
 	}
-	cwd := filepath.Join(s.accountWorkspaceDirectory, constants.RuntimeIDCodex)
+	cwd := filepath.Join(s.accountWorkspaceDirectory, environment.BaseRuntimeID)
 	if err := os.MkdirAll(cwd, 0700); err != nil {
 		return result
 	}
 	resolve := func(ctx context.Context) (agent.AccountRequest, error) {
-		selected := agent.AccountRequest{Provider: constants.RuntimeIDCodex, AccountID: accountID, CWD: cwd}
-		if accountID == agent.SystemAccountID {
+		selected := agent.AccountRequest{Provider: environment.BaseRuntimeID, AccountID: accountID, CWD: cwd, Executable: binary, PrefixArgs: environment.PrefixArgs}
+		if s.resolveAccount == nil && accountID == agent.SystemAccountID && environment.BaseRuntimeID == constants.RuntimeIDCodex {
 			return aiaccount.ResolveCodexSystemAccount(ctx, selected, environment.ConfigHome)
 		}
-		if s.resolveCodexAccount == nil {
+		if s.resolveAccount == nil {
 			return agent.AccountRequest{}, status_error.AIAccountConfigurationInvalid
 		}
-		return s.resolveCodexAccount(ctx, selected, environment.ConfigHome)
+		return s.resolveAccount(ctx, selected, environment.ConfigHome)
 	}
 	selected, err := resolve(ctx)
 	if err != nil {
@@ -91,15 +93,23 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 	result.AuthGeneration = selected.AuthGeneration
 	var fingerprint string
 	var apiKeyModels []string
+	var managedClaude *models.AIAccount
 	if accountID != agent.SystemAccountID && s.accounts != nil {
 		account, err := s.accounts.Get(ctx, accountID)
 		if err != nil {
 			return result
 		}
 		if account.AuthMode == constants.AccountAuthModeAPIKey {
-			apiKeyModels = account.SelectedModels
-			encoded, _ := json.Marshal([]any{account.SelectedModels, account.DefaultModel, account.ModelReasoningLevels, account.ModelDisplayNames, account.Endpoints})
-			fingerprint = fmt.Sprintf("%x", sha256.Sum256(encoded))
+			if environment.BaseRuntimeID == constants.RuntimeIDCodex {
+				apiKeyModels = account.SelectedModels
+			}
+			if environment.BaseRuntimeID == constants.RuntimeIDClaude {
+				if aiaccount.ManagedClaudeModelFingerprint(account) != selected.ConfigFingerprint {
+					return result
+				}
+				managedClaude = &account
+			}
+			fingerprint = accountModelFingerprint(account)
 		}
 	}
 	env := make(map[string]string)
@@ -116,11 +126,17 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 	}, environment.Detection.Version, fingerprint, refresh)
 	// External system login changes can race a read without emitting a host event.
 	current, err := resolve(ctx)
-	if err != nil || current != selected {
+	if err != nil || !current.Equal(selected) {
 		if errors.Is(err, status_error.RuntimeAuthRequired) {
 			result.State, result.ErrorCode = agent.CatalogSignedOut, "sign_in_required"
 		}
 		return result
+	}
+	if fingerprint != "" {
+		currentAccount, err := s.accounts.Get(ctx, accountID)
+		if err != nil || accountModelFingerprint(currentAccount) != fingerprint {
+			return result
+		}
 	}
 	if apiKeyModels != nil {
 		snapshot.Models = slices.DeleteFunc(snapshot.Models, func(model agent.AgentChoice) bool {
@@ -130,11 +146,21 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 			snapshot.DefaultID = ""
 		}
 	}
+	if managedClaude != nil {
+		snapshot.Models = slices.DeleteFunc(snapshot.Models, func(model agent.AgentChoice) bool {
+			_, ok := aiaccount.ManagedClaudeModelTarget(*managedClaude, model.ID)
+			return !ok
+		})
+		snapshot.DefaultID, _ = aiaccount.ManagedClaudeModelTarget(*managedClaude, "")
+		if !slices.ContainsFunc(snapshot.Models, func(model agent.AgentChoice) bool { return model.ID == snapshot.DefaultID }) {
+			snapshot.DefaultID = ""
+		}
+	}
 	result.ModelCatalogSnapshot = snapshot
 	return result
 }
 
-func (s *service) detectCodex(ctx context.Context, summary agentapi.RuntimeSummary, environment models.RuntimeEnvironment, request agentapi.DetectRequest) agentapi.DetectionResult {
+func (s *service) detectNative(ctx context.Context, summary agentapi.RuntimeSummary, environment models.RuntimeEnvironment, request agentapi.DetectRequest) agentapi.DetectionResult {
 	result := agentapi.DetectionResult{
 		Runtime: summary, State: agentapi.DetectionStateUnavailable, Auth: agentapi.AuthStatusUnknown,
 	}
@@ -158,6 +184,7 @@ func (s *service) detectCodex(ctx context.Context, summary agentapi.RuntimeSumma
 	}
 	result.State, result.Auth = agentapi.DetectionStateReady, agentapi.AuthStatusOK
 	if snapshot.State == agent.CatalogStale {
+		result.Auth = agentapi.AuthStatusUnknown
 		result.Diagnostics = []agentapi.Diagnostic{{
 			Code: agentapi.DiagnosticCodeACPOptionsUnavailable, Level: agentapi.DiagnosticLevelWarning, Message: snapshot.ErrorCode,
 		}}
@@ -165,28 +192,27 @@ func (s *service) detectCodex(ctx context.Context, summary agentapi.RuntimeSumma
 	result.Capabilities = agentapi.CapabilitySet{
 		agentapi.CapabilityDynamicModels:         true,
 		agentapi.CapabilityPartialMessages:       true,
-		agentapi.CapabilityResumeSession:         snapshot.Capabilities.Resume,
+		agentapi.CapabilityResumeSession:         snapshot.Capabilities.Resume || snapshot.Capabilities.Load,
 		agentapi.CapabilityAddDirectory:          snapshot.Capabilities.AdditionalDirectories,
 		agentapi.CapabilityImagePath:             snapshot.Capabilities.ImageInput,
-		agentapi.CapabilitySkillDirectory:        true,
-		agentapi.CapabilityMCPStreamableHTTP:     true,
+		agentapi.CapabilitySkillDirectory:        summary.SkillDirectoryName != "",
+		agentapi.CapabilityMCPStreamableHTTP:     snapshot.Capabilities.MCPHTTP,
 		agentapi.CapabilityStreamingUserMessages: snapshot.Capabilities.Steer,
 	}
-	permissions := CodexPermissionLevels()
 	result.DetectedDefaultModel = snapshot.DefaultID
 	result.Models = make([]agentapi.ModelOption, 0, len(snapshot.Models))
 	for _, model := range snapshot.Models {
-		option := agentapi.ModelOption{ID: model.ID, Name: model.Name, PermissionLevels: permissions}
+		option := agentapi.ModelOption{ID: model.ID, Name: model.Name, PermissionLevels: NativePermissionLevels(environment.BaseRuntimeID, model)}
 		if model.Config != nil {
 			option.ReasoningOptions = []agentapi.ReasoningOption{}
 			for _, setting := range model.Config.Options {
-				if setting.ID != "reasoning_effort" {
+				if setting.Category != "thought_level" && setting.ID != "reasoning_effort" {
 					continue
 				}
 				for _, choice := range setting.Choices {
 					option.ReasoningOptions = append(option.ReasoningOptions, agentapi.ReasoningOption{ID: choice.ID, Name: choice.Name})
 				}
-				if model.ID == snapshot.DefaultID {
+				if model.ID == snapshot.DefaultID && slices.ContainsFunc(setting.Choices, func(choice agent.AgentChoice) bool { return choice.ID == setting.Value.ID }) {
 					result.DetectedDefaultReasoning = setting.Value.ID
 				}
 			}
@@ -199,4 +225,25 @@ func (s *service) detectCodex(ctx context.Context, summary agentapi.RuntimeSumma
 // CodexPermissionLevels 映射原生审批和沙箱预设，权限与账号及模型无关。
 func CodexPermissionLevels() []constants.PermissionLevel {
 	return []constants.PermissionLevel{constants.PermissionLevelDefault, constants.PermissionLevelAuto, constants.PermissionLevelFullAccess}
+}
+
+func usesNativeCatalog(provider string) bool {
+	return provider == constants.RuntimeIDCodex || provider == constants.RuntimeIDClaude || provider == constants.RuntimeIDCursor
+}
+
+// NativePermissionLevels exposes only the native policies supported by this provider and model.
+func NativePermissionLevels(provider string, model agent.AgentChoice) []constants.PermissionLevel {
+	if provider == constants.RuntimeIDCodex {
+		return CodexPermissionLevels()
+	}
+	levels := []constants.PermissionLevel{constants.PermissionLevelDefault}
+	if provider == constants.RuntimeIDClaude && model.AutoMode {
+		levels = append(levels, constants.PermissionLevelAuto)
+	}
+	return append(levels, constants.PermissionLevelFullAccess)
+}
+
+func accountModelFingerprint(account models.AIAccount) string {
+	encoded, _ := json.Marshal([]any{account.SelectedModels, account.DefaultModel, account.ModelReasoningLevels, account.ModelDisplayNames, account.ClaudeModelRoles, account.Endpoints})
+	return fmt.Sprintf("%x", sha256.Sum256(encoded))
 }
