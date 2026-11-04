@@ -3,6 +3,7 @@ package agent
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,69 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
+
+func TestProviderRuntimeVerifiesCodexSystemCredentialBeforePublishing(t *testing.T) {
+	for _, tc := range []struct {
+		// name names the startup fixture.
+		name string
+		// account supplies the native account kind.
+		account string
+		// accessToken supplies the native process proof.
+		accessToken string
+		// wrongRoot introduces a conflict before starting the native process.
+		wrongRoot bool
+		// wrongReportedRoot overrides the actual root reported by the native process.
+		wrongReportedRoot bool
+		// wantErr is the public startup failure.
+		wantErr error
+	}{
+		{name: "matching", account: "chatgpt", accessToken: "fixture-selected"},
+		{name: "wrong native credential", account: "chatgpt", accessToken: "fixture-other", wantErr: status_error.RuntimeAuthRequired},
+		{name: "wrong native login kind", account: "apiKey", accessToken: "fixture-selected", wantErr: status_error.RuntimeAuthRequired},
+		{name: "conflicting native root", account: "chatgpt", accessToken: "fixture-selected", wrongRoot: true, wantErr: status_error.AIAccountConfigurationInvalid},
+		{name: "wrong reported native root", account: "chatgpt", accessToken: "fixture-selected", wrongReportedRoot: true, wantErr: status_error.AIAccountConfigurationInvalid},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := providerTestRequest(t, "codex")
+			req.Account.AccountID = SystemAccountID
+			req.Account.ConfigHome = req.Account.CWD
+			req.Launch.Environment["FIXTURE_CODEX_ACCOUNT"] = tc.account
+			req.Launch.Environment["FIXTURE_CODEX_TOKEN"] = tc.accessToken
+			if tc.wrongRoot {
+				req.Launch.ConfigHome = t.TempDir()
+			}
+			if tc.wrongReportedRoot {
+				req.Launch.Environment["FIXTURE_CODEX_ROOT"] = t.TempDir()
+			}
+			releases := &providerReleaseTrace{}
+			runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: func(context.Context, AccountRequest) (AccountLease, error) {
+				return AccountLease{
+					ConfigHome: req.Account.ConfigHome, Close: releases.add("account"),
+					VerifyCodexCredential: func(_ context.Context, proof [sha256.Size]byte) error {
+						if proof != sha256.Sum256([]byte("fixture-selected")) {
+							return status_error.RuntimeAuthRequired
+						}
+						return nil
+					},
+				}, nil
+			}})
+			t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+			conn, err := runtime.Open(t.Context(), req, ProviderConnectionPorts{})
+			if conn == nil || !errors.Is(err, tc.wantErr) {
+				t.Fatalf("Open = %v, %v", conn != nil, err)
+			}
+			if _, err := conn.Client(); (err == nil) != (tc.wantErr == nil) {
+				t.Fatalf("publication = %v", err)
+			}
+			if err := conn.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			if !tc.wrongRoot {
+				releases.require(t, "account")
+			}
+		})
+	}
+}
 
 func TestProviderRuntimeNativeInitialization(t *testing.T) {
 	for _, provider := range []string{"codex", "claude", "cursor"} {
@@ -570,7 +634,20 @@ func TestProviderRuntimeChild(t *testing.T) {
 		} else if provider == "codex" {
 			switch frame.Method {
 			case "initialize":
-				reply["result"] = map[string]any{"userAgent": "codex/0.163.0"}
+				home := os.Getenv("FIXTURE_CODEX_ROOT")
+				if home == "" {
+					home = os.Getenv("CODEX_HOME")
+				}
+				reply["result"] = map[string]any{"userAgent": "codex/0.163.0", "codexHome": home}
+			case "account/read":
+				result := map[string]any{}
+				if kind := os.Getenv("FIXTURE_CODEX_ACCOUNT"); kind != "" {
+					result["requiresOpenaiAuth"] = true
+					result["account"] = map[string]any{"type": kind, "email": "fixture@example.invalid", "planType": "plus"}
+				}
+				reply["result"] = result
+			case "getAuthStatus":
+				reply["result"] = map[string]any{"authMethod": "chatgpt", "authToken": os.Getenv("FIXTURE_CODEX_TOKEN"), "requiresOpenaiAuth": true}
 			case "thread/fork":
 				reply["result"] = map[string]any{"thread": map[string]any{"id": "fixture-child"}, "model": "fixture-model"}
 			case "model/list":

@@ -3,6 +3,7 @@ package agent
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"maps"
 	"os"
@@ -13,7 +14,11 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	codex "github.com/JieWaZi/acp-go/pkg/agent_next/codex"
 )
+
+// SystemAccountID identifies selection of the installation's native login.
+const SystemAccountID = "system"
 
 // AccountRequest identifies the frozen credential selection and its native launch inputs.
 type AccountRequest struct {
@@ -25,6 +30,8 @@ type AccountRequest struct {
 	Subject string
 	// AuthGeneration increases only when this account's credentials or subject are invalidated.
 	AuthGeneration uint64
+	// ConfigHome is the frozen configuration root when the account authority selects it.
+	ConfigHome string
 	// CWD is the absolute, resolved working directory.
 	CWD string
 	// Model is the selected model when account materialization depends on it.
@@ -37,6 +44,8 @@ type AccountLease struct {
 	Environment map[string]string
 	// ConfigHome is the account's authoritative native configuration root when supplied.
 	ConfigHome string
+	// VerifyCodexCredential compares the initialized Codex process proof with the selected credential.
+	VerifyCodexCredential func(context.Context, [sha256.Size]byte) error
 	// CursorQuota optionally binds management reads to the selected native login.
 	CursorQuota *CursorQuotaLease
 	// PrepareLaunchAuth obtains any additional startup authentication resources.
@@ -334,6 +343,12 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 		return err
 	}
 	account.CWD = cwd
+	if account.ConfigHome != "" && request.Launch.ConfigHome != "" {
+		root, err := resolveAgentDirectory(request.Launch.ConfigHome)
+		if err != nil || root != account.ConfigHome {
+			return status_error.AIAccountConfigurationInvalid
+		}
+	}
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -341,6 +356,9 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	c.accountLease, err = c.runtime.options.AcquireAccount(ctx, account)
 	if err != nil {
 		return safeAgentError(err, status_error.AIAccountConfigurationInvalid)
+	}
+	if account.ConfigHome != "" && c.accountLease.ConfigHome != account.ConfigHome {
+		return status_error.AIAccountConfigurationInvalid
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -377,7 +395,36 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	}
 	// Close either withdrew startup before this point, or owns the same client
 	// after its one initialization attempt settles.
-	return c.client.initialize(ctx)
+	if err := c.client.initialize(ctx); err != nil {
+		return err
+	}
+	if verify := c.accountLease.VerifyCodexCredential; verify != nil {
+		return c.verifyCodexCredential(ctx, verify)
+	}
+	return nil
+}
+
+func (c *providerConnection) verifyCodexCredential(ctx context.Context, verify func(context.Context, [sha256.Size]byte) error) error {
+	native, ok := c.client.native.(*codex.Client)
+	if !ok {
+		return status_error.AIAccountConfigurationInvalid
+	}
+	account, err := c.client.ReadAccount(ctx)
+	if err != nil {
+		return err
+	}
+	if account.Account == nil || account.Account.Kind != "account" {
+		return status_error.RuntimeAuthRequired
+	}
+	reportedRoot, proof, err := native.ChatGPTCredentialProof(ctx)
+	if err != nil {
+		return safeAgentError(err, status_error.RuntimeAuthRequired)
+	}
+	root, err := resolveAgentDirectory(reportedRoot)
+	if err != nil || root != c.accountLease.ConfigHome {
+		return status_error.AIAccountConfigurationInvalid
+	}
+	return safeAgentError(verify(ctx, proof), status_error.RuntimeAuthRequired)
 }
 
 // Client returns the initialized client while this connection accepts use.
