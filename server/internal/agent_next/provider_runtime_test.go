@@ -588,6 +588,8 @@ func TestProviderRuntimeChild(t *testing.T) {
 			fmt.Println("2.1.128 (Claude Code)")
 		case "cursor":
 			fmt.Println("2026.10.27-abcdef0")
+		case "qoder", "qoder-cn":
+			fmt.Println("1.1.53")
 		}
 		os.Exit(0)
 	}

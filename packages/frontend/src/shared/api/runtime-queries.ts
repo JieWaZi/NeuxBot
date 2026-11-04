@@ -15,7 +15,12 @@ export function listRuntimesOptions(
 
 export function usesNativeModelCatalog(runtimeId?: string) {
   return (
-    runtimeId === "codex" || runtimeId === "claude" || runtimeId === "cursor"
+    runtimeId === "codex" ||
+    runtimeId === "claude" ||
+    runtimeId === "cursor" ||
+    runtimeId === "workbuddy" ||
+    runtimeId === "qoder" ||
+    runtimeId === "qoder-cn"
   );
 }
 

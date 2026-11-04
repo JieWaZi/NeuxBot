@@ -2,6 +2,7 @@ package execution
 
 import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 
 	"context"
 	"errors"
@@ -347,7 +348,7 @@ func (m *service) startMessage(
 		return AcceptedExecution{}, status_error.RuntimeUnavailable
 	}
 	// Scoped entries require native enforcement over inherited MCP and plugin settings.
-	if (nativeProvider(runtimeEnvironment) != constants.RuntimeIDCodex && nativeProvider(runtimeEnvironment) != constants.RuntimeIDClaude && nativeProvider(runtimeEnvironment) != constants.RuntimeIDCursor) || request.allowedConnectorIDs != nil || request.allowedAgentDomains != nil {
+	if !agent.SupportsProvider(nativeProvider(runtimeEnvironment)) || request.allowedConnectorIDs != nil || request.allowedAgentDomains != nil {
 		return AcceptedExecution{}, status_error.RuntimePolicyUnsupported
 	}
 	requiredPermissionLevel := request.runtime.PermissionLevel

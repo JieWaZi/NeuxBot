@@ -13,6 +13,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -183,6 +184,10 @@ func (s *service) detectNative(ctx context.Context, summary agentapi.RuntimeSumm
 		return result
 	}
 	result.State, result.Auth = agentapi.DetectionStateReady, agentapi.AuthStatusOK
+	if accountconfig.ACPSystemConfigVariable(environment.BaseRuntimeID) != "" {
+		// ACP model discovery is not an authentication proof.
+		result.Auth = agentapi.AuthStatusUnknown
+	}
 	if snapshot.State == agent.CatalogStale {
 		result.Auth = agentapi.AuthStatusUnknown
 		result.Diagnostics = []agentapi.Diagnostic{{
@@ -228,11 +233,28 @@ func CodexPermissionLevels() []constants.PermissionLevel {
 }
 
 func usesNativeCatalog(provider string) bool {
-	return provider == constants.RuntimeIDCodex || provider == constants.RuntimeIDClaude || provider == constants.RuntimeIDCursor
+	return agent.SupportsProvider(provider)
 }
 
 // NativePermissionLevels exposes only the native policies supported by this provider and model.
 func NativePermissionLevels(provider string, model agent.AgentChoice) []constants.PermissionLevel {
+	if accountconfig.ACPSystemConfigVariable(provider) != "" {
+		levels := []constants.PermissionLevel{}
+		if slices.Contains(model.PermissionModes, "default") {
+			levels = append(levels, constants.PermissionLevelDefault)
+		}
+		if slices.Contains(model.PermissionModes, "auto") {
+			levels = append(levels, constants.PermissionLevelAuto)
+		}
+		full := "yolo"
+		if provider == constants.RuntimeIDWorkBuddy {
+			full = "bypassPermissions"
+		}
+		if slices.Contains(model.PermissionModes, full) || provider != constants.RuntimeIDWorkBuddy && slices.Contains(model.PermissionModes, "bypassPermissions") {
+			levels = append(levels, constants.PermissionLevelFullAccess)
+		}
+		return levels
+	}
 	if provider == constants.RuntimeIDCodex {
 		return CodexPermissionLevels()
 	}

@@ -100,13 +100,16 @@ func nativeThreadRequest(chatID string, plan agentapi.SessionPlan, request pendi
 		thread.Selection.DefaultFast = environment.DefaultFast
 	}
 	switch thread.Connection.Account.Provider {
-	case constants.RuntimeIDClaude:
+	case constants.RuntimeIDClaude, constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
 		thread.Mode = "default"
 		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelAuto {
 			thread.Mode = "auto"
 		}
 		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelFullAccess {
 			thread.Mode = "bypassPermissions"
+			if thread.Connection.Account.Provider == constants.RuntimeIDQoder || thread.Connection.Account.Provider == constants.RuntimeIDQoderCN {
+				thread.Mode = "yolo"
+			}
 		}
 	case constants.RuntimeIDCursor:
 		// Cursor's ACP policy is process-scoped; it is not a session task mode.

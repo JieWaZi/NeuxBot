@@ -116,8 +116,16 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 		summary.InstructionFileName, summary.SkillDirectoryName = "CLAUDE.md", ".claude"
 	case "cursor":
 		summary.SkillDirectoryName = ".cursor"
+	case "workbuddy":
+		summary.SkillDirectoryName = ".codebuddy"
+	case "qoder", "qoder-cn":
+		summary.SkillDirectoryName = ".qoder"
 	}
 	model := agentapi.ModelOption{ID: "fixture-model", PermissionLevels: []constants.PermissionLevel{permission}}
+	standardACP := providerID == "workbuddy" || providerID == "qoder" || providerID == "qoder-cn"
+	if standardACP {
+		model.PermissionLevels = []constants.PermissionLevel{constants.PermissionLevelDefault, constants.PermissionLevelAuto, constants.PermissionLevelFullAccess}
+	}
 	if providerID != "codex" {
 		model.ReasoningOptions = []agentapi.ReasoningOption{{ID: "high"}, {ID: "low"}}
 	}
@@ -128,6 +136,9 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 		Detection: agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: summary, ResolvedBinary: executable,
 			Models: []agentapi.ModelOption{model}},
 	}}
+	if standardACP {
+		environment.entry.DefaultFast = nil
+	}
 	accounts := new(atomic.Int32)
 	open := func() (Core, chatservice.Module, *eventlognext.Store, func()) {
 		t.Helper()

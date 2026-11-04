@@ -19,6 +19,8 @@ import (
 	"github.com/JieWaZi/acp-go/pkg/agent_next/claude"
 	"github.com/JieWaZi/acp-go/pkg/agent_next/codex"
 	"github.com/JieWaZi/acp-go/pkg/agent_next/cursor"
+	"github.com/JieWaZi/acp-go/pkg/agent_next/qoder"
+	"github.com/JieWaZi/acp-go/pkg/agent_next/workbuddy"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
@@ -222,6 +224,8 @@ type AgentChoice struct {
 	DefaultServiceTier *string
 	// InputModalities lists the inputs this model reports supporting.
 	InputModalities []string
+	// PermissionModes retains the native ACP permission menu, when reported.
+	PermissionModes []string
 }
 
 // AgentModelConfig distinguishes a reported model setting catalog from unknown rows.
@@ -666,6 +670,16 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 			}
 		}
 		client.native, err = cursor.NewClient(ctx, options, host)
+	case constants.RuntimeIDWorkBuddy:
+		client.native, err = workbuddy.NewClient(ctx, workbuddy.Options{
+			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
+			Environment: env, ExplicitCredential: lease.Environment["CODEBUDDY_AUTH_TOKEN"] != "" || lease.Environment["CODEBUDDY_API_KEY"] != "",
+		}, host)
+	case constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+		client.native, err = qoder.NewClient(ctx, qoder.Options{
+			RuntimeID: account.Provider, Executable: launch.Executable, PrefixArgs: launch.PrefixArgs,
+			WorkingDirectory: account.CWD, Environment: env, ExpectedUserID: lease.QoderUserID,
+		}, host)
 	default:
 		return nil, status_error.RuntimeNotRegistered
 	}
@@ -685,7 +699,8 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 	case constants.RuntimeIDCursor:
 		homeVariable = "CURSOR_CONFIG_DIR"
 	default:
-		if lease.ConfigHome != "" || launch.ConfigHome != "" {
+		homeVariable = accountconfig.ACPSystemConfigVariable(provider)
+		if homeVariable == "" && (lease.ConfigHome != "" || launch.ConfigHome != "") {
 			return nil, status_error.RuntimeConfigurationInvalid
 		}
 	}
@@ -762,6 +777,13 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		delete(environment, "CURSOR_API_KEY")
 		delete(environment, "CURSOR_AUTH_TOKEN")
 	}
+	if accountconfig.ACPSystemConfigVariable(provider) != "" {
+		for key := range environment {
+			if accountconfig.IsACPAccountOverride(provider, key) {
+				delete(environment, key)
+			}
+		}
+	}
 	delete(environment, homeVariable)
 	if err := merge(lease.Environment); err != nil {
 		return nil, err
@@ -769,16 +791,16 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 	if selected := environment[homeVariable]; selected != "" {
 		home = selected
 	}
-	_, nativeClaudeScope := lease.Environment["CLAUDE_CONFIG_DIR"]
-	nativeClaudeScope = nativeClaudeScope && provider == constants.RuntimeIDClaude
-	if nativeClaudeScope {
+	_, nativeScope := lease.Environment[homeVariable]
+	nativeScope = nativeScope && (provider == constants.RuntimeIDClaude || accountconfig.ACPSystemConfigVariable(provider) != "")
+	if nativeScope {
 		// Claude derives its Keychain scope from the lexical override. Explicitly
 		// setting its default directory selects a different account than no override.
-		home = lease.Environment["CLAUDE_CONFIG_DIR"]
+		home = lease.Environment[homeVariable]
 		// The account lease already validated the canonical root and preserves this
 		// lexical spelling. Requiring the directory to exist would reject first use
 		// with an environment credential before the CLI has created its settings.
-		delete(environment, "CLAUDE_CONFIG_DIR")
+		delete(environment, homeVariable)
 	} else if lease.ConfigHome != "" {
 		home = lease.ConfigHome
 	}
@@ -787,6 +809,10 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 			return nil, status_error.RuntimeConfigurationInvalid
 		}
 		environment[homeVariable] = home
+	}
+	if provider == constants.RuntimeIDWorkBuddy {
+		// Chat titles belong to NeuxBot; the CLI's title request can delay prompt completion.
+		environment["CODEBUDDY_CODE_DISABLE_TERMINAL_TITLE"] = "1"
 	}
 
 	env := make([]string, 0, len(environment))
@@ -1122,7 +1148,13 @@ func (c *directAgentClient) ReadModels(ctx context.Context) (AgentModelCatalog, 
 	if err != nil {
 		return AgentModelCatalog{}, safeAgentError(err, status_error.AIAccountModelsUnavailable)
 	}
-	return AgentModelCatalog{DefaultID: stringValue(result.DefaultID), Models: agentChoices(result.Options, true)}, nil
+	catalog := AgentModelCatalog{DefaultID: stringValue(result.DefaultID), Models: agentChoices(result.Options, true)}
+	for i := range catalog.Models {
+		for _, mode := range result.Modes {
+			catalog.Models[i].PermissionModes = append(catalog.Models[i].PermissionModes, string(mode.Id))
+		}
+	}
+	return catalog, nil
 }
 
 func (c *directAgentClient) CloseSession(ctx context.Context, id string) error {
@@ -1173,6 +1205,9 @@ func safeAgentError(err error, fallback status_error.StatusError) error {
 	case errors.Is(err, cursor.ErrQuotaUnauthorized), errors.Is(err, cursor.ErrQuotaCredential):
 		return status_error.RuntimeAuthRequired
 	case errors.As(err, &request) && request != nil:
+		if safeNativeErrorKind(request) == "session_restore_unverified" {
+			return status_error.RuntimeProtocolIncompatible
+		}
 		if safeNativeErrorKind(request) == "session_missing" {
 			return status_error.RuntimeSessionNotFound
 		}
@@ -1197,7 +1232,7 @@ func safeNativeErrorKind(request *acp.RequestError) string {
 	for _, key := range []string{"classification", "errorKind"} {
 		kind, _ := data[key].(string)
 		switch kind {
-		case "session_missing", "authentication_lost", "authentication", "billing_error", "rate_limit", "native_execution_failed":
+		case "session_missing", "session_restore_unverified", "authentication_lost", "authentication", "billing_error", "rate_limit", "native_execution_failed":
 			return kind
 		}
 	}

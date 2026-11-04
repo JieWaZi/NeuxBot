@@ -358,14 +358,22 @@ func (c *providerConnection) open(ctx context.Context, request ProviderConnectio
 	c.cancelOpen()
 }
 
+// SupportsProvider identifies providers migrated to the single native runtime owner.
+func SupportsProvider(provider string) bool {
+	switch provider {
+	case constants.RuntimeIDCodex, constants.RuntimeIDClaude, constants.RuntimeIDCursor,
+		constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+		return true
+	}
+	return false
+}
+
 func (c *providerConnection) initialize(ctx context.Context, request ProviderConnectionRequest, ports ProviderConnectionPorts) error {
 	account := request.Account
 	if account.Executable != "" && (account.Executable != request.Launch.Executable || !slices.Equal(account.PrefixArgs, request.Launch.PrefixArgs)) {
 		return status_error.AIAccountConfigurationInvalid
 	}
-	switch account.Provider {
-	case constants.RuntimeIDCodex, constants.RuntimeIDClaude, constants.RuntimeIDCursor:
-	default:
+	if !SupportsProvider(account.Provider) {
 		return status_error.RuntimeNotRegistered
 	}
 	if request.Launch.RequireNoTools && account.Provider != constants.RuntimeIDClaude {
@@ -389,7 +397,7 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	}
 	if account.ConfigHome != "" && request.Launch.ConfigHome != "" {
 		root, err := resolveAgentDirectory(request.Launch.ConfigHome)
-		if (account.Provider == constants.RuntimeIDCursor || account.Provider == constants.RuntimeIDClaude) && filepath.IsAbs(request.Launch.ConfigHome) && request.Launch.ConfigHome == account.ConfigHome {
+		if account.Provider != constants.RuntimeIDCodex && filepath.IsAbs(request.Launch.ConfigHome) && request.Launch.ConfigHome == account.ConfigHome {
 			// The account authority admitted this canonical settings root, including an absent leaf.
 			root, err = account.ConfigHome, nil
 		}

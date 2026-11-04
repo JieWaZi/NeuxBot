@@ -29,6 +29,28 @@ func TestCursorLaunchUsesSelectedConfigHome(t *testing.T) {
 	}
 }
 
+func TestStandardACPProvidersUseTheSharedProcessOwner(t *testing.T) {
+	for _, provider := range []string{"workbuddy", "qoder", "qoder-cn"} {
+		t.Run(provider, func(t *testing.T) {
+			request := providerTestRequest(t, provider)
+			runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: providerTestAccount})
+			defer runtime.Close(context.Background())
+			connection, err := runtime.Open(t.Context(), request, ProviderConnectionPorts{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			client, err := connection.Client()
+			if err != nil {
+				t.Fatal(err)
+			}
+			session, err := client.NewSession(t.Context(), AgentSessionOptions{})
+			if err != nil || session.ID != "fixture-native" {
+				t.Fatalf("session = %#v, %v", session, err)
+			}
+		})
+	}
+}
+
 func TestProviderClientKeepsStructuredInputAndAdmission(t *testing.T) {
 	req := providerTestRequest(t, "cursor")
 	runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: providerTestAccount})

@@ -64,7 +64,7 @@ it("首次探测只读取一次，由统一事件触发后续对账，空闲不�
   }
 });
 
-it.each(["codex", "claude", "cursor"])(
+it.each(["codex", "claude", "cursor", "workbuddy", "qoder", "qoder-cn"])(
   "%s 拒绝旧认证世代的模型目录",
   async (runtimeId) => {
     const client = new QueryClient({

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 )
 
 const (
@@ -182,7 +183,7 @@ func (c *ModelCatalog) readNative(ctx context.Context, request ProviderConnectio
 		return failure
 	}
 	account, err := client.ReadAccount(ctx)
-	if err != nil {
+	if err != nil && !(accountconfig.ACPSystemConfigVariable(request.Account.Provider) != "" && errors.Is(err, status_error.RuntimePolicyUnsupported)) {
 		return fail(err)
 	}
 	if account.RequiresAuthentication && account.Account == nil {

@@ -104,8 +104,15 @@ func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 	}
 	// Claude model changes can downgrade auto mode. The adapter validates the
 	// requested mode against the newly selected model before any prompt is admitted.
-	if request.Mode != "" && request.Mode != t.effective.Mode {
-		return t.setSessionMode(client, request.Mode)
+	mode := request.Mode
+	if provider := request.Connection.Account.Provider; (provider == "qoder" || provider == "qoder-cn") && mode == "yolo" {
+		if !slices.ContainsFunc(t.effective.Modes, func(choice AgentChoice) bool { return choice.ID == mode }) &&
+			slices.ContainsFunc(t.effective.Modes, func(choice AgentChoice) bool { return choice.ID == "bypassPermissions" }) {
+			mode = "bypassPermissions"
+		}
+	}
+	if mode != "" && mode != t.effective.Mode {
+		return t.setSessionMode(client, mode)
 	}
 	return nil
 }
@@ -379,6 +386,7 @@ func cloneChoices(choices []AgentChoice) []AgentChoice {
 	choices = slices.Clone(choices)
 	for i := range choices {
 		choices[i].InputModalities = slices.Clone(choices[i].InputModalities)
+		choices[i].PermissionModes = slices.Clone(choices[i].PermissionModes)
 		if tier := choices[i].DefaultServiceTier; tier != nil {
 			copied := *tier
 			choices[i].DefaultServiceTier = &copied
