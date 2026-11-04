@@ -94,7 +94,9 @@ type ChatFact struct {
 type MessageChangeKind string
 
 const (
-	MessageAppend         MessageChangeKind = "append"
+	MessageAppend MessageChangeKind = "append"
+	// MessageReplace replaces the exact native message text, including an empty body.
+	// An explicit text or commentary ContentType also records the message phase.
 	MessageReplace        MessageChangeKind = "replace"
 	MessageToolSnapshot   MessageChangeKind = "tool_snapshot"
 	MessageComplete       MessageChangeKind = "complete"

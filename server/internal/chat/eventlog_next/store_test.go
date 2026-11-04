@@ -856,6 +856,14 @@ func TestRevisionLateClassificationReachesEarlierDurableFragments(t *testing.T) 
 		message.Parts[1].Type != constants.RuntimeEventTypeCommentaryDelta || message.Parts[1].Text != late {
 		t.Fatal("late classification did not reach both durable pieces")
 	}
+	appendRange("correct-progress", "native-progress", agent.MessageChange{
+		Kind: agent.MessageReplace, ContentType: constants.RuntimeEventTypeCommentaryDelta, Text: "authoritative commentary",
+	})
+	message, err = s.ReadMessage(ctx, chatID, "assistant")
+	if err != nil || message.Text != "actual answer" || len(message.Parts) != 2 ||
+		message.Parts[0].Type != constants.RuntimeEventTypeCommentaryDelta || message.Parts[0].Text != "authoritative commentary" {
+		t.Fatalf("classified replacement did not clear the same lane: %+v %v", message, err)
+	}
 }
 
 func TestRevisionProjectionDoesNotVisitSupersededRelationships(t *testing.T) {
@@ -1059,5 +1067,59 @@ func TestRevisionDelayedReferenceDoesNotResurrectSupersededBody(t *testing.T) {
 	got, err := s.ReadMessage(ctx, chatID, "a")
 	if err != nil || got.Text != "corrected tail" {
 		t.Fatalf("late link changed current version: %+v %v", got, err)
+	}
+}
+
+func TestRevisionCommentaryReplacementPreservesFinalText(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: "account", SessionID: "native"}, InvocationID: "P"}
+	receipt := writeBatch(t, s, "create", 0, fact(constants.ChatEventTypeCreated, "", ""))
+	link := func(command, lane string, change agent.MessageChange) {
+		t.Helper()
+		ref, err := s.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: key, CommitKey: command, MessageID: lane, Changes: []agent.MessageChange{change}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipt = writeBatch(t, s, "link-"+command, receipt.Version, agent.ConversationChange{Message: &agent.MessageChange{
+			MessageID: "assistant", Kind: agent.MessageNativeFragment, Fragments: &ref,
+		}})
+	}
+	link("answer", "answer-lane", agent.MessageChange{Kind: agent.MessageAppend, Text: "final-already-here"})
+	link("provisional", "lane", agent.MessageChange{Kind: agent.MessageAppend, Text: "provisional old"})
+	link("reason", "lane", agent.MessageChange{Kind: agent.MessageAppend, ContentType: constants.RuntimeEventTypeThinkingDelta, Text: "retained reasoning"})
+	link("old", "lane", agent.MessageChange{Kind: agent.MessageAppend, ContentType: constants.RuntimeEventTypeCommentaryDelta, Text: "old commentary"})
+	link("other", "another-lane", agent.MessageChange{Kind: agent.MessageAppend, Text: " independent"})
+	link("correct", "lane", agent.MessageChange{Kind: agent.MessageReplace, ContentType: constants.RuntimeEventTypeCommentaryDelta, Text: "corrected commentary"})
+	page, err := s.ReadMessages(ctx, agent.MessageQuery{ChatID: chatID, Limit: 1})
+	if err != nil || len(page.Messages) != 1 || page.Messages[0].Text != "final-already-here independent" ||
+		len(page.Messages[0].Parts) != 4 || page.Messages[0].Parts[1].Text != "corrected commentary" || page.Messages[0].Parts[2].Text != "retained reasoning" {
+		t.Fatalf("commentary replacement %+v %v", page, err)
+	}
+	link("empty", "lane", agent.MessageChange{Kind: agent.MessageReplace, ContentType: constants.RuntimeEventTypeCommentaryDelta})
+	if err := s.CommitNativeResult(ctx, agent.NativeResult{Key: key, Turn: acpmeta.NativeTurn{InvocationID: "P", Origin: acpmeta.NativeTurnOriginProvider,
+		Status: acpmeta.NativeTurnCompleted}, FinalMessage: &agent.NativeFinalMessage{ID: "answer-lane", Text: "final-already-here"}}); err != nil {
+		t.Fatal(err)
+	}
+	_, path := s.nativeStream(key)
+	data, err := os.ReadFile(path)
+	if err != nil || bytes.Count(data, []byte("final-already-here")) != 1 {
+		t.Fatalf("commentary changed final prefix reuse: %v", err)
+	}
+	writeBatch(t, s, "terminal", receipt.Version, agent.ConversationChange{Message: &agent.MessageChange{
+		MessageID: "assistant", Kind: agent.MessageNativeFinal, Result: &key,
+	}})
+	index, err := s.IndexPath(chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(index); err != nil {
+		t.Fatal(err)
+	}
+	page, err = s.ReadMessages(ctx, agent.MessageQuery{ChatID: chatID, Limit: 1})
+	if err != nil || len(page.Messages) != 1 || page.Messages[0].Text != "final-already-here independent" ||
+		len(page.Messages[0].Parts) != 4 || page.Messages[0].Parts[1].Type != constants.RuntimeEventTypeCommentaryDelta ||
+		page.Messages[0].Parts[1].Text != "" || page.Messages[0].Parts[2].Text != "retained reasoning" {
+		t.Fatalf("explicit empty commentary or exact terminal %+v %v", page, err)
 	}
 }

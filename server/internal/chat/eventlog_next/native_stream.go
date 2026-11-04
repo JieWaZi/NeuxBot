@@ -90,7 +90,7 @@ func validNativeFragment(f nativeFragment) bool {
 	case agent.MessageAppend:
 		return m.Text != "" && isTextContent(m.ContentType) && m.ToolCallID == "" && len(m.Data) == 0 && f.Patch == nil
 	case agent.MessageReplace:
-		return isFinalText(m.ContentType) && m.ToolCallID == "" && len(m.Data) == 0 && f.Patch == nil
+		return isClassifiableText(m.ContentType) && m.ToolCallID == "" && len(m.Data) == 0 && f.Patch == nil
 	case agent.MessageToolSnapshot:
 		if !validID(m.ToolCallID) || m.Text != "" ||
 			(m.ContentType != "" && m.ContentType != constants.RuntimeEventTypeToolInputSnapshot &&

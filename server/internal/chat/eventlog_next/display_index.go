@@ -122,41 +122,49 @@ func publishDisplayPosition(db *gorm.DB, d displayPosition) error {
 	var replaced func() *gorm.DB
 	switch {
 	case d.LaneText:
-		// A classified lane treats its text fragments as one versioned body.
-		// Otherwise a replacement preserves explicitly identified commentary.
-		var classification displayPosition
-		if err := lane().Where("kind = ?", indexNativeClassification).Limit(1).Find(&classification).Error; err != nil {
+		text := func() *gorm.DB { return lane().Where("lane_text") }
+		var phase displayPosition
+		needsPhase := d.Kind == indexNativeTerminal ||
+			d.Kind == indexNativeTextReplace && d.Content == "" ||
+			d.Kind == indexNativeTextAppend && !isFinalText(d.Content)
+		if needsPhase {
+			if err := lane().Where("kind IN ? AND content IN ?", []indexKind{indexNativeClassification, indexNativeTextReplace},
+				[]constants.RuntimeEventType{constants.RuntimeEventTypeTextDelta, constants.RuntimeEventTypeCommentaryDelta}).
+				Order("native_cursor DESC").Limit(1).Find(&phase).Error; err != nil {
+				return err
+			}
+		}
+		if d.Kind == indexNativeTextReplace && d.Content == "" && phase.NativeCursor != 0 && phase.NativeCursor < d.NativeCursor {
+			d.Content = phase.Content
+		}
+		// A complete message always supersedes older text, including fragments
+		// persisted before phase evidence arrived.
+		barriers := []indexKind{indexNativeTextReplace}
+		if d.Kind == indexNativeTextReplace || phase.NativeCursor != 0 || isFinalText(d.Content) {
+			barriers = append(barriers, indexNativeTerminal)
+		}
+		if superseded, err := laterDisplayExists(text().Where("kind IN ?", barriers), d.NativeCursor); err != nil || superseded {
 			return err
 		}
-		if classification.NativeCursor != 0 || isFinalText(d.Content) || d.Kind == indexNativeTerminal {
-			replaced = func() *gorm.DB {
-				q := lane().Where("lane_text").Where("kind IN ?", []indexKind{indexNativeTextReplace, indexNativeTerminal})
-				if classification.NativeCursor == 0 {
+		if d.Kind == indexNativeTextReplace || d.Kind == indexNativeTerminal {
+			previous := func() *gorm.DB {
+				q := text().Where("native_cursor < ?", d.NativeCursor)
+				// Without phase evidence, a final-answer reference preserves
+				// explicitly classified commentary already present in the lane.
+				if d.Kind == indexNativeTerminal && phase.NativeCursor == 0 {
 					q = q.Where("content IN ?", nativeTextContents(false))
 				}
 				return q
 			}
-			if superseded, err := laterDisplayExists(replaced(), d.NativeCursor); err != nil || superseded {
+			var first displayPosition
+			if err := previous().Order("\"order\", sub_order").Limit(1).Find(&first).Error; err != nil {
 				return err
 			}
-			if d.Kind == indexNativeTextReplace || d.Kind == indexNativeTerminal {
-				previous := func() *gorm.DB {
-					q := lane().Where("lane_text AND native_cursor < ?", d.NativeCursor)
-					if classification.NativeCursor == 0 {
-						q = q.Where("content IN ?", nativeTextContents(false))
-					}
-					return q
-				}
-				var first displayPosition
-				if err := previous().Order("\"order\", sub_order").Limit(1).Find(&first).Error; err != nil {
-					return err
-				}
-				if first.Order > 0 {
-					d.Order, d.SubOrder = first.Order, first.SubOrder
-				}
-				if err := previous().Delete(&displayPosition{}).Error; err != nil {
-					return err
-				}
+			if first.Order > 0 {
+				d.Order, d.SubOrder = first.Order, first.SubOrder
+			}
+			if err := previous().Delete(&displayPosition{}).Error; err != nil {
+				return err
 			}
 		}
 	case d.Kind == indexNativeTool:

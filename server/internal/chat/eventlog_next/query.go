@@ -581,10 +581,14 @@ type displayLane struct {
 }
 
 func foldDisplay(message *agent.StoredMessage, positions []displayPosition, parts []agent.MessagePart) {
-	classification := make(map[displayLane]constants.RuntimeEventType)
+	classification := make(map[displayLane]displayPosition)
 	for _, pos := range positions {
-		if pos.Kind == indexNativeClassification {
-			classification[displayLane{pos.Bucket, pos.Lane}] = pos.Content
+		if (pos.Kind == indexNativeClassification || pos.Kind == indexNativeTextReplace) &&
+			(pos.Content == constants.RuntimeEventTypeTextDelta || pos.Content == constants.RuntimeEventTypeCommentaryDelta) {
+			lane := displayLane{pos.Bucket, pos.Lane}
+			if pos.NativeCursor > classification[lane].NativeCursor {
+				classification[lane] = pos
+			}
 		}
 	}
 	var text strings.Builder
@@ -595,7 +599,7 @@ func foldDisplay(message *agent.StoredMessage, positions []displayPosition, part
 		}
 		part := parts[j]
 		if pos.LaneText && pos.Kind != indexNativeTerminal {
-			if kind := classification[displayLane{pos.Bucket, pos.Lane}]; kind != "" {
+			if kind := classification[displayLane{pos.Bucket, pos.Lane}].Content; kind != "" {
 				part.Type = kind
 			}
 		}
