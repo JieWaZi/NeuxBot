@@ -1,0 +1,552 @@
+package agent
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"maps"
+	"os"
+	"path/filepath"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+)
+
+// AccountRequest identifies the frozen credential selection and its native launch inputs.
+type AccountRequest struct {
+	// Provider identifies the built-in runtime.
+	Provider string
+	// AccountID identifies the host account, including the explicit system account.
+	AccountID string
+	// Subject is the verified credential subject or isolated identity used by durable bindings.
+	Subject string
+	// AuthGeneration increases only when this account's credentials or subject are invalidated.
+	AuthGeneration uint64
+	// CWD is the absolute, resolved working directory.
+	CWD string
+	// Model is the selected model when account materialization depends on it.
+	Model string
+}
+
+// AccountLease transfers actual account resources, including on acquisition failure.
+type AccountLease struct {
+	// Environment overrides the explicitly supplied launch environment.
+	Environment map[string]string
+	// ConfigHome is the account's native configuration root.
+	ConfigHome string
+	// CursorQuota optionally binds management reads to the selected native login.
+	CursorQuota *CursorQuotaLease
+	// PrepareLaunchAuth obtains any additional startup authentication resources.
+	PrepareLaunchAuth func(context.Context) (LaunchAuthLease, error)
+	// Close releases the account after native exit and startup authentication cleanup.
+	Close func(context.Context) error
+}
+
+// CursorQuotaLease provides explicitly bound Dashboard credentials on demand.
+type CursorQuotaLease struct {
+	// Endpoint is the trusted Dashboard origin, or empty for Cursor's default.
+	Endpoint string
+	// ReadAccessToken resolves the token for this exact lease's native login.
+	ReadAccessToken func(context.Context) (string, error)
+}
+
+// LaunchAuthLease owns connection-specific authentication material.
+type LaunchAuthLease struct {
+	// Environment contains the startup authentication overrides.
+	Environment map[string]string
+	// Close releases startup authentication after native exit.
+	Close func(context.Context) error
+}
+
+// ResourceSelection identifies host-authorized resources before reading any secrets.
+type ResourceSelection struct {
+	// Plugins fixes the installed version of each selected plugin by ID.
+	Plugins map[string]string
+	// ConnectorIDs fixes the set of authorized connectors.
+	ConnectorIDs []string
+}
+
+// ResourceLease transfers the materialized resources needed by the native client.
+type ResourceLease struct {
+	// Environment contains non-account launch contributions.
+	Environment map[string]string
+	// MCPServers contains the materialized server configuration.
+	MCPServers []AgentMCPServer
+	// ClaudePluginDirectories identifies physical native plugin directories.
+	ClaudePluginDirectories []string
+	// Close releases active MCP and other materialized resources.
+	Close func(context.Context) error
+	// CloseFiles releases temporary files after every native and lease consumer is gone.
+	CloseFiles func(context.Context) error
+}
+
+// ProviderLaunch contains the facts required to construct one selected native client.
+type ProviderLaunch struct {
+	// Executable is the detected program path or a name on the explicit PATH.
+	Executable string
+	// PrefixArgs precedes the native subcommand.
+	PrefixArgs []string
+	// Environment is the explicit child environment before lease contributions.
+	Environment map[string]string
+	// ConfigHome supplies the default native configuration root.
+	ConfigHome string
+	// CodexConfig contains native launch overrides for Codex.
+	CodexConfig map[string]json.RawMessage
+	// Claude declares Claude-specific startup requirements.
+	Claude ClaudeLaunch
+	// CursorPermissionMode selects Cursor's native startup policy.
+	CursorPermissionMode string
+	// RequireVerifiedMCP rejects MCP handoff without native verification.
+	RequireVerifiedMCP bool
+	// RequireNoTools admits only a native fresh-session launch with tools disabled.
+	RequireNoTools bool
+}
+
+// ClaudeLaunch declares the native settings and tool restrictions for Claude.
+type ClaudeLaunch struct {
+	// SettingSources names the authorized native settings scopes.
+	SettingSources []string
+	// Tools is the built-in tool selection. Nil preserves native defaults.
+	Tools []string
+	// SettingsPath points to an already materialized native settings file.
+	SettingsPath string
+	// WorkspaceOnly requires the adapter to verify native write restrictions.
+	WorkspaceOnly bool
+	// ExcludedWriteDirectories identifies protected paths.
+	ExcludedWriteDirectories []string
+}
+
+// ProviderConnectionRequest freezes the account, startup policy and resource selection.
+type ProviderConnectionRequest struct {
+	// Account identifies the credentials and real working directory.
+	Account AccountRequest
+	// Launch selects the native program and startup requirements.
+	Launch ProviderLaunch
+	// Resources selects host-authorized resources for this connection.
+	Resources ResourceSelection
+}
+
+// ProviderConnectionPorts contains callbacks supplied by this connection's consumer.
+type ProviderConnectionPorts struct {
+	// AcquireResources returns all obtained resources, including partial acquisitions.
+	AcquireResources func(context.Context, ResourceSelection) (ResourceLease, error)
+	// Callbacks routes native observations and interactions to their confirmed owner.
+	Callbacks AgentClientCallbacks
+	// CloseFiles transfers the already created temporary workspace when Open
+	// returns a connection, including on startup failure.
+	CloseFiles func(context.Context) error
+}
+
+// ProviderRuntimeOptions contains the shared account acquisition port and cleanup bound.
+type ProviderRuntimeOptions struct {
+	// AcquireAccount verifies the requested subject and credential generation against
+	// the host authority while acquiring the lease, including partial acquisition.
+	AcquireAccount func(context.Context, AccountRequest) (AccountLease, error)
+	// CleanupTimeout bounds one cleanup attempt after startup has settled.
+	CleanupTimeout time.Duration
+}
+
+// ProviderRuntime owns all registered native connections in the application.
+type ProviderRuntime struct {
+	// options freezes the shared acquisition port and cleanup bound.
+	options ProviderRuntimeOptions
+	// mu guards registration and admission only.
+	mu sync.Mutex
+	// closing permanently ends new admission.
+	closing bool
+	// nextID increases for every admitted attempt.
+	nextID uint64
+	// connections retains every owner until all of its cleanup has succeeded.
+	connections map[uint64]*providerConnection
+	// invalidated records the greatest revoked credential generation per account.
+	invalidated map[providerAccount]uint64
+}
+
+type providerAccount struct {
+	// provider is the native runtime identity.
+	provider string
+	// id is the host account identity.
+	id string
+}
+
+type providerConnection struct {
+	// runtime removes this entry only after successful cleanup.
+	runtime *ProviderRuntime
+	// id is allocated before any startup work and never reused within the runtime.
+	id uint64
+	// account and generation identify this connection for account invalidation.
+	account    providerAccount
+	generation uint64
+	// mu guards publication and close attempts. Startup and cleanup never overlap.
+	mu sync.Mutex
+	// cancelOpen signals the startup worker without waiting for acquisition to return.
+	cancelOpen context.CancelFunc
+	// opened closes after all startup writes, including partial lease handoff.
+	opened chan struct{}
+	// openErr is the safe startup failure published with opened.
+	openErr error
+	// closing prevents a startup result from being published after close intent.
+	closing bool
+	// closed confirms all cleanup steps have succeeded.
+	closed bool
+	// closingAttempt lets concurrent waiters join the same cleanup.
+	closingAttempt *connectionCloseAttempt
+	// client owns native consumers until Close confirms their exit.
+	client *directAgentClient
+	// accountLease, launchAuth and resources retain actual releases as they arrive.
+	accountLease AccountLease
+	launchAuth   LaunchAuthLease
+	resources    ResourceLease
+	// closeWorkspace releases an adopted working directory after other leases.
+	closeWorkspace func(context.Context) error
+}
+
+type connectionCloseAttempt struct {
+	// done closes after the attempt publishes its safe error.
+	done chan struct{}
+	// err is immutable after done closes.
+	err error
+}
+
+// NewProviderRuntime constructs the application-level owner without starting any processes.
+func NewProviderRuntime(options ProviderRuntimeOptions) *ProviderRuntime {
+	if options.CleanupTimeout <= 0 {
+		options.CleanupTimeout = 15 * time.Second
+	}
+	return &ProviderRuntime{
+		options: options, connections: make(map[uint64]*providerConnection),
+		invalidated: make(map[providerAccount]uint64),
+	}
+}
+
+// Open registers ownership before starting any acquisition. A non-nil connection
+// always identifies the admitted attempt, even if the caller stops waiting.
+func (r *ProviderRuntime) Open(ctx context.Context, request ProviderConnectionRequest, ports ProviderConnectionPorts) (*providerConnection, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	request = freezeProviderRequest(request)
+	account := providerAccount{provider: request.Account.Provider, id: request.Account.AccountID}
+	openCtx, cancel := context.WithCancel(ctx)
+	r.mu.Lock()
+	if r.closing {
+		r.mu.Unlock()
+		cancel()
+		return nil, status_error.RuntimeUnavailable
+	}
+	if generation, invalidated := r.invalidated[account]; invalidated {
+		if request.Account.AuthGeneration <= generation {
+			r.mu.Unlock()
+			cancel()
+			return nil, status_error.RuntimeUnavailable
+		}
+		for _, old := range r.connections {
+			if old.account == account && old.generation <= generation {
+				r.mu.Unlock()
+				cancel()
+				return nil, status_error.RuntimeShutdownFailed
+			}
+		}
+	}
+	r.nextID++
+	c := &providerConnection{
+		runtime: r, id: r.nextID, account: account, generation: request.Account.AuthGeneration,
+		cancelOpen: cancel, opened: make(chan struct{}), closeWorkspace: ports.CloseFiles,
+	}
+	r.connections[c.id] = c
+	r.mu.Unlock()
+
+	go c.open(openCtx, request, ports)
+	select {
+	case <-c.opened:
+	case <-openCtx.Done():
+		select {
+		case <-c.opened:
+		default:
+			c.requestClose()
+			return c, openCtx.Err()
+		}
+	}
+	return c, c.openErr
+}
+
+func freezeProviderRequest(request ProviderConnectionRequest) ProviderConnectionRequest {
+	launch := &request.Launch
+	launch.PrefixArgs = slices.Clone(launch.PrefixArgs)
+	launch.Environment = maps.Clone(launch.Environment)
+	launch.CodexConfig = maps.Clone(launch.CodexConfig)
+	for key, value := range launch.CodexConfig {
+		launch.CodexConfig[key] = bytes.Clone(value)
+	}
+	launch.Claude.SettingSources = slices.Clone(launch.Claude.SettingSources)
+	launch.Claude.Tools = slices.Clone(launch.Claude.Tools)
+	launch.Claude.ExcludedWriteDirectories = slices.Clone(launch.Claude.ExcludedWriteDirectories)
+	request.Resources.Plugins = maps.Clone(request.Resources.Plugins)
+	request.Resources.ConnectorIDs = slices.Clone(request.Resources.ConnectorIDs)
+	return request
+}
+
+func (c *providerConnection) open(ctx context.Context, request ProviderConnectionRequest, ports ProviderConnectionPorts) {
+	err := c.initialize(ctx, request, ports)
+	c.mu.Lock()
+	if err == nil {
+		err = ctx.Err()
+	}
+	if err == nil && c.closing {
+		err = status_error.RuntimeUnavailable
+	}
+	c.openErr = err
+	if err == nil {
+		close(c.opened)
+		c.mu.Unlock()
+		c.cancelOpen()
+		return
+	}
+	c.closing = true
+	c.mu.Unlock()
+	// Start automatic cleanup without canceling the waiter before it can see
+	// the real acquisition or initialization error.
+	c.startClose()
+	close(c.opened)
+	c.cancelOpen()
+}
+
+func (c *providerConnection) initialize(ctx context.Context, request ProviderConnectionRequest, ports ProviderConnectionPorts) error {
+	account := request.Account
+	switch account.Provider {
+	case constants.RuntimeIDCodex, constants.RuntimeIDClaude, constants.RuntimeIDCursor:
+	default:
+		return status_error.RuntimeNotRegistered
+	}
+	if request.Launch.RequireNoTools && account.Provider != constants.RuntimeIDClaude {
+		return status_error.RuntimePolicyUnsupported
+	}
+	if c.runtime.options.AcquireAccount == nil || account.AccountID == "" || account.Subject == "" {
+		return status_error.AIAccountConfigurationInvalid
+	}
+	cwd, err := resolveAgentDirectory(account.CWD)
+	if err != nil {
+		return err
+	}
+	account.CWD = cwd
+
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.accountLease, err = c.runtime.options.AcquireAccount(ctx, account)
+	if err != nil {
+		return safeAgentError(err, status_error.AIAccountConfigurationInvalid)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c.accountLease.PrepareLaunchAuth != nil {
+		c.launchAuth, err = c.accountLease.PrepareLaunchAuth(ctx)
+		if err != nil {
+			return safeAgentError(err, status_error.RuntimeAuthRequired)
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if ports.AcquireResources != nil {
+		c.resources, err = ports.AcquireResources(ctx, request.Resources)
+		if err != nil {
+			return safeAgentError(err, status_error.RuntimeConfigurationInvalid)
+		}
+	} else if len(request.Resources.Plugins) != 0 || len(request.Resources.ConnectorIDs) != 0 {
+		return status_error.RuntimeConfigurationInvalid
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	c.client, err = newDirectAgentClient(ctx, account, request.Launch, c.accountLease, c.launchAuth, c.resources, ports.Callbacks)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	closing := c.closing
+	c.mu.Unlock()
+	if closing {
+		return status_error.RuntimeUnavailable
+	}
+	// Close either withdrew startup before this point, or owns the same client
+	// after its one initialization attempt settles.
+	return c.client.initialize(ctx)
+}
+
+// Client returns the initialized client while this connection accepts use.
+func (c *providerConnection) Client() (AgentClient, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	select {
+	case <-c.opened:
+		if !c.closing && c.openErr == nil {
+			return c.client, nil
+		}
+	default:
+	}
+	return nil, status_error.RuntimeUnavailable
+}
+
+// Close stops admission to this connection and waits for a cleanup attempt.
+// A caller's deadline never releases the connection's ownership.
+func (c *providerConnection) Close(ctx context.Context) error {
+	return waitConnectionClose(ctx, c.requestClose())
+}
+
+func (c *providerConnection) requestClose() *connectionCloseAttempt {
+	attempt := c.startClose()
+	c.cancelOpen()
+	return attempt
+}
+
+func (c *providerConnection) markClosing() {
+	c.mu.Lock()
+	c.closing = true
+	c.mu.Unlock()
+}
+
+func (c *providerConnection) startClose() *connectionCloseAttempt {
+	c.mu.Lock()
+	c.closing = true
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	if attempt := c.closingAttempt; attempt != nil {
+		select {
+		case <-attempt.done:
+		default:
+			c.mu.Unlock()
+			return attempt
+		}
+	}
+	attempt := &connectionCloseAttempt{done: make(chan struct{})}
+	c.closingAttempt = attempt
+	c.mu.Unlock()
+	go c.clean(attempt)
+	return attempt
+}
+
+func (c *providerConnection) clean(attempt *connectionCloseAttempt) {
+	<-c.opened
+	ctx, cancel := context.WithTimeout(context.Background(), c.runtime.options.CleanupTimeout)
+	defer cancel()
+	err := c.release(ctx)
+	if err == nil {
+		c.runtime.mu.Lock()
+		delete(c.runtime.connections, c.id)
+		c.runtime.mu.Unlock()
+	}
+	c.mu.Lock()
+	c.closed = err == nil
+	attempt.err = err
+	close(attempt.done)
+	c.mu.Unlock()
+}
+
+func (c *providerConnection) release(ctx context.Context) error {
+	if c.client != nil {
+		if err := c.client.close(ctx); err != nil {
+			return status_error.RuntimeShutdownFailed
+		}
+		c.client = nil
+	}
+	for _, release := range []*func(context.Context) error{
+		&c.launchAuth.Close, &c.resources.Close, &c.accountLease.Close, &c.resources.CloseFiles, &c.closeWorkspace,
+	} {
+		if *release != nil {
+			if err := (*release)(ctx); err != nil {
+				return status_error.RuntimeShutdownFailed
+			}
+			*release = nil
+		}
+	}
+	c.accountLease = AccountLease{}
+	c.launchAuth = LaunchAuthLease{}
+	c.resources = ResourceLease{}
+	return nil
+}
+
+func waitConnectionClose(ctx context.Context, attempt *connectionCloseAttempt) error {
+	if attempt == nil {
+		return nil
+	}
+	select {
+	case <-attempt.done:
+		return attempt.err
+	default:
+	}
+	select {
+	case <-attempt.done:
+		return attempt.err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// Close permanently stops new admission and starts closing every registered owner.
+func (r *ProviderRuntime) Close(ctx context.Context) error {
+	r.mu.Lock()
+	r.closing = true
+	connections := make([]*providerConnection, 0, len(r.connections))
+	for _, c := range r.connections {
+		c.markClosing()
+		connections = append(connections, c)
+	}
+	r.mu.Unlock()
+	return closeProviderConnections(ctx, connections)
+}
+
+// InvalidateAccount closes all owners at or below the revoked auth generation.
+func (r *ProviderRuntime) InvalidateAccount(ctx context.Context, provider, accountID string, throughGeneration uint64) error {
+	account := providerAccount{provider: provider, id: accountID}
+	r.mu.Lock()
+	generation := max(r.invalidated[account], throughGeneration)
+	r.invalidated[account] = generation
+	var connections []*providerConnection
+	for _, c := range r.connections {
+		if c.account == account && c.generation <= generation {
+			c.markClosing()
+			connections = append(connections, c)
+		}
+	}
+	r.mu.Unlock()
+	return closeProviderConnections(ctx, connections)
+}
+
+func closeProviderConnections(ctx context.Context, connections []*providerConnection) error {
+	attempts := make([]*connectionCloseAttempt, 0, len(connections))
+	for _, c := range connections {
+		attempts = append(attempts, c.requestClose())
+	}
+	var result error
+	for _, attempt := range attempts {
+		if err := waitConnectionClose(ctx, attempt); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			result = err
+		}
+	}
+	return result
+}
+
+func resolveAgentDirectory(path string) (string, error) {
+	if !filepath.IsAbs(path) {
+		return "", status_error.RuntimeConfigurationInvalid
+	}
+	directory, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", status_error.RuntimeConfigurationInvalid
+	}
+	info, err := os.Stat(directory)
+	if err != nil || !info.IsDir() {
+		return "", status_error.RuntimeConfigurationInvalid
+	}
+	return directory, nil
+}
