@@ -92,6 +92,63 @@ func TestManagedClaudeLeaseFencesCredentialRotation(t *testing.T) {
 	}
 }
 
+func TestManagedClaudeLeaseRejectsChangedModelRole(t *testing.T) {
+	service, _, _ := subscriptionFixture(t)
+	service.dataDirectory = t.TempDir()
+	ctx := t.Context()
+	account := models.AIAccount{
+		ID: "fedcba9876543210fedcba9876543210", Name: "Claude fixture", AuthMode: constants.AccountAuthModeAPIKey,
+		Endpoints:      []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolAnthropicMessages, BaseURL: "https://gateway.example.invalid"}},
+		SelectedModels: []string{"model-a", "model-b"}, DefaultModel: "model-a",
+		ClaudeModelRoles: map[string]string{"sonnet": "model-a"},
+	}
+	if err := service.accounts.Create(ctx, account, "test-key"); err != nil {
+		t.Fatal(err)
+	}
+	selection := agent.AccountRequest{Provider: constants.RuntimeIDClaude, AccountID: account.ID, Model: "sonnet"}
+	old, err := service.ResolveAccount(ctx, selection, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	func() {
+		release, err := service.Exclusive(account.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer release()
+		current, err := service.accounts.Get(ctx, account.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		current.ClaudeModelRoles["sonnet"] = "model-b"
+		if err := service.accounts.Update(ctx, current, ""); err != nil {
+			t.Fatal(err)
+		}
+	}()
+	stale, err := service.AcquireAccount(ctx, old)
+	if err == nil {
+		defer stale.Close(ctx)
+	}
+	if !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
+		t.Fatalf("stale model role selection acquired a lease: %v", err)
+	}
+	current, err := service.ResolveAccount(ctx, selection, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Subject != old.Subject || current.AuthGeneration != old.AuthGeneration || current.Equal(old) {
+		t.Fatal("model role changes must invalidate configuration independently of authentication")
+	}
+	lease, err := service.AcquireAccount(ctx, current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Close(ctx)
+	if lease.Environment["ANTHROPIC_DEFAULT_SONNET_MODEL"] != "model-b" || lease.Environment["ANTHROPIC_MODEL"] != "model-a" {
+		t.Fatal("fresh lease did not project the new role and the unchanged account default")
+	}
+}
+
 func TestClaudeSystemLeaseRechecksSelectedNativePrincipal(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses a shell executable")

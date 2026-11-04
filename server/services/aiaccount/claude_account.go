@@ -2,6 +2,9 @@ package aiaccount
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"maps"
 	"os"
@@ -238,6 +241,7 @@ func (s *Service) resolveManagedClaude(ctx context.Context, request agent.Accoun
 	}
 	request.Subject = accountSubject("claude-managed-api-v1", account.ID)
 	request.ConfigHome, request.AuthGeneration = home, account.AuthGeneration
+	request.ConfigFingerprint = ManagedClaudeModelFingerprint(account)
 	return request, account, endpoint, nil
 }
 
@@ -262,6 +266,9 @@ func (s *Service) prepareManagedClaudeAccount(ctx context.Context, request agent
 	resolved, account, endpoint, err := s.resolveManagedClaude(ctx, request)
 	if err != nil {
 		return agent.AccountLease{}, err
+	}
+	if resolved.ConfigFingerprint != request.ConfigFingerprint {
+		return agent.AccountLease{}, status_error.RuntimeConfigurationInvalid
 	}
 	if !resolved.Equal(request) {
 		return agent.AccountLease{}, status_error.RuntimeAuthRequired
@@ -292,6 +299,15 @@ func (s *Service) prepareManagedClaudeAccount(ctx context.Context, request agent
 // configured actual models. An omitted selection returns the configured default.
 func ManagedClaudeModelTarget(account models.AIAccount, model string) (string, bool) {
 	return accountconfig.ClaudeModelTarget(managedClaudeModelSpec(account), model)
+}
+
+// ManagedClaudeModelFingerprint freezes the model selection and native projection
+// independently of credential generation, using the same model spec as the lease.
+func ManagedClaudeModelFingerprint(account models.AIAccount) string {
+	spec := managedClaudeModelSpec(account)
+	encoded, _ := json.Marshal([]any{spec.Model, spec.SelectedModels, spec.ClaudeModelRoles, spec.ModelDisplayNames})
+	sum := sha256.Sum256(encoded)
+	return hex.EncodeToString(sum[:])
 }
 
 // managedClaudeModelSpec stays the same when the session selects another model.
