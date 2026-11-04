@@ -97,7 +97,7 @@ func Environment(base []string) []string {
 			result = append(result, entry)
 			continue
 		}
-		if strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_AUTH_TOKEN") ||
+		if inheritedACPOverride(upper) || strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_AUTH_TOKEN") ||
 			strings.HasSuffix(upper, "_BASE_URL") || strings.HasPrefix(upper, "CODEX_") ||
 			strings.HasPrefix(upper, "CLAUDE_") || strings.HasPrefix(upper, "ANTHROPIC_") ||
 			strings.HasPrefix(upper, "OPENAI_") || strings.HasPrefix(upper, "KIMI_") ||

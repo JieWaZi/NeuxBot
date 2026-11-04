@@ -73,6 +73,8 @@ type AccountLease struct {
 	VerifyLogin func(context.Context) error
 	// CursorQuota optionally binds management reads to the selected native login.
 	CursorQuota *CursorQuotaLease
+	// QoderUserID binds management reads to the native identity verified by the lease.
+	QoderUserID string
 	// PrepareLaunchAuth obtains any additional startup authentication resources.
 	PrepareLaunchAuth func(context.Context) (LaunchAuthLease, error)
 	// Close releases the account after native exit and startup authentication cleanup.

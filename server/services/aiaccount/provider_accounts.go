@@ -34,6 +34,8 @@ func (s *Service) ResolveAccount(ctx context.Context, request agent.AccountReque
 		return s.resolveManagedClaudeAccount(ctx, request)
 	case constants.RuntimeIDCursor:
 		return resolveCursorAccount(ctx, request, systemHome)
+	case constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+		return resolveACPSystemAccount(ctx, request, systemHome)
 	default:
 		return agent.AccountRequest{}, status_error.RuntimeNotRegistered
 	}
@@ -51,6 +53,8 @@ func (s *Service) AcquireAccount(ctx context.Context, request agent.AccountReque
 		return s.acquireManagedClaudeAccount(ctx, request)
 	case constants.RuntimeIDCursor:
 		return acquireCursorAccount(ctx, request)
+	case constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+		return acquireACPSystemAccount(ctx, request)
 	default:
 		return agent.AccountLease{}, status_error.RuntimeNotRegistered
 	}
