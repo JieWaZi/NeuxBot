@@ -66,6 +66,8 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	defer cancel()
 	root, trace := t.TempDir(), filepath.Join(t.TempDir(), "codex-trace.jsonl")
 	t.Setenv("NEUX_EXECUTION_FIXTURE_TRACE", trace)
+	t.Setenv("PWD", filepath.Join(root, "first-host-directory"))
+	t.Setenv("NEUX_EXECUTION_FIXTURE_BASE_VALUE", "inherited-first")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -227,6 +229,9 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	}
 
 	closeRuntime()
+	// A restarted host has a different inherited snapshot and the same managed launch.
+	t.Setenv("PWD", filepath.Join(root, "second-host-directory"))
+	t.Setenv("NEUX_EXECUTION_FIXTURE_BASE_VALUE", "inherited-second")
 	core, chats, store, closeRuntime = open()
 	resumed, err := core.Start(ctx, WorkIntent{Chat: ChatTarget{ChatID: first.Chat.ID},
 		Input: WorkInput{Actor: "user", Content: "cold-resume-current-only"}, Options: options})
@@ -240,6 +245,9 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 	body, err := os.ReadFile(trace)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "child inherited inherited-second") {
+		t.Fatal("restarted process lost its inherited environment")
 	}
 	if !strings.Contains(string(body), `"method":"thread/resume"`) || accounts.Load() != 2 {
 		t.Fatalf("native trace did not resume once: %s", body)
@@ -332,6 +340,7 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 		os.Exit(2)
 	}
 	defer file.Close()
+	_, _ = fmt.Fprintln(file, "child inherited", os.Getenv("NEUX_EXECUTION_FIXTURE_BASE_VALUE"))
 	scanner, out := bufio.NewScanner(os.Stdin), json.NewEncoder(os.Stdout)
 	thread, turnID := "", ""
 	serial := 0

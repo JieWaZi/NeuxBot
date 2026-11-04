@@ -1657,3 +1657,24 @@ func TestThreadTurnReplacesOnlyTheAuthoritativeNativeCommentaryLane(t *testing.T
 		})
 	}
 }
+
+func TestThreadTurnColdExplicitEnvironmentChangeReplacesNativeSession(t *testing.T) {
+	lifecycle, store, request, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&request, trace)
+	request.Connection.Launch.Environment["THREAD_FIXTURE_UNIQUE_CODEX_SESSION"] = "1"
+	request.Connection.Launch.Environment["MANAGED_TOOL_MODE"] = "first"
+	first := chatTurn(0, "question before managed environment edit")
+	original := completeThreadFixtureTurn(t, lifecycle, store, request, first, true)
+	if err := lifecycle.CloseThread(t.Context(), request.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	request.Connection.Launch.Environment["MANAGED_TOOL_MODE"] = "changed"
+	next := chatTurn(1, "question after managed environment edit")
+	replacement := completeThreadFixtureTurn(t, lifecycle, store, request, next, false)
+	if replacement.Binding.Session == original.Binding.Session || string(replacement.Binding.Configuration) == string(original.Binding.Configuration) {
+		t.Fatalf("managed environment edit reused the old binding: %+v", replacement.Binding)
+	}
+	if line := fixturePromptLine(t, trace, next.Text); !strings.Contains(line, first.Text) {
+		t.Fatalf("replacement did not receive the previous complete turn: %s", line)
+	}
+}

@@ -637,7 +637,7 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		}
 	}
 
-	environment := make(map[string]string, len(launch.Environment)+len(lease.Environment))
+	environment := make(map[string]string, len(launch.BaseEnvironment)+len(launch.Environment)+len(lease.Environment))
 	merge := func(source map[string]string) error {
 		var names map[string]struct{}
 		if runtime.GOOS == "windows" {
@@ -659,6 +659,9 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		return nil
 	}
 
+	if err := merge(launch.BaseEnvironment); err != nil {
+		return nil, err
+	}
 	if err := merge(launch.Environment); err != nil {
 		return nil, err
 	}

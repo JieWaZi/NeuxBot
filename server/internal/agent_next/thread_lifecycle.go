@@ -446,7 +446,11 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 		}
 		request.Session.AdditionalDirectories[i] = resolved
 	}
-	encoded, err := json.Marshal([]any{request.Connection, request.Session, request.Settings, request.Mode, request.ResourceGeneration})
+	// The inherited process environment reaches the child without selecting a
+	// thread. Managed overrides and the verified account still determine compatibility.
+	connection := request.Connection
+	connection.Launch.BaseEnvironment = nil
+	encoded, err := json.Marshal([]any{connection, request.Session, request.Settings, request.Mode, request.ResourceGeneration})
 	if err != nil {
 		return nil, status_error.RuntimeConfigurationInvalid
 	}

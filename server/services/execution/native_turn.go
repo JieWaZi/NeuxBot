@@ -75,7 +75,7 @@ func nativeThreadRequest(chatID string, plan agentapi.SessionPlan, request pendi
 		Connection: agent.ProviderConnectionRequest{
 			Account: agent.AccountRequest{Provider: nativeProvider(environment), AccountID: accountID, CWD: plan.Workspace.Path, Model: plan.Policy.Model},
 			Launch: agent.ProviderLaunch{
-				Executable: executable, PrefixArgs: environment.PrefixArgs, ConfigHome: environment.ConfigHome, Environment: env,
+				Executable: executable, PrefixArgs: environment.PrefixArgs, ConfigHome: environment.ConfigHome, BaseEnvironment: env,
 				CodexConfig: map[string]json.RawMessage{
 					"features.goals": json.RawMessage("false"),
 				},

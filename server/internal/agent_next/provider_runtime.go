@@ -98,6 +98,8 @@ type ProviderLaunch struct {
 	Executable string
 	// PrefixArgs precedes the native subcommand.
 	PrefixArgs []string
+	// BaseEnvironment is the inherited child environment, independent of thread compatibility.
+	BaseEnvironment map[string]string `json:",omitempty"`
 	// Environment is the explicit child environment before lease contributions.
 	Environment map[string]string
 	// ConfigHome supplies the default native configuration root.
@@ -287,6 +289,7 @@ func (r *ProviderRuntime) Open(ctx context.Context, request ProviderConnectionRe
 func freezeProviderRequest(request ProviderConnectionRequest) ProviderConnectionRequest {
 	launch := &request.Launch
 	launch.PrefixArgs = slices.Clone(launch.PrefixArgs)
+	launch.BaseEnvironment = maps.Clone(launch.BaseEnvironment)
 	launch.Environment = maps.Clone(launch.Environment)
 	launch.CodexConfig = maps.Clone(launch.CodexConfig)
 	for key, value := range launch.CodexConfig {
