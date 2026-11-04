@@ -672,6 +672,14 @@ func (s *runtimeEventSink) Usage() json.RawMessage {
 	return append(json.RawMessage(nil), s.usage...)
 }
 
+// TerminalUsage 序列化 Run 的权威终态，不把实时观察再次补入或累加；nil 仅兼容未提供终态合同的旧 Runner。
+func (s *runtimeEventSink) TerminalUsage(snapshot *agentapi.UsageData) json.RawMessage {
+	if snapshot != nil {
+		return marshalData(snapshot)
+	}
+	return s.Usage()
+}
+
 // MessageRevision 返回实时消息视图已经分配的最后修订号。
 func (s *runtimeEventSink) MessageRevision() int64 {
 	s.mutex.Lock()

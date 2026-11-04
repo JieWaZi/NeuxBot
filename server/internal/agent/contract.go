@@ -412,6 +412,8 @@ type Failure struct {
 
 // Result 是 Runtime Invocation 的可重复读取终态。
 type Result struct {
+	// Usage 是本轮分量替换后的终态用量独立快照，供调用方持久化；非 nil 的空快照表示没有已知用量，nil 仅兼容旧 Runner。
+	Usage *UsageData
 	// StopReason 是协议实际返回的原始停止原因；空值表示未收到该事实。
 	StopReason string
 	// TerminationReason 是协议停止原因的归一化结论，不替代 Failure 或执行状态。
@@ -598,7 +600,7 @@ type PreparedChatRun interface {
 	Resources() SessionResources
 	// Session 返回当前实际新建或恢复动作。
 	Session() SessionDirective
-	// Run 提交本轮新增输入；每次准备最多调用一次。
+	// Run 提交本轮新增输入；每次准备最多调用一次，返回供持久化的独立终态 Usage 快照。
 	Run(context.Context, TurnInput, EventSink) Result
 	// Close 放弃未提交的准备；热会话资源继续由内核拥有。
 	Close(context.Context) error

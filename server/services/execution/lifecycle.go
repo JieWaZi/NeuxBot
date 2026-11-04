@@ -451,7 +451,7 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 			errorMessage,
 			result.ExitCode,
 			result.Signal,
-			nil,
+			runtimeSink.TerminalUsage(result.Usage),
 			0,
 			false,
 		)
@@ -489,7 +489,7 @@ func (m *service) runExecution(ctx context.Context, plan messageExecution) {
 		errorMessage,
 		result.ExitCode,
 		result.Signal,
-		runtimeSink.Usage(),
+		runtimeSink.TerminalUsage(result.Usage),
 		runtimeSink.MessageRevision(),
 		runtimeFailureRetryable(result) && plan.state.threadWorkspaceID == "" && plan.input.message.Actor == "user",
 	)

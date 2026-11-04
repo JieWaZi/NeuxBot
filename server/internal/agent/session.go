@@ -1174,7 +1174,8 @@ func chatUsage(usage native.Usage) UsageData {
 }
 
 func chatResult(request SessionPlan, session SessionDirective, result turnResult, observer *chatObserver) Result {
-	output := Result{ExitCode: 0, StopReason: string(result.StopReason), ProtocolHealthy: result.Effects.PromptAccepted, SideEffects: observer.effects, Diagnostics: request.Detection.Diagnostics, Session: SessionResult{Mode: session.Mode, InputID: session.ID, OutputID: result.NativeSession.Handle, ForkMode: result.NativeSession.ForkMode, ForkPosition: result.NativeSession.ForkPosition, State: SessionStateUnknown}, Facts: InvocationFacts{InvocationID: result.Invocation.ID, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: request.Detection.Runtime.BaseRuntimeID, Binary: request.Detection.ResolvedBinary, Version: request.Detection.Version, Model: result.Configuration.ActualModel, Reasoning: result.Configuration.ActualReasoning, Policy: request.Policy.Execution, PrefixArgs: append([]string(nil), request.Target.PrefixArgs...), ConfigHome: request.Target.ConfigHome, Capabilities: request.Detection.Capabilities}}
+	usage := chatUsage(result.Usage)
+	output := Result{Usage: &usage, ExitCode: 0, StopReason: string(result.StopReason), ProtocolHealthy: result.Effects.PromptAccepted, SideEffects: observer.effects, Diagnostics: request.Detection.Diagnostics, Session: SessionResult{Mode: session.Mode, InputID: session.ID, OutputID: result.NativeSession.Handle, ForkMode: result.NativeSession.ForkMode, ForkPosition: result.NativeSession.ForkPosition, State: SessionStateUnknown}, Facts: InvocationFacts{InvocationID: result.Invocation.ID, RuntimeID: request.Target.RuntimeID, BaseRuntimeID: request.Detection.Runtime.BaseRuntimeID, Binary: request.Detection.ResolvedBinary, Version: request.Detection.Version, Model: result.Configuration.ActualModel, Reasoning: result.Configuration.ActualReasoning, Policy: request.Policy.Execution, PrefixArgs: append([]string(nil), request.Target.PrefixArgs...), ConfigHome: request.Target.ConfigHome, Capabilities: request.Detection.Capabilities}}
 	if output.Session.OutputID != "" {
 		output.Session.State = SessionStateCreated
 		if session.Mode == SessionModeResume {
@@ -1194,6 +1195,9 @@ func chatResult(request SessionPlan, session SessionDirective, result turnResult
 		output.TerminationReason = constants.RuntimeTerminationReasonUnknown
 	}
 	fault := result.Fault
+	if fault == nil && (result.Status == native.StatusCancelled || result.StopReason == native.StopCancelled) {
+		fault = asFault(context.Canceled, native.FaultCancelled, "prompt", "native turn cancelled")
+	}
 	if fault == nil {
 		fault = result.DeliveryFault
 	}
@@ -1229,10 +1233,6 @@ func chatResult(request SessionPlan, session SessionDirective, result turnResult
 		if errors.Is(fault, context.Canceled) {
 			output.TerminationReason = constants.RuntimeTerminationReasonCancelled
 		}
-	} else if result.Status == native.StatusCancelled || result.StopReason == native.StopCancelled {
-		output.ExitCode = -1
-		output.TerminationReason = constants.RuntimeTerminationReasonCancelled
-		output.Failure = &Failure{Code: FailureCodeContextCanceled, Stage: constants.RuntimeACPFailureStagePrompt, Message: context.Canceled.Error(), DisplayMessage: FailureDisplayMessage(context.Canceled), SessionState: output.Session.State, SideEffects: output.SideEffects, Transience: FailureTransiencePermanent}
 	}
 	return output
 }
@@ -1314,7 +1314,7 @@ func chatSeed(history []HistoryMessage) []native.SeedMessage {
 }
 func chatFailed(plan SessionPlan, session SessionDirective, err error) Result {
 	code := ClassifyFailure(sessionBase(plan), err)
-	return Result{ExitCode: -1, Session: SessionResult{Mode: session.Mode, InputID: session.ID, State: SessionStateUnknown}, Failure: &Failure{Code: code, Stage: constants.RuntimeRunFailureStagePrepare, Message: err.Error(), DisplayMessage: FailureDisplayMessage(err), Transience: FailureTransiencePermanent}}
+	return Result{Usage: &UsageData{}, ExitCode: -1, Session: SessionResult{Mode: session.Mode, InputID: session.ID, State: SessionStateUnknown}, Failure: &Failure{Code: code, Stage: constants.RuntimeRunFailureStagePrepare, Message: err.Error(), DisplayMessage: FailureDisplayMessage(err), Transience: FailureTransiencePermanent}}
 }
 
 // InteractionPolicy 表达交互端口的使用方式。

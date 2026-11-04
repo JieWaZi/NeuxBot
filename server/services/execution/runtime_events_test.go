@@ -1518,3 +1518,46 @@ func TestUsageFoundationRepeatedFinalSnapshotArchivesOnce(t *testing.T) {
 		t.Fatalf("replay duplicated consumption: %+v error=%v", messages, err)
 	}
 }
+
+// TestUsageTerminalArchiveContract 验证显式终态取代全部实时观察，仅旧 Runner 的 nil 结果沿用旧快照。
+func TestUsageTerminalArchiveContract(t *testing.T) {
+	store, err := eventlog.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const chatID = "dadadadadadadadadadadadadadadada"
+	if _, err = store.Create(chatID, activeChatInputs()); err != nil {
+		t.Fatal(err)
+	}
+	sink, _ := newRuntimeEventSinkForTest(store, chatID)
+	if err = sink.acceptInvocation(context.Background(), "invocation-1", agentapi.Event{Type: agentapi.EventTypeUsage, Data: json.RawMessage(`{"turn":{"input_tokens":100,"output_tokens":10},"context":{"used_tokens":900,"window_tokens":64000}}`)}); err != nil {
+		t.Fatal(err)
+	}
+	before := string(sink.Usage())
+	for _, test := range []struct {
+		// name 标识终态与旧 Runner 合同的分支。
+		name string
+		// snapshot 是 Run 返回的显式最终快照；nil 仅表示旧 Runner。
+		snapshot *agentapi.UsageData
+		// want 是不依赖观察器补值的最终归档内容。
+		want string
+	}{
+		{"empty", &agentapi.UsageData{}, `{}`},
+		{"turn_only", &agentapi.UsageData{Turn: &agentapi.TurnUsageData{InputTokens: 250, OutputTokens: 30}}, `{"turn":{"input_tokens":250,"output_tokens":30}}`},
+		{"context_only", &agentapi.UsageData{Context: &agentapi.ContextUsageData{UsedTokens: 800, WindowTokens: 64000}}, `{"context":{"used_tokens":800,"window_tokens":64000}}`},
+		{"legacy", nil, before},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			archived := sink.TerminalUsage(test.snapshot)
+			if string(archived) != test.want {
+				t.Fatalf("terminal snapshot supplemented from old stream: %s want %s", archived, test.want)
+			}
+			if test.snapshot != nil && test.snapshot.Turn != nil {
+				test.snapshot.Turn.InputTokens = 999
+			}
+			if string(archived) != test.want || string(sink.Usage()) != before {
+				t.Fatal("terminal serialization shares mutable result or changes stream facts")
+			}
+		})
+	}
+}

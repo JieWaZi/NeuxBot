@@ -44,6 +44,27 @@ git diff --check
 
 上述定向 Go 测试与文档检查通过。未重跑未修改的 native 包、已有 failure/cancel 回放用例或全量检查。
 
+## 公开终态交接修复
+
+整体审查发现最终用量事件触及预算或被观察者拒绝时，公开 Run 未把 Session 已保留的终态消费交给 Execution。公开 `Result.Usage` 现承接同一最终事实的独立副本；Execution 收尾以该快照归档，非 nil 的空快照不补旧观察，nil 仅兼容旧 Runner。该修复的实施验证已完成，独立复审尚未完成。
+
+- [Session 集成测试](../../../server/internal/agent/native_integration_test.go) `TestUsageTerminalPublicResult`：真实 Manager → Prepare → Bind → 公开 Run → ACP SDK pipe；覆盖仅最终 `100/10`、部分 `100/10` 后最终 `250/30`、成功/取消/原生故障，以及事件数量、单事件字节、累计字节和观察者拒绝。公开终态仍保存来源、完整性、字段 presence、已知零与未知字段；消费与上下文分别保存，Prompt 仅一次，事件不突破预算。
+- 同文件 `TestUsageTerminalResultOwnership`：修改公开结果的数字、字段集合、完整性及上下文不能改写原 Session 终态或下一次读取；公开结果与事件接收副本互不共享。
+- [Execution 集成测试](../../../server/services/execution/lifecycle_usage_test.go) `TestUsageTerminalExecutionArchive`：真实 Start、公开 PreparedTurn.Run、Execution sink、Journal.CommitTerminal 和 JSONL 回放，验证最终事件未交付时依旧归档最终消费；原生失败和取消事实保留，正常生命周期只提交一个终态。
+- [Execution sink 测试](../../../server/services/execution/runtime_events_test.go) `TestUsageTerminalArchiveContract`：显式空终态覆盖旧消费；只含 turn 或 context 的终态不能从实时观察补另一分量；nil 旧 Runner 保留既有兼容语义。序列化不共享结果指针，也不改写流式观察。
+
+本轮只运行新增用例、既有最终预算/所有权及直接受影响的 Execution 收尾用例；保留 Task 1/2 已有证据，没有重跑原生 Provider suite 或全量测试。普通、race 定向测试与文档检查通过：
+
+```sh
+# NeuxBot/server
+go test ./internal/agent ./services/execution -run '^Test(UsageTerminal.*|UsageFinalFix.*|ManagerFinalUsageStillOwnsCurrentTurn|ChatFinalUsageDeliveryFailureDoesNotReplayPrompt|ExecutionOutcome.*|FinishExecutionReleasesReservationAndPublishesDurableTerminal)$' -count=1
+go test -race ./internal/agent ./services/execution -run '^TestUsageTerminal' -count=1
+
+# NeuxBot 根目录
+node scripts/check-docs.mjs
+git diff --check
+```
+
 ## 剩余边界
 
 原生支持由本地 fixture、测试进程替身及 SDK pipe 证明，真实 CLI、账号、模型、操作系统和产品视觉均未验收。Claude 不含 subagent 的完整性、Pi 缺稳定请求身份、Codex 未知 epoch 等已知范围继续保留。无元数据历史仍未知，现有消息指标没有完整性展示。

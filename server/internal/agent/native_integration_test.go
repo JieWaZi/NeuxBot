@@ -2,8 +2,12 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -741,5 +745,158 @@ func TestUsageFinalFixMetadataBudget(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestUsageTerminalPublicResult 验证公开 Run 的终态交接独立于最终事件预算及观察者交付。
+func TestUsageTerminalPublicResult(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		for _, delivery := range []string{"ok", "events", "single", "total", "observer"} {
+			for _, terminal := range []string{"completed", "cancelled", "failed"} {
+				t.Run(fmt.Sprintf("partial=%t/%s/%s", partial, delivery, terminal), func(t *testing.T) {
+					a := newNativeIntegrationAgent()
+					var prompts atomic.Int32
+					source := "fixture.final"
+					if delivery == "single" {
+						source = strings.Repeat("s", 600)
+					}
+					if delivery == "total" {
+						source = strings.Repeat("s", 300)
+					}
+					a.prompt = func(ctx context.Context, request sdk.PromptRequest) (sdk.PromptResponse, error) {
+						prompts.Add(1)
+						if partial {
+							reported := acpmeta.TurnUsage{InputTokens: sdk.Ptr(int64(100)), OutputTokens: sdk.Ptr(int64(10)), Source: "fixture.partial", Coverage: "observed_requests", ContextKnown: true}
+							if err := a.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: request.SessionId, Update: sdk.SessionUpdate{UsageUpdate: &sdk.SessionUsageUpdate{Used: 900, Size: 64000, Meta: acpmeta.WithTurnUsage(nil, reported)}}}); err != nil {
+								return sdk.PromptResponse{}, err
+							}
+						}
+						if delivery == "total" {
+							if err := a.connection.Load().SessionUpdate(ctx, sdk.SessionNotification{SessionId: request.SessionId, Update: sdk.SessionUpdate{AgentThoughtChunk: &sdk.SessionUpdateAgentThoughtChunk{Content: sdk.TextBlock(strings.Repeat("x", 100))}}}); err != nil {
+								return sdk.PromptResponse{}, err
+							}
+						}
+						stop := sdk.StopReasonEndTurn
+						if terminal == "cancelled" {
+							stop = sdk.StopReasonCancelled
+						}
+						if terminal == "failed" {
+							stop = sdk.StopReason("future_reason")
+						}
+						input, output := int64(100), int64(10)
+						if partial {
+							input, output = 250, 30
+						}
+						reported := acpmeta.TurnUsage{InputTokens: &input, OutputTokens: &output, CacheReadTokens: sdk.Ptr(int64(0)), ReasoningTokens: sdk.Ptr(int64(0)), Source: source, Coverage: "native_turn", Complete: true, Model: "fixture-model"}
+						return sdk.PromptResponse{StopReason: stop, Meta: acpmeta.WithTurnUsage(nil, reported)}, nil
+					}
+					manager := newNativeIntegrationManager(t, func(context.Context, native.OpenRequest) (sdk.Agent, error) { return a, nil }, nil)
+					switch delivery {
+					case "events":
+						manager.config.Limits.MaxEvents = 1
+						if partial {
+							manager.config.Limits.MaxEvents = 2
+						}
+					case "single":
+						manager.config.Limits = native.Limits{MaxOutputBytes: 128, MaxEventBytes: 512}
+					case "total":
+						manager.config.Limits = native.Limits{MaxOutputBytes: 128, MaxEventBytes: 512, MaxTotalEventBytes: 512}
+						if partial {
+							manager.config.Limits.MaxTotalEventBytes = 700
+						}
+					}
+					manager.Start(context.Background())
+					prepared, err := manager.PrepareSession(context.Background(), nativeIntegrationPlan(t.TempDir()), SessionDirective{Mode: SessionModeNew})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer prepared.Close(context.Background())
+					if err = prepared.Bind(prepared.Context(), SessionResources{Target: RuntimeTarget{RuntimeID: "codex", Isolated: true}}); err != nil {
+						t.Fatal(err)
+					}
+					accepted, usageEvents := 0, 0
+					var observed UsageData
+					sink := productSinkFunc(func(_ context.Context, event Event) error {
+						accepted++
+						if event.Type == EventTypeUsage {
+							usageEvents++
+							if err := json.Unmarshal(event.Data, &observed); err != nil {
+								t.Fatal(err)
+							}
+							if observed.Turn != nil && observed.Turn.Complete != nil && *observed.Turn.Complete && delivery == "observer" {
+								return errors.New("observer rejected final")
+							}
+						}
+						return nil
+					})
+					result := prepared.Run(context.Background(), TurnInput{Message: Message{Text: "work"}}, sink)
+					if prompts.Load() != 1 {
+						t.Fatalf("Prompt replayed: %d", prompts.Load())
+					}
+					wantInput, wantOutput := int64(100), int64(10)
+					if partial {
+						wantInput, wantOutput = 250, 30
+					}
+					if result.Usage == nil || result.Usage.Turn == nil {
+						t.Fatalf("public terminal consumption missing: %+v", result)
+					}
+					usage := result.Usage
+					if usage.Turn.InputTokens != wantInput || usage.Turn.OutputTokens != wantOutput || usage.Turn.Source != source || usage.Turn.Coverage != "native_turn" || usage.Turn.Model != "fixture-model" || usage.Turn.Complete == nil || !*usage.Turn.Complete || !reflect.DeepEqual(usage.Turn.KnownFields, []string{"input_tokens", "cache_read_tokens", "output_tokens", "reasoning_output_tokens"}) {
+						t.Fatalf("terminal consumption changed: %+v", usage.Turn)
+					}
+					if partial && (usage.Context == nil || usage.Context.UsedTokens != 900 || usage.Context.WindowTokens != 64000) {
+						t.Fatalf("context erased: %+v", usage)
+					}
+					if !partial && usage.Context != nil {
+						t.Fatalf("context fabricated: %+v", usage.Context)
+					}
+					if terminal == "failed" {
+						if result.Failure == nil || result.Failure.Code == FailureCodeEventDelivery || result.TerminationReason == constants.RuntimeTerminationReasonCancelled {
+							t.Fatalf("original native failure replaced: %+v", result)
+						}
+					} else if terminal == "cancelled" {
+						if result.TerminationReason != constants.RuntimeTerminationReasonCancelled || result.Failure == nil || result.Failure.Code != FailureCodeContextCanceled {
+							t.Fatalf("cancel lost: %+v", result)
+						}
+					} else if delivery != "ok" && (result.Failure == nil || result.Failure.Code != FailureCodeEventDelivery) {
+						t.Fatalf("delivery failure missing: %+v", result)
+					}
+					if delivery == "events" && accepted > manager.config.Limits.MaxEvents {
+						t.Fatalf("events bypass budget: %d", accepted)
+					}
+					wantEvents := 0
+					if partial {
+						wantEvents++
+					}
+					if delivery == "ok" || delivery == "observer" {
+						wantEvents++
+					}
+					if usageEvents != wantEvents {
+						t.Fatalf("unexpected usage delivery: %d want %d", usageEvents, wantEvents)
+					}
+					usage.Turn.InputTokens = 999
+					usage.Turn.KnownFields[0] = "mutated"
+					*usage.Turn.Complete = false
+					if delivery == "ok" && (observed.Turn.InputTokens != wantInput || observed.Turn.KnownFields[0] != "input_tokens" || !*observed.Turn.Complete) {
+						t.Fatal("public result shares observer snapshot")
+					}
+				})
+			}
+		}
+	}
+}
+
+// TestUsageTerminalResultOwnership 验证公开结果不能反向修改 Session 已冻结的消费与上下文。
+func TestUsageTerminalResultOwnership(t *testing.T) {
+	reported := &acpmeta.TurnUsage{InputTokens: sdk.Ptr(int64(100)), OutputTokens: sdk.Ptr(int64(10)), Complete: true, Source: "fixture.final"}
+	original := turnResult{Usage: native.Usage{Known: true, InputTokens: 100, OutputTokens: 10, ContextKnown: true, ContextTokens: 900, ContextWindowTokens: 64000, Reported: reported}}
+	first := chatResult(SessionPlan{}, SessionDirective{}, original, &chatObserver{})
+	first.Usage.Turn.InputTokens = 999
+	first.Usage.Turn.KnownFields[0] = "mutated"
+	*first.Usage.Turn.Complete = false
+	first.Usage.Context.UsedTokens = 0
+	second := chatResult(SessionPlan{}, SessionDirective{}, original, &chatObserver{})
+	if original.Usage.InputTokens != 100 || *reported.InputTokens != 100 || !reported.Complete || second.Usage.Turn.InputTokens != 100 || second.Usage.Context.UsedTokens != 900 || second.Usage.Turn.KnownFields[0] != "input_tokens" || !*second.Usage.Turn.Complete {
+		t.Fatal("consumer changed authoritative terminal")
 	}
 }

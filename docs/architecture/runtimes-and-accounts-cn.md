@@ -83,7 +83,7 @@ Codex 原生令牌刷新通过随机能力路径的回环端点交给宿主。�
 
 `native.Connection` 分别替换消费和上下文，不累加通知与最终回执；无效最终用量不能抹除此前有效观察。失败、取消与交付故障保留已有消费及原终态。Session 深复制快照后交付，流式与最终交付共享同一事件预算，最终交付受独立期限保护。
 
-产品事件在既有数字之外保存 `known_fields`、`complete`、`source`、`coverage`、`model`。Execution sink 只在内存替换最后 turn/context，合法生命周期收尾时将原始 JSON 随终态归档；历史回放保持数字，旧日志不回填确定性。既有消息指标仍以数字投影为主。fork 继承消息清除运行指标，权威继承快照保留直接来源 Chat/消息身份，不创建新的执行消费事实。这里没有全局调用回执聚合或费用计算，也不承诺任意二次调用 `CommitTerminal` 的物理日志去重。
+产品事件在既有数字之外保存 `known_fields`、`complete`、`source`、`coverage`、`model`。Session 是本轮快照的唯一归一化所有者，公开 `Result.Usage` 在 Run 返回时交出独立终态副本；观察事件只服务实时投影，交付失败不会阻断终态用量交接。Execution 在合法生命周期收尾时直接序列化该终态快照并归档，不重做分量合并或累加。非 nil 的空快照不能从旧观察补值；nil 仅为旧 Runner 保留原有 sink 归档合同。终态交接不产生额外事件，流式与最终事件继续共享原预算；历史回放保持数字，旧日志不回填确定性。既有消息指标仍以数字投影为主。fork 继承消息清除运行指标，权威继承快照保留直接来源 Chat/消息身份，不创建新的执行消费事实。这里没有全局调用回执聚合或费用计算，也不承诺任意二次调用 `CommitTerminal` 的物理日志去重。
 
 本地证据及依赖尚未发布的边界见[用量基础验收](../discussions/provider-runtime-parity/usage-foundation-acceptance-cn.md)。
 

@@ -64,7 +64,7 @@ Execution 的[消息持久化](../../services/execution/runtime_events.go)在有
 
 Session 对流式事件与最终观察者交付均深复制 Usage 及其可空计数，观察者不能改写权威结果。最终交付在当前 Turn 释放前使用独立五秒期限，继续受同一个 sink 的单事件、累计字节与事件数预算限制；超限保留结果中的消费和原停止状态，将交付故障单独记录，不重放 Prompt。
 
-产品 `UsageData` 保留既有 turn/context 数字与新快照声明；Execution sink 独立覆盖分量并随唯一正常收尾归档。未知历史、失败和取消回放及继承身份的本地验证见[用量基础验收](../../../docs/discussions/provider-runtime-parity/usage-foundation-acceptance-cn.md)。全局去重、统计和费用不属于 Agent 的快照职责。
+产品 `UsageData` 保留既有 turn/context 数字与新快照声明。公开 `Result.Usage` 是同一 Session 最终事实的独立快照，消费和上下文已按分量替换；流式事件供实时观察，Execution 统一序列化终态快照并随唯一正常收尾归档。非 nil 的空快照明确表示没有已知用量，不能回填旧观察；仅旧 Runner 的 nil 结果兼容既有 sink 快照。终态交接不新增事件，不绕过预算，不重复累加。未知历史、失败和取消回放及继承身份的本地验证见[用量基础验收](../../../docs/discussions/provider-runtime-parity/usage-foundation-acceptance-cn.md)。全局去重、统计和费用不属于 Agent 的快照职责。
 
 ## Context、授权与关闭
 
