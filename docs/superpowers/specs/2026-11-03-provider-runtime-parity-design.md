@@ -1,5 +1,7 @@
 # 服务商、原生 CLI 能力与用量统一设计
 
+> 历史增量方案：后续实施以 [AgentRuntime 重建方案](../specs/2026-11-04-agentruntime-rebuild-design.md) 为准。本文件不再约束保留旧 Manager、Session、Catalog；已实现部分仅作为行为与回归证据。
+
 状态：调研后的设计草案；不代表已实现或已完成真实平台验收。
 
 专项证据：[用量审计](../../discussions/provider-runtime-parity/usage-audit-cn.md)、[运行时与模型错误审计](../../discussions/provider-runtime-parity/runtime-models-errors-audit-cn.md)、[账号与界面审计](../../discussions/provider-runtime-parity/accounts-ui-audit-cn.md)。独立设计审查已完成，无待用户决定的实施问题。

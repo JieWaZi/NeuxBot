@@ -1,5 +1,7 @@
 # 账号额度与重置时间实施计划
 
+> 历史增量方案：后续实施以 [AgentRuntime 重建方案](../specs/2026-11-04-agentruntime-rebuild-design.md) 为准。本文件不再约束保留旧 Manager、Session、Catalog；已实现部分仅作为行为与回归证据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 以当前选中账号读取原生额度窗口和重置时间，准确区分未知、失效与耗尽，供服务商详情和聊天提示消费。

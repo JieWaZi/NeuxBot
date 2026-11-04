@@ -1,5 +1,7 @@
 # 服务商、组合模型选择与用量界面 Implementation Plan
 
+> 历史增量方案：后续实施以 [AgentRuntime 重建方案](../specs/2026-11-04-agentruntime-rebuild-design.md) 为准。本文件不再约束保留旧 Manager、Session、Catalog；已实现部分仅作为行为与回归证据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 以唯一服务商设置入口、单浮层执行选择、账号配额和准确用量页面承接已确认的截图行为。

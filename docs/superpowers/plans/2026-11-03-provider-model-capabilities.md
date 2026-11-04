@@ -1,5 +1,7 @@
 # 服务商模型与错误能力实施计划
 
+> 历史增量方案：后续实施以 [AgentRuntime 重建方案](../specs/2026-11-04-agentruntime-rebuild-design.md) 为准。本文件不再约束保留旧 Manager、Session、Catalog；已实现部分仅作为行为与回归证据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 模型、逐模型强度、Fast 从原生目录到账号查询、配置保存和实际执行一致，并准确区分余额、额度和会话错误。

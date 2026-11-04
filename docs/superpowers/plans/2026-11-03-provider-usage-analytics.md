@@ -1,5 +1,7 @@
 # 全局用量与费用统计 Implementation Plan
 
+> 历史增量方案：后续实施以 [AgentRuntime 重建方案](../specs/2026-11-04-agentruntime-rebuild-design.md) 为准。本文件不再约束保留旧 Manager、Session、Catalog；已实现部分仅作为行为与回归证据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 建立覆盖聊天与独立任务、删除聊天仍保留消费、明确未知与部分覆盖的全局 Token 和费用统计。

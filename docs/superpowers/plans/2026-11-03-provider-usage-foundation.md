@@ -1,5 +1,7 @@
 # 原生用量正确性实施计划
 
+> 历史增量阶段：本计划已形成旧实现的用量回归证据。后续以 [AgentRuntime 重建方案](../specs/2026-11-04-agentruntime-rebuild-design.md) 为准，不要求保留本阶段的旧对象组织。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 修复多请求回合漏计、未知用量归零和错误终态丢失用量，建立后续统计所需的准确原生事实。

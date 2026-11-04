@@ -1,5 +1,7 @@
 # 受管 CLI 安装、更新与重启实施计划
 
+> 历史增量方案：后续实施以 [AgentRuntime 重建方案](../specs/2026-11-04-agentruntime-rebuild-design.md) 为准。本文件不再约束保留旧 Manager、Session、Catalog；已实现部分仅作为行为与回归证据。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 服务商详情可发现、下载、校验、激活和更新有可靠官方来源的CLI，并保留外部安装及正在执行的旧版本。
