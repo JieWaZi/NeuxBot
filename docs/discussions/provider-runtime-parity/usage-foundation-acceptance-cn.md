@@ -1,5 +1,7 @@
 # 用量基础本地验收
 
+本页保留旧执行器阶段的历史验收记录。隔离重建已移除旧 Execution sink 与相应接口测试，当前实际消费者证据见 [Codex 优先验收](../agentruntime-rebuild/codex-first-acceptance-cn.md)及 [原生消费者测试](../../../server/services/execution/native_turn_test.go)。下列旧命令和旧文件名用于定位当时基线，不代表当前测试入口。
+
 本记录只验收原生用量快照、宿主透传和现有日志边界。总体服务商能力对齐仍在实施中；支持矩阵和字段权威说明见[智能体与账号](../../architecture/runtimes-and-accounts-cn.md#用量快照)。
 
 ## 基线与实现
@@ -18,12 +20,12 @@
 - acp-go 各 Provider `TestUsageFoundation*` 与 `TestUsageFix*`：Codex 多请求累计与回退、Claude 消息及 steering 结算、Cursor hook 缺失字段、Kimi 同源替换与截断后失败/取消、Pi 部分请求；相关包和修复轮 race 有定向证据。
 - [native connection 测试](../../../server/internal/agent/native/connection_test.go) `TestUsageFoundationTerminals`、`TestUsageFoundationFinalSnapshotReplacesPartial`：真实 ACP SDK 管道验证部分通知、最终替换、无上下文占位以及错误/取消/交付失败后消费保留。
 - [Session 集成测试](../../../server/internal/agent/native_integration_test.go) `TestUsageFoundationFinalObserverTerminals`、`TestUsageFinalFixObserverOwnership`、`TestUsageFinalFixMetadataBudget`：最终副本、取消后交付、单事件/累计预算和原停止状态；普通与 race 定向验证已通过。
-- [Execution sink 测试](../../../server/services/execution/runtime_events_test.go) `TestUsageFoundationArchiveMergesComponents`：success/failure/canceled 终态保留原始元数据、回放数字与上下文，旧格式不补确定性。
+- 旧 Execution sink 测试（`runtime_events_test.go`）`TestUsageFoundationArchiveMergesComponents`：success/failure/canceled 终态保留原始元数据、回放数字与上下文，旧格式不补确定性。
 
 Task 3 新增：
 
 - acp-go `TestTurnUsageJSONIntegerPrecision` 通过真正的 JSON 解码入口重现 `9007199254740993 → 9007199254740992`。修复前默认边界和舍入用例均失败；修复后拒绝 float64 大于 `2^53-1`，`int64` 及 `json.Number` 仍准确接受 `2^53+1` 和 int64 上限，越界、负数和分数拒绝。
-- [Execution sink 测试](../../../server/services/execution/runtime_events_test.go) `TestUsageFoundationRepeatedFinalSnapshotArchivesOnce`：同一 invocation 的 `100/10 → 250/30 → 250/30` 只替换快照；中间观察不进入 JSONL，单次合法终态归档和回放仍为 `250/30`，保留来源与完整性。
+- 旧 Execution sink 测试（`runtime_events_test.go`）`TestUsageFoundationRepeatedFinalSnapshotArchivesOnce`：同一 invocation 的 `100/10 → 250/30 → 250/30` 只替换快照；中间观察不进入 JSONL，单次合法终态归档和回放仍为 `250/30`，保留来源与完整性。
 - [Chat journal 测试](../../../server/services/chat/journal_test.go) `TestUsageFoundationForkPreservesOriginWithoutNewConsumption`：父回合有真实已归档用量，fork 权威继承快照保留直接来源 Chat 和消息 ID，子展示不带 RunMetrics，子日志不产生执行或消费终态。
 
 新增 NeuxBot 用例验证当前已经正确的行为，没有为取得 RED 临时改动生产逻辑。这里的“单次归档”限定正常执行只收尾一次、观察者可重复交付最终快照；没有把第二次任意调用 `CommitTerminal` 当成已实现的幂等接口，也没有新增统计聚合器。
@@ -50,8 +52,8 @@ git diff --check
 
 - [Session 集成测试](../../../server/internal/agent/native_integration_test.go) `TestUsageTerminalPublicResult`：真实 Manager → Prepare → Bind → 公开 Run → ACP SDK pipe；覆盖仅最终 `100/10`、部分 `100/10` 后最终 `250/30`、成功/取消/原生故障，以及事件数量、单事件字节、累计字节和观察者拒绝。公开终态仍保存来源、完整性、字段 presence、已知零与未知字段；消费与上下文分别保存，Prompt 仅一次，事件不突破预算。
 - 同文件 `TestUsageTerminalResultOwnership`：修改公开结果的数字、字段集合、完整性及上下文不能改写原 Session 终态或下一次读取；公开结果与事件接收副本互不共享。
-- [Execution 集成测试](../../../server/services/execution/lifecycle_usage_test.go) `TestUsageTerminalExecutionArchive`：真实 Start、公开 PreparedTurn.Run、Execution sink、Journal.CommitTerminal 和 JSONL 回放，验证最终事件未交付时依旧归档最终消费；原生失败和取消事实保留，正常生命周期只提交一个终态。
-- [Execution sink 测试](../../../server/services/execution/runtime_events_test.go) `TestUsageTerminalArchiveContract`：显式空终态覆盖旧消费；只含 turn 或 context 的终态不能从实时观察补另一分量；nil 旧 Runner 保留既有兼容语义。序列化不共享结果指针，也不改写流式观察。
+- 旧 Execution 集成测试（`lifecycle_usage_test.go`）`TestUsageTerminalExecutionArchive`：真实 Start、公开 PreparedTurn.Run、Execution sink、Journal.CommitTerminal 和 JSONL 回放，验证最终事件未交付时依旧归档最终消费；原生失败和取消事实保留，正常生命周期只提交一个终态。
+- 旧 Execution sink 测试（`runtime_events_test.go`）`TestUsageTerminalArchiveContract`：显式空终态覆盖旧消费；只含 turn 或 context 的终态不能从实时观察补另一分量；nil 旧 Runner 保留既有兼容语义。序列化不共享结果指针，也不改写流式观察。
 
 本轮只运行新增用例、既有最终预算/所有权及直接受影响的 Execution 收尾用例；保留 Task 1/2 已有证据，没有重跑原生 Provider suite 或全量测试。普通、race 定向测试与文档检查通过：
 

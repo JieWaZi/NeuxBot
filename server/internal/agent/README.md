@@ -56,7 +56,7 @@ Session 同步交付全部原始事件，不增设计时合并队列，也不改
 
 工具 Input 是同一调用身份下的完整替换快照。累计计费只抵扣它与该调用紧邻上一份参数相同的字节前缀；新增和改写的参数、独立工具身份以及其他全部载荷仍完整计费。清空或缩短参数不退还已用预算，随后重建仍计新增字节。工具正文、结果、状态、位置及其他事件不参与抵扣，观察者始终收到完整事件。参数计费依据与观察者取得的副本隔离。
 
-Execution 的[消息持久化](../../services/execution/runtime_events.go)在有界批次内仅保留各工具最新参数，并按原交付顺序保存正文和进度；参数保留在其原事件的身份与状态上下文中。实时投影与耐久重放必须得到相同的消息视图。
+隔离重建已将 Execution 的消息持久化移至新 Turn 的[耐久缓冲](../agent_next/delta_buffer.go)，[产品消费者](../../services/execution/native_turn.go)不再另写正文和用量。旧 Agent 本文保留为迁移基线；候选当前验收及未完善项见 [Codex 优先验收](../../../docs/discussions/agentruntime-rebuild/codex-first-acceptance-cn.md)。
 
 ## 用量观察与最终交付
 
