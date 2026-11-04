@@ -182,6 +182,22 @@ describe("团队首发完整路由交接", () => {
             ],
           }),
         ),
+        http.get(`${api}/runtimes/codex/models`, ({ request }) =>
+          HttpResponse.json({
+            runtimeId: "codex",
+            accountId: new URL(request.url).searchParams.get("accountId"),
+            state: "fresh",
+            defaultModel: "gpt-5",
+            models: [
+              {
+                id: "gpt-5",
+                name: "GPT-5",
+                configurationKnown: true,
+                permissionLevels: ["default", "auto", "full-access"],
+              },
+            ],
+          }),
+        ),
         http.get(`${api}/wakers/lead/projects`, () =>
           HttpResponse.json({
             resources: [

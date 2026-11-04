@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { nativeModelCatalogQueryKey } from "@/shared/api/runtime-queries";
 import { withLocalErrorMutation } from "@/shared/api/local-error-surface";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -61,11 +62,15 @@ export function AccountLogin({
     }
   };
   useEffect(() => {
-    if (login?.complete)
-      void queryClient.invalidateQueries({
-        queryKey: listAiAccountsQueryKey(),
-      });
-  }, [login?.complete, queryClient]);
+    if (!login?.complete) return;
+    void queryClient
+      .invalidateQueries({ queryKey: listAiAccountsQueryKey() })
+      .then(() =>
+        queryClient.invalidateQueries({
+          queryKey: nativeModelCatalogQueryKey({ accountId }),
+        }),
+      );
+  }, [accountId, login?.complete, queryClient]);
   const close = () => {
     setClosing(true);
     void queryClient.cancelQueries({ queryKey });

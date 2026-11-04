@@ -678,6 +678,7 @@ function TeamChatView({
       !selectedWakerID ||
       !effectiveRuntimeID ||
       selectedPermissionUnsupported ||
+      (executionSelection.usesNativeCatalog && !executionSelection.valid) ||
       (!activeChatId && !workspaceDirectory && !selectedDraftProject),
     ),
     serverManagedQueue: isTeamMainChat,
@@ -1062,6 +1063,9 @@ function TeamChatView({
     availableReasoningOptions,
     selectedAccountId: executionSelection.selection.accountId,
     modelOptionsOverride: executionSelection.models,
+    catalogState: executionSelection.catalogState,
+    catalogPending: executionSelection.catalogPending,
+    refreshCatalog: executionSelection.refreshCatalog,
     thinkingPending: executionSelection.thinkingQuery.isFetching,
     historicalRuntime,
     historicalRuntimeDisabled,

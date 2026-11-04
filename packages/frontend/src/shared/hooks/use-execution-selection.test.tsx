@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import type { ReactNode } from "react";
@@ -70,6 +70,8 @@ const server = setupServer(
         {
           id: "anthropic",
           authMode: "api-key",
+          hasCredential: true,
+          authGeneration: 7,
           endpoints: [{ protocol: "anthropic-messages" }],
         },
       ],
@@ -154,6 +156,89 @@ function selection(
     },
   );
 }
+
+it.each([
+  ["codex", ["default", "auto", "full-access"], ["work", "subscription"]],
+  ["claude", ["default", "full-access"], ["anthropic"]],
+  ["cursor", ["default", "full-access"], []],
+] as const)(
+  "%s 使用原生账号目录的配置，并保留 Fast 三态",
+  async (runtimeId, permissions, compatibleAccounts) => {
+    server.use(
+      http.get(`${origin}/api/v1/runtimes`, () =>
+        HttpResponse.json({
+          resources: [
+            {
+              id: runtimeId,
+              enabled: true,
+              state: "ready",
+              defaultPermissionLevel: "auto",
+              models: [{ id: "summary-only", permissionLevels: ["auto"] }],
+            },
+          ],
+        }),
+      ),
+      http.get(`${origin}/api/v1/runtimes/:runtimeId/models`, ({ request }) => {
+        requests.push(request.url);
+        return HttpResponse.json({
+          runtimeId,
+          accountId: "system",
+          state: "fresh",
+          defaultModel: "account-model",
+          models: [
+            {
+              id: "account-model",
+              configurationKnown: true,
+              reasoningOptions: [{ id: "native-effort" }],
+              defaultReasoning: "native-effort",
+              fastSupported: true,
+              permissionLevels: permissions,
+            },
+          ],
+        });
+      }),
+    );
+    const { result, rerender } = selection({ runtimeId, accountId: "system" });
+    await waitFor(() => expect(result.current.valid).toBe(true));
+    expect(result.current.models.map((item) => item.id)).toEqual([
+      "account-model",
+    ]);
+    expect(result.current.accounts.map((item) => item.id)).toEqual(
+      compatibleAccounts,
+    );
+    expect([...result.current.supportedPermissions]).toEqual(permissions);
+    expect(result.current.selection).toMatchObject({
+      model: "account-model",
+      reasoning: "native-effort",
+      permissionLevel: runtimeId === "codex" ? "auto" : "default",
+      fast: undefined,
+    });
+    rerender({ value: { runtimeId, accountId: "system", fast: false } });
+    expect(result.current.selection.fast).toBe(false);
+    rerender({ value: { runtimeId, accountId: "system", fast: true } });
+    expect(result.current.selection.fast).toBe(true);
+    expect(requests).toContain(
+      `${origin}/api/v1/runtimes/${runtimeId}/models?accountId=system`,
+    );
+
+    server.use(
+      http.get(`${origin}/api/v1/runtimes/:runtimeId/models`, () =>
+        HttpResponse.json(
+          { code: "AI_ACCOUNT_MODELS_UNAVAILABLE" },
+          { status: 503 },
+        ),
+      ),
+    );
+    await act(async () => {
+      await result.current.refreshCatalog();
+    });
+    await waitFor(() => expect(result.current.catalogState).toBe("stale"));
+    expect(result.current.models.map((item) => item.id)).toEqual([
+      "account-model",
+    ]);
+    expect(result.current.valid).toBe(false);
+  },
+);
 
 describe("统一执行配置选择", () => {
   it("只提供协议兼容账号，切换账号后查询对应模型的推理能力", async () => {
@@ -333,4 +418,48 @@ it("账号切换隔离迟到目录，显式关闭 Fast 保持 false", async () =
     model: "native",
     fast: false,
   });
+});
+
+it("Claude 切换到受管 API 账号时不会显示系统账号的迟到目录", async () => {
+  let release!: () => void;
+  let entered = false;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  server.use(
+    http.get(`${origin}/api/v1/runtimes`, () =>
+      HttpResponse.json({
+        resources: [{ id: "claude", enabled: true, state: "ready" }],
+      }),
+    ),
+    http.get(`${origin}/api/v1/runtimes/claude/models`, async ({ request }) => {
+      const accountId = new URL(request.url).searchParams.get("accountId");
+      if (accountId === "system") {
+        entered = true;
+        await pending;
+      }
+      return HttpResponse.json({
+        runtimeId: "claude",
+        accountId,
+        authGeneration: accountId === "anthropic" ? 7 : undefined,
+        state: "fresh",
+        models: [
+          {
+            id: accountId,
+            configurationKnown: true,
+            permissionLevels: ["default"],
+          },
+        ],
+      });
+    }),
+  );
+  const { result, rerender } = selection({
+    runtimeId: "claude",
+    accountId: "system",
+  });
+  await waitFor(() => expect(entered).toBe(true));
+  rerender({ value: { runtimeId: "claude", accountId: "anthropic" } });
+  await waitFor(() => expect(result.current.valid).toBe(true));
+  await act(async () => release());
+  expect(result.current.models.map((item) => item.id)).toEqual(["anthropic"]);
 });

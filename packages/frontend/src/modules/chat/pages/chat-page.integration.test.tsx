@@ -1802,6 +1802,15 @@ describe("ChatPage", () => {
             permissionLevels: ["default", "auto", "full-access"],
             reasoningOptions: [{ id: "high", name: "High" }],
           },
+          {
+            id: "native-sonnet",
+            name: "Native Sonnet",
+            permissionLevels: ["default", "auto", "full-access"],
+            reasoningOptions: [
+              { id: "low", name: "Low" },
+              { id: "high", name: "High" },
+            ],
+          },
         ],
       },
     ];
@@ -1939,6 +1948,11 @@ describe("ChatPage", () => {
       screen.getByRole("button", { name: "执行权限：自动审批" }),
     );
     await user.click(screen.getByRole("menuitemradio", { name: /完全访问/ }));
+    await user.click(await screen.findByTestId("composer-model-control"));
+    await user.click(screen.getByRole("button", { name: "选择模型" }));
+    await user.click(screen.getByRole("radio", { name: "Native Sonnet" }));
+    screen.getByRole("slider", { name: "选择强度" }).focus();
+    await user.keyboard("{Home}{Escape}");
     await user.click(screen.getByRole("tab", { name: "团队负责人" }));
     await user.type(
       screen.getByRole("textbox", { name: "输入消息" }),
@@ -1962,9 +1976,9 @@ describe("ChatPage", () => {
         projectId: undefined,
         memberConfigs: expect.arrayContaining([
           expect.objectContaining({
-            model: "sonnet",
+            model: "native-sonnet",
             permissionLevel: "full-access",
-            reasoning: "high",
+            reasoning: "low",
             runtimeId: "claude",
             wakerId: "waker-2",
           }),

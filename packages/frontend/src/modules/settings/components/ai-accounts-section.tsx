@@ -1,3 +1,4 @@
+import { nativeModelCatalogQueryKey } from "@/shared/api/runtime-queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   withLocalErrorMutation,
@@ -1397,9 +1398,15 @@ export function AIAccountsSection() {
             onClose={() => setEditing(undefined)}
             onSaved={(id) => {
               setEditing(undefined);
-              void queryClient.invalidateQueries({
-                queryKey: listAiAccountsQueryKey(),
-              });
+              const accountId = editing === "new" ? id : editing.id;
+              void queryClient
+                .invalidateQueries({ queryKey: listAiAccountsQueryKey() })
+                .then(() => {
+                  if (accountId)
+                    return queryClient.invalidateQueries({
+                      queryKey: nativeModelCatalogQueryKey({ accountId }),
+                    });
+                });
               if (id) setLoginAccount(id);
             }}
           />
@@ -1444,9 +1451,17 @@ export function AIAccountsSection() {
                     })
                     .then(() => {
                       setConfirming(undefined);
-                      return queryClient.invalidateQueries({
-                        queryKey: listAiAccountsQueryKey(),
-                      });
+                      return queryClient
+                        .invalidateQueries({
+                          queryKey: listAiAccountsQueryKey(),
+                        })
+                        .then(() =>
+                          queryClient.invalidateQueries({
+                            queryKey: nativeModelCatalogQueryKey({
+                              accountId: confirming.account.id,
+                            }),
+                          }),
+                        );
                     })
                     .catch(() => undefined)
                 }

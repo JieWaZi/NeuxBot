@@ -1,6 +1,7 @@
 import {
-  codexModelCatalogQueryKey,
+  nativeModelCatalogQueryKey,
   listRuntimesOptions,
+  usesNativeModelCatalog,
 } from "@/shared/api/runtime-queries";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -180,7 +181,7 @@ function normalizedRuntimeDraft(
   runtime: RuntimeOption,
   draft: RuntimeDraft,
 ): RuntimeDraft {
-  if ((runtime.baseRuntimeId || runtime.id) === "codex") return draft;
+  if (usesNativeModelCatalog(runtime.baseRuntimeId || runtime.id)) return draft;
   const models = modelsForDraft(runtime, draft);
   const defaultModel = models.some((model) => model.id === draft.defaultModel)
     ? draft.defaultModel
@@ -242,9 +243,11 @@ function RuntimeEnvironmentRow({
   const invalidate = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: listRuntimesQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: codexModelCatalogQueryKey }),
       queryClient.invalidateQueries({ queryKey: listAiAccountsQueryKey() }),
     ]);
+    await queryClient.invalidateQueries({
+      queryKey: nativeModelCatalogQueryKey({ runtimeId: runtime.id }),
+    });
   };
   const update = useMutation({
     ...withLocalErrorMutation(updateRuntimeEnvironmentMutation()),
@@ -347,7 +350,7 @@ function RuntimeEnvironmentRow({
   };
   const issue = issueKind ? issueMessages[issueKind] : undefined;
   const normalizedDraft =
-    selection.codex && selection.codexCatalogState !== "fresh"
+    selection.usesNativeCatalog && selection.catalogState !== "fresh"
       ? draft
       : {
           ...draft,
@@ -355,8 +358,8 @@ function RuntimeEnvironmentRow({
           defaultReasoning: selection.selection.reasoning,
           defaultFast: selection.selection.fast,
         };
-  const changedCodexDefaults =
-    selection.codex &&
+  const changedNativeDefaults =
+    selection.usesNativeCatalog &&
     (draft.defaultAccountId !== (runtime.defaultAccountId ?? "") ||
       draft.defaultModel !== (runtime.defaultModel ?? "") ||
       draft.defaultReasoning !== (runtime.defaultReasoning ?? "") ||
@@ -641,7 +644,7 @@ function RuntimeEnvironmentRow({
                   ? t("runtimeEnvironment.status.loginRequired")
                   : usingPreviousOptions
                     ? "模型目录刷新失败，已保留上次结果"
-                    : optionsUnavailable && !selection.codex
+                    : optionsUnavailable && !selection.usesNativeCatalog
                       ? "模型目录刷新失败，当前使用 Default 兜底"
                       : ready
                         ? `已发现${version ? ` · ${version}` : ""}`
@@ -664,8 +667,7 @@ function RuntimeEnvironmentRow({
                 disabled={
                   pending ||
                   !draft.binary.trim() ||
-                  (changedCodexDefaults &&
-                    selection.codexCatalogState !== "fresh")
+                  (changedNativeDefaults && selection.catalogState !== "fresh")
                 }
                 onClick={() => mutate(normalizedDraft)}
               >
@@ -805,6 +807,9 @@ export function RuntimeEnvironmentsSection({
     ...withLocalErrorMutation(refreshRuntimesMutation()),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: listRuntimesQueryKey() });
+      await queryClient.invalidateQueries({
+        queryKey: nativeModelCatalogQueryKey(),
+      });
     },
   });
   const runtimes = runtimesQuery.data?.resources ?? [];

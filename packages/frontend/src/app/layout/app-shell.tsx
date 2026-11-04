@@ -33,7 +33,7 @@ import {
 } from "@/modules/notification";
 import { notificationHref } from "../notifications/notification-navigation";
 import { useQueryEvents } from "@/shared/api/use-query-events";
-import { codexModelCatalogQueryKey } from "@/shared/api/runtime-queries";
+import { nativeModelCatalogQueryKey } from "@/shared/api/runtime-queries";
 import { listRuntimesQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
 import {
   teamChannelsInfiniteOptions,
@@ -215,7 +215,7 @@ function AppShellContent({
   useQueryEvents({
     topic: "runtimes",
     resource: { kind: "global" },
-    queryKeys: [listRuntimesQueryKey(), codexModelCatalogQueryKey],
+    queryKeys: [listRuntimesQueryKey(), nativeModelCatalogQueryKey()],
   });
   const isChat =
     location.pathname === "/" ||

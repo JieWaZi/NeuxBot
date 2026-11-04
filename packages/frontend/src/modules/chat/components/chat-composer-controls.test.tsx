@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { expect, it, vi } from "vitest";
+import { usesNativeModelCatalog } from "@/shared/api/runtime-queries";
 import "@/shared/i18n";
 
 const { listWorkspaceGitRepositories } = vi.hoisted(() => ({
@@ -24,7 +25,7 @@ vi.mock("@/shared/platform", async (importOriginal) => {
   return {
     ...(actual as object),
     isDesktopRuntime: () => true,
- hasPlatformService: () => true,
+    hasPlatformService: () => true,
     listWorkspaceGitRepositories,
     listWorkspaceGitBranches: vi.fn(async () => ({
       isGitRepo: true,
@@ -112,7 +113,7 @@ function renderControls(
   );
 }
 
-const runtimes = ["kimi", "cursor", "pi", "claude"].map((id) => ({
+const runtimes = ["kimi", "cursor", "pi", "claude", "codex"].map((id) => ({
   id,
   name: id === "cursor" ? "Cursor CLI" : id,
   enabled: true,
@@ -144,17 +145,20 @@ function Controls({
   const selected = runtimes.find(
     (runtime) => runtime.id === selection.runtimeId,
   );
+  const nativeCatalog = usesNativeModelCatalog(selected?.id);
+  const model = selection.model || selected?.defaultModel || "";
   const controls = useChatComposerControls({
+    catalogState: nativeCatalog ? "fresh" : undefined,
+    modelOptionsOverride: nativeCatalog ? selected?.models : undefined,
     selectedAccountId: selection.accountId,
     activeChatId,
     projects: [],
     runtimes: availableRuntimes,
     runtimeId: selection.runtimeId,
     selectedRuntime: selected,
-    selectedModel: selection.model,
+    selectedModel: model,
     selectedModelName:
-      selected?.models.find((model) => model.id === selection.model)?.name ??
-      "",
+      selected?.models.find((option) => option.id === model)?.name ?? "",
     selectedPermissionLevel: "default",
     supportedPermissions: new Set(["default"]),
     selectedReasoning: "medium",
@@ -177,7 +181,7 @@ function Controls({
   );
 }
 
-it.each(["cursor", "pi"])(
+it.each(["codex", "claude", "cursor", "pi"])(
   "普通与团队共用选择器支持 %s 和其模型",
   async (id) => {
     const user = userEvent.setup();
@@ -189,7 +193,7 @@ it.each(["cursor", "pi"])(
         name: new RegExp(`^${id}\\s*可用$`, "i"),
       }),
     );
-    if (id === "pi") {
+    if (id !== "cursor") {
       expect(
         screen.getByRole("menuitem", { name: "返回智能体列表" }),
       ).toBeVisible();
@@ -205,7 +209,10 @@ it.each(["cursor", "pi"])(
       ),
     );
     expect(changed).toHaveBeenCalledWith(
-      expect.objectContaining({ runtimeId: id, model: `${id}-default` }),
+      expect.objectContaining({
+        runtimeId: id,
+        model: id === "pi" ? `${id}-default` : "",
+      }),
     );
     expect(
       screen.getByRole("button", { name: `${id} Model` }),

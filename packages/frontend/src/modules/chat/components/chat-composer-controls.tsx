@@ -2,6 +2,7 @@ import {
   ExecutionRuntimeControl,
   ExecutionPermissionControl,
 } from "@/shared/ui/execution-selection-controls";
+import { usesNativeModelCatalog } from "@/shared/api/runtime-queries";
 import { listAiAccountsOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, Folder } from "lucide-react";
@@ -17,7 +18,12 @@ import {
   hasPlatformService,
   listWorkspaceGitRepositories,
 } from "@/shared/platform";
-import { type PermissionLevel } from "@/shared/lib/runtime-permissions";
+import {
+  modelPermissionLevels,
+  runtimeDefaultPermissionLevels,
+  safeDefaultPermissionLevel,
+  type PermissionLevel,
+} from "@/shared/lib/runtime-permissions";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { WorkspaceScopePicker } from "@/shared/ui/workspace-scope-picker";
@@ -46,9 +52,9 @@ type ChatComposerControlsProps = {
   activeChatId?: string;
   availableReasoningOptions?: RuntimeReasoningOption[];
   modelOptionsOverride?: RuntimeModelOption[];
-  codexCatalogState?: string;
-  codexCatalogPending?: boolean;
-  refreshCodexCatalog?: () => unknown;
+  catalogState?: string;
+  catalogPending?: boolean;
+  refreshCatalog?: () => unknown;
   fastSupported?: boolean;
   selectedFast?: boolean;
   thinkingPending?: boolean;
@@ -83,9 +89,9 @@ export function useChatComposerControls({
   activeChatId,
   availableReasoningOptions,
   modelOptionsOverride,
-  codexCatalogState,
-  codexCatalogPending,
-  refreshCodexCatalog,
+  catalogState,
+  catalogPending,
+  refreshCatalog,
   fastSupported,
   selectedFast,
   thinkingPending,
@@ -123,19 +129,27 @@ export function useChatComposerControls({
     accountId: string,
   ) => {
     const account = accounts.find((item) => item.id === accountId);
-    const codex = (runtime.baseRuntimeId || runtime.id) === "codex";
+    const usesNativeCatalog = usesNativeModelCatalog(
+      runtime.baseRuntimeId || runtime.id,
+    );
     updateExecutionSelection({
       accountId,
       fast: null,
       model:
-        codex || account?.authMode === "subscription"
+        usesNativeCatalog || account?.authMode === "subscription"
           ? ""
           : account?.defaultModel ||
             account?.selectedModels?.[0] ||
             runtime.defaultModel ||
             "",
-      permissionLevel: selectedPermissionLevel,
-      reasoning: codex || account ? "" : (runtime.defaultReasoning ?? ""),
+      permissionLevel: usesNativeCatalog
+        ? safeDefaultPermissionLevel(
+            selectedPermissionLevel,
+            runtimeDefaultPermissionLevels(runtime),
+          )
+        : selectedPermissionLevel,
+      reasoning:
+        usesNativeCatalog || account ? "" : (runtime.defaultReasoning ?? ""),
       runtimeId: runtime.id ?? "",
     });
   };
@@ -233,33 +247,34 @@ export function useChatComposerControls({
       ) : null}
     </>
   );
-  const codex =
-    (selectedRuntime?.baseRuntimeId || selectedRuntime?.id) === "codex";
+  const usesNativeCatalog = usesNativeModelCatalog(
+    selectedRuntime?.baseRuntimeId || selectedRuntime?.id,
+  );
   const modelControl =
-    codex && codexCatalogState && codexCatalogState !== "fresh" ? (
+    usesNativeCatalog && catalogState && catalogState !== "fresh" ? (
       <Button
         size="sm"
         variant="ghost"
-        disabled={codexCatalogPending}
-        onClick={() => void refreshCodexCatalog?.()}
+        disabled={catalogPending}
+        onClick={() => void refreshCatalog?.()}
       >
         {t(
-          codexCatalogState === "stale"
+          catalogState === "stale"
             ? "common:executionSelection.catalogStale"
-            : codexCatalogState === "signed_out"
+            : catalogState === "signed_out"
               ? "common:executionSelection.catalogSignedOut"
               : "common:executionSelection.catalogUnavailable",
         )}
       </Button>
-    ) : selectedModelName || selectedAccount || codex ? (
+    ) : selectedModelName || selectedAccount || usesNativeCatalog ? (
       <ExecutionModelControl
         selectedModelName={selectedModelName}
         selectedModel={selectedModel}
         models={modelOptions}
         selectedReasoning={selectedReasoning}
         reasoningOptions={availableReasoningOptions}
-        thinkingPending={thinkingPending || codexCatalogPending}
-        disabled={codex && codexCatalogState !== "fresh"}
+        thinkingPending={thinkingPending || catalogPending}
+        disabled={usesNativeCatalog && catalogState !== "fresh"}
         fast={selectedFast}
         onFastChange={
           fastSupported
@@ -275,13 +290,13 @@ export function useChatComposerControls({
             (item) => item.id === model,
           );
           const nextReasoningOptions =
-            codex || selectedAccount
+            usesNativeCatalog || selectedAccount
               ? nextModelOption?.reasoningOptions
               : nextModelOption?.reasoningOptions?.length
                 ? nextModelOption.reasoningOptions
                 : selectedRuntime?.reasoningOptions;
           const reasoning =
-            codex || selectedAccount
+            usesNativeCatalog || selectedAccount
               ? ""
               : (nextReasoningOptions?.find(
                   (item) => item.id === selectedRuntime?.defaultReasoning,
@@ -290,7 +305,12 @@ export function useChatComposerControls({
                 "");
           updateExecutionSelection({
             model,
-            permissionLevel: selectedPermissionLevel,
+            permissionLevel: usesNativeCatalog
+              ? safeDefaultPermissionLevel(
+                  selectedPermissionLevel,
+                  modelPermissionLevels(modelOptions, model),
+                )
+              : selectedPermissionLevel,
             reasoning,
             fast: null,
           });

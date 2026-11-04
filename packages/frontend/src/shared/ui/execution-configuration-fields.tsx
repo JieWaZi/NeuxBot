@@ -144,6 +144,7 @@ export function ExecutionConfigurationFields({
               accountId: next?.defaultAccountId || "system",
               model: "",
               reasoning: "",
+              fast: undefined,
               permissionLevel: safeDefaultPermissionLevel(
                 selection.permissionLevel,
                 runtimeDefaultPermissionLevels(next ?? {}),
@@ -181,13 +182,15 @@ export function ExecutionConfigurationFields({
               fast: undefined,
               permissionLevel: safeDefaultPermissionLevel(
                 selection.permissionLevel,
-                runtime?.models?.some((item) => item.id === model)
-                  ? modelPermissionLevels(runtime.models, model)
-                  : runtimeDefaultPermissionLevels(runtime ?? {}),
+                state.usesNativeCatalog
+                  ? modelPermissionLevels(models, model)
+                  : runtime?.models?.some((item) => item.id === model)
+                    ? modelPermissionLevels(runtime.models, model)
+                    : runtimeDefaultPermissionLevels(runtime ?? {}),
               ),
             }),
           state.nativeModelsQuery.isFetching ||
-            (state.codex && state.codexCatalogState !== "fresh"),
+            (state.usesNativeCatalog && state.catalogState !== "fresh"),
         )}
         {!reasoningHidden &&
           field(
@@ -208,7 +211,7 @@ export function ExecutionConfigurationFields({
               change({ reasoning: reasoning === "__default" ? "" : reasoning }),
             !reasoningOptions.length ||
               state.thinkingQuery.isFetching ||
-              (state.codex && state.codexCatalogState !== "fresh"),
+              (state.usesNativeCatalog && state.catalogState !== "fresh"),
           )}
         {fastEnabled &&
           state.fastSupported &&
@@ -231,7 +234,7 @@ export function ExecutionConfigurationFields({
               change({
                 fast: fast === "__default" ? undefined : fast === "on",
               }),
-            state.codexCatalogState !== "fresh",
+            state.catalogState !== "fresh",
           )}
         {!permissionHidden &&
           field(
@@ -252,7 +255,9 @@ export function ExecutionConfigurationFields({
       {!reasoningHidden &&
       !state.loading &&
       !reasoningOptions.length &&
-      runtime?.models?.some((item) => item.reasoningOptions?.length) ? (
+      (state.usesNativeCatalog ? models : runtime?.models)?.some(
+        (item) => item.reasoningOptions?.length,
+      ) ? (
         <p className="text-content-secondary type-caption">
           {t("executionSelection.reasoningUnavailable")}
         </p>
@@ -270,29 +275,30 @@ export function ExecutionConfigurationFields({
           {t("executionSelection.loading")}
         </p>
       ) : null}
-      {state.codexCatalogState && state.codexCatalogState !== "fresh" ? (
+      {state.catalogState && state.catalogState !== "fresh" ? (
         <div
           role="status"
           className="text-content-secondary type-caption flex items-center gap-2"
         >
           {t(
-            state.codexCatalogState === "stale"
+            state.catalogState === "stale"
               ? "executionSelection.catalogStale"
-              : state.codexCatalogState === "signed_out"
+              : state.catalogState === "signed_out"
                 ? "executionSelection.catalogSignedOut"
                 : "executionSelection.catalogUnavailable",
           )}
           <Button
             size="sm"
             variant="ghost"
-            disabled={state.codexCatalogPending}
-            onClick={() => void state.refreshCodexCatalog()}
+            disabled={state.catalogPending}
+            onClick={() => void state.refreshCatalog()}
           >
             {t("executionSelection.catalogRetry")}
           </Button>
         </div>
       ) : null}
-      {state.error && !state.codex ? (
+      {state.error &&
+      (!state.catalogState || state.catalogState === "fresh") ? (
         <p role="alert" className="text-destructive type-caption">
           {localApiErrorMessage(state.error, t("executionSelection.loadError"))}
         </p>

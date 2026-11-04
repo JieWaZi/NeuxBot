@@ -705,29 +705,66 @@ describe("RuntimeEnvironmentsSection", () => {
     expect(screen.queryByText("pi-acp")).not.toBeInTheDocument();
   });
 
-  it("Fast 默认值明确关闭时保存 false", async () => {
-    runtimes.current[0] = { ...runtimes.current[0], defaultFast: true };
-    const user = userEvent.setup();
-    renderSection(
-      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    );
-    await user.click(
-      await screen.findByRole("button", { name: "展开Codex智能体设置" }),
-    );
-    const fast = await screen.findByRole("combobox", { name: "Fast" });
-    fast.focus();
-    await user.keyboard("{Enter}");
-    await user.click(screen.getByRole("option", { name: "关闭" }));
-    await user.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() =>
-      expect(updateRuntime).toHaveBeenCalledWith(
-        expect.objectContaining({
-          body: expect.objectContaining({ defaultFast: false }),
-        }),
-        expect.anything(),
-      ),
-    );
-  });
+  it.each([
+    ["codex", "Codex"],
+    ["claude", "Claude"],
+    ["cursor", "Cursor"],
+  ])(
+    "%s 使用原生目录的模型，Fast 明确关闭时保存 false",
+    async (runtimeId, label) => {
+      runtimes.current = [
+        {
+          ...runtimes.current[0],
+          id: runtimeId,
+          defaultFast: true,
+        },
+      ];
+      modelCatalog.mockResolvedValue({
+        data: {
+          runtimeId,
+          accountId: "system",
+          state: "fresh",
+          defaultModel: "account-model",
+          models: [
+            {
+              id: "account-model",
+              name: "Account Model",
+              configurationKnown: true,
+              fastSupported: true,
+              permissionLevels: ["default", "full-access"],
+            },
+          ],
+        },
+      });
+      const user = userEvent.setup();
+      renderSection(
+        new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+      );
+      await user.click(
+        await screen.findByRole("button", { name: `展开${label}智能体设置` }),
+      );
+      const fast = await screen.findByRole("combobox", { name: "Fast" });
+      expect(
+        screen.getByRole("combobox", { name: "默认模型" }),
+      ).toHaveTextContent("Account Model");
+      fast.focus();
+      await user.keyboard("{Enter}");
+      await user.click(screen.getByRole("option", { name: "关闭" }));
+      await user.click(screen.getByRole("button", { name: "保存" }));
+      await waitFor(() =>
+        expect(updateRuntime).toHaveBeenCalledWith(
+          expect.objectContaining({
+            path: { runtimeId },
+            body: expect.objectContaining({
+              defaultModel: "account-model",
+              defaultFast: false,
+            }),
+          }),
+          expect.anything(),
+        ),
+      );
+    },
+  );
 
   it("切换环境默认模型时只展示该 ACP 模型支持的 Thinking", async () => {
     const user = userEvent.setup();

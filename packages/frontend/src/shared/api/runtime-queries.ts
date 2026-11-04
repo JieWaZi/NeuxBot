@@ -13,10 +13,13 @@ export function listRuntimesOptions(
   });
 }
 
-export const codexModelCatalogQueryKey = ["codex-model-catalog"] as const;
+export function usesNativeModelCatalog(runtimeId?: string) {
+  return (
+    runtimeId === "codex" || runtimeId === "claude" || runtimeId === "cursor"
+  );
+}
 
-/** 同一账号的密钥轮换与显示名变化不会把目录切换成另一份查询。 */
-export function codexModelCatalogOptions(identity: {
+type ModelCatalogIdentity = {
   runtimeId: string;
   accountId: string;
   authGeneration?: number;
@@ -25,10 +28,20 @@ export function codexModelCatalogOptions(identity: {
   binary?: string;
   prefixArgs?: string[];
   configHome?: string;
-}) {
+};
+
+export const nativeModelCatalogQueryKey = (
+  identity?: Partial<ModelCatalogIdentity>,
+) =>
+  identity
+    ? (["native-model-catalog", identity] as const)
+    : (["native-model-catalog"] as const);
+
+/** 目录按账号认证世代和 CLI 隔离，显示名与同主体令牌刷新不改变目录身份。 */
+export function nativeModelCatalogOptions(identity: ModelCatalogIdentity) {
   const { runtimeId, accountId } = identity;
   return queryOptions({
-    queryKey: [...codexModelCatalogQueryKey, identity],
+    queryKey: nativeModelCatalogQueryKey(identity),
     queryFn: async ({ signal }) => {
       const { data } = await getRuntimeModelCatalog(
         withLocalErrorSurface({
@@ -45,7 +58,7 @@ export function codexModelCatalogOptions(identity: {
           data.state !== "signed_out" &&
           data.authGeneration !== identity.authGeneration)
       ) {
-        throw new Error("Codex catalog identity changed");
+        throw new Error("Native model catalog identity changed");
       }
       return data;
     },

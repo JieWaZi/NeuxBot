@@ -782,7 +782,7 @@ function ChatView({
       !selectedWakerID ||
       !effectiveRuntimeID ||
       selectedPermissionUnsupported ||
-      (executionSelection.codex && !executionSelection.valid) ||
+      (executionSelection.usesNativeCatalog && !executionSelection.valid) ||
       (presentation === "composer" &&
         Boolean(detailQuery.data?.chat?.activeExecutionId)),
     ),
@@ -1143,9 +1143,9 @@ function ChatView({
     activeChatId,
     availableReasoningOptions,
     modelOptionsOverride: availableModels,
-    codexCatalogState: executionSelection.codexCatalogState,
-    codexCatalogPending: executionSelection.codexCatalogPending,
-    refreshCodexCatalog: executionSelection.refreshCodexCatalog,
+    catalogState: executionSelection.catalogState,
+    catalogPending: executionSelection.catalogPending,
+    refreshCatalog: executionSelection.refreshCatalog,
     fastSupported: executionSelection.fastSupported,
     selectedFast: executionSelection.selection.fast,
     thinkingPending: Boolean(
