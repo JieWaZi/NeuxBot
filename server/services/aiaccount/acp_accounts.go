@@ -90,7 +90,8 @@ func newACPSystemAccount(request agent.AccountRequest, nativeConfigHome string) 
 	for _, argument := range request.PrefixArgs {
 		option, _, _ := strings.Cut(argument, "=")
 		switch option {
-		case "--config-dir", "--sdk-auth-file", "--settings", "--setting-sources":
+		case "--config-dir", "--sdk-auth-file", "--settings", "--setting-sources",
+			"--cwd", "-w", "--worktree", "--add-dir":
 			return acpSystemAccount{}, status_error.RuntimeConfigurationInvalid
 		}
 	}
@@ -339,7 +340,7 @@ func validateWorkBuddyCredentialSettings(path string) error {
 		case "CODEBUDDY_API_KEY", "CODEBUDDY_AUTH_TOKEN", "CODEBUDDY_CREDENTIALS_IN_MEMORY",
 			"CODEBUDDY_API_KEY_DISABLED", "CODEBUDDY_API_KEY_HELPER_DISABLED", "CODEBUDDY_BASE_URL", "CODEBUDDY_CUSTOM_HEADERS",
 			"CODEBUDDY_SERVICE_PLATFORM_BASE_URL", "CODEBUDDY_INTERNET_ENVIRONMENT", "CODEBUDDY_INTERNET_ENVIROMENT",
-			"CODEBUDDY_CONFIG_DIR", "WORKBUDDY_CONFIG_DIR", "BASE_URL", "HOME", "USERPROFILE",
+			"CODEBUDDY_CONFIG_DIR", "CODEBUDDY_PROJECT_CONFIG_DIR", "WORKBUDDY_CONFIG_DIR", "BASE_URL", "HOME", "USERPROFILE",
 			"ACC_PRODUCT_CONFIG", "ACC_PRODUCT_CONFIG_V2", "ACC_PRODUCT_CONFIG_PATH", "ENV_PRODUCT_CLI_ACCOUNT_TYPE":
 			if nonemptyJSON(value) {
 				return status_error.RuntimePolicyUnsupported

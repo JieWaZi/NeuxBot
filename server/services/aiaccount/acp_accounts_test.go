@@ -258,6 +258,32 @@ func TestACPSystemQoderAccountProcess(t *testing.T) {
 	os.Exit(0)
 }
 
+func TestACPSystemAccountsRejectUnboundWorkingScope(t *testing.T) {
+	home := acpAccountTestHome(t)
+	t.Setenv("QODER_PERSONAL_ACCESS_TOKEN", "fixture-pat")
+	t.Setenv("CODEBUDDY_API_KEY", "fixture-key")
+	service := New(nil)
+	request := agent.AccountRequest{
+		Provider: constants.RuntimeIDQoder, AccountID: agent.SystemAccountID,
+		CWD: home, PrefixArgs: []string{"--cwd=" + filepath.Join(home, "other")},
+	}
+	if _, err := service.ResolveAccount(t.Context(), request, ""); !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
+		t.Fatalf("a native wrapper can redirect the account's frozen working directory: %v", err)
+	}
+
+	request.Provider, request.PrefixArgs = constants.RuntimeIDWorkBuddy, nil
+	config := filepath.Join(home, ".codebuddy")
+	if err := os.Mkdir(config, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(config, "settings.json"), []byte(`{"env":{"CODEBUDDY_PROJECT_CONFIG_DIR":"/other"}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ResolveAccount(t.Context(), request, ""); !errors.Is(err, status_error.RuntimePolicyUnsupported) {
+		t.Fatalf("native settings can redirect the credential source: %v", err)
+	}
+}
+
 func TestACPSystemAccountsRejectManagedSelection(t *testing.T) {
 	service := New(nil)
 	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN} {
