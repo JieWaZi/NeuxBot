@@ -150,6 +150,8 @@ type Subscription struct {
 
 // streamEvent 是模块内部实时订阅中二选一的原始事件载荷。
 type streamEvent struct {
+	// Version wakes a reader after native changes commit.
+	Version int64
 	// Record 是已经写入 JSONL、可以推进恢复游标的权威记录。
 	Record *eventlog.Record
 	// Live 是不等待 JSONL 聚合窗口的 transient 实时消息增量。
@@ -308,6 +310,23 @@ func (h *subscriptionHub) publishCommitted(
 	}
 }
 
+// publishCheckpoint wakes the public stream only; execution observers receive lifecycle facts.
+func (h *subscriptionHub) publishCheckpoint(chatID string, version int64) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+	for id, subscriber := range h.subscribers[chatID] {
+		if subscriber.executionID != "" {
+			continue
+		}
+		select {
+		case subscriber.listener <- streamEvent{Version: version}:
+		default:
+			close(subscriber.listener)
+			delete(h.subscribers[chatID], id)
+		}
+	}
+}
+
 // publishLive 广播不带权威 Sequence 的 transient 消息增量。
 func (h *subscriptionHub) publishLive(
 	chatID string,
@@ -420,7 +439,7 @@ func (h *subscriptionHub) closeAll() {
 
 // ListEvents 返回游标之后已经完成安全转换的权威事件。
 func (m *service) ListEvents(
-	_ context.Context,
+	ctx context.Context,
 	chatID string,
 	after int64,
 	limit int,
@@ -432,7 +451,7 @@ func (m *service) ListEvents(
 	if err != nil {
 		return nil, err
 	}
-	adapter, err := eventstream.ReplayAfter(window.Records, after)
+	adapter, backlog, err := m.replayPublic(ctx, chatID, window.Records, after)
 	if err != nil {
 		logx.Errorf(
 			"project public chat events failed: chat_id=%s error=%v",
@@ -441,7 +460,34 @@ func (m *service) ListEvents(
 		)
 		return nil, status_error.ChatLogError
 	}
-	return publicEventsFromStream(adapter.EventsAfter(after, limit)), nil
+	if journal, ok := m.logStore.(*conversationJournal); ok && limit > len(backlog) {
+		// Internal binding/input rows and superseded body checkpoints do not consume the public limit.
+		through, err := journal.ReadVersion(ctx, chatID)
+		if err != nil {
+			return nil, err
+		}
+		cursor := window.LatestSequence
+		for cursor < through && len(backlog) < limit {
+			rows, err := journal.readAfter(ctx, chatID, cursor, int(min(256, through-cursor)))
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				projected, visible, err := journal.applyPublic(ctx, adapter, row)
+				if err != nil {
+					return nil, err
+				}
+				if visible {
+					backlog = append(backlog, publicEventFromStream(projected))
+					if len(backlog) == limit {
+						return backlog, nil
+					}
+				}
+			}
+			cursor = rows[len(rows)-1].Sequence
+		}
+	}
+	return backlog, nil
 }
 
 // SubscribeEvents 先注册实时监听者，再建立公开事件视图，避免订阅窗口出现事件缺口。
@@ -461,7 +507,7 @@ func (m *service) SubscribeEvents(
 		m.subscriptions.remove(chatID, subscriberID)
 		return Subscription{}, err
 	}
-	adapter, err := eventstream.ReplayAfter(window.Records, after)
+	adapter, backlog, err := m.replayPublic(ctx, chatID, window.Records, after)
 	if err != nil {
 		m.subscriptions.remove(chatID, subscriberID)
 		logx.Errorf(
@@ -471,7 +517,6 @@ func (m *service) SubscribeEvents(
 		)
 		return Subscription{}, status_error.ChatLogError
 	}
-	backlog := publicEventsFromStream(adapter.EventsAfter(after, 0))
 	revisions := adapter.MessageRevisions()
 	adapter.ReleaseHistory()
 	latestSequence := window.LatestSequence
@@ -609,6 +654,36 @@ func (m *service) forwardPublicEvents(
 				}
 				if live.Live != nil {
 					revisions[live.Live.MessageID] = live.Live.Revision
+				}
+				continue
+			}
+			if journal, ok := m.logStore.(*conversationJournal); ok {
+				target := incoming.Version
+				if incoming.Record != nil {
+					target = incoming.Record.Sequence
+				}
+				if target <= latestSequence {
+					continue
+				}
+				rows, err := journal.readAfter(ctx, chatID, latestSequence, int(target-latestSequence))
+				if err != nil {
+					return
+				}
+				for _, row := range rows {
+					projected, visible, err := journal.applyPublic(ctx, adapter, row)
+					if err != nil {
+						logx.Errorf("project native chat checkpoint: chat_id=%s sequence=%d error=%v", chatID, row.Sequence, err)
+						return
+					}
+					latestSequence = row.Sequence
+					if visible {
+						if projected.Message != nil {
+							revisions[projected.Message.ID] = max(revisions[projected.Message.ID], projected.Message.LiveRevision)
+						}
+						if !sendPublicEvent(ctx, events, publicEventFromStream(projected)) {
+							return
+						}
+					}
 				}
 				continue
 			}

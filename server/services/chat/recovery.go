@@ -59,7 +59,7 @@ type RecoveryHealth struct {
 // recoveryCoordinator 隔离启动恢复职责，正常路径只读取 SQLite 游标后的 JSONL 尾部。
 type recoveryCoordinator struct {
 	// logStore 读取、修复并索引权威 Chat JSONL。
-	logStore *eventlog.Store
+	logStore chatJournalStorage
 	// queryIndexes 提供可从 JSONL 重建的 SQLite 当前投影。
 	queryIndexes *queryIndexStore
 	// healthMutex 保护最近一次恢复健康快照。
@@ -80,7 +80,7 @@ type currentProjection struct {
 
 // newRecoveryCoordinator 创建仅在 Chat 模块启动阶段运行的恢复器。
 func newRecoveryCoordinator(
-	logStore *eventlog.Store,
+	logStore chatJournalStorage,
 	queryIndexes *queryIndexStore,
 ) *recoveryCoordinator {
 	return &recoveryCoordinator{logStore: logStore, queryIndexes: queryIndexes}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
@@ -48,11 +49,24 @@ func (p *queryIndexStore) prepareResult(chatID, messageID string) (*models.WorkR
 	if err != nil {
 		return nil, err
 	}
+	if journal, ok := p.logStore.(*conversationJournal); ok && len(records) > 1 {
+		message, cursor, err := journal.ReadMessageCheckpoint(context.Background(), chatID, messageID, 0)
+		if err != nil {
+			return nil, err
+		}
+		if cursor > 0 {
+			return resultFromContent(records, messageID, &message)
+		}
+	}
 	return resultFromRecords(records, messageID)
 }
 
 // resultFromRecords 仅认真实结束回合的最终文本、错误或文件交付。
 func resultFromRecords(records []eventlog.Record, messageID string) (*models.WorkResultReceipt, error) {
+	return resultFromContent(records, messageID, nil)
+}
+
+func resultFromContent(records []eventlog.Record, messageID string, native *agent.StoredMessage) (*models.WorkResultReceipt, error) {
 	var terminal *eventlog.Record
 	var fileResult *eventlog.Record
 	var fileReference *eventlog.FileChangesData
@@ -76,10 +90,18 @@ func resultFromRecords(records []eventlog.Record, messageID string) (*models.Wor
 	if terminal == nil {
 		return nil, nil
 	}
-	messages, err := messageview.ReplayPublicMessages(records)
-	if err != nil {
-		return nil, err
+	builder := messageview.NewPublicMessageViewBuilder()
+	for _, record := range records {
+		if _, err := builder.Apply(record); err != nil {
+			return nil, err
+		}
 	}
+	if native != nil {
+		if err := builder.ReplaceStoredContent(*native, terminal.Sequence, terminal.RecordedAt); err != nil {
+			return nil, err
+		}
+	}
+	messages := builder.Messages()
 	for _, message := range messages {
 		if message.ID != messageID || message.Inherited || message.Role != constants.MessageRoleAssistant {
 			continue

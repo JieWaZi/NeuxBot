@@ -240,6 +240,9 @@ func (m *service) ReadMessageHistory(
 	if err := ctx.Err(); err != nil {
 		return MessageHistoryPage{}, chatContextStatus(err)
 	}
+	if journal, ok := m.logStore.(*conversationJournal); ok {
+		return journal.nativeHistory(ctx, chatID, beforeSequence, limit)
+	}
 	window, err := m.logStore.ReadMessageWindow(chatID, beforeSequence, limit)
 	if err != nil {
 		return MessageHistoryPage{}, err

@@ -4,6 +4,8 @@ package eventstream
 import (
 	"encoding/json"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
@@ -318,4 +320,26 @@ func cloneStringAnyMap(source map[string]any) map[string]any {
 		clone[key] = value
 	}
 	return clone
+}
+
+// ApplyNativeCheckpoint replaces projected content with the effective native lanes.
+func (a *Adapter) ApplyNativeCheckpoint(record eventlog.Record, stored agent.StoredMessage) (PublicEvent, error) {
+	if err := a.messageView.ReplaceStoredContent(stored, record.Sequence, record.RecordedAt); err != nil {
+		return PublicEvent{}, err
+	}
+	event, err := a.Apply(record)
+	if err != nil {
+		return PublicEvent{}, err
+	}
+	event.Message = a.messageView.PublicMessage(stored.ID)
+	if event.Message != nil {
+		a.messageRevisions[stored.ID] = event.Message.LiveRevision
+	}
+	return event, nil
+}
+
+// ApplyNativeTerminal projects usage from the canonical result before applying business status.
+func (a *Adapter) ApplyNativeTerminal(record eventlog.Record, usage *acpmeta.TurnUsage) (PublicEvent, error) {
+	a.messageView.SetNativeUsage(record.ExecutionID, usage)
+	return a.Apply(record)
 }

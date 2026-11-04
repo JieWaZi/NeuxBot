@@ -3,6 +3,7 @@ package eventlog_next
 import (
 	"context"
 	"encoding/json"
+	"gorm.io/gorm"
 	"os"
 	"path/filepath"
 	"slices"
@@ -296,6 +297,17 @@ func (s *Store) ReadMessages(ctx context.Context, q agent.MessageQuery) (agent.M
 	before := q.Before
 	if before == 0 {
 		before = page.Version + 1
+	} else {
+		var boundary messageAnchor
+		err := r.index.query(func(db *gorm.DB) error {
+			return db.Where("stream = ? AND cursor = ?", r.index.coverage.Stream, before).Limit(1).Find(&boundary).Error
+		})
+		if err != nil {
+			return page, err
+		}
+		if boundary.Cursor == 0 {
+			return page, status_error.ChatMessageCursorInvalid
+		}
 	}
 	anchors, err := r.index.anchors(before, q.Limit+1, false)
 	if err != nil {
@@ -673,30 +685,51 @@ func (s *Store) ReadHistoryCandidates(ctx context.Context, q agent.MessageQuery)
 
 // ReadMessage resolves one stable message and its late facts without scanning a conversation.
 func (s *Store) ReadMessage(ctx context.Context, chatID, messageID string) (agent.StoredMessage, error) {
+	message, _, err := s.readMessage(ctx, chatID, messageID, 0, false)
+	return message, err
+}
+
+// ReadMessageCheckpoint returns the effective native message at its latest checkpoint.
+// An older requested cursor only returns the winning checkpoint identity.
+func (s *Store) ReadMessageCheckpoint(ctx context.Context, chatID, messageID string, at int64) (agent.StoredMessage, int64, error) {
+	return s.readMessage(ctx, chatID, messageID, at, true)
+}
+
+func (s *Store) readMessage(ctx context.Context, chatID, messageID string, at int64, native bool) (agent.StoredMessage, int64, error) {
 	r, err := s.openChat(ctx, chatID)
 	if err != nil {
-		return agent.StoredMessage{}, err
+		return agent.StoredMessage{}, 0, err
 	}
 	defer r.close()
 	anchor, err := r.index.anchor(messageID)
 	if err != nil {
-		return agent.StoredMessage{}, err
+		return agent.StoredMessage{}, 0, err
 	}
 	if anchor.Cursor == 0 {
-		return agent.StoredMessage{}, status_error.ChatMessageNotFound
+		return agent.StoredMessage{}, 0, status_error.ChatMessageNotFound
+	}
+	var checkpoint rowIndex
+	if native {
+		err = r.index.query(func(db *gorm.DB) error {
+			return db.Where("stream = ? AND message_ref <> 0 AND message_ref = ? AND (display_link OR kind = ?)",
+				r.index.coverage.Stream, anchor.Ref, indexMessageComplete).Order("cursor DESC").Limit(1).Find(&checkpoint).Error
+		})
+		if err != nil || checkpoint.Cursor == 0 || (at > 0 && at != checkpoint.Cursor) {
+			return agent.StoredMessage{}, checkpoint.Cursor, err
+		}
 	}
 	groups, err := r.index.forMessages([]int64{anchor.Ref})
 	if err != nil {
-		return agent.StoredMessage{}, err
+		return agent.StoredMessage{}, 0, err
 	}
 	rows := groups[anchor.Ref]
 	reader := newRecordReader(r, rows)
 	if err := reader.prepareLegacy(); err != nil {
-		return agent.StoredMessage{}, err
+		return agent.StoredMessage{}, 0, err
 	}
 	messages, err := s.projectPage(ctx, reader, []messageAnchor{anchor}, groups)
 	if err != nil {
-		return agent.StoredMessage{}, err
+		return agent.StoredMessage{}, 0, err
 	}
-	return messages[0], nil
+	return messages[0], checkpoint.Cursor, nil
 }

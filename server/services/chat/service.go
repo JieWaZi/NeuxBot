@@ -10,6 +10,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -98,7 +99,7 @@ type service struct {
 	// deletionIntents 持久化 prepared/committed 删除提交事实。
 	deletionIntents controllers.ChatDeletionIntentController
 	// logStore 持久化每个对话的权威追加日志。
-	logStore *eventlog.Store
+	logStore chatJournalStorage
 	// eventCommitter 固化 JSONL 提交后的发布和消息位置索引顺序。
 	eventCommitter *eventCommitter
 	// projectController 解析首次发送选择的项目和冻结目录范围。
@@ -116,6 +117,8 @@ var _ Module = (*service)(nil)
 
 // Config 声明构造 Chat Service 所需的稳定外部依赖。
 type Config struct {
+	// Conversations is the shared native and public conversation authority.
+	Conversations *eventlog_next.Store
 	// Results 保存用户阅读事实与可重放交付引用，不能在索引修复中删除。
 	Results controllers.WorkResultController
 	// StorageDirectory 是 Chat 与 Team 聚合目录共同使用的应用数据根目录。
@@ -160,10 +163,16 @@ func newService(config Config) (*service, error) {
 	if err != nil {
 		return nil, err
 	}
-	logStore, err := eventlog.NewStore(storageDirectory)
-	if err != nil {
-		return nil, err
+	store := config.Conversations
+	if store == nil {
+		store, err = eventlog_next.NewStore(storageDirectory)
+		if err != nil {
+			return nil, err
+		}
+	} else if store.Root() != storage.Root() {
+		return nil, status_error.ChatLogError
 	}
+	logStore := &conversationJournal{Store: store}
 	deletions, err := chatstorage.NewDeletionCoordinator(storage)
 	if err != nil {
 		return nil, err
@@ -240,6 +249,9 @@ func (m *service) Start(ctx context.Context) error {
 // Close 关闭全部进程内事件订阅。
 func (m *service) Close() {
 	m.subscriptions.closeAll()
+	if journal, ok := m.logStore.(*conversationJournal); ok {
+		journal.Store.Close()
+	}
 }
 
 func marshalData(value interface{}) json.RawMessage {

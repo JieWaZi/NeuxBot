@@ -17,14 +17,14 @@ import (
 // SSE 只能发布已经提交的 Record。
 type eventCommitter struct {
 	// store 持久化每个 Chat 的权威追加日志。
-	store *eventlog.Store
+	store chatJournalStorage
 	// subscriptions 广播已提交事件给进程内订阅者。
 	subscriptions *subscriptionHub
 }
 
 // newEventCommitter 创建权威事件提交器。
 func newEventCommitter(
-	store *eventlog.Store,
+	store chatJournalStorage,
 	subscriptions *subscriptionHub,
 ) *eventCommitter {
 	return &eventCommitter{
@@ -100,7 +100,7 @@ type queryIndexStore struct {
 	// results 保存原结果交付与独立的用户阅读事实。
 	results controllers.WorkResultController
 	// logStore 通过文件索引读取单条结果，文件读取在 SQLite 事务前完成。
-	logStore *eventlog.Store
+	logStore chatJournalStorage
 	// chatController 持久化对话查询索引。
 	chatController controllers.ChatController
 	// runtimeSessionController 持久化 Runtime 续接查询索引。
