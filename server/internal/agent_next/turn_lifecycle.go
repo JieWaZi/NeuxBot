@@ -35,6 +35,8 @@ type TurnAdmission struct {
 type TurnPorts struct {
 	// AcquireResources materializes the selected resources once on the cold path.
 	AcquireResources func(context.Context, ResourceSelection) (ResourceLease, error)
+	// ResolveHandoffSource returns authorized launch material for the exact prior binding.
+	ResolveHandoffSource func(context.Context, NativeBinding) (HandoffSource, error)
 	// Admit supplies frozen business facts for the one BeforeSubmit batch. It runs once.
 	Admit func(context.Context, TurnAdmission) (ConversationBatch, error)
 	// Authorize enables this input after the durable admission, returning its revocation.
@@ -59,7 +61,7 @@ type TurnResult struct {
 	Binding NativeBinding
 	// Input is the exact adapter reservation when available.
 	Input AgentPromptSubmission
-	// Effective is the native session configuration observed during preparation.
+	// Effective is the native session configuration observed through settlement.
 	Effective AgentSession
 	// Submission records the transport evidence for this input.
 	Submission string
@@ -120,8 +122,8 @@ type Turn struct {
 	adapterInputID string
 	// nativeInvocationID is the first proven native scope for this input.
 	nativeInvocationID string
-	// chatVersion is the latest commit cursor observed by this turn's durable writer.
-	chatVersion int64
+	// handoffClaim retains this exact delivery attempt through an uncertain commit.
+	handoffClaim *HandoffClaim
 	// gateStorageErr records durable admission failure separately from native transport.
 	gateStorageErr error
 	// authorized enables observations and interactions after the business gate.
@@ -132,6 +134,8 @@ type Turn struct {
 	controls sync.WaitGroup
 	// steerRevokes holds additional input grants under the same native turn.
 	steerRevokes []func()
+	// handoffToolAttempt is set from actual native tool or interaction evidence.
+	handoffToolAttempt bool
 	// summary is a temporary private Turn on the old connection during handoff.
 	summary *Turn
 	// buffer owns pending native message changes for this invocation.
@@ -179,8 +183,7 @@ func (t *Turn) Run(ctx context.Context) TurnResult {
 }
 
 func (t *Turn) runPrompt() TurnResult {
-	res := TurnResult{Binding: t.binding, Effective: cloneSession(t.effective), Submission: "not_sent"}
-	res.Binding.Configuration = append([]byte(nil), t.binding.Configuration...)
+	res := TurnResult{Binding: cloneBinding(t.binding), Effective: t.observedSession(), Submission: "not_sent"}
 	if err := t.ctx.Err(); err != nil {
 		res.OperationError = err
 		return res
@@ -223,9 +226,22 @@ func (t *Turn) runPrompt() TurnResult {
 	// Settling observed evidence uses its own bounded context even after cancellation.
 	finalize, cancel := context.WithTimeout(context.WithoutCancel(t.ctx), turnSettlementTimeout)
 	defer cancel()
-	res.StorageError = errors.Join(t.gateStorageErr, t.buffer.finish(finalize, t))
+	res.StorageError = errors.Join(t.gateStorageErr, t.buffer.finish(finalize, t.deltaTarget()))
+	if t.handoffClaim != nil && (res.Submission == "not_sent" || res.Admission == "not_accepted" && res.Outcome == nil) {
+		res.StorageError = errors.Join(res.StorageError, t.restoreHandoff(finalize))
+	}
+	res.Binding = cloneBinding(t.binding)
+	res.Effective = t.observedSession()
 	if res.Outcome != nil {
-		res.StorageError = errors.Join(res.StorageError, t.lifecycle.commitAndAcknowledge(finalize, client, t.binding.Session, *res.Outcome, t.ports.Committed))
+		l := t.lifecycle
+		reader := l.sessionReader(t.thread)
+		var err error
+		if reader != nil && reader.session == t.binding.Session {
+			err = l.persistReceipt(finalize, reader, *res.Outcome, t.ports.Committed)
+		} else {
+			err = l.commitAndAcknowledge(finalize, client, t.binding.Session, *res.Outcome, t.ports.Committed)
+		}
+		res.StorageError = errors.Join(res.StorageError, err)
 	}
 	res.DeliveryError = errors.Join(res.DeliveryError, t.live.finish(finalize))
 	return res
@@ -237,17 +253,20 @@ func (t *Turn) beforeSubmit(ctx context.Context, submission AgentPromptSubmissio
 		return err
 	}
 	if t.thread.chatID != "" {
-		t.lifecycle.mu.Lock()
-		t.thread.binding = &t.binding
-		t.thread.effective = t.effective
-		t.lifecycle.mu.Unlock()
+		t.publishBinding()
 	}
 	t.mu.Lock()
 	t.admitted = true
-	t.chatVersion = receipt.Version
+	t.buffer.chatVersion = receipt.Version
 	t.adapterInputID = submission.InputID
 	t.mu.Unlock()
 	revoke, err := authorizeInput(ctx, t.ports, admission, receipt)
+	if err == nil && ctx.Err() == nil && t.binding.Handoff != nil {
+		err = t.claimHandoff(ctx, submission)
+		if err != nil {
+			t.gateStorageErr = err
+		}
+	}
 	t.mu.Lock()
 	t.revoke = revoke
 	t.authorized = err == nil && ctx.Err() == nil
@@ -266,9 +285,7 @@ func (t *Turn) recordInput(ctx context.Context, input TurnRequest, ports TurnPor
 	if submission.HostInvocationID != input.HostInvocationID || submission.SessionID != t.binding.Session.SessionID || submission.InputID == "" {
 		return TurnAdmission{}, receipt, status_error.RuntimeProtocolIncompatible
 	}
-	binding := t.binding
-	binding.Configuration = append([]byte(nil), binding.Configuration...)
-	admission := TurnAdmission{Binding: binding, Input: HostInput{
+	admission := TurnAdmission{Binding: cloneBinding(t.binding), Input: HostInput{
 		Session: t.binding.Session, HostInvocationID: submission.HostInvocationID,
 		AdapterInputID: submission.InputID, NativeInputID: stringValue(submission.NativeInputID),
 		ExecutionID: input.ExecutionID, AssistantMessageID: input.AssistantMessageID,
@@ -298,6 +315,13 @@ func (t *Turn) recordInput(ctx context.Context, input TurnRequest, ports TurnPor
 		t.gateStorageErr = err
 	}
 	return admission, receipt, err
+}
+
+func (t *Turn) publishBinding() {
+	binding := cloneBinding(t.binding)
+	t.lifecycle.mu.Lock()
+	t.thread.binding = &binding
+	t.lifecycle.mu.Unlock()
 }
 
 func authorizeInput(ctx context.Context, ports TurnPorts, admission TurnAdmission, receipt CommitReceipt) (func(), error) {
@@ -342,7 +366,8 @@ func (t *Turn) Steer(ctx context.Context, input TurnRequest, ports TurnPorts) (A
 	}
 	stop := context.AfterFunc(runCtx, cancel)
 	defer stop()
-	return client.Steer(control, AgentSteerRequest{
+	var revoke func()
+	result, steerErr := client.Steer(control, AgentSteerRequest{
 		SessionID: scope.SessionID, Target: scope, HostInvocationID: input.HostInvocationID,
 		Text: input.Text, Content: input.Content,
 		BeforeSubmit: func(ctx context.Context, submission AgentPromptSubmission) error {
@@ -353,21 +378,30 @@ func (t *Turn) Steer(ctx context.Context, input TurnRequest, ports TurnPorts) (A
 			if err != nil {
 				return err
 			}
-			revoke, err := authorizeInput(ctx, ports, admission, receipt)
-			if revoke != nil {
-				t.mu.Lock()
-				t.steerRevokes = append(t.steerRevokes, revoke)
-				t.mu.Unlock()
+			revoke, err = authorizeInput(ctx, ports, admission, receipt)
+			if err == nil && !t.matches(scope) {
+				err = status_error.RuntimeUnavailable
 			}
-			if err != nil {
-				return err
+			if err == nil {
+				err = ctx.Err()
 			}
-			if !t.matches(scope) {
-				return status_error.RuntimeUnavailable
+			if err != nil && revoke != nil {
+				revoke()
+				revoke = nil
 			}
-			return ctx.Err()
+			return err
 		},
 	})
+	if revoke != nil {
+		if result.Receipt != nil && result.Receipt.Submission == "not_sent" {
+			revoke()
+		} else {
+			t.mu.Lock()
+			t.steerRevokes = append(t.steerRevokes, revoke)
+			t.mu.Unlock()
+		}
+	}
+	return result, steerErr
 }
 
 func commitConversation(ctx context.Context, store ConversationStore, batch ConversationBatch) (CommitReceipt, error) {
@@ -438,6 +472,12 @@ func (t *Turn) settle(release bool) error {
 	return t.cleanupErr
 }
 
+func (t *Turn) deltaTarget() deltaTarget {
+	return deltaTarget{store: t.lifecycle.store, session: t.binding.Session,
+		chatID: t.thread.chatID, hostID: t.input.HostInvocationID, messageID: t.input.AssistantMessageID,
+		executionID: t.input.ExecutionID, committed: t.ports.Committed}
+}
+
 func (l *ThreadLifecycle) matchingTurn(state *threadState, generation uint64, scope AgentScope) *Turn {
 	if scope.HostInvocationID == "" || scope.NativeInvocationID == "" {
 		return nil
@@ -476,23 +516,79 @@ func (t *Turn) matches(scope AgentScope) bool {
 	return t.nativeInvocationID == scope.NativeInvocationID
 }
 
+func (l *ThreadLifecycle) rejectHandoffTool(state *threadState, generation uint64, scope AgentScope) bool {
+	if scope.NativeInvocationID == "" {
+		return false
+	}
+	l.mu.Lock()
+	active := state.active
+	if state.generation != generation {
+		active = nil
+	}
+	l.mu.Unlock()
+	if active == nil {
+		return false
+	}
+	active.mu.Lock()
+	child := active.summary
+	active.mu.Unlock()
+	if child == nil {
+		return false
+	}
+	child.mu.Lock()
+	reject := child.phase == turnRunning && child.binding.Session.SessionID == scope.SessionID &&
+		(scope.HostInvocationID == "" || child.input.HostInvocationID == scope.HostInvocationID)
+	if reject {
+		child.handoffToolAttempt = true
+	}
+	child.mu.Unlock()
+	if reject {
+		child.Cancel()
+	}
+	return reject
+}
+
 func (l *ThreadLifecycle) callbacks(state *threadState, generation uint64) AgentClientCallbacks {
 	return AgentClientCallbacks{
 		Observe: func(ctx context.Context, scope AgentScope, event AgentEvent) error {
+			l.applySessionNotification(state, generation, scope, event)
 			// The public user input is the business fact. Native echoes can include
 			// private handoff and history material injected before submission.
 			if event.Kind == "user" {
 				return nil
 			}
+			if event.Kind == "tool" {
+				l.rejectHandoffTool(state, generation, scope)
+			}
 			if t := l.matchingTurn(state, generation, scope); t != nil {
-				if err := t.buffer.observe(ctx, t, scope, event); err != nil {
+				if reader := l.sessionReader(state); reader != nil && reader.session == t.binding.Session {
+					// An invocation can prove its host input after native-only
+					// observations. Preserve the earlier native fragment order.
+					if err := reader.flushBeforeHost(ctx, scope.NativeInvocationID); err != nil {
+						return err
+					}
+				}
+				if err := t.buffer.observe(ctx, t.deltaTarget(), scope, event); err != nil {
 					return err
 				}
 				t.live.offer(scope, event)
+				return nil
+			}
+			if scope.HostInvocationID == "" && scope.NativeInvocationID != "" {
+				l.mu.Lock()
+				reader := state.reader
+				valid := state.generation == generation && reader != nil && reader.session.SessionID == scope.SessionID
+				l.mu.Unlock()
+				if valid {
+					return reader.observe(ctx, scope, event)
+				}
 			}
 			return nil
 		},
 		Approve: func(_ context.Context, scope AgentScope, input AgentApproval) (string, error) {
+			if l.rejectHandoffTool(state, generation, scope) {
+				return "", nil
+			}
 			t := l.matchingTurn(state, generation, scope)
 			if t == nil || t.ports.Approve == nil || t.ctx.Err() != nil {
 				return "", nil
@@ -504,6 +600,9 @@ func (l *ThreadLifecycle) callbacks(state *threadState, generation uint64) Agent
 			return choice, err
 		},
 		Input: func(_ context.Context, scope AgentScope, input AgentInputRequest) (AgentInputResponse, error) {
+			if l.rejectHandoffTool(state, generation, scope) {
+				return AgentInputResponse{Action: "cancel"}, nil
+			}
 			t := l.matchingTurn(state, generation, scope)
 			if t == nil || t.ports.Input == nil || t.ctx.Err() != nil {
 				return AgentInputResponse{Action: "cancel"}, nil
@@ -545,6 +644,13 @@ func (l *ThreadLifecycle) Compact(ctx context.Context, chatID string) (AgentComp
 	l.mu.Unlock()
 	defer control.settle(false)
 
+	checked, err := l.reconcileHandoff(control.ctx, chatID, binding, l.sessionReader(state))
+	if err != nil {
+		return AgentCompactResult{}, err
+	}
+	if checked.Handoff != nil {
+		return AgentCompactResult{}, status_error.ChatLogNativeOutcomePending
+	}
 	client, err := conn.Client()
 	if err != nil {
 		return AgentCompactResult{}, err

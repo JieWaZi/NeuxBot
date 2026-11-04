@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -309,7 +310,11 @@ func TestThreadNativeChild(t *testing.T) {
 	cwd, _ := os.Getwd()
 	fmt.Fprintf(trace, "cwd=%s argv=%v\n", cwd, os.Args)
 	if slices.Contains(os.Args, "--version") {
-		fmt.Println("2.1.309 (Claude Code)")
+		if provider == "cursor" {
+			fmt.Println("2026.10.22-27dcf5f")
+		} else {
+			fmt.Println("2.1.309 (Claude Code)")
+		}
 		os.Exit(0)
 	}
 	if slices.Contains(os.Args, "status") {
@@ -342,6 +347,11 @@ func TestThreadNativeChild(t *testing.T) {
 			fixtureCodexFrame(out, frame, raw, session, &nativeTurn, count)
 		case "claude":
 			fixtureClaudeFrame(out, frame, session, cwd)
+		case "cursor":
+			if frame["method"] == "session/prompt" {
+				count++
+			}
+			fixtureCursorFrame(out, frame, session, count)
 		}
 	}
 	_ = trace.Close()
@@ -370,22 +380,49 @@ func fixtureCodexFrame(out *json.Encoder, frame map[string]any, raw, session str
 	case "thread/start", "thread/resume":
 		ack(map[string]any{"thread": map[string]any{"id": session}, "model": "default-model"})
 	case "turn/start":
+		if strings.Contains(raw, "hold-unconfirmed-handoff") {
+			return
+		}
 		*nativeTurn = fmt.Sprintf("fixture-turn-%d-%d", os.Getpid(), seq)
 		ack(turn("inProgress"))
 		emit("turn/started", turn("inProgress"))
 		tokens := map[string]any{"inputTokens": 19, "outputTokens": 7, "cachedInputTokens": 4, "reasoningOutputTokens": 2, "totalTokens": 26}
 		emit("thread/tokenUsage/updated", map[string]any{"threadId": session, "turnId": *nativeTurn,
 			"tokenUsage": map[string]any{"last": tokens, "total": tokens, "modelContextWindow": 100}})
-		if strings.Contains(raw, "rich-parts") {
+		if strings.Contains(raw, "late-phase-fixture") {
+			body := strings.Repeat("phase-text-", 1000)
+			emit("item/agentMessage/delta", map[string]any{"threadId": session, "turnId": *nativeTurn, "itemId": "late-commentary", "delta": body})
+			emit("item/completed", map[string]any{"threadId": session, "turnId": *nativeTurn,
+				"item": map[string]any{"id": "late-commentary", "type": "agentMessage", "phase": "commentary", "text": body}})
+		}
+		if strings.Contains(raw, "authoritative-commentary-fixture") {
+			emit("item/completed", map[string]any{"threadId": session, "turnId": *nativeTurn,
+				"item": map[string]any{"id": "untouched-commentary", "type": "agentMessage", "phase": "commentary", "text": "unchanged neighbor"}})
+			initial := strings.Repeat("stale-phase", 1000)
+			corrected := strings.Repeat("fixed-phase", 1000)
+			if strings.Contains(raw, "clear") {
+				corrected = ""
+			}
+			emit("item/agentMessage/delta", map[string]any{"threadId": session, "turnId": *nativeTurn, "itemId": "corrected-commentary", "delta": initial})
+			emit("item/completed", map[string]any{"threadId": session, "turnId": *nativeTurn,
+				"item": map[string]any{"id": "corrected-commentary", "type": "agentMessage", "phase": "commentary", "text": corrected}})
+		}
+		if strings.Contains(raw, "rich-parts") || strings.Contains(raw, "tool-delta-only") || (strings.Contains(raw, "Prepare a concise private handoff") && os.Getenv("THREAD_FIXTURE_TOOL_ON_SUMMARY") == "1") {
 			emit("item/agentMessage/delta", map[string]any{"threadId": session, "turnId": *nativeTurn, "itemId": "commentary", "delta": "checking sources"})
 			emit("item/completed", map[string]any{"threadId": session, "turnId": *nativeTurn,
 				"item": map[string]any{"id": "commentary", "type": "agentMessage", "phase": "commentary", "text": "checking sources"}})
 			emit("item/reasoning/summaryTextDelta", map[string]any{"threadId": session, "turnId": *nativeTurn, "itemId": "thought", "delta": "reasoning text"})
 			emit("item/started", map[string]any{"threadId": session, "turnId": *nativeTurn,
-				"item": map[string]any{"id": "tool", "type": "commandExecution", "command": "fixture command", "status": "inProgress"}})
+				"item": map[string]any{"id": "tool", "type": "commandExecution", "command": "fixture command", "status": "inProgress", "cwd": "/fixture/call"}})
 			emit("item/commandExecution/outputDelta", map[string]any{"threadId": session, "turnId": *nativeTurn, "itemId": "tool", "delta": "tool output"})
-			emit("item/completed", map[string]any{"threadId": session, "turnId": *nativeTurn,
-				"item": map[string]any{"id": "tool", "type": "commandExecution", "command": "fixture command", "status": "completed", "aggregatedOutput": "tool output"}})
+			if strings.Contains(raw, "tool-delta-only") {
+				emit("item/commandExecution/outputDelta", map[string]any{"threadId": session, "turnId": *nativeTurn, "itemId": "tool", "delta": "tail of stream"})
+			}
+			tool := map[string]any{"id": "tool", "type": "commandExecution", "command": "fixture command", "status": "completed"}
+			if !strings.Contains(raw, "tool-delta-only") {
+				tool["aggregatedOutput"] = "tool output"
+			}
+			emit("item/completed", map[string]any{"threadId": session, "turnId": *nativeTurn, "item": tool})
 		}
 		answer := "native answer"
 		if strings.Contains(raw, "Prepare a concise private handoff") {
@@ -406,6 +443,7 @@ func fixtureCodexFrame(out *json.Encoder, frame map[string]any, raw, session str
 			total := map[string]any{"inputTokens": 38, "outputTokens": 14, "cachedInputTokens": 8, "reasoningOutputTokens": 4, "totalTokens": 52}
 			emit("thread/tokenUsage/updated", map[string]any{"threadId": session, "turnId": *nativeTurn,
 				"tokenUsage": map[string]any{"last": tokens, "total": total, "modelContextWindow": 100}})
+			emit("item/reasoning/summaryTextDelta", map[string]any{"threadId": session, "turnId": *nativeTurn, "itemId": "autonomous-thought", "delta": "proven autonomous step marker"})
 			emit("item/completed", map[string]any{"threadId": session, "turnId": *nativeTurn,
 				"item": map[string]any{"id": "autonomous-message", "type": "agentMessage", "phase": "final_answer", "text": "autonomous answer"}})
 			emit("turn/completed", turn("completed"))
@@ -574,14 +612,26 @@ func TestThreadTurnReaderCommitsAutonomousOutcomeWithoutWaiter(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, line := range strings.Split(string(data), "\n") {
-				if strings.Contains(line, "independent-native-result") && strings.Contains(line, "autonomous answer") &&
-					strings.Contains(line, `"origin":"provider"`) && strings.Contains(line, `"usage":`) {
-					message, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
-					if err != nil || message.Text != "native answer" {
-						t.Fatalf("autonomous output contaminated host reply: %+v %v", message, err)
-					}
-					return
+				if !strings.Contains(line, "independent-native-result") || !strings.Contains(line, `"origin":"provider"`) {
+					continue
 				}
+				_, afterID, found := strings.Cut(line, `"invocation_id":"`)
+				invocationID, _, terminated := strings.Cut(afterID, `"`)
+				if !found || !terminated {
+					continue
+				}
+				canonical, err := store.ReadNativeResult(t.Context(), agent.NativeResultKey{
+					Session: result.Binding.Session, InvocationID: invocationID,
+				})
+				if err != nil || canonical.Turn.Usage == nil || canonical.FinalMessage == nil ||
+					canonical.FinalMessage.Text != "autonomous answer" || strings.Count(string(data), "autonomous answer") != 1 {
+					t.Fatalf("autonomous durable result or body deduplication = %+v %v", canonical, err)
+				}
+				message, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+				if err != nil || message.Text != "native answer" {
+					t.Fatalf("autonomous output contaminated host reply: %+v %v", message, err)
+				}
+				return
 			}
 		}
 		if time.Now().After(deadline) {
@@ -819,5 +869,727 @@ func TestThreadTurnDetachedTaskRequiresExplicitNativeToolSelection(t *testing.T)
 	}
 	if v, err := store.ReadVersion(t.Context(), chatID); err != nil || v != 0 {
 		t.Fatalf("detached task created a public Chat: %d %v", v, err)
+	}
+}
+
+func TestThreadTurnLatePhaseAcrossFragmentBudget(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	input := chatTurn(0, "late-phase-fixture")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := turn.Run(t.Context())
+	if res.Outcome == nil || res.StorageError != nil || res.OperationError != nil {
+		t.Fatalf("Run = %+v", res)
+	}
+	message, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var commentary strings.Builder
+	for _, part := range message.Parts {
+		if part.Type == constants.RuntimeEventTypeCommentaryDelta {
+			commentary.WriteString(part.Text)
+		}
+	}
+	if len(commentary.String()) != 11000 || message.Text != "native answer" {
+		t.Fatalf("durable commentary got %d of 11000 bytes, answer=%q", commentary.Len(), message.Text)
+	}
+}
+
+func TestThreadTurnAuthorizeRejectedSteerRevokesWithoutWaitingForParent(t *testing.T) {
+	lifecycle, _, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	first := chatTurn(0, "hold-native")
+	ports := chatPorts(req.ChatID, first, true)
+	observed := make(chan struct{}, 1)
+	ports.Observe = func(_ context.Context, scope agent.AgentScope, event agent.AgentEvent) error {
+		if event.Kind == "text" {
+			select {
+			case observed <- struct{}{}:
+			default:
+			}
+		}
+		return nil
+	}
+	turn, err := lifecycle.Prepare(ctx, req, first, ports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan agent.TurnResult, 1)
+	go func() { done <- turn.Run(ctx) }()
+	defer func() { turn.Cancel(); <-done }()
+	select {
+	case <-observed:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	input := chatTurn(1, "rejected-steer")
+	steerPorts := chatPorts(req.ChatID, input, false)
+	revoked := make(chan struct{})
+	steerPorts.Authorize = func(context.Context, agent.TurnAdmission, agent.CommitReceipt) (func(), error) {
+		return func() { close(revoked) }, status_error.AgentOperationForbidden
+	}
+	if got, err := turn.Steer(ctx, input, steerPorts); got.Receipt == nil || got.Receipt.Submission != "not_sent" || !errors.Is(errors.Join(err, got.Receipt.OperationError), status_error.AgentOperationForbidden) {
+		t.Fatalf("steer = %+v, %v", got, err)
+	}
+	select {
+	case <-revoked:
+	default:
+		t.Fatal("rejected steer grant remains until the original turn settles")
+	}
+}
+
+func TestThreadTurnToolDeltaWithoutAggregateReplaysOutputAndLocation(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	input := chatTurn(0, "tool-delta-only")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := turn.Run(t.Context())
+	if res.Outcome == nil || res.StorageError != nil || res.OperationError != nil {
+		t.Fatalf("Run = %+v", res)
+	}
+	msg, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, part := range msg.Parts {
+		if part.ToolCallID == "tool" && strings.Contains(string(part.Data), "tool output") && strings.Contains(string(part.Data), "tail of stream") && strings.Contains(string(part.Data), "/fixture/call") {
+			return
+		}
+	}
+	for _, part := range msg.Parts {
+		t.Logf("%s %q %s", part.Type, part.Text, part.Data)
+	}
+	t.Fatal("terminal delta or tool location lost in durable projection")
+}
+
+func TestThreadTurnToolInPrivateHandoffFallsBack(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	req.Connection.Launch.Environment["THREAD_FIXTURE_TOOL_ON_SUMMARY"] = "1"
+	first := chatTurn(0, "old complete input")
+	turn, err := lifecycle.Prepare(t.Context(), req, first, chatPorts(req.ChatID, first, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := turn.Run(t.Context()); r.StorageError != nil || r.OperationError != nil || r.Outcome == nil {
+		t.Fatalf("seed %+v", r)
+	}
+	v, err := store.ReadVersion(t.Context(), req.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.Commit(t.Context(), agent.ConversationBatch{
+		ChatID: req.ChatID, Key: "business-completed", ExpectedVersion: v,
+		Changes: []agent.ConversationChange{{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: first.ExecutionID, MessageID: first.AssistantMessageID}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Connection.Account.AuthGeneration++
+	req.Summarize = true
+	next := chatTurn(1, "handoff-new-input")
+	turn, err = lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := turn.Run(t.Context()); r.StorageError != nil || r.OperationError != nil || r.Outcome == nil {
+		t.Fatalf("replacement %+v", r)
+	}
+	data, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, "handoff-new-input") {
+			if !strings.Contains(line, "old complete input") || strings.Contains(line, "private switch summary") {
+				t.Fatalf("tool-using summary accepted for new native prompt: %s", line)
+			}
+			return
+		}
+	}
+	t.Fatal("replacement prompt missing")
+}
+
+func TestThreadTurnLegacyBindingAndInheritedHistoryReachesReplacement(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	path, err := store.LogPath(req.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	log := `{"schemaVersion":1,"recordedAt":1,"type":"chat.created"}
+{"schemaVersion":1,"recordedAt":2,"type":"message.inherited","messageId":"old-user","data":{"role":"user","content":"legacy inherited question"}}
+{"schemaVersion":1,"recordedAt":3,"type":"message.inherited","messageId":"old-assistant","data":{"role":"assistant","content":"legacy inherited answer"}}
+{"schemaVersion":1,"recordedAt":4,"type":"native_session.updated","data":{"runtimeId":"codex","sessionId":"fixture-thread"}}
+`
+	if err := os.WriteFile(path, []byte(log), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old, err := store.ReadMessages(t.Context(), agent.MessageQuery{ChatID: req.ChatID, Limit: 5})
+	if err != nil || len(old.Messages) != 2 || old.Messages[1].Text != "legacy inherited answer" {
+		t.Fatalf("old chat unreadable: %+v %v", old, err)
+	}
+	input := chatTurn(0, "replacement-from-v1")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := turn.Run(t.Context()); r.StorageError != nil || r.OperationError != nil || r.Outcome == nil {
+		t.Fatalf("replacement %+v", r)
+	}
+	data, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, "replacement-from-v1") {
+			if !strings.Contains(line, "legacy inherited question") || !strings.Contains(line, "legacy inherited answer") {
+				t.Fatalf("fresh native input omitted readable legacy conversation: %s", line)
+			}
+			return
+		}
+	}
+	t.Fatal("replacement prompt missing")
+}
+
+type threadOutcomeFaultStore struct {
+	// ConversationStore remains the real JSONL authority for all operations.
+	agent.ConversationStore
+	// block simulates failure of only the canonical outcome append.
+	block atomic.Bool
+}
+
+func (s *threadOutcomeFaultStore) CommitNativeResult(ctx context.Context, r agent.NativeResult) error {
+	if s.block.Load() {
+		return status_error.ChatLogError
+	}
+	return s.ConversationStore.CommitNativeResult(ctx, r)
+}
+
+func TestThreadTurnCloseStopsProcessOnBlockedOutcomeStore(t *testing.T) {
+	_, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	fault := &threadOutcomeFaultStore{ConversationStore: store}
+	var released atomic.Bool
+	provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: func(context.Context, agent.AccountRequest) (agent.AccountLease, error) {
+		return agent.AccountLease{Close: func(context.Context) error { released.Store(true); return nil }}, nil
+	}})
+	lifecycle := agent.NewThreadLifecycle(provider, fault)
+	t.Cleanup(func() {
+		fault.block.Store(false)
+		if err := lifecycle.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+		if err := provider.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	fault.block.Store(true)
+	input := chatTurn(0, "terminal storage unavailable")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := turn.Run(t.Context())
+	if res.Outcome == nil || !errors.Is(res.StorageError, status_error.ChatLogError) || res.OperationError != nil {
+		t.Fatalf("Run = %+v", res)
+	}
+	closeErr := lifecycle.CloseThread(t.Context(), req.ChatID)
+	if !errors.Is(closeErr, status_error.ChatLogError) {
+		t.Fatalf("CloseThread = %v", closeErr)
+	}
+	if !released.Load() {
+		t.Fatal("close stopped reader, but storage error prevented native shutdown and account lease release")
+	}
+	next := chatTurn(1, "cannot replace unresolved producer")
+	if successor, err := lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false)); successor != nil ||
+		!errors.Is(err, status_error.RuntimeUnavailable) {
+		t.Fatalf("unresolved close allowed replacement: %+v %v", successor, err)
+	}
+	fault.block.Store(false)
+	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	key := agent.NativeResultKey{Session: res.Binding.Session, InvocationID: res.Outcome.Turn.InvocationID}
+	durable, err := store.ReadNativeResult(t.Context(), key)
+	if err != nil || durable.Turn.Usage == nil || durable.Turn.Status != acpmeta.NativeTurnCompleted {
+		t.Fatalf("released producer lost the unacknowledged receipt: %+v %v", durable, err)
+	}
+}
+
+func TestThreadTurnAutonomousProcessFragmentUsesKnownNativeScope(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	input := chatTurn(0, "activate-autonomous")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := turn.Run(t.Context())
+	if res.Outcome == nil || res.StorageError != nil || res.OperationError != nil {
+		t.Fatalf("Run = %+v", res)
+	}
+	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	indexPath, err := store.IndexPath(req.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := filepath.Glob(filepath.Join(filepath.Dir(indexPath), "native-conversations", "*.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var canonical, step bool
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		canonical = canonical || (strings.Contains(string(data), "independent-native-result") && strings.Contains(string(data), "autonomous answer"))
+		step = step || strings.Contains(string(data), "proven autonomous step marker")
+	}
+	if !canonical || !step {
+		t.Fatalf("native result present=%t, scoped process fragment present=%t", canonical, step)
+	}
+}
+
+func TestThreadTurnFailedAuthorizationDoesNotConsumeHandoffBeforeSend(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	first := chatTurn(0, "last completed old question")
+	turn, err := lifecycle.Prepare(t.Context(), req, first, chatPorts(req.ChatID, first, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := turn.Run(t.Context()); r.StorageError != nil || r.OperationError != nil || r.Outcome == nil {
+		t.Fatalf("seed %+v", r)
+	}
+	v, err := store.ReadVersion(t.Context(), req.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.Commit(t.Context(), agent.ConversationBatch{
+		ChatID: req.ChatID, Key: "business-completed", ExpectedVersion: v,
+		Changes: []agent.ConversationChange{{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: first.ExecutionID, MessageID: first.AssistantMessageID}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Connection.Account.AuthGeneration++
+	denied := chatTurn(1, "denied-replacement-input")
+	ports := chatPorts(req.ChatID, denied, false)
+	ports.Authorize = func(context.Context, agent.TurnAdmission, agent.CommitReceipt) (func(), error) {
+		return nil, status_error.AgentOperationForbidden
+	}
+	turn, err = lifecycle.Prepare(t.Context(), req, denied, ports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := turn.Run(t.Context()); r.StorageError != nil || !r.BusinessAdmitted || r.Submission != "not_sent" || !errors.Is(r.OperationError, status_error.AgentOperationForbidden) {
+		t.Fatalf("denied %+v", r)
+	}
+	next := chatTurn(2, "first-actually-sent")
+	turn, err = lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := turn.Run(t.Context()); r.StorageError != nil || r.OperationError != nil || r.Outcome == nil {
+		t.Fatalf("next %+v", r)
+	}
+	data, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, "first-actually-sent") {
+			if !strings.Contains(line, "last completed old question") || strings.Contains(line, "denied-replacement-input") {
+				t.Fatalf("first actually sent native prompt lost old history: %s", line)
+			}
+			return
+		}
+	}
+	t.Fatal("replacement prompt missing")
+}
+
+func fixtureCursorFrame(out *json.Encoder, frame map[string]any, session string, count int) {
+	options := func(fast bool) []any {
+		return []any{map[string]any{"id": "fast-mode", "name": "Fast", "type": "boolean",
+			"category": "model_config", "currentValue": fast}}
+	}
+	notify := func(update map[string]any) {
+		_ = out.Encode(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{
+			"sessionId": session, "update": update,
+		}})
+	}
+	ack := func(body any) { _ = out.Encode(map[string]any{"jsonrpc": "2.0", "id": frame["id"], "result": body}) }
+	switch frame["method"] {
+	case "initialize":
+		ack(map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{
+			"sessionCapabilities": map[string]any{"close": map[string]any{}, "resume": map[string]any{}},
+		}})
+	case "session/new":
+		ack(map[string]any{"sessionId": session, "configOptions": options(false), "modes": map[string]any{
+			"currentModeId": "old-mode", "availableModes": []any{
+				map[string]any{"id": "old-mode", "name": "Old Mode"}, map[string]any{"id": "observed-mode", "name": "Observed Mode"},
+			},
+		}})
+	case "session/prompt":
+		if count == 1 {
+			notify(map[string]any{"sessionUpdate": "config_option_update", "configOptions": options(true)})
+			notify(map[string]any{"sessionUpdate": "current_mode_update", "currentModeId": "observed-mode"})
+		}
+		if params, ok := frame["params"].(map[string]any); ok {
+			body, _ := json.Marshal(params["prompt"])
+			if strings.Contains(string(body), "independent-terminal-output") {
+				notify(map[string]any{"sessionUpdate": "tool_call", "toolCallId": "terminal-fixture", "title": "terminal", "status": "in_progress",
+					"locations": []any{map[string]any{"path": "/fixture/terminal", "line": 7}}})
+				for _, delta := range []string{"first ", "second"} {
+					notify(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "terminal-fixture",
+						"_meta": map[string]any{"terminal_output_delta": map[string]any{"terminal_id": "terminal-fixture", "data": delta}}})
+				}
+				notify(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "terminal-fixture", "status": "completed"})
+			}
+		}
+		notify(map[string]any{"sessionUpdate": "agent_message_chunk", "content": map[string]any{"type": "text", "text": "native Cursor answer"}})
+		ack(map[string]any{"stopReason": "end_turn"})
+	default:
+		if frame["id"] != nil {
+			ack(map[string]any{})
+		}
+	}
+}
+
+func TestThreadTurnEffectiveSettingsFollowNativeNotifications(t *testing.T) {
+	lifecycle, _, req, trace := newTurnFixture(t, "cursor")
+	configureThreadFixture(&req, trace)
+	for i := range 2 {
+		input := chatTurn(i, fmt.Sprintf("settings-turn-%d", i))
+		turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, i == 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := turn.Run(t.Context())
+		if result.OperationError != nil || result.StorageError != nil || result.Outcome == nil {
+			t.Fatalf("turn %d = %+v", i, result)
+		}
+		if result.Effective.Mode != "observed-mode" || len(result.Effective.Options) != 1 ||
+			result.Effective.Options[0].Value.Bool == nil || !*result.Effective.Options[0].Value.Bool {
+			t.Fatalf("turn %d has stale effective settings: %+v", i, result.Effective)
+		}
+		// Caller-visible receipt mutations cannot change the session's observation.
+		*result.Effective.Options[0].Value.Bool = false
+	}
+}
+
+func TestThreadTurnColdSummaryUsesVerifiedPreviousSource(t *testing.T) {
+	for _, allowed := range []bool{true, false} {
+		t.Run(fmt.Sprint(allowed), func(t *testing.T) {
+			lifecycle, store, req, trace := newTurnFixture(t, "codex")
+			configureThreadFixture(&req, trace)
+			input := chatTurn(0, "cold-summary-old-question")
+			old := completeThreadFixtureTurn(t, lifecycle, store, req, input, true)
+			if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+				t.Fatal(err)
+			}
+			previous := req
+			req.Connection.Account.AccountID = "new-account"
+			req.Connection.Account.Subject = "new-subject"
+			req.Summarize = true
+			next := chatTurn(1, "cold-summary-current-question")
+			ports := chatPorts(req.ChatID, next, false)
+			var checked bool
+			ports.ResolveHandoffSource = func(_ context.Context, binding agent.NativeBinding) (agent.HandoffSource, error) {
+				checked = binding.Session == old.Binding.Session && binding.Session.Subject == previous.Connection.Account.Subject
+				if !allowed {
+					return agent.HandoffSource{}, status_error.RuntimeAuthRequired
+				}
+				return agent.HandoffSource{Thread: previous}, nil
+			}
+			turn, err := lifecycle.Prepare(t.Context(), req, next, ports)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := turn.Run(t.Context())
+			if result.Outcome == nil || result.OperationError != nil || result.StorageError != nil || !checked {
+				t.Fatalf("cold switch = %+v, verified binding=%t", result, checked)
+			}
+			line := fixturePromptLine(t, trace, next.Text)
+			if strings.Contains(line, "private switch summary") != allowed ||
+				strings.Contains(line, input.Text) == allowed {
+				t.Fatalf("wrong handoff after cold source verification: %s", line)
+			}
+			data, err := os.ReadFile(trace)
+			if err != nil || strings.Contains(string(data), `"method":"thread/resume"`) != allowed {
+				t.Fatalf("old source resume evidence missing or unverified source used: %s %v", data, err)
+			}
+		})
+	}
+}
+
+func TestThreadTurnHandoffSurvivesCancellationAtDurableClaim(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	first := chatTurn(0, "original frozen handoff question")
+	completeThreadFixtureTurn(t, lifecycle, store, req, first, true)
+	req.Connection.Account.AuthGeneration++
+	canceled := chatTurn(1, "never send claimed handoff")
+	ports := chatPorts(req.ChatID, canceled, false)
+	runCtx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	commits := 0
+	ports.Committed = func(agent.CommitReceipt) {
+		commits++
+		if commits == 2 {
+			cancel()
+		}
+	}
+	turn, err := lifecycle.Prepare(t.Context(), req, canceled, ports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := turn.Run(runCtx)
+	if got.Submission != "not_sent" || !got.BusinessAdmitted || got.StorageError != nil || commits != 3 {
+		t.Fatalf("cancel after durable claim = %+v commits=%d", got, commits)
+	}
+	binding, err := store.ReadBinding(t.Context(), req.ChatID)
+	if err != nil || binding == nil || binding.Handoff == nil || binding.Handoff.Claim != nil {
+		t.Fatalf("not-sent claim not restored to pending: %+v %v", binding, err)
+	}
+	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	next := chatTurn(2, "actual first handoff after reopen")
+	completeThreadFixtureTurn(t, lifecycle, store, req, next, false)
+	line := fixturePromptLine(t, trace, next.Text)
+	if !strings.Contains(line, first.Text) || strings.Contains(line, canceled.Text) {
+		t.Fatalf("lost or polluted frozen handoff: %s", line)
+	}
+	if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+		t.Fatal(err)
+	}
+	final := chatTurn(3, "after proven handoff")
+	completeThreadFixtureTurn(t, lifecycle, store, req, final, false)
+	if line := fixturePromptLine(t, trace, final.Text); strings.Contains(line, "Recent conversation history") {
+		t.Fatalf("confirmed handoff was replayed: %s", line)
+	}
+}
+
+func completeThreadFixtureTurn(t *testing.T, lifecycle *agent.ThreadLifecycle, store *eventlog.Store, request agent.ThreadRequest, input agent.TurnRequest, first bool) agent.TurnResult {
+	t.Helper()
+	turn, err := lifecycle.Prepare(t.Context(), request, input, chatPorts(request.ChatID, input, first))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := turn.Run(t.Context())
+	if result.Outcome == nil || result.OperationError != nil || result.StorageError != nil {
+		t.Fatalf("turn result = %+v", result)
+	}
+	version, err := store.ReadVersion(t.Context(), request.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.Commit(t.Context(), agent.ConversationBatch{
+		ChatID: request.ChatID, Key: "fixture-complete-" + input.ExecutionID, ExpectedVersion: version,
+		Changes: []agent.ConversationChange{{Fact: &agent.ChatFact{
+			Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: input.ExecutionID, MessageID: input.AssistantMessageID,
+		}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return result
+}
+
+func fixturePromptLine(t *testing.T, trace, needle string) string {
+	t.Helper()
+	data, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, needle) {
+			return line
+		}
+	}
+	t.Fatalf("missing prompt %q in fixture trace", needle)
+	return ""
+}
+
+func TestThreadTurnUnresolvedHandoffBlocksSuccessorAndColdRetry(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	first := chatTurn(0, "completed source for unknown delivery")
+	completeThreadFixtureTurn(t, lifecycle, store, req, first, true)
+	req.Connection.Account.AuthGeneration++
+	input := chatTurn(1, "hold-unconfirmed-handoff")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+	defer cancel()
+	done := make(chan agent.TurnResult, 1)
+	go func() { done <- turn.Run(ctx) }()
+	for {
+		data, err := os.ReadFile(trace)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(data), input.Text) {
+			turn.Cancel()
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("fixture did not receive the unresolved input")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	result := <-done
+	if result.Submission == "not_sent" || result.Admission == "confirmed" || result.Input.InputID == "" {
+		t.Fatalf("unresolved input lost its send evidence: %+v", result)
+	}
+	binding, err := store.ReadBinding(t.Context(), req.ChatID)
+	if err != nil || binding == nil || binding.Handoff == nil || binding.Handoff.Claim == nil ||
+		binding.Handoff.Claim.HostInvocationID != input.HostInvocationID ||
+		binding.Handoff.Claim.AdapterInputID != result.Input.InputID {
+		t.Fatalf("unresolved input claim = %+v %v", binding, err)
+	}
+	next := chatTurn(2, "successor cannot use unresolved handoff")
+	for i := range 2 {
+		if i == 1 {
+			if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if successor, err := lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false)); successor != nil ||
+			!errors.Is(err, status_error.ChatLogNativeOutcomePending) {
+			t.Fatalf("successor %d did not preserve uncertainty: %+v %v", i, successor, err)
+		}
+	}
+	data, err := os.ReadFile(trace)
+	if err != nil || strings.Count(string(data), input.Text) != 1 || strings.Contains(string(data), next.Text) ||
+		!strings.Contains(string(data), `"method":"thread/resume"`) {
+		t.Fatalf("uncertain prompt replayed or cold reconciliation bypassed: %s %v", data, err)
+	}
+}
+
+func TestThreadTurnHistoryPaginatesInheritedPairsAcrossEmptyCandidates(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	path, err := store.LogPath(req.ChatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	var rows strings.Builder
+	rows.WriteString(`{"schemaVersion":1,"recordedAt":1,"type":"chat.created"}` + "\n")
+	for i := range 12 {
+		answer := fmt.Sprintf("inherited-answer-%02d", i)
+		if i >= 6 {
+			answer = ""
+		}
+		fmt.Fprintf(&rows, "{\"schemaVersion\":1,\"recordedAt\":2,\"type\":\"message.inherited\",\"messageId\":\"user-%02d\",\"data\":{\"role\":\"user\",\"content\":\"inherited-user-%02d\"}}\n", i, i)
+		fmt.Fprintf(&rows, "{\"schemaVersion\":1,\"recordedAt\":2,\"type\":\"message.inherited\",\"messageId\":\"assistant-%02d\",\"data\":{\"role\":\"assistant\",\"content\":%q}}\n", i, answer)
+	}
+	// The unpaired newest user shifts the inherited pair split to the page boundary.
+	rows.WriteString(`{"schemaVersion":1,"recordedAt":3,"type":"message.inherited","messageId":"empty-pair-user","data":{"role":"user","content":"not-a-complete-pair"}}` + "\n")
+	if err := os.WriteFile(path, []byte(rows.String()), 0600); err != nil {
+		t.Fatal(err)
+	}
+	input := chatTurn(0, "new prompt after inherited pages")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := turn.Run(t.Context())
+	if result.OperationError != nil || result.StorageError != nil || result.Outcome == nil {
+		t.Fatalf("inherited turns run = %+v", result)
+	}
+	line := fixturePromptLine(t, trace, input.Text)
+	if strings.Count(line, "inherited-user-") != 5 || strings.Count(line, "inherited-answer-") != 5 ||
+		strings.Contains(line, "inherited-user-00") || strings.Contains(line, "inherited-user-06") ||
+		strings.Contains(line, "not-a-complete-pair") {
+		t.Fatalf("history did not preserve the five complete pairs: %s", line)
+	}
+}
+
+func TestThreadTurnReplaysIndependentTerminalDeltasAndLocations(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "cursor")
+	configureThreadFixture(&req, trace)
+	input := chatTurn(0, "independent-terminal-output")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := turn.Run(t.Context())
+	if result.OperationError != nil || result.StorageError != nil || result.Outcome == nil {
+		t.Fatalf("terminal delta run = %+v", result)
+	}
+	message, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, part := range message.Parts {
+		if part.ToolCallID != "terminal-fixture" {
+			continue
+		}
+		if !strings.Contains(string(part.Data), `"terminalOutput":"first second"`) ||
+			!strings.Contains(string(part.Data), `"path":"/fixture/terminal","line":7`) ||
+			!strings.Contains(string(part.Data), `"status":"completed"`) {
+			t.Fatalf("terminal snapshot lost observed data: %s", part.Data)
+		}
+		return
+	}
+	t.Fatalf("missing terminal tool: %+v", message)
+}
+
+func TestThreadTurnReplacesOnlyTheAuthoritativeNativeCommentaryLane(t *testing.T) {
+	for _, mode := range []string{"same length", "clear"} {
+		t.Run(mode, func(t *testing.T) {
+			lifecycle, store, req, trace := newTurnFixture(t, "codex")
+			configureThreadFixture(&req, trace)
+			input := chatTurn(0, "authoritative-commentary-fixture "+mode)
+			turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := turn.Run(t.Context())
+			if result.OperationError != nil || result.StorageError != nil || result.Outcome == nil {
+				t.Fatalf("corrected commentary run = %+v", result)
+			}
+			message, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var commentary strings.Builder
+			for _, part := range message.Parts {
+				if part.Type == constants.RuntimeEventTypeCommentaryDelta {
+					commentary.WriteString(part.Text)
+				}
+			}
+			want := "unchanged neighbor"
+			if mode != "clear" {
+				want += strings.Repeat("fixed-phase", 1000)
+			}
+			if commentary.String() != want || message.Text != "native answer" {
+				t.Fatalf("correction text bytes %d, wanted %d; answer = %q", commentary.Len(), len(want), message.Text)
+			}
+		})
 	}
 }

@@ -22,7 +22,6 @@ func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 		if err := client.SetSessionMode(t.ctx, t.binding.Session.SessionID, request.Mode); err != nil {
 			return err
 		}
-		t.effective.Mode = request.Mode
 	}
 	settings := request.Settings
 	if model := request.Connection.Account.Model; model != "" {
@@ -59,13 +58,66 @@ func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 				return status_error.RuntimeConfigurationInvalid
 			}
 		}
+		revision := t.sessionOptionsRevision()
 		options, err := client.SetSessionOption(t.ctx, t.binding.Session.SessionID, setting.ID, setting.Value)
 		if err != nil {
 			return err
 		}
-		t.effective.Options = options
+		t.applyOptionReceipt(revision, options)
 	}
 	return nil
+}
+
+func (t *Turn) sessionOptionsRevision() uint64 {
+	l, state := t.lifecycle, t.thread
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return state.optionsRevision
+}
+
+func (t *Turn) applyOptionReceipt(revision uint64, options []AgentSessionOption) {
+	l, state := t.lifecycle, t.thread
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	t.effective.Options = options
+	if state.connection != t.conn || state.effective.ID != t.binding.Session.SessionID {
+		return
+	}
+	if state.optionsRevision == revision {
+		state.effective.Options = options
+		state.optionsRevision++
+	}
+	t.effective = state.effective
+}
+
+func (l *ThreadLifecycle) applySessionNotification(state *threadState, generation uint64, scope AgentScope, event AgentEvent) {
+	if event.Kind != "settings" && event.Kind != "mode" || scope.SessionID == "" {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if state.generation != generation || state.effective.ID != scope.SessionID {
+		return
+	}
+	switch event.Kind {
+	case "settings":
+		state.effective.Options = cloneOptions(event.Options)
+		state.optionsRevision++
+	case "mode":
+		if event.Mode != "" {
+			state.effective.Mode = event.Mode
+		}
+	}
+}
+
+func (t *Turn) observedSession() AgentSession {
+	l, state := t.lifecycle, t.thread
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if state.connection == t.conn && state.effective.ID == t.binding.Session.SessionID {
+		return cloneSession(state.effective)
+	}
+	return cloneSession(t.effective)
 }
 
 func cloneSession(session AgentSession) AgentSession {

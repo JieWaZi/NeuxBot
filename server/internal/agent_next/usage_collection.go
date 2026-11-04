@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -21,7 +22,7 @@ func stableTurnKey(kind string, parts ...string) string {
 
 func (l *ThreadLifecycle) commitAndAcknowledge(ctx context.Context, client AgentClient, session NativeSessionKey, outcome AgentNativeOutcome, committed func(CommitReceipt)) error {
 	if outcome.Turn.InvocationID == "" || outcome.Turn.Status == "" {
-		return nil
+		return status_error.ChatLogNativeOutcomePending
 	}
 	key := NativeResultKey{Session: session, InvocationID: outcome.Turn.InvocationID}
 	result := NativeResult{Key: key, Turn: outcome.Turn, StopReason: outcome.StopReason,
@@ -80,7 +81,7 @@ func (l *ThreadLifecycle) commitAndAcknowledge(ctx context.Context, client Agent
 }
 
 type nativeOutcomeReader struct {
-	// client is borrowed until the process owner completes closing.
+	// client borrows the adapter's receipt ledger through process shutdown and ACK retry.
 	client AgentClient
 	// session freezes the exact native receipt address.
 	session NativeSessionKey
@@ -88,11 +89,18 @@ type nativeOutcomeReader struct {
 	cancel context.CancelFunc
 	// done closes after the reader leaves the native and durable stores.
 	done chan struct{}
+	// target is the native-only destination for verified autonomous observations.
+	target deltaTarget
+	// mu protects the bounded set of native invocation buffers.
+	mu sync.Mutex
+	// autonomous contains only unfinalized, proven native invocation lanes.
+	autonomous map[string]*DeltaBuffer
 }
 
 func (l *ThreadLifecycle) startNativeOutcomeReader(client AgentClient, state *threadState, session NativeSessionKey) *nativeOutcomeReader {
 	ctx, cancel := context.WithCancel(context.Background())
-	r := &nativeOutcomeReader{client: client, session: session, cancel: cancel, done: make(chan struct{})}
+	r := &nativeOutcomeReader{client: client, session: session, cancel: cancel, done: make(chan struct{}),
+		target: deltaTarget{store: l.store, session: session}, autonomous: make(map[string]*DeltaBuffer)}
 	go func() {
 		defer close(r.done)
 		for ctx.Err() == nil {
@@ -104,12 +112,12 @@ func (l *ThreadLifecycle) startNativeOutcomeReader(client AgentClient, state *th
 				for _, outcome := range page.Outcomes {
 					// The foreground owns the final flush of observed fragments. A
 					// receipt can wake earlier, so let that exact input finish first.
-					if waitErr := l.awaitForeground(ctx, state, outcome.Turn.ConsumedInputIDs); waitErr != nil {
+					if waitErr := l.awaitForeground(ctx, state, outcome.Turn); waitErr != nil {
 						err = errors.Join(err, waitErr)
 						break
 					}
 					write, cancelWrite := context.WithTimeout(ctx, turnSettlementTimeout)
-					commitErr := l.commitAndAcknowledge(write, r.client, session, outcome, nil)
+					commitErr := l.persistReceipt(write, r, outcome, nil)
 					cancelWrite()
 					err = errors.Join(err, commitErr)
 				}
@@ -127,11 +135,11 @@ func (l *ThreadLifecycle) startNativeOutcomeReader(client AgentClient, state *th
 	return r
 }
 
-func (l *ThreadLifecycle) awaitForeground(ctx context.Context, state *threadState, inputs []string) error {
+func (l *ThreadLifecycle) awaitForeground(ctx context.Context, state *threadState, native acpmeta.NativeTurn) error {
 	l.mu.Lock()
 	active := state.active
 	l.mu.Unlock()
-	if active == nil || len(inputs) == 0 {
+	if active == nil {
 		return nil
 	}
 	active.mu.Lock()
@@ -141,7 +149,8 @@ func (l *ThreadLifecycle) awaitForeground(ctx context.Context, state *threadStat
 		active = child
 		active.mu.Lock()
 	}
-	wait := slices.Contains(inputs, active.adapterInputID) && active.adapterInputID != ""
+	wait := native.InvocationID != "" && active.nativeInvocationID == native.InvocationID ||
+		active.adapterInputID != "" && slices.Contains(native.ConsumedInputIDs, active.adapterInputID)
 	active.mu.Unlock()
 	if !wait {
 		return nil
@@ -175,12 +184,94 @@ func (l *ThreadLifecycle) drainNativeOutcomes(ctx context.Context, reader *nativ
 		}
 		var pending error
 		for _, outcome := range page.Outcomes {
-			pending = errors.Join(pending, l.commitAndAcknowledge(ctx, reader.client, reader.session, outcome, nil))
+			pending = errors.Join(pending, l.persistReceipt(ctx, reader, outcome, nil))
 		}
 		if pending != nil || !page.More {
 			return pending
 		}
 	}
+}
+
+func (r *nativeOutcomeReader) observe(ctx context.Context, scope AgentScope, event AgentEvent) error {
+	switch event.Kind {
+	case "text", "reasoning", "tool":
+	default:
+		return nil
+	}
+	const maxObservedInvocations = 128
+	r.mu.Lock()
+	buffer := r.autonomous[scope.NativeInvocationID]
+	if buffer == nil {
+		if len(r.autonomous) >= maxObservedInvocations {
+			r.mu.Unlock()
+			return status_error.RuntimeEventQueueOverflow
+		}
+		buffer = &DeltaBuffer{}
+		r.autonomous[scope.NativeInvocationID] = buffer
+	}
+	r.mu.Unlock()
+	return buffer.observe(ctx, r.target, scope, event)
+}
+
+func (r *nativeOutcomeReader) flushBeforeHost(ctx context.Context, id string) error {
+	r.mu.Lock()
+	buffer := r.autonomous[id]
+	r.mu.Unlock()
+	if buffer == nil {
+		return nil
+	}
+	flush, cancel := context.WithTimeout(context.WithoutCancel(ctx), turnSettlementTimeout)
+	defer cancel()
+	buffer.mu.Lock()
+	defer buffer.mu.Unlock()
+	return buffer.flush(flush, r.target)
+}
+
+func (r *nativeOutcomeReader) flushInvocation(ctx context.Context, id string) (error, bool) {
+	r.mu.Lock()
+	buffer := r.autonomous[id]
+	r.mu.Unlock()
+	if buffer == nil {
+		return nil, false
+	}
+	err := buffer.finish(ctx, r.target)
+	pending := buffer.pendingWrite()
+	if !pending {
+		r.mu.Lock()
+		if r.autonomous[id] == buffer {
+			delete(r.autonomous, id)
+		}
+		r.mu.Unlock()
+	}
+	return err, pending
+}
+
+func (r *nativeOutcomeReader) flushRemaining(ctx context.Context) error {
+	if r == nil {
+		return nil
+	}
+	r.mu.Lock()
+	ids := make([]string, 0, len(r.autonomous))
+	for id := range r.autonomous {
+		ids = append(ids, id)
+	}
+	r.mu.Unlock()
+	var err error
+	for _, id := range ids {
+		if flushErr, pending := r.flushInvocation(ctx, id); pending {
+			err = errors.Join(err, flushErr)
+		}
+	}
+	return err
+}
+
+func (l *ThreadLifecycle) persistReceipt(ctx context.Context, reader *nativeOutcomeReader, outcome AgentNativeOutcome, committed func(CommitReceipt)) error {
+	// Both native adapters publish the receipt after draining its observer.
+	// Close this exact invocation's buffer before the immutable terminal row.
+	if err, pending := reader.flushInvocation(ctx, outcome.Turn.InvocationID); pending {
+		return err
+	}
+	return l.commitAndAcknowledge(ctx, reader.client, reader.session, outcome, committed)
 }
 
 func terminalMessageChanges(key NativeResultKey, messageID, executionID string, final bool) []ConversationChange {

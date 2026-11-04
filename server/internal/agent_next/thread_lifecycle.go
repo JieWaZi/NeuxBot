@@ -38,6 +38,14 @@ type ThreadRequest struct {
 	Fork *AgentForkRequest
 }
 
+// HandoffSource is the host-verified launch plan for an earlier durable binding.
+type HandoffSource struct {
+	// Thread carries the prior account, authorization generation, and native settings.
+	Thread ThreadRequest
+	// AcquireResources reacquires only the resources authorized for that binding.
+	AcquireResources func(context.Context, ResourceSelection) (ResourceLease, error)
+}
+
 // ThreadLifecycle holds one seat per public Chat and coordinates the durable binding.
 type ThreadLifecycle struct {
 	// provider exclusively owns process and resource acquisition and release.
@@ -63,6 +71,8 @@ type threadState struct {
 	binding *NativeBinding
 	// effective retains the session configuration needed to reuse a compatible process.
 	effective AgentSession
+	// optionsRevision prevents a synchronous request from overwriting newer native observations.
+	optionsRevision uint64
 	// generation fences callbacks emitted by a prior connection using the same native session ID.
 	generation uint64
 	// connection is a reference to the process owner in ProviderRuntime.
@@ -161,65 +171,66 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		}
 	}
 	l.mu.Lock()
-	conn, hot, effective := state.connection, state.binding, state.effective
+	conn, hot, effective, reader := state.connection, state.binding, state.effective, state.reader
 	l.mu.Unlock()
 	compatible := request.Fork == nil && compatibleBinding(stored, request.Connection.Account, cfg)
-	if compatible && conn != nil && hot != nil && hot.Session == stored.Session && string(hot.Configuration) == string(stored.Configuration) {
-		if _, err := conn.Client(); err == nil {
-			t.setSession(conn, *hot)
-			t.effective = effective
-			return nil
-		}
+	sameOwner := conn != nil && hot != nil && stored != nil && hot.Session == stored.Session && string(hot.Configuration) == string(stored.Configuration)
+	hotUsable := false
+	if sameOwner {
+		_, err := conn.Client()
+		hotUsable = err == nil
 	}
-	var handoff string
-	if conn != nil {
-		if !compatible && request.Summarize && request.Fork == nil && hot != nil && stored != nil && hot.Session == stored.Session {
-			handoff = t.summarize(conn, *hot, effective)
+	if compatible && hotUsable {
+		binding, err := l.reconcileHandoff(ctx, state.chatID, *stored, reader)
+		if err != nil {
+			return err
 		}
+		t.setSession(conn, binding)
+		t.effective = effective
+		return t.applyHandoff(binding.Handoff)
+	}
+
+	var summary *NativeResultKey
+	wantSummary := request.Summarize && request.Fork == nil && !compatible && stored != nil
+	if hotUsable && !compatible {
+		prior, err := l.reconcileHandoff(ctx, state.chatID, *stored, reader)
+		if err != nil {
+			return err
+		}
+		if wantSummary && prior.Handoff == nil {
+			summary = t.summarize(conn, prior, effective, nil)
+		}
+		wantSummary = false
+		stored = &prior
+	}
+	if conn != nil {
 		if err := l.closeConnection(ctx, state); err != nil {
 			return err
 		}
 	}
+	if !compatible && stored != nil && (wantSummary || handoffClaimed(stored.Handoff)) {
+		var prior NativeBinding
+		prior, summary, err = l.reopenHandoffSource(t, *stored, wantSummary)
+		if err != nil {
+			return err
+		}
+		stored = &prior
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	l.mu.Lock()
-	state.generation++
-	generation := state.generation
-	l.mu.Unlock()
-	conn, err = l.provider.Open(ctx, request.Connection, ProviderConnectionPorts{
-		AcquireResources: t.ports.AcquireResources, CloseFiles: closeFiles,
-		Callbacks: l.callbacks(state, generation),
-	})
+	conn, err = l.openConnection(ctx, state, request.Connection, t.ports.AcquireResources, closeFiles)
 	if conn != nil {
 		closeFiles = nil
-		l.mu.Lock()
-		state.connection = conn
-		l.mu.Unlock()
-		t.opened = true
 	}
 	if err != nil {
-		if conn == nil {
-			return err
-		}
-		cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), turnSettlementTimeout)
-		defer cancel()
-		t.opened = false
-		cleanupErr := conn.WaitOpenCleanup(cleanup)
-		if cleanupErr != nil {
-			l.markClosing(state)
-			return errors.Join(err, cleanupErr)
-		}
-		l.mu.Lock()
-		state.connection = nil
-		l.mu.Unlock()
 		return err
 	}
+	t.opened = true
 	client, err := conn.Client()
 	if err != nil {
 		return err
 	}
-
 	if request.Connection.Launch.RequireNoTools && !client.Capabilities().ToolsDisabled {
 		return status_error.RuntimePolicyUnsupported
 	}
@@ -236,9 +247,14 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		fresh = false // Native forks already carry provider history.
 	case compatible:
 		session, err = openBoundSession(ctx, client, stored.Session.SessionID, request.Session)
-		if errors.Is(err, status_error.RuntimeSessionNotFound) || errors.Is(err, status_error.RuntimePolicyUnsupported) && !client.Capabilities().Resume && !client.Capabilities().Load {
+		missing := errors.Is(err, status_error.RuntimeSessionNotFound) ||
+			errors.Is(err, status_error.RuntimePolicyUnsupported) && !client.Capabilities().Resume && !client.Capabilities().Load
+		if missing && !handoffClaimed(stored.Handoff) {
 			fresh = true
 			session, err = client.NewSession(ctx, request.Session)
+		}
+		if missing && handoffClaimed(stored.Handoff) {
+			return status_error.ChatLogNativeOutcomePending
 		}
 	default:
 		session, err = client.NewSession(ctx, request.Session)
@@ -253,26 +269,132 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		Session:       NativeSessionKey{Provider: request.Connection.Account.Provider, Subject: request.Connection.Account.Subject, SessionID: session.ID},
 		Configuration: cfg,
 	}
+	if compatible && !fresh {
+		binding.Handoff = stored.Handoff
+	}
 	t.setSession(conn, binding)
 	t.effective = session
+	l.attachSession(state, client, binding.Session, session)
+	if binding, err = l.reconcileHandoff(ctx, state.chatID, binding, l.sessionReader(state)); err != nil {
+		return err
+	}
+	t.binding = binding
 	if err := t.applySettings(client, request); err != nil {
 		return err
 	}
-	if fresh && state.chatID != "" && stored != nil {
-		if handoff == "" {
-			handoff, err = l.recentHistory(ctx, request.ChatID, request.HistoryTurns)
-			if err != nil {
-				return err
-			}
-		}
-		t.addPrefix(handoff)
+	if !fresh || state.chatID == "" {
+		return t.applyHandoff(t.binding.Handoff)
 	}
-	if client.Capabilities().NativeOutcomes {
-		l.mu.Lock()
-		state.reader = l.startNativeOutcomeReader(client, state, binding.Session)
-		l.mu.Unlock()
+	if summary != nil {
+		t.binding.Handoff = &NativeHandoff{Summary: summary}
+		return t.applyHandoff(t.binding.Handoff)
+	}
+	version, err := l.store.ReadVersion(ctx, state.chatID)
+	if err != nil || version == 0 {
+		return err
+	}
+	pairs, prefix, err := l.selectHistory(ctx, state.chatID, version, request.HistoryTurns)
+	if err != nil {
+		return err
+	}
+	if len(pairs) != 0 {
+		t.binding.Handoff = &NativeHandoff{History: pairs}
+		t.addPrefix(prefix)
 	}
 	return nil
+}
+
+func (l *ThreadLifecycle) openConnection(ctx context.Context, state *threadState, request ProviderConnectionRequest, acquire func(context.Context, ResourceSelection) (ResourceLease, error), closeFiles func(context.Context) error) (*providerConnection, error) {
+	l.mu.Lock()
+	state.generation++
+	generation := state.generation
+	l.mu.Unlock()
+	conn, err := l.provider.Open(ctx, request, ProviderConnectionPorts{
+		AcquireResources: acquire, CloseFiles: closeFiles,
+		Callbacks: l.callbacks(state, generation),
+	})
+	if conn == nil {
+		return nil, err
+	}
+	l.mu.Lock()
+	state.connection = conn
+	l.mu.Unlock()
+	if err == nil {
+		return conn, nil
+	}
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), turnSettlementTimeout)
+	defer cancel()
+	if cleanupErr := conn.WaitOpenCleanup(cleanup); cleanupErr != nil {
+		l.markClosing(state)
+		return conn, errors.Join(err, cleanupErr)
+	}
+	l.mu.Lock()
+	state.connection = nil
+	l.mu.Unlock()
+	return conn, err
+}
+
+func (l *ThreadLifecycle) attachSession(state *threadState, client AgentClient, key NativeSessionKey, effective AgentSession) {
+	l.mu.Lock()
+	state.effective = effective
+	state.optionsRevision = 0
+	if client.Capabilities().NativeOutcomes {
+		state.reader = l.startNativeOutcomeReader(client, state, key)
+	}
+	l.mu.Unlock()
+}
+
+func (l *ThreadLifecycle) sessionReader(state *threadState) *nativeOutcomeReader {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return state.reader
+}
+
+func (l *ThreadLifecycle) reopenHandoffSource(t *Turn, binding NativeBinding, summarize bool) (NativeBinding, *NativeResultKey, error) {
+	ctx, state := t.ctx, t.thread
+	checked, err := l.reconcileHandoff(ctx, state.chatID, binding, nil)
+	if err != nil && !errors.Is(err, status_error.ChatLogNativeOutcomePending) {
+		return binding, nil, err
+	}
+	if err == nil && (!summarize || checked.Handoff != nil) {
+		return checked, nil, nil
+	}
+	if t.ports.ResolveHandoffSource == nil {
+		return checked, nil, err
+	}
+	source, resolveErr := t.ports.ResolveHandoffSource(ctx, binding)
+	if resolveErr != nil {
+		return checked, nil, err
+	}
+	cfg, freezeErr := freezeThreadSettings(&source.Thread)
+	if freezeErr != nil || !compatibleBinding(&binding, source.Thread.Connection.Account, cfg) {
+		return checked, nil, err
+	}
+	conn, openErr := l.openConnection(ctx, state, source.Thread.Connection, source.AcquireResources, nil)
+	if openErr != nil {
+		l.mu.Lock()
+		closing := state.closing
+		l.mu.Unlock()
+		if closing {
+			return checked, nil, openErr
+		}
+		return checked, nil, err
+	}
+	var summary *NativeResultKey
+	client, clientErr := conn.Client()
+	if clientErr == nil {
+		session, resumeErr := openBoundSession(ctx, client, binding.Session.SessionID, source.Thread.Session)
+		if resumeErr == nil && session.ID == binding.Session.SessionID {
+			l.attachSession(state, client, binding.Session, session)
+			checked, err = l.reconcileHandoff(ctx, state.chatID, binding, l.sessionReader(state))
+			if err == nil && summarize && checked.Handoff == nil {
+				summary = t.summarize(conn, checked, session, &source.Thread)
+			}
+		}
+	}
+	cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), turnSettlementTimeout)
+	defer cancel()
+	return checked, summary, errors.Join(err, l.closeConnection(cleanup, state))
 }
 
 func openBoundSession(ctx context.Context, client AgentClient, sessionID string, options AgentSessionOptions) (AgentSession, error) {
@@ -369,21 +491,19 @@ func (l *ThreadLifecycle) closeConnection(ctx context.Context, state *threadStat
 	if conn == nil {
 		return nil
 	}
+	// Stopping the actual native producer never depends on storage being writable.
+	// The reader's borrowed client retains the unacknowledged receipt ledger
+	// after the connection and account resources have been released.
+	var stopErr error
 	if reader != nil {
-		if err := reader.stop(ctx); err != nil {
-			l.markClosing(state)
-			return err
-		}
+		stopErr = reader.stop(ctx)
 	}
-	if err := l.drainNativeOutcomes(ctx, reader); err != nil {
+	closeErr := conn.Close(ctx)
+	if err := errors.Join(stopErr, closeErr); err != nil {
 		l.markClosing(state)
 		return err
 	}
-	if err := conn.Close(ctx); err != nil {
-		l.markClosing(state)
-		return err
-	}
-	if err := l.drainNativeOutcomes(ctx, reader); err != nil {
+	if err := errors.Join(l.drainNativeOutcomes(ctx, reader), reader.flushRemaining(ctx)); err != nil {
 		l.markClosing(state)
 		return err
 	}
