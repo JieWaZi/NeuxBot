@@ -7,6 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	native "github.com/JieWaZi/acp-go/pkg/agent_next"
 )
 
 // TurnRequest holds one immutable host input and its public delivery identity.
@@ -184,7 +185,12 @@ func (t *Turn) Run(ctx context.Context) TurnResult {
 	defer stop()
 	defer cancelRun()
 	result := t.runPrompt()
-	result.CleanupError = t.settle(t.thread.chatID == "" || t.opened && !t.admitted)
+	// A failed, indeterminate submission leaves the native owner unsafe to reuse.
+	// Release drains detached receipts and keeps the durable binding for a later resume.
+	unconfirmed := result.BusinessAdmitted && result.OperationError != nil && result.Outcome == nil &&
+		result.Admission == string(native.AdmissionUnknown) &&
+		(result.Submission == string(native.SubmissionSent) || result.Submission == string(native.SubmissionUnknown))
+	result.CleanupError = t.settle(unconfirmed || t.thread.chatID == "" || t.opened && !t.admitted)
 	return result
 }
 

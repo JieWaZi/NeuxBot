@@ -157,6 +157,60 @@ func TestThreadTurnNativeUsageSurvivesObserverAndResume(t *testing.T) {
 	}
 }
 
+func TestThreadTurnResumesAfterUnconfirmedNativeSubmission(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "claude")
+	configureThreadFixture(&req, trace)
+	req.Connection.Launch.Environment["THREAD_FIXTURE_CLAUDE_LEGACY"] = "1"
+	first := chatTurn(0, "unconfirmed legacy input")
+	turn, err := lifecycle.Prepare(t.Context(), req, first, chatPorts(req.ChatID, first, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := turn.Run(t.Context())
+	if !failed.BusinessAdmitted || failed.Submission != "sent" || failed.Admission != "unknown" || failed.Outcome != nil ||
+		failed.OperationError == nil || failed.StorageError != nil || failed.CleanupError != nil {
+		t.Fatalf("unconfirmed prompt result = %+v", failed)
+	}
+
+	followup := chatTurn(1, "only the next legacy input")
+	completed := completeThreadFixtureTurn(t, lifecycle, store, req, followup, false)
+	if completed.Binding.Session != failed.Binding.Session || completed.Admission != "confirmed" || completed.Outcome.Turn.Status != acpmeta.NativeTurnCompleted {
+		t.Fatalf("native resume = %+v", completed)
+	}
+	data, err := os.ReadFile(trace)
+	log := string(data)
+	if err != nil || strings.Count(log, "--session-id="+failed.Binding.Session.SessionID) != 1 ||
+		strings.Count(log, "--resume="+failed.Binding.Session.SessionID) != 1 ||
+		strings.Count(log, first.Text) != 1 || strings.Count(log, followup.Text) != 1 {
+		t.Fatalf("expected native resume with only the new input: %s %v", log, err)
+	}
+	var detached int
+	for shard := range eventlog.UsageShards {
+		high, err := store.UsageHighWater(t.Context(), shard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows, _, err := store.ReadUsageTerminals(t.Context(), shard, 0, high)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range rows {
+			result := row.Result
+			if result.Turn.TerminalEventID == nil || *result.Turn.TerminalEventID != "fixture-legacy-unconfirmed" {
+				continue
+			}
+			detached++
+			if result.Key.Session != failed.Binding.Session || result.Turn.Origin != acpmeta.NativeTurnOriginUnknown || result.Attribution != nil ||
+				len(result.Turn.ConsumedInputIDs) != 0 || result.Turn.Usage == nil || result.Turn.Usage.InputTokens == nil || *result.Turn.Usage.InputTokens != 43 {
+				t.Fatalf("detached native usage = %+v", result)
+			}
+		}
+	}
+	if detached != 1 {
+		t.Fatalf("durable detached receipts = %d", detached)
+	}
+}
+
 func TestThreadTurnPreparationAndRunningCancellation(t *testing.T) {
 	lifecycle, _, req, trace := newTurnFixture(t, "codex")
 	configureThreadFixture(&req, trace)
@@ -312,6 +366,8 @@ func TestThreadNativeChild(t *testing.T) {
 	if slices.Contains(os.Args, "--version") {
 		if provider == "cursor" {
 			fmt.Println("2026.10.22-27dcf5f")
+		} else if provider == "claude" && os.Getenv("THREAD_FIXTURE_CLAUDE_LEGACY") == "1" {
+			fmt.Println("2.1.159 (Claude Code)")
 		} else {
 			fmt.Println("2.1.309 (Claude Code)")
 		}
@@ -477,6 +533,7 @@ func fixtureCodexFrame(out *json.Encoder, frame map[string]any, raw, session str
 }
 
 func fixtureClaudeFrame(out *json.Encoder, frame map[string]any, session, cwd string) {
+	legacy := os.Getenv("THREAD_FIXTURE_CLAUDE_LEGACY") == "1"
 	emit := func(value map[string]any) {
 		value["session_id"] = session
 		_ = out.Encode(value)
@@ -487,8 +544,12 @@ func fixtureClaudeFrame(out *json.Encoder, frame map[string]any, session, cwd st
 		response := map[string]any{}
 		switch request["subtype"] {
 		case "initialize":
+			version := "2.1.309"
+			if legacy {
+				version = "2.1.159"
+			}
 			emit(map[string]any{"type": "system", "subtype": "init", "cwd": cwd, "model": "sonnet",
-				"permissionMode": "default", "claude_code_version": "2.1.309"})
+				"permissionMode": "default", "claude_code_version": version})
 			response["models"] = []map[string]any{{"value": "sonnet", "displayName": "Sonnet"}}
 		case "get_settings":
 			response["applied"] = map[string]any{"model": "sonnet"}
@@ -498,6 +559,21 @@ func fixtureClaudeFrame(out *json.Encoder, frame map[string]any, session, cwd st
 		}})
 	case "user":
 		usage := map[string]any{"input_tokens": 43, "output_tokens": 7, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
+		if legacy {
+			terminal := "fixture-legacy-" + fmt.Sprint(frame["uuid"])
+			if strings.Contains(fmt.Sprint(frame["message"]), "unconfirmed legacy input") {
+				terminal = "fixture-legacy-unconfirmed"
+			} else {
+				emit(map[string]any{"type": "user", "uuid": frame["uuid"], "isReplay": true, "parent_tool_use_id": nil,
+					"message": frame["message"]})
+			}
+			emit(map[string]any{"type": "assistant", "parent_tool_use_id": nil,
+				"message": map[string]any{"id": terminal, "model": "sonnet", "usage": usage,
+					"content": []map[string]any{{"type": "text", "text": "legacy native answer"}}}})
+			emit(map[string]any{"type": "result", "subtype": "success", "uuid": terminal,
+				"result": "legacy native answer", "usage": usage})
+			return
+		}
 		emit(map[string]any{"type": "assistant", "user_message_uuid": frame["uuid"], "parent_tool_use_id": nil,
 			"message": map[string]any{"id": "assistant-native", "model": "sonnet", "usage": usage,
 				"content": []map[string]any{{"type": "text", "text": "private answer"}}}})
