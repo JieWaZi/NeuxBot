@@ -1,4 +1,4 @@
-// Package usage provides read-only Codex usage snapshots.
+// Package usage provides read-only provider usage snapshots.
 package usage
 
 import (
@@ -20,16 +20,16 @@ func init() {
 	Router.Register(&ListUsageGroups{})
 }
 
-func filter(from, to int64, timezone, wakerIDs, chatID, accountID, source string) service.Filter {
+func filter(from, to int64, timezone, wakerIDs, chatID, provider, accountID, source string) service.Filter {
 	var wakers []string
 	if wakerIDs != "" {
 		wakers = strings.Split(wakerIDs, ",")
 	}
 	return service.Filter{From: from, To: to, Timezone: timezone, WakerIDs: wakers,
-		ChatID: chatID, AccountID: accountID, Source: source}
+		ChatID: chatID, Provider: provider, AccountID: accountID, Source: source}
 }
 
-// GetUsageSummary queries the Codex usage overview.
+// GetUsageSummary queries the provider usage overview.
 type GetUsageSummary struct {
 	// MethodGet declares the read-only HTTP method.
 	ginx.MethodGet
@@ -43,6 +43,8 @@ type GetUsageSummary struct {
 	WakerIDs string `in:"query" name:"wakerIds" validate:"max=12900"`
 	// ChatID 是原始对话标识。
 	ChatID string `in:"query" name:"chatId" validate:"max=128"`
+	// Provider 是原生后端标识。
+	Provider string `in:"query" name:"provider" validate:"max=32"`
 	// AccountID 是原始宿主账号标识。
 	AccountID string `in:"query" name:"accountId" validate:"max=128"`
 	// Source 是原始调用入口。
@@ -56,14 +58,14 @@ func (*GetUsageSummary) Path() string { return "/summary" }
 func (d *GetUsageSummary) Output(ctx *gin.Context) (interface{}, error) {
 	request, cancel := context.WithTimeout(ctx.Request.Context(), 20*time.Second)
 	defer cancel()
-	result, err := global.UsageService.Summary(request, filter(d.From, d.To, d.Timezone, d.WakerIDs, d.ChatID, d.AccountID, d.Source), d.Snapshot)
+	result, err := global.UsageService.Summary(request, filter(d.From, d.To, d.Timezone, d.WakerIDs, d.ChatID, d.Provider, d.AccountID, d.Source), d.Snapshot)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	return result, nil
 }
 
-// ListUsageGroups paginates the same Codex usage snapshot.
+// ListUsageGroups paginates the same provider usage snapshot.
 type ListUsageGroups struct {
 	// MethodGet declares the read-only HTTP method.
 	ginx.MethodGet
@@ -77,14 +79,16 @@ type ListUsageGroups struct {
 	WakerIDs string `in:"query" name:"wakerIds" validate:"max=12900"`
 	// ChatID 是原始对话标识。
 	ChatID string `in:"query" name:"chatId" validate:"max=128"`
+	// Provider 是原生后端标识。
+	Provider string `in:"query" name:"provider" validate:"max=32"`
 	// AccountID 是原始宿主账号标识。
 	AccountID string `in:"query" name:"accountId" validate:"max=128"`
 	// Source 是原始调用入口。
 	Source string `in:"query" name:"source" validate:"max=32"`
 	// Snapshot 是概要返回的不透明快照。
 	Snapshot string `in:"query" name:"snapshot" validate:"required,max=2048"`
-	// GroupBy 选择自然日、模型或伙伴。
-	GroupBy string `in:"query" name:"groupBy" validate:"required,oneof=day model waker"`
+	// GroupBy 是分组维度。
+	GroupBy string `in:"query" name:"groupBy" validate:"required,oneof=day model waker provider"`
 	// Limit 是页大小，零使用默认值 50。
 	Limit int `in:"query" name:"limit" validate:"min=0,max=100"`
 	// Cursor 是同一快照的下一页游标。
@@ -96,7 +100,7 @@ func (*ListUsageGroups) Path() string { return "/groups" }
 func (d *ListUsageGroups) Output(ctx *gin.Context) (interface{}, error) {
 	request, cancel := context.WithTimeout(ctx.Request.Context(), 20*time.Second)
 	defer cancel()
-	result, err := global.UsageService.Groups(request, filter(d.From, d.To, d.Timezone, d.WakerIDs, d.ChatID, d.AccountID, d.Source), d.Snapshot, d.GroupBy, d.Cursor, d.Limit)
+	result, err := global.UsageService.Groups(request, filter(d.From, d.To, d.Timezone, d.WakerIDs, d.ChatID, d.Provider, d.AccountID, d.Source), d.Snapshot, d.GroupBy, d.Cursor, d.Limit)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

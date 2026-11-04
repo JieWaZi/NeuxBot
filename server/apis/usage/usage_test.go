@@ -109,6 +109,11 @@ func TestUsageAPIReplaysAfterChatDeletion(t *testing.T) {
 		"from": {strconv.FormatInt(time.Now().Add(-time.Hour).UnixMilli(), 10)}, "to": {strconv.FormatInt(time.Now().Add(time.Hour).UnixMilli(), 10)},
 		"timezone": {"Asia/Shanghai"}, "wakerIds": {"waker"}, "accountId": {"account"}, "chatId": {chatID}, "source": {"workflow"},
 	}
+	query.Set("provider", "cursor")
+	if unrelated := readUsageOperator(t, &GetUsageSummary{}, query).(service.Summary); unrelated.Metrics.Invocations != 0 {
+		t.Fatalf("provider filter matched another backend: %+v", unrelated)
+	}
+	query.Set("provider", "codex")
 	value := readUsageOperator(t, &GetUsageSummary{}, query).(service.Summary)
 	m := value.Metrics
 	if m.Invocations != 1 || m.KnownTotalWithCacheRead == nil || *m.KnownTotalWithCacheRead != 30 ||
@@ -120,8 +125,13 @@ func TestUsageAPIReplaysAfterChatDeletion(t *testing.T) {
 	query.Set("snapshot", value.Snapshot)
 	page := readUsageOperator(t, &ListUsageGroups{}, query).(service.GroupsPage)
 	if page.TotalGroups != 1 || len(page.Groups) != 1 || page.Groups[0].Key != "provider-model" ||
-		page.Groups[0].Metrics.Invocations != 1 {
+		page.Groups[0].Provider != "codex" || page.Groups[0].Metrics.Invocations != 1 {
 		t.Fatalf("unexpected model page: %+v", page)
+	}
+	query.Set("groupBy", "provider")
+	providers := readUsageOperator(t, &ListUsageGroups{}, query).(service.GroupsPage)
+	if providers.TotalGroups != 1 || len(providers.Groups) != 1 || providers.Groups[0].Key != "codex" {
+		t.Fatalf("unexpected provider page: %+v", providers)
 	}
 }
 

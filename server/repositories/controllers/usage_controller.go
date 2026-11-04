@@ -13,8 +13,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// usageProjectionFormat changes when replay must recover previously excluded facts.
-const usageProjectionFormat = "providers-v1:"
+// usageProjectionFormat changes when replay must recover missing projected facts.
+const usageProjectionFormat = "providers-v2:"
 
 // UsageController manages the disposable terminal usage projection.
 type UsageController struct {
@@ -134,19 +134,21 @@ func (c *UsageController) UsageHighWater(ctx context.Context) (int64, *int64, er
 
 // UsageQuery scopes a read to a time range and projection snapshot.
 type UsageQuery struct {
-	// From is the inclusive time bound.
+	// From 是包含的时间下界。
 	From int64
-	// To is the exclusive time bound.
+	// To 是排除的时间上界。
 	To int64
-	// HighWater fixes the last projection row visible to the snapshot.
+	// HighWater 固定快照可见的最后一条投影记录。
 	HighWater int64
-	// WakerIDs optionally filters the original partners.
+	// WakerIDs 可按原始伙伴筛选。
 	WakerIDs []string
-	// ChatID optionally filters the original public conversation.
+	// ChatID 可按原始公开对话筛选。
 	ChatID string
-	// AccountID optionally filters the original connection account.
+	// Provider 可按原生后端筛选。
+	Provider string
+	// AccountID 可按建立连接时的账号筛选。
 	AccountID string
-	// Source optionally filters the original entry point.
+	// Source 可按原始调用入口筛选。
 	Source string
 }
 
@@ -158,6 +160,9 @@ func (c *UsageController) scoped(ctx context.Context, filter UsageQuery) *gorm.D
 	}
 	if filter.ChatID != "" {
 		db = db.Where("chat_id = ?", filter.ChatID)
+	}
+	if filter.Provider != "" {
+		db = db.Where("provider = ?", filter.Provider)
 	}
 	if filter.AccountID != "" {
 		db = db.Where("account_id = ?", filter.AccountID)
@@ -192,12 +197,25 @@ func (c *UsageController) Walk(ctx context.Context, filter UsageQuery, visit fun
 	}
 }
 
+// UsageGroupKey identifies a group and distinguishes model IDs across providers.
+type UsageGroupKey struct {
+	// Key 是分组维度的原始标识。
+	Key string
+	// Provider 是模型分组对应的原生后端，其他维度留空。
+	Provider string
+}
+
 // GroupKeys counts groups and seeks the next keys without materializing every group.
-func (c *UsageController) GroupKeys(ctx context.Context, filter UsageQuery, group string, after *string, limit int) (int64, []string, error) {
-	column := "model"
-	if group == "waker" {
+func (c *UsageController) GroupKeys(ctx context.Context, filter UsageQuery, group string, after *UsageGroupKey, limit int) (int64, []UsageGroupKey, error) {
+	var column string
+	switch group {
+	case "model":
+		return c.modelGroupKeys(ctx, filter, after, limit)
+	case "waker":
 		column = "waker_id"
-	} else if group != "model" {
+	case "provider":
+		column = "provider"
+	default:
 		return 0, nil, fmt.Errorf("unsupported usage group")
 	}
 	var total int64
@@ -205,12 +223,29 @@ func (c *UsageController) GroupKeys(ctx context.Context, filter UsageQuery, grou
 	if err := db.Distinct(column).Count(&total).Error; err != nil {
 		return 0, nil, databaseError("count_usage_groups", "", err)
 	}
-	db = c.scoped(ctx, filter).Distinct(column).Order(column).Limit(limit)
+	db = c.scoped(ctx, filter).Select("DISTINCT " + column + " AS key").Order(column).Limit(limit)
 	if after != nil {
-		db = db.Where(column+" > ?", *after)
+		db = db.Where(column+" > ?", after.Key)
 	}
-	var keys []string
-	if err := db.Pluck(column, &keys).Error; err != nil {
+	var keys []UsageGroupKey
+	if err := db.Scan(&keys).Error; err != nil {
+		return 0, nil, databaseError("page_usage_groups", "", err)
+	}
+	return total, keys, nil
+}
+
+func (c *UsageController) modelGroupKeys(ctx context.Context, filter UsageQuery, after *UsageGroupKey, limit int) (int64, []UsageGroupKey, error) {
+	var total int64
+	groups := c.scoped(ctx, filter).Select("1").Group("model, provider")
+	if err := controllerDB(ctx, c.db).Table("(?) AS usage_groups", groups).Count(&total).Error; err != nil {
+		return 0, nil, databaseError("count_usage_groups", "", err)
+	}
+	db := c.scoped(ctx, filter).Select("DISTINCT model AS key, provider").Order("model, provider").Limit(limit)
+	if after != nil {
+		db = db.Where("(model, provider) > (?, ?)", after.Key, after.Provider)
+	}
+	var keys []UsageGroupKey
+	if err := db.Scan(&keys).Error; err != nil {
 		return 0, nil, databaseError("page_usage_groups", "", err)
 	}
 	return total, keys, nil

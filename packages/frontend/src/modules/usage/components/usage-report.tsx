@@ -196,14 +196,15 @@ export function UsageReport({
           {groups.map((group) => {
             const metrics = group.metrics ?? {};
             const value = metrics.knownTotalWithCacheRead;
+            const label = group.key
+              ? groupBy === "waker"
+                ? (names.get(group.key) ?? group.key)
+                : group.key
+              : t("unknown");
             return (
-              <TableRow key={group.key}>
+              <TableRow key={JSON.stringify([group.provider, group.key])}>
                 <TableCell>
-                  {group.key
-                    ? groupBy === "waker"
-                      ? (names.get(group.key) ?? group.key)
-                      : group.key
-                    : t("unknown")}
+                  {group.provider ? `${group.provider} / ${label}` : label}
                 </TableCell>
                 <TableCell>
                   {metric === "tokens" ? (

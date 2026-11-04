@@ -9,49 +9,51 @@ func init() {
 
 // UsageRecord is the rebuildable projection of one canonical provider terminal.
 type UsageRecord struct {
-	// ID is the monotonic projection sequence used for snapshots.
+	// ID 是固定查询快照边界的单调投影序号。
 	ID int64 `gorm:"primaryKey;autoIncrement;index:idx_usage_time,priority:2;index:idx_usage_waker_time,priority:3"`
-	// NativeID is the digest of provider, subject, session, and invocation.
+	// NativeID 是原生后端、账号主体、会话和调用标识的摘要。
 	NativeID []byte `gorm:"not null;uniqueIndex"`
-	// RecordedAt is the first durable terminal commit time in Unix milliseconds.
+	// RecordedAt 是终态首次持久提交的 Unix 毫秒时间。
 	RecordedAt int64 `gorm:"not null;index:idx_usage_time,priority:1;index:idx_usage_waker_time,priority:2"`
-	// WakerID is the partner frozen on the first consumed input.
+	// WakerID 是首次消耗输入所关联的伙伴标识。
 	WakerID string `gorm:"not null;index:idx_usage_waker_time,priority:1"`
-	// ChatID is the original public chat, when known.
+	// ChatID 是已知的原始公开对话标识。
 	ChatID string `gorm:"not null"`
-	// AccountID identifies the host account that opened the connection.
+	// Provider 是原生会话身份声明的后端标识。
+	Provider string `gorm:"not null;default:''"`
+	// AccountID 是建立连接时使用的宿主账号标识。
 	AccountID string `gorm:"not null"`
-	// Source is the verified invocation entry point.
+	// Source 是已核实的调用入口。
 	Source string `gorm:"not null"`
-	// Model is the single model identified by native evidence.
+	// Model 是由原生证据确定的唯一模型标识。
 	Model string `gorm:"not null"`
-	// Coverage describes the calls covered by the primary token observation.
+	// Coverage 表示主 Token 观测覆盖的调用范围。
 	Coverage string
-	// Complete says the observation covers the invocation even if a counter is unknown.
+	// Complete 表示观测覆盖完整调用，个别计数仍可未知。
 	Complete bool
-	// Input counts input tokens outside cache reads and writes.
+	// Input 是缓存读取和写入以外的输入 Token 数。
 	Input *int64
-	// CacheRead counts input tokens read from cache.
+	// CacheRead 是从缓存读取的输入 Token 数。
 	CacheRead *int64
-	// CacheWrite counts input tokens written to cache.
+	// CacheWrite 是写入缓存的输入 Token 数。
 	CacheWrite *int64
-	// Output counts output tokens including reasoning.
+	// Output 是包含推理在内的输出 Token 数。
 	Output *int64
-	// Reasoning is the separately reported subset of output.
+	// Reasoning 是单独上报的推理 Token 数，属于输出的子集。
 	Reasoning *int64
-	// Amount is the exact decimal safely attributed to this invocation.
+	// Amount 是可归属本次调用的精确十进制金额。
 	Amount string
-	// Currency is the currency of the amount.
+	// Currency 是金额币种。
 	Currency string
-	// Valuation distinguishes reported and estimated amounts.
+	// Valuation 区分上报金额和估算金额。
 	Valuation string
-	// CostSource is the independent valuation source.
+	// CostSource 是独立的金额计算依据。
 	CostSource string
-	// CostOrigin distinguishes native amounts and host estimates.
+	// CostOrigin 区分原生金额和宿主估算。
 	CostOrigin string
-	// CostComplete says the valuation covers the entire invocation.
+	// CostComplete 表示金额覆盖完整调用。
 	CostComplete bool
-	// PriceVersion identifies the applicable published rate version.
+	// PriceVersion 是适用的公开价格版本。
 	PriceVersion string
 }
 

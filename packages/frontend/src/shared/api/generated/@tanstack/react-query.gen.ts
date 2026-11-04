@@ -5283,7 +5283,7 @@ export const stageUploadMutation = (options?: Partial<Options<StageUploadData>>)
 export const listUsageGroupsQueryKey = (options: Options<ListUsageGroupsData>) => createQueryKey('listUsageGroups', options);
 
 /**
- * ListUsageGroups paginates the same Codex usage snapshot.
+ * ListUsageGroups paginates the same provider usage snapshot.
  */
 export const listUsageGroupsOptions = (options: Options<ListUsageGroupsData>) => queryOptions<ListUsageGroupsResponse, ListUsageGroupsError, ListUsageGroupsResponse, ReturnType<typeof listUsageGroupsQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {
@@ -5301,7 +5301,7 @@ export const listUsageGroupsOptions = (options: Options<ListUsageGroupsData>) =>
 export const listUsageGroupsInfiniteQueryKey = (options: Options<ListUsageGroupsData>): QueryKey<Options<ListUsageGroupsData>> => createQueryKey('listUsageGroups', options, true);
 
 /**
- * ListUsageGroups paginates the same Codex usage snapshot.
+ * ListUsageGroups paginates the same provider usage snapshot.
  */
 export const listUsageGroupsInfiniteOptions = (options: Options<ListUsageGroupsData>) => {
     const opts = infiniteQueryOptions<ListUsageGroupsResponse, ListUsageGroupsError, InfiniteData<ListUsageGroupsResponse>, QueryKey<Options<ListUsageGroupsData>>, string | Pick<QueryKey<Options<ListUsageGroupsData>>[0], 'body' | 'headers' | 'path' | 'query'>>(
@@ -5331,7 +5331,7 @@ export const listUsageGroupsInfiniteOptions = (options: Options<ListUsageGroupsD
 export const getUsageSummaryQueryKey = (options: Options<GetUsageSummaryData>) => createQueryKey('getUsageSummary', options);
 
 /**
- * GetUsageSummary queries the Codex usage overview.
+ * GetUsageSummary queries the provider usage overview.
  */
 export const getUsageSummaryOptions = (options: Options<GetUsageSummaryData>) => queryOptions<GetUsageSummaryResponse, GetUsageSummaryError, GetUsageSummaryResponse, ReturnType<typeof getUsageSummaryQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

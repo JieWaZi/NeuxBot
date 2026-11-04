@@ -2,6 +2,7 @@
 package usage
 
 import (
+	"cmp"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -44,19 +45,21 @@ func NewService(store *eventlog_next.Store, projection *controllers.UsageControl
 
 // Filter selects a half-open time range and optional admission attribution.
 type Filter struct {
-	// From is the inclusive Unix millisecond bound.
+	// From 是包含的 Unix 毫秒下界。
 	From int64 `json:"from"`
-	// To is the exclusive Unix millisecond bound.
+	// To 是排除的 Unix 毫秒上界。
 	To int64 `json:"to"`
-	// Timezone is the IANA zone for calendar-day grouping.
+	// Timezone 是自然日分组的 IANA 时区。
 	Timezone string `json:"timezone"`
-	// WakerIDs optionally selects original partners.
+	// WakerIDs 是用于筛选的原始伙伴标识。
 	WakerIDs []string `json:"wakerIds,omitempty"`
-	// ChatID optionally selects the original conversation.
+	// ChatID 是用于筛选的原始对话标识。
 	ChatID string `json:"chatId,omitempty"`
-	// AccountID optionally selects the original host account.
+	// Provider 是用于筛选的原生后端标识。
+	Provider string `json:"provider,omitempty"`
+	// AccountID 是用于筛选的原始宿主账号标识。
 	AccountID string `json:"accountId,omitempty"`
-	// Source optionally selects the host entry point.
+	// Source 是用于筛选的调用入口。
 	Source string `json:"source,omitempty"`
 }
 
@@ -86,11 +89,13 @@ type Summary struct {
 	Metrics Metrics `json:"metrics"`
 }
 
-// Group contains usage for a day, model, or partner in this snapshot.
+// Group contains usage for one group in this snapshot.
 type Group struct {
-	// Key is the grouping identity. An empty key means attribution is unknown.
+	// Key 是分组标识，空值表示归属未知。
 	Key string `json:"key"`
-	// Metrics contains usage and valuations for this group.
+	// Provider 是模型分组对应的原生后端。
+	Provider string `json:"provider,omitempty"`
+	// Metrics 是该分组的用量和金额。
 	Metrics Metrics `json:"metrics"`
 }
 
@@ -124,12 +129,14 @@ type snapshot struct {
 }
 
 type groupCursor struct {
-	// Snapshot binds the cursor to the exact snapshot.
+	// Snapshot 将游标绑定到指定快照。
 	Snapshot [32]byte `json:"s"`
-	// Group binds the cursor to the grouping dimension.
+	// Group 将游标绑定到分组维度。
 	Group string `json:"g"`
-	// Last is the final key of the preceding page.
+	// Last 是上一页的最后一个分组标识。
 	Last string `json:"l"`
+	// Provider 是上一页最后一个模型分组的原生后端。
+	Provider string `json:"p,omitempty"`
 }
 
 // Summary reads exact range totals at one projection boundary.
@@ -154,7 +161,7 @@ func (s *Service) Summary(ctx context.Context, filter Filter, token string) (Sum
 
 // Groups uses the same snapshot and seeks in key order.
 func (s *Service) Groups(ctx context.Context, filter Filter, token, group, cursor string, limit int) (GroupsPage, error) {
-	if group != "day" && group != "model" && group != "waker" || limit < 0 || limit > 100 || token == "" {
+	if group != "day" && group != "model" && group != "waker" && group != "provider" || limit < 0 || limit > 100 || token == "" {
 		return GroupsPage{}, status_error.BadRequest
 	}
 	if limit == 0 {
@@ -169,18 +176,18 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 		return GroupsPage{}, err
 	}
 	digest := sha256.Sum256([]byte(token))
-	var after *string
+	var after *controllers.UsageGroupKey
 	if cursor != "" {
 		var anchor groupCursor
 		if !s.decode("groups", cursor, &anchor) || anchor.Group != group || anchor.Snapshot != digest {
 			return GroupsPage{}, status_error.BadRequest
 		}
-		after = &anchor.Last
+		after = &controllers.UsageGroupKey{Key: anchor.Last, Provider: anchor.Provider}
 	}
 	scope := query(filter, view)
 	totals := newAccumulator()
-	groups := make(map[string]*accumulator)
-	var keys []string
+	groups := make(map[controllers.UsageGroupKey]*accumulator)
+	var keys []controllers.UsageGroupKey
 	var count int64
 	if group != "day" {
 		count, keys, err = s.projection.GroupKeys(ctx, scope, group, after, limit+1)
@@ -195,18 +202,20 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 		if err := totals.add(row); err != nil {
 			return err
 		}
-		var key string
+		var key controllers.UsageGroupKey
 		switch group {
 		case "day":
-			key = time.UnixMilli(row.RecordedAt).In(loc).Format(time.DateOnly)
+			key.Key = time.UnixMilli(row.RecordedAt).In(loc).Format(time.DateOnly)
 			if groups[key] == nil {
 				groups[key] = newAccumulator()
 				keys = append(keys, key)
 			}
 		case "model":
-			key = row.Model
+			key.Key, key.Provider = row.Model, row.Provider
 		case "waker":
-			key = row.WakerID
+			key.Key = row.WakerID
+		case "provider":
+			key.Key = row.Provider
 		}
 		if accumulator := groups[key]; accumulator != nil {
 			return accumulator.add(row)
@@ -217,10 +226,10 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 		return GroupsPage{}, err
 	}
 	if group == "day" {
-		slices.Sort(keys)
+		slices.SortFunc(keys, compareDayGroups)
 		count = int64(len(keys))
 		if after != nil {
-			at, found := slices.BinarySearch(keys, *after)
+			at, found := slices.BinarySearchFunc(keys, *after, compareDayGroups)
 			if !found {
 				return GroupsPage{}, status_error.BadRequest
 			}
@@ -238,10 +247,11 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 		if err != nil {
 			return GroupsPage{}, err
 		}
-		page.Groups = append(page.Groups, Group{Key: key, Metrics: metrics})
+		page.Groups = append(page.Groups, Group{Key: key.Key, Provider: key.Provider, Metrics: metrics})
 	}
 	if page.HasMore {
-		page.NextCursor = s.encode("groups", groupCursor{Snapshot: digest, Group: group, Last: keys[len(keys)-1]})
+		last := keys[len(keys)-1]
+		page.NextCursor = s.encode("groups", groupCursor{Snapshot: digest, Group: group, Last: last.Key, Provider: last.Provider})
 	}
 	if err := s.checkGeneration(ctx, view); err != nil {
 		return GroupsPage{}, err
@@ -249,10 +259,15 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 	return page, nil
 }
 
+func compareDayGroups(a, b controllers.UsageGroupKey) int {
+	return cmp.Compare(a.Key, b.Key)
+}
+
 func validateFilter(filter Filter) (Filter, *time.Location, error) {
 	if filter.From <= 0 || filter.To <= filter.From || filter.To-filter.From > int64(368*24*time.Hour/time.Millisecond) ||
 		filter.Timezone == "" || len(filter.Timezone) > 80 || filter.Timezone == "Local" || len(filter.WakerIDs) > 100 ||
-		len(filter.ChatID) > 128 || len(filter.AccountID) > 128 || len(filter.Source) > 32 {
+		len(filter.ChatID) > 128 || len(filter.AccountID) > 128 || len(filter.Source) > 32 ||
+		len(filter.Provider) > 32 || strings.TrimSpace(filter.Provider) != filter.Provider {
 		return Filter{}, nil, status_error.BadRequest
 	}
 	loc, err := time.LoadLocation(filter.Timezone)
@@ -280,7 +295,7 @@ func validateFilter(filter Filter) (Filter, *time.Location, error) {
 
 func query(filter Filter, view snapshot) controllers.UsageQuery {
 	return controllers.UsageQuery{From: filter.From, To: filter.To, HighWater: view.HighWater, WakerIDs: filter.WakerIDs,
-		ChatID: filter.ChatID, AccountID: filter.AccountID, Source: filter.Source}
+		ChatID: filter.ChatID, Provider: filter.Provider, AccountID: filter.AccountID, Source: filter.Source}
 }
 
 func (s *Service) resolveSnapshot(ctx context.Context, filter Filter, token string) (snapshot, string, error) {
@@ -381,7 +396,7 @@ func (s *Service) catchUp(ctx context.Context, generation string, checkpoints []
 func project(terminal eventlog_next.UsageTerminal) models.UsageRecord {
 	result := terminal.Result
 	digest := result.Key.Digest()
-	row := models.UsageRecord{NativeID: digest[:], RecordedAt: terminal.RecordedAt}
+	row := models.UsageRecord{NativeID: digest[:], RecordedAt: terminal.RecordedAt, Provider: result.Key.Session.Provider}
 	if owner := result.Attribution; owner != nil {
 		row.ChatID, row.WakerID, row.AccountID, row.Source = owner.ChatID, owner.WakerID, owner.AccountID, owner.Source
 	} else if result.Turn.Origin == "provider" && len(result.Turn.ConsumedInputIDs) == 0 {

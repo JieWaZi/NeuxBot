@@ -13013,44 +13013,52 @@ export type GithubComJieWaZiNeuxBotServerServicesUsageCoverage = {
  */
 export type GithubComJieWaZiNeuxBotServerServicesUsageFilter = {
     /**
-     * AccountID optionally selects the original host account.
+     * AccountID 是用于筛选的原始宿主账号标识。
      */
     accountId?: string;
     /**
-     * ChatID optionally selects the original conversation.
+     * ChatID 是用于筛选的原始对话标识。
      */
     chatId?: string;
     /**
-     * From is the inclusive Unix millisecond bound.
+     * From 是包含的 Unix 毫秒下界。
      */
     from?: number;
     /**
-     * Source optionally selects the host entry point.
+     * Provider 是用于筛选的原生后端标识。
+     */
+    provider?: string;
+    /**
+     * Source 是用于筛选的调用入口。
      */
     source?: string;
     /**
-     * Timezone is the IANA zone for calendar-day grouping.
+     * Timezone 是自然日分组的 IANA 时区。
      */
     timezone?: string;
     /**
-     * To is the exclusive Unix millisecond bound.
+     * To 是排除的 Unix 毫秒上界。
      */
     to?: number;
     /**
-     * WakerIDs optionally selects original partners.
+     * WakerIDs 是用于筛选的原始伙伴标识。
      */
     wakerIds?: Array<string>;
 };
 
 /**
- * Group contains usage for a day, model, or partner in this snapshot.
+ * Group contains usage for one group in this snapshot.
  */
 export type GithubComJieWaZiNeuxBotServerServicesUsageGroup = {
     /**
-     * Key is the grouping identity. An empty key means attribution is unknown.
+     * Key 是分组标识，空值表示归属未知。
      */
     key?: string;
     metrics?: GithubComJieWaZiNeuxBotServerServicesUsageMetrics & unknown;
+    /**
+     * Provider 是模型分组对应的原生后端。
+     */
+    provider?: string;
 };
 
 export type GithubComJieWaZiNeuxBotServerServicesUsageGroupsPage = GithubComJieWaZiNeuxBotServerServicesUsageSummary & {
@@ -32984,13 +32992,17 @@ export type ListUsageGroupsData = {
          */
         from: number;
         /**
-         * GroupBy 选择自然日、模型或伙伴。
+         * GroupBy 是分组维度。
          */
         groupBy: string;
         /**
          * Limit 是页大小，零使用默认值 50。
          */
         limit?: number;
+        /**
+         * Provider 是原生后端标识。
+         */
+        provider?: string;
         /**
          * Snapshot 是概要返回的不透明快照。
          */
@@ -33077,6 +33089,10 @@ export type GetUsageSummaryData = {
          * From 是包含的 Unix 毫秒下界。
          */
         from: number;
+        /**
+         * Provider 是原生后端标识。
+         */
+        provider?: string;
         /**
          * Snapshot 是概要返回的不透明快照。
          */

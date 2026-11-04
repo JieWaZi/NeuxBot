@@ -1990,12 +1990,12 @@ export const deleteUpload = <ThrowOnError extends boolean = false>(options: Opti
 export const stageUpload = <ThrowOnError extends boolean = false>(options: Options<StageUploadData, ThrowOnError>): RequestResult<StageUploadResponses, StageUploadErrors, ThrowOnError> => (options.client ?? client).post<StageUploadResponses, StageUploadErrors, ThrowOnError>({ url: '/api/v1/uploads', ...options });
 
 /**
- * ListUsageGroups paginates the same Codex usage snapshot.
+ * ListUsageGroups paginates the same provider usage snapshot.
  */
 export const listUsageGroups = <ThrowOnError extends boolean = false>(options: Options<ListUsageGroupsData, ThrowOnError>): RequestResult<ListUsageGroupsResponses, ListUsageGroupsErrors, ThrowOnError> => (options.client ?? client).get<ListUsageGroupsResponses, ListUsageGroupsErrors, ThrowOnError>({ url: '/api/v1/usage/groups', ...options });
 
 /**
- * GetUsageSummary queries the Codex usage overview.
+ * GetUsageSummary queries the provider usage overview.
  */
 export const getUsageSummary = <ThrowOnError extends boolean = false>(options: Options<GetUsageSummaryData, ThrowOnError>): RequestResult<GetUsageSummaryResponses, GetUsageSummaryErrors, ThrowOnError> => (options.client ?? client).get<GetUsageSummaryResponses, GetUsageSummaryErrors, ThrowOnError>({ url: '/api/v1/usage/summary', ...options });
 

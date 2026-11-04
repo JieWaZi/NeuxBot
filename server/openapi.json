@@ -35188,7 +35188,7 @@
         "tags": [
           "github.com/JieWaZi/NeuxBot/server/apis/usage"
         ],
-        "summary": "ListUsageGroups paginates the same Codex usage snapshot.",
+        "summary": "ListUsageGroups paginates the same provider usage snapshot.",
         "operationId": "ListUsageGroups",
         "parameters": [
           {
@@ -35248,15 +35248,15 @@
           {
             "name": "groupBy",
             "in": "query",
-            "description": "GroupBy 选择自然日、模型或伙伴。",
+            "description": "GroupBy 是分组维度。",
             "required": true,
             "schema": {
               "type": "string",
-              "description": "GroupBy 选择自然日、模型或伙伴。",
+              "description": "GroupBy 是分组维度。",
               "x-go-field-name": "GroupBy",
               "x-tag-in": "query",
               "x-tag-name": "groupBy",
-              "x-tag-validate": "required,oneof=day model waker"
+              "x-tag-validate": "required,oneof=day model waker provider"
             }
           },
           {
@@ -35271,6 +35271,19 @@
               "x-tag-in": "query",
               "x-tag-name": "limit",
               "x-tag-validate": "min=0,max=100"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Provider 是原生后端标识。",
+            "schema": {
+              "type": "string",
+              "description": "Provider 是原生后端标识。",
+              "x-go-field-name": "Provider",
+              "x-tag-in": "query",
+              "x-tag-name": "provider",
+              "x-tag-validate": "max=32"
             }
           },
           {
@@ -35432,7 +35445,7 @@
         "tags": [
           "github.com/JieWaZi/NeuxBot/server/apis/usage"
         ],
-        "summary": "GetUsageSummary queries the Codex usage overview.",
+        "summary": "GetUsageSummary queries the provider usage overview.",
         "operationId": "GetUsageSummary",
         "parameters": [
           {
@@ -35474,6 +35487,19 @@
               "x-tag-in": "query",
               "x-tag-name": "from",
               "x-tag-validate": "required,min=1"
+            }
+          },
+          {
+            "name": "provider",
+            "in": "query",
+            "description": "Provider 是原生后端标识。",
+            "schema": {
+              "type": "string",
+              "description": "Provider 是原生后端标识。",
+              "x-go-field-name": "Provider",
+              "x-tag-in": "query",
+              "x-tag-name": "provider",
+              "x-tag-validate": "max=32"
             }
           },
           {
@@ -77823,37 +77849,43 @@
         "properties": {
           "accountId": {
             "type": "string",
-            "description": "AccountID optionally selects the original host account.",
+            "description": "AccountID 是用于筛选的原始宿主账号标识。",
             "x-go-field-name": "AccountID",
             "x-tag-json": "accountId,omitempty"
           },
           "chatId": {
             "type": "string",
-            "description": "ChatID optionally selects the original conversation.",
+            "description": "ChatID 是用于筛选的原始对话标识。",
             "x-go-field-name": "ChatID",
             "x-tag-json": "chatId,omitempty"
           },
           "from": {
             "type": "integer",
             "format": "int64",
-            "description": "From is the inclusive Unix millisecond bound.",
+            "description": "From 是包含的 Unix 毫秒下界。",
             "x-go-field-name": "From"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider 是用于筛选的原生后端标识。",
+            "x-go-field-name": "Provider",
+            "x-tag-json": "provider,omitempty"
           },
           "source": {
             "type": "string",
-            "description": "Source optionally selects the host entry point.",
+            "description": "Source 是用于筛选的调用入口。",
             "x-go-field-name": "Source",
             "x-tag-json": "source,omitempty"
           },
           "timezone": {
             "type": "string",
-            "description": "Timezone is the IANA zone for calendar-day grouping.",
+            "description": "Timezone 是自然日分组的 IANA 时区。",
             "x-go-field-name": "Timezone"
           },
           "to": {
             "type": "integer",
             "format": "int64",
-            "description": "To is the exclusive Unix millisecond bound.",
+            "description": "To 是排除的 Unix 毫秒上界。",
             "x-go-field-name": "To"
           },
           "wakerIds": {
@@ -77861,7 +77893,7 @@
             "items": {
               "type": "string"
             },
-            "description": "WakerIDs optionally selects original partners.",
+            "description": "WakerIDs 是用于筛选的原始伙伴标识。",
             "x-go-field-name": "WakerIDs",
             "x-tag-json": "wakerIds,omitempty"
           }
@@ -77875,7 +77907,7 @@
         "properties": {
           "key": {
             "type": "string",
-            "description": "Key is the grouping identity. An empty key means attribution is unknown.",
+            "description": "Key 是分组标识，空值表示归属未知。",
             "x-go-field-name": "Key"
           },
           "metrics": {
@@ -77884,13 +77916,19 @@
                 "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesUsageMetrics"
               },
               {
-                "description": "Metrics contains usage and valuations for this group.",
+                "description": "Metrics 是该分组的用量和金额。",
                 "x-go-field-name": "Metrics"
               }
             ]
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider 是模型分组对应的原生后端。",
+            "x-go-field-name": "Provider",
+            "x-tag-json": "provider,omitempty"
           }
         },
-        "description": "Group contains usage for a day, model, or partner in this snapshot.",
+        "description": "Group contains usage for one group in this snapshot.",
         "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesUsageGroup",
         "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/usage.Group"
       },

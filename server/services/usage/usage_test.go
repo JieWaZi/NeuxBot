@@ -2,12 +2,13 @@ package usage
 
 import (
 	"errors"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/glebarez/sqlite"
@@ -83,14 +84,19 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Simulate an older projection that advanced over non-Codex terminals.
-	if err := db.Model(&models.UsageCheckpoint{}).Where("shard = -1").Update("generation", "legacy-codex-only").Error; err != nil {
+	// Keep the old generation, rows and checkpoint while dropping the provider column.
+	if err := db.Model(&models.UsageCheckpoint{}).Where("shard = -1").Update("generation", "providers-v1:fixture").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Where("1 = 1").Delete(&models.UsageRecord{}).Error; err != nil {
+	if err := db.Exec("ALTER TABLE usage_records DROP COLUMN provider").Error; err != nil {
 		t.Fatal(err)
 	}
-	summary, err = NewService(store, projection).Summary(ctx, rangeFilter, "")
+	if err := db.AutoMigrate(&models.UsageRecord{}, &models.UsageCheckpoint{}); err != nil {
+		t.Fatal(err)
+	}
+	service = NewService(store, projection)
+	rangeFilter.Provider = provider
+	summary, err = service.Summary(ctx, rangeFilter, "")
 	if err != nil || summary.Metrics.Invocations != 2 || summary.Metrics.MissingUsageInvocations != 1 {
 		t.Fatalf("cold read lost terminal usage: %+v %v", summary, err)
 	}
@@ -199,11 +205,82 @@ func TestUsageFiltersDSTPaginationAndExactCosts(t *testing.T) {
 	}{
 		{"idx_usage_time", "SELECT * FROM usage_records WHERE recorded_at >= 1 AND recorded_at < 200 AND id <= 30 ORDER BY recorded_at, id LIMIT 256"},
 		{"idx_usage_waker_time", "SELECT * FROM usage_records WHERE waker_id IN ('w') AND recorded_at >= 1 AND recorded_at < 200 AND id <= 30 ORDER BY recorded_at, id LIMIT 256"},
+		{"idx_usage_time", "SELECT DISTINCT model AS key, provider FROM usage_records WHERE recorded_at >= 1 AND recorded_at < 200 AND id <= 30 AND provider = 'codex' AND (model, provider) > ('a', 'codex') ORDER BY model, provider LIMIT 2"},
 	} {
 		var plan []planRow
 		if err := db.Raw("EXPLAIN QUERY PLAN " + tc.sql).Scan(&plan).Error; err != nil || len(plan) == 0 || !strings.Contains(plan[0].Detail, tc.name) {
 			t.Fatalf("query plan for %s: %+v %v", tc.name, plan, err)
 		}
 		t.Log(plan[0].Detail)
+	}
+}
+
+func TestUsageModelGroupsSeparateProviders(t *testing.T) {
+	ctx := t.Context()
+	store, err := eventlog_next.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for i, provider := range []string{"claude", "cursor"} {
+		key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: provider, Subject: "system-subject", SessionID: "native"}, InvocationID: "shared-id"}
+		input := agent.HostInput{HostInvocationID: "host", ExecutionID: "execution", AdapterInputID: "input", Session: key.Session,
+			Attribution: &agent.UsageAttribution{AccountID: agent.SystemAccountID, WakerID: "waker", Source: "chat"}}
+		chatID := strings.Repeat(string(rune('a'+i)), 32)
+		if _, err := store.Commit(ctx, agent.ConversationBatch{ChatID: chatID, Key: "input", Changes: []agent.ConversationChange{
+			{Fact: &agent.ChatFact{Type: constants.ChatEventTypeCreated}},
+			{Binding: &agent.NativeBinding{Session: key.Session}}, {Input: &input},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.CommitNativeResult(ctx, agent.NativeResult{Key: key, Turn: acpmeta.NativeTurn{
+			InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost, Status: acpmeta.NativeTurnCompleted,
+			ConsumedInputIDs: []string{input.AdapterInputID}, Usage: &acpmeta.TurnUsage{Source: "fixture", Model: "shared:model"},
+		}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "usage.sqlite")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := db.AutoMigrate(&models.UsageRecord{}, &models.UsageCheckpoint{}); err != nil {
+		t.Fatal(err)
+	}
+	projection := controllers.NewUsageController(db)
+	service := NewService(store, projection)
+	filter := Filter{From: time.Now().Add(-time.Hour).UnixMilli(), To: time.Now().Add(time.Hour).UnixMilli(), Timezone: "UTC", AccountID: agent.SystemAccountID}
+	summary, err := service.Summary(ctx, filter, "")
+	if err != nil || summary.Metrics.Invocations != 2 {
+		t.Fatalf("expected two native invocations: %+v %v", summary, err)
+	}
+	page, err := service.Groups(ctx, filter, summary.Snapshot, "model", "", 1)
+	if err != nil || page.TotalGroups != 2 || len(page.Groups) != 1 || !page.HasMore ||
+		page.Groups[0].Key != "shared:model" || page.Groups[0].Provider != "claude" || page.Groups[0].Metrics.Invocations != 1 {
+		t.Fatalf("identical model IDs from separate providers merged: %+v %v", page, err)
+	}
+	next, err := service.Groups(ctx, filter, summary.Snapshot, "model", page.NextCursor, 1)
+	if err != nil || next.TotalGroups != 2 || len(next.Groups) != 1 || next.HasMore ||
+		next.Groups[0].Key != "shared:model" || next.Groups[0].Provider != "cursor" || next.Groups[0].Metrics.Invocations != 1 {
+		t.Fatalf("pagination skipped the second provider's model: %+v %v", next, err)
+	}
+	providers, err := service.Groups(ctx, filter, summary.Snapshot, "provider", "", 10)
+	if err != nil || providers.TotalGroups != 2 || len(providers.Groups) != 2 ||
+		providers.Groups[0].Key != "claude" || providers.Groups[0].Metrics.Invocations != 1 ||
+		providers.Groups[1].Key != "cursor" || providers.Groups[1].Metrics.Invocations != 1 {
+		t.Fatalf("unexpected provider groups: %+v %v", providers, err)
+	}
+	filter.Provider = "cursor"
+	if _, err := service.Summary(ctx, filter, summary.Snapshot); !errors.Is(err, status_error.BadRequest) {
+		t.Fatalf("unfiltered snapshot accepted a provider-filtered read: %v", err)
+	}
+	scoped, err := service.Summary(ctx, filter, "")
+	if err != nil || scoped.Metrics.Invocations != 1 || scoped.Range.Provider != "cursor" {
+		t.Fatalf("unexpected provider-filtered summary: %+v %v", scoped, err)
 	}
 }
