@@ -18,23 +18,25 @@ const turnSettlementTimeout = 15 * time.Second
 
 // ThreadRequest freezes the public owner, session settings and authorized resources.
 type ThreadRequest struct {
-	// ChatID identifies a public conversation. Empty creates private detached work.
+	// ChatID 标识公开聊天，独立任务留空。
 	ChatID string
-	// Connection describes the actual executable, account and resource selection.
+	// Connection 指定实际程序、账号和授权资源。
 	Connection ProviderConnectionRequest
-	// Session describes native settings scoped to this session.
+	// Session 指定仅作用于本会话的原生设置。
 	Session AgentSessionOptions
-	// Settings lists exact native selectors to apply before submission, in dependency order.
+	// Settings 按依赖顺序指定提交前应用的原生选项。
 	Settings []SessionSetting
-	// Mode selects a native execution policy, when the provider exposes modes.
+	// Mode 指定服务商提供的原生执行模式。
 	Mode string
-	// ResourceGeneration changes when a selected connector or materialization changes in place.
+	// ResourceGeneration 在所选连接器或其物化资源原位更新时变化。
 	ResourceGeneration uint64
-	// HistoryTurns overrides the number of complete turns to seed on replacement.
+	// HistoryTurns 覆盖替换会话时用于交接的完整轮数。
 	HistoryTurns int
-	// Summarize prefers a hidden handoff on the previous native session.
+	// ForceNew 要求本轮替换原生会话，不影响后续轮次的兼容性判断。
+	ForceNew bool
+	// Summarize 在替换时优先使用旧原生会话生成的私有摘要。
 	Summarize bool
-	// Fork requests a real native fork instead of a new session or resume.
+	// Fork 要求原生分叉。
 	Fork *AgentForkRequest
 }
 
@@ -175,7 +177,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	l.mu.Lock()
 	conn, hot, effective, reader := state.connection, state.binding, state.effective, state.reader
 	l.mu.Unlock()
-	compatible := request.Fork == nil && compatibleBinding(stored, request.Connection.Account, cfg)
+	compatible := !request.ForceNew && request.Fork == nil && compatibleBinding(stored, request.Connection.Account, cfg)
 	sameOwner := conn != nil && hot != nil && stored != nil && hot.Session == stored.Session && string(hot.Configuration) == string(stored.Configuration)
 	hotUsable := false
 	if sameOwner {

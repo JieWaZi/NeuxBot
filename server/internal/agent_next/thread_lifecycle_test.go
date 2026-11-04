@@ -325,6 +325,10 @@ func TestThreadNativeChild(t *testing.T) {
 	scanner.Buffer(make([]byte, 4096), 256<<10)
 	out := json.NewEncoder(os.Stdout)
 	session := "fixture-thread"
+	uniqueCodexSession := provider == "codex" && os.Getenv("THREAD_FIXTURE_UNIQUE_CODEX_SESSION") == "1"
+	if uniqueCodexSession {
+		session = fmt.Sprintf("fixture-thread-%d", os.Getpid())
+	}
 	for _, arg := range os.Args {
 		for _, prefix := range []string{"--session-id=", "--resume="} {
 			if strings.HasPrefix(arg, prefix) {
@@ -343,6 +347,10 @@ func TestThreadNativeChild(t *testing.T) {
 		}
 		switch provider {
 		case "codex":
+			if uniqueCodexSession && frame["method"] == "thread/resume" {
+				params := frame["params"].(map[string]any)
+				session = params["threadId"].(string)
+			}
 			count++
 			fixtureCodexFrame(out, frame, raw, session, &nativeTurn, count)
 		case "claude":
@@ -638,6 +646,58 @@ func TestThreadTurnReaderCommitsAutonomousOutcomeWithoutWaiter(t *testing.T) {
 			t.Fatal("unobserved autonomous outcome not durable")
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestThreadTurnForceNewReusesReplacementOnNextTurn(t *testing.T) {
+	for _, name := range []string{"hot history", "cold history", "hot summary"} {
+		t.Run(name, func(t *testing.T) {
+			lifecycle, store, req, trace := newTurnFixture(t, "codex")
+			configureThreadFixture(&req, trace)
+			req.Connection.Launch.Environment["THREAD_FIXTURE_UNIQUE_CODEX_SESSION"] = "1"
+			first := chatTurn(0, "force-new-prior-question")
+			original := completeThreadFixtureTurn(t, lifecycle, store, req, first, true)
+			if name == "cold history" {
+				if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			replacement := req
+			replacement.ForceNew = true
+			replacement.Summarize = name == "hot summary"
+			second := chatTurn(1, "force-new-replacement-question")
+			created := completeThreadFixtureTurn(t, lifecycle, store, replacement, second, false)
+			if created.Binding.Session == original.Binding.Session {
+				t.Fatal("explicit replacement reused the original native session")
+			}
+			if string(created.Binding.Configuration) != string(original.Binding.Configuration) {
+				t.Fatal("one-shot replacement changed the durable compatibility key")
+			}
+			third := chatTurn(2, "force-new-ordinary-question")
+			reused := completeThreadFixtureTurn(t, lifecycle, store, req, third, false)
+			if reused.Binding.Session != created.Binding.Session {
+				t.Fatal("ordinary turn did not reuse the replacement native session")
+			}
+			line := fixturePromptLine(t, trace, second.Text)
+			if replacement.Summarize {
+				if !strings.Contains(line, "private switch summary") || strings.Contains(line, first.Text) {
+					t.Fatalf("replacement did not use the old owner's summary: %s", line)
+				}
+			} else if !strings.Contains(line, "Recent conversation history") || !strings.Contains(line, first.Text) {
+				t.Fatalf("replacement did not receive bounded history: %s", line)
+			}
+			line = fixturePromptLine(t, trace, third.Text)
+			if strings.Contains(line, first.Text) || strings.Contains(line, second.Text) || strings.Contains(line, "private switch summary") {
+				t.Fatalf("ordinary turn repeated the handoff: %s", line)
+			}
+			wire, err := os.ReadFile(trace)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Count(string(wire), `"method":"thread/start"`) != 2 || strings.Contains(string(wire), `"method":"thread/resume"`) {
+				t.Fatalf("ordinary turn did not reuse the hot replacement: %s", wire)
+			}
+		})
 	}
 }
 
@@ -1475,9 +1535,13 @@ func TestThreadTurnUnresolvedHandoffBlocksSuccessorAndColdRetry(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if successor, err := lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false)); successor != nil ||
-			!errors.Is(err, status_error.ChatLogNativeOutcomePending) {
-			t.Fatalf("successor %d did not preserve uncertainty: %+v %v", i, successor, err)
+		for _, forceNew := range []bool{false, true} {
+			successorReq := req
+			successorReq.ForceNew = forceNew
+			if successor, err := lifecycle.Prepare(t.Context(), successorReq, next, chatPorts(req.ChatID, next, false)); successor != nil ||
+				!errors.Is(err, status_error.ChatLogNativeOutcomePending) {
+				t.Fatalf("successor %d (forceNew=%t) did not preserve uncertainty: %+v %v", i, forceNew, successor, err)
+			}
 		}
 	}
 	data, err := os.ReadFile(trace)
