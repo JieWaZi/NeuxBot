@@ -176,18 +176,20 @@ type AgentForkRequest struct {
 
 // AgentSessionOption describes the effective native setting and allowed values.
 type AgentSessionOption struct {
-	// ID is the native setter key.
+	// ID 是原生配置选项标识。
 	ID string
-	// Category groups settings such as model and thought_level.
+	// Category 表示模型、强度等原生配置类别。
 	Category string
-	// Name labels the setting.
+	// Name 是原生选项名称。
 	Name string
-	// Description describes the setting when the provider supplies it.
+	// Description 是原生选项说明。
 	Description string
-	// Value is the current native value.
+	// Value 是原生当前观测值。
 	Value AgentOptionValue
-	// Choices lists the selectable values for a non-boolean option.
+	// Choices 是枚举选项的可选值。
 	Choices []AgentChoice
+	// acknowledgedID 是 Claude 确认的最近一次枚举选择，与当前观测值分别保留。
+	acknowledgedID string
 }
 
 // AgentOptionValue holds a string selection or an explicit boolean.
@@ -1266,10 +1268,13 @@ func convertSessionOptions(options []acp.SessionConfigOption, withModelConfig bo
 			})
 		}
 		if value := option.Select; value != nil {
+			evidence, _ := value.Meta["claude.configuration"].(map[string]any)
+			acknowledged, _ := evidence["acknowledged"].(string)
 			result = append(result, AgentSessionOption{
 				ID: string(value.Id), Category: stringValue(value.Category), Name: value.Name,
 				Description: stringValue(value.Description), Value: AgentOptionValue{ID: string(value.CurrentValue)},
-				Choices: agentChoices(value.Options, withModelConfig && stringValue(value.Category) == "model"),
+				Choices:        agentChoices(value.Options, withModelConfig && stringValue(value.Category) == "model"),
+				acknowledgedID: acknowledged,
 			})
 		}
 	}

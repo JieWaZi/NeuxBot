@@ -415,7 +415,11 @@ func TestNativeProductClaudeAndCursorContinueAndRecover(t *testing.T) {
 				t.Fatalf("public history: %+v %v", history, err)
 			}
 
+			options.Fast, options.Reasoning, options.ConfigurationResolved = nil, "", true
 			held := start(target, "hold-for-native-cancel")
+			if held.Execution.Fast != nil {
+				t.Fatalf("native Fast default stored as an explicit override: %+v", held.Execution.Fast)
+			}
 			waitNativeProductStream(t, ctx, chats, held, "native fixture partial")
 			if err := core.CancelExecutionAndWait(ctx, first.Chat.ID, held.Execution.ID); err != nil {
 				t.Fatal(err)
@@ -425,7 +429,7 @@ func TestNativeProductClaudeAndCursorContinueAndRecover(t *testing.T) {
 			closeRuntime()
 			core, chats, store, closeRuntime = fixture.open()
 			loaded, err := chats.LoadExecutionChat(ctx, first.Chat.ID)
-			if err != nil || loaded.LastFast == nil || *loaded.LastFast {
+			if err != nil || loaded.LastFast != nil {
 				t.Fatalf("reloaded settings: %+v %v", loaded.LastFast, err)
 			}
 			metrics, err := usageservice.NewService(store, fixture.usage).Summary(ctx, usageservice.Filter{
@@ -488,11 +492,14 @@ func assertNativeProviderTrace(t *testing.T, provider, trace, sessionID string) 
 	if provider == "claude" {
 		requireOrder(`"subtype":"set_model","model":"fixture-model"`, `"effortLevel":"high"`, `"fastMode":true`,
 			`"subtype":"set_permission_mode","mode":"auto"`, "first-question", `"effortLevel":"low"`, `"fastMode":false`, "second-question",
-			"hold-for-native-cancel", `"subtype":"interrupt"`, "--resume="+sessionID, `"subtype":"set_permission_mode","mode":"auto"`, "current-after-restart")
+			`"effortLevel":null`, `"fastMode":null`, "hold-for-native-cancel", `"subtype":"interrupt"`, "--resume="+sessionID, `"subtype":"set_permission_mode","mode":"auto"`, "current-after-restart")
+		if strings.Count(wire, `"fastMode":null`) != 1 {
+			t.Fatalf("Claude should clear Fast exactly once after the explicit override: %s", wire)
+		}
 	} else {
 		requireOrder("launch --force acp", `"configId":"model","sessionId":"`+sessionID+`","value":"fixture-model"`, `"value":"high"`, `"value":"true"`,
-			"first-question", `"value":"low"`, `"value":"false"`, "second-question", "hold-for-native-cancel", `"method":"session/cancel"`,
-			"launch --force acp", `"method":"session/resume"`, "current-after-restart")
+			"first-question", `"value":"low"`, `"value":"false"`, "second-question", `"value":"medium"`, `"value":"true"`, "hold-for-native-cancel", `"method":"session/cancel"`,
+			"launch --force acp", `"method":"session/resume"`, `"value":"medium"`, `"value":"true"`, "current-after-restart")
 	}
 	for _, line := range strings.Split(wire, "\n") {
 		if strings.Contains(line, "second-question") || strings.Contains(line, "current-after-restart") {
@@ -717,7 +724,7 @@ func serveNativeExecutionClaude(out *json.Encoder, read func() (map[string]any, 
 	}
 	model := "fixture-default"
 	var effort any
-	fast := false
+	var fast any = false
 	serial := 0
 	usage := map[string]any{"input_tokens": 43, "output_tokens": 7, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0}
 	emit := func(body map[string]any) {
@@ -747,11 +754,18 @@ func serveNativeExecutionClaude(out *json.Encoder, read func() (map[string]any, 
 				reply["models"] = []any{
 					map[string]any{"value": "fixture-default", "displayName": "Default"},
 					map[string]any{"value": "fixture-model", "displayName": "Fixture", "supportsAutoMode": true,
-						"supportsEffort": true, "supportedEffortLevels": []string{"high", "low"}, "supportsFastMode": true},
+						"supportsEffort": true, "supportedEffortLevels": []string{"high", "low", "medium"}, "supportsFastMode": true},
 				}
 			case "get_settings":
-				reply["applied"] = map[string]any{"model": model, "effort": effort}
-				reply["effective"] = map[string]any{"fastMode": fast}
+				appliedEffort, effectiveFast := effort, fast
+				if appliedEffort == nil {
+					appliedEffort = "low"
+				}
+				if effectiveFast == nil {
+					effectiveFast = false
+				}
+				reply["applied"] = map[string]any{"model": model, "effort": appliedEffort}
+				reply["effective"] = map[string]any{"fastMode": effectiveFast}
 			case "set_model":
 				model = request["model"].(string)
 			case "apply_flag_settings":
@@ -760,7 +774,12 @@ func serveNativeExecutionClaude(out *json.Encoder, read func() (map[string]any, 
 					effort = value
 				}
 				if value, exists := settings["fastMode"]; exists {
-					fast = value.(bool)
+					if value != nil {
+						if _, ok := value.(bool); !ok {
+							os.Exit(3)
+						}
+					}
+					fast = value
 				}
 			case "set_permission_mode":
 			case "get_context_usage":
@@ -802,7 +821,7 @@ func serveNativeExecutionCursor(out *json.Encoder, read func() (map[string]any, 
 	}
 	settings := func() []any {
 		return []any{selectOption("model", "model", model, "fixture-default", "fixture-model"),
-			selectOption("effort", "thought_level", effort, "low", "high"),
+			selectOption("effort", "thought_level", effort, "low", "medium", "high"),
 			selectOption("fast", "model_config", fast, "false", "true")}
 	}
 	reply := func(id, result any) {
@@ -819,6 +838,13 @@ func serveNativeExecutionCursor(out *json.Encoder, read func() (map[string]any, 
 		case "initialize":
 			reply(id, map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{
 				"loadSession": true, "sessionCapabilities": map[string]any{"close": map[string]any{}, "resume": map[string]any{}},
+			}})
+		case "cursor/list_available_models":
+			reply(id, map[string]any{"models": []any{
+				map[string]any{"value": "fixture-model", "name": "Fixture", "configOptions": []any{
+					selectOption("effort", "thought_level", "medium", "low", "medium", "high"),
+					selectOption("fast", "model_config", "true", "false", "true"),
+				}},
 			}})
 		case "session/new", "session/resume":
 			if frame["method"] == "session/resume" && params["sessionId"] != session {

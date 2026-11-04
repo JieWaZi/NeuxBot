@@ -91,46 +91,10 @@ func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 				return err
 			}
 		}
-		// Read dependent selectors only after the model receipt installs its actual menu.
-		if selection := request.Selection; selection != nil {
-			if selection.Reasoning != "" {
-				i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.Category == "thought_level" })
-				if i < 0 {
-					return status_error.RuntimePolicyUnsupported
-				}
-				if err := t.applySetting(client, SessionSetting{ID: t.effective.Options[i].ID, Value: AgentOptionValue{ID: selection.Reasoning}}); err != nil {
-					return err
-				}
+		if request.Selection != nil {
+			if err := t.applyProviderSelection(client, request.Connection.Account.Provider, *request.Selection); err != nil {
+				return err
 			}
-			fast := selection.Fast
-			i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.ID == "fast" })
-			if fast == nil && i >= 0 {
-				fast = selection.DefaultFast
-			}
-			if fast != nil {
-				if i < 0 {
-					return status_error.RuntimePolicyUnsupported
-				}
-				option := t.effective.Options[i]
-				value := AgentOptionValue{Bool: fast}
-				if option.Value.Bool == nil {
-					value.Bool = nil
-					value.ID = "false"
-					if *fast {
-						value.ID = "true"
-					}
-					if slices.ContainsFunc(option.Choices, func(c AgentChoice) bool { return c.ID == "on" }) {
-						value.ID = "off"
-						if *fast {
-							value.ID = "on"
-						}
-					}
-				}
-				if err := t.applySetting(client, SessionSetting{ID: option.ID, Value: value}); err != nil {
-					return err
-				}
-			}
-			t.requestedFast = fast
 		}
 		for _, setting := range request.Settings {
 			if err := t.applySetting(client, setting); err != nil {
@@ -146,12 +110,102 @@ func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 	return nil
 }
 
+// applyProviderSelection consumes the dependent selectors confirmed by the model setter.
+func (t *Turn) applyProviderSelection(client AgentClient, provider string, selection TurnSelection) error {
+	effort := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.Category == "thought_level" })
+	if selection.Reasoning != "" {
+		if effort < 0 {
+			return status_error.RuntimePolicyUnsupported
+		}
+		option := t.effective.Options[effort]
+		if err := t.applySetting(client, SessionSetting{ID: option.ID, Value: AgentOptionValue{ID: selection.Reasoning}}); err != nil {
+			return err
+		}
+	} else if effort >= 0 {
+		if err := t.applyNativeDefault(client, provider, t.effective.Options[effort]); err != nil {
+			return err
+		}
+	}
+
+	fast := selection.Fast
+	i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.ID == "fast" })
+	if fast == nil && i >= 0 {
+		fast = selection.DefaultFast
+	}
+	if i >= 0 {
+		option := t.effective.Options[i]
+		if fast == nil {
+			if err := t.applyNativeDefault(client, provider, option); err != nil {
+				return err
+			}
+		} else {
+			if err := t.applySetting(client, SessionSetting{ID: option.ID, Value: fastSettingValue(option, fast)}); err != nil {
+				return err
+			}
+		}
+	} else if fast != nil {
+		return status_error.RuntimePolicyUnsupported
+	}
+	t.requestedFast = fast
+	return nil
+}
+
+func fastSettingValue(option AgentSessionOption, fast *bool) AgentOptionValue {
+	if option.Value.Bool != nil {
+		return AgentOptionValue{Bool: fast}
+	}
+	if slices.ContainsFunc(option.Choices, func(c AgentChoice) bool { return c.ID == "on" }) {
+		if *fast {
+			return AgentOptionValue{ID: "on"}
+		}
+		return AgentOptionValue{ID: "off"}
+	}
+	if *fast {
+		return AgentOptionValue{ID: "true"}
+	}
+	return AgentOptionValue{ID: "false"}
+}
+
+func (t *Turn) applyNativeDefault(client AgentClient, provider string, option AgentSessionOption) error {
+	switch provider {
+	case "claude":
+		// Claude 的有效值可能来自用户配置。只清除原生确认过的显式覆盖。
+		if option.acknowledgedID != "" && option.acknowledgedID != "default" {
+			return t.applySetting(client, SessionSetting{ID: option.ID, Value: AgentOptionValue{ID: "default"}})
+		}
+	case "cursor":
+		// Cursor 会跨进程保留模型参数。当前会话值不能作为默认值的证据。
+		model := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.Category == "model" || o.ID == "model" })
+		if model < 0 {
+			return status_error.RuntimePolicyUnsupported
+		}
+		id := t.effective.Options[model].Value.ID
+		catalog, err := client.ReadModels(t.ctx)
+		if err != nil {
+			return err
+		}
+		i := slices.IndexFunc(catalog.Models, func(choice AgentChoice) bool { return choice.ID == id })
+		if i < 0 || catalog.Models[i].Config == nil {
+			return status_error.RuntimePolicyUnsupported
+		}
+		options := catalog.Models[i].Config.Options
+		j := slices.IndexFunc(options, func(candidate AgentSessionOption) bool { return candidate.ID == option.ID })
+		if j < 0 {
+			return status_error.RuntimePolicyUnsupported
+		}
+		return t.applySetting(client, SessionSetting{ID: option.ID, Value: options[j].Value})
+	}
+	return nil
+}
+
 func (t *Turn) applySetting(client AgentClient, setting SessionSetting) error {
 	i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.ID == setting.ID })
 	if i < 0 {
 		return status_error.RuntimePolicyUnsupported
 	}
 	option := t.effective.Options[i]
+	resetClaude := t.binding.Session.Provider == "claude" && setting.Value.ID == "default" &&
+		option.acknowledgedID != "" && option.acknowledgedID != "default"
 	if setting.Value.Bool != nil {
 		if setting.Value.ID != "" || option.Value.Bool == nil {
 			return status_error.RuntimeConfigurationInvalid
@@ -160,7 +214,7 @@ func (t *Turn) applySetting(client AgentClient, setting SessionSetting) error {
 			return nil
 		}
 	} else {
-		if setting.Value.ID != "" && setting.Value.ID == option.Value.ID {
+		if setting.Value.ID != "" && setting.Value.ID == option.Value.ID && !resetClaude {
 			return nil
 		}
 		if !slices.ContainsFunc(option.Choices, func(c AgentChoice) bool { return c.ID == setting.Value.ID }) {
@@ -177,7 +231,12 @@ func (t *Turn) applySetting(client AgentClient, setting SessionSetting) error {
 	if observed < 0 {
 		return status_error.RuntimeConfigurationInvalid
 	}
-	value := t.effective.Options[observed].Value
+	receipt := t.effective.Options[observed]
+	// 清除覆盖后的观测值可能来自用户配置，不要求其恰好等于 default。
+	if resetClaude && receipt.acknowledgedID == "default" {
+		return nil
+	}
+	value := receipt.Value
 	if setting.Value.Bool != nil {
 		if value.Bool == nil || *value.Bool != *setting.Value.Bool {
 			return status_error.RuntimeConfigurationInvalid
@@ -206,6 +265,9 @@ func (t *Turn) setSessionMode(client AgentClient, mode string) error {
 			state.modeRevision++
 		}
 		t.effective = state.effective
+	}
+	if t.effective.Mode != mode {
+		return status_error.RuntimeConfigurationInvalid
 	}
 	return nil
 }
@@ -244,8 +306,10 @@ func applySessionOptions(session *AgentSession, options []AgentSessionOption) bo
 	session.Options = options
 	for _, option := range options {
 		if option.Category == "mode" && option.Value.ID != "" {
+			// 旧设置的同值快照不应覆盖正在确认的新权限。
+			changed := session.Mode != option.Value.ID
 			session.Mode = option.Value.ID
-			return true
+			return changed
 		}
 	}
 	return false

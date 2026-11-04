@@ -27,18 +27,18 @@ func TestThreadModeReceiptFollowsNativeObservationOrder(t *testing.T) {
 		requested = "read-only"
 	)
 	for _, tc := range []struct {
-		// name describes the order of the mode receipt and notifications.
+		// name 描述原生回执和通知到达顺序。
 		name string
-		// observeBeforeReceipt delivers a notification from the active connection before the setter returns.
+		// observeBeforeReceipt 在回执前送达当前连接的权限通知。
 		observeBeforeReceipt bool
-		// rejected reports that the native provider declined the requested mode.
-		rejected bool
-		// want is the published mode after handling the receipt.
+		// wantError 是应返回给接纳调用方的权限设置错误。
+		wantError error
+		// want 是处理回执后对外保留的权限模式。
 		want string
 	}{
 		{name: "accepted without mode notification", want: requested},
-		{name: "current generation observed before receipt", observeBeforeReceipt: true, want: initial},
-		{name: "rejected without mode notification", rejected: true, want: initial},
+		{name: "current generation observed before receipt", observeBeforeReceipt: true, want: initial, wantError: status_error.RuntimeConfigurationInvalid},
+		{name: "rejected without mode notification", wantError: status_error.RuntimePolicyUnsupported, want: initial},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			lifecycle := NewThreadLifecycle(nil, nil)
@@ -60,14 +60,16 @@ func TestThreadModeReceiptFollowsNativeObservationOrder(t *testing.T) {
 				if id != nativeID || mode != requested {
 					t.Fatalf("mode setter received session %q and mode %q", id, mode)
 				}
-				if tc.rejected {
-					return status_error.RuntimePolicyUnsupported
+				if errors.Is(tc.wantError, status_error.RuntimePolicyUnsupported) {
+					return tc.wantError
 				}
 				observed := make(chan struct{})
 				go func() {
 					defer close(observed)
 					lifecycle.applySessionNotification(state, 1, scope, AgentEvent{Kind: "mode", Mode: "retired-owner"})
-					lifecycle.applySessionNotification(state, 2, scope, AgentEvent{Kind: "settings", Options: []AgentSessionOption{{ID: "model"}}})
+					lifecycle.applySessionNotification(state, 2, scope, AgentEvent{Kind: "settings", Options: []AgentSessionOption{
+						{ID: "model"}, {ID: "mode", Category: "mode", Value: AgentOptionValue{ID: initial}},
+					}})
 					if tc.observeBeforeReceipt {
 						lifecycle.applySessionNotification(state, 2, scope, AgentEvent{Kind: "mode", Mode: initial})
 					}
@@ -76,8 +78,14 @@ func TestThreadModeReceiptFollowsNativeObservationOrder(t *testing.T) {
 				return nil
 			}}
 			err := turn.applySettings(setter, ThreadRequest{Mode: requested})
-			if tc.rejected && !errors.Is(err, status_error.RuntimePolicyUnsupported) || !tc.rejected && err != nil {
+			if !errors.Is(err, tc.wantError) {
 				t.Fatalf("mode setter result: %v", err)
+			}
+			if tc.observeBeforeReceipt {
+				err := turn.applySettings(setter, ThreadRequest{Mode: requested})
+				if !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
+					t.Fatalf("permanently contradictory native mode admitted on retry: %v", err)
+				}
 			}
 			if got := turn.observedSession().Mode; got != tc.want {
 				t.Fatalf("published mode = %q, want %q", got, tc.want)
@@ -92,12 +100,14 @@ func TestThreadModeReceiptFollowsNativeObservationOrder(t *testing.T) {
 
 // selectionClient models native menus that change after the model setter's receipt.
 type selectionClient struct {
-	// AgentClient supplies unrelated operations outside this boundary.
+	// AgentClient 提供当前测试不涉及的原生操作。
 	AgentClient
-	// calls records the actual order crossing the native client boundary.
+	// calls 记录跨过客户端边界的设置及顺序。
 	calls []string
-	// options is the latest native receipt, not the host's requested tuple.
+	// options 是原生回执中的当前选项。
 	options []AgentSessionOption
+	// catalog 是原生目录中的模型默认值。
+	catalog AgentModelCatalog
 }
 
 func (c *selectionClient) SetSessionOption(_ context.Context, _, id string, value AgentOptionValue) ([]AgentSessionOption, error) {
@@ -108,6 +118,10 @@ func (c *selectionClient) SetSessionOption(_ context.Context, _, id string, valu
 		}
 	}
 	return cloneOptions(c.options), nil
+}
+
+func (c *selectionClient) ReadModels(context.Context) (AgentModelCatalog, error) {
+	return c.catalog, nil
 }
 
 func (c *selectionClient) SetSessionMode(_ context.Context, _, mode string) error {
@@ -146,5 +160,27 @@ func TestProviderSelectionUsesNativeOptionTypesAndAppliesModeAfterModel(t *testi
 				t.Fatal("accepted Fast intent lost")
 			}
 		})
+	}
+}
+
+func TestCursorInheritRequiresActiveModelDefault(t *testing.T) {
+	client := &selectionClient{
+		options: []AgentSessionOption{
+			{ID: "model", Category: "model", Value: AgentOptionValue{ID: "active"}},
+			{ID: "effort", Category: "thought_level", Value: AgentOptionValue{ID: "high"}, Choices: []AgentChoice{{ID: "high"}, {ID: "low"}}},
+		},
+		catalog: AgentModelCatalog{Models: []AgentChoice{{ID: "other", Config: &AgentModelConfig{
+			Options: []AgentSessionOption{{ID: "effort", Value: AgentOptionValue{ID: "low"}}},
+		}}}},
+	}
+	state := &threadState{effective: AgentSession{ID: "native", Options: cloneOptions(client.options)}}
+	turn := &Turn{ctx: t.Context(), lifecycle: NewThreadLifecycle(nil, nil), thread: state,
+		binding: NativeBinding{Session: NativeSessionKey{Provider: "cursor", SessionID: "native"}}, effective: state.effective}
+	err := turn.applySettings(client, ThreadRequest{
+		Connection: ProviderConnectionRequest{Account: AccountRequest{Provider: "cursor"}},
+		Selection:  &TurnSelection{},
+	})
+	if !errors.Is(err, status_error.RuntimePolicyUnsupported) || len(client.calls) != 0 {
+		t.Fatalf("unproven native default was applied: err=%v native calls=%v", err, client.calls)
 	}
 }
