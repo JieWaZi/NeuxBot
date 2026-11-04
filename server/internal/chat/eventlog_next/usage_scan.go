@@ -25,7 +25,7 @@ var usageTerminalQuery = "SELECT cursor, at, loc_offset, loc_length, loc_checksu
 	"INDEXED BY " + usageTerminalIndex + " WHERE stream = ? AND cursor > ? AND cursor <= ? AND " +
 	usageTerminalPredicate + " ORDER BY cursor LIMIT ?"
 
-// UsageTerminal exposes one Codex terminal fact without resolving its final text.
+// UsageTerminal exposes one provider terminal fact without resolving its final text.
 type UsageTerminal struct {
 	// Cursor is the canonical position inside the named native shard.
 	Cursor int64
@@ -93,7 +93,7 @@ func (s *Store) UsageHighWater(ctx context.Context, shard int) (int64, error) {
 }
 
 // ReadUsageTerminals seeks only terminal positions in a bounded canonical prefix.
-// Next covers every position examined, including terminals of other providers.
+// Next covers every position examined, independently of provider or usage availability.
 func (s *Store) ReadUsageTerminals(ctx context.Context, shard int, after, through int64) ([]UsageTerminal, int64, error) {
 	if shard < 0 || shard >= UsageShards || after < 0 || through < after {
 		return nil, after, status_error.BadRequest
@@ -137,11 +137,9 @@ func (s *Store) ReadUsageTerminals(ctx context.Context, shard int, after, throug
 		if err != nil || row.Terminal == nil {
 			return nil, after, status_error.ChatLogCorrupted
 		}
-		if row.Terminal.Result.Key.Session.Provider == "codex" {
-			result := row.Terminal.Result
-			result.FinalMessage = nil
-			rows = append(rows, UsageTerminal{Cursor: pos.Cursor, RecordedAt: pos.At, Result: result})
-		}
+		result := row.Terminal.Result
+		result.FinalMessage = nil
+		rows = append(rows, UsageTerminal{Cursor: pos.Cursor, RecordedAt: pos.At, Result: result})
 	}
 	next := through
 	if len(positions) == indexReadBatch {

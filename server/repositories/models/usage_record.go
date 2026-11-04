@@ -7,7 +7,7 @@ func init() {
 	dbhelper.RegisterTable(&UsageCheckpoint{})
 }
 
-// UsageRecord is the rebuildable projection of one canonical Codex terminal.
+// UsageRecord is the rebuildable projection of one canonical provider terminal.
 type UsageRecord struct {
 	// ID is the monotonic projection sequence used for snapshots.
 	ID int64 `gorm:"primaryKey;autoIncrement;index:idx_usage_time,priority:2;index:idx_usage_waker_time,priority:3"`

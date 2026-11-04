@@ -19,6 +19,13 @@ import (
 )
 
 func TestCanonicalUsageRebuildAndSnapshot(t *testing.T) {
+	for _, provider := range []string{"codex", "claude", "cursor"} {
+		t.Run(provider, func(t *testing.T) { verifyCanonicalUsageRebuildAndSnapshot(t, provider) })
+	}
+}
+
+func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
+	t.Helper()
 	root := t.TempDir()
 	store, err := eventlog_next.NewStore(root)
 	if err != nil {
@@ -27,11 +34,11 @@ func TestCanonicalUsageRebuildAndSnapshot(t *testing.T) {
 	defer func() { store.Close() }()
 	ctx := t.Context()
 	zero, input, output, read, thought := int64(0), int64(7), int64(11), int64(3), int64(2)
-	session := agent.NativeSessionKey{Provider: "codex", Subject: "frozen-subject", SessionID: "native"}
+	session := agent.NativeSessionKey{Provider: provider, Subject: "frozen-subject", SessionID: "native"}
 	first := agent.NativeResult{
 		Key: agent.NativeResultKey{Session: session, InvocationID: "p1"},
 		Turn: acpmeta.NativeTurn{InvocationID: "p1", Origin: acpmeta.NativeTurnOriginProvider, Status: acpmeta.NativeTurnCompleted,
-			Usage: &acpmeta.TurnUsage{Source: "codex", Coverage: "last_request",
+			Usage: &acpmeta.TurnUsage{Source: provider, Coverage: "last_request",
 				InputTokens: &input, OutputTokens: &output, CacheReadTokens: &read, CacheWriteTokens: &zero, ReasoningTokens: &thought,
 				Observations: []acpmeta.UsageObservation{{Coverage: "overlap", Tokens: acpmeta.ModelUsage{InputTokens: &input}}}}},
 	}
@@ -76,7 +83,11 @@ func TestCanonicalUsageRebuildAndSnapshot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := projection.ResetProjection(ctx); err != nil {
+	// Simulate an older projection that advanced over non-Codex terminals.
+	if err := db.Model(&models.UsageCheckpoint{}).Where("shard = -1").Update("generation", "legacy-codex-only").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("1 = 1").Delete(&models.UsageRecord{}).Error; err != nil {
 		t.Fatal(err)
 	}
 	summary, err = NewService(store, projection).Summary(ctx, rangeFilter, "")

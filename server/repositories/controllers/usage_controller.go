@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -11,6 +12,9 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// usageProjectionFormat changes when replay must recover previously excluded facts.
+const usageProjectionFormat = "providers-v1:"
 
 // UsageController manages the disposable terminal usage projection.
 type UsageController struct {
@@ -31,10 +35,27 @@ func (c *UsageController) Checkpoints(ctx context.Context) ([]models.UsageCheckp
 	if err := read(); err != nil {
 		return nil, databaseError("read_usage_checkpoints", "", err)
 	}
-	if len(checkpoints) == 0 {
-		marker := models.UsageCheckpoint{Shard: -1, Generation: uuid.NewString()}
-		if err := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&marker).Error; err != nil {
-			return nil, databaseError("create_usage_generation", "", err)
+	if len(checkpoints) == 0 || !strings.HasPrefix(checkpoints[0].Generation, usageProjectionFormat) {
+		// Re-read under the same transaction that retires the derived projection.
+		// Concurrent readers cannot reset a generation another reader just installed.
+		if err := c.transactions.Transaction(ctx, func(ctx context.Context) error {
+			db := controllerDB(ctx, c.db)
+			var marker models.UsageCheckpoint
+			if err := db.Where("shard = -1").Limit(1).Find(&marker).Error; err != nil {
+				return err
+			}
+			if strings.HasPrefix(marker.Generation, usageProjectionFormat) {
+				return nil
+			}
+			if err := db.Where("1 = 1").Delete(&models.UsageRecord{}).Error; err != nil {
+				return err
+			}
+			if err := db.Where("1 = 1").Delete(&models.UsageCheckpoint{}).Error; err != nil {
+				return err
+			}
+			return db.Create(&models.UsageCheckpoint{Shard: -1, Generation: usageProjectionFormat + uuid.NewString()}).Error
+		}); err != nil {
+			return nil, err
 		}
 		if err := read(); err != nil {
 			return nil, databaseError("read_usage_checkpoints", "", err)

@@ -1,4 +1,4 @@
-// Package usage reports consumption from canonical Codex terminal results.
+// Package usage reports consumption from canonical provider terminal results.
 package usage
 
 import (
