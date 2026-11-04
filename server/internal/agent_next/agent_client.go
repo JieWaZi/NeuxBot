@@ -603,9 +603,23 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 	}
 	switch account.Provider {
 	case constants.RuntimeIDCodex:
+		if lease.CodexCredentialKind != "" {
+			for _, arg := range launch.PrefixArgs {
+				if arg == "-c" || strings.HasPrefix(arg, "-c=") || strings.HasPrefix(arg, "--config") || arg == "-p" || strings.HasPrefix(arg, "--profile") {
+					return nil, status_error.AIAccountConfigurationInvalid
+				}
+			}
+		}
+		config := maps.Clone(launch.CodexConfig)
+		if config == nil {
+			config = make(map[string]json.RawMessage)
+		}
+		for key, value := range lease.CodexConfig {
+			config[key] = value
+		}
 		client.native, err = codex.NewClient(ctx, codex.Options{
 			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
-			Environment: env, ConfigOverrides: launch.CodexConfig,
+			Environment: env, StartupConfig: lease.CodexConfig, ConfigOverrides: config,
 		}, host)
 	case constants.RuntimeIDClaude:
 		client.native, err = claude.NewClient(ctx, claude.Options{
@@ -700,6 +714,15 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 	}
 	if err := merge(auth.Environment); err != nil {
 		return nil, err
+	}
+	// Managed credentials are selected by the lease, not inherited API credentials.
+	if provider == constants.RuntimeIDCodex && lease.CodexCredentialKind != "" {
+		for key := range environment {
+			upper := strings.ToUpper(key)
+			if strings.HasPrefix(upper, "OPENAI_") || upper == "CODEX_API_KEY" || upper == "NEUX_CODEX_ACCOUNT_API_KEY" {
+				delete(environment, key)
+			}
+		}
 	}
 	// Only the selected launch and account can supply the provider's config root.
 	delete(environment, homeVariable)

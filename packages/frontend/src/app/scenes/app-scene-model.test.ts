@@ -455,3 +455,18 @@ describe("应用 Scene 模型", () => {
     expect(snapshot.activeTabId).toBe(chat.id);
   });
 });
+
+it("用量筛选保存在同一个场景的 URL 中", () => {
+  const first = resolveRouteScene(
+    { pathname: "/usage", search: "?groupBy=model" },
+    { ...labels, usage: "用量统计" },
+  );
+  const next = resolveRouteScene(
+    { pathname: "/usage", search: "?groupBy=waker" },
+    { ...labels, usage: "用量统计" },
+  );
+  expect(first.id).toBe("usage");
+  expect(next.id).toBe(first.id);
+  expect(next.href).toBe("/usage?groupBy=waker");
+  expect(next.label).toBe("用量统计");
+});

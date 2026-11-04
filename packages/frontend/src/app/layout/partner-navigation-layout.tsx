@@ -85,6 +85,7 @@ type PartnerNavigationLayoutProps = {
   onOpenAutomaticTasks: () => void;
   onOpenResources?: () => void;
   onOpenKnowledge?: () => void;
+  onOpenUsage?: () => void;
   onOpenSettings: () => void;
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
   onSceneNavigationVisibleChange: (visible: boolean) => void;
@@ -208,6 +209,7 @@ function PartnerNavigationLayoutContent({
   onOpenAutomaticTasks,
   onOpenResources,
   onOpenKnowledge,
+  onOpenUsage,
   onOpenSettings,
   onPreferencesChange,
   onSceneNavigationVisibleChange,
@@ -403,6 +405,7 @@ function PartnerNavigationLayoutContent({
               onOpenAutomaticTasks={onOpenAutomaticTasks}
               onOpenResources={onOpenResources}
               onOpenKnowledge={onOpenKnowledge}
+              onOpenUsage={onOpenUsage}
               onReorder={updateOrder}
               onSelectPartner={onSelectPartner}
               onSelectTeam={onSelectTeam}

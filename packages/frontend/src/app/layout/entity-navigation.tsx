@@ -19,6 +19,7 @@ import { CSS } from "@dnd-kit/utilities";
 import {
   Package,
   BookOpen,
+  ChartNoAxesCombined,
   ArrowLeftRight,
   CircleAlert,
   Clock3,
@@ -72,6 +73,7 @@ type EntityNavigationProps = {
   onOpenAutomaticTasks?: () => void;
   onOpenResources?: () => void;
   onOpenKnowledge?: () => void;
+  onOpenUsage?: () => void;
   collapsed: boolean;
   entityStatus?: "error" | "loading" | "ready";
   floating?: boolean;
@@ -380,6 +382,7 @@ export function EntityNavigation({
   onOpenAutomaticTasks,
   onOpenResources,
   onOpenKnowledge,
+  onOpenUsage,
   collapsed,
   entityStatus = "ready",
   floating = false,
@@ -902,6 +905,34 @@ export function EntityNavigation({
                 {collapsed ? (
                   <TooltipContent side="right">
                     {t("knowledge:knowledge")}
+                  </TooltipContent>
+                ) : null}
+              </Tooltip>
+            ) : null}
+            {onOpenUsage ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  {collapsed ? (
+                    <Button
+                      size="icon"
+                      variant="choice"
+                      aria-label={t("usage:title")}
+                      onClick={onOpenUsage}
+                    >
+                      <ChartNoAxesCombined />
+                    </Button>
+                  ) : (
+                    <NavigationItem
+                      density="navigation"
+                      icon={<ChartNoAxesCombined strokeWidth={1.5} />}
+                      label={t("usage:title")}
+                      onClick={onOpenUsage}
+                    />
+                  )}
+                </TooltipTrigger>
+                {collapsed ? (
+                  <TooltipContent side="right">
+                    {t("usage:title")}
                   </TooltipContent>
                 ) : null}
               </Tooltip>

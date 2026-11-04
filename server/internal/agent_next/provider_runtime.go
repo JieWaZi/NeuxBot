@@ -44,6 +44,10 @@ type AccountLease struct {
 	Environment map[string]string
 	// ConfigHome is the account's authoritative native configuration root when supplied.
 	ConfigHome string
+	// CodexConfig fixes account-owned native provider configuration for startup and sessions.
+	CodexConfig map[string]json.RawMessage
+	// CodexCredentialKind selects the native account kind required by this lease.
+	CodexCredentialKind string
 	// VerifyCodexCredential compares the initialized Codex process proof with the selected credential.
 	VerifyCodexCredential func(context.Context, [sha256.Size]byte) error
 	// CursorQuota optionally binds management reads to the selected native login.
@@ -346,12 +350,6 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 		return err
 	}
 	account.CWD = cwd
-	if account.ConfigHome != "" && request.Launch.ConfigHome != "" {
-		root, err := resolveAgentDirectory(request.Launch.ConfigHome)
-		if err != nil || root != account.ConfigHome {
-			return status_error.AIAccountConfigurationInvalid
-		}
-	}
 
 	if err := ctx.Err(); err != nil {
 		return err
@@ -359,6 +357,12 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	c.accountLease, err = c.runtime.options.AcquireAccount(ctx, account)
 	if err != nil {
 		return safeAgentError(err, status_error.AIAccountConfigurationInvalid)
+	}
+	if account.ConfigHome != "" && request.Launch.ConfigHome != "" {
+		root, err := resolveAgentDirectory(request.Launch.ConfigHome)
+		if err != nil || root != account.ConfigHome {
+			return status_error.AIAccountConfigurationInvalid
+		}
 	}
 	if account.ConfigHome != "" && c.accountLease.ConfigHome != account.ConfigHome {
 		return status_error.AIAccountConfigurationInvalid
@@ -416,10 +420,14 @@ func (c *providerConnection) verifyCodexCredential(ctx context.Context, verify f
 	if err != nil {
 		return err
 	}
-	if account.Account == nil || account.Account.Kind != "account" {
+	kind := c.accountLease.CodexCredentialKind
+	if kind == "" {
+		kind = "account"
+	}
+	if account.Account == nil || account.Account.Kind != kind {
 		return status_error.RuntimeAuthRequired
 	}
-	reportedRoot, proof, err := native.ChatGPTCredentialProof(ctx)
+	reportedRoot, proof, err := native.CredentialProof(ctx, kind)
 	if err != nil {
 		return safeAgentError(err, status_error.RuntimeAuthRequired)
 	}

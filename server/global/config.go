@@ -48,6 +48,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/services/notification"
 	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
 	"github.com/JieWaZi/NeuxBot/server/services/schedule"
+	"github.com/JieWaZi/NeuxBot/server/services/usage"
 	"github.com/JieWaZi/NeuxBot/server/services/workflow"
 	"github.com/JieWaZi/neux-knowledge/core"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -144,6 +145,8 @@ var (
 	RuntimeEnvironmentControllerManager controllers.RuntimeEnvironmentController
 	// RuntimeEnvironmentService 提供 Runtime 环境初始化和探测生命周期。
 	RuntimeEnvironmentService runtimeenvironment.Service
+	// UsageService reads the rebuildable projection of canonical native consumption.
+	UsageService *usage.Service
 	// ChatService 提供 Chat 的全部稳定业务能力。
 	ChatService chat.Module
 	// ExecutionService 提供所有产品入口共用的工作准备与执行能力。
@@ -459,8 +462,11 @@ func loadRuntime(ctx context.Context) error {
 		return mapCoreError("initialize_runtime_sdk", status_error.CoreRuntimeInitializationFailed, err)
 	}
 	RuntimeCatalog = sdk
+	AgentProviders = agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: AIAccountService.AcquireCodexAccount})
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
 		Accounts:                  AIAccountService,
+		ProviderRuntime:           AgentProviders,
+		ResolveCodexAccount:       AIAccountService.ResolveCodexAccount,
 		AccountWorkspaceDirectory: filepath.Join(Config.DataDirectory, "account-workspaces"),
 		RuntimeCatalog:            RuntimeCatalog,
 		Environments:              RuntimeEnvironmentControllerManager,
@@ -502,8 +508,22 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 	if err := ChatService.Start(ctx); err != nil {
 		return mapCoreError("start_chat_service", status_error.CoreChatInitializationFailed, err)
 	}
-	AgentProviders = agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: aiaccount.AcquireCodexSystemAccount})
 	AgentThreads = agent.NewThreadLifecycle(AgentProviders, conversations)
+	UsageService = usage.NewService(conversations, controllers.NewUsageController(DB))
+	hub := EventHub
+	conversations.SetUsageChanged(func() {
+		hub.Publish(events.Event{Topic: "usage", Type: "usage.changed", Resource: events.Resource{Kind: "global"}})
+	})
+	AIAccountService.SetIdleSessionCloser(AgentThreads.CloseIdleAccount)
+	providers, environments := AgentProviders, RuntimeEnvironmentService
+	AIAccountService.SetCodexAuthInvalidator(func(ctx context.Context, id string, generation uint64) {
+		environments.InvalidateModelCatalog(id, generation)
+		closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+		defer cancel()
+		if err := providers.InvalidateAccount(closeCtx, constants.RuntimeIDCodex, id, generation); err != nil {
+			logx.Warn("invalidate_codex_account: ", err)
+		}
+	})
 	executionCore, err := execution.New(execution.Config{
 		ValidateIntent: func(ctx context.Context, intent execution.WorkIntent) error {
 			if KnowledgeService == nil {
@@ -538,7 +558,7 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		},
 		Accounts:            AIAccountService,
 		Threads:             AgentThreads,
-		ResolveAccount:      aiaccount.ResolveCodexSystemAccount,
+		ResolveAccount:      AIAccountService.ResolveCodexAccount,
 		RuntimeSummaries:    RuntimeCatalog.Runtimes(),
 		Journal:             chatModule,
 		DormantChats:        chatModule,

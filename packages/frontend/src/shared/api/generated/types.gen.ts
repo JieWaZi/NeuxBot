@@ -822,6 +822,10 @@ export type GithubComJieWaZiNeuxBotServerApisChatsMessageRequest = {
      * 连接器列表
      */
     connectorIds?: Array<string>;
+    /**
+     * Fast
+     */
+    fast?: boolean;
     historyMode?: GithubComJieWaZiNeuxBotServerConstantsHistoryMode & unknown;
     /**
      * 最近对话轮数
@@ -4377,17 +4381,99 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeInstallation =
 };
 
 /**
+ * 原生模型目录
+ */
+export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelCatalogResponse = {
+    /**
+     * 账号标识
+     */
+    accountId?: string;
+    /**
+     * 认证代次
+     */
+    authGeneration?: number;
+    /**
+     * 原生默认模型
+     */
+    defaultModel?: string;
+    /**
+     * 最近成功时间
+     */
+    detectedAt?: number;
+    /**
+     * 刷新错误
+     */
+    errorCode?: string;
+    /**
+     * 模型
+     */
+    models?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption>;
+    /**
+     * 智能体标识
+     */
+    runtimeId?: string;
+    /**
+     * 发现来源
+     */
+    source?: string;
+    /**
+     * 发现状态
+     */
+    state?: string;
+    /**
+     * 原生版本
+     */
+    version?: string;
+};
+
+/**
  * 模型选项
  */
 export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption = {
+    /**
+     * 已确认逐模型设置
+     */
+    configurationKnown?: boolean;
     /**
      * 自定义模型
      */
     custom?: boolean;
     /**
+     * 原生默认 Fast
+     */
+    defaultFast?: boolean;
+    /**
+     * 默认推理
+     */
+    defaultReasoning?: string;
+    /**
+     * 原生默认服务档位
+     */
+    defaultServiceTier?: string;
+    /**
+     * 描述
+     */
+    description?: string;
+    /**
+     * 支持 Fast
+     */
+    fastSupported?: boolean;
+    /**
+     * 分组标识
+     */
+    group?: string;
+    /**
+     * 分组名称
+     */
+    groupName?: string;
+    /**
      * 标识
      */
     id?: string;
+    /**
+     * 输入类型
+     */
+    inputModalities?: Array<string>;
     /**
      * 名称
      */
@@ -4400,6 +4486,10 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption = 
      * 推理选项
      */
     reasoningOptions?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption>;
+    /**
+     * 原生服务档位
+     */
+    serviceTiers?: Array<GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption>;
 };
 
 /**
@@ -4435,6 +4525,10 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption = {
      * 默认账号
      */
     defaultAccountId?: string;
+    /**
+     * 默认 Fast
+     */
+    defaultFast?: boolean;
     /**
      * 默认模型
      */
@@ -4536,6 +4630,10 @@ export type GithubComJieWaZiNeuxBotServerApisRuntimeOptionsUpdateRuntimeEnvironm
      * 默认账号
      */
     defaultAccountId?: string;
+    /**
+     * 默认 Fast
+     */
+    defaultFast?: boolean;
     /**
      * 默认模型
      */
@@ -7674,6 +7772,26 @@ export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageRunMetric
      * StartedAt 是 Host 确认执行开始的 Unix 毫秒时间。
      */
     startedAt?: number;
+    tokenUsage?: GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageTokenUsage & unknown;
+};
+
+export type GithubComJieWaZiNeuxBotServerInternalChatMessageviewMessageTokenUsage = GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics & {
+    /**
+     * Complete says the invocation and its additive counters are fully covered.
+     */
+    complete?: boolean;
+    /**
+     * Coverage describes the scope of the primary observation.
+     */
+    coverage?: string;
+    /**
+     * InvocationID is the canonical digest for deduplication across continuations.
+     */
+    invocationId?: string;
+    /**
+     * Source identifies the primary native usage observation.
+     */
+    source?: string;
 };
 
 /**
@@ -8673,6 +8791,68 @@ export type GithubComJieWaZiNeuxBotServerInternalProfileWorkMethod = {
     steps?: Array<string>;
 };
 
+/**
+ * TokenMetrics keeps complete counts and known subtotals separately.
+ */
+export type GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics = {
+    /**
+     * IncompleteUsageInvocations counts observations with incomplete scope or additive counters.
+     */
+    incompleteUsageInvocations?: number;
+    /**
+     * Invocations counts canonical native invocations.
+     */
+    invocations?: number;
+    knownTokens?: GithubComJieWaZiNeuxBotServerInternalUsageTokens & unknown;
+    /**
+     * KnownTotalWithCacheRead is the known subtotal including cache reads.
+     */
+    knownTotalWithCacheRead?: number | null;
+    /**
+     * KnownTotalWithoutCacheRead is the known subtotal excluding cache reads.
+     */
+    knownTotalWithoutCacheRead?: number | null;
+    /**
+     * MissingUsageInvocations counts invocations without token evidence.
+     */
+    missingUsageInvocations?: number;
+    tokens?: GithubComJieWaZiNeuxBotServerInternalUsageTokens & unknown;
+    /**
+     * TotalWithCacheRead is the complete total including cache reads.
+     */
+    totalWithCacheRead?: number | null;
+    /**
+     * TotalWithoutCacheRead is the complete total excluding cache reads.
+     */
+    totalWithoutCacheRead?: number | null;
+};
+
+/**
+ * Tokens preserves unknown counters as nil and measured zero as zero.
+ */
+export type GithubComJieWaZiNeuxBotServerInternalUsageTokens = {
+    /**
+     * CacheRead counts input tokens read from cache.
+     */
+    cacheRead?: number | null;
+    /**
+     * CacheWrite counts input tokens written to cache.
+     */
+    cacheWrite?: number | null;
+    /**
+     * Input counts input tokens outside cache reads and writes.
+     */
+    input?: number | null;
+    /**
+     * Output counts output tokens including reasoning.
+     */
+    output?: number | null;
+    /**
+     * Reasoning is the reasoning subset of output.
+     */
+    reasoning?: number | null;
+};
+
 export type GithubComJieWaZiNeuxBotServerInternalWorkflowDslActionDeclaration = {
     allowedOrigins?: Array<string>;
     connectorIds?: Array<string>;
@@ -9543,6 +9723,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesControllersWorkflowNodeCoun
  * AIAccount 保存可由智能体默认配置及聊天选择的受管账号。
  */
 export type GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount = {
+    /**
+     * 认证代次
+     */
+    authGeneration?: number;
     authMode?: GithubComJieWaZiNeuxBotServerConstantsAccountAuthMode & unknown;
     /**
      * ClaudeModelRoles 保存 Claude Code 各内置模型角色对应的实际请求模型 ID。
@@ -10196,6 +10380,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsChat = {
     lastEndedExecutionId?: string;
     lastEndedExecutionStatus?: GithubComJieWaZiNeuxBotServerConstantsExecutionStatus & unknown;
     /**
+     * LastFast 是最近执行冻结的 Fast 意图。
+     */
+    lastFast?: boolean;
+    /**
      * LastModel 是最近一次执行选择的模型标识。
      */
     lastModel?: string;
@@ -10284,6 +10472,10 @@ export type GithubComJieWaZiNeuxBotServerRepositoriesModelsExecution = {
      * ErrorCode 是失败时供调用方本地化的稳定错误码。
      */
     errorCode?: string;
+    /**
+     * Fast 是本次执行冻结的 Fast 意图，空值使用原生行为。
+     */
+    fast?: boolean;
     /**
      * ID 是 32 位无连字符 UUID。
      */
@@ -12753,6 +12945,166 @@ export type GithubComJieWaZiNeuxBotServerServicesScheduleTaskView = GithubComJie
 };
 
 /**
+ * Amount is a known subtotal in one currency, valuation kind, and source.
+ */
+export type GithubComJieWaZiNeuxBotServerServicesUsageAmount = {
+    /**
+     * Amount is an exact decimal string.
+     */
+    amount?: string;
+    /**
+     * Currency is the original currency.
+     */
+    currency?: string;
+    /**
+     * IncompleteInvocations counts the partially priced calls in this amount.
+     */
+    incompleteInvocations?: number;
+    /**
+     * Invocations counts the calls included in the amount.
+     */
+    invocations?: number;
+    /**
+     * Origin distinguishes native valuations from host API-equivalent estimates.
+     */
+    origin?: string;
+    /**
+     * PriceVersions lists the rates used in this subtotal.
+     */
+    priceVersions?: Array<string>;
+    /**
+     * Source identifies the valuation evidence.
+     */
+    source?: string;
+    /**
+     * Valuation distinguishes reported amounts from estimates.
+     */
+    valuation?: string;
+};
+
+/**
+ * Coverage describes which canonical evidence was available.
+ */
+export type GithubComJieWaZiNeuxBotServerServicesUsageCoverage = {
+    /**
+     * EarliestRetainedAt is the oldest retained terminal commit time in this snapshot.
+     */
+    earliestRetainedAt?: number | null;
+    /**
+     * IndeterminateInvocations counts dispatched work without terminal evidence when known.
+     */
+    indeterminateInvocations?: number | null;
+    /**
+     * LegacyBackgroundUnknown marks the gap before canonical terminal collection.
+     */
+    legacyBackgroundUnknown?: boolean;
+    /**
+     * Reasons lists structured coverage gaps.
+     */
+    reasons?: Array<string>;
+    /**
+     * State reports whether coverage has known gaps.
+     */
+    state?: string;
+};
+
+/**
+ * Filter selects a half-open time range and optional admission attribution.
+ */
+export type GithubComJieWaZiNeuxBotServerServicesUsageFilter = {
+    /**
+     * AccountID optionally selects the original host account.
+     */
+    accountId?: string;
+    /**
+     * ChatID optionally selects the original conversation.
+     */
+    chatId?: string;
+    /**
+     * From is the inclusive Unix millisecond bound.
+     */
+    from?: number;
+    /**
+     * Source optionally selects the host entry point.
+     */
+    source?: string;
+    /**
+     * Timezone is the IANA zone for calendar-day grouping.
+     */
+    timezone?: string;
+    /**
+     * To is the exclusive Unix millisecond bound.
+     */
+    to?: number;
+    /**
+     * WakerIDs optionally selects original partners.
+     */
+    wakerIds?: Array<string>;
+};
+
+/**
+ * Group contains usage for a day, model, or partner in this snapshot.
+ */
+export type GithubComJieWaZiNeuxBotServerServicesUsageGroup = {
+    /**
+     * Key is the grouping identity. An empty key means attribution is unknown.
+     */
+    key?: string;
+    metrics?: GithubComJieWaZiNeuxBotServerServicesUsageMetrics & unknown;
+};
+
+export type GithubComJieWaZiNeuxBotServerServicesUsageGroupsPage = GithubComJieWaZiNeuxBotServerServicesUsageSummary & {
+    /**
+     * Groups is the current group page.
+     */
+    groups?: Array<GithubComJieWaZiNeuxBotServerServicesUsageGroup>;
+    /**
+     * HasMore reports whether another group page exists.
+     */
+    hasMore?: boolean;
+    /**
+     * NextCursor is the signed anchor for the next page.
+     */
+    nextCursor?: string;
+    /**
+     * TotalGroups counts all groups in the same filter.
+     */
+    totalGroups?: number;
+};
+
+export type GithubComJieWaZiNeuxBotServerServicesUsageMetrics = GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics & {
+    /**
+     * Amounts separates currencies and valuation sources.
+     */
+    amounts?: Array<GithubComJieWaZiNeuxBotServerServicesUsageAmount>;
+    /**
+     * ComparisonAmounts contains estimates excluded from the main subtotal.
+     */
+    comparisonAmounts?: Array<GithubComJieWaZiNeuxBotServerServicesUsageAmount>;
+    /**
+     * IncompleteCostInvocations counts calls with a partial amount.
+     */
+    incompleteCostInvocations?: number;
+    /**
+     * UnpricedInvocations counts calls without an attributable amount.
+     */
+    unpricedInvocations?: number;
+};
+
+/**
+ * Summary reports exact known subtotals for a snapshot.
+ */
+export type GithubComJieWaZiNeuxBotServerServicesUsageSummary = {
+    coverage?: GithubComJieWaZiNeuxBotServerServicesUsageCoverage & unknown;
+    metrics?: GithubComJieWaZiNeuxBotServerServicesUsageMetrics & unknown;
+    range?: GithubComJieWaZiNeuxBotServerServicesUsageFilter & unknown;
+    /**
+     * Snapshot fixes the projection boundary for subsequent grouped reads.
+     */
+    snapshot?: string;
+};
+
+/**
  * OutputFile 是最终输出 schema 中明确声明的可下载文件。
  */
 export type GithubComJieWaZiNeuxBotServerServicesWorkflowOutputFile = {
@@ -14139,6 +14491,7 @@ export type ReadErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -14196,6 +14549,9 @@ export type ReadErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -14469,6 +14825,7 @@ export type CommandErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -14526,6 +14883,9 @@ export type CommandErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -14802,11 +15162,26 @@ export type DeleteAiAccountData = {
 export type DeleteAiAccountErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
      * * `[AIAccountBusy][40900000027]`
      * * `[AIAccountInUse][40900000029]`
+     * * `[AIAccountRevisionConflict][40900000028]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type DeleteAiAccountError = DeleteAiAccountErrors[keyof DeleteAiAccountErrors];
@@ -14839,9 +15214,18 @@ export type UpdateAiAccountErrors = {
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountRevisionConflict][40900000028]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type UpdateAiAccountError = UpdateAiAccountErrors[keyof UpdateAiAccountErrors];
@@ -14851,6 +15235,55 @@ export type UpdateAiAccountResponses = {
 };
 
 export type UpdateAiAccountResponse = UpdateAiAccountResponses[keyof UpdateAiAccountResponses];
+
+export type LogoutAiAccountData = {
+    body?: never;
+    path: {
+        /**
+         * 账号标识
+         */
+        accountId: string;
+    };
+    query?: {
+        /**
+         * 配置版本
+         */
+        revision?: number;
+    };
+    url: '/api/v1/ai-accounts/{accountId}/credential';
+};
+
+export type LogoutAiAccountErrors = {
+    /**
+     * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountBusy][40900000027]`
+     * * `[AIAccountRevisionConflict][40900000028]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[AIAccountCredentialError][50000000046]`
+     * * `[AIAccountWorkspaceError][50000000047]`
+     * * `[RuntimeAuthRequired][50000000044]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type LogoutAiAccountError = LogoutAiAccountErrors[keyof LogoutAiAccountErrors];
+
+export type LogoutAiAccountResponses = {
+    200: GithubComShrewxGinxCommonResponse;
+};
+
+export type LogoutAiAccountResponse = LogoutAiAccountResponses[keyof LogoutAiAccountResponses];
 
 export type GetAiAccountCredentialData = {
     body?: never;
@@ -14980,6 +15413,7 @@ export type StartAiAccountLoginErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -15037,6 +15471,9 @@ export type StartAiAccountLoginErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -15319,6 +15756,7 @@ export type CancelAiAccountLoginErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -15376,6 +15814,9 @@ export type CancelAiAccountLoginErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -15856,6 +16297,7 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -15913,6 +16355,9 @@ export type ListGlobalAutomaticTasksErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -16277,6 +16722,7 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -16334,6 +16780,9 @@ export type GetGlobalAutomaticTaskErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -16612,6 +17061,7 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -16669,6 +17119,9 @@ export type UpdateWorkflowAutomaticTaskErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -18380,6 +18833,7 @@ export type StreamEventsErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -18437,6 +18891,9 @@ export type StreamEventsErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -19415,6 +19872,7 @@ export type UpdateMcpServiceErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -19472,6 +19930,9 @@ export type UpdateMcpServiceErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -19844,6 +20305,7 @@ export type UpdateApiServiceErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -19901,6 +20363,9 @@ export type UpdateApiServiceErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -28625,6 +29090,7 @@ export type ListPluginsErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -28682,6 +29148,9 @@ export type ListPluginsErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -29181,6 +29650,7 @@ export type PrepareCatalogPluginErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -29238,6 +29708,9 @@ export type PrepareCatalogPluginErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -29750,6 +30223,7 @@ export type GetPluginErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -29807,6 +30281,9 @@ export type GetPluginErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -30680,6 +31157,7 @@ export type InstallPluginErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -30737,6 +31215,9 @@ export type InstallPluginErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -31362,6 +31843,33 @@ export type UpdateRuntimeEnvironmentResponses = {
 };
 
 export type UpdateRuntimeEnvironmentResponse = UpdateRuntimeEnvironmentResponses[keyof UpdateRuntimeEnvironmentResponses];
+
+export type GetRuntimeModelCatalogData = {
+    body?: never;
+    path: {
+        /**
+         * 智能体标识
+         */
+        runtimeId: string;
+    };
+    query?: {
+        /**
+         * 账号标识
+         */
+        accountId?: string;
+        /**
+         * 主动刷新
+         */
+        refresh?: boolean;
+    };
+    url: '/api/v1/runtimes/{runtimeId}/models';
+};
+
+export type GetRuntimeModelCatalogResponses = {
+    200: GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelCatalogResponse;
+};
+
+export type GetRuntimeModelCatalogResponse = GetRuntimeModelCatalogResponses[keyof GetRuntimeModelCatalogResponses];
 
 export type RefreshRuntimeData = {
     body?: never;
@@ -32013,6 +32521,7 @@ export type SetAutomaticTaskApiErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -32070,6 +32579,9 @@ export type SetAutomaticTaskApiErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -32451,6 +32963,190 @@ export type StageUploadResponses = {
 
 export type StageUploadResponse = StageUploadResponses[keyof StageUploadResponses];
 
+export type ListUsageGroupsData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * AccountID 是原始宿主账号标识。
+         */
+        accountId?: string;
+        /**
+         * ChatID 是原始对话标识。
+         */
+        chatId?: string;
+        /**
+         * Cursor 是同一快照的下一页游标。
+         */
+        cursor?: string;
+        /**
+         * From 是包含的 Unix 毫秒下界。
+         */
+        from: number;
+        /**
+         * GroupBy 选择自然日、模型或伙伴。
+         */
+        groupBy: string;
+        /**
+         * Limit 是页大小，零使用默认值 50。
+         */
+        limit?: number;
+        /**
+         * Snapshot 是概要返回的不透明快照。
+         */
+        snapshot: string;
+        /**
+         * Source 是原始调用入口。
+         */
+        source?: string;
+        /**
+         * Timezone 是 IANA 时区。
+         */
+        timezone: string;
+        /**
+         * To 是排除的 Unix 毫秒上界。
+         */
+        to: number;
+        /**
+         * WakerIDs 是逗号分隔的原始伙伴标识。
+         */
+        wakerIds?: string;
+    };
+    url: '/api/v1/usage/groups';
+};
+
+export type ListUsageGroupsErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[Conflict][40900000001]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type ListUsageGroupsError = ListUsageGroupsErrors[keyof ListUsageGroupsErrors];
+
+export type ListUsageGroupsResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesUsageGroupsPage;
+};
+
+export type ListUsageGroupsResponse = ListUsageGroupsResponses[keyof ListUsageGroupsResponses];
+
+export type GetUsageSummaryData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * AccountID 是原始宿主账号标识。
+         */
+        accountId?: string;
+        /**
+         * ChatID 是原始对话标识。
+         */
+        chatId?: string;
+        /**
+         * From 是包含的 Unix 毫秒下界。
+         */
+        from: number;
+        /**
+         * Snapshot 是概要返回的不透明快照。
+         */
+        snapshot?: string;
+        /**
+         * Source 是原始调用入口。
+         */
+        source?: string;
+        /**
+         * Timezone 是 IANA 时区。
+         */
+        timezone: string;
+        /**
+         * To 是排除的 Unix 毫秒上界。
+         */
+        to: number;
+        /**
+         * WakerIDs 是逗号分隔的原始伙伴标识。
+         */
+        wakerIds?: string;
+    };
+    url: '/api/v1/usage/summary';
+};
+
+export type GetUsageSummaryErrors = {
+    /**
+     * >
+     * * `[BadRequest][40000000001]`
+     *
+     */
+    400: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseOperationCancelled][40800001001]`
+     * * `[OperationCanceled][40800000001]`
+     * * `[OperationTimeout][40800000002]`
+     *
+     */
+    408: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[Conflict][40900000001]`
+     *
+     */
+    409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[ChatLogCorrupted][50000000014]`
+     * * `[ChatLogError][50000000004]`
+     * * `[ChatLogIndexCorrupted][50000000015]`
+     * * `[DatabaseError][50000000002]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[DatabaseBusy][50300001001]`
+     *
+     */
+    503: GithubComShrewxGinxPkgStatuserrorStatusErr;
+};
+
+export type GetUsageSummaryError = GetUsageSummaryErrors[keyof GetUsageSummaryErrors];
+
+export type GetUsageSummaryResponses = {
+    200: GithubComJieWaZiNeuxBotServerServicesUsageSummary;
+};
+
+export type GetUsageSummaryResponse = GetUsageSummaryResponses[keyof GetUsageSummaryResponses];
+
 export type ListWakersData = {
     body?: never;
     path?: never;
@@ -32736,6 +33432,7 @@ export type ListAutomaticTasksErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -32793,6 +33490,9 @@ export type ListAutomaticTasksErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -33138,6 +33838,7 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -33195,6 +33896,9 @@ export type ListAutomaticTaskAttentionErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -33506,6 +34210,7 @@ export type DeleteAutomaticTaskErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -33563,6 +34268,9 @@ export type DeleteAutomaticTaskErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -33845,6 +34553,7 @@ export type GetAutomaticTaskErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -33902,6 +34611,9 @@ export type GetAutomaticTaskErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -34335,6 +35047,7 @@ export type ListAutomaticRunsErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -34392,6 +35105,9 @@ export type ListAutomaticRunsErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -34674,6 +35390,7 @@ export type TriggerAutomaticTaskErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -34731,6 +35448,9 @@ export type TriggerAutomaticTaskErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -35452,6 +36172,7 @@ export type ListWakerPluginsErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -35509,6 +36230,9 @@ export type ListWakerPluginsErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -36952,6 +37676,7 @@ export type CreateWorkflowErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -37009,6 +37734,9 @@ export type CreateWorkflowErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -37300,6 +38028,7 @@ export type DeleteWorkflowErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -37357,6 +38086,9 @@ export type DeleteWorkflowErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -37658,6 +38390,7 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -37715,6 +38448,9 @@ export type CreateWorkflowAnnotationErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -37993,6 +38729,7 @@ export type EditWorkflowConfigurationErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -38050,6 +38787,9 @@ export type EditWorkflowConfigurationErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -38328,6 +39068,7 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -38385,6 +39126,9 @@ export type SendWorkflowCreationMessageErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -38751,6 +39495,7 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -38808,6 +39553,9 @@ export type RestoreWorkflowRevisionErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -39117,6 +39865,7 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -39174,6 +39923,9 @@ export type DeleteWorkflowRevisionErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -39483,6 +40235,7 @@ export type StartWorkflowRunErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -39540,6 +40293,9 @@ export type StartWorkflowRunErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -39822,6 +40578,7 @@ export type DeleteWorkflowRunErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -39879,6 +40636,9 @@ export type DeleteWorkflowRunErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -40269,6 +41029,7 @@ export type AnswerWorkflowHumanErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -40326,6 +41087,9 @@ export type AnswerWorkflowHumanErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -40612,6 +41376,7 @@ export type GetWorkflowInstanceErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -40669,6 +41434,9 @@ export type GetWorkflowInstanceErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -40955,6 +41723,7 @@ export type SkipWorkflowWorkerErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -41012,6 +41781,9 @@ export type SkipWorkflowWorkerErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -41298,6 +42070,7 @@ export type AnswerWorkflowOperationErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -41355,6 +42128,9 @@ export type AnswerWorkflowOperationErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -41637,6 +42413,7 @@ export type RetryWorkflowRunErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -41694,6 +42471,9 @@ export type RetryWorkflowRunErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`
@@ -42046,6 +42826,7 @@ export type SaveWorkflowSourceErrors = {
      * * `[ChannelTaskNotFound][40400000015]`
      * * `[ChannelThreadNotFound][40400000013]`
      * * `[ChatMessageFileChangeNotFound][40400000011]`
+     * * `[ChatMessageNotFound][40400007201]`
      * * `[ChatNotFound][40400000005]`
      * * `[ExecutionNotFound][40400000004]`
      * * `[IMResourceNotFound][40400004001]`
@@ -42103,6 +42884,9 @@ export type SaveWorkflowSourceErrors = {
      * * `[ChatForkIndeterminate][40900000026]`
      * * `[ChatForkUnavailable][40900000025]`
      * * `[ChatHasActiveExecution][40900000006]`
+     * * `[ChatLogIdempotencyConflict][40900007202]`
+     * * `[ChatLogNativeOutcomePending][40900007203]`
+     * * `[ChatLogVersionConflict][40900007201]`
      * * `[Conflict][40900000001]`
      * * `[CreateRequestConflict][40900000023]`
      * * `[CreateRequestInProgress][40900000022]`

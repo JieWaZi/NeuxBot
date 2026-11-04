@@ -14,6 +14,7 @@ export type RouteSceneLabels = {
   knowledge?: string;
   resources: string;
   workBoard?: string;
+  usage?: string;
   im?: string;
   automaticTask?: string;
   workflow?: string;
@@ -98,6 +99,8 @@ export function routeSceneForLocation(
     pathname.startsWith("/resources/")
   )
     return routeTab("resources", labels.resources, location);
+  if (pathname === "/usage")
+    return routeTab("usage", labels.usage || labels.page, location);
   if (pathname === "/work-board")
     return routeTab("work-board", labels.workBoard || labels.page, location);
   const workflow = /^\/workflows(?:\/([^/]+)(?:\/runs\/([^/]+))?)?$/.exec(

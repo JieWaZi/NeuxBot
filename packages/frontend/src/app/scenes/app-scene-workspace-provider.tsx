@@ -40,6 +40,7 @@ export function AppSceneWorkspaceProvider({
       knowledge: t("knowledge:knowledge"),
       resources: t("plugin:title"),
       workBoard: t("workBoard:title"),
+      usage: t("usage:title"),
       im: t("im:title"),
       automaticTask: t("automaticTask:title"),
       workflow: t("workflow:title"),

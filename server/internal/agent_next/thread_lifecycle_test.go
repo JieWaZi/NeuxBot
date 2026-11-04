@@ -1678,3 +1678,27 @@ func TestThreadTurnColdExplicitEnvironmentChangeReplacesNativeSession(t *testing
 		t.Fatalf("replacement did not receive the previous complete turn: %s", line)
 	}
 }
+
+func TestCodexAccountMutationPreservesActiveTurnAndDrainsIdle(t *testing.T) {
+	lifecycle, _, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	turn, err := lifecycle.Prepare(t.Context(), req, agent.TurnRequest{Text: "fixture", HostInvocationID: "account-active", ExecutionID: "execution", AssistantMessageID: "assistant"}, agent.TurnPorts{Admit: func(context.Context, agent.TurnAdmission) (agent.ConversationBatch, error) {
+		return agent.ConversationBatch{}, status_error.AgentOperationForbidden
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := lifecycle.CloseIdleAccount(t.Context(), req.Connection.Account.AccountID); !errors.Is(err, status_error.AIAccountBusy) {
+		t.Fatalf("active account mutation = %v", err)
+	}
+	if err := lifecycle.CloseIdleAccount(t.Context(), "unrelated-account"); err != nil {
+		t.Fatal(err)
+	}
+	result := turn.Run(t.Context())
+	if !errors.Is(result.OperationError, status_error.AgentOperationForbidden) {
+		t.Fatalf("active turn was cancelled: %+v", result)
+	}
+	if err := lifecycle.CloseIdleAccount(t.Context(), req.Connection.Account.AccountID); err != nil {
+		t.Fatal(err)
+	}
+}

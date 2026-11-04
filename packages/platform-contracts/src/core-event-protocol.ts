@@ -8,6 +8,7 @@ export const globalEventTopics = [
   "automatic-tasks",
   "im",
   "runtimes",
+  "usage",
   "system",
   "chat",
   "team",

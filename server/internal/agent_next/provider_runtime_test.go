@@ -28,6 +28,8 @@ func TestProviderRuntimeVerifiesCodexSystemCredentialBeforePublishing(t *testing
 		name string
 		// account supplies the native account kind.
 		account string
+		// credentialKind selects the lease authentication kind.
+		credentialKind string
 		// accessToken supplies the native process proof.
 		accessToken string
 		// wrongRoot introduces a conflict before starting the native process.
@@ -37,6 +39,8 @@ func TestProviderRuntimeVerifiesCodexSystemCredentialBeforePublishing(t *testing
 		// wantErr is the public startup failure.
 		wantErr error
 	}{
+		{name: "matching api key", credentialKind: "api_key", account: "apiKey", accessToken: "fixture-selected"},
+		{name: "api key wrong mode", credentialKind: "api_key", account: "chatgpt", accessToken: "fixture-selected", wantErr: status_error.RuntimeAuthRequired},
 		{name: "matching", account: "chatgpt", accessToken: "fixture-selected"},
 		{name: "wrong native credential", account: "chatgpt", accessToken: "fixture-other", wantErr: status_error.RuntimeAuthRequired},
 		{name: "wrong native login kind", account: "apiKey", accessToken: "fixture-selected", wantErr: status_error.RuntimeAuthRequired},
@@ -58,7 +62,7 @@ func TestProviderRuntimeVerifiesCodexSystemCredentialBeforePublishing(t *testing
 			releases := &providerReleaseTrace{}
 			runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: func(context.Context, AccountRequest) (AccountLease, error) {
 				return AccountLease{
-					ConfigHome: req.Account.ConfigHome, Close: releases.add("account"),
+					CodexCredentialKind: tc.credentialKind, ConfigHome: req.Account.ConfigHome, Close: releases.add("account"),
 					VerifyCodexCredential: func(_ context.Context, proof [sha256.Size]byte) error {
 						if proof != sha256.Sum256([]byte("fixture-selected")) {
 							return status_error.RuntimeAuthRequired
@@ -78,9 +82,7 @@ func TestProviderRuntimeVerifiesCodexSystemCredentialBeforePublishing(t *testing
 			if err := conn.Close(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			if !tc.wrongRoot {
-				releases.require(t, "account")
-			}
+			releases.require(t, "account")
 		})
 	}
 }
@@ -647,7 +649,11 @@ func TestProviderRuntimeChild(t *testing.T) {
 				}
 				reply["result"] = result
 			case "getAuthStatus":
-				reply["result"] = map[string]any{"authMethod": "chatgpt", "authToken": os.Getenv("FIXTURE_CODEX_TOKEN"), "requiresOpenaiAuth": true}
+				method := "chatgpt"
+				if os.Getenv("FIXTURE_CODEX_ACCOUNT") == "apiKey" {
+					method = "apikey"
+				}
+				reply["result"] = map[string]any{"authMethod": method, "authToken": os.Getenv("FIXTURE_CODEX_TOKEN"), "requiresOpenaiAuth": true}
 			case "thread/fork":
 				reply["result"] = map[string]any{"thread": map[string]any{"id": "fixture-child"}, "model": "fixture-model"}
 			case "model/list":

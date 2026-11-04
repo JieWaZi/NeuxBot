@@ -389,3 +389,16 @@ func TestProviderClientMessageReplacementRequiresExactTextIdentity(t *testing.T)
 		t.Fatalf("append and replacement mixed: %+v", event)
 	}
 }
+
+func TestManagedCodexEnvironmentUsesOnlySelectedCredential(t *testing.T) {
+	launch := ProviderLaunch{BaseEnvironment: map[string]string{"OPENAI_API_KEY": "inherited", "CODEX_API_KEY": "other", "PATH": "/fixture"}, Environment: map[string]string{"OPENAI_BASE_URL": "https://wrong.invalid", "NEUX_CODEX_ACCOUNT_API_KEY": "wrong"}}
+	lease := AccountLease{CodexCredentialKind: "api_key", ConfigHome: t.TempDir(), Environment: map[string]string{"NEUX_CODEX_ACCOUNT_API_KEY": "selected"}}
+	env, err := nativeLaunchEnvironment("codex", launch, lease, LaunchAuthLease{}, ResourceLease{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(env, "\n")
+	if strings.Contains(joined, "inherited") || strings.Contains(joined, "wrong") || strings.Contains(joined, "other") || !strings.Contains(joined, "NEUX_CODEX_ACCOUNT_API_KEY=selected") {
+		t.Fatalf("credential authority lost: %s", joined)
+	}
+}

@@ -438,6 +438,7 @@ function AppShellContent({
       resources: t("plugin:title"),
       knowledge: t("knowledge:knowledge"),
       workBoard: t("workBoard:title"),
+      usage: t("usage:title"),
       im: t("im:title"),
       automaticTask: t("automaticTask:title"),
       workflow: t("workflow:title"),
@@ -600,6 +601,18 @@ function AppShellContent({
               ),
             });
           }}
+          onOpenUsage={() => {
+            setSceneNavigationVisible(false);
+            const href = "/usage";
+            navigate(href, { flushSync: true });
+            appScenes.dispatch({
+              type: "open",
+              tab: routeSceneForLocation(
+                { pathname: href, search: "" },
+                routeSceneLabels,
+              ),
+            });
+          }}
           onOpenSettings={openSettings}
           onPreferencesChange={setPreferences}
           onSceneNavigationVisibleChange={setSceneNavigationVisible}
@@ -609,7 +622,7 @@ function AppShellContent({
           sceneNavigationVisible={sceneNavigationVisible}
           sceneContentFlush={
             (isChatSurface ||
-              /^\/(?:knowledge|resources|work-board|workflows|im|automatic-tasks)(?:\/|$)/.test(
+              /^\/(?:knowledge|resources|usage|work-board|workflows|im|automatic-tasks)(?:\/|$)/.test(
                 location.pathname,
               )) &&
             !settingsOpen

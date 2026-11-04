@@ -69,6 +69,8 @@ type threadState struct {
 	id string
 	// chatID is the durable public Chat identity, empty for detached work.
 	chatID string
+	// admittedAccount identifies the selection whose preparation currently owns the seat.
+	admittedAccount providerAccount
 	// active is the actual Turn holding the seat from preparation through settlement.
 	active *Turn
 	// binding caches a committed native session address and its compatibility key.
@@ -133,6 +135,7 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 	}
 	t := newTurn(context.WithoutCancel(ctx), l, state, input, ports)
 	state.active = t
+	state.admittedAccount = providerAccount{provider: request.Connection.Account.Provider, id: request.Connection.Account.AccountID}
 	l.mu.Unlock()
 
 	stopPrepare := context.AfterFunc(ctx, t.cancel)
@@ -493,6 +496,43 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 func newTurnID() string {
 	id := uuid.New()
 	return hex.EncodeToString(id[:])
+}
+
+// CloseIdleAccount drains idle consumers while the account authority blocks new leases.
+// Active work is checked before withdrawing any idle thread, so a failed mutation
+// cannot cancel a conversation or leave unrelated idle owners permanently fenced.
+func (l *ThreadLifecycle) CloseIdleAccount(ctx context.Context, accountID string) error {
+	l.mu.Lock()
+	selected := make([]*threadState, 0)
+	for _, state := range l.threads {
+		connected := state.connection != nil && state.connection.account.id == accountID
+		admitted := state.active != nil && state.admittedAccount.id == accountID
+		if !connected && !admitted {
+			continue
+		}
+		if state.active != nil {
+			l.mu.Unlock()
+			return status_error.AIAccountBusy
+		}
+		selected = append(selected, state)
+	}
+	for _, state := range selected {
+		state.closing = true
+	}
+	l.mu.Unlock()
+	var result error
+	for _, state := range selected {
+		if err := l.closeConnection(ctx, state); err != nil {
+			result = errors.Join(result, err)
+			continue
+		}
+		l.mu.Lock()
+		if l.threads[state.id] == state {
+			delete(l.threads, state.id)
+		}
+		l.mu.Unlock()
+	}
+	return result
 }
 
 // CloseThread withdraws admission, waits for the captured Turn and retries its process release.

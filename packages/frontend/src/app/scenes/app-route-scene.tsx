@@ -6,6 +6,7 @@ import {
   Routes,
   useParams,
   useLocation,
+  useSearchParams,
 } from "react-router-dom";
 
 import { ResourcesPage } from "@/app/pages/resources-page";
@@ -16,6 +17,9 @@ import {
   PluginSkillDetailPage,
   PluginConnectorDetailPage,
 } from "@/modules/plugin";
+import { UsagePage } from "@/modules/usage";
+import { useQuery } from "@tanstack/react-query";
+import { listWakersOptions } from "@/modules/waker";
 import { WorkBoardPage } from "@/modules/work-board";
 
 import type { ChatRightPanel } from "@/modules/chat";
@@ -56,6 +60,24 @@ export type AppRouteSceneProps = {
 
 function RouteSceneOutlet({ context }: { context: AppRouteOutletContext }) {
   return <Outlet context={context} />;
+}
+
+function UsageScene() {
+  const [search, setSearch] = useSearchParams();
+  const wakers = useQuery(
+    listWakersOptions({ query: { pageNum: 1, pageSize: 100 } }),
+  );
+  return (
+    <UsagePage
+      search={search}
+      onSearchChange={setSearch}
+      wakerOptions={
+        wakers.data?.resources?.flatMap((waker) =>
+          waker.id ? [{ value: waker.id, label: waker.name || waker.id }] : [],
+        ) ?? []
+      }
+    />
+  );
 }
 
 function LegacyAutomaticTaskRoute() {
@@ -122,6 +144,7 @@ export function AppRouteScene({ location, outletContext }: AppRouteSceneProps) {
           path="wakers/:wakerId/plugins/:pluginId/skills/:skillKey"
           element={<PluginSkillDetailPage />}
         />
+        <Route path="usage" element={<UsageScene />} />
         <Route path="work-board" element={<WorkBoardPage />} />
         <Route path="wakers" element={<WakerListPage />} />
         <Route path="wakers/:wakerId" element={<WakerDetailPage />} />
