@@ -11,15 +11,17 @@ import (
 )
 
 func TestReadExecutionOutcomeRecoversLegacyAndLastMatchingInvocation(t *testing.T) {
-	m, chatID := forkFixture(t)
-	legacy, err := m.ReadExecutionOutcome(context.Background(), chatID, "before")
+	root := t.TempDir()
+	schemaOne, err := eventlog.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if legacy.TerminationReason != constants.RuntimeTerminationReasonUnknown || legacy.StopReason != "" || legacy.Execution.Status != constants.ExecutionStatusCompleted {
-		t.Fatalf("legacy guessed complete: %+v", legacy)
-	}
-	_, err = m.logStore.Append(chatID, []eventlog.AppendInput{
+	chatID := "12345678901234567890123456789012"
+	_, err = schemaOne.Create(chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "before", Data: marshalData(eventlog.ExecutionCreatedData{})},
+		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: "before", Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial})},
+		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "before", Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
 		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "target", Data: marshalData(eventlog.ExecutionCreatedData{})},
 		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "target", InvocationID: "retry-1"},
 		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: "target", InvocationID: "retry-1", Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, StopReason: "end_turn", TerminationReason: constants.RuntimeTerminationReasonNormal})},
@@ -34,12 +36,14 @@ func TestReadExecutionOutcomeRecoversLegacyAndLastMatchingInvocation(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 替换进程内日志 Store，重新从同一路径的权威 JSONL 恢复。
-	reopened, err := eventlog.NewStore(m.logStore.Root())
+	_, m := newRecoveryTestService(t, root)
+	legacy, err := m.ReadExecutionOutcome(context.Background(), chatID, "before")
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.logStore = reopened
+	if legacy.TerminationReason != constants.RuntimeTerminationReasonUnknown || legacy.StopReason != "" || legacy.Execution.Status != constants.ExecutionStatusCompleted {
+		t.Fatalf("legacy guessed complete: %+v", legacy)
+	}
 	outcome, err := m.ReadExecutionOutcome(context.Background(), chatID, "target")
 	if err != nil {
 		t.Fatal(err)
