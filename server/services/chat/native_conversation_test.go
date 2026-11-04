@@ -285,3 +285,82 @@ func TestChatReadsLegacyRecordsThroughConversationStore(t *testing.T) {
 		t.Fatalf("legacy outcome = %+v, err = %v", outcome, err)
 	}
 }
+
+func TestChatTerminalUsageProjectionFollowsAuthority(t *testing.T) {
+	for _, native := range []bool{false, true} {
+		name := "schema-one"
+		wantInput := int64(60)
+		if native {
+			name = "canonical-outcome-without-usage"
+			wantInput = 0
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := t.Context()
+			root := t.TempDir()
+			id := "dddddddddddddddddddddddddddddddd"
+			legacy, err := eventlog.NewStore(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			finished := marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
+			facts := []eventlog.AppendInput{
+				{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})},
+				{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "exec", Data: []byte(`{}`)},
+				{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "exec", InvocationID: "legacy-invocation"},
+				{Type: constants.ChatEventTypeAssistantMessage, MessageID: "exec", ExecutionID: "exec", Data: marshalData(eventlog.RuntimeMessageData{
+					Content:         []eventlog.RuntimeMessageContent{{Type: constants.RuntimeEventTypeUsage, Data: []byte(`{"turn":{"input_tokens":60}}`)}},
+					MessageRevision: 4,
+				})},
+			}
+			if !native {
+				facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "exec", Data: finished})
+			}
+			records, err := legacy.Create(id, facts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, chats := newRecoveryTestService(t, root)
+			if native {
+				store := chats.logStore.(*conversationJournal).Store
+				session := agent.NativeSessionKey{Provider: "codex", Subject: "subject", SessionID: "session"}
+				key := agent.NativeResultKey{Session: session, InvocationID: "native-outcome"}
+				if err := store.CommitNativeResult(ctx, agent.NativeResult{Key: key, Turn: acpmeta.NativeTurn{
+					InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost, Status: acpmeta.NativeTurnCompleted, ConsumedInputIDs: []string{"input"},
+				}}); err != nil {
+					t.Fatal(err)
+				}
+				_, err := store.Commit(ctx, agent.ConversationBatch{ChatID: id, Key: "native-outcome", ExpectedVersion: records[len(records)-1].Sequence,
+					Changes: []agent.ConversationChange{
+						{Binding: &agent.NativeBinding{Session: session}},
+						{Input: &agent.HostInput{Session: session, HostInvocationID: "host", AdapterInputID: "input", ExecutionID: "exec", AssistantMessageID: "exec"}},
+						{Consumption: &agent.InputConsumption{HostInvocationID: "host", Result: key}},
+						{Message: &agent.MessageChange{MessageID: "exec", ExecutionID: "exec", Kind: agent.MessageComplete}},
+						{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "exec", Data: finished}},
+					}})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			history, err := chats.ReadMessageHistory(ctx, id, 0, 1)
+			if err != nil || len(history.Resources) != 1 || history.Resources[0].RunMetrics == nil ||
+				history.Resources[0].RunMetrics.InputTokens != wantInput {
+				t.Fatalf("message history = %+v, err = %v", history, err)
+			}
+			subscription, err := chats.SubscribeEvents(ctx, id, 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer subscription.Close()
+			for _, event := range subscription.Backlog {
+				if event.Type != constants.ChatEventTypeExecutionCompleted {
+					continue
+				}
+				if event.Message == nil || event.Message.RunMetrics == nil || event.Message.RunMetrics.InputTokens != wantInput {
+					t.Fatalf("terminal = %+v, message = %+v, want input tokens %d", event, event.Message, wantInput)
+				}
+				return
+			}
+			t.Fatal("terminal missing from public replay")
+		})
+	}
+}

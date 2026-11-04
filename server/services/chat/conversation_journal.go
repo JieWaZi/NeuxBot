@@ -576,14 +576,17 @@ func (j *conversationJournal) applyPublic(ctx context.Context, adapter *eventstr
 	}
 	switch row.Type {
 	case constants.ChatEventTypeExecutionCompleted, constants.ChatEventTypeExecutionFailed, constants.ChatEventTypeExecutionCanceled:
-		usage, err := j.nativeUsage(ctx, row.ChatID, row.ExecutionID)
+		outcome, err := j.nativeOutcome(ctx, row.ChatID, row.ExecutionID)
 		if err != nil {
 			return eventstream.PublicEvent{}, false, err
 		}
-		projected, err := adapter.ApplyNativeTerminal(row, usage)
-		return projected, true, err
-	default:
-		projected, err := adapter.Apply(row)
-		return projected, true, err
+		// An existing native result replaces usage even when it reports no counters.
+		// Legacy executions without that result retain the usage already replayed.
+		if outcome != nil {
+			projected, err := adapter.ApplyNativeTerminal(row, outcome.Turn.Usage)
+			return projected, true, err
+		}
 	}
+	projected, err := adapter.Apply(row)
+	return projected, true, err
 }
