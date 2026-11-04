@@ -9,9 +9,9 @@ import (
 )
 
 type sessionModeSetter struct {
-	// AgentClient 提供本测试不调用的原生操作。
+	// AgentClient supplies native operations outside the scope of this test.
 	AgentClient
-	// set 控制原生模式设置调用的回执与观察顺序。
+	// set controls the order of the native mode receipt and observations.
 	set func(context.Context, string, string) error
 }
 
@@ -26,13 +26,13 @@ func TestThreadModeReceiptFollowsNativeObservationOrder(t *testing.T) {
 		requested = "read-only"
 	)
 	for _, tc := range []struct {
-		// name 描述模式设置回执与通知的相对顺序。
+		// name describes the order of the mode receipt and notifications.
 		name string
-		// observeBeforeReceipt 模拟设置调用尚未返回时收到同代模式通知。
+		// observeBeforeReceipt delivers a notification from the active connection before the setter returns.
 		observeBeforeReceipt bool
-		// rejected 表示原生拒绝设置请求。
+		// rejected reports that the native provider declined the requested mode.
 		rejected bool
-		// want 是回执处理后的公开模式。
+		// want is the published mode after handling the receipt.
 		want string
 	}{
 		{name: "accepted without mode notification", want: requested},

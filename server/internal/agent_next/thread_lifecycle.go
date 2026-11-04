@@ -18,25 +18,25 @@ const turnSettlementTimeout = 15 * time.Second
 
 // ThreadRequest freezes the public owner, session settings and authorized resources.
 type ThreadRequest struct {
-	// ChatID 标识公开聊天，独立任务留空。
+	// ChatID identifies a public conversation. Empty creates private detached work.
 	ChatID string
-	// Connection 指定实际程序、账号和授权资源。
+	// Connection describes the actual executable, account and resource selection.
 	Connection ProviderConnectionRequest
-	// Session 指定仅作用于本会话的原生设置。
+	// Session describes native settings scoped to this session.
 	Session AgentSessionOptions
-	// Settings 按依赖顺序指定提交前应用的原生选项。
+	// Settings lists exact native selectors to apply before submission, in dependency order.
 	Settings []SessionSetting
-	// Mode 指定服务商提供的原生执行模式。
+	// Mode selects a native execution policy, when the provider exposes modes.
 	Mode string
-	// ResourceGeneration 在所选连接器或其物化资源原位更新时变化。
+	// ResourceGeneration changes when a selected connector or materialization changes in place.
 	ResourceGeneration uint64
-	// HistoryTurns 覆盖替换会话时用于交接的完整轮数。
+	// HistoryTurns overrides the number of complete turns to seed on replacement.
 	HistoryTurns int
-	// ForceNew 要求本轮替换原生会话，不影响后续轮次的兼容性判断。
+	// ForceNew replaces the native session for this turn without changing binding compatibility.
 	ForceNew bool
-	// Summarize 在替换时优先使用旧原生会话生成的私有摘要。
+	// Summarize prefers a hidden handoff on the previous native session.
 	Summarize bool
-	// Fork 要求原生分叉。
+	// Fork requests a real native fork instead of a new session or resume.
 	Fork *AgentForkRequest
 }
 
@@ -63,29 +63,29 @@ type ThreadLifecycle struct {
 }
 
 type threadState struct {
-	// id 是线程在生命周期中的索引键。
+	// id is the index key for this thread.
 	id string
-	// chatID 是持久化 Chat 标识，独立任务留空。
+	// chatID is the durable public Chat identity, empty for detached work.
 	chatID string
-	// active 是从准备到收尾期间独占线程的 Turn。
+	// active is the actual Turn holding the seat from preparation through settlement.
 	active *Turn
-	// binding 缓存已提交的原生会话地址和兼容性依据。
+	// binding caches a committed native session address and its compatibility key.
 	binding *NativeBinding
-	// effective 保存复用兼容原生进程所需的会话设置。
+	// effective retains the session configuration needed to reuse a compatible process.
 	effective AgentSession
-	// optionsRevision 防止设置回执覆盖更新的原生选项通知。
+	// optionsRevision prevents a synchronous request from overwriting newer native observations.
 	optionsRevision uint64
-	// modeRevision 让模式设置回执保留其间收到的原生模式通知。
+	// modeRevision prevents a mode receipt from overwriting newer native mode notifications.
 	modeRevision uint64
-	// generation 排除复用同一原生会话标识的旧连接回调。
+	// generation fences callbacks emitted by a prior connection using the same native session ID.
 	generation uint64
-	// connection 引用 ProviderRuntime 中的原生进程所有者。
+	// connection is a reference to the process owner in ProviderRuntime.
 	connection *providerConnection
-	// reader 等待独立到达的原生结果。
+	// reader owns the wait for independently arriving native results.
 	reader *nativeOutcomeReader
-	// closing 阻止替换操作越过清理。
+	// closing prevents replacements from overtaking cleanup.
 	closing bool
-	// closeMu 串行化同一连接的清理尝试。
+	// closeMu serializes cleanup attempts on the same connection reference.
 	closeMu sync.Mutex
 }
 

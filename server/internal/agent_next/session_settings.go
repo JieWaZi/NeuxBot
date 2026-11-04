@@ -80,7 +80,7 @@ func (t *Turn) setSessionMode(client AgentClient, mode string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if state.connection == t.conn && state.effective.ID == sessionID {
-		// 成功回执确认模式已被接受。并行到达的原生模式通知优先。
+		// A successful setter confirms the mode. A newer native notification takes precedence.
 		if state.modeRevision == revision {
 			state.effective.Mode = mode
 			state.modeRevision++
