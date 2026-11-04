@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
@@ -33,7 +34,7 @@ func ParseAmount(value string) (*big.Rat, int, bool) {
 }
 
 // NativeAmount accepts an amount scoped to this invocation or an observed subset of it.
-func NativeAmount(c *acpmeta.UsageCost) (string, bool) {
+func NativeAmount(provider string, c *acpmeta.UsageCost) (string, bool) {
 	if c == nil || c.Aggregation != "turn_delta" || c.Source == "" || len(c.Source) > 128 ||
 		len(c.Currency) != 3 || strings.IndexFunc(c.Currency, func(c rune) bool { return c < 'A' || c > 'Z' }) != -1 ||
 		(c.Valuation != "reported" && c.Valuation != "estimated") {
@@ -41,6 +42,11 @@ func NativeAmount(c *acpmeta.UsageCost) (string, bool) {
 	}
 	switch c.Scope {
 	case "turn", "invocation", "observed_requests", "last_request":
+	case "query_pipeline":
+		// Claude's result supplies a list-price delta for its full query pipeline.
+		if provider != constants.RuntimeIDClaude || c.Source != "claude.result.cost" || c.Currency != "USD" || c.Valuation != "estimated" {
+			return "", false
+		}
 	default:
 		return "", false
 	}
@@ -49,7 +55,7 @@ func NativeAmount(c *acpmeta.UsageCost) (string, bool) {
 		return "", false
 	}
 	// Keep the validated source text so the projection can apply the same bounds.
-	return amount, c.Scope == "turn" || c.Scope == "invocation"
+	return amount, c.Scope == "turn" || c.Scope == "invocation" || c.Scope == "query_pipeline"
 }
 
 // CodexPriceProof identifies request-level evidence for a published API rate.

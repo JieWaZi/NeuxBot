@@ -26,6 +26,14 @@ func ReadTokens(snapshot *acpmeta.TurnUsage) Tokens {
 	if snapshot == nil {
 		return Tokens{}
 	}
+	return ReadModelTokens(acpmeta.ModelUsage{
+		InputTokens: snapshot.InputTokens, CacheReadTokens: snapshot.CacheReadTokens, CacheWriteTokens: snapshot.CacheWriteTokens,
+		OutputTokens: snapshot.OutputTokens, ReasoningTokens: snapshot.ReasoningTokens,
+	})
+}
+
+// ReadModelTokens validates the same canonical counters for a model's share of the invocation.
+func ReadModelTokens(snapshot acpmeta.ModelUsage) Tokens {
 	valid := func(value *int64) *int64 {
 		if value == nil || *value < 0 {
 			return nil

@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 	ledger "github.com/JieWaZi/NeuxBot/server/internal/usage"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 const snapshotLifetime = 20 * time.Minute
@@ -133,10 +135,10 @@ type groupCursor struct {
 	Snapshot [32]byte `json:"s"`
 	// Group 将游标绑定到分组维度。
 	Group string `json:"g"`
-	// Last 是上一页的最后一个分组标识。
-	Last string `json:"l"`
-	// Provider 是上一页最后一个模型分组的原生后端。
-	Provider string `json:"p,omitempty"`
+	// Day 是自然日分组上一页的最后一天。
+	Day string `json:"d,omitempty"`
+	// RowID 是数据库分组上一页最后一组的快照行序号。
+	RowID int64 `json:"r,omitempty"`
 }
 
 // Summary reads exact range totals at one projection boundary.
@@ -176,26 +178,25 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 		return GroupsPage{}, err
 	}
 	digest := sha256.Sum256([]byte(token))
-	var after *controllers.UsageGroupKey
+	var after groupCursor
 	if cursor != "" {
-		var anchor groupCursor
-		if !s.decode("groups", cursor, &anchor) || anchor.Group != group || anchor.Snapshot != digest {
+		if !s.decode("groups", cursor, &after) || after.Group != group || after.Snapshot != digest ||
+			group == "day" && after.Day == "" || group != "day" && after.RowID <= 0 {
 			return GroupsPage{}, status_error.BadRequest
 		}
-		after = &controllers.UsageGroupKey{Key: anchor.Last, Provider: anchor.Provider}
 	}
 	scope := query(filter, view)
 	totals := newAccumulator()
 	groups := make(map[controllers.UsageGroupKey]*accumulator)
-	var keys []controllers.UsageGroupKey
+	var keys []controllers.UsageGroupPageKey
 	var count int64
 	if group != "day" {
-		count, keys, err = s.projection.GroupKeys(ctx, scope, group, after, limit+1)
+		count, keys, err = s.projection.GroupKeys(ctx, scope, group, after.RowID, limit+1)
 		if err != nil {
 			return GroupsPage{}, err
 		}
 		for _, key := range keys[:min(len(keys), limit)] {
-			groups[key] = newAccumulator()
+			groups[key.UsageGroupKey] = newAccumulator()
 		}
 	}
 	err = s.projection.Walk(ctx, scope, func(row models.UsageRecord) error {
@@ -208,10 +209,10 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 			key.Key = time.UnixMilli(row.RecordedAt).In(loc).Format(time.DateOnly)
 			if groups[key] == nil {
 				groups[key] = newAccumulator()
-				keys = append(keys, key)
+				keys = append(keys, controllers.UsageGroupPageKey{UsageGroupKey: key})
 			}
 		case "model":
-			key.Key, key.Provider = row.Model, row.Provider
+			return nil
 		case "waker":
 			key.Key = row.WakerID
 		case "provider":
@@ -225,11 +226,20 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 	if err != nil {
 		return GroupsPage{}, err
 	}
+	if group == "model" {
+		if err := s.projection.WalkModels(ctx, scope, keys[:min(len(keys), limit)], func(row models.UsageRecord) error {
+			return groups[controllers.UsageGroupKey{Key: row.Model, Provider: row.Provider}].add(row)
+		}); err != nil {
+			return GroupsPage{}, err
+		}
+	}
 	if group == "day" {
-		slices.SortFunc(keys, compareDayGroups)
+		slices.SortFunc(keys, func(a, b controllers.UsageGroupPageKey) int { return cmp.Compare(a.Key, b.Key) })
 		count = int64(len(keys))
-		if after != nil {
-			at, found := slices.BinarySearchFunc(keys, *after, compareDayGroups)
+		if after.Day != "" {
+			at, found := slices.BinarySearchFunc(keys, after.Day, func(key controllers.UsageGroupPageKey, day string) int {
+				return cmp.Compare(key.Key, day)
+			})
 			if !found {
 				return GroupsPage{}, status_error.BadRequest
 			}
@@ -243,7 +253,7 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 	page := GroupsPage{Summary: summary, Groups: []Group{}, TotalGroups: count, HasMore: len(keys) > limit}
 	keys = keys[:min(len(keys), limit)]
 	for _, key := range keys {
-		metrics, err := groups[key].metrics()
+		metrics, err := groups[key.UsageGroupKey].metrics()
 		if err != nil {
 			return GroupsPage{}, err
 		}
@@ -251,16 +261,16 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 	}
 	if page.HasMore {
 		last := keys[len(keys)-1]
-		page.NextCursor = s.encode("groups", groupCursor{Snapshot: digest, Group: group, Last: last.Key, Provider: last.Provider})
+		anchor := groupCursor{Snapshot: digest, Group: group, RowID: last.RowID}
+		if group == "day" {
+			anchor.Day = last.Key
+		}
+		page.NextCursor = s.encode("groups", anchor)
 	}
 	if err := s.checkGeneration(ctx, view); err != nil {
 		return GroupsPage{}, err
 	}
 	return page, nil
-}
-
-func compareDayGroups(a, b controllers.UsageGroupKey) int {
-	return cmp.Compare(a.Key, b.Key)
 }
 
 func validateFilter(filter Filter) (Filter, *time.Location, error) {
@@ -382,7 +392,7 @@ func (s *Service) catchUp(ctx context.Context, generation string, checkpoints []
 			}
 			records := make([]models.UsageRecord, 0, len(terminals))
 			for _, terminal := range terminals {
-				records = append(records, project(terminal))
+				records = project(records, terminal)
 			}
 			if err := s.projection.Project(ctx, generation, shard, next, records); err != nil {
 				return err
@@ -393,7 +403,7 @@ func (s *Service) catchUp(ctx context.Context, generation string, checkpoints []
 	return result
 }
 
-func project(terminal eventlog_next.UsageTerminal) models.UsageRecord {
+func project(records []models.UsageRecord, terminal eventlog_next.UsageTerminal) []models.UsageRecord {
 	result := terminal.Result
 	digest := result.Key.Digest()
 	row := models.UsageRecord{NativeID: digest[:], RecordedAt: terminal.RecordedAt, Provider: result.Key.Session.Provider}
@@ -402,19 +412,43 @@ func project(terminal eventlog_next.UsageTerminal) models.UsageRecord {
 	} else if result.Turn.Origin == "provider" && len(result.Turn.ConsumedInputIDs) == 0 {
 		row.Source = "provider"
 	}
-	if observed := result.Turn.Usage; observed != nil {
-		tokens := ledger.ReadTokens(observed)
-		row.Input, row.CacheRead, row.CacheWrite, row.Output, row.Reasoning = tokens.Input, tokens.CacheRead, tokens.CacheWrite, tokens.Output, tokens.Reasoning
-		row.Model, row.Coverage, row.Complete = observed.Model, observed.Coverage, observed.Complete
-		if len(observed.Models) > 1 {
-			row.Model = ""
-		}
-		row.Amount, row.CostComplete = ledger.NativeAmount(observed.Cost)
-		if row.Amount != "" {
-			row.Currency, row.Valuation, row.CostSource, row.CostOrigin = observed.Cost.Currency, observed.Cost.Valuation, observed.Cost.Source, "native"
-		}
+	observed := result.Turn.Usage
+	if observed == nil {
+		return append(records, row)
 	}
-	return row
+	row.Coverage, row.Complete = observed.Coverage, observed.Complete
+	base := row
+	row.Model = observed.Model
+	applyUsageEvidence(&row, ledger.ReadTokens(observed), observed.Cost)
+	parent := len(records)
+	records = append(records, row)
+	for _, model := range slices.Sorted(maps.Keys(observed.Models)) {
+		if model == "" {
+			continue
+		}
+		evidence := observed.Models[model]
+		tokens := ledger.ReadModelTokens(evidence)
+		detail := base
+		applyUsageEvidence(&detail, tokens, evidence.Cost)
+		if tokens == (ledger.Tokens{}) && detail.Amount == "" {
+			continue
+		}
+		modelDigest := sha256.Sum256(append(digest[:], model...))
+		detail.NativeID, detail.Model, detail.Scope = modelDigest[:], model, models.UsageScopeModelOnly
+		records = append(records, detail)
+	}
+	if len(records) > parent+1 {
+		records[parent].Scope = models.UsageScopeInvocationOnly
+	}
+	return records
+}
+
+func applyUsageEvidence(row *models.UsageRecord, tokens ledger.Tokens, cost *acpmeta.UsageCost) {
+	row.Input, row.CacheRead, row.CacheWrite, row.Output, row.Reasoning = tokens.Input, tokens.CacheRead, tokens.CacheWrite, tokens.Output, tokens.Reasoning
+	row.Amount, row.CostComplete = ledger.NativeAmount(row.Provider, cost)
+	if row.Amount != "" {
+		row.Currency, row.Valuation, row.CostSource, row.CostOrigin = cost.Currency, cost.Valuation, cost.Source, "native"
+	}
 }
 
 func (s *Service) encode(kind string, value any) string {

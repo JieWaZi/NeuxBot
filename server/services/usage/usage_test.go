@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -84,11 +85,18 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Keep the old generation, rows and checkpoint while dropping the provider column.
-	if err := db.Model(&models.UsageCheckpoint{}).Where("shard = -1").Update("generation", "providers-v1:fixture").Error; err != nil {
+	// Keep old rows and checkpoints while simulating both previous schema generations.
+	previous := "providers-v2:fixture"
+	if provider == "codex" {
+		previous = "providers-v1:fixture"
+		if err := db.Exec("ALTER TABLE usage_records DROP COLUMN provider").Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Model(&models.UsageCheckpoint{}).Where("shard = -1").Update("generation", previous).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Exec("ALTER TABLE usage_records DROP COLUMN provider").Error; err != nil {
+	if err := db.Exec("ALTER TABLE usage_records DROP COLUMN scope").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.AutoMigrate(&models.UsageRecord{}, &models.UsageCheckpoint{}); err != nil {
@@ -205,7 +213,7 @@ func TestUsageFiltersDSTPaginationAndExactCosts(t *testing.T) {
 	}{
 		{"idx_usage_time", "SELECT * FROM usage_records WHERE recorded_at >= 1 AND recorded_at < 200 AND id <= 30 ORDER BY recorded_at, id LIMIT 256"},
 		{"idx_usage_waker_time", "SELECT * FROM usage_records WHERE waker_id IN ('w') AND recorded_at >= 1 AND recorded_at < 200 AND id <= 30 ORDER BY recorded_at, id LIMIT 256"},
-		{"idx_usage_time", "SELECT DISTINCT model AS key, provider FROM usage_records WHERE recorded_at >= 1 AND recorded_at < 200 AND id <= 30 AND provider = 'codex' AND (model, provider) > ('a', 'codex') ORDER BY model, provider LIMIT 2"},
+		{"idx_usage_time", "SELECT model AS key, provider, MIN(id) AS row_id FROM usage_records WHERE recorded_at >= 1 AND recorded_at < 200 AND id <= 30 AND provider = 'codex' AND scope IN (0, 2) AND (model, provider) > ('a', 'codex') GROUP BY model, provider ORDER BY model, provider LIMIT 2"},
 	} {
 		var plan []planRow
 		if err := db.Raw("EXPLAIN QUERY PLAN " + tc.sql).Scan(&plan).Error; err != nil || len(plan) == 0 || !strings.Contains(plan[0].Detail, tc.name) {
@@ -222,6 +230,7 @@ func TestUsageModelGroupsSeparateProviders(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
+	sharedModel := strings.Repeat("a", 1800) + ":model"
 	for i, provider := range []string{"claude", "cursor"} {
 		key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: provider, Subject: "system-subject", SessionID: "native"}, InvocationID: "shared-id"}
 		input := agent.HostInput{HostInvocationID: "host", ExecutionID: "execution", AdapterInputID: "input", Session: key.Session,
@@ -235,7 +244,7 @@ func TestUsageModelGroupsSeparateProviders(t *testing.T) {
 		}
 		if err := store.CommitNativeResult(ctx, agent.NativeResult{Key: key, Turn: acpmeta.NativeTurn{
 			InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost, Status: acpmeta.NativeTurnCompleted,
-			ConsumedInputIDs: []string{input.AdapterInputID}, Usage: &acpmeta.TurnUsage{Source: "fixture", Model: "shared:model"},
+			ConsumedInputIDs: []string{input.AdapterInputID}, Usage: &acpmeta.TurnUsage{Source: "fixture", Model: sharedModel},
 		}}); err != nil {
 			t.Fatal(err)
 		}
@@ -261,12 +270,12 @@ func TestUsageModelGroupsSeparateProviders(t *testing.T) {
 	}
 	page, err := service.Groups(ctx, filter, summary.Snapshot, "model", "", 1)
 	if err != nil || page.TotalGroups != 2 || len(page.Groups) != 1 || !page.HasMore ||
-		page.Groups[0].Key != "shared:model" || page.Groups[0].Provider != "claude" || page.Groups[0].Metrics.Invocations != 1 {
+		page.Groups[0].Key != sharedModel || page.Groups[0].Provider != "claude" || page.Groups[0].Metrics.Invocations != 1 {
 		t.Fatalf("identical model IDs from separate providers merged: %+v %v", page, err)
 	}
 	next, err := service.Groups(ctx, filter, summary.Snapshot, "model", page.NextCursor, 1)
 	if err != nil || next.TotalGroups != 2 || len(next.Groups) != 1 || next.HasMore ||
-		next.Groups[0].Key != "shared:model" || next.Groups[0].Provider != "cursor" || next.Groups[0].Metrics.Invocations != 1 {
+		next.Groups[0].Key != sharedModel || next.Groups[0].Provider != "cursor" || next.Groups[0].Metrics.Invocations != 1 {
 		t.Fatalf("pagination skipped the second provider's model: %+v %v", next, err)
 	}
 	providers, err := service.Groups(ctx, filter, summary.Snapshot, "provider", "", 10)
@@ -282,5 +291,75 @@ func TestUsageModelGroupsSeparateProviders(t *testing.T) {
 	scoped, err := service.Summary(ctx, filter, "")
 	if err != nil || scoped.Metrics.Invocations != 1 || scoped.Range.Provider != "cursor" {
 		t.Fatalf("unexpected provider-filtered summary: %+v %v", scoped, err)
+	}
+}
+
+func TestUsageSeparatesPrimaryModelBreakdownFromInvocationTotals(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	store, err := eventlog_next.NewStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	two, three, five, overlap := int64(2), int64(3), int64(5), int64(999)
+	cost := func(amount json.Number) *acpmeta.UsageCost {
+		return &acpmeta.UsageCost{Amount: amount, Currency: "USD", Source: "claude.result.cost", Scope: "query_pipeline", Aggregation: "turn_delta", Valuation: "estimated"}
+	}
+	session := agent.NativeSessionKey{Provider: "claude", Subject: "subject", SessionID: "native"}
+	commit := func(id string, usage *acpmeta.TurnUsage) {
+		t.Helper()
+		result := agent.NativeResult{Key: agent.NativeResultKey{Session: session, InvocationID: id}, Turn: acpmeta.NativeTurn{
+			InvocationID: id, Origin: acpmeta.NativeTurnOriginProvider, Status: acpmeta.NativeTurnCompleted, Usage: usage,
+		}}
+		if err := store.CommitNativeResult(ctx, result); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mixed := &acpmeta.TurnUsage{InputTokens: &five, Cost: cost("0.10"), Coverage: "query_pipeline", Models: map[string]acpmeta.ModelUsage{
+		"alpha": {InputTokens: &two, Cost: cost("0.02")}, "beta": {InputTokens: &three}, "unavailable": {},
+	}, Observations: []acpmeta.UsageObservation{{Coverage: "last_request", Models: map[string]acpmeta.ModelUsage{
+		"overlap": {InputTokens: &overlap, Cost: cost("999")},
+	}}}}
+	commit("mixed", mixed)
+	commit("mixed", mixed)
+	commit("single", &acpmeta.TurnUsage{Model: "alpha", InputTokens: &two, Cost: cost("0.03")})
+	commit("unattributed", &acpmeta.TurnUsage{InputTokens: &two})
+	db, err := gorm.Open(sqlite.Open(filepath.Join(root, "usage.sqlite")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := db.AutoMigrate(&models.UsageRecord{}, &models.UsageCheckpoint{}); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(store, controllers.NewUsageController(db))
+	filter := Filter{From: time.Now().Add(-time.Hour).UnixMilli(), To: time.Now().Add(time.Hour).UnixMilli(), Timezone: "UTC"}
+	summary, err := service.Summary(ctx, filter, "")
+	if err != nil || summary.Metrics.Invocations != 3 || summary.Metrics.KnownTokens.Input == nil || *summary.Metrics.KnownTokens.Input != 9 {
+		t.Fatalf("summary duplicated a model breakdown: %+v %v", summary.Metrics, err)
+	}
+	page, err := service.Groups(ctx, filter, summary.Snapshot, "model", "", 3)
+	if err != nil || page.TotalGroups != 3 || len(page.Groups) != 3 || page.Metrics.Invocations != 3 ||
+		page.Groups[0].Key != "" || page.Groups[1].Key != "alpha" || page.Groups[2].Key != "beta" {
+		t.Fatalf("model groups dropped or duplicated primary evidence: %+v %v", page, err)
+	}
+	unknown, alpha, beta := page.Groups[0].Metrics, page.Groups[1].Metrics, page.Groups[2].Metrics
+	if unknown.Invocations != 1 || unknown.KnownTokens.Input == nil || *unknown.KnownTokens.Input != 2 ||
+		alpha.Invocations != 2 || alpha.KnownTokens.Input == nil || *alpha.KnownTokens.Input != 4 ||
+		beta.Invocations != 1 || beta.KnownTokens.Input == nil || *beta.KnownTokens.Input != 3 || beta.Tokens.Output != nil {
+		t.Fatalf("unexpected model counters: alpha %+v beta %+v", alpha, beta)
+	}
+	if len(summary.Metrics.Amounts) != 1 || summary.Metrics.Amounts[0].Amount != "0.13" ||
+		len(alpha.Amounts) != 1 || alpha.Amounts[0].Amount != "0.05" || len(beta.Amounts) != 0 || beta.UnpricedInvocations != 1 {
+		t.Fatalf("amounts escaped their proven scope: summary %+v alpha %+v beta %+v", summary.Metrics.Amounts, alpha, beta)
+	}
+	providers, err := service.Groups(ctx, filter, summary.Snapshot, "provider", "", 1)
+	if err != nil || len(providers.Groups) != 1 || providers.Groups[0].Metrics.Invocations != 3 {
+		t.Fatalf("provider group counted model rows: %+v %v", providers, err)
 	}
 }

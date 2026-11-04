@@ -7,12 +7,23 @@ func init() {
 	dbhelper.RegisterTable(&UsageCheckpoint{})
 }
 
-// UsageRecord is the rebuildable projection of one canonical provider terminal.
+const (
+	// UsageScopeBoth is an invocation row that also supplies its model group.
+	UsageScopeBoth = iota
+	// UsageScopeInvocationOnly is an invocation row with independent model detail rows.
+	UsageScopeInvocationOnly
+	// UsageScopeModelOnly is one model's attribution within an invocation.
+	UsageScopeModelOnly
+)
+
+// UsageRecord is a rebuildable invocation or model projection from canonical terminals.
 type UsageRecord struct {
 	// ID 是固定查询快照边界的单调投影序号。
 	ID int64 `gorm:"primaryKey;autoIncrement;index:idx_usage_time,priority:2;index:idx_usage_waker_time,priority:3"`
-	// NativeID 是原生后端、账号主体、会话和调用标识的摘要。
+	// NativeID 是原生调用身份的摘要，模型行在该身份下另按模型区分。
 	NativeID []byte `gorm:"not null;uniqueIndex"`
+	// Scope 指明该行参与调用总计、模型统计或两者。
+	Scope int `gorm:"not null;default:0"`
 	// RecordedAt 是终态首次持久提交的 Unix 毫秒时间。
 	RecordedAt int64 `gorm:"not null;index:idx_usage_time,priority:1;index:idx_usage_waker_time,priority:2"`
 	// WakerID 是首次消耗输入所关联的伙伴标识。

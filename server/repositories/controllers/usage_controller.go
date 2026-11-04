@@ -14,7 +14,7 @@ import (
 )
 
 // usageProjectionFormat changes when replay must recover missing projected facts.
-const usageProjectionFormat = "providers-v2:"
+const usageProjectionFormat = "providers-v3:"
 
 // UsageController manages the disposable terminal usage projection.
 type UsageController struct {
@@ -173,12 +173,37 @@ func (c *UsageController) scoped(ctx context.Context, filter UsageQuery) *gorm.D
 	return db
 }
 
-// Walk seeks through bounded batches in the time index.
+// Walk seeks through canonical invocation rows in bounded time-index batches.
 func (c *UsageController) Walk(ctx context.Context, filter UsageQuery, visit func(models.UsageRecord) error) error {
+	return walkUsageRows(c.invocationScope(ctx, filter), visit)
+}
+
+// WalkModels reads only the model rows for the selected page of group keys.
+func (c *UsageController) WalkModels(ctx context.Context, filter UsageQuery, keys []UsageGroupPageKey, visit func(models.UsageRecord) error) error {
+	if len(keys) == 0 {
+		return nil
+	}
+	tuples := make([][]any, 0, len(keys))
+	for _, key := range keys {
+		tuples = append(tuples, []any{key.Key, key.Provider})
+	}
+	return walkUsageRows(c.modelScope(ctx, filter).Where("(model, provider) IN ?", tuples), visit)
+}
+
+func (c *UsageController) invocationScope(ctx context.Context, filter UsageQuery) *gorm.DB {
+	return c.scoped(ctx, filter).Where("scope IN ?", []int{models.UsageScopeBoth, models.UsageScopeInvocationOnly})
+}
+
+func (c *UsageController) modelScope(ctx context.Context, filter UsageQuery) *gorm.DB {
+	return c.scoped(ctx, filter).Where("scope IN ?", []int{models.UsageScopeBoth, models.UsageScopeModelOnly})
+}
+
+func walkUsageRows(scope *gorm.DB, visit func(models.UsageRecord) error) error {
+	scope = scope.Session(&gorm.Session{})
 	var at, id int64
 	for {
 		var rows []models.UsageRecord
-		db := c.scoped(ctx, filter).Order("recorded_at, id").Limit(repositoryReadBatch)
+		db := scope.Order("recorded_at, id").Limit(repositoryReadBatch)
 		if id != 0 {
 			db = db.Where("(recorded_at, id) > (?, ?)", at, id)
 		}
@@ -205,12 +230,20 @@ type UsageGroupKey struct {
 	Provider string
 }
 
+// UsageGroupPageKey carries a group identity and a bounded snapshot anchor.
+type UsageGroupPageKey struct {
+	// UsageGroupKey 是分页组的稳定维度标识。
+	UsageGroupKey `gorm:"embedded"`
+	// RowID 是快照范围内该组最早插入的投影行序号。
+	RowID int64
+}
+
 // GroupKeys counts groups and seeks the next keys without materializing every group.
-func (c *UsageController) GroupKeys(ctx context.Context, filter UsageQuery, group string, after *UsageGroupKey, limit int) (int64, []UsageGroupKey, error) {
+func (c *UsageController) GroupKeys(ctx context.Context, filter UsageQuery, group string, afterID int64, limit int) (int64, []UsageGroupPageKey, error) {
 	var column string
 	switch group {
 	case "model":
-		return c.modelGroupKeys(ctx, filter, after, limit)
+		return c.modelGroupKeys(ctx, filter, afterID, limit)
 	case "waker":
 		column = "waker_id"
 	case "provider":
@@ -219,34 +252,57 @@ func (c *UsageController) GroupKeys(ctx context.Context, filter UsageQuery, grou
 		return 0, nil, fmt.Errorf("unsupported usage group")
 	}
 	var total int64
-	db := c.scoped(ctx, filter)
-	if err := db.Distinct(column).Count(&total).Error; err != nil {
+	scope := c.invocationScope(ctx, filter).Session(&gorm.Session{})
+	if err := scope.Distinct(column).Count(&total).Error; err != nil {
 		return 0, nil, databaseError("count_usage_groups", "", err)
 	}
-	db = c.scoped(ctx, filter).Select("DISTINCT " + column + " AS key").Order(column).Limit(limit)
-	if after != nil {
+	projection := column + " AS key"
+	db := scope.Select(projection + ", MIN(id) AS row_id").Group(column).Order(column).Limit(limit)
+	if afterID != 0 {
+		after, err := usageGroupAnchor(scope, projection, afterID)
+		if err != nil {
+			return 0, nil, err
+		}
 		db = db.Where(column+" > ?", after.Key)
 	}
-	var keys []UsageGroupKey
+	var keys []UsageGroupPageKey
 	if err := db.Scan(&keys).Error; err != nil {
 		return 0, nil, databaseError("page_usage_groups", "", err)
 	}
 	return total, keys, nil
 }
 
-func (c *UsageController) modelGroupKeys(ctx context.Context, filter UsageQuery, after *UsageGroupKey, limit int) (int64, []UsageGroupKey, error) {
+func (c *UsageController) modelGroupKeys(ctx context.Context, filter UsageQuery, afterID int64, limit int) (int64, []UsageGroupPageKey, error) {
 	var total int64
-	groups := c.scoped(ctx, filter).Select("1").Group("model, provider")
+	scope := c.modelScope(ctx, filter).Session(&gorm.Session{})
+	groups := scope.Select("1").Group("model, provider")
 	if err := controllerDB(ctx, c.db).Table("(?) AS usage_groups", groups).Count(&total).Error; err != nil {
 		return 0, nil, databaseError("count_usage_groups", "", err)
 	}
-	db := c.scoped(ctx, filter).Select("DISTINCT model AS key, provider").Order("model, provider").Limit(limit)
-	if after != nil {
+	const projection = "model AS key, provider"
+	db := scope.Select(projection + ", MIN(id) AS row_id").Group("model, provider").Order("model, provider").Limit(limit)
+	if afterID != 0 {
+		after, err := usageGroupAnchor(scope, projection, afterID)
+		if err != nil {
+			return 0, nil, err
+		}
 		db = db.Where("(model, provider) > (?, ?)", after.Key, after.Provider)
 	}
-	var keys []UsageGroupKey
+	var keys []UsageGroupPageKey
 	if err := db.Scan(&keys).Error; err != nil {
 		return 0, nil, databaseError("page_usage_groups", "", err)
 	}
 	return total, keys, nil
+}
+
+func usageGroupAnchor(scope *gorm.DB, projection string, id int64) (UsageGroupKey, error) {
+	var key UsageGroupKey
+	read := scope.Select(projection).Where("id = ?", id).Limit(1).Scan(&key)
+	if read.Error != nil {
+		return key, databaseError("seek_usage_group", "", read.Error)
+	}
+	if read.RowsAffected == 0 {
+		return key, status_error.Conflict
+	}
+	return key, nil
 }
