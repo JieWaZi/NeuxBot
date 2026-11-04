@@ -117,7 +117,7 @@ beforeEach(() => {
     const systemModels = (runtime?.models ?? []) as Array<
       Record<string, unknown>
     >;
-    const rows =
+    const rows: Array<Record<string, unknown>> =
       query.accountId === "system"
         ? systemModels
         : account?.authMode === "subscription"
@@ -137,6 +137,11 @@ beforeEach(() => {
         models: rows.map((row) => ({
           ...row,
           configurationKnown: true,
+          permissionLevels: row.permissionLevels ?? [
+            "default",
+            "auto",
+            "full-access",
+          ],
           fastSupported: row.id === "gpt-5",
         })),
       },
@@ -311,6 +316,7 @@ describe("RuntimeEnvironmentsSection", () => {
         id: "deepseek-account",
         name: "DeepSeek",
         authMode: "api-key",
+        hasCredential: true,
         revision: 1,
         endpoints: [
           { protocol: "openai-responses", baseUrl: "https://api.deepseek.com" },
@@ -765,6 +771,46 @@ describe("RuntimeEnvironmentsSection", () => {
       );
     },
   );
+
+  it("目录已更新但逐模型配置未知时阻止保存", async () => {
+    runtimes.current = [
+      { ...runtimes.current[0], id: "claude", defaultModel: "unconfirmed" },
+    ];
+    modelCatalog.mockResolvedValue({
+      data: {
+        runtimeId: "claude",
+        accountId: "system",
+        state: "fresh",
+        defaultModel: "unconfirmed",
+        models: [
+          {
+            id: "unconfirmed",
+            name: "Unconfirmed",
+            configurationKnown: false,
+            permissionLevels: ["default"],
+          },
+        ],
+      },
+    });
+    const user = userEvent.setup();
+    renderSection(
+      new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "展开Claude智能体设置" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("combobox", { name: "默认模型" }),
+      ).toHaveTextContent("Unconfirmed"),
+    );
+    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: "YOLO" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /Claude默认权限/ }),
+    ).toBeDisabled();
+    expect(updateRuntime).not.toHaveBeenCalled();
+  });
 
   it("切换环境默认模型时只展示该 ACP 模型支持的 Thinking", async () => {
     const user = userEvent.setup();

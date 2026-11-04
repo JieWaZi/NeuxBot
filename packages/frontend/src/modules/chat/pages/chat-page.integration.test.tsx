@@ -1617,6 +1617,7 @@ describe("ChatPage", () => {
   });
 
   it("成员 Tab 发送直连成员 Chat，不触发 Channel 委派", async () => {
+    chatLastPermissionLevel.current = "full-access";
     sendMessage.mockResolvedValueOnce({
       chat: {
         id: "member-chat",
@@ -1729,6 +1730,9 @@ describe("ChatPage", () => {
       }),
     );
     await screen.findByText("历史消息：member-chat");
+    expect(
+      screen.getByRole("button", { name: "执行权限：自动审批" }),
+    ).toBeVisible();
     expect(chatMessageReads.current["member-chat"]).toBe(1);
     const input = screen.getByRole("textbox", { name: "输入消息" });
     await user.type(input, "和成员直接聊聊");
@@ -1952,7 +1956,7 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: "选择模型" }));
     await user.click(screen.getByRole("radio", { name: "Native Sonnet" }));
     screen.getByRole("slider", { name: "选择强度" }).focus();
-    await user.keyboard("{Home}{Escape}");
+    await user.keyboard("{Home}{ArrowRight}{Escape}");
     await user.click(screen.getByRole("tab", { name: "团队负责人" }));
     await user.type(
       screen.getByRole("textbox", { name: "输入消息" }),
@@ -3052,7 +3056,7 @@ describe("ChatPage", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it("按 ACP 模型展示专属 Thinking，并在切换模型时恢复 Runtime 默认推理", async () => {
+  it("按 ACP 模型展示专属 Thinking，并在切换模型时显示继承", async () => {
     runtimeOptions.current = [
       {
         id: "codex",
@@ -3066,7 +3070,11 @@ describe("ChatPage", () => {
             id: "gpt-fast",
             name: "GPT Fast",
             permissionLevels: ["default", "auto", "full-access"],
-            reasoningOptions: [{ id: "low", name: "Low" }],
+            defaultReasoning: "low",
+            reasoningOptions: [
+              { id: "low", name: "Low" },
+              { id: "medium", name: "Medium" },
+            ],
           },
           {
             id: "gpt-fixture",
@@ -3111,20 +3119,23 @@ describe("ChatPage", () => {
     await user.click(screen.getByRole("button", { name: "选择模型" }));
     await user.click(screen.getByRole("radio", { name: "GPT Fast" }));
     expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
-      "Low",
+      "默认",
     );
-    expect(screen.getByRole("slider")).toHaveAttribute("aria-valuetext", "Low");
+    expect(screen.getByRole("slider")).toHaveAttribute(
+      "aria-valuetext",
+      "默认",
+    );
     expect(screen.queryByText("High")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "选择模型" }));
     await user.click(screen.getByRole("radio", { name: "GPT Fixture" }));
     expect(screen.getByRole("slider")).toHaveAttribute(
       "aria-valuetext",
-      "Medium",
+      "默认",
     );
-    expect(screen.getByRole("slider")).toHaveAttribute("aria-valuemax", "1");
+    expect(screen.getByRole("slider")).toHaveAttribute("aria-valuemax", "2");
     expect(screen.queryByText("Low")).not.toBeInTheDocument();
-    await user.keyboard("{ArrowRight}");
+    await user.keyboard("{End}");
     expect(document.querySelector(".composer-effort-effect")).toHaveAttribute(
       "data-active",
     );

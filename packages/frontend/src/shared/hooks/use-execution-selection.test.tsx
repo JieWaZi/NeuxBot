@@ -221,17 +221,40 @@ it.each([
       `${origin}/api/v1/runtimes/${runtimeId}/models?accountId=system`,
     );
 
+    let release!: () => void;
+    const refreshing = new Promise<void>((resolve) => {
+      release = resolve;
+    });
     server.use(
-      http.get(`${origin}/api/v1/runtimes/:runtimeId/models`, () =>
-        HttpResponse.json(
-          { code: "AI_ACCOUNT_MODELS_UNAVAILABLE" },
-          { status: 503 },
-        ),
+      http.get(
+        `${origin}/api/v1/runtimes/:runtimeId/models`,
+        async ({ request }) => {
+          requests.push(request.url);
+          await refreshing;
+          return HttpResponse.json(
+            { code: "AI_ACCOUNT_MODELS_UNAVAILABLE" },
+            { status: 503 },
+          );
+        },
       ),
     );
-    await act(async () => {
-      await result.current.refreshCatalog();
+    let refresh: Promise<unknown> | undefined;
+    act(() => {
+      refresh = result.current.refreshCatalog();
     });
+    try {
+      await waitFor(() => expect(result.current.catalogPending).toBe(true));
+      expect(result.current.valid).toBe(false);
+      expect(result.current.models[0]?.id).toBe("account-model");
+    } finally {
+      await act(async () => {
+        release();
+        await refresh;
+      });
+    }
+    expect(new URL(requests.at(-1) ?? origin).searchParams.get("refresh")).toBe(
+      "true",
+    );
     await waitFor(() => expect(result.current.catalogState).toBe("stale"));
     expect(result.current.models.map((item) => item.id)).toEqual([
       "account-model",
@@ -463,3 +486,29 @@ it("Claude 切换到受管 API 账号时不会显示系统账号的迟到目录"
   await act(async () => release());
   expect(result.current.models.map((item) => item.id)).toEqual(["anthropic"]);
 });
+
+it.each([
+  { models: [], issue: "catalogEmpty" },
+  {
+    models: [{ id: "unconfirmed", configurationKnown: false }],
+    issue: "catalogConfigurationUnknown",
+  },
+])(
+  "原生目录区分可重试的空列表和未确认模型 $issue",
+  async ({ models, issue }) => {
+    server.use(
+      http.get(`${origin}/api/v1/runtimes/codex/models`, () =>
+        HttpResponse.json({
+          runtimeId: "codex",
+          accountId: "system",
+          state: "fresh",
+          models,
+        }),
+      ),
+    );
+    const { result } = selection({ runtimeId: "codex", accountId: "system" });
+    await waitFor(() => expect(result.current.catalogIssue).toBe(issue));
+    expect(result.current.valid).toBe(false);
+    expect(result.current.catalogPending).toBe(false);
+  },
+);

@@ -173,7 +173,11 @@ export function ExecutionConfigurationFields({
                   },
                 ]
               : []),
-            ...models,
+            ...models.map((model) => ({
+              ...model,
+              disabled:
+                state.usesNativeCatalog && model.configurationKnown !== true,
+            })),
           ],
           (model) =>
             change({
@@ -190,7 +194,8 @@ export function ExecutionConfigurationFields({
               ),
             }),
           state.nativeModelsQuery.isFetching ||
-            (state.usesNativeCatalog && state.catalogState !== "fresh"),
+            (state.usesNativeCatalog &&
+              (state.catalogState !== "fresh" || state.catalogPending)),
         )}
         {!reasoningHidden &&
           field(
@@ -211,7 +216,8 @@ export function ExecutionConfigurationFields({
               change({ reasoning: reasoning === "__default" ? "" : reasoning }),
             !reasoningOptions.length ||
               state.thinkingQuery.isFetching ||
-              (state.usesNativeCatalog && state.catalogState !== "fresh"),
+              (state.usesNativeCatalog &&
+                (state.catalogState !== "fresh" || state.catalogPending)),
           )}
         {fastEnabled &&
           state.fastSupported &&
@@ -234,7 +240,7 @@ export function ExecutionConfigurationFields({
               change({
                 fast: fast === "__default" ? undefined : fast === "on",
               }),
-            state.catalogState !== "fresh",
+            state.catalogState !== "fresh" || state.catalogPending,
           )}
         {!permissionHidden &&
           field(
@@ -275,18 +281,12 @@ export function ExecutionConfigurationFields({
           {t("executionSelection.loading")}
         </p>
       ) : null}
-      {state.catalogState && state.catalogState !== "fresh" ? (
+      {state.catalogIssue ? (
         <div
           role="status"
           className="text-content-secondary type-caption flex items-center gap-2"
         >
-          {t(
-            state.catalogState === "stale"
-              ? "executionSelection.catalogStale"
-              : state.catalogState === "signed_out"
-                ? "executionSelection.catalogSignedOut"
-                : "executionSelection.catalogUnavailable",
-          )}
+          {t(`executionSelection.${state.catalogIssue}`)}
           <Button
             size="sm"
             variant="ghost"
@@ -297,8 +297,7 @@ export function ExecutionConfigurationFields({
           </Button>
         </div>
       ) : null}
-      {state.error &&
-      (!state.catalogState || state.catalogState === "fresh") ? (
+      {state.error && !state.catalogIssue ? (
         <p role="alert" className="text-destructive type-caption">
           {localApiErrorMessage(state.error, t("executionSelection.loadError"))}
         </p>

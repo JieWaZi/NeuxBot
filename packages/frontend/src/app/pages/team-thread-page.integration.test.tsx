@@ -94,14 +94,16 @@ describe("团队首发完整路由交接", () => {
     withExecution: boolean;
     status: "running" | "completed";
     historyFails?: boolean;
+    unknownMember?: boolean;
   }>([
     { withExecution: true, status: "running" },
     { withExecution: false, status: "running" },
     { withExecution: false, status: "completed" },
     { withExecution: false, status: "running", historyFails: true },
+    { withExecution: true, status: "running", unknownMember: true },
   ])(
-    "创建返回 execution=$withExecution，历史状态=$status，首次查询失败=$historyFails，消息在交接中持续可见",
-    async ({ withExecution, status, historyFails }) => {
+    "首发配置与交接 execution=$withExecution，历史=$status，首次查询失败=$historyFails，成员配置未知=$unknownMember",
+    async ({ withExecution, status, historyFails, unknownMember }) => {
       const creation = deferred<CreateChannelThreadResponse>();
       const history = deferred<ListChannelTimelineResponse>();
       const received = vi.fn();
@@ -149,7 +151,11 @@ describe("团队首发完整路由交接", () => {
                 model: "gpt-5",
                 permissionLevel: "full-access",
               },
-              { waker: { id: "member", name: "开发成员" }, runtimeId: "codex" },
+              {
+                waker: { id: "member", name: "开发成员" },
+                runtimeId: "codex",
+                model: unknownMember ? "unconfirmed" : "",
+              },
             ],
           }),
         ),
@@ -187,14 +193,24 @@ describe("团队首发完整路由交接", () => {
             runtimeId: "codex",
             accountId: new URL(request.url).searchParams.get("accountId"),
             state: "fresh",
-            defaultModel: "gpt-5",
+            defaultModel: "current-native-model",
             models: [
               {
-                id: "gpt-5",
-                name: "GPT-5",
+                id: "current-native-model",
+                name: "Current Native Model",
                 configurationKnown: true,
                 permissionLevels: ["default", "auto", "full-access"],
               },
+              ...(unknownMember
+                ? [
+                    {
+                      id: "unconfirmed",
+                      name: "Unconfirmed",
+                      configurationKnown: false,
+                      permissionLevels: ["default"],
+                    },
+                  ]
+                : []),
             ],
           }),
         ),
@@ -232,7 +248,7 @@ describe("团队首发完整路由交接", () => {
             typeof body.clientRequestId === "string"
           )
             submissionId = body.clientRequestId;
-          received();
+          received(body);
           return HttpResponse.json(await creation.promise);
         }),
         http.get(`${api}/channels/team-1/threads/thread-1`, () =>
@@ -334,13 +350,35 @@ describe("团队首发完整路由交接", () => {
           </QueryClientProvider>
         </StrictMode>,
       );
-      await screen.findByText("GPT-5");
+      await screen.findByText("Current Native Model");
       await userEvent.setup().type(screen.getByRole("textbox"), text);
+      if (unknownMember) {
+        expect(
+          await screen.findByText("请检查开发成员的执行配置后再发送。"),
+        ).toBeVisible();
+        expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
+        expect(received).not.toHaveBeenCalled();
+        return;
+      }
       await waitFor(() =>
         expect(screen.getByRole("button", { name: "发送消息" })).toBeEnabled(),
       );
       fireEvent.click(screen.getByRole("button", { name: "发送消息" }));
       await waitFor(() => expect(received).toHaveBeenCalledOnce());
+      expect(received).toHaveBeenCalledWith(
+        expect.objectContaining({
+          memberConfigs: expect.arrayContaining([
+            expect.objectContaining({
+              wakerId: "lead",
+              model: "current-native-model",
+            }),
+            expect.objectContaining({
+              wakerId: "member",
+              model: "current-native-model",
+            }),
+          ]),
+        }),
+      );
       expect(screen.getByText(text)).toBeVisible();
       expect(view.container.querySelector(".agent-grid-spinner")).toBeVisible();
 

@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 
 import { ApiError } from "@/shared/api/errors";
 import {
+  listAiAccountsOptions,
   listAiAccountsQueryKey,
   listRuntimesQueryKey,
   refreshRuntimeMutation,
@@ -30,7 +31,10 @@ import type {
   GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption as RuntimeOption,
   GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount as AIAccount,
 } from "@/shared/api/generated/types.gen";
-import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
+import {
+  useExecutionSelection,
+  useNativeExecutionSelections,
+} from "@/shared/hooks/use-execution-selection";
 import { ExecutionConfigurationFields } from "@/shared/ui/execution-configuration-fields";
 import { FieldLabel } from "@/shared/ui/field-label";
 import {
@@ -228,10 +232,12 @@ function errorMessage(error: unknown) {
 function RuntimeEnvironmentRow({
   onOpenAccounts,
   permissionEditingEnabled,
+  nativePermissions,
   runtime,
 }: {
   onOpenAccounts?: () => void;
   permissionEditingEnabled: boolean;
+  nativePermissions?: ReadonlySet<PermissionLevel>;
   runtime: RuntimeOption;
 }) {
   const { t } = useTranslation("common");
@@ -350,7 +356,7 @@ function RuntimeEnvironmentRow({
   };
   const issue = issueKind ? issueMessages[issueKind] : undefined;
   const normalizedDraft =
-    selection.usesNativeCatalog && selection.catalogState !== "fresh"
+    selection.usesNativeCatalog && !selection.valid
       ? draft
       : {
           ...draft,
@@ -358,12 +364,18 @@ function RuntimeEnvironmentRow({
           defaultReasoning: selection.selection.reasoning,
           defaultFast: selection.selection.fast,
         };
+  const savedDraft = runtimeDraft(runtime);
   const changedNativeDefaults =
     selection.usesNativeCatalog &&
-    (draft.defaultAccountId !== (runtime.defaultAccountId ?? "") ||
-      draft.defaultModel !== (runtime.defaultModel ?? "") ||
-      draft.defaultReasoning !== (runtime.defaultReasoning ?? "") ||
-      draft.defaultFast !== runtime.defaultFast);
+    (draft.defaultAccountId !== savedDraft.defaultAccountId ||
+      draft.defaultModel !== savedDraft.defaultModel ||
+      draft.defaultReasoning !== savedDraft.defaultReasoning ||
+      draft.defaultFast !== savedDraft.defaultFast ||
+      draft.defaultPermissionLevel !== savedDraft.defaultPermissionLevel);
+  const changedNativeLaunch =
+    draft.binary !== savedDraft.binary ||
+    draft.prefixArgs !== savedDraft.prefixArgs ||
+    draft.configHome !== savedDraft.configHome;
   const installations = (runtime.installations ?? []).filter(
     (installation): installation is typeof installation & { path: string } =>
       Boolean(installation.path),
@@ -377,7 +389,8 @@ function RuntimeEnvironmentRow({
   const selectedInstallation = installations.find(
     (installation) => installation.path === selectedPath,
   );
-  const supportedPermissions = runtimeDefaultPermissionLevels(runtime);
+  const supportedPermissions =
+    nativePermissions ?? runtimeDefaultPermissionLevels(runtime);
   const selectedPermissionLevel =
     permissionLevelOf(runtime.defaultPermissionLevel) ?? "auto";
   const selectedPermissionLabel = t(
@@ -520,6 +533,7 @@ function RuntimeEnvironmentRow({
               name: selectedPermissionLabel,
             })}
             onChange={(value) => {
+              if (!supportedPermissions.has(value)) return;
               setDraft((current) => ({
                 ...current,
                 defaultPermissionLevel: value,
@@ -667,7 +681,9 @@ function RuntimeEnvironmentRow({
                 disabled={
                   pending ||
                   !draft.binary.trim() ||
-                  (changedNativeDefaults && selection.catalogState !== "fresh")
+                  (selection.usesNativeCatalog &&
+                    !selection.valid &&
+                    (changedNativeDefaults || !changedNativeLaunch))
                 }
                 onClick={() => mutate(normalizedDraft)}
               >
@@ -755,12 +771,14 @@ function RuntimeGroup({
   empty,
   onOpenAccounts,
   permissionEditingEnabled,
+  nativePermissions,
   runtimes,
   title,
 }: {
   empty: string;
   onOpenAccounts?: () => void;
   permissionEditingEnabled: boolean;
+  nativePermissions?: ReadonlyMap<string, ReadonlySet<PermissionLevel>>;
   runtimes: RuntimeOption[];
   title: string;
 }) {
@@ -776,6 +794,7 @@ function RuntimeGroup({
               key={runtime.id}
               onOpenAccounts={onOpenAccounts}
               permissionEditingEnabled={permissionEditingEnabled}
+              nativePermissions={nativePermissions?.get(runtime.id ?? "")}
               runtime={runtime}
             />
           ))}
@@ -815,13 +834,38 @@ export function RuntimeEnvironmentsSection({
   const runtimes = runtimesQuery.data?.resources ?? [];
   const discovered = runtimes.filter((runtime) => runtime.installed);
   const undiscovered = runtimes.filter((runtime) => !runtime.installed);
+  const accountsQuery = useQuery(
+    listAiAccountsOptions(withLocalErrorSurface({})),
+  );
+  const nativeDefaults = useNativeExecutionSelections(
+    discovered.map((runtime) => ({
+      runtimeId: runtime.id,
+      accountId: runtime.defaultAccountId,
+      model: runtime.defaultModel,
+      reasoning: runtime.defaultReasoning,
+      fast: runtime.defaultFast,
+      permissionLevel: runtime.defaultPermissionLevel,
+    })),
+    runtimes,
+    accountsQuery.data?.resources ?? [],
+    { defaults: false },
+  );
+  const nativePermissions = new Map(
+    discovered.flatMap((runtime, index) => {
+      const settings = nativeDefaults[index];
+      return settings && runtime.id
+        ? [[runtime.id, settings.supportedPermissions] as const]
+        : [];
+    }),
+  );
+  const runtimePermissions = (runtime: RuntimeOption) =>
+    nativePermissions.get(runtime.id ?? "") ??
+    runtimeDefaultPermissionLevels(runtime);
   const yoloCapable =
     discovered.some((runtime) => runtime.state === "ready") &&
     discovered
       .filter((runtime) => runtime.state === "ready")
-      .every((runtime) =>
-        runtimeDefaultPermissionLevels(runtime).has("full-access"),
-      );
+      .every((runtime) => runtimePermissions(runtime).has("full-access"));
   const allDiscoveredUseFullAccess =
     yoloCapable &&
     discovered
@@ -833,6 +877,7 @@ export function RuntimeEnvironmentsSection({
     withLocalErrorMutation(updateRuntimeEnvironmentMutation()),
   );
   const enableYolo = async () => {
+    if (!yoloCapable) return;
     setYoloSaving(true);
     setYoloError("");
     try {
@@ -840,7 +885,7 @@ export function RuntimeEnvironmentsSection({
         discovered.flatMap((runtime) =>
           runtime.id &&
           runtime.state === "ready" &&
-          runtimeDefaultPermissionLevels(runtime).has("full-access")
+          runtimePermissions(runtime).has("full-access")
             ? [
                 yoloUpdate.mutateAsync({
                   path: { runtimeId: runtime.id },
@@ -937,6 +982,7 @@ export function RuntimeEnvironmentsSection({
             empty="尚未发现可用智能体。"
             onOpenAccounts={onOpenAccounts}
             permissionEditingEnabled={permissionMode === "manual"}
+            nativePermissions={nativePermissions}
           />
           <RuntimeGroup
             title="未发现"

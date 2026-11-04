@@ -53,6 +53,9 @@ const resources = {
         catalogStale: "模型目录刷新失败，已保留上次结果",
         catalogUnavailable: "无法读取模型目录",
         catalogSignedOut: "登录后可读取模型目录",
+        catalogEmpty: "账号暂无可用模型，点击重试",
+        catalogConfigurationUnknown:
+          "当前模型的配置尚未确认，请重试或选择其他模型",
         system: "内置账号",
         empty: "暂无可用选项",
         unavailable: "不可用",
@@ -2124,6 +2127,7 @@ const resources = {
           share: "说一件你们想一起完成的事",
         },
         memberConfigUpdateFailed: "成员执行配置保存失败，请稍后重试。",
+        memberConfigInvalid: "请检查{{name}}的执行配置后再发送。",
         allMembers: "全部成员",
         member: "团队成员",
         lead: "团队负责人",
@@ -2210,6 +2214,9 @@ const resources = {
         catalogStale: "Refresh failed. Showing the previous model catalog.",
         catalogUnavailable: "Model catalog unavailable",
         catalogSignedOut: "Sign in to read the model catalog",
+        catalogEmpty: "No models are available for this account. Retry",
+        catalogConfigurationUnknown:
+          "Model settings are unconfirmed. Retry or select another model",
         system: "Built-in account",
         empty: "No available options",
         unavailable: "Unavailable",

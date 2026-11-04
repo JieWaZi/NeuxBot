@@ -1144,6 +1144,7 @@ function ChatView({
     availableReasoningOptions,
     modelOptionsOverride: availableModels,
     catalogState: executionSelection.catalogState,
+    catalogIssue: executionSelection.catalogIssue,
     catalogPending: executionSelection.catalogPending,
     refreshCatalog: executionSelection.refreshCatalog,
     fastSupported: executionSelection.fastSupported,

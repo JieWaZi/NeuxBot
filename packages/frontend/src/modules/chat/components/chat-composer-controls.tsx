@@ -2,6 +2,7 @@ import {
   ExecutionRuntimeControl,
   ExecutionPermissionControl,
 } from "@/shared/ui/execution-selection-controls";
+import type { ExecutionSelectionState } from "@/shared/hooks/use-execution-selection";
 import { usesNativeModelCatalog } from "@/shared/api/runtime-queries";
 import { listAiAccountsOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useQuery } from "@tanstack/react-query";
@@ -53,6 +54,7 @@ type ChatComposerControlsProps = {
   availableReasoningOptions?: RuntimeReasoningOption[];
   modelOptionsOverride?: RuntimeModelOption[];
   catalogState?: string;
+  catalogIssue?: ExecutionSelectionState["catalogIssue"];
   catalogPending?: boolean;
   refreshCatalog?: () => unknown;
   fastSupported?: boolean;
@@ -90,6 +92,7 @@ export function useChatComposerControls({
   availableReasoningOptions,
   modelOptionsOverride,
   catalogState,
+  catalogIssue,
   catalogPending,
   refreshCatalog,
   fastSupported,
@@ -251,22 +254,9 @@ export function useChatComposerControls({
     selectedRuntime?.baseRuntimeId || selectedRuntime?.id,
   );
   const modelControl =
-    usesNativeCatalog && catalogState && catalogState !== "fresh" ? (
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={catalogPending}
-        onClick={() => void refreshCatalog?.()}
-      >
-        {t(
-          catalogState === "stale"
-            ? "common:executionSelection.catalogStale"
-            : catalogState === "signed_out"
-              ? "common:executionSelection.catalogSignedOut"
-              : "common:executionSelection.catalogUnavailable",
-        )}
-      </Button>
-    ) : selectedModelName || selectedAccount || usesNativeCatalog ? (
+    selectedModelName ||
+    selectedAccount ||
+    (usesNativeCatalog && !catalogIssue) ? (
       <ExecutionModelControl
         selectedModelName={selectedModelName}
         selectedModel={selectedModel}
@@ -274,16 +264,25 @@ export function useChatComposerControls({
         selectedReasoning={selectedReasoning}
         reasoningOptions={availableReasoningOptions}
         thinkingPending={thinkingPending || catalogPending}
-        disabled={usesNativeCatalog && catalogState !== "fresh"}
+        disabled={
+          usesNativeCatalog && (catalogState !== "fresh" || catalogPending)
+        }
+        requiresKnownConfiguration={usesNativeCatalog}
         fast={selectedFast}
         onFastChange={
           fastSupported
             ? (fast) => updateExecutionSelection({ fast: fast ?? null })
             : undefined
         }
-        allowDefaultReasoning={Boolean(selectedAccount)}
+        allowDefaultReasoning={Boolean(
+          selectedAccount ||
+          (usesNativeCatalog && availableReasoningOptions?.length),
+        )}
         defaultReasoning={
-          selectedAccount?.defaultReasoning || selectedRuntime?.defaultReasoning
+          usesNativeCatalog
+            ? undefined
+            : selectedAccount?.defaultReasoning ||
+              selectedRuntime?.defaultReasoning
         }
         onModelChange={(model) => {
           const nextModelOption = modelOptions.find(
@@ -353,6 +352,16 @@ export function useChatComposerControls({
     <>
       {runtimeControl}
       {modelControl}
+      {catalogIssue ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={catalogPending}
+          onClick={() => void refreshCatalog?.()}
+        >
+          {t(`common:executionSelection.${catalogIssue}`)}
+        </Button>
+      ) : null}
     </>
   );
 

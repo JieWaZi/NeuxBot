@@ -4,7 +4,7 @@ import {
   listRuntimesOptions,
   usesNativeModelCatalog,
 } from "@/shared/api/runtime-queries";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { listAiAccountsOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import {
@@ -12,6 +12,9 @@ import {
   getAiAccountThinking,
 } from "@/shared/api/generated/sdk.gen";
 import type {
+  GithubComJieWaZiNeuxBotServerRepositoriesModelsAiAccount as AIAccount,
+  GetRuntimeModelCatalogResponse as ModelCatalog,
+  GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeReasoningOption as ReasoningOption,
   GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeModelOption as RuntimeModelOption,
   GithubComJieWaZiNeuxBotServerApisRuntimeOptionsRuntimeOption as RuntimeOption,
 } from "@/shared/api/generated/types.gen";
@@ -22,6 +25,7 @@ import {
   permissionLevelOf,
   runtimeDefaultPermissionLevels,
   safeDefaultPermissionLevel,
+  type PermissionLevel,
 } from "@/shared/lib/runtime-permissions";
 
 export type ExecutionSelection = {
@@ -32,6 +36,216 @@ export type ExecutionSelection = {
   fast?: boolean;
   permissionLevel?: string;
 };
+
+function nativeCatalogIdentity(
+  runtime: RuntimeOption | undefined,
+  runtimeId: string,
+  accountId: string,
+  account?: AIAccount,
+) {
+  return {
+    runtimeId,
+    accountId,
+    authGeneration: account?.authGeneration,
+    modelConfiguration:
+      account?.authMode === "api-key"
+        ? [
+            account.endpoints,
+            account.selectedModels,
+            account.modelDisplayNames,
+            account.modelReasoningLevels,
+          ]
+        : undefined,
+    version: runtime?.version,
+    binary: runtime?.resolvedBinary || runtime?.binary,
+    prefixArgs: runtime?.prefixArgs,
+    configHome: accountId === "system" ? runtime?.configHome : undefined,
+  };
+}
+
+function resolveModel(
+  value: ExecutionSelection,
+  models: RuntimeModelOption[],
+  preferredModel?: string,
+  defaults?: boolean,
+) {
+  const fallback =
+    models.find((item) => item.id === preferredModel)?.id ||
+    models[0]?.id ||
+    "";
+  const requested = value.model ?? fallback;
+  const model =
+    defaults && !models.some((item) => item.id === requested)
+      ? fallback
+      : requested;
+  return { model, effectiveModel: model || fallback };
+}
+
+function resolveNativeSelection({
+  value,
+  runtime,
+  account,
+  runtimeId,
+  accountId,
+  catalog,
+  defaults,
+  reasoningDefault,
+}: {
+  value: ExecutionSelection;
+  runtime?: RuntimeOption;
+  account?: AIAccount;
+  runtimeId: string;
+  accountId: string;
+  catalog?: ModelCatalog;
+  defaults: boolean;
+  reasoningDefault?: "minimum";
+}) {
+  const models = catalog?.models ?? [];
+  const configuredAccount =
+    accountId === (runtime?.defaultAccountId || "system");
+  const preferredModel =
+    (configuredAccount && runtime?.defaultModel) ||
+    account?.defaultModel ||
+    catalog?.defaultModel;
+  const { model, effectiveModel } = resolveModel(
+    value,
+    models,
+    preferredModel,
+    defaults,
+  );
+  const modelOption = effectiveModel
+    ? models.find((item) => item.id === effectiveModel)
+    : undefined;
+  const reasoningOptions = modelOption?.reasoningOptions ?? [];
+  const preferredReasoning =
+    configuredAccount && effectiveModel === runtime?.defaultModel
+      ? runtime?.defaultReasoning || modelOption?.defaultReasoning
+      : modelOption?.defaultReasoning;
+  const defaultReasoning =
+    reasoningOptions.find((item) => item.id === preferredReasoning)?.id || "";
+  const requestedReasoning =
+    reasoningDefault === "minimum"
+      ? value.reasoning || minimumReasoning(reasoningOptions)
+      : (value.reasoning ?? defaultReasoning);
+  const reasoning =
+    defaults &&
+    requestedReasoning &&
+    !reasoningOptions.some((item) => item.id === requestedReasoning)
+      ? reasoningOptions.find(
+          (item) => item.id === modelOption?.defaultReasoning,
+        )?.id || ""
+      : requestedReasoning;
+  const supportedPermissions = modelPermissionLevels(models, effectiveModel);
+  const permissionLevel =
+    permissionLevelOf(value.permissionLevel) ??
+    safeDefaultPermissionLevel(
+      permissionLevelOf(runtime?.defaultPermissionLevel) ?? "default",
+      supportedPermissions,
+    );
+  const fastSupported = Boolean(modelOption?.fastSupported);
+  const configurationValid = Boolean(
+    runtime?.state === "ready" &&
+    (accountId === "system" || account?.hasCredential) &&
+    catalog?.state === "fresh" &&
+    modelOption?.configurationKnown &&
+    (!reasoning || reasoningOptions.some((item) => item.id === reasoning)),
+  );
+  return {
+    selection: {
+      runtimeId,
+      accountId,
+      model,
+      reasoning,
+      permissionLevel,
+      fast: fastSupported ? value.fast : undefined,
+    },
+    effectiveModel,
+    models,
+    reasoningOptions,
+    supportedPermissions,
+    fastSupported,
+    configurationKnown: modelOption?.configurationKnown === true,
+    configurationValid,
+    valid: Boolean(
+      runtime?.enabled &&
+      configurationValid &&
+      supportedPermissions.has(permissionLevel),
+    ),
+  };
+}
+
+/** 批量校验原生配置；同一账号和 CLI 的目录共享 Query。 */
+export function useNativeExecutionSelections(
+  values: readonly ExecutionSelection[],
+  runtimes: readonly RuntimeOption[],
+  accounts: readonly AIAccount[],
+  { defaults = true }: { defaults?: boolean } = {},
+) {
+  const readyRuntimes = runtimes.filter(
+    (runtime) => runtime.id && runtime.enabled && runtime.state === "ready",
+  );
+  const fallbackRuntime =
+    readyRuntimes.find((runtime) => runtime.isDefault) ?? readyRuntimes[0];
+  const targets = values.map((value) => {
+    const runtime = value.runtimeId
+      ? runtimes.find((item) => item.id === value.runtimeId)
+      : fallbackRuntime;
+    const runtimeId = value.runtimeId || runtime?.id || "";
+    if (!usesNativeModelCatalog(runtime?.baseRuntimeId || runtimeId)) return;
+    const accountId = value.accountId || runtime?.defaultAccountId || "system";
+    const account = accounts.find(
+      (item) =>
+        item.id === accountId &&
+        accountSupportsRuntime(item, runtime?.baseRuntimeId || runtimeId),
+    );
+    const options = nativeModelCatalogOptions(
+      nativeCatalogIdentity(runtime, runtimeId, accountId, account),
+    );
+    const canRead = Boolean(
+      (runtime?.installed ?? runtime?.state === "ready") &&
+      (accountId === "system" || account),
+    );
+    return {
+      value,
+      runtime,
+      runtimeId,
+      accountId,
+      account,
+      options: { ...options, enabled: canRead },
+      key: JSON.stringify(options.queryKey),
+    };
+  });
+  const queries = new Map(
+    targets.flatMap((target) =>
+      target ? [[target.key, target.options] as const] : [],
+    ),
+  );
+  const results = useQueries({ queries: [...queries.values()] });
+  const byKey = new Map(
+    [...queries.keys()].map((key, index) => [key, results[index]]),
+  );
+  return targets.map((target) => {
+    if (!target) return;
+    const query = byKey.get(target.key);
+    const resolved = resolveNativeSelection({
+      ...target,
+      catalog: query?.data,
+      defaults,
+    });
+    const settled = query?.fetchStatus === "idle" && !query.isError;
+    const validFast =
+      defaults || target.value.fast === undefined || resolved.fastSupported;
+    return {
+      selection: resolved.selection,
+      valid: Boolean(resolved.valid && settled),
+      supportedPermissions:
+        resolved.configurationValid && settled && validFast
+          ? resolved.supportedPermissions
+          : new Set<PermissionLevel>(),
+      pending: query && query.fetchStatus !== "idle",
+    };
+  });
+}
 
 /** 账号目录、原生订阅模型和模型推理能力统一在此查询；页面只提交选择值。 */
 export function useExecutionSelection({
@@ -47,6 +261,7 @@ export function useExecutionSelection({
   defaults?: boolean;
   reasoningDefault?: "minimum";
 }) {
+  const queryClient = useQueryClient();
   const runtimesQuery = useQuery({
     ...listRuntimesOptions(withLocalErrorSurface({})),
     enabled: enabled && !fixedRuntime,
@@ -79,39 +294,51 @@ export function useExecutionSelection({
     runtime?.baseRuntimeId || runtimeId,
   );
   const runtimeInstalled = runtime?.installed ?? runtime?.state === "ready";
-  const catalogQuery = useQuery({
-    ...nativeModelCatalogOptions({
-      runtimeId,
-      accountId,
-      authGeneration: account?.authGeneration,
-      modelConfiguration:
-        account?.authMode === "api-key"
-          ? [
-              account.endpoints,
-              account.selectedModels,
-              account.modelDisplayNames,
-              account.modelReasoningLevels,
-            ]
-          : undefined,
-      version: runtime?.version,
-      binary: runtime?.resolvedBinary || runtime?.binary,
-      prefixArgs: runtime?.prefixArgs,
-      configHome: accountId === "system" ? runtime?.configHome : undefined,
-    }),
-    enabled: Boolean(
-      enabled &&
-      usesNativeCatalog &&
-      runtimeInstalled &&
-      (accountId === "system" || account),
-    ),
-  });
-  const catalogReady = catalogQuery.data?.state === "fresh";
+  const catalogIdentity = nativeCatalogIdentity(
+    runtime,
+    runtimeId,
+    accountId,
+    account,
+  );
+  const catalogOptions = nativeModelCatalogOptions(catalogIdentity);
+  const catalogEnabled = Boolean(
+    enabled &&
+    usesNativeCatalog &&
+    runtimeInstalled &&
+    (accountId === "system" || account),
+  );
+  const catalogQuery = useQuery({ ...catalogOptions, enabled: catalogEnabled });
+  const refreshCatalog = async () => {
+    if (!catalogEnabled) return;
+    await queryClient.cancelQueries({
+      queryKey: catalogOptions.queryKey,
+      exact: true,
+    });
+    await queryClient
+      .fetchQuery({
+        ...nativeModelCatalogOptions(catalogIdentity, true),
+        staleTime: 0,
+      })
+      .catch(() => undefined);
+  };
   const catalogState = usesNativeCatalog
     ? catalogQuery.isError
       ? catalogQuery.data
         ? "stale"
         : "unavailable"
       : catalogQuery.data?.state
+    : undefined;
+  const nativeSelection = usesNativeCatalog
+    ? resolveNativeSelection({
+        value,
+        runtime,
+        account,
+        runtimeId,
+        accountId,
+        catalog: catalogQuery.data,
+        defaults,
+        reasoningDefault,
+      })
     : undefined;
   const nativeModelsQuery = useQuery({
     queryKey: [
@@ -137,33 +364,23 @@ export function useExecutionSelection({
     ),
     staleTime: 5 * 60 * 1000,
   });
-  const models: RuntimeModelOption[] = usesNativeCatalog
-    ? (catalogQuery.data?.models ?? [])
-    : account
+  const models: RuntimeModelOption[] =
+    nativeSelection?.models ??
+    (account
       ? (subscription
           ? (nativeModelsQuery.data?.models ?? [])
           : (account.selectedModels ?? [])
         ).map((id) => ({ id, name: account.modelDisplayNames?.[id] || id }))
-      : (runtime?.models ?? []);
-  const configuredAccount =
-    accountId === (runtime?.defaultAccountId || "system");
-  const preferredModel = usesNativeCatalog
-    ? (configuredAccount && runtime?.defaultModel) ||
-      account?.defaultModel ||
-      catalogQuery.data?.defaultModel
-    : account
-      ? account.defaultModel || nativeModelsQuery.data?.defaultModel
-      : runtime?.defaultModel;
-  const defaultModel =
-    models.find((item) => item.id === preferredModel)?.id ||
-    models[0]?.id ||
-    "";
-  const requestedModel = value.model ?? defaultModel;
-  const model =
-    defaults && !models.some((item) => item.id === requestedModel)
-      ? defaultModel
-      : requestedModel;
-  const effectiveModel = model || defaultModel;
+      : (runtime?.models ?? []));
+  const preferredModel = account
+    ? account.defaultModel || nativeModelsQuery.data?.defaultModel
+    : runtime?.defaultModel;
+  const { model, effectiveModel } = nativeSelection
+    ? {
+        model: nativeSelection.selection.model,
+        effectiveModel: nativeSelection.effectiveModel,
+      }
+    : resolveModel(value, models, preferredModel, defaults);
   const thinkingQuery = useQuery({
     queryKey: [
       "account-thinking",
@@ -195,28 +412,21 @@ export function useExecutionSelection({
     ),
     staleTime: 5 * 60 * 1000,
   });
-  const modelCapabilities = usesNativeCatalog
-    ? catalogQuery.data?.models
-    : runtime?.models;
-  const runtimeModel = modelCapabilities?.find(
+  const runtimeModel = runtime?.models?.find(
     (item) => item.id === effectiveModel,
   );
-  const reasoningOptions = usesNativeCatalog
-    ? (runtimeModel?.reasoningOptions ?? [])
-    : account
+  const reasoningOptions: ReasoningOption[] =
+    nativeSelection?.reasoningOptions ??
+    (account
       ? thinkingQuery.data?.available
         ? (thinkingQuery.data.options ?? [])
         : []
       : runtimeModel?.reasoningOptions?.length
         ? runtimeModel.reasoningOptions
-        : (runtime?.reasoningOptions ?? []);
-  const preferredReasoning = usesNativeCatalog
-    ? configuredAccount && effectiveModel === runtime?.defaultModel
-      ? runtime?.defaultReasoning || runtimeModel?.defaultReasoning
-      : runtimeModel?.defaultReasoning
-    : account
-      ? account.defaultReasoning
-      : runtime?.defaultReasoning;
+        : (runtime?.reasoningOptions ?? []));
+  const preferredReasoning = account
+    ? account.defaultReasoning
+    : runtime?.defaultReasoning;
   const requestedReasoning =
     reasoningDefault === "minimum"
       ? value.reasoning || minimumReasoning(reasoningOptions)
@@ -227,36 +437,45 @@ export function useExecutionSelection({
     defaults &&
     requestedReasoning &&
     !reasoningOptions.some((item) => item.id === requestedReasoning)
-      ? usesNativeCatalog
-        ? reasoningOptions.find(
-            (item) => item.id === runtimeModel?.defaultReasoning,
-          )?.id || ""
-        : account
-          ? ""
-          : reasoningOptions[0]?.id || ""
+      ? account
+        ? ""
+        : reasoningOptions[0]?.id || ""
       : requestedReasoning;
   const supportedPermissions =
-    usesNativeCatalog || runtimeModel
-      ? modelPermissionLevels(modelCapabilities, effectiveModel)
-      : runtimeDefaultPermissionLevels(runtime ?? {});
+    nativeSelection?.supportedPermissions ??
+    (runtimeModel
+      ? modelPermissionLevels(runtime?.models, effectiveModel)
+      : runtimeDefaultPermissionLevels(runtime ?? {}));
   const permissionLevel =
     permissionLevelOf(value.permissionLevel) ??
     safeDefaultPermissionLevel(
       permissionLevelOf(runtime?.defaultPermissionLevel) ?? "default",
       supportedPermissions,
     );
-  const fastSupported = Boolean(
-    usesNativeCatalog && runtimeModel?.fastSupported,
-  );
-  const fast = fastSupported ? value.fast : undefined;
-  const selection = {
+  const selection = nativeSelection?.selection ?? {
     runtimeId,
     accountId,
     model,
     reasoning,
     permissionLevel,
-    fast,
+    fast: undefined,
   };
+  const catalogPending =
+    usesNativeCatalog && catalogQuery.fetchStatus !== "idle";
+  const catalogIssue =
+    !usesNativeCatalog || !catalogState
+      ? undefined
+      : catalogState === "stale"
+        ? "catalogStale"
+        : catalogState === "signed_out"
+          ? "catalogSignedOut"
+          : catalogState !== "fresh"
+            ? "catalogUnavailable"
+            : !models.length
+              ? "catalogEmpty"
+              : !nativeSelection?.configurationKnown
+                ? "catalogConfigurationUnknown"
+                : undefined;
   const error =
     runtimesQuery.error ||
     accountsQuery.error ||
@@ -279,25 +498,28 @@ export function useExecutionSelection({
       effectiveModel &&
       thinkingQuery.isPending,
     );
-  const valid = Boolean(
-    runtime?.enabled &&
-    runtime.state === "ready" &&
-    (accountId === "system" || account?.hasCredential) &&
-    (!model || models.some((item) => item.id === model)) &&
-    (!usesNativeCatalog ||
-      (catalogReady && runtimeModel?.configurationKnown)) &&
-    (!reasoning || reasoningOptions.some((item) => item.id === reasoning)) &&
-    supportedPermissions.has(permissionLevel) &&
+  const valid =
     !loading &&
-    !error,
-  );
+    !error &&
+    (nativeSelection
+      ? nativeSelection.valid && !catalogPending
+      : Boolean(
+          runtime?.enabled &&
+          runtime.state === "ready" &&
+          (accountId === "system" || account?.hasCredential) &&
+          (!model || models.some((item) => item.id === model)) &&
+          (!reasoning ||
+            reasoningOptions.some((item) => item.id === reasoning)) &&
+          supportedPermissions.has(permissionLevel),
+        ));
   return {
     selection,
     usesNativeCatalog,
     catalogState,
-    refreshCatalog: catalogQuery.refetch,
-    catalogPending: usesNativeCatalog && catalogQuery.isFetching,
-    fastSupported,
+    catalogIssue,
+    refreshCatalog,
+    catalogPending,
+    fastSupported: nativeSelection?.fastSupported ?? false,
     effectiveModel,
     runtime,
     runtimes,

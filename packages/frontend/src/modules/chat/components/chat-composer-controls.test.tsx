@@ -149,7 +149,12 @@ function Controls({
   const model = selection.model || selected?.defaultModel || "";
   const controls = useChatComposerControls({
     catalogState: nativeCatalog ? "fresh" : undefined,
-    modelOptionsOverride: nativeCatalog ? selected?.models : undefined,
+    modelOptionsOverride: nativeCatalog
+      ? selected?.models.map((model) => ({
+          ...model,
+          configurationKnown: true,
+        }))
+      : undefined,
     selectedAccountId: selection.accountId,
     activeChatId,
     projects: [],

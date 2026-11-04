@@ -38,7 +38,10 @@ export const nativeModelCatalogQueryKey = (
     : (["native-model-catalog"] as const);
 
 /** 目录按账号认证世代和 CLI 隔离，显示名与同主体令牌刷新不改变目录身份。 */
-export function nativeModelCatalogOptions(identity: ModelCatalogIdentity) {
+export function nativeModelCatalogOptions(
+  identity: ModelCatalogIdentity,
+  refresh = false,
+) {
   const { runtimeId, accountId } = identity;
   return queryOptions({
     queryKey: nativeModelCatalogQueryKey(identity),
@@ -46,7 +49,7 @@ export function nativeModelCatalogOptions(identity: ModelCatalogIdentity) {
       const { data } = await getRuntimeModelCatalog(
         withLocalErrorSurface({
           path: { runtimeId },
-          query: { accountId },
+          query: refresh ? { accountId, refresh } : { accountId },
           signal,
           throwOnError: true,
         }),

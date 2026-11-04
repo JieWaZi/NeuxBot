@@ -1,6 +1,9 @@
 import { getWakerRecentProjectOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useInstalledPluginReferences } from "@/modules/plugin";
-import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
+import {
+  useExecutionSelection,
+  useNativeExecutionSelections,
+} from "@/shared/hooks/use-execution-selection";
 import { useDraftWorkspaceSelections } from "./use-draft-workspace-selections";
 import {
   useInfiniteQuery,
@@ -498,11 +501,36 @@ function TeamChatView({
     value: {
       ...teamExecutionConfig,
       permissionLevel:
-        detailQuery.data?.chat?.lastPermissionLevel ||
-        teamExecutionConfig?.permissionLevel,
+        teamExecutionConfig?.permissionLevel ||
+        detailQuery.data?.chat?.lastPermissionLevel,
     },
     enabled: Boolean(configuredRuntime),
     defaults: true,
+  });
+  const draftMemberValues = teamContext.threadId
+    ? []
+    : teamContext.members.map(
+        (member) => draftTeamMemberConfigs[member.id] ?? member,
+      );
+  const nativeMembers = useNativeExecutionSelections(
+    draftMemberValues,
+    runtimes,
+    executionSelection.accountsQuery.data?.resources ?? [],
+  );
+  const invalidNativeMemberIndex = nativeMembers.findIndex(
+    (member) => member && !member.valid,
+  );
+  const invalidNativeMember = teamContext.members[invalidNativeMemberIndex];
+  const memberConfigs = draftMemberValues.map((draft, index) => {
+    const config = nativeMembers[index]?.selection ?? draft;
+    return {
+      accountId: config.accountId,
+      model: config.model,
+      permissionLevel: config.permissionLevel,
+      reasoning: config.reasoning,
+      runtimeId: config.runtimeId,
+      wakerId: teamContext.members[index]?.id ?? "",
+    };
   });
   const historicalRuntime = runtimes.find(
     (item) => item.id === detailQuery.data?.chat?.lastRuntimeId,
@@ -677,6 +705,7 @@ function TeamChatView({
       teamContext.isStopping ||
       !selectedWakerID ||
       !effectiveRuntimeID ||
+      invalidNativeMemberIndex !== -1 ||
       selectedPermissionUnsupported ||
       (executionSelection.usesNativeCatalog && !executionSelection.valid) ||
       (!activeChatId && !workspaceDirectory && !selectedDraftProject),
@@ -815,19 +844,20 @@ function TeamChatView({
               }),
         };
       }
+      if (invalidNativeMemberIndex !== -1) {
+        return {
+          accept: async () => {
+            throw new Error(
+              t("team.memberConfigInvalid", {
+                name: invalidNativeMember?.name,
+              }),
+            );
+          },
+        };
+      }
       const createRequest = withStableCreateRequest(workspaceScopeKey, {
         ...body,
-        memberConfigs: teamContext.members.map((member) => {
-          const config = draftTeamMemberConfigs[member.id] ?? member;
-          return {
-            accountId: config.accountId,
-            model: config.model,
-            permissionLevel: config.permissionLevel,
-            reasoning: config.reasoning,
-            runtimeId: config.runtimeId,
-            wakerId: member.id,
-          };
-        }),
+        memberConfigs,
         projectId: selectedDraftProject?.id || undefined,
         workingDirectory: selectedDraftProject ? undefined : workspaceDirectory,
       });
@@ -1064,6 +1094,7 @@ function TeamChatView({
     selectedAccountId: executionSelection.selection.accountId,
     modelOptionsOverride: executionSelection.models,
     catalogState: executionSelection.catalogState,
+    catalogIssue: executionSelection.catalogIssue,
     catalogPending: executionSelection.catalogPending,
     refreshCatalog: executionSelection.refreshCatalog,
     thinkingPending: executionSelection.thinkingQuery.isFetching,
@@ -1215,7 +1246,19 @@ function TeamChatView({
       pinEmptyState: pinTeamEmptyState,
       isHistoryLoading: historyIsLoading,
       historyError: teamContext.loadError,
-      composerSettings,
+      composerSettings: (
+        <>
+          {composerSettings}
+          {invalidNativeMember &&
+          !nativeMembers[invalidNativeMemberIndex]?.pending ? (
+            <span role="status" className="text-content-secondary type-caption">
+              {t("team.memberConfigInvalid", {
+                name: invalidNativeMember.name,
+              })}
+            </span>
+          ) : null}
+        </>
+      ),
       composerEffects,
       renderComposerContextStrip,
       composerSkills: enabledSkills,
