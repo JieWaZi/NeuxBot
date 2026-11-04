@@ -114,8 +114,8 @@ func TestProviderRuntimePartialAccountRetainsFailedCleanup(t *testing.T) {
 	conn.mu.Unlock()
 	close(retry)
 	<-attempt.done
-	if attempt.err != status_error.RuntimeShutdownFailed {
-		t.Fatalf("failed close = %v", attempt.err)
+	if err := conn.WaitOpenCleanup(t.Context()); err != status_error.RuntimeShutdownFailed {
+		t.Fatalf("failed startup cleanup = %v", err)
 	}
 	runtime.mu.Lock()
 	registered := runtime.connections[conn.id] == conn
@@ -127,6 +127,9 @@ func TestProviderRuntimePartialAccountRetainsFailedCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 	releases.require(t, "account failed", "account")
+	if err := conn.WaitOpenCleanup(t.Context()); err != status_error.RuntimeShutdownFailed {
+		t.Fatalf("retry replaced the original startup cleanup receipt: %v", err)
+	}
 }
 
 func TestProviderRuntimeRootCloseRetainsLateResources(t *testing.T) {

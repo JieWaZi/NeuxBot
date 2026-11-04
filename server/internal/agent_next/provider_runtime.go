@@ -192,6 +192,8 @@ type providerConnection struct {
 	closing bool
 	// closed confirms all cleanup steps have succeeded.
 	closed bool
+	// firstCloseAttempt preserves the cleanup selected by a failed Open.
+	firstCloseAttempt *connectionCloseAttempt
 	// closingAttempt lets concurrent waiters join the same cleanup.
 	closingAttempt *connectionCloseAttempt
 	// client owns native consumers until Close confirms their exit.
@@ -266,7 +268,7 @@ func (r *ProviderRuntime) Open(ctx context.Context, request ProviderConnectionRe
 		select {
 		case <-c.opened:
 		default:
-			c.requestClose()
+			c.requestClose(false)
 			return c, openCtx.Err()
 		}
 	}
@@ -309,7 +311,7 @@ func (c *providerConnection) open(ctx context.Context, request ProviderConnectio
 	c.mu.Unlock()
 	// Start automatic cleanup without canceling the waiter before it can see
 	// the real acquisition or initialization error.
-	c.startClose()
+	c.startClose(false)
 	close(c.opened)
 	c.cancelOpen()
 }
@@ -395,11 +397,20 @@ func (c *providerConnection) Client() (AgentClient, error) {
 // Close stops admission to this connection and waits for a cleanup attempt.
 // A caller's deadline never releases the connection's ownership.
 func (c *providerConnection) Close(ctx context.Context) error {
-	return waitConnectionClose(ctx, c.requestClose())
+	return waitConnectionClose(ctx, c.requestClose(true))
 }
 
-func (c *providerConnection) requestClose() *connectionCloseAttempt {
-	attempt := c.startClose()
+// WaitOpenCleanup waits for the attempt already selected by an unsuccessful Open.
+// Unlike Close, it does not retry a failed release or hide its original error.
+func (c *providerConnection) WaitOpenCleanup(ctx context.Context) error {
+	c.mu.Lock()
+	attempt := c.firstCloseAttempt
+	c.mu.Unlock()
+	return waitConnectionClose(ctx, attempt)
+}
+
+func (c *providerConnection) requestClose(retry bool) *connectionCloseAttempt {
+	attempt := c.startClose(retry)
 	c.cancelOpen()
 	return attempt
 }
@@ -410,9 +421,14 @@ func (c *providerConnection) markClosing() {
 	c.mu.Unlock()
 }
 
-func (c *providerConnection) startClose() *connectionCloseAttempt {
+func (c *providerConnection) startClose(retry bool) *connectionCloseAttempt {
 	c.mu.Lock()
 	c.closing = true
+	if !retry && c.firstCloseAttempt != nil {
+		attempt := c.firstCloseAttempt
+		c.mu.Unlock()
+		return attempt
+	}
 	if c.closed {
 		c.mu.Unlock()
 		return nil
@@ -426,6 +442,9 @@ func (c *providerConnection) startClose() *connectionCloseAttempt {
 		}
 	}
 	attempt := &connectionCloseAttempt{done: make(chan struct{})}
+	if c.firstCloseAttempt == nil {
+		c.firstCloseAttempt = attempt
+	}
 	c.closingAttempt = attempt
 	c.mu.Unlock()
 	go c.clean(attempt)
@@ -522,7 +541,7 @@ func (r *ProviderRuntime) InvalidateAccount(ctx context.Context, provider, accou
 func closeProviderConnections(ctx context.Context, connections []*providerConnection) error {
 	attempts := make([]*connectionCloseAttempt, 0, len(connections))
 	for _, c := range connections {
-		attempts = append(attempts, c.requestClose())
+		attempts = append(attempts, c.requestClose(true))
 	}
 	var result error
 	for _, attempt := range attempts {
