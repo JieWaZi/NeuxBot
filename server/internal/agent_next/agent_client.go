@@ -237,7 +237,7 @@ type AgentEvent struct {
 	Kind string
 	// MessageID identifies a native message segment when supplied.
 	MessageID string
-	// Message contains phase and completion evidence when supplied.
+	// Message contains phase, completion and authoritative replacement evidence when supplied.
 	Message *acpmeta.MessageInfo
 	// Text contains the observed text delta.
 	Text string
@@ -1350,6 +1350,9 @@ func textAgentEvent(kind string, id *string, content acp.ContentBlock, meta map[
 		event.Content = &part
 	}
 	if info, ok := acpmeta.ReadMessageInfo(meta); ok {
+		if kind != "text" || event.MessageID == "" || part.Kind != "text" || event.Text != "" {
+			info.ReplacementText = nil
+		}
 		event.Message = &info
 	}
 	return event, true

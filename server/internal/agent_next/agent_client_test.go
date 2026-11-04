@@ -359,3 +359,33 @@ func TestProviderClientSteerProjectsExactAdmissionAndReceipt(t *testing.T) {
 		t.Fatalf("ungated steer dispatched: calls=%d, %v", calls, err)
 	}
 }
+
+func TestProviderClientMessageReplacementRequiresExactTextIdentity(t *testing.T) {
+	body := ""
+	info := acpmeta.MessageInfo{Phase: acpmeta.MessagePhaseCommentary, Complete: true, Source: acpmeta.MessageSourceNativePhase,
+		ReplacementText: &body}
+	update := acp.UpdateAgentMessageText("")
+	update.AgentMessageChunk.Meta = acpmeta.WithMessageInfo(nil, info)
+	notification := acp.SessionNotification{Update: update}
+	event, ok := agentEvent(notification)
+	if !ok || event.Message == nil || event.Message.ReplacementText != nil {
+		t.Fatalf("anonymous replacement was not isolated: %+v", event)
+	}
+	update.AgentMessageChunk.MessageId = acp.Ptr("exact-message")
+	event, ok = agentEvent(notification)
+	if !ok || event.MessageID != "exact-message" || event.Message == nil || event.Message.ReplacementText == nil ||
+		*event.Message.ReplacementText != "" || event.Text != "" || event.Message.Phase != acpmeta.MessagePhaseCommentary {
+		t.Fatalf("message replacement projection = %+v, info = %+v", event, event.Message)
+	}
+	*event.Message.ReplacementText = "consumer mutation"
+	next, ok := agentEvent(notification)
+	if !ok || next.Message.ReplacementText == nil || *next.Message.ReplacementText != "" {
+		t.Fatalf("consumers share replacement storage: %+v", next.Message)
+	}
+
+	update.AgentMessageChunk.Content = acp.TextBlock("append")
+	event, ok = agentEvent(notification)
+	if !ok || event.Text != "append" || event.Message == nil || event.Message.ReplacementText != nil {
+		t.Fatalf("append and replacement mixed: %+v", event)
+	}
+}
