@@ -50,7 +50,7 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 	if _, err := store.Create(chatID, facts); err != nil {
 		t.Fatal(err)
 	}
-	journal := &consentTestJournal{runtimeEventTestJournal: &runtimeEventTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 16)}
+	journal := &consentTestJournal{interactionTestJournal: &interactionTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 16)}
 	hub := events.New()
 	defer hub.Close()
 	coordinator := newElicitationCoordinator(journal, hub)

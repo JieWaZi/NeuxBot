@@ -17,11 +17,10 @@ func TestWorkflowReferencesReachNativeResumePromptWithoutReloadingInstructions(t
 		return []capability.Binding{agentPreparationBinding(t, "workflow.source.save")}
 	}
 	request := recordedRun{
-		Session:     agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: "native-session"},
 		TurnInput:   agentapi.TurnInput{Message: agentapi.Message{Text: "修改选中的步骤"}},
 		SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}, Instructions: []agentapi.Instruction{{Name: "WORKFLOW_CANVAS_REFERENCES.md", Content: `{"revisionId":"original-revision","kind":"phase","id":"exact-phase"}`}, {Name: "WORKFLOW_RUN_REFERENCE.md", Content: `{"runId":"original-run"}`}, {Name: "TEAM.md", Content: "unrelated team instructions"}}},
 	}
-	_, release, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "turn", nil, nil, nil)
+	_, release, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "turn", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,11 +38,11 @@ func TestWorkflowReferencesReachNativeResumePromptWithoutReloadingInstructions(t
 			t.Fatalf("resume prompt lost exact reference %q: %s", expected, request.Message.Text)
 		}
 	}
-	if strings.Contains(request.Message.Text, "unrelated team instructions") || request.Session.Mode != agentapi.SessionModeResume || request.Session.ID != "native-session" {
+	if strings.Contains(request.Message.Text, "unrelated team instructions") {
 		t.Fatal("workflow reference injection changed unrelated context or native continuation")
 	}
-	next := recordedRun{Session: request.Session, SessionPlan: agentapi.SessionPlan{Target: request.Target, Instructions: []agentapi.Instruction{{Name: "TEAM.md", Content: "unrelated team instructions"}}}, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: "继续"}}}
-	_, releaseNext, _, err := manager.prepareAgent(&next.SessionPlan, &next.TurnInput, next.Session, journal.chat, "turn", nil, nil, nil)
+	next := recordedRun{SessionPlan: agentapi.SessionPlan{Target: request.Target, Instructions: []agentapi.Instruction{{Name: "TEAM.md", Content: "unrelated team instructions"}}}, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: "继续"}}}
+	_, releaseNext, err := manager.prepareAgent(&next.SessionPlan, &next.TurnInput, journal.chat, "turn", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

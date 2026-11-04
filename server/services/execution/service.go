@@ -3,10 +3,13 @@ package execution
 
 import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -101,14 +104,20 @@ type service struct {
 	agentBindings func(models.Chat, string, []string, string) []capability.Binding
 	// validateIntent 在任何首发、续发或重试接纳前校验领域持久约束。
 	validateIntent func(context.Context, WorkIntent) error
-	// agentSessions 保存同一原生会话进程独占的连接文件位置。
-	agentSessions *agentSessionFiles
 	// acquireTeamChatInput 将团队成员 Chat 的直接输入纳入团队聚合接纳边界。
 	acquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// accounts 为执行冻结账号并生成隔离配置。
 	accounts *aiaccount.Service
-	// runtime 执行一次结构化 Agent 调用并交付归一化事件。
-	runtime runtimeRunner
+	// threads owns native bindings and turns for the same conversation store as journal.
+	threads *agent.ThreadLifecycle
+	// resolveAccount freezes the subject and generation before native acquisition.
+	resolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
+	// runtimeSummaries supplies pure workspace file metadata from the runtime catalog.
+	runtimeSummaries []agentapi.RuntimeSummary
+	// workspacePreparer projects instructions and skills without opening a runtime.
+	workspacePreparer *agentapi.WorkspacePreparer
+	// nativeResources tracks connection-owned public resource projections for hot turns.
+	nativeResources sync.Map
 	// journal 读写 Chat 权威事实、窄投影和 committed SSE。
 	journal chatservice.Journal
 	// dormantChats 批量建立尚无消息和执行的独立 Chat。
@@ -167,8 +176,12 @@ type Config struct {
 	AcquireTeamChatInput func(context.Context, string, bool) (context.Context, func(), error)
 	// Accounts 管理受管账号的使用租约和配置投射。
 	Accounts *aiaccount.Service
-	// Runtime 执行一次完整 Agent 调用并提供工作区投影声明。
-	Runtime runtimeRunner
+	// Threads owns native turns and shares Chat's conversation store.
+	Threads *agent.ThreadLifecycle
+	// ResolveAccount freezes an authoritative subject and generation for the selected config root.
+	ResolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
+	// RuntimeSummaries declares workspace filenames and skill directories.
+	RuntimeSummaries []agentapi.RuntimeSummary
 	// Journal 读写 Chat 权威事实和可重建投影。
 	Journal chatservice.Journal
 	// DormantChats 批量建立团队首发所需的独立空闲 Chat。
@@ -218,24 +231,12 @@ type dormantChatCreator interface {
 	) error
 }
 
-// runtimeRunner 是 Execution Core 对 Runtime 深模块的最小消费接口。
-type runtimeRunner interface {
-	// ForkSession 使用冻结运行配置创建独立原生会话。
-	ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error)
-	// Runtimes 返回工作区投影所需的 Runtime 摘要。
-	Runtimes() []agentapi.RuntimeSummary
-	// PrepareSession 占用技术会话；接纳层只在冷路径显式取得并交还实际资源。
-	PrepareSession(context.Context, agentapi.SessionPlan, agentapi.SessionDirective) (agentapi.PreparedChatRun, error)
-	// CloseWorkspace 在改写账号或共享工作区配置前关闭仍持有资源的原生消费者。
-	CloseWorkspace(context.Context, string) error
-}
-
 // New 校验配置并创建尚未绑定进程生命周期的 Execution Core。
 func New(config Config) (Core, error) {
-	if config.Journal == nil {
+	if _, ok := config.Journal.(chatservice.NativeJournal); !ok {
 		return nil, status_error.BadRequest
 	}
-	if config.Runtime == nil {
+	if config.Threads == nil || config.ResolveAccount == nil {
 		return nil, status_error.BadRequest
 	}
 	if config.Wakers == nil {
@@ -265,10 +266,12 @@ func New(config Config) (Core, error) {
 		agentBinary:          config.AgentBinary,
 		agentBindings:        config.AgentBindings,
 		validateIntent:       config.ValidateIntent,
-		agentSessions:        &agentSessionFiles{slots: map[string]agentSessionSlot{}},
 		accounts:             config.Accounts,
 		acquireTeamChatInput: config.AcquireTeamChatInput,
-		runtime:              config.Runtime,
+		threads:              config.Threads,
+		resolveAccount:       config.ResolveAccount,
+		runtimeSummaries:     slices.Clone(config.RuntimeSummaries),
+		workspacePreparer:    agentapi.NewWorkspacePreparer(config.RuntimeSummaries),
 		journal:              config.Journal,
 		dormantChats:         config.DormantChats,
 		wakerController:      config.Wakers,

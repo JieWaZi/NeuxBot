@@ -10,7 +10,7 @@ import (
 )
 
 func TestStartIntentGuardRunsBeforeCreationContinuationAndRetry(t *testing.T) {
-	manager := newMessageTestService(t, t.TempDir(), &fakeRuntime{})
+	manager := newMessageTestService(t, t.TempDir())
 	manager.execution.(*service).validateIntent = func(context.Context, WorkIntent) error { return status_error.KnowledgeForbidden }
 	ctx := context.Background()
 	for _, intent := range []WorkIntent{

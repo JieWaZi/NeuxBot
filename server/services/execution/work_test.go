@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,9 +16,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 
-	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
-	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	eventlognext "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -43,7 +41,7 @@ type testMessageInput struct {
 }
 
 func TestHiddenEntryCreatesStandardChatAndPreservesInitialExecution(t *testing.T) {
-	manager := newMessageTestService(t, t.TempDir(), &fakeRuntime{})
+	manager := newMessageTestService(t, t.TempDir())
 	ctx := context.Background()
 	intent := WorkIntent{
 		ClientRequestID: "automatic-run-receipt",
@@ -89,68 +87,6 @@ func TestHiddenEntryCreatesStandardChatAndPreservesInitialExecution(t *testing.T
 	}
 }
 
-func TestWorkIntentWorkspaceReadOnlyFreezesNonMutationPolicy(t *testing.T) {
-	logDirectory := t.TempDir()
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, logDirectory, runtime)
-	accepted, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		},
-		Message: userMessage{Text: "只读分析并规划任务"},
-		Runtime: runtimeSelection{
-			RuntimeID:         agentapi.RuntimeIDCodex,
-			PermissionLevel:   agentapi.PermissionLevelFullAccess,
-			WorkspaceReadOnly: true,
-		},
-	})
-	if err != nil {
-		t.Fatalf("send read-only work intent: %v", err)
-	}
-	waitForChatTerminal(t, manager, accepted.Chat.ID)
-	if len(runtime.requests) != 1 {
-		t.Fatalf("runtime requests = %d, want 1", len(runtime.requests))
-	}
-	request := runtime.requests[0]
-	testExecutable, executableErr := os.Executable()
-	if executableErr != nil {
-		t.Fatal(executableErr)
-	}
-	if request.Detection.State != agentapi.DetectionStateReady ||
-		request.Detection.ResolvedBinary != testExecutable {
-		t.Fatalf("runtime detection snapshot = %+v", request.Detection)
-	}
-	if !request.Policy.Execution.WorkspaceReadOnly {
-		t.Fatal("runtime execution policy lost workspace read-only restriction")
-	}
-	if len(request.Workspace.AdditionalWritableDirectories) != 0 {
-		t.Fatalf("read-only runtime received writable directories: %+v", request.Workspace.AdditionalWritableDirectories)
-	}
-	store, err := eventlog.NewStore(logDirectory)
-	if err != nil {
-		t.Fatalf("create event store: %v", err)
-	}
-	records, err := store.ReadAll(accepted.Chat.ID)
-	if err != nil {
-		t.Fatalf("read coordinator execution facts: %v", err)
-	}
-	var created eventlog.ExecutionCreatedData
-	for _, record := range records {
-		if record.Type != constants.ChatEventTypeExecutionCreated {
-			continue
-		}
-		if err := json.Unmarshal(record.Data, &created); err != nil {
-			t.Fatalf("decode coordinator execution fact: %v", err)
-		}
-		break
-	}
-	if !created.WorkspaceReadOnly || !accepted.Execution.WorkspaceReadOnly {
-		t.Fatalf("read-only fact was not persisted: event=%+v execution=%+v", created, accepted.Execution)
-	}
-}
-
-// testChatInput 保存测试创建对话时的身份与工作范围。
 type testChatInput struct {
 	// WakerID 是测试对话绑定的伙伴标识。
 	WakerID string
@@ -160,8 +96,11 @@ type testChatInput struct {
 	WorkingDirectory string
 }
 
-// messageTestService 在测试内统一驱动创建首发和已有对话续发两个真实用例。
 type messageTestService struct {
+	// store owns durable admissions for the fixture.
+	store *eventlognext.Store
+	// trace records the actual Codex app-server requests.
+	trace string
 	// execution 接收入口无关的 WorkIntent 并管理 Runtime 生命周期。
 	execution Core
 	// chats 提供权威事实查询和 Chat 元数据用例。
@@ -176,7 +115,6 @@ type messageTestService struct {
 	wakers controllers.WakerController
 }
 
-// sendTestMessage 把测试输入分派到 CreateChat 或 SendMessage。
 func (s messageTestService) sendTestMessage(
 	ctx context.Context,
 	input testMessageInput,
@@ -223,77 +161,6 @@ func (s messageTestService) sendTestMessage(
 	return s.execution.Start(ctx, intent)
 }
 
-// fakeRuntime 是消息执行测试使用的 Runtime 边界替身。
-type fakeRuntime struct {
-	// requests 记录 Chat 交给 Runtime 的结构化请求。
-	requests []recordedRun
-	// result 是没有配置结果序列时返回的固定终态。
-	result agentapi.Result
-	// results 是按调用顺序返回的终态序列。
-	results []agentapi.Result
-	// failureStage 非空时模拟 Runtime 接收首条输入前失败。
-	failureStage string
-	// starts 记录 Runtime 已经接受首条输入的调用次数。
-	starts int
-	// panicOnStart 模拟 Runtime 内部异常被收敛为执行失败。
-	panicOnStart bool
-}
-
-// ForkSession 不参与消息执行测试。
-func (r *fakeRuntime) ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
-	panic("unexpected ForkSession call")
-}
-
-// CloseWorkspace 的同步测试消费者已经退出，无需另行持有工作区资源。
-func (r *fakeRuntime) CloseWorkspace(context.Context, string) error { return nil }
-
-// gatedRuntime 在测试允许前不接受 Invocation，用于验证派发前接纳语义。
-type gatedRuntime struct {
-	// fakeRuntime 提供固定 Runtime 摘要。
-	fakeRuntime
-	// entered 在 Runtime Run 已经开始时关闭。
-	entered chan struct{}
-	// proceed 在测试允许 Runtime 发出启动事件时关闭。
-	proceed chan struct{}
-}
-
-// Run 等待测试门闩，然后交付启动事件并在结束后释放资源。
-func (r *gatedRuntime) Run(
-	ctx context.Context,
-	request recordedRun,
-	sink agentapi.EventSink) agentapi.Result {
-	close(r.entered)
-	select {
-	case <-ctx.Done():
-		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
-			Code:       agentapi.FailureCodeContextCanceled,
-			Stage:      "runtime",
-			Message:    ctx.Err().Error(),
-			Transience: agentapi.FailureTransiencePermanent,
-		}}
-	case <-r.proceed:
-	}
-	invocationID := "gated-invocation"
-	started, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: invocationID})
-	if err := sink.Accept(ctx, agentapi.Event{
-		Type: agentapi.EventTypeInvocationStarted,
-		Data: started,
-	}); err != nil {
-		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
-			Code:       agentapi.FailureCodeEventDelivery,
-			Stage:      "initial_delivery",
-			Message:    err.Error(),
-			Transience: agentapi.FailureTransiencePermanent,
-		}}
-	}
-	return agentapi.Result{Facts: agentapi.InvocationFacts{
-		InvocationID:  invocationID,
-		RuntimeID:     request.Target.RuntimeID,
-		BaseRuntimeID: agentapi.RuntimeIDCodex,
-	}}
-}
-
-// trackingSkillController 是提交测试用于确认聊天选择只读技能关系的替身。
 type trackingSkillController struct {
 	// SkillController 仅补齐消息执行未使用的其他仓储端口。
 	controllers.SkillController
@@ -303,199 +170,74 @@ type trackingSkillController struct {
 	upsertCalls int
 }
 
-// CreatePackage 不参与聊天提交测试。
 func (c *trackingSkillController) CreatePackage(context.Context, models.SkillPackage) error {
 	return nil
 }
 
-// GetPackage 不参与聊天提交测试。
 func (c *trackingSkillController) GetPackage(context.Context, string) (models.SkillPackage, error) {
 	return models.SkillPackage{}, nil
 }
 
-// ListVisible 不参与聊天提交测试。
 func (c *trackingSkillController) ListVisible(context.Context, string, string) ([]models.SkillWithState, error) {
 	return nil, nil
 }
 
-// CreateVersion 不参与聊天提交测试。
 func (c *trackingSkillController) CreateVersion(context.Context, models.SkillVersion, bool, string) error {
 	return nil
 }
 
-// ListVersions 不参与聊天提交测试。
 func (c *trackingSkillController) ListVersions(context.Context, string) ([]models.SkillVersion, error) {
 	return nil, nil
 }
 
-// GetVersion 不参与聊天提交测试。
 func (c *trackingSkillController) GetVersion(context.Context, string) (models.SkillVersion, error) {
 	return models.SkillVersion{}, nil
 }
 
-// DeleteVersion 不参与聊天提交测试，仅满足技能仓储的当前接口。
 func (c *trackingSkillController) DeleteVersion(context.Context, string, string) (models.SkillVersion, error) {
 	return models.SkillVersion{}, nil
 }
 
-// ListVersionContentPaths 不参与聊天提交测试。
 func (c *trackingSkillController) ListVersionContentPaths(context.Context) ([]string, error) {
 	return nil, nil
 }
 
-// SetCurrentVersion 不参与聊天提交测试。
 func (c *trackingSkillController) SetCurrentVersion(context.Context, string, string) error {
 	return nil
 }
 
-// EnsureWakerSkill 记录任何不应由聊天提交触发的默认关系写入。
 func (c *trackingSkillController) EnsureWakerSkill(ctx context.Context, relation models.WakerSkill) error {
 	return c.UpsertWakerSkill(ctx, relation)
 }
 
-// UpsertWakerSkill 记录任何不应由聊天提交触发的持久关系写入。
 func (c *trackingSkillController) UpsertWakerSkill(context.Context, models.WakerSkill) error {
 	c.upsertCalls++
 	return nil
 }
 
-// ListEnabled 返回伙伴在提交开始前已经启用的技能快照。
 func (c *trackingSkillController) ListEnabled(context.Context, string) ([]models.SkillWithState, error) {
 	return append([]models.SkillWithState(nil), c.enabled...), nil
 }
 
-// DeleteWakerSkill 不参与聊天提交测试。
 func (c *trackingSkillController) DeleteWakerSkill(context.Context, string, string) error {
 	return nil
 }
 
-// ListPrivateVersionsByWaker 不参与聊天提交测试。
 func (c *trackingSkillController) ListPrivateVersionsByWaker(context.Context, string) ([]models.SkillVersion, error) {
 	return nil, nil
 }
 
-// DeleteByWaker 不参与聊天提交测试。
 func (c *trackingSkillController) DeleteByWaker(context.Context, string) error {
 	return nil
 }
 
-// DeletePackage 不参与聊天提交测试。
 func (c *trackingSkillController) DeletePackage(context.Context, string) error {
 	return nil
 }
 
-// UpdatePackageDisplayName 不参与聊天提交测试。
 func (c *trackingSkillController) UpdatePackageDisplayName(context.Context, string, string) error {
 	return nil
 }
-
-// Runtimes 返回测试使用的固定 Codex 工作区布局。
-func (r *fakeRuntime) Runtimes() []agentapi.RuntimeSummary {
-	return []agentapi.RuntimeSummary{{
-		ID:                  agentapi.RuntimeIDCodex,
-		BaseRuntimeID:       agentapi.RuntimeIDCodex,
-		InstructionFileName: "AGENTS.md",
-		SkillDirectoryName:  ".agents",
-	}}
-}
-
-// Run 模拟完整同步消费者，在退出后释放资源。
-func (r *fakeRuntime) Run(
-	ctx context.Context,
-	request recordedRun,
-	sink agentapi.EventSink) agentapi.Result {
-	r.requests = append(r.requests, request)
-	if r.failureStage != "" {
-		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
-			Code:       agentapi.FailureCodeRuntimeUnavailable,
-			Stage:      r.failureStage,
-			Message:    "runtime unavailable",
-			Transience: agentapi.FailureTransiencePermanent,
-		}}
-	}
-	r.starts++
-	invocationID := "test-invocation-" + string(rune('0'+r.starts))
-	started, _ := json.Marshal(agentapi.InvocationStartedData{
-		InvocationID: invocationID,
-	})
-	if err := sink.Accept(ctx, agentapi.Event{
-		Type: agentapi.EventTypeInvocationStarted,
-		Data: started,
-	}); err != nil {
-		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
-			Code:       agentapi.FailureCodeEventDelivery,
-			Stage:      "initial_delivery",
-			Message:    err.Error(),
-			Transience: agentapi.FailureTransiencePermanent,
-		}}
-	}
-	if r.panicOnStart {
-		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
-			Code:       agentapi.FailureCodeProcessExited,
-			Stage:      "runtime",
-			Message:    "runtime execution failed unexpectedly",
-			Transience: agentapi.FailureTransiencePermanent,
-		}}
-	}
-	payload, _ := json.Marshal(map[string]string{"text": "执行完成"})
-	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeTextDelta, Data: payload}); err != nil {
-		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
-			Code:       agentapi.FailureCodeEventDelivery,
-			Stage:      "event_delivery",
-			Message:    err.Error(),
-			Transience: agentapi.FailureTransiencePermanent,
-		}}
-	}
-	result := r.result
-	if index := r.starts - 1; index < len(r.results) {
-		result = r.results[index]
-	}
-	result.Facts = agentapi.InvocationFacts{
-		InvocationID:  invocationID,
-		RuntimeID:     request.Target.RuntimeID,
-		BaseRuntimeID: agentapi.RuntimeIDCodex,
-		Model:         request.Policy.Model,
-		Reasoning:     request.Policy.Reasoning,
-		Policy:        request.Policy.Execution,
-	}
-	result.Session.Mode = request.Session.Mode
-	return result
-}
-
-// cancelableRuntime 返回一个直到调用 Context 取消才结束的 Runtime。
-type cancelableRuntime struct {
-	// started 在 Start 已收到调用 Context 后关闭。
-	started chan struct{}
-}
-
-// ForkSession 不参与取消执行测试。
-func (r *cancelableRuntime) ForkSession(context.Context, agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
-	panic("unexpected ForkSession call")
-}
-
-// Runtimes 返回测试使用的 Codex 工作区布局。
-func (r *cancelableRuntime) Runtimes() []agentapi.RuntimeSummary {
-	return (&fakeRuntime{}).Runtimes()
-}
-
-// Run 确认输入后等待取消，消费者结束后释放资源。
-func (r *cancelableRuntime) Run(ctx context.Context, _ recordedRun, sink agentapi.EventSink) agentapi.Result {
-	started, _ := json.Marshal(agentapi.InvocationStartedData{InvocationID: "cancelable-invocation"})
-	if err := sink.Accept(ctx, agentapi.Event{Type: agentapi.EventTypeInvocationStarted, Data: started}); err != nil {
-		return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{Code: agentapi.FailureCodeEventDelivery, Message: err.Error()}}
-	}
-	close(r.started)
-	<-ctx.Done()
-	return agentapi.Result{ExitCode: -1, Failure: &agentapi.Failure{
-		Code:       agentapi.FailureCodeContextCanceled,
-		Stage:      "runtime",
-		Message:    ctx.Err().Error(),
-		Transience: agentapi.FailureTransiencePermanent,
-	}}
-}
-
-// CloseWorkspace 的同步测试消费者已经退出，无需另行持有工作区资源。
-func (r *cancelableRuntime) CloseWorkspace(context.Context, string) error { return nil }
 
 func TestSendMessagePreStartFailureLeavesNoAuthoritativeMessageOrExecution(
 	t *testing.T,
@@ -503,8 +245,7 @@ func TestSendMessagePreStartFailureLeavesNoAuthoritativeMessageOrExecution(
 	ctx := context.Background()
 	logDirectory := t.TempDir()
 	workingDirectory := t.TempDir()
-	runtime := &fakeRuntime{failureStage: "prepare"}
-	manager := newMessageTestService(t, logDirectory, runtime)
+	manager := newMessageTestService(t, logDirectory, messageTestOptions{rejectLaunch: true})
 
 	request := testMessageInput{
 		NewChat: &testChatInput{
@@ -531,21 +272,27 @@ func TestSendMessagePreStartFailureLeavesNoAuthoritativeMessageOrExecution(
 	) {
 		t.Fatalf("second sendTestMessage() error = %v, want RuntimeUnavailable", err)
 	}
-	if len(runtime.requests) != 2 {
-		t.Fatalf("Runtime Run calls = %d, want 2", len(runtime.requests))
-	}
-	entries, err := os.ReadDir(logDirectory)
+	entries, err := manager.store.ListChatIDs()
 	if err != nil {
 		t.Fatalf("ReadDir(logDirectory) error = %v", err)
 	}
-	if len(entries) != 0 {
-		t.Fatalf("authoritative log files = %v, want none", entries)
+	for _, chatID := range entries {
+		version, err := manager.store.ReadVersion(ctx, chatID)
+		if err != nil || version != 0 {
+			t.Fatalf("unadmitted chat %s committed version %d: %v", chatID, version, err)
+		}
+		path, err := manager.store.LogPath(chatID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("unadmitted chat created a log file %s: %v", path, err)
+		}
 	}
 }
 
 func TestCreateChatReplaysSameFirstRequestAndRejectsChangedContent(t *testing.T) {
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, t.TempDir(), runtime)
+	manager := newMessageTestService(t, t.TempDir())
 	request := testMessageInput{
 		ClientRequestID: "stable-create-request",
 		NewChat: &testChatInput{
@@ -571,8 +318,8 @@ func TestCreateChatReplaysSameFirstRequestAndRejectsChangedContent(t *testing.T)
 		replayed.Execution.ID != first.Execution.ID || replayed.Execution.CompletedAt == nil {
 		t.Fatalf("replayed execution = %+v, first = %+v", replayed, first)
 	}
-	if runtime.starts != 1 {
-		t.Fatalf("runtime starts = %d, want 1", runtime.starts)
+	if calls := manager.nativeCalls(t, "turn/start"); len(calls) != 1 {
+		t.Fatalf("native submissions = %d, want 1", len(calls))
 	}
 	request.Message.Text = "不能复用同一个标识发送其他内容"
 	if _, err := manager.sendTestMessage(context.Background(), request); !errors.Is(
@@ -580,532 +327,6 @@ func TestCreateChatReplaysSameFirstRequestAndRejectsChangedContent(t *testing.T)
 		status_error.CreateRequestConflict,
 	) {
 		t.Fatalf("changed replay error = %v, want CreateRequestConflict", err)
-	}
-}
-
-func TestCreateChatRejectsConcurrentRequestBeforeAuthorityCommit(t *testing.T) {
-	runtime := &gatedRuntime{
-		entered: make(chan struct{}),
-		proceed: make(chan struct{}),
-	}
-	manager := newMessageTestService(t, t.TempDir(), runtime)
-	request := testMessageInput{
-		ClientRequestID: "concurrent-create-request",
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		},
-		Message: userMessage{Text: "并发首发只执行一次"},
-		Runtime: runtimeSelection{
-			RuntimeID:       constants.RuntimeIDCodex,
-			PermissionLevel: constants.PermissionLevelAuto,
-		},
-	}
-	type startResult struct {
-		// accepted 是首次请求得到的已接纳执行。
-		accepted AcceptedExecution
-		// err 是首次请求返回的错误。
-		err error
-	}
-	firstResult := make(chan startResult, 1)
-	go func() {
-		accepted, err := manager.sendTestMessage(context.Background(), request)
-		firstResult <- startResult{accepted: accepted, err: err}
-	}()
-	<-runtime.entered
-	if _, err := manager.sendTestMessage(context.Background(), request); !errors.Is(
-		err,
-		status_error.CreateRequestInProgress,
-	) {
-		t.Fatalf("concurrent send error = %v, want CreateRequestInProgress", err)
-	}
-	close(runtime.proceed)
-	result := <-firstResult
-	if result.err != nil {
-		t.Fatalf("first send error = %v", result.err)
-	}
-	waitForChatTerminal(t, manager, result.accepted.Chat.ID)
-}
-
-func TestBuildRunRequestReplaysDeduplicatedMemberReportContext(t *testing.T) {
-	manager := &service{}
-	request := manager.buildRunRequest(
-		messageChat{
-			chat: models.Chat{ID: "lead-chat"},
-			previousMessages: []messageview.Message{
-				{
-					ID:      "member-report",
-					Role:    constants.MessageRoleUser,
-					Actor:   string(constants.ChannelMessageActorMemberReport),
-					Content: "bounded report body",
-				},
-				{
-					ID:          "leader-summary",
-					Role:        constants.MessageRoleAssistant,
-					ExecutionID: "leader-execution",
-					Status:      constants.ExecutionStatusCompleted,
-					Content:     "leader summary",
-					DisplayParts: []messageview.MessageDisplayPart{{
-						Type: constants.MessageDisplayPartText, Text: "leader summary",
-					}},
-				},
-			},
-			runtimeSessions: map[string]models.RuntimeSession{},
-		},
-		pendingMessage{
-			message: userMessage{Text: "current bounded report delivery"},
-			runtime: runtimeSelection{RuntimeID: constants.RuntimeIDCodex},
-		},
-		&preparedMessageFiles{},
-		nil,
-		nil,
-		models.RuntimeEnvironment{},
-	)
-	if len(request.History) != 2 ||
-		!strings.Contains(request.History[0].Content, "Team member result id=member-report") ||
-		!strings.Contains(request.History[0].Content, "bounded report body") ||
-		request.History[1].Content != "leader summary" {
-		t.Fatalf("runtime history = %+v, want member report and leader-authored history", request.History)
-	}
-	if request.Message.Text != "current bounded report delivery" {
-		t.Fatalf("current report delivery = %q", request.Message.Text)
-	}
-}
-
-func TestBuildRunRequestOmitsReportsRepeatedInCurrentNotification(t *testing.T) {
-	manager := &service{}
-	request := manager.buildRunRequest(
-		messageChat{
-			chat: models.Chat{ID: "lead-chat"},
-			previousMessages: []messageview.Message{
-				{ID: "earlier-report", Role: constants.MessageRoleUser, Actor: string(constants.ChannelMessageActorMemberReport), Content: "earlier result"},
-				{ID: "current-report", Role: constants.MessageRoleUser, Actor: string(constants.ChannelMessageActorMemberReport), Content: "current result"},
-				{ID: "lead-reply", Role: constants.MessageRoleAssistant, Status: constants.ExecutionStatusCompleted,
-					Content: "prior reply", DisplayParts: []messageview.MessageDisplayPart{{Type: constants.MessageDisplayPartText, Text: "prior reply"}}},
-			},
-			runtimeSessions: map[string]models.RuntimeSession{},
-		},
-		pendingMessage{
-			message:                 userMessage{Text: "current result"},
-			runtime:                 runtimeSelection{RuntimeID: constants.RuntimeIDCodex},
-			historyMessageIDsToOmit: []string{"current-report"},
-		},
-		&preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{},
-	)
-	if len(request.History) != 2 ||
-		!strings.Contains(request.History[0].Content, "earlier result") ||
-		request.History[1].Content != "prior reply" ||
-		request.Message.Text != "current result" {
-		t.Fatalf("notification request repeats or loses a report: %+v", request)
-	}
-}
-
-func TestWorkIntentCommitBeforeDispatchPersistsPendingFactsBeforeRuntimeAccepts(
-	t *testing.T,
-) {
-	logDirectory := t.TempDir()
-	runtime := &gatedRuntime{
-		entered: make(chan struct{}),
-		proceed: make(chan struct{}),
-	}
-	manager := newMessageTestService(t, logDirectory, runtime)
-	accepted, err := manager.execution.Start(context.Background(), WorkIntent{
-		ClientRequestID: "commit-before-dispatch-request",
-		Chat: ChatTarget{Create: &CreateChatSpec{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		}},
-		Input: WorkInput{
-			Actor:   "automation",
-			Content: "可靠收件后再派发",
-		},
-		Options: WorkOptions{
-			RuntimeID:         agentapi.RuntimeIDCodex,
-			PermissionLevel:   agentapi.PermissionLevelAuto,
-			SessionPolicy:     constants.RuntimeSessionPolicyNew,
-			ParentExecutionID: "parent-execution-1",
-		},
-		Admission: constants.ExecutionAdmissionCommitBeforeDispatch,
-	})
-	if err != nil {
-		t.Fatalf("Start() error = %v", err)
-	}
-	if accepted.Execution.Status != constants.ExecutionStatusPending {
-		t.Fatalf("accepted status = %q, want pending", accepted.Execution.Status)
-	}
-	select {
-	case <-runtime.entered:
-	case <-time.After(time.Second):
-		t.Fatal("Runtime was not dispatched")
-	}
-	store, err := eventlog.NewStore(logDirectory)
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
-	records, err := store.ReadAll(accepted.Chat.ID)
-	if err != nil {
-		t.Fatalf("ReadAll() before Runtime accept error = %v", err)
-	}
-	if len(records) != 3 ||
-		records[0].Type != constants.ChatEventTypeCreated ||
-		records[1].Type != constants.ChatEventTypeUserMessageCreated ||
-		records[2].Type != constants.ChatEventTypeExecutionCreated {
-		t.Fatalf("pre-dispatch facts = %+v", records)
-	}
-	var message eventlog.MessageCreatedData
-	if err := json.Unmarshal(records[1].Data, &message); err != nil {
-		t.Fatalf("decode input fact: %v", err)
-	}
-	if message.Actor != "automation" {
-		t.Fatalf("input actor = %q", message.Actor)
-	}
-	var created eventlog.ExecutionCreatedData
-	if err := json.Unmarshal(records[2].Data, &created); err != nil {
-		t.Fatalf("decode execution fact: %v", err)
-	}
-	if created.ParentExecutionID != "parent-execution-1" {
-		t.Fatalf("parent execution = %q", created.ParentExecutionID)
-	}
-	close(runtime.proceed)
-	waitForChatTerminal(t, manager, accepted.Chat.ID)
-	// 文件成果允许在执行终态之后追加，先等待真实后台收尾再检查持久事实。
-	wait, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := manager.execution.CancelAndWait(wait, accepted.Chat.ID); err != nil {
-		t.Fatal(err)
-	}
-	records, err = store.ReadAll(accepted.Chat.ID)
-	if err != nil {
-		t.Fatalf("ReadAll() after Runtime accept error = %v", err)
-	}
-	completed := 0
-	for _, record := range records {
-		if record.Type == constants.ChatEventTypeExecutionCompleted && record.ExecutionID == accepted.Execution.ID {
-			completed++
-		}
-	}
-	if len(records) < 5 || records[3].Type != constants.ChatEventTypeExecutionStarted ||
-		records[3].ExecutionID != accepted.Execution.ID || completed != 1 {
-		t.Fatalf("post-dispatch facts = %+v", records)
-	}
-}
-
-func TestSendMessageMapsSkillPreparationFailure(t *testing.T) {
-	logDirectory := t.TempDir()
-	manager := newMessageTestService(
-		t,
-		logDirectory,
-		&fakeRuntime{failureStage: "runtime_files"},
-	)
-	_, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		},
-		Message: userMessage{Text: "使用当前技能"},
-		Runtime: runtimeSelection{
-			RuntimeID: agentapi.RuntimeIDCodex,
-		},
-	})
-	if !errors.Is(err, status_error.SkillUnavailable) {
-		t.Fatalf("sendTestMessage() error = %v, want SkillUnavailable", err)
-	}
-	entries, readErr := os.ReadDir(logDirectory)
-	if readErr != nil {
-		t.Fatalf("ReadDir(logDirectory) error = %v", readErr)
-	}
-	if len(entries) != 0 {
-		t.Fatalf("authoritative log files = %v, want none", entries)
-	}
-}
-
-func TestSendMessageDeliversEnabledSkillsWithoutChangingRelations(t *testing.T) {
-	skillDataDirectory := t.TempDir()
-	skills := &trackingSkillController{enabled: []models.SkillWithState{
-		{
-			SkillPackage: models.SkillPackage{ID: "skill-selected", Name: "review"},
-			CurrentVersion: models.SkillVersion{
-				ID:            "version-selected",
-				Version:       "1.2.0",
-				Name:          "review",
-				ContentPath:   filepath.Join("skills", "versions", "skill-selected", "version-selected"),
-				ContentDigest: "selected-digest",
-			},
-			Enabled: true,
-		},
-		{
-			SkillPackage: models.SkillPackage{ID: "skill-background", Name: "diagnose"},
-			CurrentVersion: models.SkillVersion{
-				ID:            "version-background",
-				Version:       "2.0.0",
-				Name:          "diagnose",
-				ContentPath:   filepath.Join("skills", "versions", "skill-background", "version-background"),
-				ContentDigest: "background-digest",
-			},
-			Enabled: true,
-		},
-	}}
-	runtime := &fakeRuntime{failureStage: "prepare"}
-	manager := newMessageTestService(
-		t,
-		t.TempDir(),
-		runtime,
-		messageTestOptions{
-			skills:             skills,
-			skillDataDirectory: skillDataDirectory,
-		},
-	)
-	request := testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		},
-		Message: userMessage{
-			Text:     "只在本轮调用代码审查",
-			SkillIDs: []string{"skill-selected"},
-		},
-		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
-	}
-	if _, err := manager.sendTestMessage(context.Background(), request); !errors.Is(err, status_error.RuntimeUnavailable) {
-		t.Fatalf("sendTestMessage() error = %v, want RuntimeUnavailable", err)
-	}
-	if len(runtime.requests) != 1 || len(runtime.requests[0].Skills) != 2 {
-		t.Fatalf("Runtime requests = %+v, want both enabled skills", runtime.requests)
-	}
-	selectedByName := make(map[string]agentapi.Skill, len(runtime.requests[0].Skills))
-	for _, skill := range runtime.requests[0].Skills {
-		selectedByName[skill.Name] = skill
-	}
-	if !slices.Contains(runtime.requests[0].SelectedSkills, "review") || slices.Contains(runtime.requests[0].SelectedSkills, "diagnose") {
-		t.Fatalf("skill selection = %+v", selectedByName)
-	}
-	if selectedByName["review"].Path != filepath.Join(
-		skillDataDirectory,
-		"skills",
-		"versions",
-		"skill-selected",
-		"version-selected",
-	) {
-		t.Fatalf("selected skill path = %q", selectedByName["review"].Path)
-	}
-	if skills.upsertCalls != 0 {
-		t.Fatalf("UpsertWakerSkill calls = %d, want 0", skills.upsertCalls)
-	}
-
-	request.Message.SkillIDs = []string{"skill-disabled"}
-	if _, err := manager.sendTestMessage(context.Background(), request); !errors.Is(err, status_error.BadRequest) {
-		t.Fatalf("disabled skill error = %v, want BadRequest", err)
-	}
-	if len(runtime.requests) != 1 {
-		t.Fatalf("Runtime Run calls = %d after disabled selection, want 1", len(runtime.requests))
-	}
-	if skills.upsertCalls != 0 {
-		t.Fatalf("UpsertWakerSkill calls = %d after rejection, want 0", skills.upsertCalls)
-	}
-}
-
-func TestSendMessageRunsThroughRuntimeAndPersistsCompletedChat(
-	t *testing.T,
-) {
-	skillDataDirectory := t.TempDir()
-	skillContentPath := filepath.Join("skills", "versions", "skill-review", "version-review")
-	if err := os.MkdirAll(filepath.Join(skillDataDirectory, skillContentPath), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	skills := &trackingSkillController{enabled: []models.SkillWithState{{
-		SkillPackage: models.SkillPackage{ID: "skill-review", Name: "代码审查"},
-		CurrentVersion: models.SkillVersion{
-			ID:          "version-review",
-			Version:     "1.4.0",
-			ContentPath: skillContentPath,
-		},
-		Enabled: true,
-	}}}
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(
-		t,
-		t.TempDir(),
-		runtime,
-		messageTestOptions{
-			skills:             skills,
-			skillDataDirectory: skillDataDirectory,
-		},
-	)
-	workingDirectory := t.TempDir()
-	resolvedWorkingDirectory, err := filepath.EvalSymlinks(workingDirectory)
-	if err != nil {
-		t.Fatalf("resolve temporary working directory: %v", err)
-	}
-	result, err := manager.sendTestMessage(
-		context.Background(),
-		testMessageInput{
-			NewChat: &testChatInput{
-				WakerID:          "waker-1",
-				WorkingDirectory: workingDirectory,
-			},
-			Message: userMessage{
-				Text:     "通过 Runtime 执行",
-				SkillIDs: []string{"skill-review"},
-			},
-			Runtime: runtimeSelection{
-				RuntimeID: agentapi.RuntimeIDCodex,
-				Model:     "gpt-5",
-				Reasoning: "high",
-			},
-		},
-	)
-	if err != nil {
-		t.Fatalf("sendTestMessage() error = %v", err)
-	}
-	if result.Chat.AdditionalWorkingDirectories[0] != resolvedWorkingDirectory {
-		t.Fatalf(
-			"temporary default working directory = %q, want %q",
-			result.Chat.AdditionalWorkingDirectories[0],
-			resolvedWorkingDirectory,
-		)
-	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		summary, summaryErr := manager.chats.GetChatSummary(
-			context.Background(),
-			result.Chat.ID,
-		)
-		if summaryErr == nil && summary.Chat.ActiveExecutionID == "" {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("execution did not reach terminal state: %v", summaryErr)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	history, err := manager.chats.ReadMessageHistory(
-		context.Background(),
-		result.Chat.ID,
-		0,
-		10,
-	)
-	if err != nil {
-		t.Fatalf("ReadMessageHistory() error = %v", err)
-	}
-	if len(history.Resources) != 2 ||
-		history.Resources[0].Content != "通过 Runtime 执行" ||
-		len(history.Resources[0].Skills) != 1 ||
-		history.Resources[0].Skills[0].ID != "skill-review" ||
-		history.Resources[0].Skills[0].Name != "代码审查" ||
-		history.Resources[0].Skills[0].Version != "1.4.0" ||
-		history.Resources[1].Content != "执行完成" ||
-		history.Resources[1].Status != constants.ExecutionStatusCompleted {
-		t.Fatalf("message history = %+v", history.Resources)
-	}
-	if runtime.starts != 1 {
-		t.Fatalf("Runtime Run calls = %d, want 1", runtime.starts)
-	}
-}
-
-func TestSendMessageKeepsWholeFileCodeReferencesOutOfAttachments(t *testing.T) {
-	project := t.TempDir()
-	referencedFile := filepath.Join(project, "server", "service.go")
-	if err := os.MkdirAll(filepath.Dir(referencedFile), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(referencedFile, []byte("package server"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(
-		t,
-		t.TempDir(),
-		runtime,
-	)
-
-	result, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: project,
-		},
-		Message: userMessage{
-			Text: "检查这个文件",
-			CodeReferences: []CodeReferenceInput{{
-				Path: referencedFile,
-			}},
-		},
-		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
-	})
-	if err != nil {
-		t.Fatalf("sendTestMessage() error = %v", err)
-	}
-	waitForChatTerminal(t, manager, result.Chat.ID)
-
-	history, err := manager.chats.ReadMessageHistory(
-		context.Background(),
-		result.Chat.ID,
-		0,
-		10,
-	)
-	if err != nil {
-		t.Fatalf("ReadMessageHistory() error = %v", err)
-	}
-	userMessage := history.Resources[0]
-	if len(userMessage.Attachments) != 0 || len(userMessage.CodeReferences) != 1 ||
-		userMessage.CodeReferences[0].Path != "projects/"+filepath.Base(project)+"/server/service.go" {
-		t.Fatalf("user message files = attachments:%+v references:%+v", userMessage.Attachments, userMessage.CodeReferences)
-	}
-	attachmentEntries, err := os.ReadDir(filepath.Join(result.Chat.WorkspaceDirectory, "attachments"))
-	if err != nil {
-		t.Fatalf("ReadDir(attachments) error = %v", err)
-	}
-	if len(attachmentEntries) != 1 ||
-		attachmentEntries[0].Name() != constants.ExecutionWorkspaceGeneratedFilesDirectory ||
-		!attachmentEntries[0].IsDir() {
-		t.Fatalf(
-			"attachment entries = %v, want only %s directory",
-			attachmentEntries,
-			constants.ExecutionWorkspaceGeneratedFilesDirectory,
-		)
-	}
-	if runtime.starts != 1 {
-		t.Fatalf("Runtime Run calls = %d, want 1", runtime.starts)
-	}
-}
-
-func TestSendMessageForwardsAbsoluteCodeSnippetPath(t *testing.T) {
-	absolutePath := filepath.Join(t.TempDir(), "AI新闻简报.md")
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(
-		t,
-		t.TempDir(),
-		runtime,
-	)
-
-	result, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		},
-		Message: userMessage{
-			Text: "这是什么",
-			CodeReferences: []CodeReferenceInput{{
-				Path:      absolutePath,
-				StartLine: 13,
-				EndLine:   13,
-				Content:   "其中政策与市场两项变化最快。",
-			}},
-		},
-		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
-	})
-	if err != nil {
-		t.Fatalf("sendTestMessage() error = %v", err)
-	}
-	waitForChatTerminal(t, manager, result.Chat.ID)
-
-	if len(runtime.requests) != 1 || len(runtime.requests[0].Message.CodeReferences) != 1 {
-		t.Fatalf("runtime code references = %+v", runtime.requests)
-	}
-	reference := runtime.requests[0].Message.CodeReferences[0]
-	if reference.Path != absolutePath || reference.StartLine != 13 ||
-		reference.EndLine != 13 || reference.Content != "其中政策与市场两项变化最快。" {
-		t.Fatalf("runtime code reference = %+v", reference)
 	}
 }
 
@@ -1119,7 +340,6 @@ func TestSendMessageRollsBackNewWorkspaceWhenWholeFileReferenceIsOutsideProject(
 	manager := newMessageTestService(
 		t,
 		logDirectory,
-		&fakeRuntime{failureStage: "prepare"},
 	)
 
 	_, err := manager.sendTestMessage(context.Background(), testMessageInput{
@@ -1138,7 +358,7 @@ func TestSendMessageRollsBackNewWorkspaceWhenWholeFileReferenceIsOutsideProject(
 	if !errors.Is(err, status_error.BadRequest) {
 		t.Fatalf("sendTestMessage() error = %v, want BadRequest", err)
 	}
-	entries, readErr := os.ReadDir(logDirectory)
+	entries, readErr := filepath.Glob(filepath.Join(logDirectory, "chat", "*", "workspace"))
 	if readErr != nil {
 		t.Fatalf("ReadDir(logDirectory) error = %v", readErr)
 	}
@@ -1147,246 +367,13 @@ func TestSendMessageRollsBackNewWorkspaceWhenWholeFileReferenceIsOutsideProject(
 	}
 }
 
-func TestSendMessagePersistsSessionAndResumesAfterModelChange(t *testing.T) {
-	runtime := &fakeRuntime{
-		result: agentapi.Result{
-			Session: agentapi.SessionResult{
-				OutputID: "session-1",
-				State:    agentapi.SessionStateCreated,
-			},
-		},
-	}
-	manager := newMessageTestService(
-		t,
-		t.TempDir(),
-		runtime,
-	)
-	first, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		},
-		Message: userMessage{Text: "建立 Session"},
-		Runtime: runtimeSelection{
-			RuntimeID: agentapi.RuntimeIDCodex,
-			Model:     "gpt-5",
-			Reasoning: "high",
-		},
-	})
-	if err != nil {
-		t.Fatalf("first sendTestMessage() error = %v", err)
-	}
-	waitForChatTerminal(t, manager, first.Chat.ID)
-
-	second, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		ChatID:  first.Chat.ID,
-		Message: userMessage{Text: "继续 Session"},
-		Runtime: runtimeSelection{
-			RuntimeID: agentapi.RuntimeIDCodex,
-			Model:     "gpt-5.1",
-			Reasoning: "medium",
-		},
-	})
-	if err != nil {
-		t.Fatalf("second sendTestMessage() error = %v", err)
-	}
-	waitForChatTerminal(t, manager, second.Chat.ID)
-	if runtime.starts != 2 {
-		t.Fatalf("Runtime Run calls = %d, want 2", runtime.starts)
-	}
-}
-
-// forkContinuationRuntime 仅替换真实 CLI 分叉，保留工作接纳和权威日志流程。
-type forkContinuationRuntime struct {
-	// fakeRuntime 提供会话执行及结构化请求记录。
-	fakeRuntime
-	// forks 记录唯一宿主收到的冻结原生分叉请求。
-	forks []agentapi.ForkSessionRequest
-	// closed 记录原生派发前要求释放的源工作区。
-	closed []string
-	// closeError 模拟源工作区消费者尚未退出。
-	closeError error
-	// forkError 模拟原生分叉已经派发但未取得可靠结果。
-	forkError error
-}
-
-func (r *forkContinuationRuntime) ForkSession(_ context.Context, request agentapi.ForkSessionRequest) (agentapi.ForkSessionResult, error) {
-	r.forks = append(r.forks, request)
-	if request.ReconcileOnly {
-		return agentapi.ForkSessionResult{}, status_error.ChatForkIndeterminate
-	}
-	if r.forkError != nil {
-		return agentapi.ForkSessionResult{}, r.forkError
-	}
-	return agentapi.ForkSessionResult{SessionID: "fork-child-session"}, nil
-}
-
-// CloseWorkspace 记录源消费者关闭尝试，失败不进入原生分叉派发。
-func (r *forkContinuationRuntime) CloseWorkspace(_ context.Context, directory string) error {
-	r.closed = append(r.closed, directory)
-	return r.closeError
-}
-
-// TestForkClosesSourceBeforeNativeDispatch 验证关闭失败可重试，已派发的不确定结果只允许对账。
-func TestForkClosesSourceBeforeNativeDispatch(t *testing.T) {
-	ctx := context.Background()
-	runtime := &forkContinuationRuntime{fakeRuntime: fakeRuntime{result: agentapi.Result{Session: agentapi.SessionResult{OutputID: "parent-session", State: agentapi.SessionStateCreated, ForkMode: "turn", ForkPosition: "parent-turn"}}}}
-	environment, _ := (readyRuntimeEnvironmentReader{}).Get(ctx, agentapi.RuntimeIDCodex)
-	environment.BaseRuntimeID = agentapi.RuntimeIDCodex
-	manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{runtimeEnvironments: configurationEnvironmentReader{environment: environment}})
-	first, err := manager.sendTestMessage(ctx, testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitForChatTerminal(t, manager, first.Chat.ID)
-	core := manager.execution.(*service)
-	// 分叉继承不可变文件结果，需在模型终态之外等待后台文件收尾。
-	wait, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	if err := core.CancelAndWait(wait, first.Chat.ID); err != nil {
-		t.Fatal(err)
-	}
-	input := chatservice.ForkInput{ChatID: first.Chat.ID, ExecutionID: first.Execution.ID, ClientRequestID: "close-before-dispatch"}
-	runtime.closeError = status_error.RuntimeShutdownFailed
-	if _, err = core.ForkChat(ctx, input); !errors.Is(err, status_error.RuntimeShutdownFailed) {
-		t.Fatalf("close failure=%v", err)
-	}
-	operation, exists, err := chatstorage.ReadForkOperation(core.storage.ForkDirectory(input.ChatID, input.ClientRequestID))
-	if err != nil || !exists || operation.NativeStarted || len(runtime.forks) != 0 || len(runtime.closed) != 1 || runtime.closed[0] != runtime.requests[0].Workspace.Path {
-		t.Fatalf("close failure crossed native boundary: operation=%+v forks=%+v closed=%v error=%v", operation, runtime.forks, runtime.closed, err)
-	}
-	runtime.closeError = nil
-	child, err := core.ForkChat(ctx, input)
-	if err != nil || child == "" || len(runtime.forks) != 1 || runtime.forks[0].ReconcileOnly || len(runtime.closed) != 2 {
-		t.Fatalf("safe retry=%s forks=%+v closed=%v error=%v", child, runtime.forks, runtime.closed, err)
-	}
-	same, err := core.ForkChat(ctx, input)
-	if err != nil || same != child || len(runtime.forks) != 1 || len(runtime.closed) != 2 {
-		t.Fatalf("published retry=%s error=%v", same, err)
-	}
-
-	input.ClientRequestID = "uncertain-dispatch"
-	runtime.forkError = context.DeadlineExceeded
-	if _, err = core.ForkChat(ctx, input); !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("native dispatch failure=%v", err)
-	}
-	operation, exists, err = chatstorage.ReadForkOperation(core.storage.ForkDirectory(input.ChatID, input.ClientRequestID))
-	if err != nil || !exists || !operation.NativeStarted || len(runtime.forks) != 2 || runtime.forks[1].ReconcileOnly || len(runtime.closed) != 3 {
-		t.Fatalf("native dispatch was not durable: operation=%+v forks=%+v closed=%v error=%v", operation, runtime.forks, runtime.closed, err)
-	}
-	runtime.closeError = status_error.RuntimeShutdownFailed
-	if _, err = core.ForkChat(ctx, input); !errors.Is(err, status_error.ChatForkIndeterminate) || len(runtime.forks) != 3 || !runtime.forks[2].ReconcileOnly || len(runtime.closed) != 3 {
-		t.Fatalf("uncertain retry replayed or rechecked source: forks=%+v closed=%v error=%v", runtime.forks, runtime.closed, err)
-	}
-}
-
-func TestForkFirstContinuationValidatesFrozenNativePluginScope(t *testing.T) {
-	for _, changed := range []bool{false, true} {
-		t.Run(fmt.Sprintf("external_changed=%t", changed), func(t *testing.T) {
-			runtime := &forkContinuationRuntime{fakeRuntime: fakeRuntime{result: agentapi.Result{Session: agentapi.SessionResult{OutputID: "parent-session", State: agentapi.SessionStateCreated, ForkMode: "turn", ForkPosition: "parent-turn"}}}}
-			environment, _ := (readyRuntimeEnvironmentReader{}).Get(context.Background(), agentapi.RuntimeIDCodex)
-			environment.BaseRuntimeID = agentapi.RuntimeIDCodex
-			manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{runtimeEnvironments: configurationEnvironmentReader{environment: environment}})
-			first, err := manager.sendTestMessage(context.Background(), testMessageInput{NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Message: userMessage{Text: "原会话"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}})
-			if err != nil {
-				t.Fatal(err)
-			}
-			waitForChatTerminal(t, manager, first.Chat.ID)
-			// 模型终态先于文件结果发布；本用例只验证已完成分叉的原生插件范围。
-			wait, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			if err := manager.execution.CancelAndWait(wait, first.Chat.ID); err != nil {
-				t.Fatal(err)
-			}
-			child, err := manager.execution.ForkChat(context.Background(), chatservice.ForkInput{ChatID: first.Chat.ID, ExecutionID: first.Execution.ID, ClientRequestID: "fork-scope"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(runtime.forks) != 1 || runtime.forks[0].SourceSessionID != "parent-session" || runtime.forks[0].Position != "parent-turn" || runtime.forks[0].Plan.Target.RuntimeID != agentapi.RuntimeIDCodex {
-				t.Fatalf("fork lost frozen native boundary: %+v", runtime.forks)
-			}
-			if changed {
-				home := runtime.requests[0].Target.ConfigHome
-				if err := os.MkdirAll(home, 0700); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte("[plugins.\"external@community\"]\nenabled = true\n"), 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			continued, err := manager.sendTestMessage(context.Background(), testMessageInput{ChatID: child, Message: userMessage{Text: "继续分支"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}})
-			if changed {
-				if !errors.Is(err, status_error.PluginNotReady) {
-					t.Fatalf("changed native scope accepted: %v", err)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unchanged fork cannot continue without a local scope cache: %v", err)
-			}
-			waitForChatTerminal(t, manager, continued.Chat.ID)
-			if runtime.requests[1].Session.Mode != agentapi.SessionModeResume || runtime.requests[1].Session.ID != "fork-child-session" {
-				t.Fatal("fork continuation lost the native child session")
-			}
-		})
-	}
-}
-
-func TestSendMessageMergesSupplementalInstructionsBeforeToolCapabilities(t *testing.T) {
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, t.TempDir(), runtime)
-	accepted, err := manager.execution.Start(context.Background(), WorkIntent{
-		ClientRequestID: "supplemental-instructions-request",
-		Chat: ChatTarget{Create: &CreateChatSpec{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		}},
-		Input: WorkInput{
-			Actor:   "test-user",
-			Content: "规划团队任务",
-		},
-		Options: WorkOptions{
-			RuntimeID:       agentapi.RuntimeIDCodex,
-			PermissionLevel: agentapi.PermissionLevelAuto,
-			SessionPolicy:   constants.RuntimeSessionPolicyContinue,
-			SupplementalInstructions: []agentapi.Instruction{{
-				Name:    "TEAM.md",
-				Content: "团队协作规则",
-			}},
-		},
-		Admission: constants.ExecutionAdmissionCommitOnRuntimeAccept,
-	})
-	if err != nil {
-		t.Fatalf("start work intent: %v", err)
-	}
-	waitForChatTerminal(t, manager, accepted.Chat.ID)
-	if len(runtime.requests) != 1 {
-		t.Fatalf("runtime requests = %d, want 1", len(runtime.requests))
-	}
-	names := make([]string, 0, len(runtime.requests[0].Instructions))
-	for _, instruction := range runtime.requests[0].Instructions {
-		names = append(names, instruction.Name)
-	}
-	if !slices.Contains(names, "TEAM.md") {
-		t.Fatalf("missing TEAM.md: %v", names)
-	}
-	if !hasInstructionContent(runtime.requests[0].Instructions, "团队协作规则") {
-		t.Fatalf("missing supplemental instruction content: %+v", runtime.requests[0].Instructions)
-	}
-	if len(runtime.requests[0].Connectors) != 0 {
-		t.Fatalf("internal team tool must be mounted without a user selection hint: %+v", runtime.requests[0].Connectors)
-	}
-
-}
-
 func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T) {
 	ctx := context.Background()
 	project := t.TempDir()
 	if err := os.WriteFile(filepath.Join(project, "AGENTS.md"), []byte("项目约束"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, t.TempDir(), runtime)
+	manager := newMessageTestService(t, t.TempDir())
 	accepted, err := manager.sendTestMessage(ctx, testMessageInput{
 		NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: project},
 		Message: userMessage{Text: "第一次执行"},
@@ -1401,7 +388,12 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := runtime.requests[0].Instructions
+	firstFiles, err := core.prepareMessageFiles(ctx, state, util.New(), nil, nil, agentapi.RuntimeIDCodex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := firstFiles.instructions
+	firstFiles.rollback()
 	if len(first) != 4 || !hasInstructionContent(first, "项目约束") {
 		t.Fatalf("initial profile and project instructions = %+v", first)
 	}
@@ -1414,157 +406,6 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 		files.rollback()
 		if !slices.Equal(files.instructions, first) {
 			t.Fatalf("unchanged profile changed instructions on attempt %d: first=%+v current=%+v", attempt, first, files.instructions)
-		}
-	}
-}
-
-func TestSendMessageReadsCurrentProfileAndProjectInstructions(t *testing.T) {
-	project := t.TempDir()
-	instructionPath := filepath.Join(project, "AGENTS.md")
-	if err := os.WriteFile(instructionPath, []byte("项目约束 v1"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, t.TempDir(), runtime)
-	first, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: project,
-		},
-		Message: userMessage{Text: "第一次执行"},
-		Runtime: runtimeSelection{
-			RuntimeID: agentapi.RuntimeIDCodex,
-		},
-	})
-	if err != nil {
-		t.Fatalf("first message error = %v", err)
-	}
-	waitForChatTerminal(t, manager, first.Chat.ID)
-	if err := manager.profiles.UpdateWakerDocument(
-		context.Background(),
-		"waker-1",
-		constants.ProfileDocumentKindIdentity,
-		"伙伴档案 v2",
-		nowMillis(),
-	); err != nil {
-		t.Fatalf("update profile document: %v", err)
-	}
-	if err := os.WriteFile(instructionPath, []byte("项目约束 v2"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	second, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		ChatID:  first.Chat.ID,
-		Message: userMessage{Text: "第二次执行"},
-		Runtime: runtimeSelection{
-			RuntimeID: agentapi.RuntimeIDCodex,
-		},
-	})
-	if err != nil {
-		t.Fatalf("second message error = %v", err)
-	}
-	waitForChatTerminal(t, manager, second.Chat.ID)
-	if len(runtime.requests) != 2 {
-		t.Fatalf("Runtime requests = %d, want 2", len(runtime.requests))
-	}
-	current := runtime.requests[1].Instructions
-	if !hasInstructionContent(current, "伙伴档案 v2") ||
-		!hasInstructionContent(current, "项目约束 v2") ||
-		hasInstructionContent(current, "项目约束 v1") {
-		t.Fatalf("second Runtime instructions = %+v", current)
-	}
-	for _, instruction := range current {
-		if instruction.Name == constants.ProfileDocumentMemoryFileName {
-			t.Fatalf("legacy MEMORY.md instruction was injected: %+v", current)
-		}
-	}
-}
-
-func TestSendMessageFreezesDefaultDirectoryAndLoadsOnlyEnabledProjectInstructions(t *testing.T) {
-	firstDirectory := t.TempDir()
-	secondDirectory := t.TempDir()
-	if err := os.WriteFile(filepath.Join(firstDirectory, "AGENTS.md"), []byte("目录 A 指令"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(secondDirectory, "AGENTS.md"), []byte("目录 B 指令"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, t.TempDir(), runtime)
-	now := nowMillis()
-	firstSource, err := resolveWorkingDirectory(firstDirectory)
-	if err != nil {
-		t.Fatalf("resolve first project directory: %v", err)
-	}
-	secondSource, err := resolveWorkingDirectory(secondDirectory)
-	if err != nil {
-		t.Fatalf("resolve second project directory: %v", err)
-	}
-	for _, source := range []models.ProjectSource{firstSource, secondSource} {
-		source.CreatedAt = now
-		source.UpdatedAt = now
-		if err := manager.projectSources.Ensure(context.Background(), source); err != nil {
-			t.Fatalf("ensure project directory: %v", err)
-		}
-	}
-	project := models.Project{
-		ID:        "project-with-default-directory",
-		WakerID:   "waker-1",
-		Name:      "多目录项目",
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	if err := manager.projects.Create(context.Background(), project); err != nil {
-		t.Fatalf("create project: %v", err)
-	}
-	if err := manager.projects.ReplaceDirectories(
-		context.Background(),
-		project.ID,
-		[]models.ProjectDirectory{
-			{Source: firstSource, LoadInstructions: false},
-			{Source: secondSource, LoadInstructions: true, IsDefault: true},
-		},
-	); err != nil {
-		t.Fatalf("configure project directories: %v", err)
-	}
-
-	result, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:   "waker-1",
-			ProjectID: project.ID,
-		},
-		Message: userMessage{Text: "检查项目目录配置"},
-		Runtime: runtimeSelection{
-			RuntimeID: agentapi.RuntimeIDCodex,
-		},
-	})
-	if err != nil {
-		t.Fatalf("send project message: %v", err)
-	}
-	waitForChatTerminal(t, manager, result.Chat.ID)
-	if result.Chat.AdditionalWorkingDirectories[0] != secondSource.Path {
-		t.Fatalf(
-			"default working directory = %q, want %q",
-			result.Chat.AdditionalWorkingDirectories[0],
-			secondSource.Path,
-		)
-	}
-	if len(runtime.requests) != 1 ||
-		hasInstructionContent(runtime.requests[0].Instructions, "目录 A 指令") ||
-		!hasInstructionContent(runtime.requests[0].Instructions, "目录 B 指令") {
-		t.Fatalf("Runtime instructions = %+v", runtime.requests)
-	}
-	projectDirectories := runtime.requests[0].Workspace.ProjectDirectories
-	if len(projectDirectories) != 2 {
-		t.Fatalf("Runtime project directories = %+v, want two entries", projectDirectories)
-	}
-	wantDefaultPath := filepath.ToSlash(filepath.Join("projects", secondSource.Name))
-	for _, directory := range projectDirectories {
-		if directory.Default != (directory.Path == wantDefaultPath) {
-			t.Fatalf(
-				"Runtime project directories = %+v, want only %q as default",
-				projectDirectories,
-				wantDefaultPath,
-			)
 		}
 	}
 }
@@ -1599,186 +440,10 @@ func TestSelectedConnectorReferencesRequireEnabledConnectors(t *testing.T) {
 	}
 }
 
-func TestSendMessageDoesNotRebuildMissingSession(t *testing.T) {
-	runtime := &fakeRuntime{
-		results: []agentapi.Result{
-			{
-				Session: agentapi.SessionResult{
-					OutputID: "session-1",
-					State:    agentapi.SessionStateCreated,
-				},
-			},
-			{
-				Session: agentapi.SessionResult{State: agentapi.SessionStateMissing},
-				Failure: &agentapi.Failure{
-					Code:       agentapi.FailureCodeSessionNotFound,
-					Stage:      "runtime-protocol",
-					Message:    "session missing",
-					Transience: agentapi.FailureTransiencePermanent,
-				},
-			},
-		},
-	}
-	manager := newMessageTestService(
-		t,
-		t.TempDir(),
-		runtime,
-	)
-	first, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		},
-		Message: userMessage{Text: "建立旧 Session"},
-		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
-	})
-	if err != nil {
-		t.Fatalf("first sendTestMessage() error = %v", err)
-	}
-	waitForChatTerminal(t, manager, first.Chat.ID)
-	second, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		ChatID:  first.Chat.ID,
-		Message: userMessage{Text: "恢复丢失 Session"},
-		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
-	})
-	if err != nil {
-		t.Fatalf("second sendTestMessage() error = %v", err)
-	}
-	waitForChatTerminal(t, manager, second.Chat.ID)
-	if runtime.starts != 2 {
-		t.Fatalf("Runtime Run calls = %d, want 2 without transcript reseed", runtime.starts)
-	}
-	history, err := manager.chats.ReadMessageHistory(
-		context.Background(),
-		second.Chat.ID,
-		0,
-		10,
-	)
-	if err != nil {
-		t.Fatalf("ReadMessageHistory() error = %v", err)
-	}
-	assistant := history.Resources[len(history.Resources)-1]
-	if assistant.Status != constants.ExecutionStatusFailed ||
-		assistant.ErrorCode != string(agentapi.FailureCodeSessionNotFound) {
-		t.Fatalf("assistant terminal = %+v, want session-not-found failure", assistant)
-	}
-}
-
-func TestSendMessageContainsRuntimeFailureAndReleasesChat(t *testing.T) {
-	runtime := &fakeRuntime{
-		panicOnStart: true,
-	}
-	manager := newMessageTestService(
-		t,
-		t.TempDir(),
-		runtime,
-	)
-	result, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		NewChat: &testChatInput{
-			WakerID:          "waker-1",
-			WorkingDirectory: t.TempDir(),
-		},
-		Message: userMessage{Text: "触发 Backend panic"},
-		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
-	})
-	if err != nil {
-		t.Fatalf("sendTestMessage() error = %v", err)
-	}
-	waitForChatTerminal(t, manager, result.Chat.ID)
-	history, err := manager.chats.ReadMessageHistory(
-		context.Background(),
-		result.Chat.ID,
-		0,
-		10,
-	)
-	if err != nil {
-		t.Fatalf("ReadMessageHistory() error = %v", err)
-	}
-	assistant := history.Resources[len(history.Resources)-1]
-	if assistant.Status != constants.ExecutionStatusFailed ||
-		assistant.ErrorCode != string(agentapi.FailureCodeProcessExited) {
-		t.Fatalf("assistant terminal = %+v, want contained runtime failure", assistant)
-	}
-
-	runtime.panicOnStart = false
-	if _, err := manager.sendTestMessage(context.Background(), testMessageInput{
-		ChatID:  result.Chat.ID,
-		Message: userMessage{Text: "panic 后继续"},
-		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
-	}); err != nil {
-		t.Fatalf("sendTestMessage() after failure error = %v", err)
-	}
-}
-
-func TestCancelExecutionEndsRuntimeAndReleasesChat(t *testing.T) {
-	for _, scope := range []string{"ordinary", "team"} {
-		t.Run(scope, func(t *testing.T) {
-			runtime := &cancelableRuntime{
-				started: make(chan struct{}),
-			}
-			manager := newMessageTestService(
-				t,
-				t.TempDir(),
-				runtime,
-			)
-			request := testMessageInput{
-				NewChat: &testChatInput{
-					WakerID:          "waker-1",
-					WorkingDirectory: t.TempDir(),
-				},
-				Message: userMessage{Text: "等待取消"},
-				Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
-			}
-			if scope == "team" {
-				group, err := manager.execution.PrepareChatGroup(context.Background(), PrepareChatGroupIntent{ThreadID: "cancel-thread", Title: "团队取消", ProvisioningID: "cancel-provision", Scope: CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}, Members: []PrepareChatMember{{ChatID: "11111111111111111111111111111111", WakerID: "waker-1", RuntimeID: "codex", PermissionLevel: constants.PermissionLevelAuto}}})
-				if err != nil {
-					t.Fatal(err)
-				}
-				request.NewChat = nil
-				request.ChatID = group.Chats[0].ID
-			}
-			result, err := manager.sendTestMessage(context.Background(), request)
-			if err != nil {
-				t.Fatalf("sendTestMessage() error = %v", err)
-			}
-			select {
-			case <-runtime.started:
-			case <-time.After(time.Second):
-				t.Fatal("Runtime did not start")
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			defer cancel()
-			if err := manager.execution.CancelExecutionAndWait(ctx, result.Chat.ID, result.Execution.ID); err != nil {
-				t.Fatalf("CancelExecution() error = %v", err)
-			}
-			waitForChatTerminal(t, manager, result.Chat.ID)
-			history, err := manager.chats.ReadMessageHistory(
-				context.Background(),
-				result.Chat.ID,
-				0,
-				10,
-			)
-			if err != nil {
-				t.Fatalf("ReadMessageHistory() error = %v", err)
-			}
-			assistant := history.Resources[len(history.Resources)-1]
-			if assistant.Status != constants.ExecutionStatusCanceled ||
-				assistant.ErrorCode != string(agentapi.FailureCodeContextCanceled) {
-				t.Fatalf("assistant terminal = %+v, want canceled", assistant)
-			}
-			if err := manager.execution.CancelExecutionAndWait(ctx, result.Chat.ID, result.Execution.ID); err != nil {
-				t.Fatalf("duplicate cancel: %v", err)
-			}
-		})
-	}
-}
-
 func TestChatPublicQueriesObserveMessageAndRename(t *testing.T) {
-	runtime := &fakeRuntime{}
 	manager := newMessageTestService(
 		t,
 		t.TempDir(),
-		runtime,
 	)
 	result, err := manager.sendTestMessage(context.Background(), testMessageInput{
 		NewChat: &testChatInput{
@@ -1831,7 +496,6 @@ func TestChatPublicQueriesObserveMessageAndRename(t *testing.T) {
 	}
 }
 
-// waitForChatTerminal 等待权威终态与执行占位释放，避免在持久化交接窗口续发。
 func waitForChatTerminal(t *testing.T, manager messageTestService, chatID string) {
 	t.Helper()
 	core := manager.execution.(*service)
@@ -1854,11 +518,9 @@ func waitForChatTerminal(t *testing.T, manager messageTestService, chatID string
 	}
 }
 
-// newMessageTestService 使用真实临时 SQLite 和文件系统建立消息契约环境。
 func newMessageTestService(
 	t *testing.T,
 	logDirectory string,
-	runtime runtimeRunner,
 	options ...messageTestOptions,
 ) messageTestService {
 	t.Helper()
@@ -1914,7 +576,21 @@ func newMessageTestService(
 	transactions := controllers.NewTransactionController(
 		dbhelper.NewGormTransactionManager(database.DB),
 	)
+	store, err := eventlognext.NewStore(logDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	trace := filepath.Join(t.TempDir(), "wire.jsonl")
+	t.Setenv("NEUX_EXECUTION_FIXTURE_TRACE", trace)
+	provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: func(context.Context, agent.AccountRequest) (agent.AccountLease, error) {
+		if selectedOptions.rejectLaunch {
+			return agent.AccountLease{}, status_error.RuntimeUnavailable
+		}
+		return agent.AccountLease{}, nil
+	}})
+	threads := agent.NewThreadLifecycle(provider, store)
 	chatModule, err := chatservice.New(chatservice.Config{
+		Conversations:    store,
 		StorageDirectory: logDirectory,
 		Projects:         projects,
 		QueryIndexes: chatservice.QueryIndexDependencies{
@@ -1936,9 +612,14 @@ func newMessageTestService(
 	if runtimeEnvironments == nil {
 		runtimeEnvironments = readyRuntimeEnvironmentReader{}
 	}
-	runtimeEnvironments = isolatedNativeTestEnvironmentReader{source: runtimeEnvironments, root: t.TempDir()}
+	runtimeEnvironments = nativeFixtureEnvironmentReader{source: runtimeEnvironments}
+	summaries := []agentapi.RuntimeSummary{fixtureCodexSummary(), {ID: agentapi.RuntimeIDClaude, BaseRuntimeID: agentapi.RuntimeIDClaude, InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"}}
 	executionCore, err := New(Config{
-		Runtime:             runtime,
+		Threads: threads, RuntimeSummaries: summaries,
+		ResolveAccount: func(_ context.Context, request agent.AccountRequest, _ string) (agent.AccountRequest, error) {
+			request.Subject = "fixture-subject"
+			return request, nil
+		},
 		Journal:             chatModule,
 		DormantChats:        chatModule,
 		Wakers:              wakers,
@@ -1958,10 +639,17 @@ func newMessageTestService(
 	}
 	t.Cleanup(func() {
 		executionCore.Close()
+		if err := threads.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+		if err := provider.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
 		chatModule.Close()
+		store.Close()
 	})
 	return messageTestService{
-		execution:      executionCore,
+		store: store, trace: trace, execution: executionCore,
 		chats:          chatModule,
 		profiles:       profiles,
 		projects:       projects,
@@ -1970,32 +658,8 @@ func newMessageTestService(
 	}
 }
 
-// isolatedNativeTestEnvironmentReader 让执行替身始终使用临时原生 home，避免触碰真实用户插件和凭据。
-type isolatedNativeTestEnvironmentReader struct {
-	// source 保留测试已经声明的模型、权限和能力快照。
-	source runtimeEnvironmentReader
-	// root 是本测试独占的原生配置根目录。
-	root string
-}
-
-func (reader isolatedNativeTestEnvironmentReader) Get(ctx context.Context, id string) (models.RuntimeEnvironment, error) {
-	entry, err := reader.source.Get(ctx, id)
-	if err != nil {
-		return entry, err
-	}
-	if entry.ConfigHome == "" {
-		entry.ConfigHome = filepath.Join(reader.root, id)
-	}
-	if !filepath.IsAbs(entry.Detection.ResolvedBinary) {
-		entry.Detection.ResolvedBinary, err = os.Executable()
-	}
-	return entry, err
-}
-
-// readyRuntimeEnvironmentReader 为提交测试提供稳定可用的 Runtime 快照。
 type readyRuntimeEnvironmentReader struct{}
 
-// Get 返回提交测试使用的可执行 Runtime 环境。
 func (readyRuntimeEnvironmentReader) Get(
 	context.Context,
 	string,
@@ -2014,6 +678,7 @@ func (readyRuntimeEnvironmentReader) Get(
 			ResolvedBinary: "codex",
 			Capabilities: agentapi.CapabilitySet{
 				agentapi.CapabilityMCPStreamableHTTP: true,
+				agentapi.CapabilitySkillDirectory:    true,
 			},
 			Models: []agentapi.ModelOption{
 				readyTestModel("default"),
@@ -2024,7 +689,6 @@ func (readyRuntimeEnvironmentReader) Get(
 	}, nil
 }
 
-// readyTestModel 构造提交测试中声明全部产品权限的模型目录项。
 func readyTestModel(id string) agentapi.ModelOption {
 	return agentapi.ModelOption{
 		ID:   id,
@@ -2037,8 +701,9 @@ func readyTestModel(id string) agentapi.ModelOption {
 	}
 }
 
-// messageTestOptions 保存仅部分消息测试需要的可选技能依赖。
 type messageTestOptions struct {
+	// rejectLaunch simulates an unavailable provider before any admission.
+	rejectLaunch bool
 	// plugins 提供安装快照的只读端口。
 	plugins controllers.PluginController
 	// skills 提供伙伴已启用技能的只读快照。
@@ -2049,72 +714,8 @@ type messageTestOptions struct {
 	runtimeEnvironments runtimeEnvironmentReader
 }
 
-// TestChatColdConfigurationChangeUsesJournalFacts 验证宿主重启后仍按权威配置选择会话。
-func TestChatColdConfigurationChangeUsesJournalFacts(t *testing.T) {
-	manager := &service{runtime: &fakeRuntime{}}
-	state := messageChat{
-		chat: models.Chat{ID: "chat", LastRuntimeID: "codex", LastModel: "old", LastReasoning: "high", LastPermissionLevel: constants.PermissionLevelAuto},
-		previousMessages: []messageview.Message{
-			{ID: "input", Role: constants.MessageRoleUser, ExecutionID: "boundary", Content: "prior input"},
-			{ID: "prior", Role: constants.MessageRoleAssistant, ExecutionID: "boundary", Status: constants.ExecutionStatusCompleted, DisplayParts: []messageview.MessageDisplayPart{{Type: constants.MessageDisplayPartText, Text: "prior result"}}},
-		},
-		runtimeSessions: map[string]models.RuntimeSession{"codex": {SessionID: "native", LastExecutionID: "boundary"}},
-	}
-	changes := map[string]func(*runtimeSelection){
-		"runtime":    func(r *runtimeSelection) { r.RuntimeID = "custom-codex" },
-		"model":      func(r *runtimeSelection) { r.Model = "new" },
-		"reasoning":  func(r *runtimeSelection) { r.Reasoning = "low" },
-		"permission": func(r *runtimeSelection) { r.PermissionLevel = constants.PermissionLevelFullAccess },
-		"account":    func(r *runtimeSelection) { r.AccountID = "managed-account" },
-	}
-	for _, scope := range []string{"ordinary", "team"} {
-		t.Run(scope, func(t *testing.T) {
-			current := state
-			if scope == "team" {
-				current.threadWorkspaceID = "team-workspace"
-			}
-			for name, change := range changes {
-				t.Run(name, func(t *testing.T) {
-					pending := pendingMessage{runtime: runtimeSelection{RuntimeID: "codex", Model: "old", Reasoning: "high", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}}
-					unchanged := manager.buildRunRequest(current, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-					if unchanged.Session.Mode != agentapi.SessionModeResume || unchanged.Session.ID != "native" {
-						t.Fatalf("unchanged=%+v", unchanged.Session)
-					}
-					change(&pending.runtime)
-					changed := manager.buildRunRequest(current, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-					if changed.Session.Mode != agentapi.SessionModeNew || changed.Session.ID != "" || len(changed.History) == 0 {
-						t.Fatalf("changed=%+v history=%+v", changed.Session, changed.History)
-					}
-				})
-			}
-		})
-	}
-}
-
-// TestForkContinuationNeverSuppliesInheritedPrompt 验证子会话仅恢复独立 Session 并发送新增输入。
-func TestForkContinuationNeverSuppliesInheritedPrompt(t *testing.T) {
-	manager := &service{}
-	state := messageChat{chat: models.Chat{ID: "child", ForkSourceChatID: "parent"}, previousMessages: []messageview.Message{{ID: "inherited", Role: constants.MessageRoleAssistant, ExecutionID: "boundary", Content: "must-not-reinject", Inherited: true}}, runtimeSessions: map[string]models.RuntimeSession{"custom-codex": {SessionID: "native-child", LastExecutionID: "boundary"}}}
-	pending := pendingMessage{message: userMessage{Text: "new-input"}, runtime: runtimeSelection{RuntimeID: "custom-codex"}}
-	request := manager.buildRunRequest(state, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-	if request.Session.Mode != agentapi.SessionModeResume || request.Session.ID != "native-child" || len(request.History) != 0 || request.Message.Text != "new-input" {
-		t.Fatalf("fork continuation: %+v", request)
-	}
-	pending.runtime.SessionPolicy = constants.RuntimeSessionPolicyNew
-	request = manager.buildRunRequest(state, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-	if request.Session.Mode != agentapi.SessionModeNew || request.Session.ID != "" {
-		t.Fatalf("fork should start new native session: %+v", request.Session)
-	}
-	pending.runtime.SessionPolicy = ""
-	delete(state.runtimeSessions, "custom-codex")
-	request = manager.buildRunRequest(state, pending, &preparedMessageFiles{}, nil, nil, models.RuntimeEnvironment{})
-	if request.Session.Mode != agentapi.SessionModeResume || len(request.History) != 0 {
-		t.Fatal("missing native session fell back to history")
-	}
-}
-
 func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *testing.T) {
-	manager := newMessageTestService(t, t.TempDir(), &fakeRuntime{})
+	manager := newMessageTestService(t, t.TempDir())
 	ctx := context.Background()
 	intent := WorkIntent{AutomaticRunID: "original-automatic-run", ClientRequestID: "automatic-provenance", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}}, Input: WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理正文"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelAuto}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 	accepted, err := manager.execution.Start(ctx, intent)
@@ -2145,104 +746,64 @@ func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *tes
 	waitForChatTerminal(t, manager, accepted.Chat.ID)
 }
 
-// recordedRun 汇总测试边界观察到的静态配置和本轮输入，不参与生产资源准备。
-type recordedRun struct {
-	// SessionPlan 是原生消费者实际使用的静态事实。
-	agentapi.SessionPlan
-	// TurnInput 是本轮提交给原生消费者的增量输入。
-	agentapi.TurnInput
-	// Resources 是当前消费者持有的实际资源。
-	Resources agentapi.SessionResources
-	// Session 是实际提交时采用的会话指令。
-	Session agentapi.SessionDirective
+// nativeFixtureEnvironmentReader replaces only the external process; model and permission
+// snapshots are still supplied by the test exercising product validation.
+type nativeFixtureEnvironmentReader struct {
+	// source is the runtime environment used by the business path.
+	source runtimeEnvironmentReader
 }
 
-// synchronousPreparation 仅替代原生消费者，保留执行层显式取得和交还资源的顺序。
-type synchronousPreparation struct {
-	// ctx 是占用技术会话后用于取得资源的准备上下文。
-	ctx context.Context
-	// plan 是当前消费者使用的静态配置。
-	plan agentapi.SessionPlan
-	// session 是实际采用的会话指令。
-	session agentapi.SessionDirective
-	// resources 是已经交还技术消费者的具体租约。
-	resources agentapi.SessionResources
-	// needsResources 表示本次准备还没有实际资源。
-	needsResources bool
-	// run 替代真实原生协议提交。
-	run func(context.Context, recordedRun, agentapi.EventSink) agentapi.Result
-	// bind 在测试需要保留原生消费者时接管租约。
-	bind func(agentapi.SessionResources)
-	// close 在测试需要保留原生消费者时区分冷准备和热准备。
-	close func(context.Context) error
-	// started 表示本轮已尝试提交输入。
-	started bool
-	// closed 保证同步消费者的释放只执行一次。
-	closed bool
+func fixtureCodexSummary() agentapi.RuntimeSummary {
+	return agentapi.RuntimeSummary{ID: agentapi.RuntimeIDCodex, BaseRuntimeID: agentapi.RuntimeIDCodex, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}
 }
 
-func (p *synchronousPreparation) Context() context.Context             { return p.ctx }
-func (p *synchronousPreparation) NeedsResources() bool                 { return p.needsResources }
-func (p *synchronousPreparation) Resources() agentapi.SessionResources { return p.resources }
-func (p *synchronousPreparation) Session() agentapi.SessionDirective   { return p.session }
-func (p *synchronousPreparation) Bind(_ context.Context, resources agentapi.SessionResources) error {
-	p.resources = resources
-	p.plan.Target, p.plan.Skills, p.plan.Connectors = agentapi.DeclareTarget(resources.Target), resources.Skills, agentapi.DeclareConnectors(resources.Connectors)
-	if resources.Session != nil && resources.Session.Mode == agentapi.SessionModeNew {
-		p.session = agentapi.SessionDirective{Mode: agentapi.SessionModeNew}
+func (reader nativeFixtureEnvironmentReader) Get(ctx context.Context, id string) (models.RuntimeEnvironment, error) {
+	entry, err := reader.source.Get(ctx, id)
+	if err != nil {
+		return entry, err
 	}
-	p.needsResources = false
-	if p.bind != nil {
-		p.bind(resources)
+	binary, err := os.Executable()
+	if err != nil {
+		return entry, err
 	}
-	return nil
+	entry.Binary, entry.Detection.ResolvedBinary = binary, binary
+	entry.PrefixArgs = []string{"-test.run=^TestNativeExecutionCodexChild$", "--"}
+	if entry.BaseRuntimeID == "" {
+		entry.BaseRuntimeID = entry.Detection.Runtime.BaseRuntimeID
+	}
+	if entry.BaseRuntimeID == agentapi.RuntimeIDCodex {
+		entry.Detection.Runtime = fixtureCodexSummary()
+	}
+	return entry, nil
 }
-func (p *synchronousPreparation) Close(ctx context.Context) error {
-	if p.close != nil {
-		return p.close(ctx)
-	}
-	if p.closed {
+
+func (s messageTestService) nativeCalls(t *testing.T, method string) []json.RawMessage {
+	t.Helper()
+	data, err := os.ReadFile(s.trace)
+	if os.IsNotExist(err) {
 		return nil
 	}
-	if p.resources.Close != nil {
-		if err := p.resources.Close(ctx); err != nil {
-			return err
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls []json.RawMessage
+	for _, line := range strings.Split(string(data), "\n") {
+		var request struct {
+			// Method is the app-server method name.
+			Method string `json:"method"`
+			// Params is the app-server request payload.
+			Params json.RawMessage `json:"params"`
+		}
+		if json.Unmarshal([]byte(line), &request) == nil && request.Method == method {
+			calls = append(calls, request.Params)
 		}
 	}
-	p.closed = true
-	return nil
-}
-func (p *synchronousPreparation) Run(ctx context.Context, turn agentapi.TurnInput, sink agentapi.EventSink) agentapi.Result {
-	p.started = true
-	defer func() { _ = p.Close(context.WithoutCancel(ctx)) }()
-	return p.run(ctx, recordedRun{SessionPlan: p.plan, TurnInput: turn, Resources: p.resources, Session: p.session}, sink)
+	return calls
 }
 
-// prepareSynchronousRuntime 不取得资源，接纳层必须先显式 Bind 才能提交输入。
-func prepareSynchronousRuntime(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective, run func(context.Context, recordedRun, agentapi.EventSink) agentapi.Result) (*synchronousPreparation, error) {
-	return &synchronousPreparation{ctx: ctx, plan: plan, session: session, needsResources: true, run: run}, nil
-}
-
-func (r *fakeRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
-	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
-}
-func (r *gatedRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
-	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
-}
-func (r *cancelableRuntime) PrepareSession(ctx context.Context, plan agentapi.SessionPlan, session agentapi.SessionDirective) (agentapi.PreparedChatRun, error) {
-	return prepareSynchronousRuntime(ctx, plan, session, r.Run)
-}
-
-// buildRunRequest 仅把生产分离的计划与本轮输入组合为既有行为断言的观察值。
-func (m *service) buildRunRequest(state messageChat, request pendingMessage, files *preparedMessageFiles, skills []models.SkillWithState, connectors []models.MCPConnector, environment models.RuntimeEnvironment) recordedRun {
-	if state.lastExecutionID == "" {
-		for i := len(state.previousMessages) - 1; i >= 0; i-- {
-			if state.previousMessages[i].Role == constants.MessageRoleAssistant {
-				state.lastExecutionID = state.previousMessages[i].ExecutionID
-				break
-			}
-		}
-	}
-	plan, turn, session := m.buildSessionPlan(state, request, files, skills, connectors, environment)
-	return recordedRun{SessionPlan: plan, TurnInput: turn, Session: session}
+type recordedRun struct {
+	// SessionPlan captures the projected capabilities and managed workspace instructions.
+	agentapi.SessionPlan
+	// TurnInput captures the prompt assembly.
+	agentapi.TurnInput
 }

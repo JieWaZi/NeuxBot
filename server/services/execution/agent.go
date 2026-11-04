@@ -16,57 +16,41 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 
 	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
-	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
-
-// agentSessionSlot 对应一个真实原生会话与其独占连接文件目录。
-type agentSessionSlot struct {
-	// sessionID 是可靠的原生会话身份。
-	sessionID string
-	// directory 是该会话进程环境中保持稳定的目录。
-	directory string
-}
-
-// agentSessionFiles 串行保护原生会话的连接文件映射，不保存业务授权。
-type agentSessionFiles struct {
-	// mutex 保护会话槽位和文件准备。
-	mutex sync.Mutex
-	// slots 按 Chat、Runtime 和账号保存当前真实会话。
-	slots map[string]agentSessionSlot
-}
 
 func agentIdentity(value string) string {
 	hash := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(hash[:])
 }
 
-func (m *service) prepareAgent(plan *agentapi.SessionPlan, turn *agentapi.TurnInput, session agentapi.SessionDirective, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, facts *executionMessageFacts, automaticRunIDs ...string) (func(), func(), func(agentapi.Result), error) {
+func (m *service) prepareAgent(plan *agentapi.SessionPlan, turn *agentapi.TurnInput, chat models.Chat, executionID string, capabilities []ToolCapability, allowedDomains *[]string, automaticRunIDs ...string) (func(), func(), error) {
 	appendCurrentWorkflowResults(plan, turn)
 	if m.agent == nil {
-		return nil, nil, nil, nil
+		return nil, nil, nil
 	}
 	binary, err := filepath.EvalSymlinks(m.agentBinary)
 	if err != nil || !filepath.IsAbs(binary) {
-		return nil, nil, nil, status_error.AgentConnectionUnavailable
+		return nil, nil, status_error.AgentConnectionUnavailable
 	}
 	if info, err := os.Stat(binary); err != nil || !info.Mode().IsRegular() {
-		return nil, nil, nil, status_error.AgentConnectionUnavailable
+		return nil, nil, status_error.AgentConnectionUnavailable
 	}
 	// 系统技能与执行授权描述保留在程序数据目录，不随业务工作文件切换根目录。
 	root, err := filepath.EvalSymlinks(m.skillDataDirectory)
 	if err != nil {
-		return nil, nil, nil, status_error.AgentContextStorageError
+		return nil, nil, status_error.AgentContextStorageError
 	}
 	skill, err := builtinskills.SystemDirectory(root, binary)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	for _, item := range plan.Skills {
 		if item.Name == constants.AgentCLISkillName {
-			return nil, nil, nil, status_error.SkillContentInvalid
+			return nil, nil, status_error.SkillContentInvalid
 		}
 	}
 	plan.Skills = append(plan.Skills, agentapi.Skill{Name: constants.AgentCLISkillName, Path: skill})
@@ -105,7 +89,7 @@ func (m *service) prepareAgent(plan *agentapi.SessionPlan, turn *agentapi.TurnIn
 		}
 	}
 	if allowedDomains == nil || slices.Contains(*allowedDomains, "interaction") {
-		bindings = append(bindings, m.questionBindings(chat.ID, executionID, facts)...)
+		bindings = append(bindings, m.questionBindings(chat.ID, executionID)...)
 	}
 	for _, capability := range capabilities {
 		bindings = append(bindings, capability.Bindings...)
@@ -134,7 +118,7 @@ func (m *service) prepareAgent(plan *agentapi.SessionPlan, turn *agentapi.TurnIn
 			// 正式指南进入稳定计划；每轮提醒只补充角色，热续聊无需重复整份指南。
 			guide, err := builtinskills.Guide("workflow.authoring")
 			if err != nil {
-				return nil, nil, nil, err
+				return nil, nil, err
 			}
 			plan.Instructions = append(plan.Instructions, agentapi.Instruction{Name: "WORKFLOW_AUTHORING.md", Content: fmt.Sprintf("Apply this host-bound workflow authoring role instead of general instructions to immediately perform business requests. The required guide below is supplied from %q; resolve its relative references from %q.\n\n%s", filepath.Join(skill, "references", "workflow-authoring.md"), filepath.Join(skill, "references"), guide)})
 			appendCurrentWorkflowReferences(plan, turn)
@@ -143,7 +127,9 @@ func (m *service) prepareAgent(plan *agentapi.SessionPlan, turn *agentapi.TurnIn
 		}
 	}
 	grant, activate, revoke, err := m.agent.Prepare(capability.GrantSpec{ExecutionID: executionID, Bindings: bindings, FileRoots: roots, Record: func(ctx context.Context, op capability.Operation, result capability.Result) error {
-		return facts.record(ctx, m.journal, chat.ID, executionID, op, result)
+		_, err := m.journal.AppendExecutionFacts(ctx, chat.ID, []eventlog.AppendInput{{Type: constants.ChatEventTypeAgentCommandCommitted,
+			ExecutionID: executionID, InvocationID: executionID, Data: marshalData(eventlog.AgentCommandData{CommandID: result.CommandID, Operation: op.ID, Completion: op.Completion})}})
+		return err
 	}, Validate: func(ctx context.Context) error {
 		current, err := m.journal.LoadExecutionChat(ctx, chat.ID)
 		if err != nil {
@@ -155,24 +141,24 @@ func (m *service) prepareAgent(plan *agentapi.SessionPlan, turn *agentapi.TurnIn
 		return nil
 	}})
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
-	key := agentIdentity(chat.ID + ":" + plan.Target.RuntimeID + ":" + plan.Target.AccountID)
-	m.agentSessions.mutex.Lock()
-	slot := m.agentSessions.slots[key]
-	if session.Mode == agentapi.SessionModeNew || slot.directory == "" || slot.sessionID != session.ID {
-		slot = agentSessionSlot{sessionID: session.ID, directory: filepath.Join(root, "agent-contexts", key, util.New())}
+	// A hot MCP bridge may keep its advertised schemas. Changes to the available
+	// operation set get a new bridge path and therefore a new native connection.
+	operations := make([]string, 0, len(bindings))
+	if useMCP {
+		for _, binding := range bindings {
+			operations = append(operations, binding.Operation)
+		}
+		slices.Sort(operations)
 	}
-	path, err := capability.WriteConnection(slot.directory, "connection.json", capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: m.agentEndpoint, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
-	if err == nil {
-		m.agentSessions.slots[key] = slot
-	}
-	m.agentSessions.mutex.Unlock()
+	key := agentIdentity(strings.Join(append([]string{chat.ID, plan.Target.RuntimeID, plan.Target.AccountID, grant.Epoch}, operations...), "\x00"))
+	path, err := capability.WriteConnection(filepath.Join(root, "agent-contexts", key), "connection.json",
+		capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: m.agentEndpoint, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
 	if err != nil {
 		revoke()
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
-	turn.UserInputState = m.elicitations.inputState(executionID)
 	turn.LaunchEnvironment = map[string]string{
 		constants.AgentCLIContextEnvironment: path,
 		constants.AgentCLIBinaryEnvironment:  binary,
@@ -185,17 +171,13 @@ func (m *service) prepareAgent(plan *agentapi.SessionPlan, turn *agentapi.TurnIn
 		turn.Message.Text += fmt.Sprintf("\n\n<neuxbot-execution-context>For all NeuxBot CLI calls in this turn use %q --context %q. This execution-scoped path supersedes prior-turn context; never edit or copy its contents. A successful source.save receipt is a saved workflow revision; a run start receipt is only acceptance.</neuxbot-execution-context>", binary, path)
 	}
 
-	settle := func(result agentapi.Result) {
-		if sessionID := reliableRuntimeSessionID(result); sessionID != "" {
-			m.agentSessions.mutex.Lock()
-			defer m.agentSessions.mutex.Unlock()
-			if current := m.agentSessions.slots[key]; current.directory == slot.directory {
-				current.sessionID = sessionID
-				m.agentSessions.slots[key] = current
-			}
-		}
-	}
-	return activate, func() { revoke(); m.elicitations.finishQuestions(chat.ID, executionID) }, settle, nil
+	var once sync.Once
+	return activate, func() {
+		once.Do(func() {
+			revoke()
+			_ = os.Remove(path)
+		})
+	}, nil
 }
 
 // appendCurrentWorkflowResults 将本次节点结果协议放入模型输入，避免原生指令文件的加载预算截断契约。

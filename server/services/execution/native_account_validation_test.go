@@ -18,20 +18,6 @@ import (
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
 
-// nativeValidationRuntime 模拟仍提供显式设置探测端口的宿主。
-type nativeValidationRuntime struct {
-	// Manager 保留真实聊天宿主与工作区目录查询行为。
-	*agentapi.Manager
-	// probes 记录配置准入不应调用的额外能力探测。
-	probes int
-}
-
-// Detect 使额外探测返回不可用，证明执行配置不依赖设置查询的成功。
-func (r *nativeValidationRuntime) Detect(context.Context, agentapi.DetectRequest) agentapi.DetectionResult {
-	r.probes++
-	return agentapi.DetectionResult{State: agentapi.DetectionStateUnavailable}
-}
-
 // TestNativeAccountValidationDoesNotProbe 防止配置准入要求真实 ChatHost 提供探测接口或启动额外会话。
 func TestNativeAccountValidationDoesNotProbe(t *testing.T) {
 	for _, sample := range []struct {
@@ -53,35 +39,19 @@ func TestNativeAccountValidationDoesNotProbe(t *testing.T) {
 				SelectedModels: []string{sample.model}, ModelReasoningLevels: map[string][]string{sample.model: {"high"}},
 			}
 			accounts := nativeValidationAccounts(t, account, "selected-account-key")
-			for _, withDetector := range []bool{false, true} {
-				t.Run(map[bool]string{false: "real ChatHost without Detect", true: "unused explicit detector"}[withDetector], func(t *testing.T) {
-					host := nativeValidationHost(t, sample.runtimeID)
-					defer host.Close(context.Background())
-					manager := &service{runtime: host, accounts: accounts, runtimeEnvironments: configurationEnvironmentReader{environment: nativeValidationEnvironment(sample.runtimeID)}}
-					detector := &nativeValidationRuntime{Manager: host}
-					if withDetector {
-						manager.runtime = detector
-					}
-					for _, selectedModel := range []string{sample.model, ""} {
-						config := ExecutionConfiguration{RuntimeID: sample.runtimeID, AccountID: account.ID, Model: selectedModel, Reasoning: "LOW", PermissionLevel: constants.PermissionLevelFullAccess}
-						for attempt := 0; attempt < 2; attempt++ {
-							resolved, err := manager.ResolveConfiguration(context.Background(), config)
-							if err != nil {
-								t.Fatalf("account model rejected before native initialization: model=%q error=%v", selectedModel, err)
-							}
-							if !resolved.Resolved || resolved.AccountID != account.ID || resolved.Model != sample.model || resolved.Reasoning != "LOW" || resolved.PermissionLevel != constants.PermissionLevelFullAccess {
-								t.Fatalf("resolved configuration lost account selection: %+v", resolved)
-							}
-							config = resolved
-							if err := manager.ValidateConfiguration(context.Background(), config); err != nil {
-								t.Fatalf("frozen account configuration rejected: %v", err)
-							}
-						}
-						if detector.probes != 0 {
-							t.Fatalf("configuration admission started %d extra probes", detector.probes)
-						}
-					}
-				})
+			manager := &service{runtimeSummaries: validationRuntimeSummaries(sample.runtimeID), accounts: accounts, runtimeEnvironments: configurationEnvironmentReader{environment: nativeValidationEnvironment(sample.runtimeID)}}
+			for _, selectedModel := range []string{sample.model, ""} {
+				config := ExecutionConfiguration{RuntimeID: sample.runtimeID, AccountID: account.ID, Model: selectedModel, Reasoning: "LOW", PermissionLevel: constants.PermissionLevelFullAccess}
+				resolved, err := manager.ResolveConfiguration(context.Background(), config)
+				if err != nil {
+					t.Fatalf("account model rejected before native initialization: model=%q error=%v", selectedModel, err)
+				}
+				if !resolved.Resolved || resolved.AccountID != account.ID || resolved.Model != sample.model || resolved.Reasoning != "LOW" || resolved.PermissionLevel != constants.PermissionLevelFullAccess {
+					t.Fatalf("resolved configuration lost account selection: %+v", resolved)
+				}
+				if err := manager.ValidateConfiguration(context.Background(), resolved); err != nil {
+					t.Fatalf("frozen account configuration rejected: %v", err)
+				}
 			}
 		})
 	}
@@ -135,9 +105,7 @@ func TestNativeAccountValidationKeepsAdmissionGuards(t *testing.T) {
 			if !account.HasCredential {
 				credential = ""
 			}
-			host := nativeValidationHost(t, constants.RuntimeIDGemini)
-			defer host.Close(context.Background())
-			manager := &service{runtime: host, accounts: nativeValidationAccounts(t, account, credential), runtimeEnvironments: configurationEnvironmentReader{environment: environment}}
+			manager := &service{runtimeSummaries: validationRuntimeSummaries(constants.RuntimeIDGemini), accounts: nativeValidationAccounts(t, account, credential), runtimeEnvironments: configurationEnvironmentReader{environment: environment}}
 			if err := manager.ValidateConfiguration(context.Background(), config); !errors.Is(err, sample.want) {
 				t.Fatalf("admission error=%v, want %v", err, sample.want)
 			}
@@ -171,16 +139,6 @@ func nativeValidationEnvironment(runtimeID string) models.RuntimeEnvironment {
 	}
 }
 
-// nativeValidationHost 提供真实聊天宿主，任何配置准入发起的原生启动都会立即失败。
-func nativeValidationHost(t *testing.T, runtimeID string) *agentapi.Manager {
-	t.Helper()
-	return agentapi.NewManager(agentapi.ManagerConfig{
-		Runtimes: func() []agentapi.RuntimeSummary {
-			return []agentapi.RuntimeSummary{{ID: runtimeID, BaseRuntimeID: runtimeID, InstructionFileName: "AGENTS.md"}}
-		},
-		Launch: func(agentapi.RuntimeTarget, agentapi.DetectionResult) (agentapi.LaunchFacts, error) {
-			t.Error("configuration admission started a native process")
-			return agentapi.LaunchFacts{}, status_error.RuntimeUnavailable
-		},
-	})
+func validationRuntimeSummaries(runtimeID string) []agentapi.RuntimeSummary {
+	return []agentapi.RuntimeSummary{{ID: runtimeID, BaseRuntimeID: runtimeID, InstructionFileName: "AGENTS.md"}}
 }

@@ -227,8 +227,7 @@ func TestPluginIntentAndVersionSurviveAdmissionAndHistory(t *testing.T) {
 	data := t.TempDir()
 	state := executionPlugin(t, data, "p1", "", true)
 	state.Installations[0].WakerID = "waker-1"
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, t.TempDir(), runtime, messageTestOptions{plugins: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data})
+	manager := newMessageTestService(t, t.TempDir(), messageTestOptions{plugins: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data})
 	manager.execution.(*service).pluginLauncher = "/core"
 	intent := WorkIntent{ClientRequestID: "plugin-intent", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir()}}, Input: WorkInput{Actor: "user", Content: "整理文档", PluginIDs: []string{"p1"}}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelDefault}}
 	accepted, err := manager.execution.Start(context.Background(), intent)
@@ -243,11 +242,7 @@ func TestPluginIntentAndVersionSurviveAdmissionAndHistory(t *testing.T) {
 	if len(snapshot.Resources) < 1 || len(snapshot.Resources[0].Plugins) != 1 || snapshot.Resources[0].Plugins[0].VersionID != "p1-v1" {
 		t.Fatalf("history lost plugin snapshot: %+v", snapshot.Resources)
 	}
-	records, err := manager.execution.(*service).journal.ReadRecords(accepted.Chat.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	recorded, _, err := executionFromRecords(records, accepted.Execution.ID)
+	recorded, err := manager.execution.(*service).journal.ReadExecutionConfiguration(context.Background(), accepted.Chat.ID, accepted.Execution.ID)
 	if err != nil || len(recorded.PluginResources) != 1 || recorded.PluginResources[0].ConfigurationRevision != 3 {
 		t.Fatalf("execution lost immutable resources: %+v %v", recorded, err)
 	}
@@ -259,8 +254,8 @@ func TestPluginIntentAndVersionSurviveAdmissionAndHistory(t *testing.T) {
 	if _, err = manager.execution.Start(context.Background(), intent); !errors.Is(err, status_error.CreateRequestConflict) {
 		t.Fatalf("plugin intent absent from idempotency hash: %v", err)
 	}
-	if len(runtime.requests) != 1 || !strings.Contains(runtime.requests[0].Message.Text, "p1") {
-		t.Fatalf("explicit intent missing: %+v", runtime.requests)
+	if len(manager.nativeCalls(t, "turn/start")) != 1 || !strings.Contains(string(manager.nativeCalls(t, "turn/start")[0]), "p1") {
+		t.Fatalf("explicit intent missing from native frame: %+v", manager.nativeCalls(t, "turn/start"))
 	}
 }
 
@@ -569,7 +564,7 @@ func TestFreezePluginResourcesDefersContentPreparationAndPinsConfiguration(t *te
 	// 冻结之后的仓储变动不能改变即将取得的同一个资源范围。
 	state.Configuration.Revision++
 	state.Installations[0].Enabled = false
-	prepared, err := s.acquirePluginResources(context.Background(), plan)
+	prepared, err := s.acquirePluginResources(context.Background(), plan, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,7 +580,7 @@ func TestFreezePluginResourcesDefersContentPreparationAndPinsConfiguration(t *te
 	if err != nil {
 		t.Fatalf("freezing performed content work: %v", err)
 	}
-	if _, err = s.acquirePluginResources(context.Background(), plan); err == nil {
+	if _, err = s.acquirePluginResources(context.Background(), plan, true); err == nil {
 		t.Fatal("acquiring missing immutable content succeeded")
 	}
 }
@@ -697,7 +692,7 @@ func TestColdPluginResourcesRejectConfigurationChangedAfterDeclaration(t *testin
 	if err := db.Model(&models.PluginConfiguration{}).Where("plugin_id = ?", "p1").Update("revision", 4).Error; err != nil {
 		t.Fatal(err)
 	}
-	partial, err := core.acquirePluginResources(context.Background(), frozen)
+	partial, err := core.acquirePluginResources(context.Background(), frozen, true)
 	if partial.release != nil {
 		defer partial.release()
 	}
@@ -750,7 +745,7 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 	if err != nil {
 		return preparedPlugins{}, err
 	}
-	prepared, err := m.acquirePluginResources(ctx, plan, usage...)
+	prepared, err := m.acquirePluginResources(ctx, plan, true, usage...)
 	if err != nil && prepared.release != nil {
 		prepared.release()
 	}

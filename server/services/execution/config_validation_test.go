@@ -25,16 +25,14 @@ func (reader configurationEnvironmentReader) Get(context.Context, string) (model
 
 // configurationRuntime 提供 WorkBuddy 原生工作目录布局，不调用外部 CLI。
 type configurationRuntime struct {
-	// accountRuntime 复用既有执行端口与其他智能体目录。
-	accountRuntime
 }
 
 // Runtimes 使配置解析继续执行真实的工作目录布局校验。
 func (runtime *configurationRuntime) Runtimes() []agentapi.RuntimeSummary {
-	return append(runtime.accountRuntime.Runtimes(), agentapi.RuntimeSummary{
+	return []agentapi.RuntimeSummary{{
 		ID: constants.RuntimeIDWorkBuddy, BaseRuntimeID: constants.RuntimeIDWorkBuddy,
 		InstructionFileName: "CODEBUDDY.md", SkillDirectoryName: ".codebuddy",
-	})
+	}}
 }
 
 // TestResolveConfigurationUsesSelectedModelReasoning 覆盖不同模型不能直接借用环境默认模型强度。
@@ -87,7 +85,7 @@ func TestResolveConfigurationUsesSelectedModelReasoning(t *testing.T) {
 			if test.withoutDefault {
 				currentEnvironment.DefaultReasoning = ""
 			}
-			manager := &service{runtime: &configurationRuntime{}, runtimeEnvironments: configurationEnvironmentReader{environment: currentEnvironment}}
+			manager := &service{runtimeSummaries: (&configurationRuntime{}).Runtimes(), runtimeEnvironments: configurationEnvironmentReader{environment: currentEnvironment}}
 			resolved, err := manager.ResolveConfiguration(context.Background(), ExecutionConfiguration{
 				RuntimeID: environment.RuntimeID, AccountID: constants.AiAccountSystemID,
 				Model: test.model, Reasoning: test.reasoning, Resolved: test.resolved,

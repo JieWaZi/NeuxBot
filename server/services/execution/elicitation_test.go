@@ -56,7 +56,7 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 			if _, err := store.Create(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
 				t.Fatal(err)
 			}
-			journal := &consentTestJournal{runtimeEventTestJournal: &runtimeEventTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 4)}
+			journal := &consentTestJournal{interactionTestJournal: &interactionTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 4)}
 			coordinator := newElicitationCoordinator(journal)
 			state := coordinator.inputState("execution")
 			if state.Pending() {
@@ -130,6 +130,8 @@ type interactionDeadlineJournal struct {
 	published chan eventlog.Record
 	// afterResolution 在处理事实持久化后、调用方发布完成前控制交错。
 	afterResolution func()
+	// duringPublication holds a committed decision before delivery to the native waiter.
+	duringPublication func()
 }
 
 func (j *interactionDeadlineJournal) append(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
@@ -149,9 +151,15 @@ func (j *interactionDeadlineJournal) AppendApprovalFact(chatID string, input eve
 	return j.append(chatID, input)
 }
 func (j *interactionDeadlineJournal) PublishElicitationFact(_ context.Context, r eventlog.Record, _ []models.PendingElicitation) {
+	if r.Type == constants.ChatEventTypeElicitationResolved && j.duringPublication != nil {
+		j.duringPublication()
+	}
 	j.published <- r
 }
 func (j *interactionDeadlineJournal) PublishApprovalFact(_ context.Context, r eventlog.Record, _ []models.PendingApproval) {
+	if r.Type == constants.ChatEventTypeApprovalResolved && j.duringPublication != nil {
+		j.duringPublication()
+	}
 	j.published <- r
 }
 
@@ -276,5 +284,74 @@ func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
 				})
 			})
 		}
+	}
+}
+
+func TestNativeInteractionKeepsCommittedDecisionDuringPublication(t *testing.T) {
+	for _, approval := range []bool{true, false} {
+		t.Run(map[bool]string{true: "approval", false: "input"}[approval], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				store, err := eventlog.NewStore(t.TempDir())
+				if err != nil {
+					t.Fatal(err)
+				}
+				chatID := "52525252525252525252525252525252"
+				if _, err := store.Create(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
+					t.Fatal(err)
+				}
+				publishing, release := make(chan struct{}), make(chan struct{})
+				journal := &interactionDeadlineJournal{store: store, published: make(chan eventlog.Record, 2), duringPublication: func() {
+					close(publishing)
+					<-release
+				}}
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				requestedResult := make(chan bool, 1)
+				resolutionError := make(chan error, 1)
+				if approval {
+					coordinator := newApprovalCoordinator(journal)
+					go func() {
+						decision, err := coordinator.handler(chatID, "execution").Request(ctx, agentapi.ApprovalRequest{
+							Options: []agentapi.ApprovalOption{{ID: "allow"}},
+						})
+						requestedResult <- err == nil && decision.OptionID == "allow"
+					}()
+					var requested eventlog.ApprovalRequestedData
+					_ = json.Unmarshal((<-journal.published).Data, &requested)
+					go func() {
+						resolutionError <- coordinator.resolveSelected(context.Background(), chatID, requested.ApprovalID, "allow")
+					}()
+				} else {
+					coordinator := newElicitationCoordinator(journal)
+					go func() {
+						decision, err := coordinator.handler(chatID, "execution").Request(ctx, agentapi.ElicitationRequest{
+							Mode: "form", RequestedSchema: map[string]any{"type": "object"},
+						})
+						requestedResult <- err == nil && decision.Accepted
+					}()
+					var requested eventlog.ElicitationRequestedData
+					_ = json.Unmarshal((<-journal.published).Data, &requested)
+					go func() {
+						resolutionError <- coordinator.resolveAccepted(context.Background(), chatID, requested.ElicitationID, nil)
+					}()
+				}
+				<-publishing
+				cancel()
+				synctest.Wait()
+				select {
+				case accepted := <-requestedResult:
+					close(release)
+					t.Fatalf("request returned before publishing the committed decision: accepted=%v", accepted)
+				default:
+				}
+				close(release)
+				if err := <-resolutionError; err != nil {
+					t.Fatal(err)
+				}
+				if accepted := <-requestedResult; !accepted {
+					t.Fatal("cancel replaced a committed user decision")
+				}
+			})
+		})
 	}
 }

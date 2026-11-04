@@ -164,7 +164,10 @@ func (m *service) Start(ctx context.Context, intent WorkIntent) (AcceptedExecuti
 		}
 	}
 	if intent.RetryExecutionID != "" {
-		return m.retryExecution(ctx, strings.TrimSpace(intent.Chat.ChatID), strings.TrimSpace(intent.RetryExecutionID))
+		if strings.TrimSpace(intent.Chat.ChatID) == "" || strings.TrimSpace(intent.RetryExecutionID) == "" {
+			return AcceptedExecution{}, status_error.BadRequest
+		}
+		return AcceptedExecution{}, status_error.ExecutionRetryUnavailable
 	}
 
 	inputContext := ctx

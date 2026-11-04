@@ -153,7 +153,7 @@ func (m *service) freezePluginResources(ctx context.Context, waker string, reque
 }
 
 // acquirePluginResources 只从已冻结描述值取得内容与共享身份租约。
-func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPluginResources, usage ...authorization.Usage) (preparedPlugins, error) {
+func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPluginResources, nativeDeliverySupported bool, usage ...authorization.Usage) (preparedPlugins, error) {
 	if err := ctx.Err(); err != nil {
 		return preparedPlugins{}, err
 	}
@@ -352,6 +352,13 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 		}
 		hasAuthentication := authVersion.Package.Integration.Authentication != nil
+		nativeEligible := nativePluginVersionSupported(cli, detection.Version) && request.allowedConnectorIDs == nil && request.allowedAgentDomains == nil && len(extension.Bindings) == 0 && len(targetExtension.Bindings) == 0 && (len(extension.Config) == 0 || version.Package.Format != constants.PluginFormatPortable) && (!hasAuthentication || len(version.Package.Servers) == 0 || len(authenticationBindings) > 0)
+		if nativeEligible && !nativeDeliverySupported {
+			if required {
+				return result, status_error.PluginNotReady
+			}
+			continue
+		}
 		bridgeRelease := func() {}
 		candidateEnvironment := map[string]string{}
 		var candidateNative *plugins.NativeTarget
@@ -383,7 +390,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			}
 
 		}
-		nativeEligible := nativePluginVersionSupported(cli, detection.Version) && request.allowedConnectorIDs == nil && request.allowedAgentDomains == nil && len(extension.Bindings) == 0 && len(targetExtension.Bindings) == 0 && (len(extension.Config) == 0 || version.Package.Format != constants.PluginFormatPortable) && (!hasAuthentication || len(version.Package.Servers) == 0 || len(authenticationBindings) > 0)
+
 		candidateSkills := []agentapi.Skill{}
 		candidateConnectors := []models.MCPConnector{}
 		available := map[string]bool{}

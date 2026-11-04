@@ -54,12 +54,12 @@ func TestWorkflowMCPUsesCustomRuntimeBase(t *testing.T) {
 		t.Fatal(err)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
-	manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, storage: layout, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
-	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "custom-claude"}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "claude"}}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
+	manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, journal: journal, storage: layout, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "custom-claude"}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: "claude"}}}}
 	capabilities := []ToolCapability{{ID: "workflow", Bindings: []capability.Binding{{Operation: "workflow.source.get", Call: func(context.Context, capability.Request) (capability.Result, error) {
 		return capability.Result{}, nil
 	}}}}}
-	_, release, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "turn", capabilities, &[]string{}, nil)
+	_, release, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "turn", capabilities, &[]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,12 +88,12 @@ func TestWorkflowResultSelectsOnlySupportedTransport(t *testing.T) {
 				t.Fatal(err)
 			}
 			journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
-			manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
-			request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: runtimeID}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
+			manager := &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+			request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: runtimeID}}}
 			capabilities := []ToolCapability{{ID: "result", Bindings: []capability.Binding{{Operation: "workflow.results.schema", Call: func(context.Context, capability.Request) (capability.Result, error) {
 				return capability.Result{}, nil
 			}}}}}
-			_, release, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "turn", capabilities, &[]string{}, nil)
+			_, release, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "turn", capabilities, &[]string{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -124,9 +124,9 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "first"}}
 	programDirectory := t.TempDir()
-	manager := &service{agent: registry, agentEndpoint: endpoint + constants.AgentCLIPath, agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, storage: layout, skillDataDirectory: programDirectory, elicitations: newElicitationCoordinator(journal)}
-	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex", AccountID: "account"}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
-	activate, revoke, settle, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "first", nil, &[]string{}, nil)
+	manager := &service{agent: registry, agentEndpoint: endpoint + constants.AgentCLIPath, agentBinary: binary, journal: journal, storage: layout, skillDataDirectory: programDirectory, elicitations: newElicitationCoordinator(journal)}
+	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex", AccountID: "account"}}}
+	activate, revoke, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "first", nil, &[]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,11 +155,10 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	settle(agentapi.Result{Session: agentapi.SessionResult{OutputID: "native", State: agentapi.SessionStateCreated}})
 	revoke()
 	journal.chat.ActiveExecutionID = "second"
-	secondRequest := recordedRun{SessionPlan: agentapi.SessionPlan{Target: request.Target}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: "native"}}
-	activate, revokeSecond, _, err := manager.prepareAgent(&secondRequest.SessionPlan, &secondRequest.TurnInput, secondRequest.Session, journal.chat, "second", nil, &[]string{}, nil)
+	secondRequest := recordedRun{SessionPlan: agentapi.SessionPlan{Target: request.Target}}
+	activate, revokeSecond, err := manager.prepareAgent(&secondRequest.SessionPlan, &secondRequest.TurnInput, journal.chat, "second", nil, &[]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,14 +195,9 @@ func TestNativeSessionKeepsContextPathButRotatesAndRevokesCredentials(t *testing
 	if journal.contextReads != 0 {
 		t.Fatalf("capability validation loaded full message context %d times", journal.contextReads)
 	}
-	newRequest := recordedRun{SessionPlan: agentapi.SessionPlan{Target: request.Target}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
-	_, revokeNew, _, err := manager.prepareAgent(&newRequest.SessionPlan, &newRequest.TurnInput, newRequest.Session, journal.chat, "second", nil, &[]string{}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer revokeNew()
-	if newRequest.LaunchEnvironment[constants.AgentCLIContextEnvironment] == firstPath {
-		t.Fatal("new native session reused an old process credential file")
+	revokeSecond()
+	if _, err := os.Stat(firstPath); !os.IsNotExist(err) {
+		t.Fatal("settled execution left its credential file on disk")
 	}
 }
 
@@ -221,7 +215,7 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 		t.Fatalf("build real CLI: %v\n%s", err, output)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "execution"}}
-	manager := &service{agent: registry, agentEndpoint: endpoint.URL + constants.AgentCLIPath, agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	manager := &service{agent: registry, agentEndpoint: endpoint.URL + constants.AgentCLIPath, agentBinary: binary, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
 	manager.agentBindings = func(models.Chat, string, []string, string) []capability.Binding {
 		t.Fatal("scoped command discovered ordinary resources")
 		return nil
@@ -236,8 +230,8 @@ func TestKnowledgeCLIPreparationKeepsOnlyTheFrozenGrant(t *testing.T) {
 		}
 		bindings = append(bindings, b)
 	}
-	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}, Policy: agentapi.RunPolicy{Execution: agentapi.ExecutionPolicy{WorkspaceReadOnly: true}}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
-	activate, revoke, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "execution", []ToolCapability{{ID: "knowledge.organize", Bindings: bindings}}, &[]string{}, nil)
+	request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}, Policy: agentapi.RunPolicy{Execution: agentapi.ExecutionPolicy{WorkspaceReadOnly: true}}}}
+	activate, revoke, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "execution", []ToolCapability{{ID: "knowledge.organize", Bindings: bindings}}, &[]string{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,7 +274,7 @@ func agentPreparationFixture(t *testing.T) *service {
 		t.Fatal(err)
 	}
 	journal := &agentTestJournal{chat: models.Chat{ID: "chat", WakerID: "waker", ActiveExecutionID: "turn"}}
-	return &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, agentSessions: &agentSessionFiles{slots: map[string]agentSessionSlot{}}, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
+	return &service{agent: registry, agentEndpoint: "http://127.0.0.1:1/agent/v1", agentBinary: binary, journal: journal, skillDataDirectory: t.TempDir(), elicitations: newElicitationCoordinator(journal)}
 }
 
 func agentPreparationBinding(t *testing.T, operation string) capability.Binding {
@@ -317,20 +311,12 @@ func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t
 				name := []string{"first-business-goal", "hot-short-edit", "restored-short-follow-up", "pure-explanation"}[index]
 				t.Run(name, func(t *testing.T) {
 					journal.chat.ActiveExecutionID = name
-					session := agentapi.SessionDirective{Mode: agentapi.SessionModeResume, ID: "native-session"}
-					if index == 0 {
-						session = agentapi.SessionDirective{Mode: agentapi.SessionModeNew}
-					} else if index == 2 {
-						// Core 恢复后没有热会话文件映射，仍沿用真实原生句柄。
-						manager.agentSessions.slots = map[string]agentSessionSlot{}
-					}
-					request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: runtimeID}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: baseRuntimeID}}, Instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "Answer simple requests directly."}}}, Session: session, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: message}}}
-					_, release, settle, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, session, journal.chat, name, nil, nil, nil)
+					request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: runtimeID}, Detection: agentapi.DetectionResult{Runtime: agentapi.RuntimeSummary{BaseRuntimeID: baseRuntimeID}}, Instructions: []agentapi.Instruction{{Name: "PARTNER.md", Content: "Answer simple requests directly."}}}, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: message}}}
+					_, release, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, name, nil, nil)
 					if err != nil {
 						t.Fatal(err)
 					}
 					defer release()
-					settle(agentapi.Result{Session: agentapi.SessionResult{OutputID: "native-session", State: agentapi.SessionStateCreated}})
 					inline := ""
 					for _, instruction := range request.Instructions {
 						if instruction.Name == "WORKFLOW_AUTHORING.md" {
@@ -356,7 +342,7 @@ func TestWorkflowAuthoringPreparationSuppliesModeAndStableGuideForEveryRuntime(t
 							t.Errorf("%s prompt lost mode contract %q", name, required)
 						}
 					}
-					if !strings.HasPrefix(request.Message.Text, message+"\n\n") || strings.Contains(request.Message.Text, guide) || request.Session != session {
+					if !strings.HasPrefix(request.Message.Text, message+"\n\n") || strings.Contains(request.Message.Text, guide) {
 						t.Error("preparation rewrote user input, copied the full guide into this turn, or changed native continuation")
 					}
 					if runtimeID != "unsupported" {
@@ -381,8 +367,8 @@ func TestWorkflowAuthoringPreparationDoesNotOverrideOrdinaryChatOrWorker(t *test
 			if operation != "" {
 				capabilities = []ToolCapability{{ID: "worker", Bindings: []capability.Binding{agentPreparationBinding(t, operation)}}}
 			}
-			request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}}, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: "访问多个资讯网，然后汇总AI新闻"}}, Session: agentapi.SessionDirective{Mode: agentapi.SessionModeNew}}
-			_, release, _, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, request.Session, journal.chat, "turn", capabilities, &[]string{}, nil)
+			request := recordedRun{SessionPlan: agentapi.SessionPlan{Target: agentapi.SessionTarget{RuntimeID: "codex"}}, TurnInput: agentapi.TurnInput{Message: agentapi.Message{Text: "访问多个资讯网，然后汇总AI新闻"}}}
+			_, release, err := manager.prepareAgent(&request.SessionPlan, &request.TurnInput, journal.chat, "turn", capabilities, &[]string{})
 			if err != nil {
 				t.Fatal(err)
 			}

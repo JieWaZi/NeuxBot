@@ -24,7 +24,7 @@ func (failingRuntimeEnvironmentReader) Get(
 }
 
 func TestPrepareChatGroupUsesLeadMemberChatAsMainChat(t *testing.T) {
-	manager := newMessageTestService(t, t.TempDir(), &fakeRuntime{})
+	manager := newMessageTestService(t, t.TempDir())
 	if err := manager.wakers.Create(context.Background(), models.Waker{
 		ID:   "waker-2",
 		Name: "执行伙伴",
@@ -123,7 +123,7 @@ func TestPrepareChatGroupUsesLeadMemberChatAsMainChat(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	history, err := manager.chats.ReadMessageHistory(context.Background(), group.Chats[1].ID, 0, 10)
-	if err != nil || len(history.Resources) != 2 || history.Resources[1].Content != "执行完成" {
+	if err != nil || len(history.Resources) != 2 || history.Resources[1].Content != "fixture reply" {
 		t.Fatalf("member chat history = %+v, error = %v", history.Resources, err)
 	}
 	otherHistory, err := manager.chats.ReadMessageHistory(context.Background(), group.Chats[0].ID, 0, 10)
@@ -136,7 +136,6 @@ func TestPrepareChatGroupPreservesRuntimeEnvironmentReadError(t *testing.T) {
 	manager := newMessageTestService(
 		t,
 		t.TempDir(),
-		&fakeRuntime{},
 		messageTestOptions{runtimeEnvironments: failingRuntimeEnvironmentReader{}},
 	)
 	_, err := manager.execution.PrepareChatGroup(context.Background(), PrepareChatGroupIntent{

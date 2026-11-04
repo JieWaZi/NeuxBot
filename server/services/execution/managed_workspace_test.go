@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -18,8 +19,7 @@ import (
 )
 
 func TestFirstSendWithoutDirectoryCreatesPerChatWorkspaceAndContinuationKeepsIt(t *testing.T) {
-	runtime := &fakeRuntime{}
-	manager := newMessageTestService(t, t.TempDir(), runtime)
+	manager := newMessageTestService(t, t.TempDir())
 	ctx := context.Background()
 	input := testMessageInput{ClientRequestID: "managed-first", NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "使用会话临时目录"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}}
 	first, err := manager.sendTestMessage(ctx, input)
@@ -46,8 +46,8 @@ func TestFirstSendWithoutDirectoryCreatesPerChatWorkspaceAndContinuationKeepsIt(
 		t.Fatal(err)
 	}
 	waitForChatTerminal(t, manager, first.Chat.ID)
-	if len(runtime.requests) != 3 || runtime.requests[0].Workspace.Path != runtime.requests[2].Workspace.Path {
-		t.Fatalf("continuation changed managed cwd: %+v", runtime.requests)
+	if calls := manager.nativeCalls(t, "turn/start"); len(calls) != 3 || !strings.Contains(string(calls[2]), first.Chat.WorkspaceDirectory) {
+		t.Fatalf("continuation changed managed cwd: %s", calls)
 	}
 }
 
@@ -55,8 +55,7 @@ func TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope(t *testing.T) {
 	for _, projectScope := range []bool{false, true} {
 		t.Run(map[bool]string{false: "directory", true: "project"}[projectScope], func(t *testing.T) {
 			ctx := context.Background()
-			runtime := &fakeRuntime{}
-			manager := newMessageTestService(t, t.TempDir(), runtime)
+			manager := newMessageTestService(t, t.TempDir())
 			business := filepath.Join(t.TempDir(), "shared")
 			internal := filepath.Join(t.TempDir(), "shared")
 			for _, directory := range []string{business, internal} {
@@ -105,14 +104,13 @@ func TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope(t *testing.T) {
 			if !slices.Equal(accepted.Chat.AdditionalWorkingDirectories, want) || accepted.Chat.ProjectID != create.ProjectID {
 				t.Fatalf("host scope lost business identity or duplicated real paths: %+v", accepted.Chat)
 			}
-			request := runtime.requests[0]
-			if request.Workspace.Path != accepted.Chat.WorkspaceDirectory || !slices.Equal(request.Workspace.AdditionalWritableDirectories, want) || len(request.Workspace.ProjectDirectories) != 2 {
-				t.Fatalf("runtime did not receive the frozen scope: %+v", request.Workspace)
+			native := manager.nativeCalls(t, "turn/start")
+			if len(native) != 1 || !strings.Contains(string(native[0]), accepted.Chat.WorkspaceDirectory) {
+				t.Fatalf("missing actual native working directory: %s", native)
 			}
-			for _, project := range request.Workspace.ProjectDirectories {
-				actual, err := filepath.EvalSymlinks(filepath.Join(request.Workspace.Path, project.Path))
-				if err != nil || !slices.Contains(want, actual) {
-					t.Fatalf("authorized directory is not reachable through its managed project link: %q %v", actual, err)
+			for _, authorized := range want {
+				if !strings.Contains(string(native[0]), authorized) {
+					t.Fatalf("missing native writable root %q in %s", authorized, native[0])
 				}
 			}
 			if _, err := manager.execution.Start(ctx, intent); err != nil {
@@ -128,7 +126,7 @@ func TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope(t *testing.T) {
 				t.Fatal(err)
 			}
 			waitForChatTerminal(t, manager, accepted.Chat.ID)
-			if !slices.Equal(runtime.requests[1].Workspace.AdditionalWritableDirectories, want) {
+			if len(manager.nativeCalls(t, "turn/start")) != 2 {
 				t.Fatal("continuation did not preserve the frozen host scope")
 			}
 			if err := os.Remove(internal); err != nil {

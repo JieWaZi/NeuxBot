@@ -5,12 +5,13 @@ import (
 
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 )
 
 // consentTestJournal 用真实 JSONL 测试许可事实，仅省略与许可无关的执行端口。
 type consentTestJournal struct {
-	// runtimeEventTestJournal 提供真实记录读取及未使用端口的断言。
-	*runtimeEventTestJournal
+	// interactionTestJournal 提供真实记录读取及未使用端口的断言。
+	*interactionTestJournal
 	// updates 把许可请求投影交给测试中的用户响应。
 	updates chan []models.PendingElicitation
 }
@@ -25,4 +26,27 @@ func (j *consentTestJournal) AppendElicitationFact(chatID string, input eventlog
 
 func (j *consentTestJournal) PublishElicitationFact(_ context.Context, _ eventlog.Record, pending []models.PendingElicitation) {
 	j.updates <- pending
+}
+
+// interactionTestJournal observes exact reads on a real temporary journal.
+type interactionTestJournal struct {
+	// Journal is the unused business port in the interaction test.
+	chatservice.Journal
+	// store owns the test's business facts.
+	store *eventlog.Store
+	// fullReads counts accidental scans outside the requested execution.
+	fullReads int
+	// executionRecords records the size of the exact execution read.
+	executionRecords int
+}
+
+func (j *interactionTestJournal) ReadRecords(chatID string) ([]eventlog.Record, error) {
+	j.fullReads++
+	return j.store.ReadAll(chatID)
+}
+
+func (j *interactionTestJournal) ReadExecutionRecords(chatID, executionID string) ([]eventlog.Record, error) {
+	records, err := j.store.ReadMessage(chatID, executionID)
+	j.executionRecords = len(records)
+	return records, err
 }

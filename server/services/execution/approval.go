@@ -25,8 +25,6 @@ type pendingApproval struct {
 	chatID string
 	// executionID 是审批所属活跃执行标识。
 	executionID string
-	// messageFacts 交接本交互已提交的消息事实，不在协调器锁内调用 Sink。
-	messageFacts *executionMessageFacts
 	// invocationID 冻结发起交互的 Runtime 调用，不能由处理响应时的最新调用替代。
 	invocationID string
 	// requested 是已经安全归一化并进入权威日志的审批内容。
@@ -53,8 +51,6 @@ type approvalCoordinator struct {
 
 // executionApprovalHandler 把固定 Chat/Execution 身份绑定到审批协调器。
 type executionApprovalHandler struct {
-	// messageFacts 是当前执行唯一实时投影的已提交事实端口。
-	messageFacts *executionMessageFacts
 	// coordinator 是进程级审批协调器。
 	coordinator *approvalCoordinator
 	// chatID 是当前 Runtime 调用所属 Chat 标识。
@@ -76,15 +72,11 @@ func newApprovalCoordinator(journal chatservice.Journal) *approvalCoordinator {
 func (c *approvalCoordinator) handler(
 	chatID string,
 	executionID string,
-	facts ...*executionMessageFacts,
 ) agentapi.ApprovalHandler {
 	bound := &executionApprovalHandler{
 		coordinator: c,
 		chatID:      chatID,
 		executionID: executionID,
-	}
-	if len(facts) > 0 {
-		bound.messageFacts = facts[0]
 	}
 	return bound
 }
@@ -97,7 +89,7 @@ func (h *executionApprovalHandler) Request(
 	if h == nil || h.coordinator == nil {
 		return agentapi.ApprovalDecision{Cancelled: true}, nil
 	}
-	return h.coordinator.request(ctx, h.chatID, h.executionID, request, h.messageFacts)
+	return h.coordinator.request(ctx, h.chatID, h.executionID, request)
 }
 
 // ResolveApproval 处理前端提交的一次审批选择。
@@ -124,7 +116,6 @@ func (c *approvalCoordinator) request(
 	chatID string,
 	executionID string,
 	request agentapi.ApprovalRequest,
-	facts *executionMessageFacts,
 ) (agentapi.ApprovalDecision, error) {
 	if ctx == nil || strings.TrimSpace(chatID) == "" ||
 		strings.TrimSpace(executionID) == "" {
@@ -133,7 +124,6 @@ func (c *approvalCoordinator) request(
 	requested := approvalEventData(util.New(), request)
 	pending := &pendingApproval{
 		requestContext: ctx,
-		messageFacts:   facts,
 		invocationID:   request.InvocationID,
 		chatID:         chatID,
 		executionID:    executionID,
@@ -152,7 +142,6 @@ func (c *approvalCoordinator) request(
 		c.commitMutex.Unlock()
 		return agentapi.ApprovalDecision{Cancelled: true}, err
 	}
-	pending.messageFacts.push(record)
 	c.mutex.Lock()
 	pending.requestedAt = record.RecordedAt
 	c.byID[requested.ApprovalID] = pending
@@ -177,12 +166,9 @@ func (c *approvalCoordinator) request(
 		if err != nil && !errors.Is(err, status_error.ApprovalAlreadyResolved) {
 			return agentapi.ApprovalDecision{Cancelled: true}, approvalContextStatus(ctx.Err())
 		}
-		select {
-		case decision := <-pending.response:
-			return decision, nil
-		default:
-			return agentapi.ApprovalDecision{Cancelled: true}, approvalContextStatus(ctx.Err())
-		}
+		// A successful invalidation or an already removed request has one durable
+		// decision. Publication may still be completing before it reaches this waiter.
+		return <-pending.response, nil
 	}
 }
 
@@ -347,7 +333,6 @@ func (c *approvalCoordinator) commitResolution(
 		return err
 	}
 
-	pending.messageFacts.push(record)
 	c.mutex.Lock()
 	delete(c.byID, pending.requested.ApprovalID)
 	order := c.orderByChat[pending.chatID]

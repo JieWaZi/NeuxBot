@@ -589,7 +589,7 @@ func TestPluginIdentityIsLoadedAfterAcquiringFrozenResources(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.pluginController = currentAuthenticationFixture{installedPluginFixture: installedPluginFixture{states: []models.PluginState{state}}, current: state.Configuration}
-	prepared, err := manager.acquirePluginResources(context.Background(), plan)
+	prepared, err := manager.acquirePluginResources(context.Background(), plan, true)
 	if err != nil {
 		t.Fatal(err)
 	}
