@@ -3,6 +3,8 @@ package global
 
 import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
 
 	"context"
 	"crypto/rand"
@@ -134,6 +136,10 @@ var (
 	RuntimeCatalog *agentapi.Catalog
 	// AgentManager 统一登记聊天与独立任务会话，保留未完成清理的唯一所有者。
 	AgentManager *agentapi.Manager
+	// AgentProviders owns all candidate native processes and their account leases.
+	AgentProviders *agent.ProviderRuntime
+	// AgentThreads coordinates public chat turns against the shared conversation authority.
+	AgentThreads *agent.ThreadLifecycle
 	// RuntimeEnvironmentControllerManager 提供设备级 Runtime 环境持久化接口。
 	RuntimeEnvironmentControllerManager controllers.RuntimeEnvironmentController
 	// RuntimeEnvironmentService 提供 Runtime 环境初始化和探测生命周期。
@@ -453,9 +459,6 @@ func loadRuntime(ctx context.Context) error {
 		return mapCoreError("initialize_runtime_sdk", status_error.CoreRuntimeInitializationFailed, err)
 	}
 	RuntimeCatalog = sdk
-	AgentManager = newAgentManager()
-	AIAccountService.SetIdleSessionCloser(AgentManager.CloseIdleAccount)
-	AgentManager.Start(ctx)
 	RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
 		Accounts:                  AIAccountService,
 		AccountWorkspaceDirectory: filepath.Join(Config.DataDirectory, "account-workspaces"),
@@ -475,8 +478,13 @@ func loadRuntime(ctx context.Context) error {
 
 // loadChat 先恢复 Chat 权威事实，再装配入口无关的 Execution Core。
 func loadChat(ctx context.Context, configuration *Configuration, handlerFactory schedule.LocalHandlerFactory) error {
+	conversations, err := eventlog_next.NewStore(configuration.ManagedFilesDirectory)
+	if err != nil {
+		return mapCoreError("initialize_conversation_store", status_error.CoreChatInitializationFailed, err)
+	}
 	chatModule, err := chat.New(chat.Config{
 		StorageDirectory: configuration.ManagedFilesDirectory,
+		Conversations:    conversations,
 		Projects:         ProjectControllerManager,
 		Results:          WorkResultControllerManager,
 		QueryIndexes: chat.QueryIndexDependencies{
@@ -487,12 +495,15 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 		},
 	})
 	if err != nil {
+		conversations.Close()
 		return mapCoreError("initialize_chat_service", status_error.CoreChatInitializationFailed, err)
 	}
 	ChatService = chatModule
 	if err := ChatService.Start(ctx); err != nil {
 		return mapCoreError("start_chat_service", status_error.CoreChatInitializationFailed, err)
 	}
+	AgentProviders = agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: aiaccount.AcquireCodexSystemAccount})
+	AgentThreads = agent.NewThreadLifecycle(AgentProviders, conversations)
 	executionCore, err := execution.New(execution.Config{
 		ValidateIntent: func(ctx context.Context, intent execution.WorkIntent) error {
 			if KnowledgeService == nil {
@@ -526,14 +537,16 @@ func loadChat(ctx context.Context, configuration *Configuration, handlerFactory 
 			return bindings
 		},
 		Accounts:            AIAccountService,
-		Runtime:             AgentManager,
+		Threads:             AgentThreads,
+		ResolveAccount:      aiaccount.ResolveCodexSystemAccount,
+		RuntimeSummaries:    RuntimeCatalog.Runtimes(),
 		Journal:             chatModule,
 		DormantChats:        chatModule,
 		Wakers:              WakerControllerManager,
 		Profiles:            ProfileDocumentControllerManager,
 		Projects:            ProjectControllerManager,
 		Skills:              SkillControllerManager,
-		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager, CloseIdlePlugin: AgentManager.CloseIdlePlugin}),
+		PluginInstallations: plugininstallation.New(plugininstallation.Config{Contents: PluginContents, DataDirectory: configuration.DataDirectory, Bridges: PluginBridges, BridgeEnvironment: PluginBridgeEnvironment, Store: PluginControllerManager}),
 		PluginContents:      PluginContents, Plugins: PluginControllerManager, PluginLauncher: coreExecutablePath(),
 		Connectors:          MCPConnectorControllerManager,
 		RuntimeEnvironments: RuntimeEnvironmentControllerManager,
@@ -680,6 +693,24 @@ func Close() error {
 	if ExecutionService != nil {
 		ExecutionService.Close()
 		ExecutionService = nil
+	}
+	if AgentThreads != nil {
+		closeContext, cancelClose := context.WithTimeout(context.Background(), 15*time.Second)
+		err := AgentThreads.Close(closeContext)
+		cancelClose()
+		if err != nil {
+			return mapCoreError("close_agent_threads", status_error.CoreShutdownFailed, err)
+		}
+		AgentThreads = nil
+	}
+	if AgentProviders != nil {
+		closeContext, cancelClose := context.WithTimeout(context.Background(), 15*time.Second)
+		err := AgentProviders.Close(closeContext)
+		cancelClose()
+		if err != nil {
+			return mapCoreError("close_agent_providers", status_error.CoreShutdownFailed, err)
+		}
+		AgentProviders = nil
 	}
 	if AgentManager != nil {
 		closeContext, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)

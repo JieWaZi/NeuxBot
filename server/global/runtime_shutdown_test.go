@@ -11,12 +11,69 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
+
+func TestCloseRetainsNativeAccountUntilProviderCleanupConfirms(t *testing.T) {
+	database, err := dbhelper.NewDB(conf.DB{Type: conf.Sqlite, DBName: filepath.Join(t.TempDir(), "native-shutdown.db"), Migrate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := database.DB.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousProviders, previousDB := AgentProviders, DB
+	allowRelease, released := false, 0
+	providers := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{
+		AcquireAccount: func(context.Context, agent.AccountRequest) (agent.AccountLease, error) {
+			return agent.AccountLease{Close: func(context.Context) error {
+				if err := pool.Ping(); err != nil {
+					t.Errorf("account dependency closed before native cleanup: %v", err)
+				}
+				if !allowRelease {
+					return status_error.RuntimeShutdownFailed
+				}
+				released++
+				return nil
+			}}, status_error.RuntimeAuthRequired
+		},
+	})
+	t.Cleanup(func() {
+		allowRelease = true
+		_ = providers.Close(context.Background())
+		AgentProviders, DB = previousProviders, previousDB
+		_ = pool.Close()
+	})
+	AgentProviders, DB = providers, database.DB
+	connection, err := providers.Open(t.Context(), agent.ProviderConnectionRequest{
+		Account: agent.AccountRequest{Provider: "codex", AccountID: "fixture", Subject: "fixture-subject", CWD: t.TempDir()},
+	}, agent.ProviderConnectionPorts{})
+	if !errors.Is(err, status_error.RuntimeAuthRequired) || connection == nil {
+		t.Fatalf("partial account acquisition = %v", err)
+	}
+	if err := connection.WaitOpenCleanup(t.Context()); !errors.Is(err, status_error.RuntimeShutdownFailed) {
+		t.Fatalf("initial cleanup = %v", err)
+	}
+	if err := Close(); !errors.Is(err, status_error.RuntimeShutdownFailed) {
+		t.Fatalf("failed native cleanup = %v", err)
+	}
+	if AgentProviders != providers || DB != database.DB || released != 0 {
+		t.Fatal("failed native cleanup discarded the owner or its dependency")
+	}
+	allowRelease = true
+	if err := Close(); err != nil {
+		t.Fatal(err)
+	}
+	if AgentProviders != nil || DB != nil || released != 1 {
+		t.Fatal("native cleanup retry did not release exactly once")
+	}
+}
 
 // TestCloseRetainsRuntimeDependenciesUntilManagementCleanupConfirms 证明关闭失败可重试且依赖按实际所有权释放。
 func TestCloseRetainsRuntimeDependenciesUntilManagementCleanupConfirms(t *testing.T) {
