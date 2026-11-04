@@ -283,7 +283,7 @@ func (s *Service) advanceLogin(ctx context.Context, id string, job *loginJob) (L
 	}
 	credential := codexCredential{Tokens: *job.tokens, LastRefresh: time.Now().UTC()}
 	encoded, _ := json.Marshal(credential)
-	if err := s.RemoveCodexCredentialFiles(current); err != nil {
+	if err := s.RemoveCodexCredentialFiles(ctx, current); err != nil {
 		return Login{}, err
 	}
 	if err := s.accounts.StoreLoginCredential(ctx, id, current.Revision, string(encoded)); err != nil {

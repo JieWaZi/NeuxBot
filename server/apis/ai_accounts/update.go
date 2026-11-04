@@ -99,7 +99,7 @@ func (a *UpdateAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 	authChanged := a.Body.APIKey != "" || !slices.Equal(current.Endpoints, a.Body.Endpoints)
 	previous := current
 	if authChanged {
-		if err := global.AIAccountService.RemoveCodexCredentialFiles(current); err != nil {
+		if err := global.AIAccountService.RemoveCodexCredentialFiles(ctx, current); err != nil {
 			return nil, ginx.WithStack(err)
 		}
 	}

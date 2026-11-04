@@ -235,7 +235,8 @@ func PrepareCodexHome(home string, spec Spec) (CodexHomeConfig, error) {
 		}
 		provider := map[string]any{
 			"name": name, "base_url": spec.BaseURL, "wire_api": "responses", "env_key": keyVariable,
-			"requires_openai_auth": name != "DeepSeek",
+			// Codex reports its selected native API key only when account auth is enabled.
+			"requires_openai_auth": true,
 		}
 		authority["forced_login_method"] = "api"
 		authority["model_provider"] = providerID

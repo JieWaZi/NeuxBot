@@ -22,6 +22,8 @@ import (
 type AIAccountController interface {
 	// StoreCredential 按版本保存同一身份的刷新结果与原生认证文件位置。
 	StoreCredential(context.Context, string, int64, string, string) error
+	// StoreRefreshedCredential 以当前配置和认证代次保存同主体刷新。
+	StoreRefreshedCredential(context.Context, string, int64, uint64, string, string) error
 	// StoreLoginCredential 按版本保存新授权并递增认证代次。
 	StoreLoginCredential(context.Context, string, int64, string) error
 	// ClearCredential 按版本移除凭据并递增认证代次。
@@ -107,7 +109,8 @@ func (c *aiAccountController) Update(ctx context.Context, account models.AIAccou
 	account.UpdatedAt = time.Now().UnixMilli()
 	if secret != "" || !slices.Equal(current.Endpoints, account.Endpoints) {
 		account.AuthGeneration = current.AuthGeneration + 1
-		fields = append(fields, "AuthGeneration")
+		account.LiveAuthPath = ""
+		fields = append(fields, "AuthGeneration", "LiveAuthPath")
 	}
 	if secret != "" {
 		encrypted, err := c.encrypt(ctx, account.ID, secret)
@@ -227,6 +230,27 @@ func (c *aiAccountController) StoreCredential(ctx context.Context, id string, re
 	return c.writeCredential(ctx, id, revision, map[string]any{
 		"credential_ciphertext": encrypted, "has_credential": true, "live_auth_path": path,
 	})
+}
+
+// StoreRefreshedCredential 保留用户配置的修订及修改时间。
+func (c *aiAccountController) StoreRefreshedCredential(ctx context.Context, id string, revision int64, generation uint64, secret, path string) error {
+	if secret == "" {
+		return status_error.AIAccountCredentialError
+	}
+	encrypted, err := c.encrypt(ctx, id, secret)
+	if err != nil {
+		return err
+	}
+	result := controllerDB(ctx, c.db).Model(&models.AIAccount{}).
+		Where("id = ? AND revision = ? AND auth_generation = ? AND has_credential = ?", id, revision, generation, true).
+		UpdateColumns(map[string]any{"credential_ciphertext": encrypted, "live_auth_path": path})
+	if result.Error != nil {
+		return databaseError("store_refreshed_ai_account_credential", id, result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return status_error.AIAccountRevisionConflict
+	}
+	return nil
 }
 
 // StoreLoginCredential 保存显式登录并使旧的认证代次失效。

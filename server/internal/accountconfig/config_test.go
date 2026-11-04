@@ -417,6 +417,9 @@ func TestCodexNativeConfigBindsAudienceWithoutPuttingKeyInOverrides(t *testing.T
 	if err := json.Unmarshal(config.Overrides["model_providers."+providerID], &provider); err != nil {
 		t.Fatal(err)
 	}
+	if provider["requires_openai_auth"] != true {
+		t.Fatal("native account/read cannot prove the selected API key")
+	}
 	keyVariable, _ := provider["env_key"].(string)
 	if provider["base_url"] != "https://api.deepseek.com" || config.Environment[keyVariable] != "fixture-secret" {
 		t.Fatal("native startup authority did not bind the selected endpoint and credential")

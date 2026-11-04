@@ -142,6 +142,10 @@ func readCodexChatGPTCredential(home string) (codexCredential, error) {
 		return codexCredential{}, err
 	}
 	defer clear(data)
+	return decodeCodexChatGPTCredential(data)
+}
+
+func decodeCodexChatGPTCredential(data []byte) (codexCredential, error) {
 	var auth struct {
 		// Mode identifies the credential selected by native Codex.
 		Mode string `json:"auth_mode"`

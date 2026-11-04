@@ -40,7 +40,7 @@ func (a *LogoutAIAccount) Output(ctx *gin.Context) (interface{}, error) {
 		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
 	}
 	if account.HasCredential {
-		if err := global.AIAccountService.RemoveCodexCredentialFiles(account); err != nil {
+		if err := global.AIAccountService.RemoveCodexCredentialFiles(ctx, account); err != nil {
 			return nil, ginx.WithStack(err)
 		}
 		if err := global.AIAccountControllerManager.ClearCredential(ctx, account.ID, account.Revision); err != nil {

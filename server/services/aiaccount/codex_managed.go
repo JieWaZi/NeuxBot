@@ -229,21 +229,14 @@ func (s *Service) prepareManagedCodexAuth(ctx context.Context, account models.AI
 		return err
 	}
 	if account.LiveAuthPath != "" {
-		// Old builds recorded a single workspace projection. Import only a
-		// fresher credential of the same principal, then retire that pointer.
-		legacy, readErr := readLegacyCodexProjection(account.LiveAuthPath)
-		if readErr != nil {
-			return readErr
-		}
-		if legacy.LastRefresh.After(latest.LastRefresh) {
-			if legacy.Tokens.Identity() != saved.Tokens.Identity() {
-				return status_error.RuntimeAuthRequired
-			}
-			latest = legacy
+		var retireErr error
+		latest, retireErr = s.retireLegacyCodexProjection(ctx, account, latest)
+		if retireErr != nil {
+			return retireErr
 		}
 	}
 	if account.LiveAuthPath != "" || latest.LastRefresh.After(saved.LastRefresh) {
-		if persistErr := s.persistManagedCodexRefresh(ctx, account, latest); persistErr != nil {
+		if persistErr := s.persistManagedCodexRefresh(ctx, account, latest, ""); persistErr != nil {
 			return persistErr
 		}
 	}
@@ -253,20 +246,81 @@ func (s *Service) prepareManagedCodexAuth(ctx context.Context, account models.AI
 	return writeCodexChatGPTCredential(home, latest)
 }
 
-func readLegacyCodexProjection(path string) (codexCredential, error) {
-	home := filepath.Dir(path)
+// retireLegacyCodexProjection removes only an owned projection with a verified principal.
+// A fresher legacy rotation reaches encrypted storage before its file is retired. The
+// caller clears the pointer only after the retirement succeeds.
+func (s *Service) retireLegacyCodexProjection(ctx context.Context, account models.AIAccount, latest codexCredential) (codexCredential, error) {
+	legacyPath := account.LiveAuthPath
+	home := filepath.Dir(legacyPath)
 	workspace := filepath.Dir(filepath.Dir(filepath.Dir(home)))
-	if !filepath.IsAbs(path) || filepath.Join(accountconfig.Home(workspace, constants.RuntimeIDCodex), "auth.json") != path {
-		return codexCredential{}, status_error.AIAccountCredentialError
-	}
-	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-		return codexCredential{}, nil
+	if !filepath.IsAbs(legacyPath) || filepath.Join(accountconfig.Home(workspace, constants.RuntimeIDCodex), "auth.json") != legacyPath {
+		logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
+		return latest, nil
 	}
 	workspace, err := filepath.EvalSymlinks(workspace)
-	if err != nil {
-		return codexCredential{}, status_error.AIAccountCredentialError
+	if errors.Is(err, os.ErrNotExist) {
+		return latest, nil
 	}
-	return readCodexChatGPTCredential(accountconfig.Home(workspace, constants.RuntimeIDCodex))
+	if err != nil {
+		return latest, managedCodexStorageError(account.ID, err)
+	}
+	home = accountconfig.Home(workspace, constants.RuntimeIDCodex)
+	canonical, err := filepath.EvalSymlinks(home)
+	if errors.Is(err, os.ErrNotExist) {
+		return latest, nil
+	}
+	if err != nil {
+		return latest, managedCodexStorageError(account.ID, err)
+	}
+	if canonical != home {
+		logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
+		return latest, nil
+	}
+	path := filepath.Join(home, "auth.json")
+	info, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return latest, nil
+	}
+	if err != nil {
+		return latest, managedCodexStorageError(account.ID, err)
+	}
+	if !info.Mode().IsRegular() {
+		logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
+		return latest, nil
+	}
+	data, err := readCodexAuthFile(home)
+	if errors.Is(err, status_error.RuntimeAuthRequired) {
+		return latest, nil
+	}
+	if err != nil {
+		return latest, err
+	}
+	defer clear(data)
+	legacy, err := decodeCodexChatGPTCredential(data)
+	if err != nil || legacy.Tokens.Identity() != latest.Tokens.Identity() {
+		logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
+		return latest, nil
+	}
+	if legacy.LastRefresh.After(latest.LastRefresh) {
+		if err := s.persistManagedCodexRefresh(ctx, account, legacy, legacyPath); err != nil {
+			return latest, err
+		}
+		latest = legacy
+	}
+	current, err := os.Lstat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return latest, nil
+	}
+	if err != nil {
+		return latest, managedCodexStorageError(account.ID, err)
+	}
+	if !os.SameFile(info, current) {
+		return latest, status_error.AIAccountCredentialError
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return latest, managedCodexStorageError(account.ID, err)
+	}
+	return latest, nil
 }
 
 func (s *Service) recoverManagedCodexAuth(ctx context.Context, id, home, identity string) error {
@@ -275,14 +329,19 @@ func (s *Service) recoverManagedCodexAuth(ctx context.Context, id, home, identit
 		return err
 	}
 	defer unlock()
-	current, err := readCodexChatGPTCredential(home)
+	data, err := readCodexAuthFile(home)
 	if errors.Is(err, status_error.RuntimeAuthRequired) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if current.Tokens.Identity() != identity {
+	defer clear(data)
+	current, err := decodeCodexChatGPTCredential(data)
+	if err != nil || current.Tokens.Identity() != identity {
+		// No usable rotation was lost. Release the exited owner so an
+		// explicit logout or sign-in can replace the invalid projection.
+		logx.Warnf("discarded invalid managed Codex auth refresh: account_id=%s", id)
 		return nil
 	}
 	account, err := s.accounts.Get(ctx, id)
@@ -300,19 +359,33 @@ func (s *Service) recoverManagedCodexAuth(ctx context.Context, id, home, identit
 	if !current.LastRefresh.After(saved.LastRefresh) {
 		return nil
 	}
-	return s.persistManagedCodexRefresh(ctx, account, current)
+	return s.persistManagedCodexRefresh(ctx, account, current, account.LiveAuthPath)
 }
 
-func (s *Service) persistManagedCodexRefresh(ctx context.Context, account models.AIAccount, current codexCredential) error {
+func (s *Service) persistManagedCodexRefresh(ctx context.Context, account models.AIAccount, current codexCredential, path string) error {
 	encoded, _ := json.Marshal(current)
-	return s.accounts.StoreCredential(ctx, account.ID, account.Revision, string(encoded), "")
+	return s.accounts.StoreRefreshedCredential(ctx, account.ID, account.Revision, account.AuthGeneration, string(encoded), path)
 }
 
 // RemoveCodexCredentialFiles removes the current native projection before a credential
 // mutation commits. The caller must hold the account's exclusive lease.
-func (s *Service) RemoveCodexCredentialFiles(account models.AIAccount) error {
+func (s *Service) RemoveCodexCredentialFiles(ctx context.Context, account models.AIAccount) error {
 	if _, ok := accountEndpoint(account, constants.RuntimeIDCodex); !ok || s.dataDirectory == "" {
 		return nil
+	}
+	if account.LiveAuthPath != "" && account.HasCredential && account.AuthMode == constants.AccountAuthModeSubscription {
+		secret, err := s.accounts.Credential(ctx, account.ID)
+		if err != nil {
+			return err
+		}
+		var saved codexCredential
+		if json.Unmarshal([]byte(secret), &saved) == nil && saved.Tokens.Valid() {
+			if _, err := s.retireLegacyCodexProjection(ctx, account, saved); err != nil {
+				return err
+			}
+		} else {
+			logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
+		}
 	}
 	home, err := s.managedCodexHome(account, false)
 	if err != nil {

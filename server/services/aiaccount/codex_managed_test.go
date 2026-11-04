@@ -181,12 +181,12 @@ type codexRefreshRepo struct {
 	fail bool
 }
 
-func (r *codexRefreshRepo) StoreCredential(ctx context.Context, id string, revision int64, secret, path string) error {
+func (r *codexRefreshRepo) StoreRefreshedCredential(ctx context.Context, id string, revision int64, generation uint64, secret, path string) error {
 	if r.fail {
 		r.fail = false
 		return status_error.AIAccountRevisionConflict
 	}
-	return r.AIAccountController.StoreCredential(ctx, id, revision, secret, path)
+	return r.AIAccountController.StoreRefreshedCredential(ctx, id, revision, generation, secret, path)
 }
 
 func TestManagedCodexRefreshKeepsIdentityAndRetriesFailedRelease(t *testing.T) {
@@ -257,6 +257,13 @@ func TestManagedCodexImportsPreviouslyTrackedRefresh(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	s.accounts = &codexRefreshRepo{AIAccountController: s.accounts, fail: true}
+	if _, err := s.AcquireCodexAccount(t.Context(), request); !errors.Is(err, status_error.AIAccountRevisionConflict) {
+		t.Fatalf("failed legacy persistence was hidden: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(previousHome, "auth.json")); err != nil {
+		t.Fatal("legacy projection retired before the refreshed credential committed")
+	}
 	lease, err := s.AcquireCodexAccount(t.Context(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -266,8 +273,150 @@ func TestManagedCodexImportsPreviouslyTrackedRefresh(t *testing.T) {
 	if err != nil || projected.Tokens.RefreshToken != rotated.Tokens.RefreshToken {
 		t.Fatal("managed native home reused the old refresh token")
 	}
+	if _, err := os.Lstat(filepath.Join(previousHome, "auth.json")); !os.IsNotExist(err) {
+		t.Fatal("migration left the retired credential in its tracked old home")
+	}
 	current, err := s.accounts.Get(t.Context(), account.ID)
 	if err != nil || current.LiveAuthPath != "" || current.AuthGeneration != request.AuthGeneration {
 		t.Fatal("legacy recovery did not preserve the new home authority")
+	}
+}
+
+func TestManagedCodexIdleRefreshPreservesConfigurationCAS(t *testing.T) {
+	s, account, original := subscriptionFixture(t)
+	s.dataDirectory = t.TempDir()
+	ctx := t.Context()
+	request, err := s.ResolveCodexAccount(ctx, agent.AccountRequest{
+		Provider: constants.RuntimeIDCodex, AccountID: account.ID, CWD: t.TempDir(),
+	}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := s.AcquireCodexAccount(ctx, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refreshed := original
+	refreshed.Tokens.RefreshToken = "rotated-during-idle"
+	refreshed.LastRefresh = time.Now().UTC()
+	if err := writeCodexChatGPTCredential(lease.ConfigHome, refreshed); err != nil {
+		t.Fatal(err)
+	}
+	s.SetIdleSessionCloser(func(ctx context.Context, _ string) error { return lease.Close(ctx) })
+	release, err := s.Exclusive(account.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	if saved, err := s.accounts.Credential(ctx, account.ID); err != nil || saved != mustEncodeCredential(t, refreshed) {
+		t.Fatal("idle close did not save the native rotation")
+	}
+	if err := s.accounts.ClearCredential(ctx, account.ID, account.Revision); err != nil {
+		t.Fatalf("idle refresh invalidated the user's configuration revision: %v", err)
+	}
+}
+
+func TestManagedCodexInvalidProjectionAllowsCredentialRepair(t *testing.T) {
+	for _, wrongPrincipal := range []bool{false, true} {
+		name := "malformed"
+		if wrongPrincipal {
+			name = "wrong_principal"
+		}
+		t.Run(name, func(t *testing.T) {
+			s, account, original := subscriptionFixture(t)
+			s.dataDirectory = t.TempDir()
+			ctx := t.Context()
+			request, err := s.ResolveCodexAccount(ctx, agent.AccountRequest{
+				Provider: constants.RuntimeIDCodex, AccountID: account.ID, CWD: t.TempDir(),
+			}, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			lease, err := s.AcquireCodexAccount(ctx, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if wrongPrincipal {
+				foreign := codexCredential{Tokens: subscriptionTokens("other", "wrong-refresh"), LastRefresh: time.Now().UTC()}
+				err = writeCodexChatGPTCredential(lease.ConfigHome, foreign)
+			} else {
+				err = accountconfig.WriteFile(filepath.Join(lease.ConfigHome, "auth.json"), []byte("{}"))
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.SetIdleSessionCloser(func(ctx context.Context, _ string) error { return lease.Close(ctx) })
+			release, err := s.Exclusive(account.ID)
+			if err != nil {
+				t.Fatalf("invalid projection trapped the native lease: %v", err)
+			}
+			defer release()
+			if saved, err := s.accounts.Credential(ctx, account.ID); err != nil || saved != mustEncodeCredential(t, original) {
+				t.Fatal("invalid projection replaced the saved credential")
+			}
+			if err := s.RemoveCodexCredentialFiles(ctx, account); err != nil {
+				t.Fatal(err)
+			}
+			if err := s.accounts.ClearCredential(ctx, account.ID, account.Revision); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestManagedCodexMutationRetiresOnlyOwnedLegacyProjection(t *testing.T) {
+	for _, wrongPrincipal := range []bool{false, true} {
+		name := "verified"
+		if wrongPrincipal {
+			name = "foreign"
+		}
+		t.Run(name, func(t *testing.T) {
+			s, account, original := subscriptionFixture(t)
+			s.dataDirectory = t.TempDir()
+			ctx := t.Context()
+			home, err := accountconfig.EnsureHome(t.TempDir(), constants.RuntimeIDCodex)
+			if err != nil {
+				t.Fatal(err)
+			}
+			projection := original
+			projection.Tokens.RefreshToken = "latest-legacy-token"
+			if wrongPrincipal {
+				projection.Tokens = subscriptionTokens("foreign", "foreign-token")
+			}
+			projection.LastRefresh = time.Now().UTC()
+			if err := writeCodexChatGPTCredential(home, projection); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(home, "auth.json")
+			if err := s.accounts.StoreCredential(ctx, account.ID, account.Revision, mustEncodeCredential(t, original), path); err != nil {
+				t.Fatal(err)
+			}
+			account, err = s.accounts.Get(ctx, account.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			release, err := s.Exclusive(account.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer release()
+			if err := s.RemoveCodexCredentialFiles(ctx, account); err != nil {
+				t.Fatal(err)
+			}
+			want := projection
+			if wrongPrincipal {
+				want = original
+			}
+			if saved, err := s.accounts.Credential(ctx, account.ID); err != nil || saved != mustEncodeCredential(t, want) {
+				t.Fatal("credential retirement lost or imported the wrong principal")
+			}
+			if err := s.accounts.ClearCredential(ctx, account.ID, account.Revision); err != nil {
+				t.Fatal(err)
+			}
+			_, err = os.Lstat(path)
+			if wrongPrincipal && err != nil || !wrongPrincipal && !os.IsNotExist(err) {
+				t.Fatal("credential mutation retired an unverified file or left its own file")
+			}
+		})
 	}
 }
