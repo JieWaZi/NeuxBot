@@ -1,6 +1,6 @@
 # 架构总览
 
-本文主体保留 AgentRuntime 正式替换前的稳定架构基线。当前隔离重建分支的普通 Codex、Claude 与 Cursor Chat 已改接 `Execution → ThreadLifecycle/Turn → ProviderRuntime → 原生 Client`，并与 Chat 共用新的 ConversationStore；生产启动不再创建旧 Manager。Codex 的账号级模型目录、多账号、强度与 Fast、三档权限和用量查询已接入同一候选运行时，见 [Codex 产品验收](../discussions/agentruntime-rebuild/codex-account-model-usage-cn.md)。Claude 与 Cursor 的账号、原生模型配置、权限和用量接线及各层验收边界见 [Claude／Cursor 产品验收](../discussions/agentruntime-rebuild/claude-cursor-product-acceptance-cn.md)。独立生成及其他未迁移入口尚未完成正式替换，实际验收与限制见 [Codex 优先验收](../discussions/agentruntime-rebuild/codex-first-acceptance-cn.md)和 [重建方案](../superpowers/specs/2026-11-04-agentruntime-rebuild-design.md)。
+本文主体保留 AgentRuntime 正式替换前的稳定架构基线。当前重建分支的普通 Codex、Claude、Cursor、WorkBuddy、Qoder 与 Qoder CN Chat 已改接 `Execution → ThreadLifecycle/Turn → ProviderRuntime → 原生 Client`，并与 Chat 共用新的 ConversationStore；生产启动不再创建旧 Manager。Codex 的账号级模型目录、多账号、强度与 Fast、三档权限和用量查询已接入同一候选运行时，见 [Codex 产品验收](../discussions/agentruntime-rebuild/codex-account-model-usage-cn.md)。Claude 与 Cursor 的账号、原生模型配置、权限和用量接线及各层验收边界见 [Claude／Cursor 产品验收](../discussions/agentruntime-rebuild/claude-cursor-product-acceptance-cn.md)。WorkBuddy 与地区 Qoder 的标准 ACP 接线、账号边界和用户验收步骤见 [WorkBuddy／Qoder 验收说明](../discussions/agentruntime-rebuild/workbuddy-qoder-acp-cn.md)。独立生成及其他未迁移入口尚未完成正式替换，实际验收与限制见 [Codex 优先验收](../discussions/agentruntime-rebuild/codex-first-acceptance-cn.md)和 [重建方案](../superpowers/specs/2026-11-04-agentruntime-rebuild-design.md)。
 
 NeuxBot 是本地优先的伙伴工作台。Web 和 Electron 各自承载宿主能力，共享 React 应用承载界面，Go Core 拥有业务规则、文件、Git、终端执行与持久化，智能体适配隐藏原生 CLI 的协议差异。
 
