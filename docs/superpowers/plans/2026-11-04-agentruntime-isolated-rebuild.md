@@ -73,17 +73,20 @@
 - [ ] 验证先冻结终态再观察、结果文本恢复、已知 Usage、bounded receipt 分页/ACK/容量、独立来源计数和关闭后的回执读取；真实协议过大结果不越过 SDK 帧预算。
 - [ ] 定向包/race/实际公开入口验证、导入与五项审查、完整提交。通过后才允许进入统一切换。
 
-## Task 3：Cursor 完整候选（按同一合同并行）
+## Task 3：共用 ACP 客户端与厂商差异（按同一合同并行）
 
-**Files:** acp-go `pkg/agent_next/cursor` 的具体 Client、ACP 会话与配置、权限回调、错误/诊断与对应测试。禁止嵌入旧 nativeacp.Agent。
+**Files:** acp-go `pkg/agent_next/acpclient` 拥有共同连接、会话、配置、Prompt/Cancel、观察及协议用量；`pkg/agent_next/cursor` 保留启动、账号、配额与私有协议；`pkg/agent_next/qoder` 作为第二个实际协议消费者验证配置差异。禁止嵌入旧 nativeacp.Agent，也不能只把 Cursor 整包换名字。
 
-**Interfaces:** 同一 Client，通过共享进程和 SDK 连接维护真实 ACP 会话；仅配置/历史不是当前执行，不能按最后 active 补配事件。
+**Interfaces:** 同一 Client，通过共享进程和 SDK 连接维护真实 ACP 会话；仅配置/历史不是当前执行，不能按最后 active 补配事件。参照 OpenBot AcpAgentClient/AcpFlavor：默认采用标准行为，少量类型化策略表达有实际消费者的模型作用域、配置归一化、计数口径和精确错误差异；厂商私有编解码不拥有第二套会话或回合状态。
 
+- [ ] 将 Cursor 候选的共同协议职责收归唯一 ACP Client；以 Qoder/Qoder CN 的原生配置类别修正证明第二消费者，两家均经真实 SDK 和合成原生子进程验证。Qoder 不触发 Cursor 专属认证、模型探测、回调或进程模型策略。
 - [ ] 写首次 new 响应前配置、NormalizeSession 中配置、有效模型目录缺当前值、独立 Fast、相邻 Prompt/Cancel、活通知队列阻塞、准备取消与旧控制后继测试。
 - [ ] 为会话打开建立有界、确切的暂存和发布规则，返回原生 ID 后只采纳匹配的证据；不发布无法供 setter 消费的配置，不建跨代未知 ID 大缓存。
 - [ ] 完整实现程序/版本、认证账户、模型/推理/Fast、原生设置回执、指令/MCP、恢复、交互、错误/配额；准入与配置冻结属于同一 Client，诊断只经完整记录脱敏出口。
 - [ ] 在原生 ACP 响应、水位错误和原生进程退出组合中保留 NativeOutcome。用直接 Go 和公开 ACP 两条实际路径验证已知终态/用量不丢失。
 - [ ] 定向验证、导入/职责检查、完整提交、独立五项审查；不以静态 Windows 构造代替平台验证。
+
+后续 WorkBuddy、Kimi、Grok、Gemini 优先接此底座，只增加已证实的厂商差异与对应验收。认证、安装、额度和用量含义不因采用 ACP 自动统一；官方 Gemini 与 OpenBot 的 Antigravity 需分别核对。Pi 使用独立原生 RPC Client，复用公共进程、输入/结果及宿主运行底座。首批三家的产品切换范围不因此被描述成其余厂商也已完成。
 
 ## Task 4：Neux 候选运行、存储与实际消费者
 
