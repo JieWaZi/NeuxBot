@@ -8,6 +8,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/usage"
 )
 
 // MessageRuntimeEvent 是附着到 Assistant 消息的完整 Runtime 事件视图。
@@ -74,6 +75,8 @@ type ToolApprovalResult struct {
 
 // MessageRunMetrics 是聊天界面可安全展示的执行时间与 Token 用量摘要。
 type MessageRunMetrics struct {
+	// TokenUsage preserves known and complete counts from a canonical Codex result.
+	TokenUsage *MessageTokenUsage `json:"tokenUsage,omitempty"`
 	// StartedAt 是 Host 确认执行开始的 Unix 毫秒时间。
 	StartedAt int64 `json:"startedAt,omitempty"`
 	// DurationMs 是从 Host 执行开始到终态提交的墙钟毫秒数。
@@ -92,6 +95,20 @@ type MessageRunMetrics struct {
 	ContextUsedTokens int64 `json:"contextUsedTokens,omitempty"`
 	// ContextWindowTokens 是当前模型可用的上下文窗口上限。
 	ContextWindowTokens int64 `json:"contextWindowTokens,omitempty"`
+}
+
+// MessageTokenUsage exposes token usage and coverage for one canonical invocation.
+type MessageTokenUsage struct {
+	// InvocationID is the canonical digest for deduplication across continuations.
+	InvocationID string `json:"invocationId"`
+	// Source identifies the primary native usage observation.
+	Source string `json:"source,omitempty"`
+	// Coverage describes the scope of the primary observation.
+	Coverage string `json:"coverage,omitempty"`
+	// Complete says the invocation and its additive counters are fully covered.
+	Complete bool `json:"complete"`
+	// TokenMetrics contains known counters and complete totals.
+	usage.TokenMetrics
 }
 
 // MessageDisplayPart 是聊天接口返回的最小跨 Runtime 展示部件。

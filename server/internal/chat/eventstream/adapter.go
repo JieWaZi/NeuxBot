@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
-	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
@@ -339,7 +338,7 @@ func (a *Adapter) ApplyNativeCheckpoint(record eventlog.Record, stored agent.Sto
 }
 
 // ApplyNativeTerminal projects usage from the canonical result before applying business status.
-func (a *Adapter) ApplyNativeTerminal(record eventlog.Record, usage *acpmeta.TurnUsage) (PublicEvent, error) {
-	a.messageView.SetNativeUsage(record.ExecutionID, usage)
+func (a *Adapter) ApplyNativeTerminal(record eventlog.Record, result *agent.NativeResult) (PublicEvent, error) {
+	a.messageView.SetNativeResult(record.ExecutionID, result)
 	return a.Apply(record)
 }

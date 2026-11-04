@@ -14,7 +14,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 // NativeJournal is the Chat business boundary used by Thread admission and observation.
@@ -481,14 +480,6 @@ func (j *conversationJournal) nativeOutcome(ctx context.Context, id, executionID
 	return &result, nil
 }
 
-func (j *conversationJournal) nativeUsage(ctx context.Context, id, executionID string) (*acpmeta.TurnUsage, error) {
-	result, err := j.nativeOutcome(ctx, id, executionID)
-	if err != nil || result == nil {
-		return nil, err
-	}
-	return result.Turn.Usage, nil
-}
-
 func (j *conversationJournal) nativeHistory(ctx context.Context, id string, before int64, limit int) (MessageHistoryPage, error) {
 	stored, err := j.Store.ReadMessages(ctx, agent.MessageQuery{ChatID: id, Before: before, Limit: limit})
 	if err != nil {
@@ -510,17 +501,18 @@ func (j *conversationJournal) nativeHistory(ctx context.Context, id string, befo
 	}
 	for _, message := range stored.Messages {
 		checkpoint, linked := nativeCursors[message.ID]
-		if !linked {
+		if linked {
+			if err := builder.ReplaceStoredContent(message, checkpoint.Sequence, checkpoint.RecordedAt); err != nil {
+				return MessageHistoryPage{}, err
+			}
+		} else if !message.Complete || message.Role != constants.MessageRoleAssistant {
 			continue
 		}
-		if err := builder.ReplaceStoredContent(message, checkpoint.Sequence, checkpoint.RecordedAt); err != nil {
-			return MessageHistoryPage{}, err
-		}
-		usage, err := j.nativeUsage(ctx, id, message.ExecutionID)
+		usage, err := j.nativeOutcome(ctx, id, message.ExecutionID)
 		if err != nil {
 			return MessageHistoryPage{}, err
 		}
-		builder.SetNativeUsage(message.ID, usage)
+		builder.SetNativeResult(message.ID, usage)
 	}
 	result := MessageHistoryPage{
 		Resources: builder.Messages(), LatestSequence: stored.Version, NextBeforeSequence: stored.Before,
@@ -584,7 +576,7 @@ func (j *conversationJournal) applyPublic(ctx context.Context, adapter *eventstr
 		// An existing native result replaces usage even when it reports no counters.
 		// Legacy executions without that result retain the usage already replayed.
 		if outcome != nil {
-			projected, err := adapter.ApplyNativeTerminal(row, outcome.Turn.Usage)
+			projected, err := adapter.ApplyNativeTerminal(row, outcome)
 			return projected, true, err
 		}
 	}

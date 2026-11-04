@@ -8,6 +8,7 @@ import { automaticTaskEn, automaticTaskZh } from "./automatic-task";
 
 import { imZh, imEn } from "./im";
 import { workBoardZh, workBoardEn } from "./work-board";
+import { usageZh } from "./usage";
 
 const resources = {
   "zh-CN": {
@@ -15,6 +16,7 @@ const resources = {
     notification: notificationZh,
     im: imZh,
     workBoard: workBoardZh,
+    usage: usageZh,
     automaticTask: automaticTaskZh,
     workflow: workflowZh,
     common: {

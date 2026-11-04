@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -21,6 +22,8 @@ const streamShards = 64
 
 // Store is the sole writer and reader for a managed root. Callers share this instance.
 type Store struct {
+	// usageChanged publishes a committed Codex result to existing resource subscribers.
+	usageChanged atomic.Pointer[func()]
 	// root is the application-owned managed file directory.
 	root string
 	// catalog preserves the ordinary and team Chat path layout.

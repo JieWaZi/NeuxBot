@@ -128,12 +128,12 @@ func (m *service) ReadExecutionMessages(ctx context.Context, chatID, executionID
 			if err := builder.ReplaceStoredContent(message, cursor, checkpoint[0].RecordedAt); err != nil {
 				return nil, err
 			}
-			usage, err := journal.nativeUsage(ctx, chatID, executionID)
-			if err != nil {
-				return nil, err
-			}
-			builder.SetNativeUsage(message.ID, usage)
 		}
+		usage, err := journal.nativeOutcome(ctx, chatID, executionID)
+		if err != nil {
+			return nil, err
+		}
+		builder.SetNativeResult(executionID, usage)
 	}
 	return builder.Messages(), nil
 }

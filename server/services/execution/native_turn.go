@@ -99,6 +99,28 @@ func nativeThreadRequest(chatID string, plan agentapi.SessionPlan, request pendi
 	return thread
 }
 
+// nativeUsageSource classifies the host entry point from admission evidence.
+func nativeUsageSource(input pendingMessage, state messageChat) string {
+	switch input.message.Actor {
+	case "workflow":
+		return "workflow"
+	case constants.AutomaticTaskActor:
+		return "automatic"
+	case string(constants.ChannelMessageActorLead), string(constants.ChannelMessageActorMemberReport), string(constants.ChannelMessageActorSystem):
+		return "team"
+	}
+	if input.automaticRunID != "" {
+		return "automatic"
+	}
+	if state.threadWorkspaceID != "" {
+		return "team"
+	}
+	if !state.chat.HiddenFromWakerHistory {
+		return "chat"
+	}
+	return ""
+}
+
 // nativeTurnPrompt projects only the current business input. Thread owns any handoff prefix.
 func nativeTurnPrompt(turn agentapi.TurnInput) string {
 	var prompt strings.Builder
@@ -214,6 +236,8 @@ func (m *service) startNativeExecution(
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
+	nativeInput.UsageWakerID = state.chat.WakerID
+	nativeInput.UsageSource = nativeUsageSource(request, state)
 	turn, err := m.threads.Prepare(ctx, thread, nativeInput, ports)
 	if err != nil {
 		return AcceptedExecution{}, err

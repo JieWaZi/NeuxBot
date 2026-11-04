@@ -82,3 +82,67 @@ test("画布节点联合直接来自 DSL 生成契约且无外部引用", () => 
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("Codex usage distinguishes explicitly unknown counters from measured zero", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "ally-usage-api-"));
+  try {
+    const file = path.join(directory, "spec.json");
+    const prefix = "GithubComJieWaZiNeuxBotServer";
+    writeFileSync(
+      file,
+      JSON.stringify({
+        components: {
+          schemas: {
+            [prefix + "InternalUsageTokens"]: {
+              properties: {
+                input: { type: "integer" },
+                cacheRead: { type: "integer" },
+              },
+            },
+            [prefix + "InternalUsageTokenMetrics"]: {
+              properties: {
+                knownTotalWithCacheRead: { type: "integer" },
+                invocations: { type: "integer" },
+              },
+            },
+            [prefix + "ServicesUsageCoverage"]: {
+              properties: { indeterminateInvocations: { type: "integer" } },
+            },
+            Unrelated: { properties: { input: { type: "integer" } } },
+          },
+        },
+      }),
+    );
+    execFileSync(process.execPath, [
+      fileURLToPath(new URL("./normalize-openapi.mjs", import.meta.url)),
+      file,
+    ]);
+    const schemas = JSON.parse(readFileSync(file, "utf8")).components.schemas;
+    assert.equal(
+      schemas[prefix + "InternalUsageTokens"].properties.input.nullable,
+      true,
+    );
+    assert.equal(
+      schemas[prefix + "InternalUsageTokens"].properties.cacheRead.nullable,
+      true,
+    );
+    assert.equal(
+      schemas[prefix + "InternalUsageTokenMetrics"].properties
+        .knownTotalWithCacheRead.nullable,
+      true,
+    );
+    assert.equal(
+      schemas[prefix + "ServicesUsageCoverage"].properties
+        .indeterminateInvocations.nullable,
+      true,
+    );
+    assert.equal(
+      schemas[prefix + "InternalUsageTokenMetrics"].properties.invocations
+        .nullable,
+      undefined,
+    );
+    assert.equal(schemas.Unrelated.properties.input.nullable, undefined);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});

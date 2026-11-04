@@ -11,6 +11,10 @@ import (
 
 // TurnRequest holds one immutable host input and its public delivery identity.
 type TurnRequest struct {
+	// UsageSource identifies the verified host entry point.
+	UsageSource string
+	// UsageWakerID identifies the partner selected at admission.
+	UsageWakerID string
 	// HostInvocationID identifies this invocation before native submission.
 	HostInvocationID string
 	// ExecutionID names the public execution. Detached work leaves it empty.
@@ -291,6 +295,10 @@ func (t *Turn) recordInput(ctx context.Context, input TurnRequest, ports TurnPor
 		ExecutionID: input.ExecutionID, AssistantMessageID: input.AssistantMessageID,
 	}}
 	var err error
+	if t.binding.Session.Provider == "codex" {
+		admission.Input.Attribution = &UsageAttribution{ChatID: t.thread.chatID, AccountID: t.conn.account.id,
+			WakerID: input.UsageWakerID, Source: input.UsageSource}
+	}
 	if input.ExecutionID == "" {
 		err = t.lifecycle.store.CommitDetachedInput(ctx, admission.Input)
 	} else {

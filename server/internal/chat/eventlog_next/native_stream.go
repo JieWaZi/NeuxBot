@@ -161,8 +161,7 @@ func validNativeTerminal(t nativeTerminal) bool {
 }
 
 func nativeRowID(key agent.NativeResultKey) []byte {
-	data, _ := json.Marshal(key)
-	digest := sha256.Sum256(data)
+	digest := key.Digest()
 	return digest[:]
 }
 func nativeID(key agent.NativeResultKey) string { return hex.EncodeToString(nativeRowID(key)) }
@@ -402,6 +401,9 @@ func (s *Store) visitNativeRange(ctx context.Context, r agent.NativeFragmentRang
 
 // CommitNativeResult makes canonical terminal evidence independent of any Chat.
 func (s *Store) CommitNativeResult(ctx context.Context, result agent.NativeResult) error {
+	// Attribution is resolved by the Store from a committed admission. It is
+	// not an adapter input and must not change an existing idempotency hash.
+	result.Attribution = nil
 	terminal := nativeTerminal{Result: result}
 	if !validNativeTerminal(terminal) {
 		return status_error.ChatLogRecordInvalid
@@ -411,9 +413,20 @@ func (s *Store) CommitNativeResult(ctx context.Context, result agent.NativeResul
 	if err != nil {
 		return err
 	}
+	if result.Key.Session.Provider == "codex" {
+		terminal.Result.Attribution = s.nativeUsageAttribution(ctx, result)
+	}
 	id := nativeID(result.Key)
 	key := id + ":terminal"
 	slot, path := s.nativeStream(result.Key)
+	committed := false
+	defer func() {
+		if committed && result.Key.Session.Provider == "codex" {
+			if notify := s.usageChanged.Load(); notify != nil {
+				(*notify)()
+			}
+		}
+	}()
 	slot.mu.Lock()
 	defer slot.mu.Unlock()
 	idx, err := slot.load(ctx, path, false)
@@ -444,7 +457,9 @@ func (s *Store) CommitNativeResult(ctx context.Context, result agent.NativeResul
 		return err
 	}
 	header := makeHeader(key, request, idx.version(), 1)
-	return slot.append(ctx, path, idx, header, rows, payload)
+	err = slot.append(ctx, path, idx, header, rows, payload)
+	committed = err == nil
+	return err
 }
 
 func findNativeBody(ctx context.Context, path string, idx *streamIndex, key agent.NativeResultKey, final *agent.NativeFinalMessage) (*nativeBody, error) {

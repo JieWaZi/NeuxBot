@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -259,8 +260,22 @@ type HandoffClaim struct {
 	AdapterInputID string `json:"adapterInputId"`
 }
 
+// UsageAttribution freezes usage ownership when the host admits an input.
+type UsageAttribution struct {
+	// ChatID identifies the originating chat, when applicable.
+	ChatID string `json:"chatId,omitempty"`
+	// WakerID is the admitted partner, when known.
+	WakerID string `json:"wakerId,omitempty"`
+	// AccountID is the host account that opened the connection, when known.
+	AccountID string `json:"accountId,omitempty"`
+	// Source identifies the verified host entry point.
+	Source string `json:"source,omitempty"`
+}
+
 // HostInput captures identity before submission without asserting native acceptance.
 type HostInput struct {
+	// Attribution preserves ownership frozen at input admission.
+	Attribution *UsageAttribution `json:"usageAttribution,omitempty"`
 	// HostInvocationID identifies the host invocation H.
 	HostInvocationID string `json:"hostInvocationId"`
 	// AdapterInputID is the input identity used by native outcome consumption.
@@ -307,6 +322,12 @@ type NativeResultKey struct {
 	InvocationID string `json:"invocationId"`
 }
 
+// Digest returns the canonical privacy-preserving result address.
+func (k NativeResultKey) Digest() [32]byte {
+	data, _ := json.Marshal(k)
+	return sha256.Sum256(data)
+}
+
 // NativeFinalMessage is provider-proven complete output.
 type NativeFinalMessage struct {
 	// ID is the stable native message identity used for reconciliation.
@@ -317,6 +338,8 @@ type NativeFinalMessage struct {
 
 // NativeResult is the immutable terminal fact. It does not record waiter or delivery failures.
 type NativeResult struct {
+	// Attribution keeps the first consumed input owner with the canonical terminal.
+	Attribution *UsageAttribution `json:"usageAttribution,omitempty"`
 	// Key identifies the unique durable native outcome.
 	Key NativeResultKey `json:"key"`
 	// Turn carries terminal status, exact adapter inputs, primary usage and overlapping observations.

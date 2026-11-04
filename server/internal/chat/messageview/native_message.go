@@ -1,11 +1,13 @@
 package messageview
 
 import (
+	"encoding/hex"
 	"encoding/json"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	ledger "github.com/JieWaZi/NeuxBot/server/internal/usage"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
@@ -63,6 +65,34 @@ func (p *MessageViewBuilder) ReplaceStoredContent(stored agent.StoredMessage, cu
 	message.LiveRevision = max(message.LiveRevision, cursor)
 	message.UpdatedAt = max(message.UpdatedAt, recordedAt)
 	return nil
+}
+
+// SetNativeResult projects the canonical Codex usage with its opaque deduplication identity.
+func (p *MessageViewBuilder) SetNativeResult(messageID string, result *agent.NativeResult) {
+	if result == nil {
+		return
+	}
+	p.SetNativeUsage(messageID, result.Turn.Usage)
+	index, ok := p.messageIndexes[messageID]
+	if !ok || result.Key.Session.Provider != "codex" {
+		return
+	}
+	digest := result.Key.Digest()
+	view := &MessageTokenUsage{InvocationID: hex.EncodeToString(digest[:])}
+	var totals ledger.TokenAccumulator
+	observed := result.Turn.Usage
+	if observed != nil {
+		view.Source, view.Coverage = observed.Source, observed.Coverage
+	}
+	if err := totals.Add(ledger.ReadTokens(observed), observed != nil && observed.Complete); err == nil {
+		view.TokenMetrics, _ = totals.Metrics()
+	}
+	view.Complete = view.TotalWithCacheRead != nil
+	message := &p.messages[index]
+	if message.RunMetrics == nil {
+		message.RunMetrics = &MessageRunMetrics{}
+	}
+	message.RunMetrics.TokenUsage = view
 }
 
 // SetNativeUsage exposes primary counters only when the native result covers the turn.

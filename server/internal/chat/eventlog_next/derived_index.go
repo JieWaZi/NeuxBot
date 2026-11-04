@@ -126,7 +126,10 @@ func migrateIndex(db *gorm.DB) error {
 		return err
 	}
 	// Composite position and digest keys are the table keys, avoiding a second rowid tree.
-	return db.Set("gorm:table_options", "WITHOUT ROWID").AutoMigrate(&indexBatch{}, &rowIndex{}, &executionLocator{}, &nativeIdentityLocator{}, &nativeMessageLocator{}, &displayPosition{})
+	if err := db.Set("gorm:table_options", "WITHOUT ROWID").AutoMigrate(&indexBatch{}, &rowIndex{}, &executionLocator{}, &nativeIdentityLocator{}, &nativeMessageLocator{}, &displayPosition{}); err != nil {
+		return err
+	}
+	return db.Exec("CREATE INDEX IF NOT EXISTS " + usageTerminalIndex + " ON conversation_positions (stream, cursor) WHERE " + usageTerminalPredicate).Error
 }
 
 func (i *indexDB) open() error {

@@ -1,0 +1,40 @@
+import { expect, it } from "vitest";
+import {
+  parseUsageFilters,
+  rangeFromUsageDates,
+  usageFiltersSearch,
+} from "./usage-filters";
+
+it("retains range, time zone, and normalized filters in the URL", () => {
+  const range = rangeFromUsageDates(
+    "2026-03-08",
+    "2026-03-08",
+    "America/New_York",
+  );
+  expect(range).toEqual({
+    from: Date.parse("2026-03-08T05:00:00Z"),
+    to: Date.parse("2026-03-09T04:00:00Z"),
+  });
+  const search = new URLSearchParams({
+    from: String(range?.from),
+    to: String(range?.to),
+    timezone: "America/New_York",
+    groupBy: "model",
+    metric: "cost",
+  });
+  search.append("waker", "z");
+  search.append("waker", "a");
+  search.append("waker", "z");
+  const filters = parseUsageFilters(search);
+  expect(filters.wakerIds).toEqual(["a", "z"]);
+  expect(parseUsageFilters(usageFiltersSearch(filters))).toEqual(filters);
+});
+
+it("defaults to thirty local calendar days, including the current date", () => {
+  const filters = parseUsageFilters(
+    new URLSearchParams({ timezone: "America/New_York" }),
+    new Date("2026-03-09T17:00:00Z"),
+  );
+  expect(filters.from).toBe(Date.parse("2026-02-08T05:00:00Z"));
+  expect(filters.to).toBe(Date.parse("2026-03-10T04:00:00Z"));
+});

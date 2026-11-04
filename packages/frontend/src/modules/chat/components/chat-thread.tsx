@@ -956,7 +956,18 @@ function RunMetricsTooltip({
   children: ReactNode;
 }) {
   const { t } = useTranslation("chat");
+  const { t: usageLabel } = useTranslation("usage");
   const durationMs = metrics.durationMs ?? 0;
+  const usage = metrics.tokenUsage;
+  const tokens = usage
+    ? usage.knownTokens
+    : {
+        input: metrics.inputTokens || undefined,
+        output: metrics.outputTokens || undefined,
+        reasoning: metrics.reasoningOutputTokens || undefined,
+        cacheWrite: metrics.cacheCreationTokens || undefined,
+        cacheRead: metrics.cacheReadTokens || undefined,
+      };
   const rows = [
     metrics.contextUsedTokens && metrics.contextWindowTokens
       ? [
@@ -965,34 +976,38 @@ function RunMetricsTooltip({
         ]
       : undefined,
     [t("runMetrics.duration"), formatRunDuration(durationMs)],
-    metrics.inputTokens
-      ? [
-          t("runMetrics.inputTokens"),
-          tokenNumberFormat.format(metrics.inputTokens),
-        ]
+    tokens?.input != null
+      ? [t("runMetrics.inputTokens"), tokenNumberFormat.format(tokens.input)]
       : undefined,
-    metrics.outputTokens
-      ? [
-          t("runMetrics.outputTokens"),
-          tokenNumberFormat.format(metrics.outputTokens),
-        ]
+    tokens?.output != null
+      ? [t("runMetrics.outputTokens"), tokenNumberFormat.format(tokens.output)]
       : undefined,
-    metrics.reasoningOutputTokens
+    tokens?.reasoning != null
       ? [
           t("runMetrics.reasoningOutputTokens"),
-          tokenNumberFormat.format(metrics.reasoningOutputTokens),
+          tokenNumberFormat.format(tokens.reasoning),
         ]
       : undefined,
-    metrics.cacheCreationTokens
+    tokens?.cacheWrite != null
       ? [
           t("runMetrics.cacheCreationTokens"),
-          tokenNumberFormat.format(metrics.cacheCreationTokens),
+          tokenNumberFormat.format(tokens.cacheWrite),
         ]
       : undefined,
-    metrics.cacheReadTokens
+    tokens?.cacheRead != null
       ? [
           t("runMetrics.cacheReadTokens"),
-          tokenNumberFormat.format(metrics.cacheReadTokens),
+          tokenNumberFormat.format(tokens.cacheRead),
+        ]
+      : undefined,
+    usage && !usage.complete
+      ? [
+          usageLabel("tokens"),
+          usage.missingUsageInvocations
+            ? usageLabel("nativeMissing")
+            : usage.coverage === "last_request"
+              ? usageLabel("lastRequest")
+              : usageLabel("nativePartial"),
         ]
       : undefined,
   ].filter((row): row is string[] => Boolean(row));

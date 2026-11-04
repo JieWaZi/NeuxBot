@@ -90,3 +90,54 @@ describe("steer continuation", () => {
     expect(chatContinuations([first]).size).toBe(0);
   });
 });
+
+it("counts one native result once across steering continuations", () => {
+  const usage = {
+    invocationId: "canonical-p",
+    source: "codex/thread/tokenUsage/updated",
+    coverage: "last_request",
+    complete: false,
+    tokens: {},
+    knownTokens: {
+      input: 5,
+      output: 3,
+      cacheRead: 2,
+      cacheWrite: 0,
+      reasoning: 1,
+    },
+    totalWithCacheRead: undefined,
+    totalWithoutCacheRead: undefined,
+    knownTotalWithCacheRead: 10,
+    knownTotalWithoutCacheRead: 8,
+    invocations: 1,
+    missingUsageInvocations: 0,
+    incompleteUsageInvocations: 1,
+  };
+  const result = chatContinuations([
+    {
+      id: "first",
+      executionId: "first",
+      role: "assistant",
+      status: "canceled",
+      content: "",
+      runMetrics: { tokenUsage: usage },
+    },
+    { id: "input", role: "user", content: "" },
+    {
+      id: "second",
+      executionId: "second",
+      steerExecutionId: "first",
+      role: "assistant",
+      status: "completed",
+      content: "",
+      runMetrics: { tokenUsage: usage },
+    },
+  ]);
+  expect(
+    result.get("second")?.footerMessage.runMetrics?.tokenUsage,
+  ).toMatchObject({
+    knownTotalWithCacheRead: 10,
+    totalWithCacheRead: undefined,
+    invocations: 1,
+  });
+});

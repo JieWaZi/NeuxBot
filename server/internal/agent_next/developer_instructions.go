@@ -84,7 +84,7 @@ func (l *ThreadLifecycle) GenerateText(ctx context.Context, request TextRequest)
 	request.Connection.Launch.RequireNoTools = true
 	turn, err := l.prepare(ctx, ThreadRequest{
 		Connection: request.Connection, Settings: request.Settings, Session: AgentSessionOptions{DeveloperInstructions: instructions},
-	}, TurnRequest{Text: text}, TurnPorts{}, closeFiles)
+	}, TurnRequest{Text: text, UsageSource: "generate_text"}, TurnPorts{}, closeFiles)
 	if err != nil {
 		return result, err
 	}
@@ -119,6 +119,9 @@ func (l *ThreadLifecycle) ExecuteTask(ctx context.Context, request TaskRequest) 
 			}
 		}
 		launch.Claude.SettingSources = []string{}
+	}
+	if request.Input.UsageSource == "" {
+		request.Input.UsageSource = "background"
 	}
 	turn, err := l.Prepare(ctx, request.Thread, request.Input, request.Ports)
 	if err != nil {
@@ -182,7 +185,7 @@ func (t *Turn) summarize(conn *providerConnection, binding NativeBinding, previo
 	if err != nil {
 		return nil
 	}
-	child := newTurn(t.ctx, t.lifecycle, t.thread, TurnRequest{HostInvocationID: newTurnID(), Text: handoffInstructions}, TurnPorts{})
+	child := newTurn(t.ctx, t.lifecycle, t.thread, TurnRequest{HostInvocationID: newTurnID(), Text: handoffInstructions, UsageSource: "handoff", UsageWakerID: t.input.UsageWakerID}, TurnPorts{})
 	defer child.cancel()
 	child.setSession(conn, binding)
 	child.effective = previous
