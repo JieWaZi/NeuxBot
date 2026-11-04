@@ -137,7 +137,7 @@ export function chatMessageSource(
   };
 }
 
-/** 只接纳从原历史边界连续到达的持久快照，保留已加载窗口和消息身份。 */
+/** 合并共享传输按序交付的持久快照；内部记录不进入公开事件，游标可以稀疏。 */
 export function mergeChatHistoryEvents(
   queryClient: QueryClient,
   chatId: string,
@@ -159,7 +159,6 @@ export function mergeChatHistoryEvents(
     if (!Number.isSafeInteger(next) || next === undefined || next <= 0)
       return undefined;
     if (next <= sequence) continue;
-    if (next !== sequence + 1) return undefined;
     sequence = next;
     if (event.fileChanges) {
       const id = event.fileChanges.messageId;
@@ -190,7 +189,7 @@ export function mergeChatHistoryEvents(
       forkLatestExecutionId = event.message.inherited
         ? event.message.id
         : event.message.executionId;
-    // 同一批保留最后一份完整快照，连续性仍基于全部原始事件验证。
+    // 同一批保留最后一份完整快照，游标保留真实权威日志的位置。
     updates.set(event.message.id, {
       ...event.message,
       createdAt: event.message.createdAt ?? event.recordedAt,

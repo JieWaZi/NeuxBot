@@ -389,9 +389,12 @@ export function subscribeChat(
 ): () => void {
   return subscribeDomain({
     ...options,
+    after: options.after ?? 0,
     topic: "chat",
     resource: { kind: "chat", id: chatId },
-    contiguous: true,
+    // Internal log records share the durable cursor but are not public events.
+    // Delivery gaps still trigger reconciliation through the shared WS owner.
+    contiguous: false,
     validate: isChatEvent,
   });
 }

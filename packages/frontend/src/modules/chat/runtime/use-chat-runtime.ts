@@ -936,7 +936,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
     let liveTracker = new ChatLiveTracker();
     const eventBatcher = createChatEventBatcher((events) => {
       if (!isCurrentSubscription()) return;
-      // 在原始持久事件上校验连续性；UI 批次会折叠同一消息的中间快照。
+      // 原始持久事件使用递增的稀疏游标；UI 批次会折叠同一消息的中间快照。
       // 接收不等于投影，隐藏时丢弃的批次不能推进原历史游标。
       if (pendingDurableEvents.length > 0 && options.chatId) {
         const sequence = sourceRef.current.commit(pendingDurableEvents);
