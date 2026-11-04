@@ -44,11 +44,12 @@ func NativeAmount(c *acpmeta.UsageCost) (string, bool) {
 	default:
 		return "", false
 	}
-	amount, digits, ok := ParseAmount(c.Amount.String())
-	if !ok {
+	amount := c.Amount.String()
+	if _, _, ok := ParseAmount(amount); !ok {
 		return "", false
 	}
-	return amount.FloatString(digits), c.Scope == "turn" || c.Scope == "invocation"
+	// Keep the validated source text so the projection can apply the same bounds.
+	return amount, c.Scope == "turn" || c.Scope == "invocation"
 }
 
 // CodexPriceProof identifies request-level evidence for a published API rate.

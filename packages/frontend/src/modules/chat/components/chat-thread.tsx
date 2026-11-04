@@ -968,6 +968,9 @@ function RunMetricsTooltip({
         cacheWrite: metrics.cacheCreationTokens || undefined,
         cacheRead: metrics.cacheReadTokens || undefined,
       };
+  const hasKnownTokens = Object.values(tokens ?? {}).some(
+    (value) => value != null,
+  );
   const rows = [
     metrics.contextUsedTokens && metrics.contextWindowTokens
       ? [
@@ -1003,7 +1006,7 @@ function RunMetricsTooltip({
     usage && !usage.complete
       ? [
           usageLabel("tokens"),
-          usage.missingUsageInvocations
+          usage.missingUsageInvocations && !hasKnownTokens
             ? usageLabel("nativeMissing")
             : usage.coverage === "last_request"
               ? usageLabel("lastRequest")

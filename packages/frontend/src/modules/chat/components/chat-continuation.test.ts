@@ -141,3 +141,59 @@ it("counts one native result once across steering continuations", () => {
     invocations: 1,
   });
 });
+
+it("retains known legacy counters with a distinct native invocation", () => {
+  const result = chatContinuations([
+    first,
+    user,
+    {
+      ...next,
+      runMetrics: {
+        tokenUsage: {
+          invocationId: "native-p",
+          coverage: "last_request",
+          complete: false,
+          knownTokens: { input: 3, output: 4 },
+          knownTotalWithCacheRead: 7,
+          knownTotalWithoutCacheRead: 7,
+          invocations: 1,
+        },
+      },
+    },
+  ]);
+  expect(
+    result.get("next")?.footerMessage.runMetrics?.tokenUsage,
+  ).toMatchObject({
+    complete: false,
+    knownTokens: { input: 13, output: 24 },
+    knownTotalWithCacheRead: 37,
+    knownTotalWithoutCacheRead: 37,
+    invocations: 1,
+  });
+});
+
+it("uses canonical counters for a revised view of the same execution", () => {
+  const result = chatContinuations([
+    first,
+    user,
+    {
+      ...next,
+      executionId: first.executionId,
+      runMetrics: {
+        tokenUsage: {
+          invocationId: "native-p",
+          knownTokens: { input: 3, output: 4 },
+          knownTotalWithCacheRead: 7,
+          invocations: 1,
+        },
+      },
+    },
+  ]);
+  expect(
+    result.get("next")?.footerMessage.runMetrics?.tokenUsage,
+  ).toMatchObject({
+    knownTokens: { input: 3, output: 4 },
+    knownTotalWithCacheRead: 7,
+    invocations: 1,
+  });
+});

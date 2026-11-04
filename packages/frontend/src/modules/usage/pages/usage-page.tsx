@@ -1,8 +1,9 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ApiError } from "@/shared/api/errors";
+import type { ListUsageGroupsResponse } from "@/shared/api/generated/types.gen";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { useVisibleScene } from "@/shared/api/work-result-reading";
 import { DateRangePicker } from "@/shared/ui/date-range-picker";
@@ -26,6 +27,14 @@ import {
   type UsageFilters,
 } from "../model/usage-filters";
 
+function nextCursor(page: ListUsageGroupsResponse) {
+  return page.hasMore ? page.nextCursor : undefined;
+}
+
+function retryGroups(attempt: number, error: unknown) {
+  return !(error instanceof ApiError && error.status === 409) && attempt < 2;
+}
+
 export function UsagePage({
   search,
   onSearchChange,
@@ -42,14 +51,60 @@ export function UsagePage({
   const summary = useQuery({ ...options, enabled: active });
   const { refetch: refreshSummary } = summary;
   const snapshot = summary.data?.snapshot ?? "";
+  const scope = JSON.stringify([
+    filters.from,
+    filters.to,
+    filters.timezone,
+    filters.wakerIds,
+    filters.groupBy,
+  ]);
+  const [published, setPublished] = useState<{
+    scope: string;
+    snapshot: string;
+  }>();
+  const previous = published?.scope === scope ? published.snapshot : "";
   const groups = useInfiniteQuery({
     ...usageGroupsOptions(filters, snapshot),
     enabled: active && Boolean(snapshot),
     initialPageParam: "",
-    getNextPageParam: (page) => (page.hasMore ? page.nextCursor : undefined),
-    retry: (attempt, error) =>
-      !(error instanceof ApiError && error.status === 409) && attempt < 2,
+    getNextPageParam: nextCursor,
+    retry: retryGroups,
   });
+  const retained = useInfiniteQuery({
+    ...usageGroupsOptions(filters, previous),
+    enabled: false,
+    initialPageParam: "",
+    getNextPageParam: nextCursor,
+    retry: retryGroups,
+  });
+  const replacing = Boolean(previous && previous !== snapshot && retained.data);
+  const targetPages = replacing ? (retained.data?.pages.length ?? 1) : 1;
+  const loadedPages = groups.data?.pages.length ?? 0;
+  const ready =
+    loadedPages > 0 &&
+    !groups.isError &&
+    (loadedPages >= targetPages || !groups.hasNextPage);
+
+  // Publish a matching summary and breakdown together. A replacement replays
+  // its own cursors up to the previously visible depth.
+  if (snapshot && ready && previous !== snapshot) {
+    setPublished({ scope, snapshot });
+  }
+  const displayGroups = replacing && !ready ? retained : groups;
+  const displaySummary =
+    replacing && !ready ? retained.data?.pages[0] : summary.data;
+  const { fetchNextPage: extendReplacement } = groups;
+  const needsMore =
+    active &&
+    replacing &&
+    loadedPages > 0 &&
+    loadedPages < targetPages &&
+    groups.hasNextPage &&
+    !groups.isFetching &&
+    !groups.isError;
+  useEffect(() => {
+    if (needsMore) void extendReplacement();
+  }, [needsMore, loadedPages, extendReplacement]);
 
   // Refresh the summary so its new snapshot replaces every grouped query key.
   useQueryEvents({
@@ -85,7 +140,7 @@ export function UsagePage({
     if (range) update(range);
   };
   const names = new Map(wakerOptions.map(({ value, label }) => [value, label]));
-  const pages = groups.data?.pages;
+  const pages = displayGroups.data?.pages;
   const rows = pages?.flatMap((page) => page.groups ?? []) ?? [];
 
   return (
@@ -155,8 +210,8 @@ export function UsagePage({
               <Skeleton className="h-16" key={key} aria-hidden="true" />
             ))}
           </div>
-        ) : summary.data ? (
-          <UsageOverview summary={summary.data} />
+        ) : displaySummary ? (
+          <UsageOverview summary={displaySummary} />
         ) : (
           <QueryState
             error={summary.error}
@@ -191,35 +246,38 @@ export function UsagePage({
             onValueChange={(metric) => update({ metric })}
           />
         </div>
-        {summary.data && rows.length ? (
+        {displaySummary && rows.length ? (
           <UsageReport
             groupBy={filters.groupBy}
             groups={rows}
             metric={filters.metric}
             names={names}
             totalGroups={pages?.[0]?.totalGroups ?? 0}
-            more={groups.hasNextPage}
-            loading={groups.isFetchingNextPage}
-            onLoadMore={() => void groups.fetchNextPage()}
+            more={displayGroups.hasNextPage}
+            loading={displayGroups.isFetchingNextPage}
+            onLoadMore={() => void displayGroups.fetchNextPage()}
           />
-        ) : summary.data ? (
+        ) : displaySummary ? (
           <QueryState
             pending={
-              groups.isPending || (snapshotExpired && summary.isFetching)
+              displayGroups.isPending ||
+              (!displayGroups.data && snapshotExpired && summary.isFetching)
             }
-            error={groups.error}
+            error={displayGroups.data ? null : groups.error}
             emptyLabel={t("empty")}
             onRetry={() =>
               void (snapshotExpired ? summary.refetch() : groups.refetch())
             }
           />
         ) : null}
-        {rows.length > 0 && groups.isError ? (
+        {displayGroups.data && (groups.isError || displayGroups.isError) ? (
           <QueryRefreshError
-            error={groups.error}
-            pending={groups.isFetching}
+            error={groups.error ?? displayGroups.error}
+            pending={groups.isFetching || displayGroups.isFetching}
             onRetry={() =>
-              void (snapshotExpired ? summary.refetch() : groups.refetch())
+              void (snapshotExpired
+                ? summary.refetch()
+                : (groups.isError ? groups : displayGroups).refetch())
             }
           />
         ) : null}
