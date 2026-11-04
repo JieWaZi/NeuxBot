@@ -34,9 +34,7 @@ func resolveACPSystemAccount(ctx context.Context, request agent.AccountRequest, 
 	if request.AccountID != agent.SystemAccountID {
 		return agent.AccountRequest{}, status_error.AIAccountConfigurationInvalid
 	}
-	if configHome == "" {
-		configHome = os.Getenv(accountconfig.ACPSystemConfigVariable(request.Provider))
-	}
+	configHome = acpSystemConfigOverride(request.Provider, configHome)
 	config, err := newACPSystemAccount(request, configHome)
 	if err != nil {
 		return agent.AccountRequest{}, err
@@ -103,20 +101,7 @@ func newACPSystemAccount(request agent.AccountRequest, nativeConfigHome string) 
 	if err != nil {
 		return acpSystemAccount{}, err
 	}
-	var defaultDir, tokenVariable string
-	switch request.Provider {
-	case constants.RuntimeIDWorkBuddy:
-		defaultDir = ".codebuddy"
-	case constants.RuntimeIDQoder:
-		defaultDir, tokenVariable = ".qoder", "QODER_PERSONAL_ACCESS_TOKEN"
-	case constants.RuntimeIDQoderCN:
-		defaultDir, tokenVariable = ".qoder-cn", "QODERCN_PERSONAL_ACCESS_TOKEN"
-	}
-	configPath := nativeConfigHome
-	if configPath == "" {
-		configPath = filepath.Join(userHome, defaultDir)
-	}
-	configHome, err := systemAccountHome(configPath, true)
+	configHome, err := acpSystemConfigRoot(request.Provider, userHome, nativeConfigHome)
 	if err != nil {
 		return acpSystemAccount{}, err
 	}
@@ -152,29 +137,90 @@ func newACPSystemAccount(request agent.AccountRequest, nativeConfigHome string) 
 	if err := config.checkQoderRegionalRoot(request.Provider); err != nil {
 		return acpSystemAccount{}, err
 	}
+	tokenVariable := "QODER_PERSONAL_ACCESS_TOKEN"
+	if request.Provider == constants.RuntimeIDQoderCN {
+		tokenVariable = "QODERCN_PERSONAL_ACCESS_TOKEN"
+	}
 	if token := os.Getenv(tokenVariable); token != "" {
 		config.environment[tokenVariable] = token
 	}
 	return config, nil
 }
 
+func acpSystemConfigOverride(provider, configuredHome string) string {
+	if configuredHome != "" {
+		return configuredHome
+	}
+	return os.Getenv(accountconfig.ACPSystemConfigVariable(provider))
+}
+
+func acpSystemConfigRoot(provider, userHome, configuredHome string) (string, error) {
+	if configuredHome != "" {
+		return systemAccountHome(configuredHome, true)
+	}
+	var defaultDir string
+	switch provider {
+	case constants.RuntimeIDWorkBuddy:
+		defaultDir = ".codebuddy"
+	case constants.RuntimeIDQoder:
+		defaultDir = ".qoder"
+	case constants.RuntimeIDQoderCN:
+		defaultDir = ".qoder-cn"
+	default:
+		return "", status_error.RuntimeNotRegistered
+	}
+	return systemAccountHome(filepath.Join(userHome, defaultDir), true)
+}
+
 func (c acpSystemAccount) checkQoderRegionalRoot(provider string) error {
-	otherProvider, otherDefault := constants.RuntimeIDQoderCN, ".qoder-cn"
-	if provider == constants.RuntimeIDQoderCN {
-		otherProvider, otherDefault = constants.RuntimeIDQoder, ".qoder"
-	}
-	roots := []string{filepath.Join(c.userHome, otherDefault)}
-	if explicit := os.Getenv(accountconfig.ACPSystemConfigVariable(otherProvider)); explicit != "" {
-		roots = append(roots, explicit)
-	}
-	for _, root := range roots {
+	peer := accountconfig.QoderPeerRuntimeID(provider)
+	for _, override := range []string{"", acpSystemConfigOverride(peer, "")} {
 		// An invalid directory in the other installation cannot alias this root.
-		other, err := systemAccountHome(root, true)
-		if err == nil && c.configHome == other {
+		other, err := acpSystemConfigRoot(peer, c.userHome, override)
+		if err == nil && sameACPConfigRoot(c.configHome, other) {
 			return status_error.RuntimeConfigurationInvalid
 		}
 	}
 	return nil
+}
+
+// ValidateQoderConfigHomes applies the runtime's native root rule before saving
+// a selection and checks the other edition's independently saved custom roots.
+func ValidateQoderConfigHomes(provider, configuredHome string, peerConfiguredHomes []string) error {
+	peer := accountconfig.QoderPeerRuntimeID(provider)
+	if peer == "" {
+		return status_error.RuntimeNotRegistered
+	}
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return status_error.RuntimeConfigurationInvalid
+	}
+	home, err := acpSystemConfigRoot(provider, userHome, acpSystemConfigOverride(provider, configuredHome))
+	if err != nil {
+		return err
+	}
+	account := acpSystemAccount{configHome: home, userHome: userHome}
+	if err := account.checkQoderRegionalRoot(provider); err != nil {
+		return err
+	}
+	for _, peerHome := range peerConfiguredHomes {
+		other, err := acpSystemConfigRoot(peer, userHome, peerHome)
+		if err == nil && sameACPConfigRoot(home, other) {
+			return status_error.RuntimeConfigurationInvalid
+		}
+	}
+	return nil
+}
+
+func sameACPConfigRoot(first, second string) bool {
+	if relative, err := filepath.Rel(first, second); err == nil && relative == "." {
+		return true
+	}
+	// Existing aliases can name the same directory under different spellings
+	// on case-insensitive filesystems and mounted platform volumes.
+	firstInfo, firstErr := os.Stat(first)
+	secondInfo, secondErr := os.Stat(second)
+	return firstErr == nil && secondErr == nil && os.SameFile(firstInfo, secondInfo)
 }
 
 func (c *acpSystemAccount) subject(ctx context.Context, request agent.AccountRequest) (string, error) {

@@ -20,6 +20,18 @@ func ACPSystemConfigVariable(runtimeID string) string {
 	}
 }
 
+// QoderPeerRuntimeID identifies the other Qoder edition, which owns a separate native root.
+func QoderPeerRuntimeID(runtimeID string) string {
+	switch runtimeID {
+	case constants.RuntimeIDQoder:
+		return constants.RuntimeIDQoderCN
+	case constants.RuntimeIDQoderCN:
+		return constants.RuntimeIDQoder
+	default:
+		return ""
+	}
+}
+
 // IsACPAccountOverride identifies launch values reserved for the frozen ACP system account.
 func IsACPAccountOverride(runtimeID, key string) bool {
 	if ACPSystemConfigVariable(runtimeID) == "" {

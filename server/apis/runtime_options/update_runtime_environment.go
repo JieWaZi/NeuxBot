@@ -4,12 +4,15 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -75,20 +78,30 @@ func (u *UpdateRuntimeEnvironment) Output(ctx *gin.Context) (interface{}, error)
 	if !agentapi.LaunchOverrideArgumentsAllowed(current.BaseRuntimeID, u.Body.PrefixArgs) {
 		return nil, ginx.WithStack(status_error.BadRequest)
 	}
+	accountID := u.Body.DefaultAccountID
+	if accountconfig.ACPSystemConfigVariable(current.BaseRuntimeID) != "" {
+		if accountID == constants.AiAccountSystemID {
+			accountID = ""
+		}
+		if accountID != "" {
+			return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
+		}
+	}
 	releaseAccount := func() {}
-	if u.Body.DefaultAccountID != "" {
-		release, err := global.AIAccountService.Exclusive(u.Body.DefaultAccountID)
+	if accountID != "" {
+		release, err := global.AIAccountService.Exclusive(accountID)
 		if err != nil {
 			return nil, ginx.WithStack(err)
 		}
 		releaseAccount = release
 		defer release()
 	}
-	if err := global.AIAccountService.Validate(ctx, u.Body.DefaultAccountID); err != nil {
+	if err := global.AIAccountService.Validate(ctx, accountID); err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	environment := models.RuntimeEnvironment{
-		DefaultAccountID:       u.Body.DefaultAccountID,
+		DefaultAccountID:       accountID,
+		BaseRuntimeID:          current.BaseRuntimeID,
 		RuntimeID:              u.RuntimeID,
 		Enabled:                u.Body.Enabled,
 		Binary:                 u.Body.Binary,
@@ -181,15 +194,43 @@ func updateRuntimeEnvironment(
 	environment models.RuntimeEnvironment,
 	isDefault bool,
 ) error {
-	if !isDefault {
+	peer := accountconfig.QoderPeerRuntimeID(environment.BaseRuntimeID)
+	if !isDefault && peer == "" {
 		return global.RuntimeEnvironmentControllerManager.UpdateConfiguration(ctx, environment)
 	}
-	return global.TransactionControllerManager.Transaction(ctx, func(transactionContext context.Context) error {
-		if err := global.RuntimeEnvironmentControllerManager.ClearDefault(transactionContext); err != nil {
+	var peerHomes []string
+	if peer != "" {
+		var err error
+		peerHomes, err = qoderPeerConfigHomes(ctx, peer)
+		if err != nil {
 			return err
+		}
+		if err := aiaccount.ValidateQoderConfigHomes(environment.BaseRuntimeID, environment.ConfigHome, peerHomes); err != nil {
+			return err
+		}
+	}
+	return global.TransactionControllerManager.Transaction(ctx, func(transactionContext context.Context) error {
+		if peer != "" {
+			// Keep filesystem work outside the database transaction. Fence the
+			// exact peer configuration used by that preflight before writing.
+			currentPeerHomes, err := qoderPeerConfigHomes(transactionContext, peer)
+			if err != nil {
+				return err
+			}
+			if !slices.Equal(currentPeerHomes, peerHomes) {
+				return status_error.Conflict
+			}
+		}
+		if isDefault {
+			if err := global.RuntimeEnvironmentControllerManager.ClearDefault(transactionContext); err != nil {
+				return err
+			}
 		}
 		if err := global.RuntimeEnvironmentControllerManager.UpdateConfiguration(transactionContext, environment); err != nil {
 			return err
+		}
+		if !isDefault {
+			return nil
 		}
 		return global.RuntimeEnvironmentControllerManager.UpdateFields(
 			transactionContext,
@@ -197,4 +238,19 @@ func updateRuntimeEnvironment(
 			map[string]any{"is_default": true},
 		)
 	})
+}
+
+func qoderPeerConfigHomes(ctx context.Context, peer string) ([]string, error) {
+	environments, err := global.RuntimeEnvironmentControllerManager.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var homes []string
+	for _, environment := range environments {
+		if environment.BaseRuntimeID == peer && environment.ConfigHome != "" {
+			homes = append(homes, environment.ConfigHome)
+		}
+	}
+	slices.Sort(homes)
+	return slices.Compact(homes), nil
 }
