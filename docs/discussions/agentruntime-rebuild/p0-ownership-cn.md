@@ -1,6 +1,6 @@
 # P0：执行所有权、真实消费者与首批替换
 
-本文是编码输入，不是已实现架构。权威方案为 `docs/superpowers/specs/2026-11-04-agentruntime-rebuild-design.md`。底座继续位于 `server/internal/agent`、沿用 `server/go.mod`；首批只有 Codex、Claude Code、Cursor。重写范围代码和测试注释使用英文，本文中文。
+本文是编码输入，不是已实现架构。权威方案为 `docs/superpowers/specs/2026-11-04-agentruntime-rebuild-design.md`。按权威方案第 9.1 节，底座先在临时 `server/internal/agent_next` 完整重建，验收后替换正式 `server/internal/agent`，沿用 `server/go.mod`；首批只有 Codex、Claude Code、Cursor。重写范围代码和测试注释使用英文，本文中文。
 
 ## 1. 当前生产链与替换边界
 
@@ -27,7 +27,7 @@ flowchart TD
   ThreadState --> Turn[实际 Turn：准备、执行、取消、原生接纳及完成]
   Threads --> Providers[ProviderRuntime：应用内一个具体实例]
   Providers --> Connection[每 connectionID 一条 providerConnection：client、账号 lease、进程依赖资源]
-  Connection --> ACP[acp-go：三家 Adapter / nativeacp]
+  Connection --> ACP[acp-go：三家原生 Client，共用明确技术合同]
   Turn --> Buffer[DeltaBuffer：当前消息未提交增量]
   Buffer --> Store[同一个 ConversationStore：JSONL 权威]
   Threads --> Store
@@ -45,7 +45,7 @@ flowchart TD
 
 ## 3. 文件职责表
 
-所有路径相对 `server/internal/agent`。这是首批真实能力的落点，不是要求一次创建全部文件。
+下表是正式归属的文件职责。隔离实施时路径相对 `server/internal/agent_next`，验收后再替换正式 `server/internal/agent`；不预建空文件。
 
 | owning 文件 / 对象 | 唯一状态及输入输出 | 真实消费者、依赖和失败边界 | OpenBot 参照与拆分理由 |
 | --- | --- | --- | --- |
@@ -98,10 +98,13 @@ sequenceDiagram
   P->>A: 原生创建/恢复、指令/设置/MCP准备
   T-->>E: 实际Turn（尚未Prompt）
   E->>T: Run(执行Context)
-  T->>A: 只提交新增输入
-  A-->>T: 原生接纳证据 / 流 / 最终事实
-  T->>E: 按既有产品接纳语义确认业务事实
+  T->>A: 登记同一原生执行，准备新增输入
+  A->>T: BeforeSubmit（原生输入尚未写出）
+  T->>E: 确认业务接纳并启用本轮授权
   E->>S: 原子提交接纳/用户消息等业务批次
+  E-->>A: 经Turn返回提交许可或拒绝
+  A->>A: 写入前再核对同一owner与取消状态
+  A-->>T: 真实送达 / 原生接纳证据 / 流 / 最终事实
   T->>S: 按消息有界批次、绑定与最终Usage
   S-->>E: durable批次后推进投影与公开事件
   T-->>E: 不可变TurnResult（含最终Usage及独立故障）
@@ -113,7 +116,7 @@ sequenceDiagram
   Note over T,P: 失败保留原项与closing；不启动替代执行器
 ```
 
-图中的接纳回调必须保留当前 `InvocationAccepted` 实际语义，不拿“调用Prompt函数”当已接纳。Prepare也不得预写成功绑定；原生new/load成功后将真实ID与配置回执经Store提交，提交失败使该绑定不可用于后续热恢复并关闭同项。原生已接纳但业务提交失败保留接纳不确定诊断，取消/清理且不重发。已有完整用户输入不因恢复重复播种；只有确认原生会话缺失并且新会话实际创建时做一次有界历史交接。
+`BeforeSubmit` 保留当前 `InvocationAccepted` 的实际业务门禁：提交业务接纳并启用本轮授权发生在原生 Prompt 写入之前。它不是原生已接纳证明；失败必须保证本轮原生输入未写出，成功后取消仍可阻止写入。原生送达/接纳另以真实字节、ACK 或原生输入身份观察。准备、门禁、写入和收尾使用同一个原生所有者，门禁回调在状态锁外执行。Prepare 也不得预写成功绑定；原生 new/load 成功后将真实 ID 与配置回执经 Store 提交，提交失败使该绑定不可用于后续热恢复并关闭同项。原生提交后的持久化失败保留实际接纳和完成证据，取消/清理且不重发。已有完整用户输入不因恢复重复播种；只有确认原生会话缺失并且新会话实际创建时做一次有界历史交接。
 
 JSONL提交是事实边界，订阅是观察。实时回调失败停止或降级观察，仍从原生最终事实形成不可变结果并提交已观测Usage；清理错误不能覆盖模型终态。产品Execution终态与Turn终态分别有职责但不能各生成第二条消息或第二次计费。
 
@@ -126,7 +129,7 @@ JSONL提交是事实边界，订阅是观察。实时回调失败停止或降级
 3. **Claude与Cursor按同一路径接入。** acp-go owning Adapter补齐原生差异，再让GenerateText/Chat走已运行的同一底座；验证Claude原生system append/恢复配置更新、Cursor进程级模型与认证重启/MCP诊断。通过三家各自回归后删除其旧native连接和Catalog执行分支；不复制三套Thread/Turn状态机。
 4. **配置与资源的实际闭环。** ModelCatalog直接接runtimeenvironment和aiaccount探测消费者；技能复制、真实目录、原生指令、MCP加载报告与已有设置入口同步交付。账号与插件更新使用ProviderRuntime同一关闭项。此包与前述每家接入所需的最小能力穿插完成，不能先让真实Chat继续依赖旧软链接/自动指令文件，再称新执行入口已完成。
 
-首包直接编辑：`agent/{thread_lifecycle,turn_lifecycle,provider_runtime,agent_client,conversation_store}.go`，按实际需要补 `developer_instructions.go` 与 `delta_buffer.go`；`internal/chat/eventlog`，`global/config.go`、`global/{knowledge_model,workflow_output}.go`，`internal/knowledge/model/{generator,maintenance}.go`。接Chat时才一起修改`services/execution/{work,lifecycle,runtime_events,session_resources,service}.go`和`services/chat/{journal,event_pipeline,chat}.go`。每个新文件必须落实表中职责；无需用空文件占位。新实现不得调用旧Manager、Session、Catalog；保留旧类型只为未迁移消费者编译，不能由新对象转发使用。
+首包在隔离目录直接实现：`agent_next/{thread_lifecycle,turn_lifecycle,provider_runtime,agent_client,conversation_store}.go`，按实际需要补 `developer_instructions.go` 与 `delta_buffer.go`；`internal/chat/eventlog`，`global/config.go`、`global/{knowledge_model,workflow_output}.go`，`internal/knowledge/model/{generator,maintenance}.go`。接Chat时才一起修改`services/execution/{work,lifecycle,runtime_events,session_resources,service}.go`和`services/chat/{journal,event_pipeline,chat}.go`。每个新文件必须落实表中职责；无需用空文件占位。新实现不得调用旧Manager、Session、Catalog；保留旧类型只为未迁移消费者编译，不能由新对象转发使用。
 
 ## 7. 证据与当前边界
 
