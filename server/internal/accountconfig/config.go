@@ -140,27 +140,7 @@ func Prepare(workspace string, spec Spec) (map[string]string, error) {
 	switch spec.RuntimeID {
 	case constants.RuntimeIDClaude:
 		filename = "settings.json"
-		keyName := "ANTHROPIC_AUTH_TOKEN"
-		// OpenCode Go 预设使用 API Key 请求头，网关不接受 Bearer。
-		switch strings.TrimRight(spec.BaseURL, "/") {
-		case constants.AIAccountAnthropicURL, constants.AIAccountOpenCodeGoAnthropicURL:
-			keyName = "ANTHROPIC_API_KEY"
-		}
-		claudeEnvironment := map[string]string{keyName: spec.APIKey, "ANTHROPIC_BASE_URL": spec.BaseURL}
-		if spec.Model != "" {
-			claudeEnvironment["ANTHROPIC_MODEL"] = spec.Model
-			for role, key := range map[string]string{"opus": "ANTHROPIC_DEFAULT_OPUS_MODEL", "sonnet": "ANTHROPIC_DEFAULT_SONNET_MODEL", "haiku": "ANTHROPIC_DEFAULT_HAIKU_MODEL", "fable": "ANTHROPIC_DEFAULT_FABLE_MODEL", "subagent": "CLAUDE_CODE_SUBAGENT_MODEL"} {
-				mapped := spec.ClaudeModelRoles[role]
-				if mapped == "" || !slices.Contains(spec.SelectedModels, mapped) {
-					mapped = spec.Model
-				}
-				claudeEnvironment[key] = mapped
-				if name := spec.ModelDisplayNames[mapped]; name != "" && role != "subagent" {
-					claudeEnvironment[key+"_NAME"] = name
-				}
-			}
-		}
-		content, _ = json.Marshal(map[string]any{"env": claudeEnvironment})
+		content, _ = json.Marshal(map[string]any{"env": ClaudeAPIEnvironment(spec)})
 	case constants.RuntimeIDPi:
 		// 账号模型始终使用服务端原始 ID；适配器通过独立的 provider 字段选择原生模型。
 		if strings.TrimSpace(spec.Model) == "" {

@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"os"
 	"path/filepath"
 
@@ -111,29 +110,7 @@ func readCodexAuthFile(home string) ([]byte, error) {
 	if err != nil || canonical != home {
 		return nil, status_error.AIAccountCredentialError
 	}
-	path := filepath.Join(home, "auth.json")
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, status_error.RuntimeAuthRequired
-	}
-	const maxAuthBytes = 1 << 20
-	if err != nil || !info.Mode().IsRegular() || info.Size() > maxAuthBytes {
-		return nil, status_error.AIAccountCredentialError
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, status_error.AIAccountCredentialError
-	}
-	defer file.Close()
-	opened, err := file.Stat()
-	if err != nil || !os.SameFile(info, opened) {
-		return nil, status_error.AIAccountCredentialError
-	}
-	data, err := io.ReadAll(io.LimitReader(file, maxAuthBytes+1))
-	if err != nil || len(data) > maxAuthBytes {
-		return nil, status_error.AIAccountCredentialError
-	}
-	return data, nil
+	return readNativeAccountFile(filepath.Join(home, "auth.json"))
 }
 
 func readCodexChatGPTCredential(home string) (codexCredential, error) {

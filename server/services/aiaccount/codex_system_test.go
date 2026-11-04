@@ -30,7 +30,7 @@ func TestCodexSystemAccountCredentialBinding(t *testing.T) {
 	}
 	nextToken := writeSystemAuthFixture(t, home, "user-a", "workspace-a", "rotated")
 	next, err := ResolveCodexSystemAccount(ctx, request, home)
-	if err != nil || next != first {
+	if err != nil || !next.Equal(first) {
 		t.Fatalf("ordinary refresh changed selection: %+v, %v", next, err)
 	}
 	lease, err := AcquireCodexSystemAccount(ctx, first)

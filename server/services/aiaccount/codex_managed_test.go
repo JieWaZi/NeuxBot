@@ -106,7 +106,7 @@ func TestManagedCodexAPIKeyGenerationFencesStaleSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	next, err := s.ResolveCodexAccount(ctx, input, "")
-	if err != nil || next != first {
+	if err != nil || !next.Equal(first) {
 		t.Fatalf("metadata changed frozen auth identity: %v", err)
 	}
 	lease, err := s.AcquireCodexAccount(ctx, first)
@@ -222,7 +222,7 @@ func TestManagedCodexRefreshKeepsIdentityAndRetriesFailedRelease(t *testing.T) {
 		t.Fatal("native rotation was not saved after retry")
 	}
 	resolved, err := s.ResolveCodexAccount(ctx, input, "")
-	if err != nil || resolved != first {
+	if err != nil || !resolved.Equal(first) {
 		t.Fatalf("token rotation changed the frozen identity: %v", err)
 	}
 	again, err := s.AcquireCodexAccount(ctx, resolved)

@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"sync"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -39,7 +38,7 @@ func (s *Service) ResolveCodexAccount(ctx context.Context, request agent.Account
 	if request.AccountID == agent.SystemAccountID {
 		return ResolveCodexSystemAccount(ctx, request, systemHome)
 	}
-	if request.Provider != constants.RuntimeIDCodex || !isManagedCodexID(request.AccountID) {
+	if request.Provider != constants.RuntimeIDCodex || !isManagedAccountID(request.AccountID) {
 		return agent.AccountRequest{}, status_error.AIAccountConfigurationInvalid
 	}
 	release, err := s.acquireLease(ctx, request.AccountID, false, false)
@@ -61,7 +60,7 @@ func (s *Service) AcquireCodexAccount(ctx context.Context, request agent.Account
 	if request.AccountID == agent.SystemAccountID {
 		return AcquireCodexSystemAccount(ctx, request)
 	}
-	if request.Provider != constants.RuntimeIDCodex || !isManagedCodexID(request.AccountID) {
+	if request.Provider != constants.RuntimeIDCodex || !isManagedAccountID(request.AccountID) {
 		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 	}
 	release, err := s.acquireLease(ctx, request.AccountID, false, false)
@@ -98,7 +97,7 @@ func (s *Service) resolveManagedCodex(ctx context.Context, request agent.Account
 	if secret == "" {
 		return managedCodexSelection{}, status_error.RuntimeAuthRequired
 	}
-	home, err := s.managedCodexHome(account, false)
+	home, err := s.managedAccountHome(constants.RuntimeIDCodex, account, false)
 	if err != nil {
 		return managedCodexSelection{}, err
 	}
@@ -133,11 +132,11 @@ func (s *Service) acquireManagedCodex(ctx context.Context, request agent.Account
 	if err != nil {
 		return agent.AccountLease{}, err
 	}
-	if selected.request != request {
+	if !selected.request.Equal(request) {
 		return agent.AccountLease{}, status_error.RuntimeAuthRequired
 	}
 	account, endpoint := selected.account, selected.endpoint
-	home, err := s.managedCodexHome(account, true)
+	home, err := s.managedAccountHome(constants.RuntimeIDCodex, account, true)
 	if err != nil {
 		return agent.AccountLease{}, err
 	}
@@ -262,7 +261,7 @@ func (s *Service) retireLegacyCodexProjection(ctx context.Context, account model
 		return latest, nil
 	}
 	if err != nil {
-		return latest, managedCodexStorageError(account.ID, err)
+		return latest, managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
 	}
 	home = accountconfig.Home(workspace, constants.RuntimeIDCodex)
 	canonical, err := filepath.EvalSymlinks(home)
@@ -270,7 +269,7 @@ func (s *Service) retireLegacyCodexProjection(ctx context.Context, account model
 		return latest, nil
 	}
 	if err != nil {
-		return latest, managedCodexStorageError(account.ID, err)
+		return latest, managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
 	}
 	if canonical != home {
 		logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
@@ -282,7 +281,7 @@ func (s *Service) retireLegacyCodexProjection(ctx context.Context, account model
 		return latest, nil
 	}
 	if err != nil {
-		return latest, managedCodexStorageError(account.ID, err)
+		return latest, managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
 	}
 	if !info.Mode().IsRegular() {
 		logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
@@ -312,13 +311,13 @@ func (s *Service) retireLegacyCodexProjection(ctx context.Context, account model
 		return latest, nil
 	}
 	if err != nil {
-		return latest, managedCodexStorageError(account.ID, err)
+		return latest, managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
 	}
 	if !os.SameFile(info, current) {
 		return latest, status_error.AIAccountCredentialError
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return latest, managedCodexStorageError(account.ID, err)
+		return latest, managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
 	}
 	return latest, nil
 }
@@ -387,81 +386,33 @@ func (s *Service) RemoveCodexCredentialFiles(ctx context.Context, account models
 			logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
 		}
 	}
-	home, err := s.managedCodexHome(account, false)
+	home, err := s.managedAccountHome(constants.RuntimeIDCodex, account, false)
 	if err != nil {
 		return err
 	}
 	for _, name := range []string{"auth.json", "config.toml"} {
 		err := os.Remove(filepath.Join(home, name))
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return managedCodexStorageError(account.ID, err)
+			return managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
 		}
 	}
 	return nil
 }
 
-// SetCodexAuthInvalidator attaches the owner of native connections and their cached facts.
+// SetCodexAuthInvalidator retains the Codex-only assembly callback for existing callers.
 func (s *Service) SetCodexAuthInvalidator(invalidate func(context.Context, string, uint64)) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	s.invalidateCodexAuth = invalidate
-}
-
-// InvalidateCodexAuth fences the previous generation after the mutation has committed.
-func (s *Service) InvalidateCodexAuth(ctx context.Context, previous models.AIAccount) {
-	if _, ok := accountEndpoint(previous, constants.RuntimeIDCodex); !ok {
+	if invalidate == nil {
+		s.SetAccountAuthInvalidator(nil)
 		return
 	}
-	s.mutex.Lock()
-	invalidate := s.invalidateCodexAuth
-	s.mutex.Unlock()
-	if invalidate != nil {
-		invalidate(ctx, previous.ID, previous.AuthGeneration)
-	}
+	s.SetAccountAuthInvalidator(func(ctx context.Context, provider, id string, generation uint64) {
+		if provider == constants.RuntimeIDCodex {
+			invalidate(ctx, id, generation)
+		}
+	})
 }
 
-func isManagedCodexID(id string) bool {
-	bytes, err := hex.DecodeString(id)
-	return err == nil && len(bytes) == 16 && hex.EncodeToString(bytes) == id
-}
-
-func (s *Service) managedCodexHome(account models.AIAccount, create bool) (string, error) {
-	if !isManagedCodexID(account.ID) || account.AuthGeneration == 0 || !filepath.IsAbs(s.dataDirectory) {
-		return "", status_error.AIAccountConfigurationInvalid
-	}
-	root, err := filepath.EvalSymlinks(s.dataDirectory)
-	if err != nil {
-		return "", managedCodexStorageError(account.ID, err)
-	}
-	parts := []string{"ai-accounts", constants.RuntimeIDCodex, account.ID, strconv.FormatUint(account.AuthGeneration, 10)}
-	directory := root
-	for _, part := range parts {
-		directory = filepath.Join(directory, part)
-		if create {
-			if err := os.Mkdir(directory, 0700); err != nil && !errors.Is(err, os.ErrExist) {
-				return "", managedCodexStorageError(account.ID, err)
-			}
-		}
-		info, err := os.Lstat(directory)
-		if !create && errors.Is(err, os.ErrNotExist) {
-			return filepath.Join(root, filepath.Join(parts...)), nil
-		}
-		if err != nil {
-			return "", managedCodexStorageError(account.ID, err)
-		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return "", status_error.AIAccountWorkspaceError
-		}
-		if create && info.Mode().Perm() != 0700 {
-			if err := os.Chmod(directory, 0700); err != nil {
-				return "", managedCodexStorageError(account.ID, err)
-			}
-		}
-	}
-	return directory, nil
-}
-
-func managedCodexStorageError(id string, err error) error {
-	logx.Errorf("managed Codex account storage failed: account_id=%s error=%v", id, err)
-	return status_error.AIAccountWorkspaceError
+// InvalidateCodexAuth preserves the credential mutation entry point used by existing APIs.
+func (s *Service) InvalidateCodexAuth(ctx context.Context, previous models.AIAccount) {
+	s.InvalidateAccountAuth(ctx, previous)
 }

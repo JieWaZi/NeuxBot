@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -37,8 +38,8 @@ type Service struct {
 	pendingWriters map[string]bool
 	// closeIdleSessions 通过原生会话所有者回收闲置账号租约，不复制执行状态。
 	closeIdleSessions func(context.Context, string) error
-	// invalidateCodexAuth fences native consumers and cached reads after a durable mutation.
-	invalidateCodexAuth func(context.Context, string, uint64)
+	// invalidateAccountAuth fences native consumers and cached reads after a durable mutation.
+	invalidateAccountAuth func(context.Context, string, string, uint64)
 	// credentials 仅在准备、刷新和回收时串行同账号凭据，不覆盖模型调用。
 	credentials sync.Map
 	// leaseChanged 在租约释放时唤醒能力查询和后台调用，不轮询账号使用状态。
@@ -53,7 +54,7 @@ type Service struct {
 	workers sync.WaitGroup
 	// publisher 交付不含凭据的账号授权进度。
 	publisher events.Publisher
-	// dataDirectory contains the managed Codex native homes.
+	// dataDirectory contains the managed native account homes.
 	dataDirectory string
 	// kimiDataDirectory 持久隔离每个 Kimi 订阅账号的原生登录和会话数据。
 	kimiDataDirectory string
@@ -246,16 +247,17 @@ func (s *Service) ValidateSelection(ctx context.Context, id, runtimeID, model, r
 		if len(account.SelectedModels) == 0 {
 			return account, status_error.AIAccountConfigurationInvalid
 		}
+		declaredModel := model
 		if model != "" {
-			allowed := false
-			for _, selected := range account.SelectedModels {
-				allowed = allowed || selected == model
+			allowed := slices.Contains(account.SelectedModels, model)
+			if runtimeID == constants.RuntimeIDClaude {
+				declaredModel, allowed = ManagedClaudeModelTarget(account, model)
 			}
 			if !allowed {
 				return account, status_error.BadRequest
 			}
 		}
-		if levels := account.ModelReasoningLevels[model]; !accountconfig.IsNativeAccountRuntime(runtimeID) && len(levels) > 0 && reasoning != "" {
+		if levels := account.ModelReasoningLevels[declaredModel]; !accountconfig.IsNativeAccountRuntime(runtimeID) && len(levels) > 0 && reasoning != "" {
 			allowed := false
 			for _, level := range levels {
 				allowed = allowed || level == reasoning
