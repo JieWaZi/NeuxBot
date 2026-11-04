@@ -64,8 +64,7 @@ type AgentCapabilities struct {
 	List bool
 	// ForkMode preserves the negotiated latest or exact-position fork precision.
 	ForkMode string
-	// Steer describes native steering only. It does not provide a host admission
-	// gate or a receipt for a host-selected input and must not enable Chat steering.
+	// Steer indicates native steering supports an exact target and a host admission gate.
 	Steer bool
 	// Compact indicates the native adapter supports compaction.
 	Compact bool
@@ -373,22 +372,32 @@ type AgentContent struct {
 	Name string
 }
 
-// AgentSteerRequest submits additional input to the captured active session.
+// AgentSteerRequest submits one additional host input to an observed execution.
 type AgentSteerRequest struct {
-	// SessionID identifies the native session.
+	// SessionID identifies the native session and must match Target.
 	SessionID string
+	// Target is the exact observed scope, including its opening host identity.
+	Target AgentScope
+	// HostInvocationID identifies this additional input.
+	HostInvocationID string
 	// Text is used for simple text inputs.
 	Text string
 	// Content supplies the ordered structured input when present.
 	Content []AgentContent
+	// Prepare acquires optional per-input resources before admission.
+	Prepare func(context.Context) (func(), error)
+	// BeforeSubmit durably admits the exact input before native bytes are allowed.
+	BeforeSubmit func(context.Context, AgentPromptSubmission) error
 }
 
 // AgentSteerResult preserves the adapter's native control result.
 type AgentSteerResult struct {
-	// Outcome is the provider-confirmed operation classification.
+	// Outcome is the adapter's native operation classification.
 	Outcome string
 	// Reason is the adapter's stable reason when supplied.
 	Reason string
+	// Receipt contains independent input evidence and may accompany an error.
+	Receipt *AgentPromptReceipt
 }
 
 // AgentCompactResult contains the native compaction outcome.
@@ -425,6 +434,18 @@ type AgentPromptSubmission struct {
 	InputID string
 	// NativeInputID is known only when the native provider accepts an input ID.
 	NativeInputID *string
+}
+
+// AgentPromptReceipt reports one input independently of native execution completion.
+type AgentPromptReceipt struct {
+	// Input is the same identity supplied to BeforeSubmit.
+	Input AgentPromptSubmission
+	// Submission reports whether native input bytes are known to have been sent.
+	Submission string
+	// Admission reports whether native acceptance is known.
+	Admission string
+	// OperationError is a safe error concerning this input.
+	OperationError error
 }
 
 // AgentPromptResult separates submission evidence from the native outcome.
@@ -824,12 +845,7 @@ func (c *directAgentClient) ReservePrompt(ctx context.Context, input AgentPrompt
 	if err != nil {
 		return nil, err
 	}
-	options := native.PromptOptions{HostInvocationID: input.HostInvocationID}
-	if input.BeforeSubmit != nil {
-		options.BeforeSubmit = func(ctx context.Context, submission native.PromptSubmission) error {
-			return input.BeforeSubmit(ctx, promptSubmission(submission))
-		}
-	}
+	options := promptOptions(input.HostInvocationID, input.BeforeSubmit)
 	run, err := c.native.ReservePrompt(ctx, acp.PromptRequest{
 		SessionId: acp.SessionId(input.SessionID),
 		Prompt:    blocks,
@@ -851,7 +867,18 @@ func (c *directAgentClient) ReservePrompt(ctx context.Context, input AgentPrompt
 	}, nil
 }
 
+func promptOptions(hostID string, gate func(context.Context, AgentPromptSubmission) error) native.PromptOptions {
+	options := native.PromptOptions{HostInvocationID: hostID}
+	if gate != nil {
+		options.BeforeSubmit = func(ctx context.Context, submission native.PromptSubmission) error {
+			return gate(ctx, promptSubmission(submission))
+		}
+	}
+	return options
+}
+
 func promptSubmission(input native.PromptSubmission) AgentPromptSubmission {
+	input = input.Snapshot()
 	return AgentPromptSubmission{
 		SessionID: string(input.SessionID), HostInvocationID: input.HostInvocationID,
 		InputID: input.InputID, NativeInputID: input.NativeInputID,
@@ -1492,14 +1519,30 @@ func (c *directAgentClient) Steer(ctx context.Context, input AgentSteerRequest) 
 	if !ok || !c.capabilities.Steer {
 		return AgentSteerResult{}, status_error.RuntimePolicyUnsupported
 	}
+	if input.SessionID == "" || input.Target.SessionID != input.SessionID || input.Target.NativeInvocationID == "" ||
+		input.HostInvocationID == "" || input.HostInvocationID == input.Target.HostInvocationID || input.BeforeSubmit == nil {
+		return AgentSteerResult{}, status_error.RuntimeConfigurationInvalid
+	}
 	content, err := c.promptContent(input.Text, input.Content)
 	if err != nil {
 		return AgentSteerResult{}, err
 	}
+	options := promptOptions(input.HostInvocationID, input.BeforeSubmit)
+	options.Prepare = input.Prepare
 	result, err := steering.Steer(ctx, native.SteerRequest{
 		SessionID: acp.SessionId(input.SessionID), Prompt: content, PromptRequired: true,
+		Target: native.Scope{SessionID: acp.SessionId(input.Target.SessionID), HostInvocationID: input.Target.HostInvocationID,
+			NativeInvocationID: input.Target.NativeInvocationID},
+		Options: options,
 	})
-	return AgentSteerResult{Outcome: result.Outcome, Reason: result.Reason}, safeAgentError(err, status_error.RuntimeExecutionFailed)
+	out := AgentSteerResult{Outcome: result.Outcome, Reason: result.Reason}
+	if receipt := result.Receipt; receipt != nil {
+		out.Receipt = &AgentPromptReceipt{
+			Input: promptSubmission(receipt.Input), Submission: string(receipt.Submission), Admission: string(receipt.Admission),
+			OperationError: safeAgentError(receipt.OperationError, status_error.RuntimeExecutionFailed),
+		}
+	}
+	return out, safeAgentError(err, status_error.RuntimeExecutionFailed)
 }
 
 func (c *directAgentClient) Compact(ctx context.Context, id string) (AgentCompactResult, error) {

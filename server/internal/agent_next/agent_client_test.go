@@ -10,6 +10,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
+	native "github.com/JieWaZi/acp-go/pkg/agent_next"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
@@ -199,4 +200,70 @@ func TestProviderClientPreservesDetachedEvidenceWithoutInventingContext(t *testi
 
 func providerTestAccount(context.Context, AccountRequest) (AccountLease, error) {
 	return AccountLease{}, nil
+}
+
+type steeringProjectionFixture struct {
+	// Client supplies the unused common adapter methods.
+	native.Client
+	// steer records the direct request and provides the adapter's receipt.
+	steer func(context.Context, native.SteerRequest) (native.SteerResponse, error)
+}
+
+func (f steeringProjectionFixture) Steer(ctx context.Context, req native.SteerRequest) (native.SteerResponse, error) {
+	return f.steer(ctx, req)
+}
+
+func TestProviderClientSteerProjectsExactAdmissionAndReceipt(t *testing.T) {
+	expected := AgentScope{SessionID: "session", HostInvocationID: "opening", NativeInvocationID: "running"}
+	nativeInput := "native input"
+	cleaned := false
+	calls := 0
+	c := &directAgentClient{
+		capabilities: AgentCapabilities{Steer: true},
+		native: steeringProjectionFixture{steer: func(ctx context.Context, req native.SteerRequest) (native.SteerResponse, error) {
+			calls++
+			if req.SessionID != "session" || agentScope(req.Target) != expected || !req.PromptRequired ||
+				len(req.Prompt) != 1 || req.Prompt[0].Text == nil || req.Prompt[0].Text.Text != "followup" ||
+				req.Options.HostInvocationID != "followup host" {
+				t.Fatalf("native steer request = %+v", req)
+			}
+			in := native.PromptSubmission{SessionID: "session", HostInvocationID: "followup host", InputID: "input", NativeInputID: &nativeInput}
+			cleanup, err := req.Options.PrepareSubmission(ctx, in)
+			if cleanup == nil {
+				t.Fatal("preparation ownership was lost")
+			}
+			cleanup()
+			return native.SteerResponse{Receipt: &native.PromptReceipt{Input: in, Submission: native.SubmissionNotSent,
+				Admission: native.AdmissionNotAccepted, OperationError: err}}, err
+		}},
+	}
+	req := AgentSteerRequest{SessionID: "session", Target: expected, HostInvocationID: "followup host", Text: "followup",
+		Prepare: func(context.Context) (func(), error) { return func() { cleaned = true }, nil },
+		BeforeSubmit: func(_ context.Context, in AgentPromptSubmission) error {
+			if in.SessionID != "session" || in.HostInvocationID != "followup host" || in.InputID != "input" || *in.NativeInputID != "native input" {
+				t.Fatalf("gate input = %+v", in)
+			}
+			*in.NativeInputID = "gate mutation"
+			return status_error.AgentOperationForbidden
+		},
+	}
+	result, err := c.Steer(t.Context(), req)
+	if err != status_error.AgentOperationForbidden || !cleaned || result.Receipt == nil ||
+		result.Receipt.OperationError != status_error.AgentOperationForbidden || result.Receipt.Submission != "not_sent" ||
+		result.Receipt.Admission != "not_accepted" || *result.Receipt.Input.NativeInputID != "native input" {
+		t.Fatalf("steer rejection = %+v, %v", result.Receipt, err)
+	}
+	*result.Receipt.Input.NativeInputID = "receipt mutation"
+	if nativeInput != "native input" {
+		t.Fatal("host receipt aliases the adapter's identity")
+	}
+	req.Target.SessionID = "another"
+	if _, err := c.Steer(t.Context(), req); err == nil || calls != 1 {
+		t.Fatalf("foreign scope dispatched: calls=%d, %v", calls, err)
+	}
+	req.Target = expected
+	req.BeforeSubmit = nil
+	if _, err := c.Steer(t.Context(), req); err == nil || calls != 1 {
+		t.Fatalf("ungated steer dispatched: calls=%d, %v", calls, err)
+	}
 }
