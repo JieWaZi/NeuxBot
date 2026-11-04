@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -195,6 +196,97 @@ func TestProviderClientPreservesDetachedEvidenceWithoutInventingContext(t *testi
 	}
 	if event.ContextUsedTokens != nil || event.ContextWindowTokens != nil {
 		t.Fatalf("placeholder context values were published: %+v", event)
+	}
+}
+
+func TestProviderClientAccountHomeAndEnvironmentAuthority(t *testing.T) {
+	for _, example := range []struct {
+		provider, key string
+	}{
+		{"codex", "CODEX_HOME"}, {"claude", "CLAUDE_CONFIG_DIR"},
+	} {
+		t.Run(example.provider, func(t *testing.T) {
+			for _, typed := range []bool{true, false} {
+				request := providerTestRequest(t, example.provider)
+				verified := t.TempDir()
+				request.Launch.ConfigHome = t.TempDir()
+				request.Launch.Environment["FIXTURE_HOME_VARIABLE"] = example.key
+				runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: func(context.Context, AccountRequest) (AccountLease, error) {
+					lease := AccountLease{
+						Environment: map[string]string{example.key: verified, "FIXTURE_AUTHORITY": "account"},
+						PrepareLaunchAuth: func(context.Context) (LaunchAuthLease, error) {
+							return LaunchAuthLease{Environment: map[string]string{
+								example.key: "unverified-relative-path", "FIXTURE_AUTHORITY": "unverified",
+							}}, nil
+						},
+					}
+					if typed {
+						lease.ConfigHome = verified
+						lease.Environment[example.key] = t.TempDir()
+					}
+					return lease, nil
+				}})
+				t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+				conn, err := runtime.Open(t.Context(), request, ProviderConnectionPorts{})
+				if err != nil {
+					t.Fatal(err)
+				}
+				trace, err := os.ReadFile(filepath.Join(request.Account.CWD, "trace"))
+				if err != nil || !strings.Contains(string(trace), "selected-home="+verified+"\nselected-auth=account\n") {
+					t.Fatalf("account authority not passed to selected runtime: %s, %v", trace, err)
+				}
+				if err := conn.Close(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+func TestProviderClientMCPTrustsOnlySelectedProviderEvidence(t *testing.T) {
+	for _, example := range []struct {
+		provider, status string
+	}{
+		{"cursor", "load_unverified"}, {"claude", "verified"},
+	} {
+		t.Run(example.provider, func(t *testing.T) {
+			request := providerTestRequest(t, example.provider)
+			request.Launch.Environment["FIXTURE_MCP_REPORT"] = "1"
+			runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: providerTestAccount})
+			t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+			conn, err := runtime.Open(t.Context(), request, ProviderConnectionPorts{AcquireResources: func(context.Context, ResourceSelection) (ResourceLease, error) {
+				return ResourceLease{MCPServers: []AgentMCPServer{{Name: "requested", Transport: "stdio", Command: "fixture-no-start"}}}, nil
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			client, err := conn.Client()
+			if err != nil {
+				t.Fatal(err)
+			}
+			session, err := client.NewSession(t.Context(), AgentSessionOptions{})
+			if err != nil || session.MCPStatus != example.status {
+				t.Fatalf("MCP readiness = %q, %v; want %q", session.MCPStatus, err, example.status)
+			}
+		})
+	}
+}
+
+func TestProviderClientResourceLinkPreservesOptionalMetadata(t *testing.T) {
+	for _, original := range []acp.ContentBlockResourceLink{
+		{Type: "resource_link", Uri: "file:///report", Name: "report"},
+		{Type: "resource_link", Uri: "file:///report", Name: "report", Title: acp.Ptr(""), Description: acp.Ptr(""), Size: acp.Ptr(0)},
+		{Type: "resource_link", Uri: "file:///report", Name: "report", Title: acp.Ptr("Report"), Description: acp.Ptr("Details"), Size: acp.Ptr(19)},
+	} {
+		content, ok := agentContent(acp.ContentBlock{ResourceLink: &original})
+		if !ok {
+			t.Fatal("valid resource link was not observed")
+		}
+		client := &directAgentClient{}
+		blocks, err := client.promptContent("", []AgentContent{content})
+		if err != nil || !reflect.DeepEqual(blocks[0].ResourceLink, &original) {
+			t.Fatalf("round trip = %+v, %v; want %+v", blocks[0].ResourceLink, err, original)
+		}
 	}
 }
 

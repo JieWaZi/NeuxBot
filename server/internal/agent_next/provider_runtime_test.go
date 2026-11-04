@@ -379,6 +379,81 @@ func TestProviderRuntimeAdoptedFilesSurviveUntilAccountRelease(t *testing.T) {
 	}
 }
 
+func TestProviderRuntimeCursorQuotaCleanupRetainsOwner(t *testing.T) {
+	request := providerTestRequest(t, "cursor")
+	entered, cancelled, finish := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var unblock sync.Once
+	releases := &providerReleaseTrace{}
+	runtime := NewProviderRuntime(ProviderRuntimeOptions{
+		CleanupTimeout: 150 * time.Millisecond,
+		AcquireAccount: func(context.Context, AccountRequest) (AccountLease, error) {
+			return AccountLease{
+				CursorQuota: &CursorQuotaLease{Endpoint: "http://127.0.0.1:1", ReadAccessToken: func(ctx context.Context) (string, error) {
+					close(entered)
+					<-ctx.Done()
+					close(cancelled)
+					<-finish
+					return "", ctx.Err()
+				}},
+				Close: releases.add("account"),
+			}, nil
+		},
+	})
+	t.Cleanup(func() {
+		unblock.Do(func() { close(finish) })
+		_ = runtime.Close(context.Background())
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	conn, err := runtime.Open(ctx, request, ProviderConnectionPorts{CloseFiles: releases.add("files")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := conn.Client()
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := make(chan error, 1)
+	go func() {
+		_, err := client.ReadAccountUsage(ctx)
+		read <- err
+	}()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("credential consumer did not start")
+	}
+
+	account := request.Account
+	if err := runtime.InvalidateAccount(ctx, account.Provider, account.AccountID, account.AuthGeneration); err != status_error.RuntimeShutdownFailed {
+		t.Fatalf("invalidation while credential is in use = %v", err)
+	}
+	select {
+	case <-cancelled:
+	case <-ctx.Done():
+		t.Fatal("invalidation did not signal cancellation")
+	}
+	releases.require(t)
+	next := request
+	next.Account.AuthGeneration++
+	if _, err := runtime.Open(ctx, next, ProviderConnectionPorts{}); err != status_error.RuntimeShutdownFailed {
+		t.Fatalf("new credential generation bypassed retained owner: %v", err)
+	}
+	unblock.Do(func() { close(finish) })
+	if err := conn.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	releases.require(t, "account", "files")
+	select {
+	case err := <-read:
+		if err != status_error.RuntimeUnavailable {
+			t.Fatalf("interrupted quota consumer = %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("quota consumer did not return")
+	}
+}
+
 type providerReleaseTrace struct {
 	// mu guards evidence written by the cleanup worker.
 	mu sync.Mutex
@@ -438,6 +513,9 @@ func TestProviderRuntimeChild(t *testing.T) {
 	cwd, _ := os.Getwd()
 	fmt.Fprintf(trace, "%s|%s|%s\n", cwd, os.Getenv("FIXTURE_ACCOUNT"), os.Getenv("FIXTURE_AUTH"))
 	fmt.Fprintln(trace, strings.Join(os.Args[1:], " "))
+	if homeVariable := os.Getenv("FIXTURE_HOME_VARIABLE"); homeVariable != "" {
+		fmt.Fprintf(trace, "selected-home=%s\nselected-auth=%s\n", os.Getenv(homeVariable), os.Getenv("FIXTURE_AUTHORITY"))
+	}
 	if slices.Contains(os.Args, "--version") {
 		switch provider {
 		case "claude":
@@ -455,14 +533,21 @@ func TestProviderRuntimeChild(t *testing.T) {
 			Method    string
 			Type      string
 			RequestID string `json:"request_id"`
+			Request   struct {
+				Subtype string
+			}
 		}
 		if json.Unmarshal(scanner.Bytes(), &frame) != nil {
 			os.Exit(2)
 		}
 		fmt.Fprintln(trace, string(scanner.Bytes()))
 		if provider == "claude" && frame.Type == "control_request" {
+			response := map[string]any{}
+			if frame.Request.Subtype == "mcp_status" && os.Getenv("FIXTURE_MCP_REPORT") != "" {
+				response["mcpServers"] = []map[string]string{{"name": "requested", "status": "connected"}}
+			}
 			if err := out.Encode(map[string]any{"type": "control_response", "response": map[string]any{
-				"subtype": "success", "request_id": frame.RequestID, "response": map[string]any{},
+				"subtype": "success", "request_id": frame.RequestID, "response": response,
 			}}); err != nil {
 				os.Exit(2)
 			}
@@ -504,7 +589,13 @@ func TestProviderRuntimeChild(t *testing.T) {
 					"promptCapabilities": map[string]any{"image": true},
 				}}
 			case "session/new":
-				reply["result"] = map[string]any{"sessionId": "fixture-native"}
+				result := map[string]any{"sessionId": "fixture-native"}
+				if os.Getenv("FIXTURE_MCP_REPORT") != "" {
+					result["_meta"] = map[string]any{"claude.launch": map[string]any{
+						"mcp_servers": []map[string]string{{"name": "requested", "status": "connected"}},
+					}}
+				}
+				reply["result"] = result
 			case "session/prompt":
 				_ = out.Encode(map[string]any{"jsonrpc": "2.0", "method": "session/update", "params": map[string]any{
 					"sessionId": "fixture-native",

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"maps"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -370,6 +371,18 @@ type AgentContent struct {
 	URI string
 	// Name is the display name for a resource link.
 	Name string
+	// Title is the optional human-readable title of a resource link.
+	Title string
+	// Description is the optional description of a resource link.
+	Description string
+	// Size is the optional resource size in bytes.
+	Size int
+	// HasTitle distinguishes an explicitly empty title from an absent title.
+	HasTitle bool
+	// HasDescription distinguishes an explicitly empty description from absence.
+	HasDescription bool
+	// HasSize distinguishes an explicitly empty resource from unknown size.
+	HasSize bool
 }
 
 // AgentSteerRequest submits one additional host input to an observed execution.
@@ -544,34 +557,9 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		claude.Tools = []string{}
 		callbacks.Approve, callbacks.Input, callbacks.CompleteInput = nil, nil, nil
 	}
-	environment := make(map[string]string, len(launch.Environment)+len(lease.Environment))
-	maps.Copy(environment, launch.Environment)
-	maps.Copy(environment, resources.Environment)
-	maps.Copy(environment, lease.Environment)
-	home := lease.ConfigHome
-	if home == "" {
-		home = launch.ConfigHome
-	}
-	if home != "" {
-		if !filepath.IsAbs(home) {
-			return nil, status_error.RuntimeConfigurationInvalid
-		}
-		switch account.Provider {
-		case constants.RuntimeIDCodex:
-			environment["CODEX_HOME"] = home
-		case constants.RuntimeIDClaude:
-			environment["CLAUDE_CONFIG_DIR"] = home
-		default:
-			return nil, status_error.RuntimeConfigurationInvalid
-		}
-	}
-	maps.Copy(environment, auth.Environment)
-	env := make([]string, 0, len(environment))
-	for _, key := range slices.Sorted(maps.Keys(environment)) {
-		if key == "" || strings.ContainsAny(key, "=\x00") || strings.ContainsRune(environment[key], 0) {
-			return nil, status_error.RuntimeConfigurationInvalid
-		}
-		env = append(env, key+"="+environment[key])
+	env, err := nativeLaunchEnvironment(account.Provider, launch, lease, auth, resources)
+	if err != nil {
+		return nil, err
 	}
 	mcp, err := nativeMCP(resources.MCPServers)
 	if err != nil {
@@ -634,6 +622,79 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		return nil, safeAgentError(err, status_error.RuntimeConfigurationInvalid)
 	}
 	return client, nil
+}
+
+func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease AccountLease, auth LaunchAuthLease, resources ResourceLease) ([]string, error) {
+	var homeVariable string
+	switch provider {
+	case constants.RuntimeIDCodex:
+		homeVariable = "CODEX_HOME"
+	case constants.RuntimeIDClaude:
+		homeVariable = "CLAUDE_CONFIG_DIR"
+	default:
+		if lease.ConfigHome != "" || launch.ConfigHome != "" {
+			return nil, status_error.RuntimeConfigurationInvalid
+		}
+	}
+
+	environment := make(map[string]string, len(launch.Environment)+len(lease.Environment))
+	merge := func(source map[string]string) error {
+		var names map[string]struct{}
+		if runtime.GOOS == "windows" {
+			names = make(map[string]struct{}, len(source))
+		}
+		for key, value := range source {
+			if key == "" || strings.ContainsAny(key, "=\x00") || strings.ContainsRune(value, 0) {
+				return status_error.RuntimeConfigurationInvalid
+			}
+			if names != nil {
+				key = strings.ToUpper(key)
+				if _, duplicate := names[key]; duplicate {
+					return status_error.RuntimeConfigurationInvalid
+				}
+				names[key] = struct{}{}
+			}
+			environment[key] = value
+		}
+		return nil
+	}
+
+	if err := merge(launch.Environment); err != nil {
+		return nil, err
+	}
+	home := launch.ConfigHome
+	if home == "" {
+		home = environment[homeVariable]
+	}
+	if err := merge(resources.Environment); err != nil {
+		return nil, err
+	}
+	if err := merge(auth.Environment); err != nil {
+		return nil, err
+	}
+	// Only the selected launch and account can supply the provider's config root.
+	delete(environment, homeVariable)
+	if err := merge(lease.Environment); err != nil {
+		return nil, err
+	}
+	if selected := environment[homeVariable]; selected != "" {
+		home = selected
+	}
+	if lease.ConfigHome != "" {
+		home = lease.ConfigHome
+	}
+	if home != "" {
+		if !filepath.IsAbs(home) || strings.ContainsRune(home, 0) {
+			return nil, status_error.RuntimeConfigurationInvalid
+		}
+		environment[homeVariable] = home
+	}
+
+	env := make([]string, 0, len(environment))
+	for _, key := range slices.Sorted(maps.Keys(environment)) {
+		env = append(env, key+"="+environment[key])
+	}
+	return env, nil
 }
 
 func (c *directAgentClient) initialize(ctx context.Context) error {
@@ -769,11 +830,15 @@ func (c *directAgentClient) session(id string, options []acp.SessionConfigOption
 	if len(c.mcp) != 0 {
 		session.MCPStatus = "load_unverified"
 	}
-	if observation, ok := cursor.ReadMCPObservation(meta); ok {
-		session.MCPStatus = observation.Status
-	}
-	if len(c.mcp) != 0 && verifiedClaudeMCP(meta, c.mcp) {
-		session.MCPStatus = "verified"
+	switch c.native.(type) {
+	case *cursor.Client:
+		if observation, ok := cursor.ReadMCPObservation(meta); ok && observation.Requested == len(c.mcp) {
+			session.MCPStatus = observation.Status
+		}
+	case *claude.Client:
+		if len(c.mcp) != 0 && verifiedClaudeMCP(meta, c.mcp) {
+			session.MCPStatus = "verified"
+		}
 	}
 	if c.requireVerifiedMCP && session.MCPStatus == "load_unverified" {
 		return session, status_error.RuntimePolicyUnsupported
@@ -1302,7 +1367,15 @@ func agentContent(content acp.ContentBlock) (AgentContent, bool) {
 		return AgentContent{Kind: "audio", Data: p.Data, MIMEType: p.MimeType}, true
 	case content.ResourceLink != nil:
 		p := content.ResourceLink
-		return AgentContent{Kind: "resource_link", Name: p.Name, URI: p.Uri, MIMEType: stringValue(p.MimeType)}, true
+		link := AgentContent{
+			Kind: "resource_link", Name: p.Name, URI: p.Uri, MIMEType: stringValue(p.MimeType),
+			Title: stringValue(p.Title), HasTitle: p.Title != nil,
+			Description: stringValue(p.Description), HasDescription: p.Description != nil,
+		}
+		if p.Size != nil {
+			link.Size, link.HasSize = *p.Size, true
+		}
+		return link, true
 	case content.Resource != nil:
 		resource := content.Resource.Resource
 		if p := resource.TextResourceContents; p != nil {
@@ -1376,6 +1449,15 @@ func (c *directAgentClient) promptContent(text string, content []AgentContent) (
 			}
 			block = acp.ResourceLinkBlock(part.Name, part.URI)
 			block.ResourceLink.MimeType = optionalString(part.MIMEType)
+			if part.HasTitle {
+				block.ResourceLink.Title = &part.Title
+			}
+			if part.HasDescription {
+				block.ResourceLink.Description = &part.Description
+			}
+			if part.HasSize {
+				block.ResourceLink.Size = &part.Size
+			}
 		case "resource_text", "resource_blob":
 			if !c.capabilities.EmbeddedContext {
 				return nil, status_error.RuntimePolicyUnsupported

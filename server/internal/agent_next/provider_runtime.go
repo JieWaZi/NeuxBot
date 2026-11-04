@@ -33,9 +33,9 @@ type AccountRequest struct {
 
 // AccountLease transfers actual account resources, including on acquisition failure.
 type AccountLease struct {
-	// Environment overrides the explicitly supplied launch environment.
+	// Environment is the selected credential's authoritative launch environment.
 	Environment map[string]string
-	// ConfigHome is the account's native configuration root.
+	// ConfigHome is the account's authoritative native configuration root when supplied.
 	ConfigHome string
 	// CursorQuota optionally binds management reads to the selected native login.
 	CursorQuota *CursorQuotaLease
@@ -55,7 +55,7 @@ type CursorQuotaLease struct {
 
 // LaunchAuthLease owns connection-specific authentication material.
 type LaunchAuthLease struct {
-	// Environment contains the startup authentication overrides.
+	// Environment supplies startup authentication without changing account-owned values or the config root.
 	Environment map[string]string
 	// Close releases startup authentication after native exit.
 	Close func(context.Context) error
