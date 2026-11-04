@@ -2,7 +2,6 @@ package aiaccount
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -26,8 +25,10 @@ type cursorSystemConfig struct {
 	configHome string
 	// dataHome holds native conversations and project state.
 	dataHome string
-	// authPath is the platform-specific fallback credential file.
+	// authPath is the platform-specific credential file, including the macOS fallback.
 	authPath string
+	// useKeychain records whether the selected store can read the macOS login Keychain.
+	useKeychain bool
 	// environment pins the location overrides used to resolve the selected login.
 	environment map[string]string
 }
@@ -63,10 +64,15 @@ func cursorSystemConfiguration(configHome string) (cursorSystemConfig, error) {
 	if err != nil {
 		return cursorSystemConfig{}, err
 	}
+	store := os.Getenv("AGENT_CLI_CREDENTIAL_STORE")
+	if store != "file" && store != "memory" {
+		store = ""
+	}
 	environment := map[string]string{
-		"CURSOR_CONFIG_DIR": configHome,
-		"CURSOR_DATA_DIR":   dataHome,
-		"CURSOR_API_KEY":    strings.TrimSpace(os.Getenv("CURSOR_API_KEY")),
+		"CURSOR_CONFIG_DIR":          configHome,
+		"CURSOR_DATA_DIR":            dataHome,
+		"CURSOR_API_KEY":             strings.TrimSpace(os.Getenv("CURSOR_API_KEY")),
+		"AGENT_CLI_CREDENTIAL_STORE": store,
 	}
 	if runtime.GOOS == "windows" {
 		environment["USERPROFILE"] = home
@@ -103,7 +109,10 @@ func cursorSystemConfiguration(configHome string) (cursorSystemConfig, error) {
 	if err != nil {
 		return cursorSystemConfig{}, err
 	}
-	return cursorSystemConfig{configHome: configHome, dataHome: dataHome, authPath: filepath.Join(authRoot, "auth.json"), environment: environment}, nil
+	return cursorSystemConfig{
+		configHome: configHome, dataHome: dataHome, authPath: filepath.Join(authRoot, "auth.json"),
+		useKeychain: runtime.GOOS == "darwin" && store == "", environment: environment,
+	}, nil
 }
 
 func resolveCursorAccount(ctx context.Context, request agent.AccountRequest, home string) (agent.AccountRequest, error) {
@@ -114,117 +123,108 @@ func resolveCursorAccount(ctx context.Context, request agent.AccountRequest, hom
 	if err != nil {
 		return agent.AccountRequest{}, err
 	}
-	request.ConfigHome, request.AuthGeneration = config.configHome, systemAccountGeneration
-	request.Subject, err = config.subject(ctx, request)
+	identity, err := config.identity(ctx, request)
 	if err != nil {
 		return agent.AccountRequest{}, err
 	}
+	request.ConfigHome, request.DataHome = config.configHome, config.dataHome
+	request.Subject, request.AuthGeneration = identity.subject, systemAccountGeneration
 	return request, nil
 }
 
 func acquireCursorAccount(ctx context.Context, request agent.AccountRequest) (agent.AccountLease, error) {
 	if request.AccountID != agent.SystemAccountID || request.Subject == "" ||
-		request.AuthGeneration != systemAccountGeneration || !filepath.IsAbs(request.ConfigHome) {
+		request.AuthGeneration != systemAccountGeneration || !filepath.IsAbs(request.ConfigHome) || !filepath.IsAbs(request.DataHome) {
 		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 	}
 	config, err := cursorSystemConfiguration(request.ConfigHome)
 	if err != nil {
 		return agent.AccountLease{}, err
 	}
-	readSubject := func(ctx context.Context) (string, error) {
-		return config.subject(ctx, request)
+	if config.configHome != request.ConfigHome || config.dataHome != request.DataHome {
+		return agent.AccountLease{}, status_error.RuntimeConfigurationInvalid
 	}
-	subject, err := readSubject(ctx)
+	identity, err := config.identity(ctx, request)
 	if err != nil {
 		return agent.AccountLease{}, err
 	}
-	if subject != request.Subject || config.configHome != request.ConfigHome {
+	if identity.subject != request.Subject {
 		return agent.AccountLease{}, status_error.RuntimeAuthRequired
 	}
 	lease := agent.AccountLease{ConfigHome: config.configHome, Environment: config.environment}
-	if config.environment["CURSOR_API_KEY"] == "" {
-		lease.CursorQuota = bindCursorQuota(ctx, request.Subject, readSubject, func(ctx context.Context) (string, error) {
-			return readCursorAccessToken(ctx, config.authPath)
-		})
+	if identity.nativeUserID != "" {
+		lease.VerifyLogin = func(ctx context.Context) error {
+			current, err := config.identity(ctx, request)
+			if err != nil {
+				return err
+			}
+			if current.subject != request.Subject {
+				return status_error.RuntimeAuthRequired
+			}
+			return nil
+		}
+	}
+	if identity.nativeUserID != "" && config.environment["AGENT_CLI_CREDENTIAL_STORE"] != "memory" {
+		lease.CursorQuota = &agent.CursorQuotaLease{
+			NativeUserID: identity.nativeUserID,
+			ReadAccessToken: func(ctx context.Context) (string, error) {
+				return readCursorAccessToken(ctx, config.authPath, config.useKeychain)
+			},
+		}
 	}
 	return lease, nil
 }
 
-func (c cursorSystemConfig) subject(ctx context.Context, request agent.AccountRequest) (string, error) {
+type cursorAccountIdentity struct {
+	// subject is the stable identity used by durable native bindings.
+	subject string
+	// nativeUserID is the provider identity independently verified for quota reads.
+	nativeUserID string
+}
+
+func (c cursorSystemConfig) identity(ctx context.Context, request agent.AccountRequest) (cursorAccountIdentity, error) {
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return cursorAccountIdentity{}, err
 	}
 	if key := c.environment["CURSOR_API_KEY"]; key != "" {
-		return accountSubject("cursor-system-key-v1", c.configHome, c.dataHome, key), nil
+		return cursorAccountIdentity{subject: accountSubject("cursor-system-key-v2", key)}, nil
 	}
 	client, err := cursor.NewClient(ctx, cursor.Options{
 		Executable: request.Executable, PrefixArgs: request.PrefixArgs, WorkingDirectory: request.CWD,
 		Environment: nativeAccountEnvironment(c.environment),
 	}, agentclient.HostCallbacks{})
 	if err != nil {
-		return "", nativeAccountStatusError(ctx, constants.RuntimeIDCursor, err)
+		return cursorAccountIdentity{}, nativeAccountStatusError(ctx, constants.RuntimeIDCursor, err)
 	}
 	login, err := client.ReadLoginStatus(ctx)
 	closeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	if closeErr := client.Close(closeCtx); closeErr != nil {
 		logx.Errorf("native account status cleanup failed: provider=%s", constants.RuntimeIDCursor)
-		return "", status_error.RuntimeShutdownFailed
+		return cursorAccountIdentity{}, status_error.RuntimeShutdownFailed
 	}
 	if err != nil {
-		return "", nativeAccountStatusError(ctx, constants.RuntimeIDCursor, err)
+		return cursorAccountIdentity{}, nativeAccountStatusError(ctx, constants.RuntimeIDCursor, err)
 	}
-	if !login.Authenticated || strings.TrimSpace(login.UserID) == "" {
-		return "", status_error.RuntimeAuthRequired
+	if !login.Authenticated || login.UserID == "" {
+		return cursorAccountIdentity{}, status_error.RuntimeAuthRequired
 	}
-	return accountSubject("cursor-system-login-v1", c.configHome, c.dataHome, c.authPath, login.UserID), nil
+	store := "file"
+	if c.useKeychain {
+		store = "macos-keychain-or-file"
+	}
+	return cursorAccountIdentity{
+		subject:      accountSubject("cursor-system-login-v2", store, c.authPath, login.UserID),
+		nativeUserID: login.UserID,
+	}, nil
 }
 
-// bindCursorQuota pins the observed native token only for this lease. The CLI exposes
-// its stable user ID independently of the access token, so never follow a token rotation
-// without a fresh lease. Both native reads must report the same user around the token read.
-func bindCursorQuota(ctx context.Context, subject string, readSubject, readToken func(context.Context) (string, error)) *agent.CursorQuotaLease {
-	token, err := readToken(ctx)
-	if err != nil || token == "" {
-		return nil
-	}
-	current, err := readSubject(ctx)
-	if err != nil || current != subject {
-		return nil
-	}
-	expected := sha256.Sum256([]byte(token))
-	return &agent.CursorQuotaLease{ReadAccessToken: func(ctx context.Context) (string, error) {
-		current, err := readSubject(ctx)
-		if err != nil {
-			return "", err
-		}
-		if current != subject {
-			return "", status_error.RuntimeAuthRequired
-		}
-		token, err := readToken(ctx)
-		if err != nil {
-			return "", err
-		}
-		if sha256.Sum256([]byte(token)) != expected {
-			return "", status_error.RuntimeAuthRequired
-		}
-		current, err = readSubject(ctx)
-		if err != nil {
-			return "", err
-		}
-		if current != subject {
-			return "", status_error.RuntimeAuthRequired
-		}
-		return token, nil
-	}}
-}
-
-func readCursorAccessToken(ctx context.Context, path string) (string, error) {
+func readCursorAccessToken(ctx context.Context, path string, useKeychain bool) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
 	const maxCredentialBytes = 1 << 20
-	if runtime.GOOS == "darwin" {
+	if useKeychain {
 		query, cancel := context.WithTimeout(ctx, 2*time.Second)
 		data, err := exec.CommandContext(query, "/usr/bin/security", "find-generic-password", "-a", "cursor-user", "-s", "cursor-access-token", "-w").Output()
 		cancel()

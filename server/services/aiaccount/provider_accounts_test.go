@@ -116,7 +116,8 @@ func TestClaudeSystemLeaseRechecksSelectedNativePrincipal(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	t.Setenv("ANTHROPIC_API_KEY", "ambient-test-key")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("CURSOR_API_KEY", "ambient-test-key")
 	writeStatus("21d20551-7433-4a8c-85f1-000000000001", "4cf24d12-df92-4503-ae9b-000000000001")
 	service := New(nil)
 	request, err := service.ResolveAccount(t.Context(), agent.AccountRequest{
@@ -136,6 +137,12 @@ func TestClaudeSystemLeaseRechecksSelectedNativePrincipal(t *testing.T) {
 		t.Fatal("native selection lost the exact lexical config directory or its canonical root")
 	}
 	writeStatus("21d20551-7433-4a8c-85f1-000000000001", "4cf24d12-df92-4503-ae9b-000000000002")
+	if lease.VerifyLogin == nil {
+		t.Fatal("native Claude system lease omitted its submission-time identity check")
+	}
+	if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
+		t.Fatalf("the submission-time check accepted a different organization: %v", err)
+	}
 	if _, err := service.AcquireAccount(t.Context(), request); !errors.Is(err, status_error.RuntimeAuthRequired) {
 		t.Fatalf("organization changed while keeping the display email: %v", err)
 	}
@@ -205,28 +212,6 @@ func TestCursorAPIKeyLeaseDoesNotUseNativeDashboard(t *testing.T) {
 	}
 }
 
-func TestCursorQuotaDoesNotFollowAChangedTokenOrNativePrincipal(t *testing.T) {
-	ctx := t.Context()
-	currentPrincipal, currentToken := "principal-one", "access-one"
-	readPrincipal := func(context.Context) (string, error) { return currentPrincipal, nil }
-	readToken := func(context.Context) (string, error) { return currentToken, nil }
-	quota := bindCursorQuota(ctx, "principal-one", readPrincipal, readToken)
-	if quota == nil {
-		t.Fatal("quota could not bind to the selected native sign-in")
-	}
-	if token, err := quota.ReadAccessToken(ctx); err != nil || token != "access-one" {
-		t.Fatalf("bound quota read failed: %v", err)
-	}
-	currentToken = "access-two"
-	if _, err := quota.ReadAccessToken(ctx); !errors.Is(err, status_error.RuntimeAuthRequired) {
-		t.Fatalf("quota accepted the replacement access token: %v", err)
-	}
-	currentToken, currentPrincipal = "access-one", "principal-two"
-	if _, err := quota.ReadAccessToken(ctx); !errors.Is(err, status_error.RuntimeAuthRequired) {
-		t.Fatalf("quota accepted a different principal: %v", err)
-	}
-}
-
 func TestCursorSystemSubjectUsesNativeUserID(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses a shell executable")
@@ -237,28 +222,48 @@ func TestCursorSystemSubjectUsesNativeUserID(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CURSOR_API_KEY", "")
-	writeStatus := func(id, email string) {
+	t.Setenv("AGENT_CLI_CREDENTIAL_STORE", "file")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("CURSOR_DATA_DIR", t.TempDir())
+	writeStatus := func(settings, id, email string) {
 		t.Helper()
-		body := `{"isAuthenticated":true,"userInfo":{"userId":"` + id + `","email":"` + email + `"}}`
-		if err := os.WriteFile(filepath.Join(home, "status"), []byte(body), 0600); err != nil {
+		body := `{"isAuthenticated":true,"userInfo":{"userId":` + id + `,"email":"` + email + `"}}`
+		if err := os.WriteFile(filepath.Join(settings, "status"), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	service := New(nil)
 	selection := agent.AccountRequest{Provider: constants.RuntimeIDCursor, AccountID: agent.SystemAccountID, Executable: cli, PrefixArgs: []string{"--fixture"}, CWD: t.TempDir()}
-	writeStatus("fixture-user-1", "first@example.invalid")
+	writeStatus(home, "77", "first@example.invalid")
 	first, err := service.ResolveAccount(t.Context(), selection, home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeStatus("fixture-user-1", "new-label@example.invalid")
+	writeStatus(home, "77", "new-label@example.invalid")
 	renamed, err := service.ResolveAccount(t.Context(), selection, home)
 	if err != nil || renamed.Subject != first.Subject {
 		t.Fatalf("an updated Cursor label changed the subject: %v", err)
 	}
-	writeStatus("fixture-user-2", "new-label@example.invalid")
+	otherHome := t.TempDir()
+	writeStatus(otherHome, "77", "new-label@example.invalid")
+	reconfigured, err := service.ResolveAccount(t.Context(), selection, otherHome)
+	if err != nil || reconfigured.Subject != first.Subject || reconfigured.ConfigHome == first.ConfigHome {
+		t.Fatalf("changing only Cursor's settings root changed its native login identity: %v", err)
+	}
+	writeStatus(home, "78", "new-label@example.invalid")
 	if _, err := service.AcquireAccount(t.Context(), first); !errors.Is(err, status_error.RuntimeAuthRequired) {
 		t.Fatalf("a different Cursor user acquired the old subject: %v", err)
+	}
+	writeStatus(home, "77", "new-label@example.invalid")
+	if runtime.GOOS == "darwin" {
+		t.Setenv("HOME", t.TempDir())
+	} else {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	}
+	otherLoginRoot, err := service.ResolveAccount(t.Context(), selection, home)
+	if err != nil || otherLoginRoot.Subject == first.Subject || otherLoginRoot.DataHome != first.DataHome {
+		t.Fatalf("the credential scope was not frozen independently of Cursor's storage: %v", err)
 	}
 }
 
@@ -299,5 +304,163 @@ func TestManagedClaudeAllowsNativeAliasesWithoutChangingAccountDefault(t *testin
 		if _, err := service.ResolveAccount(ctx, agent.AccountRequest{Provider: constants.RuntimeIDClaude, AccountID: account.ID, Model: model}, ""); !errors.Is(err, status_error.AIAccountConfigurationInvalid) {
 			t.Fatalf("unauthorized Claude model %q was admitted: %v", model, err)
 		}
+	}
+}
+
+func TestCursorSystemLaunchRootsDoNotChangeCredentialIdentity(t *testing.T) {
+	service := New(nil)
+	t.Setenv("CURSOR_API_KEY", "fixture-cursor-key")
+	settingsA, settingsB := t.TempDir(), t.TempDir()
+	dataA, dataB := t.TempDir(), t.TempDir()
+	t.Setenv("CURSOR_DATA_DIR", dataA)
+	selection := agent.AccountRequest{Provider: constants.RuntimeIDCursor, AccountID: agent.SystemAccountID}
+	first, err := service.ResolveAccount(t.Context(), selection, settingsA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSettings, err := service.ResolveAccount(t.Context(), selection, settingsB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Subject != otherSettings.Subject || first.ConfigHome == otherSettings.ConfigHome || first.Equal(otherSettings) {
+		t.Fatal("changing Cursor settings did not independently change connection compatibility")
+	}
+	t.Setenv("CURSOR_DATA_DIR", dataB)
+	otherData, err := service.ResolveAccount(t.Context(), selection, settingsA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalB, err := filepath.EvalSymlinks(dataB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Subject != otherData.Subject || first.ConfigHome != otherData.ConfigHome || first.Equal(otherData) || otherData.DataHome != canonicalB {
+		t.Fatal("changing Cursor session storage did not independently change connection compatibility")
+	}
+	if _, err := service.AcquireAccount(t.Context(), first); !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
+		t.Fatalf("stale storage selection was accepted: %v", err)
+	}
+	lease, err := service.AcquireAccount(t.Context(), otherData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lease.Environment["CURSOR_DATA_DIR"] != canonicalB {
+		t.Fatal("lease did not install the admitted session storage root")
+	}
+}
+
+func TestCursorQuotaLeaseNamesSelectedUserAndReadsTokenOnDemand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture uses a shell executable")
+	}
+	home := t.TempDir()
+	xdg := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	t.Setenv("CURSOR_API_KEY", "")
+	t.Setenv("AGENT_CLI_CREDENTIAL_STORE", "file")
+	authRoot := filepath.Join(xdg, "cursor")
+	if runtime.GOOS == "darwin" {
+		authRoot = filepath.Join(home, ".cursor")
+	}
+	cli := filepath.Join(t.TempDir(), "cursor-agent")
+	if err := os.WriteFile(cli, []byte("#!/bin/sh\nprintf '%s' '{\"isAuthenticated\":true,\"userInfo\":{\"userId\":77}}'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	service := New(nil)
+	request, err := service.ResolveAccount(t.Context(), agent.AccountRequest{
+		Provider: constants.RuntimeIDCursor, AccountID: agent.SystemAccountID, Executable: cli, CWD: t.TempDir(),
+	}, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := service.AcquireAccount(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lease.CursorQuota == nil || lease.CursorQuota.NativeUserID != "77" || lease.Environment["AGENT_CLI_CREDENTIAL_STORE"] != "file" {
+		t.Fatal("lease did not carry the native user and explicit credential source")
+	}
+	if lease.VerifyLogin == nil {
+		t.Fatal("native Cursor system lease omitted its submission-time identity check")
+	}
+	if err := os.WriteFile(cli, []byte("#!/bin/sh\nprintf '%s' '{\"isAuthenticated\":true,\"userInfo\":{\"userId\":78}}'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
+		t.Fatalf("the submission-time check accepted a different Cursor login: %v", err)
+	}
+	if err := os.MkdirAll(authRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(authRoot, "auth.json"), []byte("{\"accessToken\":\"fixture-key\"}"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	token, err := lease.CursorQuota.ReadAccessToken(t.Context())
+	if err != nil || token != "fixture-key" {
+		t.Fatalf("quota lease did not defer reading its selected store: %v", err)
+	}
+}
+
+func TestClaudeSystemUserSettingsCredentialIsFrozen(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fixture uses a shell executable")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("ANTHROPIC_AUTH_TOKEN", "fixture-host-shadow")
+	t.Setenv("ANTHROPIC_BASE_URL", "")
+	config := filepath.Join(home, ".claude")
+	if err := os.Mkdir(config, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeSettings := func(key, model string) {
+		t.Helper()
+		body := "{\"env\":{\"ANTHROPIC_AUTH_TOKEN\":\"" + key + "\",\"ANTHROPIC_BASE_URL\":\"https://gateway.example.invalid\",\"ANTHROPIC_MODEL\":\"" + model + "\",\"UNSCOPED_FIXTURE\":\"ignored\"}}"
+		if err := os.WriteFile(filepath.Join(config, "settings.json"), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeSettings("fixture-a", "fixture-model-a")
+	cli := filepath.Join(t.TempDir(), "claude")
+	if err := os.WriteFile(cli, []byte("#!/bin/sh\n[ \"$CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST\" = 1 ] || exit 2\n[ \"$ANTHROPIC_BASE_URL\" = https://gateway.example.invalid ] || exit 3\n[ -z \"$UNSCOPED_FIXTURE\" ] || exit 4\ncase \"$ANTHROPIC_AUTH_TOKEN\" in fixture-a|fixture-b) ;; *) exit 5;; esac\nprintf '%s' '{\"loggedIn\":true,\"authMethod\":\"oauth_token\",\"apiProvider\":\"firstParty\"}'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	service := New(nil)
+	request := agent.AccountRequest{Provider: constants.RuntimeIDClaude, AccountID: agent.SystemAccountID, Executable: cli, CWD: t.TempDir()}
+	first, err := service.ResolveAccount(ctx, request, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := service.AcquireAccount(ctx, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lease.VerifyLogin != nil || strings.Contains(first.Subject, "fixture") || lease.Environment["ANTHROPIC_AUTH_TOKEN"] != "fixture-a" ||
+		lease.Environment["ANTHROPIC_MODEL"] != "fixture-model-a" || lease.Environment["UNSCOPED_FIXTURE"] != "" {
+		t.Fatal("lease did not project only the selected settings credential and model")
+	}
+	writeSettings("fixture-a", "fixture-model-b")
+	otherModel, err := service.ResolveAccount(ctx, request, "")
+	if err != nil || otherModel.Subject != first.Subject || otherModel.Equal(first) {
+		t.Fatalf("a model setting change did not independently change compatibility: %v", err)
+	}
+	if _, err := service.AcquireAccount(ctx, first); !errors.Is(err, status_error.RuntimeConfigurationInvalid) {
+		t.Fatalf("stale settings selection was accepted: %v", err)
+	}
+	writeSettings("fixture-b", "fixture-model-b")
+	otherKey, err := service.ResolveAccount(ctx, request, "")
+	if err != nil || otherKey.Subject == first.Subject {
+		t.Fatalf("settings credential rotation reused the account subject: %v", err)
+	}
+	if _, err := service.AcquireAccount(ctx, otherModel); !errors.Is(err, status_error.RuntimeAuthRequired) {
+		t.Fatalf("replaced Claude settings credential acquired the old selection: %v", err)
+	}
+	if lease.Environment["ANTHROPIC_AUTH_TOKEN"] != "fixture-a" {
+		t.Fatal("external changes mutated an already acquired launch environment")
 	}
 }

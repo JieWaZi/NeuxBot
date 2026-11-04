@@ -2,6 +2,7 @@ package aiaccount
 
 import (
 	"context"
+	"errors"
 	"maps"
 	"os"
 	"path/filepath"
@@ -24,12 +25,13 @@ func resolveClaudeSystemAccount(ctx context.Context, request agent.AccountReques
 	if home == "" {
 		home = os.Getenv("CLAUDE_CONFIG_DIR")
 	}
-	canonical, environment, err := claudeSystemConfiguration(home)
+	selected, err := claudeSystemConfiguration(home)
 	if err != nil {
 		return agent.AccountRequest{}, err
 	}
-	request.ConfigHome, request.NativeConfigHome = canonical, home
-	request.Subject, err = readClaudeSystemSubject(ctx, request, environment)
+	request.ConfigHome, request.NativeConfigHome = selected.configHome, home
+	request.ConfigFingerprint = selected.provider.ModelFingerprint
+	request.Subject, err = selected.subject(ctx, request)
 	if err != nil {
 		return agent.AccountRequest{}, err
 	}
@@ -41,32 +43,54 @@ func acquireClaudeSystemAccount(ctx context.Context, request agent.AccountReques
 	if request.Subject == "" || request.AuthGeneration != systemAccountGeneration || !filepath.IsAbs(request.ConfigHome) {
 		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 	}
-	canonical, environment, err := claudeSystemConfiguration(request.NativeConfigHome)
+	selected, err := claudeSystemConfiguration(request.NativeConfigHome)
 	if err != nil {
 		return agent.AccountLease{}, err
 	}
-	if canonical != request.ConfigHome {
+	if selected.configHome != request.ConfigHome {
 		return agent.AccountLease{}, status_error.RuntimeAuthRequired
 	}
-	subject, err := readClaudeSystemSubject(ctx, request, environment)
-	if err != nil {
+	if selected.provider.ModelFingerprint != request.ConfigFingerprint {
+		return agent.AccountLease{}, status_error.RuntimeConfigurationInvalid
+	}
+	verify := func(ctx context.Context) error {
+		subject, err := selected.subject(ctx, request)
+		if err != nil {
+			return err
+		}
+		if subject != request.Subject {
+			return status_error.RuntimeAuthRequired
+		}
+		return nil
+	}
+	if err := verify(ctx); err != nil {
 		return agent.AccountLease{}, err
 	}
-	if subject != request.Subject {
-		return agent.AccountLease{}, status_error.RuntimeAuthRequired
+	lease := agent.AccountLease{ConfigHome: selected.configHome, Environment: selected.environment}
+	if selected.provider.CredentialVariable == "" {
+		lease.VerifyLogin = verify
 	}
-	return agent.AccountLease{ConfigHome: canonical, Environment: environment}, nil
+	return lease, nil
+}
+
+type claudeSystemSelection struct {
+	// configHome is the canonical directory used for compatibility.
+	configHome string
+	// provider contains the explicitly selected provider settings.
+	provider accountconfig.ClaudeSystemProvider
+	// environment is the exact launch environment contribution for this selection.
+	environment map[string]string
 }
 
 // claudeSystemConfiguration keeps an explicit CLI config path byte-for-byte. Claude
 // derives the macOS Keychain service from that selection, including the unset default.
-func claudeSystemConfiguration(nativeHome string) (string, map[string]string, error) {
+func claudeSystemConfiguration(nativeHome string) (claudeSystemSelection, error) {
 	environment := claudeAccountEnvironment(nativeHome)
 	effectiveHome := nativeHome
 	if effectiveHome == "" {
 		userHome, err := os.UserHomeDir()
 		if err != nil {
-			return "", nil, status_error.RuntimeConfigurationInvalid
+			return claudeSystemSelection{}, status_error.RuntimeConfigurationInvalid
 		}
 		if runtime.GOOS == "windows" {
 			environment["USERPROFILE"] = userHome
@@ -76,23 +100,59 @@ func claudeSystemConfiguration(nativeHome string) (string, map[string]string, er
 		effectiveHome = filepath.Join(userHome, ".claude")
 	}
 	canonical, err := systemAccountHome(effectiveHome, true)
-	return canonical, environment, err
+	if err != nil {
+		return claudeSystemSelection{}, err
+	}
+	settings, err := readClaudeSystemSettings(canonical)
+	if err != nil {
+		return claudeSystemSelection{}, err
+	}
+	defer clear(settings)
+	provider, err := accountconfig.SelectClaudeSystemProvider(settings, os.Getenv)
+	if err != nil {
+		return claudeSystemSelection{}, err
+	}
+	maps.Copy(environment, provider.Environment)
+	return claudeSystemSelection{configHome: canonical, provider: provider, environment: environment}, nil
+}
+
+func readClaudeSystemSettings(home string) ([]byte, error) {
+	path, err := filepath.EvalSymlinks(filepath.Join(home, "settings.json"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, status_error.AIAccountCredentialError
+	}
+	return readNativeAccountFile(path)
 }
 
 // claudeAccountEnvironment clears ambient overrides before selecting native subscription or managed API authentication.
 func claudeAccountEnvironment(home string) map[string]string {
 	environment := accountconfig.HomeEnvironment(constants.RuntimeIDClaude, home)
 	for _, key := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL",
-		"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"} {
+		"CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"} {
 		environment[key] = ""
 	}
 	return environment
 }
 
-func readClaudeSystemSubject(ctx context.Context, request agent.AccountRequest, environment map[string]string) (string, error) {
+func (s claudeSystemSelection) subject(ctx context.Context, request agent.AccountRequest) (string, error) {
+	nativeHome := request.NativeConfigHome
+	if nativeHome == "" {
+		userHome := s.environment["HOME"]
+		if runtime.GOOS == "windows" {
+			userHome = s.environment["USERPROFILE"]
+		}
+		nativeHome = filepath.Join(userHome, ".claude")
+	}
+	canonical, err := systemAccountHome(nativeHome, true)
+	if err != nil || canonical != request.ConfigHome {
+		return "", status_error.RuntimeAuthRequired
+	}
 	client, err := claude.NewClient(ctx, claude.Options{
 		Executable: request.Executable, PrefixArgs: request.PrefixArgs, WorkingDirectory: request.CWD,
-		Environment: nativeAccountEnvironment(environment),
+		Environment: nativeAccountEnvironment(s.environment),
 	}, agentclient.HostCallbacks{})
 	if err != nil {
 		return "", nativeAccountStatusError(ctx, constants.RuntimeIDClaude, err)
@@ -107,7 +167,7 @@ func readClaudeSystemSubject(ctx context.Context, request agent.AccountRequest, 
 	if err != nil {
 		return "", nativeAccountStatusError(ctx, constants.RuntimeIDClaude, err)
 	}
-	if !login.Authenticated || login.Kind != "subscription" || login.AccountID == "" || login.OrganizationID == "" {
+	if !login.Authenticated {
 		return "", status_error.RuntimeAuthRequired
 	}
 	if login.ConfigDirectory != "" {
@@ -115,6 +175,30 @@ func readClaudeSystemSubject(ctx context.Context, request agent.AccountRequest, 
 		if err != nil || root != request.ConfigHome {
 			return "", status_error.RuntimeAuthRequired
 		}
+	}
+	if key := s.provider.CredentialVariable; key != "" {
+		switch key {
+		case "ANTHROPIC_API_KEY":
+			if login.Kind != "api_key" || login.AuthMethod != "api_key" && login.AuthMethod != "apiKey" {
+				return "", status_error.RuntimeAuthRequired
+			}
+		case "ANTHROPIC_AUTH_TOKEN":
+			if login.Kind != "api_key" || login.AuthMethod != "oauth_token" {
+				return "", status_error.RuntimeAuthRequired
+			}
+		case "CLAUDE_CODE_OAUTH_TOKEN":
+			if login.Kind != "subscription" || login.AuthMethod != "oauth_token" {
+				return "", status_error.RuntimeAuthRequired
+			}
+		}
+		endpoint := s.environment["ANTHROPIC_BASE_URL"]
+		if endpoint == "" {
+			endpoint = constants.AIAccountAnthropicURL
+		}
+		return accountSubject("claude-system-environment-v1", request.ConfigHome, request.NativeConfigHome, key, endpoint, s.environment[key]), nil
+	}
+	if login.Kind != "subscription" || login.AccountID == "" || login.OrganizationID == "" {
+		return "", status_error.RuntimeAuthRequired
 	}
 	return accountSubject("claude-system-v1", request.ConfigHome, request.NativeConfigHome, login.AccountID, login.OrganizationID), nil
 }
@@ -199,6 +283,7 @@ func (s *Service) prepareManagedClaudeAccount(ctx context.Context, request agent
 	spec := managedClaudeModelSpec(account)
 	spec.APIKey, spec.BaseURL = key, endpoint.BaseURL
 	env := claudeAccountEnvironment(home)
+	env["CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST"] = "1"
 	maps.Copy(env, accountconfig.ClaudeAPIEnvironment(spec))
 	return agent.AccountLease{ConfigHome: home, Environment: env}, nil
 }
