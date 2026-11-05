@@ -145,6 +145,26 @@ func TestNativeModelOptionPreservesProviderMenus(t *testing.T) {
 	}
 }
 
+func TestQoderNativeModelKeepsExactReasoningChoices(t *testing.T) {
+	for _, provider := range []string{"qoder", "qoder-cn"} {
+		row := agent.AgentChoice{
+			ID: "qfmodel", Name: "Qwen3.8-Flash (default)",
+			Config: &agent.AgentModelConfig{Options: []agent.AgentSessionOption{{
+				ID: "reasoning_effort", Category: "thought_level", Value: agent.AgentOptionValue{ID: "xhigh"},
+				Choices: []agent.AgentChoice{{ID: "xhigh", Name: "Extra High"}, {ID: "low", Name: "Low"},
+					{ID: "medium", Name: "Medium"}, {ID: "none", Name: "None"}},
+			}}},
+		}
+		want := []RuntimeReasoningOption{{ID: "xhigh", Name: "Extra High"}, {ID: "low", Name: "Low"},
+			{ID: "medium", Name: "Medium"}, {ID: "none", Name: "None"}}
+		got := nativeModelOption(provider, row)
+		if got.ID != "qfmodel" || got.DefaultReasoning != "xhigh" || !got.ConfigurationKnown ||
+			got.FastSupported || !reflect.DeepEqual(got.ReasoningOptions, want) {
+			t.Fatalf("%s changed the native Qoder choices: %+v", provider, got)
+		}
+	}
+}
+
 func TestNativeModelOptionKeepsUnknownSettingsOutOfMenus(t *testing.T) {
 	for _, unknown := range [][]string{{"reasoning", "fast"}, {"effort", "service_tier"}, {"thought_level", "fast"}} {
 		tier := "priority"
