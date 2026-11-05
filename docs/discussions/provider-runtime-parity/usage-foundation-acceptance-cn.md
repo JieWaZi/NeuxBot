@@ -18,8 +18,8 @@
 下列已有用例来自 Task 1/2 及其修复轮，实施报告记录了通过输出，Task 3 不重复运行未变化用例：
 
 - acp-go 各 Provider `TestUsageFoundation*` 与 `TestUsageFix*`：Codex 多请求累计与回退、Claude 消息及 steering 结算、Cursor hook 缺失字段、Kimi 同源替换与截断后失败/取消、Pi 部分请求；相关包和修复轮 race 有定向证据。
-- [native connection 测试](../../../server/internal/agent/native/connection_test.go) `TestUsageFoundationTerminals`、`TestUsageFoundationFinalSnapshotReplacesPartial`：真实 ACP SDK 管道验证部分通知、最终替换、无上下文占位以及错误/取消/交付失败后消费保留。
-- [Session 集成测试](../../../server/internal/agent/native_integration_test.go) `TestUsageFoundationFinalObserverTerminals`、`TestUsageFinalFixObserverOwnership`、`TestUsageFinalFixMetadataBudget`：最终副本、取消后交付、单事件/累计预算和原停止状态；普通与 race 定向验证已通过。
+- native connection 测试 `TestUsageFoundationTerminals`、`TestUsageFoundationFinalSnapshotReplacesPartial`：真实 ACP SDK 管道验证部分通知、最终替换、无上下文占位以及错误/取消/交付失败后消费保留。
+- Session 集成测试 `TestUsageFoundationFinalObserverTerminals`、`TestUsageFinalFixObserverOwnership`、`TestUsageFinalFixMetadataBudget`：最终副本、取消后交付、单事件/累计预算和原停止状态；普通与 race 定向验证已通过。
 - 旧 Execution sink 测试（`runtime_events_test.go`）`TestUsageFoundationArchiveMergesComponents`：success/failure/canceled 终态保留原始元数据、回放数字与上下文，旧格式不补确定性。
 
 Task 3 新增：
@@ -50,7 +50,7 @@ git diff --check
 
 整体审查发现最终用量事件触及预算或被观察者拒绝时，公开 Run 未把 Session 已保留的终态消费交给 Execution。公开 `Result.Usage` 现承接同一最终事实的独立副本；Execution 收尾以该快照归档，非 nil 的空快照不补旧观察，nil 仅兼容旧 Runner。该修复的实施验证已完成，独立复审尚未完成。
 
-- [Session 集成测试](../../../server/internal/agent/native_integration_test.go) `TestUsageTerminalPublicResult`：真实 Manager → Prepare → Bind → 公开 Run → ACP SDK pipe；覆盖仅最终 `100/10`、部分 `100/10` 后最终 `250/30`、成功/取消/原生故障，以及事件数量、单事件字节、累计字节和观察者拒绝。公开终态仍保存来源、完整性、字段 presence、已知零与未知字段；消费与上下文分别保存，Prompt 仅一次，事件不突破预算。
+- Session 集成测试 `TestUsageTerminalPublicResult`：真实 Manager → Prepare → Bind → 公开 Run → ACP SDK pipe；覆盖仅最终 `100/10`、部分 `100/10` 后最终 `250/30`、成功/取消/原生故障，以及事件数量、单事件字节、累计字节和观察者拒绝。公开终态仍保存来源、完整性、字段 presence、已知零与未知字段；消费与上下文分别保存，Prompt 仅一次，事件不突破预算。
 - 同文件 `TestUsageTerminalResultOwnership`：修改公开结果的数字、字段集合、完整性及上下文不能改写原 Session 终态或下一次读取；公开结果与事件接收副本互不共享。
 - 旧 Execution 集成测试（`lifecycle_usage_test.go`）`TestUsageTerminalExecutionArchive`：真实 Start、公开 PreparedTurn.Run、Execution sink、Journal.CommitTerminal 和 JSONL 回放，验证最终事件未交付时依旧归档最终消费；原生失败和取消事实保留，正常生命周期只提交一个终态。
 - 旧 Execution sink 测试（`runtime_events_test.go`）`TestUsageTerminalArchiveContract`：显式空终态覆盖旧消费；只含 turn 或 context 的终态不能从实时观察补另一分量；nil 旧 Runner 保留既有兼容语义。序列化不共享结果指针，也不改写流式观察。

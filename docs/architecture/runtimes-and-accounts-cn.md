@@ -2,7 +2,7 @@
 
 ## Runtime 边界
 
-普通聊天及通过 Execution 发起的团队、工作流、自动任务和 IM 使用 `Execution → ThreadLifecycle/Turn → ProviderRuntime → acp-go 原生 Client`。应用装配一个 ProviderRuntime 和一个 ThreadLifecycle；执行实现位于 `server/internal/agent_next`，ConversationStore 位于 `server/internal/chat/eventlog_next`，均属于 server 主 Go 模块。
+普通聊天及通过 Execution 发起的团队、自动任务和 IM 使用 `Execution → ThreadLifecycle/Turn → ProviderRuntime → acp-go 原生 Client`。应用装配一个 ProviderRuntime 和一个 ThreadLifecycle；执行实现位于 `server/internal/agent`，ConversationStore 位于 `server/internal/chat/conversation`，均属于 server 主 Go 模块。
 
 Execution 拥有业务接纳、执行状态、工具授权与交付；ThreadLifecycle 拥有公开聊天的原生绑定、配置兼容与历史接力；Turn 拥有一次输入的准备、耐久接纳、提交和结算。ProviderRuntime 独占原生连接、账号及物化资源租约。失败关闭保留原所有者供重试，不能先释放仍被原生进程使用的凭据和文件。
 
@@ -10,15 +10,15 @@ Execution 拥有业务接纳、执行状态、工具授权与交付；ThreadLife
 
 | CLI | 传输及所有者 |
 | --- | --- |
-| Codex | `agent_next/codex` 的 app-server |
-| Claude | `agent_next/claude` 的 stream-json |
-| Cursor、WorkBuddy、Qoder、Qoder CN | 独立协议配置接入共享 `agent_next/acpclient` |
-| Kimi、Gemini、Grok、OpenCode | `agent_next/standardacp` 配置启动和已证实差异，共用 ACP 生命周期 |
-| Pi | `agent_next/pi` 的原生 RPC、事件队列与会话文件身份 |
+| Codex | `acp-go/pkg/codex` 的 app-server |
+| Claude | `acp-go/pkg/claude` 的 stream-json |
+| Cursor、WorkBuddy、Qoder、Qoder CN | 独立协议配置接入共享 `acp-go/pkg/acpclient` |
+| Kimi、Gemini、Grok、OpenCode | `acp-go/pkg/standardacp` 配置启动和已证实差异，共用 ACP 生命周期 |
+| Pi | `acp-go/pkg/pi` 的原生 RPC、事件队列与会话文件身份 |
 
 `agent.Catalog` 与原有注册描述保留程序定位、安装与静态资源事实。普通模型与 Thinking 查询读取按运行环境、账号和配置隔离的数据库快照。Core 启动时在后台刷新各运行环境的默认账号目录，模型弹层右上角可手动刷新当前账号。没有对应快照的账号可在弹层发起首次探测。探测通过独立的 ProviderRuntime 管理连接进行，探测结果包含原生提供的模型及可选设置。
 
-当前生产装配不创建旧 Manager。独立知识生成、结构化生成等尚未接入新生命周期的入口不能视为已经迁移，相关边界见 [CLI 迁移核对](../discussions/agentruntime-rebuild/native-cli-completion-cn.md)。
+独立知识生成、Wiki 维护和工作流输出修复使用同一 ThreadLifecycle。当前独立调用要求能验证工具范围，由 Claude 原生客户端提供。工作流创作和节点执行在 Runtime 无法证明指定工具范围时，于获取原生账号租约之前拒绝。
 
 ## 工作范围与资源
 
@@ -40,7 +40,9 @@ Kimi 分别识别 `KIMI_SHARE_DIR` 和 `KIMI_CODE_HOME`；Gemini 的 `GEMINI_CLI
 
 Codex 令牌刷新继续经随机能力路径的回环端点协调。受管账号以加密数据库凭据为权威，系统文件账号以原生文件为权威。成功轮换后即使请求取消，也必须完成有界持久化；原生消费者退出后先停止刷新入口，再释放账号与目录。旧投射不能覆盖其他执行已更新或外部重新登录的凭据。
 
-受管 API 账号选择请求协议、服务地址和可用模型，不做透明协议转换。Kimi 原有订阅账号保留隔离登录目录。模型菜单只展示该账号允许的原生模型；OpenCode 与 Pi 的受管命名空间在边界转换，其他原生服务商的同名模型不能混入。模型、强度和 Fast 以原生回执为准，未知菜单不借用其他模型的选项。已列出模型可在支持的权限下使用原生默认配置；可选设置未知不等于模型不可用，显式设置仍独立校验。WorkBuddy 在随进程回收的独立配置根内探测每个模型的强度。Qoder 目录读取使用原生公布的配置。
+受管 API 账号选择请求协议、服务地址和可用模型，不做透明协议转换。Kimi 原有订阅账号保留隔离登录目录。OpenCode 与 Pi 的受管命名空间在边界转换，其他原生服务商的同名模型不能混入。模型、强度和 Fast 以原生回执为准，未知菜单不借用其他模型的选项。已列出模型可在支持的权限下使用原生默认配置；可选设置未知不等于模型不可用，显式设置仍独立校验。WorkBuddy 在随进程回收的独立配置根内探测每个模型的强度。
+
+Qoder 适配器按原生模型 ID 合并 SDK 展示目录和 ACP 可选项。SDK 控制通道同时提供账号身份和目录，ACP 提供执行权限和设置选项。目录可见但当前无法通过 ACP 执行的模型在聊天弹层中禁用。缺少 SDK 查询能力的 CLI 沿用旧的账号通道和 ACP 可选项。
 
 ## 用量快照
 

@@ -2,13 +2,13 @@
 
 ## 范围与源码依据
 
-本次将既有 Kimi、Gemini CLI、Grok Build、OpenCode 和 Pi 接入 `Execution → ThreadLifecycle/Turn → ProviderRuntime`。Codex、Claude、Cursor、WorkBuddy、Qoder、Qoder CN 继续使用同一运行架构。不新增 CLI，不恢复旧 Manager 执行入口。独立知识生成等尚未迁移的调用入口不属于“CLI 聊天接线已完成”的声明。
+本次将既有 Kimi、Gemini CLI、Grok Build、OpenCode 和 Pi 接入 `Execution → ThreadLifecycle/Turn → ProviderRuntime`。Codex、Claude、Cursor、WorkBuddy、Qoder、Qoder CN 继续使用同一运行架构。本次新增的是既有 CLI 的原生接线。独立知识生成、Wiki 维护和工作流输出修复在正式切换时接入同一生命周期，当前通过 Claude 执行。
 
 主要参考固定 OpenBot [`f44dbe1`](https://github.com/nightly-labs/openbot/tree/f44dbe116c89a944f8d7d085e092c967b3fce0df) 中的 `src/backend/acp-client.ts`、`acp-flavor.ts`、`acp-flavor-opencode.ts`、`pi-client.ts`、`pi-rpc.ts` 和账号、用量实现；再与原生 CLI 的版本化协议核对。Go 代码复用项目的 Process、原生 Client、输入接纳与终态合同，不移植另一个状态所有者。
 
 ## 所有权与配置
 
-标准 ACP 的进程、通知屏障、会话目录、设置、取消、终态交付在 `acp-go/pkg/agent_next/acpclient` 统一管理。`standardacp` 只持有四种 CLI 的启动及有证据的协议差异；Pi 的 RPC 与标准 ACP 不同，在 `agent_next/pi` 独立适配后提供同一 Client 合同。
+标准 ACP 的进程、通知屏障、会话目录、设置、取消、终态交付在 `acp-go/pkg/acpclient` 统一管理。`standardacp` 只持有四种 CLI 的启动及有证据的协议差异；Pi 的 RPC 与标准 ACP 不同，在 `acp-go/pkg/pi` 独立适配后提供同一 Client 合同。
 
 宿主账号服务冻结原生根目录、凭据身份和配置指纹；ProviderRuntime 持有租约直至原生进程退出。受管 API 账号按认证世代和配置修订隔离。模型原始 ID 与 OpenCode、Pi 的 `ally/` 原生命名空间只在边界转换；原生目录中其他服务商的同名模型不能进入受管账号菜单。模型切换使用原生 setter；进程级权限变更重建连接。
 
@@ -54,7 +54,7 @@ Kimi 同时保留 Python `KIMI_SHARE_DIR` 与 TypeScript `KIMI_CODE_HOME` 的原
 
 用户启动测试时逐个 CLI 验证：选择账号和模型 → 第一轮 → 续聊 → 改强度／权限 → 取消 → 重启应用后续聊 → 查看 Token 及缺失提示。切换账号必须换凭据范围；模型查询不产生聊天。真实账号、安装版本、平台进程树、界面和模型效果由用户验收，不因自动化通过而标记通过。
 
-原生能力边界：Gemini/OpenCode 没有本架构可验证的自动风险审批模式；Kimi 的 auto/yolo 以原生菜单为准；Grok 精确目标 steering 与原生仅接收 sessionId 的队列语义不兼容，因此不宣称支持；Pi 的 Fast 和账号额度没有原生合同。Pi 的 MCP 依赖随应用交付的桥接模块，注册就绪不等于每个 MCP 服务已连接，严格验证要求仍需真实原生证据。独立知识生成等未迁移入口继续单列，不回退旧执行器掩盖缺口。
+原生能力边界：Gemini/OpenCode 没有本架构可验证的自动风险审批模式；Kimi 的 auto/yolo 以原生菜单为准；Grok 精确目标 steering 与原生仅接收 sessionId 的队列语义不兼容，因此不宣称支持；Pi 的 Fast 和账号额度没有原生合同。Pi 的 MCP 依赖随应用交付的桥接模块，注册就绪不等于每个 MCP 服务已连接，严格验证要求仍需真实原生证据。独立生成要求原生客户端能够证明工具范围。
 
 ### Gemini 0.62 强度限制
 
@@ -69,7 +69,7 @@ Kimi 同时保留 Python `KIMI_SHARE_DIR` 与 TypeScript `KIMI_CODE_HOME` 的原
 
 定向验证涵盖 `agent_next`、Execution、runtimeenvironment、账号与用量服务及相关 API；Pi、标准 ACP、共享 ACP 有竞态检查。前端目录／用量 17 个测试、类型检查和对应格式检查通过；Core 主包及装配包编译通过。此前执行测试的公开默认模型与其合成原生模型目录不一致，修正夹具后该包通过，不为测试放宽真实模型校验。
 
-上述提交与测试是开发证据，不是已安装 CLI 或界面的真实验收。未迁移独立生成入口、未提供的 Gemini 0.62 Thinking 和原生未声明的能力不在通过声明内。
+上述提交与测试是开发证据，不是已安装 CLI 或界面的真实验收。Gemini 0.62 Thinking 与其他未由原生声明的能力仍由各 CLI 的能力菜单决定。
 
 ## WorkBuddy／Qoder 模型与登录回归
 

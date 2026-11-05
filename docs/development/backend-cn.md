@@ -72,19 +72,11 @@ cmd / global ---------------> assembly
 
 ### 1.2 Agent 执行边界
 
-`server/internal/agent` 及 `native`、`capability`、`cli` 子包共同属于 `server` 主 Go 模块，不另建执行内核的 `go.mod`。根 Agent 承担产品执行合同、会话、事件、交互、资源装配和故障转换，产品错误遵守第 6 节的 `status_error` 规则。根 Agent 和 native 均不得导入 `apis`、`services` 或 `repositories`。
+`server/internal/agent` 属于 server 主模块。Agent 包及其子包不依赖 API、Service、Repository 或 GORM。acp-go 持有原生客户端和协议细节。
 
-应用只装配一个 Manager，统一登记聊天工作区、临时 Session 与尚未清理完成的所有者。Session 唯一拥有稳定计划、兼容依据、当前 Turn、原生句柄、连接、实际资源和可重试释放进度；Manager 只维护索引、接纳与根生命周期，不复制 busy、配置摘要、句柄或释放状态。一个 Session 同时最多一个 Turn，不在每工作区再嵌套 sessions/active 管理集合。PreparedTurn 直接关联同一 Session 与 Turn，不保留准备句柄转发层。
+`ThreadLifecycle` 拥有接纳席位、持久会话绑定与历史接力。`Turn` 将输入接纳、原生执行、原生终态、交付、持久化和清理分别记录。原生进程、实际账号和资源租约归同一 `ProviderRuntime` 连接所有者。启动失败后继续回收已有租约，关闭失败时保留原所有者以供重试。
 
-SessionPlan 只保存稳定会话配置，TurnInput 只保存本轮输入、资源选择和交互端口，SessionResources 保存实际物化结果及释放能力。所有模型执行统一使用 `Prepare → 冷路径取得资源 → Bind → Run`；Prepare 不启动原生进程、不反调业务 Acquire，Bind 不提交 Prompt。冷资源取得使用准备句柄 Context，首次有效冷 Bind 先接管实际或部分资源，再校验和准备启动租约；失败仍由同一 Session 清理，重复或已消费句柄的 Bind 不接管新资源。取得句柄后所有提前返回路径都登记 Close，取消不能遗弃迟到资源；成功交接后解除短接纳 Context 的取消转发，Run 使用执行 Context。
-
-静态目标和连接器声明必须使用窄类型排除秘密环境、请求头和刷新函数，不能只依赖调用方清空字段。本轮输入和授权不进入兼容摘要；禁止使用完整请求回填、Data any 或第二份热资源表保存业务事实。原生恢复直接交付真实句柄，新建会话只播种一次有界完整历史，热续聊和冷恢复只发送新增消息。不增加没有生产消费者的检查点、身份预留或纯转发层。
-
-Catalog 维护安装、Profile、程序定位与探测解释，编排无 Prompt 的 Probe/Fork；普通聊天只消费已有事实，不隐式重复健康或账号探测。native 只定义原生连接、Prompt、协议事件、完成事实、结构化技术 Fault、唯一 Descriptor/工厂、LaunchLease 和 Management；不得反向导入根 Agent、capability 或 cli，也不得持有产品 SessionPlan、PreparedTurn、领域资源获取函数或会话管理集合。根 Agent 仅在原生连接边界转换一次计划和输入。
-
-本轮授权的撤销与会话资源释放分别表达。先确认原生消费者退出，再关闭启动认证租约、领域资源和临时工作区；成功步骤不重复，失败保留同一所有者及剩余依赖，不通过打开替代消费者绕过失败，不自动重放 Prompt。执行状态、最终答案、事件交付失败和清理失败分别保留。Manager 的索引锁不得覆盖原生 I/O、账号等待、事件回调或资源清理。
-
-acp-go 的原生协议和进程实现继续在独立仓库维护并固定依赖版本。新增能力必须有行为测试；同一对象的方法和测试按完整职责内聚，文件较长不构成拆分理由，不复制生命周期或增加兼容转发。当前调用与资源规则见[智能体与账号](../architecture/runtimes-and-accounts-cn.md)，依赖方向由定向架构测试保护。
+热续聊仅提交本轮新增输入。会话替换可使用最近五个完整轮次或现有总结接力。目录与设置来自原生回执，能力未知时保留未知。探测、公开聊天和独立任务共用同一进程所有者，原生输入提交前必须完成接纳。原生消费随规范终态写入 ConversationStore，SQLite 查询层只持有可重建投影。
 
 ## 2. ginx API
 

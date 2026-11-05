@@ -1,6 +1,6 @@
 # 架构总览
 
-当前普通 Codex、Claude、Cursor、WorkBuddy、Qoder、Qoder CN、Kimi、Gemini、Grok、OpenCode 与 Pi Chat 已改接 `Execution → ThreadLifecycle/Turn → ProviderRuntime → 原生 Client`，并与 Chat 共用新的 ConversationStore；ProviderRuntime 是生产启动的唯一原生进程所有者。Codex 的账号级模型目录、多账号、强度与 Fast、三档权限和用量查询已接入同一候选运行时，见 [Codex 产品验收](../discussions/agentruntime-rebuild/codex-account-model-usage-cn.md)。Claude 与 Cursor 的账号、原生模型配置、权限和用量接线及各层验收边界见 [Claude／Cursor 产品验收](../discussions/agentruntime-rebuild/claude-cursor-product-acceptance-cn.md)。WorkBuddy 与地区 Qoder 的标准 ACP 接线、账号边界和用户验收步骤见 [WorkBuddy／Qoder 验收说明](../discussions/agentruntime-rebuild/workbuddy-qoder-acp-cn.md)。既有 CLI 的标准 ACP/Pi 迁移、账号边界与 Token 用量见 [CLI 迁移核对](../discussions/agentruntime-rebuild/native-cli-completion-cn.md)。独立生成及其他未迁移入口尚未完成正式替换，实际验收与限制见 [Codex 优先验收](../discussions/agentruntime-rebuild/codex-first-acceptance-cn.md)和 [重建方案](../superpowers/specs/2026-11-04-agentruntime-rebuild-design.md)。
+普通聊天通过 `Execution → ThreadLifecycle/Turn → ProviderRuntime → 原生 Client` 接入 11 个 CLI，Chat 与运行时共用 ConversationStore。独立文本生成与 Wiki 维护使用同一执行底座。文本生成需要原生工具禁用能力，Wiki 维护需要原生受限 MCP，目前由 Claude 提供。各 CLI 的本地验证与原生限制见 [CLI 验收记录](../discussions/agentruntime-rebuild/native-cli-completion-cn.md)。
 
 NeuxBot 是本地优先的伙伴工作台。Web 和 Electron 各自承载宿主能力，共享 React 应用承载界面，Go Core 拥有业务规则、文件、Git、终端执行与持久化，智能体适配隐藏原生 CLI 的协议差异。
 
@@ -18,7 +18,8 @@ flowchart LR
   Execution --> Thread[ThreadLifecycle / Turn]
   Thread --> Provider[ProviderRuntime：原生进程与资源租约]
   Provider --> ACP[独立 acp-go 原生 Client]
-  Core --> Knowledge[知识生成入口：尚未迁移]
+  Core --> Knowledge[独立知识生成和 Wiki 维护]
+  Knowledge --> Thread
   ACP --> CLI[本机智能体]
   Core --> Catalog[agent.Catalog：安装、Profile 与程序定位]
   Core --> Store[SQLite 与权威日志及受管文件]
@@ -49,10 +50,8 @@ flowchart LR
 | desktop/src / desktop/electron | 原生入口、窗口、preload、系统能力与嵌入浏览器 |
 | web/src                        | 本机会话生命周期与浏览器宿主                  |
 | packages/platform-contracts    | 中立能力接口和事件协议                        |
-| server/internal/agent_next     | ThreadLifecycle、Turn、ProviderRuntime 与原生 Client 边界 |
-| server/internal/chat/eventlog_next | 规范会话、输入、原生终态与回放 |
-| server/internal/agent          | 共享产品合同、资源物化、目录与诊断 |
-| server/internal/agent/native   | 既有静态注册与安装描述；旧执行实现不进入普通聊天 |
+| server/internal/agent          | ThreadLifecycle、Turn、ProviderRuntime、原生 Client 和安装目录 |
+| server/internal/chat/conversation | 规范会话、输入、原生终态与回放 |
 | server/internal/agent/capability | 命令目录、精确授权、有界观察与领域回执 |
 | server/internal/agent/cli      | allycli 参数解析、发现与客户端调用 |
 | packages/terminal-runtime      | Core 管理的 PTY 与终端屏幕运行时              |
