@@ -97,7 +97,7 @@ func Environment(base []string) []string {
 			result = append(result, entry)
 			continue
 		}
-		if inheritedACPOverride(upper) || strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_AUTH_TOKEN") ||
+		if upper == "ACP_GO_PI_PREFERRED_PROVIDER" || inheritedACPOverride(upper) || strings.HasSuffix(upper, "_API_KEY") || strings.HasSuffix(upper, "_AUTH_TOKEN") ||
 			strings.HasSuffix(upper, "_BASE_URL") || strings.HasPrefix(upper, "CODEX_") ||
 			strings.HasPrefix(upper, "CLAUDE_") || strings.HasPrefix(upper, "ANTHROPIC_") ||
 			strings.HasPrefix(upper, "OPENAI_") || strings.HasPrefix(upper, "KIMI_") ||
@@ -115,10 +115,15 @@ func Environment(base []string) []string {
 
 // Prepare 把所选账号投射到受管 workspace 的原生配置。
 func Prepare(workspace string, spec Spec) (map[string]string, error) {
+	return PrepareForWorkspace(workspace, workspace, spec)
+}
+
+// PrepareForWorkspace projects native config into owned storage for a separately admitted working directory.
+func PrepareForWorkspace(storage, workspace string, spec Spec) (map[string]string, error) {
 	if IsNativeAccountRuntime(spec.RuntimeID) {
-		return prepareNative(workspace, spec)
+		return prepareNative(storage, workspace, spec)
 	}
-	home, err := EnsureHome(workspace, spec.RuntimeID)
+	home, err := EnsureHome(storage, spec.RuntimeID)
 	if err != nil {
 		return nil, err
 	}
@@ -147,8 +152,15 @@ func Prepare(workspace string, spec Spec) (map[string]string, error) {
 			return nil, status_error.AIAccountConfigurationInvalid
 		}
 		filename = "models.json"
-		content, _ = json.Marshal(map[string]any{"providers": map[string]any{"ally": map[string]any{"name": "NeuxBot", "baseUrl": spec.BaseURL, "api": string(spec.Protocol), "apiKey": spec.APIKey, "models": []map[string]string{{"id": spec.Model}}}}})
-		env["ACP_GO_PI_PREFERRED_PROVIDER"] = "ally"
+		models := make([]map[string]string, 0, len(spec.SelectedModels))
+		for _, id := range spec.SelectedModels {
+			models = append(models, map[string]string{"id": id})
+		}
+		if len(models) == 0 {
+			models = append(models, map[string]string{"id": spec.Model})
+		}
+		content, _ = json.Marshal(map[string]any{"providers": map[string]any{piManagedProvider: map[string]any{"name": "NeuxBot", "baseUrl": spec.BaseURL, "api": string(spec.Protocol), "apiKey": spec.APIKey, "models": models}}})
+		env["ACP_GO_PI_PREFERRED_PROVIDER"] = piManagedProvider
 	case constants.RuntimeIDKimi:
 		if strings.TrimSpace(spec.Model) == "" {
 			return nil, status_error.AIAccountConfigurationInvalid
@@ -164,22 +176,37 @@ func Prepare(workspace string, spec Spec) (map[string]string, error) {
 		if providerType == "" {
 			return nil, status_error.AIAccountConfigurationInvalid
 		}
-		contextSize := spec.MaxContextSize
-		if contextSize < 1 {
-			contextSize = 262144
-		}
 		env["KIMI_MODEL_MAX_COMPLETION_TOKENS"] = strconv.Itoa(constants.AIAccountKimiCompletionTokenCap)
 		filename = "config.toml"
-		content = []byte(fmt.Sprintf("default_model = %s\n[providers.ally]\ntype = %s\nbase_url = %s\napi_key = %s\n[models.%s]\nprovider = \"ally\"\nmodel = %s\nmax_context_size = %d\n",
-			strconv.Quote(spec.Model), strconv.Quote(providerType), strconv.Quote(spec.BaseURL), strconv.Quote(spec.APIKey), strconv.Quote(spec.Model), strconv.Quote(spec.Model), contextSize))
-		levels := kimiReasoningLevels(spec)
-		if len(levels) > 0 {
-			efforts := make([]string, 0, len(levels))
-			for _, level := range levels {
-				efforts = append(efforts, strconv.Quote(level))
-			}
-			content = append(content, []byte("capabilities = [\"thinking\"]\nsupport_efforts = ["+strings.Join(efforts, ", ")+"]\ndefault_effort = "+strconv.Quote(levels[0])+"\n")...)
+		var config strings.Builder
+		fmt.Fprintf(&config, "default_model = %s\n[providers.ally]\ntype = %s\nbase_url = %s\napi_key = %s\n",
+			strconv.Quote(spec.Model), strconv.Quote(providerType), strconv.Quote(spec.BaseURL), strconv.Quote(spec.APIKey))
+		models := spec.SelectedModels
+		if len(models) == 0 {
+			models = []string{spec.Model}
 		}
+		for _, id := range models {
+			contextSize := spec.ModelContextSizes[id]
+			if id == spec.Model && contextSize < 1 {
+				contextSize = spec.MaxContextSize
+			}
+			if contextSize < 1 {
+				contextSize = 262144
+			}
+			fmt.Fprintf(&config, "[models.%s]\nprovider = \"ally\"\nmodel = %s\nmax_context_size = %d\n",
+				strconv.Quote(id), strconv.Quote(id), contextSize)
+			modelSpec := spec
+			modelSpec.Model = id
+			if levels := kimiReasoningLevels(modelSpec); len(levels) > 0 {
+				efforts := make([]string, 0, len(levels))
+				for _, level := range levels {
+					efforts = append(efforts, strconv.Quote(level))
+				}
+				fmt.Fprintf(&config, "capabilities = [\"thinking\"]\nsupport_efforts = [%s]\ndefault_effort = %s\n",
+					strings.Join(efforts, ", "), strconv.Quote(levels[0]))
+			}
+		}
+		content = []byte(config.String())
 	default:
 		return nil, status_error.AIAccountConfigurationInvalid
 	}
@@ -303,7 +330,7 @@ func HomeEnvironment(runtimeID, home string) map[string]string {
 	case constants.RuntimeIDPi:
 		return map[string]string{"PI_CODING_AGENT_DIR": home}
 	case constants.RuntimeIDKimi:
-		return map[string]string{"KIMI_CODE_HOME": home}
+		return map[string]string{"KIMI_CODE_HOME": home, "KIMI_SHARE_DIR": home}
 	default:
 		return map[string]string{}
 	}

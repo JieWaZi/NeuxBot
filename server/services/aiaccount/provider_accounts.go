@@ -36,6 +36,17 @@ func (s *Service) ResolveAccount(ctx context.Context, request agent.AccountReque
 		return resolveCursorAccount(ctx, request, systemHome)
 	case constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
 		return resolveACPSystemAccount(ctx, request, systemHome)
+	case constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode, constants.RuntimeIDPi:
+		if request.AccountID == agent.SystemAccountID {
+			return resolveNativeCLISystemAccount(ctx, request, systemHome)
+		}
+		release, err := s.acquireNativeCLIRead(ctx, request)
+		if err != nil {
+			return agent.AccountRequest{}, err
+		}
+		defer release()
+		resolved, _, _, err := s.resolveManagedNativeCLI(ctx, request)
+		return resolved, err
 	default:
 		return agent.AccountRequest{}, status_error.RuntimeNotRegistered
 	}
@@ -55,6 +66,11 @@ func (s *Service) AcquireAccount(ctx context.Context, request agent.AccountReque
 		return acquireCursorAccount(ctx, request)
 	case constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
 		return acquireACPSystemAccount(ctx, request)
+	case constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode, constants.RuntimeIDPi:
+		if request.AccountID == agent.SystemAccountID {
+			return acquireNativeCLISystemAccount(ctx, request)
+		}
+		return s.acquireManagedNativeCLI(ctx, request)
 	default:
 		return agent.AccountLease{}, status_error.RuntimeNotRegistered
 	}
@@ -75,7 +91,10 @@ func (s *Service) InvalidateAccountAuth(ctx context.Context, previous models.AIA
 	if invalidate == nil {
 		return
 	}
-	for _, provider := range []string{constants.RuntimeIDCodex, constants.RuntimeIDClaude} {
+	for _, provider := range []string{
+		constants.RuntimeIDCodex, constants.RuntimeIDClaude, constants.RuntimeIDKimi,
+		constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode, constants.RuntimeIDPi,
+	} {
 		if _, ok := accountEndpoint(previous, provider); ok {
 			invalidate(ctx, provider, previous.ID, previous.AuthGeneration)
 		}
@@ -88,7 +107,7 @@ func isManagedAccountID(id string) bool {
 }
 
 // managedAccountHome uses the same identity and directory boundary for both managed providers.
-func (s *Service) managedAccountHome(provider string, account models.AIAccount, create bool) (string, error) {
+func (s *Service) managedAccountHome(provider string, account models.AIAccount, create bool, subdirectory ...string) (string, error) {
 	if !isManagedAccountID(account.ID) || account.AuthGeneration == 0 || !filepath.IsAbs(s.dataDirectory) {
 		return "", status_error.AIAccountConfigurationInvalid
 	}
@@ -96,7 +115,7 @@ func (s *Service) managedAccountHome(provider string, account models.AIAccount, 
 	if err != nil {
 		return "", managedAccountStorageError(provider, account.ID, err)
 	}
-	parts := []string{"ai-accounts", provider, account.ID, strconv.FormatUint(account.AuthGeneration, 10)}
+	parts := append([]string{"ai-accounts", provider, account.ID, strconv.FormatUint(account.AuthGeneration, 10)}, subdirectory...)
 	directory := root
 	for _, part := range parts {
 		directory = filepath.Join(directory, part)

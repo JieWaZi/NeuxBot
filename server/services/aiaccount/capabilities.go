@@ -72,9 +72,12 @@ func (s *Service) DetectModel(ctx context.Context, detector ModelDetector, id st
 			return result, status_error.RuntimeUnavailable
 		}
 	}
-	for index := range result.Models {
-		result.Models[index].ID = accountconfig.AccountModelID(environment.BaseRuntimeID, result.Models[index].ID)
+	// The legacy Pi detector already reports the unqualified model ID.
+	if environment.BaseRuntimeID != constants.RuntimeIDPi {
+		for index := range result.Models {
+			result.Models[index].ID = accountconfig.AccountModelID(environment.BaseRuntimeID, result.Models[index].ID)
+		}
+		result.DetectedDefaultModel = accountconfig.AccountModelID(environment.BaseRuntimeID, result.DetectedDefaultModel)
 	}
-	result.DetectedDefaultModel = accountconfig.AccountModelID(environment.BaseRuntimeID, result.DetectedDefaultModel)
 	return result, nil
 }

@@ -62,6 +62,10 @@ func (w *kimiLoginOutput) Write(data []byte) (int, error) {
 }
 
 func (s *Service) kimiHome(id string) (string, error) {
+	return s.kimiAccountHome(id, true)
+}
+
+func (s *Service) kimiAccountHome(id string, create bool) (string, error) {
 	if s.kimiDataDirectory == "" || len(id) != 32 {
 		return "", status_error.AIAccountConfigurationInvalid
 	}
@@ -71,18 +75,34 @@ func (s *Service) kimiHome(id string) (string, error) {
 		}
 	}
 	for _, directory := range []string{filepath.Dir(s.kimiDataDirectory), s.kimiDataDirectory, filepath.Join(s.kimiDataDirectory, id)} {
-		if err := os.Mkdir(directory, 0700); err != nil && !os.IsExist(err) {
-			return "", status_error.AIAccountWorkspaceError
+		if create {
+			if err := os.Mkdir(directory, 0700); err != nil && !os.IsExist(err) {
+				return "", status_error.AIAccountWorkspaceError
+			}
 		}
 		info, err := os.Lstat(directory)
+		if !create && os.IsNotExist(err) {
+			return "", status_error.RuntimeAuthRequired
+		}
 		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return "", status_error.AIAccountWorkspaceError
 		}
-		if err := os.Chmod(directory, 0700); err != nil {
-			return "", status_error.AIAccountWorkspaceError
+		if create && info.Mode().Perm() != 0700 {
+			if err := os.Chmod(directory, 0700); err != nil {
+				return "", status_error.AIAccountWorkspaceError
+			}
 		}
 	}
-	return filepath.Join(s.kimiDataDirectory, id), nil
+	home := filepath.Join(s.kimiDataDirectory, id)
+	if create {
+		return home, nil
+	}
+	data, err := readNativeAccountFile(filepath.Join(home, "config.toml"))
+	clear(data)
+	if err != nil {
+		return "", err
+	}
+	return filepath.EvalSymlinks(home)
 }
 
 func (s *Service) prepareKimiSubscription(account models.AIAccount) (agentapi.RuntimeTarget, error) {

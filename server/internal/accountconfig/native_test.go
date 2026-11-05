@@ -61,8 +61,8 @@ func TestNativeManagedProfiles(t *testing.T) {
 			case "grok":
 				homeKey = "GROK_HOME"
 				configPath = filepath.Join(env[homeKey], "config.toml")
-				if env["XAI_API_KEY"] != "secret-a" || env["GROK_MODELS_BASE_URL"] != spec.BaseURL {
-					t.Fatal("catalog credential is not bound to the account endpoint")
+				if env["XAI_API_KEY"] != "" {
+					t.Fatal("managed credential escaped its model configuration")
 				}
 			}
 			data, err := os.ReadFile(configPath)
@@ -102,9 +102,11 @@ func TestNativeEnvironmentIsolation(t *testing.T) {
 
 // TestNativeRawModelIdentity 保留带斜杠的服务端模型 ID，受管边界只添加自己的命名空间。
 func TestNativeRawModelIdentity(t *testing.T) {
-	for _, raw := range []string{"model", "org/model", "ally/model"} {
-		if native := NativeModelID("opencode", raw); native != "ally/"+raw || AccountModelID("opencode", native) != raw {
-			t.Fatalf("identity lost: %q", raw)
+	for _, provider := range []string{constants.RuntimeIDOpenCode, constants.RuntimeIDPi} {
+		for _, raw := range []string{"model", "org/model", "ally/model"} {
+			if native := NativeModelID(provider, raw); native != "ally/"+raw || AccountModelID(provider, native) != raw {
+				t.Fatalf("%s lost the model identity %q", provider, raw)
+			}
 		}
 	}
 }
@@ -174,14 +176,15 @@ func TestGrokManagedCredentialContract(t *testing.T) {
 		if protocol == constants.AccountProtocolOpenAICompletions {
 			backend = "chat_completions"
 		}
-		if model["model"] != "org/model" || model["api_key"] != spec.APIKey || model["base_url"] != spec.BaseURL || model["api_backend"] != backend {
+		key, _ := model["env_key"].(string)
+		if model["model"] != "org/model" || model["api_key"] != nil || env[key] != spec.APIKey || model["base_url"] != spec.BaseURL || model["api_backend"] != backend {
 			t.Fatalf("incorrect native config: %v", model)
 		}
 		if _, invented := model["reasoning_efforts"]; invented {
 			t.Fatal("opaque choice ID became invented wire enum")
 		}
-		if env["GROK_MODELS_BASE_URL"] != spec.BaseURL || env["XAI_API_KEY"] != spec.APIKey {
-			t.Fatal("global catalog credentials not scoped to account host")
+		if env["XAI_API_KEY"] != "" || config["auth"].(map[string]any)["preferred_method"] != "api_key" {
+			t.Fatal("managed key was not confined to native per-model BYOK")
 		}
 		if Supports(constants.RuntimeIDGrok, constants.AccountProtocolAnthropicMessages) {
 			t.Fatal("unsupported Messages authentication advertised")

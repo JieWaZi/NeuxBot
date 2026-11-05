@@ -70,7 +70,7 @@ func TestManagedClaudeLeaseFencesCredentialRotation(t *testing.T) {
 	}
 	var invalidated bool
 	service.SetAccountAuthInvalidator(func(_ context.Context, provider, id string, generation uint64) {
-		invalidated = provider == constants.RuntimeIDClaude && id == account.ID && generation == old.AuthGeneration
+		invalidated = invalidated || (provider == constants.RuntimeIDClaude && id == account.ID && generation == old.AuthGeneration)
 	})
 	if err := service.accounts.Update(ctx, previous, "test-new"); err != nil {
 		t.Fatal(err)

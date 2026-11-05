@@ -19,20 +19,33 @@ func IsNativeAccountRuntime(runtimeID string) bool {
 	return runtimeID == constants.RuntimeIDOpenCode || runtimeID == constants.RuntimeIDGemini || runtimeID == constants.RuntimeIDGrok
 }
 
-// NativeModelID 将账号原始请求 ID 转为 OpenCode 的受管服务商标识。
+const piManagedProvider = "ally"
+
+// NativeModelID qualifies managed model IDs with the provider namespace.
 func NativeModelID(runtimeID, model string) string {
-	if runtimeID == constants.RuntimeIDOpenCode && model != "" {
-		return constants.AIAccountOpenCodeProvider + "/" + model
+	if provider := managedModelProvider(runtimeID); provider != "" && model != "" {
+		return provider + "/" + model
 	}
 	return model
 }
 
-// AccountModelID 仅剥离 NeuxBot 自己创建的 OpenCode 命名空间，保留原始服务端 ID。
+// AccountModelID removes only the provider prefix created for the managed account.
 func AccountModelID(runtimeID, model string) string {
-	if runtimeID == constants.RuntimeIDOpenCode {
-		return strings.TrimPrefix(model, constants.AIAccountOpenCodeProvider+"/")
+	if provider := managedModelProvider(runtimeID); provider != "" {
+		return strings.TrimPrefix(model, provider+"/")
 	}
 	return model
+}
+
+func managedModelProvider(runtimeID string) string {
+	switch runtimeID {
+	case constants.RuntimeIDOpenCode:
+		return constants.AIAccountOpenCodeProvider
+	case constants.RuntimeIDPi:
+		return piManagedProvider
+	default:
+		return ""
+	}
 }
 
 // GoogleEndpoint 区分 Gemini SDK 的根地址与 OpenCode SDK 的版本化地址。
@@ -69,14 +82,14 @@ func privateSubdirectory(root string, parts ...string) (string, error) {
 }
 
 // prepareNative 按账号身份与修订固定原生配置和持久缓存，避免切换账号复用旧状态。
-func prepareNative(workspace string, spec Spec) (map[string]string, error) {
+func prepareNative(storage, workspace string, spec Spec) (map[string]string, error) {
 	if spec.AuthMode != constants.AccountAuthModeAPIKey || !Supports(spec.RuntimeID, spec.Protocol) || strings.TrimSpace(spec.Model) == "" {
 		return nil, status_error.AIAccountConfigurationInvalid
 	}
 	if err := ValidateEndpoint(spec.Protocol, spec.BaseURL); err != nil {
 		return nil, err
 	}
-	root, err := EnsureHome(workspace, spec.RuntimeID)
+	root, err := EnsureHome(storage, spec.RuntimeID)
 	if err != nil {
 		return nil, err
 	}
@@ -118,6 +131,7 @@ func prepareNative(workspace string, spec Spec) (map[string]string, error) {
 		if err != nil {
 			return nil, storageError(err)
 		}
+		env["OPENCODE_DISABLE_PROJECT_CONFIG"] = "true"
 		env["OPENCODE_CONFIG"] = filepath.Join(home, "opencode.json")
 		if err := WriteFile(env["OPENCODE_CONFIG"], content); err != nil {
 			return nil, err
@@ -175,18 +189,19 @@ func prepareNative(workspace string, spec Spec) (map[string]string, error) {
 		env["GOOGLE_GEMINI_BASE_URL"], env["GOOGLE_GENAI_API_VERSION"] = GoogleEndpoint(spec.BaseURL)
 	case constants.RuntimeIDGrok:
 		env["GROK_HOME"] = home
-		// 官方目录请求使用全局 Key，但地址固定为同一账号端点，绝不发送到默认 xAI 服务。
-		env["GROK_MODELS_BASE_URL"] = strings.TrimRight(spec.BaseURL, "/")
-		env["XAI_API_KEY"] = spec.APIKey
+		// Per-model BYOK is scoped to the configured endpoint. A global xAI key
+		// can be used by first-party authentication and account requests.
+		const managedKey = "NEUX_GROK_ACCOUNT_API_KEY"
+		env[managedKey] = spec.APIKey
 		backend := "chat_completions"
 		if spec.Protocol == constants.AccountProtocolOpenAIResponses {
 			backend = "responses"
 		}
 		selected, _ := json.Marshal(spec.SelectedModels)
 		var content strings.Builder
-		fmt.Fprintf(&content, "[models]\ndefault = %s\nallowed_models = %s\n", strconv.Quote(spec.Model), selected)
+		fmt.Fprintf(&content, "[auth]\npreferred_method = \"api_key\"\n\n[models]\ndefault = %s\nallowed_models = %s\n", strconv.Quote(spec.Model), selected)
 		for _, id := range spec.SelectedModels {
-			fmt.Fprintf(&content, "\n[model.%s]\nmodel = %s\nbase_url = %s\napi_key = %s\napi_backend = %s\n", strconv.Quote(id), strconv.Quote(id), strconv.Quote(spec.BaseURL), strconv.Quote(spec.APIKey), strconv.Quote(backend))
+			fmt.Fprintf(&content, "\n[model.%s]\nmodel = %s\nbase_url = %s\nenv_key = %s\napi_backend = %s\n", strconv.Quote(id), strconv.Quote(id), strconv.Quote(spec.BaseURL), strconv.Quote(managedKey), strconv.Quote(backend))
 		}
 		if err := WriteFile(filepath.Join(home, "config.toml"), []byte(content.String())); err != nil {
 			return nil, err
