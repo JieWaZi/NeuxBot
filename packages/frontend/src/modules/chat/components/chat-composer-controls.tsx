@@ -267,7 +267,6 @@ export function useChatComposerControls({
         disabled={
           usesNativeCatalog && (catalogState !== "fresh" || catalogPending)
         }
-        requiresKnownConfiguration={usesNativeCatalog}
         fast={selectedFast}
         onFastChange={
           fastSupported

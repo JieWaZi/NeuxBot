@@ -173,11 +173,7 @@ export function ExecutionConfigurationFields({
                   },
                 ]
               : []),
-            ...models.map((model) => ({
-              ...model,
-              disabled:
-                state.usesNativeCatalog && model.configurationKnown !== true,
-            })),
+            ...models,
           ],
           (model) =>
             change({

@@ -855,17 +855,28 @@ describe("RuntimeEnvironmentsSection", () => {
     },
   );
 
-  it("目录已更新但逐模型配置未知时阻止保存", async () => {
+  it("已列出的模型可以保存默认设置，未知的可选配置不提供选项", async () => {
     runtimes.current = [
-      { ...runtimes.current[0], id: "claude", defaultModel: "unconfirmed" },
+      {
+        ...runtimes.current[0],
+        id: "claude",
+        defaultModel: "known",
+        defaultPermissionLevel: "default",
+      },
     ];
     modelCatalog.mockResolvedValue({
       data: {
         runtimeId: "claude",
         accountId: "system",
         state: "fresh",
-        defaultModel: "unconfirmed",
+        defaultModel: "known",
         models: [
+          {
+            id: "known",
+            name: "Known",
+            configurationKnown: true,
+            permissionLevels: ["default"],
+          },
           {
             id: "unconfirmed",
             name: "Unconfirmed",
@@ -882,17 +893,29 @@ describe("RuntimeEnvironmentsSection", () => {
     await user.click(
       await screen.findByRole("button", { name: "展开Claude智能体设置" }),
     );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("combobox", { name: "默认模型" }),
-      ).toHaveTextContent("Unconfirmed"),
-    );
-    expect(screen.getByRole("button", { name: "保存" })).toBeDisabled();
+    const model = screen.getByRole("combobox", { name: "默认模型" });
+    await waitFor(() => expect(model).toHaveTextContent("Known"));
+    model.focus();
+    await user.keyboard("{Enter}");
+    await user.click(screen.getByRole("option", { name: "Unconfirmed" }));
+    expect(model).toHaveTextContent("Unconfirmed");
+    const save = screen.getByRole("button", { name: "保存" });
+    expect(save).toBeEnabled();
     expect(screen.getByRole("radio", { name: "YOLO" })).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: /Claude默认权限/ }),
-    ).toBeDisabled();
-    expect(updateRuntime).not.toHaveBeenCalled();
+    await user.click(save);
+    await waitFor(() =>
+      expect(updateRuntime).toHaveBeenCalledWith(
+        expect.objectContaining({
+          path: { runtimeId: "claude" },
+          body: expect.objectContaining({
+            defaultModel: "unconfirmed",
+            defaultReasoning: "",
+            defaultPermissionLevel: "default",
+          }),
+        }),
+        expect.anything(),
+      ),
+    );
   });
 
   it("切换环境默认模型时只展示该 ACP 模型支持的 Thinking", async () => {

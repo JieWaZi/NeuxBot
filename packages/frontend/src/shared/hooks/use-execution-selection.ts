@@ -149,7 +149,8 @@ function resolveNativeSelection({
     runtime &&
     (accountId === "system" || account?.hasCredential) &&
     catalog?.state === "fresh" &&
-    modelOption?.configurationKnown &&
+    modelOption &&
+    (defaults || value.fast === undefined || fastSupported) &&
     (!reasoning || reasoningOptions.some((item) => item.id === reasoning)),
   );
   return {
@@ -166,7 +167,7 @@ function resolveNativeSelection({
     reasoningOptions,
     supportedPermissions,
     fastSupported,
-    configurationKnown: modelOption?.configurationKnown === true,
+    modelListed: Boolean(modelOption),
     modelConfigurationValid,
     configurationValid:
       modelConfigurationValid && supportedPermissions.has(permissionLevel),
@@ -232,8 +233,6 @@ export function useNativeExecutionSelections(
       defaults,
     });
     const settled = query?.fetchStatus === "idle" && !query.isError;
-    const validFast =
-      defaults || target.value.fast === undefined || resolved.fastSupported;
     return {
       selection: resolved.selection,
       valid: Boolean(
@@ -243,7 +242,7 @@ export function useNativeExecutionSelections(
         target.runtime.state === "ready",
       ),
       supportedPermissions:
-        resolved.modelConfigurationValid && settled && validFast
+        resolved.modelConfigurationValid && settled
           ? resolved.supportedPermissions
           : new Set<PermissionLevel>(),
       pending: query && query.fetchStatus !== "idle",
@@ -477,8 +476,8 @@ export function useExecutionSelection({
             ? "catalogUnavailable"
             : !models.length
               ? "catalogEmpty"
-              : !nativeSelection?.configurationKnown
-                ? "catalogConfigurationUnknown"
+              : !nativeSelection?.modelListed
+                ? "catalogModelUnavailable"
                 : undefined;
   const error =
     runtimesQuery.error ||

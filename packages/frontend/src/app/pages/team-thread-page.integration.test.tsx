@@ -94,16 +94,16 @@ describe("团队首发完整路由交接", () => {
     withExecution: boolean;
     status: "running" | "completed";
     historyFails?: boolean;
-    unknownMember?: boolean;
+    unknownMemberOptions?: boolean;
   }>([
     { withExecution: true, status: "running" },
     { withExecution: false, status: "running" },
     { withExecution: false, status: "completed" },
     { withExecution: false, status: "running", historyFails: true },
-    { withExecution: true, status: "running", unknownMember: true },
+    { withExecution: true, status: "running", unknownMemberOptions: true },
   ])(
-    "首发配置与交接 execution=$withExecution，历史=$status，首次查询失败=$historyFails，成员配置未知=$unknownMember",
-    async ({ withExecution, status, historyFails, unknownMember }) => {
+    "首发配置与交接 execution=$withExecution，历史=$status，首次查询失败=$historyFails，成员可选配置未知=$unknownMemberOptions",
+    async ({ withExecution, status, historyFails, unknownMemberOptions }) => {
       const creation = deferred<CreateChannelThreadResponse>();
       const history = deferred<ListChannelTimelineResponse>();
       const received = vi.fn();
@@ -154,7 +154,8 @@ describe("团队首发完整路由交接", () => {
               {
                 waker: { id: "member", name: "开发成员" },
                 runtimeId: "codex",
-                model: unknownMember ? "unconfirmed" : "",
+                model: unknownMemberOptions ? "unconfirmed" : "",
+                permissionLevel: unknownMemberOptions ? "default" : undefined,
               },
             ],
           }),
@@ -201,7 +202,7 @@ describe("团队首发完整路由交接", () => {
                 configurationKnown: true,
                 permissionLevels: ["default", "auto", "full-access"],
               },
-              ...(unknownMember
+              ...(unknownMemberOptions
                 ? [
                     {
                       id: "unconfirmed",
@@ -352,14 +353,6 @@ describe("团队首发完整路由交接", () => {
       );
       await screen.findByText("Current Native Model");
       await userEvent.setup().type(screen.getByRole("textbox"), text);
-      if (unknownMember) {
-        expect(
-          await screen.findByText("请检查开发成员的执行配置后再发送。"),
-        ).toBeVisible();
-        expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
-        expect(received).not.toHaveBeenCalled();
-        return;
-      }
       await waitFor(() =>
         expect(screen.getByRole("button", { name: "发送消息" })).toBeEnabled(),
       );
@@ -374,7 +367,9 @@ describe("团队首发完整路由交接", () => {
             }),
             expect.objectContaining({
               wakerId: "member",
-              model: "current-native-model",
+              model: unknownMemberOptions
+                ? "unconfirmed"
+                : "current-native-model",
             }),
           ]),
         }),

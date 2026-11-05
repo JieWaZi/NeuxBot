@@ -425,13 +425,15 @@ it("账号切换隔离迟到目录，显式关闭 Fast 保持 false", async () =
   const { result, rerender } = selection({ accountId: "system", fast: false });
   await waitFor(() => expect(entered).toBe(true));
   rerender({ value: { accountId: "subscription", fast: false } });
+  await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+  expect(result.current.valid).toBe(false);
+  rerender({ value: { accountId: "subscription" } });
   await waitFor(() => expect(result.current.valid).toBe(true));
   expect(result.current.selection).toMatchObject({
     model: "subscription-model",
     fast: undefined,
   });
   release();
-  rerender({ value: { accountId: "subscription", fast: false } });
   expect(result.current.models.map((item) => item.id)).toEqual([
     "subscription-model",
   ]);
@@ -490,11 +492,11 @@ it("Claude 切换到受管 API 账号时不会显示系统账号的迟到目录"
 it.each([
   { models: [], issue: "catalogEmpty" },
   {
-    models: [{ id: "unconfirmed", configurationKnown: false }],
-    issue: "catalogConfigurationUnknown",
+    models: [{ id: "listed", permissionLevels: ["default"] }],
+    issue: "catalogModelUnavailable",
   },
 ])(
-  "原生目录区分可重试的空列表和未确认模型 $issue",
+  "原生目录区分可重试的空列表和未列出的模型 $issue",
   async ({ models, issue }) => {
     server.use(
       http.get(`${origin}/api/v1/runtimes/codex/models`, () =>
@@ -506,12 +508,72 @@ it.each([
         }),
       ),
     );
-    const { result } = selection({ runtimeId: "codex", accountId: "system" });
+    const { result } = selection({
+      runtimeId: "codex",
+      accountId: "system",
+      model: "missing",
+    });
     await waitFor(() => expect(result.current.catalogIssue).toBe(issue));
     expect(result.current.valid).toBe(false);
     expect(result.current.catalogPending).toBe(false);
   },
 );
+
+it("WorkBuddy 允许已列出但可选配置未知的模型使用原生默认值", async () => {
+  const model = "DeepSeek-V4.1-Flash";
+  server.use(
+    http.get(`${origin}/api/v1/runtimes`, () =>
+      HttpResponse.json({
+        resources: [{ id: "workbuddy", enabled: true, state: "ready" }],
+      }),
+    ),
+    http.get(`${origin}/api/v1/runtimes/workbuddy/models`, () =>
+      HttpResponse.json({
+        runtimeId: "workbuddy",
+        accountId: "system",
+        state: "fresh",
+        defaultModel: "opening-model",
+        models: [
+          {
+            id: "opening-model",
+            configurationKnown: true,
+            reasoningOptions: [{ id: "high" }],
+            permissionLevels: ["default"],
+          },
+          {
+            id: model,
+            configurationKnown: false,
+            reasoningOptions: [],
+            fastSupported: false,
+            permissionLevels: ["default"],
+          },
+        ],
+      }),
+    ),
+  );
+  const value = { runtimeId: "workbuddy", accountId: "system", model };
+  const { result, rerender } = selection(value);
+  await waitFor(() => expect(result.current.catalogState).toBe("fresh"));
+  expect(result.current.valid).toBe(true);
+  expect(result.current.catalogIssue).toBeUndefined();
+  expect(result.current.selection).toMatchObject({
+    model,
+    permissionLevel: "default",
+    reasoning: "",
+    fast: undefined,
+  });
+  expect(result.current.reasoningOptions).toEqual([]);
+  expect(result.current.fastSupported).toBe(false);
+
+  for (const override of [
+    { reasoning: "high" },
+    { fast: false },
+    { permissionLevel: "full-access" },
+  ] as const) {
+    rerender({ value: { ...value, ...override } });
+    expect(result.current.valid).toBe(false);
+  }
+});
 
 it.each([
   { state: "ready", enabled: true },

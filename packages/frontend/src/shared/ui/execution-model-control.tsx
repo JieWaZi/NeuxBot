@@ -46,7 +46,6 @@ export function ExecutionModelControl({
   thinkingPending = false,
   allowDefaultReasoning = false,
   allowDefaultModel = false,
-  requiresKnownConfiguration = false,
   disabled = false,
   defaultReasoning = "",
   onModelChange,
@@ -65,7 +64,6 @@ export function ExecutionModelControl({
   thinkingPending?: boolean;
   allowDefaultReasoning?: boolean;
   allowDefaultModel?: boolean;
-  requiresKnownConfiguration?: boolean;
   disabled?: boolean;
   defaultReasoning?: string;
   onModelChange: (model: string) => void;
@@ -295,11 +293,7 @@ export function ExecutionModelControl({
               <RadioGroupOption
                 key={model.id}
                 value={model.id ?? ""}
-                disabled={
-                  disabled ||
-                  (requiresKnownConfiguration &&
-                    model.configurationKnown !== true)
-                }
+                disabled={disabled}
                 onClick={returnToReasoning}
               >
                 <span className="block truncate" title={model.name || model.id}>

@@ -113,18 +113,20 @@ function renderControls(
   );
 }
 
-const runtimes = ["kimi", "cursor", "pi", "claude", "codex"].map((id) => ({
-  id,
-  name: id === "cursor" ? "Cursor CLI" : id,
-  enabled: true,
-  state: "ready",
-  defaultModel: `${id}-default`,
-  defaultReasoning: "medium",
-  models: [
-    { id: `${id}-default`, name: `${id} Default` },
-    { id: `${id}/model`, name: `${id} Model` },
-  ],
-}));
+const runtimes = ["kimi", "cursor", "pi", "claude", "codex", "workbuddy"].map(
+  (id) => ({
+    id,
+    name: id === "cursor" ? "Cursor CLI" : id,
+    enabled: true,
+    state: "ready",
+    defaultModel: `${id}-default`,
+    defaultReasoning: "medium",
+    models: [
+      { id: `${id}-default`, name: `${id} Default` },
+      { id: `${id}/model`, name: `${id} Model` },
+    ],
+  }),
+);
 
 function Controls({
   activeChatId,
@@ -152,7 +154,7 @@ function Controls({
     modelOptionsOverride: nativeCatalog
       ? selected?.models.map((model) => ({
           ...model,
-          configurationKnown: true,
+          configurationKnown: selected.id !== "workbuddy",
         }))
       : undefined,
     selectedAccountId: selection.accountId,
@@ -186,7 +188,7 @@ function Controls({
   );
 }
 
-it.each(["codex", "claude", "cursor", "pi"])(
+it.each(["codex", "claude", "cursor", "pi", "workbuddy"])(
   "普通与团队共用选择器支持 %s 和其模型",
   async (id) => {
     const user = userEvent.setup();
@@ -198,7 +200,7 @@ it.each(["codex", "claude", "cursor", "pi"])(
         name: new RegExp(`^${id}\\s*可用$`, "i"),
       }),
     );
-    if (id !== "cursor") {
+    if (id !== "cursor" && id !== "workbuddy") {
       expect(
         screen.getByRole("menuitem", { name: "返回智能体列表" }),
       ).toBeVisible();
@@ -216,7 +218,7 @@ it.each(["codex", "claude", "cursor", "pi"])(
     expect(changed).toHaveBeenCalledWith(
       expect.objectContaining({
         runtimeId: id,
-        model: id === "pi" ? `${id}-default` : "",
+        model: "",
       }),
     );
     expect(
@@ -289,7 +291,7 @@ it("代理菜单不展示未就绪代理和内部诊断", async () => {
   ).not.toHaveTextContent("CLI");
 });
 
-it("在智能体菜单内选择账号并重算模型与 Thinking", async () => {
+it("在智能体菜单内选择账号后交给原生目录解析模型与 Thinking", async () => {
   const user = userEvent.setup();
   const changed = vi.fn();
   renderControls(changed);
@@ -312,7 +314,7 @@ it("在智能体菜单内选择账号并重算模型与 Thinking", async () => {
   expect(changed).toHaveBeenLastCalledWith(
     expect.objectContaining({
       accountId: "anthropic-account",
-      model: "anthropic-model",
+      model: "",
       reasoning: "",
     }),
   );

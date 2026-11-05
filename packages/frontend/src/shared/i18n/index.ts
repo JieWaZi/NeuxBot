@@ -54,8 +54,7 @@ const resources = {
         catalogUnavailable: "无法读取模型目录",
         catalogSignedOut: "登录后可读取模型目录",
         catalogEmpty: "账号暂无可用模型，点击重试",
-        catalogConfigurationUnknown:
-          "当前模型的配置尚未确认，请重试或选择其他模型",
+        catalogModelUnavailable: "当前模型不在目录中，请选择其他模型",
         system: "内置账号",
         empty: "暂无可用选项",
         unavailable: "不可用",
@@ -2215,8 +2214,8 @@ const resources = {
         catalogUnavailable: "Model catalog unavailable",
         catalogSignedOut: "Sign in to read the model catalog",
         catalogEmpty: "No models are available for this account. Retry",
-        catalogConfigurationUnknown:
-          "Model settings are unconfirmed. Retry or select another model",
+        catalogModelUnavailable:
+          "The current model is missing from the catalog. Select another model.",
         system: "Built-in account",
         empty: "No available options",
         unavailable: "Unavailable",
