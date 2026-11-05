@@ -1,6 +1,7 @@
 package runtime_options
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/global"
@@ -79,16 +80,28 @@ func nativeModelOption(provider string, row agent.AgentChoice) RuntimeModelOptio
 	if row.Config == nil {
 		return result
 	}
+	// A partial receipt may retain an earlier setting alongside an explicit
+	// unknown marker. Keep the model and permissions, but never offer that override.
+	reasoningUnknown := slices.ContainsFunc(row.Config.UnknownOptionIDs, func(id string) bool {
+		return id == "reasoning" || id == "reasoning_effort" || id == "thinking_level" || id == "thought_level"
+	})
+	fastUnknown := slices.Contains(row.Config.UnknownOptionIDs, "fast") || slices.Contains(row.Config.UnknownOptionIDs, "service_tier")
+	if fastUnknown {
+		result.FastSupported, result.DefaultFast, result.DefaultServiceTier = false, nil, nil
+	}
 	for _, setting := range row.Config.Options {
+		if slices.Contains(row.Config.UnknownOptionIDs, setting.ID) {
+			continue
+		}
 		switch {
-		case setting.Category == "thought_level" || setting.ID == "reasoning_effort":
+		case (setting.Category == "thought_level" || setting.ID == "reasoning_effort") && !reasoningUnknown:
 			for _, choice := range setting.Choices {
 				if choice.ID == setting.Value.ID {
 					result.DefaultReasoning = setting.Value.ID
 				}
 				result.ReasoningOptions = append(result.ReasoningOptions, RuntimeReasoningOption{ID: choice.ID, Name: choice.Name})
 			}
-		case setting.ID == "fast":
+		case setting.ID == "fast" && !fastUnknown:
 			result.FastSupported = true
 			if setting.Value.Bool != nil {
 				v := *setting.Value.Bool
@@ -97,7 +110,7 @@ func nativeModelOption(provider string, row agent.AgentChoice) RuntimeModelOptio
 				v := setting.Value.ID == "on" || setting.Value.ID == "true"
 				result.DefaultFast = &v
 			}
-		case setting.ID == "service_tier":
+		case setting.ID == "service_tier" && !fastUnknown:
 			for _, choice := range setting.Choices {
 				if choice.ID != "inherit" && choice.ID != "off" {
 					result.ServiceTiers = append(result.ServiceTiers, RuntimeReasoningOption{ID: choice.ID, Name: choice.Name})

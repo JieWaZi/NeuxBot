@@ -144,3 +144,23 @@ func TestNativeModelOptionPreservesProviderMenus(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeModelOptionKeepsUnknownSettingsOutOfMenus(t *testing.T) {
+	for _, unknown := range [][]string{{"reasoning", "fast"}, {"effort", "service_tier"}, {"thought_level", "fast"}} {
+		tier := "priority"
+		row := agent.AgentChoice{ID: "listed-model", PermissionModes: []string{"default"}, FastServiceTier: tier, DefaultServiceTier: &tier,
+			Config: &agent.AgentModelConfig{UnknownOptionIDs: unknown, Options: []agent.AgentSessionOption{
+				{ID: "effort", Category: "thought_level", Value: agent.AgentOptionValue{ID: "high"}, Choices: []agent.AgentChoice{{ID: "high"}}},
+				{ID: "fast", Value: agent.AgentOptionValue{ID: "on"}},
+				{ID: "service_tier", Choices: []agent.AgentChoice{{ID: "priority"}}},
+			}},
+		}
+		got := nativeModelOption("workbuddy", row)
+		if got.ID != row.ID || len(got.PermissionLevels) != 1 || got.ConfigurationKnown {
+			t.Fatalf("listed model or independent permission evidence lost: %+v", got)
+		}
+		if len(got.ReasoningOptions) != 0 || got.DefaultReasoning != "" || got.FastSupported || got.DefaultFast != nil || len(got.ServiceTiers) != 0 || got.DefaultServiceTier != nil {
+			t.Fatalf("unknown settings %v leaked into choices: %+v", unknown, got)
+		}
+	}
+}
