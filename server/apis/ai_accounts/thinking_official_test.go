@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"testing"
-	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
@@ -40,7 +39,7 @@ func (s officialThinkingEnvironment) Get(context.Context, string) (models.Runtim
 	return s.environment, nil
 }
 
-// TestOfficialGeminiThinkingHTTP 验证真实 HTTP 用例经过账号服务的冷启动探测，没有短于实际 CLI 初始化的隐藏期限。
+// TestOfficialGeminiThinkingHTTP rejects an invented thinking menu on the pinned native ACP version.
 func TestOfficialGeminiThinkingHTTP(t *testing.T) {
 	cli := os.Getenv("ALLY_GEMINI_OFFICIAL_CLI")
 	if cli == "" {
@@ -109,7 +108,6 @@ func TestOfficialGeminiThinkingHTTP(t *testing.T) {
 	})
 	server := httptest.NewServer(engine)
 	defer server.Close()
-	started := time.Now()
 	response, err := http.Get(server.URL + "/api/v1/ai-accounts/" + id + "/thinking?runtimeId=gemini&model=gemini-3.8-flash")
 	if err != nil {
 		t.Fatal(err)
@@ -119,14 +117,9 @@ func TestOfficialGeminiThinkingHTTP(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		t.Fatal(err)
 	}
-	if response.StatusCode != 200 || !result.Available {
-		t.Fatalf("HTTP capability result: status=%d %+v", response.StatusCode, result)
+	// Gemini 0.62 advertises no ACP thinking setter. A user-owned system
+	// settings overlay is ignored by its native root-ownership security check.
+	if response.StatusCode != 200 || len(result.Options) != 0 {
+		t.Fatalf("HTTP invented a configurable native thinking menu: status=%d %+v", response.StatusCode, result)
 	}
-	for _, option := range result.Options {
-		if option.ID == "low" {
-			t.Logf("PASS HTTP GetAIAccountThinking → account model catalog → official CLI, duration=%s", time.Since(started))
-			return
-		}
-	}
-	t.Fatalf("native menu missing: %+v", result)
 }
