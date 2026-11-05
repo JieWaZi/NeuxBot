@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -80,17 +81,28 @@ func TestKimiSubscriptionUsesIndependentNativeHomes(t *testing.T) {
 		if !login.Complete {
 			t.Fatal("native login was not committed")
 		}
-		target, release, err := service.PrepareQueuedLease(context.Background(), id, constants.RuntimeIDKimi, t.TempDir(), "kimi-code/k3")
+		request := agent.AccountRequest{
+			Provider: constants.RuntimeIDKimi, AccountID: id, CWD: t.TempDir(), Model: "kimi-code/k3",
+		}
+		selected, err := service.ResolveAccount(t.Context(), request, "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if target.Environment["KIMI_CODE_HOME"] != filepath.Join(dataRoot, "ai-accounts", "kimi", id) {
+		lease, err := service.AcquireAccount(t.Context(), selected)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer lease.Close(t.Context())
+		home, err := filepath.EvalSymlinks(filepath.Join(dataRoot, "ai-accounts", "kimi", id))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if selected.ConfigHome != home || lease.ConfigHome != home || lease.Environment["KIMI_CODE_HOME"] != home ||
+			lease.Environment["KIMI_SHARE_DIR"] != home {
 			t.Fatal("subscription account reused another native home")
 		}
-		closeAccountLease(t, release)
-		models, defaultModel, err := service.KimiSubscriptionModels(context.Background(), id)
-		if err != nil || len(models) != 1 || models[0] != "kimi-code/k3" || defaultModel != "kimi-code/k3" {
-			t.Fatalf("native Kimi models were not linked to account: %v %v %v", models, defaultModel, err)
+		if err := lease.Close(t.Context()); err != nil {
+			t.Fatal(err)
 		}
 	}
 }

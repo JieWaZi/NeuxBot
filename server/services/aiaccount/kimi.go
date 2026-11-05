@@ -9,13 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
@@ -116,36 +114,6 @@ func (s *Service) prepareKimiSubscription(account models.AIAccount) (agentapi.Ru
 	environment := accountconfig.HomeEnvironment(constants.RuntimeIDKimi, home)
 	environment[constants.AIAccountIdentityEnvironment] = account.ID + ":" + strconv.FormatInt(account.Revision, 10)
 	return agentapi.RuntimeTarget{AccountID: account.ID, Environment: environment, Isolated: true}, nil
-}
-
-// KimiSubscriptionModels 读取该订阅账号独有的原生模型别名目录。
-func (s *Service) KimiSubscriptionModels(ctx context.Context, id string) ([]string, string, error) {
-	account, err := s.accounts.Get(ctx, id)
-	if err != nil {
-		return nil, "", err
-	}
-	if account.AuthMode != constants.AccountAuthModeSubscription || len(account.Endpoints) != 1 || account.Endpoints[0].BaseURL != constants.AIAccountKimiURL {
-		return nil, "", status_error.AIAccountConfigurationInvalid
-	}
-	home, err := s.kimiHome(id)
-	if err != nil {
-		return nil, "", err
-	}
-	var config struct {
-		// DefaultModel 是 Kimi 登录目录声明的默认模型别名。
-		DefaultModel string `toml:"default_model"`
-		// Models 是 Kimi 登录目录可选的模型别名集合。
-		Models map[string]struct{} `toml:"models"`
-	}
-	if _, err := toml.DecodeFile(filepath.Join(home, "config.toml"), &config); err != nil {
-		return nil, "", status_error.RuntimeAuthRequired
-	}
-	ids := make([]string, 0, len(config.Models))
-	for modelID := range config.Models {
-		ids = append(ids, modelID)
-	}
-	slices.Sort(ids)
-	return ids, config.DefaultModel, nil
 }
 
 func kimiExecutable() (string, error) {
