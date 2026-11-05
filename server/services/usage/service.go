@@ -86,7 +86,7 @@ type Summary struct {
 	Snapshot string `json:"snapshot"`
 	// Coverage describes retained native terminal evidence.
 	Coverage Coverage `json:"coverage"`
-	// Metrics 是筛选范围内的 Token 计数和调用数。
+	// Metrics reports token and invocation counts for the selected range.
 	Metrics ledger.TokenMetrics `json:"metrics"`
 }
 
@@ -96,7 +96,7 @@ type Group struct {
 	Key string `json:"key"`
 	// Provider 是模型分组对应的原生后端。
 	Provider string `json:"provider,omitempty"`
-	// Metrics 是分组内的 Token 计数和调用数。
+	// Metrics reports token and invocation counts for the group.
 	Metrics ledger.TokenMetrics `json:"metrics"`
 }
 

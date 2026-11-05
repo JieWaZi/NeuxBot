@@ -83,7 +83,7 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 保留旧行和检查点，覆盖不同投影版本的首次读取。
+	// Preserve existing rows and checkpoints across supported projection upgrades.
 	previous := "providers-v2:fixture"
 	if provider == "codex" {
 		previous = "providers-v1:fixture"
@@ -93,7 +93,7 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 	}
 	if provider == "cursor" {
 		previous = "providers-v3:fixture"
-		// 旧 SQLite 表仍可含金额列，并残留旧投影生成的无 Token 模型行。
+		// Older SQLite databases can retain both the amount column and a cost-only row.
 		if err := db.Exec("ALTER TABLE usage_records ADD COLUMN amount text").Error; err != nil {
 			t.Fatal(err)
 		}

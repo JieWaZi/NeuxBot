@@ -6,9 +6,9 @@ import (
 )
 
 type accumulator struct {
-	// tokens 聚合原生调用的 Token 计数。
+	// tokens aggregates the counters from native invocations.
 	tokens ledger.TokenAccumulator
-	// unknownAttribution 标记调用入口或账号归属未核实。
+	// unknownAttribution marks an unverified invocation source or account.
 	unknownAttribution bool
 }
 
