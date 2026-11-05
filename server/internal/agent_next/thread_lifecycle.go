@@ -470,6 +470,15 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 		}
 		request.Session.AdditionalDirectories[i] = resolved
 	}
+	// These CLIs accept extra authorized roots at launch even when they do
+	// not advertise the ACP session additionalDirectories capability.
+	switch account.Provider {
+	case "workbuddy", "qoder", "qoder-cn":
+		if len(request.Session.AdditionalDirectories) != 0 {
+			request.Connection.Launch.ACPAdditionalDirectories = request.Session.AdditionalDirectories
+			request.Session.AdditionalDirectories = nil
+		}
+	}
 	// The inherited process environment reaches the child without selecting a
 	// thread. Managed overrides and the verified account still determine compatibility.
 	connection := request.Connection

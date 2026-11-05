@@ -210,6 +210,11 @@ func TestNativeProductWorkBuddyQoderContinueCancelAndRecover(t *testing.T) {
 			}
 
 			held := start(target, acpHeldQuestion)
+			// A failed hot setting retires the owner. The next turn restores
+			// the same native session before the explicit application restart.
+			if fixture.accounts.Load() != 2 {
+				t.Fatalf("hot setting failure did not reopen exactly once: %d leases", fixture.accounts.Load())
+			}
 			waitNativeProductStream(t, ctx, chats, held, acpFixturePartial)
 			if err := core.CancelExecutionAndWait(ctx, held.Chat.ID, held.Execution.ID); err != nil {
 				t.Fatal(err)
@@ -221,7 +226,7 @@ func TestNativeProductWorkBuddyQoderContinueCancelAndRecover(t *testing.T) {
 			closeRuntime()
 			core, chats, store, closeRuntime = fixture.open()
 			resumed := start(target, acpResumeQuestion)
-			if recovered := verify(resumed, constants.ExecutionStatusCompleted, 12); recovered.Session != firstResult.Session || fixture.accounts.Load() != 2 {
+			if recovered := verify(resumed, constants.ExecutionStatusCompleted, 12); recovered.Session != firstResult.Session || fixture.accounts.Load() != 3 {
 				t.Fatalf("cold recovery lost the original session: %+v leases=%d", recovered, fixture.accounts.Load())
 			}
 			metrics, err := usageservice.NewService(store, fixture.usage).Summary(ctx, usageservice.Filter{
@@ -320,7 +325,7 @@ func assertACPNativeProductWire(t *testing.T, tracePath, sessionID string) {
 			t.Fatalf("native request addressed the wrong session: %s", line)
 		}
 	}
-	if opened != 1 || recovered != 1 || cancelled != 1 || len(prompts) != 4 {
+	if opened != 1 || recovered != 2 || cancelled != 1 || len(prompts) != 4 {
 		t.Fatalf("native lifecycle: new=%d recover=%d cancel=%d prompt=%d\n%s", opened, recovered, cancelled, len(prompts), trace)
 	}
 	for _, mode := range permissionModes {
@@ -338,6 +343,42 @@ func assertACPNativeProductWire(t *testing.T, tracePath, sessionID string) {
 		if strings.Contains(prompt, acpFixtureResponse) || strings.Contains(prompt, "Recent conversation history") {
 			t.Fatalf("prompt replayed previous turns: %s", prompt)
 		}
+	}
+}
+
+func TestNativeACPExternalDirectoryPreservesFullAccess(t *testing.T) {
+	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN} {
+		t.Run(provider, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+			defer cancel()
+			t.Setenv("NEUX_EXECUTION_FIXTURE_PROVIDER", provider)
+			directory, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("NEUX_EXECUTION_EXPECT_ADD_DIR", directory)
+			fixture := newNativeProductFixture(t, ctx, provider, "TestNativeExecutionACPChild", constants.PermissionLevelFullAccess)
+			core, _, store, closeRuntime := fixture.open()
+			defer closeRuntime()
+			work, err := core.Start(ctx, WorkIntent{
+				ClientRequestID: "external-directory",
+				Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker", WorkingDirectory: directory}},
+				Input:           WorkInput{Actor: "user", Content: acpFullQuestion},
+				Options:         WorkOptions{RuntimeID: provider, Model: "fixture-model", Reasoning: "low", PermissionLevel: constants.PermissionLevelFullAccess},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitNativeProductStatus(t, ctx, store, work, constants.ExecutionStatusCompleted)
+			trace, err := os.ReadFile(fixture.trace)
+			mode := "yolo"
+			if provider != constants.RuntimeIDQoder {
+				mode = "bypassPermissions"
+			}
+			if err != nil || !strings.Contains(string(trace), mode) || strings.Contains(string(trace), `"additionalDirectories"`) {
+				t.Fatalf("unexpected native permission or directory route: %v %s", err, trace)
+			}
+		})
 	}
 }
 
@@ -360,6 +401,12 @@ func TestNativeExecutionACPChild(t *testing.T) {
 			fmt.Println("1.1.53")
 		}
 		os.Exit(0)
+	}
+	if root := os.Getenv("NEUX_EXECUTION_EXPECT_ADD_DIR"); root != "" {
+		i := slices.Index(os.Args, "--add-dir")
+		if i < 0 || i+1 >= len(os.Args) || os.Args[i+1] != root {
+			os.Exit(7)
+		}
 	}
 	trace, err := os.OpenFile(os.Getenv("NEUX_EXECUTION_FIXTURE_TRACE"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {

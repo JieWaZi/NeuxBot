@@ -674,12 +674,12 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		client.native, err = cursor.NewClient(ctx, options, host)
 	case constants.RuntimeIDWorkBuddy:
 		client.native, err = workbuddy.NewClient(ctx, workbuddy.Options{
-			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
-			Environment: env, ExplicitCredential: lease.Environment["CODEBUDDY_AUTH_TOKEN"] != "" || lease.Environment["CODEBUDDY_API_KEY"] != "",
+			Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch), WorkingDirectory: account.CWD,
+			Environment: env, CatalogConfigHome: launch.WorkBuddyCatalogHome, ExplicitCredential: lease.Environment["CODEBUDDY_AUTH_TOKEN"] != "" || lease.Environment["CODEBUDDY_API_KEY"] != "",
 		}, host)
 	case constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
 		client.native, err = qoder.NewClient(ctx, qoder.Options{
-			RuntimeID: account.Provider, Executable: launch.Executable, PrefixArgs: launch.PrefixArgs,
+			RuntimeID: account.Provider, Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch),
 			WorkingDirectory: account.CWD, Environment: env, ExpectedUserID: lease.QoderUserID,
 		}, host)
 	case constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode:
@@ -706,6 +706,14 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		return nil, safeAgentError(err, status_error.RuntimeConfigurationInvalid)
 	}
 	return client, nil
+}
+
+func acpDirectoryArguments(launch ProviderLaunch) []string {
+	args := slices.Clone(launch.PrefixArgs)
+	for _, directory := range launch.ACPAdditionalDirectories {
+		args = append(args, "--add-dir", directory)
+	}
+	return args
 }
 
 func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease AccountLease, auth LaunchAuthLease, resources ResourceLease) ([]string, error) {

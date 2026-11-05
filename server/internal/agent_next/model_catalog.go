@@ -11,8 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	"github.com/JieWaZi/acp-go/pkg/agent_next/workbuddy"
 )
 
 const (
@@ -162,7 +164,34 @@ func modelCatalogKey(request ProviderConnectionRequest, version, modelFingerprin
 func (c *ModelCatalog) readNative(ctx context.Context, request ProviderConnectionRequest) (snapshot ModelCatalogSnapshot) {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	conn, err := c.providers.Open(ctx, request, ProviderConnectionPorts{})
+	ports := ProviderConnectionPorts{}
+	if request.Account.Provider == constants.RuntimeIDWorkBuddy && request.Account.ConfigHome != "" {
+		root, err := workbuddy.PrepareModelCatalog(request.Account.ConfigHome)
+		if err != nil {
+			return modelCatalogFailure(status_error.RuntimeConfigurationInvalid)
+		}
+		// Validate the exact settings the child will see, as the original file
+		// may change independently between snapshot creation and account acquisition.
+		settings, err := os.ReadFile(filepath.Join(root, "settings.json"))
+		if err == nil {
+			err = accountconfig.ValidateWorkBuddyCredentialSettings(settings)
+			clear(settings)
+		} else if errors.Is(err, os.ErrNotExist) {
+			err = nil
+		} else {
+			err = status_error.RuntimeConfigurationInvalid
+		}
+		if err != nil {
+			_ = os.RemoveAll(root)
+			return modelCatalogFailure(err)
+		}
+		request.Launch.WorkBuddyCatalogHome = root
+		ports.CloseFiles = func(context.Context) error { return os.RemoveAll(root) }
+	}
+	conn, err := c.providers.Open(ctx, request, ports)
+	if conn == nil && ports.CloseFiles != nil {
+		_ = ports.CloseFiles(context.WithoutCancel(ctx))
+	}
 	if conn != nil {
 		defer func() {
 			cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.providers.options.CleanupTimeout)

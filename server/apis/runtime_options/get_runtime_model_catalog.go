@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
@@ -94,8 +95,13 @@ func nativeModelOption(provider string, row agent.AgentChoice) RuntimeModelOptio
 			continue
 		}
 		switch {
+		case provider == constants.RuntimeIDCursor && setting.ID == "context" && setting.Category == "model_config":
+			result.ContextWindowTokens, result.MaxContextWindowTokens = agent.CursorContextWindows(setting)
 		case (setting.Category == "thought_level" || setting.ID == "reasoning_effort") && !reasoningUnknown:
 			for _, choice := range setting.Choices {
+				if provider == constants.RuntimeIDWorkBuddy && (choice.ID == constants.RuntimeWorkBuddyThinkingEnabled || choice.ID == constants.RuntimeWorkBuddyThinkingDisabled) {
+					continue
+				}
 				if choice.ID == setting.Value.ID {
 					result.DefaultReasoning = setting.Value.ID
 				}

@@ -143,6 +143,10 @@ type ProviderLaunch struct {
 	CursorPermissionMode string
 	// ProcessPermissionMode freezes the approval policy for ACP profiles and Pi.
 	ProcessPermissionMode string
+	// ACPAdditionalDirectories carries authorized roots for native CLI startup flags.
+	ACPAdditionalDirectories []string `json:",omitempty"`
+	// WorkBuddyCatalogHome is an isolated CodeBuddy root owned by the catalog connection.
+	WorkBuddyCatalogHome string `json:"-"`
 	// RequireVerifiedMCP rejects MCP handoff without native verification.
 	RequireVerifiedMCP bool
 	// RequireNoTools admits only a native fresh-session launch with tools disabled.
@@ -325,6 +329,7 @@ func freezeProviderRequest(request ProviderConnectionRequest) ProviderConnection
 	request.Account.PrefixArgs = slices.Clone(request.Account.PrefixArgs)
 	launch := &request.Launch
 	launch.PrefixArgs = slices.Clone(launch.PrefixArgs)
+	launch.ACPAdditionalDirectories = slices.Clone(launch.ACPAdditionalDirectories)
 	launch.BaseEnvironment = maps.Clone(launch.BaseEnvironment)
 	launch.Environment = maps.Clone(launch.Environment)
 	launch.CodexConfig = maps.Clone(launch.CodexConfig)
