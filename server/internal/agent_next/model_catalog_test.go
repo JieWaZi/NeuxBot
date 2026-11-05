@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
@@ -70,5 +71,70 @@ func TestCodexCatalogKeepsOnlySameIdentityStaleAndClearsOnSignOut(t *testing.T) 
 	request.Account.AuthGeneration++
 	if next := read(false); next.State != CatalogUnavailable || next.Models != nil {
 		t.Fatalf("new auth generation borrowed catalog: %+v", next)
+	}
+}
+
+func TestQoderCatalogReusesVerifiedLoginAndHonorsNativeSignOut(t *testing.T) {
+	for _, mode := range []string{"available", "signed-out"} {
+		t.Run(mode, func(t *testing.T) {
+			request := providerTestRequest(t, "qoder")
+			request.Launch.Environment["FIXTURE_QODER_MODELS"] = mode
+			runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: func(context.Context, AccountRequest) (AccountLease, error) {
+				return AccountLease{QoderUserID: "fixture-native-user", QoderLoginVerified: true}, nil
+			}})
+			t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+			result := NewModelCatalog(runtime).ReadForRuntime(t.Context(), "qoder", request, "", "", false)
+			if mode == "available" {
+				if result.State != CatalogFresh || !result.QoderLoginVerified || result.DefaultID != "fixture-qoder-model" || len(result.Models) != 1 {
+					t.Fatalf("verified login did not produce the native model catalog: %+v", result)
+				}
+			} else if result.State != CatalogSignedOut || result.QoderLoginVerified || len(result.Models) != 0 {
+				t.Fatalf("native sign-out did not invalidate earlier login evidence: %+v", result)
+			}
+			trace, err := os.ReadFile(filepath.Join(request.Account.CWD, "trace"))
+			if err != nil || !strings.Contains(string(trace), "session/new") || strings.Contains(string(trace), "--print") {
+				t.Fatalf("unexpected Qoder management launches: %s (%v)", trace, err)
+			}
+		})
+	}
+}
+
+func TestQoderCatalogCanCloseWhileNativeReadIsPending(t *testing.T) {
+	request := providerTestRequest(t, "qoder")
+	request.Launch.Environment["FIXTURE_QODER_MODELS"] = "pending"
+	runtime := NewProviderRuntime(ProviderRuntimeOptions{AcquireAccount: func(context.Context, AccountRequest) (AccountLease, error) {
+		return AccountLease{QoderLoginVerified: true}, nil
+	}})
+	t.Cleanup(func() { _ = runtime.Close(context.Background()) })
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	catalog := NewModelCatalog(runtime)
+	read := make(chan ModelCatalogSnapshot, 1)
+	go func() { read <- catalog.ReadForRuntime(ctx, "qoder", request, "", "", false) }()
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	pending := filepath.Join(request.Account.CWD, "qoder-catalog-pending")
+	for {
+		if _, err := os.Stat(pending); err == nil {
+			break
+		}
+		select {
+		case <-ticker.C:
+		case result := <-read:
+			t.Fatalf("model read returned before reaching native request: %+v", result)
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
+	if err := runtime.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case result := <-read:
+		if result.State != CatalogUnavailable || len(result.Models) != 0 {
+			t.Fatalf("shutdown published an incomplete catalog: %+v", result)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
 	}
 }

@@ -3,12 +3,16 @@ package aiaccount
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -28,9 +32,11 @@ type acpSystemAccount struct {
 	environment map[string]string
 	// qoderUserID is private native evidence for account-scoped management reads.
 	qoderUserID string
+	// qoderLoginVerified records a successful native login identity read.
+	qoderLoginVerified bool
 }
 
-func resolveACPSystemAccount(ctx context.Context, request agent.AccountRequest, configHome string) (agent.AccountRequest, error) {
+func (s *Service) resolveACPSystemAccount(ctx context.Context, request agent.AccountRequest, configHome string) (agent.AccountRequest, error) {
 	if request.AccountID != agent.SystemAccountID {
 		return agent.AccountRequest{}, status_error.AIAccountConfigurationInvalid
 	}
@@ -39,7 +45,7 @@ func resolveACPSystemAccount(ctx context.Context, request agent.AccountRequest, 
 	if err != nil {
 		return agent.AccountRequest{}, err
 	}
-	subject, err := config.subject(ctx, request)
+	subject, err := s.acpSystemSubject(ctx, request, &config)
 	if err != nil {
 		return agent.AccountRequest{}, err
 	}
@@ -49,7 +55,7 @@ func resolveACPSystemAccount(ctx context.Context, request agent.AccountRequest, 
 	return request, nil
 }
 
-func acquireACPSystemAccount(ctx context.Context, request agent.AccountRequest) (agent.AccountLease, error) {
+func (s *Service) acquireACPSystemAccount(ctx context.Context, request agent.AccountRequest) (agent.AccountLease, error) {
 	if request.AccountID != agent.SystemAccountID || request.Subject == "" ||
 		request.AuthGeneration != systemAccountGeneration || !filepath.IsAbs(request.ConfigHome) {
 		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
@@ -62,7 +68,7 @@ func acquireACPSystemAccount(ctx context.Context, request agent.AccountRequest) 
 		if config.configHome != request.ConfigHome || config.fingerprint != request.ConfigFingerprint {
 			return acpSystemAccount{}, status_error.RuntimeConfigurationInvalid
 		}
-		subject, err := config.subject(ctx, request)
+		subject, err := s.acpSystemSubject(ctx, request, &config)
 		if err != nil {
 			return acpSystemAccount{}, err
 		}
@@ -77,6 +83,7 @@ func acquireACPSystemAccount(ctx context.Context, request agent.AccountRequest) 
 	}
 	return agent.AccountLease{
 		ConfigHome: config.configHome, Environment: config.environment, QoderUserID: config.qoderUserID,
+		QoderLoginVerified: config.qoderLoginVerified,
 		VerifyLogin: func(ctx context.Context) error {
 			_, err := recheck(ctx)
 			return err
@@ -223,7 +230,7 @@ func sameACPConfigRoot(first, second string) bool {
 	return firstErr == nil && secondErr == nil && os.SameFile(firstInfo, secondInfo)
 }
 
-func (c *acpSystemAccount) subject(ctx context.Context, request agent.AccountRequest) (string, error) {
+func (s *Service) acpSystemSubject(ctx context.Context, request agent.AccountRequest, c *acpSystemAccount) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -241,21 +248,123 @@ func (c *acpSystemAccount) subject(ctx context.Context, request agent.AccountReq
 		RuntimeID: request.Provider, Executable: request.Executable, PrefixArgs: request.PrefixArgs,
 		Environment: nativeAccountEnvironment(c.environment), WorkingDirectory: request.CWD,
 	}
-	identity, identityErr := qoder.ReadNativeIdentity(ctx, options)
-	if identityErr == nil && identity.UserID != "" {
-		c.qoderUserID = identity.UserID
-		return accountSubject(request.Provider+"-system-login-v1", c.configHome, identity.UserID, identity.Organization), nil
+	scope, key := c.qoderSavedLoginKey(request)
+	s.mutex.Lock()
+	previous := s.qoderLogins[request.Provider]
+	s.mutex.Unlock()
+	if key != "" && previous.key == key && time.Since(previous.observedAt) < 30*time.Second {
+		c.qoderUserID, c.qoderLoginVerified = previous.userID, true
+		return previous.subject, nil
 	}
-	// A missing identity can also mean an unsupported account_info operation.
-	// Use the CLI's independent status receipt for the signed-out case.
+	identity, identityErr := qoder.ReadNativeIdentity(ctx, options)
+	if identityErr == nil && identity.UserID != "" && key != "" {
+		if currentScope, currentKey := c.qoderSavedLoginKey(request); currentKey != key {
+			// A native refresh can legitimately replace the saved credential.
+			// Re-read once against the new snapshot before accepting its subject.
+			if currentKey == "" {
+				return "", status_error.RuntimeUnavailable
+			}
+			scope, key = currentScope, currentKey
+			identity, identityErr = qoder.ReadNativeIdentity(ctx, options)
+			if _, currentKey := c.qoderSavedLoginKey(request); currentKey != key {
+				return "", status_error.RuntimeUnavailable
+			}
+		}
+	}
+	if identityErr == nil && identity.UserID != "" {
+		c.qoderUserID, c.qoderLoginVerified = identity.UserID, true
+		subject := accountSubject(request.Provider+"-system-login-v1", c.configHome, identity.UserID, identity.Organization)
+		if key != "" {
+			s.mutex.Lock()
+			if s.qoderLogins == nil {
+				s.qoderLogins = make(map[string]qoderLoginObservation)
+			}
+			s.qoderLogins[request.Provider] = qoderLoginObservation{
+				scope: scope, key: key, subject: subject, userID: identity.UserID, observedAt: time.Now(),
+			}
+			s.mutex.Unlock()
+		}
+		return subject, nil
+	}
+	// The user status contains display information but no user ID. The
+	// service-account status instead has an explicit native principal and scope.
+	statusScope, statusKey := c.qoderSavedLoginKey(request)
 	login, statusErr := qoder.ReadLoginStatus(ctx, options)
-	if statusErr == nil && !login.Authenticated {
-		return "", status_error.RuntimeAuthRequired
+	if statusErr == nil {
+		if !login.Authenticated {
+			s.mutex.Lock()
+			if statusScope != "" && previous.scope == statusScope && s.qoderLogins[request.Provider] == previous {
+				delete(s.qoderLogins, request.Provider)
+			}
+			s.mutex.Unlock()
+			return "", status_error.RuntimeAuthRequired
+		}
+		if login.AccountType == "service_account" && login.PrincipalID != "" {
+			if statusKey != "" {
+				if _, currentKey := c.qoderSavedLoginKey(request); currentKey != statusKey {
+					return "", status_error.RuntimeUnavailable
+				}
+			}
+			c.qoderLoginVerified = true
+			// The native owner identity includes organization when the principal reports it.
+			return accountSubject(request.Provider+"-system-service-account-v1", c.configHome, login.PrincipalID, login.OrganizationID), nil
+		}
 	}
 	if identityErr == nil && statusErr == nil {
 		return "", status_error.RuntimeUnavailable
 	}
 	return "", nativeAccountStatusError(ctx, request.Provider, errors.Join(identityErr, statusErr))
+}
+
+type qoderLoginObservation struct {
+	// scope is the selected regional launcher and configuration root.
+	scope string
+	// key binds this receipt to the unchanged native credential and launch scope.
+	key string
+	// subject is the hashed native account and organization identity.
+	subject string
+	// userID is the exact native ID used to fence management reads.
+	userID string
+	// observedAt bounds reuse of previously verified login evidence.
+	observedAt time.Time
+}
+
+// qoderSavedLoginKey detects local changes without decoding native credentials.
+// Qoder 1.1.53 restores the encrypted user file with its machine-specific key.
+// The fingerprint can only reuse a native identity receipt for these exact
+// bytes, never establish a subject or prove a sign-in by itself.
+func (c acpSystemAccount) qoderSavedLoginKey(request agent.AccountRequest) (scope, key string) {
+	if !filepath.IsAbs(request.Executable) {
+		return "", ""
+	}
+	executable, err := filepath.EvalSymlinks(request.Executable)
+	if err != nil {
+		return "", ""
+	}
+	info, err := os.Stat(executable)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", ""
+	}
+	facts := []string{c.configHome, c.fingerprint, c.environment[accountconfig.ACPSystemConfigVariable(request.Provider)],
+		request.CWD, executable, strconv.FormatInt(info.Size(), 10), strconv.FormatInt(info.ModTime().UnixNano(), 10)}
+	scope = accountSubject(request.Provider+"-login-scope-v1", append(facts, request.PrefixArgs...)...)
+
+	root := filepath.Join(c.configHome, ".auth")
+	auth, err := os.Lstat(root)
+	if err != nil || !auth.IsDir() {
+		return scope, ""
+	}
+	facts = []string{scope}
+	for _, name := range []string{"user", "machine_id"} {
+		data, err := readNativeAccountFile(filepath.Join(root, name))
+		if err != nil || len(data) == 0 {
+			return scope, ""
+		}
+		sum := sha256.Sum256(data)
+		clear(data)
+		facts = append(facts, hex.EncodeToString(sum[:]))
+	}
+	return scope, accountSubject(request.Provider+"-saved-login-evidence-v1", facts...)
 }
 
 func (c acpSystemAccount) workBuddySubject(cwd string) (string, error) {

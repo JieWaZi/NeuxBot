@@ -40,6 +40,8 @@ type Service struct {
 	closeIdleSessions func(context.Context, string) error
 	// invalidateAccountAuth fences native consumers and cached reads after a durable mutation.
 	invalidateAccountAuth func(context.Context, string, string, uint64)
+	// qoderLogins holds at most one native identity receipt per Qoder edition.
+	qoderLogins map[string]qoderLoginObservation
 	// credentials 仅在准备、刷新和回收时串行同账号凭据，不覆盖模型调用。
 	credentials sync.Map
 	// leaseChanged 在租约释放时唤醒能力查询和后台调用，不轮询账号使用状态。

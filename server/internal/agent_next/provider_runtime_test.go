@@ -679,6 +679,23 @@ func TestProviderRuntimeChild(t *testing.T) {
 				}}
 			case "session/new":
 				result := map[string]any{"sessionId": "fixture-native"}
+				switch os.Getenv("FIXTURE_QODER_MODELS") {
+				case "signed-out":
+					reply["error"] = map[string]any{"code": -32000, "message": "Authentication required"}
+				case "pending":
+					if err := os.WriteFile(filepath.Join(cwd, "qoder-catalog-pending"), nil, 0o600); err != nil {
+						os.Exit(3)
+					}
+					continue
+				case "available":
+					result["configOptions"] = []map[string]any{{
+						"type": "select", "id": "model", "category": "model", "name": "Model", "currentValue": "fixture-qoder-model",
+						"options": []map[string]string{{"value": "fixture-qoder-model", "name": "Fixture"}},
+					}}
+				}
+				if reply["error"] != nil {
+					break
+				}
 				if os.Getenv("FIXTURE_MCP_REPORT") != "" {
 					result["_meta"] = map[string]any{"claude.launch": map[string]any{
 						"mcp_servers": []map[string]string{{"name": "requested", "status": "connected"}},

@@ -34,6 +34,8 @@ type ModelCatalogSnapshot struct {
 	DetectedAt int64
 	// ErrorCode is a safe explanation for a failed refresh.
 	ErrorCode string
+	// QoderLoginVerified is positive native evidence independently of model discovery.
+	QoderLoginVerified bool `json:"-"`
 }
 
 // ModelCatalog owns model discovery and short-lived snapshots. ProviderRuntime
@@ -127,6 +129,7 @@ func (c *ModelCatalog) ReadForRuntime(ctx context.Context, runtimeID string, req
 	if result.State == CatalogUnavailable && entry.result.DetectedAt != 0 {
 		previous := entry.result
 		previous.State, previous.ErrorCode = CatalogStale, result.ErrorCode
+		previous.QoderLoginVerified = result.QoderLoginVerified
 		result = previous
 	}
 	entry.result = result
@@ -177,17 +180,22 @@ func (c *ModelCatalog) readNative(ctx context.Context, request ProviderConnectio
 		return modelCatalogFailure(err)
 	}
 	capabilities := client.Capabilities()
+	qoderLoginVerified := conn.qoderLoginVerified
 	fail := func(err error) ModelCatalogSnapshot {
 		failure := modelCatalogFailure(err)
 		failure.Capabilities = capabilities
+		failure.QoderLoginVerified = qoderLoginVerified && failure.State != CatalogSignedOut
 		return failure
 	}
-	account, err := client.ReadAccount(ctx)
-	if err != nil && !(accountconfig.ACPSystemConfigVariable(request.Account.Provider) != "" && errors.Is(err, status_error.RuntimePolicyUnsupported)) {
-		return fail(err)
-	}
-	if account.RequiresAuthentication && account.Account == nil {
-		return fail(status_error.RuntimeAuthRequired)
+	if !qoderLoginVerified {
+		account, err := client.ReadAccount(ctx)
+		if err != nil && !(accountconfig.ACPSystemConfigVariable(request.Account.Provider) != "" && errors.Is(err, status_error.RuntimePolicyUnsupported)) {
+			return fail(err)
+		}
+		if account.RequiresAuthentication && account.Account == nil {
+			return fail(status_error.RuntimeAuthRequired)
+		}
+		qoderLoginVerified = accountconfig.QoderPeerRuntimeID(request.Account.Provider) != "" && account.Account != nil
 	}
 	models, err := client.ReadModels(ctx)
 	if err != nil {
@@ -196,7 +204,8 @@ func (c *ModelCatalog) readNative(ctx context.Context, request ProviderConnectio
 	if models.Models == nil {
 		return fail(status_error.AIAccountModelsUnavailable)
 	}
-	return ModelCatalogSnapshot{AgentModelCatalog: models, Capabilities: client.Capabilities(), State: CatalogFresh, DetectedAt: time.Now().UnixMilli()}
+	return ModelCatalogSnapshot{AgentModelCatalog: models, Capabilities: client.Capabilities(), State: CatalogFresh,
+		DetectedAt: time.Now().UnixMilli(), QoderLoginVerified: qoderLoginVerified}
 }
 
 func modelCatalogFailure(err error) ModelCatalogSnapshot {

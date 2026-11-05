@@ -75,6 +75,8 @@ type AccountLease struct {
 	CursorQuota *CursorQuotaLease
 	// QoderUserID binds management reads to the native identity verified by the lease.
 	QoderUserID string
+	// QoderLoginVerified carries positive native sign-in evidence from acquisition.
+	QoderLoginVerified bool
 	// PrepareLaunchAuth obtains any additional startup authentication resources.
 	PrepareLaunchAuth func(context.Context) (LaunchAuthLease, error)
 	// Close releases the account after native exit and startup authentication cleanup.
@@ -240,6 +242,8 @@ type providerConnection struct {
 	closingAttempt *connectionCloseAttempt
 	// client owns native consumers until Close confirms their exit.
 	client *directAgentClient
+	// qoderLoginVerified retains only the immutable evidence published with opened.
+	qoderLoginVerified bool
 	// accountLease, launchAuth and resources retain actual releases as they arrive.
 	accountLease AccountLease
 	launchAuth   LaunchAuthLease
@@ -437,6 +441,7 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	c.qoderLoginVerified = c.accountLease.QoderLoginVerified
 	c.client, err = newDirectAgentClient(ctx, account, request.Launch, c.accountLease, c.launchAuth, c.resources, ports.Callbacks)
 	if err != nil {
 		return err

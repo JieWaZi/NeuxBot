@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -220,16 +221,244 @@ func TestACPSystemQoderSavedLoginFencesNativeSubject(t *testing.T) {
 	}
 }
 
+func TestACPSystemQoderReusesOnlyVerifiedUnchangedLogin(t *testing.T) {
+	home := acpAccountTestHome(t)
+	auth := filepath.Join(home, ".qoder", ".auth")
+	if err := os.MkdirAll(auth, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	credential := filepath.Join(auth, "user")
+	write := func(path, value string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(value), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(credential, "opaque-credential-a")
+	write(filepath.Join(auth, "machine_id"), "machine-key")
+	trace := filepath.Join(home, "qoder-account-trace")
+	t.Setenv("NEUX_QODER_ACCOUNT_FIXTURE", "1")
+	t.Setenv("NEUX_QODER_ACCOUNT_TRACE", trace)
+	t.Setenv("NEUX_QODER_ACCOUNT_UID", "native-user-first")
+	t.Setenv("NEUX_QODER_ACCOUNT_ORG", "native-organization-first")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := agent.AccountRequest{
+		Provider: constants.RuntimeIDQoder, AccountID: agent.SystemAccountID,
+		CWD: home, Executable: executable, PrefixArgs: []string{"-test.run=^TestACPSystemQoderAccountProcess$", "--"},
+	}
+	s := New(nil)
+	checkStarts := func(want int) {
+		t.Helper()
+		raw, err := os.ReadFile(trace)
+		if err != nil || strings.Count(string(raw), "sdk\n") != want {
+			t.Fatalf("expected %d native SDK starts, got %q (%v)", want, raw, err)
+		}
+	}
+	selected, err := s.ResolveAccount(t.Context(), request, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := s.AcquireAccount(t.Context(), selected)
+	if err != nil || lease.QoderUserID != "native-user-first" {
+		t.Fatalf("cannot acquire verified login: %v", err)
+	}
+	if err := lease.VerifyLogin(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if current, err := s.ResolveAccount(t.Context(), request, ""); err != nil || !current.Equal(selected) {
+		t.Fatalf("unchanged login did not retain the subject: %v", err)
+	}
+	checkStarts(1)
+
+	cnAuth := filepath.Join(home, ".qoder-cn", ".auth")
+	if err := os.MkdirAll(cnAuth, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write(filepath.Join(cnAuth, "user"), "opaque-credential-a")
+	write(filepath.Join(cnAuth, "machine_id"), "machine-key")
+	cnRequest := request
+	cnRequest.Provider = constants.RuntimeIDQoderCN
+	t.Setenv("NEUX_QODER_ACCOUNT_UID", "native-user-cn")
+	cn, err := s.ResolveAccount(t.Context(), cnRequest, "")
+	if err != nil || cn.Subject == selected.Subject {
+		t.Fatalf("regional account did not receive independent verification: %v", err)
+	}
+	checkStarts(2)
+	t.Setenv("NEUX_QODER_ACCOUNT_UID", "native-user-first")
+	if err := lease.VerifyLogin(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	checkStarts(2)
+
+	previous := s.qoderLogins[constants.RuntimeIDQoder]
+	previous.observedAt = time.Now().Add(-time.Minute)
+	s.qoderLogins[constants.RuntimeIDQoder] = previous
+	if err := lease.VerifyLogin(t.Context()); err != nil {
+		t.Fatalf("expired evidence could not be refreshed: %v", err)
+	}
+	checkStarts(3)
+
+	write(credential, "opaque-credential-refreshed")
+	if err := lease.VerifyLogin(t.Context()); err != nil {
+		t.Fatalf("same subject after credential refresh: %v", err)
+	}
+	checkStarts(4)
+	t.Setenv("NEUX_QODER_ACCOUNT_UID", "native-user-second")
+	write(credential, "opaque-credential-b")
+	if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
+		t.Fatalf("credential changed to a different subject: %v", err)
+	}
+	checkStarts(5)
+	t.Setenv("NEUX_QODER_ACCOUNT_UID", "")
+	t.Setenv("NEUX_QODER_ACCOUNT_STATUS", "false")
+	if err := os.Remove(credential); err != nil {
+		t.Fatal(err)
+	}
+	if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
+		t.Fatalf("deleted credentials did not fence the verified subject: %v", err)
+	}
+	checkStarts(6)
+	write(credential, "opaque-credential-b")
+	if _, err := s.ResolveAccount(t.Context(), request, ""); !errors.Is(err, status_error.RuntimeAuthRequired) {
+		t.Fatalf("signed-out observation left an older positive cache entry: %v", err)
+	}
+	checkStarts(7)
+}
+
+func TestACPSystemQoderRejectsSubjectSwitchedDuringNativeRead(t *testing.T) {
+	home := acpAccountTestHome(t)
+	auth := filepath.Join(home, ".qoder", ".auth")
+	if err := os.MkdirAll(auth, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	credential := filepath.Join(auth, "user")
+	for path, content := range map[string]string{credential: "opaque-original", filepath.Join(auth, "machine_id"): "machine-key"} {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("NEUX_QODER_ACCOUNT_FIXTURE", "1")
+	t.Setenv("NEUX_QODER_ACCOUNT_UID", "native-user-first")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := agent.AccountRequest{
+		Provider: constants.RuntimeIDQoder, AccountID: agent.SystemAccountID,
+		CWD: home, Executable: executable, PrefixArgs: []string{"-test.run=^TestACPSystemQoderAccountProcess$", "--"},
+	}
+	service := New(nil)
+	selected, err := service.ResolveAccount(t.Context(), request, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := service.AcquireAccount(t.Context(), selected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A refresh causes a real verification read. While that read still
+	// reports the first user, the fixture swaps the on-disk credential.
+	if err := os.WriteFile(credential, []byte("opaque-before-switch"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("NEUX_QODER_ACCOUNT_ROTATE_ON_PROBE", credential)
+	if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
+		t.Fatalf("pre-submit verification accepted the old subject after a concurrent switch: %v", err)
+	}
+}
+
+func TestACPSystemQoderServiceAccountFencesPrincipalAndOrganization(t *testing.T) {
+	home := acpAccountTestHome(t)
+	t.Setenv("NEUX_QODER_ACCOUNT_FIXTURE", "1")
+	t.Setenv("NEUX_QODER_ACCOUNT_STATUS_JSON", `{"logged_in":true,"account_type":"service_account","principal_id":"principal-a","org_id":"organization-a"}`)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := agent.AccountRequest{
+		Provider: constants.RuntimeIDQoder, AccountID: agent.SystemAccountID,
+		CWD: home, Executable: executable, PrefixArgs: []string{"-test.run=^TestACPSystemQoderAccountProcess$", "--"},
+	}
+	service := New(nil)
+	selected, err := service.ResolveAccount(t.Context(), request, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease, err := service.AcquireAccount(t.Context(), selected)
+	if err != nil || !lease.QoderLoginVerified || lease.QoderUserID != "" {
+		t.Fatalf("service account did not carry native sign-in evidence: %v", err)
+	}
+	t.Setenv("NEUX_QODER_ACCOUNT_STATUS_JSON", `{"logged_in":true,"account_type":"service_account","principal_id":"principal-a","org_id":"organization-b"}`)
+	if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
+		t.Fatalf("the service account organization switch escaped the fence: %v", err)
+	}
+	t.Setenv("NEUX_QODER_ACCOUNT_STATUS_JSON", `{"logged_in":true,"account_type":"service_account","principal_id":"principal-a"}`)
+	unscoped, err := service.ResolveAccount(t.Context(), request, "")
+	if err != nil || unscoped.Subject == selected.Subject {
+		t.Fatalf("a native principal without an organization was rejected or conflated: %v", err)
+	}
+
+	auth := filepath.Join(home, ".qoder", ".auth")
+	if err := os.MkdirAll(auth, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	credential := filepath.Join(auth, "user")
+	for path, content := range map[string]string{credential: "opaque-original", filepath.Join(auth, "machine_id"): "machine-key"} {
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("NEUX_QODER_ACCOUNT_ROTATE_ON_STATUS", credential)
+	if _, err := service.ResolveAccount(t.Context(), request, ""); !errors.Is(err, status_error.RuntimeUnavailable) {
+		t.Fatalf("status accepted a principal after a detected credential change: %v", err)
+	}
+}
+
 func TestACPSystemQoderAccountProcess(t *testing.T) {
 	if os.Getenv("NEUX_QODER_ACCOUNT_FIXTURE") == "" {
 		return
 	}
 	if strings.HasSuffix(strings.Join(os.Args, " "), "status -o json") {
+		if status := os.Getenv("NEUX_QODER_ACCOUNT_STATUS_JSON"); status != "" {
+			if credential := os.Getenv("NEUX_QODER_ACCOUNT_ROTATE_ON_STATUS"); credential != "" {
+				if err := os.WriteFile(credential, []byte("opaque-rotated-by-status"), 0o600); err != nil {
+					os.Exit(4)
+				}
+			}
+			fmt.Println(status)
+			os.Exit(0)
+		}
 		fmt.Printf("{\"logged_in\":%s}\n", os.Getenv("NEUX_QODER_ACCOUNT_STATUS"))
 		os.Exit(0)
 	}
 	if !strings.Contains(strings.Join(os.Args, " "), "--no-session-persistence") || os.Getenv("QODERCN_PERSONAL_ACCESS_TOKEN") != "" {
 		os.Exit(2)
+	}
+	if trace := os.Getenv("NEUX_QODER_ACCOUNT_TRACE"); trace != "" {
+		file, err := os.OpenFile(trace, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			os.Exit(4)
+		}
+		if _, err := file.WriteString("sdk\n"); err != nil || file.Close() != nil {
+			os.Exit(4)
+		}
+	}
+	userID := os.Getenv("NEUX_QODER_ACCOUNT_UID")
+	if credential := os.Getenv("NEUX_QODER_ACCOUNT_ROTATE_ON_PROBE"); credential != "" {
+		raw, err := os.ReadFile(credential)
+		if err != nil {
+			os.Exit(4)
+		}
+		if string(raw) == "opaque-before-switch" {
+			if err := os.WriteFile(credential, []byte("opaque-after-switch"), 0o600); err != nil {
+				os.Exit(4)
+			}
+		} else {
+			userID = "native-user-after-switch"
+		}
 	}
 	scanner := bufio.NewScanner(os.Stdin)
 	encoder := json.NewEncoder(os.Stdout)
@@ -249,7 +478,7 @@ func TestACPSystemQoderAccountProcess(t *testing.T) {
 		_ = encoder.Encode(map[string]any{"type": "control_response", "response": map[string]any{
 			"request_id": frame.ID, "subtype": "success", "response": map[string]any{
 				"account": map[string]string{
-					"userId": os.Getenv("NEUX_QODER_ACCOUNT_UID"), "organization": os.Getenv("NEUX_QODER_ACCOUNT_ORG"),
+					"userId": userID, "organization": os.Getenv("NEUX_QODER_ACCOUNT_ORG"),
 					"email": "same-display@example.invalid",
 				},
 			},

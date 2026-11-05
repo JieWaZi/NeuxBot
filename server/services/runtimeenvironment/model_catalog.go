@@ -192,6 +192,9 @@ func (s *service) detectNative(ctx context.Context, summary agentapi.RuntimeSumm
 	if snapshot.Capabilities.Version != "" {
 		result.State = agentapi.DetectionStateReady
 	}
+	if snapshot.QoderLoginVerified {
+		result.Auth = agentapi.AuthStatusOK
+	}
 	if snapshot.State == agent.CatalogSignedOut {
 		result.State, result.Auth = agentapi.DetectionStateReady, agentapi.AuthStatusMissing
 	}
@@ -202,12 +205,15 @@ func (s *service) detectNative(ctx context.Context, summary agentapi.RuntimeSumm
 		return result
 	}
 	result.State, result.Auth = agentapi.DetectionStateReady, agentapi.AuthStatusOK
-	if environment.BaseRuntimeID != constants.RuntimeIDCodex && environment.BaseRuntimeID != constants.RuntimeIDClaude && environment.BaseRuntimeID != constants.RuntimeIDCursor {
-		// ACP model discovery is not an authentication proof.
+	if environment.BaseRuntimeID != constants.RuntimeIDCodex && environment.BaseRuntimeID != constants.RuntimeIDClaude &&
+		environment.BaseRuntimeID != constants.RuntimeIDCursor && !snapshot.QoderLoginVerified {
+		// Other ACP providers may expose models before authentication.
 		result.Auth = agentapi.AuthStatusUnknown
 	}
 	if snapshot.State == agent.CatalogStale {
-		result.Auth = agentapi.AuthStatusUnknown
+		if !snapshot.QoderLoginVerified {
+			result.Auth = agentapi.AuthStatusUnknown
+		}
 		result.Diagnostics = []agentapi.Diagnostic{{
 			Code: agentapi.DiagnosticCodeACPOptionsUnavailable, Level: agentapi.DiagnosticLevelWarning, Message: snapshot.ErrorCode,
 		}}
