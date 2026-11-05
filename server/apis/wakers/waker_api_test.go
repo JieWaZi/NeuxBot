@@ -15,6 +15,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/builtinrolepreset"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
@@ -457,10 +458,7 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create waker project binding: %v", err)
 	}
-	chatLog, err := eventlog.NewStore(chatLogDirectory)
-	if err != nil {
-		t.Fatalf("open chat authority: %v", err)
-	}
+	chatLog := conversationfixture.New(t, chatLogDirectory)
 	chatID := "97979797979797979797979797979797"
 	authorityExecutionID := "98989898989898989898989898989898"
 	layout, err := chatstorage.NewLayout(chatLogDirectory)
@@ -474,7 +472,7 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 	if err := workspace.EnsureExecutionWorkspace(workspaceDirectory, chatID, waker.ID, nil); err != nil {
 		t.Fatalf("create chat workspace: %v", err)
 	}
-	if _, err := chatLog.Create(chatID, []eventlog.AppendInput{
+	if _, err := conversationfixture.CommitFacts(t.Context(), chatLog, chatID, []eventlog.AppendInput{
 		{
 			Type: constants.ChatEventTypeCreated,
 			Data: mustMarshalWakerAPIEvent(t, eventlog.ChatCreatedData{
@@ -494,7 +492,7 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 	if _, err := deleteWaker.Output(ctx); !errors.Is(err, status_error.WakerHasRunningWork) {
 		t.Fatalf("delete running waker error = %v, want WakerHasRunningWork", err)
 	}
-	if _, err := chatLog.Append(chatID, []eventlog.AppendInput{{
+	if _, err := conversationfixture.CommitFacts(t.Context(), chatLog, chatID, []eventlog.AppendInput{{
 		Type:        constants.ChatEventTypeExecutionCompleted,
 		ExecutionID: authorityExecutionID,
 		Data: mustMarshalWakerAPIEvent(t, eventlog.ExecutionFinishedData{

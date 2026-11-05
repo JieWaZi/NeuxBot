@@ -17,11 +17,11 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	agentclient "github.com/JieWaZi/acp-go/pkg/agent_next"
-	claude "github.com/JieWaZi/acp-go/pkg/agent_next/claude"
+	agentclient "github.com/JieWaZi/acp-go/pkg/agentclient"
+	claude "github.com/JieWaZi/acp-go/pkg/claude"
 )
 
 func resolveClaudeSystemAccount(ctx context.Context, request agent.AccountRequest, home string) (agent.AccountRequest, error) {
@@ -210,7 +210,7 @@ func (s *Service) resolveManagedClaudeAccount(ctx context.Context, request agent
 	if !isManagedAccountID(request.AccountID) {
 		return agent.AccountRequest{}, status_error.AIAccountConfigurationInvalid
 	}
-	release, err := s.acquireLease(ctx, request.AccountID, false, false)
+	release, err := s.acquireLease(ctx, request.AccountID, false, request.WaitForLease)
 	if err != nil {
 		return agent.AccountRequest{}, err
 	}
@@ -249,7 +249,7 @@ func (s *Service) acquireManagedClaudeAccount(ctx context.Context, request agent
 	if !isManagedAccountID(request.AccountID) {
 		return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 	}
-	release, err := s.acquireLease(ctx, request.AccountID, false, false)
+	release, err := s.acquireLease(ctx, request.AccountID, false, request.WaitForLease)
 	if err != nil {
 		return agent.AccountLease{}, err
 	}

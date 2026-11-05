@@ -7,6 +7,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -66,10 +67,7 @@ func TestGetWakerWorkRecordReturnsAggregatedStats(t *testing.T) {
 	}
 	global.ChatService = manager
 	t.Cleanup(manager.Close)
-	logStore, err := eventlog.NewStore(logDirectory)
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	logStore := conversationfixture.New(t, logDirectory)
 
 	ctx, _ := gin.CreateTestContext(nil)
 	now := time.Now().UnixMilli()
@@ -125,7 +123,7 @@ func TestGetWakerWorkRecordReturnsAggregatedStats(t *testing.T) {
 				Data:        mustMarshalWakerWorkRecordEvent(t, eventlog.ExecutionCreatedData{}),
 			})
 		}
-		records, createErr := logStore.Create(chatID, inputs)
+		records, createErr := conversationfixture.CommitFacts(t.Context(), logStore, chatID, inputs)
 		if createErr != nil {
 			t.Fatalf("Create Chat log error = %v", createErr)
 		}

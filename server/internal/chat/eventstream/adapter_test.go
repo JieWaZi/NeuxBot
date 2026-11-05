@@ -452,8 +452,7 @@ func TestForkCapabilitiesMatchWindowAndIncrementalTerminal(t *testing.T) {
 	}
 	appendFact(constants.ChatEventTypeCreated, "", eventlog.ChatCreatedData{WorkspaceDirectory: "/workspace"})
 	appendFact(constants.ChatEventTypeExecutionCreated, "one", eventlog.ExecutionCreatedData{RuntimeID: "runtime"})
-	appendFact(constants.ChatEventTypeInvocationFinished, "one", eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "runtime", SessionOutputID: "private-session", ForkMode: "latest"})
-	appendFact(constants.ChatEventTypeNativeSessionUpdated, "one", eventlog.RuntimeSessionData{RuntimeID: "runtime", SessionID: "private-session", LastExecutionID: "one"})
+	appendFact(constants.ChatEventTypeInvocationFinished, "one", eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "runtime", SessionOutputID: "private-session", ForkMode: "turn", ForkPosition: "verified-turn"})
 	appendFact(constants.ChatEventTypeExecutionCompleted, "one", eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
 	adapter := NewAdapter()
 	var event PublicEvent
@@ -467,11 +466,6 @@ func TestForkCapabilitiesMatchWindowAndIncrementalTerminal(t *testing.T) {
 	snapshot, err := messageview.ReplayPublicMessages(records)
 	if err != nil || len(snapshot) != 1 || event.Message == nil || !reflect.DeepEqual(event.Message.Fork, snapshot[0].Fork) || !event.Message.Fork.Available {
 		t.Fatalf("terminal and snapshot diverged: %+v %+v %v", event.Message, snapshot, err)
-	}
-	appendFact(constants.ChatEventTypeNativeSessionCleared, "one", eventlog.RuntimeSessionData{RuntimeID: "runtime", LastExecutionID: "one"})
-	event, err = adapter.Apply(records[len(records)-1])
-	if err != nil || event.Message == nil || event.Message.Fork.Available || event.Message.Fork.ReasonCode != "session_changed" {
-		t.Fatalf("native reset failed to update operation: %+v %v", event, err)
 	}
 }
 

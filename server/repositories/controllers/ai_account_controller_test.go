@@ -162,7 +162,7 @@ func TestAIAccountAuthGenerationTracksCredentialBoundaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	current = read(1)
-	if err := repo.StoreCredential(ctx, current.ID, current.Revision, "refreshed", ""); err != nil {
+	if err := repo.StoreCredential(ctx, current.ID, current.Revision, "refreshed"); err != nil {
 		t.Fatal(err)
 	}
 	current = read(1)

@@ -4,13 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -52,7 +55,6 @@ func forkFixture(t *testing.T) (*service, string) {
 			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: mark, Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "user-" + mark, RuntimeID: "custom-codex", Model: "model", Reasoning: "high", PermissionLevel: constants.PermissionLevelDefault})},
 			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: mark},
 			eventlog.AppendInput{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: mark, Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "custom-codex", WorkingDirectory: root, SessionOutputID: "native-parent", ForkMode: "turn", ForkPosition: "turn-" + mark})},
-			eventlog.AppendInput{Type: constants.ChatEventTypeNativeSessionUpdated, ExecutionID: mark, Data: marshalData(eventlog.RuntimeSessionData{RuntimeID: "custom-codex", SessionID: "native-parent", LastExecutionID: mark})},
 			eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: mark, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
 		)
 	}
@@ -171,12 +173,25 @@ func TestForkRejectsConcurrentDeletionAndUncertainRetry(t *testing.T) {
 func TestForkRecoveryPublishesDurableNativeResult(t *testing.T) {
 	m, parent := forkFixture(t)
 	input := ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "restart"}
-	operation, err := m.prepareFork(input)
+	operation, err := m.prepareFork(t.Context(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var payload forkPayload
 	if err = json.Unmarshal(operation.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	const inheritedMessages = 130
+	for i := range inheritedMessages {
+		payload.Messages = append(payload.Messages, messageview.InheritedMessage{
+			Message: messageview.Message{
+				ID: fmt.Sprintf("historical-child-%d", i), Role: constants.MessageRoleUser, Content: "历史消息",
+			},
+			SourceMessageID: fmt.Sprintf("historical-source-%d", i),
+		})
+	}
+	operation.Payload, err = json.Marshal(payload)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err = m.prepareForkWorkspace(operation.ChatID, payload); err != nil {
@@ -194,6 +209,10 @@ func TestForkRecoveryPublishesDurableNativeResult(t *testing.T) {
 	state, err := m.LoadExecutionContext(context.Background(), operation.ChatID)
 	if err != nil || state.RuntimeSessions["custom-codex"].SessionID != "durable-child" {
 		t.Fatalf("recovery: %+v %v", state, err)
+	}
+	records, err := m.logStore.ReadAll(operation.ChatID)
+	if err != nil || len(records) != len(payload.Messages)+1 {
+		t.Fatalf("recovery log contains %d records, want %d: %v", len(records), len(payload.Messages)+1, err)
 	}
 }
 
@@ -237,7 +256,7 @@ func TestForkProjectionFailureRecoversWithoutSecondNativeCall(t *testing.T) {
 func TestForkDeletionSealsVisibleChild(t *testing.T) {
 	m, parent := forkFixture(t)
 	input := ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "delete-visible"}
-	operation, err := m.prepareFork(input)
+	operation, err := m.prepareFork(t.Context(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +296,7 @@ func TestForkDeletionSealsVisibleChild(t *testing.T) {
 func TestForkDeletionCancelsUnpublishedChild(t *testing.T) {
 	m, parent := forkFixture(t)
 	input := ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "delete-pending"}
-	operation, err := m.prepareFork(input)
+	operation, err := m.prepareFork(t.Context(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +371,7 @@ func TestForkPreflightFailureCanRetry(t *testing.T) {
 func TestDeleteWakerCancelsPendingFork(t *testing.T) {
 	m, parent := forkFixture(t)
 	input := ForkInput{ChatID: parent, ExecutionID: "before", ClientRequestID: "delete-waker"}
-	operation, err := m.prepareFork(input)
+	operation, err := m.prepareFork(t.Context(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -464,7 +483,7 @@ func TestForkActiveAndUnsupportedBoundaryAreRejected(t *testing.T) {
 		case "team":
 			changed.threadWorkspaceID = "team"
 		}
-		targets, err := forkPoints(records, changed)
+		targets, err := forkPoints(records, changed, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -483,7 +502,9 @@ func TestForkActiveAndUnsupportedBoundaryAreRejected(t *testing.T) {
 			records[i].Data = marshalData(data)
 		}
 	}
-	points, err := forkPoints(records, state)
+	// The latest-only boundary is available only while the matching native session is current.
+	binding := &agent.NativeBinding{Session: agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: "native-parent"}}
+	points, err := forkPoints(records, state, binding)
 	if err != nil || len(points) != 2 || points[0].target.Available || !points[1].target.Available {
 		t.Fatalf("latest boundary: %+v %v", points, err)
 	}

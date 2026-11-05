@@ -461,7 +461,7 @@ func TestReplayMessagesDoesNotBuildFileOutcomesFromToolDiffs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReplayMessages() error = %v", err)
 	}
-	if len(messages) != 1 || len(messages[0].FileChanges) != 0 || len(messages[0].FileChangeDiffs) != 0 || messages[0].FileChangeRecord != nil {
+	if len(messages) != 1 || len(messages[0].FileChangeDiffs) != 0 || messages[0].FileChangeRecord != nil {
 		t.Fatalf("CLI diff created independent file outcome: %+v", messages)
 	}
 	if len(messages[0].RuntimeEvents) != 4 || messages[0].DisplayParts[0].ToolStatus != constants.MessageToolStatusCompleted {
@@ -537,7 +537,7 @@ func TestPublicMessageViewDiscardsRuntimeHistoryPreservingDisplay(t *testing.T) 
 			"content": []any{map[string]any{"type": "diff", "path": "/workspace/main.go", "oldText": "a\n", "newText": "b\nc\n"}},
 		}))
 	}
-	if got := public.PublicMessage("execution-1"); len(got.FileChanges) != 0 || got.FileChangeRecord != nil {
+	if got := public.PublicMessage("execution-1"); got.FileChangeRecord != nil {
 		t.Fatal("tool payload generated independent file outcome")
 	}
 	apply(runtimeRecord(103, "execution-1", "execution-1", "invocation-1", "tool_result", map[string]any{"toolCallId": "write-1", "status": "completed"}))
@@ -555,7 +555,7 @@ func TestPublicMessageViewPreservesInheritedFileReference(t *testing.T) {
 	t.Parallel()
 	data, err := eventlog.MarshalData(InheritedMessage{
 		SourceMessageID: "source-message",
-		Message:         Message{Role: constants.MessageRoleAssistant, Content: "已更新文件", FileChanges: []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}}, FileChangeRecord: &eventlog.FileChangesData{RecordID: "inherited-record", Version: 2, State: "ready", TotalFiles: 1}},
+		Message:         Message{Role: constants.MessageRoleAssistant, Content: "已更新文件", FileChangeRecord: &eventlog.FileChangesData{RecordID: "inherited-record", Version: 2, State: "ready", TotalFiles: 1}},
 		Diffs:           []MessageFileChangeDiff{{Path: "main.go", NewContent: "private content\n"}},
 	})
 	if err != nil {
@@ -566,7 +566,7 @@ func TestPublicMessageViewPreservesInheritedFileReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	message := builder.Messages()[0]
-	if len(message.FileChanges) != 0 || message.FileChangeRecord == nil || message.FileChangeRecord.RecordID != "inherited-record" || message.Content != "已更新文件" {
+	if message.FileChangeRecord == nil || message.FileChangeRecord.RecordID != "inherited-record" || message.Content != "已更新文件" {
 		t.Fatalf("inherited public snapshot lost display: %+v", message)
 	}
 	if len(builder.messages[0].FileChangeDiffs) != 0 {
@@ -581,7 +581,6 @@ func TestReplayPublicMessagesPreservesInheritedFileReference(t *testing.T) {
 		SourceMessageID: "source-message",
 		Message: Message{
 			Inherited: true, Role: constants.MessageRoleAssistant, Content: "已更新文件",
-			FileChanges:      []ToolFileChangeSummary{{Path: "main.go", AddedLines: 1}},
 			FileChangeRecord: &eventlog.FileChangesData{RecordID: "inherited-record", Version: 2, State: "ready", TotalFiles: 1},
 		},
 		Diffs: []MessageFileChangeDiff{{Path: "main.go", NewContent: "package main\n"}},
@@ -653,7 +652,7 @@ func TestReplayMessagesDoesNotPromoteRealProjectToolDiffToFileOutcome(t *testing
 	if err != nil {
 		t.Fatalf("ReplayMessages() error = %v", err)
 	}
-	if len(messages) != 1 || len(messages[0].FileChanges) != 0 || messages[0].FileChangeRecord != nil || len(messages[0].RuntimeEvents) != 1 {
+	if len(messages) != 1 || messages[0].FileChangeRecord != nil || len(messages[0].RuntimeEvents) != 1 {
 		t.Fatal("project tool diff must preserve canonical history without generating file outcomes")
 	}
 

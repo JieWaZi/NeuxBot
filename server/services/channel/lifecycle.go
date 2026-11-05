@@ -216,12 +216,8 @@ func (s *service) handleAttemptTerminal(
 	if submittedReport := strings.TrimSpace(currentAttempt.Result); submittedReport != "" {
 		result = submittedReport
 	}
-	changedPaths := make([]string, 0, len(message.FileChanges))
-	for _, change := range message.FileChanges {
-		if path := strings.TrimSpace(change.Path); path != "" {
-			changedPaths = append(changedPaths, path)
-		}
-	}
+	// The file snapshot has its own lifecycle and may finish after the task terminal.
+	changedPaths := []string{}
 	taskStatus := constants.ChannelTaskStatusCompleted
 	if message.Status == constants.ExecutionStatusFailed {
 		taskStatus = constants.ChannelTaskStatusFailed

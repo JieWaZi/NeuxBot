@@ -17,7 +17,7 @@ import (
 	_ "time/tzdata"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	ledger "github.com/JieWaZi/NeuxBot/server/internal/usage"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -29,7 +29,7 @@ const snapshotLifetime = 20 * time.Minute
 // Service rebuilds a disposable query projection from canonical native streams.
 type Service struct {
 	// store retains canonical native terminals independently of public chats.
-	store *eventlog_next.Store
+	store *conversation.Store
 	// projection manages rebuildable rows in the business database.
 	projection *controllers.UsageController
 	// reconcile lets one reader catch up the projection at a time.
@@ -38,7 +38,7 @@ type Service struct {
 	key [32]byte
 }
 
-func NewService(store *eventlog_next.Store, projection *controllers.UsageController) *Service {
+func NewService(store *conversation.Store, projection *controllers.UsageController) *Service {
 	service := &Service{store: store, projection: projection, reconcile: make(chan struct{}, 1)}
 	rand.Read(service.key[:])
 	return service
@@ -363,7 +363,7 @@ func (s *Service) checkGeneration(ctx context.Context, view snapshot) error {
 }
 
 func (s *Service) catchUp(ctx context.Context, generation string, checkpoints []models.UsageCheckpoint) error {
-	var after [eventlog_next.UsageShards]int64
+	var after [conversation.UsageShards]int64
 	for _, checkpoint := range checkpoints {
 		if checkpoint.Shard >= 0 && checkpoint.Shard < len(after) {
 			after[checkpoint.Shard] = checkpoint.Cursor
@@ -402,7 +402,7 @@ func (s *Service) catchUp(ctx context.Context, generation string, checkpoints []
 	return result
 }
 
-func project(records []models.UsageRecord, terminal eventlog_next.UsageTerminal) []models.UsageRecord {
+func project(records []models.UsageRecord, terminal conversation.UsageTerminal) []models.UsageRecord {
 	result := terminal.Result
 	digest := result.Key.Digest()
 	row := models.UsageRecord{NativeID: digest[:], RecordedAt: terminal.RecordedAt, Provider: result.Key.Session.Provider}

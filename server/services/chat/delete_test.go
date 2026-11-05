@@ -221,13 +221,7 @@ func TestDeleteChatRemovesAuthorityIndexesAndManagedDirectories(t *testing.T) {
 	if session, err := runtimeSessionController.Get(ctx, chatID, "codex"); err != nil || session.SessionID != "" {
 		t.Fatalf("native session after delete = %+v, error = %v", session, err)
 	}
-	indexPath, pathErr := logStore.IndexPath(chatID)
-	if pathErr != nil {
-		t.Fatalf("IndexPath() error = %v", pathErr)
-	}
-	if _, err := os.Stat(indexPath); !os.IsNotExist(err) {
-		t.Fatalf("derived chat index still exists: %v", err)
-	}
+
 }
 
 func TestDeleteChatOwnershipFailurePreservesAuthorityAndIndexes(t *testing.T) {
@@ -357,11 +351,7 @@ func TestDeleteChatDoesNotRequireMessageView(t *testing.T) {
 			ExecutionID: messageID,
 			Data:        marshalData(eventlog.ExecutionCreatedData{}),
 		},
-		{
-			Type:        constants.ChatEventTypeAssistantMessage,
-			ExecutionID: messageID,
-			Data:        []byte(`{"type":"raw","data":{"source":"stdout"}}`),
-		},
+		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "malformed-message", Data: []byte(`[]`)},
 		{
 			Type:        constants.ChatEventTypeExecutionCompleted,
 			ExecutionID: messageID,
@@ -584,7 +574,7 @@ func TestDeleteWakerChatsUsesAuthorityAndRejectsActiveExecution(t *testing.T) {
 
 func newDeleteTestService(
 	t *testing.T,
-) (*gorm.DB, *service, *eventlog.Store) {
+) (*gorm.DB, *service, *conversationJournal) {
 	t.Helper()
 	database, err := dbhelper.NewDB(conf.DB{
 		Type:    conf.Sqlite,
@@ -599,12 +589,10 @@ func newDeleteTestService(
 		t.Fatalf("get sql database: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("create chat log store: %v", err)
-	}
+	logStore := newTestConversationJournal(t, t.TempDir())
 	chatService := newTestService(t, Config{
 		StorageDirectory: logStore.Root(),
+		Conversations:    logStore.Store,
 		QueryIndexes: QueryIndexDependencies{
 			Chats:           controllers.NewChatController(database.DB),
 			RuntimeSessions: controllers.NewRuntimeSessionController(database.DB),

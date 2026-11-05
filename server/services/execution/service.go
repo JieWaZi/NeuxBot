@@ -2,8 +2,7 @@
 package execution
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"encoding/json"
@@ -113,9 +112,9 @@ type service struct {
 	// resolveAccount freezes the subject and generation before native acquisition.
 	resolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
 	// runtimeSummaries supplies pure workspace file metadata from the runtime catalog.
-	runtimeSummaries []agentapi.RuntimeSummary
+	runtimeSummaries []agent.RuntimeSummary
 	// workspacePreparer projects instructions and skills without opening a runtime.
-	workspacePreparer *agentapi.WorkspacePreparer
+	workspacePreparer *agent.WorkspacePreparer
 	// nativeResources tracks connection-owned public resource projections for hot turns.
 	nativeResources sync.Map
 	// journal 读写 Chat 权威事实、窄投影和 committed SSE。
@@ -181,7 +180,7 @@ type Config struct {
 	// ResolveAccount freezes an authoritative subject and generation for the selected config root.
 	ResolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
 	// RuntimeSummaries declares workspace filenames and skill directories.
-	RuntimeSummaries []agentapi.RuntimeSummary
+	RuntimeSummaries []agent.RuntimeSummary
 	// Journal 读写 Chat 权威事实和可重建投影。
 	Journal chatservice.Journal
 	// DormantChats 批量建立团队首发所需的独立空闲 Chat。
@@ -271,7 +270,7 @@ func New(config Config) (Core, error) {
 		threads:              config.Threads,
 		resolveAccount:       config.ResolveAccount,
 		runtimeSummaries:     slices.Clone(config.RuntimeSummaries),
-		workspacePreparer:    agentapi.NewWorkspacePreparer(config.RuntimeSummaries),
+		workspacePreparer:    agent.NewWorkspacePreparer(config.RuntimeSummaries),
 		journal:              config.Journal,
 		dormantChats:         config.DormantChats,
 		wakerController:      config.Wakers,

@@ -8,8 +8,11 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/conf"
@@ -92,12 +95,9 @@ func TestAppendParticipantMessagesIsIdempotentAndPreservesSource(t *testing.T) {
 }
 
 func TestReadMessageHistoryReadsLatestAndOlderJSONLWindows(t *testing.T) {
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	logStore := newTestConversationJournal(t, t.TempDir())
 	chatID := "abababababababababababababababab"
-	_, err = logStore.Create(chatID, []eventlog.AppendInput{
+	facts := []eventlog.AppendInput{
 		{
 			Type: constants.ChatEventTypeCreated,
 			Data: marshalData(eventlog.ChatCreatedData{
@@ -118,20 +118,6 @@ func TestReadMessageHistoryReadsLatestAndOlderJSONLWindows(t *testing.T) {
 			Data:        marshalData(eventlog.ExecutionCreatedData{UserMessageID: "user-1"}),
 		},
 		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "execution-1"},
-		{
-			Type:        constants.ChatEventTypeAssistantMessage,
-			ExecutionID: "execution-1",
-			Data: marshalData(eventlog.RuntimeMessageData{
-				MessageRevision: 6,
-				Content: []eventlog.RuntimeMessageContent{{
-					Type: "text_delta",
-					Data: marshalData(struct {
-						// Text 是第一轮测试回复的完整文本。
-						Text string `json:"text"`
-					}{Text: "回答一"}),
-				}},
-			}),
-		},
 		{
 			Type:        constants.ChatEventTypeExecutionCompleted,
 			ExecutionID: "execution-1",
@@ -154,45 +140,28 @@ func TestReadMessageHistoryReadsLatestAndOlderJSONLWindows(t *testing.T) {
 		},
 		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "execution-2"},
 		{
-			Type:        constants.ChatEventTypeAssistantMessage,
-			ExecutionID: "execution-2",
-			Data: marshalData(eventlog.RuntimeMessageData{
-				MessageRevision: 12,
-				Content: []eventlog.RuntimeMessageContent{
-					{
-						Type: "tool_use",
-						Data: marshalData(map[string]any{
-							"name": "file_modify", "status": "in_progress", "toolCallId": "edit-2",
-							"content": []any{map[string]any{
-								"type": "diff", "path": "/workspace/projects/Desktop/main.go",
-								"newText": "package main\n",
-							}},
-						}),
-					},
-					{
-						Type: "tool_result",
-						Data: marshalData(map[string]any{
-							"status": "completed", "toolCallId": "edit-2",
-						}),
-					},
-					{
-						Type: "text_delta",
-						Data: marshalData(struct {
-							// Text 是第二轮测试回复的完整文本。
-							Text string `json:"text"`
-						}{Text: "回答二"}),
-					},
-				},
-			}),
-		},
-		{
 			Type:        constants.ChatEventTypeExecutionCompleted,
 			ExecutionID: "execution-2",
 			Data: marshalData(eventlog.ExecutionFinishedData{
 				Status: constants.ExecutionStatusCompleted,
 			}),
 		},
-	})
+	}
+	changes := conversationfixture.Facts(facts[:4])
+	changes = append(changes, conversationfixture.NativeMessage(t, logStore.Store, chatID, "execution-1",
+		agent.MessageChange{Kind: agent.MessageAppend, ContentType: constants.RuntimeEventTypeTextDelta, Text: "回答一"},
+	))
+	changes = append(changes, conversationfixture.Facts(facts[4:8])...)
+	changes = append(changes, conversationfixture.NativeMessage(t, logStore.Store, chatID, "execution-2",
+		agent.MessageChange{Kind: agent.MessageEvent, ContentType: constants.RuntimeEventTypeToolUse, ToolCallID: "edit-2",
+			Data: marshalData(map[string]any{"name": "file_modify", "status": "in_progress", "toolCallId": "edit-2",
+				"content": []any{map[string]any{"type": "diff", "path": "/workspace/projects/Desktop/main.go", "newText": "package main\n"}}})},
+		agent.MessageChange{Kind: agent.MessageEvent, ContentType: constants.RuntimeEventTypeToolResult, ToolCallID: "edit-2",
+			Data: marshalData(map[string]any{"status": "completed", "toolCallId": "edit-2"})},
+		agent.MessageChange{Kind: agent.MessageAppend, ContentType: constants.RuntimeEventTypeTextDelta, Text: "回答二"},
+	))
+	changes = append(changes, conversationfixture.Facts(facts[8:])...)
+	_, err := conversationfixture.Commit(t.Context(), logStore.Store, chatID, changes)
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
@@ -215,14 +184,14 @@ func TestReadMessageHistoryReadsLatestAndOlderJSONLWindows(t *testing.T) {
 			latest.Resources[1].CreatedSequence,
 		)
 	}
-	if len(latest.Resources[1].FileChanges) != 0 || latest.Resources[1].FileChangeRecord != nil {
-		t.Fatal("legacy tool diff must not create independent file outcome")
+	if latest.Resources[1].FileChangeRecord != nil {
+		t.Fatal("native tool diff must not create independent file outcome")
 	}
 	if len(latest.Resources[1].RuntimeEvents) != 0 || len(latest.Resources[1].FileChangeDiffs) != 0 {
 		t.Fatal("public history leaked private tool payload")
 	}
 	if _, err := chatService.GetMessageFileChange(context.Background(), chatID, "execution-2", "projects/Desktop/main.go"); err == nil {
-		t.Fatal("legacy tool payload was used as independent historical diff")
+		t.Fatal("native tool payload was used as independent historical diff")
 	}
 
 	older, err := chatService.ReadMessageHistory(context.Background(), chatID, 7, 2)
@@ -236,10 +205,7 @@ func TestReadMessageHistoryReadsLatestAndOlderJSONLWindows(t *testing.T) {
 
 func TestListEventsReadsAuthorityWithoutChatIndex(t *testing.T) {
 	t.Parallel()
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	logStore := newTestConversationJournal(t, t.TempDir())
 	chatID := "10101010101010101010101010101010"
 	if _, err := logStore.Create(chatID, []eventlog.AppendInput{
 		{
@@ -275,10 +241,7 @@ func TestListEventsReadsAuthorityWithoutChatIndex(t *testing.T) {
 
 func TestSubscribeEventsBacklogContainsOnlyPublicEventsAfterCursor(t *testing.T) {
 	t.Parallel()
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	logStore := newTestConversationJournal(t, t.TempDir())
 	chatID := "20202020202020202020202020202020"
 	if _, err := logStore.Create(chatID, []eventlog.AppendInput{
 		{
@@ -416,67 +379,6 @@ func TestMetadataFromRecordsAppliesLatestChatTitle(t *testing.T) {
 	}
 }
 
-func TestReplayChatStateAppliesRuntimeSessionUpdatesAndClears(t *testing.T) {
-	t.Parallel()
-	records := []eventlog.Record{
-		{
-			ChatID:     "chat-1",
-			Sequence:   1,
-			RecordedAt: 10,
-			Type:       constants.ChatEventTypeCreated,
-			Data: marshalData(eventlog.ChatCreatedData{
-				WakerID:            "waker-1",
-				WorkspaceDirectory: "/tmp/project",
-				Title:              "Session 重放",
-			}),
-		},
-		{
-			ChatID:     "chat-1",
-			Sequence:   2,
-			RecordedAt: 20,
-			Type:       constants.ChatEventTypeNativeSessionUpdated,
-			Data: marshalData(eventlog.RuntimeSessionData{
-				RuntimeID:       "codex",
-				SessionID:       "codex-session",
-				LastExecutionID: "execution-1",
-			}),
-		},
-		{
-			ChatID:     "chat-1",
-			Sequence:   3,
-			RecordedAt: 30,
-			Type:       constants.ChatEventTypeNativeSessionUpdated,
-			Data: marshalData(eventlog.RuntimeSessionData{
-				RuntimeID:       "claude",
-				SessionID:       "claude-session",
-				LastExecutionID: "execution-2",
-			}),
-		},
-		{
-			ChatID:     "chat-1",
-			Sequence:   4,
-			RecordedAt: 40,
-			Type:       constants.ChatEventTypeNativeSessionCleared,
-			Data: marshalData(eventlog.RuntimeSessionData{
-				RuntimeID: "codex",
-			}),
-		},
-	}
-
-	state, err := replayChatState(records)
-	if err != nil {
-		t.Fatalf("replayChatState() error = %v", err)
-	}
-	if _, exists := state.runtimeSessions["codex"]; exists {
-		t.Fatal("cleared Codex session remained in authoritative state")
-	}
-	claude, exists := state.runtimeSessions["claude"]
-	if !exists || claude.SessionID != "claude-session" ||
-		claude.LastExecutionID != "execution-2" || claude.UpdatedAt != 30 {
-		t.Fatalf("Claude runtime session = %+v", claude)
-	}
-}
-
 func TestLoadExecutionContextRepairsLaggingSessionProjection(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -494,10 +396,7 @@ func TestLoadExecutionContextRepairsLaggingSessionProjection(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	logStore, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatalf("NewStore() error = %v", err)
-	}
+	logStore := newTestConversationJournal(t, t.TempDir())
 	chatID := "30303030303030303030303030303030"
 	records, err := logStore.Create(chatID, []eventlog.AppendInput{
 		{
@@ -508,14 +407,10 @@ func TestLoadExecutionContextRepairsLaggingSessionProjection(t *testing.T) {
 				Title:              "Session 权威状态",
 			}),
 		},
-		{
-			Type: constants.ChatEventTypeNativeSessionUpdated,
-			Data: marshalData(eventlog.RuntimeSessionData{
-				RuntimeID:       "codex",
-				SessionID:       "jsonl-session",
-				LastExecutionID: "execution-1",
-			}),
-		},
+		{Type: constants.ChatEventTypeMessageInherited, MessageID: "execution-1", Data: marshalData(messageview.InheritedMessage{
+			Message:        messageview.Message{ID: "execution-1", Role: constants.MessageRoleAssistant, ExecutionID: "execution-1"},
+			ForkInvocation: &eventlog.InvocationFinishedData{RuntimeID: "codex", SessionOutputID: "jsonl-session", RecoveryStrategy: constants.InvocationRecoveryInitial},
+		})},
 	})
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -563,10 +458,7 @@ func newTestService(t *testing.T, dependencies Config) *service {
 }
 
 func TestMessageForkWindowAndTerminalDoNotReplayEarlierRounds(t *testing.T) {
-	store, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newTestConversationJournal(t, t.TempDir())
 	chatID := "abababababababababababababababab"
 	facts := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WorkspaceDirectory: "/workspace", WakerID: "waker"})}}
 	for _, id := range []string{"old", "new"} {
@@ -607,4 +499,9 @@ func TestMessageForkWindowAndTerminalDoNotReplayEarlierRounds(t *testing.T) {
 	if terminal.Message == nil || terminal.Message.Fork == nil || !terminal.Message.Fork.Available {
 		t.Fatalf("incremental terminal lost fork capability: %+v", terminal)
 	}
+}
+
+func newTestConversationJournal(t testing.TB, root string) *conversationJournal {
+	t.Helper()
+	return &conversationJournal{Store: conversationfixture.New(t, root)}
 }

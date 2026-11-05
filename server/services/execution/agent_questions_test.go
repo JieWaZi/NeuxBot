@@ -10,6 +10,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -36,10 +37,7 @@ func TestCLIQuestionRejectsFormsTheUserCannotComplete(t *testing.T) {
 }
 
 func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
-	store, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := conversationfixture.New(t, t.TempDir())
 	chatID := "0123456789abcdef0123456789abcdef"
 	facts := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}
 	for i := 0; i < 128; i++ {
@@ -47,7 +45,7 @@ func TestCLIQuestionsUseCanonicalFactsAndActualUserDecision(t *testing.T) {
 		facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: id, Data: marshalData(eventlog.ExecutionCreatedData{})}, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})})
 	}
 	facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "execution"}, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "execution"})
-	if _, err := store.Create(chatID, facts); err != nil {
+	if _, err := conversationfixture.CommitFacts(t.Context(), store, chatID, facts); err != nil {
 		t.Fatal(err)
 	}
 	journal := &consentTestJournal{interactionTestJournal: &interactionTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 16)}

@@ -15,7 +15,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 

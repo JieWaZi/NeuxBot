@@ -438,42 +438,13 @@ func (m *service) AppendExecutionFacts(
 	if len(facts) == 0 {
 		return nil, status_error.BadRequest
 	}
-	var session *eventlog.RuntimeSessionData
-	lastFact := facts[len(facts)-1]
-	if lastFact.Type == constants.ChatEventTypeNativeSessionUpdated ||
-		lastFact.Type == constants.ChatEventTypeNativeSessionCleared {
-		decoded := eventlog.RuntimeSessionData{}
-		if err := json.Unmarshal(lastFact.Data, &decoded); err != nil {
-			return nil, err
-		}
-		session = &decoded
-	}
 	records, err := m.eventCommitter.append(chatID, facts)
 	if err != nil {
 		return nil, err
 	}
 	last := records[len(records)-1]
 	afterSequence := records[0].Sequence - 1
-	switch last.Type {
-	case constants.ChatEventTypeNativeSessionUpdated:
-		m.queryIndexes.indexRuntimeSessionSaved(
-			chatID,
-			session.RuntimeID,
-			session.SessionID,
-			session.LastExecutionID,
-			afterSequence,
-			last,
-		)
-	case constants.ChatEventTypeNativeSessionCleared:
-		m.queryIndexes.indexRuntimeSessionCleared(
-			chatID,
-			session.RuntimeID,
-			afterSequence,
-			last,
-		)
-	default:
-		m.queryIndexes.indexChatCursor(chatID, afterSequence, last)
-	}
+	m.queryIndexes.indexChatCursor(chatID, afterSequence, last)
 	m.eventCommitter.publishCommitted(records)
 	return records, nil
 }
@@ -570,16 +541,6 @@ func (m *service) PublishTerminal(commit TerminalCommit) {
 // PublishLive 发布不进入 JSONL 的安全有序消息增量。
 func (m *service) PublishLive(chatID string, event eventstream.PublicEvent) {
 	m.subscriptions.publishLive(chatID, event)
-}
-
-func cloneRuntimeSessions(
-	sessions map[string]models.RuntimeSession,
-) map[string]models.RuntimeSession {
-	cloned := make(map[string]models.RuntimeSession, len(sessions))
-	for runtimeID, session := range sessions {
-		cloned[runtimeID] = session
-	}
-	return cloned
 }
 
 // cloneExecution 复制可选的首次执行，避免调用方修改 Chat Service 的重放状态。

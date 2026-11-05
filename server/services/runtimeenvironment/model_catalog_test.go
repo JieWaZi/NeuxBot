@@ -3,7 +3,7 @@ package runtimeenvironment
 import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"slices"
 	"testing"
 )

@@ -12,10 +12,10 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	agentclient "github.com/JieWaZi/acp-go/pkg/agent_next"
-	cursor "github.com/JieWaZi/acp-go/pkg/agent_next/cursor"
+	agentclient "github.com/JieWaZi/acp-go/pkg/agentclient"
+	cursor "github.com/JieWaZi/acp-go/pkg/cursor"
 )
 
 // cursorSystemConfig owns the native settings, session and login locations. Cursor's

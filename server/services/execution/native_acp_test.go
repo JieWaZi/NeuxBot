@@ -15,7 +15,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	usageservice "github.com/JieWaZi/NeuxBot/server/services/usage"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
@@ -91,7 +91,7 @@ func TestNativeProductRemainingACPContinueCancelAndRecover(t *testing.T) {
 			if result := verify(resumed, constants.ExecutionStatusCompleted); result.Session != firstResult.Session || fixture.accounts.Load() != 2 {
 				t.Fatalf("cold session identity changed: %+v", result)
 			}
-			assertACPNativeProductWire(t, fixture.trace, firstResult.Session.SessionID)
+			assertACPNativeProductWire(t, fixture.trace, firstResult.Session.SessionID, 1)
 			report, err := usageservice.NewService(store, fixture.usage).Summary(ctx, usageservice.Filter{From: time.Now().Add(-time.Minute).UnixMilli(), To: time.Now().Add(time.Minute).UnixMilli(), Timezone: "UTC", ChatID: first.Chat.ID}, "")
 			if err != nil || report.Metrics.Invocations != 4 {
 				t.Fatalf("canonical usage: %+v %v", report, err)
@@ -239,7 +239,7 @@ func TestNativeProductWorkBuddyQoderContinueCancelAndRecover(t *testing.T) {
 			if metrics.Metrics.KnownTokens.Output != nil || metrics.Metrics.MissingUsageInvocations != 4 {
 				t.Fatalf("unattributed native samples became billable counters: %+v", metrics.Metrics)
 			}
-			assertACPNativeProductWire(t, fixture.trace, firstResult.Session.SessionID)
+			assertACPNativeProductWire(t, fixture.trace, firstResult.Session.SessionID, 2)
 			history, err = chats.ReadMessageHistory(ctx, first.Chat.ID, 0, 12)
 			if err != nil {
 				t.Fatal(err)
@@ -277,7 +277,7 @@ func TestNativeProductWorkBuddyQoderContinueCancelAndRecover(t *testing.T) {
 	}
 }
 
-func assertACPNativeProductWire(t *testing.T, tracePath, sessionID string) {
+func assertACPNativeProductWire(t *testing.T, tracePath, sessionID string, expectedRecoveries int) {
 	t.Helper()
 	trace, err := os.ReadFile(tracePath)
 	if err != nil {
@@ -325,7 +325,7 @@ func assertACPNativeProductWire(t *testing.T, tracePath, sessionID string) {
 			t.Fatalf("native request addressed the wrong session: %s", line)
 		}
 	}
-	if opened != 1 || recovered != 2 || cancelled != 1 || len(prompts) != 4 {
+	if opened != 1 || recovered != expectedRecoveries || cancelled != 1 || len(prompts) != 4 {
 		t.Fatalf("native lifecycle: new=%d recover=%d cancel=%d prompt=%d\n%s", opened, recovered, cancelled, len(prompts), trace)
 	}
 	for _, mode := range permissionModes {

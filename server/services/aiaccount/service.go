@@ -2,8 +2,6 @@
 package aiaccount
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -272,119 +270,9 @@ func (s *Service) ValidateSelection(ctx context.Context, id, runtimeID, model, r
 	return account, nil
 }
 
-// PrepareQueuedLease 等待账号配置修改结束，冻结共享执行配置并返回可重试的认证回收租约。
-func (s *Service) PrepareQueuedLease(ctx context.Context, id, runtimeID, workspace, model string) (agentapi.RuntimeTarget, func(context.Context) error, error) {
-	return s.prepareWithLease(ctx, id, runtimeID, workspace, model)
-}
-
-func (s *Service) prepareWithLease(ctx context.Context, id, runtimeID, workspace, model string) (agentapi.RuntimeTarget, func(context.Context) error, error) {
-	account, err := s.accounts.Get(ctx, id)
-	if err != nil {
-		return agentapi.RuntimeTarget{}, nil, err
-	}
-	release, err := s.acquireLease(ctx, id, false, true)
-	if err != nil {
-		return agentapi.RuntimeTarget{}, nil, err
-	}
-	unlock, err := s.credentialGate(id).Lock(ctx)
-	if err != nil {
-		release()
-		return agentapi.RuntimeTarget{}, nil, err
-	}
-	// 账号可能在取得共享租约前被修改，认证模式必须使用租约内的当前快照。
-	account, err = s.accounts.Get(ctx, id)
-	if err != nil {
-		unlock()
-		release()
-		return agentapi.RuntimeTarget{}, nil, err
-	}
-	if err := s.recoverWorkspaceAuth(ctx, account.ID, runtimeID, workspace); err != nil {
-		unlock()
-		release()
-		return agentapi.RuntimeTarget{}, nil, err
-	}
-	target, err := s.prepare(ctx, account, runtimeID, workspace, model)
-	if err != nil {
-		unlock()
-		release()
-		return agentapi.RuntimeTarget{}, nil, err
-	}
-	seed := ""
-	if account.AuthMode == constants.AccountAuthModeSubscription && runtimeID == constants.RuntimeIDCodex {
-		seed, err = s.accounts.Credential(ctx, id)
-		if err != nil {
-			unlock()
-			release()
-			return agentapi.RuntimeTarget{}, nil, err
-		}
-		target.RefreshCredentials = func(ctx context.Context, previous string) (codexoauth.Tokens, error) {
-			return s.refreshSubscription(ctx, id, previous)
-		}
-	}
-	unlock()
-	var mutex sync.Mutex
-	closed := false
-	return target, func(closeContext context.Context) error {
-		mutex.Lock()
-		defer mutex.Unlock()
-		if closed {
-			return nil
-		}
-		if seed != "" {
-			if err := s.backfillProjection(closeContext, account.ID, filepath.Join(accountconfig.Home(workspace, runtimeID), "auth.json"), seed); err != nil {
-				return err
-			}
-		}
-		release()
-		closed = true
-		return nil
-	}, nil
-}
-
 func (s *Service) credentialGate(id string) *codexoauth.CredentialGate {
 	gate, _ := s.credentials.LoadOrStore(id, codexoauth.NewCredentialGate())
 	return gate.(*codexoauth.CredentialGate)
-}
-
-func (s *Service) prepare(ctx context.Context, account models.AIAccount, runtimeID, workspace, model string) (agentapi.RuntimeTarget, error) {
-	// 获取租约后重新读取，确保修改与冻结配置没有时间窗口。
-	current, err := s.accounts.Get(ctx, account.ID)
-	if err != nil {
-		return agentapi.RuntimeTarget{}, err
-	}
-	if _, ok := accountEndpoint(current, runtimeID); !ok {
-		return agentapi.RuntimeTarget{}, status_error.AIAccountConfigurationInvalid
-	}
-	if !current.HasCredential {
-		return agentapi.RuntimeTarget{}, status_error.RuntimeAuthRequired
-	}
-	if current.AuthMode == constants.AccountAuthModeSubscription && runtimeID == constants.RuntimeIDKimi {
-		return s.prepareKimiSubscription(current)
-	}
-	key, err := s.accounts.Credential(ctx, current.ID)
-	if err != nil {
-		return agentapi.RuntimeTarget{}, err
-	}
-	if current.AuthMode == constants.AccountAuthModeSubscription {
-		if runtimeID != constants.RuntimeIDCodex {
-			return agentapi.RuntimeTarget{}, status_error.AIAccountConfigurationInvalid
-		}
-		if err := s.prepareSubscription(ctx, &current, workspace, key); err != nil {
-			return agentapi.RuntimeTarget{}, err
-		}
-	}
-	endpoint, _ := accountEndpoint(current, runtimeID)
-	environment, err := accountconfig.Prepare(workspace, accountconfig.Spec{
-		ID: current.ID, RuntimeID: runtimeID, AuthMode: current.AuthMode, BaseURL: endpoint.BaseURL, Protocol: endpoint.Protocol,
-		APIKey: key, Model: model, MaxContextSize: current.ModelContextSizes[model], Revision: current.Revision,
-		SelectedModels: current.SelectedModels, ModelContextSizes: current.ModelContextSizes,
-		ModelDisplayNames: current.ModelDisplayNames, ModelReasoningLevels: current.ModelReasoningLevels,
-		ClaudeModelRoles: current.ClaudeModelRoles,
-	})
-	if err != nil {
-		return agentapi.RuntimeTarget{}, err
-	}
-	return agentapi.RuntimeTarget{AccountID: current.ID, Environment: environment, Isolated: true}, nil
 }
 
 // accountEndpoint 只使用账号的唯一协议入口，不进行协议转换。

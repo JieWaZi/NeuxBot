@@ -16,11 +16,10 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-	eventlognext "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -52,14 +51,14 @@ func TestNativeTurnResultUsesProviderTerminalEvidence(t *testing.T) {
 	}
 }
 
-func nativePromptFixture() agentapi.TurnInput {
-	return agentapi.TurnInput{
-		Message: agentapi.Message{
+func nativePromptFixture() agent.TurnInput {
+	return agent.TurnInput{
+		Message: agent.Message{
 			Text:           "review this",
-			Attachments:    []agentapi.Attachment{{Name: "report.csv", Path: "artifacts/report.csv"}},
-			CodeReferences: []agentapi.CodeReference{{Path: "main.go", StartLine: 2, EndLine: 2, Content: "return 42"}},
+			Attachments:    []agent.Attachment{{Name: "report.csv", Path: "artifacts/report.csv"}},
+			CodeReferences: []agent.CodeReference{{Path: "main.go", StartLine: 2, EndLine: 2, Content: "return 42"}},
 		},
-		History:        []agentapi.HistoryMessage{{Role: "assistant", Content: "previous answer"}},
+		History:        []agent.HistoryMessage{{Role: "assistant", Content: "previous answer"}},
 		SelectedSkills: []string{"search-guide"}, SelectedConnectors: []string{"docs-mcp"},
 	}
 }
@@ -74,7 +73,7 @@ type nativeProductFixture struct {
 	// usage 提供从原生终态重建用量查询的 SQLite 投影。
 	usage *controllers.UsageController
 	// open 重新装配独立的 Core、Thread、Provider 和 ConversationStore。
-	open func() (Core, chatservice.Module, *eventlognext.Store, func())
+	open func() (Core, chatservice.Module, *conversation.Store, func())
 }
 
 func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, child string, permission constants.PermissionLevel) nativeProductFixture {
@@ -110,7 +109,7 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 	if err := profiles.CreateWakerDocuments(ctx, documents); err != nil {
 		t.Fatal(err)
 	}
-	summary := agentapi.RuntimeSummary{ID: providerID, BaseRuntimeID: providerID, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}
+	summary := agent.RuntimeSummary{ID: providerID, BaseRuntimeID: providerID, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}
 	switch providerID {
 	case "claude":
 		summary.InstructionFileName, summary.SkillDirectoryName = "CLAUDE.md", ".claude"
@@ -121,7 +120,7 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 	case "qoder", "qoder-cn":
 		summary.SkillDirectoryName = ".qoder"
 	}
-	model := agentapi.ModelOption{ID: "fixture-model", PermissionLevels: []constants.PermissionLevel{permission}}
+	model := agent.ModelOption{ID: "fixture-model", PermissionLevels: []constants.PermissionLevel{permission}}
 	if providerID == constants.RuntimeIDPi {
 		model.ID = "test/fixture-model"
 	}
@@ -130,22 +129,22 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 		model.PermissionLevels = []constants.PermissionLevel{constants.PermissionLevelDefault, constants.PermissionLevelAuto, constants.PermissionLevelFullAccess}
 	}
 	if providerID != "codex" {
-		model.ReasoningOptions = []agentapi.ReasoningOption{{ID: "high"}, {ID: "low"}}
+		model.ReasoningOptions = []agent.ReasoningOption{{ID: "high"}, {ID: "low"}}
 	}
 	fastOn := true
 	environment := nativeFixtureEnvironment{entry: models.RuntimeEnvironment{
 		DefaultFast: &fastOn,
 		RuntimeID:   providerID, BaseRuntimeID: providerID, Enabled: true, Binary: executable, PrefixArgs: []string{"-test.run=^" + child + "$", "--"},
-		Detection: agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: summary, ResolvedBinary: executable,
-			Models: []agentapi.ModelOption{model}},
+		Detection: agent.DetectionResult{State: agent.DetectionStateReady, Runtime: summary, ResolvedBinary: executable,
+			Models: []agent.ModelOption{model}},
 	}}
 	if standardACP {
 		environment.entry.DefaultFast = nil
 	}
 	accounts := new(atomic.Int32)
-	open := func() (Core, chatservice.Module, *eventlognext.Store, func()) {
+	open := func() (Core, chatservice.Module, *conversation.Store, func()) {
 		t.Helper()
-		store, err := eventlognext.NewStore(root)
+		store, err := conversation.NewStore(root)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -175,7 +174,7 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 		core, err := New(Config{Threads: threads, ResolveAccount: func(_ context.Context, request agent.AccountRequest, _ string) (agent.AccountRequest, error) {
 			request.Subject = "fixture-subject"
 			return request, nil
-		}, Journal: chats, DormantChats: chats, Wakers: wakers, Profiles: profiles, Projects: projects, RuntimeSummaries: []agentapi.RuntimeSummary{summary},
+		}, Journal: chats, DormantChats: chats, Wakers: wakers, Profiles: profiles, Projects: projects, RuntimeSummaries: []agent.RuntimeSummary{summary},
 			RuntimeEnvironments: environment, SkillDataDirectory: root, StorageDirectory: root})
 		if err != nil {
 			t.Fatal(err)
@@ -563,7 +562,7 @@ func (r nativeFixtureEnvironment) Get(context.Context, string) (models.RuntimeEn
 	return r.entry, nil
 }
 
-func waitNativeProductStatus(t *testing.T, ctx context.Context, store *eventlognext.Store, accepted AcceptedExecution, want constants.ExecutionStatus) {
+func waitNativeProductStatus(t *testing.T, ctx context.Context, store *conversation.Store, accepted AcceptedExecution, want constants.ExecutionStatus) {
 	t.Helper()
 	for {
 		rows, err := store.ReadTurn(ctx, accepted.Chat.ID, accepted.Execution.ID)
@@ -581,8 +580,12 @@ func waitNativeProductStatus(t *testing.T, ctx context.Context, store *eventlogn
 				if err := json.Unmarshal(fact.Data, &finished); err != nil || finished.Status != want {
 					t.Fatalf("terminal = %+v, want %s, err = %v", finished, want, err)
 				}
-				if len(finished.Usage) != 0 {
-					t.Fatalf("duplicated native usage in business terminal: %s", finished.Usage)
+				var fields map[string]json.RawMessage
+				if err := json.Unmarshal(fact.Data, &fields); err != nil {
+					t.Fatal(err)
+				}
+				if usage, exists := fields["usage"]; exists {
+					t.Fatalf("duplicated native usage in business terminal: %s", usage)
 				}
 				return
 			}

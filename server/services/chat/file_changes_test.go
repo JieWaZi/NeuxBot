@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 )
@@ -88,10 +89,11 @@ func TestFileChangesReadKeepsActivePendingAndStartupRecoversOnlyItsOriginalBasel
 func TestLateFileChangesAdvanceUnreadVersionWithoutReopeningExecution(t *testing.T) {
 	ctx := context.Background()
 	service, chatID := forkFixture(t)
-	if _, err := service.logStore.Append(chatID, workResultRound("readable", constants.RuntimeEventTypeTextDelta, "answer")); err != nil {
+	store := service.logStore.(*conversationJournal).Store
+	if _, err := conversationfixture.Commit(t.Context(), store, chatID, workResultRound(t, store, chatID, "readable", constants.RuntimeEventTypeTextDelta, "answer")); err != nil {
 		t.Fatal(err)
 	}
-	database, recovered := newRecoveryTestService(t, service.logStore.Root())
+	database, recovered := newRecoveryTestService(t, service.logStore.Root(), store)
 	results := controllers.NewWorkResultController(database)
 	if err := results.EnableTracking(ctx, 1); err != nil {
 		t.Fatal(err)

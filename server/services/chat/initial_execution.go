@@ -187,21 +187,6 @@ func (m *service) ReadExecutionOutcome(ctx context.Context, chatID, executionID 
 		completedAt := *execution.CompletedAt
 		result.Execution.CompletedAt = &completedAt
 	}
-	invocations, err := eventlog.ReplayInvocations(records)
-	if err != nil {
-		return ExecutionOutcome{}, err
-	}
-	for _, invocation := range invocations {
-		if invocation.ExecutionID != executionID {
-			continue
-		}
-		result.InvocationID = invocation.ID
-		result.StopReason = invocation.Facts.StopReason
-		result.TerminationReason = invocation.Facts.TerminationReason
-		result.FailureCode = invocation.Facts.FailureCode
-		result.FailureStage = invocation.Facts.FailureStage
-		result.FailureMessage = invocation.Facts.FailureMessage
-	}
 	if journal, ok := m.logStore.(*conversationJournal); ok {
 		native, err := journal.nativeOutcome(ctx, chatID, executionID)
 		if err != nil {

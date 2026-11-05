@@ -4,7 +4,6 @@ import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
-	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -14,7 +13,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/shrewx/ginx/pkg/conf"
 	"github.com/shrewx/ginx/pkg/dbhelper"
 )
@@ -48,6 +46,7 @@ func TestStartupAdmissionUsesPersistedEvidence(t *testing.T) {
 			release := make(chan struct{})
 			catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: agentapi.RuntimeIDCodex, release: release}
 			svc.runtimeCatalog = catalog
+			svc.probeProvider = catalog.probe
 			hub := events.New()
 			defer hub.Close()
 			subscription := hub.Subscribe("runtimes", events.Resource{Kind: "global"})
@@ -152,30 +151,6 @@ func TestManualRefreshRecoversStartupFailure(t *testing.T) {
 	}
 }
 
-// TestAccountFailureStillDiscoversInstalledCLI 验证账号准备失败不把已安装 CLI 归入未发现。
-func TestAccountFailureStillDiscoversInstalledCLI(t *testing.T) {
-	blocked := filepath.Join(t.TempDir(), "blocked")
-	if err := os.WriteFile(blocked, []byte("file"), 0600); err != nil {
-		t.Fatal(err)
-	}
-	catalog := &countingRuntimeCatalog{}
-	svc := &service{
-		accounts:                  &aiaccount.Service{},
-		accountWorkspaceDirectory: blocked,
-		runtimeCatalog:            catalog,
-	}
-	result := svc.detect(context.Background(), catalog.Runtimes()[1], models.RuntimeEnvironment{
-		RuntimeID:        agentapi.RuntimeIDCodex,
-		DefaultAccountID: "account-1",
-	})
-	if result.ResolvedBinary == "" || result.Auth != agentapi.AuthStatusMissing || result.State != agentapi.DetectionStateUnavailable {
-		t.Fatalf("account failure lost installed or auth state: %+v", result)
-	}
-	if catalog.detectionCount() != 0 {
-		t.Fatal("account failure started an ACP probe")
-	}
-}
-
 // countingRuntimeCatalog 记录通过服务高层 seam 发生的探测次数。
 type countingRuntimeCatalog struct {
 	// summaries 覆盖测试要对账的内置 Runtime；空值沿用 Codex 和 Claude。
@@ -209,7 +184,7 @@ func (e *countingRuntimeCatalog) DiscoverInstallations(
 
 func TestRefreshKeepsSelectedInstallationWhenPathOrderChanges(t *testing.T) {
 	catalog := &countingRuntimeCatalog{}
-	svc := &service{runtimeCatalog: catalog}
+	svc := &service{runtimeCatalog: catalog, probeProvider: catalog.probe}
 	summary := catalog.Runtimes()[1]
 	svc.detect(context.Background(), summary, models.RuntimeEnvironment{
 		RuntimeID: agentapi.RuntimeIDCodex,
@@ -277,6 +252,7 @@ func TestRefreshPinsDefaultAndPreservesConfiguredPiCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	svc.(*service).probeProvider = catalog.probe
 	ctx := context.Background()
 	if _, err := svc.EnsureInitialized(ctx); err != nil {
 		t.Fatal(err)
@@ -316,26 +292,18 @@ func TestRefreshPinsDefaultAndPreservesConfiguredPiCommand(t *testing.T) {
 }
 
 // Detect 返回可直接持久化和执行准备使用的就绪快照。
-func (e *countingRuntimeCatalog) Detect(
+func (e *countingRuntimeCatalog) probe(
 	_ context.Context,
+	summary agentapi.RuntimeSummary,
+	_ models.RuntimeEnvironment,
 	request agentapi.DetectRequest,
 ) agentapi.DetectionResult {
-	if request.ReleaseResources != nil {
-		defer request.ReleaseResources(context.Background())
-	}
 	e.mutex.Lock()
 	e.detections = append(e.detections, request.RuntimeID)
 	e.requests = append(e.requests, request)
 	codexOptionsUnavailable := e.codexOptionsUnavailable
 	permissionLevels := append([]agentapi.PermissionLevel(nil), e.permissionLevels...)
 	e.mutex.Unlock()
-	var summary agentapi.RuntimeSummary
-	for _, candidate := range e.Runtimes() {
-		if candidate.ID == request.RuntimeID {
-			summary = candidate
-			break
-		}
-	}
 	result := agentapi.DetectionResult{
 		Runtime:        summary,
 		State:          agentapi.DetectionStateReady,
@@ -437,6 +405,7 @@ func TestInitializationRegistersWithoutProbingAndRefreshReadsSnapshots(t *testin
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	serviceValue.(*service).probeProvider = catalog.probe
 
 	initialized, err := serviceValue.EnsureInitialized(context.Background())
 	if err != nil {
@@ -686,6 +655,7 @@ func newRuntimeEnvironmentTestService(t *testing.T) (
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	serviceValue.(*service).probeProvider = catalog.probe
 	return catalog, environments, serviceValue
 }
 
@@ -717,7 +687,7 @@ type controlledRuntimeCatalog struct {
 }
 
 // Detect 返回受控快照，并按测试屏障等待或报告可执行路径失效。
-func (c *controlledRuntimeCatalog) Detect(ctx context.Context, request agentapi.DetectRequest) agentapi.DetectionResult {
+func (c *controlledRuntimeCatalog) probe(ctx context.Context, summary agentapi.RuntimeSummary, environment models.RuntimeEnvironment, request agentapi.DetectRequest) agentapi.DetectionResult {
 	if c.started != nil {
 		c.started <- request.RuntimeID
 	}
@@ -727,7 +697,7 @@ func (c *controlledRuntimeCatalog) Detect(ctx context.Context, request agentapi.
 		case <-ctx.Done():
 		}
 	}
-	result := c.countingRuntimeCatalog.Detect(ctx, request)
+	result := c.countingRuntimeCatalog.probe(ctx, summary, environment, request)
 	result.Version = c.version
 	if c.executableMissing {
 		result.ResolvedBinary = ""
@@ -747,6 +717,7 @@ func TestRefreshPreservesVersionForSameInstallation(t *testing.T) {
 			svc := api.(*service)
 			catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3"}
 			svc.runtimeCatalog = catalog
+			svc.probeProvider = catalog.probe
 			ctx := context.Background()
 			if err := svc.RefreshAll(ctx); err != nil {
 				t.Fatal(err)
@@ -789,6 +760,7 @@ func TestRefreshFillsVersionFromInstallation(t *testing.T) {
 	svc := api.(*service)
 	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3"}
 	svc.runtimeCatalog = catalog
+	svc.probeProvider = catalog.probe
 	ctx := context.Background()
 	if err := svc.RefreshAll(ctx); err != nil {
 		t.Fatal(err)
@@ -813,6 +785,7 @@ func TestStartupDetectionDoesNotBlockInitializationAndPublishesEachResult(t *tes
 	release := make(chan struct{})
 	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3", started: make(chan string, 2), blockedRuntime: agentapi.RuntimeIDCodex, release: release}
 	svc.runtimeCatalog = catalog
+	svc.probeProvider = catalog.probe
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	returned := make(chan error, 1)
@@ -892,6 +865,7 @@ func TestRefreshKeepsKnownVersionWhenSelectedExecutableIsMissing(t *testing.T) {
 	svc := api.(*service)
 	catalog := &controlledRuntimeCatalog{countingRuntimeCatalog: base, version: "1.2.3"}
 	svc.runtimeCatalog = catalog
+	svc.probeProvider = catalog.probe
 	ctx := context.Background()
 	if err := svc.RefreshAll(ctx); err != nil {
 		t.Fatal(err)
@@ -907,5 +881,28 @@ func TestRefreshKeepsKnownVersionWhenSelectedExecutableIsMissing(t *testing.T) {
 	}
 	if got.Detection.Version != "1.2.3" || got.Detection.ResolvedBinary != "" || got.Detection.State != agentapi.DetectionStateUnavailable {
 		t.Fatalf("missing executable lost version or retained readiness: %+v", got.Detection)
+	}
+}
+
+// legacyFallbackCatalog exposes the retired method to catch an accidental fallback.
+type legacyFallbackCatalog struct {
+	*countingRuntimeCatalog
+}
+
+func (c legacyFallbackCatalog) Detect(ctx context.Context, request agentapi.DetectRequest) agentapi.DetectionResult {
+	return c.probe(ctx, c.Runtimes()[1], models.RuntimeEnvironment{}, request)
+}
+
+// TestDetectionWithoutProviderPreservesInstallation verifies device discovery stays available when native probing cannot run.
+func TestDetectionWithoutProviderPreservesInstallation(t *testing.T) {
+	catalog := legacyFallbackCatalog{&countingRuntimeCatalog{}}
+	svc := &service{runtimeCatalog: catalog}
+	summary := catalog.Runtimes()[1]
+	result := svc.detect(t.Context(), summary, models.RuntimeEnvironment{RuntimeID: summary.ID, BaseRuntimeID: summary.BaseRuntimeID})
+	if result.ResolvedBinary == "" || result.State != agentapi.DetectionStateUnavailable || len(result.Installations) == 0 {
+		t.Fatalf("detection without provider lost the installed CLI or reported it ready: %+v", result)
+	}
+	if catalog.detectionCount() != 0 {
+		t.Fatal("detection fell back to the legacy catalog")
 	}
 }

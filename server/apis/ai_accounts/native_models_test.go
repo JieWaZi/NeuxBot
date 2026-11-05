@@ -8,8 +8,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
@@ -43,9 +42,9 @@ func codexAccountQueryFixture(t *testing.T, mode constants.AccountAuthMode, stat
 	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager)
 	global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{
 		RuntimeID: constants.RuntimeIDCodex, BaseRuntimeID: constants.RuntimeIDCodex, Enabled: true,
-		Detection: agentapi.DetectionResult{
-			State: agentapi.DetectionStateReady, DetectedDefaultModel: "other-account-model",
-			Models: []agentapi.ModelOption{{ID: "other-account-model"}},
+		Detection: agent.DetectionResult{
+			State: agent.DetectionStateReady, DetectedDefaultModel: "other-account-model",
+			Models: []agent.ModelOption{{ID: "other-account-model"}},
 		},
 	}}
 	global.RuntimeEnvironmentService = codexAccountCatalogStub{read: func(runtimeID, accountID string, refresh bool) runtimeenvironment.AccountModelCatalog {

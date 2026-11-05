@@ -14,8 +14,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/global"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
-	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	service "github.com/JieWaZi/NeuxBot/server/services/usage"
@@ -28,7 +28,7 @@ import (
 
 func TestUsageAPIReplaysAfterChatDeletion(t *testing.T) {
 	root := t.TempDir()
-	store, err := eventlog_next.NewStore(root)
+	store, err := conversation.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestUsageAPIReplaysAfterChatDeletion(t *testing.T) {
 	if err := os.Remove(index); err != nil {
 		t.Fatal(err)
 	}
-	store, err = eventlog_next.NewStore(root)
+	store, err = conversation.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}

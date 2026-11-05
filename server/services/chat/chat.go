@@ -518,29 +518,11 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 				state.chat.WaitingElicitation = false
 			}
 			activeExecution = nil
-		case constants.ChatEventTypeNativeSessionUpdated,
-			constants.ChatEventTypeNativeSessionCleared:
-			var session eventlog.RuntimeSessionData
-			if err := json.Unmarshal(record.Data, &session); err != nil {
-				return chatState{}, status_error.ChatLogCorrupted
+		case constants.ChatEventTypeMessageInherited:
+			if err := projectInheritedForkSession(record, state.runtimeSessions); err != nil {
+				return chatState{}, err
 			}
-			if session.RuntimeID == "" {
-				return chatState{}, status_error.ChatLogCorrupted
-			}
-			if record.Type == constants.ChatEventTypeNativeSessionCleared {
-				delete(state.runtimeSessions, session.RuntimeID)
-				continue
-			}
-			if session.SessionID == "" {
-				return chatState{}, status_error.ChatLogCorrupted
-			}
-			state.runtimeSessions[session.RuntimeID] = models.RuntimeSession{
-				ChatID:          record.ChatID,
-				RuntimeID:       session.RuntimeID,
-				SessionID:       session.SessionID,
-				LastExecutionID: session.LastExecutionID,
-				UpdatedAt:       record.RecordedAt,
-			}
+
 		}
 	}
 	return state, nil

@@ -10,6 +10,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -24,16 +26,17 @@ type conversationLogReader struct {
 	// Module 保留列表用例没有调用的其余聊天能力。
 	chat.Module
 	// store 使用真实权威日志复现带会话标识的不存在错误。
-	store *eventlog.Store
+	store *conversation.Store
 	// failure 注入日志故障，验证只有明确的不存在结果会被过滤。
 	failure error
 }
 
-func (r conversationLogReader) CountUserMessages(_ context.Context, chatID string) (int64, error) {
+func (r conversationLogReader) CountUserMessages(ctx context.Context, chatID string) (int64, error) {
 	if r.failure != nil {
 		return 0, r.failure
 	}
-	return r.store.CountUserMessages(chatID)
+	rows, err := r.store.ReadUserInputs(ctx, chatID)
+	return int64(len(rows)), err
 }
 
 func TestListIMConversationsOmitsDeletedChat(t *testing.T) {
@@ -46,17 +49,14 @@ func TestListIMConversationsOmitsDeletedChat(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-	store, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := conversationfixture.New(t, t.TempDir())
 	validChatID := "11111111111111111111111111111111"
 	missingChatID := "22222222222222222222222222222222"
 	data, err := json.Marshal(eventlog.MessageCreatedData{Role: constants.MessageRoleUser})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Create(validChatID, []eventlog.AppendInput{
+	if _, err := conversationfixture.CommitFacts(t.Context(), store, validChatID, []eventlog.AppendInput{
 		{Type: constants.ChatEventTypeCreated},
 		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user-message", Data: data},
 	}); err != nil {

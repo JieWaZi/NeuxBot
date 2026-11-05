@@ -6,7 +6,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	ledger "github.com/JieWaZi/NeuxBot/server/internal/usage"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	acp "github.com/JieWaZi/acp-go/sdk"

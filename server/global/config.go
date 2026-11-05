@@ -2,9 +2,8 @@
 package global
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
-	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 
 	"context"
 	"crypto/rand"
@@ -134,9 +133,7 @@ var (
 	// MCPConnectorControllerManager 提供共享连接器和伙伴关系持久化接口。
 	MCPConnectorControllerManager controllers.MCPConnectorController
 	// RuntimeCatalog 提供 CLI Runtime 的探测、协议调用和进程治理。
-	RuntimeCatalog *agentapi.Catalog
-	// AgentManager 统一登记聊天与独立任务会话，保留未完成清理的唯一所有者。
-	AgentManager *agentapi.Manager
+	RuntimeCatalog *agent.Catalog
 	// AgentProviders owns all candidate native processes and their account leases.
 	AgentProviders *agent.ProviderRuntime
 	// AgentThreads coordinates public chat turns against the shared conversation authority.
@@ -457,7 +454,7 @@ func loadMemory(ctx context.Context, configuration *Configuration) error {
 
 // loadRuntime 装配 Runtime SDK 并启动设备级环境探测。
 func loadRuntime(ctx context.Context) error {
-	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
+	sdk, err := agent.NewCatalog(agent.CatalogConfig{})
 	if err != nil {
 		return mapCoreError("initialize_runtime_sdk", status_error.CoreRuntimeInitializationFailed, err)
 	}
@@ -484,7 +481,7 @@ func loadRuntime(ctx context.Context) error {
 
 // loadChat 先恢复 Chat 权威事实，再装配入口无关的 Execution Core。
 func loadChat(ctx context.Context, configuration *Configuration, handlerFactory schedule.LocalHandlerFactory) error {
-	conversations, err := eventlog_next.NewStore(configuration.ManagedFilesDirectory)
+	conversations, err := conversation.NewStore(configuration.ManagedFilesDirectory)
 	if err != nil {
 		return mapCoreError("initialize_conversation_store", status_error.CoreChatInitializationFailed, err)
 	}
@@ -732,15 +729,6 @@ func Close() error {
 		}
 		AgentProviders = nil
 	}
-	if AgentManager != nil {
-		closeContext, cancelClose := context.WithTimeout(context.Background(), 5*time.Second)
-		err := AgentManager.Close(closeContext)
-		cancelClose()
-		if err != nil {
-			return mapCoreError("close_agent_manager", status_error.CoreShutdownFailed, err)
-		}
-		AgentManager = nil
-	}
 	if PluginBridges != nil {
 		PluginBridges.Close()
 		PluginBridges = nil
@@ -754,19 +742,7 @@ func Close() error {
 		RuntimeEnvironmentService = nil
 	}
 
-	if RuntimeCatalog != nil {
-		closeContext, cancelClose := context.WithTimeout(
-			context.Background(),
-			5*time.Second,
-		)
-		err := RuntimeCatalog.Close(closeContext)
-		cancelClose()
-		if err != nil {
-			logx.Errorf("core shutdown failed: component=runtime_catalog error=%v", err)
-			return status_error.CoreShutdownFailed
-		}
-		RuntimeCatalog = nil
-	}
+	RuntimeCatalog = nil
 	if AIAccountService != nil {
 		AIAccountService.Close()
 		AIAccountService = nil
@@ -887,40 +863,4 @@ func PluginCatalogSource() string {
 		return value
 	}
 	return constants.PluginCatalogHTTPSource
-}
-
-// newAgentManager 将聊天工作区与独立任务账号端口装配到同一个会话管理器。
-func newAgentManager() *agentapi.Manager {
-	return agentapi.NewManager(agentapi.ManagerConfig{Launch: RuntimeCatalog.PrepareLaunch, PrepareWorkspace: agentapi.NewWorkspacePreparer(RuntimeCatalog.Runtimes()).Prepare, Runtimes: RuntimeCatalog.Runtimes, Fork: agentapi.NewForkHandler(RuntimeCatalog), Resolve: func(ctx context.Context, input agentapi.TextRequest) (agentapi.Environment, error) {
-		environment, err := RuntimeEnvironmentControllerManager.Get(ctx, input.RuntimeID)
-		if err != nil {
-			return agentapi.Environment{}, err
-		}
-		if !environment.Enabled || environment.Detection.State != agentapi.DetectionStateReady {
-			return agentapi.Environment{}, status_error.RuntimeUnavailable
-		}
-		binary := environment.Binary
-		if binary == "" {
-			binary = environment.Detection.ResolvedBinary
-		}
-		return agentapi.Environment{BaseRuntimeID: environment.BaseRuntimeID, Detection: environment.Detection, Target: agentapi.RuntimeTarget{RuntimeID: input.RuntimeID, Binary: binary, PrefixArgs: append([]string(nil), environment.PrefixArgs...), ConfigHome: environment.ConfigHome, CloseAfterRun: true}}, nil
-	}, Prepare: func(ctx context.Context, input agentapi.TextRequest, environment agentapi.Environment, workspace string) (agentapi.RuntimeTarget, func(context.Context) error, error) {
-		target := environment.Target
-		if input.AccountID == "" || input.AccountID == constants.AiAccountSystemID {
-			return target, func(context.Context) error { return nil }, nil
-		}
-		if AIAccountService == nil {
-			return target, nil, status_error.AIAccountConfigurationInvalid
-		}
-		prepared, release, err := AIAccountService.PrepareQueuedLease(ctx, input.AccountID, environment.BaseRuntimeID, workspace, input.Model)
-		if err != nil {
-			return target, nil, err
-		}
-		target.AccountID, target.Environment, target.Isolated = prepared.AccountID, prepared.Environment, prepared.Isolated
-		target.RefreshCredentials = prepared.RefreshCredentials
-		if prepared.ConfigHome != "" {
-			target.ConfigHome = prepared.ConfigHome
-		}
-		return target, release, nil
-	}})
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
 	"github.com/JieWaZi/NeuxBot/server/internal/notification/events"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // Login 保存前端完成设备授权需要的非秘密信息。
@@ -352,51 +350,6 @@ type codexLiveTokens struct {
 	AccountID string `json:"account_id"`
 }
 
-func (s *Service) prepareSubscription(ctx context.Context, account *models.AIAccount, workspace, encoded string) error {
-	var credential codexCredential
-	if json.Unmarshal([]byte(encoded), &credential) != nil || !credential.Tokens.Valid() {
-		return status_error.AIAccountCredentialError
-	}
-	// 先回收 CLI 已刷新的完整 bundle；拒绝其他账号和时间较旧的投射。
-	if account.LiveAuthPath != "" {
-		data, err := os.ReadFile(account.LiveAuthPath)
-		if err != nil && !os.IsNotExist(err) {
-			return status_error.AIAccountCredentialError
-		}
-		var live codexLiveAuth
-		if err == nil && json.Unmarshal(data, &live) == nil && live.LastRefresh.After(credential.LastRefresh) {
-			tokens := codexoauth.Tokens{IDToken: live.Tokens.IDToken, AccessToken: live.Tokens.AccessToken, RefreshToken: live.Tokens.RefreshToken}
-			if !tokens.Valid() || tokens.Identity() != credential.Tokens.Identity() || tokens.AccountID() != live.Tokens.AccountID {
-				return status_error.AIAccountCredentialError
-			}
-			credential = codexCredential{Tokens: tokens, LastRefresh: live.LastRefresh}
-		}
-	}
-	if credential.Tokens.ExpiresAt().Before(time.Now().Add(time.Minute)) {
-		refreshed, err := s.oauth.Refresh(ctx, credential.Tokens)
-		if err != nil {
-			return err
-		}
-		credential = codexCredential{Tokens: refreshed, LastRefresh: time.Now().UTC()}
-	}
-	latest, _ := json.Marshal(credential)
-	// 令牌可能已在服务端轮换；即使调用方取消或投射目录失败，也先保存已收到的结果。
-	persistContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	defer cancel()
-	if err := s.accounts.StoreCredential(persistContext, account.ID, account.Revision, string(latest), ""); err != nil {
-		return err
-	}
-	account.Revision++
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	home, homeErr := accountconfig.EnsureHome(workspace, constants.RuntimeIDCodex)
-	if homeErr != nil {
-		return homeErr
-	}
-	return writeCodexChatGPTCredential(home, credential)
-}
-
 func writeCodexChatGPTCredential(home string, credential codexCredential) error {
 	live := struct {
 		// Mode fixes file-backed ChatGPT authentication in the native home.
@@ -412,146 +365,4 @@ func writeCodexChatGPTCredential(home string, credential codexCredential) error 
 	data, _ := json.Marshal(live)
 	defer clear(data)
 	return accountconfig.WriteFile(filepath.Join(home, "auth.json"), data)
-}
-
-// refreshSubscription 合并同一旧令牌的并发刷新，并在返回原生进程前保存新凭据。
-func (s *Service) refreshSubscription(ctx context.Context, id, previous string) (codexoauth.Tokens, error) {
-	unlock, err := s.credentialGate(id).Lock(ctx)
-	if err != nil {
-		return codexoauth.Tokens{}, err
-	}
-	defer unlock()
-	account, err := s.accounts.Get(ctx, id)
-	if err != nil {
-		return codexoauth.Tokens{}, err
-	}
-	encoded, err := s.accounts.Credential(ctx, id)
-	if err != nil {
-		return codexoauth.Tokens{}, err
-	}
-	var credential codexCredential
-	if json.Unmarshal([]byte(encoded), &credential) != nil || !credential.Tokens.Valid() {
-		return codexoauth.Tokens{}, status_error.AIAccountCredentialError
-	}
-	if credential.Tokens.RefreshToken != previous {
-		return credential.Tokens, nil
-	}
-	tokens, err := s.oauth.Refresh(ctx, credential.Tokens)
-	if err != nil {
-		return codexoauth.Tokens{}, err
-	}
-	if tokens.AccountID() != credential.Tokens.AccountID() {
-		return codexoauth.Tokens{}, status_error.AIAccountCredentialError
-	}
-	data, _ := json.Marshal(codexCredential{Tokens: tokens, LastRefresh: time.Now().UTC()})
-	persistContext, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
-	defer cancel()
-	if err := s.accounts.StoreCredential(persistContext, id, account.Revision, string(data), ""); err != nil {
-		return codexoauth.Tokens{}, err
-	}
-	return tokens, nil
-}
-
-// backfillProjection 只回收本次投射，账号已产生新凭据时拒绝旧执行覆盖。
-func (s *Service) backfillProjection(ctx context.Context, id, path, seed string) error {
-	unlock, err := s.credentialGate(id).Lock(ctx)
-	if err != nil {
-		return err
-	}
-	defer unlock()
-	account, err := s.accounts.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-	encoded, err := s.accounts.Credential(ctx, id)
-	if err != nil {
-		return err
-	}
-	if encoded != seed {
-		return nil
-	}
-	var credential codexCredential
-	if json.Unmarshal([]byte(encoded), &credential) != nil {
-		return status_error.AIAccountCredentialError
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return status_error.AIAccountCredentialError
-	}
-	var live codexLiveAuth
-	if json.Unmarshal(data, &live) != nil {
-		return status_error.AIAccountCredentialError
-	}
-	tokens := codexoauth.Tokens{IDToken: live.Tokens.IDToken, AccessToken: live.Tokens.AccessToken, RefreshToken: live.Tokens.RefreshToken}
-	if !tokens.Valid() || tokens.Identity() != credential.Tokens.Identity() || tokens.AccountID() != credential.Tokens.AccountID() || tokens.AccountID() != live.Tokens.AccountID {
-		return status_error.AIAccountCredentialError
-	}
-	if !live.LastRefresh.After(credential.LastRefresh) {
-		return nil
-	}
-	latest, _ := json.Marshal(codexCredential{Tokens: tokens, LastRefresh: live.LastRefresh})
-	return s.accounts.StoreCredential(ctx, id, account.Revision, string(latest), "")
-}
-
-// recoverWorkspaceAuth 在覆盖认证文件前回收旧账号，失败时阻止本次切换。
-func (s *Service) recoverWorkspaceAuth(ctx context.Context, selectedID, runtimeID, workspace string) error {
-	if runtimeID != constants.RuntimeIDCodex {
-		return nil
-	}
-	accounts, err := s.accounts.List(ctx)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(accountconfig.Home(workspace, runtimeID), "auth.json")
-	for _, account := range accounts {
-		if account.ID == selectedID || account.LiveAuthPath != path {
-			continue
-		}
-		release, err := s.Exclusive(account.ID)
-		if err != nil {
-			return err
-		}
-		err = s.backfill(ctx, account.ID)
-		release()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// backfill 保存同身份的最新刷新结果，然后解除已收尾的 live 文件关联。
-func (s *Service) backfill(ctx context.Context, id string) error {
-	account, err := s.accounts.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-	if account.LiveAuthPath == "" {
-		return nil
-	}
-	encoded, err := s.accounts.Credential(ctx, id)
-	if err != nil {
-		return err
-	}
-	var credential codexCredential
-	if json.Unmarshal([]byte(encoded), &credential) != nil {
-		return status_error.AIAccountCredentialError
-	}
-	data, err := os.ReadFile(account.LiveAuthPath)
-	if err != nil {
-		return status_error.AIAccountCredentialError
-	}
-	var live codexLiveAuth
-	if json.Unmarshal(data, &live) != nil {
-		return status_error.AIAccountCredentialError
-	}
-	tokens := codexoauth.Tokens{IDToken: live.Tokens.IDToken, AccessToken: live.Tokens.AccessToken, RefreshToken: live.Tokens.RefreshToken}
-	if !tokens.Valid() || tokens.Identity() != credential.Tokens.Identity() || tokens.AccountID() != live.Tokens.AccountID {
-		return status_error.AIAccountCredentialError
-	}
-	if live.LastRefresh.After(credential.LastRefresh) {
-		credential = codexCredential{Tokens: tokens, LastRefresh: live.LastRefresh}
-	}
-	latest, _ := json.Marshal(credential)
-	return s.accounts.StoreCredential(ctx, id, account.Revision, string(latest), "")
 }

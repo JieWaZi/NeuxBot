@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	usageservice "github.com/JieWaZi/NeuxBot/server/services/usage"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )

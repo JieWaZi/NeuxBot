@@ -36,8 +36,12 @@ func TestExplicitClearedToolContentReplacesDiff(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages[0].FileChanges) != 0 {
-		t.Fatalf("cleared content retains stale file summary: %+v", messages[0].FileChanges)
+	part := messages[0].DisplayParts[0]
+	if part.ToolSafeSummary != nil && len(part.ToolSafeSummary.Files) != 0 {
+		t.Fatalf("cleared content retains stale tool file summary: %+v", part.ToolSafeSummary.Files)
+	}
+	if messages[0].FileChangeRecord != nil {
+		t.Fatal("tool output created an independent file result")
 	}
 }
 
@@ -101,7 +105,7 @@ func TestToolInvocationIdentityRemainsSeparateWithoutComposedFileDiffs(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(messages[0].FileChanges) != 0 || len(messages[0].FileChangeDiffs) != 0 || len(messages[0].DisplayParts) != 2 || messages[0].DisplayParts[0].ID == messages[0].DisplayParts[1].ID {
+	if len(messages[0].FileChangeDiffs) != 0 || len(messages[0].DisplayParts) != 2 || messages[0].DisplayParts[0].ID == messages[0].DisplayParts[1].ID {
 		t.Fatalf("invocation identities collapsed or CLI data generated file outcome: %+v", messages[0])
 	}
 

@@ -12,15 +12,15 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 // maintenanceRuntimeFunc 替换共享宿主边界，保留真实授权表与资源准备。
-type maintenanceRuntimeFunc func(context.Context, agentapi.TaskRequest) (agentapi.TextResult, error)
+type maintenanceRuntimeFunc func(context.Context, agent.TaskRequest) (agent.TurnResult, error)
 
-func (run maintenanceRuntimeFunc) ExecuteTask(ctx context.Context, input agentapi.TaskRequest) (agentapi.TextResult, error) {
+func (run maintenanceRuntimeFunc) ExecuteTask(ctx context.Context, input agent.TaskRequest) (agent.TurnResult, error) {
 	return run(ctx, input)
 }
 
@@ -32,27 +32,65 @@ func maintenanceFixture(t *testing.T, runtime maintenanceRuntimeFunc, released *
 	if err := os.WriteFile(binary, []byte("test binary"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	return NewMaintenanceRunner(MaintenanceConfig{Runtime: maintenanceRuntimeFunc(func(ctx context.Context, input agentapi.TaskRequest) (agentapi.TextResult, error) {
-		workspace, err := os.MkdirTemp("", "neux-maintenance-fixture-")
-		if err != nil {
-			t.Fatal(err)
-		}
-		workspace, err = filepath.EvalSymlinks(workspace)
-		if err != nil {
-			t.Fatal(err)
-		}
-		lease, err := input.Resources.Acquire(ctx, agentapi.ResourceRequest{Workspace: native.WorkspaceScope{Root: workspace}, Contributions: input.Contributions})
+	return NewMaintenanceRunner(MaintenanceConfig{Runtime: maintenanceRuntimeFunc(func(ctx context.Context, input agent.TaskRequest) (agent.TurnResult, error) {
+		lease, err := input.Ports.AcquireResources(ctx, input.Thread.Connection.Resources)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer func() {
-			input.Resources.Revoke()
 			_ = lease.Close(context.Background())
-			_ = os.RemoveAll(workspace)
+			_ = lease.CloseFiles(context.Background())
 			*released = true
 		}()
-		return runtime(ctx, input)
-	}), Registry: registry, Binary: binary, Endpoint: "http://127.0.0.1:8432" + constants.AgentCLIPath, RuntimeID: "codex", AccountID: "account", Model: "model-a", Reasoning: "high"}), registry
+		connection, err := capability.ReadConnection(lease.MCPServers[0].Arguments[3])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if capabilities := maintenanceCapabilities(registry, connection); capabilities.Code != http.StatusOK {
+			t.Fatalf("MCP discovery failed before submission: %d", capabilities.Code)
+		}
+		if audit := maintenanceAudit(registry, connection); strings.Contains(audit.Body.String(), `"ok":true`) {
+			t.Fatal("MCP could run a knowledge operation before submission")
+		}
+		revoke, err := input.Ports.Authorize(ctx, agent.TurnAdmission{}, agent.CommitReceipt{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer revoke()
+		// 后续断言只读取同一次冷启动物化的资源。
+		input.Ports.AcquireResources = func(context.Context, agent.ResourceSelection) (agent.ResourceLease, error) { return lease, nil }
+		result, err := runtime(ctx, input)
+		result.BusinessAdmitted = true
+		return result, err
+	}), Registry: registry, Binary: binary, Endpoint: "http://127.0.0.1:8432" + constants.AgentCLIPath,
+		Connection: agent.ProviderConnectionRequest{Account: agent.AccountRequest{Provider: "claude", AccountID: "account", Model: "model-a"}},
+		Reasoning:  "high",
+	}), registry
+}
+
+func maintenanceResult(text, stop string) agent.TurnResult {
+	return agent.TurnResult{Outcome: &agent.AgentNativeOutcome{
+		Turn: acpmeta.NativeTurn{Status: acpmeta.NativeTurnCompleted}, FinalMessage: &agent.AgentFinalMessage{Text: text}, StopReason: stop,
+	}}
+}
+
+func fixtureConnection(t *testing.T, ctx context.Context, request agent.TaskRequest) (capability.Connection, string) {
+	t.Helper()
+	lease, err := request.Ports.AcquireResources(ctx, request.Thread.Connection.Resources)
+	if err != nil || len(lease.MCPServers) != 1 {
+		t.Fatalf("MCP resources = %+v, %v", lease, err)
+	}
+	bridge := lease.MCPServers[0]
+	if bridge.Name != "ally_capabilities" || bridge.Transport != "stdio" || len(bridge.Arguments) != 4 ||
+		bridge.Arguments[0] != "mcp" || bridge.Arguments[1] != "serve" || bridge.Arguments[2] != "--context" || len(lease.Environment) != 0 {
+		t.Fatalf("unexpected MCP transport: %+v", bridge)
+	}
+	path := bridge.Arguments[3]
+	connection, err := capability.ReadConnection(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return connection, path
 }
 
 func maintenanceCapabilities(registry *capability.Registry, connection capability.Connection) *httptest.ResponseRecorder {
@@ -84,23 +122,9 @@ func TestMaintenanceUsesSharedHostWithScopedCLIAndCleansUp(t *testing.T) {
 	var connection capability.Connection
 	var workspace, connectionPath string
 	var registry *capability.Registry
-	runner, actualRegistry := maintenanceFixture(t, func(ctx context.Context, request agentapi.TaskRequest) (agentapi.TextResult, error) {
-		workspace = request.Resources.(*maintenanceResources).workspace
-		for _, skill := range request.Resources.(*maintenanceResources).Resources() {
-			relative, err := filepath.Rel(workspace, skill.Path)
-			if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-				t.Fatalf("maintenance skill is outside the native trusted workspace and requires unavailable Read approval: %s", skill.Path)
-			}
-			if _, err := os.ReadFile(filepath.Join(skill.Path, "SKILL.md")); err != nil {
-				t.Fatalf("maintenance skill is not readable: %v", err)
-			}
-		}
-		connectionPath = request.Resources.LaunchEnvironment(nil)[constants.AgentCLIContextEnvironment]
-		var err error
-		connection, err = capability.ReadConnection(connectionPath)
-		if err != nil {
-			t.Fatal(err)
-		}
+	runner, actualRegistry := maintenanceFixture(t, func(ctx context.Context, request agent.TaskRequest) (agent.TurnResult, error) {
+		connection, connectionPath = fixtureConnection(t, ctx, request)
+		workspace = filepath.Dir(connectionPath)
 		capabilities := maintenanceCapabilities(registry, connection)
 		if capabilities.Code != http.StatusOK || !strings.Contains(capabilities.Body.String(), "knowledge.audit.get") || strings.Contains(capabilities.Body.String(), "im.targets.list") {
 			t.Fatalf("maintenance grant leaked or was inactive: %d %s", capabilities.Code, capabilities.Body)
@@ -108,20 +132,25 @@ func TestMaintenanceUsesSharedHostWithScopedCLIAndCleansUp(t *testing.T) {
 		if audit := maintenanceAudit(registry, connection); audit.Code != http.StatusOK || !strings.Contains(audit.Body.String(), `"ok":true`) {
 			t.Fatalf("maintenance domain call failed: %d %s", audit.Code, audit.Body)
 		}
-		if len(request.Contributions.MCP) != 0 || len(request.Contributions.Skills) != 1 || request.Contributions.Skills[0].Name != "ally" || request.Contributions.Skills[0].Optional || request.RuntimeID != "codex" || request.AccountID != "account" {
-			t.Fatalf("maintenance was not an independent ACP request: %+v", request)
+		account, launch := request.Thread.Connection.Account, request.Thread.Connection.Launch
+		if account.Provider != "claude" || account.AccountID != "account" || account.Model != "model-a" ||
+			request.Thread.Selection.Reasoning != "high" || !launch.RequireVerifiedMCP || launch.Claude.Tools == nil ||
+			len(launch.Claude.Tools) != 0 || request.Thread.Mode != "default" || request.Thread.ChatID != "" {
+			t.Fatalf("maintenance was not a scoped detached request: %+v", request.Thread)
 		}
-		if request.Model != "model-a" || request.Reasoning != "high" || !request.Thinking {
-			t.Fatalf("maintenance did not receive the authorized full-access policy: %+v", request.TextRequest)
+		instructions := request.Thread.Session.DeveloperInstructions
+		if request.Input.Text != "maintain existing wiki" || instructions == nil ||
+			!strings.HasPrefix(*instructions, "upstream fixer workflow") || strings.Contains(*instructions, connection.Token) {
+			t.Fatalf("fixer instructions or scope invalid: %+v", request.Input)
 		}
-		if request.Messages[0].Content != "maintain existing wiki" || len(request.Contributions.Instructions) != 2 || request.Contributions.Instructions[0].Text != "upstream fixer workflow" || request.Resources.LaunchEnvironment(nil)[constants.AgentCLIBinaryEnvironment] == "" {
-			t.Fatalf("fixer workflow or explicit CLI path missing: %+v", request)
+		options := []agent.AgentApprovalOption{{ID: "once", Kind: "allow_once"}, {ID: "persistent", Kind: "allow_always"}}
+		for name, want := range map[string]string{"mcp__ally_capabilities__knowledge_audit_get": "once", "mcp__ally_capabilities__workflow_source_save": "", "Bash": ""} {
+			choice, err := request.Ports.Approve(ctx, agent.AgentScope{}, agent.AgentApproval{NativeToolName: name, Options: options})
+			if err != nil || choice != want {
+				t.Fatalf("native approval %s = %q, %v", name, choice, err)
+			}
 		}
-		cliInstructions := request.Contributions.Instructions[1].Text
-		if strings.Contains(cliInstructions, "read-only") || strings.Contains(cliInstructions, "without a shell wrapper") || !strings.Contains(cliInstructions, "temporary workspace") {
-			t.Fatalf("maintenance instructions conflict with the full-access policy: %s", cliInstructions)
-		}
-		return agentapi.TextResult{Text: "maintenance complete", StopReason: "end_turn"}, nil
+		return maintenanceResult("maintenance complete", "end_turn"), nil
 	}, &released)
 	registry = actualRegistry
 	result, err := runner.Run(context.Background(), maintenanceInput())
@@ -143,17 +172,14 @@ func TestMaintenanceCancellationRevokesGrantAndDiscardsPartialReport(t *testing.
 	var connection capability.Connection
 	var workspace string
 	entered := make(chan struct{})
-	runner, registry := maintenanceFixture(t, func(ctx context.Context, request agentapi.TaskRequest) (agentapi.TextResult, error) {
-		workspace = request.Resources.(*maintenanceResources).workspace
-		var err error
-		connection, err = capability.ReadConnection(request.Resources.LaunchEnvironment(nil)[constants.AgentCLIContextEnvironment])
-		if err != nil {
-			t.Fatal(err)
-		}
+	runner, registry := maintenanceFixture(t, func(ctx context.Context, request agent.TaskRequest) (agent.TurnResult, error) {
+		var connectionPath string
+		connection, connectionPath = fixtureConnection(t, ctx, request)
+		workspace = filepath.Dir(connectionPath)
 
 		close(entered)
 		<-ctx.Done()
-		return agentapi.TextResult{Text: "partial"}, status_error.OperationCanceled
+		return maintenanceResult("partial", "cancelled"), status_error.OperationCanceled
 	}, &released)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
@@ -184,9 +210,9 @@ func TestMaintenanceCancellationRevokesGrantAndDiscardsPartialReport(t *testing.
 
 func TestMaintenanceRejectsInvalidTaskBeforePreparingAccount(t *testing.T) {
 	var prepared bool
-	runner := NewMaintenanceRunner(MaintenanceConfig{Runtime: maintenanceRuntimeFunc(func(context.Context, agentapi.TaskRequest) (agentapi.TextResult, error) {
+	runner := NewMaintenanceRunner(MaintenanceConfig{Runtime: maintenanceRuntimeFunc(func(context.Context, agent.TaskRequest) (agent.TurnResult, error) {
 		prepared = true
-		return agentapi.TextResult{}, nil
+		return agent.TurnResult{}, nil
 	})})
 	if _, err := runner.Run(context.Background(), MaintenanceRequest{}); !errors.Is(err, status_error.KnowledgeInvalid) || prepared {
 		t.Fatalf("invalid task entered runtime preparation: %v %v", err, prepared)
@@ -195,8 +221,8 @@ func TestMaintenanceRejectsInvalidTaskBeforePreparingAccount(t *testing.T) {
 
 func TestMaintenanceDoesNotPublishTruncatedReport(t *testing.T) {
 	var released bool
-	runner, _ := maintenanceFixture(t, func(ctx context.Context, _ agentapi.TaskRequest) (agentapi.TextResult, error) {
-		return agentapi.TextResult{Text: "partial report", StopReason: "max_tokens"}, nil
+	runner, _ := maintenanceFixture(t, func(ctx context.Context, _ agent.TaskRequest) (agent.TurnResult, error) {
+		return maintenanceResult("partial report", "max_tokens"), nil
 	}, &released)
 	report, err := runner.Run(context.Background(), maintenanceInput())
 	var coded interface{ Code() int64 }
@@ -211,11 +237,8 @@ func TestMaintenanceDoesNotAcceptNarrativeWithoutSuccessfulKnowledgeCall(t *test
 		t.Run(map[bool]string{false: "discovery-only", true: "denied-domain-call"}[denied], func(t *testing.T) {
 			var released bool
 			var registry *capability.Registry
-			runner, actualRegistry := maintenanceFixture(t, func(ctx context.Context, request agentapi.TaskRequest) (agentapi.TextResult, error) {
-				connection, err := capability.ReadConnection(request.Resources.LaunchEnvironment(nil)[constants.AgentCLIContextEnvironment])
-				if err != nil {
-					t.Fatal(err)
-				}
+			runner, actualRegistry := maintenanceFixture(t, func(ctx context.Context, request agent.TaskRequest) (agent.TurnResult, error) {
+				connection, _ := fixtureConnection(t, ctx, request)
 				if response := maintenanceCapabilities(registry, connection); response.Code != http.StatusOK {
 					t.Fatalf("discovery failed: %d", response.Code)
 				}
@@ -224,7 +247,7 @@ func TestMaintenanceDoesNotAcceptNarrativeWithoutSuccessfulKnowledgeCall(t *test
 						t.Fatalf("domain rejection was lost: %s", response.Body)
 					}
 				}
-				return agentapi.TextResult{Text: "maintenance complete", StopReason: "end_turn"}, nil
+				return maintenanceResult("maintenance complete", "end_turn"), nil
 			}, &released)
 			registry = actualRegistry
 			input := maintenanceInput()
@@ -250,19 +273,12 @@ func TestMaintenanceDoesNotAcceptNarrativeWithoutSuccessfulKnowledgeCall(t *test
 func TestMaintenanceRejectsEmptyFinalEvenAfterAuthorizedCall(t *testing.T) {
 	var released bool
 	var registry *capability.Registry
-	runner, actual := maintenanceFixture(t, func(_ context.Context, request agentapi.TaskRequest) (agentapi.TextResult, error) {
-		environment := request.Resources.LaunchEnvironment(map[string]string{"PATH": "account-path", "ACCOUNT_TOKEN": "secret"})
-		if environment["ACCOUNT_TOKEN"] != "secret" || !strings.HasSuffix(environment["PATH"], "account-path") {
-			t.Fatalf("launch environment lost account facts: %v", environment)
-		}
-		connection, err := capability.ReadConnection(environment[constants.AgentCLIContextEnvironment])
-		if err != nil {
-			t.Fatal(err)
-		}
+	runner, actual := maintenanceFixture(t, func(ctx context.Context, request agent.TaskRequest) (agent.TurnResult, error) {
+		connection, _ := fixtureConnection(t, ctx, request)
 		if response := maintenanceAudit(registry, connection); response.Code != http.StatusOK {
 			t.Fatalf("domain call failed: %s", response.Body)
 		}
-		return agentapi.TextResult{Text: " \n", StopReason: "end_turn"}, nil
+		return maintenanceResult(" \n", "end_turn"), nil
 	}, &released)
 	registry = actual
 	if report, err := runner.Run(context.Background(), maintenanceInput()); report != "" || err == nil || !released {
@@ -270,32 +286,12 @@ func TestMaintenanceRejectsEmptyFinalEvenAfterAuthorizedCall(t *testing.T) {
 	}
 }
 
-func TestMaintenanceResourceCancellationPreservesCleanupOwnership(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
+func TestCancelledMaintenanceDoesNotAcquireBridge(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	root, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	resources := &maintenanceResources{}
-	lease, err := resources.Acquire(ctx, agentapi.ResourceRequest{Workspace: native.WorkspaceScope{Root: root}})
-	if !errors.Is(err, status_error.OperationCanceled) || lease != resources || resources.directory != "" {
-		t.Fatalf("cancelled resource preparation created files or lost partial lease: %v %q", err, resources.directory)
-	}
-	resources.directory = filepath.Join(root, "lease-owned")
-	if err := os.Mkdir(resources.directory, 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := resources.Close(ctx); !errors.Is(err, status_error.OperationCanceled) {
-		t.Fatalf("cleanup ignored cancelled context: %v", err)
-	}
-	if _, err := os.Stat(resources.directory); err != nil {
-		t.Fatalf("cancelled cleanup removed owned files: %v", err)
-	}
-	if err := resources.Close(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(resources.directory); !os.IsNotExist(err) {
-		t.Fatalf("retry did not finish cleanup: %v", err)
+	runner := &MaintenanceRunner{}
+	lease, _, err := runner.acquireBridge(ctx, maintenanceInput(), nil, "", "")
+	if !errors.Is(err, context.Canceled) || lease.Close != nil || lease.CloseFiles != nil {
+		t.Fatalf("cancelled preparation acquired resources: %+v %v", lease, err)
 	}
 }

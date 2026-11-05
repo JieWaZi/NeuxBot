@@ -15,7 +15,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
@@ -227,15 +227,8 @@ func (s *Service) prepareManagedCodexAuth(ctx context.Context, account models.AI
 	} else if _, statErr := os.Lstat(filepath.Join(home, "auth.json")); !errors.Is(statErr, os.ErrNotExist) {
 		return err
 	}
-	if account.LiveAuthPath != "" {
-		var retireErr error
-		latest, retireErr = s.retireLegacyCodexProjection(ctx, account, latest)
-		if retireErr != nil {
-			return retireErr
-		}
-	}
-	if account.LiveAuthPath != "" || latest.LastRefresh.After(saved.LastRefresh) {
-		if persistErr := s.persistManagedCodexRefresh(ctx, account, latest, ""); persistErr != nil {
+	if latest.LastRefresh.After(saved.LastRefresh) {
+		if persistErr := s.persistManagedCodexRefresh(ctx, account, latest); persistErr != nil {
 			return persistErr
 		}
 	}
@@ -243,83 +236,6 @@ func (s *Service) prepareManagedCodexAuth(ctx context.Context, account models.AI
 		return nil
 	}
 	return writeCodexChatGPTCredential(home, latest)
-}
-
-// retireLegacyCodexProjection removes only an owned projection with a verified principal.
-// A fresher legacy rotation reaches encrypted storage before its file is retired. The
-// caller clears the pointer only after the retirement succeeds.
-func (s *Service) retireLegacyCodexProjection(ctx context.Context, account models.AIAccount, latest codexCredential) (codexCredential, error) {
-	legacyPath := account.LiveAuthPath
-	home := filepath.Dir(legacyPath)
-	workspace := filepath.Dir(filepath.Dir(filepath.Dir(home)))
-	if !filepath.IsAbs(legacyPath) || filepath.Join(accountconfig.Home(workspace, constants.RuntimeIDCodex), "auth.json") != legacyPath {
-		logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
-		return latest, nil
-	}
-	workspace, err := filepath.EvalSymlinks(workspace)
-	if errors.Is(err, os.ErrNotExist) {
-		return latest, nil
-	}
-	if err != nil {
-		return latest, managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
-	}
-	home = accountconfig.Home(workspace, constants.RuntimeIDCodex)
-	canonical, err := filepath.EvalSymlinks(home)
-	if errors.Is(err, os.ErrNotExist) {
-		return latest, nil
-	}
-	if err != nil {
-		return latest, managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
-	}
-	if canonical != home {
-		logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
-		return latest, nil
-	}
-	path := filepath.Join(home, "auth.json")
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return latest, nil
-	}
-	if err != nil {
-		return latest, managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
-	}
-	if !info.Mode().IsRegular() {
-		logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
-		return latest, nil
-	}
-	data, err := readCodexAuthFile(home)
-	if errors.Is(err, status_error.RuntimeAuthRequired) {
-		return latest, nil
-	}
-	if err != nil {
-		return latest, err
-	}
-	defer clear(data)
-	legacy, err := decodeCodexChatGPTCredential(data)
-	if err != nil || legacy.Tokens.Identity() != latest.Tokens.Identity() {
-		logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
-		return latest, nil
-	}
-	if legacy.LastRefresh.After(latest.LastRefresh) {
-		if err := s.persistManagedCodexRefresh(ctx, account, legacy, legacyPath); err != nil {
-			return latest, err
-		}
-		latest = legacy
-	}
-	current, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return latest, nil
-	}
-	if err != nil {
-		return latest, managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
-	}
-	if !os.SameFile(info, current) {
-		return latest, status_error.AIAccountCredentialError
-	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return latest, managedAccountStorageError(constants.RuntimeIDCodex, account.ID, err)
-	}
-	return latest, nil
 }
 
 func (s *Service) recoverManagedCodexAuth(ctx context.Context, id, home, identity string) error {
@@ -358,33 +274,19 @@ func (s *Service) recoverManagedCodexAuth(ctx context.Context, id, home, identit
 	if !current.LastRefresh.After(saved.LastRefresh) {
 		return nil
 	}
-	return s.persistManagedCodexRefresh(ctx, account, current, account.LiveAuthPath)
+	return s.persistManagedCodexRefresh(ctx, account, current)
 }
 
-func (s *Service) persistManagedCodexRefresh(ctx context.Context, account models.AIAccount, current codexCredential, path string) error {
+func (s *Service) persistManagedCodexRefresh(ctx context.Context, account models.AIAccount, current codexCredential) error {
 	encoded, _ := json.Marshal(current)
-	return s.accounts.StoreRefreshedCredential(ctx, account.ID, account.Revision, account.AuthGeneration, string(encoded), path)
+	return s.accounts.StoreRefreshedCredential(ctx, account.ID, account.Revision, account.AuthGeneration, string(encoded))
 }
 
 // RemoveCodexCredentialFiles removes the current native projection before a credential
 // mutation commits. The caller must hold the account's exclusive lease.
-func (s *Service) RemoveCodexCredentialFiles(ctx context.Context, account models.AIAccount) error {
+func (s *Service) RemoveCodexCredentialFiles(_ context.Context, account models.AIAccount) error {
 	if _, ok := accountEndpoint(account, constants.RuntimeIDCodex); !ok || s.dataDirectory == "" {
 		return nil
-	}
-	if account.LiveAuthPath != "" && account.HasCredential && account.AuthMode == constants.AccountAuthModeSubscription {
-		secret, err := s.accounts.Credential(ctx, account.ID)
-		if err != nil {
-			return err
-		}
-		var saved codexCredential
-		if json.Unmarshal([]byte(secret), &saved) == nil && saved.Tokens.Valid() {
-			if _, err := s.retireLegacyCodexProjection(ctx, account, saved); err != nil {
-				return err
-			}
-		} else {
-			logx.Warnf("left unverified legacy Codex auth projection: account_id=%s", account.ID)
-		}
 	}
 	home, err := s.managedAccountHome(constants.RuntimeIDCodex, account, false)
 	if err != nil {

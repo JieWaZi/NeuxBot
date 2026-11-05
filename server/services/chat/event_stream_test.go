@@ -88,8 +88,8 @@ func TestSubscriptionHubClearsLatestLiveSnapshotAtExecutionTerminal(t *testing.T
 }
 
 func TestExecutionSubscriptionNeverReceivesLiveOrMessageBodies(t *testing.T) {
-	schemaOne, chatID, _ := eventCursorService(t, 64)
-	_, manager := newRecoveryTestService(t, schemaOne.logStore.Root())
+	source, chatID, _ := eventCursorService(t, 64)
+	_, manager := newRecoveryTestService(t, source.logStore.Root())
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	subscription, err := manager.SubscribeExecutionEvents(ctx, chatID, "active")

@@ -14,6 +14,8 @@ import (
 	"testing/synctest"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
@@ -48,12 +50,9 @@ func TestValidateElicitationContentUsesFrozenSchema(t *testing.T) {
 func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 	for _, action := range []string{"answer", "decline", "cancel"} {
 		t.Run(action, func(t *testing.T) {
-			store, err := eventlog.NewStore(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
+			store := conversationfixture.New(t, t.TempDir())
 			chatID := "51515151515151515151515151515151"
-			if _, err := store.Create(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
+			if _, err := conversationfixture.CommitFacts(t.Context(), store, chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
 				t.Fatal(err)
 			}
 			journal := &consentTestJournal{interactionTestJournal: &interactionTestJournal{store: store}, updates: make(chan []models.PendingElicitation, 4)}
@@ -77,6 +76,7 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 				t.Fatalf("durable request missing: %+v", pending)
 			}
 			id := pending[0].ElicitationID
+			var err error
 			wantResult := constants.ElicitationResultAccepted
 			switch action {
 			case "answer":
@@ -105,7 +105,7 @@ func TestNativeQuestionsSharePendingFactsAndResolveExactlyOnce(t *testing.T) {
 			if err := coordinator.resolveAccepted(context.Background(), chatID, id, map[string]any{"answer": "late"}); !errors.Is(err, status_error.ElicitationAlreadyResolved) {
 				t.Fatalf("late response accepted: %v", err)
 			}
-			records, err := store.ReadAll(chatID)
+			records, err := conversationfixture.ReadFacts(t.Context(), store, chatID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -125,7 +125,7 @@ type interactionDeadlineJournal struct {
 	// Journal 保留本用例未使用的日志端口。
 	chatservice.Journal
 	// store 保存请求与处理的权威事实。
-	store *eventlog.Store
+	store *conversation.Store
 	// published 把请求已交付的时刻通知测试。
 	published chan eventlog.Record
 	// afterResolution 在处理事实持久化后、调用方发布完成前控制交错。
@@ -135,7 +135,7 @@ type interactionDeadlineJournal struct {
 }
 
 func (j *interactionDeadlineJournal) append(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
-	records, err := j.store.Append(chatID, []eventlog.AppendInput{input})
+	records, err := conversationfixture.CommitFacts(context.Background(), j.store, chatID, []eventlog.AppendInput{input})
 	if err != nil {
 		return eventlog.Record{}, err
 	}
@@ -177,12 +177,9 @@ func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
 			}
 			t.Run(name, func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					store, err := eventlog.NewStore(t.TempDir())
-					if err != nil {
-						t.Fatal(err)
-					}
+					store := conversationfixture.New(t, t.TempDir())
 					chatID := "52525252525252525252525252525252"
-					if _, err := store.Create(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
+					if _, err := conversationfixture.CommitFacts(t.Context(), store, chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
 						t.Fatal(err)
 					}
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -244,6 +241,7 @@ func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
 						}
 					} else {
 						// 用户在截止前获得处理权；真实accepted日志写入后才推进到期限。
+						var err error
 						if approval {
 							err = approvals.resolveSelected(context.Background(), chatID, id, "allow")
 						} else {
@@ -259,7 +257,7 @@ func TestNativeInteractionAdmissionOwnsDeadlineRace(t *testing.T) {
 					if len(inputs.pendingProjection(chatID)) != 0 || len(approvals.pendingProjection(chatID)) != 0 {
 						t.Fatal("finished request remained pending")
 					}
-					records, err := store.ReadAll(chatID)
+					records, err := conversationfixture.ReadFacts(t.Context(), store, chatID)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -291,12 +289,9 @@ func TestNativeInteractionKeepsCommittedDecisionDuringPublication(t *testing.T) 
 	for _, approval := range []bool{true, false} {
 		t.Run(map[bool]string{true: "approval", false: "input"}[approval], func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				store, err := eventlog.NewStore(t.TempDir())
-				if err != nil {
-					t.Fatal(err)
-				}
+				store := conversationfixture.New(t, t.TempDir())
 				chatID := "52525252525252525252525252525252"
-				if _, err := store.Create(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
+				if _, err := conversationfixture.CommitFacts(t.Context(), store, chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated}}); err != nil {
 					t.Fatal(err)
 				}
 				publishing, release := make(chan struct{}), make(chan struct{})

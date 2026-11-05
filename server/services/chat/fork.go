@@ -5,16 +5,20 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // ForkInput 保存用户明确选择的会话、回合及幂等请求身份。
@@ -117,7 +121,7 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 		return "", status_error.CreateRequestConflict
 	}
 	if !exists {
-		operation, err = m.prepareFork(input)
+		operation, err = m.prepareFork(ctx, input)
 		if err != nil {
 			return "", err
 		}
@@ -143,7 +147,7 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 		if readErr != nil {
 			return "", readErr
 		}
-		points, pointErr := forkPoints(records, state)
+		points, pointErr := m.resolveForkPoints(ctx, input.ChatID, records, state)
 		if pointErr != nil {
 			return "", pointErr
 		}
@@ -210,12 +214,12 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 	return operation.ChatID, nil
 }
 
-func (m *service) prepareFork(input ForkInput) (chatstorage.ForkOperation, error) {
+func (m *service) prepareFork(ctx context.Context, input ForkInput) (chatstorage.ForkOperation, error) {
 	records, state, err := m.loadChatState(input.ChatID)
 	if err != nil {
 		return chatstorage.ForkOperation{}, err
 	}
-	points, err := forkPoints(records, state)
+	points, err := m.resolveForkPoints(ctx, input.ChatID, records, state)
 	if err != nil {
 		return chatstorage.ForkOperation{}, err
 	}
@@ -229,10 +233,35 @@ func (m *service) prepareFork(input ForkInput) (chatstorage.ForkOperation, error
 	if selected == nil || !selected.target.Available {
 		return chatstorage.ForkOperation{}, status_error.ChatForkUnavailable
 	}
-	messages, err := messageview.ReplayMessages(records[:selected.end])
-	if err != nil {
-		return chatstorage.ForkOperation{}, err
+	builder := messageview.NewMessageViewBuilder()
+	checkpoints := make(map[string]eventlog.Record)
+	for _, record := range records[:selected.end] {
+		if _, err := builder.Apply(record); err != nil {
+			return chatstorage.ForkOperation{}, err
+		}
+		if isNativeCheckpoint(record) {
+			checkpoints[record.MessageID] = record
+		}
 	}
+	if len(checkpoints) > 0 {
+		journal, ok := m.logStore.(*conversationJournal)
+		if !ok {
+			return chatstorage.ForkOperation{}, status_error.ChatLogCorrupted
+		}
+		for _, checkpoint := range checkpoints {
+			message, cursor, err := journal.ReadMessageCheckpoint(ctx, input.ChatID, checkpoint.MessageID, checkpoint.Sequence)
+			if err != nil {
+				return chatstorage.ForkOperation{}, err
+			}
+			if cursor != checkpoint.Sequence {
+				return chatstorage.ForkOperation{}, status_error.ChatForkUnavailable
+			}
+			if err := builder.ReplaceStoredContent(message, cursor, checkpoint.RecordedAt); err != nil {
+				return chatstorage.ForkOperation{}, err
+			}
+		}
+	}
+	messages := builder.Messages()
 	// 晚到文件结果不属于后续对话轮次，按已包含消息身份补齐其当前不可变引用。
 	references := map[string]*eventlog.FileChangesData{}
 	for _, record := range records {
@@ -340,15 +369,16 @@ func (m *service) publishFork(ctx context.Context, directory string, operation c
 		if err = os.RemoveAll(stagingRoot); err != nil {
 			return status_error.ChatLogError
 		}
-		store, storeErr := eventlog.NewStore(stagingRoot)
+		staged, storeErr := conversation.NewStore(stagingRoot)
 		if storeErr != nil {
 			return storeErr
 		}
+		defer staged.Close()
 		sourceDirectory, err := m.logStore.FileChangesDirectory(operation.SourceChatID)
 		if err != nil {
 			return err
 		}
-		targetDirectory, err := store.FileChangesDirectory(operation.ChatID)
+		targetDirectory, err := staged.FileChangesDirectory(operation.ChatID)
 		if err != nil {
 			return err
 		}
@@ -375,15 +405,8 @@ func (m *service) publishFork(ctx context.Context, directory string, operation c
 			}
 			facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeMessageInherited, MessageID: message.ID, Data: marshalData(message)})
 		}
-		facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeNativeSessionUpdated, Data: marshalData(eventlog.RuntimeSessionData{RuntimeID: payload.Invocation.RuntimeID, SessionID: operation.SessionID, LastExecutionID: payload.LastExecutionID})})
-		path, pathErr := store.LogPath(operation.ChatID)
-		if pathErr != nil {
-			return pathErr
-		}
-		if _, statErr = os.Stat(path); os.IsNotExist(statErr) {
-			if _, err = store.Create(operation.ChatID, facts); err != nil {
-				return err
-			}
+		if err := writeForkFacts(ctx, staged, operation.ChatID, facts); err != nil {
+			return err
 		}
 		if err = m.storage.PublishForkLog(staging, operation.ChatID); err != nil {
 			return err
@@ -396,6 +419,49 @@ func (m *service) publishFork(ctx context.Context, directory string, operation c
 		return err
 	}
 	return m.queryIndexes.replaceCurrentProjection(ctx, currentProjection{chat: state.chat, runtimeSessions: state.runtimeSessions})
+}
+
+// projectInheritedForkSession extracts the child session from the inherited fork boundary.
+func projectInheritedForkSession(record eventlog.Record, sessions map[string]models.RuntimeSession) error {
+	var inherited messageview.InheritedMessage
+	if err := json.Unmarshal(record.Data, &inherited); err != nil {
+		return status_error.ChatLogCorrupted
+	}
+	invocation := inherited.ForkInvocation
+	if invocation == nil {
+		return nil
+	}
+	if invocation.RuntimeID == "" || invocation.SessionOutputID == "" {
+		return status_error.ChatLogCorrupted
+	}
+	sessions[invocation.RuntimeID] = models.RuntimeSession{
+		ChatID: record.ChatID, RuntimeID: invocation.RuntimeID, SessionID: invocation.SessionOutputID,
+		LastExecutionID: record.MessageID, UpdatedAt: record.RecordedAt,
+	}
+	return nil
+}
+
+// writeForkFacts 分批提交历史，完整日志在目录原子发布之前保持私有。
+func writeForkFacts(ctx context.Context, store *conversation.Store, chatID string, facts []eventlog.AppendInput) error {
+	// 保留帧头、摘要和事实封装的空间。单条事实由 Store 校验实际帧长度。
+	const preferredRows, preferredPayloadBytes = 64, 8 << 20
+	for first := 0; first < len(facts); {
+		end := first + 1
+		payloadBytes := len(facts[first].Data)
+		for end < len(facts) && end-first < preferredRows &&
+			len(facts[end].Data) <= preferredPayloadBytes-payloadBytes {
+			payloadBytes += len(facts[end].Data)
+			end++
+		}
+		if _, err := store.Commit(ctx, agent.ConversationBatch{
+			ChatID: chatID, Key: "fork-history-" + strconv.Itoa(first), ExpectedVersion: int64(first),
+			Changes: factsToChanges(facts[first:end]),
+		}); err != nil {
+			return err
+		}
+		first = end
+	}
+	return nil
 }
 
 // recoverForks 完成已经取得原生身份的持久操作；结果未知的原生调用保持待对账。

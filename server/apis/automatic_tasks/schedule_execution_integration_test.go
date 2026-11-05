@@ -15,7 +15,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent/agentfixture"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -38,48 +39,36 @@ type integrationRuntime struct {
 	calls atomic.Int64
 }
 
-// integrationPrompt 保留原生连接启动事实和当前新增输入，不能从业务接纳回执推测派发。
+// integrationPrompt retains the exact native launch and increment observed by the fixture.
 type integrationPrompt struct {
-	// session 是产品 Session 已冻结的原生启动输入。
-	session native.OpenRequest
-	// turn 是产品 Session 实际提交的当前回合。
-	turn native.TurnRequest
+	// model is the selected model at native admission.
+	model string
+	// cwd is the process working directory.
+	cwd string
+	// directories contains the native session's additional authorized roots.
+	directories []string
+	// input contains the exact adapter prompt.
+	input agentapi.AgentPromptRequest
 }
 
-// integrationSession 为每个 Chat 保存独立原生会话，避免团队成员共用模型上下文。
-type integrationSession struct {
-	// driver 提供受测试控制的外部执行边界。
-	driver *integrationRuntime
-	// request 是本原生会话唯一的静态配置。
-	request native.OpenRequest
-}
-
-func (r *integrationRuntime) Open(_ context.Context, request native.OpenRequest) (agentapi.NativeConnection, error) {
-	return &integrationSession{driver: r, request: request}, nil
-}
-func (*integrationSession) Close(context.Context) error { return nil }
-func (s *integrationSession) Prompt(ctx context.Context, request native.TurnRequest, sink native.EventSink) native.TurnResult {
-	s.driver.calls.Add(1)
-	failed := func(err error) native.TurnResult {
-		return native.TurnResult{Status: native.StatusFailed, Fault: &native.Fault{Code: native.FaultDriver, Cause: err}}
+func (r *integrationRuntime) newClient(_ context.Context, account agentapi.AccountRequest, _ agentapi.ProviderLaunch, _ agentapi.AccountLease, _ agentapi.LaunchAuthLease, _ agentapi.ResourceLease, _ agentapi.AgentClientCallbacks) (agentapi.ProviderClient, error) {
+	client := &agentfixture.Client{}
+	client.OnPrompt = func(ctx context.Context, request agentapi.AgentPromptRequest) (*string, error) {
+		r.calls.Add(1)
+		select {
+		case r.requests <- integrationPrompt{model: client.Model, cwd: account.CWD, directories: client.Options.AdditionalDirectories, input: request}:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		select {
+		case <-r.finish:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		text := "归档完成"
+		return &text, nil
 	}
-	if err := sink.Accept(ctx, native.Event{Kind: native.EventPromptAccepted}); err != nil {
-		return failed(err)
-	}
-	select {
-	case s.driver.requests <- integrationPrompt{session: s.request, turn: request}:
-	case <-ctx.Done():
-		return native.TurnResult{Status: native.StatusCancelled, StopReason: native.StopCancelled}
-	}
-	select {
-	case <-s.driver.finish:
-	case <-ctx.Done():
-		return native.TurnResult{Status: native.StatusCancelled, StopReason: native.StopCancelled}
-	}
-	if err := sink.Accept(ctx, native.Event{Kind: native.EventAssistantMessage, Message: &native.AssistantMessage{MessageID: "result", Phase: native.PhaseFinal, Delta: "归档完成", Complete: true}}); err != nil {
-		return failed(err)
-	}
-	return native.TurnResult{Status: native.StatusCompleted, StopReason: native.StopEndTurn, NativeSession: native.NativeSessionInfo{Handle: "native-" + s.request.Invocation.ID, Resumable: true}}
+	return client, nil
 }
 
 // integrationEnvironment 提供已探测模型和一个不同的默认账号，验证任务不会隐式重绑定。
@@ -134,7 +123,12 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 	if err := profiles.CreateWakerDocuments(ctx, documents); err != nil {
 		t.Fatal(err)
 	}
-	chats, err := chat.New(chat.Config{StorageDirectory: dataDirectory, Projects: projects,
+	store, err := conversation.NewStore(dataDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(store.Close)
+	chats, err := chat.New(chat.Config{StorageDirectory: dataDirectory, Projects: projects, Conversations: store,
 		QueryIndexes: chat.QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), RuntimeSessions: controllers.NewRuntimeSessionController(database.DB), Transactions: transactions, DeletionIntents: controllers.NewChatDeletionIntentController(database.DB)}})
 	if err != nil {
 		t.Fatal(err)
@@ -148,15 +142,14 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	host := agentapi.NewManager(agentapi.ManagerConfig{PrepareWorkspace: agentapi.NewWorkspacePreparer(sdk.Runtimes()).Prepare, Launch: sdk.PrepareLaunch, Runtimes: sdk.Runtimes, Fork: agentapi.NewForkHandler(sdk),
-		Open: func(ctx context.Context, _ native.ConnectionConfig, request native.OpenRequest) (agentapi.NativeConnection, error) {
-			return runtime.Open(ctx, request)
-		}})
-	t.Cleanup(func() {
-		if err := host.Close(context.Background()); err != nil {
-			t.Error(err)
-		}
+	providers := agentapi.NewProviderRuntime(agentapi.ProviderRuntimeOptions{
+		AcquireAccount: func(context.Context, agentapi.AccountRequest) (agentapi.AccountLease, error) {
+			return agentapi.AccountLease{}, nil
+		},
+		NewClient: runtime.newClient,
 	})
+	runtimeThreads := agentapi.NewThreadLifecycle(providers, store)
+	t.Cleanup(func() { _ = runtimeThreads.Close(context.Background()); _ = providers.Close(context.Background()) })
 	var teams channelservice.Service
 	var service *schedule.Service
 	core, err := execution.New(execution.Config{AcquireTeamChatInput: func(ctx context.Context, chatID string, userInput bool) (context.Context, func(), error) {
@@ -164,7 +157,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 			return ctx, func() {}, nil
 		}
 		return teams.AcquireChatInput(ctx, chatID, userInput)
-	}, Runtime: host, Journal: chats, DormantChats: chats, Wakers: wakers, Profiles: profiles, Projects: projects, RuntimeEnvironments: integrationEnvironment{}, StorageDirectory: dataDirectory, SkillDataDirectory: dataDirectory})
+	}, Threads: runtimeThreads, ResolveAccount: agentfixture.ResolveAccount, RuntimeSummaries: sdk.Runtimes(), Journal: chats, DormantChats: chats, Wakers: wakers, Profiles: profiles, Projects: projects, RuntimeEnvironments: integrationEnvironment{}, StorageDirectory: dataDirectory, SkillDataDirectory: dataDirectory})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +227,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		t.Helper()
 		select {
 		case request := <-runtime.requests:
-			if request.session.Profile.Model != "model" || !strings.Contains(request.turn.Input.Text, want) {
+			if request.model != "model" || !strings.Contains(request.input.Text, want) {
 				t.Fatalf("runtime frozen request: %+v", request)
 			}
 		case <-time.After(5 * time.Second):
@@ -678,13 +671,13 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 				t.Fatalf("团队成员任务未接纳: %+v %v", mentioned, err)
 			}
 			member := next()
-			if !strings.Contains(lead.turn.Input.Text, "并发负责人") || !strings.Contains(member.turn.Input.Text, "并发成员") || lead.session.Workspace.Root == member.session.Workspace.Root || lead.session.Invocation.ID == member.session.Invocation.ID || len(lead.session.Workspace.Directories) != 1 || len(member.session.Workspace.Directories) != 1 || lead.session.Workspace.Directories[0] != member.session.Workspace.Directories[0] {
-				t.Fatalf("并发成员未隔离原生工作区或未共享批准目录: lead=%+v member=%+v", lead.session.Workspace, member.session.Workspace)
+			if !strings.Contains(lead.input.Text, "并发负责人") || !strings.Contains(member.input.Text, "并发成员") || lead.cwd == member.cwd || lead.input.HostInvocationID == member.input.HostInvocationID || len(lead.directories) != 1 || len(member.directories) != 1 || lead.directories[0] != member.directories[0] {
+				t.Fatalf("并发成员未隔离原生工作区或未共享批准目录: lead=%+v member=%+v", lead, member)
 			}
 			for _, snapshot := range created.Thread.Members {
 				state, err := chats.GetChatSummary(ctx, snapshot.ChatID)
 				workspace, pathErr := filepath.EvalSymlinks(state.Chat.WorkspaceDirectory)
-				if err != nil || pathErr != nil || state.Chat.ActiveExecutionID == "" || (workspace != lead.session.Workspace.Root && workspace != member.session.Workspace.Root) {
+				if err != nil || pathErr != nil || state.Chat.ActiveExecutionID == "" || (workspace != lead.cwd && workspace != member.cwd) {
 					t.Fatalf("实际准备路径或并行执行事实不符: %+v %v", state.Chat, err)
 				}
 			}

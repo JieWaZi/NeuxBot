@@ -1,10 +1,8 @@
 package agent
 
 import (
-	"context"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/codexoauth"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,21 +33,8 @@ const (
 	RuntimeIDQoderCN = constants.RuntimeIDQoderCN
 )
 
-// CredentialRefresh 把凭据更新交给宿主权威，适配器只在原生认证请求时调用。
-type CredentialRefresh = codexoauth.RefreshFunc
-
-// DetectRequest 保存有界探测 Runtime 所需的显式输入。
+// DetectRequest selects the installation or profile to inspect.
 type DetectRequest struct {
-	// ReleaseResources 在原生使用者退出后回收本次账号与目录，失败保留所有者并允许重试。
-	ReleaseResources func(context.Context) error `json:"-"`
-	// UseNativeAuth 明确本次探测使用系统原生认证文件，受管账号始终为 false。
-	UseNativeAuth bool `json:"-"`
-	// RefreshCredentials 将原生能力探测的刷新交给账号凭据权威。
-	RefreshCredentials CredentialRefresh `json:"-"`
-	// WorkingDirectory 是调用方创建并拥有的隔离探测目录；空值由 SDK 创建。
-	WorkingDirectory string
-	// Model 是本次必须实际选择并读取能力的原生模型 ID。
-	Model string
 	// RuntimeID 指定内置 Runtime 或 Local Profile 的开放字符串 ID。
 	RuntimeID string
 	// BaseEnvironment 是调用方显式提供的基础进程环境。
@@ -268,37 +253,6 @@ const (
 	PermissionLevelFullAccess = constants.PermissionLevelFullAccess
 )
 
-// RuntimeTarget 保存一次调用选择的 Runtime 及受控本地启动覆盖。
-type RuntimeTarget struct {
-	// RefreshCredentials 只协调原生令牌刷新，不限制会话或模型请求并发。
-	RefreshCredentials CredentialRefresh `json:"-"`
-	// AccountID 是本次执行固定使用的受管账号，空值表示沿用现有 CLI 配置。
-	AccountID string
-	// Environment 是账号准备生成的受控环境变量，不进入事件或日志。
-	Environment map[string]string
-	// Isolated 表示启动时移除宿主认证变量。
-	Isolated bool
-	// CloseAfterRun 要求返回终态前关闭持有账号凭据的进程。
-	CloseAfterRun bool
-
-	// RuntimeID 是用户本次选择的 Runtime 或本地 Profile 标识。
-	RuntimeID string
-	// Binary 是环境条目配置的可执行文件；为空时使用 Runtime 定义默认值。
-	Binary string
-	// PrefixArgs 是本地 Profile 配置的受控前置参数。
-	PrefixArgs []string
-	// NativePluginDirectories 是本轮已经核验且独占交付的Claude原生包目录。
-	NativePluginDirectories []string
-	// CodexPluginConfiguration 是自有插件仅在本次进程生效的原生点路径覆盖。
-	CodexPluginConfiguration map[string]string
-	// NativePluginScope 是本轮外部原生插件事实摘要，变化时不得复用旧进程。
-	NativePluginScope string
-	// ClaudeSettingsPath 是只对本次进程生效的受管模型设置文件。
-	ClaudeSettingsPath string
-	// ConfigHome 是 Runtime 使用的受控配置目录。
-	ConfigHome string
-}
-
 // ConnectorTransport 是共享 Runtime MCP 传输枚举的引用。
 type ConnectorTransport = constants.RuntimeConnectorTransport
 
@@ -310,18 +264,6 @@ const (
 	// ConnectorTransportSSE 表示旧版 HTTP SSE 传输。
 	ConnectorTransportSSE = constants.RuntimeConnectorTransportSSE
 )
-
-// LaunchFacts 是已有探测与账号准备共同确认的原生启动事实，不创建协议连接。
-type LaunchFacts struct {
-	// BaseRuntimeID 决定公开适配器的协议类型。
-	BaseRuntimeID string
-	// Executable 是有效探测已经解析的真实程序路径。
-	Executable string
-	// PrefixArgs 是 Profile 与启动覆盖合并后的前置参数。
-	PrefixArgs []string
-	// Environment 是账号隔离、Profile 覆盖与工具路径补充后的完整环境。
-	Environment []string
-}
 
 const (
 	// DiagnosticCodeACPOptionsUnavailable 表示 ACP 模型目录未能完整刷新。

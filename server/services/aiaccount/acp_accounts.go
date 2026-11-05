@@ -17,8 +17,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
-	"github.com/JieWaZi/acp-go/pkg/agent_next/qoder"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/acp-go/pkg/qoder"
 )
 
 type acpSystemAccount struct {

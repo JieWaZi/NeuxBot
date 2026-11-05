@@ -1,25 +1,20 @@
 package aiaccount
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
 	"context"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
-	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 const kimiCredentialMarker = "kimi-cli-managed"
@@ -101,19 +96,6 @@ func (s *Service) kimiAccountHome(id string, create bool) (string, error) {
 		return "", err
 	}
 	return filepath.EvalSymlinks(home)
-}
-
-func (s *Service) prepareKimiSubscription(account models.AIAccount) (agentapi.RuntimeTarget, error) {
-	home, err := s.kimiHome(account.ID)
-	if err != nil {
-		return agentapi.RuntimeTarget{}, err
-	}
-	if info, err := os.Stat(filepath.Join(home, "config.toml")); err != nil || !info.Mode().IsRegular() {
-		return agentapi.RuntimeTarget{}, status_error.RuntimeAuthRequired
-	}
-	environment := accountconfig.HomeEnvironment(constants.RuntimeIDKimi, home)
-	environment[constants.AIAccountIdentityEnvironment] = account.ID + ":" + strconv.FormatInt(account.Revision, 10)
-	return agentapi.RuntimeTarget{AccountID: account.ID, Environment: environment, Isolated: true}, nil
 }
 
 func kimiExecutable() (string, error) {
@@ -258,7 +240,7 @@ func (s *Service) commitKimiLogin(ctx context.Context, id string, job *loginJob)
 	if current.Revision != job.revision {
 		return Login{}, status_error.AIAccountRevisionConflict
 	}
-	if err := s.accounts.StoreCredential(ctx, id, current.Revision, kimiCredentialMarker, ""); err != nil {
+	if err := s.accounts.StoreCredential(ctx, id, current.Revision, kimiCredentialMarker); err != nil {
 		return Login{}, err
 	}
 	job.snapshotMutex.Lock()

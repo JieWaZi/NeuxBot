@@ -1,8 +1,7 @@
 package execution
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 
 	"context"
 	"errors"
@@ -73,7 +72,7 @@ type runtimeSelection struct {
 	// Fast 是本轮可冻结的 Fast 选择。
 	Fast *bool `json:"Fast,omitempty"`
 	// PermissionLevel 是本次执行冻结的跨 Runtime 产品权限等级。
-	PermissionLevel agentapi.PermissionLevel
+	PermissionLevel agent.PermissionLevel
 	// WorkspaceReadOnly 表示 Runtime 只能读取工作区，不能请求或执行文件修改。
 	WorkspaceReadOnly bool
 	// SessionPolicy 决定本次是续接还是强制新建 Runtime Session。
@@ -141,7 +140,7 @@ type pendingMessage struct {
 	// allowedConnectorIDs 是入口冻结的 MCP 白名单，nil 与空列表具有不同业务含义。
 	allowedConnectorIDs *[]string
 	// supplementalInstructions 是业务层追加的虚拟上下文文件。
-	supplementalInstructions []agentapi.Instruction
+	supplementalInstructions []agent.Instruction
 	// historyMessageIDsToOmit 是已包含在本次输入中的权威消息标识。
 	historyMessageIDsToOmit []string
 }
@@ -160,7 +159,7 @@ func normalizePendingMessage(input pendingMessage) pendingMessage {
 	input.allowedConnectorIDs = cloneConnectorAllowlist(input.allowedConnectorIDs)
 	input.historyMessageIDsToOmit = append([]string(nil), input.historyMessageIDsToOmit...)
 	input.supplementalInstructions = append(
-		[]agentapi.Instruction(nil),
+		[]agent.Instruction(nil),
 		input.supplementalInstructions...,
 	)
 	input.message.PluginIDs = append([]string(nil), input.message.PluginIDs...)
@@ -666,7 +665,7 @@ type preparedMessageFiles struct {
 	// codeReferences 保存整文件的权威工作区路径及按输入保留路径的代码片段。
 	codeReferences []eventlog.CodeReference
 	// instructions 是本次执行实际读取并交给 Runtime 的当前指令。
-	instructions []agentapi.Instruction
+	instructions []agent.Instruction
 	// committed 表示权威消息和执行事实已经成功提交。
 	committed bool
 }
@@ -1057,7 +1056,7 @@ func (m *service) prepareMessageFiles(
 	if err != nil {
 		return nil, err
 	}
-	instructions := make([]agentapi.Instruction, 0, len(profileContents))
+	instructions := make([]agent.Instruction, 0, len(profileContents))
 	// 档案按固定业务顺序进入静态配置，避免相同内容因 map 遍历顺序变化重建原生会话。
 	for _, kind := range profile.EditableKinds() {
 		content, exists := profileContents[kind]
@@ -1068,7 +1067,7 @@ func (m *service) prepareMessageFiles(
 		if !ok {
 			fileName = constants.ProfileDocumentDefaultFileName
 		}
-		instructions = append(instructions, agentapi.Instruction{
+		instructions = append(instructions, agent.Instruction{
 			Name:    fileName,
 			Content: content,
 		})
@@ -1088,7 +1087,7 @@ func (m *service) prepareMessageFiles(
 			continue
 		}
 		if content, exists := files[runtimeFiles.instructionFileName]; exists {
-			instructions = append(instructions, agentapi.Instruction{
+			instructions = append(instructions, agent.Instruction{
 				Name: filepath.Join(
 					constants.ExecutionWorkspaceProjectsDirectory,
 					source.EntryName,
@@ -1328,7 +1327,7 @@ func selectedSkillReferences(selectedIDs []string, enabled []models.SkillWithSta
 
 func selectedConnectorReferences(
 	selectedIDs []string,
-	enabled []agentapi.Connector,
+	enabled []agent.Connector,
 ) []eventlog.MessageConnectorReference {
 	selected := make(map[string]struct{}, len(selectedIDs))
 	for _, id := range selectedIDs {
@@ -1355,9 +1354,9 @@ func (m *service) buildSessionPlan(
 	enabledSkills []models.SkillWithState,
 	enabledConnectors []models.MCPConnector,
 	runtimeEnvironment models.RuntimeEnvironment,
-) (agentapi.SessionPlan, agentapi.TurnInput) {
+) (agent.SessionPlan, agent.TurnInput) {
 	attachments := make(
-		[]agentapi.Attachment,
+		[]agent.Attachment,
 		0,
 		len(files.attachmentReferences),
 	)
@@ -1366,20 +1365,20 @@ func (m *service) buildSessionPlan(
 		if index < len(files.attachments.RuntimePaths) {
 			runtimePath = files.attachments.RuntimePaths[index]
 		}
-		attachments = append(attachments, agentapi.Attachment{
+		attachments = append(attachments, agent.Attachment{
 			Name:        attachment.Name,
 			Path:        attachment.Path,
 			MediaType:   attachment.MediaType,
 			RuntimePath: runtimePath,
 		})
 	}
-	codeReferences := make([]agentapi.CodeReference, 0, len(files.codeReferences))
+	codeReferences := make([]agent.CodeReference, 0, len(files.codeReferences))
 	for _, reference := range files.codeReferences {
-		codeReferences = append(codeReferences, agentapi.CodeReference{
+		codeReferences = append(codeReferences, agent.CodeReference{
 			Path: reference.Path, StartLine: reference.StartLine, EndLine: reference.EndLine, Content: reference.Content,
 		})
 	}
-	skills := make([]agentapi.Skill, 0, len(enabledSkills))
+	skills := make([]agent.Skill, 0, len(enabledSkills))
 	selectedSkillIDs := make(map[string]struct{}, len(request.message.SkillIDs))
 	for _, skillID := range request.message.SkillIDs {
 		selectedSkillIDs[skillID] = struct{}{}
@@ -1388,13 +1387,13 @@ func (m *service) buildSessionPlan(
 		if item.CurrentVersion.ID == "" {
 			continue
 		}
-		skills = append(skills, agentapi.Skill{
+		skills = append(skills, agent.Skill{
 			Name: item.CurrentVersion.Name,
 			Path: filepath.Join(m.skillDataDirectory, item.CurrentVersion.ContentPath),
 		})
 	}
 	connectors := runtimeConnectorDeclarations(enabledConnectors)
-	instructions := append([]agentapi.Instruction(nil), files.instructions...)
+	instructions := append([]agent.Instruction(nil), files.instructions...)
 	for _, instruction := range request.supplementalInstructions {
 		if instruction.Name == "" || instruction.Content == "" {
 			continue
@@ -1407,15 +1406,15 @@ func (m *service) buildSessionPlan(
 	if request.runtime.WorkspaceReadOnly {
 		additionalWritableDirectories = nil
 	}
-	sessionPlan := agentapi.SessionPlan{
-		Target: agentapi.SessionTarget{
+	sessionPlan := agent.SessionPlan{
+		Target: agent.SessionTarget{
 			RuntimeID:  request.runtime.RuntimeID,
 			Binary:     runtimeEnvironment.Binary,
 			PrefixArgs: append([]string(nil), runtimeEnvironment.PrefixArgs...),
 			ConfigHome: runtimeEnvironment.ConfigHome,
 		},
 		Detection: runtimeEnvironment.Detection,
-		Workspace: agentapi.Workspace{
+		Workspace: agent.Workspace{
 			Path:                          files.executionWorkspaceDirectory,
 			Managed:                       true,
 			AdditionalWritableDirectories: additionalWritableDirectories,
@@ -1424,7 +1423,7 @@ func (m *service) buildSessionPlan(
 		Instructions: instructions,
 		Skills:       skills,
 		Connectors:   connectors,
-		Policy: agentapi.RunPolicy{
+		Policy: agent.RunPolicy{
 			Model:     request.runtime.Model,
 			Reasoning: request.runtime.Reasoning,
 			Execution: executionPolicy(
@@ -1433,8 +1432,8 @@ func (m *service) buildSessionPlan(
 			),
 		},
 	}
-	turn := agentapi.TurnInput{
-		Message: agentapi.Message{Text: request.message.Text, Attachments: attachments, CodeReferences: codeReferences},
+	turn := agent.TurnInput{
+		Message: agent.Message{Text: request.message.Text, Attachments: attachments, CodeReferences: codeReferences},
 	}
 	for _, item := range enabledSkills {
 		if item.CurrentVersion.ID != "" && hasSkillID(selectedSkillIDs, item.SkillPackage.ID) {
@@ -1445,9 +1444,9 @@ func (m *service) buildSessionPlan(
 	return sessionPlan, turn
 }
 
-func selectedRuntimeConnectorsAreEnabled(selected []string, connectors []agentapi.Connector) bool {
+func selectedRuntimeConnectorsAreEnabled(selected []string, connectors []agent.Connector) bool {
 	for _, id := range selected {
-		if !slices.ContainsFunc(connectors, func(connector agentapi.Connector) bool { return connector.ID == id }) {
+		if !slices.ContainsFunc(connectors, func(connector agent.Connector) bool { return connector.ID == id }) {
 			return false
 		}
 	}
@@ -1458,14 +1457,14 @@ func selectedRuntimeConnectorsAreEnabled(selected []string, connectors []agentap
 func runtimeProjectDirectories(
 	chat models.Chat,
 	sources []eventlog.ProjectSourceSnapshot,
-) []agentapi.WorkspaceProjectDirectory {
-	directories := make([]agentapi.WorkspaceProjectDirectory, 0, len(sources))
+) []agent.WorkspaceProjectDirectory {
+	directories := make([]agent.WorkspaceProjectDirectory, 0, len(sources))
 	defaultDirectory := ""
 	if len(chat.AdditionalWorkingDirectories) > 0 {
 		defaultDirectory = chat.AdditionalWorkingDirectories[0]
 	}
 	for _, source := range sources {
-		directories = append(directories, agentapi.WorkspaceProjectDirectory{
+		directories = append(directories, agent.WorkspaceProjectDirectory{
 			Path: filepath.ToSlash(filepath.Join(
 				constants.ExecutionWorkspaceProjectsDirectory,
 				source.EntryName,
@@ -1547,27 +1546,27 @@ func hasSkillID(skillIDs map[string]struct{}, skillID string) bool {
 	return exists
 }
 
-func executionPolicy(level agentapi.PermissionLevel, workspaceReadOnly bool) agentapi.ExecutionPolicy {
-	return agentapi.ExecutionPolicy{PermissionLevel: level, WorkspaceReadOnly: workspaceReadOnly}
+func executionPolicy(level agent.PermissionLevel, workspaceReadOnly bool) agent.ExecutionPolicy {
+	return agent.ExecutionPolicy{PermissionLevel: level, WorkspaceReadOnly: workspaceReadOnly}
 }
 
 func runtimePermissionSupported(
 	environment models.RuntimeEnvironment,
 	modelID string,
-	level agentapi.PermissionLevel,
+	level agent.PermissionLevel,
 ) bool {
 	selectedID := strings.TrimSpace(modelID)
 	if selectedID == "" {
 		selectedID = environment.DefaultModel
 	}
-	levels := agentapi.ModelPermissionLevels(
+	levels := agent.ModelPermissionLevels(
 		environment.Detection,
 		environment.CustomModels,
 		selectedID,
 	)
 	// 未登录时可能无法取得模型权限目录，留待原生 Runtime 返回鉴权错误。
-	if len(levels) == 0 && environment.Detection.Auth == agentapi.AuthStatusMissing {
+	if len(levels) == 0 && environment.Detection.Auth == agent.AuthStatusMissing {
 		return constants.SelectablePermissionLevel(level)
 	}
-	return agentapi.PermissionLevelSupported(levels, level)
+	return agent.PermissionLevelSupported(levels, level)
 }

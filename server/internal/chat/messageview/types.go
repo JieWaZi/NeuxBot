@@ -189,8 +189,6 @@ type Message struct {
 	RuntimeEvents []MessageRuntimeEvent `json:"-"`
 	// DisplayParts 是供聊天界面渲染的最小跨 Runtime 展示视图。
 	DisplayParts []MessageDisplayPart `json:"displayParts,omitempty"`
-	// FileChanges 仅供旧内部调用兼容，不进入公开消息且不再派生成果。
-	FileChanges []ToolFileChangeSummary `json:"-"`
 	// FileChangeRecord 指向独立快照产生的唯一文件成果，列表与内容按需读取。
 	FileChangeRecord *eventlog.FileChangesData `json:"fileChangeRecord,omitempty"`
 	// FileChangeDiffs 是仅供 Core 按需读取、不会进入聊天消息接口的执行级文件差异。

@@ -17,7 +17,7 @@ func (m *service) locateExecution(ctx context.Context, chatID, executionID, subm
 		if err := ctx.Err(); err != nil {
 			return nil, 0, chatContextStatus(err)
 		}
-		recovery, err := m.logStore.RecoverIndex(chatID)
+		covered, err := m.logStore.ReadLatestSequence(chatID)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -25,7 +25,6 @@ func (m *service) locateExecution(ctx context.Context, chatID, executionID, subm
 		if err != nil {
 			return nil, 0, err
 		}
-		covered := recovery.LatestSequence
 		var tailLocation *models.ChatExecutionLocation
 		authoritativeTailRead := false
 		indexWriteFailed := false

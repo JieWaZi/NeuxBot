@@ -255,8 +255,8 @@ func acquirePluginReadme(version models.PluginVersion) (string, func(), error) {
 
 // closeIdlePlugin 将身份变更前的消费者回收交回真实会话所有者。
 func closeIdlePlugin(ctx context.Context, id string) error {
-	if global.AgentManager != nil {
-		return global.AgentManager.CloseIdlePlugin(ctx, id)
+	if global.AgentThreads != nil {
+		return global.AgentThreads.CloseIdlePlugin(ctx, id)
 	}
 	return nil
 }

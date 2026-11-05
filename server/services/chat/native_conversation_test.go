@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
@@ -21,7 +21,7 @@ func TestChatHistoryProjectsCommittedNativeFragments(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	id := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	store, err := eventlog_next.NewStore(root)
+	store, err := conversation.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestChatNativeAdmissionStreamsTerminalAndReopens(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	store, err := eventlog_next.NewStore(root)
+	store, err := conversation.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +209,7 @@ reopen:
 	}
 	subscription.Close()
 	chats.Close()
-	reopened, err := eventlog_next.NewStore(root)
+	reopened, err := conversation.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,96 +250,45 @@ reopen:
 	}
 }
 
-func TestChatReadsLegacyRecordsThroughConversationStore(t *testing.T) {
-	ctx := context.Background()
-	root := t.TempDir()
-	legacy, err := eventlog.NewStore(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	id := "cccccccccccccccccccccccccccccccc"
-	_, err = legacy.Create(id, []eventlog.AppendInput{
-		{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})},
-		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user", Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: "legacy question"})},
-		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "exec", Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "user"})},
-		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "exec", InvocationID: "old-invocation"},
-		{Type: constants.ChatEventTypeAssistantMessage, MessageID: "exec", ExecutionID: "exec", InvocationID: "old-invocation", Data: marshalData(eventlog.RuntimeMessageData{
-			Content: []eventlog.RuntimeMessageContent{{Type: constants.RuntimeEventTypeTextDelta, Data: marshalData(map[string]string{"text": "legacy answer"})}}, MessageRevision: 5,
-		})},
-		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: "exec", InvocationID: "old-invocation", Data: marshalData(map[string]string{"stopReason": "end_turn", "terminationReason": string(constants.RuntimeTerminationReasonNormal)})},
-		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "exec", Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, chats := newRecoveryTestService(t, root)
-	if err := chats.Start(ctx); err != nil {
-		t.Fatal(err)
-	}
-	page, err := chats.ReadMessageHistory(ctx, id, 0, 1)
-	if err != nil || len(page.Resources) != 1 || page.Resources[0].Content != "legacy answer" || !page.HasMore {
-		t.Fatalf("legacy message page = %+v, err = %v", page, err)
-	}
-	outcome, err := chats.ReadExecutionOutcome(ctx, id, "exec")
-	if err != nil || outcome.InvocationID != "old-invocation" || outcome.TerminationReason != constants.RuntimeTerminationReasonNormal {
-		t.Fatalf("legacy outcome = %+v, err = %v", outcome, err)
-	}
-}
-
 func TestChatTerminalUsageProjectionFollowsAuthority(t *testing.T) {
-	for _, native := range []bool{false, true} {
-		name := "schema-one"
-		wantInput := int64(60)
-		if native {
-			name = "canonical-outcome-without-usage"
-			wantInput = 0
+	for _, input := range []*int64{nil, new(int64)} {
+		name := "unavailable"
+		var wantInput int64
+		if input != nil {
+			name = "reported"
+			*input, wantInput = 60, 60
 		}
 		t.Run(name, func(t *testing.T) {
 			ctx := t.Context()
-			root := t.TempDir()
 			id := "dddddddddddddddddddddddddddddddd"
-			legacy, err := eventlog.NewStore(root)
-			if err != nil {
+			_, chats := newRecoveryTestService(t, t.TempDir())
+			store := chats.logStore.(*conversationJournal).Store
+			session := agent.NativeSessionKey{Provider: "codex", Subject: "subject", SessionID: "session"}
+			key := agent.NativeResultKey{Session: session, InvocationID: "native-outcome"}
+			turn := acpmeta.NativeTurn{
+				InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost,
+				Status: acpmeta.NativeTurnCompleted, ConsumedInputIDs: []string{"input"},
+			}
+			if input != nil {
+				turn.Usage = &acpmeta.TurnUsage{Source: "fixture", Coverage: "native_turn", Complete: true, InputTokens: input}
+			}
+			if err := store.CommitNativeResult(ctx, agent.NativeResult{Key: key, Turn: turn}); err != nil {
 				t.Fatal(err)
 			}
-			finished := marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})
-			facts := []eventlog.AppendInput{
-				{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})},
-				{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "exec", Data: []byte(`{}`)},
-				{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "exec", InvocationID: "legacy-invocation"},
-				{Type: constants.ChatEventTypeAssistantMessage, MessageID: "exec", ExecutionID: "exec", Data: marshalData(eventlog.RuntimeMessageData{
-					Content:         []eventlog.RuntimeMessageContent{{Type: constants.RuntimeEventTypeUsage, Data: []byte(`{"turn":{"input_tokens":60}}`)}},
-					MessageRevision: 4,
-				})},
-			}
-			if !native {
-				facts = append(facts, eventlog.AppendInput{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "exec", Data: finished})
-			}
-			records, err := legacy.Create(id, facts)
+			_, err := store.Commit(ctx, agent.ConversationBatch{ChatID: id, Key: "native-outcome",
+				Changes: []agent.ConversationChange{
+					{Fact: &agent.ChatFact{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})}},
+					{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "exec", Data: []byte(`{}`)}},
+					{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "exec", InvocationID: "host"}},
+					{Binding: &agent.NativeBinding{Session: session}},
+					{Input: &agent.HostInput{Session: session, HostInvocationID: "host", AdapterInputID: "input", ExecutionID: "exec", AssistantMessageID: "exec"}},
+					{Consumption: &agent.InputConsumption{HostInvocationID: "host", Result: key}},
+					{Message: &agent.MessageChange{MessageID: "exec", ExecutionID: "exec", Kind: agent.MessageComplete}},
+					{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "exec",
+						Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})}},
+				}})
 			if err != nil {
 				t.Fatal(err)
-			}
-			_, chats := newRecoveryTestService(t, root)
-			if native {
-				store := chats.logStore.(*conversationJournal).Store
-				session := agent.NativeSessionKey{Provider: "codex", Subject: "subject", SessionID: "session"}
-				key := agent.NativeResultKey{Session: session, InvocationID: "native-outcome"}
-				if err := store.CommitNativeResult(ctx, agent.NativeResult{Key: key, Turn: acpmeta.NativeTurn{
-					InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost, Status: acpmeta.NativeTurnCompleted, ConsumedInputIDs: []string{"input"},
-				}}); err != nil {
-					t.Fatal(err)
-				}
-				_, err := store.Commit(ctx, agent.ConversationBatch{ChatID: id, Key: "native-outcome", ExpectedVersion: records[len(records)-1].Sequence,
-					Changes: []agent.ConversationChange{
-						{Binding: &agent.NativeBinding{Session: session}},
-						{Input: &agent.HostInput{Session: session, HostInvocationID: "host", AdapterInputID: "input", ExecutionID: "exec", AssistantMessageID: "exec"}},
-						{Consumption: &agent.InputConsumption{HostInvocationID: "host", Result: key}},
-						{Message: &agent.MessageChange{MessageID: "exec", ExecutionID: "exec", Kind: agent.MessageComplete}},
-						{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "exec", Data: finished}},
-					}})
-				if err != nil {
-					t.Fatal(err)
-				}
 			}
 			history, err := chats.ReadMessageHistory(ctx, id, 0, 1)
 			if err != nil || len(history.Resources) != 1 || history.Resources[0].RunMetrics == nil ||

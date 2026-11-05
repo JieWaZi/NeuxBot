@@ -1,20 +1,15 @@
-// Package eventlog 管理每个 Chat 的权威追加事件日志。
+// Package eventlog defines Chat facts and read projection contracts.
 package eventlog
 
 import (
 	"encoding/json"
-	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
 )
 
-// Record 是 Chat JSONL 中一条已经提交的稳定事件信封。
+// Record 是从聊天权威日志投影出的已提交事件信封。
 type Record struct {
-	// Offset 是该行在 JSONL 文件中的起始字节位置，不进入权威信封。
-	Offset int64 `json:"-"`
-	// Length 是该行包含结尾换行符的字节数，不进入权威信封。
-	Length int64 `json:"-"`
 	// SchemaVersion 是解释当前事件信封所需的格式版本。
 	SchemaVersion int `json:"schemaVersion"`
 	// ChatID 是该事件所属 Chat 标识。
@@ -360,7 +355,7 @@ type InvocationDiagnosticData struct {
 type InvocationFinishedData struct {
 	// StopReason 是协议实际返回的原始停止原因，未知扩展值原样保留。
 	StopReason string `json:"stopReason,omitempty"`
-	// TerminationReason 是可恢复的调用终止原因，旧日志缺失时为未知。
+	// TerminationReason 是已确认的调用终止原因。
 	TerminationReason constants.RuntimeTerminationReason `json:"terminationReason,omitempty"`
 	// PrefixArgs 是调用时冻结的自定义运行时前置参数。
 	PrefixArgs []string `json:"prefixArgs,omitempty"`
@@ -442,18 +437,6 @@ type InvocationFinishedData struct {
 	UndeliveredBytes int64 `json:"undeliveredBytes,omitempty"`
 }
 
-// Invocation 是从权威事件重放出的一次 Runtime 调用事实。
-type Invocation struct {
-	// ID 是 Host 为本次 Runtime 调用分配的稳定标识。
-	ID string `json:"id"`
-	// ExecutionID 是拥有该调用的业务执行标识。
-	ExecutionID string `json:"executionId"`
-	// RecordedAt 是调用终态事实提交到 JSONL 的 Unix 毫秒时间。
-	RecordedAt int64 `json:"recordedAt"`
-	// Facts 是本次调用实际发生的完整可诊断事实。
-	Facts InvocationFinishedData `json:"facts"`
-}
-
 // ExecutionFinishedData 保存执行终态和失败诊断。
 type ExecutionFinishedData struct {
 	// Retryable 表示失败已确认无可见输出及工具副作用，允许用户重新提交。
@@ -468,49 +451,101 @@ type ExecutionFinishedData struct {
 	ExitCode int `json:"exitCode"`
 	// Signal 是平台可以识别时的进程终止信号。
 	Signal string `json:"signal,omitempty"`
-	// Usage 是 Runtime 最后一次报告的规范化 Token 用量，整次执行只保存一次。
-	Usage json.RawMessage `json:"usage,omitempty"`
 	// MessageRevision 是终态前实时消息快照已经到达的最后修订号。
 	MessageRevision int64 `json:"messageRevision,omitempty"`
-}
-
-// RuntimeSessionData 保存原生 Runtime Session 的续接事实。
-type RuntimeSessionData struct {
-	// RuntimeID 是拥有该 Session 的开放 Runtime 标识。
-	RuntimeID string `json:"runtimeId"`
-	// SessionID 是 Runtime 创建或确认的原生 Session 句柄。
-	SessionID string `json:"sessionId"`
-	// LastExecutionID 是最后成功使用该 Session 的执行标识。
-	LastExecutionID string `json:"lastExecutionId"`
-	// Reason 是 Session 更新、失效或重建的稳定原因。
-	Reason constants.InvocationTriggerReason `json:"reason,omitempty"`
-}
-
-// ReplayInvocations 从权威日志恢复每次 Runtime Invocation 的实际事实。
-func ReplayInvocations(records []Record) ([]Invocation, error) {
-	invocations := make([]Invocation, 0)
-	for _, record := range records {
-		if record.Type != constants.ChatEventTypeInvocationFinished {
-			continue
-		}
-		var facts InvocationFinishedData
-		if err := json.Unmarshal(record.Data, &facts); err != nil {
-			return nil, status_error.ChatLogCorrupted
-		}
-		if facts.TerminationReason == constants.RuntimeTerminationReasonUnspecified {
-			facts.TerminationReason = constants.RuntimeTerminationReasonUnknown
-		}
-		invocations = append(invocations, Invocation{
-			ID:          record.InvocationID,
-			ExecutionID: record.ExecutionID,
-			RecordedAt:  record.RecordedAt,
-			Facts:       facts,
-		})
-	}
-	return invocations, nil
 }
 
 // MarshalData 将类型安全载荷编码为日志 Data。
 func MarshalData(value interface{}) (json.RawMessage, error) {
 	return json.Marshal(value)
+}
+
+// ExecutionWindow 是指定执行的生命周期和调用事实，不包含消息正文。
+type ExecutionWindow struct {
+	// Records 包含 Chat 创建及所选执行的状态事实。
+	Records []Record
+	// StartSequence 是所选执行创建事实的持久序号。
+	StartSequence int64
+	// LatestSequence 是本次读取已覆盖的原日志游标。
+	LatestSequence int64
+}
+
+// ExecutionFactPositions 只引用已经被原日志定位投影覆盖的事实位置。
+type ExecutionFactPositions struct {
+	// StartSequence 是 execution.created 的原序号。
+	StartSequence int64
+	// LifecycleSequences 是 execution.started 与终态的原序号。
+	LifecycleSequences []int64
+	// InvocationFinishedSequence 是最后一次持久调用结论的原序号。
+	InvocationFinishedSequence int64
+	// InvocationBoundarySequence 是该调用身份首次出现的原信封序号。
+	InvocationBoundarySequence int64
+	// LatestSequence 是上述定位完整覆盖的日志游标。
+	LatestSequence int64
+}
+
+// ExecutionIndexPosition 保存一次未覆盖尾部中的事实位置，不包含正文或执行状态。
+type ExecutionIndexPosition struct {
+	// Sequence 是原日志记录的位置。
+	Sequence int64
+	// ExecutionStartSequence 是所属 execution.created 的位置。
+	ExecutionStartSequence int64
+	// Lifecycle 表示执行启动或终态事实。
+	Lifecycle bool
+	// InvocationBoundary 表示原生调用身份在该信封首次出现。
+	InvocationBoundary bool
+	// InvocationFinished 表示该记录是持久调用结论。
+	InvocationFinished bool
+}
+
+// ExecutionIndexTail 保存定位投影尚未覆盖的原索引尾部。
+type ExecutionIndexTail struct {
+	// Records 只包含消息入口信封及涉及执行的创建配置。
+	Records []Record
+	// Positions 是尾部新增的生命周期与调用位置。
+	Positions []ExecutionIndexPosition
+	// LatestSequence 是该尾部已覆盖的原日志游标。
+	LatestSequence int64
+}
+
+// HistoryCandidate 是原索引定位的成功执行或继承消息，尚未读取消息正文。
+type HistoryCandidate struct {
+	// MessageID 是原执行的助手身份或继承消息身份。
+	MessageID string
+	// UserMessageID 是真实执行关联的原用户输入身份，继承消息为空。
+	UserMessageID string
+	// Sequence 是该执行或消息在原日志中的创建位置。
+	Sequence int64
+	// Inherited 表示候选来自独立继承消息而非本 Chat 执行。
+	Inherited bool
+}
+
+// HistoryCandidateWindow 是最近成功完整轮次的有界候选页。
+type HistoryCandidateWindow struct {
+	// Resources 按原创建顺序倒序返回候选。
+	Resources []HistoryCandidate
+	// NextBeforeSequence 是继续查找更早候选的原位置游标。
+	NextBeforeSequence int64
+	// HasMore 表示仍有更早原索引位置可检查。
+	HasMore bool
+}
+
+// ProjectionWindow 保存公开事件适配器所需的最小前缀与游标后事实。
+type ProjectionWindow struct {
+	// Records 包含 Chat 创建记录、必要的当前执行前缀和游标后事实。
+	Records []Record
+	// LatestSequence 是读取时权威 JSONL 的最大连续序号。
+	LatestSequence int64
+}
+
+// MessageWindow 保存一页消息对应的连续权威事实范围。
+type MessageWindow struct {
+	// Records 包含 Chat 创建记录和选中消息的完整连续事实。
+	Records []Record
+	// NextBeforeSequence 是继续读取更早消息时使用的创建序号。
+	NextBeforeSequence int64
+	// LatestSequence 是读取时权威 JSONL 的最大连续序号。
+	LatestSequence int64
+	// HasMore 表示当前窗口之前仍有更早消息。
+	HasMore bool
 }

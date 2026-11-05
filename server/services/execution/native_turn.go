@@ -18,8 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
@@ -34,7 +33,7 @@ type nativeResourceProjection struct {
 	// plugins identifies delivered plugin versions.
 	plugins []plugins.Snapshot
 	// connectors identifies the materialized connector set.
-	connectors []agentapi.Connector
+	connectors []agent.Connector
 	// updateUsage assigns or clears the current admitted execution on shared plugin leases.
 	updateUsage func(...authorization.Usage)
 }
@@ -49,7 +48,7 @@ func nativeProvider(environment models.RuntimeEnvironment) string {
 	return environment.RuntimeID
 }
 
-func nativeThreadRequest(chatID string, plan agentapi.SessionPlan, request pendingMessage, environment models.RuntimeEnvironment, resources agent.ResourceSelection, key string) agent.ThreadRequest {
+func nativeThreadRequest(chatID string, plan agent.SessionPlan, request pendingMessage, environment models.RuntimeEnvironment, resources agent.ResourceSelection, key string) agent.ThreadRequest {
 	accountID := request.runtime.AccountID
 	if accountID == "" {
 		accountID = agent.SystemAccountID
@@ -159,7 +158,7 @@ func nativeUsageSource(input pendingMessage, state messageChat) string {
 }
 
 // nativeTurnPrompt projects only the current business input. Thread owns any handoff prefix.
-func nativeTurnPrompt(turn agentapi.TurnInput) string {
+func nativeTurnPrompt(turn agent.TurnInput) string {
 	var prompt strings.Builder
 	prompt.WriteString(turn.Message.Text)
 	for _, attachment := range turn.Message.Attachments {
@@ -182,9 +181,9 @@ func nativeTurnPrompt(turn agentapi.TurnInput) string {
 }
 
 // nativeTurnInput includes bounded native image data when the detected runtime advertises support.
-func nativeTurnInput(id string, input agentapi.TurnInput, detection agentapi.DetectionResult) (agent.TurnRequest, error) {
+func nativeTurnInput(id string, input agent.TurnInput, detection agent.DetectionResult) (agent.TurnRequest, error) {
 	request := agent.TurnRequest{HostInvocationID: id, ExecutionID: id, AssistantMessageID: id, Text: nativeTurnPrompt(input)}
-	if !detection.Capabilities[agentapi.CapabilityImagePath] {
+	if !detection.Capabilities[agent.CapabilityImagePath] {
 		return request, nil
 	}
 	const attachmentLimit = 20 << 20
@@ -336,7 +335,7 @@ func (m *service) startNativeExecution(
 }
 
 func (m *service) acquireNativeResources(
-	ctx context.Context, chatID string, plan agentapi.SessionPlan,
+	ctx context.Context, chatID string, plan agent.SessionPlan,
 	baseConnectors []models.MCPConnector, frozen frozenPluginResources, launchEnvironment map[string]string,
 ) (agent.ResourceLease, error) {
 	materialized, err := m.acquirePluginResources(ctx, frozen, false)
@@ -363,7 +362,7 @@ func (m *service) acquireNativeResources(
 	projection.connectors = runtimeConnectorResources(append(slices.Clone(baseConnectors), materialized.connectors...))
 	for _, declaration := range plan.Connectors {
 		if declaration.ID == "neuxbot-internal-capabilities" {
-			projection.connectors = append(projection.connectors, agentapi.Connector{ID: declaration.ID, Name: declaration.Name,
+			projection.connectors = append(projection.connectors, agent.Connector{ID: declaration.ID, Name: declaration.Name,
 				RuntimeKey: declaration.RuntimeKey, Transport: declaration.Transport, Command: declaration.Command, Arguments: declaration.Arguments})
 		}
 	}
@@ -514,8 +513,8 @@ func (work *nativeExecutionWork) projectAdmission(ctx context.Context, receipt a
 	return nil
 }
 
-func nativeApproval(ctx context.Context, handler agentapi.ApprovalHandler, executionID string, request agent.AgentApproval) (string, error) {
-	input := agentapi.ApprovalRequest{InvocationID: executionID, ToolCallID: request.Tool.ID}
+func nativeApproval(ctx context.Context, handler agent.ApprovalHandler, executionID string, request agent.AgentApproval) (string, error) {
+	input := agent.ApprovalRequest{InvocationID: executionID, ToolCallID: request.Tool.ID}
 	if request.Tool.Title != nil {
 		input.Title = *request.Tool.Title
 	}
@@ -523,17 +522,17 @@ func nativeApproval(ctx context.Context, handler agentapi.ApprovalHandler, execu
 		input.Kind = *request.Tool.Kind
 	}
 	for _, location := range request.Tool.Locations {
-		input.Locations = append(input.Locations, agentapi.ApprovalLocation{Path: location.Path, Line: location.Line})
+		input.Locations = append(input.Locations, agent.ApprovalLocation{Path: location.Path, Line: location.Line})
 	}
 	for _, option := range request.Options {
-		input.Options = append(input.Options, agentapi.ApprovalOption{ID: option.ID, Name: option.Name, Kind: option.Kind})
+		input.Options = append(input.Options, agent.ApprovalOption{ID: option.ID, Name: option.Name, Kind: option.Kind})
 	}
 	decision, err := handler.Request(ctx, input)
 	return decision.OptionID, err
 }
 
-func nativeInput(ctx context.Context, handler agentapi.ElicitationHandler, executionID string, input agent.AgentInputRequest) (agent.AgentInputResponse, error) {
-	request := agentapi.ElicitationRequest{InvocationID: executionID, Mode: "form", Message: input.Message, URL: input.URL}
+func nativeInput(ctx context.Context, handler agent.ElicitationHandler, executionID string, input agent.AgentInputRequest) (agent.AgentInputResponse, error) {
+	request := agent.ElicitationRequest{InvocationID: executionID, Mode: "form", Message: input.Message, URL: input.URL}
 	if input.URL != "" {
 		request.Mode = "url"
 	} else if err := json.Unmarshal(input.Schema, &request.RequestedSchema); err != nil {

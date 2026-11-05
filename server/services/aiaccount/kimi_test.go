@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/shrewx/ginx/pkg/conf"

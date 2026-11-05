@@ -7,9 +7,12 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 func TestLoadExecutionChatRecoversMissingProjectionAndCatchesUpAuthority(t *testing.T) {
@@ -137,19 +140,35 @@ func TestUsageFoundationForkPreservesOriginWithoutNewConsumption(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, err := manager.logStore.Append(parent, []eventlog.AppendInput{
+	store := manager.logStore.(*conversationJournal).Store
+	session := agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: "native-parent"}
+	key := agent.NativeResultKey{Session: session, InvocationID: "spent-invocation"}
+	inputTokens, outputTokens := int64(250), int64(30)
+	if err := store.CommitNativeResult(ctx, agent.NativeResult{Key: key, Turn: acpmeta.NativeTurn{
+		InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost, Status: acpmeta.NativeTurnCompleted,
+		ConsumedInputIDs: []string{"spent-input"},
+		Usage:            &acpmeta.TurnUsage{InputTokens: &inputTokens, OutputTokens: &outputTokens, Complete: true, Source: "fixture"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	changes := conversationfixture.Facts([]eventlog.AppendInput{
 		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "spent", Data: marshalData(eventlog.ExecutionCreatedData{RuntimeID: "custom-codex", Model: "model"})},
-		{Type: constants.ChatEventTypeExecutionStarted, InvocationID: "spent-invocation"},
-		{Type: constants.ChatEventTypeInvocationFinished, Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "custom-codex", WorkingDirectory: root, SessionOutputID: "native-parent", ForkMode: "turn", ForkPosition: "turn-spent"})},
-		{Type: constants.ChatEventTypeExecutionCompleted, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted, Usage: json.RawMessage(`{"turn":{"input_tokens":250,"output_tokens":30,"known_fields":["input_tokens","output_tokens"],"complete":false,"source":"fixture.requests","coverage":"observed_requests"}}`)})},
-	}); err != nil {
+		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: "spent", InvocationID: "spent-host"},
+	})
+	changes = append(changes,
+		agent.ConversationChange{Binding: &agent.NativeBinding{Session: session}},
+		agent.ConversationChange{Input: &agent.HostInput{Session: session, HostInvocationID: "spent-host", AdapterInputID: "spent-input", ExecutionID: "spent", AssistantMessageID: "spent"}},
+		agent.ConversationChange{Consumption: &agent.InputConsumption{HostInvocationID: "spent-host", Result: key}},
+		conversationfixture.NativeMessage(t, store, parent, "spent", agent.MessageChange{Kind: agent.MessageAppend, ContentType: constants.RuntimeEventTypeTextDelta, Text: "inherit this answer"}),
+	)
+	changes = append(changes, conversationfixture.Facts([]eventlog.AppendInput{
+		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: "spent", InvocationID: "spent-host", Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "custom-codex", WorkingDirectory: root, SessionOutputID: "native-parent", ForkMode: "turn", ForkPosition: "turn-spent"})},
+		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: "spent", Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
+	})...)
+	if _, err := conversationfixture.Commit(ctx, store, parent, changes); err != nil {
 		t.Fatal(err)
 	}
-	parentRecords, err := manager.ReadExecutionRecords(parent, "spent")
-	if err != nil {
-		t.Fatal(err)
-	}
-	parentMessages, err := messageview.ReplayMessages(parentRecords)
+	parentMessages, err := manager.ReadExecutionMessages(ctx, parent, "spent")
 	if err != nil || len(parentMessages) != 1 || parentMessages[0].RunMetrics == nil || parentMessages[0].RunMetrics.InputTokens != 250 {
 		t.Fatalf("parent usage fixture missing: %+v error=%v", parentMessages, err)
 	}
@@ -180,7 +199,7 @@ func TestUsageFoundationForkPreservesOriginWithoutNewConsumption(t *testing.T) {
 				continue
 			}
 			found = true
-			if !inherited.Inherited || inherited.SourceChatID != parent || inherited.ID == "spent" || inherited.RunMetrics != nil {
+			if !inherited.Inherited || inherited.SourceChatID != parent || inherited.ID == "spent" || inherited.RunMetrics != nil || inherited.Content != "inherit this answer" {
 				t.Fatalf("inherited usage or origin corrupted: %+v", inherited)
 			}
 		}

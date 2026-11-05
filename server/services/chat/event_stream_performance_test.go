@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 )
 
@@ -44,10 +46,7 @@ func BenchmarkListEventsAfterLatest(b *testing.B) {
 
 func eventCursorService(t testing.TB, count int) (*service, string, int64) {
 	t.Helper()
-	store, err := eventlog.NewStore(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := newTestConversationJournal(t, t.TempDir())
 	encode := func(value any) []byte {
 		data, err := eventlog.MarshalData(value)
 		if err != nil {
@@ -56,22 +55,18 @@ func eventCursorService(t testing.TB, count int) (*service, string, int64) {
 		return data
 	}
 	chatID := "78787878787878787878787878787878"
-	inputs := []eventlog.AppendInput{
+	inputs := conversationfixture.Facts([]eventlog.AppendInput{
 		{Type: constants.ChatEventTypeCreated, Data: encode(eventlog.ChatCreatedData{WorkspaceDirectory: "/workspace"})},
 		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "active", Data: encode(eventlog.ExecutionCreatedData{})},
-	}
+	})
 	for index := 0; index < count; index++ {
-		inputs = append(inputs, eventlog.AppendInput{
-			Type: constants.ChatEventTypeAssistantMessage, ExecutionID: "active", InvocationID: "invocation",
-			Data: encode(eventlog.RuntimeMessageData{
-				MessageRevision: int64(index + 3),
-				Content: []eventlog.RuntimeMessageContent{{Type: "tool_use", Data: encode(map[string]any{
-					"toolCallId": fmt.Sprintf("tool-%d", index), "name": "read_file", "path": "/workspace/main.go",
-				})}},
-			}),
-		})
+		tool := fmt.Sprintf("tool-%d", index)
+		inputs = append(inputs, conversationfixture.NativeMessage(t, store.Store, chatID, "active", agent.MessageChange{
+			Kind: agent.MessageEvent, ContentType: constants.RuntimeEventTypeToolUse, ToolCallID: tool,
+			Data: encode(map[string]any{"toolCallId": tool, "name": "read_file", "path": "/workspace/main.go"}),
+		}))
 	}
-	records, err := store.Create(chatID, inputs)
+	records, err := conversationfixture.Commit(t.Context(), store.Store, chatID, inputs)
 	if err != nil {
 		t.Fatal(err)
 	}

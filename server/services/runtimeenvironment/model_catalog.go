@@ -14,8 +14,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 )
@@ -179,9 +178,9 @@ func selectManagedCatalog(provider string, snapshot agent.ModelCatalogSnapshot, 
 	return snapshot
 }
 
-func (s *service) detectNative(ctx context.Context, summary agentapi.RuntimeSummary, environment models.RuntimeEnvironment, request agentapi.DetectRequest) agentapi.DetectionResult {
-	result := agentapi.DetectionResult{
-		Runtime: summary, State: agentapi.DetectionStateUnavailable, Auth: agentapi.AuthStatusUnknown,
+func (s *service) detectNative(ctx context.Context, summary agent.RuntimeSummary, environment models.RuntimeEnvironment, request agent.DetectRequest) agent.DetectionResult {
+	result := agent.DetectionResult{
+		Runtime: summary, State: agent.DetectionStateUnavailable, Auth: agent.AuthStatusUnknown,
 	}
 	result.ResolvedBinary, _ = s.runtimeCatalog.ResolveExecutable(request)
 	if result.ResolvedBinary == "" {
@@ -190,56 +189,56 @@ func (s *service) detectNative(ctx context.Context, summary agentapi.RuntimeSumm
 	snapshot := s.readModelCatalog(ctx, environment, environment.DefaultAccountID, true)
 	result.Version = snapshot.Capabilities.Version
 	if snapshot.Capabilities.Version != "" {
-		result.State = agentapi.DetectionStateReady
+		result.State = agent.DetectionStateReady
 	}
 	if snapshot.QoderLoginVerified {
-		result.Auth = agentapi.AuthStatusOK
+		result.Auth = agent.AuthStatusOK
 	}
 	if snapshot.State == agent.CatalogSignedOut {
-		result.State, result.Auth = agentapi.DetectionStateReady, agentapi.AuthStatusMissing
+		result.State, result.Auth = agent.DetectionStateReady, agent.AuthStatusMissing
 	}
 	if snapshot.State != agent.CatalogFresh && snapshot.State != agent.CatalogStale {
-		result.Diagnostics = []agentapi.Diagnostic{{
-			Code: agentapi.DiagnosticCodeACPOptionsUnavailable, Level: agentapi.DiagnosticLevelWarning, Message: snapshot.ErrorCode,
+		result.Diagnostics = []agent.Diagnostic{{
+			Code: agent.DiagnosticCodeACPOptionsUnavailable, Level: agent.DiagnosticLevelWarning, Message: snapshot.ErrorCode,
 		}}
 		return result
 	}
-	result.State, result.Auth = agentapi.DetectionStateReady, agentapi.AuthStatusOK
+	result.State, result.Auth = agent.DetectionStateReady, agent.AuthStatusOK
 	if environment.BaseRuntimeID != constants.RuntimeIDCodex && environment.BaseRuntimeID != constants.RuntimeIDClaude &&
 		environment.BaseRuntimeID != constants.RuntimeIDCursor && !snapshot.QoderLoginVerified {
 		// Other ACP providers may expose models before authentication.
-		result.Auth = agentapi.AuthStatusUnknown
+		result.Auth = agent.AuthStatusUnknown
 	}
 	if snapshot.State == agent.CatalogStale {
 		if !snapshot.QoderLoginVerified {
-			result.Auth = agentapi.AuthStatusUnknown
+			result.Auth = agent.AuthStatusUnknown
 		}
-		result.Diagnostics = []agentapi.Diagnostic{{
-			Code: agentapi.DiagnosticCodeACPOptionsUnavailable, Level: agentapi.DiagnosticLevelWarning, Message: snapshot.ErrorCode,
+		result.Diagnostics = []agent.Diagnostic{{
+			Code: agent.DiagnosticCodeACPOptionsUnavailable, Level: agent.DiagnosticLevelWarning, Message: snapshot.ErrorCode,
 		}}
 	}
-	result.Capabilities = agentapi.CapabilitySet{
-		agentapi.CapabilityDynamicModels:         true,
-		agentapi.CapabilityPartialMessages:       true,
-		agentapi.CapabilityResumeSession:         snapshot.Capabilities.Resume || snapshot.Capabilities.Load,
-		agentapi.CapabilityAddDirectory:          snapshot.Capabilities.AdditionalDirectories,
-		agentapi.CapabilityImagePath:             snapshot.Capabilities.ImageInput,
-		agentapi.CapabilitySkillDirectory:        summary.SkillDirectoryName != "",
-		agentapi.CapabilityMCPStreamableHTTP:     snapshot.Capabilities.MCPHTTP,
-		agentapi.CapabilityStreamingUserMessages: snapshot.Capabilities.Steer,
+	result.Capabilities = agent.CapabilitySet{
+		agent.CapabilityDynamicModels:         true,
+		agent.CapabilityPartialMessages:       true,
+		agent.CapabilityResumeSession:         snapshot.Capabilities.Resume || snapshot.Capabilities.Load,
+		agent.CapabilityAddDirectory:          snapshot.Capabilities.AdditionalDirectories,
+		agent.CapabilityImagePath:             snapshot.Capabilities.ImageInput,
+		agent.CapabilitySkillDirectory:        summary.SkillDirectoryName != "",
+		agent.CapabilityMCPStreamableHTTP:     snapshot.Capabilities.MCPHTTP,
+		agent.CapabilityStreamingUserMessages: snapshot.Capabilities.Steer,
 	}
 	result.DetectedDefaultModel = snapshot.DefaultID
-	result.Models = make([]agentapi.ModelOption, 0, len(snapshot.Models))
+	result.Models = make([]agent.ModelOption, 0, len(snapshot.Models))
 	for _, model := range snapshot.Models {
-		option := agentapi.ModelOption{ID: model.ID, Name: model.Name, PermissionLevels: NativePermissionLevels(environment.BaseRuntimeID, model)}
+		option := agent.ModelOption{ID: model.ID, Name: model.Name, PermissionLevels: NativePermissionLevels(environment.BaseRuntimeID, model)}
 		if model.Config != nil {
-			option.ReasoningOptions = []agentapi.ReasoningOption{}
+			option.ReasoningOptions = []agent.ReasoningOption{}
 			for _, setting := range model.Config.Options {
 				if setting.Category != "thought_level" && setting.ID != "reasoning_effort" {
 					continue
 				}
 				for _, choice := range setting.Choices {
-					option.ReasoningOptions = append(option.ReasoningOptions, agentapi.ReasoningOption{ID: choice.ID, Name: choice.Name})
+					option.ReasoningOptions = append(option.ReasoningOptions, agent.ReasoningOption{ID: choice.ID, Name: choice.Name})
 				}
 				if model.ID == snapshot.DefaultID && slices.ContainsFunc(setting.Choices, func(choice agent.AgentChoice) bool { return choice.ID == setting.Value.ID }) {
 					result.DetectedDefaultReasoning = setting.Value.ID

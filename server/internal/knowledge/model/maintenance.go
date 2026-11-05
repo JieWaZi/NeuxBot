@@ -2,25 +2,21 @@ package model
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	capability "github.com/JieWaZi/NeuxBot/server/internal/agent/capability"
-	"github.com/JieWaZi/NeuxBot/server/internal/agent/native"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
-	builtinskills "github.com/JieWaZi/NeuxBot/server/internal/skills/builtin"
 )
 
 // MaintenanceRuntime 提供无需伙伴、聊天或执行记录的共享独立工具调用。
 type MaintenanceRuntime interface {
-	ExecuteTask(context.Context, agentapi.TaskRequest) (agentapi.TextResult, error)
+	ExecuteTask(context.Context, agent.TaskRequest) (agent.TurnResult, error)
 }
 
 // MaintenanceConfig 显式装配知识维护的模型、能力授权与共享运行端口。
@@ -33,12 +29,10 @@ type MaintenanceConfig struct {
 	Endpoint string
 	// Binary 是应用同包交付的真实 allycli 可执行文件。
 	Binary string
-	// RuntimeID 是接纳时固定的智能体或 Profile。
-	RuntimeID string
-	// AccountID 是接纳时固定的账号选择。
-	AccountID string
-	// Model 是接纳时固定的模型。
-	Model string
+	// Connection 是接纳时固定的程序、账号和模型。
+	Connection agent.ProviderConnectionRequest
+	// ResolveAccount 在本次工作目录内解析实际账号。
+	ResolveAccount agent.DetachedAccountResolver
 	// Reasoning 是接纳时固定的推理选项。
 	Reasoning string
 }
@@ -79,6 +73,10 @@ func (runner *MaintenanceRunner) Run(ctx context.Context, input MaintenanceReque
 	if runner == nil || runner.config.Runtime == nil || runner.config.Registry == nil {
 		return "", status_error.RuntimeUnavailable
 	}
+	connection := runner.config.Connection
+	if !agent.SupportsDetachedPolicy(connection.Account.Provider) {
+		return "", status_error.RuntimePolicyUnsupported
+	}
 	if err := input.Validate(ctx); err != nil {
 		return "", err
 	}
@@ -89,161 +87,152 @@ func (runner *MaintenanceRunner) Run(ctx context.Context, input MaintenanceReque
 	if info, err := os.Stat(binary); err != nil || !info.Mode().IsRegular() {
 		return "", status_error.AgentConnectionUnavailable
 	}
-	// 只认服务端真正完成的领域调用，发现命令和模型自述不能证明执行过维护检查。
-	var successfulCalls atomic.Uint64
-	bindings := append([]capability.Binding(nil), input.Bindings...)
-	for index := range bindings {
-		call := bindings[index].Call
-		if call == nil || !strings.HasPrefix(bindings[index].Operation, "knowledge.") {
-			continue
+	connection.Launch.Claude.Tools = []string{}
+	connection.Launch.RequireVerifiedMCP = true
+	// 验证运行中的请求时同时核对任务调用方的取消状态。
+	runCtx, validate := ctx, input.Validate
+	input.Validate = func(ctx context.Context) error {
+		if err := runCtx.Err(); err != nil {
+			return err
 		}
-		bindings[index].Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
+		return validate(ctx)
+	}
+	const bridgeName = "ally_capabilities"
+	const toolPrefix = "mcp__" + bridgeName + "__"
+	instructions := input.Instructions + "\n\nUse the supplied ally_capabilities MCP tools for every knowledge read and change. In the guide, CLI command names refer to their equivalent advertised MCP tools. Use their current schemas and provide requestId for mutations. Recover uncertain outcomes with receipts_get and the original requestId. Follow the frozen library scope and verify actual operation results."
+	var authorized atomic.Bool
+	var successfulCalls atomic.Uint64
+	// 只认服务端真正完成的领域调用，发现命令和模型自述不能证明执行过维护检查。
+	bindings := append([]capability.Binding(nil), input.Bindings...)
+	toolNames := map[string]bool{
+		toolPrefix + "capabilities": true, toolPrefix + "guide": true, toolPrefix + "receipts_get": true,
+	}
+	for index := range bindings {
+		binding := &bindings[index]
+		if !strings.HasPrefix(binding.Operation, "knowledge.") || binding.Call == nil {
+			return "", status_error.KnowledgeInvalid
+		}
+		toolNames[toolPrefix+strings.ReplaceAll(binding.Operation, ".", "_")] = true
+		call := binding.Call
+		binding.Call = func(ctx context.Context, request capability.Request) (capability.Result, error) {
+			if !authorized.Load() {
+				return capability.Result{}, status_error.AgentContextUnauthorized
+			}
 			result, err := call(ctx, request)
 			if err == nil {
 				successfulCalls.Add(1)
 			}
 			return result, err
 		}
+		if receipt := binding.Receipt; receipt != nil {
+			binding.Receipt = func(ctx context.Context, requestID string) (capability.Result, error) {
+				if !authorized.Load() {
+					return capability.Result{}, status_error.AgentContextUnauthorized
+				}
+				return receipt(ctx, requestID)
+			}
+		}
 	}
-	resources := &maintenanceResources{config: runner.config, input: input, binary: binary, bindings: bindings}
-	defer resources.Revoke()
-	result, err := runner.config.Runtime.ExecuteTask(ctx, agentapi.TaskRequest{
-		TextRequest: agentapi.TextRequest{RuntimeID: runner.config.RuntimeID, AccountID: runner.config.AccountID, Model: runner.config.Model, Reasoning: runner.config.Reasoning, Thinking: true, Messages: []agentapi.TextMessage{{Role: "user", Content: input.Message}}},
-		Contributions: native.Contributions{
-			Instructions: []native.Instruction{
-				{Name: "WIKI_MAINTENANCE.md", Text: input.Instructions},
-				{Name: "软件能力", Text: fmt.Sprintf("Read the supplied ally skill. The exact executable is provided by %s. Start with capabilities and describe, and use the advertised knowledge commands for all knowledge reads and changes. Use this invocation's existing connection; do not discover other credentials, databases or endpoints. Use the temporary workspace for scratch files and JSON command input as described in the skill. The runtime has full access for this knowledge task. Knowledge authorization, versions and durable results remain enforced by the supplied CLI. The knowledge task owns all state; do not create a partner or chat.", constants.AgentCLIBinaryEnvironment)},
+	var revoke func()
+	result, err := runner.config.Runtime.ExecuteTask(ctx, agent.TaskRequest{
+		Thread: agent.ThreadRequest{Connection: connection, Mode: "default",
+			Session:   agent.AgentSessionOptions{DeveloperInstructions: &instructions},
+			Selection: &agent.TurnSelection{Reasoning: runner.config.Reasoning}},
+		ResolveAccount: runner.config.ResolveAccount,
+		Input:          agent.TurnRequest{Text: input.Message, UsageSource: "knowledge_maintenance"},
+		Ports: agent.TurnPorts{
+			AcquireResources: func(ctx context.Context, _ agent.ResourceSelection) (agent.ResourceLease, error) {
+				lease, revokeGrant, err := runner.acquireBridge(ctx, input, bindings, binary, bridgeName)
+				revoke = revokeGrant
+				return lease, err
 			},
-			Skills: []native.Skill{{Name: constants.AgentCLISkillName, ResourceID: constants.AgentCLISkillName}},
-		}, Resources: resources,
+			Authorize: func(ctx context.Context, _ agent.TurnAdmission, _ agent.CommitReceipt) (func(), error) {
+				if revoke == nil {
+					return nil, status_error.AgentConnectionUnavailable
+				}
+				if err := input.Validate(ctx); err != nil {
+					return nil, err
+				}
+				authorized.Store(true)
+				return func() {
+					authorized.Store(false)
+					revoke()
+				}, nil
+			},
+			Approve: func(ctx context.Context, _ agent.AgentScope, request agent.AgentApproval) (string, error) {
+				if !authorized.Load() || !toolNames[request.NativeToolName] {
+					return "", nil
+				}
+				if err := input.Validate(ctx); err != nil {
+					return "", err
+				}
+				for _, option := range request.Options {
+					if option.Kind == "allow_once" {
+						return option.ID, nil
+					}
+				}
+				return "", nil
+			},
+		},
 	})
 	if err != nil {
+		if result.BusinessAdmitted {
+			return "", status_error.WithoutRetry(err)
+		}
 		return "", err
 	}
 	if ctx.Err() != nil {
 		return "", status_error.WithoutRetry(status_error.OperationCanceled)
 	}
-	if (result.StopReason != "end_turn" && result.StopReason != "stop") || strings.TrimSpace(result.Text) == "" {
-		return "", status_error.WithoutRetry(status_error.RuntimeExecutionFailed.WithParams(map[string]interface{}{"Detail": "knowledge maintenance did not produce a complete report: stop_reason=" + result.StopReason}))
+	outcome := result.Outcome
+	if outcome == nil || (outcome.StopReason != "end_turn" && outcome.StopReason != "stop") || outcome.FinalMessage == nil ||
+		strings.TrimSpace(outcome.FinalMessage.Text) == "" {
+		return "", status_error.WithoutRetry(status_error.RuntimeExecutionFailed.WithParams(map[string]interface{}{"Detail": "knowledge maintenance did not produce a complete report"}))
 	}
 	if successfulCalls.Load() == 0 {
 		return "", status_error.WithoutRetry(status_error.RuntimeExecutionFailed.WithParams(map[string]interface{}{"Detail": "knowledge maintenance completed no authorized knowledge operation; result is unverified"}))
 	}
-	return result.Text, nil
+	return outcome.FinalMessage.Text, nil
 }
 
-// maintenanceResources 物化任务技能和连接；授权在调用终点撤销，文件由引擎租约保护。
-type maintenanceResources struct {
-	// config 固定领域授权服务及同包 CLI 来源。
-	config MaintenanceConfig
-	// input 保存本次作业身份和当前授权检查。
-	input MaintenanceRequest
-	// binary 是已验证的同包 CLI 来源。
-	binary string
-	// bindings 只包含本次冻结范围，并登记成功领域调用。
-	bindings []capability.Binding
-	// workspace 是共享宿主拥有的原生工作区。
-	workspace string
-	// directory 是本租约独占的资源目录，不包含账号投射。
-	directory string
-	// skill 是已安装的不可变 ally 技能目录。
-	skill string
-	// connection 是供原生 CLI 读取的本次连接文件。
-	connection string
-	// mutex 串行化启动环境读取、授权激活和并发撤销。
-	mutex sync.Mutex
-	// revoke 撤销已经签发的短期授权，不负责删除文件。
-	revoke func()
-	// revoked 记录物化完成前发生的取消，防止随后激活新授权。
-	revoked bool
-}
-
-// Acquire 由引擎在账号准备后调用；返回部分租约以保留失败准备的清理所有权。
-func (resources *maintenanceResources) Acquire(ctx context.Context, request agentapi.ResourceRequest) (agentapi.ResourceLease, error) {
-	if ctx.Err() != nil {
-		return resources, status_error.OperationCanceled
+// acquireBridge 启用原生 MCP 工具发现，实际领域调用仍须等待本轮授权。
+func (runner *MaintenanceRunner) acquireBridge(ctx context.Context, input MaintenanceRequest, bindings []capability.Binding, binary, name string) (agent.ResourceLease, func(), error) {
+	if err := ctx.Err(); err != nil {
+		return agent.ResourceLease{}, nil, err
 	}
-	resources.workspace = request.Workspace.Root
-	resources.directory = filepath.Join(request.Workspace.Root, "maintenance-resources")
-	if err := os.Mkdir(resources.directory, 0700); err != nil {
-		logx.Errorf("prepare knowledge maintenance resources failed: error=%v", err)
-		return resources, status_error.KnowledgeStorageError
-	}
-	skill, err := builtinskills.SystemDirectory(resources.directory, resources.binary)
+	directory, err := os.MkdirTemp("", "neux-maintenance-")
 	if err != nil {
-		return resources, err
+		return agent.ResourceLease{}, nil, status_error.KnowledgeStorageError
 	}
-	grant, activate, revoke, err := resources.config.Registry.Prepare(capability.GrantSpec{ExecutionID: resources.input.JobID, Bindings: resources.bindings, FileRoots: []string{request.Workspace.Root}, Validate: resources.input.Validate})
+	lease := agent.ResourceLease{CloseFiles: func(context.Context) error {
+		if err := os.RemoveAll(directory); err != nil {
+			logx.Errorf("remove knowledge maintenance resources failed: error=%v", err)
+			return status_error.KnowledgeStorageError
+		}
+		return nil
+	}}
+	grant, activate, revoke, err := runner.config.Registry.Prepare(capability.GrantSpec{
+		ExecutionID: input.JobID, Bindings: bindings, Validate: input.Validate,
+	})
 	if err != nil {
-		return resources, err
+		return lease, nil, err
 	}
-	resources.mutex.Lock()
-	if resources.revoked {
-		resources.mutex.Unlock()
-		revoke()
-		return resources, status_error.OperationCanceled
-	}
-	resources.revoke = revoke
-	resources.mutex.Unlock()
-	connection, err := capability.WriteConnection(filepath.Join(resources.directory, "context"), "connection.json", capability.Connection{ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: resources.config.Endpoint, CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token})
+	lease.Close = func(context.Context) error { revoke(); return nil }
+	canonical, err := filepath.EvalSymlinks(directory)
 	if err != nil {
-		return resources, err
+		return lease, nil, status_error.KnowledgeStorageError
 	}
-	resources.mutex.Lock()
-	defer resources.mutex.Unlock()
-	if resources.revoked || ctx.Err() != nil {
-		return resources, status_error.OperationCanceled
+	path, err := capability.WriteConnection(canonical, "connection.json", capability.Connection{
+		ProtocolVersion: constants.AgentCLIProtocolVersion, Endpoint: runner.config.Endpoint,
+		CoreEpoch: grant.Epoch, GrantID: grant.ID, Token: grant.Token,
+	})
+	if err != nil {
+		return lease, nil, err
 	}
-	resources.skill, resources.connection = skill, connection
+	if err := ctx.Err(); err != nil {
+		return lease, nil, err
+	}
+	lease.MCPServers = []agent.AgentMCPServer{{Name: name, Transport: "stdio", Command: binary, Arguments: []string{"mcp", "serve", "--context", path}}}
 	activate()
-	return resources, nil
-}
-
-// Resources 交付必需技能的目录绑定，内容安装与释放均由同一租约拥有。
-func (resources *maintenanceResources) Resources() []native.ResourceBinding {
-	resources.mutex.Lock()
-	defer resources.mutex.Unlock()
-	return []native.ResourceBinding{{ID: constants.AgentCLISkillName, Path: resources.skill}}
-}
-
-// LaunchEnvironment 只在原生启动边界注入本次连接与 CLI，并保留账号和原生环境。
-func (resources *maintenanceResources) LaunchEnvironment(base map[string]string) map[string]string {
-	resources.mutex.Lock()
-	defer resources.mutex.Unlock()
-	if base == nil {
-		base = map[string]string{}
-	}
-	binary := builtinskills.CLIPath(resources.skill)
-	base[constants.AgentCLIContextEnvironment] = resources.connection
-	base[constants.AgentCLIBinaryEnvironment] = binary
-	inherited := base["PATH"]
-	if inherited == "" {
-		inherited = os.Getenv("PATH")
-	}
-	base["PATH"] = filepath.Dir(binary) + string(filepath.ListSeparator) + inherited
-	return base
-}
-
-// Revoke 先阻止后续激活，再撤销并收敛领域调用；不会提前删除原生仍在使用的文件。
-func (resources *maintenanceResources) Revoke() {
-	resources.mutex.Lock()
-	defer resources.mutex.Unlock()
-	resources.revoked = true
-	if resources.revoke != nil {
-		resources.revoke()
-		resources.revoke = nil
-	}
-}
-
-// Close 仅在原生退出后回收任务资源；失败保持租约所有权供引擎重试。
-func (resources *maintenanceResources) Close(ctx context.Context) error {
-	if ctx.Err() != nil {
-		return status_error.OperationCanceled
-	}
-	resources.Revoke()
-	if err := os.RemoveAll(resources.directory); err != nil {
-		logx.Errorf("remove knowledge maintenance resources failed: error=%v", err)
-		return status_error.KnowledgeStorageError
-	}
-	return nil
+	return lease, revoke, nil
 }

@@ -14,8 +14,8 @@ import (
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
-	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
@@ -28,7 +28,7 @@ func TestCanonicalUsageRebuildAndSnapshot(t *testing.T) {
 func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 	t.Helper()
 	root := t.TempDir()
-	store, err := eventlog_next.NewStore(root)
+	store, err := conversation.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 		t.Fatalf("snapshot changed after terminal commit: %+v %v", groups, err)
 	}
 	store.Close()
-	store, err = eventlog_next.NewStore(root)
+	store, err = conversation.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 func TestUsageFiltersDSTPaginationAndMeasuredZero(t *testing.T) {
 	ctx := t.Context()
 	root := t.TempDir()
-	store, err := eventlog_next.NewStore(root)
+	store, err := conversation.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,7 +239,7 @@ func TestUsageFiltersDSTPaginationAndMeasuredZero(t *testing.T) {
 
 func TestUsageModelGroupsSeparateProviders(t *testing.T) {
 	ctx := t.Context()
-	store, err := eventlog_next.NewStore(t.TempDir())
+	store, err := conversation.NewStore(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -311,7 +311,7 @@ func TestUsageModelGroupsSeparateProviders(t *testing.T) {
 func TestUsageSeparatesPrimaryModelBreakdownFromInvocationTotals(t *testing.T) {
 	ctx := t.Context()
 	root := t.TempDir()
-	store, err := eventlog_next.NewStore(root)
+	store, err := conversation.NewStore(root)
 	if err != nil {
 		t.Fatal(err)
 	}

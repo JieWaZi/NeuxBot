@@ -8,9 +8,9 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
-	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
@@ -43,7 +43,7 @@ type chatJournalStorage interface {
 	ReadCompletedHistoryCandidates(string, int64, int) (eventlog.HistoryCandidateWindow, error)
 	ReadExecutionIndexTail(string, int64) (eventlog.ExecutionIndexTail, error)
 	ReadExecutionFacts(string, eventlog.ExecutionFactPositions) (eventlog.ExecutionWindow, error)
-	RecoverIndex(string) (eventlog.IndexRecovery, error)
+	ReadLatestSequence(string) (int64, error)
 	MessageRecordedTimes(string, int64, int64) ([]int64, error)
 	CountUserMessages(string) (int64, error)
 	RegisterTeamChat(string, string) error
@@ -61,7 +61,7 @@ type chatJournalStorage interface {
 // conversationJournal translates Chat facts without owning any files or message bodies.
 type conversationJournal struct {
 	// Store is the authority shared with the native Thread.
-	*eventlog_next.Store
+	*conversation.Store
 }
 
 func factsToChanges(facts []eventlog.AppendInput) []agent.ConversationChange {
@@ -166,12 +166,12 @@ func (j *conversationJournal) readAfter(ctx context.Context, id string, after in
 	return records, nil
 }
 
-func (j *conversationJournal) RecoverIndex(id string) (eventlog.IndexRecovery, error) {
+func (j *conversationJournal) ReadLatestSequence(id string) (int64, error) {
 	version, err := j.ReadVersion(context.Background(), id)
 	if err == nil && version == 0 {
 		err = status_error.ChatNotFound.WithParams(map[string]any{"ChatID": id})
 	}
-	return eventlog.IndexRecovery{LatestSequence: version}, err
+	return version, err
 }
 
 func (j *conversationJournal) ReadMessage(id, messageID string) ([]eventlog.Record, error) {
@@ -490,6 +490,15 @@ func (j *conversationJournal) nativeHistory(ctx context.Context, id string, befo
 		return MessageHistoryPage{}, err
 	}
 	builder := messageview.NewPublicMessageViewBuilder()
+	if before == 0 {
+		binding, err := j.ReadBinding(ctx, id)
+		if err != nil {
+			return MessageHistoryPage{}, err
+		}
+		if binding != nil && !binding.Cleared {
+			builder.SetCurrentForkSession(binding.Session.SessionID)
+		}
+	}
 	nativeCursors := make(map[string]eventlog.Record)
 	for _, record := range window.Records {
 		if _, err := builder.Apply(record); err != nil {
@@ -573,8 +582,7 @@ func (j *conversationJournal) applyPublic(ctx context.Context, adapter *eventstr
 		if err != nil {
 			return eventstream.PublicEvent{}, false, err
 		}
-		// An existing native result replaces usage even when it reports no counters.
-		// Legacy executions without that result retain the usage already replayed.
+		// Canonical native outcomes provide the only persisted usage evidence.
 		if outcome != nil {
 			projected, err := adapter.ApplyNativeTerminal(row, outcome)
 			return projected, true, err

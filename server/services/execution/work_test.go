@@ -1,8 +1,6 @@
 package execution
 
 import (
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
-
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,8 +14,8 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 
-	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
-	eventlognext "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog_next"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
@@ -48,7 +46,7 @@ func TestHiddenEntryCreatesStandardChatAndPreservesInitialExecution(t *testing.T
 		ExecutionID:     util.New(),
 		Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}},
 		Input:           WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理项目资料"},
-		Options:         WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue},
+		Options:         WorkOptions{RuntimeID: agent.RuntimeIDCodex, PermissionLevel: agent.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue},
 		Admission:       constants.ExecutionAdmissionCommitBeforeDispatch,
 	}
 	accepted, err := manager.execution.Start(ctx, intent)
@@ -76,7 +74,7 @@ func TestHiddenEntryCreatesStandardChatAndPreservesInitialExecution(t *testing.T
 	if _, err := manager.execution.Start(ctx, changedIntent); !errors.Is(err, status_error.CreateRequestConflict) {
 		t.Fatalf("changed visibility reused original identity: %v", err)
 	}
-	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "继续整理"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}})
+	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "继续整理"}, Runtime: runtimeSelection{RuntimeID: agent.RuntimeIDCodex}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +96,7 @@ type testChatInput struct {
 
 type messageTestService struct {
 	// store owns durable admissions for the fixture.
-	store *eventlognext.Store
+	store *conversation.Store
 	// trace records the actual Codex app-server requests.
 	trace string
 	// execution 接收入口无关的 WorkIntent 并管理 Runtime 生命周期。
@@ -120,7 +118,7 @@ func (s messageTestService) sendTestMessage(
 	input testMessageInput,
 ) (AcceptedExecution, error) {
 	if input.Runtime.PermissionLevel == "" {
-		input.Runtime.PermissionLevel = agentapi.PermissionLevelAuto
+		input.Runtime.PermissionLevel = agent.PermissionLevelAuto
 	}
 	intent := WorkIntent{
 		Chat: ChatTarget{ChatID: input.ChatID},
@@ -353,7 +351,7 @@ func TestSendMessageRollsBackNewWorkspaceWhenWholeFileReferenceIsOutsideProject(
 				Path: outsideFile,
 			}},
 		},
-		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agent.RuntimeIDCodex},
 	})
 	if !errors.Is(err, status_error.BadRequest) {
 		t.Fatalf("sendTestMessage() error = %v, want BadRequest", err)
@@ -377,7 +375,7 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	accepted, err := manager.sendTestMessage(ctx, testMessageInput{
 		NewChat: &testChatInput{WakerID: "waker-1", WorkingDirectory: project},
 		Message: userMessage{Text: "第一次执行"},
-		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agent.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -388,7 +386,7 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	firstFiles, err := core.prepareMessageFiles(ctx, state, util.New(), nil, nil, agentapi.RuntimeIDCodex)
+	firstFiles, err := core.prepareMessageFiles(ctx, state, util.New(), nil, nil, agent.RuntimeIDCodex)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +397,7 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	}
 	// 反复经过真实档案读取和工作区准备，覆盖 map 遍历顺序变化造成的静态配置抖动。
 	for attempt := 0; attempt < 64; attempt++ {
-		files, err := core.prepareMessageFiles(ctx, state, util.New(), nil, nil, agentapi.RuntimeIDCodex)
+		files, err := core.prepareMessageFiles(ctx, state, util.New(), nil, nil, agent.RuntimeIDCodex)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -410,7 +408,7 @@ func TestPrepareMessageFilesKeepsUnchangedProfileInstructionsStable(t *testing.T
 	}
 }
 
-func hasInstructionContent(instructions []agentapi.Instruction, content string) bool {
+func hasInstructionContent(instructions []agent.Instruction, content string) bool {
 	for _, instruction := range instructions {
 		if instruction.Content == content {
 			return true
@@ -451,7 +449,7 @@ func TestChatPublicQueriesObserveMessageAndRename(t *testing.T) {
 			WorkingDirectory: t.TempDir(),
 		},
 		Message: userMessage{Text: "查询对话"},
-		Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex},
+		Runtime: runtimeSelection{RuntimeID: agent.RuntimeIDCodex},
 	})
 	if err != nil {
 		t.Fatalf("sendTestMessage() error = %v", err)
@@ -576,7 +574,7 @@ func newMessageTestService(
 	transactions := controllers.NewTransactionController(
 		dbhelper.NewGormTransactionManager(database.DB),
 	)
-	store, err := eventlognext.NewStore(logDirectory)
+	store, err := conversation.NewStore(logDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -613,7 +611,7 @@ func newMessageTestService(
 		runtimeEnvironments = readyRuntimeEnvironmentReader{}
 	}
 	runtimeEnvironments = nativeFixtureEnvironmentReader{source: runtimeEnvironments}
-	summaries := []agentapi.RuntimeSummary{fixtureCodexSummary(), {ID: agentapi.RuntimeIDClaude, BaseRuntimeID: agentapi.RuntimeIDClaude, InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"}}
+	summaries := []agent.RuntimeSummary{fixtureCodexSummary(), {ID: agent.RuntimeIDClaude, BaseRuntimeID: agent.RuntimeIDClaude, InstructionFileName: "CLAUDE.md", SkillDirectoryName: ".claude"}}
 	executionCore, err := New(Config{
 		Threads: threads, RuntimeSummaries: summaries,
 		ResolveAccount: func(_ context.Context, request agent.AccountRequest, _ string) (agent.AccountRequest, error) {
@@ -669,18 +667,18 @@ func (readyRuntimeEnvironmentReader) Get(
 		Enabled:      true,
 		Binary:       "codex",
 		DefaultModel: "default",
-		Detection: agentapi.DetectionResult{
-			Runtime: agentapi.RuntimeSummary{
+		Detection: agent.DetectionResult{
+			Runtime: agent.RuntimeSummary{
 				ID:            "codex",
-				BaseRuntimeID: agentapi.RuntimeIDCodex,
+				BaseRuntimeID: agent.RuntimeIDCodex,
 			},
-			State:          agentapi.DetectionStateReady,
+			State:          agent.DetectionStateReady,
 			ResolvedBinary: "codex",
-			Capabilities: agentapi.CapabilitySet{
-				agentapi.CapabilityMCPStreamableHTTP: true,
-				agentapi.CapabilitySkillDirectory:    true,
+			Capabilities: agent.CapabilitySet{
+				agent.CapabilityMCPStreamableHTTP: true,
+				agent.CapabilitySkillDirectory:    true,
 			},
-			Models: []agentapi.ModelOption{
+			Models: []agent.ModelOption{
 				readyTestModel("default"),
 				readyTestModel("gpt-5"),
 				readyTestModel("gpt-5.1"),
@@ -689,14 +687,14 @@ func (readyRuntimeEnvironmentReader) Get(
 	}, nil
 }
 
-func readyTestModel(id string) agentapi.ModelOption {
-	return agentapi.ModelOption{
+func readyTestModel(id string) agent.ModelOption {
+	return agent.ModelOption{
 		ID:   id,
 		Name: id,
-		PermissionLevels: []agentapi.PermissionLevel{
-			agentapi.PermissionLevelDefault,
-			agentapi.PermissionLevelAuto,
-			agentapi.PermissionLevelFullAccess,
+		PermissionLevels: []agent.PermissionLevel{
+			agent.PermissionLevelDefault,
+			agent.PermissionLevelAuto,
+			agent.PermissionLevelFullAccess,
 		},
 	}
 }
@@ -717,7 +715,7 @@ type messageTestOptions struct {
 func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *testing.T) {
 	manager := newMessageTestService(t, t.TempDir())
 	ctx := context.Background()
-	intent := WorkIntent{AutomaticRunID: "original-automatic-run", ClientRequestID: "automatic-provenance", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}}, Input: WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理正文"}, Options: WorkOptions{RuntimeID: agentapi.RuntimeIDCodex, PermissionLevel: agentapi.PermissionLevelAuto}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
+	intent := WorkIntent{AutomaticRunID: "original-automatic-run", ClientRequestID: "automatic-provenance", ExecutionID: util.New(), Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1", WorkingDirectory: t.TempDir(), HiddenFromWakerHistory: true}}, Input: WorkInput{Actor: constants.AutomaticTaskActor, Content: "整理正文"}, Options: WorkOptions{RuntimeID: agent.RuntimeIDCodex, PermissionLevel: agent.PermissionLevelAuto}, Admission: constants.ExecutionAdmissionCommitBeforeDispatch}
 	accepted, err := manager.execution.Start(ctx, intent)
 	if err != nil {
 		t.Fatal(err)
@@ -736,7 +734,7 @@ func TestIntegrationAutomaticTaskExecutionProvenanceSurvivesJournalReplay(t *tes
 	if _, err = manager.execution.Start(ctx, changed); !errors.Is(err, status_error.CreateRequestConflict) {
 		t.Fatal("same execution changed its automatic origin", err)
 	}
-	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "用户后续操作"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}})
+	continued, err := manager.sendTestMessage(ctx, testMessageInput{ChatID: accepted.Chat.ID, Message: userMessage{Text: "用户后续操作"}, Runtime: runtimeSelection{RuntimeID: agent.RuntimeIDCodex}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -753,8 +751,8 @@ type nativeFixtureEnvironmentReader struct {
 	source runtimeEnvironmentReader
 }
 
-func fixtureCodexSummary() agentapi.RuntimeSummary {
-	return agentapi.RuntimeSummary{ID: agentapi.RuntimeIDCodex, BaseRuntimeID: agentapi.RuntimeIDCodex, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}
+func fixtureCodexSummary() agent.RuntimeSummary {
+	return agent.RuntimeSummary{ID: agent.RuntimeIDCodex, BaseRuntimeID: agent.RuntimeIDCodex, InstructionFileName: "AGENTS.md", SkillDirectoryName: ".agents"}
 }
 
 func (reader nativeFixtureEnvironmentReader) Get(ctx context.Context, id string) (models.RuntimeEnvironment, error) {
@@ -771,7 +769,7 @@ func (reader nativeFixtureEnvironmentReader) Get(ctx context.Context, id string)
 	if entry.BaseRuntimeID == "" {
 		entry.BaseRuntimeID = entry.Detection.Runtime.BaseRuntimeID
 	}
-	if entry.BaseRuntimeID == agentapi.RuntimeIDCodex {
+	if entry.BaseRuntimeID == agent.RuntimeIDCodex {
 		entry.Detection.Runtime = fixtureCodexSummary()
 	}
 	return entry, nil
@@ -803,7 +801,7 @@ func (s messageTestService) nativeCalls(t *testing.T, method string) []json.RawM
 
 type recordedRun struct {
 	// SessionPlan captures the projected capabilities and managed workspace instructions.
-	agentapi.SessionPlan
+	agent.SessionPlan
 	// TurnInput captures the prompt assembly.
-	agentapi.TurnInput
+	agent.TurnInput
 }

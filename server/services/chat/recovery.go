@@ -150,21 +150,11 @@ func (c *recoveryCoordinator) reconcileChat(
 	chatID string,
 ) (RecoveryDiagnostic, error) {
 	diagnostic := RecoveryDiagnostic{ChatID: chatID, State: constants.ChatRecoveryStateHealthy}
-	indexRecovery, err := c.logStore.RecoverIndex(chatID)
+	latest, err := c.logStore.ReadLatestSequence(chatID)
 	if err != nil {
 		return diagnostic, err
 	}
-	diagnostic.LogLatestSequence = indexRecovery.LatestSequence
-	diagnostic.TailBytesRemoved = indexRecovery.TailBytesRemoved
-	diagnostic.TailRepairedAt = indexRecovery.TailRepairedAt
-	if indexRecovery.Rebuilt {
-		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueFileIndexRebuilt)
-		diagnostic.State = constants.ChatRecoveryStateRepaired
-	}
-	if indexRecovery.TailBytesRemoved > 0 {
-		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueTailRepaired)
-		diagnostic.State = constants.ChatRecoveryStateRepaired
-	}
+	diagnostic.LogLatestSequence = latest
 
 	indexed, missing, err := c.queryIndexes.inspectChat(ctx, chatID)
 	if err != nil {
@@ -175,7 +165,7 @@ func (c *recoveryCoordinator) reconcileChat(
 		return c.rebuildProjection(ctx, chatID, diagnostic)
 	}
 	diagnostic.IndexedSequence = indexed.LatestSequence
-	if indexed.LatestSequence > indexRecovery.LatestSequence {
+	if indexed.LatestSequence > latest {
 		diagnostic.Issues = appendIssue(diagnostic.Issues, constants.ChatRecoveryIssueChatProjectionAhead)
 		return c.rebuildProjection(ctx, chatID, diagnostic)
 	}
@@ -401,23 +391,11 @@ func applyProjectionTail(projection *currentProjection, records []eventlog.Recor
 			projection.chat.WaitingApproval = false
 			projection.chat.PendingElicitations = []models.PendingElicitation{}
 			projection.chat.WaitingElicitation = false
-		case constants.ChatEventTypeNativeSessionUpdated,
-			constants.ChatEventTypeNativeSessionCleared:
-			var data eventlog.RuntimeSessionData
-			if err := json.Unmarshal(record.Data, &data); err != nil {
+		case constants.ChatEventTypeMessageInherited:
+			if err := projectInheritedForkSession(record, projection.runtimeSessions); err != nil {
 				return err
 			}
-			if record.Type == constants.ChatEventTypeNativeSessionCleared {
-				delete(projection.runtimeSessions, data.RuntimeID)
-				break
-			}
-			projection.runtimeSessions[data.RuntimeID] = models.RuntimeSession{
-				ChatID:          record.ChatID,
-				RuntimeID:       data.RuntimeID,
-				SessionID:       data.SessionID,
-				LastExecutionID: data.LastExecutionID,
-				UpdatedAt:       record.RecordedAt,
-			}
+
 		}
 		projection.chat.LatestSequence = record.Sequence
 		projection.chat.UpdatedAt = record.RecordedAt

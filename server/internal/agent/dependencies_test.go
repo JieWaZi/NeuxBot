@@ -14,7 +14,7 @@ import (
 // TestAgentDependencyBoundaries 保护产品会话与原生接入的单向依赖，并拒绝旧分层重新出现。
 func TestAgentDependencyBoundaries(t *testing.T) {
 	const module = "github.com/JieWaZi/NeuxBot/server/"
-	for _, name := range []string{"core", "host", "environment", "../agentcapability", "../agentcli", "../agentcommand"} {
+	for _, name := range []string{"core", "host", "environment", "native", "../agent_next", "../agentcapability", "../agentcli", "../agentcommand", "../chat/eventlog_next"} {
 		if _, err := os.Stat(name); !os.IsNotExist(err) {
 			t.Errorf("obsolete agent package still exists: %s (%v)", name, err)
 		}
@@ -24,9 +24,6 @@ func TestAgentDependencyBoundaries(t *testing.T) {
 			return walkErr
 		}
 		if entry.IsDir() {
-			if entry.Name() == "core" || entry.Name() == "host" || entry.Name() == "environment" {
-				return filepath.SkipDir
-			}
 			if entry.Name() == "internal" {
 				t.Errorf("nested internal boundary reintroduced: %s", path)
 			}
@@ -45,13 +42,9 @@ func TestAgentDependencyBoundaries(t *testing.T) {
 				return err
 			}
 			local := strings.TrimPrefix(dependency, module)
-			if strings.HasPrefix(path, "native"+string(filepath.Separator)) && strings.HasPrefix(dependency, module) {
-				switch local {
-				case "internal/accountconfig", "internal/codexoauth", "internal/logx":
-				default:
-					if local != "internal/agent/native" {
-						t.Errorf("%s: native imports product owner %s", path, local)
-					}
+			for _, obsolete := range []string{module + "internal/agent/native", module + "internal/agent_next", "github.com/JieWaZi/acp-go/pkg/agent_next"} {
+				if dependency == obsolete || strings.HasPrefix(dependency, obsolete+"/") {
+					t.Errorf("%s: agent imports obsolete package %s", path, dependency)
 				}
 			}
 			for _, forbidden := range []string{"apis", "services", "repositories"} {

@@ -1,10 +1,12 @@
 package chat
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
@@ -34,7 +36,19 @@ type forkPoint struct {
 	end int
 }
 
-func forkPoints(records []eventlog.Record, state chatState) ([]forkPoint, error) {
+func (m *service) resolveForkPoints(ctx context.Context, chatID string, records []eventlog.Record, state chatState) ([]forkPoint, error) {
+	var binding *agent.NativeBinding
+	if journal, ok := m.logStore.(*conversationJournal); ok {
+		var err error
+		binding, err = journal.ReadBinding(ctx, chatID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return forkPoints(records, state, binding)
+}
+
+func forkPoints(records []eventlog.Record, state chatState, binding *agent.NativeBinding) ([]forkPoint, error) {
 	points := []forkPoint{}
 	indexes := map[string]int{}
 	lastExecution := ""
@@ -85,8 +99,14 @@ func forkPoints(records []eventlog.Record, state chatState) ([]forkPoint, error)
 		case point.invocation.ForkMode == acpmeta.ForkTurn && point.invocation.ForkPosition != "":
 			point.target.Available = true
 		case point.invocation.ForkMode == acpmeta.ForkLatest && point.target.Latest:
-			session := state.runtimeSessions[point.configuration.RuntimeID]
-			if session.SessionID == point.invocation.SessionOutputID && session.LastExecutionID == point.target.ExecutionID {
+			sessionID, executionID := "", ""
+			if binding != nil && !binding.Cleared {
+				sessionID, executionID = binding.Session.SessionID, state.chat.LastEndedExecutionID
+			} else if binding == nil && records[point.end-1].Type == constants.ChatEventTypeMessageInherited {
+				session := state.runtimeSessions[point.configuration.RuntimeID]
+				sessionID, executionID = session.SessionID, session.LastExecutionID
+			}
+			if sessionID == point.invocation.SessionOutputID && executionID == point.target.ExecutionID {
 				point.target.Available = true
 			} else {
 				point.target.ReasonCode = "session_changed"

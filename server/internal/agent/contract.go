@@ -5,13 +5,9 @@ import (
 	"encoding/json"
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins"
-	"github.com/JieWaZi/NeuxBot/server/internal/plugins/authorization"
-	"maps"
 	"os"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"strings"
 )
 
@@ -57,18 +53,6 @@ type Event struct {
 	Type EventType
 	// Data 是该事件类型对应的完整 JSON 载荷。
 	Data json.RawMessage
-}
-
-// InvocationStartedData 保存首条输入交付成功后可用于建立调用身份的最小事实。
-type InvocationStartedData struct {
-	// InvocationID 是 Runtime 为本次调用生成的稳定标识。
-	InvocationID string `json:"invocationId"`
-}
-
-// EventSink 是 Runtime 统一事件的串行交付 seam。
-type EventSink interface {
-	// Accept 接收一个完整事件，Context 只限制本次交付。
-	Accept(ctx context.Context, event Event) error
 }
 
 // ApprovalOption 保存 ACP Agent 提供的一项原始审批选择。
@@ -281,163 +265,12 @@ type WorkspaceProjectDirectory struct {
 	Default bool
 }
 
-// SessionMode 是共享 Runtime Session 动作枚举的引用。
-type SessionMode = constants.RuntimeSessionMode
-
-const (
-	// SessionModeNew 表示创建一个新的原生 Session。
-	SessionModeNew = constants.RuntimeSessionModeNew
-	// SessionModeResume 表示恢复调用方提供的原生 Session。
-	SessionModeResume = constants.RuntimeSessionModeResume
-)
-
-// SessionDirective 保存一次调用的原生 Session 输入。
-type SessionDirective struct {
-	// Mode 指定新建、恢复或不使用 Session。
-	Mode SessionMode
-	// ID 是 Resume 使用的 Session ID，或 Host 指定式新 Session ID。
-	ID string
-}
-
 // ExecutionPolicy 保存调用方冻结的产品权限。
 type ExecutionPolicy struct {
 	// PermissionLevel 是调用方冻结的跨 Runtime 产品权限等级。
 	PermissionLevel PermissionLevel
 	// WorkspaceReadOnly 表示宿主要求智能体只读取工作区。
 	WorkspaceReadOnly bool
-}
-
-// SessionResult 保存一次调用输入和输出的原生 Session 事实。
-type SessionResult struct {
-	// ForkMode 是适配器确认的原生分叉精度。
-	ForkMode string
-	// ForkPosition 是当前结束回合的不透明原生位置。
-	ForkPosition string
-	// Mode 是本次调用使用的 Session 动作。
-	Mode SessionMode
-	// InputID 是调用方传入的 Session ID。
-	InputID string
-	// OutputID 是 Runtime 创建、确认或捕获的 Session ID。
-	OutputID string
-	// State 是 SDK 根据输入、输出和失败分类得到的 Session 状态。
-	State SessionState
-}
-
-// SessionState 是共享 Runtime Session 状态枚举的引用。
-type SessionState = constants.RuntimeSessionState
-
-const (
-	// SessionStateNone 表示本次调用没有使用原生 Session。
-	SessionStateNone = constants.RuntimeSessionStateNone
-	// SessionStateCreated 表示 Runtime 已经创建或确认新 Session。
-	SessionStateCreated = constants.RuntimeSessionStateCreated
-	// SessionStateResumed 表示 Runtime 已经成功恢复输入 Session。
-	SessionStateResumed = constants.RuntimeSessionStateResumed
-	// SessionStateMissing 表示输入 Session 已不存在或不可恢复。
-	SessionStateMissing = constants.RuntimeSessionStateMissing
-	// SessionStateUnknown 表示 SDK 无法确认 Session 最终状态。
-	SessionStateUnknown = constants.RuntimeSessionStateUnknown
-)
-
-// SideEffectSummary 保存 SDK 从协议事件中明确观察到的副作用信号。
-type SideEffectSummary struct {
-	// VisibleOutput 表示已经产生面向用户的可见文本。
-	VisibleOutput bool
-	// ReasoningOutput 表示已经产生或开始产生推理内容。
-	ReasoningOutput bool
-	// ToolUse 表示 Runtime 已经请求执行工具。
-	ToolUse bool
-	// FileWrite 表示 Runtime 明确报告了文件修改。
-	FileWrite bool
-	// Artifact 表示 Runtime 明确报告了 Artifact 生成。
-	Artifact bool
-}
-
-// Any 返回是否已经观察到任意会阻止 Host 安全重放的副作用。
-func (summary SideEffectSummary) Any() bool {
-	return summary.VisibleOutput ||
-		summary.ReasoningOutput ||
-		summary.ToolUse ||
-		summary.FileWrite ||
-		summary.Artifact
-}
-
-// InvocationFacts 保存一次调用实际使用且适合持久化的技术事实。
-type InvocationFacts struct {
-	// PrefixArgs 是调用时配置的前置参数，用于隔离自定义运行时分叉。
-	PrefixArgs []string
-	// ConfigHome 是调用时受控的原生状态主目录。
-	ConfigHome string
-	// InvocationID 是 Host 分配的本次调用标识。
-	InvocationID string
-	// RuntimeID 是调用方选择的 Runtime 或 Profile ID。
-	RuntimeID string
-	// BaseRuntimeID 是提供协议语义的内置 Runtime ID。
-	BaseRuntimeID string
-	// Binary 是实际启动的可执行文件路径。
-	Binary string
-	// Version 是本次调用使用的持久化探测快照中的 Runtime CLI 版本。
-	Version string
-	// Model 是实际写入 ACP Session 的模型选择。
-	Model string
-	// Reasoning 是实际写入 ACP Session 的推理强度。
-	Reasoning string
-	// ServiceTier 是本次调用保留的模型服务等级。
-	ServiceTier string
-	// Policy 是调用方显式授权的执行策略。
-	Policy ExecutionPolicy
-	// EnvironmentFingerprint 是完整最终环境的不可逆摘要。
-	EnvironmentFingerprint string
-	// Capabilities 是启动时冻结的能力快照。
-	Capabilities CapabilitySet
-}
-
-// Failure 保存一次已启动 Invocation 的结构化失败。
-type Failure struct {
-	// Code 是 Host 用于分类和重试决策的稳定失败码。
-	Code FailureCode
-	// Stage 是失败发生的共享执行阶段。
-	Stage string
-	// Message 是不含秘密值的技术说明。
-	Message string
-	// DisplayMessage 是从原始错误链或 ACP 结构化错误提取的可展示原因。
-	DisplayMessage string
-	// Transience 表示失败是否属于 Host 可以考虑重试的瞬时错误。
-	Transience FailureTransience
-	// SessionState 是失败发生后 SDK 确认的原生 Session 状态。
-	SessionState SessionState
-	// SideEffects 是失败前已经明确观察到的副作用信号。
-	SideEffects SideEffectSummary
-}
-
-// Result 是 Runtime Invocation 的可重复读取终态。
-type Result struct {
-	// Usage 是本轮分量替换后的终态用量独立快照，供调用方持久化；非 nil 的空快照表示没有已知用量，nil 仅兼容旧 Runner。
-	Usage *UsageData
-	// StopReason 是协议实际返回的原始停止原因；空值表示未收到该事实。
-	StopReason string
-	// TerminationReason 是协议停止原因的归一化结论，不替代 Failure 或执行状态。
-	TerminationReason constants.RuntimeTerminationReason
-	// ExitCode 是主进程退出码，未成功启动时为 -1。
-	ExitCode int
-	// Signal 是平台可以识别时的终止信号。
-	Signal string
-	// Session 保存原生 Session 输入和输出事实。
-	Session SessionResult
-	// Facts 保存本次调用实际使用的 Runtime 配置。
-	Facts InvocationFacts
-	// ProtocolHealthy 表示 Parser 观察到了必要协议语义。
-	ProtocolHealthy bool
-	// Diagnostics 保存 Run 启动前探测继承的非秘密诊断。
-	Diagnostics []Diagnostic
-	// SideEffects 保存协议流明确报告的副作用信号。
-	SideEffects SideEffectSummary
-	// Failure 保存失败终态，成功时为 nil。
-	Failure *Failure
-	// UndeliveredEvents 是 Sink 失败后无法继续交付的事件数量。
-	UndeliveredEvents int
-	// UndeliveredBytes 是 Sink 失败后无法继续交付的载荷字节数。
-	UndeliveredBytes int64
 }
 
 // UsageData 是 Runtime SDK 归一化后交给 Host 的完整用量数据。
@@ -564,102 +397,6 @@ type TurnInput struct {
 	ApprovalHandler ApprovalHandler
 	// ElicitationHandler 是本轮结构化输入端口。
 	ElicitationHandler ElicitationHandler
-}
-
-// SessionResources 保存取得租约后实际冻结的业务资源；首次冷 Bind 即交接全部释放责任。
-type SessionResources struct {
-	// Target 是账号与原生资源物化后的私有启动事实。
-	Target RuntimeTarget
-	// Session 只以 Mode 请求资源变化后的会话动作，ID 必须为空；为空时沿用接纳动作。
-	Session *SessionDirective
-	// Skills 是租约保护的实际技能目录。
-	Skills []Skill
-	// Connectors 是租约保护的实际连接器配置。
-	Connectors []Connector
-	// PluginResources 是实际交付的插件版本和能力快照。
-	PluginResources []plugins.Snapshot
-	// NativePluginScope 是本消费者冻结的原生插件作用域。
-	NativePluginScope string
-	// CommitScope 在权威接纳后提交原生能力作用域。
-	CommitScope func() error
-	// UpdateUsage 更新当前消费者的业务执行引用，不改变资源租约。
-	UpdateUsage func(...authorization.Usage)
-	// Close 在原生消费者退出后释放账号和插件；失败须允许重试。
-	Close func(context.Context) error
-}
-
-// PreparedChatRun 占用唯一回合，业务层显式取得资源并绑定后才可提交本轮输入。
-type PreparedChatRun interface {
-	// Context 提供受内核取消约束的资源准备上下文。
-	Context() context.Context
-	// NeedsResources 表示该冷消费者仍需绑定实际资源。
-	NeedsResources() bool
-	// Bind 首次冷绑定接管实际或部分资源；失败仍由内核负责释放，重复或已消费调用不接管新资源。
-	Bind(context.Context, SessionResources) error
-	// Resources 返回同一消费者已经固定的具名业务事实。
-	Resources() SessionResources
-	// Session 返回当前实际新建或恢复动作。
-	Session() SessionDirective
-	// Run 提交本轮新增输入；每次准备最多调用一次，返回供持久化的独立终态 Usage 快照。
-	Run(context.Context, TurnInput, EventSink) Result
-	// Close 放弃未提交的准备；热会话资源继续由内核拥有。
-	Close(context.Context) error
-}
-
-// DeclareTarget 从实际启动值提取无秘密的会话声明。
-func DeclareTarget(target RuntimeTarget) SessionTarget {
-	return SessionTarget{
-		RuntimeID: target.RuntimeID, AccountID: target.AccountID, Binary: target.Binary,
-		PrefixArgs: slices.Clone(target.PrefixArgs), ConfigHome: target.ConfigHome,
-		NativePluginDirectories: slices.Clone(target.NativePluginDirectories), NativePluginScope: target.NativePluginScope,
-		CodexPluginConfiguration: maps.Clone(target.CodexPluginConfiguration), ClaudeSettingsPath: target.ClaudeSettingsPath,
-	}
-}
-
-// LaunchTarget 创建尚未取得账号或进程资源的启动值，实际秘密仅在冷资源准备后补充。
-func (target SessionTarget) LaunchTarget() RuntimeTarget {
-	return RuntimeTarget{
-		RuntimeID: target.RuntimeID, AccountID: target.AccountID, Binary: target.Binary,
-		PrefixArgs: slices.Clone(target.PrefixArgs), ConfigHome: target.ConfigHome,
-		NativePluginDirectories: slices.Clone(target.NativePluginDirectories), NativePluginScope: target.NativePluginScope,
-		CodexPluginConfiguration: maps.Clone(target.CodexPluginConfiguration), ClaudeSettingsPath: target.ClaudeSettingsPath,
-	}
-}
-
-// DeclareConnectors 提取会话声明需要的公开固定配置，秘密环境与请求头只留在实际资源中。
-func DeclareConnectors(connectors []Connector) []ConnectorDeclaration {
-	result := make([]ConnectorDeclaration, 0, len(connectors))
-	for _, connector := range connectors {
-		result = append(result, ConnectorDeclaration{
-			ID: connector.ID, Name: connector.Name, RuntimeKey: connector.RuntimeKey, Transport: connector.Transport,
-			Command: connector.Command, Arguments: slices.Clone(connector.Arguments), URL: connector.URL, TimeoutMS: connector.TimeoutMS,
-		})
-	}
-	return result
-}
-
-// ForkSessionRequest 保存分叉所需的原生身份、位置及目标执行环境。
-type ForkSessionRequest struct {
-	// ReceiptDirectory 是宿主持有的非公开持久操作目录。
-	ReceiptDirectory string
-	// ReconcileOnly 仅查询已执行原生调用的结果，禁止创建第二个分支。
-	ReconcileOnly bool
-	// SourceSessionID 是来源的原生句柄，不能交给前端。
-	SourceSessionID string
-	// Position 是适配器在回合终态返回的不透明定位信息；空值表示末尾。
-	Position string
-	// SourceWorkspace 是原生会话当前绑定的工作区。
-	SourceWorkspace string
-	// Plan 提供目标工作区、Runtime 配置与权限。
-	Plan SessionPlan
-}
-
-// ForkSessionResult 是已建立的独立原生分支。
-type ForkSessionResult struct {
-	// SessionID 是之后续聊和冷恢复使用的新原生句柄。
-	SessionID string
-	// Mode 是当前实际适配器宣告的分叉精度。
-	Mode string
 }
 
 // DetectedConnectorTransportSupported 只依据同一份探测快照判断 MCP 传输是否可用于新执行。
@@ -813,72 +550,4 @@ func workspacePathKey(path string) string {
 		return strings.ToLower(value)
 	}
 	return value
-}
-
-// Message 是一次完整模型请求的显式消息。
-type TextMessage struct {
-	// Role 是 system、user 或 assistant。
-	Role string
-	// Content 保留调用方原文。
-	Content string
-}
-
-// TextRequest 只包含冻结的模型选择和完整消息，不接受聊天身份。
-type TextRequest struct {
-	// RuntimeID 是内置智能体或用户 Profile 标识。
-	RuntimeID string
-	// AccountID 是冻结的账号选择。
-	AccountID string
-	// Model 是本次实际模型选择。
-	Model string
-	// Reasoning 是明确推理强度。
-	Reasoning string
-	// Messages 是本次完整消息序列。
-	Messages []TextMessage
-	// Thinking 表达本次推理开关期望。
-	Thinking bool
-	// MaxTokens 是协议可能不支持的输出上限。
-	MaxTokens int
-	// Temperature 是协议可能不支持的采样温度。
-	Temperature float64
-}
-
-// TextResult 是知识核心所需的正文、用量和实际配置诊断。
-type TextResult struct {
-	// Text 只来自可信最终回答。
-	Text string
-	// StopReason 保留原生结束原因。
-	StopReason string
-	// Usage 在原生协议未提供回合用量时为空。
-	Usage *Usage
-	// ActualReasoning 是原生回执确认的推理强度。
-	ActualReasoning string
-	// ThinkingDisabled 表示原生确实确认关闭推理。
-	ThinkingDisabled bool
-	// ReasoningFallback 说明实际低档回退。
-	ReasoningFallback string
-	// Limitations 保存无法表达的控制和消息序列化边界。
-	Limitations []string
-}
-
-// Usage 保存可选的原生回合用量；输入和缓存分量只在知识边界合并一次。
-type Usage struct {
-	// InputTokens 是不含缓存的输入用量。
-	InputTokens int64
-	// OutputTokens 是输出用量。
-	OutputTokens int64
-	// CacheReadTokens 是缓存读取用量。
-	CacheReadTokens int64
-	// CacheCreationTokens 是缓存写入用量。
-	CacheCreationTokens int64
-}
-
-// Environment 是接纳前读取的启动事实；BaseRuntimeID 确定唯一 CLI 协议实现。
-type Environment struct {
-	// BaseRuntimeID 是经过注册验证的内置智能体身份。
-	BaseRuntimeID string
-	// Target 保留实际二进制、参数和配置目录。
-	Target RuntimeTarget
-	// Detection 是当前可运行探测快照。
-	Detection DetectionResult
 }

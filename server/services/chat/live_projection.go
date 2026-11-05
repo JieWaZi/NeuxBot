@@ -55,7 +55,7 @@ func (m *service) catchUpLiveProjection(ctx context.Context, chatID string) erro
 				return err
 			}
 			for _, record := range tail {
-				if record.Type == constants.ChatEventTypeNativeSessionUpdated || record.Type == constants.ChatEventTypeNativeSessionCleared {
+				if record.Type == constants.ChatEventTypeMessageInherited {
 					if err := m.queryIndexes.runtimeSessionController.DeleteByChat(transactionContext, chatID); err != nil {
 						return err
 					}

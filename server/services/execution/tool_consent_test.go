@@ -3,6 +3,8 @@ package execution
 import (
 	"context"
 
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -17,7 +19,7 @@ type consentTestJournal struct {
 }
 
 func (j *consentTestJournal) AppendElicitationFact(chatID string, input eventlog.AppendInput) (eventlog.Record, error) {
-	records, err := j.store.Append(chatID, []eventlog.AppendInput{input})
+	records, err := conversationfixture.CommitFacts(context.Background(), j.store, chatID, []eventlog.AppendInput{input})
 	if err != nil {
 		return eventlog.Record{}, err
 	}
@@ -33,7 +35,7 @@ type interactionTestJournal struct {
 	// Journal is the unused business port in the interaction test.
 	chatservice.Journal
 	// store owns the test's business facts.
-	store *eventlog.Store
+	store *conversation.Store
 	// fullReads counts accidental scans outside the requested execution.
 	fullReads int
 	// executionRecords records the size of the exact execution read.
@@ -42,11 +44,12 @@ type interactionTestJournal struct {
 
 func (j *interactionTestJournal) ReadRecords(chatID string) ([]eventlog.Record, error) {
 	j.fullReads++
-	return j.store.ReadAll(chatID)
+	return conversationfixture.ReadFacts(context.Background(), j.store, chatID)
 }
 
 func (j *interactionTestJournal) ReadExecutionRecords(chatID, executionID string) ([]eventlog.Record, error) {
-	records, err := j.store.ReadMessage(chatID, executionID)
+	rows, err := j.store.ReadTurn(context.Background(), chatID, executionID)
+	records := conversationfixture.Records(chatID, rows)
 	j.executionRecords = len(records)
 	return records, err
 }

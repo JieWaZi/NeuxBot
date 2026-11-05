@@ -447,7 +447,7 @@ const (
 	WikiResearcherAvatar = CompanionAvatarPrefix + "854de954b7bd4e2cb9582fd0930dcd6d"
 	// DefaultAvatar 是未指定头像时使用的默认预设头像。
 	DefaultAvatar = "preset:generic"
-	// ChatLogSchemaVersion 是当前 Chat JSONL 信封版本。
+	// ChatLogSchemaVersion 是公开聊天事件信封的版本。
 	ChatLogSchemaVersion = 1
 	// ChatLogDirectoryName 是应用数据目录中的权威日志子目录。
 	ChatLogDirectoryName = "chat-logs"
