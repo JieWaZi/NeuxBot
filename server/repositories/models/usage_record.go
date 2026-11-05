@@ -52,20 +52,6 @@ type UsageRecord struct {
 	Output *int64
 	// Reasoning 是单独上报的推理 Token 数，属于输出的子集。
 	Reasoning *int64
-	// Amount 是可归属本次调用的精确十进制金额。
-	Amount string
-	// Currency 是金额币种。
-	Currency string
-	// Valuation 区分上报金额和估算金额。
-	Valuation string
-	// CostSource 是独立的金额计算依据。
-	CostSource string
-	// CostOrigin 区分原生金额和宿主估算。
-	CostOrigin string
-	// CostComplete 表示金额覆盖完整调用。
-	CostComplete bool
-	// PriceVersion 是适用的公开价格版本。
-	PriceVersion string
 }
 
 func (UsageRecord) TableName() string { return "usage_records" }

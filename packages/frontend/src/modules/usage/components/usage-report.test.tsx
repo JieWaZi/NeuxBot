@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 
 import { UsageOverview, UsageReport } from "./usage-report";
 
-it("shows a last-request subtotal without presenting unknown cost as zero", () => {
+it("shows a last-request Token subtotal and measured zero", () => {
   render(
     <UsageOverview
       summary={{
@@ -20,8 +20,6 @@ it("shows a last-request subtotal without presenting unknown cost as zero", () =
           },
           invocations: 1,
           incompleteUsageInvocations: 1,
-          unpricedInvocations: 1,
-          amounts: [],
         },
       }}
     />,
@@ -29,7 +27,7 @@ it("shows a last-request subtotal without presenting unknown cost as zero", () =
 
   expect(screen.getByText("17")).toBeInTheDocument();
   expect(screen.getByText("已知小计")).toBeInTheDocument();
-  expect(screen.getByText("未定价")).toBeInTheDocument();
+  expect(screen.queryByText("费用")).not.toBeInTheDocument();
   expect(screen.getByText(/1 次调用的 Token 数据不完整/)).toBeInTheDocument();
   expect(screen.getByText("0")).toBeInTheDocument();
 });
@@ -43,7 +41,6 @@ it("distinguishes identical model IDs from different providers", () => {
     <UsageReport
       groupBy="model"
       groups={groups}
-      metric="tokens"
       names={new Map()}
       totalGroups={2}
       more={false}

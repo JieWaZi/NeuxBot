@@ -1,4 +1,4 @@
-// Package usage aggregates canonical token and independent valuation evidence.
+// Package usage aggregates canonical token evidence.
 package usage
 
 import (

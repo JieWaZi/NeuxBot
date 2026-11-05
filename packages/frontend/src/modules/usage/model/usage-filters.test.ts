@@ -27,7 +27,9 @@ it("retains range, time zone, and normalized filters in the URL", () => {
   search.append("waker", "z");
   const filters = parseUsageFilters(search);
   expect(filters.wakerIds).toEqual(["a", "z"]);
-  expect(parseUsageFilters(usageFiltersSearch(filters))).toEqual(filters);
+  const normalized = usageFiltersSearch(filters);
+  expect(normalized.has("metric")).toBe(false);
+  expect(parseUsageFilters(normalized)).toEqual(filters);
 });
 
 it("defaults to thirty local calendar days, including the current date", () => {

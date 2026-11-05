@@ -201,12 +201,12 @@ export function UsagePage({
       <div className="min-w-0 space-y-4">
         {summary.isPending ? (
           <div
-            className="grid grid-cols-1 gap-3 @[34rem]/resource-page:grid-cols-3"
+            className="grid grid-cols-1 gap-3 @[34rem]/resource-page:grid-cols-2"
             role="status"
             aria-busy="true"
             aria-label={t("title")}
           >
-            {[0, 1, 2].map((key) => (
+            {[0, 1].map((key) => (
               <Skeleton className="h-16" key={key} aria-hidden="true" />
             ))}
           </div>
@@ -225,32 +225,20 @@ export function UsagePage({
             onRetry={() => void summary.refetch()}
           />
         ) : null}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <SegmentedControl
-            ariaLabel={t("groupBy")}
-            value={filters.groupBy}
-            options={[
-              { value: "day", label: t("day") },
-              { value: "model", label: t("model") },
-              { value: "waker", label: t("waker") },
-            ]}
-            onValueChange={(groupBy) => update({ groupBy })}
-          />
-          <SegmentedControl
-            ariaLabel={t("metric")}
-            value={filters.metric}
-            options={[
-              { value: "tokens", label: t("tokens") },
-              { value: "cost", label: t("cost") },
-            ]}
-            onValueChange={(metric) => update({ metric })}
-          />
-        </div>
+        <SegmentedControl
+          ariaLabel={t("groupBy")}
+          value={filters.groupBy}
+          options={[
+            { value: "day", label: t("day") },
+            { value: "model", label: t("model") },
+            { value: "waker", label: t("waker") },
+          ]}
+          onValueChange={(groupBy) => update({ groupBy })}
+        />
         {displaySummary && rows.length ? (
           <UsageReport
             groupBy={filters.groupBy}
             groups={rows}
-            metric={filters.metric}
             names={names}
             totalGroups={pages?.[0]?.totalGroups ?? 0}
             more={displayGroups.hasNextPage}

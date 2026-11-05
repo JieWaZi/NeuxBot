@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"encoding/json"
 	"net/http/httptest"
 	"net/url"
 	"os"
@@ -117,10 +118,10 @@ func TestUsageAPIReplaysAfterChatDeletion(t *testing.T) {
 	value := readUsageOperator(t, &GetUsageSummary{}, query).(service.Summary)
 	m := value.Metrics
 	if m.Invocations != 1 || m.KnownTotalWithCacheRead == nil || *m.KnownTotalWithCacheRead != 30 ||
-		m.MissingUsageInvocations != 0 || m.IncompleteUsageInvocations != 1 || len(m.Amounts) != 1 ||
-		m.Amounts[0].Amount != "0.000000000000000001" || m.IncompleteCostInvocations != 1 {
+		m.MissingUsageInvocations != 0 || m.IncompleteUsageInvocations != 1 || m.TotalWithCacheRead != nil {
 		t.Fatalf("canonical facts changed after deletion: %+v", value)
 	}
+	assertTokenOnlyJSON(t, value)
 	query.Set("groupBy", "model")
 	query.Set("snapshot", value.Snapshot)
 	page := readUsageOperator(t, &ListUsageGroups{}, query).(service.GroupsPage)
@@ -128,10 +129,24 @@ func TestUsageAPIReplaysAfterChatDeletion(t *testing.T) {
 		page.Groups[0].Provider != "codex" || page.Groups[0].Metrics.Invocations != 1 {
 		t.Fatalf("unexpected model page: %+v", page)
 	}
+	assertTokenOnlyJSON(t, page)
 	query.Set("groupBy", "provider")
 	providers := readUsageOperator(t, &ListUsageGroups{}, query).(service.GroupsPage)
 	if providers.TotalGroups != 1 || len(providers.Groups) != 1 || providers.Groups[0].Key != "codex" {
 		t.Fatalf("unexpected provider page: %+v", providers)
+	}
+}
+
+func assertTokenOnlyJSON(t *testing.T, response any) {
+	t.Helper()
+	payload, err := json.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"amounts"`, `"comparisonAmounts"`, `"unpricedInvocations"`, `"incompleteCostInvocations"`, `"incomplete_cost"`} {
+		if strings.Contains(string(payload), field) {
+			t.Errorf("public usage includes %s", field)
+		}
 	}
 }
 

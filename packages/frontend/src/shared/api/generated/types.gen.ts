@@ -12945,44 +12945,6 @@ export type GithubComJieWaZiNeuxBotServerServicesScheduleTaskView = GithubComJie
 };
 
 /**
- * Amount is a known subtotal in one currency, valuation kind, and source.
- */
-export type GithubComJieWaZiNeuxBotServerServicesUsageAmount = {
-    /**
-     * Amount is an exact decimal string.
-     */
-    amount?: string;
-    /**
-     * Currency is the original currency.
-     */
-    currency?: string;
-    /**
-     * IncompleteInvocations counts the partially priced calls in this amount.
-     */
-    incompleteInvocations?: number;
-    /**
-     * Invocations counts the calls included in the amount.
-     */
-    invocations?: number;
-    /**
-     * Origin distinguishes native valuations from host API-equivalent estimates.
-     */
-    origin?: string;
-    /**
-     * PriceVersions lists the rates used in this subtotal.
-     */
-    priceVersions?: Array<string>;
-    /**
-     * Source identifies the valuation evidence.
-     */
-    source?: string;
-    /**
-     * Valuation distinguishes reported amounts from estimates.
-     */
-    valuation?: string;
-};
-
-/**
  * Coverage describes which canonical evidence was available.
  */
 export type GithubComJieWaZiNeuxBotServerServicesUsageCoverage = {
@@ -13054,7 +13016,7 @@ export type GithubComJieWaZiNeuxBotServerServicesUsageGroup = {
      * Key 是分组标识，空值表示归属未知。
      */
     key?: string;
-    metrics?: GithubComJieWaZiNeuxBotServerServicesUsageMetrics & unknown;
+    metrics?: GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics & unknown;
     /**
      * Provider 是模型分组对应的原生后端。
      */
@@ -13080,31 +13042,12 @@ export type GithubComJieWaZiNeuxBotServerServicesUsageGroupsPage = GithubComJieW
     totalGroups?: number;
 };
 
-export type GithubComJieWaZiNeuxBotServerServicesUsageMetrics = GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics & {
-    /**
-     * Amounts separates currencies and valuation sources.
-     */
-    amounts?: Array<GithubComJieWaZiNeuxBotServerServicesUsageAmount>;
-    /**
-     * ComparisonAmounts contains estimates excluded from the main subtotal.
-     */
-    comparisonAmounts?: Array<GithubComJieWaZiNeuxBotServerServicesUsageAmount>;
-    /**
-     * IncompleteCostInvocations counts calls with a partial amount.
-     */
-    incompleteCostInvocations?: number;
-    /**
-     * UnpricedInvocations counts calls without an attributable amount.
-     */
-    unpricedInvocations?: number;
-};
-
 /**
  * Summary reports exact known subtotals for a snapshot.
  */
 export type GithubComJieWaZiNeuxBotServerServicesUsageSummary = {
     coverage?: GithubComJieWaZiNeuxBotServerServicesUsageCoverage & unknown;
-    metrics?: GithubComJieWaZiNeuxBotServerServicesUsageMetrics & unknown;
+    metrics?: GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics & unknown;
     range?: GithubComJieWaZiNeuxBotServerServicesUsageFilter & unknown;
     /**
      * Snapshot fixes the projection boundary for subsequent grouped reads.
@@ -31832,16 +31775,26 @@ export type UpdateRuntimeEnvironmentData = {
 export type UpdateRuntimeEnvironmentErrors = {
     /**
      * >
+     * * `[AIAccountConfigurationInvalid][40000000020]`
      * * `[BadRequest][40000000001]`
+     * * `[RuntimeNotRegistered][40000002001]`
      *
      */
     400: GithubComShrewxGinxPkgStatuserrorStatusErr;
     /**
      * >
      * * `[AIAccountBusy][40900000027]`
+     * * `[Conflict][40900000001]`
      *
      */
     409: GithubComShrewxGinxPkgStatuserrorStatusErr;
+    /**
+     * >
+     * * `[RuntimeAuthRequired][50000000044]`
+     * * `[RuntimeConfigurationInvalid][50000000040]`
+     *
+     */
+    500: GithubComShrewxGinxPkgStatuserrorStatusErr;
 };
 
 export type UpdateRuntimeEnvironmentError = UpdateRuntimeEnvironmentErrors[keyof UpdateRuntimeEnvironmentErrors];

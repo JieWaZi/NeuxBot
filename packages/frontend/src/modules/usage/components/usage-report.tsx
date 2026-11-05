@@ -4,9 +4,6 @@ import type {
   GetUsageSummaryResponse as Summary,
   ListUsageGroupsResponse,
 } from "@/shared/api/generated/types.gen";
-type Metrics = NonNullable<Summary["metrics"]>;
-type Amount = NonNullable<Metrics["amounts"]>[number];
-type Group = NonNullable<ListUsageGroupsResponse["groups"]>[number];
 import { Button } from "@/shared/ui/button";
 import {
   Table,
@@ -16,7 +13,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/ui/table";
-import type { UsageGroupBy, UsageMetric } from "../model/usage-filters";
+import type { UsageGroupBy } from "../model/usage-filters";
+
+type Metrics = NonNullable<Summary["metrics"]>;
+type Group = NonNullable<ListUsageGroupsResponse["groups"]>[number];
 
 const numbers = new Intl.NumberFormat();
 const counters = [
@@ -44,65 +44,18 @@ function TokenValue({ metrics }: { metrics: Metrics }) {
   );
 }
 
-function AmountValues({ metrics }: { metrics: Metrics }) {
-  const { t } = useTranslation("usage");
-  if (!metrics.amounts?.length) {
-    return <span className="text-muted-foreground">{t("unpriced")}</span>;
-  }
-  const label = (item: Amount) =>
-    item.origin === "api_equivalent"
-      ? t("apiEstimate")
-      : item.valuation === "reported"
-        ? t("reported")
-        : t("nativeEstimate");
-  return (
-    <ul className="space-y-1">
-      {metrics.amounts.map((item) => (
-        <li
-          key={JSON.stringify([
-            item.currency,
-            item.valuation,
-            item.origin,
-            item.source,
-          ])}
-          title={item.source}
-        >
-          <span className="tabular-nums">
-            {item.currency} {item.amount}
-          </span>
-          <span className="text-muted-foreground type-caption ml-2">
-            {label(item)}
-            {(item.invocations ?? 0) < (metrics.invocations ?? 0) ||
-            (item.incompleteInvocations ?? 0) > 0
-              ? ` · ${t("partial")}`
-              : ""}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 export function UsageOverview({ summary }: { summary: Summary }) {
   const { t } = useTranslation("usage");
   const { coverage, metrics = {} } = summary;
   const missing = metrics.missingUsageInvocations ?? 0;
   const incomplete = metrics.incompleteUsageInvocations ?? 0;
-  const unpriced = metrics.unpricedInvocations ?? 0;
-  const incompleteCost = metrics.incompleteCostInvocations ?? 0;
   return (
     <div className="min-w-0 space-y-3">
-      <dl className="grid grid-cols-1 gap-3 @[34rem]/resource-page:grid-cols-3">
+      <dl className="grid grid-cols-1 gap-3 @[34rem]/resource-page:grid-cols-2">
         <div className="bg-muted/50 rounded-lg px-3 py-2.5">
           <dt className="text-muted-foreground type-ui">{t("tokens")}</dt>
           <dd className="type-title font-medium">
             <TokenValue metrics={metrics} />
-          </dd>
-        </div>
-        <div className="bg-muted/50 rounded-lg px-3 py-2.5">
-          <dt className="text-muted-foreground type-ui">{t("cost")}</dt>
-          <dd className="type-title font-medium">
-            <AmountValues metrics={metrics} />
           </dd>
         </div>
         <div className="bg-muted/50 rounded-lg px-3 py-2.5">
@@ -145,8 +98,6 @@ export function UsageOverview({ summary }: { summary: Summary }) {
             t("projectionPartial"),
           missing > 0 && t("tokenMissing", { count: missing }),
           incomplete > 0 && t("tokenIncomplete", { count: incomplete }),
-          unpriced > 0 && t("unpricedCount", { count: unpriced }),
-          incompleteCost > 0 && t("costIncomplete", { count: incompleteCost }),
         ]
           .filter(Boolean)
           .join(" ")}
@@ -158,7 +109,6 @@ export function UsageOverview({ summary }: { summary: Summary }) {
 export function UsageReport({
   groupBy,
   groups,
-  metric,
   names,
   totalGroups,
   more,
@@ -167,7 +117,6 @@ export function UsageReport({
 }: {
   groupBy: UsageGroupBy;
   groups: readonly Group[];
-  metric: UsageMetric;
   names: ReadonlyMap<string, string>;
   totalGroups: number;
   more: boolean;
@@ -186,7 +135,7 @@ export function UsageReport({
         <TableHeader>
           <TableRow>
             <TableHead scope="col">{t(groupBy)}</TableHead>
-            <TableHead scope="col">{t(metric)}</TableHead>
+            <TableHead scope="col">{t("tokens")}</TableHead>
             <TableHead scope="col" className="text-right">
               {t("invocations")}
             </TableHead>
@@ -207,15 +156,8 @@ export function UsageReport({
                   {group.provider ? `${group.provider} / ${label}` : label}
                 </TableCell>
                 <TableCell>
-                  {metric === "tokens" ? (
-                    <TokenValue metrics={metrics} />
-                  ) : (
-                    <AmountValues metrics={metrics} />
-                  )}
-                  {groupBy === "day" &&
-                  metric === "tokens" &&
-                  value != null &&
-                  maxTokens > 0 ? (
+                  <TokenValue metrics={metrics} />
+                  {groupBy === "day" && value != null && maxTokens > 0 ? (
                     <div
                       aria-hidden="true"
                       className="bg-muted mt-1 h-1 max-w-44 overflow-hidden rounded-full"

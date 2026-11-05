@@ -22,7 +22,6 @@ import (
 	ledger "github.com/JieWaZi/NeuxBot/server/internal/usage"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
-	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 const snapshotLifetime = 20 * time.Minute
@@ -87,8 +86,8 @@ type Summary struct {
 	Snapshot string `json:"snapshot"`
 	// Coverage describes retained native terminal evidence.
 	Coverage Coverage `json:"coverage"`
-	// Metrics contains token usage and valuations for the filter.
-	Metrics Metrics `json:"metrics"`
+	// Metrics 是筛选范围内的 Token 计数和调用数。
+	Metrics ledger.TokenMetrics `json:"metrics"`
 }
 
 // Group contains usage for one group in this snapshot.
@@ -97,8 +96,8 @@ type Group struct {
 	Key string `json:"key"`
 	// Provider 是模型分组对应的原生后端。
 	Provider string `json:"provider,omitempty"`
-	// Metrics 是该分组的用量和金额。
-	Metrics Metrics `json:"metrics"`
+	// Metrics 是分组内的 Token 计数和调用数。
+	Metrics ledger.TokenMetrics `json:"metrics"`
 }
 
 // GroupsPage returns the current groups and exact total group count.
@@ -151,7 +150,7 @@ func (s *Service) Summary(ctx context.Context, filter Filter, token string) (Sum
 	if err != nil {
 		return Summary{}, err
 	}
-	totals := newAccumulator()
+	totals := &accumulator{}
 	if err := s.projection.Walk(ctx, query(filter, view), totals.add); err != nil {
 		return Summary{}, err
 	}
@@ -186,7 +185,7 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 		}
 	}
 	scope := query(filter, view)
-	totals := newAccumulator()
+	totals := &accumulator{}
 	groups := make(map[controllers.UsageGroupKey]*accumulator)
 	var keys []controllers.UsageGroupPageKey
 	var count int64
@@ -196,7 +195,7 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 			return GroupsPage{}, err
 		}
 		for _, key := range keys[:min(len(keys), limit)] {
-			groups[key.UsageGroupKey] = newAccumulator()
+			groups[key.UsageGroupKey] = &accumulator{}
 		}
 	}
 	err = s.projection.Walk(ctx, scope, func(row models.UsageRecord) error {
@@ -208,7 +207,7 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 		case "day":
 			key.Key = time.UnixMilli(row.RecordedAt).In(loc).Format(time.DateOnly)
 			if groups[key] == nil {
-				groups[key] = newAccumulator()
+				groups[key] = &accumulator{}
 				keys = append(keys, controllers.UsageGroupPageKey{UsageGroupKey: key})
 			}
 		case "model":
@@ -253,7 +252,7 @@ func (s *Service) Groups(ctx context.Context, filter Filter, token, group, curso
 	page := GroupsPage{Summary: summary, Groups: []Group{}, TotalGroups: count, HasMore: len(keys) > limit}
 	keys = keys[:min(len(keys), limit)]
 	for _, key := range keys {
-		metrics, err := groups[key.UsageGroupKey].metrics()
+		metrics, err := groups[key.UsageGroupKey].tokens.Metrics()
 		if err != nil {
 			return GroupsPage{}, err
 		}
@@ -419,20 +418,19 @@ func project(records []models.UsageRecord, terminal eventlog_next.UsageTerminal)
 	row.Coverage, row.Complete = observed.Coverage, observed.Complete
 	base := row
 	row.Model = observed.Model
-	applyUsageEvidence(&row, ledger.ReadTokens(observed), observed.Cost)
+	applyTokens(&row, ledger.ReadTokens(observed))
 	parent := len(records)
 	records = append(records, row)
 	for _, model := range slices.Sorted(maps.Keys(observed.Models)) {
 		if model == "" {
 			continue
 		}
-		evidence := observed.Models[model]
-		tokens := ledger.ReadModelTokens(evidence)
-		detail := base
-		applyUsageEvidence(&detail, tokens, evidence.Cost)
-		if tokens == (ledger.Tokens{}) && detail.Amount == "" {
+		tokens := ledger.ReadModelTokens(observed.Models[model])
+		if tokens == (ledger.Tokens{}) {
 			continue
 		}
+		detail := base
+		applyTokens(&detail, tokens)
 		modelDigest := sha256.Sum256(append(digest[:], model...))
 		detail.NativeID, detail.Model, detail.Scope = modelDigest[:], model, models.UsageScopeModelOnly
 		records = append(records, detail)
@@ -443,12 +441,8 @@ func project(records []models.UsageRecord, terminal eventlog_next.UsageTerminal)
 	return records
 }
 
-func applyUsageEvidence(row *models.UsageRecord, tokens ledger.Tokens, cost *acpmeta.UsageCost) {
+func applyTokens(row *models.UsageRecord, tokens ledger.Tokens) {
 	row.Input, row.CacheRead, row.CacheWrite, row.Output, row.Reasoning = tokens.Input, tokens.CacheRead, tokens.CacheWrite, tokens.Output, tokens.Reasoning
-	row.Amount, row.CostComplete = ledger.NativeAmount(row.Provider, cost)
-	if row.Amount != "" {
-		row.Currency, row.Valuation, row.CostSource, row.CostOrigin = cost.Currency, cost.Valuation, cost.Source, "native"
-	}
 }
 
 func (s *Service) encode(kind string, value any) string {

@@ -13,8 +13,8 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// usageProjectionFormat changes when replay must recover missing projected facts.
-const usageProjectionFormat = "providers-v3:"
+// usageProjectionFormat changes when the derived rows must be rebuilt from native terminals.
+const usageProjectionFormat = "tokens-v4:"
 
 // UsageController manages the disposable terminal usage projection.
 type UsageController struct {

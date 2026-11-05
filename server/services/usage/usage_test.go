@@ -1,7 +1,6 @@
 package usage
 
 import (
-	"encoding/json"
 	"errors"
 	"path/filepath"
 	"strings"
@@ -67,8 +66,7 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 	if m.Invocations != 1 || m.IncompleteUsageInvocations != 1 || m.MissingUsageInvocations != 0 ||
 		m.Tokens.Input != nil || m.KnownTokens.Input == nil || *m.KnownTokens.Input != 7 ||
 		m.KnownTotalWithCacheRead == nil || *m.KnownTotalWithCacheRead != 21 ||
-		m.KnownTotalWithoutCacheRead == nil || *m.KnownTotalWithoutCacheRead != 18 ||
-		m.UnpricedInvocations != 1 {
+		m.KnownTotalWithoutCacheRead == nil || *m.KnownTotalWithoutCacheRead != 18 {
 		t.Fatalf("unexpected partial metrics: %+v", m)
 	}
 	second := first
@@ -85,7 +83,7 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Keep old rows and checkpoints while simulating both previous schema generations.
+	// 保留旧行和检查点，覆盖不同投影版本的首次读取。
 	previous := "providers-v2:fixture"
 	if provider == "codex" {
 		previous = "providers-v1:fixture"
@@ -93,10 +91,22 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 			t.Fatal(err)
 		}
 	}
-	if err := db.Model(&models.UsageCheckpoint{}).Where("shard = -1").Update("generation", previous).Error; err != nil {
+	if provider == "cursor" {
+		previous = "providers-v3:fixture"
+		// 旧 SQLite 表仍可含金额列，并残留旧投影生成的无 Token 模型行。
+		if err := db.Exec("ALTER TABLE usage_records ADD COLUMN amount text").Error; err != nil {
+			t.Fatal(err)
+		}
+		if err := db.Exec(`INSERT INTO usage_records
+			(native_id, scope, recorded_at, waker_id, chat_id, provider, account_id, source, model, amount)
+			VALUES (CAST('legacy' AS BLOB), ?, ?, '', '', ?, '', 'provider', 'legacy-cost-only', '0.10')`,
+			models.UsageScopeModelOnly, time.Now().UnixMilli(), provider).Error; err != nil {
+			t.Fatal(err)
+		}
+	} else if err := db.Exec("ALTER TABLE usage_records DROP COLUMN scope").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Exec("ALTER TABLE usage_records DROP COLUMN scope").Error; err != nil {
+	if err := db.Model(&models.UsageCheckpoint{}).Where("shard = -1").Update("generation", previous).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := db.AutoMigrate(&models.UsageRecord{}, &models.UsageCheckpoint{}); err != nil {
@@ -108,9 +118,15 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 	if err != nil || summary.Metrics.Invocations != 2 || summary.Metrics.MissingUsageInvocations != 1 {
 		t.Fatalf("cold read lost terminal usage: %+v %v", summary, err)
 	}
+	if provider == "cursor" {
+		page, err := service.Groups(ctx, rangeFilter, summary.Snapshot, "model", "", 2)
+		if err != nil || page.TotalGroups != 1 || len(page.Groups) != 1 || page.Groups[0].Key != "" {
+			t.Fatalf("legacy cost-only group survived projection replay: %+v %v", page, err)
+		}
+	}
 }
 
-func TestUsageFiltersDSTPaginationAndExactCosts(t *testing.T) {
+func TestUsageFiltersDSTPaginationAndMeasuredZero(t *testing.T) {
 	ctx := t.Context()
 	root := t.TempDir()
 	store, err := eventlog_next.NewStore(root)
@@ -145,18 +161,17 @@ func TestUsageFiltersDSTPaginationAndExactCosts(t *testing.T) {
 		return instant.UnixMilli()
 	}
 	zero, one := int64(0), int64(1)
-	row := func(id, time, waker, model, currency, amount string) models.UsageRecord {
+	row := func(id, time, waker, model string) models.UsageRecord {
 		return models.UsageRecord{NativeID: []byte(id), RecordedAt: at(time), WakerID: waker, Model: model, AccountID: "original",
-			Source: "chat", Input: &zero, CacheRead: &zero, CacheWrite: &zero, Output: &one, Complete: true,
-			Amount: amount, Currency: currency, Valuation: "reported", CostOrigin: "native", CostSource: "test", CostComplete: true}
+			Source: "chat", Input: &zero, CacheRead: &zero, CacheWrite: &zero, Output: &one, Complete: true}
 	}
 	rows := []models.UsageRecord{
-		row("a", "2026-03-08T04:59:59Z", "w", "ignore", "USD", "1"),
-		row("b", "2026-03-08T05:00:00Z", "w", "b", "USD", "0.10000000000000000001"),
-		row("c", "2026-03-09T03:59:59Z", "w", "a", "USD", "0.20000000000000000002"),
-		row("d", "2026-03-09T04:00:00Z", "w", "a", "CNY", "0"),
-		row("e", "2026-03-09T04:00:01Z", "other", "ignore", "USD", "9"),
-		row("f", "2026-03-10T04:00:00Z", "w", "ignore", "USD", "9"),
+		row("a", "2026-03-08T04:59:59Z", "w", "ignore"),
+		row("b", "2026-03-08T05:00:00Z", "w", "b"),
+		row("c", "2026-03-09T03:59:59Z", "w", "a"),
+		row("d", "2026-03-09T04:00:00Z", "w", "a"),
+		row("e", "2026-03-09T04:00:01Z", "other", "ignore"),
+		row("f", "2026-03-10T04:00:00Z", "w", "ignore"),
 	}
 	if err := projection.Project(ctx, generation, 0, 0, rows); err != nil {
 		t.Fatal(err)
@@ -164,11 +179,10 @@ func TestUsageFiltersDSTPaginationAndExactCosts(t *testing.T) {
 	service := NewService(store, projection)
 	filter := Filter{From: at("2026-03-08T05:00:00Z"), To: at("2026-03-10T04:00:00Z"), Timezone: "America/New_York", WakerIDs: []string{"w"}}
 	summary, err := service.Summary(ctx, filter, "")
-	if err != nil || summary.Metrics.Invocations != 3 || len(summary.Metrics.Amounts) != 2 ||
-		summary.Metrics.Amounts[0].Currency != "CNY" || summary.Metrics.Amounts[0].Amount != "0" ||
-		summary.Metrics.Amounts[1].Amount != "0.30000000000000000003" ||
-		summary.Metrics.Tokens.Input == nil || *summary.Metrics.Tokens.Input != 0 {
-		t.Fatalf("incorrect grouped scope or exact costs: %+v %v", summary, err)
+	if err != nil || summary.Metrics.Invocations != 3 ||
+		summary.Metrics.Tokens.Input == nil || *summary.Metrics.Tokens.Input != 0 ||
+		summary.Metrics.TotalWithCacheRead == nil || *summary.Metrics.TotalWithCacheRead != 3 {
+		t.Fatalf("incorrect grouped scope or complete Token counts: %+v %v", summary, err)
 	}
 	day, err := service.Groups(ctx, filter, summary.Snapshot, "day", "", 1)
 	if err != nil || !day.HasMore || day.TotalGroups != 2 || day.Groups[0].Key != "2026-03-08" || day.Groups[0].Metrics.Invocations != 2 {
@@ -303,9 +317,8 @@ func TestUsageSeparatesPrimaryModelBreakdownFromInvocationTotals(t *testing.T) {
 	}
 	defer store.Close()
 	two, three, five, overlap := int64(2), int64(3), int64(5), int64(999)
-	cost := func(amount json.Number) *acpmeta.UsageCost {
-		return &acpmeta.UsageCost{Amount: amount, Currency: "USD", Source: "claude.result.cost", Scope: "query_pipeline", Aggregation: "turn_delta", Valuation: "estimated"}
-	}
+	rawCost := &acpmeta.UsageCost{Amount: "0.10", Currency: "USD", Source: "claude.result.cost",
+		Scope: "query_pipeline", Aggregation: "turn_delta", Valuation: "estimated"}
 	session := agent.NativeSessionKey{Provider: "claude", Subject: "subject", SessionID: "native"}
 	commit := func(id string, usage *acpmeta.TurnUsage) {
 		t.Helper()
@@ -316,14 +329,14 @@ func TestUsageSeparatesPrimaryModelBreakdownFromInvocationTotals(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	mixed := &acpmeta.TurnUsage{InputTokens: &five, Cost: cost("0.10"), Coverage: "query_pipeline", Models: map[string]acpmeta.ModelUsage{
-		"alpha": {InputTokens: &two, Cost: cost("0.02")}, "beta": {InputTokens: &three}, "unavailable": {},
+	mixed := &acpmeta.TurnUsage{InputTokens: &five, Coverage: "query_pipeline", Models: map[string]acpmeta.ModelUsage{
+		"alpha": {InputTokens: &two}, "beta": {InputTokens: &three}, "unavailable": {}, "cost-only": {Cost: rawCost},
 	}, Observations: []acpmeta.UsageObservation{{Coverage: "last_request", Models: map[string]acpmeta.ModelUsage{
-		"overlap": {InputTokens: &overlap, Cost: cost("999")},
+		"overlap": {InputTokens: &overlap},
 	}}}}
 	commit("mixed", mixed)
 	commit("mixed", mixed)
-	commit("single", &acpmeta.TurnUsage{Model: "alpha", InputTokens: &two, Cost: cost("0.03")})
+	commit("single", &acpmeta.TurnUsage{Model: "alpha", InputTokens: &two})
 	commit("unattributed", &acpmeta.TurnUsage{InputTokens: &two})
 	db, err := gorm.Open(sqlite.Open(filepath.Join(root, "usage.sqlite")), &gorm.Config{})
 	if err != nil {
@@ -353,10 +366,6 @@ func TestUsageSeparatesPrimaryModelBreakdownFromInvocationTotals(t *testing.T) {
 		alpha.Invocations != 2 || alpha.KnownTokens.Input == nil || *alpha.KnownTokens.Input != 4 ||
 		beta.Invocations != 1 || beta.KnownTokens.Input == nil || *beta.KnownTokens.Input != 3 || beta.Tokens.Output != nil {
 		t.Fatalf("unexpected model counters: alpha %+v beta %+v", alpha, beta)
-	}
-	if len(summary.Metrics.Amounts) != 1 || summary.Metrics.Amounts[0].Amount != "0.13" ||
-		len(alpha.Amounts) != 1 || alpha.Amounts[0].Amount != "0.05" || len(beta.Amounts) != 0 || beta.UnpricedInvocations != 1 {
-		t.Fatalf("amounts escaped their proven scope: summary %+v alpha %+v beta %+v", summary.Metrics.Amounts, alpha, beta)
 	}
 	providers, err := service.Groups(ctx, filter, summary.Snapshot, "provider", "", 1)
 	if err != nil || len(providers.Groups) != 1 || providers.Groups[0].Metrics.Invocations != 3 {

@@ -33116,7 +33116,7 @@
             }
           },
           "400": {
-            "description": ">\n* `[BadRequest][40000000001]`\n",
+            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[BadRequest][40000000001]`\n* `[RuntimeNotRegistered][40000002001]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -33125,11 +33125,13 @@
               }
             },
             "x-status-errors": [
-              "[BadRequest][40000000001]"
+              "[AIAccountConfigurationInvalid][40000000020]",
+              "[BadRequest][40000000001]",
+              "[RuntimeNotRegistered][40000002001]"
             ]
           },
           "409": {
-            "description": ">\n* `[AIAccountBusy][40900000027]`\n",
+            "description": ">\n* `[AIAccountBusy][40900000027]`\n* `[Conflict][40900000001]`\n",
             "content": {
               "application/json": {
                 "schema": {
@@ -33138,7 +33140,22 @@
               }
             },
             "x-status-errors": [
-              "[AIAccountBusy][40900000027]"
+              "[AIAccountBusy][40900000027]",
+              "[Conflict][40900000001]"
+            ]
+          },
+          "500": {
+            "description": ">\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                }
+              }
+            },
+            "x-status-errors": [
+              "[RuntimeAuthRequired][50000000044]",
+              "[RuntimeConfigurationInvalid][50000000040]"
             ]
           }
         }
@@ -77749,59 +77766,6 @@
           }
         ]
       },
-      "GithubComJieWaZiNeuxBotServerServicesUsageAmount": {
-        "type": "object",
-        "properties": {
-          "amount": {
-            "type": "string",
-            "description": "Amount is an exact decimal string.",
-            "x-go-field-name": "Amount"
-          },
-          "currency": {
-            "type": "string",
-            "description": "Currency is the original currency.",
-            "x-go-field-name": "Currency"
-          },
-          "incompleteInvocations": {
-            "type": "integer",
-            "format": "int64",
-            "description": "IncompleteInvocations counts the partially priced calls in this amount.",
-            "x-go-field-name": "IncompleteInvocations"
-          },
-          "invocations": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Invocations counts the calls included in the amount.",
-            "x-go-field-name": "Invocations"
-          },
-          "origin": {
-            "type": "string",
-            "description": "Origin distinguishes native valuations from host API-equivalent estimates.",
-            "x-go-field-name": "Origin"
-          },
-          "priceVersions": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "PriceVersions lists the rates used in this subtotal.",
-            "x-go-field-name": "PriceVersions"
-          },
-          "source": {
-            "type": "string",
-            "description": "Source identifies the valuation evidence.",
-            "x-go-field-name": "Source"
-          },
-          "valuation": {
-            "type": "string",
-            "description": "Valuation distinguishes reported amounts from estimates.",
-            "x-go-field-name": "Valuation"
-          }
-        },
-        "description": "Amount is a known subtotal in one currency, valuation kind, and source.",
-        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesUsageAmount",
-        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/usage.Amount"
-      },
       "GithubComJieWaZiNeuxBotServerServicesUsageCoverage": {
         "type": "object",
         "properties": {
@@ -77913,10 +77877,10 @@
           "metrics": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesUsageMetrics"
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics"
               },
               {
-                "description": "Metrics 是该分组的用量和金额。",
+                "description": "Metrics 是分组内的 Token 计数和调用数。",
                 "x-go-field-name": "Metrics"
               }
             ]
@@ -77972,49 +77936,6 @@
           }
         ]
       },
-      "GithubComJieWaZiNeuxBotServerServicesUsageMetrics": {
-        "allOf": [
-          {
-            "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics"
-          },
-          {
-            "type": "object",
-            "properties": {
-              "amounts": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesUsageAmount"
-                },
-                "description": "Amounts separates currencies and valuation sources.",
-                "x-go-field-name": "Amounts"
-              },
-              "comparisonAmounts": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesUsageAmount"
-                },
-                "description": "ComparisonAmounts contains estimates excluded from the main subtotal.",
-                "x-go-field-name": "ComparisonAmounts"
-              },
-              "incompleteCostInvocations": {
-                "type": "integer",
-                "format": "int64",
-                "description": "IncompleteCostInvocations counts calls with a partial amount.",
-                "x-go-field-name": "IncompleteCostInvocations"
-              },
-              "unpricedInvocations": {
-                "type": "integer",
-                "format": "int64",
-                "description": "UnpricedInvocations counts calls without an attributable amount.",
-                "x-go-field-name": "UnpricedInvocations"
-              }
-            },
-            "description": "Metrics reports token and cost coverage independently.",
-            "x-go-struct-name": "GithubComJieWaZiNeuxBotServerServicesUsageMetrics",
-            "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/services/usage.Metrics"
-          }
-        ]
-      },
       "GithubComJieWaZiNeuxBotServerServicesUsageSummary": {
         "type": "object",
         "properties": {
@@ -78032,10 +77953,10 @@
           "metrics": {
             "allOf": [
               {
-                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerServicesUsageMetrics"
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerInternalUsageTokenMetrics"
               },
               {
-                "description": "Metrics contains token usage and valuations for the filter.",
+                "description": "Metrics 是筛选范围内的 Token 计数和调用数。",
                 "x-go-field-name": "Metrics"
               }
             ]

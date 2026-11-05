@@ -1,5 +1,4 @@
 export type UsageGroupBy = "day" | "model" | "waker";
-export type UsageMetric = "tokens" | "cost";
 
 export type UsageFilters = {
   from: number;
@@ -7,7 +6,6 @@ export type UsageFilters = {
   timezone: string;
   wakerIds: string[];
   groupBy: UsageGroupBy;
-  metric: UsageMetric;
 };
 
 const day = 86_400_000;
@@ -137,7 +135,6 @@ export function parseUsageFilters(
       .sort()
       .slice(0, 100),
     groupBy: group === "model" || group === "waker" ? group : "day",
-    metric: search.get("metric") === "cost" ? "cost" : "tokens",
   };
 }
 
@@ -147,7 +144,6 @@ export function usageFiltersSearch(filters: UsageFilters) {
     to: String(filters.to),
     timezone: filters.timezone,
     groupBy: filters.groupBy,
-    metric: filters.metric,
   });
   for (const id of filters.wakerIds) search.append("waker", id);
   return search;
