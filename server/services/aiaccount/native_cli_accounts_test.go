@@ -291,3 +291,59 @@ func TestGeminiSystemLeaseDistinguishesAccessRefreshFromAccountChange(t *testing
 		t.Fatalf("native grant replacement escaped the fence: %v", err)
 	}
 }
+
+func TestNativeProviderAuthMapKeepsAccountAcrossOAuthRefresh(t *testing.T) {
+	setNativeCLITestHome(t)
+	for _, provider := range []string{constants.RuntimeIDPi, constants.RuntimeIDOpenCode} {
+		t.Run(provider, func(t *testing.T) {
+			root := t.TempDir()
+			credentialProvider := "openai-codex"
+			if provider == constants.RuntimeIDPi {
+				t.Setenv("PI_CODING_AGENT_DIR", root)
+				t.Setenv("PI_CODING_AGENT_SESSION_DIR", "")
+			} else {
+				t.Setenv("XDG_DATA_HOME", root)
+				for _, key := range []string{"XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG", "OPENCODE_DB"} {
+					t.Setenv(key, "")
+				}
+				root = filepath.Join(root, "opencode")
+				if err := os.Mkdir(root, 0700); err != nil {
+					t.Fatal(err)
+				}
+				credentialProvider = "openai"
+			}
+			write := func(account, access, refresh string) {
+				t.Helper()
+				payload, err := json.Marshal(map[string]any{credentialProvider: map[string]any{
+					"type": "oauth", "accountId": account, "access": access, "refresh": refresh, "expires": 12345,
+				}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(root, "auth.json"), payload, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write("account-a", "access-a", "refresh-a")
+			service := New(nil)
+			selection, err := service.ResolveAccount(t.Context(), agent.AccountRequest{
+				Provider: provider, AccountID: agent.SystemAccountID, CWD: t.TempDir(),
+			}, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			lease, err := service.AcquireAccount(t.Context(), selection)
+			if err != nil {
+				t.Fatal(err)
+			}
+			write("account-a", "access-b", "refresh-b")
+			if err := lease.VerifyLogin(t.Context()); err != nil {
+				t.Fatalf("refresh changed the reported account identity: %v", err)
+			}
+			write("account-b", "access-c", "refresh-c")
+			if err := lease.VerifyLogin(t.Context()); !errors.Is(err, status_error.RuntimeAuthRequired) {
+				t.Fatalf("native account switch escaped the fence: %v", err)
+			}
+		})
+	}
+}

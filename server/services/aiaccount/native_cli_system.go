@@ -181,7 +181,7 @@ func (p *nativeCLISystemProfile) selectProvider(ctx context.Context, request age
 		if err := p.readPiModelConfig(filepath.Join(p.configHome, "models.json")); err != nil {
 			return err
 		}
-		return p.readFiles(&p.credentials, filepath.Join(p.configHome, "auth.json"))
+		return p.readProviderCredentials(filepath.Join(p.configHome, "auth.json"), constants.RuntimeIDPi)
 	}
 	return nil
 }
@@ -343,6 +343,51 @@ func (p *nativeCLISystemProfile) readRefreshCredential(path string) error {
 	return nil
 }
 
+// readProviderCredentials folds the native Pi and legacy OpenCode auth maps
+// without mistaking an in-place access token refresh for an account change.
+func (p *nativeCLISystemProfile) readProviderCredentials(path, runtimeID string) error {
+	path, data, err := readOptionalNativeCLIFile(path)
+	if err != nil || data == nil {
+		return err
+	}
+	defer clear(data)
+	p.credentials = append(p.credentials, path)
+	var providers map[string]json.RawMessage
+	if json.Unmarshal(data, &providers) != nil || providers == nil {
+		digest := sha256.Sum256(data)
+		p.credentials = append(p.credentials, hex.EncodeToString(digest[:]))
+		return nil
+	}
+	evidence := make(map[string]any, len(providers))
+	for provider, raw := range providers {
+		defer clear(raw)
+		var credential struct {
+			// Type identifies API key, OAuth or another native authentication method.
+			Type string `json:"type"`
+			// AccountID is the stable native account identifier when the provider reports it.
+			AccountID string `json:"accountId"`
+			// EnterpriseURL scopes OpenCode enterprise credentials to their issuer.
+			EnterpriseURL string `json:"enterpriseUrl"`
+			// Refresh identifies the OAuth grant when a stable account ID is unavailable.
+			Refresh string `json:"refresh"`
+		}
+		if json.Unmarshal(raw, &credential) != nil || credential.Type != "oauth" {
+			evidence[provider] = raw
+			continue
+		}
+		switch {
+		case credential.AccountID != "" && (runtimeID == constants.RuntimeIDOpenCode || provider == "openai-codex"):
+			evidence[provider] = []string{credential.Type, credential.AccountID, credential.EnterpriseURL}
+		case credential.Refresh != "":
+			evidence[provider] = []string{credential.Type, credential.Refresh, credential.EnterpriseURL}
+		default:
+			evidence[provider] = raw
+		}
+	}
+	p.recordJSON(&p.credentials, evidence)
+	return nil
+}
+
 func (p *nativeCLISystemProfile) readFiles(target *[]string, paths ...string) error {
 	for _, path := range paths {
 		if path == "" {
@@ -423,7 +468,7 @@ func (p *nativeCLISystemProfile) selectOpenCode(ctx context.Context, home, confi
 	if err := p.readFiles(&p.settings, p.environment["OPENCODE_CONFIG"]); err != nil {
 		return err
 	}
-	if err := p.readFiles(&p.credentials, filepath.Join(p.dataHome, "auth.json")); err != nil {
+	if err := p.readProviderCredentials(filepath.Join(p.dataHome, "auth.json"), constants.RuntimeIDOpenCode); err != nil {
 		return err
 	}
 	database := p.environment["OPENCODE_DB"]
