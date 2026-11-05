@@ -19,7 +19,9 @@ import (
 	"github.com/JieWaZi/acp-go/pkg/agent_next/claude"
 	"github.com/JieWaZi/acp-go/pkg/agent_next/codex"
 	"github.com/JieWaZi/acp-go/pkg/agent_next/cursor"
+	"github.com/JieWaZi/acp-go/pkg/agent_next/pi"
 	"github.com/JieWaZi/acp-go/pkg/agent_next/qoder"
+	"github.com/JieWaZi/acp-go/pkg/agent_next/standardacp"
 	"github.com/JieWaZi/acp-go/pkg/agent_next/workbuddy"
 	acp "github.com/JieWaZi/acp-go/sdk"
 )
@@ -559,7 +561,7 @@ type AgentOutcomePage struct {
 }
 
 type directAgentClient struct {
-	// native is one of the three direct acp-go clients.
+	// native owns the provider's protocol without the legacy agent manager.
 	native native.Client
 	// cwd is the real directory frozen at acquisition.
 	cwd string
@@ -680,6 +682,23 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 			RuntimeID: account.Provider, Executable: launch.Executable, PrefixArgs: launch.PrefixArgs,
 			WorkingDirectory: account.CWD, Environment: env, ExpectedUserID: lease.QoderUserID,
 		}, host)
+	case constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode:
+		client.native, err = standardacp.NewClient(ctx, standardacp.Options{
+			Provider: standardacp.Provider(account.Provider), Executable: launch.Executable, PrefixArgs: launch.PrefixArgs,
+			WorkingDirectory: account.CWD, Environment: env, PermissionMode: launch.ProcessPermissionMode,
+			RequireVerifiedMCP: launch.RequireVerifiedMCP,
+		}, host)
+	case constants.RuntimeIDPi:
+		module := ""
+		for _, entry := range env {
+			if value, ok := strings.CutPrefix(entry, "PI_MCP_MODULE_PATH="); ok {
+				module = value
+			}
+		}
+		client.native, err = pi.NewClient(ctx, pi.Options{
+			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
+			Environment: env, PermissionMode: launch.ProcessPermissionMode, MCPModulePath: module,
+		}, host)
 	default:
 		return nil, status_error.RuntimeNotRegistered
 	}
@@ -690,6 +709,8 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 }
 
 func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease AccountLease, auth LaunchAuthLease, resources ResourceLease) ([]string, error) {
+	profileScope := provider == constants.RuntimeIDKimi || provider == constants.RuntimeIDGemini ||
+		provider == constants.RuntimeIDGrok || provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi
 	var homeVariable string
 	switch provider {
 	case constants.RuntimeIDCodex:
@@ -700,7 +721,7 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 		homeVariable = "CURSOR_CONFIG_DIR"
 	default:
 		homeVariable = accountconfig.ACPSystemConfigVariable(provider)
-		if homeVariable == "" && (lease.ConfigHome != "" || launch.ConfigHome != "") {
+		if !profileScope && homeVariable == "" && (lease.ConfigHome != "" || launch.ConfigHome != "") {
 			return nil, status_error.RuntimeConfigurationInvalid
 		}
 	}
@@ -751,6 +772,27 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 	}
 	if err := merge(auth.Environment); err != nil {
 		return nil, err
+	}
+	if profileScope {
+		// These providers have different native root semantics. Only the account
+		// authority may supply roots and credentials; ConfigHome is comparison data.
+		entries := make([]string, 0, len(environment))
+		for key, value := range environment {
+			entries = append(entries, key+"="+value)
+		}
+		clear(environment)
+		for _, entry := range accountconfig.Environment(entries) {
+			key, value, _ := strings.Cut(entry, "=")
+			environment[key] = value
+		}
+		if err := merge(lease.Environment); err != nil {
+			return nil, err
+		}
+		result := make([]string, 0, len(environment))
+		for _, key := range slices.Sorted(maps.Keys(environment)) {
+			result = append(result, key+"="+environment[key])
+		}
+		return result, nil
 	}
 	// Managed credentials are selected by the lease, not inherited API credentials.
 	if provider == constants.RuntimeIDCodex && lease.CodexCredentialKind != "" {

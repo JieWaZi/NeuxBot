@@ -8,7 +8,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/global"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
-	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
 )
@@ -78,22 +78,31 @@ func (a *GetAIAccountThinking) Output(ctx *gin.Context) (interface{}, error) {
 		}
 	}
 	response := GetAIAccountThinkingResponse{Options: []AccountThinkingOption{}}
-	if environment.BaseRuntimeID == constants.RuntimeIDCodex {
+	if agent.SupportsProvider(environment.BaseRuntimeID) {
 		catalog, err := global.RuntimeEnvironmentService.ReadModelCatalog(ctx, environment.RuntimeID, account.ID, false)
 		if err != nil {
 			return nil, ginx.WithStack(err)
 		}
-		if !codexAccountCatalogAvailable(catalog, account.ID) {
+		if !accountCatalogAvailable(catalog, account.ID) {
 			return response, nil
 		}
 		for _, row := range catalog.Models {
-			if row.ID != a.Model || row.Config == nil || slices.Contains(row.Config.UnknownOptionIDs, "reasoning_effort") {
+			if row.ID != a.Model || row.Config == nil {
 				continue
 			}
-			response.Available = true
+			response.Available = !slices.ContainsFunc(row.Config.UnknownOptionIDs, func(id string) bool {
+				return id == "reasoning_effort" || id == "reasoning" || id == "thinking_level" || id == "thought_level"
+			})
+			if !response.Available {
+				break
+			}
 			for _, setting := range row.Config.Options {
-				if setting.ID != "reasoning_effort" {
+				if setting.Category != "thought_level" && setting.ID != "reasoning_effort" {
 					continue
+				}
+				if slices.Contains(row.Config.UnknownOptionIDs, setting.ID) {
+					response.Available = false
+					break
 				}
 				for _, choice := range setting.Choices {
 					if choice.ID != "" {
@@ -106,30 +115,5 @@ func (a *GetAIAccountThinking) Output(ctx *gin.Context) (interface{}, error) {
 		}
 		return response, nil
 	}
-	result, err := global.AIAccountService.DetectModel(ctx.Request.Context(), global.RuntimeCatalog, account.ID, environment, a.Model)
-	if err != nil {
-		return nil, ginx.WithStack(err)
-	}
-	if result.State != agentapi.DetectionStateReady {
-		return response, nil
-	}
-	for _, diagnostic := range result.Diagnostics {
-		if diagnostic.Code == agentapi.DiagnosticCodeACPOptionsUnavailable {
-			return response, nil
-		}
-	}
-	nativeID := a.Model
-	for _, model := range result.Models {
-		if model.ID != nativeID {
-			continue
-		}
-		response.Available = true
-		for _, option := range model.ReasoningOptions {
-			if option.ID != "" {
-				response.Options = append(response.Options, AccountThinkingOption{ID: option.ID, Name: option.Name})
-			}
-		}
-		break
-	}
-	return response, nil
+	return nil, ginx.WithStack(status_error.RuntimePolicyUnsupported)
 }

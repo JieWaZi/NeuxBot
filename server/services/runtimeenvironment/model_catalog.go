@@ -101,7 +101,7 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 			return result
 		}
 		if account.AuthMode == constants.AccountAuthModeAPIKey {
-			if environment.BaseRuntimeID == constants.RuntimeIDCodex {
+			if environment.BaseRuntimeID != constants.RuntimeIDClaude {
 				apiKeyModels = account.SelectedModels
 			}
 			if environment.BaseRuntimeID == constants.RuntimeIDClaude {
@@ -140,12 +140,7 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 		}
 	}
 	if apiKeyModels != nil {
-		snapshot.Models = slices.DeleteFunc(snapshot.Models, func(model agent.AgentChoice) bool {
-			return !slices.Contains(apiKeyModels, model.ID)
-		})
-		if !slices.Contains(apiKeyModels, snapshot.DefaultID) {
-			snapshot.DefaultID = ""
-		}
+		snapshot = selectManagedCatalog(environment.BaseRuntimeID, snapshot, apiKeyModels)
 	}
 	if managedClaude != nil {
 		snapshot.Models = slices.DeleteFunc(snapshot.Models, func(model agent.AgentChoice) bool {
@@ -159,6 +154,29 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 	}
 	result.ModelCatalogSnapshot = snapshot
 	return result
+}
+
+// selectManagedCatalog keeps a CLI's other provider credentials out of this
+// account's public choices and removes transport-only provider prefixes.
+func selectManagedCatalog(provider string, snapshot agent.ModelCatalogSnapshot, selected []string) agent.ModelCatalogSnapshot {
+	snapshot.Models = slices.Clone(snapshot.Models)
+	namespaced := provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi
+	snapshot.Models = slices.DeleteFunc(snapshot.Models, func(model agent.AgentChoice) bool {
+		publicID := accountconfig.AccountModelID(provider, model.ID)
+		return namespaced && publicID == model.ID || !slices.Contains(selected, publicID)
+	})
+	for i := range snapshot.Models {
+		snapshot.Models[i].ID = accountconfig.AccountModelID(provider, snapshot.Models[i].ID)
+	}
+	if namespaced && snapshot.DefaultID == accountconfig.AccountModelID(provider, snapshot.DefaultID) {
+		snapshot.DefaultID = ""
+	} else {
+		snapshot.DefaultID = accountconfig.AccountModelID(provider, snapshot.DefaultID)
+	}
+	if !slices.ContainsFunc(snapshot.Models, func(model agent.AgentChoice) bool { return model.ID == snapshot.DefaultID }) {
+		snapshot.DefaultID = ""
+	}
+	return snapshot
 }
 
 func (s *service) detectNative(ctx context.Context, summary agentapi.RuntimeSummary, environment models.RuntimeEnvironment, request agentapi.DetectRequest) agentapi.DetectionResult {
@@ -184,7 +202,7 @@ func (s *service) detectNative(ctx context.Context, summary agentapi.RuntimeSumm
 		return result
 	}
 	result.State, result.Auth = agentapi.DetectionStateReady, agentapi.AuthStatusOK
-	if accountconfig.ACPSystemConfigVariable(environment.BaseRuntimeID) != "" {
+	if environment.BaseRuntimeID != constants.RuntimeIDCodex && environment.BaseRuntimeID != constants.RuntimeIDClaude && environment.BaseRuntimeID != constants.RuntimeIDCursor {
 		// ACP model discovery is not an authentication proof.
 		result.Auth = agentapi.AuthStatusUnknown
 	}
@@ -238,6 +256,19 @@ func usesNativeCatalog(provider string) bool {
 
 // NativePermissionLevels exposes only the native policies supported by this provider and model.
 func NativePermissionLevels(provider string, model agent.AgentChoice) []constants.PermissionLevel {
+	if provider == constants.RuntimeIDKimi {
+		levels := []constants.PermissionLevel{constants.PermissionLevelDefault}
+		if slices.Contains(model.PermissionModes, "auto") {
+			levels = append(levels, constants.PermissionLevelAuto)
+		}
+		if slices.Contains(model.PermissionModes, "yolo") {
+			levels = append(levels, constants.PermissionLevelFullAccess)
+		}
+		return levels
+	}
+	if provider == constants.RuntimeIDPi {
+		return []constants.PermissionLevel{constants.PermissionLevelDefault, constants.PermissionLevelAuto, constants.PermissionLevelFullAccess}
+	}
 	if accountconfig.ACPSystemConfigVariable(provider) != "" {
 		levels := []constants.PermissionLevel{}
 		if slices.Contains(model.PermissionModes, "default") {
@@ -259,7 +290,7 @@ func NativePermissionLevels(provider string, model agent.AgentChoice) []constant
 		return CodexPermissionLevels()
 	}
 	levels := []constants.PermissionLevel{constants.PermissionLevelDefault}
-	if provider == constants.RuntimeIDClaude && model.AutoMode {
+	if (provider == constants.RuntimeIDClaude || provider == constants.RuntimeIDGrok) && model.AutoMode {
 		levels = append(levels, constants.PermissionLevelAuto)
 	}
 	return append(levels, constants.PermissionLevelFullAccess)

@@ -17,6 +17,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
@@ -121,6 +122,15 @@ func nativeThreadRequest(chatID string, plan agentapi.SessionPlan, request pendi
 		if plan.Policy.Execution.PermissionLevel == constants.PermissionLevelFullAccess {
 			thread.Connection.Launch.CursorPermissionMode = "full-access"
 		}
+	case constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode, constants.RuntimeIDPi:
+		thread.Mode = ""
+		thread.Connection.Launch.ProcessPermissionMode = string(plan.Policy.Execution.PermissionLevel)
+	}
+	provider := thread.Connection.Account.Provider
+	if accountID != agent.SystemAccountID && (provider == constants.RuntimeIDOpenCode || provider == constants.RuntimeIDPi) {
+		// The native provider namespace is transport detail; account validation and
+		// public choices continue to use the user's configured model IDs.
+		thread.Connection.Account.Model = accountconfig.NativeModelID(provider, plan.Policy.Model)
 	}
 
 	return thread

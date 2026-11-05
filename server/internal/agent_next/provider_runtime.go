@@ -139,6 +139,8 @@ type ProviderLaunch struct {
 	Claude ClaudeLaunch
 	// CursorPermissionMode selects Cursor's native startup policy.
 	CursorPermissionMode string
+	// ProcessPermissionMode freezes the approval policy for ACP profiles and Pi.
+	ProcessPermissionMode string
 	// RequireVerifiedMCP rejects MCP handoff without native verification.
 	RequireVerifiedMCP bool
 	// RequireNoTools admits only a native fresh-session launch with tools disabled.
@@ -362,7 +364,8 @@ func (c *providerConnection) open(ctx context.Context, request ProviderConnectio
 func SupportsProvider(provider string) bool {
 	switch provider {
 	case constants.RuntimeIDCodex, constants.RuntimeIDClaude, constants.RuntimeIDCursor,
-		constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+		constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN,
+		constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode, constants.RuntimeIDPi:
 		return true
 	}
 	return false

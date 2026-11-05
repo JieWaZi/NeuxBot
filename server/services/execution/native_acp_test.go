@@ -32,6 +32,89 @@ const (
 	acpFixturePartial  = "ACP fixture partial"
 )
 
+// This fixture exercises the product boundary with protocol-shaped children, not installed CLIs.
+func TestNativeProductRemainingACPContinueCancelAndRecover(t *testing.T) {
+	for _, provider := range []string{"kimi", "gemini", "grok", "opencode"} {
+		t.Run(provider, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 25*time.Second)
+			defer cancel()
+			t.Setenv("NEUX_EXECUTION_FIXTURE_PROVIDER", provider)
+			fixture := newNativeProductFixture(t, ctx, provider, "TestNativeExecutionACPChild", constants.PermissionLevelDefault)
+			core, chats, store, closeRuntime := fixture.open()
+			defer func() { closeRuntime() }()
+			options := WorkOptions{RuntimeID: provider, Model: "fixture-model", Reasoning: "high", PermissionLevel: constants.PermissionLevelDefault, SessionPolicy: constants.RuntimeSessionPolicyContinue}
+			start := func(target ChatTarget, text string) AcceptedExecution {
+				t.Helper()
+				intent := WorkIntent{Chat: target, Input: WorkInput{Actor: "user", Content: text}, Options: options}
+				if target.Create != nil {
+					intent.ClientRequestID = "family-" + text
+				}
+				work, err := core.Start(ctx, intent)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return work
+			}
+			verify := func(work AcceptedExecution, status constants.ExecutionStatus) agent.NativeResultKey {
+				t.Helper()
+				waitNativeProductStatus(t, ctx, store, work, status)
+				if err := core.CancelExecutionAndWait(ctx, work.Chat.ID, work.Execution.ID); err != nil {
+					t.Fatal(err)
+				}
+				input, consumed, err := store.ReadHostInputConsumption(ctx, agent.HostInputRef{ChatID: work.Chat.ID, HostInvocationID: work.Execution.ID})
+				if err != nil || consumed == nil {
+					t.Fatalf("missing consumption: %+v %v", consumed, err)
+				}
+				result, err := store.ReadNativeResultMetadata(ctx, consumed.Result)
+				if err != nil || result.Attribution == nil || result.Attribution.AccountID != agent.SystemAccountID || !slices.Equal(result.Turn.ConsumedInputIDs, []string{input.AdapterInputID}) {
+					t.Fatalf("lost native attribution: %+v %v", result, err)
+				}
+				return consumed.Result
+			}
+			first := start(ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}}, acpFirstQuestion)
+			firstResult := verify(first, constants.ExecutionStatusCompleted)
+			target := ChatTarget{ChatID: first.Chat.ID}
+			options.Reasoning = "low"
+			second := start(target, acpSecondQuestion)
+			if result := verify(second, constants.ExecutionStatusCompleted); result.Session != firstResult.Session || fixture.accounts.Load() != 1 {
+				t.Fatalf("hot session replaced: %+v", result)
+			}
+			held := start(target, acpHeldQuestion)
+			waitNativeProductStream(t, ctx, chats, held, acpFixturePartial)
+			if err := core.CancelExecutionAndWait(ctx, held.Chat.ID, held.Execution.ID); err != nil {
+				t.Fatal(err)
+			}
+			verify(held, constants.ExecutionStatusCanceled)
+			closeRuntime()
+			core, chats, store, closeRuntime = fixture.open()
+			resumed := start(target, acpResumeQuestion)
+			if result := verify(resumed, constants.ExecutionStatusCompleted); result.Session != firstResult.Session || fixture.accounts.Load() != 2 {
+				t.Fatalf("cold session identity changed: %+v", result)
+			}
+			assertACPNativeProductWire(t, fixture.trace, firstResult.Session.SessionID)
+			report, err := usageservice.NewService(store, fixture.usage).Summary(ctx, usageservice.Filter{From: time.Now().Add(-time.Minute).UnixMilli(), To: time.Now().Add(time.Minute).UnixMilli(), Timezone: "UTC", ChatID: first.Chat.ID}, "")
+			if err != nil || report.Metrics.Invocations != 4 {
+				t.Fatalf("canonical usage: %+v %v", report, err)
+			}
+			history, err := chats.ReadMessageHistory(ctx, first.Chat.ID, 0, 20)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, text := range []string{acpFirstQuestion, acpSecondQuestion, acpResumeQuestion} {
+				count := 0
+				for _, message := range history.Resources {
+					if message.Content == text {
+						count++
+					}
+				}
+				if count != 1 {
+					t.Fatalf("history copies of %q: %d", text, count)
+				}
+			}
+		})
+	}
+}
+
 func TestNativeProductWorkBuddyQoderContinueCancelAndRecover(t *testing.T) {
 	for _, provider := range []string{constants.RuntimeIDWorkBuddy, constants.RuntimeIDQoder, constants.RuntimeIDQoderCN} {
 		t.Run(provider, func(t *testing.T) {
@@ -265,7 +348,13 @@ func TestNativeExecutionACPChild(t *testing.T) {
 	}
 	workBuddy := provider == constants.RuntimeIDWorkBuddy
 	if slices.Contains(os.Args, "--version") {
-		if workBuddy {
+		if provider == "kimi" {
+			fmt.Println("1.52.0")
+		} else if provider == "gemini" {
+			fmt.Println("0.62.0")
+		} else if provider == "opencode" {
+			fmt.Println("1.18.34")
+		} else if workBuddy {
 			fmt.Println("2.151.0")
 		} else {
 			fmt.Println("1.1.53")
@@ -285,7 +374,10 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 	workBuddy := provider == constants.RuntimeIDWorkBuddy
 	var session string
 	model, effort, mode := "fixture-default", "low", "default"
-	effortCategory, full := "model", "yolo"
+	effortCategory, full := "thought_level", "yolo"
+	if provider == "qoder" || provider == "qoder-cn" {
+		effortCategory = "model"
+	}
 	if workBuddy {
 		effortCategory, full = "thought_level", "bypassPermissions"
 	} else if provider == constants.RuntimeIDQoderCN {
@@ -353,9 +445,15 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 			if !workBuddy {
 				capabilities["resume"] = map[string]any{}
 			}
-			reply(id, map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{
-				"loadSession": true, "sessionCapabilities": capabilities,
-			}})
+			response := map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{"loadSession": true, "sessionCapabilities": capabilities}}
+			name := map[string]string{"kimi": "Kimi Code CLI", "gemini": "gemini-cli", "opencode": "OpenCode"}[provider]
+			if name != "" {
+				response["agentInfo"] = map[string]string{"name": name, "version": "1.52.0"}
+			}
+			if provider == "grok" {
+				response["_meta"] = map[string]any{"grokShell": true}
+			}
+			reply(id, response)
 		case "session/new":
 			session = "acp-fixture-" + filepath.Base(filepath.Dir(value("cwd")))
 			reply(id, map[string]any{"sessionId": session, "configOptions": settings(), "modes": modes()})

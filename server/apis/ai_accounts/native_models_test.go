@@ -112,3 +112,35 @@ func TestCodexAPIKeyThinkingUsesSelectedNativeCatalog(t *testing.T) {
 		t.Fatalf("API key used a catalog other than its own: %+v", thinking)
 	}
 }
+
+func TestManagedNativeFamilyThinkingUsesSelectedCatalog(t *testing.T) {
+	for _, provider := range []string{"claude", "kimi", "gemini", "grok", "opencode", "pi"} {
+		t.Run(provider, func(t *testing.T) {
+			id := codexAccountQueryFixture(t, constants.AccountAuthModeAPIKey, agent.CatalogFresh)
+			protocol := constants.AccountProtocolOpenAIResponses
+			if provider == "gemini" {
+				protocol = constants.AccountProtocolGoogleGenerativeAI
+			}
+			if provider == "claude" {
+				protocol = constants.AccountProtocolAnthropicMessages
+			}
+			global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{ID: id, AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, SelectedModels: []string{"account-model"}, Endpoints: []models.AIAccountEndpoint{{Protocol: protocol}}}}
+			global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{RuntimeID: provider, BaseRuntimeID: provider, Enabled: true}}
+			global.RuntimeEnvironmentService = codexAccountCatalogStub{read: func(runtimeID, accountID string, refresh bool) runtimeenvironment.AccountModelCatalog {
+				if runtimeID != provider || accountID != id || refresh {
+					t.Fatal("catalog identity changed")
+				}
+				return runtimeenvironment.AccountModelCatalog{AccountID: id, ModelCatalogSnapshot: agent.ModelCatalogSnapshot{State: agent.CatalogFresh, AgentModelCatalog: agent.AgentModelCatalog{Models: []agent.AgentChoice{{ID: "account-model", Config: &agent.AgentModelConfig{Options: []agent.AgentSessionOption{{ID: "thinking", Category: "thought_level", Choices: []agent.AgentChoice{{ID: "low", Name: "Low"}}}}}}}}}}
+			}}
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			value, err := (&GetAIAccountThinking{AccountID: id, RuntimeID: provider, Model: "account-model"}).Output(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := value.(GetAIAccountThinkingResponse)
+			if !result.Available || !reflect.DeepEqual(result.Options, []AccountThinkingOption{{ID: "low", Name: "Low"}}) {
+				t.Fatalf("native thinking lost: %+v", result)
+			}
+		})
+	}
+}

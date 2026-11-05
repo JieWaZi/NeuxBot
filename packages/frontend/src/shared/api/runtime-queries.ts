@@ -20,7 +20,12 @@ export function usesNativeModelCatalog(runtimeId?: string) {
     runtimeId === "cursor" ||
     runtimeId === "workbuddy" ||
     runtimeId === "qoder" ||
-    runtimeId === "qoder-cn"
+    runtimeId === "qoder-cn" ||
+    runtimeId === "kimi" ||
+    runtimeId === "gemini" ||
+    runtimeId === "grok" ||
+    runtimeId === "opencode" ||
+    runtimeId === "pi"
   );
 }
 

@@ -122,7 +122,10 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 		summary.SkillDirectoryName = ".qoder"
 	}
 	model := agentapi.ModelOption{ID: "fixture-model", PermissionLevels: []constants.PermissionLevel{permission}}
-	standardACP := providerID == "workbuddy" || providerID == "qoder" || providerID == "qoder-cn"
+	if providerID == constants.RuntimeIDPi {
+		model.ID = "test/fixture-model"
+	}
+	standardACP := providerID != "codex" && providerID != "claude" && providerID != "cursor"
 	if standardACP {
 		model.PermissionLevels = []constants.PermissionLevel{constants.PermissionLevelDefault, constants.PermissionLevelAuto, constants.PermissionLevelFullAccess}
 	}
@@ -152,6 +155,9 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 					return agent.AccountLease{}, status_error.AIAccountConfigurationInvalid
 				}
 				accounts.Add(1)
+				if providerID == constants.RuntimeIDPi {
+					return agent.AccountLease{Environment: map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(root, "pi-fixture-account")}}, nil
+				}
 				return agent.AccountLease{}, nil
 			},
 		})
@@ -625,14 +631,18 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 		case "account/read":
 			ack(map[string]any{"account": nil, "requiresOpenaiAuth": false})
 		case "model/list":
-			ack(map[string]any{"data": []any{
+			models := []any{
+				map[string]any{"id": "default", "model": "default", "displayName": "Default"},
+				map[string]any{"id": "gpt-5", "model": "gpt-5", "displayName": "Test model"},
+				map[string]any{"id": "gpt-5.1", "model": "gpt-5.1", "displayName": "Test model"},
 				map[string]any{"id": "fixture-model", "model": "fixture-model", "displayName": "Fixture", "isDefault": true,
 					"supportedReasoningEfforts": []any{map[string]any{"reasoningEffort": "high"}},
 					"serviceTiers":              []any{map[string]any{"id": "fixture-priority", "name": "Fast"}}},
 				map[string]any{"id": "fixture-other", "model": "fixture-other", "displayName": "Other",
 					"supportedReasoningEfforts": []any{map[string]any{"reasoningEffort": "medium"}},
 					"serviceTiers":              []any{map[string]any{"id": "other-priority", "name": "Fast"}}},
-			}})
+			}
+			ack(map[string]any{"data": models})
 		case "config/read":
 			ack(map[string]any{"config": map[string]any{}})
 		case "thread/start", "thread/resume":

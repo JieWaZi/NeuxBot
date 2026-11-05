@@ -2,6 +2,7 @@ package ai_accounts
 
 import (
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent_next"
 
 	"context"
 	"encoding/json"
@@ -17,6 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
+	"github.com/JieWaZi/NeuxBot/server/services/runtimeenvironment"
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,6 +28,11 @@ type officialThinkingEnvironment struct {
 	controllers.RuntimeEnvironmentController
 	// environment 指向固定官方入口，认证由账号服务准备。
 	environment models.RuntimeEnvironment
+}
+
+type officialThinkingTransactions struct {
+	// TransactionController is unused by the read-only native model query.
+	controllers.TransactionController
 }
 
 // Get 返回查询选择的 CLI 环境。
@@ -53,22 +60,34 @@ func TestOfficialGeminiThinkingHTTP(t *testing.T) {
 	}))
 	defer provider.Close()
 	oldAccounts, oldEnvironments, oldService, oldSDK := global.AIAccountControllerManager, global.RuntimeEnvironmentControllerManager, global.AIAccountService, global.RuntimeCatalog
+	oldRuntimeService := global.RuntimeEnvironmentService
 	defer func() {
 		global.AIAccountControllerManager = oldAccounts
 		global.RuntimeEnvironmentControllerManager = oldEnvironments
 		global.AIAccountService = oldService
 		global.RuntimeCatalog = oldSDK
+		global.RuntimeEnvironmentService = oldRuntimeService
 	}()
 	id := "0123456789abcdef0123456789abcdef"
-	global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{ID: id, Revision: 1, AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: provider.URL + "/v1beta"}}, SelectedModels: []string{"gemini-3.8-flash"}}, secret: "local-fixture-key"}
+	global.AIAccountControllerManager = accountCredentialReadStub{account: models.AIAccount{ID: id, Revision: 1, AuthGeneration: 1, AuthMode: constants.AccountAuthModeAPIKey, HasCredential: true, Endpoints: []models.AIAccountEndpoint{{Protocol: constants.AccountProtocolGoogleGenerativeAI, BaseURL: provider.URL + "/v1beta"}}, SelectedModels: []string{"gemini-3.8-flash"}}, secret: "local-fixture-key"}
 	global.RuntimeEnvironmentControllerManager = officialThinkingEnvironment{environment: models.RuntimeEnvironment{RuntimeID: agentapi.RuntimeIDGemini, BaseRuntimeID: agentapi.RuntimeIDGemini, Enabled: true, Binary: node, PrefixArgs: []string{cli}}}
-	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager)
+	global.AIAccountService = aiaccount.New(global.AIAccountControllerManager, t.TempDir())
 	sdk, err := agentapi.NewCatalog(agentapi.CatalogConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer sdk.Close(context.Background())
 	global.RuntimeCatalog = sdk
+	owner := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: global.AIAccountService.AcquireAccount})
+	defer owner.Close(context.Background())
+	global.RuntimeEnvironmentService, err = runtimeenvironment.New(runtimeenvironment.Config{
+		ProviderRuntime: owner, ResolveAccount: global.AIAccountService.ResolveAccount, Accounts: global.AIAccountService,
+		RuntimeCatalog: sdk, Environments: global.RuntimeEnvironmentControllerManager,
+		Transactions: officialThinkingTransactions{}, AccountWorkspaceDirectory: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	engine := gin.New()
 	engine.GET("/api/v1/ai-accounts/:accountId/thinking", func(ctx *gin.Context) {
 		if _, limited := ctx.Deadline(); limited {
@@ -105,7 +124,7 @@ func TestOfficialGeminiThinkingHTTP(t *testing.T) {
 	}
 	for _, option := range result.Options {
 		if option.ID == "low" {
-			t.Logf("PASS HTTP GetAIAccountThinking → shared DetectModel → official CLI, duration=%s; no application deadline", time.Since(started))
+			t.Logf("PASS HTTP GetAIAccountThinking → account model catalog → official CLI, duration=%s", time.Since(started))
 			return
 		}
 	}

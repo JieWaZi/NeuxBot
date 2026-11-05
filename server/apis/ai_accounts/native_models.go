@@ -45,22 +45,15 @@ func (a *GetAIAccountNativeModels) Output(ctx *gin.Context) (interface{}, error)
 	if account.AuthMode != constants.AccountAuthModeSubscription || !environment.Enabled || len(account.Endpoints) != 1 || !accountconfig.Supports(environment.BaseRuntimeID, account.Endpoints[0].Protocol) {
 		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
 	}
-	if environment.BaseRuntimeID == constants.RuntimeIDKimi {
-		models, defaultModel, err := global.AIAccountService.KimiSubscriptionModels(ctx, a.AccountID)
-		if err != nil {
-			return nil, ginx.WithStack(err)
-		}
-		return GetAIAccountNativeModelsResponse{Models: models, DefaultModel: defaultModel}, nil
-	}
-	if environment.BaseRuntimeID != constants.RuntimeIDCodex {
-		return nil, ginx.WithStack(status_error.AIAccountConfigurationInvalid)
+	if !agent.SupportsProvider(environment.BaseRuntimeID) {
+		return nil, ginx.WithStack(status_error.RuntimePolicyUnsupported)
 	}
 	result, err := global.RuntimeEnvironmentService.ReadModelCatalog(ctx, environment.RuntimeID, account.ID, false)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
 	response := GetAIAccountNativeModelsResponse{Models: []string{}}
-	if !codexAccountCatalogAvailable(result, account.ID) {
+	if !accountCatalogAvailable(result, account.ID) {
 		return response, nil
 	}
 	for _, model := range result.Models {
@@ -73,6 +66,6 @@ func (a *GetAIAccountNativeModels) Output(ctx *gin.Context) (interface{}, error)
 }
 
 // The existing model endpoints may serve the last successful read for this exact account.
-func codexAccountCatalogAvailable(result runtimeenvironment.AccountModelCatalog, accountID string) bool {
+func accountCatalogAvailable(result runtimeenvironment.AccountModelCatalog, accountID string) bool {
 	return result.AccountID == accountID && (result.State == agent.CatalogFresh || result.State == agent.CatalogStale)
 }

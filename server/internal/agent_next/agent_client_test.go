@@ -29,6 +29,55 @@ func TestCursorLaunchUsesSelectedConfigHome(t *testing.T) {
 	}
 }
 
+func TestRemainingNativeProvidersKeepLeaseAuthority(t *testing.T) {
+	for _, provider := range []string{"kimi", "gemini", "grok", "opencode", "pi"} {
+		t.Run(provider, func(t *testing.T) {
+			if !SupportsProvider(provider) {
+				t.Fatal("provider has no candidate runtime owner")
+			}
+			env, err := nativeLaunchEnvironment(provider, ProviderLaunch{
+				BaseEnvironment: map[string]string{"PATH": "/bin", "PI_MCP_MODULE_PATH": "/bridge.mjs"},
+				Environment:     map[string]string{"GEMINI_API_KEY": "wrong-launch", "XDG_DATA_HOME": "/wrong"},
+			}, AccountLease{ConfigHome: t.TempDir(), Environment: map[string]string{
+				"GEMINI_API_KEY": "selected", "XDG_DATA_HOME": "/selected", "HOME": "/selected-home",
+			}}, LaunchAuthLease{}, ResourceLease{Environment: map[string]string{"OPENAI_API_KEY": "wrong-resource"}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := strings.Join(env, "\n")
+			if strings.Contains(text, "wrong") || !strings.Contains(text, "GEMINI_API_KEY=selected") ||
+				!strings.Contains(text, "PI_MCP_MODULE_PATH=/bridge.mjs") || !strings.Contains(text, "HOME=/selected-home") {
+				t.Fatalf("lease lost launch authority: %v", env)
+			}
+		})
+	}
+}
+
+func TestNativeFamilyModelChangesPreserveBindingButPolicyChangesReplaceIt(t *testing.T) {
+	for _, provider := range []string{"kimi", "gemini", "grok", "opencode", "pi"} {
+		t.Run(provider, func(t *testing.T) {
+			request := ThreadRequest{Connection: ProviderConnectionRequest{
+				Account: AccountRequest{Provider: provider, CWD: t.TempDir(), Model: "first"},
+				Launch:  ProviderLaunch{ProcessPermissionMode: "default"},
+			}, Selection: &TurnSelection{}}
+			initial, err := freezeThreadSettings(&request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Connection.Account.Model = "second"
+			changed, err := freezeThreadSettings(&request)
+			if err != nil || string(initial) != string(changed) {
+				t.Fatalf("live model selection replaces native history: %s %s %v", initial, changed, err)
+			}
+			request.Connection.Launch.ProcessPermissionMode = "full-access"
+			changed, err = freezeThreadSettings(&request)
+			if err != nil || string(initial) == string(changed) {
+				t.Fatalf("process permission change reused a frozen launch: %s %v", changed, err)
+			}
+		})
+	}
+}
+
 func TestStandardACPProvidersUseTheSharedProcessOwner(t *testing.T) {
 	for _, provider := range []string{"workbuddy", "qoder", "qoder-cn"} {
 		t.Run(provider, func(t *testing.T) {

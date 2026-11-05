@@ -5,6 +5,7 @@ import {
   listRuntimesOptions,
   nativeModelCatalogOptions,
   nativeModelCatalogQueryKey,
+  usesNativeModelCatalog,
 } from "./runtime-queries";
 
 const { readSnapshots, readCatalog } = vi.hoisted(() => ({
@@ -64,31 +65,41 @@ it("首次探测只读取一次，由统一事件触发后续对账，空闲不�
   }
 });
 
-it.each(["codex", "claude", "cursor", "workbuddy", "qoder", "qoder-cn"])(
-  "%s 拒绝旧认证世代的模型目录",
-  async (runtimeId) => {
-    const client = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
-    });
-    readCatalog.mockResolvedValue({
-      data: { runtimeId, accountId: "work", authGeneration: 1, state: "fresh" },
-    });
-    const query = nativeModelCatalogOptions({
-      runtimeId,
-      accountId: "work",
-      authGeneration: 2,
-    });
-    await expect(client.fetchQuery(query)).rejects.toThrow();
-    expect(client.getQueryData(query.queryKey)).toBeUndefined();
-    expect(readCatalog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        path: { runtimeId },
-        query: { accountId: "work" },
-        signal: expect.any(AbortSignal),
-      }),
-    );
-  },
-);
+it.each([
+  "codex",
+  "claude",
+  "cursor",
+  "workbuddy",
+  "qoder",
+  "qoder-cn",
+  "kimi",
+  "gemini",
+  "grok",
+  "opencode",
+  "pi",
+])("%s 拒绝旧认证世代的模型目录", async (runtimeId) => {
+  expect(usesNativeModelCatalog(runtimeId)).toBe(true);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  readCatalog.mockResolvedValue({
+    data: { runtimeId, accountId: "work", authGeneration: 1, state: "fresh" },
+  });
+  const query = nativeModelCatalogOptions({
+    runtimeId,
+    accountId: "work",
+    authGeneration: 2,
+  });
+  await expect(client.fetchQuery(query)).rejects.toThrow();
+  expect(client.getQueryData(query.queryKey)).toBeUndefined();
+  expect(readCatalog).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: { runtimeId },
+      query: { accountId: "work" },
+      signal: expect.any(AbortSignal),
+    }),
+  );
+});
 
 it("账号失效只影响该账号的各智能体目录", async () => {
   const client = new QueryClient();

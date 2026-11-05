@@ -1778,3 +1778,27 @@ func TestCodexAccountMutationPreservesActiveTurnAndDrainsIdle(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestHotSettingsFailureClosesOwnerAndResumesDurableSession(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	req.Selection = &agent.TurnSelection{}
+	first := completeThreadFixtureTurn(t, lifecycle, store, req, chatTurn(0, "before invalid setting"), true)
+	req.Selection = &agent.TurnSelection{Reasoning: "not-a-native-effort"}
+	rejected := chatTurn(1, "must not send failed setting")
+	if turn, err := lifecycle.Prepare(t.Context(), req, rejected, chatPorts(req.ChatID, rejected, false)); err == nil || turn != nil {
+		t.Fatalf("invalid setting admitted: %v", err)
+	}
+	req.Selection = &agent.TurnSelection{}
+	next := completeThreadFixtureTurn(t, lifecycle, store, req, chatTurn(2, "after rejected setting"), false)
+	if next.Binding.Session != first.Binding.Session {
+		t.Fatal("settings failure replaced the durable native identity")
+	}
+	data, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(data), `"method":"thread/resume"`) != 1 || strings.Contains(string(data), rejected.Text) {
+		t.Fatalf("failed settings did not retire and resume the owner safely: %s", data)
+	}
+}

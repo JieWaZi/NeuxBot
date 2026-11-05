@@ -202,7 +202,11 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 				return err
 			}
 			if err := t.applySettings(client, request); err != nil {
-				return err
+				// A setter may have changed native state before failing. Retire the
+				// process, retaining the durable session for an explicit next attempt.
+				cleanup, cancel := context.WithTimeout(context.WithoutCancel(ctx), turnSettlementTimeout)
+				defer cancel()
+				return errors.Join(err, l.closeConnection(cleanup, state))
 			}
 		}
 		return t.applyHandoff(binding.Handoff)
@@ -481,8 +485,10 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 			settings.DefaultFast = &fast
 		}
 		request.Selection = &settings
-		// Codex and Claude support live model changes; Cursor keeps its process model in compatibility.
-		if connection.Account.Provider == "codex" || connection.Account.Provider == "claude" {
+		// These adapters set models within the selected session. Startup account
+		// materialization stays fixed; a model change need not replace its history.
+		switch connection.Account.Provider {
+		case "codex", "claude", "kimi", "gemini", "grok", "opencode", "pi":
 			connection.Account.Model = ""
 		}
 	}
