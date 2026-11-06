@@ -2,12 +2,12 @@ package capability
 
 import "github.com/JieWaZi/NeuxBot/server/constants"
 
-// RequestIDSchema 发布 Core 实际接受的命令和收据幂等标识格式。
+// RequestIDSchema publishes the idempotency identifier format actually accepted by Core commands and receipts.
 func RequestIDSchema() map[string]any {
 	return map[string]any{"type": "string", "minLength": 1, "maxLength": constants.AgentCLIRequestIDMaximumLength, "pattern": requestIDPattern.String(), "description": "Stable mutation identity. Reuse after uncertain outcomes; independent of JSON-RPC id."}
 }
 
-// MCPInputSchema 从唯一操作契约生成 MCP 参数，仅补充传输层幂等标识。
+// MCPInputSchema derives MCP parameters from the sole operation contract, adding only transport idempotency identity.
 func (o Operation) MCPInputSchema() map[string]any {
 	out := map[string]any{}
 	for key, value := range o.InputSchema {
@@ -26,7 +26,7 @@ func (o Operation) MCPInputSchema() map[string]any {
 	return out
 }
 
-// MCPOutputSchema 只包装同源响应信封，不复制领域结果 Schema。
+// MCPOutputSchema wraps the response envelope from the same source without duplicating domain result schemas.
 func (o Operation) MCPOutputSchema() map[string]any {
 	return map[string]any{"type": "object", "properties": map[string]any{
 		"protocolVersion": map[string]any{"type": "integer"}, "ok": map[string]any{"type": "boolean"}, "operation": map[string]any{"type": "string"}, "completion": map[string]any{"type": "string"}, "commandId": map[string]any{"type": "string"}, "replayed": map[string]any{"type": "boolean"}, "data": map[string]any{"anyOf": []any{o.OutputSchema, map[string]any{"type": "null"}}}, "error": map[string]any{"type": "object"},

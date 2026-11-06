@@ -223,7 +223,6 @@ export function WorkspaceFileBrowser({
         <WorkspaceTreeEntry
           active={active}
           activePath={activePath}
-          defaultExpanded={scopePath === "projects" && entry.isDirectory}
           depth={0}
           entry={entry}
           key={entry.relativePath}

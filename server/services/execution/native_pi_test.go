@@ -148,7 +148,10 @@ func assertNativePiProductWire(t *testing.T, trace, sessionID string) {
 			instructions = append(instructions, digest)
 		case "prompt":
 			message, _ := record["message"].(string)
-			prompts = append(prompts, message)
+			if nativeFixtureOutputDirectory(message) == "" {
+				t.Fatalf("Pi prompt lost frozen task directories: %s", message)
+			}
+			prompts = append(prompts, nativeFixtureBusinessText(message))
 		case "set_thinking_level":
 			high = high || record["level"] == "high"
 			low = low || record["level"] == "low"
@@ -279,6 +282,7 @@ func TestNativeExecutionPiChild(t *testing.T) {
 			ack(map[string]any{"tokens": map[string]any{"input": 9999, "output": 9999}, "contextUsage": map[string]any{"tokens": 20, "contextWindow": 200}})
 		case "prompt":
 			text, _ := request["message"].(string)
+			text = nativeFixtureBusinessText(text)
 			ack(map[string]any{"disposition": "started"})
 			event("agent_start", nil)
 			if text == piHeldQuestion {

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"strings"
 
-	acp "github.com/JieWaZi/acp-go/sdk"
+	acp "github.com/JieWaZi/acp-go-sdk"
 )
 
-// RecordedFailureDisplayMessage 从已记录的失败文本或 ACP 错误提取可展示说明。
+// RecordedFailureDisplayMessage extracts a displayable explanation from recorded failure text or ACP errors.
 func RecordedFailureDisplayMessage(message string) string {
 	message = strings.TrimSpace(message)
 	if !json.Valid([]byte(message)) {

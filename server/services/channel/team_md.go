@@ -8,6 +8,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	agentapi "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/profile"
+	"github.com/JieWaZi/NeuxBot/server/internal/workinput"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
@@ -27,9 +28,9 @@ func (s *service) teamInstruction(
 	}, nil
 }
 
-// leaderTurnInstruction 将当前负责人回合的路由意图写入虚拟 TEAM.md，不改变执行权限。
-func leaderTurnInstruction(instruction agentapi.Instruction, directExecution bool) agentapi.Instruction {
-	instruction.Content += "\n\n## Current Lead Turn\nThis section applies only to the current execution and replaces the execution mode from earlier turns.\n"
+// leaderTurnInstruction 仅描述当前负责人的执行模式，不改变稳定 TEAM 或执行权限。
+func leaderTurnInstruction(directExecution bool) workinput.Instruction {
+	instruction := workinput.Instruction{Name: "Current Lead Turn", Content: "This section applies only to the current execution and replaces the execution mode from earlier turns.\n"}
 	if directExecution {
 		instruction.Content += "This is a direct-execution turn: the user mentioned you through the structured `@` mechanism. Execute the current request in this Chat. You may delegate independent subtasks to non-lead members, but do not create a team task for yourself."
 	} else {
@@ -221,7 +222,7 @@ func teamWorkspaceSection(workspaceDirectory string) string {
 		return ""
 	}
 	return "## Team Workspace\nYour working directory `" + path +
-		"` is the shared execution workspace for this team Chat; project-related reads and writes are visible to the lead and members."
+		"` is the team scope root. Each member has an isolated cwd under leader/ or members/. The shared/ directory contains true shared files; authorized projects remain at their original absolute paths."
 }
 
 // rosterText 把成员公开资料压成单行并按字符数截断，避免破坏 roster 结构。

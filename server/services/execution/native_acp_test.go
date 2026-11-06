@@ -364,7 +364,7 @@ func TestNativeACPExternalDirectoryPreservesFullAccess(t *testing.T) {
 				ClientRequestID: "external-directory",
 				Chat:            ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker", WorkingDirectory: directory}},
 				Input:           WorkInput{Actor: "user", Content: acpFullQuestion},
-				Options:         WorkOptions{RuntimeID: provider, Model: "fixture-model", Reasoning: "low", PermissionLevel: constants.PermissionLevelFullAccess},
+				Options:         WorkOptions{RuntimeID: provider, Model: "fixture-model", Reasoning: "low", PermissionLevel: constants.PermissionLevelFullAccess, AllowedAgentDomains: &[]string{"memory", "interaction"}},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -458,6 +458,10 @@ func serveNativeExecutionACP(in *bufio.Scanner, out *json.Encoder, trace *os.Fil
 	}
 	finish := func(id any, reason string, serial, tokens int) {
 		result := map[string]any{"stopReason": reason, "userMessageId": fmt.Sprintf("fixture-user-%d", serial)}
+		if provider == constants.RuntimeIDQoder || provider == constants.RuntimeIDQoderCN {
+			// Qoder 原生回执使用 UUID；无效身份不能证明当前输入已被消费。
+			result["userMessageId"] = fmt.Sprintf("00000000-0000-4000-8000-%012d", serial)
+		}
 		if workBuddy {
 			result["_meta"] = map[string]any{"codebuddy.ai/conversationRequestId": fmt.Sprintf("019abbbbbbbb700080000000%08x", serial)}
 		} else if tokens > 0 {

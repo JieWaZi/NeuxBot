@@ -2,7 +2,9 @@ package chat
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,6 +12,7 @@ import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
@@ -135,27 +138,95 @@ func TestChatNativeAdmissionStreamsTerminalAndReopens(t *testing.T) {
 	}
 	defer subscription.Close()
 	key := agent.NativeResultKey{Session: session, InvocationID: "prompt"}
-	native, err := store.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: key, CommitKey: "fragment", MessageID: "native-message", Changes: []agent.MessageChange{
-		{Kind: agent.MessageAppend, ContentType: constants.RuntimeEventTypeTextDelta, Text: "partial", Revision: 1},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	partial, err := store.Commit(ctx, agent.ConversationBatch{ChatID: id, Key: "link", ExpectedVersion: admission.Version, Changes: []agent.ConversationChange{
-		{Message: &agent.MessageChange{MessageID: "exec", ExecutionID: "exec", Kind: agent.MessageNativeFragment, Fragments: &native, Revision: 1}},
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	thread.ObserveCommitted(id, partial)
-	select {
-	case event := <-subscription.Events:
-		if event.Type != constants.ChatEventTypeAssistantMessage || event.Sequence != partial.Version || event.Message == nil || event.Message.Content != "partial" {
-			t.Fatalf("committed partial event = %+v", event)
+	started := admission.First + int64(len(turn.Facts)) - 1
+	live := thread.BeginNativeLive(id, execution.ID, started)
+	defer live.Close()
+	nextEvent := func() PublicEvent {
+		t.Helper()
+		select {
+		case event, open := <-subscription.Events:
+			if !open {
+				t.Fatal("subscription closed")
+			}
+			return event
+		case <-ctx.Done():
+			t.Fatal("no native message event")
+			return PublicEvent{}
 		}
-	case <-ctx.Done():
-		t.Fatal("no committed fragment event")
 	}
+	version, revision := admission.Version, admission.Version
+	checkpoint := func(lane string, change agent.MessageChange) *messageview.Message {
+		t.Helper()
+		commitKey := fmt.Sprintf("fragment-%d", change.Revision)
+		native, err := store.CommitNativeFragments(ctx, agent.NativeFragmentBatch{
+			Key: key, CommitKey: commitKey, MessageID: lane, Changes: []agent.MessageChange{change},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		receipt, err := store.Commit(ctx, agent.ConversationBatch{ChatID: id, Key: commitKey, ExpectedVersion: version, Changes: []agent.ConversationChange{
+			{Message: &agent.MessageChange{MessageID: execution.ID, ExecutionID: execution.ID, Kind: agent.MessageNativeFragment, Fragments: &native, Revision: change.Revision}},
+		}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		version = receipt.Version
+		change.MessageID = execution.ID
+		if change.Kind == agent.MessageToolUpdate {
+			change.Kind = agent.MessageToolSnapshot
+		}
+		live.Checkpoint(ctx, receipt, change)
+		event := nextEvent()
+		if event.Type != constants.ChatEventTypeAssistantMessage || event.Sequence != version ||
+			event.Message == nil || event.Message.LiveRevision != change.Revision {
+			t.Fatalf("checkpoint event = %+v", event)
+		}
+		return event.Message
+	}
+	appendPart := func(text string, kind constants.RuntimeEventType, frame, base int64) (agent.MessageChange, string) {
+		t.Helper()
+		revision++
+		change := agent.MessageChange{Kind: agent.MessageAppend, ContentType: kind, Text: text, Revision: revision}
+		live.Append(change)
+		event := nextEvent()
+		if !event.Transient || event.Sequence != 0 || event.Live == nil || event.Live.Sequence != frame ||
+			event.Live.BaseRevision != base || event.Live.Revision != revision {
+			t.Fatalf("live event = %+v", event)
+		}
+		part := event.Live.Updates[0].Parts[0]
+		if part.Text != text {
+			t.Fatalf("live part = %+v", part)
+		}
+		return change, part.PartID
+	}
+	first, partID := appendPart("partial", constants.RuntimeEventTypeTextDelta, 1, started)
+	if message := checkpoint("native-message", first); message.Content != "partial" || message.DisplayParts[0].ID != partID {
+		t.Fatalf("first checkpoint changed the live part: %+v", message)
+	}
+	second, samePart := appendPart(" suffix", constants.RuntimeEventTypeTextDelta, 2, first.Revision)
+	if samePart != partID {
+		t.Fatalf("live suffix changed part from %q to %q", partID, samePart)
+	}
+	checkpoint("native-message", second)
+
+	revision++
+	tool := agent.MessageChange{Kind: agent.MessageToolUpdate, ContentType: constants.RuntimeEventTypeToolUpdate,
+		ToolCallID: "tool", Data: []byte(`{"id":"tool","status":"in_progress","kind":"execute","input":{"command":"go test ./example"}}`),
+		Text: strings.Repeat("TERMINAL_SECRET", 6000), Revision: revision}
+	checkpoint("tool", tool)
+	third, separatedPart := appendPart(" then", constants.RuntimeEventTypeTextDelta, 3, tool.Revision)
+	checkpoint("native-message", third)
+	revision++
+	tool.Kind, tool.Revision, tool.Data, tool.Text = agent.MessageToolUpdate, revision, []byte(`{"id":"tool","status":"completed"}`), ""
+	updated := checkpoint("tool", tool)
+	if len(updated.DisplayParts) != 2 || updated.DisplayParts[0].Text != "partial suffix then" {
+		t.Fatalf("tool checkpoint did not merge adjacent text: %+v", updated.DisplayParts)
+	}
+	_, nextPart := appendPart(" reasoning", constants.RuntimeEventTypeThinkingDelta, 4, tool.Revision)
+	if nextPart != separatedPart {
+		t.Fatalf("live output did not continue after reordered tool: part %q, want %q", nextPart, separatedPart)
+	}
+	live.Close()
 	inputTokens := int64(11)
 	if err := store.CommitNativeResult(ctx, agent.NativeResult{
 		Key: key, StopReason: "end_turn", FinalMessage: &agent.NativeFinalMessage{ID: "native-message", Text: "final"},
@@ -164,7 +235,7 @@ func TestChatNativeAdmissionStreamsTerminalAndReopens(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	settled, err := store.Commit(ctx, agent.ConversationBatch{ChatID: id, Key: "consumed", ExpectedVersion: partial.Version, Changes: []agent.ConversationChange{
+	settled, err := store.Commit(ctx, agent.ConversationBatch{ChatID: id, Key: "consumed", ExpectedVersion: version, Changes: []agent.ConversationChange{
 		{Consumption: &agent.InputConsumption{HostInvocationID: "host", Result: key}},
 		{Message: &agent.MessageChange{MessageID: "exec", ExecutionID: "exec", Kind: agent.MessageNativeFinal, Result: &key}},
 		{Message: &agent.MessageChange{MessageID: "exec", ExecutionID: "exec", Kind: agent.MessageComplete}},

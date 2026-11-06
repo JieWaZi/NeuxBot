@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -121,6 +121,8 @@ function canonicalMessage(): AllyChatMessage {
         : undefined,
     errorCode:
       typeof meta?.failureCode === "string" ? meta.failureCode : undefined,
+    errorMessageSource:
+      meta?.errorMessageSource === "public" ? "public" : undefined,
     retryable: meta?.retryable === true,
   };
 }
@@ -243,11 +245,12 @@ describe("chat work process", () => {
         custom: {
           executionId: "failed-execution",
           failureMessage: "模型服务暂时不可用",
+          errorMessageSource: "public",
         },
       },
     };
     const { rerender, container } = render(<AssistantMessage name="NeuxBot" />);
-    expect(screen.getByRole("alert")).toHaveTextContent("模型服务暂时不可用");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     messageState.current = { ...messageState.current, isLast: false };
     rerender(<AssistantMessage name="NeuxBot" />);
     expect(screen.queryByText("模型服务暂时不可用")).not.toBeInTheDocument();
@@ -999,6 +1002,76 @@ describe("chat work process", () => {
     ).not.toHaveClass("ml-auto");
   });
 
+  it.each(["last_request", "query_pipeline", "missing"] as const)(
+    "聊天仅展示已知用量，不展示覆盖缺口说明：%s",
+    async (coverage) => {
+      render(
+        <TooltipProvider delayDuration={0}>
+          <RunMetricsBadge
+            metrics={{
+              durationMs: 4600,
+              tokenUsage: {
+                complete: false,
+                coverage,
+                missingUsageInvocations: coverage === "missing" ? 1 : 0,
+                knownTokens:
+                  coverage === "missing" ? {} : { input: 26451, output: 32 },
+              },
+            }}
+          />
+        </TooltipProvider>,
+      );
+
+      fireEvent.focus(
+        screen.getByRole("button", { name: "查看执行耗时与 Token 用量" }),
+      );
+      const tooltip = await screen.findByRole("tooltip");
+      expect(tooltip).toHaveTextContent("4.6s");
+      if (coverage !== "missing") expect(tooltip).toHaveTextContent("32");
+      expect(tooltip).not.toHaveTextContent("仅覆盖最后一次请求");
+      expect(tooltip).not.toHaveTextContent("用量不完整");
+      expect(tooltip).not.toHaveTextContent("未收到用量");
+      expect(tooltip).not.toHaveTextContent("Token:");
+    },
+  );
+
+  it("原生输入无法拆分缓存时仍展示数值，不替代普通输入", async () => {
+    const tokenUsage = {
+      complete: false,
+      knownTokens: { reportedInput: 1200, output: 20, cacheRead: 500 },
+    };
+    render(
+      <TooltipProvider delayDuration={0}>
+        <RunMetricsBadge metrics={{ durationMs: 4600, tokenUsage }} />
+      </TooltipProvider>,
+    );
+    fireEvent.focus(
+      screen.getByRole("button", { name: "查看执行耗时与 Token 用量" }),
+    );
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("原生输入");
+    expect(tooltip).toHaveTextContent("1,200");
+    expect(tooltip).toHaveTextContent("500");
+    expect(tooltip).not.toHaveTextContent("用量不完整");
+  });
+
+  it("末次模型请求的样本单独展示", async () => {
+    render(
+      <TooltipProvider delayDuration={0}>
+        <RunMetricsBadge
+          metrics={{ durationMs: 5800, latestRequestOutputTokens: 743 }}
+        />
+      </TooltipProvider>,
+    );
+
+    fireEvent.focus(
+      screen.getByRole("button", { name: "查看执行耗时与 Token 用量" }),
+    );
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent("末次请求输出");
+    expect(tooltip).toHaveTextContent("743");
+  });
+
   it("完成消息读取运行指标时保持外部 store snapshot 稳定", () => {
     messageState.current = {
       role: "assistant",
@@ -1155,6 +1228,67 @@ describe("execution file changes", () => {
 });
 
 describe("assistant message shell", () => {
+  it("仅草稿首发使用准备文案，复用飞速运转样式并在接纳后切换", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-06T03:00:00Z"));
+    const pending: AllyChatMessage & { preparingSession: boolean } = {
+      id: "preparing",
+      role: "assistant",
+      status: "pending",
+      createdAt: Date.now(),
+      optimistic: true,
+      preparingSession: true,
+    };
+    const projection = new ChatMessageProjection();
+    const preparing = projection.update([pending])[0];
+    if (!preparing) throw new Error("missing preparing message");
+    const view = render(
+      <PureAssistantMessage view={preparing} latest name="nova" />,
+    );
+    expect(screen.getByText("正在准备会话")).toBeVisible();
+    expect(
+      view.container.querySelector("[data-companion-activity]"),
+    ).toHaveAttribute("data-companion-activity", "connecting");
+    expect(screen.getByRole("status")).toHaveClass("agent-grid-spinner");
+    expect(screen.getByRole("status").children).toHaveLength(9);
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+    expect(screen.queryByText("5.0s")).not.toBeInTheDocument();
+    const running = projection.update([
+      { ...pending, status: "running", optimistic: false },
+    ])[0];
+    if (!running) throw new Error("missing running message");
+    view.rerender(<PureAssistantMessage view={running} latest name="nova" />);
+    expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
+    expect(screen.getByText("飞速运转")).toBeVisible();
+    expect(
+      view.container.querySelector("[data-companion-activity]"),
+    ).toHaveAttribute("data-companion-activity", "thinking");
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("已有会话续发尚未接纳也继续展示飞速运转", () => {
+    const projection = new ChatMessageProjection();
+    const pending = projection.update([
+      {
+        id: "follow-up",
+        role: "assistant",
+        status: "pending",
+        optimistic: true,
+      },
+    ])[0];
+    if (!pending) throw new Error("missing follow-up message");
+    const { container } = render(
+      <PureAssistantMessage view={pending} latest name="nova" />,
+    );
+    expect(screen.queryByText("正在准备会话")).not.toBeInTheDocument();
+    expect(screen.getByText("飞速运转")).toBeVisible();
+    expect(screen.getByRole("status")).toHaveClass("agent-grid-spinner");
+    expect(
+      container.querySelector("[data-companion-activity]"),
+    ).toHaveAttribute("data-companion-activity", "thinking");
+  });
   it("最新助手消息变成历史消息后用普通图片代替动态头像并保留名称", () => {
     messageState.current = {
       role: "assistant",

@@ -32,6 +32,7 @@ describe("持久错误通知", () => {
     act(() =>
       reportErrorNotice(
         {
+          messageSource: "public",
           id: "leave-retry",
           scope: "chat:one",
           operation: "send:one",
@@ -52,18 +53,21 @@ describe("持久错误通知", () => {
     const { result } = renderHook(useErrorNotices);
     act(() => {
       reportErrorNotice({
+        messageSource: "public",
         id: "send-one",
         scope: "chat:one",
         operation: "send:one",
         message: "发送失败",
       });
       reportErrorNotice({
+        messageSource: "public",
         id: "history-one",
         scope: "chat:one",
         operation: "history:one",
         message: "查询失败",
       });
       reportErrorNotice({
+        messageSource: "public",
         id: "send-two",
         scope: "chat:two",
         operation: "send:two",
@@ -86,10 +90,10 @@ describe("持久错误通知", () => {
       operation: "read:one",
       message: "读取失败",
     };
-    act(() => reportErrorNotice(failure));
+    act(() => reportErrorNotice({ ...failure, messageSource: "public" }));
     const recovery = captureErrorNoticeRecovery(failure.operation);
     act(() => {
-      reportErrorNotice(failure);
+      reportErrorNotice({ ...failure, messageSource: "public" });
       resolveErrorNoticeRecovery(recovery);
     });
     expect(result.current).toHaveLength(1);
@@ -105,6 +109,7 @@ describe("持久错误通知", () => {
     error.noticeId = "query-retry";
     act(() => {
       reportErrorNotice({
+        messageSource: "public",
         id: "query-retry",
         scope: "chat:one",
         operation: "query:one",
@@ -150,7 +155,7 @@ describe("持久错误通知", () => {
     const restored = await import("./error-notices");
     const { result, unmount } = renderHook(restored.useErrorNotices);
     expect(result.current.map((notice) => notice.message)).toEqual([
-      "读取失败",
+      "本地服务返回了无法识别的错误",
     ]);
     unmount();
   });
@@ -159,6 +164,7 @@ describe("持久错误通知", () => {
     const { result } = renderHook(useErrorNotices);
     act(() =>
       reportErrorNotice({
+        messageSource: "public",
         id: "network",
         scope: "chat:one",
         message: "Failed to fetch",
@@ -181,6 +187,7 @@ describe("持久错误通知", () => {
     const { result } = renderHook(useErrorNotices);
     act(() =>
       reportErrorNotice({
+        messageSource: "public",
         id: "network-locale",
         scope: "global",
         message: "Failed to fetch",
@@ -198,11 +205,21 @@ describe("持久错误通知", () => {
     vi.useFakeTimers();
     const { result } = renderHook(useErrorNotices);
     act(() =>
-      reportErrorNotice({ id: "one", scope: "chat:one", message: "错误一" }),
+      reportErrorNotice({
+        messageSource: "public",
+        id: "one",
+        scope: "chat:one",
+        message: "错误一",
+      }),
     );
     act(() => {
       vi.advanceTimersByTime(120_000);
-      reportErrorNotice({ id: "two", scope: "global", message: "错误二" });
+      reportErrorNotice({
+        messageSource: "public",
+        id: "two",
+        scope: "global",
+        message: "错误二",
+      });
     });
     expect(result.current.map((notice) => notice.id)).toEqual(["one", "two"]);
     expect(
@@ -218,14 +235,14 @@ describe("持久错误通知", () => {
     const error = new ApiError("读取失败");
     error.noticeId = notice.id;
     act(() => {
-      reportErrorNotice(notice);
-      reportErrorNotice(notice);
+      reportErrorNotice({ ...notice, messageSource: "public" });
+      reportErrorNotice({ ...notice, messageSource: "public" });
       reportChatError(error, "chat:one", "失败");
     });
     expect(result.current).toHaveLength(1);
     act(() => {
       dismissErrorNotice(notice.id);
-      reportErrorNotice(notice);
+      reportErrorNotice({ ...notice, messageSource: "public" });
     });
     expect(result.current).toHaveLength(1);
   });
@@ -263,7 +280,13 @@ describe("持久错误通知", () => {
     const { result } = renderHook(useErrorNotices);
     act(() =>
       reportErrorNotice(
-        { id: "retry", scope: "chat:one", message: "限流", action: "retry" },
+        {
+          messageSource: "public",
+          id: "retry",
+          scope: "chat:one",
+          message: "限流",
+          action: "retry",
+        },
         action,
       ),
     );
@@ -286,4 +309,80 @@ describe("持久错误通知", () => {
   ])("%s 使用 %s 展示范围", (path, scope) => {
     expect(apiErrorScope(path)).toBe(scope);
   });
+});
+
+it("通知保留应用身份按当前语言重绘，并保留显式公开原因", async () => {
+  const { result } = renderHook(useErrorNotices);
+  act(() =>
+    reportErrorNotice({
+      id: "localized-contract",
+      scope: "app",
+      message: "server fixed language",
+      errorCode: "RuntimeWorkspaceScopeUnsupported",
+      errorParams: { MaxDirectories: 2 },
+      messageSource: "localized",
+    }),
+  );
+  expect(result.current[0]?.message).toBe(
+    "当前智能体最多支持 2 个项目目录，请调整工作范围",
+  );
+  await act(() => i18n.changeLanguage("en-US"));
+  expect(result.current[0]?.message).toBe(
+    "the selected agent supports up to 2 project directories; adjust the workspace scope",
+  );
+  act(() =>
+    reportErrorNotice({
+      id: "public-contract",
+      scope: "app",
+      message: "Native quota exhausted",
+      errorCode: "RuntimeQuotaExhausted",
+      messageSource: "public",
+    }),
+  );
+  expect(result.current[1]?.message).toBe("Native quota exhausted");
+});
+
+it("旧持久通知缺少来源时拒绝正文，已声明的本地提示仍可恢复", async () => {
+  localStorage.setItem(
+    "ally:error-notices",
+    JSON.stringify([
+      {
+        id: "api:GET:/api/v1/chats/c1:RuntimeEventQueueOverflow",
+        scope: "chat:c1",
+        operation: "api:GET:/api/v1/chats/c1",
+        version: "legacy",
+        createdAt: 1,
+        message: "[RuntimeEventQueueOverflow][50000000050]",
+      },
+      {
+        id: "untyped-local",
+        scope: "global",
+        operation: "local",
+        version: "legacy-local",
+        createdAt: 2,
+        message: "private diagnostic without an application identity",
+      },
+      {
+        id: "declared-local",
+        scope: "global",
+        operation: "local",
+        version: "local",
+        createdAt: 3,
+        message: "已知本地提示",
+        messageSource: "public",
+      },
+    ]),
+  );
+  vi.resetModules();
+  const restored = await import("./error-notices");
+  const { result, unmount } = renderHook(restored.useErrorNotices);
+  expect(result.current.map((notice) => notice.message)).toEqual([
+    "本地服务返回了无法识别的错误",
+    "本地服务返回了无法识别的错误",
+    "已知本地提示",
+  ]);
+  act(() =>
+    restored.dismissErrorNotices(result.current.map((notice) => notice.id)),
+  );
+  unmount();
 });

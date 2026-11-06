@@ -366,6 +366,9 @@ func (p *MessageViewBuilder) applyExecutionCreated(record eventlog.Record) (stri
 		p.executionMessages[record.ExecutionID] = messageID
 		if index, exists := p.messageIndexes[messageID]; exists {
 			message := &p.messages[index]
+			if data.RequestedAt > 0 && data.RequestedAt <= record.RecordedAt {
+				message.RunMetrics = &MessageRunMetrics{StartedAt: data.RequestedAt}
+			}
 			message.Fork = &MessageFork{ReasonCode: "session_missing"}
 			message.ExecutionID = record.ExecutionID
 			message.SubmissionID = data.SubmissionID
@@ -389,6 +392,9 @@ func (p *MessageViewBuilder) applyExecutionCreated(record eventlog.Record) (stri
 			CreatedAt:        record.RecordedAt,
 			UpdatedAt:        record.RecordedAt,
 		}
+		if data.RequestedAt > 0 && data.RequestedAt <= record.RecordedAt {
+			message.RunMetrics = &MessageRunMetrics{StartedAt: data.RequestedAt}
+		}
 		p.messageIndexes[message.ID] = len(p.messages)
 		p.messages = append(p.messages, message)
 		return message.ID, nil
@@ -400,7 +406,12 @@ func (p *MessageViewBuilder) applyExecutionStarted(record eventlog.Record) strin
 	messageID := p.executionMessages[record.ExecutionID]
 	if index, exists := p.messageIndexes[messageID]; exists {
 		message := &p.messages[index]
-		message.RunMetrics = &MessageRunMetrics{StartedAt: record.RecordedAt}
+		if message.RunMetrics == nil {
+			message.RunMetrics = &MessageRunMetrics{}
+		}
+		if message.RunMetrics.StartedAt == 0 {
+			message.RunMetrics.StartedAt = record.RecordedAt
+		}
 	}
 	if p.updateStatus(messageID, constants.ExecutionStatusRunning, record, "", "", 0) {
 		p.messages[p.messageIndexes[messageID]].LiveRevision = p.MessageRevision(messageID)
@@ -488,6 +499,8 @@ func (p *MessageViewBuilder) applyExecutionFinished(record eventlog.Record) (str
 	if index, exists := p.messageIndexes[messageID]; exists {
 		message := &p.messages[index]
 		message.Retryable = finished.Retryable
+		message.ErrorParams = finished.ErrorParams
+		message.ErrorMessageSource = finished.ErrorMessageSource
 		message.LiveRevision = max(message.LiveRevision, finished.MessageRevision)
 		p.releaseProvisionalText(message)
 		if message.RunMetrics == nil {
@@ -498,7 +511,7 @@ func (p *MessageViewBuilder) applyExecutionFinished(record eventlog.Record) (str
 		}
 	}
 	errorMessage := agentapi.RecordedFailureDisplayMessage(finished.ErrorMessage)
-	if errorMessage == "" {
+	if errorMessage == "" && finished.ErrorMessageSource == "" {
 		errorMessage = p.failureMessages[record.ExecutionID]
 	}
 	delete(p.failureMessages, record.ExecutionID)

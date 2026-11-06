@@ -10,18 +10,23 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 )
 
-// ProjectLink 保存一个进入 Chat projects/ 命名空间的项目来源。
+// ProjectLink 保存真实项目来源及其独立展示标签，是否投射入口由原生目录能力决定。
 type ProjectLink struct {
-	// EntryName 是工作区 projects/ 下的稳定入口名。
+	// EntryName 是来源的稳定展示标签。
 	EntryName string
-	// SourcePath 是需要被只读引用的真实项目根目录。
+	// SourcePath 是已授权的真实项目根目录。
 	SourcePath string
 }
 
-// EnsureExecutionWorkspace 创建 Chat 工作区及其稳定目录和项目软链接。
-func EnsureExecutionWorkspace(root, chatID, wakerID string, projects []ProjectLink) error {
+// EnsureAgentWorkspace 创建或校验伙伴拥有的固定 cwd，不以 Chat 作为目录归属。
+func EnsureAgentWorkspace(root, wakerID string) error {
 	root = strings.TrimSpace(root)
-	if root == "" || chatID == "" || wakerID == "" {
+	if root == "" || wakerID == "" {
+		return status_error.ManagedWorkspaceError
+	}
+	if info, err := os.Lstat(root); err == nil && (info.Mode()&os.ModeSymlink != 0 || !info.IsDir()) {
+		return status_error.ChatDirectoryOwnershipInvalid
+	} else if err != nil && !os.IsNotExist(err) {
 		return status_error.ManagedWorkspaceError
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
@@ -31,8 +36,7 @@ func EnsureExecutionWorkspace(root, chatID, wakerID string, projects []ProjectLi
 	if content, err := os.ReadFile(markerPath); err == nil {
 		var marker ownerMarker
 		if json.Unmarshal(content, &marker) != nil ||
-			marker.Kind != constants.ChatExecutionWorkspaceOwnerKind ||
-			marker.ChatID != chatID ||
+			marker.Kind != constants.AgentExecutionWorkspaceOwnerKind ||
 			marker.WakerID != wakerID {
 			return status_error.ChatDirectoryOwnershipInvalid
 		}
@@ -41,15 +45,14 @@ func EnsureExecutionWorkspace(root, chatID, wakerID string, projects []ProjectLi
 	} else if err := writeJSON(
 		markerPath,
 		ownerMarker{
-			Kind:    constants.ChatExecutionWorkspaceOwnerKind,
-			ChatID:  chatID,
+			Kind:    constants.AgentExecutionWorkspaceOwnerKind,
 			WakerID: wakerID,
 		},
 		status_error.ManagedWorkspaceError,
 	); err != nil {
 		return err
 	}
-	return ensureExecutionWorkspaceLayout(root, projects)
+	return ensureExecutionWorkspaceFileDirectories(root)
 }
 
 // EnsureThreadMemberExecutionWorkspace 创建或校验团队成员独占的 Runtime cwd。
@@ -58,14 +61,17 @@ func EnsureThreadMemberExecutionWorkspace(
 	threadID string,
 	chatID string,
 	wakerID string,
-	sharedProjectsRoot string,
 ) error {
 	root = strings.TrimSpace(root)
 	threadID = strings.TrimSpace(threadID)
 	chatID = strings.TrimSpace(chatID)
 	wakerID = strings.TrimSpace(wakerID)
-	sharedProjectsRoot = strings.TrimSpace(sharedProjectsRoot)
-	if root == "" || threadID == "" || chatID == "" || wakerID == "" || sharedProjectsRoot == "" {
+	if root == "" || threadID == "" || chatID == "" || wakerID == "" {
+		return status_error.ManagedWorkspaceError
+	}
+	if info, err := os.Lstat(root); err == nil && (info.Mode()&os.ModeSymlink != 0 || !info.IsDir()) {
+		return status_error.ChatDirectoryOwnershipInvalid
+	} else if err != nil && !os.IsNotExist(err) {
 		return status_error.ManagedWorkspaceError
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
@@ -98,22 +104,22 @@ func EnsureThreadMemberExecutionWorkspace(
 	if err := ensureExecutionWorkspaceFileDirectories(root); err != nil {
 		return err
 	}
-	return ensureRelativeDirectoryLink(
-		filepath.Join(root, constants.ExecutionWorkspaceProjectsDirectory),
-		root,
-		sharedProjectsRoot,
-	)
+	return nil
 }
 
 // EnsureThreadExecutionWorkspace 创建或校验团队对话 thread 级共享执行工作区。
 func EnsureThreadExecutionWorkspace(
 	root, threadID, leadWakerID string,
-	projects []ProjectLink,
 ) error {
 	root = strings.TrimSpace(root)
 	threadID = strings.TrimSpace(threadID)
 	leadWakerID = strings.TrimSpace(leadWakerID)
 	if root == "" || threadID == "" || leadWakerID == "" {
+		return status_error.ManagedWorkspaceError
+	}
+	if info, err := os.Lstat(root); err == nil && (info.Mode()&os.ModeSymlink != 0 || !info.IsDir()) {
+		return status_error.ChatDirectoryOwnershipInvalid
+	} else if err != nil && !os.IsNotExist(err) {
 		return status_error.ManagedWorkspaceError
 	}
 	if err := os.MkdirAll(root, 0o700); err != nil {
@@ -140,90 +146,15 @@ func EnsureThreadExecutionWorkspace(
 	); err != nil {
 		return err
 	}
-	return ensureThreadExecutionWorkspaceLayout(root, projects)
-}
-
-func ensureExecutionWorkspaceLayout(root string, projects []ProjectLink) error {
-	if err := os.MkdirAll(filepath.Join(root, constants.ExecutionWorkspaceProjectsDirectory), 0o700); err != nil {
-		return status_error.ManagedWorkspaceError
-	}
-	if err := ensureExecutionWorkspaceFileDirectories(root); err != nil {
-		return err
-	}
-	return ensureProjectLinks(filepath.Join(root, constants.ExecutionWorkspaceProjectsDirectory), projects)
+	_, err := ensureManagedRoot(root, constants.TeamSharedDirectoryName)
+	return err
 }
 
 func ensureExecutionWorkspaceFileDirectories(root string) error {
-	generatedFiles := filepath.Join(
-		root,
-		constants.ExecutionWorkspaceAttachmentsDirectory,
-		constants.ExecutionWorkspaceGeneratedFilesDirectory,
-	)
-	if err := os.MkdirAll(generatedFiles, 0o700); err != nil {
-		return status_error.ManagedWorkspaceError
-	}
-	return nil
-}
-
-func ensureThreadExecutionWorkspaceLayout(root string, projects []ProjectLink) error {
-	projectsRoot := filepath.Join(root, constants.ExecutionWorkspaceProjectsDirectory)
-	if err := os.MkdirAll(projectsRoot, 0o700); err != nil {
-		return status_error.ManagedWorkspaceError
-	}
-	return ensureProjectLinks(projectsRoot, projects)
-}
-
-func ensureProjectLinks(projectsRoot string, projects []ProjectLink) error {
-	for _, project := range projects {
-		if filepath.Base(project.EntryName) != project.EntryName ||
-			project.EntryName == "." ||
-			project.EntryName == ".." ||
-			project.SourcePath == "" {
-			return status_error.ManagedWorkspaceError
+	for _, name := range []string{constants.TaskOutputsDirectoryName, "tmp"} {
+		if _, err := ensureManagedRoot(root, name); err != nil {
+			return err
 		}
-		entry := filepath.Join(projectsRoot, project.EntryName)
-		info, err := os.Lstat(entry)
-		if err == nil {
-			if info.Mode()&os.ModeSymlink == 0 {
-				return status_error.ProjectSourceUnavailable
-			}
-			linked, readErr := os.Readlink(entry)
-			if readErr != nil || linked != project.SourcePath {
-				return status_error.ProjectSourceUnavailable
-			}
-			continue
-		}
-		if !os.IsNotExist(err) {
-			return status_error.ProjectSourceUnavailable
-		}
-		if err := os.Symlink(project.SourcePath, entry); err != nil {
-			return status_error.ProjectSourceUnavailable
-		}
-	}
-	return nil
-}
-
-func ensureRelativeDirectoryLink(linkPath string, linkRoot string, targetPath string) error {
-	relativeTarget, err := filepath.Rel(linkRoot, targetPath)
-	if err != nil || relativeTarget == "." {
-		return status_error.ManagedWorkspaceError
-	}
-	info, err := os.Lstat(linkPath)
-	if err == nil {
-		if info.Mode()&os.ModeSymlink == 0 {
-			return status_error.ChatDirectoryOwnershipInvalid
-		}
-		linked, readErr := os.Readlink(linkPath)
-		if readErr != nil || filepath.Clean(linked) != filepath.Clean(relativeTarget) {
-			return status_error.ChatDirectoryOwnershipInvalid
-		}
-		return nil
-	}
-	if !os.IsNotExist(err) {
-		return status_error.ManagedWorkspaceError
-	}
-	if err := os.Symlink(relativeTarget, linkPath); err != nil {
-		return status_error.ManagedWorkspaceError
 	}
 	return nil
 }
@@ -266,6 +197,16 @@ type ExecutionWorkspaceOwner struct {
 
 // ReadExecutionWorkspaceOwner 读取并解析受管执行工作区归属标记。
 func ReadExecutionWorkspaceOwner(root string) (ExecutionWorkspaceOwner, error) {
+	info, err := os.Lstat(root)
+	if os.IsNotExist(err) {
+		return ExecutionWorkspaceOwner{}, nil
+	}
+	if err != nil {
+		return ExecutionWorkspaceOwner{}, status_error.ManagedWorkspaceError
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return ExecutionWorkspaceOwner{}, status_error.ChatDirectoryOwnershipInvalid
+	}
 	markerPath := filepath.Join(root, constants.ChatContextOwnerFileName)
 	content, err := os.ReadFile(markerPath)
 	if err != nil {
@@ -287,43 +228,6 @@ func ReadExecutionWorkspaceOwner(root string) (ExecutionWorkspaceOwner, error) {
 		ThreadID: marker.ThreadID,
 		WakerID:  marker.WakerID,
 	}, nil
-}
-
-// DeleteExecutionWorkspace 删除经过归属校验的整个 Chat 执行工作区。
-func DeleteExecutionWorkspace(root, chatID string) error {
-	if err := ValidateExecutionWorkspaceDeletion(root, chatID); err != nil {
-		return err
-	}
-	if err := os.RemoveAll(root); err != nil {
-		return status_error.ManagedWorkspaceError
-	}
-	return nil
-}
-
-// DeleteThreadExecutionWorkspace 删除经过归属校验的整个 thread 共享执行工作区。
-func DeleteThreadExecutionWorkspace(root, threadID string) error {
-	if err := ValidateThreadExecutionWorkspaceDeletion(root, threadID); err != nil {
-		return err
-	}
-	if err := os.RemoveAll(root); err != nil {
-		return status_error.ManagedWorkspaceError
-	}
-	return nil
-}
-
-// ValidateExecutionWorkspaceDeletion 只校验 Chat 工作区归属，不产生文件副作用。
-func ValidateExecutionWorkspaceDeletion(root, chatID string) error {
-	owner, err := ReadExecutionWorkspaceOwner(root)
-	if err != nil {
-		return err
-	}
-	if owner.Kind == "" {
-		return nil
-	}
-	if owner.Kind != constants.ChatExecutionWorkspaceOwnerKind || owner.ChatID != chatID {
-		return status_error.ChatDirectoryOwnershipInvalid
-	}
-	return nil
 }
 
 // ValidateThreadExecutionWorkspaceDeletion 只校验 thread 共享工作区归属，不产生文件副作用。
@@ -361,18 +265,169 @@ func EnsureExistingThreadMemberExecutionWorkspace(root string, threadID string, 
 	if err := ValidateThreadMemberExecutionWorkspace(root, threadID, chatID, wakerID); err != nil {
 		return err
 	}
-	projects := filepath.Join(root, constants.ExecutionWorkspaceProjectsDirectory)
-	info, err := os.Lstat(projects)
-	if err != nil || info.Mode()&os.ModeSymlink == 0 {
-		return status_error.ChatDirectoryOwnershipInvalid
+	return ensureExecutionWorkspaceFileDirectories(root)
+}
+
+// TaskDirectories 保存已分配 Execution 的持久成果与临时输入目录。
+type TaskDirectories struct {
+	// Outputs 是本轮新建持久成果的真实目录。
+	Outputs string
+	// Temporary 是本轮中间文件及原生输入副本的真实目录。
+	Temporary string
+}
+
+// EnsureTaskDirectories 在既有 cwd 中为同一个 Execution 幂等准备目录，不分配新身份。
+func EnsureTaskDirectories(root, executionID string) (TaskDirectories, error) {
+	if !isSafeDirectoryName(executionID) {
+		return TaskDirectories{}, status_error.BadRequest
 	}
-	resolvedProjects, err := filepath.EvalSymlinks(projects)
+	outputs, err := ensureManagedRoot(root, constants.TaskOutputsDirectoryName, executionID)
 	if err != nil {
-		return status_error.ProjectSourceUnavailable
+		return TaskDirectories{}, err
 	}
-	projectInfo, err := os.Stat(resolvedProjects)
-	if err != nil || !projectInfo.IsDir() {
-		return status_error.ProjectSourceUnavailable
+	temporary, err := ensureManagedRoot(root, "tmp", executionID)
+	if err != nil {
+		return TaskDirectories{}, err
+	}
+	return TaskDirectories{Outputs: outputs, Temporary: temporary}, nil
+}
+
+// EnsureIsolatedExecutionWorkspace 校验宿主领域拥有的独立 Chat 执行目录，不复用普通伙伴 cwd。
+func EnsureIsolatedExecutionWorkspace(root, chatID, wakerID string) error {
+	if root == "" || chatID == "" || wakerID == "" {
+		return status_error.ManagedWorkspaceError
+	}
+	if info, err := os.Lstat(root); err == nil && (info.Mode()&os.ModeSymlink != 0 || !info.IsDir()) {
+		return status_error.ChatDirectoryOwnershipInvalid
+	} else if err != nil && !os.IsNotExist(err) {
+		return status_error.ManagedWorkspaceError
+	}
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return status_error.ManagedWorkspaceError
+	}
+	marker := filepath.Join(root, constants.ChatContextOwnerFileName)
+	if content, err := os.ReadFile(marker); err == nil {
+		var owner ownerMarker
+		if json.Unmarshal(content, &owner) != nil || owner.Kind != constants.IsolatedExecutionWorkspaceOwnerKind || owner.ChatID != chatID || owner.WakerID != wakerID {
+			return status_error.ChatDirectoryOwnershipInvalid
+		}
+	} else if !os.IsNotExist(err) {
+		return status_error.ManagedWorkspaceError
+	} else if err := writeJSON(marker, ownerMarker{Kind: constants.IsolatedExecutionWorkspaceOwnerKind, ChatID: chatID, WakerID: wakerID}, status_error.ManagedWorkspaceError); err != nil {
+		return err
 	}
 	return ensureExecutionWorkspaceFileDirectories(root)
+}
+
+// ValidateAgentWorkspaceDeletion 仅接受伙伴自身归属的固定 cwd，供名称确认后的伙伴删除用例使用。
+func ValidateAgentWorkspaceDeletion(root, wakerID string) error {
+	owner, err := ReadExecutionWorkspaceOwner(root)
+	if err != nil {
+		return err
+	}
+	if owner.Kind == "" {
+		return nil
+	}
+	if owner.Kind != constants.AgentExecutionWorkspaceOwnerKind || owner.WakerID != wakerID {
+		return status_error.ChatDirectoryOwnershipInvalid
+	}
+	return nil
+}
+
+// ProjectEntry 保存一个原生工具入口及其未改变的真实授权来源。
+type ProjectEntry struct {
+	// SourcePath 是已冻结并规范化的真实项目根。
+	SourcePath string `json:"sourcePath"`
+	// Path 是相对实际 cwd 的 Chat 独有入口，不改变真实文件身份。
+	Path string `json:"path"`
+}
+
+// PrepareProjectEntries 仅物化当前 Chat 的项目入口，保留其他 Chat 与用户管理的文件。
+func PrepareProjectEntries(root, chatID string, projects []ProjectLink) ([]ProjectEntry, func() error, error) {
+	noop := func() error { return nil }
+	if len(projects) == 0 {
+		return nil, noop, nil
+	}
+	if !isSafeDirectoryName(chatID) {
+		return nil, noop, status_error.BadRequest
+	}
+	projectsRoot, err := ensureManagedRoot(root, constants.ProjectEntriesDirectoryName)
+	if err != nil {
+		return nil, noop, err
+	}
+	directory := filepath.Join(projectsRoot, chatID)
+	created := false
+	if err := os.Mkdir(directory, 0700); err == nil {
+		created = true
+	} else if !os.IsExist(err) {
+		return nil, noop, status_error.ManagedWorkspaceError
+	}
+	rollback := func() error {
+		if !created {
+			return nil
+		}
+		if err := validateOwner(directory, constants.ChatProjectEntriesOwnerKind, chatID, ""); err != nil {
+			return err
+		}
+		return removeValidatedDirectory(directory)
+	}
+	if created {
+		if err := writeJSON(filepath.Join(directory, constants.ChatContextOwnerFileName), ownerMarker{Kind: constants.ChatProjectEntriesOwnerKind, ChatID: chatID}, status_error.ManagedWorkspaceError); err != nil {
+			_ = os.Remove(directory)
+			return nil, noop, err
+		}
+	} else {
+		info, err := os.Lstat(directory)
+		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, noop, status_error.ChatDirectoryOwnershipInvalid
+		}
+		if err := validateOwner(directory, constants.ChatProjectEntriesOwnerKind, chatID, ""); err != nil {
+			return nil, noop, err
+		}
+	}
+	entries := make([]ProjectEntry, 0, len(projects))
+	for _, project := range projects {
+		if !isSafeDirectoryName(project.EntryName) || !filepath.IsAbs(project.SourcePath) {
+			_ = rollback()
+			return nil, noop, status_error.ProjectSourceUnavailable
+		}
+		source, err := filepath.EvalSymlinks(project.SourcePath)
+		if err != nil {
+			_ = rollback()
+			return nil, noop, status_error.ProjectSourceUnavailable
+		}
+		info, err := os.Stat(source)
+		if err != nil || !info.IsDir() {
+			_ = rollback()
+			return nil, noop, status_error.ProjectSourceUnavailable
+		}
+		path := filepath.Join(directory, project.EntryName)
+		if info, err := os.Lstat(path); err == nil {
+			target, readErr := os.Readlink(path)
+			if info.Mode()&os.ModeSymlink == 0 || readErr != nil || target != source {
+				_ = rollback()
+				return nil, noop, status_error.ProjectSourceUnavailable
+			}
+		} else if !os.IsNotExist(err) {
+			_ = rollback()
+			return nil, noop, status_error.ProjectSourceUnavailable
+		} else if err := os.Symlink(source, path); err != nil {
+			_ = rollback()
+			return nil, noop, status_error.ProjectSourceUnavailable
+		}
+		entries = append(entries, ProjectEntry{SourcePath: source, Path: filepath.ToSlash(filepath.Join(constants.ProjectEntriesDirectoryName, chatID, project.EntryName))})
+	}
+	return entries, rollback, nil
+}
+
+// ValidateProjectEntriesDeletion 只接受当前 Chat 拥有的真实入口目录，不跟随替换链接。
+func ValidateProjectEntriesDeletion(directory, chatID string) error {
+	owner, err := ReadExecutionWorkspaceOwner(directory)
+	if err != nil {
+		return err
+	}
+	if owner.Kind != constants.ChatProjectEntriesOwnerKind || owner.ChatID != chatID {
+		return status_error.ChatDirectoryOwnershipInvalid
+	}
+	return nil
 }

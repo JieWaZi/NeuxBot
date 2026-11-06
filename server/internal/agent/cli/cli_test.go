@@ -45,7 +45,7 @@ func TestCanceledMutationPreservesUnknownEffectAndReceiptAdvice(t *testing.T) {
 		}
 	}()
 	var out, errOut bytes.Buffer
-	code := Execute(ctx, []string{"im", "deliveries", "create", "--target-id", "target", "--content", "report", "--request-id", "stable-report"}, IO{Out: &out, Err: &errOut, ContextFile: path})
+	code := Execute(ctx, []string{"--context", path, "im", "deliveries", "create", "--target-id", "target", "--content", "report", "--request-id", "stable-report"}, IO{Out: &out, Err: &errOut})
 	var response capability.Response
 	if code != 130 || out.Len() != 0 || json.Unmarshal(errOut.Bytes(), &response) != nil || response.Error == nil || response.Error.Code != "AgentCommandOutcomeUnknown" || response.Error.RetryAdvice != "query_receipt" || response.Error.EffectState != "unknown" {
 		t.Fatalf("canceled write lost original uncertainty: code=%d stdout=%s stderr=%s", code, &out, &errOut)
@@ -80,7 +80,7 @@ func TestCommandsUseCurrentGrantAndSeparateOutputStreams(t *testing.T) {
 	}
 	run := func(args []string, input string) (int, string, string) {
 		var out, errOut bytes.Buffer
-		code := Execute(context.Background(), args, IO{In: strings.NewReader(input), Out: &out, Err: &errOut, ContextFile: contextFile})
+		code := Execute(context.Background(), append([]string{"--context", contextFile}, args...), IO{In: strings.NewReader(input), Out: &out, Err: &errOut})
 		return code, out.String(), errOut.String()
 	}
 	code, out, errOut := run([]string{"--context", contextFile, "im", "deliveries", "create", "--input", "-", "--request-id", "report-01"}, `{"targetId":"known-target","content":"report"}`)
@@ -150,7 +150,7 @@ func TestMemoryScopeHelpAndInvalidInputUseTheSharedContract(t *testing.T) {
 	}
 }
 
-// TestSkillExamplesParseBeforeConnecting 通过真实 CLI 解析技能中的命令与 JSON，防止示例参数随契约漂移。
+// TestSkillExamplesParseBeforeConnecting parses skill commands and JSON through the real CLI to prevent example drift from contracts.
 func TestSkillExamplesParseBeforeConnecting(t *testing.T) {
 	paths, err := filepath.Glob("../../../../skills/ally/references/*.md")
 	if err != nil {
@@ -166,7 +166,7 @@ func TestSkillExamplesParseBeforeConnecting(t *testing.T) {
 			t.Fatal(err)
 		}
 		directory := t.TempDir()
-		// 在所有平台覆盖 Windows 检出的 CRLF 输入块，避免本机 LF 掩盖匹配问题。
+		// Cover Windows checkout CRLF input blocks on every platform so local LF cannot mask matching errors.
 		crlfContent := strings.ReplaceAll(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n", "\r\n")
 		for _, match := range inputs.FindAllStringSubmatch(crlfContent, -1) {
 			if err := os.WriteFile(filepath.Join(directory, match[1]), []byte(match[2]), 0600); err != nil {
@@ -197,7 +197,7 @@ func TestSkillExamplesParseBeforeConnecting(t *testing.T) {
 				}
 			}
 			var out, errOut bytes.Buffer
-			code := Execute(context.Background(), args, IO{Out: &out, Err: &errOut, ContextFile: filepath.Join(directory, "no-context.json")})
+			code := Execute(context.Background(), args, IO{Out: &out, Err: &errOut})
 			var response capability.Response
 			if code != 70 || json.Unmarshal(errOut.Bytes(), &response) != nil || response.Error == nil || response.Error.Code != "AgentContextStorageError" {
 				t.Errorf("%s: example did not reach connection stage: %s; exit=%d stderr=%s", path, line, code, &errOut)
@@ -210,7 +210,7 @@ func TestSkillExamplesParseBeforeConnecting(t *testing.T) {
 		t.Fatal("no skill examples found")
 	}
 	for _, operation := range capability.Operations() {
-		// 工作流指南使用注入的 MCP 契约；CLI 示例不重复维护该领域的完整调用表。
+		// Workflow guides use the injected MCP contract; CLI examples do not duplicate the domain's complete invocation table.
 		if strings.HasPrefix(operation.ID, "workflow.") {
 			continue
 		}

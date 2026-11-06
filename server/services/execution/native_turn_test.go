@@ -20,7 +20,9 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventstream"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
@@ -33,7 +35,7 @@ import (
 func TestNativeTurnPromptPreservesBusinessReferences(t *testing.T) {
 	turn := nativePromptFixture()
 	text := nativeTurnPrompt(turn)
-	for _, want := range []string{"review this", "report.csv", "artifacts/report.csv", "main.go", "return 42", "search-guide", "docs-mcp"} {
+	for _, want := range []string{"review this", "report.csv", "/tmp/report.csv", "main.go", "return 42", "search-guide", "docs-mcp"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("prompt lost %q: %s", want, text)
 		}
@@ -51,11 +53,31 @@ func TestNativeTurnResultUsesProviderTerminalEvidence(t *testing.T) {
 	}
 }
 
+func TestNativeTurnQuotaFailureUsesActionableCode(t *testing.T) {
+	for _, result := range []agent.TurnResult{
+		{Outcome: &agent.AgentNativeOutcome{NativeFailure: status_error.RuntimeExecutionFailed, NativeErrorKind: "quota_exhausted"}},
+		{OperationError: status_error.RuntimeQuotaExhausted},
+	} {
+		outcome := nativeExecutionOutcome(result)
+		if outcome.code != "RuntimeQuotaExhausted" {
+			t.Fatalf("quota failure became generic: %+v", outcome)
+		}
+	}
+}
+
+func TestNativeTurnFailurePreservesAPIMeaning(t *testing.T) {
+	err := status_error.RuntimeQuotaExhausted.WithMessage("Free usage limit reached. Check your OpenCode plan.")
+	outcome := nativeExecutionOutcome(agent.TurnResult{OperationError: err})
+	if outcome.message != "Free usage limit reached. Check your OpenCode plan." || outcome.err != err || outcome.code != "RuntimeQuotaExhausted" || !errors.Is(outcome.err, status_error.RuntimeQuotaExhausted) {
+		t.Fatalf("message and HTTP error disagree: %+v", outcome)
+	}
+}
+
 func nativePromptFixture() agent.TurnInput {
 	return agent.TurnInput{
 		Message: agent.Message{
 			Text:           "review this",
-			Attachments:    []agent.Attachment{{Name: "report.csv", Path: "artifacts/report.csv"}},
+			Attachments:    []agent.Attachment{{Name: "report.csv", Path: "artifacts/report.csv", RuntimePath: "/tmp/report.csv"}},
 			CodeReferences: []agent.CodeReference{{Path: "main.go", StartLine: 2, EndLine: 2, Content: "return 42"}},
 		},
 		History:        []agent.HistoryMessage{{Role: "assistant", Content: "previous answer"}},
@@ -157,6 +179,7 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 				if providerID == constants.RuntimeIDPi {
 					return agent.AccountLease{Environment: map[string]string{"PI_CODING_AGENT_DIR": filepath.Join(root, "pi-fixture-account")}}, nil
 				}
+
 				return agent.AccountLease{}, nil
 			},
 		})
@@ -195,6 +218,47 @@ func newNativeProductFixture(t *testing.T, ctx context.Context, providerID, chil
 		}
 	}
 	return nativeProductFixture{root: root, trace: trace, accounts: accounts, usage: controllers.NewUsageController(db), open: open}
+}
+
+func TestNativeProductDurationStartsBeforePreparation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	core, chats, store, closeRuntime := fixture.open()
+	defer closeRuntime()
+	manager := core.(*service)
+	validate := manager.validateIntent
+	var beforePreparation, afterPreparation int64
+	manager.validateIntent = func(ctx context.Context, intent WorkIntent) error {
+		beforePreparation = nowMillis()
+		time.Sleep(10 * time.Millisecond)
+		afterPreparation = nowMillis()
+		if validate != nil {
+			return validate(ctx, intent)
+		}
+		return nil
+	}
+	intent := WorkIntent{ClientRequestID: "preparation-duration", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}},
+		Input:   WorkInput{Actor: "user", Content: "first-success"},
+		Options: WorkOptions{RuntimeID: "codex", Model: "fixture-model", Reasoning: "high", PermissionLevel: constants.PermissionLevelAuto, SessionPolicy: constants.RuntimeSessionPolicyContinue}}
+	for range 2 {
+		accepted, err := core.Start(ctx, intent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitNativeProductStatus(t, ctx, store, accepted, constants.ExecutionStatusCompleted)
+		history, err := chats.ReadMessageHistory(ctx, accepted.Chat.ID, 0, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		message := history.Resources[len(history.Resources)-1]
+		if message.RunMetrics == nil || message.RunMetrics.StartedAt <= 0 || message.RunMetrics.StartedAt > beforePreparation ||
+			message.RunMetrics.DurationMs < afterPreparation-beforePreparation {
+			t.Fatalf("request preparation excluded: metrics=%+v before=%d after=%d", message.RunMetrics, beforePreparation, afterPreparation)
+		}
+		intent.ClientRequestID = ""
+		intent.Chat = ChatTarget{ChatID: accepted.Chat.ID}
+	}
 }
 
 func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
@@ -249,6 +313,15 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 		Input: WorkInput{Actor: "user", Content: "hold-for-stream"}, Options: options})
 	if err != nil {
 		t.Fatal(err)
+	}
+	liveContext, cancelLive := context.WithTimeout(ctx, time.Second)
+	live := waitNativeProductLive(t, liveContext, chats, held, "fixture partial")
+	cancelLive()
+	reconnectContext, cancelReconnect := context.WithTimeout(ctx, time.Second)
+	replayed := waitNativeProductLive(t, reconnectContext, chats, held, "fixture partial")
+	cancelReconnect()
+	if replayed.Revision != live.Revision {
+		t.Fatalf("reconnect lost live coverage: %+v vs %+v", replayed, live)
 	}
 	waitNativeProductStream(t, ctx, chats, held, "fixture partial")
 	if err := core.CancelExecutionAndWait(ctx, first.Chat.ID, held.Execution.ID); err != nil {
@@ -341,6 +414,53 @@ func TestNativeProductCodexCompletesStreamsCancelsAndRestarts(t *testing.T) {
 		t.Fatalf("private summary entered public history: %+v %v", history, err)
 	}
 
+}
+
+func TestNativeProductCapturesExplicitOldArtifactAtItsOriginalPath(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	core, chats, store, closeRuntime := fixture.open()
+	defer closeRuntime()
+	manager := core.(*service)
+	root, err := manager.storage.AgentWorkspace("native-waker")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := workspace.EnsureAgentWorkspace(root, "native-waker"); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := workspace.EnsureTaskDirectories(root, "previous-execution")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, sibling := filepath.Join(previous.Outputs, "report.txt"), filepath.Join(previous.Outputs, "sibling.txt")
+	for _, path := range []string{selected, sibling} {
+		if err := os.WriteFile(path, []byte("original\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("NEUX_EXECUTION_FIXTURE_ARTIFACT", selected)
+	t.Setenv("NEUX_EXECUTION_FIXTURE_ARTIFACT_SIBLING", sibling)
+	accepted, err := core.Start(ctx, WorkIntent{ClientRequestID: "explicit-old-artifact", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}},
+		Input: WorkInput{Actor: "user", Content: "revise-explicit-artifact", CodeReferences: []CodeReferenceInput{
+			{Path: selected}, {Path: selected, StartLine: 1, EndLine: 1, Content: "original"},
+		}}, Options: WorkOptions{RuntimeID: "codex", Model: "fixture-model", PermissionLevel: constants.PermissionLevelAuto}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitNativeProductStatus(t, ctx, store, accepted, constants.ExecutionStatusCompleted)
+	if err := core.CancelExecutionAndWait(ctx, accepted.Chat.ID, accepted.Execution.ID); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := chats.GetMessageFileChanges(ctx, accepted.Chat.ID, accepted.Execution.ID)
+	actual, _ := filepath.EvalSymlinks(selected)
+	if err != nil || summary.State != "ready" || len(summary.Files) != 1 || summary.Files[0].AbsolutePath != actual || summary.Files[0].Status != "modified" {
+		t.Fatalf("native execution lost exact original artifact: %+v %v", summary, err)
+	}
+	if data, err := os.ReadFile(sibling); err != nil || string(data) != "sibling also changed\n" {
+		t.Fatalf("fixture did not exercise unselected sibling edit: %q %v", data, err)
+	}
 }
 
 func TestNativeProductClaudeAndCursorContinueAndRecover(t *testing.T) {
@@ -553,6 +673,31 @@ func waitNativeProductStream(t *testing.T, ctx context.Context, chats chatservic
 	}
 }
 
+func waitNativeProductLive(t *testing.T, ctx context.Context, chats chatservice.Module, held AcceptedExecution, text string) *eventstream.LiveMessageIncrement {
+	t.Helper()
+	subscription, err := chats.SubscribeEvents(ctx, held.Chat.ID, held.Chat.LatestSequence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Close()
+	for event := range subscription.Events {
+		if !event.Transient || event.Live == nil || event.Live.MessageID != held.Execution.ID {
+			continue
+		}
+		var body strings.Builder
+		for _, update := range event.Live.Updates {
+			for _, part := range update.Parts {
+				body.WriteString(part.Text)
+			}
+		}
+		if body.String() == text && event.Sequence == 0 {
+			return event.Live
+		}
+	}
+	t.Fatalf("no transient %q before the durable checkpoint", text)
+	return nil
+}
+
 type nativeFixtureEnvironment struct {
 	// entry 是固定到本地测试程序的智能体环境。
 	entry models.RuntimeEnvironment
@@ -648,6 +793,8 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 			ack(map[string]any{"data": models})
 		case "config/read":
 			ack(map[string]any{"config": map[string]any{}})
+		case "skills/list", "skills/extraRoots/set":
+			ack(map[string]any{})
 		case "thread/start", "thread/resume":
 			params, _ := frame["params"].(map[string]any)
 			thread, _ = params["threadId"].(string)
@@ -656,10 +803,25 @@ func TestNativeExecutionCodexChild(t *testing.T) {
 			}
 			ack(map[string]any{"thread": map[string]any{"id": thread}, "model": "fixture-model"})
 		case "turn/start":
+			if strings.Contains(line, "revise-explicit-artifact") {
+				selected, sibling := os.Getenv("NEUX_EXECUTION_FIXTURE_ARTIFACT"), os.Getenv("NEUX_EXECUTION_FIXTURE_ARTIFACT_SIBLING")
+				if selected == "" || sibling == "" || os.WriteFile(selected, []byte("revised original\n"), 0600) != nil || os.WriteFile(sibling, []byte("sibling also changed\n"), 0600) != nil {
+					os.Exit(3)
+				}
+			}
 			if strings.Contains(line, "first-success") {
 				params, _ := frame["params"].(map[string]any)
 				cwd, _ := params["cwd"].(string)
-				if cwd == "" || os.WriteFile(filepath.Join(cwd, "fixture-change.txt"), []byte("native write"), 0600) != nil {
+				input, _ := params["input"].([]any)
+				output := ""
+				for _, raw := range input {
+					if item, ok := raw.(map[string]any); ok {
+						if text, ok := item["text"].(string); ok {
+							output = nativeFixtureOutputDirectory(text)
+						}
+					}
+				}
+				if cwd == "" || output == "" || os.WriteFile(filepath.Join(output, "fixture-change.txt"), []byte("native write"), 0600) != nil {
 					os.Exit(3)
 				}
 			}
@@ -714,6 +876,7 @@ func TestNativeExecutionClaudeCursorChild(t *testing.T) {
 		os.Exit(2)
 	}
 	fmt.Fprintln(trace, "launch", strings.Join(os.Args[3:], " "))
+
 	scanner, out := bufio.NewScanner(os.Stdin), json.NewEncoder(os.Stdout)
 	read := func() (map[string]any, string, bool) {
 		if !scanner.Scan() {
@@ -913,4 +1076,143 @@ func serveNativeExecutionCursor(out *json.Encoder, read func() (map[string]any, 
 			}
 		}
 	}
+}
+
+func TestNativeThreadReceivesInstructionsWithoutWorkspaceFiles(t *testing.T) {
+	plan := agent.SessionPlan{Instructions: []agent.Instruction{{Name: "PARTNER.md", Content: "partner rule"}, {Name: "TEAM.md", Content: "team rule"}}, Workspace: agent.Workspace{Path: t.TempDir(), Managed: true}}
+	thread := nativeThreadRequest("chat", plan, pendingMessage{}, models.RuntimeEnvironment{}, agent.ResourceSelection{}, "key")
+	if thread.Session.DeveloperInstructions == nil || !strings.Contains(*thread.Session.DeveloperInstructions, "partner rule") || !strings.Contains(*thread.Session.DeveloperInstructions, "team rule") {
+		t.Fatalf("native session lost stable instructions: %+v", thread.Session)
+	}
+}
+
+func TestNativeFullAccessApprovalsUseFrozenPolicy(t *testing.T) {
+	for _, provider := range []string{"codex", "claude", "cursor", "workbuddy", "qoder", "qoder-cn", "kimi", "gemini", "grok", "opencode", "pi"} {
+		t.Run(provider, func(t *testing.T) {
+			work := nativeExecutionWork{input: pendingMessage{runtime: runtimeSelection{RuntimeID: provider, PermissionLevel: constants.PermissionLevelFullAccess}}}
+			approve := work.ports(&service{}).Approve
+			options := []agent.AgentApprovalOption{{ID: "deny", Kind: "reject_once"}, {ID: "persist", Kind: "allow_always"}, {ID: "once", Kind: "allow_once"}}
+			choice, err := approve(t.Context(), agent.AgentScope{}, agent.AgentApproval{Options: options})
+			if err != nil || choice != "once" {
+				t.Fatalf("full access still requires manual approval: choice=%q err=%v", choice, err)
+			}
+			choice, err = approve(t.Context(), agent.AgentScope{}, agent.AgentApproval{Options: options[:2]})
+			if err != nil || choice != "persist" {
+				t.Fatalf("native allow-always option lost: choice=%q err=%v", choice, err)
+			}
+			choice, err = approve(t.Context(), agent.AgentScope{}, agent.AgentApproval{Options: options[:1]})
+			if err != nil || choice != "" {
+				t.Fatalf("invented approval without native allow option: choice=%q err=%v", choice, err)
+			}
+			work.input.runtime.PermissionLevel = constants.PermissionLevelAuto
+			choice, err = work.ports(&service{}).Approve(t.Context(), agent.AgentScope{}, agent.AgentApproval{Options: options})
+			if err != nil || choice != "" {
+				t.Fatalf("ordinary permission auto-approved a native command: choice=%q err=%v", choice, err)
+			}
+			work.input.runtime.PermissionLevel = constants.PermissionLevelFullAccess
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			choice, err = work.ports(&service{}).Approve(ctx, agent.AgentScope{}, agent.AgentApproval{Options: options})
+			if !errors.Is(err, context.Canceled) || choice != "" {
+				t.Fatalf("canceled invocation approved a command: choice=%q err=%v", choice, err)
+			}
+			work.input.runtime.WorkspaceReadOnly = true
+			if work.ports(&service{}).Approve != nil {
+				t.Fatal("read-only invocation exposes approvals")
+			}
+		})
+	}
+}
+
+func TestNativeFailureSeparatesApplicationIdentityFromPublicMessage(t *testing.T) {
+	for _, failure := range []error{status_error.RuntimeEventQueueOverflow, errors.Join(status_error.RuntimeEventQueueOverflow, status_error.RuntimeExecutionFailed.WithMessage("secondary native reason"))} {
+		got := nativeExecutionOutcome(agent.TurnResult{StorageError: failure})
+		if got.code != "RuntimeEventQueueOverflow" || got.message != "" {
+			t.Fatalf("application failure leaked or lost identity: code=%q message=%q", got.code, got.message)
+		}
+	}
+}
+
+// TestNativeProductAcquiresReservedPluginSkills 验证实际 Execution 冷准备经进程租约发布固定插件技能。
+func TestNativeProductAcquiresReservedPluginSkills(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	fixture := newNativeProductFixture(t, ctx, "codex", "TestNativeExecutionCodexChild", constants.PermissionLevelAuto)
+	core, _, store, closeRuntime := fixture.open()
+	defer closeRuntime()
+	manager := core.(*service)
+	environment := manager.runtimeEnvironments.(nativeFixtureEnvironment)
+	environment.entry.Detection.Capabilities = agent.CapabilitySet{agent.CapabilitySkillDirectory: true}
+	manager.runtimeEnvironments = environment
+	state := executionPlugin(t, fixture.root, "p1", "reserved plugin bytes", false)
+	// 纯技能包未声明配置字段，不能携带通用 MCP 夹具的 TOKEN。
+	state.Configuration.Secrets = nil
+	state.Installations[0].WakerID = "native-waker"
+	manager.pluginController = installedPluginFixture{states: []models.PluginState{state}}
+	accepted, err := core.Start(ctx, WorkIntent{ClientRequestID: "reserved-native-skills", Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "native-waker"}}, Input: WorkInput{Actor: "user", Content: "first-success", PluginIDs: []string{"p1"}}, Options: WorkOptions{RuntimeID: "codex", Model: "fixture-model", Reasoning: "high", PermissionLevel: constants.PermissionLevelAuto}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitNativeProductStatus(t, ctx, store, accepted, constants.ExecutionStatusCompleted)
+	wire, err := os.ReadFile(fixture.trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(wire), "\n") {
+		var frame struct {
+			// Method 是测试原生端口收到的操作。
+			Method string `json:"method"`
+			// Params 是实际传给原生进程的启动参数。
+			Params struct {
+				// CWD 是本次启动的真实工作目录。
+				CWD string `json:"cwd"`
+			} `json:"params"`
+		}
+		if json.Unmarshal([]byte(line), &frame) != nil || frame.Method != "thread/start" {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(frame.Params.CWD, ".agents", "skills", "office", "SKILL.md"))
+		if err != nil || !strings.Contains(string(body), "reserved plugin bytes") {
+			t.Fatalf("production resource path did not install reserved plugin: %q %v", body, err)
+		}
+		return
+	}
+	t.Fatal("missing native thread startup receipt")
+}
+
+// nativeFixtureBusinessText 只按明确宿主上下文边界分离业务正文，不按短句猜测。
+func nativeFixtureBusinessText(text string) string {
+	business, _, _ := strings.Cut(text, "\n\n<neuxbot-turn-context>\n")
+	return business
+}
+
+// nativeFixtureOutputDirectory 读取真实发送给原生替身的冻结成果目录。
+func nativeFixtureOutputDirectory(text string) string {
+	_, raw, found := strings.Cut(text, "\n\n<neuxbot-turn-context>\n")
+	if !found {
+		return ""
+	}
+	raw, _, found = strings.Cut(raw, "\n</neuxbot-turn-context>")
+	if !found {
+		return ""
+	}
+	var instructions []agent.Instruction
+	if json.Unmarshal([]byte(raw), &instructions) != nil {
+		return ""
+	}
+	for _, instruction := range instructions {
+		if instruction.Name != "Current task directories" {
+			continue
+		}
+		content, ok := strings.CutPrefix(instruction.Content, "New deliverables for this execution: ")
+		if !ok {
+			return ""
+		}
+		var path string
+		if json.NewDecoder(strings.NewReader(content)).Decode(&path) != nil || !filepath.IsAbs(path) {
+			return ""
+		}
+		return path
+	}
+	return ""
 }

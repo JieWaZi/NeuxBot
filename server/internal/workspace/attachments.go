@@ -22,7 +22,7 @@ type AttachmentInput struct {
 type AttachmentReference struct {
 	// Name 是向用户和 Agent 展示的原始文件名。
 	Name string `json:"name"`
-	// Path 是相对 Chat 工作目录的稳定路径。
+	// Path 是相对 Conversation 私有文件目录的稳定路径。
 	Path string `json:"path"`
 	// MediaType 是根据扩展名推断的 MIME 类型。
 	MediaType string `json:"mediaType,omitempty"`
@@ -54,7 +54,7 @@ type resolvedAttachment struct {
 	managed bool
 }
 
-// PrepareChatAttachments 把工作区外附件复制到 Chat 根 attachments/。
+// PrepareChatAttachments 把上传原件复制到 Conversation 的私有 attachments/。
 func PrepareChatAttachments(
 	workingDirectory string,
 	chatID string,
@@ -254,11 +254,19 @@ func uniqueAttachmentName(
 }
 
 func copyFile(sourcePath string, destinationPath string) error {
+	sourceInfo, err := os.Lstat(sourcePath)
+	if err != nil || !sourceInfo.Mode().IsRegular() {
+		return status_error.MessageAttachmentInvalid
+	}
 	source, err := os.Open(sourcePath)
 	if err != nil {
 		return status_error.MessageAttachmentInvalid
 	}
 	defer source.Close()
+	openedInfo, err := source.Stat()
+	if err != nil || !os.SameFile(sourceInfo, openedInfo) {
+		return status_error.MessageAttachmentInvalid
+	}
 	destination, err := os.OpenFile(
 		destinationPath,
 		os.O_CREATE|os.O_EXCL|os.O_WRONLY,
@@ -273,6 +281,45 @@ func copyFile(sourcePath string, destinationPath string) error {
 	}
 	if err := destination.Close(); err != nil {
 		return status_error.MessageAttachmentStorageError
+	}
+	return nil
+}
+
+// MaterializeTaskInputs 只把消息引用的精确原件复制到本轮 tmp，原件仍由 Conversation 拥有。
+func MaterializeTaskInputs(temporary, chatID, messageID string, prepared *PreparedAttachments) error {
+	if prepared == nil || len(prepared.RuntimePaths) == 0 {
+		return nil
+	}
+	if !isSafeDirectoryName(messageID) {
+		return status_error.MessageAttachmentInvalid
+	}
+	inputs, err := ensureManagedRoot(temporary, "inputs")
+	if err != nil {
+		return err
+	}
+	target := filepath.Join(inputs, messageID)
+	resolved := make([]resolvedAttachment, 0, len(prepared.RuntimePaths))
+	for index, path := range prepared.RuntimePaths {
+		if index >= len(prepared.References) {
+			return status_error.MessageAttachmentInvalid
+		}
+		reference := prepared.References[index]
+		resolved = append(resolved, resolvedAttachment{sourcePath: path, name: reference.Name, mediaType: reference.MediaType, managed: true})
+	}
+	_, paths, err := materializeAttachmentReferences(resolved, target, chatID, messageID)
+	if err != nil {
+		return err
+	}
+	rollback := prepared.Rollback
+	prepared.RuntimePaths = paths
+	prepared.Rollback = func() error {
+		if err := validateOwner(target, constants.ChatMessageAttachmentsOwnerKind, chatID, messageID); err != nil {
+			return err
+		}
+		if err := removeValidatedDirectory(target); err != nil {
+			return err
+		}
+		return rollback()
 	}
 	return nil
 }

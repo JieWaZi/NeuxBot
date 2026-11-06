@@ -3,7 +3,10 @@ import type { AllyChatMessage } from "./chat-projection";
 
 /** 仅时间线最新助手跟随真实执行状态，历史头像保持空闲。 */
 export function messageCompanionActivity(
-  message: Pick<AllyChatMessage, "displayParts" | "status"> & {
+  message: Pick<
+    AllyChatMessage,
+    "displayParts" | "status" | "preparingSession"
+  > & {
     isLast: boolean;
   },
   interaction: "waiting" | "stopping" | undefined = undefined,
@@ -42,5 +45,7 @@ export function messageCompanionActivity(
     if (part?.type === "tool" || part?.type === "process_commentary")
       return "thinking";
   }
-  return "starting";
+  return message.status === "pending" && message.preparingSession
+    ? "connecting"
+    : "thinking";
 }

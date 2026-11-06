@@ -624,6 +624,73 @@ function ChatThreadHistoryHarness({
 }
 
 describe("chat composer", () => {
+  it("错误替换目录权限顶栏，关闭后恢复且保留输入内容", async () => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <ChatQueueProvider>
+        <ChatThreadLayoutHarness
+          sendFailure={{
+            kind: "rejected",
+            message: "Internal error: Free usage limit reached.",
+          }}
+        />
+      </ChatQueueProvider>,
+    );
+    const editor = screen.getByRole("textbox", { name: "输入消息" });
+    await user.type(editor, "保留这段草稿");
+    const alert = screen.getByRole("alert");
+    const frame = container.querySelector("[data-chat-composer-frame]");
+    expect(alert).toHaveTextContent("Free usage limit reached.");
+    expect(alert).not.toHaveTextContent("Internal error:");
+    expect(alert.closest("[data-chat-composer-context-bar]")).not.toBeNull();
+    expect(frame).toHaveClass("bg-status-danger-surface");
+    expect(alert).not.toHaveClass("border", "rounded-md", "mt-3");
+    expect(
+      screen.queryByTestId("composer-workspace-control"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("composer-permission-control"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.getByTestId("composer-workspace-control"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("composer-permission-control"),
+    ).toBeInTheDocument();
+    expect(frame).toHaveClass("bg-composer-context");
+    expect(frame).not.toHaveClass("bg-status-danger-surface");
+    expect(screen.getByRole("textbox", { name: "输入消息" })).toBe(editor);
+    expect(editor).toHaveTextContent("保留这段草稿");
+  });
+  it("最新执行失败只在输入框上方显示一次并可关闭", () => {
+    const { container } = render(
+      <ChatQueueProvider>
+        <ChatThreadHistoryHarness
+          messages={[
+            { id: "user-1", role: "user", content: "你好" },
+            {
+              id: "failed-1",
+              role: "assistant",
+              content: "",
+              status: "failed",
+              errorCode: "QUOTA_EXHAUSTED",
+              errorMessage: "[RuntimeExecutionFailed][50000000045]",
+            },
+          ]}
+        />
+      </ChatQueueProvider>,
+    );
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("当前额度已用尽");
+    expect(alert.closest("[data-chat-composer]")).not.toBeNull();
+    expect(
+      container.querySelector("[data-chat-scroll-viewport] [data-chat-error]"),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
   it("历史滚动区关闭浏览器原生锚定，避免与消息锚点补偿竞争", () => {
     const { container } = render(
       <ChatQueueProvider>

@@ -5,13 +5,65 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversationfixture"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
+	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
+
+func TestExplicitExistingArtifactCaptureKeepsOnlyReferencedFileAndImmutableDiff(t *testing.T) {
+	manager, chatID := forkFixture(t)
+	ctx := t.Context()
+	chat, err := manager.LoadExecutionChat(ctx, chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous, err := workspace.EnsureTaskDirectories(chat.WorkspaceDirectory, "previous-execution")
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected := filepath.Join(previous.Outputs, "report.txt")
+	sibling := filepath.Join(previous.Outputs, "sibling.txt")
+	for _, path := range []string{selected, sibling} {
+		if err := os.WriteFile(path, []byte("original\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	references, err := workspace.ResolveProjectFiles([]workspace.ProjectLink{{EntryName: "outputs", SourcePath: filepath.Join(chat.WorkspaceDirectory, "outputs")}}, []string{selected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recording, err := manager.BeginFileChanges(ctx, chat, "after", "", nil, []string{references[0].Path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recording.Close()
+	for _, path := range []string{selected, sibling} {
+		if err := os.WriteFile(path, []byte("revised\n"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := recording.Finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := manager.GetMessageFileChanges(ctx, chatID, "after")
+	if err != nil || len(summary.Files) != 1 || summary.Files[0].AbsolutePath != selected {
+		t.Fatalf("explicit old artifact edit omitted or expanded: %+v %v", summary, err)
+	}
+	if err := os.WriteFile(selected, []byte("later execution\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	diff, err := manager.readRecordedFileDiff(ctx, chatID, "after", selected)
+	data, _ := json.Marshal(diff)
+	if err != nil || !strings.Contains(string(data), "revised") || strings.Contains(string(data), "later execution") {
+		t.Fatalf("historical result read current bytes: %s %v", data, err)
+	}
+}
 
 func TestFileChangesReadKeepsActivePendingAndStartupRecoversOnlyItsOriginalBaseline(t *testing.T) {
 	service, chatID := forkFixture(t)
@@ -19,11 +71,11 @@ func TestFileChangesReadKeepsActivePendingAndStartupRecoversOnlyItsOriginalBasel
 	if err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(chat.WorkspaceDirectory, "observed.txt")
+	file := filepath.Join(chatTaskOutputDirectory(t, chat, "after"), "observed.txt")
 	if err := os.WriteFile(file, []byte("before\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	recording, err := service.BeginFileChanges(context.Background(), chat, "after", "", nil)
+	recording, err := service.BeginFileChanges(context.Background(), chat, "after", "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +158,7 @@ func TestLateFileChangesAdvanceUnreadVersionWithoutReopeningExecution(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	recording, err := recovered.BeginFileChanges(ctx, chat, "readable", "", nil)
+	recording, err := recovered.BeginFileChanges(ctx, chat, "readable", "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +173,7 @@ func TestLateFileChangesAdvanceUnreadVersionWithoutReopeningExecution(t *testing
 	if _, err = results.MarkViewed(ctx, first.OwnerKind, first.OwnerID, first.LatestVersion, first.AvailableAt+1); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(chat.WorkspaceDirectory, "result.txt"), []byte("new\n"), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(chatTaskOutputDirectory(t, chat, "readable"), "result.txt"), []byte("new\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err = recording.Finish(ctx); err != nil {
@@ -154,11 +206,11 @@ func TestForkClonesOnlySelectedHistoricalFileRecordAndSurvivesSourceDeletion(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	file := filepath.Join(chat.WorkspaceDirectory, "branch-file.txt")
+	file := filepath.Join(chatTaskOutputDirectory(t, chat, "before"), "branch-file.txt")
 	if err = os.WriteFile(file, []byte("before\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	recording, err := service.BeginFileChanges(ctx, chat, "before", "", nil)
+	recording, err := service.BeginFileChanges(ctx, chat, "before", "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +264,7 @@ func TestFileResultReadDoesNotExposeUncommittedCompletionAndPreservesExactPath(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	recording, err := service.BeginFileChanges(ctx, chat, "after", "", nil)
+	recording, err := service.BeginFileChanges(ctx, chat, "after", "", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +272,7 @@ func TestFileResultReadDoesNotExposeUncommittedCompletionAndPreservesExactPath(t
 	if err = recording.PublishPending(ctx); err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(chat.WorkspaceDirectory, "space and\ncontrol.txt ")
+	target := filepath.Join(chatTaskOutputDirectory(t, chat, "after"), "space and\ncontrol.txt ")
 	if err = os.WriteFile(target, []byte("new\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -243,5 +295,49 @@ func TestFileResultReadDoesNotExposeUncommittedCompletionAndPreservesExactPath(t
 	diff, err := service.GetMessageFileChange(ctx, chatID, "after", exact)
 	if err != nil || diff.Path != exact || diff.Comparison == nil {
 		t.Fatalf("exact filename changed at API boundary: %+v %v", diff, err)
+	}
+}
+
+// chatTaskOutputDirectory 复用接纳使用的执行成果目录。
+func chatTaskOutputDirectory(t *testing.T, chat models.Chat, executionID string) string {
+	t.Helper()
+	paths, err := workspace.EnsureTaskDirectories(chat.WorkspaceDirectory, executionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return paths.Outputs
+}
+
+func TestDefaultFileCaptureExcludesSharedPartnerSiblingTasksAndTemporaryFiles(t *testing.T) {
+	service, chatID := forkFixture(t)
+	ctx := context.Background()
+	chat, err := service.LoadExecutionChat(ctx, chatID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := workspace.EnsureTaskDirectories(chat.WorkspaceDirectory, "after")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sibling, err := workspace.EnsureTaskDirectories(chat.WorkspaceDirectory, "another-execution")
+	if err != nil {
+		t.Fatal(err)
+	}
+	recording, err := service.BeginFileChanges(ctx, chat, "after", "", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recording.Close()
+	for _, file := range []string{filepath.Join(paths.Outputs, "this-task.txt"), filepath.Join(sibling.Outputs, "another-chat.txt"), filepath.Join(paths.Temporary, "input.txt"), filepath.Join(chat.WorkspaceDirectory, "root-file.txt")} {
+		if err := os.WriteFile(file, []byte("new"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := recording.Finish(ctx); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := service.GetMessageFileChanges(ctx, chatID, "after")
+	if err != nil || len(summary.Files) != 1 || summary.Files[0].AbsolutePath != filepath.Join(paths.Outputs, "this-task.txt") {
+		t.Fatalf("unrelated shared cwd changes were attributed to this execution: %+v, %v", summary, err)
 	}
 }

@@ -8,29 +8,30 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 )
 
-func TestExecutionWorkspaceProjectsInstructionsAndDeletion(t *testing.T) {
+func TestAgentWorkspaceKeepsProjectOriginalAndRejectsChatDeletion(t *testing.T) {
 	project := t.TempDir()
 	if err := os.WriteFile(filepath.Join(project, "AGENTS.md"), []byte("项目约束"), 0o600); err != nil {
 		t.Fatalf("write project instruction: %v", err)
 	}
 	root := filepath.Join(t.TempDir(), "chat-1")
-	if err := EnsureExecutionWorkspace(root, "chat-1", "waker-1", []ProjectLink{{EntryName: "ally", SourcePath: project}}); err != nil {
-		t.Fatalf("EnsureExecutionWorkspace() error = %v", err)
+	if err := EnsureAgentWorkspace(root, "waker-1"); err != nil {
+		t.Fatalf("EnsureAgentWorkspace() error = %v", err)
 	}
 	generatedFiles := filepath.Join(
 		root,
-		constants.ExecutionWorkspaceAttachmentsDirectory,
-		constants.ExecutionWorkspaceGeneratedFilesDirectory,
+		constants.TaskOutputsDirectoryName,
 	)
 	if info, err := os.Stat(generatedFiles); err != nil || !info.IsDir() {
 		t.Fatalf("generated files directory = %v, error = %v", info, err)
 	}
-	linked, err := os.Readlink(filepath.Join(root, "projects", "ally"))
-	if err != nil || linked != project {
-		t.Fatalf("project link = %q, error = %v", linked, err)
+	if _, err := os.Lstat(filepath.Join(root, "projects")); !os.IsNotExist(err) {
+		t.Fatalf("created project alias: %v", err)
 	}
-	if err := DeleteExecutionWorkspace(root, "chat-1"); err != nil {
-		t.Fatalf("DeleteExecutionWorkspace() error = %v", err)
+	if err := ValidateAgentWorkspaceDeletion(root, "another-waker"); err == nil {
+		t.Fatal("foreign partner deletion accepted shared partner directory")
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("shared partner directory was removed: %v", err)
 	}
 	if _, err := os.Stat(project); err != nil {
 		t.Fatalf("real project was removed: %v", err)
@@ -38,13 +39,11 @@ func TestExecutionWorkspaceProjectsInstructionsAndDeletion(t *testing.T) {
 }
 
 func TestThreadExecutionWorkspaceSharedByMultipleChats(t *testing.T) {
-	project := t.TempDir()
 	root := filepath.Join(t.TempDir(), "thread-1")
 	if err := EnsureThreadExecutionWorkspace(
 		root,
 		"thread-1",
 		"lead-waker",
-		[]ProjectLink{{EntryName: "share", SourcePath: project}},
 	); err != nil {
 		t.Fatalf("EnsureThreadExecutionWorkspace() error = %v", err)
 	}
@@ -52,7 +51,6 @@ func TestThreadExecutionWorkspaceSharedByMultipleChats(t *testing.T) {
 		root,
 		"thread-1",
 		"lead-waker",
-		[]ProjectLink{{EntryName: "share", SourcePath: project}},
 	); err != nil {
 		t.Fatalf("EnsureThreadExecutionWorkspace() idempotent error = %v", err)
 	}
@@ -62,14 +60,12 @@ func TestThreadExecutionWorkspaceSharedByMultipleChats(t *testing.T) {
 		"thread-1",
 		"member-chat",
 		"member-waker",
-		filepath.Join(root, constants.ExecutionWorkspaceProjectsDirectory),
 	); err != nil {
 		t.Fatalf("EnsureThreadMemberExecutionWorkspace() error = %v", err)
 	}
 	generatedFiles := filepath.Join(
 		memberRoot,
-		constants.ExecutionWorkspaceAttachmentsDirectory,
-		constants.ExecutionWorkspaceGeneratedFilesDirectory,
+		constants.TaskOutputsDirectoryName,
 	)
 	if info, err := os.Stat(generatedFiles); err != nil || !info.IsDir() {
 		t.Fatalf("member generated files directory = %v, error = %v", info, err)
@@ -95,7 +91,7 @@ func TestThreadExecutionWorkspaceSharedByMultipleChats(t *testing.T) {
 	if owner.Kind != constants.ThreadExecutionWorkspaceOwnerKind || owner.ThreadID != "thread-1" {
 		t.Fatalf("owner = %+v, want thread-1 marker", owner)
 	}
-	if err := DeleteThreadExecutionWorkspace(root, "thread-1"); err != nil {
-		t.Fatalf("DeleteThreadExecutionWorkspace() error = %v", err)
+	if err := ValidateThreadExecutionWorkspaceDeletion(root, "thread-1"); err != nil {
+		t.Fatalf("ValidateThreadExecutionWorkspaceDeletion() error = %v", err)
 	}
 }

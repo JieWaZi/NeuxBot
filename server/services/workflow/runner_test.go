@@ -291,10 +291,27 @@ func TestStructuredCandidateCannotReplaceExecutionSuccessAndCannotBeOverwritten(
 	if result.Status != constants.WorkflowRunStatusWaiting {
 		t.Fatal("candidate released before execution success")
 	}
-	s.finishEffect(context.Background(), effect, WorkerReceipt{ChatID: effect.ChatID, ExecutionID: effect.ExecutionID, Status: constants.ExecutionStatusFailed, ErrorCode: "MODEL_FAILED"}, nil)
+	s.finishEffect(context.Background(), effect, WorkerReceipt{ChatID: effect.ChatID, ExecutionID: effect.ExecutionID, Status: constants.ExecutionStatusFailed, ErrorCode: "RuntimeWorkspaceScopeUnsupported", ErrorParams: map[string]interface{}{"MaxDirectories": 2}, ErrorMessageSource: constants.ErrorMessageSourceLocalized}, nil)
 	result = runTicks(t, s, run.ID, 3)
 	if result.Status != constants.WorkflowRunStatusFailed {
 		t.Fatalf("submitted then failed counted as success: %+v", result)
+	}
+	state, err = s.runs.LoadRunState(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, effect := range state.Effects {
+		if effect.Failure != nil {
+			data, _ := effect.Failure.Data.(map[string]any)
+			if data["code"] == "RuntimeWorkspaceScopeUnsupported" {
+				params, _ := data["params"].(map[string]any)
+				found = params["MaxDirectories"] == float64(2) && data["messageSource"] == "localized"
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("persisted worker failure lost presentation: %+v", state.Effects)
 	}
 }
 

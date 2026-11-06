@@ -70,7 +70,7 @@ import { resolveGitWorkspaceDirectories } from "../model/git-workspace-directori
 import { useChatWorkspaceBindings } from "../components/use-chat-workspace-bindings";
 import { useComposerScopeTransition } from "../model/use-composer-scope-transition";
 import { useChatViewState } from "../model/use-chat-view-state";
-import { projectFilesScopePath } from "../model/project-files-scope";
+import { chatFileRoots } from "../model/project-files-scope";
 import {
   conversationKeyOf,
   useChatInvocationGuard,
@@ -224,6 +224,7 @@ function ChatView({
       permissionLevel: PermissionLevel;
       reasoning: string;
       fast: boolean | null;
+      contextWindow: string;
       runtimeId: string;
     }>;
     runtimeId: string;
@@ -292,6 +293,7 @@ function ChatView({
     codeReferenceRequest,
     fileSource,
     fast,
+    contextWindow,
     model,
     openedCodeReference,
     permissionLevel,
@@ -518,19 +520,24 @@ function ChatView({
   const matchesLastExecutionSelection =
     selectedAccountId === (detailQuery.data?.chat?.lastAccountId || "system") &&
     effectiveRuntimeID === detailQuery.data?.chat?.lastRuntimeId;
+  const lastModel = detailQuery.data?.chat?.lastModel;
+  const requestedModel =
+    model ||
+    (presentation === "composer" ? entry?.defaults?.model : undefined) ||
+    (matchesLastExecutionSelection ? lastModel : undefined) ||
+    entry?.defaults?.model ||
+    undefined;
   const executionSelection = useExecutionSelection({
     runtime: selectedRuntime,
     value: {
       runtimeId: effectiveRuntimeID,
       accountId: selectedAccountId,
-      model:
-        model ||
-        (presentation === "composer" ? entry?.defaults?.model : undefined) ||
-        (matchesLastExecutionSelection
-          ? detailQuery.data?.chat?.lastModel
-          : undefined) ||
-        entry?.defaults?.model ||
-        undefined,
+      model: requestedModel,
+      contextWindow:
+        contextWindow ??
+        (matchesLastExecutionSelection && requestedModel === lastModel
+          ? detailQuery.data?.chat?.lastContextWindow
+          : undefined),
       fast:
         fast === null
           ? undefined
@@ -586,6 +593,9 @@ function ChatView({
   );
   const availableReasoningOptions = executionSelection.reasoningOptions;
   const selectedReasoning = executionSelection.selection.reasoning;
+  const selectedFast = executionSelection.fastSupported
+    ? (executionSelection.selection.fast ?? false)
+    : undefined;
   const summaryRuntime = historicalRuntime ?? selectedRuntime;
   const summaryAccountId = detailQuery.data?.chat?.lastAccountId || "system";
   const summaryAccount = (accountsQuery.data?.resources ?? []).find(
@@ -616,6 +626,7 @@ function ChatView({
       permissionLevel: PermissionLevel;
       reasoning: string;
       fast: boolean | null;
+      contextWindow: string;
       runtimeId: string;
     }>,
   ) => {
@@ -672,9 +683,14 @@ function ChatView({
     managed: Boolean(activeChatId && !detailQuery.data?.chat?.projectName),
   });
   const terminalWorkingDirectory =
-    detailQuery.data?.chat?.additionalWorkingDirectories?.[0] ?? "";
+    detailQuery.data?.chat?.additionalWorkingDirectories?.[0] ??
+    workspaceDirectory;
   const fileRoots = (() => {
-    if (activeChatId && workspaceDirectory) return [workspaceDirectory];
+    if (activeChatId && workspaceDirectory)
+      return chatFileRoots(
+        workspaceDirectory,
+        detailQuery.data?.chat?.additionalWorkingDirectories,
+      );
     const project = selectedDraftProject;
     const projectRoots = (project?.sources ?? [])
       .filter((source) => source.available && source.path)
@@ -796,7 +812,8 @@ function ChatView({
       runtimeId: selectedRuntime?.id ?? "",
       model: selectedModel,
       reasoning: selectedReasoning,
-      fast: executionSelection.selection.fast,
+      fast: selectedFast,
+      contextWindow: executionSelection.selection.contextWindow,
       permissionLevel: selectedPermissionLevel,
       skillIds: selectedSkillIDs,
       selectedSkills,
@@ -855,6 +872,7 @@ function ChatView({
         model: selection?.model ?? "",
         reasoning: selection?.reasoning ?? "",
         fast: selection?.fast,
+        contextWindow: selection?.contextWindow,
         permissionLevel: selection?.permissionLevel ?? "auto",
         attachments: attachmentPaths.map((sourcePath) => ({ sourcePath })),
         skillIds: selection?.skillIds ?? [],
@@ -1077,11 +1095,18 @@ function ChatView({
     selectedDraftProject?.name ||
     (workspaceDirectory ? workspaceDirectory.split(/[\\/]/).pop() : "") ||
     t("selectWorkspace");
-  const permissionWarning = selectedPermissionUnsupported
-    ? t("permissionUnsupported")
-    : defaultPermissionWasDowngraded
-      ? t("permissionDowngraded")
-      : "";
+  const permissionEvidenceReady =
+    !executionSelection.loading &&
+    !executionSelection.catalogPending &&
+    (!executionSelection.usesNativeCatalog ||
+      (executionSelection.catalogState === "fresh" && selectedModelOption));
+  const permissionWarning = !permissionEvidenceReady
+    ? ""
+    : selectedPermissionUnsupported
+      ? t("permissionUnsupported")
+      : defaultPermissionWasDowngraded
+        ? t("permissionDowngraded")
+        : "";
 
   const greetingPhrases = useMemo(
     () => [
@@ -1143,12 +1168,19 @@ function ChatView({
     activeChatId,
     availableReasoningOptions,
     modelOptionsOverride: availableModels,
+    defaultModel: executionSelection.defaultModel,
     catalogState: executionSelection.catalogState,
     catalogIssue: executionSelection.catalogIssue,
     catalogPending: executionSelection.catalogPending,
     refreshCatalog: executionSelection.refreshCatalog,
     fastSupported: executionSelection.fastSupported,
-    selectedFast: executionSelection.selection.fast,
+    selectedFast,
+    selectedContextWindow: executionSelection.selection.contextWindow,
+    enableContextWindow: true,
+    sessionSwitchPending: Boolean(
+      sessionSwitch?.reason === "switch" &&
+      sessionSwitch.chatId === activeChatId,
+    ),
     thinkingPending: Boolean(
       selectedAccount && thinkingQuery.isPending && thinkingQuery.isFetching,
     ),
@@ -1271,7 +1303,6 @@ function ChatView({
       composerConnectors: enabledConnectors,
       composerConnectorsError: connectorsQuery.isError,
       composerFileRoots: fileRoots,
-      composerFileScopePath: projectFilesScopePath(activeChatId) || undefined,
       availableSkillIds: availableSkillIDs,
       availablePluginIds: pluginsQuery.data
         ? new Set(enabledPlugins.map((plugin) => plugin.id))

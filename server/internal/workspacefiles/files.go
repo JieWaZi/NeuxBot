@@ -68,6 +68,13 @@ func fileError(operation string, err error) error {
 
 // openFile 使用 os.Root 再次约束真实访问，避免检查后的目录软链接替换越界。
 func openFile(root, target string) (*os.File, error) {
+	before, err := os.Lstat(target)
+	if err != nil {
+		return nil, fileError("stat-open-file", err)
+	}
+	if before.Mode()&os.ModeSymlink != 0 {
+		return nil, status_error.WorkspacePathInvalid
+	}
 	handle, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, fileError("open-root", err)
@@ -80,6 +87,13 @@ func openFile(root, target string) (*os.File, error) {
 	file, err := handle.Open(relative)
 	if err != nil {
 		return nil, fileError("open-file", err)
+	}
+	after, err := file.Stat()
+	actual, resolveErr := filepath.EvalSymlinks(target)
+	current, statErr := os.Lstat(target)
+	if err != nil || resolveErr != nil || statErr != nil || filepath.Clean(actual) != filepath.Clean(target) || !os.SameFile(before, after) || !os.SameFile(after, current) {
+		file.Close()
+		return nil, status_error.WorkspaceResourceConflict
 	}
 	return file, nil
 }

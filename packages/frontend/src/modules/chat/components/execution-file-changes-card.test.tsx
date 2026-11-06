@@ -139,6 +139,32 @@ describe("independent workspace outcome", () => {
       rootPath: "/project",
     });
   });
+  it("精确旧成果保留原路径并且不把文件身份当作目录范围", async () => {
+    const path = "/project/outputs/yesterday/report.txt";
+    readSummary.mockResolvedValue({
+      state: "ready",
+      totalFiles: 1,
+      complete: true,
+      roots: [{ id: "selected", path, file: true }],
+      files: [
+        {
+          rootId: "selected",
+          path: "report.txt",
+          absolutePath: path,
+          content: "text",
+        },
+      ],
+    });
+    const { onOpenFile } = mount();
+    await screen.findByText("report.txt");
+    await userEvent.click(screen.getByRole("button", { name: "查看变更" }));
+    expect(onOpenFile).toHaveBeenCalledExactlyOnceWith({
+      messageId: "reply",
+      path,
+      name: "report.txt",
+      rootPath: undefined,
+    });
+  });
   it("多文件入口可选择折叠行，沿用原消息和文件身份且不重复读取摘要", async () => {
     readSummary.mockResolvedValue({
       state: "ready",

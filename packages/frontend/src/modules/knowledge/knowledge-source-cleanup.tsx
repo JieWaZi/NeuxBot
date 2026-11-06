@@ -1,3 +1,4 @@
+import { i18n } from "@/shared/i18n";
 import { useState } from "react";
 import {
   useQuery,
@@ -72,7 +73,7 @@ function pendingCleanupOptions(library: Library) {
           return rows.filter((row) => row.state !== "completed");
         if (!items.length)
           throw new ApiError(
-            "Incomplete cleanup list",
+            i18n.t("knowledgeDocuments:deletePending"),
             "KNOWLEDGE_CLEANUP_LIST",
           );
       }

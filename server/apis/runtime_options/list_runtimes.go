@@ -18,8 +18,20 @@ type RuntimeModelOption struct {
 	Group string `json:"group,omitempty"`
 	// 分组名称
 	GroupName string `json:"groupName,omitempty"`
+	// 免费模型
+	Free bool `json:"free,omitempty"`
+	// 积分倍率
+	CreditMultiplier *float64 `json:"creditMultiplier,omitempty"`
 	// 默认推理
 	DefaultReasoning string `json:"defaultReasoning,omitempty"`
+	// 当前上下文
+	ContextWindowTokens int64 `json:"contextWindowTokens,omitempty"`
+	// 最大上下文
+	MaxContextWindowTokens int64 `json:"maxContextWindowTokens,omitempty"`
+	// 默认上下文档位
+	DefaultContextWindow string `json:"defaultContextWindow,omitempty"`
+	// 可选上下文档位
+	ContextWindowOptions []RuntimeContextWindowOption `json:"contextWindowOptions,omitempty"`
 	// 已确认逐模型设置
 	ConfigurationKnown bool `json:"configurationKnown"`
 	// 支持 Fast
@@ -50,6 +62,14 @@ type RuntimeReasoningOption struct {
 	ID string `json:"id"`
 	// 名称
 	Name string `json:"name"`
+}
+
+// 上下文窗口选项
+type RuntimeContextWindowOption struct {
+	// 原生档位标识
+	ID string `json:"id"`
+	// 窗口 token 数
+	Tokens int64 `json:"tokens"`
 }
 
 // 运行时诊断

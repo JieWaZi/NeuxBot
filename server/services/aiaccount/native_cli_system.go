@@ -74,7 +74,7 @@ func acquireNativeCLISystemAccount(ctx context.Context, request agent.AccountReq
 		return agent.AccountLease{}, err
 	}
 	return agent.AccountLease{
-		ConfigHome: profile.configHome, Environment: profile.environment,
+		ConfigHome: profile.configHome, DataHome: profile.dataHome, Environment: profile.environment,
 		VerifyLogin: func(ctx context.Context) error {
 			_, err := recheck(ctx)
 			return err

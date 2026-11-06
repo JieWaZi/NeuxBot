@@ -191,3 +191,66 @@ func TestExecutionPositionTailKeepsFinishedInvocationAcrossGrowingBody(t *testin
 		t.Fatalf("exact receipt=%+v %v", receipt, err)
 	}
 }
+
+func TestExecutionOutcomeKeepsApplicationAndRuntimeFailureSeparate(t *testing.T) {
+	_, m := newRecoveryTestService(t, t.TempDir())
+	chatID := "12345678901234567890123456789012"
+	_, err := m.logStore.Create(chatID, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "target", Data: []byte(`{}`)},
+		{Type: constants.ChatEventTypeExecutionFailed, ExecutionID: "target", Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusFailed, ErrorCode: "RuntimeWorkspaceScopeUnsupported", ErrorParams: map[string]interface{}{"MaxDirectories": 2}, ErrorMessageSource: constants.ErrorMessageSourceLocalized, FailureCode: constants.RuntimeFailureCodeEventDelivery})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := m.ReadExecutionOutcome(t.Context(), chatID, "target")
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := executionOutcomeEvent(outcome)
+	if outcome.FailureCode != constants.RuntimeFailureCodeEventDelivery || event.ErrorCode != "RuntimeWorkspaceScopeUnsupported" || event.ErrorParams["MaxDirectories"] != float64(2) || event.ErrorMessageSource != "localized" || event.ErrorMessage != "" {
+		t.Fatalf("outcome=%+v event=%+v", outcome, event)
+	}
+}
+
+func TestExecutionReadsPreserveExplicitFailureSource(t *testing.T) {
+	for _, source := range []constants.ErrorMessageSource{constants.ErrorMessageSourceUnspecified, constants.ErrorMessageSourceLocalized, constants.ErrorMessageSourcePublic} {
+		_, m := newRecoveryTestService(t, t.TempDir())
+		ctx := t.Context()
+		chatID := "12345678901234567890123456789012"
+		_, err := m.logStore.Create(chatID, []eventlog.AppendInput{
+			{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker"})},
+			{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "target", Data: []byte(`{}`)},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		store := m.logStore.(*conversationJournal).Store
+		session := agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: chatID}
+		key := agent.NativeResultKey{Session: session, InvocationID: "native-failure"}
+		if err := store.CommitNativeResult(ctx, agent.NativeResult{Key: key, Failure: &acpmeta.NativeTurnFailure{Message: "Native quota exhausted"}, Turn: acpmeta.NativeTurn{InvocationID: key.InvocationID, Origin: acpmeta.NativeTurnOriginHost, Status: acpmeta.NativeTurnFailed, ConsumedInputIDs: []string{"native-input"}}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := conversationfixture.Commit(ctx, store, chatID, []agent.ConversationChange{
+			{Binding: &agent.NativeBinding{Session: session}},
+			{Input: &agent.HostInput{Session: session, HostInvocationID: "host", AdapterInputID: "native-input", ExecutionID: "target", AssistantMessageID: "target"}},
+			{Consumption: &agent.InputConsumption{HostInvocationID: "host", Result: key}},
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := m.logStore.Append(chatID, []eventlog.AppendInput{{Type: constants.ChatEventTypeExecutionFailed, ExecutionID: "target", Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusFailed, ErrorCode: "RuntimeQuotaExhausted", ErrorMessage: "Native quota exhausted", ErrorMessageSource: source, FailureCode: constants.RuntimeFailureCodeQuotaExhausted})}}); err != nil {
+			t.Fatal(err)
+		}
+		initial, err := m.ReadInitialExecution(ctx, chatID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		outcome, err := m.ReadExecutionOutcome(ctx, chatID, "target")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if initial.InitialExecution == nil || initial.InitialExecution.ErrorMessageSource != source || outcome.ErrorMessageSource != source || outcome.FailureCode != constants.RuntimeFailureCodeQuotaExhausted {
+			t.Fatalf("source=%q initial=%+v outcome=%+v", source, initial.InitialExecution, outcome)
+		}
+	}
+}

@@ -28,3 +28,17 @@ func TestNativeScopedEntrypointRejectsBeforeOpeningCodex(t *testing.T) {
 		t.Fatalf("entrypoint allowed inherited native MCP: %v", err)
 	}
 }
+
+func TestNativeAgentDomainScopeReachesCodex(t *testing.T) {
+	manager := newMessageTestService(t, t.TempDir())
+	domains := []string{"memory", "interaction"}
+	_, err := manager.execution.Start(t.Context(), WorkIntent{ClientRequestID: "scoped-agent-domain-input",
+		Chat: ChatTarget{Create: &CreateChatSpec{WakerID: "waker-1"}}, Input: WorkInput{Actor: "user", Content: "scoped task"},
+		Options: WorkOptions{RuntimeID: constants.RuntimeIDCodex, PermissionLevel: constants.PermissionLevelFullAccess, AllowedAgentDomains: &domains}})
+	if err != nil {
+		t.Fatalf("host capability domain scope rejected: %v", err)
+	}
+	if len(manager.nativeCalls(t, "initialize")) != 1 {
+		t.Fatal("host-scoped request did not reach native client")
+	}
+}

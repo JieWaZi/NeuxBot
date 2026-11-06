@@ -64,15 +64,6 @@ func NewStore(root string) (*Store, error) {
 	return s, nil
 }
 
-// RegisterTeamChat fixes the log address before the first committed Chat change.
-func (s *Store) RegisterTeamChat(threadID, chatID string) error {
-	slot := s.chatSlot(chatID)
-	slot.mu.Lock()
-	defer slot.mu.Unlock()
-	_, err := s.catalog.RegisterTeamChat(threadID, chatID)
-	return err
-}
-
 func (s *Store) LogPath(chatID string) (string, error) {
 	address, err := s.catalog.Address(chatID)
 	return address.LogPath, err
@@ -90,7 +81,7 @@ func (s *Store) FileChangesDirectory(chatID string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(filepath.Dir(path), "file-results", chatID), nil
+	return filepath.Join(filepath.Dir(filepath.Dir(path)), "file-results"), nil
 }
 
 func (s *Store) chatSlot(id string) *streamSlot {
@@ -385,6 +376,8 @@ func describe(row diskRow, where location, at int64) rowIndex {
 			r.Kind = indexNativeTextAppend
 		case agent.MessageReplace:
 			r.Kind = indexNativeTextReplace
+		case nativeToolOutput:
+			r.Kind, r.Tool = indexNativeToolOutput, row.Fragment.Change.ToolCallID
 		case agent.MessageToolSnapshot:
 			r.Kind, r.Tool = indexNativeTool, row.Fragment.Change.ToolCallID
 			if row.Fragment.Patch != nil {

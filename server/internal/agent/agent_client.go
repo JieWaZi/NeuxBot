@@ -13,6 +13,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
+	acp "github.com/JieWaZi/acp-go-sdk"
 	"github.com/JieWaZi/acp-go/pkg/acpclient"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	native "github.com/JieWaZi/acp-go/pkg/agentclient"
@@ -23,7 +24,6 @@ import (
 	"github.com/JieWaZi/acp-go/pkg/qoder"
 	"github.com/JieWaZi/acp-go/pkg/standardacp"
 	"github.com/JieWaZi/acp-go/pkg/workbuddy"
-	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // AgentClient is the direct execution boundary used by Thread and Turn.
@@ -180,19 +180,19 @@ type AgentForkRequest struct {
 
 // AgentSessionOption describes the effective native setting and allowed values.
 type AgentSessionOption struct {
-	// ID 是原生配置选项标识。
+	// ID identifies the native configuration option.
 	ID string
-	// Category 表示模型、强度等原生配置类别。
+	// Category identifies the native configuration category, such as model or reasoning effort.
 	Category string
-	// Name 是原生选项名称。
+	// Name is the native option name.
 	Name string
-	// Description 是原生选项说明。
+	// Description describes the native option.
 	Description string
-	// Value 是原生当前观测值。
+	// Value is the currently observed native value.
 	Value AgentOptionValue
-	// Choices 是枚举选项的可选值。
+	// Choices lists the allowed enumeration values.
 	Choices []AgentChoice
-	// acknowledgedID 是 Claude 确认的最近一次枚举选择，与当前观测值分别保留。
+	// acknowledgedID retains Claude's last acknowledged selection separately from the observed value.
 	acknowledgedID string
 }
 
@@ -206,28 +206,32 @@ type AgentOptionValue struct {
 
 // AgentChoice describes a native selection or mode.
 type AgentChoice struct {
-	// ID is the native value or mode ID.
+	// ID identifies a native model, setting value, or mode.
 	ID string
-	// Name is the native label.
+	// Name is the native display name.
 	Name string
-	// Description is the native help text.
+	// Description describes the native option.
 	Description string
-	// Group identifies a choice group if reported.
+	// Group identifies the native option group.
 	Group string
-	// GroupName is the native group label.
+	// GroupName is the native group display name.
 	GroupName string
-	// Config is the reported model configuration catalog, when known.
+	// Config is the acknowledged per-model settings catalog.
 	Config *AgentModelConfig
-	// AutoMode reports native model support for automatic permission review.
+	// AutoMode reports native model support for automatic approval.
 	AutoMode bool
-	// FastServiceTier is the provider's exact Fast tier when one is declared.
+	// FastServiceTier identifies the native Fast service tier.
 	FastServiceTier string
-	// DefaultServiceTier is the native default tier when supplied.
+	// DefaultServiceTier is the native default service tier.
 	DefaultServiceTier *string
-	// InputModalities lists the inputs this model reports supporting.
+	// InputModalities lists the model's supported input types.
 	InputModalities []string
-	// PermissionModes retains the native ACP permission menu, when reported.
+	// PermissionModes is the permission menu published by ACP.
 	PermissionModes []string
+	// Free reports whether the native catalog confirms that the model is free.
+	Free bool
+	// CreditMultiplier is the credit multiplier declared by the native catalog; nil means unknown.
+	CreditMultiplier *float64
 }
 
 // AgentModelConfig distinguishes a reported model setting catalog from unknown rows.
@@ -240,9 +244,9 @@ type AgentModelConfig struct {
 
 // AgentModelCatalog is the SDK-independent result of one provider model read.
 type AgentModelCatalog struct {
-	// DefaultID identifies the provider's default model when known.
+	// DefaultID identifies the acknowledged default model.
 	DefaultID string
-	// Models retains provider order and grouping. Nil means no catalog was reported.
+	// Models preserves native model and group ordering; nil means no catalog was returned.
 	Models []AgentChoice
 }
 
@@ -318,10 +322,25 @@ type AgentTool struct {
 	Content json.RawMessage `json:"content,omitempty"`
 	// Update distinguishes an incremental tool change from its initial announcement.
 	Update bool `json:"update,omitempty"`
-	// Locations lists files affected by the native tool.
+	// Locations omits unknown locations; a non-nil empty slice explicitly clears them.
 	Locations []AgentToolLocation `json:"locations,omitempty"`
 	// TerminalDelta contains incremental terminal output when supplied independently.
 	TerminalDelta string `json:"terminalDelta,omitempty"`
+}
+
+// MarshalJSON preserves collection presence through the partial tool boundary.
+func (t AgentTool) MarshalJSON() ([]byte, error) {
+	type fields AgentTool
+	var locations *[]AgentToolLocation
+	if t.Locations != nil {
+		locations = &t.Locations
+	}
+	return json.Marshal(struct {
+		// fields carries the ordinary optional scalar and raw JSON fields.
+		fields
+		// Locations overrides omitempty's empty-slice omission with explicit presence.
+		Locations *[]AgentToolLocation `json:"locations,omitempty"`
+	}{fields: fields(t), Locations: locations})
 }
 
 // AgentToolLocation identifies a file observed in a native tool call.
@@ -356,13 +375,13 @@ type AgentPlanEntry struct {
 	Status string
 }
 
-// AgentApproval 保存申请审批的工具及原生选项。
+// AgentApproval holds the tool requiring approval and its native options.
 type AgentApproval struct {
-	// NativeToolName 是适配器确认的原生工具名，未知时为空。
+	// NativeToolName is the adapter-confirmed native tool name, or empty when unknown.
 	NativeToolName string
-	// Tool 是需要审批的工具调用。
+	// Tool is the tool call requiring approval.
 	Tool AgentTool
-	// Options 是原生允许的决定集合。
+	// Options is the set of decisions allowed by the native client.
 	Options []AgentApprovalOption
 }
 
@@ -653,6 +672,7 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		options := cursor.Options{
 			Executable: launch.Executable, PrefixArgs: launch.PrefixArgs, WorkingDirectory: account.CWD,
 			Environment: env, PermissionMode: launch.CursorPermissionMode, RequireVerifiedMCP: launch.RequireVerifiedMCP,
+			UsageHook: true,
 		}
 		if quota := lease.CursorQuota; quota != nil && quota.ReadAccessToken != nil {
 			binding := cursor.CredentialSelection{ID: account.AccountID, Source: cursor.DefaultLogin}
@@ -676,17 +696,26 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 		client.native, err = cursor.NewClient(ctx, options, host)
 	case constants.RuntimeIDWorkBuddy:
 		client.native, err = workbuddy.NewClient(ctx, workbuddy.Options{
-			Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch), WorkingDirectory: account.CWD,
+			Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch, account.Provider), WorkingDirectory: account.CWD,
 			Environment: env, CatalogConfigHome: launch.WorkBuddyCatalogHome, ExplicitCredential: lease.Environment["CODEBUDDY_AUTH_TOKEN"] != "" || lease.Environment["CODEBUDDY_API_KEY"] != "",
 		}, host)
 	case constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
 		client.native, err = qoder.NewClient(ctx, qoder.Options{
-			RuntimeID: account.Provider, Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch),
-			WorkingDirectory: account.CWD, Environment: env, ExpectedUserID: lease.QoderUserID,
+			RuntimeID: account.Provider, Executable: launch.Executable, PrefixArgs: acpDirectoryArguments(launch, account.Provider),
+			WorkingDirectory: account.CWD, Environment: env, ExpectedUserID: lease.QoderUserID, Model: account.Model,
+			ContextWindow: launch.QoderContextWindow,
 		}, host)
 	case constants.RuntimeIDKimi, constants.RuntimeIDGemini, constants.RuntimeIDGrok, constants.RuntimeIDOpenCode:
+		if account.Provider == constants.RuntimeIDGrok && launch.ProcessPermissionMode == string(constants.PermissionLevelAuto) {
+			// The catalog has no native automatic-approval receipt; avoid letting Grok downgrade an unconfirmed request to ask mode.
+			return nil, status_error.RuntimePolicyUnsupported
+		}
+		args := launch.PrefixArgs
+		if account.Provider == constants.RuntimeIDGemini {
+			args = acpDirectoryArguments(launch, account.Provider)
+		}
 		client.native, err = standardacp.NewClient(ctx, standardacp.Options{
-			Provider: standardacp.Provider(account.Provider), Executable: launch.Executable, PrefixArgs: launch.PrefixArgs,
+			Provider: standardacp.Provider(account.Provider), Executable: launch.Executable, PrefixArgs: args,
 			WorkingDirectory: account.CWD, Environment: env, PermissionMode: launch.ProcessPermissionMode,
 			RequireVerifiedMCP: launch.RequireVerifiedMCP,
 		}, host)
@@ -710,10 +739,11 @@ func newDirectAgentClient(ctx context.Context, account AccountRequest, launch Pr
 	return client, nil
 }
 
-func acpDirectoryArguments(launch ProviderLaunch) []string {
+func acpDirectoryArguments(launch ProviderLaunch, provider string) []string {
+	flag := nativeAdditionalDirectoryFlag(provider)
 	args := slices.Clone(launch.PrefixArgs)
 	for _, directory := range launch.ACPAdditionalDirectories {
-		args = append(args, "--add-dir", directory)
+		args = append(args, flag, directory)
 	}
 	return args
 }
@@ -743,6 +773,10 @@ func nativeLaunchEnvironment(provider string, launch ProviderLaunch, lease Accou
 			names = make(map[string]struct{}, len(source))
 		}
 		for key, value := range source {
+			// CLI bootstrap configuration belongs to Core, never the native agent process.
+			if strings.HasPrefix(strings.ToUpper(key), "ALLYCLI_") {
+				continue
+			}
 			if key == "" || strings.ContainsAny(key, "=\x00") || strings.ContainsRune(value, 0) {
 				return status_error.RuntimeConfigurationInvalid
 			}
@@ -1076,6 +1110,10 @@ func verifiedClaudeMCP(meta map[string]any, servers []acp.McpServer) bool {
 }
 
 func (c *directAgentClient) SetSessionOption(ctx context.Context, id, optionID string, value AgentOptionValue) ([]AgentSessionOption, error) {
+	invalidSetting := status_error.RuntimeConfigurationInvalid
+	if optionID == "model" {
+		invalidSetting = status_error.RuntimeModelSelectionFailed
+	}
 	var request acp.SetSessionConfigOptionRequest
 	switch {
 	case value.Bool != nil && value.ID == "":
@@ -1087,10 +1125,10 @@ func (c *directAgentClient) SetSessionOption(ctx context.Context, id, optionID s
 			SessionId: acp.SessionId(id), ConfigId: acp.SessionConfigId(optionID), Value: acp.SessionConfigValueId(value.ID),
 		}
 	default:
-		return nil, status_error.RuntimeConfigurationInvalid
+		return nil, invalidSetting
 	}
 	result, err := c.native.SetSessionConfigOption(ctx, request)
-	return agentSessionOptions(result.ConfigOptions), safeAgentError(err, status_error.RuntimeConfigurationInvalid)
+	return agentSessionOptions(result.ConfigOptions), safeAgentError(err, invalidSetting)
 }
 
 func (c *directAgentClient) SetSessionMode(ctx context.Context, id, mode string) error {
@@ -1224,7 +1262,7 @@ func agentOutcome(o native.NativeOutcome) AgentNativeOutcome {
 		DeliveryError:  safeAgentError(o.DeliveryError, status_error.RuntimeExecutionFailed),
 	}
 	var request *acp.RequestError
-	if errors.As(o.NativeFailure, &request) && request != nil {
+	if errors.As(errors.Join(o.NativeFailure, o.OperationError), &request) && request != nil {
 		result.NativeErrorCode = request.Code
 		result.NativeErrorKind = safeNativeErrorKind(request)
 	}
@@ -1238,9 +1276,8 @@ func safeAgentError(err error, fallback status_error.StatusError) error {
 	if err == nil {
 		return nil
 	}
-	var status status_error.StatusError
-	if errors.As(err, &status) {
-		return status
+	if public := status_error.PublicError(err); public != nil {
+		return public
 	}
 	var request *acp.RequestError
 	switch {
@@ -1254,29 +1291,50 @@ func safeAgentError(err error, fallback status_error.StatusError) error {
 		return status_error.RuntimeUnavailable
 	case errors.Is(err, cursor.ErrPermissionModeUnsupported):
 		return status_error.RuntimePolicyUnsupported
+	case errors.Is(err, qoder.ErrContextWindowUnsupported):
+		return status_error.RuntimeConfigurationInvalid
+	case errors.Is(err, qoder.ErrModelUnavailable):
+		if errors.As(err, &request) && request != nil {
+			return nativeStatusError(status_error.RuntimeExecutionFailed, request)
+		}
+		return status_error.RuntimeExecutionFailed.WithParams(map[string]interface{}{"ModelUnavailable": true})
 	case errors.Is(err, cursor.ErrQuotaUnauthorized), errors.Is(err, cursor.ErrQuotaCredential):
 		return status_error.RuntimeAuthRequired
 	case errors.As(err, &request) && request != nil:
-		if safeNativeErrorKind(request) == "session_restore_unverified" {
-			return status_error.RuntimeProtocolIncompatible
+		mapped := fallback
+		switch safeNativeErrorKind(request) {
+		case "quota_exhausted":
+			mapped = status_error.RuntimeQuotaExhausted
+		case "rate_limit":
+			mapped = status_error.RuntimeRateLimited
+		case "session_restore_unverified":
+			mapped = status_error.RuntimeProtocolIncompatible
+		case "session_missing":
+			mapped = status_error.RuntimeSessionNotFound
+		default:
+			switch request.Code {
+			case -32000:
+				mapped = status_error.RuntimeAuthRequired
+			case -32800:
+				return context.Canceled
+			case -32700:
+				mapped = status_error.RuntimeProtocolIncompatible
+			case -32002:
+				mapped = status_error.RuntimeSessionNotFound
+			case -32601:
+				mapped = status_error.RuntimePolicyUnsupported
+			}
 		}
-		if safeNativeErrorKind(request) == "session_missing" {
-			return status_error.RuntimeSessionNotFound
-		}
-		switch request.Code {
-		case -32000:
-			return status_error.RuntimeAuthRequired
-		case -32800:
-			return context.Canceled
-		case -32700:
-			return status_error.RuntimeProtocolIncompatible
-		case -32002:
-			return status_error.RuntimeSessionNotFound
-		case -32601:
-			return status_error.RuntimePolicyUnsupported
-		}
+		return nativeStatusError(mapped, request)
 	}
 	return fallback
+}
+
+func nativeStatusError(mapped status_error.StatusError, request *acp.RequestError) error {
+	if message := native.NativeFailureMessage(request.Message); message != "" && message != "ACP agent request failed" && message != "Internal error" {
+		return mapped.WithMessage(message)
+	}
+	return mapped
 }
 
 func safeNativeErrorKind(request *acp.RequestError) string {
@@ -1284,7 +1342,7 @@ func safeNativeErrorKind(request *acp.RequestError) string {
 	for _, key := range []string{"classification", "errorKind"} {
 		kind, _ := data[key].(string)
 		switch kind {
-		case "session_missing", "session_restore_unverified", "authentication_lost", "authentication", "billing_error", "rate_limit", "native_execution_failed":
+		case "session_missing", "session_restore_unverified", "authentication_lost", "authentication", "billing_error", "rate_limit", "quota_exhausted", "native_execution_failed":
 			return kind
 		}
 	}
@@ -1385,6 +1443,8 @@ func agentChoices(options acp.SessionConfigSelectOptions, withModelConfig bool) 
 				Group: group, GroupName: groupName,
 			}
 			if withModelConfig {
+				choice.Free, _ = row.Meta[acpmeta.ModelFreeMetaKey].(bool)
+				choice.CreditMultiplier = acpmeta.ModelCreditMultiplier(row.Meta)
 				choice.AutoMode = claude.ModelAutoModeSupported(row.Meta)
 				choice.FastServiceTier, _ = codex.FastServiceTier(row.Meta)
 				choice.InputModalities, choice.DefaultServiceTier = codex.ModelNativeMetadata(row.Meta)
@@ -1650,8 +1710,11 @@ func nativeTool(id string, kind, title, status *string, input, output any, conte
 	if content != nil {
 		result.Content, _ = json.Marshal(content)
 	}
-	for _, location := range locations {
-		result.Locations = append(result.Locations, AgentToolLocation{Path: location.Path, Line: location.Line})
+	if locations != nil {
+		result.Locations = make([]AgentToolLocation, len(locations))
+		for i, location := range locations {
+			result.Locations[i] = AgentToolLocation{Path: location.Path, Line: location.Line}
+		}
 	}
 	return result
 }

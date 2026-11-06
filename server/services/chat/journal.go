@@ -160,13 +160,7 @@ func (m *service) CreateDormantChats(
 			rollbackLogs()
 			return nil, status_error.BadRequest
 		}
-		threadID := strings.TrimSpace(input.ThreadWorkspaceID)
-		if threadID != "" {
-			if err := m.logStore.RegisterTeamChat(threadID, chat.ID); err != nil {
-				rollbackLogs()
-				return nil, err
-			}
-		}
+
 		records, err := m.eventCommitter.create(chat.ID, []eventlog.AppendInput{{
 			Type: constants.ChatEventTypeCreated,
 			Data: marshalData(eventlog.ChatCreatedData{
@@ -220,6 +214,7 @@ func (m *service) CommitAcceptedTurn(
 	chat.LastModel = turn.Execution.Model
 	chat.LastReasoning = turn.Execution.Reasoning
 	chat.LastFast = turn.Execution.Fast
+	chat.LastContextWindow = turn.Execution.ContextWindow
 	chat.LastPermissionLevel = turn.Execution.PermissionLevel
 	chat.UpdatedAt = last.RecordedAt
 	m.queryIndexes.indexStartedMessage(
@@ -312,6 +307,7 @@ func (m *service) CommitStartedTurn(
 	chat.LastModel = turn.Execution.Model
 	chat.LastReasoning = turn.Execution.Reasoning
 	chat.LastFast = turn.Execution.Fast
+	chat.LastContextWindow = turn.Execution.ContextWindow
 	chat.LastPermissionLevel = turn.Execution.PermissionLevel
 	chat.UpdatedAt = last.RecordedAt
 	m.queryIndexes.indexStartedMessage(

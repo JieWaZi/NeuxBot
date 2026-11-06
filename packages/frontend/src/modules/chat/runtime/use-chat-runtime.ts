@@ -2,6 +2,7 @@ import { retryChatExecution } from "@/shared/api/generated/sdk.gen";
 import { ApiError } from "@/shared/api/errors";
 import {
   reportErrorNotice,
+  apiErrorNoticePresentation,
   clearErrorNoticeActions,
   captureErrorNoticeRecovery,
   resolveErrorNoticeRecovery,
@@ -502,6 +503,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
             : "");
       if (!text) return;
 
+      const now = Date.now();
       const prepared = snapshot.prepareSubmission(
         text,
         snapshot.chatId,
@@ -511,7 +513,6 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
       currentSubmissionRef.current = prepared;
       if (prepared.submissionId)
         pendingSubmissionsRef.current.set(prepared.submissionId, prepared);
-      const now = Date.now();
       const operation = `send:${snapshot.queueKey}`;
       const recovery = captureErrorNoticeRecovery(operation);
       const userID = optimisticID("user");
@@ -559,6 +560,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           role: "assistant",
           content: "",
           status: "pending",
+          preparingSession: !snapshot.chatId,
           steerExecutionId: snapshot.selection.steerExecutionId,
           createdAt: now,
           updatedAt: now,
@@ -688,8 +690,11 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
             id: `send:${userID}`,
             scope: snapshot.queueKey,
             operation,
-            message: sendFailureDisplayText(failure, (key) =>
-              i18n.t(key, { ns: "chat" }),
+            ...apiErrorNoticePresentation(
+              error,
+              sendFailureDisplayText(failure, (key) =>
+                i18n.t(key, { ns: "chat" }),
+              ),
             ),
             action: canRetry ? "retry" : canCheck ? "check" : undefined,
           },
@@ -1198,6 +1203,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): ChatRuntimeResult {
           scope: `chat:${options.chatId}`,
           operation: streamOperation,
           message: i18n.t("runtimeFailure.networkError", { ns: "chat" }),
+          messageSource: "public",
         });
         streamRecovery = captureErrorNoticeRecovery(streamOperation);
         setApprovalOverlay({

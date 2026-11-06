@@ -27,13 +27,13 @@ func TestThreadModeReceiptFollowsNativeObservationOrder(t *testing.T) {
 		requested = "read-only"
 	)
 	for _, tc := range []struct {
-		// name 描述原生回执和通知到达顺序。
+		// name describes the ordering of native receipts and notifications.
 		name string
-		// observeBeforeReceipt 在回执前送达当前连接的权限通知。
+		// observeBeforeReceipt delivers a permission notification on the current connection before the receipt.
 		observeBeforeReceipt bool
-		// wantError 是应返回给接纳调用方的权限设置错误。
+		// wantError is the permission-setting error returned to the admission caller.
 		wantError error
-		// want 是处理回执后对外保留的权限模式。
+		// want is the permission mode retained externally after receipt handling.
 		want string
 	}{
 		{name: "accepted without mode notification", want: requested},
@@ -100,13 +100,13 @@ func TestThreadModeReceiptFollowsNativeObservationOrder(t *testing.T) {
 
 // selectionClient models native menus that change after the model setter's receipt.
 type selectionClient struct {
-	// AgentClient 提供当前测试不涉及的原生操作。
+	// AgentClient supplies native operations unused by this test.
 	AgentClient
-	// calls 记录跨过客户端边界的设置及顺序。
+	// calls records settings and their order across the client boundary.
 	calls []string
-	// options 是原生回执中的当前选项。
+	// options contains current options from the native receipt.
 	options []AgentSessionOption
-	// catalog 是原生目录中的模型默认值。
+	// catalog contains model defaults from the native catalog.
 	catalog AgentModelCatalog
 }
 
@@ -182,5 +182,37 @@ func TestCursorInheritRequiresActiveModelDefault(t *testing.T) {
 	})
 	if !errors.Is(err, status_error.RuntimePolicyUnsupported) || len(client.calls) != 0 {
 		t.Fatalf("unproven native default was applied: err=%v native calls=%v", err, client.calls)
+	}
+}
+
+// unchangedModelClient mirrors a successful native setter whose receipt still reports the opening model.
+type unchangedModelClient struct {
+	// AgentClient supplies native operations unused by this test.
+	AgentClient
+	// options is the unchanged opening-model receipt.
+	options []AgentSessionOption
+}
+
+func (c unchangedModelClient) SetSessionOption(context.Context, string, string, AgentOptionValue) ([]AgentSessionOption, error) {
+	return cloneOptions(c.options), nil
+}
+
+func TestModelSelectionRejectsUnchangedNativeReceiptWithSpecificFailure(t *testing.T) {
+	options := []AgentSessionOption{{ID: "model", Category: "model", Value: AgentOptionValue{ID: "auto"},
+		Choices: []AgentChoice{{ID: "auto"}, {ID: "selected-model"}}}}
+	state := &threadState{effective: AgentSession{ID: "native", Options: cloneOptions(options)}}
+	turn := &Turn{ctx: t.Context(), lifecycle: NewThreadLifecycle(nil, nil), thread: state,
+		binding: NativeBinding{Session: NativeSessionKey{Provider: "gemini", SessionID: "native"}}, effective: state.effective}
+	err := turn.applySettings(unchangedModelClient{options: options}, ThreadRequest{
+		Connection: ProviderConnectionRequest{Account: AccountRequest{Provider: "gemini", Model: "selected-model"}},
+	})
+	if err == nil || status_error.PublicError(err) == nil || status_error.PublicMessage(err) != "" {
+		t.Fatalf("unconfirmed model did not retain an application error: %v", err)
+	}
+	if !errors.Is(err, status_error.RuntimeModelSelectionFailed) {
+		t.Fatalf("model confirmation failure lost its specific cause: %v", err)
+	}
+	if got := turn.observedSession().Options[0].Value.ID; got != "auto" {
+		t.Fatalf("unconfirmed model was published: %s", got)
 	}
 }

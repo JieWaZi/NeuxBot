@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,10 +11,40 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	acp "github.com/JieWaZi/acp-go-sdk"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	native "github.com/JieWaZi/acp-go/pkg/agentclient"
-	acp "github.com/JieWaZi/acp-go/sdk"
+	"github.com/shrewx/ginx/pkg/statuserror"
 )
+
+func TestNativeProviderFailureKindsPreserveOpenCodeQuota(t *testing.T) {
+	err := &acp.RequestError{Code: -32603, Message: "ACP agent request failed", Data: map[string]any{"classification": "quota_exhausted"}}
+	if got := safeAgentError(err, status_error.RuntimeExecutionFailed); !errors.Is(got, status_error.RuntimeQuotaExhausted) {
+		t.Fatalf("unassociated native refusal lost its cause: %v", got)
+	}
+	for _, outcome := range []native.NativeOutcome{{NativeFailure: err}, {OperationError: err}} {
+		if got := agentOutcome(outcome); got.NativeErrorKind != "quota_exhausted" {
+			t.Fatalf("quota failure lost its classification: %+v", got)
+		}
+	}
+}
+
+func TestKnownNativeErrorMessagePassesThroughProductBoundary(t *testing.T) {
+	for _, code := range []int{-32603, -32602, -32000, 500} {
+		err := &acp.RequestError{Code: code, Message: "native provider reason: select an available model"}
+		got := safeAgentError(err, status_error.RuntimeExecutionFailed)
+		var public statuserror.CommonError
+		if !errors.As(got, &public) || public.Value() != err.Message {
+			t.Fatalf("known native reason replaced: code=%d err=%v", code, got)
+		}
+		if code == -32000 && !errors.Is(got, status_error.RuntimeAuthRequired) {
+			t.Fatal("native detail broke authentication classification")
+		}
+		if again := safeAgentError(got, status_error.RuntimeConfigurationInvalid); again != got {
+			t.Fatal("a later adapter replaced the public native error")
+		}
+	}
+}
 
 func TestCursorLaunchUsesSelectedConfigHome(t *testing.T) {
 	home := t.TempDir()
@@ -384,11 +415,11 @@ func providerTestAccount(context.Context, AccountRequest) (AccountLease, error) 
 }
 
 type steeringProjectionFixture struct {
-	// Client 提供本测试未调用的其他适配器操作。
+	// Client supplies adapter operations unused by this test.
 	native.Client
-	// steer 记录直接请求并返回适配器回执。
+	// steer records direct requests and returns adapter receipts.
 	steer func(context.Context, native.SteerRequest) (native.SteerResponse, error)
-	// meta 保存原生初始化时协商的元数据。
+	// meta holds metadata negotiated during native initialization.
 	meta map[string]any
 }
 
@@ -399,11 +430,11 @@ func (f steeringProjectionFixture) Initialize(context.Context, acp.InitializeReq
 func TestProviderClientHonorsNativeSteeringAdvertisement(t *testing.T) {
 	enabled, disabled := true, false
 	for _, tc := range []struct {
-		// name 标识适配器提供的能力证据。
+		// name identifies the capability evidence supplied by the adapter.
 		name string
-		// advertised 是可选的原生插话能力声明。
+		// advertised is the optional native steering capability declaration.
 		advertised *bool
-		// want 是直接客户端应公开的插话能力。
+		// want is the steering capability the direct client should expose.
 		want bool
 	}{
 		{name: "absent metadata", want: true},
@@ -525,5 +556,74 @@ func TestManagedCodexEnvironmentUsesOnlySelectedCredential(t *testing.T) {
 	joined := strings.Join(env, "\n")
 	if strings.Contains(joined, "inherited") || strings.Contains(joined, "wrong") || strings.Contains(joined, "other") || !strings.Contains(joined, "NEUX_CODEX_ACCOUNT_API_KEY=selected") {
 		t.Fatalf("credential authority lost: %s", joined)
+	}
+}
+
+func TestNativeLaunchEnvironmentExcludesHostCLIConfiguration(t *testing.T) {
+	env, err := nativeLaunchEnvironment("codex", ProviderLaunch{BaseEnvironment: map[string]string{"PATH": "/native/tools", "ALLYCLI_BINARY_PATH": "/host/allycli", "ALLYCLI_CONTEXT_FILE": "/old/context.json"}}, AccountLease{}, LaunchAuthLease{}, ResourceLease{Environment: map[string]string{"PLUGIN_RESOURCE": "ready"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]string{}
+	for _, entry := range env {
+		name, value, _ := strings.Cut(entry, "=")
+		values[name] = value
+	}
+	if values["ALLYCLI_BINARY_PATH"] != "" || values["ALLYCLI_CONTEXT_FILE"] != "" {
+		t.Fatalf("host CLI configuration leaked into native process: %v", values)
+	}
+	if values["PATH"] != "/native/tools" || values["PLUGIN_RESOURCE"] != "ready" {
+		t.Fatalf("ordinary runtime environment changed: %v", values)
+	}
+}
+
+func TestNativeToolCollectionsKeepOmittedEmptyAndNonemptyPresence(t *testing.T) {
+	for _, mode := range []string{"omitted", "empty", "nonempty"} {
+		t.Run(mode, func(t *testing.T) {
+			update := acp.SessionToolCallUpdate{ToolCallId: "tool"}
+			if mode == "empty" {
+				update.Content, update.Locations = []acp.ToolCallContent{}, []acp.ToolCallLocation{}
+			} else if mode == "nonempty" {
+				update.Content = []acp.ToolCallContent{acp.ToolContent(acp.TextBlock("new content"))}
+				update.Locations = []acp.ToolCallLocation{{Path: "/new/location"}}
+			}
+			note := acp.SessionNotification{SessionId: "session", Update: acp.SessionUpdate{ToolCallUpdate: &update}}
+			encoded, err := json.Marshal(note)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var cloned acp.SessionNotification
+			if err := json.Unmarshal(encoded, &cloned); err != nil {
+				t.Fatal(err)
+			}
+			event, ok := agentSessionEvent(cloned)
+			if !ok || event.Tool == nil {
+				t.Fatal("SDK tool update lost its event")
+			}
+			var buffer DeltaBuffer
+			change, ok, err := buffer.messageChange(event)
+			if err != nil || !ok {
+				t.Fatalf("tool conversion failed: %v", err)
+			}
+			var fields map[string]json.RawMessage
+			if err := json.Unmarshal(change.Data, &fields); err != nil {
+				t.Fatal(err)
+			}
+			for _, field := range []string{"content", "locations"} {
+				value, present := fields[field]
+				if mode == "omitted" && present || mode != "omitted" && !present || mode == "empty" && string(value) != "[]" {
+					t.Fatalf("%s %s lost presence: %s", mode, field, change.Data)
+				}
+			}
+			merged, err := mergePendingTool(json.RawMessage(`{"id":"tool","locations":[{"path":"/old/location"}],"content":["old"]}`), change.Data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if mode == "omitted" && !strings.Contains(string(merged), "/old/location") ||
+				mode == "empty" && (!strings.Contains(string(merged), `"locations":[]`) || !strings.Contains(string(merged), `"content":[]`)) ||
+				mode == "nonempty" && (!strings.Contains(string(merged), "/new/location") || !strings.Contains(string(merged), "new content")) {
+				t.Fatalf("coalescing changed collection presence: %s", merged)
+			}
+		})
 	}
 }

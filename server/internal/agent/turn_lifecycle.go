@@ -38,23 +38,29 @@ type TurnAdmission struct {
 
 // TurnPorts contains the business operations supplied for one turn.
 type TurnPorts struct {
-	// AcquireResources materializes the selected resources once on the cold path.
+	// AcquireResources materializes selected execution resources during cold startup.
 	AcquireResources func(context.Context, ResourceSelection) (ResourceLease, error)
-	// ResolveHandoffSource returns authorized launch material for the exact prior binding.
+	// ResolveHandoffSource reads authorized handoff material from the previous binding.
 	ResolveHandoffSource func(context.Context, NativeBinding) (HandoffSource, error)
-	// Admit supplies frozen business facts for the one BeforeSubmit batch. It runs once.
+	// Admit supplies frozen business facts to write before the first submission.
 	Admit func(context.Context, TurnAdmission) (ConversationBatch, error)
-	// Authorize enables this input after the durable admission, returning its revocation.
+	// Authorize enables input authorization after admission is persisted and returns a revocation function.
 	Authorize func(context.Context, TurnAdmission, CommitReceipt) (func(), error)
-	// Committed observes a durable Chat version. Implementations must enqueue without blocking.
+	// Committed delivers committed chat versions; the callback must enqueue without blocking.
 	Committed func(CommitReceipt)
-	// Observe consumes normalized transient output, serially, for host projection.
+	// Observe consumes this turn's native events in order.
 	Observe func(context.Context, AgentScope, AgentEvent) error
-	// Approve handles an interaction for this exact admitted turn.
+	// AppendLive delivers the same normalized text fragments and coverage versions before persistence.
+	AppendLive func(MessageChange)
+	// CheckpointLive delivers committed message checkpoints and tail changes.
+	CheckpointLive func(context.Context, CommitReceipt, MessageChange)
+	// FinishLive releases this turn's live projection and pending delivery windows.
+	FinishLive func()
+	// Approve handles approval requests for this turn's admitted execution.
 	Approve func(context.Context, AgentScope, AgentApproval) (string, error)
-	// Input handles a structured question for this exact admitted turn.
+	// Input handles structured questions for this turn's admitted execution.
 	Input func(context.Context, AgentScope, AgentInputRequest) (AgentInputResponse, error)
-	// CompleteInput handles completion of this turn's URL request.
+	// CompleteInput handles completion of this turn's URL interaction requests.
 	CompleteInput func(context.Context, AgentScope, string) error
 }
 
@@ -195,6 +201,9 @@ func (t *Turn) Run(ctx context.Context) TurnResult {
 }
 
 func (t *Turn) runPrompt() TurnResult {
+	if t.ports.FinishLive != nil {
+		defer t.ports.FinishLive()
+	}
 	res := TurnResult{Binding: cloneBinding(t.binding), Effective: t.observedSession(), Submission: "not_sent"}
 	if err := t.ctx.Err(); err != nil {
 		res.OperationError = err
@@ -275,6 +284,9 @@ func (t *Turn) beforeSubmit(ctx context.Context, submission AgentPromptSubmissio
 	t.mu.Lock()
 	t.admitted = true
 	t.buffer.chatVersion = receipt.Version
+	if t.ports.AppendLive != nil {
+		t.buffer.revision = receipt.Version
+	}
 	t.adapterInputID = submission.InputID
 	t.mu.Unlock()
 	revoke, err := authorizeInput(ctx, t.ports, admission, receipt)
@@ -499,7 +511,8 @@ func (t *Turn) settle(release bool) error {
 func (t *Turn) deltaTarget() deltaTarget {
 	return deltaTarget{store: t.lifecycle.store, session: t.binding.Session,
 		chatID: t.thread.chatID, hostID: t.input.HostInvocationID, messageID: t.input.AssistantMessageID,
-		executionID: t.input.ExecutionID, committed: t.ports.Committed}
+		executionID: t.input.ExecutionID, committed: t.ports.Committed,
+		appendLive: t.ports.AppendLive, checkpointLive: t.ports.CheckpointLive}
 }
 
 func (l *ThreadLifecycle) matchingTurn(state *threadState, generation uint64, scope AgentScope) *Turn {

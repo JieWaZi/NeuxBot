@@ -21,32 +21,37 @@ const (
 	liveQueueSize      = 64
 	maxObservedBytes   = 32 << 10
 	maxCorrectionBytes = 512 << 10
-	maxTrackedTools    = 64
 )
 
 // deltaTarget selects the durable native stream and its optional public reference.
 type deltaTarget struct {
-	// store is the shared authority for the native and public streams.
+	// store is the authoritative store shared by native and public message streams.
 	store ConversationStore
-	// session freezes the actual producer's provider, subject and session.
+	// session freezes the actual producer's provider, account, and native session.
 	session NativeSessionKey
-	// chatID is present only for an admitted host-owned message.
+	// chatID identifies the admitted public chat.
 	chatID string
-	// hostID identifies the host-owned delivery lane when present.
+	// hostID identifies host-submitted input.
 	hostID string
-	// messageID identifies the public assistant message when present.
+	// messageID identifies the associated public assistant message.
 	messageID string
-	// executionID scopes the public reference to its business execution.
+	// executionID identifies the business execution owning the message.
 	executionID string
-	// committed announces only confirmed public writes.
+	// committed notifies successfully written public records.
 	committed func(CommitReceipt)
+	// appendLive delivers normalized text fragments before persistence.
+	appendLive func(MessageChange)
+	// checkpointLive delivers persisted coverage and tail changes.
+	checkpointLive func(context.Context, CommitReceipt, MessageChange)
 }
 
-type toolSnapshot struct {
-	// AgentTool contains the most recent values of reported snapshot fields.
-	AgentTool
-	// TerminalOutput accumulates independent terminal bytes in native order.
-	TerminalOutput string `json:"terminalOutput,omitempty"`
+type pendingToolFrame struct {
+	// scope freezes the producer of the unfinished native frame.
+	scope AgentScope
+	// event retains message identity and unconsumed terminal bytes from one frame.
+	event AgentEvent
+	// tool retains fields not yet accepted into the pending durable operation.
+	tool AgentTool
 }
 
 // DeltaBuffer owns the current bounded segment and its exact pending commit.
@@ -71,8 +76,8 @@ type DeltaBuffer struct {
 	text strings.Builder
 	// retry preserves the current segment byte-for-byte after a partial flush.
 	retry bool
-	// tools retains the latest bounded tool state needed to merge partial native updates.
-	tools map[string]toolSnapshot
+	// toolFrame retains at most one bounded native frame across a segmented write failure.
+	toolFrame *pendingToolFrame
 	// failure records the first durable or normalization error.
 	failure error
 }
@@ -83,6 +88,63 @@ func (b *DeltaBuffer) observe(observation context.Context, target deltaTarget, s
 	if b.closed {
 		return nil
 	}
+	if err := b.drainToolFrame(observation, target); err != nil {
+		return err
+	}
+	if event.Kind == "tool" && event.Tool != nil && len(event.Tool.TerminalDelta) > deltaBudget {
+		b.toolFrame = &pendingToolFrame{scope: scope, event: event, tool: *event.Tool}
+		b.toolFrame.event.Tool = nil
+		return b.drainToolFrame(observation, target)
+	}
+	return b.observeLocked(observation, target, scope, event)
+}
+
+func (b *DeltaBuffer) drainToolFrame(ctx context.Context, target deltaTarget) error {
+	for b.toolFrame != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := b.flush(ctx, target); err != nil {
+			return err
+		}
+		frame := b.toolFrame
+		event := frame.event
+		event.Tool = &frame.tool
+		change, _, err := b.messageChange(event)
+		if err != nil {
+			return err
+		}
+		message := change.MessageID
+		change.MessageID = ""
+		change.Revision = b.revision + 1
+		key := NativeResultKey{Session: target.session, InvocationID: frame.scope.NativeInvocationID}
+		prepared, err := target.store.PrepareNativeToolUpdate(ctx, NativeFragmentBatch{
+			Key: key, CommitKey: stableTurnKey("fragment", target.hostID, key.InvocationID, strconv.FormatInt(change.Revision, 10)),
+			MessageID: message, Changes: []MessageChange{change},
+		})
+		if err != nil {
+			return err
+		}
+		change = prepared.Changes[0]
+		n := len(change.Text)
+		change.MessageID = message
+		b.pending, b.key = change, key
+		// Freeze the accepted logical operation before releasing any original
+		// bytes. Its exact pending batch survives a native/public partial write.
+		remaining := frame.tool.TerminalDelta[n:]
+		if remaining == "" {
+			b.toolFrame = nil
+		} else {
+			frame.tool = AgentTool{ID: frame.tool.ID, Update: true, Status: frame.tool.Status, TerminalDelta: remaining}
+		}
+		if err := b.flush(ctx, target); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *DeltaBuffer) observeLocked(observation context.Context, target deltaTarget, scope AgentScope, event AgentEvent) error {
 	change, ok, err := b.messageChange(event)
 	if !ok && err == nil {
 		return nil
@@ -97,6 +159,34 @@ func (b *DeltaBuffer) observe(observation context.Context, target deltaTarget, s
 	if change.MessageID == "" {
 		// Unidentified payloads share a lane only within this proven native invocation.
 		change.MessageID = key.InvocationID + ":" + event.Kind
+	}
+	if change.Kind == MessageToolUpdate {
+		if b.retry || b.key != key || b.pending.Kind != MessageToolUpdate || b.pending.MessageID != change.MessageID ||
+			b.pending.ToolCallID != change.ToolCallID {
+			if err := b.flush(ctx, target); err != nil {
+				return err
+			}
+		}
+		if b.pending.Kind == MessageToolUpdate {
+			data, err := mergePendingTool(b.pending.Data, change.Data)
+			if err != nil {
+				return err
+			}
+			if len(data)+len(b.pending.Text)+len(change.Text) > deltaBudget {
+				if err := b.flush(ctx, target); err != nil {
+					return err
+				}
+			} else {
+				change.Data, change.Text = data, b.pending.Text+change.Text
+			}
+		}
+		b.pending, b.key = change, key
+		// Announcements and lifecycle changes remain immediate boundaries.
+		if !event.Tool.Update || event.Tool.Status != nil || len(change.Data)+len(change.Text) >= deltaBudget {
+			return b.flush(ctx, target)
+		}
+		b.armTimer(observation, target)
+		return nil
 	}
 	if b.retry || change.Kind != MessageAppend || key != b.key ||
 		change.MessageID != b.pending.MessageID || change.ContentType != b.pending.ContentType {
@@ -113,9 +203,23 @@ func (b *DeltaBuffer) observe(observation context.Context, target deltaTarget, s
 	text := change.Text
 	change.Text = ""
 	for len(text) > 0 {
-		b.pending, b.key = change, key
 		n := fragmentPrefixBytes(text, deltaBudget-b.text.Len())
+		if n == 0 {
+			if err := b.flush(ctx, target); err != nil {
+				return err
+			}
+			continue
+		}
+		if target.appendLive != nil {
+			change.Revision = max(b.pending.Revision, b.revision) + 1
+		}
+		b.pending, b.key = change, key
 		b.text.WriteString(text[:n])
+		if target.appendLive != nil {
+			part := change
+			part.Text = text[:n]
+			target.appendLive(part)
+		}
 		text = text[n:]
 		if len(text) > 0 || b.text.Len() == deltaBudget {
 			if err := b.flush(ctx, target); err != nil {
@@ -132,6 +236,12 @@ func (b *DeltaBuffer) observe(observation context.Context, target deltaTarget, s
 		}
 		return nil
 	}
+	b.armTimer(observation, target)
+	return nil
+}
+
+// armTimer bounds only uncommitted operations, independently of cumulative output.
+func (b *DeltaBuffer) armTimer(observation context.Context, target deltaTarget) {
 	if b.pending.Kind != "" && b.timer == nil {
 		generation := b.timerGeneration
 		b.timer = time.AfterFunc(deltaDelay, func() {
@@ -145,7 +255,21 @@ func (b *DeltaBuffer) observe(observation context.Context, target deltaTarget, s
 			_ = b.flush(ctx, target)
 		})
 	}
-	return nil
+}
+
+func mergePendingTool(before, after json.RawMessage) (json.RawMessage, error) {
+	var fields, update map[string]json.RawMessage
+	if json.Unmarshal(before, &fields) != nil || json.Unmarshal(after, &update) != nil {
+		return nil, status_error.RuntimeEventEncodingFailed
+	}
+	for name, value := range update {
+		fields[name] = value
+	}
+	data, err := json.Marshal(fields)
+	if err != nil {
+		return nil, status_error.RuntimeEventEncodingFailed
+	}
+	return data, nil
 }
 
 func fragmentPrefixBytes(text string, budget int) int {
@@ -164,53 +288,6 @@ func (b *DeltaBuffer) classify(ctx context.Context, target deltaTarget, key Nati
 	return b.flush(ctx, target)
 }
 
-func (b *DeltaBuffer) mergeTool(update AgentTool) ([]byte, error) {
-	tool, known := b.tools[update.ID]
-	terminal := update.Status != nil && (*update.Status == "completed" || *update.Status == "failed" || *update.Status == "cancelled")
-	if !known && !terminal && len(b.tools) >= maxTrackedTools {
-		return nil, status_error.RuntimeEventQueueOverflow
-	}
-	tool.ID = update.ID
-	if update.Kind != nil {
-		tool.Kind = update.Kind
-	}
-	if update.Title != nil {
-		tool.Title = update.Title
-	}
-	if update.Status != nil {
-		tool.Status = update.Status
-	}
-	if update.Input != nil {
-		tool.Input = update.Input
-	}
-	if update.Output != nil {
-		tool.Output = update.Output
-	}
-	if update.Content != nil {
-		tool.Content = update.Content
-	}
-	if update.Locations != nil {
-		tool.Locations = update.Locations
-	}
-	tool.TerminalOutput += update.TerminalDelta
-	data, err := json.Marshal(tool)
-	if err != nil {
-		return nil, status_error.RuntimeEventEncodingFailed
-	}
-	if len(data) > maxObservedBytes {
-		return nil, status_error.RuntimeEventQueueOverflow
-	}
-	if terminal {
-		delete(b.tools, tool.ID)
-	} else {
-		if b.tools == nil {
-			b.tools = make(map[string]toolSnapshot)
-		}
-		b.tools[tool.ID] = tool
-	}
-	return data, nil
-}
-
 func (b *DeltaBuffer) messageChange(event AgentEvent) (MessageChange, bool, error) {
 	change := MessageChange{MessageID: event.MessageID}
 	switch event.Kind {
@@ -225,16 +302,18 @@ func (b *DeltaBuffer) messageChange(event AgentEvent) (MessageChange, bool, erro
 		if event.Tool == nil || event.Tool.ID == "" {
 			return MessageChange{}, false, status_error.RuntimeProtocolIncompatible
 		}
-		change.Kind, change.ContentType = MessageToolSnapshot, constants.RuntimeEventTypeToolUpdate
+		change.Kind, change.ContentType = MessageToolUpdate, constants.RuntimeEventTypeToolUpdate
 		change.ToolCallID = event.Tool.ID
 		if change.MessageID == "" {
 			change.MessageID = event.Tool.ID
 		}
-		data, err := b.mergeTool(*event.Tool)
+		metadata := *event.Tool
+		metadata.TerminalDelta = ""
+		data, err := json.Marshal(metadata)
 		if err != nil {
-			return MessageChange{}, false, err
+			return MessageChange{}, false, status_error.RuntimeEventEncodingFailed
 		}
-		change.Data = data
+		change.Data, change.Text = data, event.Tool.TerminalDelta
 		return change, true, nil
 	default:
 		return MessageChange{}, false, nil
@@ -283,7 +362,7 @@ func (b *DeltaBuffer) flush(ctx context.Context, target deltaTarget) error {
 	}
 	messageID := change.MessageID
 	change.MessageID = ""
-	change.Revision = b.revision + 1
+	change.Revision = max(change.Revision, b.revision+1)
 	changes := []MessageChange{change}
 	if change.Kind == MessageReplace && len(change.Text) > deltaBudget {
 		// Commit one whole correction atomically. Each appended record is
@@ -320,7 +399,15 @@ func (b *DeltaBuffer) flush(ctx context.Context, target deltaTarget) error {
 			return err
 		}
 		b.chatVersion = receipt.Version
-		if target.committed != nil {
+		if target.checkpointLive != nil {
+			if change.Kind == MessageToolUpdate {
+				// Live projection merges the same partial fields; durable readers
+				// resolve the Store's complete snapshot at the returned boundary.
+				change.Kind = MessageToolSnapshot
+			}
+			change.MessageID, change.Revision = target.messageID, revision
+			target.checkpointLive(ctx, receipt, change)
+		} else if target.committed != nil {
 			target.committed(receipt)
 		}
 	}
@@ -334,15 +421,16 @@ func (b *DeltaBuffer) flush(ctx context.Context, target deltaTarget) error {
 func (b *DeltaBuffer) finish(ctx context.Context, target deltaTarget) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	err := b.drainToolFrame(ctx, target)
 	b.closed = true
-	return errors.Join(b.failure, b.flush(ctx, target))
+	return errors.Join(b.failure, err, b.flush(ctx, target))
 }
 
 // pendingWrite reports whether a failed segment still needs an exact retry.
 func (b *DeltaBuffer) pendingWrite() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.pending.Kind != ""
+	return b.pending.Kind != "" || b.toolFrame != nil
 }
 
 type liveEvent struct {

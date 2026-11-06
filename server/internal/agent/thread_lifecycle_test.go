@@ -8,8 +8,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -19,6 +21,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
@@ -40,6 +43,51 @@ func TestThreadTurnGateRejectsBeforeNativePrompt(t *testing.T) {
 	if err != nil || strings.Contains(string(data), "session/prompt") {
 		t.Fatalf("rejected prompt reached child: %q %v", data, err)
 	}
+}
+
+func TestCursorKeepsManagedDirectoryForProjectedProjects(t *testing.T) {
+	lifecycle, _, request, trace := newTurnFixture(t, "cursor")
+	configureThreadFixture(&request, trace)
+	request.ChatID = ""
+	request.Connection.Launch.CursorPermissionMode = "full-access"
+	turn, err := lifecycle.Prepare(t.Context(), request, agent.TurnRequest{Text: "not submitted"}, agent.TurnPorts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := turn.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	wire, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed, err := filepath.EvalSymlinks(request.Connection.Account.CWD)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(wire), "cwd="+managed+" argv=") || !strings.Contains(string(wire), "--force acp") {
+		t.Fatal("Cursor did not start in its managed workspace with full access")
+	}
+	for _, line := range strings.Split(string(wire), "\n") {
+		var request struct {
+			// Method is the ACP method.
+			Method string `json:"method"`
+			// Params contains session initialization parameters.
+			Params struct {
+				// CWD is the tool session's working directory.
+				CWD string `json:"cwd"`
+				// AdditionalDirectories contains standard ACP additional roots.
+				AdditionalDirectories []string `json:"additionalDirectories"`
+			} `json:"params"`
+		}
+		if json.Unmarshal([]byte(line), &request) == nil && request.Method == "session/new" {
+			if request.Params.CWD != managed || len(request.Params.AdditionalDirectories) != 0 {
+				t.Fatalf("Cursor session replaced its managed cwd: %+v", request.Params)
+			}
+			return
+		}
+	}
+	t.Fatal("missing Cursor session/new")
 }
 
 func newTurnFixture(t *testing.T, provider string) (*agent.ThreadLifecycle, *conversation.Store, agent.ThreadRequest, string) {
@@ -368,6 +416,8 @@ func TestThreadNativeChild(t *testing.T) {
 			fmt.Println("2026.10.22-27dcf5f")
 		} else if provider == "claude" && os.Getenv("THREAD_FIXTURE_CLAUDE_LEGACY") == "1" {
 			fmt.Println("2.1.159 (Claude Code)")
+		} else if provider == "qoder" {
+			fmt.Println("Qoder CLI 1.1.83")
 		} else {
 			fmt.Println("2.1.309 (Claude Code)")
 		}
@@ -416,10 +466,43 @@ func TestThreadNativeChild(t *testing.T) {
 				count++
 			}
 			fixtureCursorFrame(out, frame, session, count)
+		case "qoder":
+			fixtureQoderWindowFrame(out, frame, session)
 		}
 	}
 	_ = trace.Close()
 	os.Exit(0)
+}
+
+func fixtureQoderWindowFrame(out *json.Encoder, frame map[string]any, session string) {
+	if request, ok := frame["request"].(map[string]any); ok {
+		result := map[string]any{}
+		switch request["type"] {
+		case "daemon.initialize":
+			result = map[string]any{"daemon_protocol_version": 2, "capabilities": []string{"daemon_queries_v1"}}
+		case "daemon.account_info":
+			result = map[string]any{"account": map[string]string{"userId": "fixture-subject"}}
+		case "daemon.get_models":
+			result = map[string]any{"models": []any{map[string]any{
+				"value": "qfmodel", "availableContextWindows": []int64{200000, 400000}, "defaultContextWindow": 200000,
+			}}}
+		}
+		_ = out.Encode(map[string]any{"type": "control_response", "response": map[string]any{
+			"request_id": frame["request_id"], "subtype": "success", "response": result,
+		}})
+		return
+	}
+	switch frame["method"] {
+	case "session/new", "session/resume":
+		_ = out.Encode(map[string]any{"jsonrpc": "2.0", "id": frame["id"], "result": map[string]any{
+			"sessionId": session, "configOptions": []any{map[string]any{
+				"id": "model", "name": "Model", "category": "model", "type": "select", "currentValue": "qfmodel",
+				"options": []any{map[string]any{"value": "qfmodel", "name": "Fixture Model"}},
+			}},
+		}})
+	default:
+		fixtureCursorFrame(out, frame, session, 0)
+	}
 }
 
 func fixtureCodexFrame(out *json.Encoder, frame map[string]any, raw, session string, nativeTurn *string, seq int) {
@@ -1344,12 +1427,50 @@ func fixtureCursorFrame(out *json.Encoder, frame map[string]any, session string,
 		}
 		if params, ok := frame["params"].(map[string]any); ok {
 			body, _ := json.Marshal(params["prompt"])
+			if strings.Contains(string(body), "tool-collection-presence") {
+				oldContent := []any{map[string]any{"type": "diff", "path": "/fixture/old.go", "oldText": "old", "newText": "before"}}
+				notify(map[string]any{"sessionUpdate": "tool_call", "toolCallId": "presence-fixture", "title": "edit file", "kind": "edit", "status": "in_progress",
+					"locations": []any{map[string]any{"path": "/fixture/old.go", "line": 7}}, "content": oldContent})
+				update := map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "presence-fixture"}
+				if strings.Contains(string(body), "presence-empty") {
+					update["locations"], update["content"] = []any{}, []any{}
+				} else if strings.Contains(string(body), "presence-nonempty") {
+					update["locations"] = []any{map[string]any{"path": "/fixture/new.go", "line": 9}}
+					update["content"] = []any{map[string]any{"type": "diff", "path": "/fixture/new.go", "oldText": "before", "newText": "after"}}
+				}
+				notify(update)
+				// An omitted collection after the change must preserve its new value.
+				notify(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "presence-fixture",
+					"_meta": map[string]any{"terminal_output_delta": map[string]any{"terminal_id": "presence-fixture", "data": "progress"}}})
+				notify(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "presence-fixture", "status": "completed"})
+			}
+			if strings.Contains(string(body), "large-json-tool-fields") {
+				large := strings.Repeat("tool-json-field", 4096)
+				notify(map[string]any{"sessionUpdate": "tool_call", "toolCallId": "large-json", "title": "large result", "status": "completed",
+					"rawInput": map[string]any{"payload": large}, "rawOutput": map[string]any{"payload": large},
+					"content": []any{map[string]any{"type": "content", "content": map[string]any{"type": "text", "text": large}}}})
+			}
 			if strings.Contains(string(body), "independent-terminal-output") {
 				notify(map[string]any{"sessionUpdate": "tool_call", "toolCallId": "terminal-fixture", "title": "terminal", "status": "in_progress",
 					"locations": []any{map[string]any{"path": "/fixture/terminal", "line": 7}}})
-				for _, delta := range []string{"first ", "second"} {
-					notify(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "terminal-fixture",
-						"_meta": map[string]any{"terminal_output_delta": map[string]any{"terminal_id": "terminal-fixture", "data": delta}}})
+				deltas := []string{"first ", "second"}
+				if strings.Contains(string(body), "long-independent-terminal-output") {
+					deltas = make([]string, 40)
+					for i := range deltas {
+						deltas[i] = strings.Repeat("terminal-line\n", 100)
+					}
+				}
+				largeFrame := strings.Contains(string(body), "large-frame-independent-terminal-output")
+				if largeFrame {
+					deltas = []string{strings.Repeat("large-line\n", 110000)}
+				}
+				for _, delta := range deltas {
+					update := map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "terminal-fixture",
+						"_meta": map[string]any{"terminal_output_delta": map[string]any{"terminal_id": "terminal-fixture", "data": delta}}}
+					if largeFrame {
+						update["status"] = "in_progress"
+					}
+					notify(update)
 				}
 				notify(map[string]any{"sessionUpdate": "tool_call_update", "toolCallId": "terminal-fixture", "status": "completed"})
 			}
@@ -1519,6 +1640,75 @@ func fixturePromptLine(t *testing.T, trace, needle string) string {
 	return ""
 }
 
+func TestThreadTurnFailedHandoffCanSwitchProvider(t *testing.T) {
+	for _, cold := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cold=%t", cold), func(t *testing.T) {
+			lifecycle, store, req, trace := newTurnFixture(t, "codex")
+			configureThreadFixture(&req, trace)
+			first := chatTurn(0, "completed conversation before quota failure")
+			completeThreadFixtureTurn(t, lifecycle, store, req, first, true)
+			binding, err := store.ReadBinding(t.Context(), req.ChatID)
+			if err != nil || binding == nil {
+				t.Fatalf("binding: %+v %v", binding, err)
+			}
+			binding.Handoff = &agent.NativeHandoff{
+				History: []agent.HandoffPair{{UserMessageID: "user-" + first.HostInvocationID, AssistantMessageID: first.AssistantMessageID}},
+				Claim:   &agent.HandoffClaim{HostInvocationID: "failed-host", AdapterInputID: "failed-input"},
+			}
+			version, err := store.ReadVersion(t.Context(), req.ChatID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = store.Commit(t.Context(), agent.ConversationBatch{
+				ChatID: req.ChatID, Key: "quota-failure-without-native-receipt", ExpectedVersion: version,
+				Changes: []agent.ConversationChange{
+					{Fact: &agent.ChatFact{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "failed-user", Data: json.RawMessage(`{"role":"user","content":"do not replay failed input"}`)}},
+					{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: "failed-execution", InvocationID: "failed-host", MessageID: "failed-assistant", Data: json.RawMessage(`{"userMessageId":"failed-user"}`)}},
+					{Input: &agent.HostInput{HostInvocationID: "failed-host", AdapterInputID: "failed-input", Session: binding.Session, ExecutionID: "failed-execution", AssistantMessageID: "failed-assistant"}},
+					{Binding: binding},
+					{Fact: &agent.ChatFact{Type: constants.ChatEventTypeExecutionFailed, ExecutionID: "failed-execution", Data: json.RawMessage(`{"status":"failed","errorCode":"RuntimeQuotaExhausted"}`)}},
+				},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cold {
+				if err := lifecycle.CloseThread(t.Context(), req.ChatID); err != nil {
+					t.Fatal(err)
+				}
+			}
+			req.Connection.Account.Provider = "claude"
+			req.Summarize = true
+			configureThreadFixture(&req, trace)
+			next := chatTurn(2, "new explicit message after switching CLI")
+			prepared, err := lifecycle.Prepare(t.Context(), req, next, chatPorts(req.ChatID, next, false))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := prepared.Close(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			unchanged, err := store.ReadBinding(t.Context(), req.ChatID)
+			if err != nil || unchanged == nil || unchanged.Session != binding.Session || unchanged.Handoff == nil || unchanged.Handoff.Claim == nil {
+				t.Fatalf("unsubmitted replacement overwrote the old claim: %+v %v", unchanged, err)
+			}
+			completeThreadFixtureTurn(t, lifecycle, store, req, next, false)
+			line := fixturePromptLine(t, trace, next.Text)
+			if !strings.Contains(line, first.Text) || strings.Contains(line, "do not replay failed input") || strings.Contains(line, "private switch summary") {
+				t.Fatalf("replacement history lost or failed input replayed: %s", line)
+			}
+			_, consumption, err := store.ReadHostInputConsumption(t.Context(), agent.HostInputRef{ChatID: req.ChatID, HostInvocationID: "failed-host"})
+			if err != nil || consumption != nil {
+				t.Fatalf("old input consumption fabricated: %+v %v", consumption, err)
+			}
+			got, err := store.ReadBinding(t.Context(), req.ChatID)
+			if err != nil || got == nil || got.Session.Provider != "claude" {
+				t.Fatalf("replacement binding: %+v %v", got, err)
+			}
+		})
+	}
+}
+
 func TestThreadTurnUnresolvedHandoffBlocksSuccessorAndColdRetry(t *testing.T) {
 	lifecycle, store, req, trace := newTurnFixture(t, "codex")
 	configureThreadFixture(&req, trace)
@@ -1575,6 +1765,13 @@ func TestThreadTurnUnresolvedHandoffBlocksSuccessorAndColdRetry(t *testing.T) {
 			}
 		}
 	}
+	other := req
+	other.Connection.Account.Provider = "claude"
+	configureThreadFixture(&other, trace)
+	if successor, err := lifecycle.Prepare(t.Context(), other, next, chatPorts(req.ChatID, next, false)); successor != nil || !errors.Is(err, status_error.ChatLogNativeOutcomePending) {
+		t.Fatalf("unknown execution was treated as a recorded failure on provider switch: %+v %v", successor, err)
+	}
+
 	data, err := os.ReadFile(trace)
 	if err != nil || strings.Count(string(data), input.Text) != 1 || strings.Contains(string(data), next.Text) ||
 		!strings.Contains(string(data), `"method":"thread/resume"`) {
@@ -1655,6 +1852,444 @@ func TestThreadTurnReplaysIndependentTerminalDeltasAndLocations(t *testing.T) {
 		return
 	}
 	t.Fatalf("missing terminal tool: %+v", message)
+}
+
+func TestThreadTurnPersistsLongIndependentTerminalOutput(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "cursor")
+	configureThreadFixture(&req, trace)
+	input := chatTurn(0, "long-independent-terminal-output")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := turn.Run(t.Context())
+	if result.OperationError != nil || result.StorageError != nil || result.DeliveryError != nil || result.Outcome == nil {
+		t.Fatalf("long terminal output interrupted persistence: %+v", result)
+	}
+	message, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat("terminal-line\n", 4000)
+	for _, part := range message.Parts {
+		if part.ToolCallID != "terminal-fixture" {
+			continue
+		}
+		var snapshot struct {
+			// TerminalOutput is the complete independently streamed native output.
+			TerminalOutput string `json:"terminalOutput"`
+			// Status is the last native lifecycle state of this tool.
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(part.Data, &snapshot); err != nil {
+			t.Fatal(err)
+		}
+		if snapshot.TerminalOutput != want || snapshot.Status != "completed" {
+			t.Fatalf("long terminal replay lost data: output=%d want=%d status=%s delivery=%v", len(snapshot.TerminalOutput), len(want), snapshot.Status, result.DeliveryError)
+		}
+		return
+	}
+	t.Fatal("long terminal output missing from durable message")
+}
+
+func TestThreadTurnPersistsLargeCompleteToolFields(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "cursor")
+	configureThreadFixture(&req, trace)
+	input := chatTurn(0, "large-json-tool-fields")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := turn.Run(t.Context())
+	if result.OperationError != nil || result.StorageError != nil || result.DeliveryError != nil || result.Outcome == nil {
+		t.Fatalf("large tool fields rejected: %+v", result)
+	}
+	message, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat("tool-json-field", 4096)
+	for _, part := range message.Parts {
+		if part.ToolCallID != "large-json" {
+			continue
+		}
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(part.Data, &fields) != nil {
+			t.Fatal("invalid tool data")
+		}
+		for _, field := range []string{"input", "output", "content"} {
+			if !strings.Contains(string(fields[field]), want) {
+				t.Fatalf("complete %s field was truncated: %d", field, len(fields[field]))
+			}
+		}
+		return
+	}
+	t.Fatal("large complete tool fields missing")
+}
+
+func TestThreadTurnToolCollectionsPreservePresenceThroughLiveAndReplay(t *testing.T) {
+	for _, mode := range []string{"omitted", "empty", "nonempty"} {
+		t.Run(mode, func(t *testing.T) {
+			lifecycle, store, req, trace := newTurnFixture(t, "cursor")
+			configureThreadFixture(&req, trace)
+			input := chatTurn(0, "tool-collection-presence-"+mode)
+			ports := chatPorts(req.ChatID, input, true)
+			live := messageview.NewPublicMessageViewBuilder()
+			live.SeedNativeLiveMessage(input.AssistantMessageID, 0)
+			ports.CheckpointLive = func(_ context.Context, receipt agent.CommitReceipt, change agent.MessageChange) {
+				if change.ToolCallID != "presence-fixture" {
+					return
+				}
+				if _, err := live.ApplyNativeIncrement(input.AssistantMessageID, change, receipt.RecordedAt); err != nil {
+					t.Error(err)
+				}
+			}
+			turn, err := lifecycle.Prepare(t.Context(), req, input, ports)
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := turn.Run(t.Context())
+			if result.OperationError != nil || result.StorageError != nil || result.DeliveryError != nil {
+				t.Fatalf("collection update failed: %+v", result)
+			}
+			stored, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, part := range stored.Parts {
+				if part.ToolCallID != "presence-fixture" {
+					continue
+				}
+				found = true
+				var fields map[string]json.RawMessage
+				_ = json.Unmarshal(part.Data, &fields)
+				for _, name := range []string{"content", "locations"} {
+					value, exists := fields[name]
+					if !exists || mode == "empty" && string(value) != "[]" ||
+						mode == "omitted" && !strings.Contains(string(value), "/fixture/old.go") ||
+						mode == "nonempty" && (!strings.Contains(string(value), "/fixture/new.go") || strings.Contains(string(value), "/fixture/old.go")) {
+						t.Fatalf("%s %s changed presence: %s", mode, name, part.Data)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("tool snapshot missing")
+			}
+			replay := messageview.NewPublicMessageViewBuilder()
+			replay.SeedNativeLiveMessage(input.AssistantMessageID, 0)
+			if err := replay.ReplaceStoredContent(stored, stored.Revision, 1); err != nil {
+				t.Fatal(err)
+			}
+			toolPart := func(builder *messageview.MessageViewBuilder) messageview.MessageDisplayPart {
+				for _, part := range builder.Messages()[0].DisplayParts {
+					if part.ToolCallID == "presence-fixture" {
+						return part
+					}
+				}
+				t.Fatal("safe tool part missing")
+				return messageview.MessageDisplayPart{}
+			}
+			if !reflect.DeepEqual(toolPart(live), toolPart(replay)) {
+				t.Fatalf("live/replay collection state differs: live=%+v replay=%+v", toolPart(live), toolPart(replay))
+			}
+		})
+	}
+}
+
+type threadFragmentCommitCounter struct {
+	// ConversationStore remains the one real durable owner.
+	agent.ConversationStore
+	// native counts logical native fragment commits rather than physical records.
+	native atomic.Int64
+	// links counts the corresponding public checkpoint commits.
+	links atomic.Int64
+}
+
+func (s *threadFragmentCommitCounter) CommitNativeFragments(ctx context.Context, batch agent.NativeFragmentBatch) (agent.NativeFragmentRange, error) {
+	s.native.Add(1)
+	return s.ConversationStore.CommitNativeFragments(ctx, batch)
+}
+
+func (s *threadFragmentCommitCounter) Commit(ctx context.Context, batch agent.ConversationBatch) (agent.CommitReceipt, error) {
+	for _, change := range batch.Changes {
+		if change.Message != nil && change.Message.Kind == agent.MessageNativeFragment {
+			s.links.Add(1)
+		}
+	}
+	return s.ConversationStore.Commit(ctx, batch)
+}
+
+func TestThreadTurnLargeToolFrameSpansBatchesWithoutRowBudgetOverflow(t *testing.T) {
+	_, store, req, trace := newTurnFixture(t, "cursor")
+	counted := &threadFragmentCommitCounter{ConversationStore: store}
+	provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: func(context.Context, agent.AccountRequest) (agent.AccountLease, error) {
+		return agent.AccountLease{}, nil
+	}})
+	lifecycle := agent.NewThreadLifecycle(provider, counted)
+	t.Cleanup(func() { _ = lifecycle.Close(context.Background()); _ = provider.Close(context.Background()) })
+	configureThreadFixture(&req, trace)
+	input := chatTurn(0, "large-frame-independent-terminal-output")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := turn.Run(t.Context())
+	if result.Outcome == nil || result.Outcome.Turn.Status != acpmeta.NativeTurnCompleted || result.OperationError != nil || result.StorageError != nil || result.DeliveryError != nil {
+		t.Fatalf("a bounded large frame hit a single-batch row budget: %+v", result)
+	}
+	message, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat("large-line\n", 110000)
+	for _, part := range message.Parts {
+		if part.ToolCallID != "terminal-fixture" {
+			continue
+		}
+		var fields map[string]json.RawMessage
+		var output, status string
+		if json.Unmarshal(part.Data, &fields) != nil || json.Unmarshal(fields["terminalOutput"], &output) != nil || output != want || json.Unmarshal(fields["status"], &status) != nil || status != "completed" {
+			t.Fatalf("large frame was lost or truncated across batches: bytes=%d want=%d delivery=%v", len(output), len(want), result.DeliveryError)
+		}
+		if counted.native.Load() > 8 || counted.native.Load() != counted.links.Load() {
+			t.Fatalf("physical records became separate durable transactions: native=%d public=%d", counted.native.Load(), counted.links.Load())
+		}
+		t.Logf("known frame bytes=%d native=%s delivery=%v nativeBatches=%d publicLinks=%d", len(output), result.Outcome.Turn.Status, result.DeliveryError, counted.native.Load(), counted.links.Load())
+		return
+	}
+	t.Fatal("large frame missing")
+}
+
+type threadSlowFragmentStore struct {
+	// ConversationStore remains the only durable authority.
+	agent.ConversationStore
+	// entered captures the first synchronous native fragment write.
+	entered chan struct{}
+	// release permits that write after the adapter's delivery deadline is exceeded.
+	release chan struct{}
+	// once pauses only the first write, without delaying retry or settlement.
+	once sync.Once
+}
+
+func (s *threadSlowFragmentStore) CommitNativeFragments(ctx context.Context, batch agent.NativeFragmentBatch) (agent.NativeFragmentRange, error) {
+	s.once.Do(func() {
+		close(s.entered)
+		select {
+		case <-s.release:
+		case <-ctx.Done():
+		}
+	})
+	return s.ConversationStore.CommitNativeFragments(ctx, batch)
+}
+
+func TestThreadTurnSlowStoreReportsDeliveryFailureWithoutChangingNativeTerminal(t *testing.T) {
+	_, store, req, trace := newTurnFixture(t, "cursor")
+	configureThreadFixture(&req, trace)
+	slow := &threadSlowFragmentStore{ConversationStore: store, entered: make(chan struct{}), release: make(chan struct{})}
+	unblock := sync.OnceFunc(func() { close(slow.release) })
+	defer unblock()
+	provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: func(context.Context, agent.AccountRequest) (agent.AccountLease, error) {
+		return agent.AccountLease{}, nil
+	}})
+	lifecycle := agent.NewThreadLifecycle(provider, slow)
+	t.Cleanup(func() {
+		if err := lifecycle.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+		if err := provider.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	input := chatTurn(0, "long-independent-terminal-output")
+	turn, err := lifecycle.Prepare(ctx, req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan agent.TurnResult, 1)
+	go func() { done <- turn.Run(ctx) }()
+	select {
+	case <-slow.entered:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	// This deliberately crosses the existing ACP delivery deadline (500ms).
+	// It is a failure-boundary test, not pacing used to make a stream pass.
+	deadline := time.NewTimer(750 * time.Millisecond)
+	defer deadline.Stop()
+	select {
+	case <-deadline.C:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	unblock()
+	select {
+	case result := <-done:
+		if result.Outcome == nil || result.Outcome.Turn.Status != acpmeta.NativeTurnCompleted || result.Outcome.NativeFailure != nil ||
+			result.StorageError != nil || result.OperationError != nil || !errors.Is(result.DeliveryError, context.DeadlineExceeded) {
+			t.Fatalf("slow persistence was misreported as native failure: %+v", result)
+		}
+		durable, err := store.ReadNativeResult(ctx, agent.NativeResultKey{Session: result.Binding.Session, InvocationID: result.Outcome.Turn.InvocationID})
+		if err != nil || durable.Turn.Status != acpmeta.NativeTurnCompleted || durable.Failure != nil {
+			t.Fatalf("delivery failure replaced canonical native facts: %+v %v", durable, err)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
+
+type threadResultSignalStore struct {
+	// ConversationStore owns the real canonical result and all message data.
+	agent.ConversationStore
+	// committed reports the durable boundary without replacing the Store's facts.
+	committed chan agent.NativeResult
+}
+
+func (s *threadResultSignalStore) CommitNativeResult(ctx context.Context, result agent.NativeResult) error {
+	if err := s.ConversationStore.CommitNativeResult(ctx, result); err != nil {
+		return err
+	}
+	select {
+	case s.committed <- result:
+	default:
+	}
+	return nil
+}
+
+func TestThreadTurnBlockedOptionalObserverDoesNotBlockNativeFacts(t *testing.T) {
+	_, store, req, trace := newTurnFixture(t, "codex")
+	configureThreadFixture(&req, trace)
+	signal := &threadResultSignalStore{ConversationStore: store, committed: make(chan agent.NativeResult, 1)}
+	provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: func(context.Context, agent.AccountRequest) (agent.AccountLease, error) {
+		return agent.AccountLease{}, nil
+	}})
+	lifecycle := agent.NewThreadLifecycle(provider, signal)
+	t.Cleanup(func() {
+		if err := lifecycle.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+		if err := provider.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	release := make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	defer unblock()
+	observed := make(chan struct{}, 1)
+	input := chatTurn(0, "blocked optional observer")
+	ports := chatPorts(req.ChatID, input, true)
+	ports.Observe = func(ctx context.Context, _ agent.AgentScope, _ agent.AgentEvent) error {
+		select {
+		case observed <- struct{}{}:
+		default:
+		}
+		select {
+		case <-release:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	turn, err := lifecycle.Prepare(ctx, req, input, ports)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan agent.TurnResult, 1)
+	go func() { done <- turn.Run(ctx) }()
+	select {
+	case <-observed:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	select {
+	case result := <-signal.committed:
+		if result.Turn.Status != acpmeta.NativeTurnCompleted || result.Turn.Usage == nil || result.Turn.Usage.OutputTokens == nil ||
+			*result.Turn.Usage.OutputTokens != 7 {
+			t.Fatalf("blocked observer changed durable native evidence: %+v", result)
+		}
+	case <-ctx.Done():
+		t.Fatal("optional observation blocked canonical persistence")
+	}
+	unblock()
+	select {
+	case result := <-done:
+		if result.Outcome == nil || result.StorageError != nil || result.OperationError != nil || result.DeliveryError != nil {
+			t.Fatalf("observer release changed settlement: %+v", result)
+		}
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+}
+
+type threadFragmentFaultStore struct {
+	// ConversationStore remains the single real JSONL authority.
+	agent.ConversationStore
+	// failed injects one failure after the native batch but before its public link.
+	failed atomic.Bool
+	// fragments places the failure inside the large frame, after the initial tool announcement.
+	fragments atomic.Int64
+}
+
+func (s *threadFragmentFaultStore) Commit(ctx context.Context, batch agent.ConversationBatch) (agent.CommitReceipt, error) {
+	for _, change := range batch.Changes {
+		if change.Message != nil && change.Message.Kind == agent.MessageNativeFragment && s.fragments.Add(1) == 2 && s.failed.CompareAndSwap(false, true) {
+			return agent.CommitReceipt{}, status_error.ChatLogError
+		}
+	}
+	return s.ConversationStore.Commit(ctx, batch)
+}
+
+func TestThreadTurnRetainsLargeToolFrameAcrossPartialCommitRetry(t *testing.T) {
+	_, store, req, trace := newTurnFixture(t, "cursor")
+	configureThreadFixture(&req, trace)
+	fault := &threadFragmentFaultStore{ConversationStore: store}
+	provider := agent.NewProviderRuntime(agent.ProviderRuntimeOptions{AcquireAccount: func(context.Context, agent.AccountRequest) (agent.AccountLease, error) {
+		return agent.AccountLease{}, nil
+	}})
+	lifecycle := agent.NewThreadLifecycle(provider, fault)
+	t.Cleanup(func() {
+		if err := lifecycle.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+		if err := provider.Close(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	input := chatTurn(0, "large-frame-independent-terminal-output")
+	turn, err := lifecycle.Prepare(t.Context(), req, input, chatPorts(req.ChatID, input, true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := turn.Run(t.Context())
+	if result.Outcome == nil || result.Outcome.Turn.Status != acpmeta.NativeTurnCompleted || result.OperationError != nil ||
+		!errors.Is(result.StorageError, status_error.ChatLogError) {
+		t.Fatalf("partial write changed native terminal: %+v", result)
+	}
+	message, err := store.ReadMessage(t.Context(), req.ChatID, input.AssistantMessageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat("large-line\n", 110000)
+	for _, part := range message.Parts {
+		if part.ToolCallID != "terminal-fixture" {
+			continue
+		}
+		var snapshot struct {
+			// TerminalOutput is the full frame, including its suffix after a failed segment.
+			TerminalOutput string `json:"terminalOutput"`
+			// Status is the last observed tool state; later undelivered completion is not invented.
+			Status string `json:"status"`
+		}
+		if json.Unmarshal(part.Data, &snapshot) != nil || snapshot.TerminalOutput != want || snapshot.Status != "in_progress" {
+			t.Fatalf("partial commit duplicated or lost frame bytes: bytes=%d want=%d status=%s delivery=%v storage=%v", len(snapshot.TerminalOutput), len(want), snapshot.Status, result.DeliveryError, result.StorageError)
+		}
+		return
+	}
+	t.Fatal("large tool frame missing")
 }
 
 func TestThreadTurnReplacesOnlyTheAuthoritativeNativeCommentaryLane(t *testing.T) {
@@ -1758,5 +2393,31 @@ func TestHotSettingsFailureClosesOwnerAndResumesDurableSession(t *testing.T) {
 	}
 	if strings.Count(string(data), `"method":"thread/resume"`) != 1 || strings.Contains(string(data), rejected.Text) {
 		t.Fatalf("failed settings did not retire and resume the owner safely: %s", data)
+	}
+}
+
+func TestQoderContextWindowRestartsProcessAndResumesNativeSession(t *testing.T) {
+	lifecycle, store, req, trace := newTurnFixture(t, "qoder")
+	configureThreadFixture(&req, trace)
+	req.Connection.Account.Model = "qfmodel"
+	var original agent.NativeSessionKey
+	for i, window := range []string{"", "400000", "400000", ""} {
+		req.Selection = &agent.TurnSelection{ContextWindow: window}
+		result := completeThreadFixtureTurn(t, lifecycle, store, req, chatTurn(i, fmt.Sprintf("turn %d", i)), i == 0)
+		if i == 0 {
+			original = result.Binding.Session
+		} else if result.Binding.Session != original {
+			t.Fatalf("changing context replaced native session: %+v", result.Binding.Session)
+		}
+	}
+	data, err := os.ReadFile(trace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := string(data)
+	if strings.Count(wire, `"method":"session/new"`) != 1 ||
+		strings.Count(wire, `"method":"session/resume"`) != 2 ||
+		strings.Count(wire, "--context-window=400000") != 1 {
+		t.Fatalf("expected new only on the first turn and two native resumes: %s", wire)
 	}
 }

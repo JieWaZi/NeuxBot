@@ -25,11 +25,11 @@ func TestWorkResultRecoveryPreservesViewedAndExcludesProcessOnlyRounds(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	directory, err := layout.ChatWorkspace(chatID)
+	directory, err := layout.AgentWorkspace(wakerID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := workspace.EnsureExecutionWorkspace(directory, chatID, wakerID, nil); err != nil {
+	if err := workspace.EnsureAgentWorkspace(directory, wakerID); err != nil {
 		t.Fatal(err)
 	}
 	inputs := conversationfixture.Facts([]eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: wakerID, WorkspaceDirectory: directory, Title: "结果恢复"})}})

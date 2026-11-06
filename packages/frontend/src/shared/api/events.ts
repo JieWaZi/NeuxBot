@@ -41,6 +41,8 @@ export type ChatEvent = {
   executionStatus?: ExecutionStatus;
   errorCode?: string;
   errorMessage?: string;
+  errorMessageSource?: "public" | "localized";
+  errorParams?: Record<string, unknown>;
 };
 
 /** 临时流顺序与持久游标分别校验；只有规范安全展示字段可以进入 Renderer。 */

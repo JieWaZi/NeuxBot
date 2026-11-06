@@ -8,28 +8,51 @@ import (
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
-// Tokens preserves unknown counters as nil and measured zero as zero.
+// Tokens 保存已规范化计数和原生输入；ReportedInput 不参与互斥计数求和。
 type Tokens struct {
-	// Input counts input tokens outside cache reads and writes.
+	// 普通输入
 	Input *int64 `json:"input"`
-	// CacheRead counts input tokens read from cache.
+	// 原生输入
+	ReportedInput *int64 `json:"reportedInput,omitempty"`
+	// 缓存读取
 	CacheRead *int64 `json:"cacheRead"`
-	// CacheWrite counts input tokens written to cache.
+	// 缓存写入
 	CacheWrite *int64 `json:"cacheWrite"`
-	// Output counts output tokens including reasoning.
+	// 输出用量
 	Output *int64 `json:"output"`
-	// Reasoning is the reasoning subset of output.
+	// 推理用量
 	Reasoning *int64 `json:"reasoning"`
 }
 
+// ReadTokens 读取规范计数，并仅保留与主观测来源一致的原生输入。
 func ReadTokens(snapshot *acpmeta.TurnUsage) Tokens {
 	if snapshot == nil {
 		return Tokens{}
 	}
-	return ReadModelTokens(acpmeta.ModelUsage{
+	tokens := ReadModelTokens(acpmeta.ModelUsage{
 		InputTokens: snapshot.InputTokens, CacheReadTokens: snapshot.CacheReadTokens, CacheWriteTokens: snapshot.CacheWriteTokens,
 		OutputTokens: snapshot.OutputTokens, ReasoningTokens: snapshot.ReasoningTokens,
 	})
+	if tokens.Input != nil || snapshot.Source == "" {
+		return tokens
+	}
+	var reported *int64
+	for _, observation := range snapshot.Observations {
+		if observation.Source != snapshot.Source || observation.InputTotalTokens == nil {
+			continue
+		}
+		switch observation.Coverage {
+		case "query_pipeline_raw", "observed_requests_raw", "observed_requests", "provider_input_total":
+		default:
+			continue
+		}
+		if *observation.InputTotalTokens < 0 || reported != nil && *reported != *observation.InputTotalTokens {
+			return tokens
+		}
+		reported = observation.InputTotalTokens
+	}
+	tokens.ReportedInput = reported
+	return tokens
 }
 
 // ReadModelTokens validates the same canonical counters for a model's share of the invocation.
@@ -93,6 +116,7 @@ func (a *TokenAccumulator) Add(t Tokens, complete bool) error {
 		full **int64
 	}{
 		{t.Input, &m.KnownTokens.Input, &m.Tokens.Input},
+		{t.ReportedInput, &m.KnownTokens.ReportedInput, &m.Tokens.ReportedInput},
 		{t.CacheRead, &m.KnownTokens.CacheRead, &m.Tokens.CacheRead},
 		{t.CacheWrite, &m.KnownTokens.CacheWrite, &m.Tokens.CacheWrite},
 		{t.Output, &m.KnownTokens.Output, &m.Tokens.Output},

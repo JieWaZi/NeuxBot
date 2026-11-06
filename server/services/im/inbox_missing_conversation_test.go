@@ -51,11 +51,11 @@ func createAdmissionChat(ctx context.Context, module chat.Module, root, id, wake
 	if err != nil {
 		return models.Chat{}, err
 	}
-	directory, err := layout.ChatWorkspace(id)
+	directory, err := layout.AgentWorkspace(wakerID)
 	if err != nil {
 		return models.Chat{}, err
 	}
-	if err := workspace.EnsureExecutionWorkspace(directory, id, wakerID, nil); err != nil {
+	if err := workspace.EnsureAgentWorkspace(directory, wakerID); err != nil {
 		return models.Chat{}, err
 	}
 	created, err := module.CreateDormantChats(ctx, []chat.DormantChat{{Chat: models.Chat{ID: id, WakerID: wakerID, WorkspaceDirectory: directory, AdditionalWorkingDirectories: []string{directory}}}})

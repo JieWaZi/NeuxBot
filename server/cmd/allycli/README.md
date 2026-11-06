@@ -6,17 +6,17 @@
 
 ## 开始使用
 
-应用向受管执行提供 CLI 路径 `ALLYCLI_BINARY_PATH` 和执行上下文 `ALLYCLI_CONTEXT_FILE`。系统 [ally 技能](../../../skills/ally/SKILL.md) 也给出技能目录内的实际可执行文件路径。使用该路径，不依赖全局安装或当前工作目录。宿主在每次工作流执行消息中给出不可变的上下文路径；传入 --context 可避免原生会话复用时沿用旧环境变量。支持 stdio 的 Runtime 优先注入内部 MCP：allycli mcp serve --context <当次路径>，工具与 CLI 共用目录、授权及回执。
+应用在执行指令中提供系统 [ally 技能](../../../skills/ally/SKILL.md) 的实际可执行文件路径，在本轮输入中提供明确的连接文件路径。每次业务调用必须传入 `--context`，CLI 不从环境变量取得授权上下文，也不依赖全局安装、PATH 或当前工作目录。工作流在支持 stdio 的 Runtime 中使用 `allycli mcp serve --context <当次路径>`；工具与 CLI 共用目录、授权及回执。
 
-以下为应用已提供执行上下文时的 POSIX Shell 示例：
+以下路径仅为示例，调用时使用本次执行实际提供的绝对路径：
 
 ```sh
-"$ALLYCLI_BINARY_PATH" --context "$ALLYCLI_CONTEXT_FILE" capabilities
-"$ALLYCLI_BINARY_PATH" --context "$ALLYCLI_CONTEXT_FILE" describe knowledge.pages.search
-"$ALLYCLI_BINARY_PATH" --context "$ALLYCLI_CONTEXT_FILE" knowledge pages search --library-id library-example --query "部署流程"
+"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" capabilities
+"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" describe knowledge.pages.search
+"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" knowledge pages search --library-id library-example --query "部署流程"
 ```
 
-Windows 使用当前 Shell 的环境变量语法及应用提供的 `allycli.exe` 路径。普通外部终端没有执行上下文时，不能直接获得应用的业务能力。开发时可在仓库根目录运行 `go -C server run ./cmd/allycli --help` 查看命令树，但这不签发业务授权。
+Windows 使用应用提供的 `allycli.exe` 绝对路径，同样显式传入 `--context`。普通外部终端没有执行上下文时，不能直接获得应用业务能力。开发时可在仓库根目录运行 `go -C server run ./cmd/allycli --help` 查看命令树，但这不签发业务授权。Core 启动器用于定位打包程序的 `ALLYCLI_BINARY_PATH` 只属于宿主装配，不再注入模型执行子进程。
 
 操作标识中的点对应命令路径中的空格，例如 `workflow.runs.get` 对应 `allycli workflow runs get`。短标量可用命令行参数，复杂对象或长正文用 `--input request.json`；`--input -` 从标准输入读取 JSON。同一字段不要同时从文件和命令行提供。
 
@@ -171,21 +171,21 @@ Windows 使用当前 Shell 的环境变量语法及应用提供的 `allycli.exe`
 先发现目标和操作，再提交用户要求的工作。以下示例中的 `request.json` 是调用者准备的真实 UTF-8 JSON 文件，字段以对应 `describe` 为准：
 
 ```sh
-"$ALLYCLI_BINARY_PATH" --context "$ALLYCLI_CONTEXT_FILE" describe im.deliveries.create
-"$ALLYCLI_BINARY_PATH" im deliveries create --input request.json --request-id delivery-example-01
-"$ALLYCLI_BINARY_PATH" receipts get --operation im.deliveries.create --request-id delivery-example-01
+"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" describe im.deliveries.create
+"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" im deliveries create --input request.json --request-id delivery-example-01
+"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" receipts get --operation im.deliveries.create --request-id delivery-example-01
 ```
 
 已知交付身份后，可在最长 60 秒的观察窗口内等待：
 
 ```sh
-"$ALLYCLI_BINARY_PATH" im deliveries wait --delivery-id delivery-example --timeout 30s
+"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" im deliveries wait --delivery-id delivery-example --timeout 30s
 ```
 
 已有明确的工作流创作需求时，优先读取所需上下文，避免遍历全部指南：
 
 ```sh
-"$ALLYCLI_BINARY_PATH" workflow authoring prepare --primitives functionTask
+"/app/skills/ally/scripts/allycli" --context "/app/agent-contexts/example/connection.json" workflow authoring prepare --primitives functionTask
 ```
 
 ## 当前边界

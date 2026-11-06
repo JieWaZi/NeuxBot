@@ -26,6 +26,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
+	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
 // nativeResourceProjection is the public description of resources actually owned by one connection.
@@ -77,6 +78,9 @@ func nativeThreadRequest(chatID string, plan agent.SessionPlan, request pendingM
 			additional = append(additional, directory)
 		}
 	}
+	if supported, known := agent.AdditionalDirectorySupport(plan.Detection); known && !supported {
+		additional = nil
+	}
 	thread := agent.ThreadRequest{
 		ChatID: chatID,
 		Connection: agent.ProviderConnectionRequest{
@@ -95,7 +99,7 @@ func nativeThreadRequest(chatID string, plan agent.SessionPlan, request pendingM
 		Summarize:    request.runtime.HistoryMode == constants.HistoryModeSummary,
 		HistoryTurns: request.runtime.HistoryTurns,
 	}
-	thread.Selection = &agent.TurnSelection{Reasoning: plan.Policy.Reasoning, Fast: request.runtime.Fast}
+	thread.Selection = &agent.TurnSelection{Reasoning: plan.Policy.Reasoning, Fast: request.runtime.Fast, ContextWindow: request.runtime.ContextWindow}
 	if !request.runtime.ConfigurationResolved {
 		thread.Selection.DefaultFast = environment.DefaultFast
 	}
@@ -132,6 +136,9 @@ func nativeThreadRequest(chatID string, plan agent.SessionPlan, request pendingM
 		thread.Connection.Account.Model = accountconfig.NativeModelID(provider, plan.Policy.Model)
 	}
 
+	if instructions := agent.DeveloperInstructions(plan); instructions != "" {
+		thread.Session.DeveloperInstructions = &instructions
+	}
 	return thread
 }
 
@@ -162,7 +169,7 @@ func nativeTurnPrompt(turn agent.TurnInput) string {
 	var prompt strings.Builder
 	prompt.WriteString(turn.Message.Text)
 	for _, attachment := range turn.Message.Attachments {
-		fmt.Fprintf(&prompt, "\n\nAttachment %q is available at %q.", attachment.Name, attachment.Path)
+		fmt.Fprintf(&prompt, "\n\nAttachment %q is available at %q.", attachment.Name, attachment.RuntimePath)
 	}
 	for _, reference := range turn.Message.CodeReferences {
 		if reference.StartLine == 0 {
@@ -176,6 +183,12 @@ func nativeTurnPrompt(turn agent.TurnInput) string {
 	}
 	if len(turn.SelectedConnectors) > 0 {
 		fmt.Fprintf(&prompt, "\n\nSelected connectors: %s.", strings.Join(turn.SelectedConnectors, ", "))
+	}
+	if len(turn.ContextInstructions) > 0 {
+		encoded, _ := json.Marshal(turn.ContextInstructions)
+		prompt.WriteString("\n\n<neuxbot-turn-context>\n")
+		prompt.Write(encoded)
+		prompt.WriteString("\n</neuxbot-turn-context>")
 	}
 	return prompt.String()
 }
@@ -224,7 +237,7 @@ func (m *service) startNativeExecution(
 	plan.Target.AccountID = request.runtime.AccountID
 	input.Message.Text += pluginSelectionHint(frozen.selected)
 	activate, revoke, err := m.prepareAgent(&plan, &input,
-		state.chat, executionID, request.toolCapabilities, request.allowedAgentDomains, request.automaticRunID)
+		state.chat, executionID, request.toolCapabilities, request.allowedAgentDomains, files.referencedFiles, request.automaticRunID)
 	if err != nil {
 		return AcceptedExecution{}, err
 	}
@@ -244,7 +257,20 @@ func (m *service) startNativeExecution(
 		selection.ConnectorIDs = append(selection.ConnectorIDs, connector.ID)
 	}
 	slices.Sort(selection.ConnectorIDs)
-	metadata, err := json.Marshal([]any{plan.Instructions, plan.Skills, plan.Connectors})
+	pluginSkills, err := m.selectNativePluginSkills(ctx, frozen)
+	if err != nil {
+		return AcceptedExecution{}, err
+	}
+	selectedSkills, err := mergePluginSkills(plan.Skills, pluginSkills)
+	if err != nil {
+		return AcceptedExecution{}, err
+	}
+	selection.Skills, err = agent.FreezeSkills(plan.Detection, plan.Workspace, selectedSkills, selection.Plugins)
+	if err != nil {
+		return AcceptedExecution{}, err
+	}
+
+	metadata, err := json.Marshal([]any{plan.Instructions, plan.Skills, plan.Connectors, plan.Workspace})
 	if err != nil {
 		return AcceptedExecution{}, status_error.RuntimeConfigurationInvalid
 	}
@@ -265,8 +291,8 @@ func (m *service) startNativeExecution(
 		activate: activate, revoke: revoke, started: make(chan executionStartResult, 1),
 	}
 	ports := work.ports(m)
-	ports.AcquireResources = func(ctx context.Context, _ agent.ResourceSelection) (agent.ResourceLease, error) {
-		return m.acquireNativeResources(ctx, state.chat.ID, plan, enabledConnectors, frozen, input.LaunchEnvironment)
+	ports.AcquireResources = func(ctx context.Context, selection agent.ResourceSelection) (agent.ResourceLease, error) {
+		return m.acquireNativeResources(ctx, state.chat.ID, plan, enabledConnectors, frozen, selection)
 	}
 	nativeInput, err := nativeTurnInput(executionID, input, environment.Detection)
 	if err != nil {
@@ -336,7 +362,7 @@ func (m *service) startNativeExecution(
 
 func (m *service) acquireNativeResources(
 	ctx context.Context, chatID string, plan agent.SessionPlan,
-	baseConnectors []models.MCPConnector, frozen frozenPluginResources, launchEnvironment map[string]string,
+	baseConnectors []models.MCPConnector, frozen frozenPluginResources, selection agent.ResourceSelection,
 ) (agent.ResourceLease, error) {
 	materialized, err := m.acquirePluginResources(ctx, frozen, false)
 	projection := &nativeResourceProjection{}
@@ -356,9 +382,16 @@ func (m *service) acquireNativeResources(
 	if err != nil {
 		return lease, err
 	}
-	if err := m.workspacePreparer.Prepare(plan); err != nil {
+
+	// 实际插件租约取得后再次确认精确内容；ProviderRuntime 持有目标预约并负责发布。
+	lease.Skills, err = agent.FreezeSkills(plan.Detection, plan.Workspace, plan.Skills, selection.Plugins)
+	if err != nil {
 		return lease, err
 	}
+	if !agent.SameSkills(selection.Skills, lease.Skills) {
+		return lease, status_error.SkillContentInvalid
+	}
+
 	projection.connectors = runtimeConnectorResources(append(slices.Clone(baseConnectors), materialized.connectors...))
 	for _, declaration := range plan.Connectors {
 		if declaration.ID == "neuxbot-internal-capabilities" {
@@ -384,16 +417,6 @@ func (m *service) acquireNativeResources(
 	}
 
 	lease.Environment = materialized.environment
-	for name, value := range launchEnvironment {
-		lease.Environment[name] = value
-	}
-	if cli := launchEnvironment[constants.AgentCLIBinaryEnvironment]; cli != "" {
-		path := lease.Environment["PATH"]
-		if path == "" {
-			path = os.Getenv("PATH")
-		}
-		lease.Environment["PATH"] = filepath.Dir(cli) + string(os.PathListSeparator) + path
-	}
 	m.nativeResources.Store(chatID, projection)
 	return lease, nil
 }
@@ -453,6 +476,7 @@ func (work *nativeExecutionWork) admission(invocationID string) chatservice.Star
 
 func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 	chatID, executionID := work.chat.ID, work.execution.ID
+	var live *chatservice.NativeLiveMessage
 	ports := agent.TurnPorts{
 		Admit: func(ctx context.Context, admitted agent.TurnAdmission) (agent.ConversationBatch, error) {
 			work.admissionFacts = work.admission(admitted.Input.HostInvocationID)
@@ -465,6 +489,9 @@ func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
+			// 接纳批次的最后一项业务事实是 execution.started。
+			startedRevision := receipt.First + int64(len(work.admissionFacts.Facts)) - 1
+			live = work.journal.BeginNativeLive(chatID, executionID, startedRevision)
 			if work.activate != nil {
 				work.activate()
 			}
@@ -481,12 +508,44 @@ func (work *nativeExecutionWork) ports(m *service) agent.TurnPorts {
 				work.admissionReceipt.CompareAndSwap(nil, &receipt)
 			}
 		},
+		AppendLive: func(change agent.MessageChange) {
+			if live != nil {
+				live.Append(change)
+			}
+		},
+		CheckpointLive: func(ctx context.Context, receipt agent.CommitReceipt, change agent.MessageChange) {
+			if live == nil {
+				work.journal.ObserveCommitted(chatID, receipt)
+				return
+			}
+			live.Checkpoint(ctx, receipt, change)
+		},
+		FinishLive: func() {
+			if live != nil {
+				live.Close()
+			}
+		},
 		Input: func(ctx context.Context, _ agent.AgentScope, input agent.AgentInputRequest) (agent.AgentInputResponse, error) {
 			return nativeInput(ctx, m.elicitations.handler(chatID, executionID), executionID, input)
 		},
 	}
 	if !work.input.runtime.WorkspaceReadOnly {
 		ports.Approve = func(ctx context.Context, _ agent.AgentScope, request agent.AgentApproval) (string, error) {
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
+			if work.input.runtime.PermissionLevel == constants.PermissionLevelFullAccess {
+				// Prefer a single-use native approval so this turn's full access
+				// does not persist a broader permission into subsequent turns.
+				for _, kind := range []string{"allow_once", "allow_always"} {
+					for _, option := range request.Options {
+						if option.Kind == kind && option.ID != "" {
+							return option.ID, nil
+						}
+					}
+				}
+				return "", nil
+			}
 			return nativeApproval(ctx, m.approvals.handler(chatID, executionID), executionID, request)
 		}
 	}
@@ -587,7 +646,7 @@ func (m *service) runNativeExecution(ctx context.Context, work *nativeExecutionW
 	}
 	if recorder, ok := m.journal.(chatservice.FileChangesRecorder); ok {
 		var err error
-		work.recording, err = recorder.BeginFileChanges(ctx, work.chat, executionID, work.state.threadWorkspaceID, work.state.projectSources)
+		work.recording, err = recorder.BeginFileChanges(ctx, work.chat, executionID, work.state.threadWorkspaceID, work.state.projectSources, work.files.referencedFiles)
 		if err != nil {
 			logx.Warnf("prepare native file result: chat_id=%s execution_id=%s error=%v", chatID, executionID, err)
 		}
@@ -614,6 +673,13 @@ func (work *nativeExecutionWork) settle(m *service, result agent.TurnResult) {
 		}
 	}
 	outcome := nativeExecutionOutcome(result)
+	if outcome.status == constants.ExecutionStatusFailed {
+		var nativeFailure error
+		if result.Outcome != nil {
+			nativeFailure = result.Outcome.NativeFailure
+		}
+		logx.Errorf("native execution settlement failed: chat_id=%s execution_id=%s error_code=%s cause=%v", work.chat.ID, work.execution.ID, outcome.code, errors.Join(result.StorageError, result.DeliveryError, result.CleanupError, result.OperationError, nativeFailure))
+	}
 	if !work.precommitted && !work.projected.Load() {
 		// Reconcile the file journal before the caller is allowed to roll back a new Chat.
 		if work.recording != nil && !result.BusinessAdmitted {
@@ -628,18 +694,24 @@ func (work *nativeExecutionWork) settle(m *service, result agent.TurnResult) {
 	if work.execution.Status == constants.ExecutionStatusPending && result.BusinessAdmitted {
 		work.execution.Status = constants.ExecutionStatusRunning
 	}
-	m.finishExecution(work.chat, work.execution, outcome.status, outcome.code, outcome.message)
+	m.finishExecution(work.chat, work.execution, eventlog.ExecutionFinishedData{Status: outcome.status, ErrorCode: outcome.code, ErrorMessage: outcome.message, ErrorParams: outcome.params, FailureCode: outcome.failureCode, ErrorMessageSource: outcome.messageSource})
 }
 
 // nativeExecutionStatus maps native settlement to the existing business status.
 type nativeExecutionStatus struct {
-	// status is the durable business outcome.
+	// status 是业务执行最终状态。
 	status constants.ExecutionStatus
-	// code is the stable public failure code.
+	// code 是用于本地化的稳定应用错误身份。
 	code string
-	// message is a safe displayable failure description.
+	// message 仅保留显式公开的原生可读原因。
 	message string
-	// err is the admission failure returned to an unaccepted request.
+	// messageSource 明确标记正文是否来自公开原生原因。
+	messageSource constants.ErrorMessageSource
+	// failureCode 保留与应用错误身份分开的原生技术分类。
+	failureCode constants.RuntimeFailureCode
+	// params 是应用错误模板允许使用的安全参数。
+	params map[string]interface{}
+	// err 是拒绝尚未接纳请求时返回的同一应用错误。
 	err error
 }
 
@@ -654,30 +726,38 @@ func nativeExecutionOutcome(result agent.TurnResult) nativeExecutionStatus {
 				return nativeExecutionStatus{status: constants.ExecutionStatusCompleted}
 			}
 		case acpmeta.NativeTurnCancelled:
-			return nativeExecutionStatus{status: constants.ExecutionStatusCanceled, code: string(constants.RuntimeFailureCodeContextCanceled),
-				message: context.Canceled.Error(), err: status_error.OperationCanceled}
+			return nativeExecutionStatus{status: constants.ExecutionStatusCanceled, code: status_error.OperationCanceled.Key(), failureCode: constants.RuntimeFailureCodeContextCanceled,
+				messageSource: constants.ErrorMessageSourceLocalized, err: status_error.OperationCanceled}
 		}
 	}
 	failure = errors.Join(failure, result.OperationError)
 	if result.StorageError == nil && result.DeliveryError == nil && result.CleanupError == nil && errors.Is(failure, context.Canceled) {
-		return nativeExecutionStatus{status: constants.ExecutionStatusCanceled, code: string(constants.RuntimeFailureCodeContextCanceled),
-			message: context.Canceled.Error(), err: status_error.OperationCanceled}
+		return nativeExecutionStatus{status: constants.ExecutionStatusCanceled, code: status_error.OperationCanceled.Key(), failureCode: constants.RuntimeFailureCodeContextCanceled,
+			messageSource: constants.ErrorMessageSourceLocalized, err: status_error.OperationCanceled}
 	}
-	var safe status_error.StatusError
-	if errors.As(failure, &safe) {
-		out.err = safe
+	var safe statuserror.CommonError
+	if public := status_error.PublicError(failure); public != nil {
+		out.err = public
+		_ = errors.As(public, &safe)
 	}
-	out.code, out.message = string(constants.RuntimeFailureCodeExecutionFailed), out.err.Error()
+	out.code, out.message = string(constants.RuntimeFailureCodeExecutionFailed), status_error.PublicMessage(out.err)
+	isStatus := func(want status_error.StatusError) bool {
+		return safe != nil && safe.Code() == want.Code()
+	}
 	switch {
 	case result.StorageError != nil || result.DeliveryError != nil:
 		out.code = string(constants.RuntimeFailureCodeEventDelivery)
-	case errors.Is(failure, status_error.RuntimeAuthRequired):
+	case isStatus(status_error.RuntimeAuthRequired):
 		out.code = string(constants.RuntimeFailureCodeAuthRequired)
-	case errors.Is(failure, status_error.RuntimePolicyUnsupported):
+	case isStatus(status_error.RuntimeQuotaExhausted):
+		out.code = string(constants.RuntimeFailureCodeQuotaExhausted)
+	case isStatus(status_error.RuntimeRateLimited):
+		out.code = string(constants.RuntimeFailureCodeRateLimited)
+	case isStatus(status_error.RuntimePolicyUnsupported):
 		out.code = string(constants.RuntimeFailureCodePolicyUnsupported)
-	case errors.Is(failure, status_error.RuntimeProtocolIncompatible):
+	case isStatus(status_error.RuntimeProtocolIncompatible):
 		out.code = string(constants.RuntimeFailureCodeProtocolIncompatible)
-	case errors.Is(failure, status_error.RuntimeUnavailable):
+	case isStatus(status_error.RuntimeUnavailable):
 		out.code = string(constants.RuntimeFailureCodeRuntimeUnavailable)
 	case errors.Is(failure, context.DeadlineExceeded):
 		out.code = string(constants.RuntimeFailureCodeRequestTimeout)
@@ -685,6 +765,28 @@ func nativeExecutionOutcome(result agent.TurnResult) nativeExecutionStatus {
 	if result.Outcome != nil && result.Outcome.NativeErrorKind == "rate_limit" &&
 		result.StorageError == nil && result.DeliveryError == nil && result.CleanupError == nil {
 		out.code = string(constants.RuntimeFailureCodeRateLimited)
+	}
+	if result.Outcome != nil && result.Outcome.NativeErrorKind == "quota_exhausted" &&
+		result.StorageError == nil && result.DeliveryError == nil && result.CleanupError == nil {
+		out.code = string(constants.RuntimeFailureCodeQuotaExhausted)
+	}
+	out.messageSource = constants.ErrorMessageSourceLocalized
+	if out.message != "" {
+		out.messageSource = constants.ErrorMessageSourcePublic
+	}
+	out.failureCode = constants.RuntimeFailureCode(out.code)
+	if out.err == status_error.RuntimeExecutionFailed {
+		switch out.failureCode {
+		case constants.RuntimeFailureCodeQuotaExhausted:
+			out.err = status_error.RuntimeQuotaExhausted
+		case constants.RuntimeFailureCodeRateLimited:
+			out.err = status_error.RuntimeRateLimited
+		}
+	}
+	var public statuserror.CommonError
+	if errors.As(out.err, &public) {
+		out.code = public.Key()
+		out.params = status_error.PublicParams(out.err)
 	}
 	return out
 }

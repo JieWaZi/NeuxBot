@@ -151,7 +151,7 @@ func acquireCursorAccount(ctx context.Context, request agent.AccountRequest) (ag
 	if identity.subject != request.Subject {
 		return agent.AccountLease{}, status_error.RuntimeAuthRequired
 	}
-	lease := agent.AccountLease{ConfigHome: config.configHome, Environment: config.environment}
+	lease := agent.AccountLease{ConfigHome: config.configHome, DataHome: config.dataHome, Environment: config.environment}
 	if identity.nativeUserID != "" {
 		lease.VerifyLogin = func(ctx context.Context) error {
 			current, err := config.identity(ctx, request)

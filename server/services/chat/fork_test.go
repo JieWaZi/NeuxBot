@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
@@ -35,17 +36,21 @@ func forkFixture(t *testing.T) (*service, string) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 	m := newTestService(t, Config{StorageDirectory: t.TempDir(), QueryIndexes: QueryIndexDependencies{Chats: controllers.NewChatController(database.DB), RuntimeSessions: controllers.NewRuntimeSessionController(database.DB), DeletionIntents: controllers.NewChatDeletionIntentController(database.DB), Transactions: controllers.NewTransactionController(dbhelper.NewGormTransactionManager(database.DB))}})
 	id := "12345678901234567890123456789012"
-	root, err := m.storage.ChatWorkspace(id)
+	root, err := m.storage.AgentWorkspace("waker")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = workspace.EnsureExecutionWorkspace(root, id, "waker", nil); err != nil {
+	if err = workspace.EnsureAgentWorkspace(root, "waker"); err != nil {
 		t.Fatal(err)
 	}
-	if err = os.MkdirAll(filepath.Join(root, "attachments"), 0700); err != nil {
+	private, err := m.storage.ChatRoot(id)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(root, "attachments", "before.txt"), []byte("独立附件"), 0600); err != nil {
+	if err = os.MkdirAll(filepath.Join(private, "attachments"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(private, "attachments", "before.txt"), []byte("独立附件"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	facts := []eventlog.AppendInput{{Type: constants.ChatEventTypeCreated, Data: marshalData(eventlog.ChatCreatedData{WakerID: "waker", WorkspaceDirectory: root, Title: "原会话"})}}
@@ -112,7 +117,14 @@ func TestForkCopiesBoundaryWithoutExecutionsAndSurvivesParentDeletion(t *testing
 	if err = m.DeleteChat(context.Background(), parent); err != nil {
 		t.Fatal(err)
 	}
-	content, err := os.ReadFile(filepath.Join(detail.Chat.WorkspaceDirectory, "attachments/before.txt"))
+	private, err := m.storage.ChatRoot(child)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Chat.WorkspaceDirectory != filepath.Join(m.storage.Root(), "Agents", "waker") {
+		t.Fatal("fork did not reuse Waker cwd")
+	}
+	content, err := os.ReadFile(filepath.Join(private, "attachments/before.txt"))
 	if err != nil || string(content) != "独立附件" {
 		t.Fatalf("child attachment: %q %v", content, err)
 	}
@@ -144,7 +156,7 @@ func TestForkRejectsConcurrentDeletionAndUncertainRetry(t *testing.T) {
 		if err := m.DeleteChat(context.Background(), parent); !errors.Is(err, status_error.ChatHasActiveExecution) {
 			t.Fatalf("concurrent delete: %v", err)
 		}
-		if err := m.DeleteWakerChats(context.Background(), "waker"); !errors.Is(err, status_error.ChatHasActiveExecution) {
+		if err := m.DeleteWakerChats(context.Background(), "waker", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); !errors.Is(err, status_error.ChatHasActiveExecution) {
 			t.Fatalf("concurrent waker delete: %v", err)
 		}
 		release, err := chatstorage.AcquireOperation(m.storage.Root(), parent)
@@ -389,7 +401,7 @@ func TestDeleteWakerCancelsPendingFork(t *testing.T) {
 	if err = chatstorage.WriteForkOperation(directory, operation); err != nil {
 		t.Fatal(err)
 	}
-	if err = m.DeleteWakerChats(context.Background(), "waker"); err != nil {
+	if err = m.DeleteWakerChats(context.Background(), "waker", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if err = m.Start(context.Background()); err != nil {
@@ -416,7 +428,7 @@ func TestDeleteWakerIncludesPublishedFork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = m.DeleteWakerChats(context.Background(), "waker"); err != nil {
+	if err = m.DeleteWakerChats(context.Background(), "waker", func([]string) (func() error, error) { return nil, nil }, func(context.Context) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{parent, child} {
@@ -437,7 +449,7 @@ func TestDeleteWakerIncludesPublishedFork(t *testing.T) {
 // TestForkAttachmentFailureRetriesPreparationBeforeNativeSideEffect 验证缺失附件不会先执行原生副作用。
 func TestForkAttachmentFailureRetriesPreparationBeforeNativeSideEffect(t *testing.T) {
 	m, parent := forkFixture(t)
-	root, err := m.storage.ChatWorkspace(parent)
+	root, err := m.storage.ChatRoot(parent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -508,4 +520,54 @@ func TestForkActiveAndUnsupportedBoundaryAreRejected(t *testing.T) {
 	if err != nil || len(points) != 2 || points[0].target.Available || !points[1].target.Available {
 		t.Fatalf("latest boundary: %+v %v", points, err)
 	}
+}
+
+func TestForkUsesMetadataCheckpointForLongTool(t *testing.T) {
+	m, parent := forkFixture(t)
+	ctx := t.Context()
+	const id = "review-tool"
+	if _, err := m.logStore.Append(parent, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeUserMessageCreated, MessageID: "user-review-tool", Data: marshalData(eventlog.MessageCreatedData{Role: constants.MessageRoleUser, Content: "review"})},
+		{Type: constants.ChatEventTypeExecutionCreated, ExecutionID: id, Data: marshalData(eventlog.ExecutionCreatedData{UserMessageID: "user-review-tool", RuntimeID: "custom-codex", Model: "model"})},
+		{Type: constants.ChatEventTypeExecutionStarted, ExecutionID: id},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	journal := m.logStore.(*conversationJournal)
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "codex", Subject: "fixture", SessionID: "native-parent"}, InvocationID: "review-tool-invocation"}
+	data := marshalData(map[string]any{"id": "review-tool", "title": "run tests", "kind": "execute", "status": "completed", "input": map[string]any{"command": "go test ./example"}})
+	rng, err := journal.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: key, MessageID: "review-native-tool", CommitKey: "review-tool", Changes: []agent.MessageChange{{Kind: agent.MessageToolUpdate, ToolCallID: "review-tool", Data: data, Text: strings.Repeat("TERMINAL_SECRET", 6000), Revision: 1}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := journal.ReadVersion(ctx, parent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journal.Commit(ctx, agent.ConversationBatch{ChatID: parent, Key: "review-link", ExpectedVersion: version, Changes: []agent.ConversationChange{{Message: &agent.MessageChange{MessageID: id, ExecutionID: id, Kind: agent.MessageNativeFragment, Fragments: &rng, Revision: 1}}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.logStore.Append(parent, []eventlog.AppendInput{
+		{Type: constants.ChatEventTypeInvocationFinished, ExecutionID: id, Data: marshalData(eventlog.InvocationFinishedData{RecoveryStrategy: constants.InvocationRecoveryInitial, RuntimeID: "custom-codex", SessionOutputID: "native-parent", ForkMode: "turn", ForkPosition: "turn-review-tool"})},
+		{Type: constants.ChatEventTypeExecutionCompleted, ExecutionID: id, Data: marshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted})},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	operation, err := m.prepareFork(ctx, ForkInput{ChatID: parent, ExecutionID: id, ClientRequestID: "review"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload forkPayload
+	if err := json.Unmarshal(operation.Payload, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(operation.Payload), "TERMINAL_SECRET") {
+		t.Fatal("private terminal leaked into fork")
+	}
+	for _, message := range payload.Messages {
+		if message.SourceMessageID == id && len(message.Message.DisplayParts) > 0 {
+			return
+		}
+	}
+	t.Fatal("fork discarded safe tool display")
 }

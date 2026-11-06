@@ -15,7 +15,6 @@ import {
   type ResolvedFileReference,
 } from "@/shared/workspace/file-reference";
 
-import { projectFilesScopePath } from "../model/project-files-scope";
 import { workspaceFilesWithGenerated } from "../model/chat-workspace-files";
 import type { ChatViewState } from "../model/use-chat-view-state";
 import type { ChatCodeReference } from "../runtime/chat-queue-store";
@@ -272,7 +271,7 @@ export function useChatWorkspaceBindings({
   > = {
     rootPath: workspaceDirectory,
     scopeChatId: activeChatId,
-    scopePath: projectFilesScopePath(activeChatId),
+    scopePath: "",
     sourceRoots: additionalWorkingDirectories,
     chatFiles,
     fileSource,

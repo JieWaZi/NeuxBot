@@ -56,14 +56,27 @@ func ComponentID(plugin, key string) string {
 
 // ResolveServer 保留标准字段的语义，仅在明确的客户端扩展中注入共享配置。
 func ResolveServer(pkg Package, input Server, root, data string, values map[string]string) (ResolvedServer, error) {
+	return resolveServer(pkg, input, root, data, values, false)
+}
+
+// resolveServer 共用展开与边界规则，仅在实际取得阶段物化持久工作目录。
+func resolveServer(pkg Package, input Server, root, data string, values map[string]string, readOnly bool) (ResolvedServer, error) {
 	var result ResolvedServer
 	realRoot, err := filepath.EvalSymlinks(root)
 	if err != nil {
 		return result, storageFailure(err)
 	}
-	realData, err := filepath.EvalSymlinks(data)
-	if err != nil {
-		return result, storageFailure(err)
+	var realData string
+	if readOnly {
+		realData, err = plannedPluginDirectory(data)
+		if err != nil {
+			return result, err
+		}
+	} else {
+		realData, err = filepath.EvalSymlinks(data)
+		if err != nil {
+			return result, storageFailure(err)
+		}
 	}
 	server := input
 	server.Args = append([]string{}, input.Args...)
@@ -161,13 +174,14 @@ func ResolveServer(pkg Package, input Server, root, data string, values map[stri
 		if err != nil {
 			return result, err
 		}
+		persistent := strings.HasPrefix(input.Cwd, "${PLUGIN_DATA}") || strings.HasPrefix(input.Cwd, "${CLAUDE_PLUGIN_DATA}")
 		switch {
-		case strings.HasPrefix(input.Cwd, "${PLUGIN_DATA}") || strings.HasPrefix(input.Cwd, "${CLAUDE_PLUGIN_DATA}"):
+		case persistent:
 			relative, err := filepath.Rel(realData, cwd)
 			if err != nil {
 				return result, status_error.PluginContentInvalid
 			}
-			working, err = persistentDirectory(realData, relative)
+			working, err = persistentDirectory(realData, relative, !readOnly)
 			if err != nil {
 				return result, err
 			}
@@ -185,7 +199,7 @@ func ResolveServer(pkg Package, input Server, root, data string, values map[stri
 			}
 		}
 		info, err := os.Stat(working)
-		if err != nil || !info.IsDir() {
+		if !(readOnly && persistent && os.IsNotExist(err)) && (err != nil || !info.IsDir()) {
 			return result, status_error.PluginContentInvalid
 		}
 	}
@@ -196,7 +210,7 @@ func ResolveServer(pkg Package, input Server, root, data string, values map[stri
 	server.Cwd = working
 	return ResolvedServer{Server: server, WorkingDirectory: working}, nil
 }
-func persistentDirectory(root, relative string) (string, error) {
+func persistentDirectory(root, relative string, create bool) (string, error) {
 	relative = filepath.Clean(relative)
 	if filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return "", status_error.PluginContentInvalid
@@ -208,6 +222,10 @@ func persistentDirectory(root, relative string) (string, error) {
 		}
 		candidate := filepath.Join(current, part)
 		if _, err := os.Lstat(candidate); os.IsNotExist(err) {
+			if !create {
+				current = candidate
+				continue
+			}
 			if err := os.Mkdir(candidate, 0o700); err != nil {
 				return "", storageFailure(err)
 			}
@@ -225,4 +243,36 @@ func persistentDirectory(root, relative string) (string, error) {
 		current = resolved
 	}
 	return current, nil
+}
+
+// PreviewServer 校验拟取得的服务配置，不发布连接器或授权。
+func PreviewServer(pkg Package, input Server, root, data string, values map[string]string) (ResolvedServer, error) {
+	return resolveServer(pkg, input, root, data, values, true)
+}
+
+// plannedPluginDirectory 解析已有父目录与符号链接，允许安全的缺失子目录而不创建文件。
+func plannedPluginDirectory(path string) (string, error) {
+	if !filepath.IsAbs(path) {
+		return "", status_error.PluginContentInvalid
+	}
+	if info, err := os.Lstat(path); err == nil {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return "", storageFailure(err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			info, err = os.Stat(resolved)
+		}
+		if err != nil || !info.IsDir() {
+			return "", status_error.PluginContentInvalid
+		}
+		return resolved, nil
+	} else if !os.IsNotExist(err) {
+		return "", storageFailure(err)
+	}
+	parent, err := plannedPluginDirectory(filepath.Dir(path))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(parent, filepath.Base(path)), nil
 }

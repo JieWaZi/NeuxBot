@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -45,6 +46,12 @@ type WorkerReceipt struct {
 	Status constants.ExecutionStatus
 	// Text 是非结构化节点的首次执行最终文本。
 	Text string
+	// ErrorMessage 是执行返回的公开原生原因。
+	ErrorMessage string
+	// ErrorMessageSource 是原因的明确来源。
+	ErrorMessageSource constants.ErrorMessageSource
+	// ErrorParams 是同一错误的安全模板参数。
+	ErrorParams map[string]interface{}
 	// ErrorCode 是执行失败的稳定错误码。
 	ErrorCode string
 	// OutputFailure 保留无法确认产出的终止与交付证据，不改写真实执行状态。
@@ -122,6 +129,7 @@ func (a CoreWorkerAdapter) Dispatch(ctx context.Context, input WorkerDispatch) (
 	if err != nil {
 		return WorkerReceipt{}, err
 	}
+	create.ExecutionWorkspaceDirectory = filepath.Join(internalWorkspace.TemporaryDirectory, constants.WorkflowWorkerDirectoryName, input.Effect.ID)
 	encoded, _ := json.Marshal(internalWorkspace)
 	create.AdditionalWorkingDirectories = []string{internalWorkspace.RootDirectory}
 	contextInstructions := []workinput.Instruction{{Name: constants.WorkflowWorkspaceInstructionFileName, Content: "本次运行固定内部工作区：" + string(encoded) + "\nChat 当前工作目录仅承载本次智能体执行。脚本统一放 scriptsDirectory；长期状态放 stateDirectory；缓存放 cacheDirectory；临时辅助文件放 temporaryDirectory；本次业务成果默认放 runDirectory。所有脚本和辅助文件必须位于 rootDirectory 内，不得自行创建 /tmp 或 ~/xxx 等外部目录。只有用户明确指定外部业务目录时，业务文件才允许写到该目录；不得把脚本、缓存、状态或临时文件放到外部业务目录。"}}
@@ -161,7 +169,7 @@ func (a CoreWorkerAdapter) Inspect(ctx context.Context, effect models.WorkflowEf
 	if state.CreateRequestID != effect.ID || state.InitialExecution == nil || state.InitialExecution.ID != effect.ExecutionID {
 		return WorkerReceipt{}, status_error.WorkflowStateConflict
 	}
-	receipt := WorkerReceipt{ChatID: chatID, ExecutionID: state.InitialExecution.ID, Status: state.InitialExecution.Status, ErrorCode: state.InitialExecution.ErrorCode}
+	receipt := WorkerReceipt{ChatID: chatID, ExecutionID: state.InitialExecution.ID, Status: state.InitialExecution.Status, ErrorCode: state.InitialExecution.ErrorCode, ErrorMessage: state.InitialExecution.ErrorMessage, ErrorParams: state.InitialExecution.ErrorParams, ErrorMessageSource: state.InitialExecution.ErrorMessageSource}
 	if receipt.Status == constants.ExecutionStatusCompleted {
 		outcome, err := a.Chats.ReadExecutionOutcome(ctx, chatID, effect.ExecutionID)
 		if err != nil {
@@ -547,7 +555,8 @@ func (s *Service) finishEffect(ctx context.Context, effect models.WorkflowEffect
 			if code == "" {
 				code = "WORKER_FAILED"
 			}
-			current.Failure = workflowstate.FailureValue(code)
+			failure := workflowdsl.JSONValue(map[string]any{"code": code, "message": receipt.ErrorMessage, "messageSource": receipt.ErrorMessageSource, "params": receipt.ErrorParams})
+			current.Failure = &failure
 		default:
 			return status_error.WorkflowStateInvalid
 		}

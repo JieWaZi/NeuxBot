@@ -39,7 +39,7 @@ type NativeForkInput struct {
 	ReconcileOnly bool
 	// Invocation 是来源回合实际使用的运行时、模型、权限与原生位置。
 	Invocation eventlog.InvocationFinishedData
-	// Workspace 是本次子会话的独立受管目录。
+	// Workspace 是该伙伴固定的真实 Runtime 工作目录。
 	Workspace string
 }
 
@@ -108,7 +108,7 @@ func (m *service) ForkChat(ctx context.Context, input ForkInput, fork NativeFork
 	if wakerID == "" {
 		return "", status_error.ChatLogCorrupted
 	}
-	release, err := chatstorage.AcquireOperation(m.storage.Root(), input.ChatID, "waker:"+wakerID)
+	release, err := chatstorage.AcquireAdmission(m.storage.Root(), wakerID, input.ChatID)
 	if err != nil {
 		return "", err
 	}
@@ -279,7 +279,7 @@ func (m *service) prepareFork(ctx context.Context, input ForkInput) (chatstorage
 		}
 	}
 	chatID := util.New()
-	target, err := m.storage.ChatWorkspace(chatID)
+	target, err := m.storage.AgentWorkspace(state.chat.WakerID)
 	if err != nil {
 		return chatstorage.ForkOperation{}, err
 	}
@@ -336,17 +336,24 @@ func (m *service) prepareFork(ctx context.Context, input ForkInput) (chatstorage
 
 // prepareForkWorkspace 在持久意图存在后复制文件；失败重试沿用相同目标身份。
 func (m *service) prepareForkWorkspace(chatID string, payload forkPayload) error {
-	links := make([]workspace.ProjectLink, 0, len(payload.Created.ProjectSources))
-	for _, source := range payload.Created.ProjectSources {
-		links = append(links, workspace.ProjectLink{EntryName: source.EntryName, SourcePath: source.SourcePath})
-	}
-	if err := workspace.EnsureExecutionWorkspace(payload.Created.WorkspaceDirectory, chatID, payload.Created.WakerID, links); err != nil {
+	if err := workspace.EnsureAgentWorkspace(payload.Created.WorkspaceDirectory, payload.Created.WakerID); err != nil {
 		return err
+	}
+	source, err := m.storage.ChatRoot(payload.Created.ForkSourceChatID)
+	if err != nil {
+		return err
+	}
+	target, err := m.storage.ChatRoot(chatID)
+	if err != nil {
+		return err
+	}
+	if err = os.MkdirAll(target, 0700); err != nil {
+		return status_error.ManagedWorkspaceError
 	}
 	for _, message := range payload.Messages {
 		for _, attachment := range message.Attachments {
 			if attachment.Managed {
-				if err := chatstorage.CopyForkAttachment(payload.Invocation.WorkingDirectory, payload.Created.WorkspaceDirectory, attachment.Path); err != nil {
+				if err := chatstorage.CopyForkAttachment(source, target, attachment.Path); err != nil {
 					return err
 				}
 			}
@@ -378,7 +385,7 @@ func (m *service) publishFork(ctx context.Context, directory string, operation c
 		if err != nil {
 			return err
 		}
-		targetDirectory, err := staged.FileChangesDirectory(operation.ChatID)
+		targetDirectory, err := m.logStore.FileChangesDirectory(operation.ChatID)
 		if err != nil {
 			return err
 		}

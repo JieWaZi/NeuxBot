@@ -24,6 +24,7 @@ type NativeUsage = NonNullable<ChatRunMetrics["tokenUsage"]>;
 
 const tokenKeys = [
   "input",
+  "reportedInput",
   "output",
   "cacheRead",
   "cacheWrite",

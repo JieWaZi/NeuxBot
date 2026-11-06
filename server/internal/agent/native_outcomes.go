@@ -12,6 +12,7 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
+	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
 func stableTurnKey(kind string, parts ...string) string {
@@ -35,6 +36,10 @@ func (l *ThreadLifecycle) commitAndAcknowledge(ctx context.Context, client Agent
 		result.Failure = &acpmeta.NativeTurnFailure{
 			Code: outcome.NativeErrorCode, Kind: outcome.NativeErrorKind,
 			ObservedOutput: outcome.ObservedOutput, PossibleSideEffects: outcome.PossibleSideEffects,
+		}
+		var public statuserror.CommonError
+		if errors.As(outcome.NativeFailure, &public) {
+			result.Failure.Message = public.Value()
 		}
 	}
 	if err := l.store.CommitNativeResult(ctx, result); err != nil {

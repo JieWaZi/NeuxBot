@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-// TestAgentDependencyBoundaries 保护产品会话与原生接入的单向依赖，并拒绝旧分层重新出现。
+// TestAgentDependencyBoundaries protects one-way dependencies between product sessions and native integration and rejects restoration of legacy layers.
 func TestAgentDependencyBoundaries(t *testing.T) {
 	const module = "github.com/JieWaZi/NeuxBot/server/"
 	for _, name := range []string{"core", "host", "environment", "native", "../agent_next", "../agentcapability", "../agentcli", "../agentcommand", "../chat/eventlog_next"} {

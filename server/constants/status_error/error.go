@@ -76,8 +76,8 @@ const (
 	// @errZH 工作流文件引用、文件名或所属范围不合法
 	// @errEN invalid workflow file reference, name, or ownership
 	WorkflowFileInvalid
-	// @errZH 发送目标未声明为工作流依赖，请通过优化工作流补充发送目标范围
-	// @errEN delivery target is not declared as a workflow dependency; optimize the workflow to declare its target scope
+	// @errZH 发送目标未声明为工作流依赖，请通过优化工作流补充允许发送的目标范围。
+	// @errEN The delivery target is not declared as a workflow dependency. Optimize the workflow to declare the allowed target scope.
 	WorkflowIMTargetNotDeclared
 	// @errZH 节点自动重试要求只读执行，当前节点配置允许写入
 	// @errEN automatic worker retry requires read-only execution; the node configuration permits writes
@@ -136,8 +136,8 @@ const (
 	// @errZH 工作流文件存储失败
 	// @errEN workflow file storage failed
 	WorkflowFileStorageError
-	// @errZH 工作流业务检查未通过
-	// @errEN workflow business check failed
+	// @errZH 步骤已执行，但结果未通过业务检查，后续步骤已停止。请检查数据或调整检查条件后重试。
+	// @errEN The step ran, but its result did not pass the business check. Later steps have stopped. Check the data or adjust the check condition, then retry.
 	WorkflowBusinessCheckFailed
 	// @errZH 工作流用户决策已超时
 	// @errEN workflow human request timed out
@@ -154,8 +154,8 @@ const (
 )
 
 const (
-	// @errZH 所选 Runtime 尚未注册
-	// @errEN selected runtime is not registered
+	// @errZH 所选智能体不可用，请重新选择
+	// @errEN the selected agent is unavailable; select another agent
 	RuntimeNotRegistered StatusError = http.StatusBadRequest*1e8 + iota + 2001
 )
 
@@ -474,14 +474,14 @@ const (
 	// @errZH 项目来源目录不可用
 	// @errEN project source directory is unavailable
 	ProjectSourceUnavailable
-	// @errZH 所选 Runtime 当前不可用
-	// @errEN selected runtime is unavailable
+	// @errZH 所选智能体当前不可用，请稍后重试
+	// @errEN the selected agent is unavailable; try again later
 	RuntimeUnavailable
 	// @errZH 受管对话目录归属校验失败
 	// @errEN managed chat directory ownership check failed
 	ChatDirectoryOwnershipInvalid
-	// @errZH 当前技能内容暂时无法交付给 Runtime
-	// @errEN current skill content cannot be delivered to runtime
+	// @errZH 暂时无法准备所选技能，请稍后重试
+	// @errEN the selected skills could not be prepared; try again later
 	SkillUnavailable
 	// @errZH 记忆语义索引重建失败
 	// @errEN memory semantic index rebuild failed
@@ -489,14 +489,14 @@ const (
 	// @errZH Embedding 连接测试失败
 	// @errEN embedding connection test failed
 	MemoryEmbeddingTestFailed
-	// @errZH 所选 Runtime 无法准确表达当前权限策略
-	// @errEN selected runtime cannot accurately express the current policy
+	// @errZH 所选智能体不支持当前权限设置，请调整后重试
+	// @errEN the selected agent does not support these permissions; adjust the settings and try again
 	RuntimePolicyUnsupported
-	// @errZH Runtime 协议响应不完整或与当前 Adapter 不兼容
-	// @errEN runtime protocol response is incomplete or incompatible with the current adapter
+	// @errZH 智能体返回了无法识别的响应，请重试或更新应用
+	// @errEN the agent returned an unexpected response; try again or update the app
 	RuntimeProtocolIncompatible
-	// @errZH Runtime 在允许时间内没有任何活动更新
-	// @errEN runtime had no activity updates within the allowed time
+	// @errZH 智能体长时间未响应，请稍后重试
+	// @errEN the agent has not responded for a long time; try again later
 	RuntimeInactivityTimeout
 	// @errZH 对话权威日志内容已损坏或不兼容
 	// @errEN authoritative chat log is corrupted or incompatible
@@ -537,8 +537,8 @@ const (
 	// @errZH 无法初始化记忆服务
 	// @errEN failed to initialize memory service
 	CoreMemoryInitializationFailed
-	// @errZH 无法初始化 Runtime 服务
-	// @errEN failed to initialize runtime service
+	// @errZH 无法启动智能体服务，请重新启动应用
+	// @errEN the agent service could not start; restart the app
 	CoreRuntimeInitializationFailed
 	// @errZH 无法初始化对话执行服务
 	// @errEN failed to initialize chat execution service
@@ -561,8 +561,8 @@ const (
 	// @errZH 项目服务当前不可用
 	// @errEN project service is unavailable
 	ProjectServiceUnavailable
-	// @errZH Runtime 环境服务当前不可用
-	// @errEN runtime environment service is unavailable
+	// @errZH 智能体服务当前不可用，请稍后重试
+	// @errEN the agent service is unavailable; try again later
 	RuntimeEnvironmentServiceUnavailable
 	// @errZH 记忆服务当前不可用
 	// @errEN memory service is unavailable
@@ -573,26 +573,26 @@ const (
 	// @errZH 当前 HTTP 写入器不支持对话事件流
 	// @errEN current HTTP writer does not support chat event streaming
 	ChatEventStreamUnavailable
-	// @errZH 无法编码 Runtime 事件
-	// @errEN failed to encode runtime event
+	// @errZH 无法处理智能体返回的消息，请重试
+	// @errEN the agent response could not be processed; try again
 	RuntimeEventEncodingFailed
-	// @errZH Runtime 配置不合法
-	// @errEN runtime configuration is invalid
+	// @errZH 当前智能体配置无法使用，请检查设置后重试
+	// @errEN the current agent configuration could not be applied; check the settings and try again
 	RuntimeConfigurationInvalid
-	// @errZH Runtime 资源关闭失败
-	// @errEN failed to close runtime resources
+	// @errZH 智能体会话未能正常关闭，请稍后重试
+	// @errEN the agent session could not close properly; try again later
 	RuntimeShutdownFailed
 	// @errZH 无法初始化团队编排服务
 	// @errEN failed to initialize channel orchestration service
 	CoreChannelInitializationFailed
-	// @errZH 原生 Runtime 会话已失效，请新建会话后继续
-	// @errEN the native runtime session is no longer available; start a new session to continue
+	// @errZH 智能体会话已失效，请新建对话后继续
+	// @errEN the agent session is no longer available; start a new chat to continue
 	RuntimeSessionNotFound
-	// @errZH Cursor 或 Runtime 需要重新登录后再试
-	// @errEN Cursor or the runtime requires signing in again
+	// @errZH 所选智能体需要重新登录，请前往账号设置登录
+	// @errEN the selected agent requires signing in again; open account settings to sign in
 	RuntimeAuthRequired
-	// @errZH {{.Detail}}
-	// @errEN {{.Detail}}
+	// @errZH {{if .ModelUnavailable}}当前账号无法使用所选模型{{else}}智能体执行失败{{end}}
+	// @errEN {{if .ModelUnavailable}}the selected model is unavailable to the current account{{else}}agent execution failed{{end}}
 	RuntimeExecutionFailed
 
 	// @errZH 无法读取或保存 AI 账号凭据
@@ -607,9 +607,18 @@ const (
 	// @errZH 交接内容无效，请改用近期对话继续
 	// @errEN handoff content is invalid; continue with recent conversation
 	RuntimeHandoffInvalid
-	// @errZH Runtime 事件积压超过上限，执行已停止，请重试
-	// @errEN runtime event queue overflow; execution stopped, please retry
+	// @errZH 执行事件未能完整交付，请先检查执行结果
+	// @errEN execution events could not be fully delivered; check the execution result before continuing
 	RuntimeEventQueueOverflow
+	// @errZH 当前额度已用尽，请切换模型或等待额度恢复后重试
+	// @errEN current quota is exhausted; switch models or wait for the quota to reset
+	RuntimeQuotaExhausted
+	// @errZH 请求过于频繁，请稍后重试
+	// @errEN too many requests; try again later
+	RuntimeRateLimited
+	// @errZH 无法切换到所选模型，请重新选择模型后重试
+	// @errEN the selected model could not be applied; select a model again and retry
+	RuntimeModelSelectionFailed
 )
 
 const (
@@ -628,8 +637,8 @@ const (
 )
 
 const (
-	// @errZH IM 连接、聊天或投递记录不存在
-	// @errEN im resource was not found
+	// @errZH IM 连接、聊天或投递记录不存在，请检查连接和获准聊天配置。
+	// @errEN The IM connection, chat, or delivery record was not found. Check the connection and approved chat configuration.
 	IMResourceNotFound StatusError = http.StatusNotFound*1e8 + 4001
 	// @errZH IM 配置不完整或执行目标不可用
 	// @errEN im configuration is invalid
@@ -640,26 +649,26 @@ const (
 	// @errZH 无法读取或保存 IM 凭据
 	// @errEN failed to read or save im credentials
 	IMCredentialError StatusError = http.StatusInternalServerError*1e8 + 4001
-	// @errZH IM 平台暂时不可用
-	// @errEN im platform is unavailable
+	// @errZH 消息平台暂时不可用，请检查连接状态；发送结果不确定时先核对是否已收到。
+	// @errEN The messaging platform is unavailable. Check the connection and verify uncertain delivery before sending again.
 	IMPlatformUnavailable StatusError = http.StatusBadGateway*1e8 + 4001
-	// @errZH IM 平台响应不符合当前协议
-	// @errEN im platform returned an invalid protocol response
+	// @errZH 消息平台返回了无法识别的响应，请查看失败详情并检查连接。
+	// @errEN The messaging platform returned an unsupported response. Inspect the failure details and connection.
 	IMProtocolInvalid StatusError = http.StatusBadGateway*1e8 + 4002
-	// @errZH IM 登录已失效，请重新登录
-	// @errEN im sign-in is required
+	// @errZH 发送连接的登录已失效，请重新登录。
+	// @errEN The delivery connection is signed out. Sign in again.
 	IMLoginRequired StatusError = http.StatusUnauthorized*1e8 + 4001
-	// @errZH 此 IM 聊天尚未获准接入
-	// @errEN im chat is not authorized
+	// @errZH 此聊天尚未授权或授权已撤销，请在聊天配置中恢复授权。
+	// @errEN This chat is not authorized or its authorization was revoked. Restore authorization in the chat configuration.
 	IMChatNotAuthorized StatusError = http.StatusForbidden*1e8 + 4001
-	// @errZH 当前微信聊天缺少可用发送上下文，请先给机器人发消息
-	// @errEN weixin delivery context is unavailable
+	// @errZH 微信聊天缺少发送上下文，请先给机器人发一条消息。
+	// @errEN The WeChat delivery context is missing. Send the bot a message first.
 	IMDeliveryContextUnavailable StatusError = http.StatusConflict*1e8 + 4002
 	// @errZH 投递结果不确定，请核对后再重发
 	// @errEN delivery result is unknown; verify before resending
 	IMDeliveryRetryUnsafe StatusError = http.StatusConflict*1e8 + 4003
-	// @errZH IM 文件不存在、超出范围或过大
-	// @errEN im file is missing, outside scope, or too large
+	// @errZH 发送文件不存在、超出工作范围或过大，请检查文件与工作范围。
+	// @errEN The delivery file is missing, too large, or outside the approved workspace. Check the file and approved workspace.
 	IMFileInvalid StatusError = http.StatusBadRequest*1e8 + 4002
 	// @errZH IM 集成服务当前不可用
 	// @errEN im integration service is unavailable
@@ -667,11 +676,11 @@ const (
 )
 
 const (
-	// @errZH 发送目标已不存在，请优化工作流并重新选择获准聊天
-	// @errEN delivery target no longer exists; optimize the workflow and select an approved chat
+	// @errZH 发送目标已不存在，请通过优化工作流重新选择获准聊天。
+	// @errEN The delivery target no longer exists. Optimize the workflow and select an approved chat.
 	IMTargetUnavailable StatusError = http.StatusNotFound*1e8 + 4002
-	// @errZH 此聊天未允许工作流发送，请在聊天配置中开启工作流发送
-	// @errEN workflow delivery is disabled for this chat; enable it in the chat configuration
+	// @errZH 此聊天未允许工作流发送，请在聊天配置中开启“工作流发送”。
+	// @errEN Workflow delivery is disabled for this chat. Enable it in the chat configuration.
 	IMWorkflowDeliveryNotAllowed StatusError = http.StatusForbidden*1e8 + 4002
 	// @errZH 连接仍被运行中的工作流或待发送消息使用，请等待完成或先停止相关任务
 	// @errEN connection is used by active workflows or pending deliveries; wait or stop the related work
@@ -679,11 +688,11 @@ const (
 	// @errZH 连接被已保存工作流引用，请查看受影响流程并确认删除；依赖变化后需重新确认
 	// @errEN saved workflows reference this connection; review the affected workflows and confirm deletion again if dependencies change
 	IMConnectionHasWorkflowDependencies StatusError = http.StatusConflict*1e8 + 4005
-	// @errZH 此聊天尚未授权或授权已撤销，请在聊天配置中授权
-	// @errEN chat is not authorized or authorization was revoked; authorize it in the chat configuration
+	// @errZH 此聊天尚未授权或授权已撤销，请在聊天配置中恢复授权。
+	// @errEN This chat is not authorized or its authorization was revoked. Restore authorization in the chat configuration.
 	IMTargetNotAuthorized StatusError = http.StatusForbidden*1e8 + 4003
-	// @errZH 发送连接已停用，请在连接设置中启用后重试
-	// @errEN delivery connection is disabled; enable it in connection settings and retry
+	// @errZH 发送连接已停用，请在连接设置中启用后重试。
+	// @errEN The delivery connection is disabled. Enable it in connection settings and retry.
 	IMConnectionDisabled StatusError = http.StatusConflict*1e8 + 4006
 	// @errZH 企业微信机器人已在其他客户端连接，请关闭其他连接后保存设置以重连
 	// @errEN wecom bot connected elsewhere; close the other connection and save settings to reconnect
@@ -754,6 +763,9 @@ const (
 	// @errZH Git 操作失败
 	// @errEN workspace git operation failed
 	WorkspaceGitFailed StatusError = http.StatusInternalServerError*1e8 + 7107
+	// @errZH {{if .MaxDirectories}}当前智能体最多支持 {{.MaxDirectories}} 个项目目录，请调整工作范围{{else}}当前智能体无法接入所选工作范围{{end}}
+	// @errEN {{if .MaxDirectories}}the selected agent supports up to {{.MaxDirectories}} project directories; adjust the workspace scope{{else}}the selected agent cannot use the requested workspace scope{{end}}
+	RuntimeWorkspaceScopeUnsupported StatusError = http.StatusBadRequest*1e8 + 7108
 	// @errZH 终端服务不可用
 	// @errEN terminal service is unavailable
 	TerminalUnavailable StatusError = http.StatusServiceUnavailable*1e8 + 7108
@@ -777,8 +789,8 @@ const (
 	// @errEN a conversation commit identity cannot be reused with different content
 	ChatLogIdempotencyConflict StatusError = http.StatusConflict*1e8 + 7202
 
-	// @errZH 原生结果或输入消费关系尚未持久提交
-	// @errEN the native outcome or its input consumption has not been committed
+	// @errZH 上一条消息的执行结果尚未确认，请稍后重试
+	// @errEN the previous message result is not confirmed yet; try again shortly
 	ChatLogNativeOutcomePending StatusError = http.StatusConflict*1e8 + 7203
 )
 

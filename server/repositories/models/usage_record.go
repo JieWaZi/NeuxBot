@@ -44,6 +44,8 @@ type UsageRecord struct {
 	Complete bool
 	// Input 是缓存读取和写入以外的输入 Token 数。
 	Input *int64
+	// ReportedInput 是未拆分缓存的原生输入，不与互斥计数重复求和。
+	ReportedInput *int64
 	// CacheRead 是从缓存读取的输入 Token 数。
 	CacheRead *int64
 	// CacheWrite 是写入缓存的输入 Token 数。

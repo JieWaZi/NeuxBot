@@ -1,6 +1,11 @@
 import type { AllyChatMessage } from "./chat-projection";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { messageCompanionActivity } from "./companion-activity";
+import { createCompanion } from "../../../../../../vendor/companion/renderer";
+import { companionAppearance } from "@/shared/companion/appearance";
+import { companionPlayback } from "@/shared/companion/playback";
+
+afterEach(() => vi.useRealTimers());
 
 type Part = NonNullable<AllyChatMessage["displayParts"]>[number];
 const tool = (action: string, status = "running"): Part => ({
@@ -12,11 +17,45 @@ const tool = (action: string, status = "running"): Part => ({
 function message(
   displayParts: Part[],
   status: AllyChatMessage["status"] = "running",
+  preparingSession = false,
 ) {
-  return { displayParts, status, isLast: true };
+  return { displayParts, status, preparingSession, isLast: true };
 }
 
 describe("消息驱动形象", () => {
+  it("准备期间持续显示环绕圈圈，原生接纳后才进入思考", () => {
+    vi.useFakeTimers();
+    const host = document.createElement("div");
+    const engine = createCompanion(host, {
+      ...companionAppearance("companion:v1:0123456789abcdef0123456789abcdef"),
+      character: "ally",
+      emotion: "02",
+      autostart: false,
+      idle: false,
+      lite: false,
+    });
+    const playback = companionPlayback(
+      engine,
+      messageCompanionActivity(message([], "pending", true)),
+      { reactions: [] },
+    );
+    try {
+      playback.visibility(true, true);
+      vi.advanceTimersByTime(5_000);
+      expect(
+        host.querySelector('.ally-effects-front [data-effect="36"]'),
+      ).toHaveAttribute("opacity", "1");
+      expect(
+        host.querySelector('.ally-effects-front [data-effect="30"]'),
+      ).toHaveAttribute("opacity", "0");
+      playback.update(messageCompanionActivity(message([])));
+      expect(
+        host.querySelector('.ally-effects-front [data-effect="30"]'),
+      ).toHaveAttribute("opacity", "1");
+    } finally {
+      playback.destroy();
+    }
+  });
   it("会话等待与停止只影响最新消息，历史消息即使保留 running 也保持空闲", () => {
     const messages = [
       { ...message([tool("execute_command")]), isLast: false },
@@ -47,7 +86,11 @@ describe("消息驱动形象", () => {
     }
   });
   it("开始、搜索、执行、思考和回答来自结构化消息", () => {
-    expect(messageCompanionActivity(message([]))).toBe("starting");
+    expect(messageCompanionActivity(message([], "pending", true))).toBe(
+      "connecting",
+    );
+    expect(messageCompanionActivity(message([], "pending"))).toBe("thinking");
+    expect(messageCompanionActivity(message([]))).toBe("thinking");
     expect(messageCompanionActivity(message([tool("search_web")]))).toBe(
       "searching",
     );

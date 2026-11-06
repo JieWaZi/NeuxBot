@@ -17,7 +17,7 @@ import {
 import {
   ChatErrorActions,
   ChatErrorCard,
-  ChatErrorNotices,
+  useChatErrorNotices,
   MessageFailure,
   useChatHistoryError,
 } from "./chat-error-card";
@@ -938,12 +938,16 @@ function formatRunDuration(durationMs: number) {
   return `${minutes}m ${durationNumberFormat.format(seconds % 60)}s`;
 }
 
-export function AgentRunningIndicator() {
+export function AgentRunningIndicator({
+  preparing = false,
+}: {
+  preparing?: boolean;
+} = {}) {
   const { t } = useTranslation("chat");
   return (
     <div className="text-muted-foreground type-body min-h-control-sm flex items-center gap-2 font-normal">
       <Spinner className="text-primary/65" />
-      <span>{t("agentRunning")}</span>
+      <span>{t(preparing ? "preparingSession" : "agentRunning")}</span>
     </div>
   );
 }
@@ -956,21 +960,18 @@ function RunMetricsTooltip({
   children: ReactNode;
 }) {
   const { t } = useTranslation("chat");
-  const { t: usageLabel } = useTranslation("usage");
   const durationMs = metrics.durationMs ?? 0;
   const usage = metrics.tokenUsage;
   const tokens = usage
     ? usage.knownTokens
     : {
+        reportedInput: undefined,
         input: metrics.inputTokens || undefined,
         output: metrics.outputTokens || undefined,
         reasoning: metrics.reasoningOutputTokens || undefined,
         cacheWrite: metrics.cacheCreationTokens || undefined,
         cacheRead: metrics.cacheReadTokens || undefined,
       };
-  const hasKnownTokens = Object.values(tokens ?? {}).some(
-    (value) => value != null,
-  );
   const rows = [
     metrics.contextUsedTokens && metrics.contextWindowTokens
       ? [
@@ -981,10 +982,20 @@ function RunMetricsTooltip({
     [t("runMetrics.duration"), formatRunDuration(durationMs)],
     tokens?.input != null
       ? [t("runMetrics.inputTokens"), tokenNumberFormat.format(tokens.input)]
-      : undefined,
+      : tokens?.reportedInput != null
+        ? [
+            t("runMetrics.reportedInputTokens"),
+            tokenNumberFormat.format(tokens.reportedInput),
+          ]
+        : undefined,
     tokens?.output != null
       ? [t("runMetrics.outputTokens"), tokenNumberFormat.format(tokens.output)]
-      : undefined,
+      : metrics.latestRequestOutputTokens != null
+        ? [
+            t("runMetrics.latestRequestOutputTokens"),
+            tokenNumberFormat.format(metrics.latestRequestOutputTokens),
+          ]
+        : undefined,
     tokens?.reasoning != null
       ? [
           t("runMetrics.reasoningOutputTokens"),
@@ -1001,16 +1012,6 @@ function RunMetricsTooltip({
       ? [
           t("runMetrics.cacheReadTokens"),
           tokenNumberFormat.format(tokens.cacheRead),
-        ]
-      : undefined,
-    usage && !usage.complete
-      ? [
-          usageLabel("tokens"),
-          usage.missingUsageInvocations && !hasKnownTokens
-            ? usageLabel("nativeMissing")
-            : usage.coverage === "last_request"
-              ? usageLabel("lastRequest")
-              : usageLabel("nativePartial"),
         ]
       : undefined,
   ].filter((row): row is string[] => Boolean(row));
@@ -1055,6 +1056,8 @@ export function MessageRunStatus({
   showUsageDetails?: boolean;
 }) {
   const runMetrics = message.runMetrics;
+  if (message.status === "pending" && message.preparingSession)
+    return <AgentRunningIndicator preparing />;
   if (!isTerminalMessage(message))
     return message.displayParts?.at(-1)?.type === "tool" ? null : (
       <AgentRunningIndicator />
@@ -1634,6 +1637,8 @@ const Composer = memo(function Composer({
   contextMetrics,
   showUsageMetrics,
   sendFailure,
+  errorScopes,
+  failure,
   codeReferenceRequest,
   onCodeReferencesChange,
   draft,
@@ -1683,6 +1688,8 @@ const Composer = memo(function Composer({
   contextMetrics?: ChatRunMetrics;
   showUsageMetrics: boolean;
   sendFailure: ChatSendFailure;
+  errorScopes: readonly string[];
+  failure?: AllyChatMessage;
   codeReferenceRequest?: ChatCodeReference;
   onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
   draft?: string;
@@ -1770,7 +1777,13 @@ const Composer = memo(function Composer({
     ? undefined
     : (requestedElicitation ?? pendingElicitations[0]);
   const showComposerSettings = pendingElicitations.length === 0;
-  const composerContext = renderContextStrip?.();
+  const errorNotices = useChatErrorNotices({
+    scopes: errorScopes,
+    fallback: sendFailure,
+    failure,
+    appearance: "composer",
+  });
+  const composerContext = errorNotices ?? renderContextStrip?.();
 
   return (
     <div className="w-full">
@@ -1781,6 +1794,7 @@ const Composer = memo(function Composer({
           bodyClassName="p-0"
           className="overflow-hidden"
           context={composerContext}
+          contextTone={errorNotices ? "danger" : "neutral"}
           expanded={!composerIsEmpty}
           contextLayers={
             queuedMessageCount > 0 || activityStatus ? (
@@ -2224,6 +2238,7 @@ export function ChatThread({
                 scope: errorScopes[0] ?? "global",
                 operation: `${operation}:${errorScopes[0] ?? "global"}`,
                 message,
+                messageSource: "public",
               }),
           }}
         >
@@ -2268,12 +2283,6 @@ export function ChatThread({
                       className="flex min-h-0 flex-1 flex-col overflow-y-auto"
                     >
                       <div className="min-h-0 flex-1">{emptyState}</div>
-                      <div className="px-6">
-                        <ChatErrorNotices
-                          scopes={errorScopes}
-                          fallback={sendFailure}
-                        />
-                      </div>
                     </div>
                   ) : (
                     <>
@@ -2342,12 +2351,6 @@ export function ChatThread({
                               </CompanionInteraction>
                             </ProcessExpansion>
                           </MarkdownVisibility>
-                          <div className="px-6">
-                            <ChatErrorNotices
-                              scopes={errorScopes}
-                              fallback={sendFailure}
-                            />
-                          </div>
                         </ChatMessageColumn>
                       </div>
                       <ChatTurnNavigator
@@ -2358,9 +2361,7 @@ export function ChatThread({
                     </>
                   )}
                 </div>
-              ) : (
-                <ChatErrorNotices scopes={errorScopes} fallback={sendFailure} />
-              )}
+              ) : null}
               <motion.div
                 data-chat-composer
                 layout={animateComposerSize ? true : "position"}
@@ -2424,6 +2425,12 @@ export function ChatThread({
                       contextMetrics={contextMetrics}
                       showUsageMetrics={showUsageMetrics}
                       sendFailure={sendFailure}
+                      errorScopes={errorScopes}
+                      failure={
+                        latestMessage?.status === "failed"
+                          ? latestMessage
+                          : undefined
+                      }
                       codeReferenceRequest={codeReferenceRequest}
                       onCodeReferencesChange={onCodeReferencesChange}
                       draft={composerDraft}

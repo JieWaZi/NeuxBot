@@ -37,6 +37,10 @@ type PublicEvent struct {
 	ErrorCode string `json:"errorCode,omitempty"`
 	// ErrorMessage 是失败时供用户诊断的简明说明。
 	ErrorMessage string `json:"errorMessage,omitempty"`
+	// ErrorMessageSource 明确区分公开原生原因与应用本地化正文；缺省时不得展示原始正文。
+	ErrorMessageSource constants.ErrorMessageSource `json:"errorMessageSource,omitempty"`
+	// ErrorParams 是稳定错误模板使用的安全参数。
+	ErrorParams map[string]interface{} `json:"errorParams,omitempty"`
 	// ApprovalRequest 是审批请求事件携带的安全交互内容。
 	ApprovalRequest *eventlog.ApprovalRequestedData `json:"approvalRequest,omitempty"`
 	// ApprovalResolution 是审批处理事件携带的安全权威结果。
@@ -130,6 +134,8 @@ func (a *Adapter) apply(record eventlog.Record, emit bool) (PublicEvent, error) 
 		event.ExecutionStatus = finished.Status
 		event.ErrorCode = finished.ErrorCode
 		event.ErrorMessage = finished.ErrorMessage
+		event.ErrorParams = finished.ErrorParams
+		event.ErrorMessageSource = finished.ErrorMessageSource
 	}
 	if record.Type == constants.ChatEventTypeApprovalRequested {
 		var requested eventlog.ApprovalRequestedData
@@ -337,7 +343,7 @@ func (a *Adapter) ApplyNativeCheckpoint(record eventlog.Record, stored agent.Sto
 	return event, nil
 }
 
-// ApplyNativeTerminal projects usage from the canonical result before applying business status.
+// ApplyNativeTerminal 先投影同一规范原生回执的用量，再应用显式执行终态。
 func (a *Adapter) ApplyNativeTerminal(record eventlog.Record, result *agent.NativeResult) (PublicEvent, error) {
 	a.messageView.SetNativeResult(record.ExecutionID, result)
 	return a.Apply(record)

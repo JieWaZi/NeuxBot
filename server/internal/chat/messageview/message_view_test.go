@@ -914,16 +914,6 @@ func TestBuildToolPhraseUsesBoundedSemanticRules(t *testing.T) {
 			want: "查看步骤结果格式",
 		},
 		{
-			name: "saved legacy workflow result remains readable",
-			data: map[string]interface{}{"name": "ally_workflow_result_workflow_result", "input": map[string]interface{}{"action": "submit"}},
-			want: "提交步骤结果",
-		},
-		{
-			name: "saved legacy workflow directory remains readable",
-			data: map[string]interface{}{"name": "mcp__ally_workflow_use__workflow_use", "input": map[string]interface{}{"action": "workflows.list"}},
-			want: "查看可用工作流",
-		},
-		{
 			name: "builtin channel task create",
 			data: map[string]interface{}{
 				"name":   "mcp",
@@ -1691,5 +1681,14 @@ func TestReplayMessagesPreservesSteerContinuation(t *testing.T) {
 	}
 	if len(messages) != 1 || messages[0].SteerExecutionID != "previous" {
 		t.Fatalf("steer relation lost on replay: %+v", messages)
+	}
+}
+
+func TestWorkflowToolPhraseRejectsRetiredServerIdentities(t *testing.T) {
+	for _, name := range []string{"ally_workflow_result_workflow_result", "mcp__ally_workflow_use__workflow_use"} {
+		data := map[string]interface{}{"name": name, "input": map[string]interface{}{"action": "workflows.list"}}
+		if phrase := builtinWorkflowToolPhrase(data, name); phrase != "" {
+			t.Fatalf("retired service %q gained builtin workflow semantics: %q", name, phrase)
+		}
 	}
 }

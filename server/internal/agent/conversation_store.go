@@ -23,6 +23,10 @@ type ConversationStore interface {
 	// ReadHostInputConsumption returns the admitted input and its relation when known.
 	ReadHostInputConsumption(context.Context, HostInputRef) (HostInput, *InputConsumption, error)
 	CommitDetachedInput(context.Context, HostInput) error
+	// PrepareNativeToolUpdate selects one immutable tool update prefix within this Store's
+	// encoded batch budget. Records and logical batches need not have the same size.
+	// The caller freezes the returned operation through native/public retry before advancing.
+	PrepareNativeToolUpdate(context.Context, NativeFragmentBatch) (NativeFragmentBatch, error)
 	CommitNativeFragments(context.Context, NativeFragmentBatch) (NativeFragmentRange, error)
 	ReadNativeFragments(context.Context, NativeFragmentRange) ([]MessageChange, error)
 	CommitNativeResult(context.Context, NativeResult) error
@@ -98,8 +102,11 @@ const (
 	MessageAppend MessageChangeKind = "append"
 	// MessageReplace replaces the exact native message text, including an empty body.
 	// An explicit text or commentary ContentType also records the message phase.
-	MessageReplace        MessageChangeKind = "replace"
-	MessageToolSnapshot   MessageChangeKind = "tool_snapshot"
+	MessageReplace      MessageChangeKind = "replace"
+	MessageToolSnapshot MessageChangeKind = "tool_snapshot"
+	// MessageToolUpdate merges reported tool fields and appends independent terminal bytes.
+	// The Store publishes a complete snapshot; this input operation is never a public part.
+	MessageToolUpdate     MessageChangeKind = "tool_update"
 	MessageComplete       MessageChangeKind = "complete"
 	MessageNativeFinal    MessageChangeKind = "native_final"
 	MessageNativeFragment MessageChangeKind = "native_fragment"
@@ -118,7 +125,7 @@ type MessageChange struct {
 	ExecutionID string `json:"executionId,omitempty"`
 	// Kind selects append, replacement, tool snapshot, completion or canonical final text.
 	Kind MessageChangeKind `json:"kind"`
-	// Text is the append fragment or complete replacement.
+	// Text is append/replacement text, or independent terminal bytes for a Store-only tool update.
 	Text string `json:"text,omitempty"`
 	// ContentType preserves the display semantics of text, commentary, reasoning and tool changes.
 	ContentType constants.RuntimeEventType `json:"contentType,omitempty"`
@@ -126,7 +133,7 @@ type MessageChange struct {
 	Revision int64 `json:"revision,omitempty"`
 	// ToolCallID is the identity of the tool snapshot being replaced.
 	ToolCallID string `json:"toolCallId,omitempty"`
-	// Data is a complete tool snapshot for ToolCallID.
+	// Data contains a complete tool snapshot or partial tool metadata; terminal bytes belong in Text.
 	Data json.RawMessage `json:"data,omitempty"`
 	// Result references final text in the native store without copying it into Chat.
 	Result *NativeResultKey `json:"result,omitempty"`
@@ -362,7 +369,7 @@ type NativeFragmentBatch struct {
 	CommitKey string
 	// MessageID is the provider message identity used for final reconciliation.
 	MessageID string
-	// Changes contains normalized append, replace and tool snapshot operations.
+	// Changes contains normalized text operations, tool snapshots, or partial tool updates.
 	Changes []MessageChange
 }
 

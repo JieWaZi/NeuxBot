@@ -13,6 +13,7 @@ import { Button } from "@/shared/ui/button";
 type ComposerSurfaceProps = ComponentProps<"div"> & {
   bodyClassName?: string;
   context?: ReactNode;
+  contextTone?: "neutral" | "danger";
   contextLayers?: ReactNode;
   leadingActions?: ReactNode;
   trailingActions?: ReactNode;
@@ -135,6 +136,7 @@ export function ComposerSurface({
   children,
   className,
   context,
+  contextTone = "neutral",
   contextLayers,
   expanded = false,
   invalid = false,
@@ -186,7 +188,12 @@ export function ComposerSurface({
     <ComposerStack
       data-has-context="true"
       data-chat-composer-frame
-      className="bg-composer-context rounded-2xl"
+      className={cn(
+        "rounded-2xl",
+        contextTone === "danger"
+          ? "bg-status-danger-surface"
+          : "bg-composer-context",
+      )}
     >
       {contextLayers}
       {contextLayers && context ? (

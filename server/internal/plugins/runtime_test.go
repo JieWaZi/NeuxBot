@@ -57,3 +57,51 @@ func TestResolveServerValidatesRemoteAfterSharedValueExpansion(t *testing.T) {
 		})
 	}
 }
+
+// TestPreviewServerDoesNotCreatePersistentDirectories 防止技能预选创建插件数据或服务工作目录。
+func TestPreviewServerDoesNotCreatePersistentDirectories(t *testing.T) {
+	root, base := t.TempDir(), t.TempDir()
+	base, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data := filepath.Join(base, "data", "plugin")
+	pkg := Package{}
+	input := Server{Type: "stdio", Command: "tool", Cwd: "${PLUGIN_DATA}/nested"}
+	resolved, err := PreviewServer(pkg, input, root, data, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.WorkingDirectory != filepath.Join(data, "nested") {
+		t.Fatalf("planned cwd = %q", resolved.WorkingDirectory)
+	}
+	if _, err := os.Stat(data); !os.IsNotExist(err) {
+		t.Fatalf("preview created data: %v", err)
+	}
+	if err := os.MkdirAll(data, 0700); err != nil {
+		t.Fatal(err)
+	}
+	actual, err := ResolveServer(pkg, input, root, data, nil)
+	if err != nil || actual.WorkingDirectory != resolved.WorkingDirectory {
+		t.Fatalf("preview/acquisition mismatch: %+v %v", actual, err)
+	}
+}
+
+// TestPreviewServerRejectsPersistentEscape 验证预选和实际取得均拒绝符号链接及父目录越界。
+func TestPreviewServerRejectsPersistentEscape(t *testing.T) {
+	root, data, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(data, "escape")); err != nil {
+		t.Skip(err)
+	}
+	for _, cwd := range []string{"${PLUGIN_DATA}/escape/new", "${PLUGIN_DATA}/../outside"} {
+		for _, resolve := range []func(Package, Server, string, string, map[string]string) (ResolvedServer, error){PreviewServer, ResolveServer} {
+			if _, err := resolve(Package{}, Server{Type: "stdio", Command: "tool", Cwd: cwd}, root, data, nil); err == nil {
+				t.Fatalf("unsafe cwd accepted: %q", cwd)
+			}
+		}
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("escape wrote outside data: %v %v", entries, err)
+	}
+}

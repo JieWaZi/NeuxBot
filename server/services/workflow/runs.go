@@ -488,7 +488,7 @@ func (s *Service) prepareInputFiles(ctx context.Context, command StartRunCommand
 			}
 			reference = ownerWorkspace.ResolveRunReference(reference)
 		}
-		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, reference, workspace.RootDirectory, runID, pointer)
+		frozen, err := workflowfiles.FreezeLocalInput(ctx, roots, nil, reference, workspace.RootDirectory, runID, pointer)
 		return frozen.Path, err
 	})
 }

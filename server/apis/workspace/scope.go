@@ -3,6 +3,7 @@ package workspace
 import (
 	"github.com/JieWaZi/NeuxBot/server/apis/middleware"
 	"github.com/JieWaZi/NeuxBot/server/global"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/internal/workspacefiles"
 	"github.com/gin-gonic/gin"
 	"github.com/shrewx/ginx"
@@ -36,7 +37,15 @@ func (g *OpenScope) Output(ctx *gin.Context) (interface{}, error) {
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}
-	scope, err := files.Open(middleware.AuthSubject(ctx), detail.Chat.WorkspaceDirectory, detail.Chat.AdditionalWorkingDirectories)
+	layout, err := chatstorage.NewLayout(global.Config.ManagedFilesDirectory)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	private, err := layout.ChatRoot(g.Body.ChatID)
+	if err != nil {
+		return nil, ginx.WithStack(err)
+	}
+	scope, err := files.OpenChat(middleware.AuthSubject(ctx), g.Body.ChatID, detail.Chat.WorkspaceDirectory, private, detail.Chat.AdditionalWorkingDirectories)
 	if err != nil {
 		return nil, ginx.WithStack(err)
 	}

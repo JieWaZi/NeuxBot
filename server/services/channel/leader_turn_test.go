@@ -159,8 +159,12 @@ func assertLeaderTurnIntent(t *testing.T, intent execution.WorkIntent, content s
 	if direct {
 		want, unwanted = unwanted, want
 	}
-	if !strings.Contains(instructions[0].Content, want) || strings.Contains(instructions[0].Content, unwanted) {
-		t.Fatalf("direct=%t instructions did not preserve turn mode: %s", direct, instructions[0].Content)
+	if strings.Contains(instructions[0].Content, "## Current Lead Turn") {
+		t.Fatal("current turn mode polluted stable TEAM")
+	}
+	context := intent.Input.ContextInstructions
+	if len(context) == 0 || !strings.Contains(context[len(context)-1].Content, want) || strings.Contains(context[len(context)-1].Content, unwanted) {
+		t.Fatalf("direct=%t current input lost mode: %+v", direct, context)
 	}
 }
 

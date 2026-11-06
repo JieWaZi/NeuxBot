@@ -1,4 +1,10 @@
-import { ArrowLeft, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  RotateCw,
+  Zap,
+} from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,8 +21,13 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { RadioGroup, RadioGroupOption } from "@/shared/ui/radio-group";
 import { SearchField } from "@/shared/ui/search-field";
 import { Slider } from "@/shared/ui/slider";
-import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { Spinner } from "@/shared/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/ui/tooltip";
 import { isMaximumReasoning } from "@/shared/lib/runtime-reasoning";
 
 /** 浮层切换后聚焦模型搜索、当前选择或强度控件，保留键盘连续操作。 */
@@ -24,13 +35,22 @@ function focusPicker(content: HTMLDivElement | null, showModels: boolean) {
   const target = showModels
     ? content?.querySelector<HTMLElement>("[data-model-search]") ||
       content?.querySelector<HTMLElement>(
-        '[role="radio"][data-state="checked"]',
+        '[role="radio"][data-state="checked"]:not([disabled])',
       ) ||
-      content?.querySelector<HTMLElement>('[role="radio"]')
+      content?.querySelector<HTMLElement>('[role="radio"]:not([disabled])')
     : content?.querySelector<HTMLElement>(
         '[role="slider"]:not([data-disabled]):not([aria-disabled="true"])',
-      ) || content?.querySelector<HTMLElement>("[data-model-list-trigger]");
-  (target || content)?.focus();
+      ) ||
+      content?.querySelector<HTMLElement>(
+        "[data-model-list-trigger]:not([disabled])",
+      );
+  (
+    target ||
+    content?.querySelector<HTMLElement>(
+      "[data-model-refresh]:not([disabled])",
+    ) ||
+    content
+  )?.focus();
 }
 
 /** 聊天与执行配置共用的模型与推理入口，同一浮层在强度面板和模型列表之间切换。 */
@@ -52,6 +72,9 @@ export function ExecutionModelControl({
   onReasoningChange,
   fast,
   onFastChange,
+  onRefresh,
+  refreshing = false,
+  catalogNotice,
 }: {
   selectedModelName: string;
   variant?: "composer" | "field";
@@ -69,7 +92,10 @@ export function ExecutionModelControl({
   onModelChange: (model: string) => void;
   onReasoningChange: (reasoning: string) => void;
   fast?: boolean;
-  onFastChange?: (fast: boolean | undefined) => void;
+  onFastChange?: (fast: boolean) => void;
+  onRefresh?: () => unknown;
+  refreshing?: boolean;
+  catalogNotice?: string;
 }) {
   const { t } = useTranslation(["chat", "common"]);
   const reducedMotion = useReducedMotion();
@@ -125,7 +151,11 @@ export function ExecutionModelControl({
     (option) => option.id === effectiveReasoning,
   );
   const reasoningName = thinkingPending
-    ? t("aiAccounts:thinkingLoading")
+    ? t(
+        refreshing
+          ? "common:executionSelection.loading"
+          : "aiAccounts:thinkingLoading",
+      )
     : choices[selectedIndex]?.name || selectedReasoning;
   const showModels = view === "models" || !hasSettings;
   const maxed =
@@ -136,7 +166,8 @@ export function ExecutionModelControl({
     if (open) focusPicker(contentRef.current, showModels);
   }, [open, showModels, showModelSearch]);
 
-  return selectedModelName ? (
+  const triggerName = selectedModelName || t("chat:modelPicker.chooseModel");
+  return selectedModelName || onRefresh ? (
     <Popover
       open={open}
       onOpenChange={(nextOpen) => {
@@ -151,11 +182,11 @@ export function ExecutionModelControl({
           <FieldControlTrigger
             id={id}
             aria-label={label}
-            disabled={disabled}
+            disabled={disabled && !onRefresh}
             aria-busy={thinkingPending || undefined}
           >
             <span>
-              {selectedModelName}
+              {triggerName}
               {hasReasoning && reasoningName ? ` · ${reasoningName}` : ""}
               {fast === true ? " · Fast" : ""}
             </span>
@@ -163,7 +194,7 @@ export function ExecutionModelControl({
         ) : (
           <Button
             type="button"
-            disabled={disabled}
+            disabled={disabled && !onRefresh}
             data-testid="composer-model-control"
             size="sm"
             shape="capsule"
@@ -172,14 +203,14 @@ export function ExecutionModelControl({
             data-effort-max={maxed || undefined}
             aria-busy={thinkingPending || undefined}
             title={[
-              selectedModelName,
+              triggerName,
               hasReasoning && reasoningName,
               fast === true && "Fast",
             ]
               .filter(Boolean)
               .join(" · ")}
           >
-            <span className="truncate">{selectedModelName}</span>
+            <span className="truncate">{triggerName}</span>
             {thinkingPending ? (
               <Spinner
                 className="text-content-secondary size-icon-xs"
@@ -225,6 +256,32 @@ export function ExecutionModelControl({
           focusPicker(contentRef.current, showModels);
         }}
       >
+        {onRefresh ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  data-model-refresh
+                  className="absolute top-3 right-3 z-10"
+                  aria-label={t("aiAccounts:refreshModels")}
+                  aria-busy={refreshing || undefined}
+                  disabled={refreshing}
+                  onClick={() => void onRefresh()}
+                >
+                  {refreshing ? (
+                    <Spinner aria-hidden />
+                  ) : (
+                    <RotateCw aria-hidden />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("aiAccounts:refreshModels")}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : null}
         <motion.div
           initial={false}
           animate={{
@@ -236,7 +293,13 @@ export function ExecutionModelControl({
           aria-hidden={!showModels}
           inert={!showModels}
         >
-          <div className="mb-2 flex shrink-0 items-center gap-2">
+          <div
+            className={
+              onRefresh
+                ? "min-h-control-md pr-control-md mb-2 flex shrink-0 items-center gap-2"
+                : "mb-2 flex shrink-0 items-center gap-2"
+            }
+          >
             {hasSettings ? (
               <Button
                 type="button"
@@ -323,7 +386,41 @@ export function ExecutionModelControl({
           aria-hidden={showModels}
           inert={showModels}
         >
-          <div className="min-w-0 text-center">
+          <div
+            className={
+              onFastChange || onRefresh
+                ? "min-h-control-md px-control-md relative text-center"
+                : "min-w-0 text-center"
+            }
+          >
+            {onFastChange ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="absolute top-0 left-0"
+                      disabled={disabled}
+                      aria-label={t("common:executionSelection.fast")}
+                      aria-pressed={fast === true}
+                      onClick={() => onFastChange(fast !== true)}
+                    >
+                      <Zap
+                        aria-hidden
+                        className={
+                          fast ? "text-success fill-current" : undefined
+                        }
+                      />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {t("common:executionSelection.fast")}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : null}
             <div
               hidden={!hasReasoning}
               role={thinkingPending ? "status" : undefined}
@@ -393,31 +490,12 @@ export function ExecutionModelControl({
               }}
             />
           ) : null}
-          {onFastChange ? (
-            <div className="mt-3 flex items-center justify-between gap-2">
-              <span className="type-ui">Fast</span>
-              <SegmentedControl
-                ariaLabel={t("common:executionSelection.fast")}
-                value={fast === undefined ? "inherit" : fast ? "on" : "off"}
-                options={[
-                  {
-                    value: "inherit",
-                    label: t("chat:modelPicker.defaultReasoning"),
-                  },
-                  {
-                    value: "off",
-                    label: t("common:executionSelection.fastOff"),
-                  },
-                  { value: "on", label: t("common:executionSelection.fastOn") },
-                ]}
-                disabled={disabled}
-                onValueChange={(value) =>
-                  onFastChange(value === "inherit" ? undefined : value === "on")
-                }
-              />
-            </div>
-          ) : null}
         </motion.div>
+        {catalogNotice ? (
+          <span role="status" className="text-content-secondary type-ui mt-2">
+            {catalogNotice}
+          </span>
+        ) : null}
       </PopoverContent>
     </Popover>
   ) : (

@@ -271,34 +271,21 @@ type executionStartResult struct {
 func (m *service) finishExecution(
 	chat models.Chat,
 	execution models.Execution,
-	status constants.ExecutionStatus,
-	errorCode string,
-	errorMessage string,
+	finished eventlog.ExecutionFinishedData,
 ) {
 	eventType := constants.ChatEventTypeExecutionCompleted
-	if status == constants.ExecutionStatusFailed {
+	if finished.Status == constants.ExecutionStatusFailed {
 		eventType = constants.ChatEventTypeExecutionFailed
-		logx.Errorf(
-			"chat execution failed: chat_id=%s execution_id=%s error_code=%s error_message=%s",
-			chat.ID,
-			execution.ID,
-			errorCode,
-			errorMessage,
-		)
-	} else if status == constants.ExecutionStatusCanceled {
+	} else if finished.Status == constants.ExecutionStatusCanceled {
 		eventType = constants.ChatEventTypeExecutionCanceled
 	}
-	terminalData := marshalData(eventlog.ExecutionFinishedData{
-		Status:       status,
-		ErrorCode:    errorCode,
-		ErrorMessage: errorMessage,
-	})
+	terminalData := marshalData(finished)
 	commit, err := m.journal.CommitTerminal(context.Background(), chatservice.TerminalFact{
 		Execution: execution,
 		Type:      eventType,
 		Data:      terminalData,
-		Status:    status,
-		ErrorCode: errorCode,
+		Status:    finished.Status,
+		ErrorCode: finished.ErrorCode,
 	})
 	if err != nil {
 		logx.Errorf("commit execution terminal: chat_id=%s execution_id=%s error=%v", chat.ID, execution.ID, err)

@@ -65,8 +65,8 @@ func authoringTestCLI(t *testing.T, s *Service, session models.WorkflowCreationS
 				t.Fatal(err)
 			}
 		}
-		code := agentcli.Execute(context.Background(), args, agentcli.IO{
-			In: &input, Out: &output, Err: &failure, ContextFile: connection,
+		code := agentcli.Execute(context.Background(), append([]string{"--context", connection}, args...), agentcli.IO{
+			In: &input, Out: &output, Err: &failure,
 		})
 		body := output.Bytes()
 		if code != 0 {

@@ -75,8 +75,10 @@ type ToolApprovalResult struct {
 
 // MessageRunMetrics 是聊天界面可安全展示的执行时间与 Token 用量摘要。
 type MessageRunMetrics struct {
-	// TokenUsage preserves known and complete counts from a canonical Codex result.
+	// TokenUsage 是原生调用用量。
 	TokenUsage *MessageTokenUsage `json:"tokenUsage,omitempty"`
+	// LatestRequestOutputTokens 是末次输出量。
+	LatestRequestOutputTokens *int64 `json:"latestRequestOutputTokens,omitempty"`
 	// StartedAt 是 Host 确认执行开始的 Unix 毫秒时间。
 	StartedAt int64 `json:"startedAt,omitempty"`
 	// DurationMs 是从 Host 执行开始到终态提交的墙钟毫秒数。
@@ -209,6 +211,10 @@ type Message struct {
 	ErrorCode string `json:"errorCode,omitempty"`
 	// ErrorMessage 是失败时供用户诊断的简明说明。
 	ErrorMessage string `json:"errorMessage,omitempty"`
+	// ErrorMessageSource 明确区分公开原生原因与应用本地化正文；空值仅用于旧记录。
+	ErrorMessageSource constants.ErrorMessageSource `json:"errorMessageSource,omitempty"`
+	// ErrorParams 是稳定错误模板使用的安全参数。
+	ErrorParams map[string]interface{} `json:"errorParams,omitempty"`
 	// CreatedAt 是消息建立时的 Unix 毫秒时间。
 	CreatedAt int64 `json:"createdAt"`
 	// UpdatedAt 是消息最近收到持久化事件时的 Unix 毫秒时间。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"os"
@@ -76,6 +77,91 @@ func fileMap(summary *Summary) map[string]File {
 		values[file.Path] = file
 	}
 	return values
+}
+
+func TestExactFileCaptureKeepsNetChangesWithoutReadingSiblings(t *testing.T) {
+	for _, action := range []string{"unchanged", "modified", "atomic", "deleted", "symlink", "directory", "parent"} {
+		t.Run(action, func(t *testing.T) {
+			root, owned := t.TempDir(), t.TempDir()
+			root, _ = filepath.EvalSymlinks(root)
+			selected := filepath.Join(root, "report.txt")
+			write(t, root, "report.txt", "original\n")
+			write(t, root, "sibling.txt", "unselected\n")
+			capture := begin(t, owned, action, nil, Options{FilePaths: []string{selected, selected}, Limits: Limits{MaxEntries: 1}})
+			if roots := capture.Summary().Roots; len(roots) != 1 || roots[0].Path != selected || !roots[0].File {
+				t.Fatalf("exact authorization became a directory: %+v", roots)
+			}
+			write(t, root, "sibling.txt", "must not be captured\n")
+			switch action {
+			case "modified":
+				write(t, root, "report.txt", "revised\n")
+			case "atomic":
+				write(t, root, "replacement", "revised\n")
+				if err := os.Rename(filepath.Join(root, "replacement"), selected); err != nil {
+					t.Fatal(err)
+				}
+			case "parent":
+				if err := os.Rename(root, root+"-old"); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { _ = os.RemoveAll(root + "-old") })
+				write(t, root, "report.txt", "replacement parent must not rebind scope\n")
+			case "deleted", "symlink", "directory":
+				if err := os.Remove(selected); err != nil {
+					t.Fatal(err)
+				}
+				if action == "symlink" {
+					outside := filepath.Join(t.TempDir(), "secret.txt")
+					write(t, filepath.Dir(outside), "secret.txt", "outside grant\n")
+					if err := os.Symlink(outside, selected); err != nil {
+						t.Skipf("symlink unavailable: %v", err)
+					}
+				}
+				if action == "directory" {
+					write(t, selected, "secret.txt", "must not enumerate replacement directory\n")
+				}
+			}
+			summary := finish(t, capture)
+			if action == "unchanged" || action == "symlink" || action == "directory" || action == "parent" {
+				if len(summary.Files) != 0 || (action != "unchanged" && summary.Complete) {
+					t.Fatalf("no net edit or unsafe replacement produced an edit: %+v", summary)
+				}
+				return
+			}
+			if len(summary.Files) != 1 || summary.Files[0].AbsolutePath != selected || summary.Files[0].Path != "report.txt" {
+				t.Fatalf("exact edit lost identity or captured siblings: %+v", summary)
+			}
+			if action == "deleted" && summary.Files[0].Status != "deleted" {
+				t.Fatalf("deletion lost: %+v", summary.Files)
+			}
+			write(t, root, "report.txt", "later execution\n")
+			diff, err := ReadDiff(t.Context(), owned, summary.ID, summary.Files[0].RootID, "report.txt")
+			data, _ := json.Marshal(diff)
+			if err != nil || !strings.Contains(string(data), "original") || strings.Contains(string(data), "later execution") {
+				t.Fatalf("immutable exact file diff changed: %+v %v", diff, err)
+			}
+		})
+	}
+}
+
+func TestExactFileCaptureKeepsFrozenIdentityWhenReferenceIsReboundBeforeBaseline(t *testing.T) {
+	root, owned := t.TempDir(), t.TempDir()
+	root, _ = filepath.EvalSymlinks(root)
+	selected := filepath.Join(root, "report.txt")
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	write(t, filepath.Dir(outside), "secret.txt", "outside grant\n")
+	if err := os.Symlink(outside, selected); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	capture, err := Begin(t.Context(), owned, "rebound-reference", nil, Options{FilePaths: []string{selected}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer capture.Close()
+	summary := capture.Summary()
+	if summary.State != "unavailable" || len(summary.Roots) != 1 || !summary.Roots[0].File || summary.Roots[0].Path != selected || len(summary.Files) != 0 {
+		t.Fatalf("rebound reference changed the frozen authorization identity: %+v", summary)
+	}
 }
 
 func TestSnapshotsCaptureShellNetChangesAndRecoverImmutableDiff(t *testing.T) {

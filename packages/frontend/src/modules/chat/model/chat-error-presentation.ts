@@ -1,5 +1,10 @@
 /** 提取协议错误的可读原因，完整输入仅用于用户主动展开的诊断详情。 */
 export function chatErrorPresentation(raw: string, fallback: string) {
+  const readable = (message: string) =>
+    message
+      .trim()
+      .replace(/^(?:RequestError:\s*)?(?:Internal error:\s*)+/, "")
+      .trim() || fallback;
   function reason(value: unknown, depth = 0): string | undefined {
     if (depth > 8) return;
     if (typeof value === "string" && value.trim()) {
@@ -22,10 +27,10 @@ export function chatErrorPresentation(raw: string, fallback: string) {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (parsed && typeof parsed === "object") {
-      return { message: reason(parsed) ?? fallback, details: raw };
+      return { message: readable(reason(parsed) ?? fallback), details: raw };
     }
   } catch {
     /* 非协议包装的错误沿用可读原文。 */
   }
-  return { message: raw };
+  return { message: readable(raw) };
 }

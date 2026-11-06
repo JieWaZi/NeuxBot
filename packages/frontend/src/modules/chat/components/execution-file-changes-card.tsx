@@ -104,12 +104,13 @@ export function ExecutionFileChangesCard({
       : undefined;
   const openFile = (file: (typeof files)[number]) => {
     const path = file.absolutePath ?? file.path ?? "";
+    const root = summary.data?.roots?.find((root) => root.id === file.rootId);
     onOpenFile?.({
       messageId: message.id ?? "",
       path,
       name: path.replaceAll("\\", "/").split("/").at(-1) ?? path,
-      rootPath: summary.data?.roots?.find((root) => root.id === file.rootId)
-        ?.path,
+      // 精确文件根与文件身份相同，差异仍按原消息读取，不将文件路径作为目录范围。
+      rootPath: root?.path === path ? undefined : root?.path,
     });
   };
   const viewChangesAction = (

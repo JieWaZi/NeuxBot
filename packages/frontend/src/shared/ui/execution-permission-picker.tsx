@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 
 import { cn } from "@/shared/lib/cn";
 import {
+  permissionLevelOf,
   permissionLevelToneClasses,
   permissionLevelTranslationKeys,
   permissionLevels,
@@ -49,7 +50,7 @@ export function ExecutionPermissionPicker({
           type="button"
           size="icon-sm"
           variant="ghost"
-          disabled={disabled}
+          disabled={disabled || supported.size === 0}
           aria-label={
             ariaLabel ?? t("permission.pickerAria", { name: selectedLabel })
           }
@@ -65,34 +66,37 @@ export function ExecutionPermissionPicker({
       <DropdownMenuContent align="start" className="w-80">
         <DropdownMenuRadioGroup
           value={value}
-          onValueChange={(next) => onChange(next as PermissionLevel)}
+          onValueChange={(next) => {
+            const level = permissionLevelOf(next);
+            if (level && supported.has(level)) onChange(level);
+          }}
         >
-          {permissionLevels.map((level) => {
-            const detail = permissionLevelTranslationKeys[level];
-            const tone = permissionLevelToneClasses[level];
-            const available = supported.has(level);
-            const Icon = permissionLevelIcons[level];
-            return (
-              <DropdownMenuRadioItem
-                key={level}
-                value={level}
-                disabled={!available}
-                className="min-h-row-rich items-start py-2"
-              >
-                <Icon className={cn("size-icon-sm mt-0.5", tone.icon)} />
-                <span className="min-w-0 flex-1">
-                  <span className={cn("type-ui block font-medium", tone.title)}>
-                    {t(detail.label)}
+          {permissionLevels
+            .filter((level) => supported.has(level))
+            .map((level) => {
+              const detail = permissionLevelTranslationKeys[level];
+              const tone = permissionLevelToneClasses[level];
+              const Icon = permissionLevelIcons[level];
+              return (
+                <DropdownMenuRadioItem
+                  key={level}
+                  value={level}
+                  className="min-h-row-rich items-start py-2"
+                >
+                  <Icon className={cn("size-icon-sm mt-0.5", tone.icon)} />
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={cn("type-ui block font-medium", tone.title)}
+                    >
+                      {t(detail.label)}
+                    </span>
+                    <span className="text-muted-foreground type-caption mt-0.5 block whitespace-normal">
+                      {t(detail.description)}
+                    </span>
                   </span>
-                  <span className="text-muted-foreground type-caption mt-0.5 block whitespace-normal">
-                    {available
-                      ? t(detail.description)
-                      : t("permission.unsupported")}
-                  </span>
-                </span>
-              </DropdownMenuRadioItem>
-            );
-          })}
+                </DropdownMenuRadioItem>
+              );
+            })}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>

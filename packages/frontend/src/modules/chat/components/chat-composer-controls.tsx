@@ -1,7 +1,4 @@
-import {
-  ExecutionRuntimeControl,
-  ExecutionPermissionControl,
-} from "@/shared/ui/execution-selection-controls";
+import { ExecutionPermissionControl } from "@/shared/ui/execution-selection-controls";
 import type { ExecutionSelectionState } from "@/shared/hooks/use-execution-selection";
 import { usesNativeModelCatalog } from "@/shared/api/runtime-queries";
 import { listAiAccountsOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
@@ -21,7 +18,6 @@ import {
 } from "@/shared/platform";
 import {
   modelPermissionLevels,
-  runtimeDefaultPermissionLevels,
   safeDefaultPermissionLevel,
   type PermissionLevel,
 } from "@/shared/lib/runtime-permissions";
@@ -30,7 +26,7 @@ import { Button } from "@/shared/ui/button";
 import { WorkspaceScopePicker } from "@/shared/ui/workspace-scope-picker";
 import { OverflowText } from "@/shared/ui/overflow-text";
 import { ChatComposerBranchSelector } from "./chat-composer-branch-selector";
-import { ExecutionModelControl } from "@/shared/ui/execution-model-control";
+import { ChatExecutionPicker } from "./chat-execution-picker";
 import { ChatEffortEffects } from "./chat-effort-effects";
 import { isMaximumReasoning } from "@/shared/lib/runtime-reasoning";
 import {
@@ -44,6 +40,7 @@ export type ChatExecutionSelectionPatch = Partial<{
   permissionLevel: PermissionLevel;
   reasoning: string;
   fast: boolean | null;
+  contextWindow: string;
   runtimeId: string;
 }>;
 
@@ -53,12 +50,16 @@ type ChatComposerControlsProps = {
   activeChatId?: string;
   availableReasoningOptions?: RuntimeReasoningOption[];
   modelOptionsOverride?: RuntimeModelOption[];
+  defaultModel?: string;
   catalogState?: string;
   catalogIssue?: ExecutionSelectionState["catalogIssue"];
   catalogPending?: boolean;
   refreshCatalog?: () => unknown;
   fastSupported?: boolean;
   selectedFast?: boolean;
+  selectedContextWindow?: string;
+  enableContextWindow?: boolean;
+  sessionSwitchPending?: boolean;
   thinkingPending?: boolean;
   historicalRuntime?: RuntimeOption;
   historicalRuntimeDisabled: boolean;
@@ -91,12 +92,16 @@ export function useChatComposerControls({
   activeChatId,
   availableReasoningOptions,
   modelOptionsOverride,
+  defaultModel,
   catalogState,
   catalogIssue,
   catalogPending,
   refreshCatalog,
   fastSupported,
   selectedFast,
+  selectedContextWindow,
+  enableContextWindow,
+  sessionSwitchPending,
   thinkingPending,
   historicalRuntime,
   historicalRuntimeDisabled,
@@ -127,35 +132,6 @@ export function useChatComposerControls({
   const selectedAccount = accounts.find(
     (account) => account.id === selectedAccountId,
   );
-  const selectAccountForRuntime = (
-    runtime: RuntimeOption,
-    accountId: string,
-  ) => {
-    const account = accounts.find((item) => item.id === accountId);
-    const usesNativeCatalog = usesNativeModelCatalog(
-      runtime.baseRuntimeId || runtime.id,
-    );
-    updateExecutionSelection({
-      accountId,
-      fast: null,
-      model:
-        usesNativeCatalog || account?.authMode === "subscription"
-          ? ""
-          : account?.defaultModel ||
-            account?.selectedModels?.[0] ||
-            runtime.defaultModel ||
-            "",
-      permissionLevel: usesNativeCatalog
-        ? safeDefaultPermissionLevel(
-            selectedPermissionLevel,
-            runtimeDefaultPermissionLevels(runtime),
-          )
-        : selectedPermissionLevel,
-      reasoning:
-        usesNativeCatalog || account ? "" : (runtime.defaultReasoning ?? ""),
-      runtimeId: runtime.id ?? "",
-    });
-  };
   const modelOptions =
     modelOptionsOverride ??
     (selectedAccountId &&
@@ -233,15 +209,70 @@ export function useChatComposerControls({
       }
     />
   );
-  const runtimeControl = (
+  const composerSettings = (
     <>
-      <ExecutionRuntimeControl
+      <ChatExecutionPicker
         runtimes={runtimes}
         accounts={accounts}
-        selectedRuntime={selectedRuntime}
+        runtime={selectedRuntime}
         historicalRuntime={historicalRuntime}
-        selectedAccountId={selectedAccountId}
-        onSelect={selectAccountForRuntime}
+        accountId={selectedAccountId}
+        models={modelOptions}
+        modelId={selectedModel}
+        modelName={selectedModelName}
+        defaultModel={defaultModel}
+        reasoning={selectedReasoning}
+        reasoningOptions={availableReasoningOptions}
+        allowDefaultReasoning={Boolean(
+          selectedAccount ||
+          usesNativeModelCatalog(
+            selectedRuntime?.baseRuntimeId || selectedRuntime?.id,
+          ),
+        )}
+        catalogState={catalogState}
+        catalogIssue={catalogIssue}
+        pending={thinkingPending || catalogPending}
+        sessionSwitchPending={sessionSwitchPending}
+        onRefresh={refreshCatalog}
+        fast={selectedFast}
+        fastSupported={fastSupported}
+        onFast={(fast) => updateExecutionSelection({ fast })}
+        contextWindow={selectedContextWindow}
+        onContextWindow={
+          enableContextWindow
+            ? (contextWindow) => updateExecutionSelection({ contextWindow })
+            : undefined
+        }
+        onReasoning={(reasoning) => updateExecutionSelection({ reasoning })}
+        onModel={(runtime, accountId, model) => {
+          const usesNativeCatalog = usesNativeModelCatalog(
+            runtime.baseRuntimeId || runtime.id,
+          );
+          const options = model.reasoningOptions?.length
+            ? model.reasoningOptions
+            : runtime.reasoningOptions;
+          const reasoning =
+            usesNativeCatalog || accountId !== "system"
+              ? ""
+              : (options?.find((item) => item.id === runtime.defaultReasoning)
+                  ?.id ??
+                options?.[0]?.id ??
+                "");
+          updateExecutionSelection({
+            runtimeId: runtime.id ?? "",
+            accountId,
+            model: model.id ?? "",
+            permissionLevel: usesNativeCatalog
+              ? safeDefaultPermissionLevel(
+                  selectedPermissionLevel,
+                  modelPermissionLevels([model], model.id ?? ""),
+                )
+              : selectedPermissionLevel,
+            reasoning,
+            fast: null,
+            ...(enableContextWindow ? { contextWindow: "" } : {}),
+          });
+        }}
       />
       {historicalRuntimeDisabled && !runtimeId ? (
         <span className="text-destructive type-caption">
@@ -250,74 +281,6 @@ export function useChatComposerControls({
       ) : null}
     </>
   );
-  const usesNativeCatalog = usesNativeModelCatalog(
-    selectedRuntime?.baseRuntimeId || selectedRuntime?.id,
-  );
-  const modelControl =
-    selectedModelName ||
-    selectedAccount ||
-    (usesNativeCatalog && !catalogIssue) ? (
-      <ExecutionModelControl
-        selectedModelName={selectedModelName}
-        selectedModel={selectedModel}
-        models={modelOptions}
-        selectedReasoning={selectedReasoning}
-        reasoningOptions={availableReasoningOptions}
-        thinkingPending={thinkingPending || catalogPending}
-        disabled={
-          usesNativeCatalog && (catalogState !== "fresh" || catalogPending)
-        }
-        fast={selectedFast}
-        onFastChange={
-          fastSupported
-            ? (fast) => updateExecutionSelection({ fast: fast ?? null })
-            : undefined
-        }
-        allowDefaultReasoning={Boolean(
-          selectedAccount ||
-          (usesNativeCatalog && availableReasoningOptions?.length),
-        )}
-        defaultReasoning={
-          usesNativeCatalog
-            ? undefined
-            : selectedAccount?.defaultReasoning ||
-              selectedRuntime?.defaultReasoning
-        }
-        onModelChange={(model) => {
-          const nextModelOption = modelOptions.find(
-            (item) => item.id === model,
-          );
-          const nextReasoningOptions =
-            usesNativeCatalog || selectedAccount
-              ? nextModelOption?.reasoningOptions
-              : nextModelOption?.reasoningOptions?.length
-                ? nextModelOption.reasoningOptions
-                : selectedRuntime?.reasoningOptions;
-          const reasoning =
-            usesNativeCatalog || selectedAccount
-              ? ""
-              : (nextReasoningOptions?.find(
-                  (item) => item.id === selectedRuntime?.defaultReasoning,
-                )?.id ??
-                nextReasoningOptions?.[0]?.id ??
-                "");
-          updateExecutionSelection({
-            model,
-            permissionLevel: usesNativeCatalog
-              ? safeDefaultPermissionLevel(
-                  selectedPermissionLevel,
-                  modelPermissionLevels(modelOptions, model),
-                )
-              : selectedPermissionLevel,
-            reasoning,
-            fast: null,
-          });
-        }}
-        onReasoningChange={(reasoning) =>
-          updateExecutionSelection({ reasoning })
-        }
-      />
-    ) : null;
 
   const branchControl =
     gitRepositories.length > 0 ? (
@@ -345,23 +308,6 @@ export function useChatComposerControls({
       workspaceDirectory={workspaceDirectory}
       workspaceLabel={workspaceLabel}
     />
-  );
-
-  const composerSettings = (
-    <>
-      {runtimeControl}
-      {modelControl}
-      {catalogIssue ? (
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={catalogPending}
-          onClick={() => void refreshCatalog?.()}
-        >
-          {t(`common:executionSelection.${catalogIssue}`)}
-        </Button>
-      ) : null}
-    </>
   );
 
   return {

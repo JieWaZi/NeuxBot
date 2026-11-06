@@ -78,8 +78,8 @@ func TestAllyCLIRejectsRemovedPluginOperationsWithoutInstallation(t *testing.T) 
 			if id == "plugins.installations.install" {
 				args = append(args, "--request-id", "stable-install")
 			}
-			command := exec.Command(binary, args...)
-			command.Env = []string{constants.AgentCLIContextEnvironment + "=" + connection, "PATH=" + root, "HOME=" + filepath.Dir(native)}
+			command := exec.Command(binary, append([]string{"--context", connection}, args...)...)
+			command.Env = []string{"PATH=" + root, "HOME=" + filepath.Dir(native)}
 			command.Stdin = bytes.NewReader(input)
 			output, err := command.CombinedOutput()
 			var response capability.Response

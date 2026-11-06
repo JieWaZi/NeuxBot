@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { chatFileRoots } from "./project-files-scope";
 
-import { projectFilesScopePath } from "./project-files-scope";
-
-describe("projectFilesScopePath", () => {
-  it("uses managed projects namespace after first send", () => {
-    expect(projectFilesScopePath("chat-1")).toBe("projects");
+describe("chatFileRoots", () => {
+  it("browses actual cwd and each frozen project without a virtual namespace", () => {
+    expect(
+      chatFileRoots("/managed/Agents/waker", [
+        "/home/project-a",
+        "/home/project-b",
+        "/home/project-a",
+      ]),
+    ).toEqual(["/managed/Agents/waker", "/home/project-a", "/home/project-b"]);
   });
-
-  it("lists workspace root directly in draft", () => {
-    expect(projectFilesScopePath()).toBe("");
-    expect(projectFilesScopePath("")).toBe("");
+  it("keeps an explicitly selected draft project directly accessible", () => {
+    expect(chatFileRoots("", ["/home/project"])).toEqual(["/home/project"]);
   });
 });

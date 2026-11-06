@@ -24,6 +24,8 @@ type MessageRequest struct {
 	Reasoning string `json:"reasoning" validate:"max=80"`
 	// Fast
 	Fast *bool `json:"fast,omitempty"`
+	// 上下文档位
+	ContextWindow string `json:"contextWindow,omitempty" validate:"max=80"`
 	// 权限等级
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel" validate:"required"`
 	// 是否新建原生会话
@@ -96,11 +98,12 @@ func (r MessageRequest) workInput() (execution.WorkInput, execution.WorkOptions)
 			PluginIDs:        append([]string(nil), r.PluginIDs...),
 			CodeReferences:   references,
 		}, execution.WorkOptions{
-			AccountID: strings.TrimSpace(r.AccountID),
-			RuntimeID: strings.TrimSpace(r.RuntimeID),
-			Model:     strings.TrimSpace(r.Model),
-			Reasoning: strings.TrimSpace(r.Reasoning),
-			Fast:      r.Fast,
+			AccountID:     strings.TrimSpace(r.AccountID),
+			RuntimeID:     strings.TrimSpace(r.RuntimeID),
+			Model:         strings.TrimSpace(r.Model),
+			Reasoning:     strings.TrimSpace(r.Reasoning),
+			Fast:          r.Fast,
+			ContextWindow: strings.TrimSpace(r.ContextWindow),
 			PermissionLevel: constants.PermissionLevel(
 				strings.TrimSpace(string(r.PermissionLevel)),
 			),

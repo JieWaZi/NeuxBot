@@ -42,7 +42,7 @@ type AccountRequest struct {
 	DataHome string
 	// ConfigFingerprint freezes noncredential account settings independently of its subject.
 	ConfigFingerprint string
-	// WaitForLease 表示独立后台调用等待正在修改的账号。
+	// WaitForLease makes detached background invocations wait for accounts being modified.
 	WaitForLease bool
 	// CWD is the absolute, resolved working directory.
 	CWD string
@@ -60,28 +60,29 @@ func (r AccountRequest) Equal(other AccountRequest) bool {
 
 // AccountLease transfers actual account resources, including on acquisition failure.
 type AccountLease struct {
-	// Environment is the selected credential's authoritative launch environment.
+	// Environment is the launch environment supplied by the account lease.
 	Environment map[string]string
-	// ConfigHome is the account's authoritative native configuration root when supplied.
+	// ConfigHome is the native configuration root confirmed by the account lease.
 	ConfigHome string
-	// CodexConfig fixes account-owned native provider configuration for startup and sessions.
+	// DataHome is the native session data root confirmed by the account lease.
+	DataHome string
+	// CodexConfig is the Codex launch and session configuration supplied by the account.
 	CodexConfig map[string]json.RawMessage
-	// CodexCredentialKind selects the native account kind required by this lease.
+	// CodexCredentialKind is the Codex credential type required by the lease.
 	CodexCredentialKind string
-	// VerifyCodexCredential compares the initialized Codex process proof with the selected credential.
+	// VerifyCodexCredential checks Codex process receipts against the selected credentials.
 	VerifyCodexCredential func(context.Context, [sha256.Size]byte) error
-	// VerifyLogin checks observable external login changes immediately before submission.
-	// Providers without a same-process identity receipt cannot eliminate external switch races.
+	// VerifyLogin checks observable external login changes before submission.
 	VerifyLogin func(context.Context) error
-	// CursorQuota optionally binds management reads to the selected native login.
+	// CursorQuota binds quota queries to the current Cursor login identity.
 	CursorQuota *CursorQuotaLease
-	// QoderUserID binds management reads to the native identity verified by the lease.
+	// QoderUserID is the Qoder user identifier confirmed by the lease for management queries.
 	QoderUserID string
-	// QoderLoginVerified carries positive native sign-in evidence from acquisition.
+	// QoderLoginVerified reports that the lease confirmed Qoder login with the native client.
 	QoderLoginVerified bool
-	// PrepareLaunchAuth obtains any additional startup authentication resources.
+	// PrepareLaunchAuth prepares additional launch authentication resources.
 	PrepareLaunchAuth func(context.Context) (LaunchAuthLease, error)
-	// Close releases the account after native exit and startup authentication cleanup.
+	// Close releases the lease after the native process exits and launch authentication resources are cleaned up.
 	Close func(context.Context) error
 }
 
@@ -103,8 +104,10 @@ type LaunchAuthLease struct {
 	Close func(context.Context) error
 }
 
-// ResourceSelection identifies host-authorized resources before reading any secrets.
+// ResourceSelection identifies host-authorized resources and secret-free compatibility evidence.
 type ResourceSelection struct {
+	// Skills fixes the exact content and physical discovery target before admission.
+	Skills *SkillSelection
 	// Plugins fixes the installed version of each selected plugin by ID.
 	Plugins map[string]string
 	// ConnectorIDs fixes the set of authorized connectors.
@@ -113,6 +116,8 @@ type ResourceSelection struct {
 
 // ResourceLease transfers the materialized resources needed by the native client.
 type ResourceLease struct {
+	// Skills confirms the content actually acquired for the reserved native target.
+	Skills *SkillSelection
 	// Environment contains non-account launch contributions.
 	Environment map[string]string
 	// MCPServers contains the materialized server configuration.
@@ -127,31 +132,33 @@ type ResourceLease struct {
 
 // ProviderLaunch contains the facts required to construct one selected native client.
 type ProviderLaunch struct {
-	// Executable is the detected program path or a name on the explicit PATH.
+	// Executable is the detected executable path or a program name in the explicit PATH.
 	Executable string
-	// PrefixArgs precedes the native subcommand.
+	// PrefixArgs contains launch arguments before the native subcommand.
 	PrefixArgs []string
-	// BaseEnvironment is the inherited child environment, independent of thread compatibility.
+	// BaseEnvironment is the inherited process environment and does not affect session compatibility.
 	BaseEnvironment map[string]string `json:",omitempty"`
-	// Environment is the explicit child environment before lease contributions.
+	// Environment is the explicit launch environment before account lease injection.
 	Environment map[string]string
-	// ConfigHome supplies the default native configuration root.
+	// ConfigHome is the default native configuration directory.
 	ConfigHome string
-	// CodexConfig contains native launch overrides for Codex.
+	// CodexConfig contains native Codex launch configuration overrides.
 	CodexConfig map[string]json.RawMessage
-	// Claude declares Claude-specific startup requirements.
+	// Claude holds Claude-specific launch requirements.
 	Claude ClaudeLaunch
-	// CursorPermissionMode selects Cursor's native startup policy.
+	// CursorPermissionMode is the native Cursor process permission.
 	CursorPermissionMode string
-	// ProcessPermissionMode freezes the approval policy for ACP profiles and Pi.
+	// ProcessPermissionMode is the process permission for ACP adapters and Pi.
 	ProcessPermissionMode string
-	// ACPAdditionalDirectories carries authorized roots for native CLI startup flags.
+	// ACPAdditionalDirectories contains directories permitted in native launch arguments.
 	ACPAdditionalDirectories []string `json:",omitempty"`
-	// WorkBuddyCatalogHome is an isolated CodeBuddy root owned by the catalog connection.
+	// QoderContextWindow is the window tier frozen at Qoder process startup; zero preserves native settings.
+	QoderContextWindow int64 `json:",omitempty"`
+	// WorkBuddyCatalogHome is the temporary CodeBuddy configuration directory owned exclusively by the catalog connection.
 	WorkBuddyCatalogHome string `json:"-"`
-	// RequireVerifiedMCP rejects MCP handoff without native verification.
+	// RequireVerifiedMCP requires native confirmation of MCP integration.
 	RequireVerifiedMCP bool
-	// RequireNoTools admits only a native fresh-session launch with tools disabled.
+	// RequireNoTools permits only new native sessions with tools disabled.
 	RequireNoTools bool
 }
 
@@ -214,6 +221,8 @@ type ProviderRuntime struct {
 	options ProviderRuntimeOptions
 	// mu guards registration and admission only.
 	mu sync.Mutex
+	// skillFilesMu serializes root manifest read/validate/publish without holding mu.
+	skillFilesMu sync.Mutex
 	// closing permanently ends new admission.
 	closing bool
 	// nextID increases for every admitted attempt.
@@ -232,40 +241,47 @@ type providerAccount struct {
 }
 
 type providerConnection struct {
-	// runtime removes this entry only after successful cleanup.
+	// runtime removes this connection after all cleanup succeeds.
 	runtime *ProviderRuntime
-	// id is allocated before any startup work and never reused within the runtime.
+	// id is a non-reusable connection number within this runtime.
 	id uint64
-	// account and generation identify this connection for account invalidation.
-	account    providerAccount
+	// account is the account identity used for connection invalidation.
+	account providerAccount
+	// generation is the authentication generation frozen for this connection.
 	generation uint64
-	// plugins identifies the frozen versions retained by this native owner.
+	// plugins contains plugins and frozen versions held by this native connection.
 	plugins map[string]string
-	// mu guards publication and close attempts. Startup and cleanup never overlap.
+	// skills is the physical target reservation retained through successful cleanup.
+	skills *SkillSelection
+	// qoderContextWindow is the actual process launch tier; zero preserves native settings.
+	qoderContextWindow int64
+	// mu protects startup result publication and cleanup attempts, keeping startup and cleanup mutually exclusive.
 	mu sync.Mutex
-	// cancelOpen signals the startup worker without waiting for acquisition to return.
+	// cancelOpen signals the startup goroutine to stop without waiting for resource acquisition to return.
 	cancelOpen context.CancelFunc
-	// opened closes after all startup writes, including partial lease handoff.
+	// opened closes after startup writes and partial lease transfer finish.
 	opened chan struct{}
-	// openErr is the safe startup failure published with opened.
+	// openErr is the safe startup error published through opened.
 	openErr error
-	// closing prevents a startup result from being published after close intent.
+	// closing prevents startup result publication after closure begins.
 	closing bool
-	// closed confirms all cleanup steps have succeeded.
+	// closed reports that all cleanup steps succeeded.
 	closed bool
-	// firstCloseAttempt preserves the cleanup selected by a failed Open.
+	// firstCloseAttempt retains the cleanup attempt selected on startup failure.
 	firstCloseAttempt *connectionCloseAttempt
-	// closingAttempt lets concurrent waiters join the same cleanup.
+	// closingAttempt lets concurrent waiters join the same cleanup attempt.
 	closingAttempt *connectionCloseAttempt
-	// client owns native consumers until Close confirms their exit.
+	// client owns the native process until Close confirms exit.
 	client ProviderClient
-	// qoderLoginVerified retains only the immutable evidence published with opened.
+	// qoderLoginVerified is the native login confirmation published through opened.
 	qoderLoginVerified bool
-	// accountLease, launchAuth and resources retain actual releases as they arrive.
+	// accountLease is the acquired account lease.
 	accountLease AccountLease
-	launchAuth   LaunchAuthLease
-	resources    ResourceLease
-	// closeWorkspace releases an adopted working directory after other leases.
+	// launchAuth is the acquired launch authentication lease.
+	launchAuth LaunchAuthLease
+	// resources is the acquired native resource lease.
+	resources ResourceLease
+	// closeWorkspace cleans up the adopted working directory after other leases are released.
 	closeWorkspace func(context.Context) error
 }
 
@@ -294,6 +310,13 @@ func (r *ProviderRuntime) Open(ctx context.Context, request ProviderConnectionRe
 		return nil, err
 	}
 	request = freezeProviderRequest(request)
+	if skills := request.Resources.Skills; skills != nil {
+		cwd, err := resolveAgentDirectory(request.Account.CWD)
+		if err != nil || workspacePathKey(cwd) != workspacePathKey(skills.cwd) || !maps.Equal(skills.plugins, request.Resources.Plugins) {
+			return nil, status_error.RuntimeConfigurationInvalid
+		}
+	}
+
 	account := providerAccount{provider: request.Account.Provider, id: request.Account.AccountID}
 	openCtx, cancel := context.WithCancel(ctx)
 	r.mu.Lock()
@@ -316,9 +339,18 @@ func (r *ProviderRuntime) Open(ctx context.Context, request ProviderConnectionRe
 			}
 		}
 	}
+	// Admission reserves before any account or resource callback can write files.
+	for _, old := range r.connections {
+		if skillsConflict(old.skills, request.Resources.Skills) {
+			r.mu.Unlock()
+			cancel()
+			return nil, status_error.RuntimeUnavailable
+		}
+	}
 	r.nextID++
 	c := &providerConnection{
 		runtime: r, id: r.nextID, account: account, generation: request.Account.AuthGeneration, plugins: request.Resources.Plugins,
+		qoderContextWindow: request.Launch.QoderContextWindow, skills: request.Resources.Skills,
 		cancelOpen: cancel, opened: make(chan struct{}), closeWorkspace: ports.CloseFiles,
 	}
 	r.connections[c.id] = c
@@ -352,6 +384,12 @@ func freezeProviderRequest(request ProviderConnectionRequest) ProviderConnection
 	launch.Claude.SettingSources = slices.Clone(launch.Claude.SettingSources)
 	launch.Claude.Tools = slices.Clone(launch.Claude.Tools)
 	launch.Claude.ExcludedWriteDirectories = slices.Clone(launch.Claude.ExcludedWriteDirectories)
+	if selection := request.Resources.Skills; selection != nil {
+		frozen := *selection
+		frozen.entries = slices.Clone(selection.entries)
+		frozen.plugins = maps.Clone(selection.plugins)
+		request.Resources.Skills = &frozen
+	}
 	request.Resources.Plugins = maps.Clone(request.Resources.Plugins)
 	request.Resources.ConnectorIDs = slices.Clone(request.Resources.ConnectorIDs)
 	return request
@@ -433,7 +471,7 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 	if account.ConfigHome != "" && c.accountLease.ConfigHome != account.ConfigHome {
 		return status_error.AIAccountConfigurationInvalid
 	}
-	if account.DataHome != "" && c.accountLease.Environment["CURSOR_DATA_DIR"] != account.DataHome {
+	if account.DataHome != "" && c.accountLease.DataHome != account.DataHome {
 		return status_error.AIAccountConfigurationInvalid
 	}
 	if err := ctx.Err(); err != nil {
@@ -453,11 +491,26 @@ func (c *providerConnection) initialize(ctx context.Context, request ProviderCon
 		if err != nil {
 			return safeAgentError(err, status_error.RuntimeConfigurationInvalid)
 		}
-	} else if len(request.Resources.Plugins) != 0 || len(request.Resources.ConnectorIDs) != 0 {
+	} else if request.Resources.Skills != nil || len(request.Resources.Plugins) != 0 || len(request.Resources.ConnectorIDs) != 0 {
 		return status_error.RuntimeConfigurationInvalid
 	}
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+
+	if !SameSkills(request.Resources.Skills, c.resources.Skills) {
+		return status_error.SkillContentInvalid
+	}
+	if request.Resources.Skills != nil {
+		// File transactions never call back into ThreadLifecycle or acquire runtime mu.
+		c.runtime.skillFilesMu.Lock()
+		if err = ctx.Err(); err == nil {
+			err = prepareSkills(request.Resources.Skills)
+		}
+		c.runtime.skillFilesMu.Unlock()
+		if err != nil {
+			return err
+		}
 	}
 	c.qoderLoginVerified = c.accountLease.QoderLoginVerified
 	if build := c.runtime.options.NewClient; build != nil {

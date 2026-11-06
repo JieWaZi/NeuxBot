@@ -5,9 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -218,7 +221,8 @@ func (c *ModelCatalog) readNative(ctx context.Context, request ProviderConnectio
 	}
 	if !qoderLoginVerified {
 		account, err := client.ReadAccount(ctx)
-		if err != nil && !(accountconfig.ACPSystemConfigVariable(request.Account.Provider) != "" && errors.Is(err, status_error.RuntimePolicyUnsupported)) {
+		// Some native clients expose only session and model interfaces; still read the catalog when account management is unavailable.
+		if err != nil && !errors.Is(err, status_error.RuntimePolicyUnsupported) {
 			return fail(err)
 		}
 		if account.RequiresAuthentication && account.Account == nil {
@@ -253,4 +257,28 @@ func modelCatalogFailure(err error) ModelCatalogSnapshot {
 func cloneModelCatalog(snapshot ModelCatalogSnapshot) ModelCatalogSnapshot {
 	snapshot.Models = cloneChoices(snapshot.Models)
 	return snapshot
+}
+
+// IsContextWindowOption identifies a native context window option.
+func IsContextWindowOption(setting AgentSessionOption) bool {
+	return setting.ID == "context_window" || setting.Category == "context_window" ||
+		setting.ID == "context" && setting.Category == "model_config"
+}
+
+// ContextWindowTokens converts native tiers to display token counts while retaining native identifiers for settings.
+func ContextWindowTokens(value string) int64 {
+	value = strings.ToLower(strings.TrimSpace(value))
+	scale := float64(1)
+	switch {
+	case strings.HasSuffix(value, "k"):
+		value, scale = strings.TrimSuffix(value, "k"), 1_000
+	case strings.HasSuffix(value, "m"):
+		value, scale = strings.TrimSuffix(value, "m"), 1_000_000
+	}
+	size, err := strconv.ParseFloat(value, 64)
+	size *= scale
+	if err != nil || !(size > 0 && size <= (1<<53)-1) || math.Trunc(size) != size {
+		return 0
+	}
+	return int64(size)
 }

@@ -287,8 +287,6 @@ func mcpServiceAndTool(data map[string]interface{}, rawToolName string) (string,
 // flattenedBuiltinMCPIdentity 兼容 Runtime 将内置服务和工具压成单个下划线名称的形态。
 func flattenedBuiltinMCPIdentity(name string) (string, string) {
 	for _, server := range []string{
-		legacyWorkflowResultServer,
-		legacyWorkflowUseServer,
 		constants.WorkflowMCPRuntimeKey,
 		constants.BuiltinMemoryMCPConnectorRuntimeKey,
 		constants.BuiltinChannelTasksMCPConnectorRuntimeKey,

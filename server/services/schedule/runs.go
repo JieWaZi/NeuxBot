@@ -556,6 +556,10 @@ func (s *Service) workflowRunView(ctx context.Context, run models.AutomaticRun) 
 	if value.Failure != nil {
 		if data, ok := value.Failure.Data.(map[string]any); ok {
 			view.ErrorCode, _ = data["code"].(string)
+			view.ErrorParams, _ = data["params"].(map[string]interface{})
+			view.ErrorMessage, _ = data["message"].(string)
+			source, _ := data["messageSource"].(string)
+			view.ErrorMessageSource = constants.ErrorMessageSource(source)
 		}
 	}
 	switch value.Status {
@@ -586,6 +590,12 @@ func (s *Service) workflowRunView(ctx context.Context, run models.AutomaticRun) 
 
 // RunView 组合不可变机会记录与独立执行或团队整体运行的展示状态。
 type RunView struct {
+	// ErrorMessage 是既有执行或工作流事实中的公开原因。
+	ErrorMessage string `json:"errorMessage,omitempty"`
+	// ErrorMessageSource 是公开原因或应用本地化的来源标记。
+	ErrorMessageSource constants.ErrorMessageSource `json:"errorMessageSource,omitempty"`
+	// ErrorParams 是同一失败事实的安全模板参数。
+	ErrorParams map[string]interface{} `json:"errorParams,omitempty"`
 	// AutomaticRun 是该机会的持久身份、来源与冻结配置。
 	models.AutomaticRun
 	// State 是首次独立执行或团队整体运行的状态，结束后的手动续聊不改变它。
@@ -644,6 +654,9 @@ func (s *Service) ReadRunWithSnapshots(ctx context.Context, run models.Automatic
 		view.State = constants.AutomaticRunState(initial.Status)
 		view.CompletedAt = initial.CompletedAt
 		view.ErrorCode = initial.ErrorCode
+		view.ErrorMessage = initial.ErrorMessage
+		view.ErrorParams = initial.ErrorParams
+		view.ErrorMessageSource = initial.ErrorMessageSource
 		if state.Chat.ActiveExecutionID == run.ExecutionID {
 			if state.Chat.WaitingApproval {
 				view.State = constants.AutomaticRunStateWaitingApproval

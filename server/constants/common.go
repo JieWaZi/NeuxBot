@@ -104,6 +104,8 @@ const (
 	WorkflowStateDirectoryName = "state"
 	// WorkflowCacheDirectoryName 保存工作流跨运行的缓存。
 	WorkflowCacheDirectoryName = "cache"
+	// WorkflowWorkerDirectoryName 保存既有工作流 Effect 的隔离 worker cwd。
+	WorkflowWorkerDirectoryName = "workers"
 	// WorkflowTemporaryDirectoryName 保存工作流内部临时文件。
 	WorkflowTemporaryDirectoryName = "tmp"
 	// WorkflowRunsDirectoryName 隔离每次运行的默认业务文件。
@@ -422,20 +424,26 @@ const (
 )
 
 const (
-	// ChatExecutionWorkspaceOwnerKind 标识对话执行工作区归属标记。
-	ChatExecutionWorkspaceOwnerKind = "chat-execution-workspace"
+	// AgentExecutionWorkspaceOwnerKind 标识伙伴固定执行工作区归属标记。
+	AgentExecutionWorkspaceOwnerKind = "agent-execution-workspace"
+	// IsolatedExecutionWorkspaceOwnerKind 标识工作流等宿主领域拥有的隔离执行目录。
+	IsolatedExecutionWorkspaceOwnerKind = "isolated-execution-workspace"
 	// ThreadExecutionWorkspaceOwnerKind 标识团队对话 thread 级共享执行工作区归属标记。
 	ThreadExecutionWorkspaceOwnerKind = "thread-execution-workspace"
 	// ThreadMemberExecutionWorkspaceOwnerKind 标识团队成员独占 Runtime cwd 的归属标记。
 	ThreadMemberExecutionWorkspaceOwnerKind = "thread-member-execution-workspace"
 	// ChatMessageAttachmentsOwnerKind 标识消息附件目录归属标记。
 	ChatMessageAttachmentsOwnerKind = "message-attachments"
-	// ExecutionWorkspaceProjectsDirectory 是 Chat 工作区内项目软链接子目录名。
-	ExecutionWorkspaceProjectsDirectory = "projects"
+	// TeamSharedDirectoryName 是团队工作区中的真实共享文件子目录名。
+	TeamSharedDirectoryName = "shared"
 	// ExecutionWorkspaceAttachmentsDirectory 是 Chat 工作区内消息附件和会话生成文件的受管根目录名。
 	ExecutionWorkspaceAttachmentsDirectory = "attachments"
-	// ExecutionWorkspaceGeneratedFilesDirectory 是 attachments/ 内伙伴生成会话文件的子目录名。
-	ExecutionWorkspaceGeneratedFilesDirectory = "generated"
+	// ProjectEntriesDirectoryName 是不支持原生附加目录时使用的受管项目入口根目录。
+	ProjectEntriesDirectoryName = "projects"
+	// ChatProjectEntriesOwnerKind 标识按 Chat 隔离的受管项目入口目录。
+	ChatProjectEntriesOwnerKind = "chat-project-entries"
+	// TaskOutputsDirectoryName 是伙伴任务成果的子目录名。
+	TaskOutputsDirectoryName = "outputs"
 )
 
 const (

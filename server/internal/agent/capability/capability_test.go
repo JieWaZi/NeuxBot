@@ -134,13 +134,13 @@ func TestObserveSubscribesBeforeReadingAndReleasesOnCompletion(t *testing.T) {
 
 func TestObserveBoundsWaitAndDistinguishesInvalidation(t *testing.T) {
 	for _, test := range []struct {
-		// name 区分观察结束的真实原因。
+		// name distinguishes the actual reason an observation ended.
 		name string
-		// cancelled 表示调用授权已被撤销。
+		// cancelled reports whether invocation authorization was revoked.
 		cancelled bool
-		// invalidated 表示事件缓冲已不可恢复。
+		// invalidated reports whether the event buffer is unrecoverable.
 		invalidated bool
-		// want 是对应原因的稳定错误；期限到达没有错误。
+		// want is the stable error for the termination reason; reaching the deadline is not an error.
 		want error
 	}{
 		{name: "timeout"},
@@ -199,7 +199,7 @@ func TestConnectionPublicationAndPrivateFileBoundary(t *testing.T) {
 		t.Fatalf("relative connection was accepted: %v", err)
 	}
 	if runtime.GOOS == "windows" {
-		// Windows 通过专属目录的继承 DACL 管理访问；POSIX 模式仅在 Unix 检验。
+		// Windows controls access through the dedicated directory's inherited DACL; POSIX modes are checked only on Unix.
 		return
 	}
 	if err := os.Chmod(path, 0o644); err != nil {
@@ -219,7 +219,7 @@ func TestConnectionPublicationAndPrivateFileBoundary(t *testing.T) {
 	}
 }
 
-// receiptMemoryStore 只模拟领域仓储端口，不模拟命令编排或回执摘要。
+// receiptMemoryStore fakes only the domain repository port, not command orchestration or receipt digests.
 type receiptMemoryStore map[string]Receipt
 
 func (s receiptMemoryStore) Find(_ context.Context, id string) (Receipt, bool, error) {

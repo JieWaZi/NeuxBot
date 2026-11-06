@@ -241,17 +241,21 @@ export function ExecutionConfigurationFields({
         {!permissionHidden &&
           field(
             "permission",
-            selection.permissionLevel,
-            permissionLevels.map((level) => ({
-              id: level,
-              name: t(permissionLevelTranslationKeys[level].label),
-              disabled: !state.supportedPermissions.has(level),
-            })),
+            state.supportedPermissions.has(selection.permissionLevel)
+              ? selection.permissionLevel
+              : "",
+            permissionLevels
+              .filter((level) => state.supportedPermissions.has(level))
+              .map((level) => ({
+                id: level,
+                name: t(permissionLevelTranslationKeys[level].label),
+              })),
             (permissionLevel) =>
               change({
                 permissionLevel:
                   permissionLevelOf(permissionLevel) ?? "default",
               }),
+            state.supportedPermissions.size === 0,
           )}
       </div>
       {!reasoningHidden &&

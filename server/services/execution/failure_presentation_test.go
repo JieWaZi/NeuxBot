@@ -13,23 +13,25 @@ import (
 
 func TestNativeExecutionFailureKeepsSafeBusinessStatus(t *testing.T) {
 	cases := []struct {
-		// name identifies the failure source.
+		// name 标识失败发生的边界。
 		name string
-		// result is the runtime evidence to project.
+		// result 是需要投影的原生执行证据。
 		result agent.TurnResult
-		// status is the public business status.
+		// status 是业务执行的公开状态。
 		status constants.ExecutionStatus
-		// code is the public failure classification.
-		code constants.RuntimeFailureCode
+		// code 是用于本地化的稳定应用错误身份。
+		code string
+		// failureCode 是独立保留的原生技术失败分类。
+		failureCode constants.RuntimeFailureCode
 	}{
-		{"auth", agent.TurnResult{OperationError: status_error.RuntimeAuthRequired}, constants.ExecutionStatusFailed, constants.RuntimeFailureCodeAuthRequired},
-		{"delivery", agent.TurnResult{DeliveryError: errors.New("private diagnostic"), Outcome: &agent.AgentNativeOutcome{Turn: acpmeta.NativeTurn{Status: acpmeta.NativeTurnCompleted}}}, constants.ExecutionStatusFailed, constants.RuntimeFailureCodeEventDelivery},
-		{"cancel", agent.TurnResult{OperationError: context.Canceled}, constants.ExecutionStatusCanceled, constants.RuntimeFailureCodeContextCanceled},
+		{"auth", agent.TurnResult{OperationError: status_error.RuntimeAuthRequired}, constants.ExecutionStatusFailed, "RuntimeAuthRequired", constants.RuntimeFailureCodeAuthRequired},
+		{"delivery", agent.TurnResult{DeliveryError: errors.New("private diagnostic"), Outcome: &agent.AgentNativeOutcome{Turn: acpmeta.NativeTurn{Status: acpmeta.NativeTurnCompleted}}}, constants.ExecutionStatusFailed, "RuntimeExecutionFailed", constants.RuntimeFailureCodeEventDelivery},
+		{"cancel", agent.TurnResult{OperationError: context.Canceled}, constants.ExecutionStatusCanceled, "OperationCanceled", constants.RuntimeFailureCodeContextCanceled},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			got := nativeExecutionOutcome(test.result)
-			if got.status != test.status || got.code != string(test.code) || got.message == "private diagnostic" {
+			if got.status != test.status || got.code != test.code || got.failureCode != test.failureCode || got.message != "" || got.messageSource != constants.ErrorMessageSourceLocalized {
 				t.Fatalf("unexpected public failure: %+v", got)
 			}
 		})

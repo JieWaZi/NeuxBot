@@ -22,9 +22,9 @@ func TestLayoutSeparatesTeamMemberCWDAndSharesProjects(t *testing.T) {
 	if err != nil {
 		t.Fatalf("TeamMemberWorkspace(member) error = %v", err)
 	}
-	projects, err := layout.TeamProjects(threadID)
+	projects, err := layout.TeamSharedDirectory(threadID)
 	if err != nil {
-		t.Fatalf("TeamProjects() error = %v", err)
+		t.Fatalf("TeamSharedDirectory() error = %v", err)
 	}
 	if lead == member {
 		t.Fatalf("lead and member cwd must differ: %q", lead)
@@ -32,7 +32,7 @@ func TestLayoutSeparatesTeamMemberCWDAndSharesProjects(t *testing.T) {
 	if filepath.Base(lead) != teamLeaderDirectoryName || filepath.Base(member) != "member-1" {
 		t.Fatalf("unexpected member cwd: lead=%q member=%q", lead, member)
 	}
-	if filepath.Base(projects) != projectsDirectoryName {
+	if filepath.Base(projects) != teamSharedDirectoryName {
 		t.Fatalf("projects directory = %q", projects)
 	}
 }
@@ -53,7 +53,6 @@ func TestLayoutPublishesAndRollsBackTeamProvisioning(t *testing.T) {
 		stagedWorkspace,
 		threadID,
 		"lead-1",
-		nil,
 	); err != nil {
 		t.Fatalf("EnsureThreadExecutionWorkspace() error = %v", err)
 	}
@@ -76,7 +75,6 @@ func TestLayoutPublishesAndRollsBackTeamProvisioning(t *testing.T) {
 		rollbackWorkspace,
 		rollbackThreadID,
 		"lead-1",
-		nil,
 	); err != nil {
 		t.Fatalf("prepare rollback workspace: %v", err)
 	}
@@ -123,9 +121,8 @@ func TestCatalogDiscoversOrdinaryAndTeamLogs(t *testing.T) {
 	}
 	ordinaryID := "0123456789abcdef0123456789abcdef"
 	teamID := "fedcba9876543210fedcba9876543210"
-	threadID := "thread-1"
 	ordinaryLog, _ := layout.ChatLogDirectory(ordinaryID)
-	teamLog, _ := layout.TeamLogDirectory(threadID)
+	teamLog, _ := layout.ChatLogDirectory(teamID)
 	for _, directory := range []string{ordinaryLog, teamLog} {
 		if err := os.MkdirAll(directory, 0o700); err != nil {
 			t.Fatalf("MkdirAll(%q) error = %v", directory, err)
@@ -146,7 +143,7 @@ func TestCatalogDiscoversOrdinaryAndTeamLogs(t *testing.T) {
 		t.Fatalf("ListChatIDs() = %#v", ids)
 	}
 	teamAddress, err := catalog.Address(teamID)
-	if err != nil || teamAddress.ThreadID != threadID {
+	if err != nil || teamAddress.LogPath != filepath.Join(teamLog, teamID+".jsonl") {
 		t.Fatalf("team address = %+v, error = %v", teamAddress, err)
 	}
 }

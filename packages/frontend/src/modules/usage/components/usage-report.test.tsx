@@ -26,7 +26,7 @@ it("shows a last-request Token subtotal and measured zero", () => {
   );
 
   expect(screen.getByText("17")).toBeInTheDocument();
-  expect(screen.getByText("已知小计")).toBeInTheDocument();
+  expect(screen.queryByText("已知小计")).not.toBeInTheDocument();
   expect(screen.queryByText("费用")).not.toBeInTheDocument();
   expect(screen.getByText(/1 次调用的 Token 数据不完整/)).toBeInTheDocument();
   expect(screen.getByText("0")).toBeInTheDocument();
@@ -51,4 +51,20 @@ it("distinguishes identical model IDs from different providers", () => {
 
   expect(screen.getByText("claude / shared:model")).toBeInTheDocument();
   expect(screen.getByText("cursor / shared:model")).toBeInTheDocument();
+});
+
+it("keeps reported input visible without adding it to the known Token subtotal", () => {
+  const summary = {
+    metrics: {
+      knownTotalWithCacheRead: 520,
+      knownTokens: { reportedInput: 1200, cacheRead: 500, output: 20 },
+      invocations: 1,
+      incompleteUsageInvocations: 1,
+    },
+  };
+  render(<UsageOverview summary={summary} />);
+  expect(screen.getByText("原生输入")).toBeInTheDocument();
+  expect(screen.getByText("1,200")).toBeInTheDocument();
+  expect(screen.getByText("520")).toBeInTheDocument();
+  expect(screen.queryByText("1,720")).not.toBeInTheDocument();
 });

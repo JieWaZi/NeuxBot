@@ -104,3 +104,78 @@ func TestDeletionCoordinatorRejectsUntrustedManifestStateAndPath(t *testing.T) {
 		t.Fatal("manifest with non-canonical staging path was accepted")
 	}
 }
+
+func TestWakerDeletionUsesOwnTargetAndSeparateRecoveryFact(t *testing.T) {
+	layout, err := NewLayout(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator, err := NewDeletionCoordinator(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _ := layout.AgentWorkspace("partner-one")
+	conversation, _ := layout.ChatRoot("chat-one")
+	for _, directory := range []string{root, conversation} {
+		if err := os.MkdirAll(directory, 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := coordinator.StageWaker("delete-one", "partner-one"); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.Resume(func(string, []string) (bool, error) { t.Fatal("chat recovery claimed waker target"); return false, nil }, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.ResumeWakers(func(id string) (bool, error) {
+		if id != "partner-one" {
+			t.Fatal(id)
+		}
+		return false, nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("live Waker target not restored: %v", err)
+	}
+	if _, err := coordinator.StageWaker("delete-two", "partner-one"); err != nil {
+		t.Fatal(err)
+	}
+	if err := coordinator.ResumeWakers(func(string) (bool, error) { return true, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("deleted Waker target survived: %v", err)
+	}
+	if _, err := os.Stat(conversation); err != nil {
+		t.Fatalf("Waker target widened to Conversation: %v", err)
+	}
+}
+
+func TestWakerDeletionRejectsReplacedDirectorySymlink(t *testing.T) {
+	layout, err := NewLayout(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	coordinator, err := NewDeletionCoordinator(layout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root, _ := layout.AgentWorkspace("partner-one")
+	if err := os.MkdirAll(filepath.Dir(root), 0700); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.WriteFile(filepath.Join(outside, "keep.txt"), []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coordinator.StageWaker("refuse-link", "partner-one"); err == nil {
+		t.Fatal("accepted replaced Agents directory")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "keep.txt")); err != nil {
+		t.Fatalf("outside file changed: %v", err)
+	}
+}

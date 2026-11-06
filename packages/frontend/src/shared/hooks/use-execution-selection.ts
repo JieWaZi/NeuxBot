@@ -34,6 +34,7 @@ export type ExecutionSelection = {
   model?: string;
   reasoning?: string;
   fast?: boolean;
+  contextWindow?: string;
   permissionLevel?: string;
 };
 
@@ -105,14 +106,15 @@ function resolveNativeSelection({
   const models = catalog?.models ?? [];
   const configuredAccount =
     accountId === (runtime?.defaultAccountId || "system");
+  const preferredModels = [
+    configuredAccount ? runtime?.defaultModel : undefined,
+    account?.defaultModel,
+    catalog?.defaultModel,
+  ];
   const { model, effectiveModel } = resolveModel(
     value,
     models,
-    [
-      configuredAccount ? runtime?.defaultModel : undefined,
-      account?.defaultModel,
-      catalog?.defaultModel,
-    ],
+    preferredModels,
     defaults,
   );
   const modelOption = effectiveModel
@@ -145,12 +147,16 @@ function resolveNativeSelection({
       supportedPermissions,
     );
   const fastSupported = Boolean(modelOption?.fastSupported);
+  const contextWindow = modelOption?.contextWindowOptions?.find(
+    (option) => option.id === value.contextWindow,
+  )?.id;
   const modelConfigurationValid = Boolean(
     runtime &&
     (accountId === "system" || account?.hasCredential) &&
     catalog?.state === "fresh" &&
     modelOption &&
     (defaults || value.fast === undefined || fastSupported) &&
+    (defaults || !value.contextWindow || Boolean(contextWindow)) &&
     (!reasoning || reasoningOptions.some((item) => item.id === reasoning)),
   );
   return {
@@ -161,8 +167,12 @@ function resolveNativeSelection({
       reasoning,
       permissionLevel,
       fast: fastSupported ? value.fast : undefined,
+      contextWindow,
     },
     effectiveModel,
+    defaultModel: preferredModels.find(
+      (id) => id && models.some((item) => item.id === id),
+    ),
     models,
     reasoningOptions,
     supportedPermissions,
@@ -462,6 +472,7 @@ export function useExecutionSelection({
     reasoning,
     permissionLevel,
     fast: undefined,
+    contextWindow: undefined,
   };
   const catalogPending =
     usesNativeCatalog && catalogQuery.fetchStatus !== "idle";
@@ -522,6 +533,9 @@ export function useExecutionSelection({
     catalogPending,
     fastSupported: nativeSelection?.fastSupported ?? false,
     effectiveModel,
+    defaultModel: usesNativeCatalog
+      ? nativeSelection?.defaultModel
+      : preferredModel,
     runtime,
     runtimes,
     accounts,

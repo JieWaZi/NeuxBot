@@ -3,6 +3,7 @@ import { ApiError } from "@/shared/api/errors";
 import {
   captureErrorNoticeRecovery,
   reportErrorNotice,
+  apiErrorNoticePresentation,
   resolveErrorNoticeRecovery,
 } from "@/shared/api/error-notices";
 
@@ -23,7 +24,7 @@ export function reportKnowledgeError(
     id: `knowledge:${operation}:${code}`,
     scope: "global",
     operation: `knowledge:${operation}`,
-    message: error instanceof ApiError ? error.message : fallback,
+    ...apiErrorNoticePresentation(error, fallback),
   });
 }
 
@@ -65,7 +66,7 @@ export function reportKnowledgeReadError(
   reportErrorNotice({
     ...binding,
     scope: "global",
-    message: error instanceof ApiError ? error.message : fallback,
+    ...apiErrorNoticePresentation(error, fallback),
   });
   return binding;
 }

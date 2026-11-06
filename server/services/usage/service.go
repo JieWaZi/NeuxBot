@@ -426,6 +426,9 @@ func project(records []models.UsageRecord, terminal conversation.UsageTerminal) 
 			continue
 		}
 		tokens := ledger.ReadModelTokens(observed.Models[model])
+		if len(observed.Models) == 1 && observed.Model == model && tokens.Input == nil {
+			tokens.ReportedInput = row.ReportedInput
+		}
 		if tokens == (ledger.Tokens{}) {
 			continue
 		}
@@ -443,6 +446,7 @@ func project(records []models.UsageRecord, terminal conversation.UsageTerminal) 
 
 func applyTokens(row *models.UsageRecord, tokens ledger.Tokens) {
 	row.Input, row.CacheRead, row.CacheWrite, row.Output, row.Reasoning = tokens.Input, tokens.CacheRead, tokens.CacheWrite, tokens.Output, tokens.Reasoning
+	row.ReportedInput = tokens.ReportedInput
 }
 
 func (s *Service) encode(kind string, value any) string {

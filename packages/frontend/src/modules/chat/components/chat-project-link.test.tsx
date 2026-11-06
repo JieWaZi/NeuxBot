@@ -18,12 +18,7 @@ vi.mock("@/shared/platform", async (importOriginal) => {
   return {
     ...(await importOriginal<typeof DesktopModule>()),
     resolveFileReferencePath: async (request: FileReferenceRequest) =>
-      fakeFileReference(request, {
-        [`${request.workspaceRoot}/projects/share`]:
-          "/Users/example/Desktop/share",
-        [request.workspaceRoot.replace(/\/(?:leader|members\/[^/]+)$/, "") +
-        "/projects/share"]: "/Users/example/Desktop/share",
-      }),
+      fakeFileReference(request),
   };
 });
 
@@ -93,13 +88,21 @@ function workbenchTabs(): Array<{
 }
 
 describe("project link navigation", () => {
-  beforeEach(() => localStorage.clear());
-  it("软链接与真实路径复用一个右侧文件标签", async () => {
+  beforeEach(() => {
+    const preferences = new Map<string, string>();
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: {
+        getItem: (key: string) => preferences.get(key) ?? null,
+        setItem: (key: string, value: string) => preferences.set(key, value),
+        removeItem: (key: string) => preferences.delete(key),
+      },
+    });
+  });
+  it("真实项目绝对路径与文件链接复用一个右侧文件标签", async () => {
     const user = userEvent.setup();
-    const root =
-      "/Users/example/Library/Application Support/com.neuxally.desktop/team/7481f05f7a4a4d3ab5eb0714a9fe1465/workspace/leader";
-    const managedPath =
-      "/Users/example/Library/Application Support/com.neuxally.desktop/team/7481f05f7a4a4d3ab5eb0714a9fe1465/workspace/projects/share/a.txt";
+    const root = "/managed/Workspaces/thread/leader";
+    const managedPath = "file:///Users/example/Desktop/share/a.txt";
     const projectPath = "/Users/example/Desktop/share/a.txt";
     renderLinks(
       root,
@@ -119,17 +122,17 @@ describe("project link navigation", () => {
   });
 
   it.each([
-    "/Users/example/Library/Application Support/com.neuxally.desktop/chat/chat-1/workspace",
-    "/Users/example/Library/Application Support/com.neuxally.desktop/team/thread/workspace/leader",
-    "/Users/example/Library/Application Support/com.neuxally.desktop/team/thread/workspace/members/member-1",
+    "/managed/Agents/waker",
+    "/managed/Workspaces/thread/leader",
+    "/managed/Workspaces/thread/members/member-1",
   ])("项目文件链接打开右侧标签：%s", async (workspaceRoot) => {
     const user = userEvent.setup();
     renderLinks(
       workspaceRoot,
-      "[index.html](/Users/example/Desktop/share/index.html) [说明](file:///Users/example/Desktop/share/readme.md) [相对入口](projects/share/index.html)",
+      "[index.html](/Users/example/Desktop/share/index.html) [说明](file:///Users/example/Desktop/share/readme.md) [重复入口](/Users/example/Desktop/share/index.html)",
     );
     await user.click(await screen.findByRole("link", { name: "index.html" }));
-    await user.click(screen.getByRole("link", { name: "相对入口" }));
+    await user.click(screen.getByRole("link", { name: "重复入口" }));
     await waitFor(() => {
       expect(workbenchTabs()).toEqual([
         expect.objectContaining({

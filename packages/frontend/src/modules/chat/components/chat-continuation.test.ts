@@ -32,6 +32,40 @@ const next: AllyChatMessage = {
 };
 
 describe("steer continuation", () => {
+  it("保留原生输入汇总且不加入可相加Token总计", () => {
+    const result = chatContinuations([
+      {
+        ...first,
+        runMetrics: {
+          tokenUsage: {
+            invocationId: "raw-1",
+            complete: false,
+            knownTokens: { reportedInput: 100, output: 20 },
+            knownTotalWithCacheRead: 20,
+          },
+        },
+      },
+      user,
+      {
+        ...next,
+        runMetrics: {
+          tokenUsage: {
+            invocationId: "raw-2",
+            complete: false,
+            knownTokens: { reportedInput: 200, output: 30 },
+            knownTotalWithCacheRead: 30,
+          },
+        },
+      },
+    ]);
+    expect(
+      result.get("next")?.footerMessage.runMetrics?.tokenUsage,
+    ).toMatchObject({
+      complete: false,
+      knownTokens: { reportedInput: 300, output: 50 },
+      knownTotalWithCacheRead: 50,
+    });
+  });
   it("连接被 steer 的前后两段，只在最后汇总耗时、用量与复制正文", () => {
     const result = chatContinuations([first, user, next]);
     expect(result.get("first")?.continued).toBe(true);

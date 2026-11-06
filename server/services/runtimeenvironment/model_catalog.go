@@ -10,11 +10,13 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/accountconfig"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/logx"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
 )
@@ -31,7 +33,7 @@ type AccountModelCatalog struct {
 	AuthGeneration uint64
 }
 
-// ReadModelCatalog discovers the selected native account without creating a public Chat or sending a prompt.
+// ReadModelCatalog 优先读取目录快照，首次缺失或显式刷新时探测并保存。
 func (s *service) ReadModelCatalog(ctx context.Context, runtimeID, accountID string, refresh bool) (AccountModelCatalog, error) {
 	environment, err := s.environments.Get(ctx, runtimeID)
 	if err != nil {
@@ -40,7 +42,7 @@ func (s *service) ReadModelCatalog(ctx context.Context, runtimeID, accountID str
 	if !usesNativeCatalog(environment.BaseRuntimeID) {
 		return AccountModelCatalog{}, status_error.RuntimePolicyUnsupported
 	}
-	return s.readModelCatalog(ctx, environment, accountID, refresh), nil
+	return s.readModelCatalog(ctx, environment, accountID, refresh)
 }
 
 func (s *service) InvalidateModelCatalog(accountID string, throughGeneration uint64) {
@@ -49,7 +51,8 @@ func (s *service) InvalidateModelCatalog(accountID string, throughGeneration uin
 	}
 }
 
-func (s *service) readModelCatalog(ctx context.Context, environment models.RuntimeEnvironment, accountID string, refresh bool) AccountModelCatalog {
+func (s *service) readModelCatalog(ctx context.Context, environment models.RuntimeEnvironment, accountID string, refresh bool) (AccountModelCatalog, error) {
+	startedAt := time.Now().UnixNano()
 	if accountID == "" {
 		accountID = environment.DefaultAccountID
 	}
@@ -59,6 +62,112 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 	result := AccountModelCatalog{Provider: environment.BaseRuntimeID, AccountID: accountID, ModelCatalogSnapshot: agent.ModelCatalogSnapshot{
 		State: agent.CatalogUnavailable, ErrorCode: "catalog_unavailable",
 	}}
+	var accountFingerprint string
+	if accountID != agent.SystemAccountID {
+		if s.accounts == nil {
+			return result, nil
+		}
+		account, err := s.accounts.Get(ctx, accountID)
+		if err != nil {
+			return result, err
+		}
+		result.AuthGeneration = account.AuthGeneration
+		if !account.HasCredential {
+			result.State, result.ErrorCode = agent.CatalogSignedOut, "sign_in_required"
+			return result, nil
+		}
+		accountFingerprint = accountModelFingerprint(account)
+	}
+	fingerprint := persistedModelCatalogFingerprint(environment, result.AuthGeneration, accountFingerprint)
+	var cached models.RuntimeModelCatalog
+	if s.modelCatalogs != nil {
+		var err error
+		cached, err = s.modelCatalogs.Get(ctx, environment.RuntimeID, accountID, fingerprint)
+		if err != nil {
+			return result, err
+		}
+	}
+	if !refresh && cached.ID != "" {
+		result.ModelCatalogSnapshot = cached.Snapshot
+		result.AuthGeneration = cached.AuthGeneration
+		return result, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	key := strings.Join([]string{environment.RuntimeID, accountID, fingerprint}, "\x00")
+	done := s.modelCatalogRefreshes.DoChan(key, func() (any, error) {
+		// 多个页面可等待同一次探测，切走的页面只取消自己的等待。
+		parent := s.lifecycleContext
+		if parent == nil {
+			parent = context.Background()
+		}
+		probeCtx, cancel := context.WithTimeout(parent, 45*time.Second)
+		defer cancel()
+		if !refresh && s.modelCatalogs != nil {
+			latest, err := s.modelCatalogs.Get(probeCtx, environment.RuntimeID, accountID, fingerprint)
+			if err != nil {
+				return result, err
+			}
+			if latest.ID != "" {
+				ready := result
+				ready.ModelCatalogSnapshot, ready.AuthGeneration = latest.Snapshot, latest.AuthGeneration
+				return ready, nil
+			}
+		}
+		return s.refreshModelCatalog(probeCtx, environment, result, cached, fingerprint, startedAt)
+	})
+	select {
+	case <-ctx.Done():
+		return result, ctx.Err()
+	case reply := <-done:
+		return reply.Val.(AccountModelCatalog), reply.Err
+	}
+}
+
+func (s *service) refreshModelCatalog(ctx context.Context, environment models.RuntimeEnvironment, result AccountModelCatalog, cached models.RuntimeModelCatalog, fingerprint string, startedAt int64) (AccountModelCatalog, error) {
+	probed := s.probeModelCatalog(ctx, environment, result)
+	if err := ctx.Err(); err != nil {
+		return result, err
+	}
+	if result.AccountID != agent.SystemAccountID && probed.AuthGeneration != result.AuthGeneration {
+		return result, nil
+	}
+	if probed.State == agent.CatalogUnavailable && cached.Snapshot.DetectedAt > 0 {
+		previous := cached.Snapshot
+		previous.State, previous.ErrorCode = agent.CatalogStale, probed.ErrorCode
+		previous.QoderLoginVerified = probed.QoderLoginVerified
+		probed.ModelCatalogSnapshot = previous
+	}
+	if s.modelCatalogs != nil {
+		if err := s.modelCatalogs.Store(ctx, models.RuntimeModelCatalog{
+			RuntimeID: environment.RuntimeID, AccountID: result.AccountID, Fingerprint: fingerprint, AuthGeneration: probed.AuthGeneration,
+			ProbeStartedAt: startedAt, Snapshot: probed.ModelCatalogSnapshot,
+		}); err != nil {
+			return result, err
+		}
+	}
+	return probed, nil
+}
+
+func persistedModelCatalogFingerprint(environment models.RuntimeEnvironment, authGeneration uint64, accountFingerprint string) string {
+	// CLI 版本是探测结果，启动写回版本时目录仍属于同一启动配置。
+	scope := []any{environment.BaseRuntimeID, environment.Binary, environment.PrefixArgs,
+		environment.ConfigHome, authGeneration, accountFingerprint}
+	switch environment.BaseRuntimeID {
+	case constants.RuntimeIDQoder, constants.RuntimeIDQoderCN:
+		// 旧快照已丢弃 SDK 可用标记，必须重新读取才能排除不可用模型。
+		scope = append(scope, "qoder-selectable-models")
+	case constants.RuntimeIDClaude, constants.RuntimeIDPi:
+		// 旧目录未记录进程或桥接组件能提供的原生权限档。
+		scope = append(scope, "native-permission-modes")
+	}
+	body, _ := json.Marshal(scope)
+	return fmt.Sprintf("%x", sha256.Sum256(body))
+}
+
+func (s *service) probeModelCatalog(ctx context.Context, environment models.RuntimeEnvironment, result AccountModelCatalog) AccountModelCatalog {
+	accountID := result.AccountID
 	if s.modelCatalog == nil || s.accountWorkspaceDirectory == "" {
 		return result
 	}
@@ -123,7 +232,7 @@ func (s *service) readModelCatalog(ctx context.Context, environment models.Runti
 		Launch: agent.ProviderLaunch{
 			Executable: binary, PrefixArgs: environment.PrefixArgs, ConfigHome: selected.ConfigHome, BaseEnvironment: env,
 		},
-	}, environment.Detection.Version, fingerprint, refresh)
+	}, environment.Detection.Version, fingerprint, true)
 	// External system login changes can race a read without emitting a host event.
 	current, err := resolve(ctx)
 	if err != nil || !current.Equal(selected) {
@@ -186,7 +295,10 @@ func (s *service) detectNative(ctx context.Context, summary agent.RuntimeSummary
 	if result.ResolvedBinary == "" {
 		return result
 	}
-	snapshot := s.readModelCatalog(ctx, environment, environment.DefaultAccountID, true)
+	snapshot, err := s.readModelCatalog(ctx, environment, environment.DefaultAccountID, true)
+	if err != nil {
+		logx.Warnf("refresh runtime model catalog: runtime_id=%s error=%v", environment.RuntimeID, err)
+	}
 	result.Version = snapshot.Capabilities.Version
 	if snapshot.Capabilities.Version != "" {
 		result.State = agent.DetectionStateReady
@@ -272,7 +384,11 @@ func NativePermissionLevels(provider string, model agent.AgentChoice) []constant
 		return levels
 	}
 	if provider == constants.RuntimeIDPi {
-		return []constants.PermissionLevel{constants.PermissionLevelDefault, constants.PermissionLevelAuto, constants.PermissionLevelFullAccess}
+		levels := []constants.PermissionLevel{constants.PermissionLevelDefault}
+		if slices.Contains(model.PermissionModes, "auto") {
+			levels = append(levels, constants.PermissionLevelAuto)
+		}
+		return append(levels, constants.PermissionLevelFullAccess)
 	}
 	if accountconfig.ACPSystemConfigVariable(provider) != "" {
 		levels := []constants.PermissionLevel{}
@@ -295,8 +411,13 @@ func NativePermissionLevels(provider string, model agent.AgentChoice) []constant
 		return CodexPermissionLevels()
 	}
 	levels := []constants.PermissionLevel{constants.PermissionLevelDefault}
-	if (provider == constants.RuntimeIDClaude || provider == constants.RuntimeIDGrok) && model.AutoMode {
-		levels = append(levels, constants.PermissionLevelAuto)
+	if provider == constants.RuntimeIDClaude {
+		if model.AutoMode {
+			levels = append(levels, constants.PermissionLevelAuto)
+		}
+		if !slices.Contains(model.PermissionModes, "bypassPermissions") {
+			return levels
+		}
 	}
 	return append(levels, constants.PermissionLevelFullAccess)
 }

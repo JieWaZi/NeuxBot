@@ -18,7 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
-func TestFirstSendWithoutDirectoryCreatesPerChatWorkspaceAndContinuationKeepsIt(t *testing.T) {
+func TestSameWakerChatsShareCWDAndKeepSeparateExecutionOutputs(t *testing.T) {
 	manager := newMessageTestService(t, t.TempDir())
 	ctx := context.Background()
 	input := testMessageInput{ClientRequestID: "managed-first", NewChat: &testChatInput{WakerID: "waker-1"}, Message: userMessage{Text: "使用会话临时目录"}, Runtime: runtimeSelection{RuntimeID: agentapi.RuntimeIDCodex}}
@@ -38,8 +38,16 @@ func TestFirstSendWithoutDirectoryCreatesPerChatWorkspaceAndContinuationKeepsIt(
 		t.Fatal(err)
 	}
 	waitForChatTerminal(t, manager, second.Chat.ID)
-	if filepath.Clean(second.Chat.WorkspaceDirectory) == filepath.Clean(first.Chat.WorkspaceDirectory) {
-		t.Fatal("different chats shared a temporary directory")
+	if filepath.Clean(second.Chat.WorkspaceDirectory) != filepath.Clean(first.Chat.WorkspaceDirectory) {
+		t.Fatal("same partner chats used different cwd")
+	}
+	for _, id := range []string{first.Execution.ID, second.Execution.ID} {
+		if info, err := os.Stat(filepath.Join(first.Chat.WorkspaceDirectory, "outputs", id)); err != nil || !info.IsDir() {
+			t.Fatalf("execution output directory missing: %s, %v", id, err)
+		}
+	}
+	if first.Execution.ID == second.Execution.ID {
+		t.Fatal("different messages reused execution identity")
 	}
 	_, err = manager.sendTestMessage(ctx, testMessageInput{ChatID: first.Chat.ID, Message: userMessage{Text: "继续使用原目录"}, Runtime: input.Runtime})
 	if err != nil {
@@ -141,10 +149,10 @@ func TestHostDirectoriesFreezeRealPathsAndPreserveBusinessScope(t *testing.T) {
 
 func TestExternalJSONCannotGrantAdditionalChatDirectories(t *testing.T) {
 	var create CreateChatSpec
-	if err := json.Unmarshal([]byte(`{"WakerID":"waker-1","AdditionalWorkingDirectories":["/unapproved"]}`), &create); err != nil {
+	if err := json.Unmarshal([]byte(`{"WakerID":"waker-1","AdditionalWorkingDirectories":["/unapproved"],"ExecutionWorkspaceDirectory":"/unapproved"}`), &create); err != nil {
 		t.Fatal(err)
 	}
-	if len(create.AdditionalWorkingDirectories) != 0 {
+	if len(create.AdditionalWorkingDirectories) != 0 || create.ExecutionWorkspaceDirectory != "" {
 		t.Fatal("external JSON expanded the host-only workspace scope")
 	}
 }

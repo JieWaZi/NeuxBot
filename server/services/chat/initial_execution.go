@@ -7,11 +7,12 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
+	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
+	acp "github.com/JieWaZi/acp-go-sdk"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
-	acp "github.com/JieWaZi/acp-go/sdk"
 )
 
 // InitialExecutionState 是产品入口对账首次接纳与运行结果的窄权威视图。
@@ -159,6 +160,10 @@ type ExecutionOutcome struct {
 	FailureStage string
 	// FailureMessage 是该调用不含秘密值的原始失败说明。
 	FailureMessage string
+	// ErrorMessageSource 保留终态正文来源；缺省时不得展示原始正文。
+	ErrorMessageSource constants.ErrorMessageSource
+	// ErrorParams 是执行终态稳定错误的安全模板参数。
+	ErrorParams map[string]interface{}
 }
 
 // ReadExecutionOutcome 按精确执行身份读取可恢复终态，不从最新消息推测执行完成。
@@ -183,6 +188,19 @@ func (m *service) ReadExecutionOutcome(ctx context.Context, chatID, executionID 
 		return ExecutionOutcome{}, status_error.ExecutionNotFound
 	}
 	result := ExecutionOutcome{StartSequence: window.StartSequence, LatestSequence: window.LatestSequence, Execution: *execution, TerminationReason: constants.RuntimeTerminationReasonUnknown}
+	for _, record := range records {
+		if record.ExecutionID != executionID || (record.Type != constants.ChatEventTypeExecutionFailed && record.Type != constants.ChatEventTypeExecutionCanceled) {
+			continue
+		}
+		var finished eventlog.ExecutionFinishedData
+		if err := json.Unmarshal(record.Data, &finished); err != nil {
+			return ExecutionOutcome{}, status_error.ChatLogError
+		}
+		result.FailureMessage = agent.RecordedFailureDisplayMessage(finished.ErrorMessage)
+		result.ErrorParams = finished.ErrorParams
+		result.ErrorMessageSource = finished.ErrorMessageSource
+		result.FailureCode = finished.FailureCode
+	}
 	if execution.CompletedAt != nil {
 		completedAt := *execution.CompletedAt
 		result.Execution.CompletedAt = &completedAt
@@ -209,7 +227,7 @@ func (m *service) ReadExecutionOutcome(ctx context.Context, chatID, executionID 
 			if native.Failure != nil {
 				result.FailureStage = native.Failure.Phase
 			}
-			if native.Turn.Status == acpmeta.NativeTurnFailed {
+			if native.Turn.Status == acpmeta.NativeTurnFailed && result.FailureCode == constants.RuntimeFailureCodeUnspecified {
 				result.FailureCode = constants.RuntimeFailureCodeExecutionFailed
 			}
 		}

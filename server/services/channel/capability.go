@@ -72,7 +72,7 @@ func leaderWorkOptions(
 		SessionPolicy:    constants.RuntimeSessionPolicyContinue,
 		ToolCapabilities: []execution.ToolCapability{capability},
 		SupplementalInstructions: []agentapi.Instruction{
-			leaderTurnInstruction(teamInstruction, directExecution),
+			teamInstruction,
 		},
 	}
 }

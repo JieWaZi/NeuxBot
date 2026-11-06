@@ -4,6 +4,8 @@ package global
 import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
+	"github.com/JieWaZi/NeuxBot/server/internal/util"
 
 	"context"
 	"crypto/rand"
@@ -467,6 +469,7 @@ func loadRuntime(ctx context.Context) error {
 		AccountWorkspaceDirectory: filepath.Join(Config.DataDirectory, "account-workspaces"),
 		RuntimeCatalog:            RuntimeCatalog,
 		Environments:              RuntimeEnvironmentControllerManager,
+		ModelCatalogs:             controllers.NewRuntimeModelCatalogController(DB),
 		Transactions:              TransactionControllerManager,
 		Events:                    EventHub,
 	})
@@ -479,8 +482,33 @@ func loadRuntime(ctx context.Context) error {
 	return nil
 }
 
+// recoverWakerDeletions 在原生消费者启动前按伙伴权威存在性恢复目录。
+func recoverWakerDeletions(ctx context.Context, managedDirectory string) error {
+	layout, err := chatstorage.NewLayout(managedDirectory)
+	if err != nil {
+		return mapCoreError("initialize_waker_storage", status_error.CoreChatInitializationFailed, err)
+	}
+	deletions, err := chatstorage.NewDeletionCoordinator(layout)
+	if err != nil {
+		return mapCoreError("initialize_waker_deletion", status_error.CoreChatInitializationFailed, err)
+	}
+	if err = deletions.ResumeWakers(func(wakerID string) (bool, error) {
+		_, err := WakerControllerManager.Get(ctx, wakerID)
+		if util.HasStatusCode(err, status_error.WakerNotFound) {
+			return true, nil
+		}
+		return false, err
+	}); err != nil {
+		return mapCoreError("recover_waker_deletion", status_error.CoreChatInitializationFailed, err)
+	}
+	return nil
+}
+
 // loadChat 先恢复 Chat 权威事实，再装配入口无关的 Execution Core。
 func loadChat(ctx context.Context, configuration *Configuration, handlerFactory schedule.LocalHandlerFactory) error {
+	if err := recoverWakerDeletions(ctx, configuration.ManagedFilesDirectory); err != nil {
+		return err
+	}
 	conversations, err := conversation.NewStore(configuration.ManagedFilesDirectory)
 	if err != nil {
 		return mapCoreError("initialize_conversation_store", status_error.CoreChatInitializationFailed, err)

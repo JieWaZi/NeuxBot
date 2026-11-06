@@ -40,6 +40,7 @@ func main() {
 	ginx.Launch(func(command *cobra.Command, _ []string) {
 		ginx.Parse(global.Config)
 		ginx.SetCORSMiddleware(apiMiddleware.CORS())
+		ginx.RegisterErrorFormatter(apiMiddleware.ApplicationErrorFormatter{})
 		if err := global.Prepare(global.Config); err != nil {
 			panic(err)
 		}

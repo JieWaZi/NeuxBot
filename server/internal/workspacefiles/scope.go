@@ -14,14 +14,18 @@ import (
 
 // Scope 是绑定认证主体的临时文件范围。
 type Scope struct {
-	// ID 是重启后失效的不透明范围标识。
+	// 范围标识
 	ID string `json:"id"`
-	// Root 是聊天受管工作区的真实目录。
+	// 工作目录
 	Root string `json:"root"`
 	// subject 是签发时的认证主体。
 	subject string
 	// roots 是聊天接纳时授权目录的真实路径快照。
 	roots []string
+	// chatID 区分共享 cwd 中不同 Chat 的私有状态。
+	chatID string
+	// chatRoot 仅供附件和隐藏记录操作使用，不是通用文件授权根。
+	chatRoot string
 	// expires 是范围句柄的失效时间。
 	expires time.Time
 }
@@ -43,8 +47,43 @@ type Manager struct {
 // New 创建不启动后台任务的工作区文件管理器。
 func New() *Manager { return &Manager{scopes: make(map[string]Scope)} }
 
-// Open 为已验证的 Chat 冻结目录或配对用户明确选择的草稿目录签发主体专属范围。
+// Open 为配对用户明确选择的真实草稿目录签发主体专属范围。
 func (m *Manager) Open(subject, workspace string, additional []string) (Scope, error) {
+	return m.open(subject, workspace, additional, "", "")
+}
+
+// OpenChat 将真实执行范围和指定 Chat 的私有文件身份一起冻结。
+func (m *Manager) OpenChat(subject, chatID, workspace, privateRoot string, additional []string) (Scope, error) {
+	if chatID == "" || subject == "" {
+		return Scope{}, status_error.WorkspaceScopeInvalid
+	}
+	info, err := os.Lstat(privateRoot)
+	if err != nil {
+		return Scope{}, fileError("stat-chat-root", err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return Scope{}, status_error.WorkspacePathInvalid
+	}
+	private, err := canonicalDirectory(privateRoot)
+	if err != nil {
+		return Scope{}, err
+	}
+	h, err := os.OpenRoot(private)
+	if err != nil {
+		return Scope{}, fileError("open-chat-root", err)
+	}
+	defer h.Close()
+	if err = h.MkdirAll("attachments", 0700); err != nil {
+		return Scope{}, fileError("create-chat-attachments", err)
+	}
+	info, err = h.Lstat("attachments")
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return Scope{}, status_error.WorkspacePathInvalid
+	}
+	return m.open(subject, workspace, additional, chatID, private)
+}
+
+func (m *Manager) open(subject, workspace string, additional []string, chatID, private string) (Scope, error) {
 	if subject == "" {
 		return Scope{}, status_error.WorkspaceScopeInvalid
 	}
@@ -53,10 +92,17 @@ func (m *Manager) Open(subject, workspace string, additional []string) (Scope, e
 		return Scope{}, err
 	}
 	roots := []string{root}
-	for _, source := range additional {
+	sources := append([]string(nil), additional...)
+	if private != "" {
+		sources = append(sources, filepath.Join(private, "attachments"))
+	}
+	for _, source := range sources {
 		actual, err := canonicalDirectory(source)
 		if err != nil {
 			continue
+		}
+		if private != "" && source == filepath.Join(private, "attachments") && actual != source {
+			return Scope{}, status_error.WorkspacePathInvalid
 		}
 		exists := false
 		for _, allowed := range roots {
@@ -70,7 +116,7 @@ func (m *Manager) Open(subject, workspace string, additional []string) (Scope, e
 		}
 	}
 	now := time.Now()
-	scope := Scope{ID: uuid.NewString(), Root: root, subject: subject, roots: roots, expires: now.Add(12 * time.Hour)}
+	scope := Scope{ID: uuid.NewString(), Root: root, subject: subject, roots: roots, chatID: chatID, chatRoot: private, expires: now.Add(12 * time.Hour)}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, existing := range m.scopes {
@@ -79,16 +125,31 @@ func (m *Manager) Open(subject, workspace string, additional []string) (Scope, e
 		}
 	}
 	for _, existing := range m.scopes {
-		if existing.subject == subject && existing.Root == root && strings.Join(existing.roots, "\x00") == strings.Join(roots, "\x00") {
+		if existing.subject == subject && existing.Root == root && existing.chatID == chatID && existing.chatRoot == private && strings.Join(existing.roots, "\x00") == strings.Join(roots, "\x00") {
 			return existing, nil
 		}
 	}
-	// 句柄有界；达到上限要求客户端释放或重建范围，不能无限累积。
 	if len(m.scopes) >= 1024 {
 		return Scope{}, status_error.WorkspaceScopeInvalid
 	}
 	m.scopes[scope.ID] = scope
 	return scope, nil
+}
+
+// allows 拒绝通用根覆盖 Chat 私有元数据，即使显式项目根是其祖先。
+func (s Scope) allows(target string) bool {
+	if accountPath(target) {
+		return false
+	}
+	if s.chatRoot != "" && within(filepath.Dir(s.chatRoot), target) && !within(filepath.Join(s.chatRoot, "attachments"), target) {
+		return false
+	}
+	for _, root := range s.roots {
+		if within(root, target) {
+			return true
+		}
+	}
+	return false
 }
 
 // Close 释放当前主体的范围句柄。
@@ -159,7 +220,7 @@ func accountPath(value string) bool {
 	return false
 }
 
-// resolve 校验逻辑路径和真实路径；只有冻结范围中的项目入口可以跨越受管根。
+// resolve 校验逻辑路径和真实路径；只允许冻结的真实目录和本 Chat 附件。
 func (m *Manager) resolve(subject, id, requestedRoot, relative string, missing bool) (string, string, error) {
 	scope, err := m.scope(subject, id)
 	if err != nil {
@@ -187,6 +248,9 @@ func (m *Manager) resolve(subject, id, requestedRoot, relative string, missing b
 		root = actual
 	}
 	target := filepath.Join(root, filepath.FromSlash(relative))
+	if scope.chatRoot != "" && root == scope.Root && strings.HasPrefix(relative, "attachments/") {
+		target = filepath.Join(scope.chatRoot, filepath.FromSlash(relative))
+	}
 	actual, err := filepath.EvalSymlinks(target)
 	if os.IsNotExist(err) && missing {
 		parent, parentErr := filepath.EvalSymlinks(filepath.Dir(target))
@@ -199,7 +263,7 @@ func (m *Manager) resolve(subject, id, requestedRoot, relative string, missing b
 	if err != nil {
 		return "", "", fileError("resolve-file", err)
 	}
-	if accountPath(actual) {
+	if !scope.allows(actual) {
 		return "", "", status_error.WorkspacePathInvalid
 	}
 	for _, allowed := range scope.roots {

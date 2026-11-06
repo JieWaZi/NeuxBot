@@ -68,6 +68,7 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 	previousMCPConnectors := global.MCPConnectorControllerManager
 	previousTransactions := global.TransactionControllerManager
 	previousDataDirectory := global.Config.DataDirectory
+	previousManaged := global.Config.ManagedFilesDirectory
 	previousChatService := global.ChatService
 	t.Cleanup(func() {
 		global.WakerControllerManager = previousWakers
@@ -79,6 +80,7 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 		global.MCPConnectorControllerManager = previousMCPConnectors
 		global.TransactionControllerManager = previousTransactions
 		global.Config.DataDirectory = previousDataDirectory
+		global.Config.ManagedFilesDirectory = previousManaged
 		global.ChatService = previousChatService
 	})
 
@@ -93,7 +95,8 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 		dbhelper.NewGormTransactionManager(database.DB),
 	)
 	global.Config.DataDirectory = t.TempDir()
-	chatLogDirectory := filepath.Join(t.TempDir(), constants.ChatLogDirectoryName)
+	chatLogDirectory := t.TempDir()
+	global.Config.ManagedFilesDirectory = chatLogDirectory
 	createdChatService, err := chatservice.New(chatservice.Config{
 		StorageDirectory: chatLogDirectory,
 		Projects:         global.ProjectControllerManager,
@@ -465,11 +468,11 @@ func TestWakerAPICopiesPresetAndMaintainsIndependentDocuments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create chat storage layout: %v", err)
 	}
-	workspaceDirectory, err := layout.ChatWorkspace(chatID)
+	workspaceDirectory, err := layout.AgentWorkspace(waker.ID)
 	if err != nil {
 		t.Fatalf("resolve chat workspace: %v", err)
 	}
-	if err := workspace.EnsureExecutionWorkspace(workspaceDirectory, chatID, waker.ID, nil); err != nil {
+	if err := workspace.EnsureAgentWorkspace(workspaceDirectory, waker.ID); err != nil {
 		t.Fatalf("create chat workspace: %v", err)
 	}
 	if _, err := conversationfixture.CommitFacts(t.Context(), chatLog, chatID, []eventlog.AppendInput{

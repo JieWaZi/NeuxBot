@@ -4,6 +4,33 @@ import { i18n } from "@/shared/i18n";
 import { runtimeFailurePresentation } from "./runtime-failure-presentation";
 
 describe("runtimeFailurePresentation", () => {
+  it("接口给出原生原因时所有已定义错误直接展示该原因", () => {
+    for (const code of [
+      "QUOTA_EXHAUSTED",
+      "AUTH_REQUIRED",
+      "MODEL_UNAVAILABLE",
+      "INPUT_TIMEOUT",
+      "APPROVAL_TIMEOUT",
+      "EVENT_BUDGET_EXCEEDED",
+    ]) {
+      expect(
+        runtimeFailurePresentation(
+          code,
+          "Native CLI rejected this request",
+          undefined,
+          "public",
+        ).message,
+      ).toBe("Native CLI rejected this request");
+    }
+  });
+  it("协议错误标识不覆盖可读的失败原因", () => {
+    expect(
+      runtimeFailurePresentation(
+        "QUOTA_EXHAUSTED",
+        "[RuntimeExecutionFailed][50000000045]",
+      ).message,
+    ).toBe("当前额度已用尽。请切换模型，或等待额度恢复后重试。");
+  });
   afterEach(async () => {
     await i18n.changeLanguage("zh-CN");
   });
@@ -20,33 +47,51 @@ describe("runtimeFailurePresentation", () => {
     });
   });
 
-  it("人工等待超时优先使用本地化原因，其他错误保留诊断", async () => {
+  it("人工等待超时也保留接口给出的原生原因", async () => {
     expect(
       runtimeFailurePresentation(
         "INPUT_TIMEOUT",
         "waiting for user input timed out",
+        undefined,
+        "public",
       ).message,
-    ).toBe("等待回答超时");
+    ).toBe("waiting for user input timed out");
     expect(
       runtimeFailurePresentation(
         "APPROVAL_TIMEOUT",
         "waiting for approval timed out",
+        undefined,
+        "public",
       ).message,
-    ).toBe("等待审批超时");
+    ).toBe("waiting for approval timed out");
     expect(
-      runtimeFailurePresentation("REQUEST_TIMEOUT", "provider request deadline")
-        .message,
+      runtimeFailurePresentation(
+        "REQUEST_TIMEOUT",
+        "provider request deadline",
+        undefined,
+        "public",
+      ).message,
     ).toBe("provider request deadline");
     expect(runtimeFailurePresentation("UNKNOWN", "native detail").message).toBe(
-      "native detail",
+      i18n.t("runtimeFailure.unknown", { ns: "chat" }),
     );
     await i18n.changeLanguage("en-US");
     expect(
-      runtimeFailurePresentation("INPUT_TIMEOUT", "raw detail").message,
-    ).toBe("Timed out waiting for your answer");
+      runtimeFailurePresentation(
+        "INPUT_TIMEOUT",
+        "raw detail",
+        undefined,
+        "public",
+      ).message,
+    ).toBe("raw detail");
     expect(
-      runtimeFailurePresentation("APPROVAL_TIMEOUT", "raw detail").message,
-    ).toBe("Timed out waiting for approval");
+      runtimeFailurePresentation(
+        "APPROVAL_TIMEOUT",
+        "raw detail",
+        undefined,
+        "public",
+      ).message,
+    ).toBe("raw detail");
   });
 
   it("提供英文错误展示文案", async () => {
@@ -58,22 +103,86 @@ describe("runtimeFailurePresentation", () => {
     });
   });
 
-  it("事件预算耗尽使用准确的本地化提示，并保留单帧超大的独立分类", async () => {
+  it("事件预算耗尽保留接口原因，缺失原因时使用已定义分类", async () => {
     expect(
       runtimeFailurePresentation(
         "EVENT_BUDGET_EXCEEDED",
         "limit_exceeded: event count",
+        undefined,
+        "public",
       ).message,
-    ).toBe("本轮执行信息超过保护上限，执行已中止，请检查执行结果。");
+    ).toBe("limit_exceeded: event count");
     expect(runtimeFailurePresentation("FRAME_TOO_LARGE").message).toBe(
       "返回的数据过大，执行已中止，请检查执行结果。",
     );
     await i18n.changeLanguage("en-US");
     expect(
-      runtimeFailurePresentation("EVENT_BUDGET_EXCEEDED", "raw diagnostic")
-        .message,
+      runtimeFailurePresentation(
+        "EVENT_BUDGET_EXCEEDED",
+        "raw diagnostic",
+        undefined,
+        "public",
+      ).message,
+    ).toBe("raw diagnostic");
+  });
+});
+
+describe("application failure contract", () => {
+  afterEach(async () => {
+    await i18n.changeLanguage("zh-CN");
+  });
+  it("应用身份按当前语言呈现，包装身份不会成为正文", async () => {
+    expect(
+      runtimeFailurePresentation("RuntimeEventQueueOverflow").message,
+    ).toBe("执行事件未能完整交付，请先检查执行结果");
+    expect(
+      runtimeFailurePresentation(
+        "EVENT_DELIVERY_FAILED",
+        "private wrap: [RuntimeEventQueueOverflow][50000000049]\n[RuntimeExecutionFailed][50000000045]",
+      ).message,
+    ).toBe(i18n.t("runtimeFailure.eventDeliveryFailed", { ns: "chat" }));
+    await i18n.changeLanguage("en-US");
+    expect(
+      runtimeFailurePresentation("RuntimeEventQueueOverflow").message,
     ).toBe(
-      "Execution information exceeded the safety limit. Execution stopped; check the result.",
+      "execution events could not be fully delivered; check the execution result before continuing",
     );
   });
+  it("参数化错误与历史消息在同一入口本地化", async () => {
+    expect(
+      runtimeFailurePresentation(
+        "RuntimeWorkspaceScopeUnsupported",
+        undefined,
+        { MaxDirectories: 2 },
+      ).message,
+    ).toBe("当前智能体最多支持 2 个项目目录，请调整工作范围");
+    await i18n.changeLanguage("en-US");
+    expect(
+      runtimeFailurePresentation(
+        "RuntimeWorkspaceScopeUnsupported",
+        undefined,
+        { MaxDirectories: 2 },
+      ).message,
+    ).toBe(
+      "the selected agent supports up to 2 project directories; adjust the workspace scope",
+    );
+  });
+  it("未知类型名和枚举不能作为未知错误正文", () => {
+    expect(
+      runtimeFailurePresentation("UNKNOWN", "UnexpectedPrivateType").message,
+    ).toBe(i18n.t("runtimeFailure.unknown", { ns: "chat" }));
+  });
+});
+
+it("旧分类不能为任意诊断提供公开来源", () => {
+  for (const diagnostic of [
+    "RuntimeEventQueueOverflow",
+    "*RuntimeEventQueueOverflow",
+    "private implementation failed",
+    "unknown payload",
+  ]) {
+    expect(
+      runtimeFailurePresentation("EVENT_DELIVERY_FAILED", diagnostic).message,
+    ).toBe(i18n.t("runtimeFailure.eventDeliveryFailed", { ns: "chat" }));
+  }
 });

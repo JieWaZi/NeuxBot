@@ -6,7 +6,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Windows 文件权限由专属父目录继承的受保护 DACL 保证。
+// Windows file access is enforced by the protected DACL inherited from the dedicated parent directory.
 func privateFile(os.FileInfo) bool { return true }
 
 func protectDirectory(path string) error {

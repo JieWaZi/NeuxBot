@@ -227,7 +227,7 @@ export function ExecutionPermissionControl({
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
-          disabled={disabled}
+          disabled={disabled || supportedPermissions.size === 0}
           data-testid="composer-permission-control"
           data-overflow-trigger
           aria-label={t("common:permission.pickerAria", {
@@ -250,36 +250,36 @@ export function ExecutionPermissionControl({
           value={selectedPermissionLevel}
           onValueChange={(permissionLevel) => {
             const nextLevel = permissionLevelOf(permissionLevel);
-            if (!nextLevel) return;
+            if (!nextLevel || !supportedPermissions.has(nextLevel)) return;
             onChange(nextLevel);
           }}
         >
-          {permissionLevels.map((level) => {
-            const detail = permissionLevelTranslationKeys[level];
-            const tone = permissionLevelToneClasses[level];
-            const available = supportedPermissions.has(level);
-            const Icon = permissionLevelIcons[level];
-            return (
-              <DropdownMenuRadioItem
-                key={level}
-                value={level}
-                disabled={!available}
-                className="min-h-row-rich items-start py-2"
-              >
-                <Icon className={cn("size-icon-sm mt-0.5", tone.icon)} />
-                <span className="min-w-0 flex-1">
-                  <span className={cn("type-ui block font-medium", tone.title)}>
-                    {t(`common:${detail.label}`)}
+          {permissionLevels
+            .filter((level) => supportedPermissions.has(level))
+            .map((level) => {
+              const detail = permissionLevelTranslationKeys[level];
+              const tone = permissionLevelToneClasses[level];
+              const Icon = permissionLevelIcons[level];
+              return (
+                <DropdownMenuRadioItem
+                  key={level}
+                  value={level}
+                  className="min-h-row-rich items-start py-2"
+                >
+                  <Icon className={cn("size-icon-sm mt-0.5", tone.icon)} />
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={cn("type-ui block font-medium", tone.title)}
+                    >
+                      {t(`common:${detail.label}`)}
+                    </span>
+                    <span className="text-muted-foreground type-caption mt-0.5 block whitespace-normal">
+                      {t(`common:${detail.description}`)}
+                    </span>
                   </span>
-                  <span className="text-muted-foreground type-caption mt-0.5 block whitespace-normal">
-                    {available
-                      ? t(`common:${detail.description}`)
-                      : t("common:permission.unsupported")}
-                  </span>
-                </span>
-              </DropdownMenuRadioItem>
-            );
-          })}
+                </DropdownMenuRadioItem>
+              );
+            })}
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -13,13 +13,14 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/logx"
+	"github.com/JieWaZi/NeuxBot/server/internal/workspace"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 )
 
 // FileChangesRecorder 是 Execution 调用的独立快照端口，测试日志可不装配此文件能力。
 type FileChangesRecorder interface {
 	// BeginFileChanges 在原生输入执行前保存冻结范围的基线。
-	BeginFileChanges(context.Context, models.Chat, string, string, []eventlog.ProjectSourceSnapshot) (*FileChangesRecording, error)
+	BeginFileChanges(context.Context, models.Chat, string, string, []eventlog.ProjectSourceSnapshot, []string) (*FileChangesRecording, error)
 }
 
 // FileChangesRecording 关联一次技术采集与原 Chat 日志，不拥有执行状态。
@@ -39,22 +40,26 @@ type FileChangesRecording struct {
 var _ FileChangesRecorder = (*service)(nil)
 
 // BeginFileChanges 复用日志归属冻结授权目录；采集失败不改变模型执行结果。
-func (m *service) BeginFileChanges(ctx context.Context, chat models.Chat, executionID, threadID string, sources []eventlog.ProjectSourceSnapshot) (*FileChangesRecording, error) {
-	if threadID != "" {
-		if err := m.logStore.RegisterTeamChat(threadID, chat.ID); err != nil {
-			return nil, err
-		}
-	}
+func (m *service) BeginFileChanges(ctx context.Context, chat models.Chat, executionID, threadID string, sources []eventlog.ProjectSourceSnapshot, referencedFiles []string) (*FileChangesRecording, error) {
 	directory, err := m.logStore.FileChangesDirectory(chat.ID)
 	if err != nil {
 		return nil, err
 	}
-	roots := append([]string{chat.WorkspaceDirectory}, chat.AdditionalWorkingDirectories...)
+	taskDirectories, err := workspace.EnsureTaskDirectories(chat.WorkspaceDirectory, executionID)
+	if err != nil {
+		return nil, err
+	}
+	roots := []string{taskDirectories.Outputs}
+	for _, candidate := range chat.AdditionalWorkingDirectories {
+		if filepath.Clean(candidate) != filepath.Clean(chat.WorkspaceDirectory) {
+			roots = append(roots, candidate)
+		}
+	}
 	for _, source := range sources {
 		roots = append(roots, source.SourcePath)
 	}
-	capture, err := changes.Begin(ctx, directory, executionID, roots, changes.Options{ExcludePaths: []string{
-		filepath.Join(chat.WorkspaceDirectory, "runtime"), filepath.Join(chat.WorkspaceDirectory, constants.ChatContextOwnerFileName), directory,
+	capture, err := changes.Begin(ctx, directory, executionID, roots, changes.Options{FilePaths: referencedFiles, ExcludePaths: []string{
+		filepath.Join(chat.WorkspaceDirectory, "runtime"), filepath.Join(chat.WorkspaceDirectory, "tmp"), filepath.Join(chat.WorkspaceDirectory, constants.ChatContextOwnerFileName), directory,
 	}})
 	if err != nil {
 		return nil, err
@@ -121,7 +126,7 @@ func (r *FileChangesRecording) Discard(ctx context.Context, uncommittedNewChat b
 		return status_error.ChatLogError
 	}
 	// 目录来自原日志归属，删除相对路径受 Root 约束；不能跟随被替换的结果目录链接。
-	root, err := os.OpenRoot(filepath.Dir(path))
+	root, err := os.OpenRoot(filepath.Dir(filepath.Dir(path)))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -130,7 +135,7 @@ func (r *FileChangesRecording) Discard(ctx context.Context, uncommittedNewChat b
 		return status_error.ChatLogError
 	}
 	defer root.Close()
-	relative := filepath.Join("file-results", r.chatID)
+	relative := "file-results"
 	info, err := root.Lstat(relative)
 	if err != nil && !os.IsNotExist(err) {
 		return status_error.ChatLogError
@@ -143,10 +148,6 @@ func (r *FileChangesRecording) Discard(ctx context.Context, uncommittedNewChat b
 			logx.Warnf("discard uncommitted file result directory failed: chat_id=%s error=%v", r.chatID, err)
 			return status_error.ChatLogError
 		}
-	}
-	if err := root.Remove("file-results"); err != nil && !os.IsNotExist(err) && !os.IsExist(err) {
-		logx.Warnf("remove empty file result parent failed: chat_id=%s error=%v", r.chatID, err)
-		return status_error.ChatLogError
 	}
 	return nil
 }

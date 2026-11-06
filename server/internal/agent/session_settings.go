@@ -18,13 +18,15 @@ type SessionSetting struct {
 
 // TurnSelection carries requested per-turn overrides and an unresolved host default.
 type TurnSelection struct {
-	// Reasoning is the native effort ID, or empty for provider defaults.
+	// Reasoning is the native reasoning effort identifier; empty preserves native settings.
 	Reasoning string
-	// PreferNoThinking 在没有明确强度时优先选择关闭推理，其次选择最低可用档位。
+	// PreferNoThinking prefers disabling reasoning without an explicit effort, then the lowest available tier.
 	PreferNoThinking bool
-	// Fast is explicit on/off, or nil to inherit.
+	// ContextWindow is the selected model's native window tier; empty preserves native settings.
+	ContextWindow string
+	// Fast is an explicit toggle; nil preserves native settings.
 	Fast *bool
-	// DefaultFast applies only if this model advertises native Fast support.
+	// DefaultFast applies only to models declaring Fast support.
 	DefaultFast *bool
 }
 
@@ -33,6 +35,9 @@ type codexTurnConfigurer interface {
 }
 
 func (t *Turn) applyCodexSettings(client AgentClient, request ThreadRequest) error {
+	if request.Selection.ContextWindow != "" {
+		return status_error.RuntimePolicyUnsupported
+	}
 	codex, ok := client.(codexTurnConfigurer)
 	if !ok {
 		return status_error.RuntimePolicyUnsupported
@@ -84,11 +89,11 @@ func (t *Turn) applySettings(client AgentClient, request ThreadRequest) error {
 		if model := request.Connection.Account.Model; model != "" {
 			i := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.Category == "model" || o.ID == "model" })
 			if i < 0 {
-				return status_error.RuntimePolicyUnsupported
+				return status_error.RuntimeModelSelectionFailed
 			}
 			id := t.effective.Options[i].ID
 			if slices.ContainsFunc(request.Settings, func(s SessionSetting) bool { return s.ID == id && (s.Value.ID != model || s.Value.Bool != nil) }) {
-				return status_error.RuntimeConfigurationInvalid
+				return status_error.RuntimeModelSelectionFailed
 			}
 			if err := t.applySetting(client, SessionSetting{ID: id, Value: AgentOptionValue{ID: model}}); err != nil {
 				return err
@@ -160,10 +165,24 @@ func (t *Turn) applyProviderSelection(client AgentClient, provider string, selec
 		return status_error.RuntimePolicyUnsupported
 	}
 	t.requestedFast = fast
-	return nil
+	// Qoder confirmed the tier before startup using the same account's SDK catalog.
+	if selection.ContextWindow == "" || provider == "qoder" || provider == "qoder-cn" {
+		return nil
+	}
+	window := slices.IndexFunc(t.effective.Options, IsContextWindowOption)
+	if window < 0 {
+		return status_error.RuntimePolicyUnsupported
+	}
+	option := t.effective.Options[window]
+	if ContextWindowTokens(selection.ContextWindow) == 0 || !slices.ContainsFunc(option.Choices, func(choice AgentChoice) bool {
+		return choice.ID == selection.ContextWindow
+	}) {
+		return status_error.RuntimeConfigurationInvalid
+	}
+	return t.applySetting(client, SessionSetting{ID: option.ID, Value: AgentOptionValue{ID: selection.ContextWindow}})
 }
 
-// minimumReasoning 按原生可选值选择最低推理档位，未知档位沿用原生顺序。
+// minimumReasoning selects the lowest native reasoning tier, preserving native order for unknown tiers.
 func minimumReasoning(choices []AgentChoice) string {
 	for _, wanted := range []string{"none", "off", "disabled", "minimal", "min", "low", "medium", "high", "max", "xhigh"} {
 		for _, choice := range choices {
@@ -197,12 +216,12 @@ func fastSettingValue(option AgentSessionOption, fast *bool) AgentOptionValue {
 func (t *Turn) applyNativeDefault(client AgentClient, provider string, option AgentSessionOption) error {
 	switch provider {
 	case "claude":
-		// Claude 的有效值可能来自用户配置。只清除原生确认过的显式覆盖。
+		// Claude's effective value may come from user configuration. Clear only explicitly acknowledged native overrides.
 		if option.acknowledgedID != "" && option.acknowledgedID != "default" {
 			return t.applySetting(client, SessionSetting{ID: option.ID, Value: AgentOptionValue{ID: "default"}})
 		}
 	case "cursor":
-		// Cursor 会跨进程保留模型参数。当前会话值不能作为默认值的证据。
+		// Cursor retains model parameters across processes. Current session values are not evidence of defaults.
 		model := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.Category == "model" || o.ID == "model" })
 		if model < 0 {
 			return status_error.RuntimePolicyUnsupported
@@ -232,11 +251,15 @@ func (t *Turn) applySetting(client AgentClient, setting SessionSetting) error {
 		return status_error.RuntimePolicyUnsupported
 	}
 	option := t.effective.Options[i]
+	invalidSetting := status_error.RuntimeConfigurationInvalid
+	if option.Category == "model" || option.ID == "model" {
+		invalidSetting = status_error.RuntimeModelSelectionFailed
+	}
 	resetClaude := t.binding.Session.Provider == "claude" && setting.Value.ID == "default" &&
 		option.acknowledgedID != "" && option.acknowledgedID != "default"
 	if setting.Value.Bool != nil {
 		if setting.Value.ID != "" || option.Value.Bool == nil {
-			return status_error.RuntimeConfigurationInvalid
+			return invalidSetting
 		}
 		if *setting.Value.Bool == *option.Value.Bool {
 			return nil
@@ -246,7 +269,7 @@ func (t *Turn) applySetting(client AgentClient, setting SessionSetting) error {
 			return nil
 		}
 		if !slices.ContainsFunc(option.Choices, func(c AgentChoice) bool { return c.ID == setting.Value.ID }) {
-			return status_error.RuntimeConfigurationInvalid
+			return invalidSetting
 		}
 	}
 	revision := t.sessionOptionsRevision()
@@ -257,20 +280,20 @@ func (t *Turn) applySetting(client AgentClient, setting SessionSetting) error {
 	t.applyOptionReceipt(revision, options)
 	observed := slices.IndexFunc(t.effective.Options, func(o AgentSessionOption) bool { return o.ID == setting.ID })
 	if observed < 0 {
-		return status_error.RuntimeConfigurationInvalid
+		return invalidSetting
 	}
 	receipt := t.effective.Options[observed]
-	// 清除覆盖后的观测值可能来自用户配置，不要求其恰好等于 default。
+	// The observed value after clearing an override may come from user configuration and need not equal default.
 	if resetClaude && receipt.acknowledgedID == "default" {
 		return nil
 	}
 	value := receipt.Value
 	if setting.Value.Bool != nil {
 		if value.Bool == nil || *value.Bool != *setting.Value.Bool {
-			return status_error.RuntimeConfigurationInvalid
+			return invalidSetting
 		}
 	} else if value.ID != setting.Value.ID || value.Bool != nil {
-		return status_error.RuntimeConfigurationInvalid
+		return invalidSetting
 	}
 	return nil
 }
@@ -334,7 +357,7 @@ func applySessionOptions(session *AgentSession, options []AgentSessionOption) bo
 	session.Options = options
 	for _, option := range options {
 		if option.Category == "mode" && option.Value.ID != "" {
-			// 旧设置的同值快照不应覆盖正在确认的新权限。
+			// A snapshot matching the old setting must not overwrite a new permission awaiting acknowledgement.
 			changed := session.Mode != option.Value.ID
 			session.Mode = option.Value.ID
 			return changed
@@ -411,6 +434,10 @@ func cloneChoices(choices []AgentChoice) []AgentChoice {
 		if tier := choices[i].DefaultServiceTier; tier != nil {
 			copied := *tier
 			choices[i].DefaultServiceTier = &copied
+		}
+		if multiplier := choices[i].CreditMultiplier; multiplier != nil {
+			copied := *multiplier
+			choices[i].CreditMultiplier = &copied
 		}
 		if choices[i].Config != nil {
 			cfg := *choices[i].Config

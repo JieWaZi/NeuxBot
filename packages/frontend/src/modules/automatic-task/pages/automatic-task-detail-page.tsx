@@ -1,3 +1,4 @@
+import { applicationErrorMessage } from "@/shared/api/error-presentation";
 import { integrationServiceOptions } from "@/shared/api/integration-service";
 import { FailureNoticeContent } from "@/modules/notification";
 import { useQueryEvents } from "@/shared/api/use-query-events";
@@ -289,14 +290,24 @@ export function AutomaticTaskDetailPage() {
   const identityFieldClassName = isPartnerTask
     ? undefined
     : "@[54rem]/task-execution:col-span-2";
-  const errorLabel = (code?: string) =>
-    code === "AutomaticTaskBusy"
-      ? t("busyHint")
-      : code === "AutomaticTaskAdmissionRevoked"
-        ? t("state.interrupted")
-        : code
-          ? t("runFailedHint")
-          : "—";
+  const errorLabel = (entry: {
+    errorCode?: string;
+    errorMessage?: string;
+    errorParams?: Record<string, unknown>;
+    errorMessageSource?: string;
+  }) => {
+    const code = entry.errorCode;
+    return code
+      ? applicationErrorMessage({
+          code,
+          params: entry.errorParams,
+          message: entry.errorMessage,
+          messageSource:
+            entry.errorMessageSource === "public" ? "public" : "localized",
+          fallback: t("runFailedHint"),
+        })
+      : "—";
+  };
   return (
     <ResourcePageSurface>
       <PageHeader
@@ -788,10 +799,10 @@ export function AutomaticTaskDetailPage() {
                     <TableCell>
                       {entry.state === "failed" ? (
                         <FailureNoticeContent runId={entry.id ?? ""}>
-                          {errorLabel(entry.errorCode)}
+                          {errorLabel(entry)}
                         </FailureNoticeContent>
                       ) : (
-                        errorLabel(entry.errorCode)
+                        errorLabel(entry)
                       )}
                     </TableCell>
                     <TableCell>

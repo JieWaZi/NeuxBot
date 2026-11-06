@@ -17,7 +17,7 @@ import (
 	"github.com/shrewx/ginx/pkg/statuserror"
 )
 
-// TestNewNativeRuntimeRegistry 验证运行时可发现且交付真实指令与技能目录，不伪造模型目录。
+// TestNewNativeRuntimeRegistry verifies runtime discovery and real instruction and skill directories without fabricating model catalogs.
 func TestNewNativeRuntimeRegistry(t *testing.T) {
 	definitions, err := newRegistry(nil)
 	if err != nil {
@@ -39,7 +39,7 @@ func TestNewNativeRuntimeRegistry(t *testing.T) {
 	}
 }
 
-// TestQoderCNRegistryAndIsolation 验证中国版与国际版分别保存命令和用户配置根，共用项目技能目录，共用同一权限契约。
+// TestQoderCNRegistryAndIsolation verifies separate regional commands and user configuration roots with shared project skills and permission contracts.
 func TestQoderCNRegistryAndIsolation(t *testing.T) {
 	definitions, err := newRegistry(nil)
 	if err != nil {
@@ -64,7 +64,7 @@ func TestQoderCNRegistryAndIsolation(t *testing.T) {
 	}
 }
 
-// TestQoderNativeInstallDiscovery 验证 PATH 缺省时也能解析官方原生路径，两个地区与显式路径覆盖互不混用。
+// TestQoderNativeInstallDiscovery verifies official native path resolution without PATH and isolation between regions and explicit path overrides.
 func TestQoderNativeInstallDiscovery(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses POSIX executable scripts")
@@ -99,7 +99,7 @@ func TestQoderNativeInstallDiscovery(t *testing.T) {
 			if !found {
 				t.Fatalf("native installation omitted: %+v", installations)
 			}
-			// 国际版与中国版之间不做透明登录或可执行文件替换。
+			// Never transparently substitute login identities or executables between international and Chinese editions.
 			other := RuntimeIDQoder
 			if id == other {
 				other = RuntimeIDQoderCN
@@ -117,7 +117,7 @@ func TestQoderNativeInstallDiscovery(t *testing.T) {
 	}
 }
 
-// TestQoderDesktopDispatcherIsNotNativeInstall 防止仅有桌面版 entry 分发脚本时误报安装了原生 CLI。
+// TestQoderDesktopDispatcherIsNotNativeInstall prevents desktop entry dispatch scripts from being reported as native CLI installations.
 func TestQoderDesktopDispatcherIsNotNativeInstall(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses POSIX executable scripts")
@@ -143,7 +143,7 @@ func TestQoderDesktopDispatcherIsNotNativeInstall(t *testing.T) {
 	}
 }
 
-// TestQoderRegistryPreservesNativeInstallation 验证地区目录、传输和启动参数约束。
+// TestQoderRegistryPreservesNativeInstallation verifies regional directories, transports, and launch argument constraints.
 func TestQoderRegistryPreservesNativeInstallation(t *testing.T) {
 	definitions, err := newRegistry(nil)
 	if err != nil {
@@ -165,7 +165,7 @@ func TestQoderRegistryPreservesNativeInstallation(t *testing.T) {
 	}
 }
 
-// TestWorkBuddyRegistryPreservesNativeInstallation 只验证仍被探测及安装使用的声明。
+// TestWorkBuddyRegistryPreservesNativeInstallation verifies only declarations still used by detection and installation.
 func TestWorkBuddyRegistryPreservesNativeInstallation(t *testing.T) {
 	definitions, err := newRegistry(nil)
 	if err != nil {
@@ -187,17 +187,17 @@ func TestWorkBuddyRegistryPreservesNativeInstallation(t *testing.T) {
 	}
 }
 
-// TestConnectorCompatibilityMatchesUpstreamTransports 锁住各 Runtime 的 upstream MCP 边界。
+// TestConnectorCompatibilityMatchesUpstreamTransports locks each runtime's upstream MCP boundaries.
 func TestConnectorCompatibilityMatchesUpstreamTransports(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		// name 是能力组合名称。
+		// name identifies the capability combination.
 		name string
-		// runtimeID 是被检查的基础 Runtime。
+		// runtimeID is the base runtime under test.
 		runtimeID string
-		// transport 是目标 MCP transport。
+		// transport is the target MCP transport.
 		transport ConnectorTransport
-		// expected 表示该 transport 是否受支持。
+		// expected reports whether the transport should be supported.
 		expected bool
 	}{
 		{name: "codex stdio", runtimeID: RuntimeIDCodex, transport: ConnectorTransportStdio, expected: true},
@@ -308,7 +308,7 @@ func TestOpenCodeDiscoversBothInstallationsAndHonorsExplicitPath(t *testing.T) {
 	}
 }
 
-// TestCommonExecutableDirectoriesCoversDesktopToolchains 验证桌面进程补齐跨平台通用安装目录。
+// TestCommonExecutableDirectoriesCoversDesktopToolchains verifies cross-platform common installation directories added for desktop processes.
 func TestCommonExecutableDirectoriesCoversDesktopToolchains(t *testing.T) {
 	home := filepath.Join(string(filepath.Separator), "Users", "tester")
 	environment, err := buildEnvironment([]string{
@@ -321,11 +321,11 @@ func TestCommonExecutableDirectoriesCoversDesktopToolchains(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := []struct {
-		// name 是测试平台名称。
+		// name is the test platform name.
 		name string
-		// goos 是待投影的 Go 平台标识。
+		// goos is the Go platform identifier to project.
 		goos string
-		// expected 是该平台必须包含的通用目录。
+		// expected lists common directories required on the platform.
 		expected []string
 	}{
 		{
@@ -379,7 +379,7 @@ func TestCommonExecutableDirectoriesCoversDesktopToolchains(t *testing.T) {
 	}
 }
 
-// TestPreparedEnvironmentResolvesCLIFromCommonShim 验证通用 shim 目录真实参与可执行文件解析。
+// TestPreparedEnvironmentResolvesCLIFromCommonShim verifies common shim directories participate in executable resolution.
 func TestPreparedEnvironmentResolvesCLIFromCommonShim(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows executable suffix is covered by platform-specific tests")
@@ -452,7 +452,7 @@ func TestDiscoverInstallationsKeepsMultipleVersionsAndMissingHistory(t *testing.
 	}
 }
 
-// installationProbeFixture 复用同一测试二进制，屏障不再启动 shell、touch 或 sleep 子进程。
+// installationProbeFixture reuses the test binary so barriers require no shell, touch, or sleep subprocesses.
 func installationProbeFixture(t *testing.T) (string, []string, []string, []string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -474,7 +474,7 @@ func installationProbeFixture(t *testing.T) (string, []string, []string, []strin
 	return root, paths, args, environment
 }
 
-// TestInstallationVersionProbeProcess 在两个真实版本进程中各自登记启动，等待对端进入后才输出版本。
+// TestInstallationVersionProbeProcess registers each real version process and waits for its peer before printing a version.
 func TestInstallationVersionProbeProcess(t *testing.T) {
 	root := os.Getenv("ALLY_INSTALLATION_PROBE_ROOT")
 	if root == "" {
@@ -499,14 +499,14 @@ func TestInstallationVersionProbeProcess(t *testing.T) {
 		} else if !os.IsNotExist(err) {
 			os.Exit(2)
 		}
-		// 进程内等待避免外部 sleep 的启动成本，又不使用消耗 CPU 的忙循环。
+		// Waiting within the process avoids external sleep startup costs without busy-spinning.
 		time.Sleep(time.Millisecond)
 	}
 	fmt.Printf("1.%d.0\n", index)
 	os.Exit(0)
 }
 
-// TestDiscoverInstallationsProbesPathsConcurrently 验证两个真实版本进程必须同时启动才能通过屏障。
+// TestDiscoverInstallationsProbesPathsConcurrently requires both real version processes to start concurrently to pass the barrier.
 func TestDiscoverInstallationsProbesPathsConcurrently(t *testing.T) {
 	root, paths, args, environment := installationProbeFixture(t)
 	sdk, err := NewCatalog(CatalogConfig{})
@@ -537,7 +537,7 @@ func TestDiscoverInstallationsProbesPathsConcurrently(t *testing.T) {
 	}
 }
 
-// TestInstallationVersionProbeBarrierRejectsSequentialStart 证明顺序执行不能获得两个有效版本，防止屏障退化为空验证。
+// TestInstallationVersionProbeBarrierRejectsSequentialStart proves sequential execution cannot yield two valid versions, guarding against a vacuous barrier.
 func TestInstallationVersionProbeBarrierRejectsSequentialStart(t *testing.T) {
 	root, paths, args, environment := installationProbeFixture(t)
 	args = append(args, "--version")
@@ -560,7 +560,7 @@ func TestInstallationVersionProbeBarrierRejectsSequentialStart(t *testing.T) {
 	}
 }
 
-// TestDiscoverInstallationsKeepsVersionAfterUnknownOutput 验证未知输出不覆盖已知安装版本。
+// TestDiscoverInstallationsKeepsVersionAfterUnknownOutput verifies unknown output cannot overwrite a known installation version.
 func TestDiscoverInstallationsKeepsVersionAfterUnknownOutput(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses POSIX executable scripts")
@@ -583,7 +583,7 @@ func TestDiscoverInstallationsKeepsVersionAfterUnknownOutput(t *testing.T) {
 	}
 }
 
-// TestDiscoverInstallationsStillFindsPATHAfterExplicitSelection 验证保存明确路径后仍能枚举 PATH 中的新版本。
+// TestDiscoverInstallationsStillFindsPATHAfterExplicitSelection verifies new PATH versions remain discoverable after saving an explicit path.
 func TestDiscoverInstallationsStillFindsPATHAfterExplicitSelection(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses POSIX executable scripts")
@@ -613,13 +613,13 @@ func TestDiscoverInstallationsStillFindsPATHAfterExplicitSelection(t *testing.T)
 
 func TestLaunchOverrideArgumentsAllowedRejectsAllyManagedArguments(t *testing.T) {
 	tests := []struct {
-		// name 是测试场景名称。
+		// name identifies the test scenario.
 		name string
-		// runtimeID 是参数所属的内置 Runtime。
+		// runtimeID is the built-in runtime owning the arguments.
 		runtimeID string
-		// arguments 是用户提交的前置参数。
+		// arguments contains the leading arguments submitted by the user.
 		arguments []string
-		// allowed 是期望的参数校验结论。
+		// allowed is the expected argument validation result.
 		allowed bool
 	}{
 		{name: "codex safe profile", runtimeID: RuntimeIDCodex, arguments: []string{"--profile", "ally"}, allowed: true},
@@ -655,7 +655,7 @@ func TestLaunchDetectInputsEqualIgnoresNonLaunchFields(t *testing.T) {
 	}
 }
 
-// TestProfileInstallationUsesItsEnvironment 验证 Profile 的程序位置、启动参数和配置根会进入安装版本探测。
+// TestProfileInstallationUsesItsEnvironment verifies profile executable location, launch arguments, and configuration home reach installation version probes.
 func TestProfileInstallationUsesItsEnvironment(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("fixture uses a POSIX executable script")

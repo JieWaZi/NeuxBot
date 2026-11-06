@@ -75,6 +75,6 @@ export function nativeModelCatalogOptions(
       }
       return data;
     },
-    staleTime: accountId === "system" ? 0 : 60_000,
+    staleTime: Infinity,
   });
 }

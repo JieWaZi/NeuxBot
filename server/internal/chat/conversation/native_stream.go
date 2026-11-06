@@ -6,11 +6,15 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"hash"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
@@ -19,17 +23,22 @@ import (
 	"gorm.io/gorm"
 )
 
-const maximumToolPatchDepth = 8
+const (
+	maximumToolPatchDepth = 8
+	toolOutputRecordBytes = 8 << 10
+)
 
 type nativeFragment struct {
-	// Key identifies the one native execution that produced the fragment.
+	// Key 标识产生片段的唯一原生调用。
 	Key agent.NativeResultKey `json:"k"`
-	// MessageID identifies this message within that execution.
+	// MessageID 标识原生调用内的消息。
 	MessageID string `json:"m"`
-	// Change contains the normalized change.
+	// Change 保存规范变化。
 	Change agent.MessageChange `json:"c"`
-	// Patch is a bounded lossless alternative to a repeated tool snapshot.
+	// Patch 对重复工具元数据提供有限深度的无损差量。
 	Patch *toolPatch `json:"p,omitempty"`
+	// Output 引用本次快照已包含的独立终端输出范围。
+	Output *toolOutputRange `json:"o,omitempty"`
 }
 
 type toolPatch struct {
@@ -91,7 +100,14 @@ func validNativeFragment(f nativeFragment) bool {
 		return m.Text != "" && isTextContent(m.ContentType) && m.ToolCallID == "" && len(m.Data) == 0 && f.Patch == nil
 	case agent.MessageReplace:
 		return isClassifiableText(m.ContentType) && m.ToolCallID == "" && len(m.Data) == 0 && f.Patch == nil
+	case nativeToolOutput:
+		return m.ToolCallID != "" && m.Text != "" && len(m.Data) == 0 && f.Patch == nil && f.Output == nil
+	case agent.MessageToolUpdate:
+		return validID(m.ToolCallID) && utf8.ValidString(m.Text) && json.Valid(m.Data) && f.Patch == nil && f.Output == nil
 	case agent.MessageToolSnapshot:
+		if f.Output != nil && (!validID(f.Output.MessageID) || f.Output.First <= 0 || f.Output.Last < f.Output.First || f.Output.Bytes <= 0) {
+			return false
+		}
 		if !validID(m.ToolCallID) || m.Text != "" ||
 			(m.ContentType != "" && m.ContentType != constants.RuntimeEventTypeToolInputSnapshot &&
 				m.ContentType != constants.RuntimeEventTypeToolUpdate && m.ContentType != constants.RuntimeEventTypeToolResult) {
@@ -175,6 +191,113 @@ func (s *Store) nativeStream(key agent.NativeResultKey) (*streamSlot, string) {
 	return &s.natives[shard], filepath.Join(s.root, nativeBucketPath(shard))
 }
 
+// PrepareNativeToolUpdate 按本 Store 的编码和行数预算选择单次逻辑工具更新，不预留执行席位。
+// 返回的操作由调用者冻结重试；CommitNativeFragments 仍执行最终原子预算校验。
+func (s *Store) PrepareNativeToolUpdate(ctx context.Context, batch agent.NativeFragmentBatch) (agent.NativeFragmentBatch, error) {
+	if !validNativeKey(batch.Key) || !validID(batch.CommitKey) || !validID(batch.MessageID) || len(batch.Changes) != 1 ||
+		batch.Changes[0].Kind != agent.MessageToolUpdate || !validNativeFragment(nativeFragment{Key: batch.Key, MessageID: batch.MessageID, Change: batch.Changes[0]}) {
+		return agent.NativeFragmentBatch{}, status_error.ChatLogRecordInvalid
+	}
+	slot, path := s.nativeStream(batch.Key)
+	slot.mu.Lock()
+	defer slot.mu.Unlock()
+	idx, err := slot.load(ctx, path, false)
+	if err != nil {
+		return agent.NativeFragmentBatch{}, err
+	}
+	original := batch.Changes[0]
+	partial := original.Data
+	fields, err := decodeToolUpdateMetadata(original.Data, original.ToolCallID)
+	if err != nil {
+		return agent.NativeFragmentBatch{}, err
+	}
+	var status string
+	_ = json.Unmarshal(fields["status"], &status)
+	if status == "completed" || status == "failed" || status == "cancelled" {
+		delete(fields, "status")
+		partial, _ = json.Marshal(fields)
+	}
+	candidate := func(n int) (agent.NativeFragmentBatch, bool, error) {
+		change := original
+		change.Text = original.Text[:n]
+		if n < len(original.Text) {
+			change.Data = partial
+		}
+		prepared := batch
+		prepared.Changes = []agent.MessageChange{change}
+		rows := []diskRow{{Fragment: &nativeFragment{Key: batch.Key, MessageID: batch.MessageID, Change: change}}}
+		rows, err := normalizeToolRows(path, idx, prepared, rows)
+		if err != nil {
+			if errors.Is(err, status_error.ChatLogRecordInvalid) {
+				return prepared, false, nil
+			}
+			return prepared, false, err
+		}
+		skeleton := make([][]byte, len(rows))
+		size := 0
+		for i, row := range rows {
+			text := ""
+			if row.Fragment.Change.Kind == nativeToolOutput {
+				// JSON needs at most six bytes per UTF-8 input byte. Size a
+				// constant payload here; the real bytes are encoded only at commit.
+				fragment := *row.Fragment
+				text, fragment.Change.Text = fragment.Change.Text, " "
+				row.Fragment = &fragment
+			}
+			encoded, err := json.Marshal(row)
+			if err != nil {
+				return prepared, false, err
+			}
+			if text != "" {
+				size += len(encoded) + 6*len(text) - 1
+			} else {
+				size += len(encoded)
+			}
+			skeleton[i] = []byte("{}")
+			size -= 2
+		}
+		header := makeHeader(nativeID(batch.Key)+":fragment:"+batch.CommitKey, [32]byte{}, idx.version(), len(rows))
+		header.Receipt.RecordedAt = math.MaxInt64
+		frame, _, err := encodeBatch(header, skeleton, 0)
+		// A concurrent different invocation in this shard can grow three cursor
+		// integers (header, output First/Last) to their maximum encoded width.
+		reserve := 3 * len(strconv.FormatInt(math.MaxInt64, 10))
+		return prepared, err == nil && size+len(frame)+reserve <= maxBatchBytes, nil
+	}
+	// At least one metadata snapshot accompanies this Store's physical output
+	// records. Neither this row budget nor the codec layout crosses into Agent.
+	maxText := min(len(original.Text), (maxBatchRows-1)*toolOutputRecordBytes)
+	for maxText < len(original.Text) && !utf8.RuneStart(original.Text[maxText]) {
+		maxText--
+	}
+	prepared, fits, err := candidate(maxText)
+	if err != nil || fits {
+		return prepared, err
+	}
+	low, high := 0, maxText
+	var best agent.NativeFragmentBatch
+	for low < high {
+		mid := low + (high-low+1)/2
+		n := mid
+		for n < len(original.Text) && n > 0 && !utf8.RuneStart(original.Text[n]) {
+			n--
+		}
+		trial, fits, err := candidate(n)
+		if err != nil {
+			return agent.NativeFragmentBatch{}, err
+		}
+		if fits && n > 0 {
+			low, best = mid, trial
+		} else {
+			high = mid - 1
+		}
+	}
+	if len(best.Changes) == 0 || len(best.Changes[0].Text) == 0 {
+		return agent.NativeFragmentBatch{}, status_error.ChatLogRecordInvalid
+	}
+	return best, nil
+}
+
 func (s *Store) CommitNativeFragments(ctx context.Context, batch agent.NativeFragmentBatch) (agent.NativeFragmentRange, error) {
 	var result agent.NativeFragmentRange
 	if !validNativeKey(batch.Key) || !validID(batch.CommitKey) || !validID(batch.MessageID) ||
@@ -221,6 +344,10 @@ func (s *Store) CommitNativeFragments(ctx context.Context, batch agent.NativeFra
 	if terminal.Cursor > 0 {
 		return result, status_error.ChatLogIdempotencyConflict
 	}
+	rows, err = normalizeToolRows(path, idx, batch, rows)
+	if err != nil {
+		return result, err
+	}
 	if err := compactToolRows(path, idx, rows); err != nil {
 		return result, err
 	}
@@ -237,8 +364,209 @@ func (s *Store) CommitNativeFragments(ctx context.Context, batch agent.NativeFra
 
 func fragmentRange(batch agent.NativeFragmentBatch, header batchHeader) agent.NativeFragmentRange {
 	return agent.NativeFragmentRange{
-		Key: batch.Key, MessageID: batch.MessageID, First: header.Receipt.First, Last: header.Receipt.Version,
+		Key: batch.Key, MessageID: batch.MessageID,
+		First: header.Receipt.Version - int64(len(batch.Changes)) + 1, Last: header.Receipt.Version,
 	}
+}
+
+// nativeToolOutput is a private append record; public links select snapshots only.
+const nativeToolOutput agent.MessageChangeKind = "tool_output"
+
+type toolOutputRange struct {
+	// MessageID 标识仅包含此工具输出的原生 lane，复用现有定位索引。
+	MessageID string `json:"m"`
+	// First 是此快照包含的首个输出段游标。
+	First int64 `json:"f"`
+	// Last 是此快照包含的末个输出段游标，不读取未来输出。
+	Last int64 `json:"l"`
+	// Bytes 是范围内完整 UTF-8 输出的字节总数。
+	Bytes int64 `json:"b"`
+}
+
+func normalizeToolRows(path string, idx *streamIndex, batch agent.NativeFragmentBatch, rows []diskRow) ([]diskRow, error) {
+	var file *os.File
+	defer func() {
+		if file != nil {
+			_ = file.Close()
+		}
+	}()
+	latest := make(map[string]*nativeFragment)
+	var outputs []diskRow
+	for _, row := range rows {
+		fragment := row.Fragment
+		tool := fragment.Change.ToolCallID
+		fields := make(map[string]json.RawMessage)
+		var output *toolOutputRange
+		delta := fragment.Change.Text
+		switch fragment.Change.Kind {
+		case agent.MessageToolSnapshot:
+			if json.Unmarshal(fragment.Change.Data, &fields) != nil || fields == nil || fields["terminalOutput"] == nil {
+				latest[tool] = fragment
+				continue
+			}
+			// A current complete replacement establishes a new output frontier.
+			// Normalize it on input, exactly where partial updates are normalized.
+			if json.Unmarshal(fields["terminalOutput"], &delta) != nil {
+				return nil, status_error.ChatLogRecordInvalid
+			}
+			delete(fields, "terminalOutput")
+		case agent.MessageToolUpdate:
+			base := latest[tool]
+			if base == nil {
+				pos, err := idx.nativePosition(nativeRowID(batch.Key), indexNativeTool, batch.MessageID, tool)
+				if err != nil {
+					return nil, err
+				}
+				if pos.Cursor > 0 {
+					if file == nil {
+						file, err = os.Open(path)
+						if err != nil {
+							return nil, status_error.ChatLogError
+						}
+					}
+					positions, err := idx.withPatchBases([]rowIndex{pos})
+					if err != nil {
+						return nil, err
+					}
+					base, err = readFragment(file, positions, pos.Cursor, 0)
+					if err != nil {
+						return nil, err
+					}
+				}
+			}
+			if base != nil {
+				if json.Unmarshal(base.Change.Data, &fields) != nil || fields == nil || fields["terminalOutput"] != nil || fields["terminalDelta"] != nil {
+					return nil, status_error.ChatLogCorrupted
+				}
+				if base.Output != nil {
+					copy := *base.Output
+					output = &copy
+				}
+			}
+			update, err := decodeToolUpdateMetadata(fragment.Change.Data, tool)
+			if err != nil {
+				return nil, err
+			}
+			for name, value := range update {
+				fields[name] = value
+			}
+		default:
+			continue
+		}
+		data, err := json.Marshal(fields)
+		if err != nil {
+			return nil, status_error.ChatLogRecordInvalid
+		}
+		lane := toolOutputLane(batch.MessageID, tool)
+		for text := delta; len(text) > 0; {
+			n := min(len(text), toolOutputRecordBytes)
+			for n < len(text) && !utf8.RuneStart(text[n]) {
+				n--
+			}
+			cursor := idx.version() + int64(len(outputs)) + 1
+			if output == nil {
+				output = &toolOutputRange{MessageID: lane, First: cursor}
+			}
+			if output.Bytes > math.MaxInt64-int64(n) || output.MessageID != lane {
+				return nil, status_error.ChatLogRecordInvalid
+			}
+			output.Last, output.Bytes = cursor, output.Bytes+int64(n)
+			outputs = append(outputs, diskRow{Fragment: &nativeFragment{Key: batch.Key, MessageID: lane,
+				Change: agent.MessageChange{Kind: nativeToolOutput, ToolCallID: tool, Text: text[:n]}}})
+			text = text[n:]
+			if len(outputs)+len(rows) > maxBatchRows {
+				return nil, status_error.ChatLogRecordInvalid
+			}
+		}
+		fragment.Change.Kind, fragment.Change.Data, fragment.Change.Text = agent.MessageToolSnapshot, data, ""
+		fragment.Output = output
+		latest[tool] = fragment
+	}
+	return append(outputs, rows...), nil
+}
+
+func decodeToolUpdateMetadata(data json.RawMessage, tool string) (map[string]json.RawMessage, error) {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) != nil || fields == nil || fields["terminalDelta"] != nil || fields["terminalOutput"] != nil {
+		return nil, status_error.ChatLogRecordInvalid
+	}
+	var id string
+	if raw := fields["id"]; raw != nil && (json.Unmarshal(raw, &id) != nil || id != tool) {
+		return nil, status_error.ChatLogRecordInvalid
+	}
+	return fields, nil
+}
+
+func toolOutputLane(message, tool string) string {
+	data, _ := json.Marshal([]string{message, tool})
+	hash := sha256.Sum256(data)
+	return "tool-output:" + hex.EncodeToString(hash[:])
+}
+
+func hydrateToolOutput(ctx context.Context, file *os.File, idx *streamIndex, fragment *nativeFragment) error {
+	ref := fragment.Output
+	if ref == nil {
+		return nil
+	}
+	var identity, lane int64
+	err := idx.query(func(db *gorm.DB) error {
+		var err error
+		identity, lane, err = findNativeRefs(db, idx.coverage.Stream, nativeRowID(fragment.Key), ref.MessageID)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	if identity == 0 || lane == 0 || ref.First <= 0 || ref.Last < ref.First || ref.Bytes <= 0 {
+		return status_error.ChatLogCorrupted
+	}
+	var output strings.Builder
+	next := ref.First
+	var last int64
+	for next <= ref.Last {
+		if err := contextError(ctx); err != nil {
+			return err
+		}
+		var rows []rowIndex
+		err := idx.query(func(db *gorm.DB) error {
+			return db.Table("conversation_positions INDEXED BY conversation_row_native").
+				Where("stream = ? AND native_ref <> 0 AND native_ref = ? AND kind = ? AND lane_ref = ? AND cursor BETWEEN ? AND ?",
+					idx.coverage.Stream, identity, indexNativeToolOutput, lane, next, ref.Last).
+				Order("cursor").Limit(indexReadBatch).Find(&rows).Error
+		})
+		if err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return status_error.ChatLogCorrupted
+		}
+		for _, pos := range rows {
+			row, err := readDiskRow(file, pos.Where)
+			if err != nil || row.Fragment == nil || row.Fragment.Key != fragment.Key || row.Fragment.MessageID != ref.MessageID ||
+				row.Fragment.Change.Kind != nativeToolOutput || row.Fragment.Change.ToolCallID != fragment.Change.ToolCallID {
+				return status_error.ChatLogCorrupted
+			}
+			if int64(output.Len())+int64(len(row.Fragment.Change.Text)) > ref.Bytes {
+				return status_error.ChatLogCorrupted
+			}
+			output.WriteString(row.Fragment.Change.Text)
+			last = pos.Cursor
+		}
+		next = last + 1
+	}
+	if last != ref.Last || int64(output.Len()) != ref.Bytes {
+		return status_error.ChatLogCorrupted
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(fragment.Change.Data, &fields) != nil || fields == nil {
+		return status_error.ChatLogCorrupted
+	}
+	fields["terminalOutput"], err = json.Marshal(output.String())
+	if err != nil {
+		return status_error.ChatLogCorrupted
+	}
+	fragment.Change.Data, err = json.Marshal(fields)
+	return err
 }
 
 // Compact across commits. A periodic independent snapshot bounds seek and replay costs.
@@ -393,6 +721,9 @@ func (s *Store) visitNativeRange(ctx context.Context, r agent.NativeFragmentRang
 		}
 		if f.Key != r.Key || f.MessageID != r.MessageID {
 			return status_error.ChatLogCorrupted
+		}
+		if err := hydrateToolOutput(ctx, file, idx, f); err != nil {
+			return err
 		}
 		visit(f.Change)
 	}
@@ -703,5 +1034,5 @@ func (s *Store) readDetachedInput(ctx context.Context, session agent.NativeSessi
 }
 
 func isNativeFragmentKind(k indexKind) bool {
-	return k == indexNativeClassification || (k >= indexNativeTextAppend && k <= indexNativeEvent)
+	return k == indexNativeClassification || k == indexNativeToolOutput || (k >= indexNativeTextAppend && k <= indexNativeEvent)
 }

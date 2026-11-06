@@ -716,7 +716,8 @@ func (i *streamIndex) withPatchBases(rows []rowIndex) (map[int64]rowIndex, error
 		if len(found) != len(missing) {
 			return nil, status_error.ChatLogCorrupted
 		}
-		rows = rows[:0]
+		// Dependency traversal must not overwrite the caller's selected rows.
+		rows = make([]rowIndex, 0, len(found))
 		for cursor, row := range found {
 			out[cursor] = row
 			rows = append(rows, row)

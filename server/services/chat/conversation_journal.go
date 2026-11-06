@@ -25,6 +25,8 @@ type NativeJournal interface {
 	ProjectTurnAdmission(context.Context, StartedTurn, agent.CommitReceipt) (AcceptedTurn, error)
 	// ObserveCommitted wakes public subscriptions after Thread commits a native link.
 	ObserveCommitted(string, agent.CommitReceipt)
+	// BeginNativeLive 创建本轮原生助手消息的实时交付窗口。
+	BeginNativeLive(string, string, int64) *NativeLiveMessage
 }
 
 var _ NativeJournal = (*service)(nil)
@@ -46,7 +48,6 @@ type chatJournalStorage interface {
 	ReadLatestSequence(string) (int64, error)
 	MessageRecordedTimes(string, int64, int64) ([]int64, error)
 	CountUserMessages(string) (int64, error)
-	RegisterTeamChat(string, string) error
 	ListChatIDs() ([]string, error)
 	ListThreadChatIDs(string) ([]string, error)
 	RefreshCatalog() error
@@ -362,6 +363,7 @@ func (m *service) ProjectTurnAdmission(ctx context.Context, turn StartedTurn, re
 	chat.ActiveExecutionID, chat.LastAccountID, chat.LastRuntimeID = execution.ID, execution.AccountID, execution.RuntimeID
 	chat.LastModel, chat.LastReasoning, chat.LastPermissionLevel = execution.Model, execution.Reasoning, execution.PermissionLevel
 	chat.LastFast = execution.Fast
+	chat.LastContextWindow = execution.ContextWindow
 	execution.Status, execution.UpdatedAt = constants.ExecutionStatusRunning, receipt.RecordedAt
 	execution.Revision++
 	m.queryIndexes.indexStartedMessage(context.WithoutCancel(ctx), turn.NewChat, chat, execution, receipt.First-1)

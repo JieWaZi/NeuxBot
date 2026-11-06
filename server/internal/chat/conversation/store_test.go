@@ -5,16 +5,19 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 	"gorm.io/gorm"
 )
@@ -1108,5 +1111,390 @@ func TestRevisionCommentaryReplacementPreservesFinalText(t *testing.T) {
 		len(page.Messages[0].Parts) != 4 || page.Messages[0].Parts[1].Type != constants.RuntimeEventTypeCommentaryDelta ||
 		page.Messages[0].Parts[1].Text != "" || page.Messages[0].Parts[2].Text != "retained reasoning" {
 		t.Fatalf("explicit empty commentary or exact terminal %+v %v", page, err)
+	}
+}
+
+func TestToolUpdatesPreserveSnapshotFrontiersRetryAndRebuild(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	s := openTestStore(t, root)
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "fixture", Subject: "account", SessionID: "session"}, InvocationID: "invocation"}
+	commit := func(key agent.NativeResultKey, message, id string, kind agent.MessageChangeKind, data map[string]any, text string) agent.NativeFragmentRange {
+		t.Helper()
+		body, err := json.Marshal(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rng, err := s.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: key, MessageID: message, CommitKey: id,
+			Changes: []agent.MessageChange{{Kind: kind, ToolCallID: "tool", Data: body, Text: text}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rng
+	}
+	read := func(rng agent.NativeFragmentRange, output, status string) {
+		t.Helper()
+		changes, err := s.ReadNativeFragments(ctx, rng)
+		if err != nil || len(changes) != 1 || changes[0].Kind != agent.MessageToolSnapshot {
+			t.Fatalf("public tool snapshot: %+v %v", changes, err)
+		}
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(changes[0].Data, &fields) != nil {
+			t.Fatal("invalid tool snapshot JSON")
+		}
+		var gotOutput, gotStatus string
+		_ = json.Unmarshal(fields["terminalOutput"], &gotOutput)
+		_ = json.Unmarshal(fields["status"], &gotStatus)
+		if gotOutput != output || gotStatus != status {
+			t.Fatalf("snapshot frontier: output=%d want=%d status=%q want=%q", len(gotOutput), len(output), gotStatus, status)
+		}
+	}
+	old := commit(key, "message", "initial", agent.MessageToolSnapshot,
+		map[string]any{"id": "tool", "title": "initial title", "status": "in_progress", "terminalOutput": "old:"}, "")
+	large := strings.Repeat("raw-json", 8192)
+	delta := strings.Repeat("terminal\n", 7000)
+	firstData := map[string]any{"id": "tool", "input": large, "output": large, "content": large}
+	first := commit(key, "message", "first", agent.MessageToolUpdate, firstData, delta)
+	second := commit(key, "message", "second", agent.MessageToolUpdate,
+		map[string]any{"id": "tool", "status": "completed"}, ":second")
+	late := commit(key, "message", "late", agent.MessageToolUpdate, map[string]any{"id": "tool"}, ":late")
+	if retry := commit(key, "message", "first", agent.MessageToolUpdate, firstData, delta); retry != first {
+		t.Fatalf("retry appended output: %+v != %+v", retry, first)
+	}
+	otherMessage := commit(key, "other-message", "other-message", agent.MessageToolUpdate,
+		map[string]any{"id": "tool", "status": "failed"}, "other message")
+	otherKey := key
+	otherKey.InvocationID = "other-invocation"
+	otherInvocation := commit(otherKey, "message", "other-invocation", agent.MessageToolUpdate,
+		map[string]any{"id": "tool", "status": "completed"}, "other invocation")
+	for attempt := range 2 {
+		read(old, "old:", "in_progress")
+		read(first, "old:"+delta, "in_progress")
+		read(second, "old:"+delta+":second", "completed")
+		read(late, "old:"+delta+":second:late", "completed")
+		read(otherMessage, "other message", "failed")
+		read(otherInvocation, "other invocation", "completed")
+		changes, err := s.ReadNativeFragments(ctx, late)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var fields map[string]any
+		if json.Unmarshal(changes[0].Data, &fields) != nil || fields["input"] != large || fields["output"] != large ||
+			fields["content"] != large || fields["title"] != "initial title" {
+			t.Fatal("partial update lost full JSON tool fields larger than 32KiB")
+		}
+		if attempt == 0 {
+			index, err := s.IndexPath(chatID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Close()
+			if err := os.Remove(index); err != nil {
+				t.Fatal(err)
+			}
+			s = openTestStore(t, root)
+		}
+	}
+}
+
+func TestToolOutputWritesGrowWithNewBytes(t *testing.T) {
+	s := openTestStore(t, t.TempDir())
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "fixture", Subject: "account", SessionID: "session"}, InvocationID: "invocation"}
+	var final agent.NativeFragmentRange
+	const chunks = 160
+	for n := range chunks {
+		data, _ := json.Marshal(map[string]any{"id": "tool", "title": "terminal"})
+		var err error
+		final, err = s.CommitNativeFragments(t.Context(), agent.NativeFragmentBatch{Key: key, MessageID: "message", CommitKey: strconv.Itoa(n),
+			Changes: []agent.MessageChange{{Kind: agent.MessageToolUpdate, ToolCallID: "tool", Data: data, Text: strings.Repeat("x", 8<<10)}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, path := s.nativeStream(key)
+	info, err := os.Stat(path)
+	if err != nil || info.Size() > 2*(chunks*(8<<10)) {
+		t.Fatalf("tool output rewrote accumulated prefix: size=%v err=%v", info, err)
+	}
+	changes, err := s.ReadNativeFragments(t.Context(), final)
+	if err != nil || len(changes) != 1 {
+		t.Fatalf("final large output: %v", err)
+	}
+	var tool struct {
+		// TerminalOutput 保存最终快照包含的完整输出。
+		TerminalOutput string `json:"terminalOutput"`
+	}
+	if json.Unmarshal(changes[0].Data, &tool) != nil || len(tool.TerminalOutput) != chunks*(8<<10) {
+		t.Fatalf("output spanning more than one index page was lost: %d", len(tool.TerminalOutput))
+	}
+}
+
+func TestToolCheckpointKeepsSafePartsWithoutHydratingOutput(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "fixture", Subject: "account", SessionID: "session"}, InvocationID: "invocation"}
+	data, _ := json.Marshal(map[string]any{"id": "tool", "title": "run tests", "kind": "execute", "status": "in_progress",
+		"input":     map[string]any{"command": "go test ./example", "cwd": "/fixture"},
+		"locations": []any{map[string]any{"path": "/fixture/example.go", "line": 7}}, "update": true})
+	rng, err := s.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: key, MessageID: "native-message", CommitKey: "tool",
+		Changes: []agent.MessageChange{{Kind: agent.MessageToolUpdate, ToolCallID: "tool", Data: data, Text: strings.Repeat("x", 80<<10)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt := writeBatch(t, s, "public", 0, fact(constants.ChatEventTypeCreated, "", ""),
+		agent.ConversationChange{Message: &agent.MessageChange{MessageID: "assistant", Kind: agent.MessageNativeFragment, Fragments: &rng}})
+	final, err := s.CommitNativeFragments(ctx, agent.NativeFragmentBatch{Key: key, MessageID: "native-message", CommitKey: "terminal",
+		Changes: []agent.MessageChange{{Kind: agent.MessageToolUpdate, ToolCallID: "tool", Data: json.RawMessage(`{"id":"tool","status":"completed"}`)}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt = writeBatch(t, s, "terminal", receipt.Version,
+		agent.ConversationChange{Message: &agent.MessageChange{MessageID: "assistant", Kind: agent.MessageNativeFragment, Fragments: &final}})
+	full, err := s.ReadMessage(ctx, chatID, "assistant")
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkpoint, cursor, err := s.ReadMessageCheckpoint(ctx, chatID, "assistant", receipt.Version)
+	if err != nil || cursor != receipt.Version || len(checkpoint.Parts) != 1 || bytes.Contains(checkpoint.Parts[0].Data, []byte("terminalOutput")) {
+		t.Fatalf("checkpoint expanded raw terminal history: %+v cursor=%d err=%v", checkpoint, cursor, err)
+	}
+	project := func(stored agent.StoredMessage) []byte {
+		t.Helper()
+		builder := messageview.NewPublicMessageViewBuilder()
+		builder.SeedNativeLiveMessage("assistant", 0)
+		if err := builder.ReplaceStoredContent(stored, cursor, receipt.RecordedAt); err != nil {
+			t.Fatal(err)
+		}
+		encoded, _ := json.Marshal(builder.Messages()[0].DisplayParts)
+		return encoded
+	}
+	if !bytes.Equal(project(full), project(checkpoint)) {
+		t.Fatalf("checkpoint changed safe display: full=%s checkpoint=%s", project(full), project(checkpoint))
+	}
+	// Corrupt an output-only body after its index was derived. A checkpoint
+	// must read metadata alone; a full detail read must still detect corruption.
+	slot, path := s.nativeStream(key)
+	slot.mu.Lock()
+	idx, err := slot.load(ctx, path, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pos, err := idx.nativePosition(nativeRowID(key), indexNativeToolOutput, toolOutputLane("native-message", "tool"), "tool")
+	slot.mu.Unlock()
+	if err != nil || pos.Cursor == 0 {
+		t.Fatalf("output locator: %+v %v", pos, err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.OpenFile(path, os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteAt([]byte("!"), pos.Where.Offset+int64(pos.Where.Length)-3); err != nil {
+		t.Fatal(err)
+	}
+	_ = file.Close()
+	// Keep the indexed file identity so this checks selected-body reads rather
+	// than the separate full authority validation required after external edits.
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.ReadMessageCheckpoint(ctx, chatID, "assistant", receipt.Version); err != nil {
+		t.Fatalf("safe checkpoint consulted raw output: %v", err)
+	}
+	if _, err := s.ReadMessage(ctx, chatID, "assistant"); !errors.Is(err, status_error.ChatLogCorrupted) {
+		t.Fatalf("full output read skipped validation: %v", err)
+	}
+}
+
+func TestInterruptedToolOutputBatchRetriesAsOneAtomicFrontier(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	s := openTestStore(t, root)
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "fixture", Subject: "account", SessionID: "session"}, InvocationID: "invocation"}
+	initial := agent.NativeFragmentBatch{Key: key, MessageID: "message", CommitKey: "initial", Changes: []agent.MessageChange{
+		{Kind: agent.MessageToolUpdate, ToolCallID: "tool", Data: json.RawMessage(`{"id":"tool"}`), Text: "initial:"},
+	}}
+	if _, err := s.CommitNativeFragments(ctx, initial); err != nil {
+		t.Fatal(err)
+	}
+	_, path := s.nativeStream(key)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{"id": "tool", "status": "completed"})
+	batch := agent.NativeFragmentBatch{Key: key, MessageID: "message", CommitKey: "next", Changes: []agent.MessageChange{
+		{Kind: agent.MessageToolUpdate, ToolCallID: "tool", Data: body, Text: strings.Repeat("new", 4000)},
+	}}
+	original, err := s.CommitNativeFragments(ctx, batch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	if err := os.WriteFile(path, all[:len(before)+(len(all)-len(before))/2], 0600); err != nil {
+		t.Fatal(err)
+	}
+	s = openTestStore(t, root)
+	retried, err := s.CommitNativeFragments(ctx, batch)
+	if err != nil || retried != original {
+		t.Fatalf("interrupted frontier was partly committed: %+v want %+v err=%v", retried, original, err)
+	}
+	changes, err := s.ReadNativeFragments(ctx, retried)
+	if err != nil || len(changes) != 1 {
+		t.Fatalf("retried snapshot: %+v %v", changes, err)
+	}
+	var fields map[string]string
+	if json.Unmarshal(changes[0].Data, &fields) != nil || fields["terminalOutput"] != "initial:"+strings.Repeat("new", 4000) || fields["status"] != "completed" {
+		t.Fatal("retry duplicated partial output or lost terminal metadata")
+	}
+}
+
+func TestOversizedToolUpdatePreservesThePreviousDurableFrontier(t *testing.T) {
+	s := openTestStore(t, t.TempDir())
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "fixture", Subject: "account", SessionID: "session"}, InvocationID: "invocation"}
+	initial, err := s.CommitNativeFragments(t.Context(), agent.NativeFragmentBatch{Key: key, MessageID: "message", CommitKey: "initial",
+		Changes: []agent.MessageChange{{Kind: agent.MessageToolUpdate, ToolCallID: "tool", Data: json.RawMessage(`{"id":"tool"}`), Text: "known"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, path := s.nativeStream(key)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal(map[string]any{"id": "tool", "output": strings.Repeat("x", 16<<20)})
+	_, err = s.CommitNativeFragments(t.Context(), agent.NativeFragmentBatch{Key: key, MessageID: "message", CommitKey: "oversized",
+		Changes: []agent.MessageChange{{Kind: agent.MessageToolUpdate, ToolCallID: "tool", Data: data}}})
+	if !errors.Is(err, status_error.ChatLogRecordInvalid) {
+		t.Fatalf("oversized raw tool payload did not fail at the existing batch boundary: %v", err)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("oversized tool payload partly changed durable history")
+	}
+	changes, err := s.ReadNativeFragments(t.Context(), initial)
+	if err != nil || len(changes) != 1 || !bytes.Contains(changes[0].Data, []byte(`"terminalOutput":"known"`)) {
+		t.Fatalf("payload failure lost the earlier frontier: %+v %v", changes, err)
+	}
+}
+
+func TestToolBatchPlanningPreservesEscapedUTF8AndPhysicalLimits(t *testing.T) {
+	ctx := t.Context()
+	s := openTestStore(t, t.TempDir())
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "fixture", Subject: "account", SessionID: "session"}, InvocationID: "planned"}
+	text := strings.Repeat("界🙂\x00\"<>&\n", 110000)
+	remaining := text
+	var first, last agent.NativeFragmentRange
+	firstBytes := 0
+	metadata := json.RawMessage(`{"id":"tool","status":"completed","locations":[],"content":[]}`)
+	for part := 0; remaining != ""; part++ {
+		batch := agent.NativeFragmentBatch{Key: key, MessageID: "message", CommitKey: fmt.Sprintf("part-%d", part),
+			Changes: []agent.MessageChange{{Kind: agent.MessageToolUpdate, ToolCallID: "tool", Data: metadata, Text: remaining}}}
+		prepared, err := s.PrepareNativeToolUpdate(ctx, batch)
+		if err != nil || len(prepared.Changes) != 1 || len(prepared.Changes[0].Text) == 0 {
+			t.Fatalf("prepare did not select a bounded prefix: %+v %v", prepared, err)
+		}
+		n := len(prepared.Changes[0].Text)
+		if !utf8.ValidString(prepared.Changes[0].Text) || prepared.Changes[0].Text != remaining[:n] {
+			t.Fatal("logical batch split a native UTF-8 scalar")
+		}
+		if n < len(remaining) && bytes.Contains(prepared.Changes[0].Data, []byte(`"status":"completed"`)) {
+			t.Fatal("partial frame published its terminal before all bytes")
+		}
+		last, err = s.CommitNativeFragments(ctx, prepared)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if part == 0 {
+			first, firstBytes = last, n
+		}
+		slot, path := s.nativeStream(key)
+		slot.mu.Lock()
+		idx, err := slot.load(ctx, path, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		header, exists, err := idx.batch(path, nativeID(key)+":fragment:"+batch.CommitKey)
+		if err != nil || !exists || header.Receipt.Version-header.Receipt.First+1 > maxBatchRows {
+			t.Fatalf("logical batch exceeded physical row limit: %+v %v", header, err)
+		}
+		positions, err := idx.between(header.Receipt.First, header.Receipt.Version)
+		slot.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		file, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, pos := range positions {
+			row, err := readDiskRow(file, pos.Where)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if row.Fragment.Change.Kind == nativeToolOutput && (len(row.Fragment.Change.Text) > toolOutputRecordBytes || !utf8.ValidString(row.Fragment.Change.Text)) {
+				t.Fatal("logical batching widened physical output records")
+			}
+		}
+		_ = file.Close()
+		remaining = remaining[n:]
+	}
+	for _, sample := range []struct {
+		// ref 是本次读取的不可变输出边界。
+		ref agent.NativeFragmentRange
+		// output 是该边界应包含的精确字节。
+		output string
+	}{{first, text[:firstBytes]}, {last, text}} {
+		changes, err := s.ReadNativeFragments(ctx, sample.ref)
+		if err != nil || len(changes) != 1 {
+			t.Fatalf("planned snapshot read: %+v %v", changes, err)
+		}
+		var fields map[string]json.RawMessage
+		var output string
+		if json.Unmarshal(changes[0].Data, &fields) != nil || json.Unmarshal(fields["terminalOutput"], &output) != nil || output != sample.output {
+			t.Fatal("escaping or a later frontier changed the native frame bytes")
+		}
+	}
+}
+
+func TestCurrentToolSnapshotReplacementAndDeltaShareOneOutputModel(t *testing.T) {
+	s := openTestStore(t, t.TempDir())
+	key := agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "fixture", Subject: "account", SessionID: "session"}, InvocationID: "replacement"}
+	commit := func(id string, kind agent.MessageChangeKind, body, text string) agent.NativeFragmentRange {
+		t.Helper()
+		ref, err := s.CommitNativeFragments(t.Context(), agent.NativeFragmentBatch{Key: key, CommitKey: id, MessageID: "message",
+			Changes: []agent.MessageChange{{Kind: kind, ToolCallID: "tool", Data: json.RawMessage(body), Text: text}}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ref
+	}
+	initial := commit("initial", agent.MessageToolSnapshot, `{"id":"tool","terminalOutput":"initial","status":"in_progress"}`, "")
+	appended := commit("append", agent.MessageToolUpdate, `{"id":"tool"}`, ":tail")
+	replaced := commit("replace", agent.MessageToolSnapshot, `{"id":"tool","terminalOutput":"replacement","status":"completed"}`, "")
+	later := commit("later", agent.MessageToolUpdate, `{"id":"tool"}`, ":later")
+	_ = commit("clear", agent.MessageToolSnapshot, `{"id":"tool","terminalOutput":"","status":"completed"}`, "")
+	cleared := commit("after-clear", agent.MessageToolUpdate, `{"id":"tool"}`, "after-clear")
+	for _, sample := range []struct {
+		// ref 是完整替换或增量产生的不可变快照。
+		ref agent.NativeFragmentRange
+		// want 是快照所引用的精确输出。
+		want string
+	}{{initial, "initial"}, {appended, "initial:tail"}, {replaced, "replacement"}, {later, "replacement:later"}, {cleared, "after-clear"}} {
+		changes, err := s.ReadNativeFragments(t.Context(), sample.ref)
+		if err != nil || len(changes) != 1 {
+			t.Fatalf("current snapshot input: %+v %v", changes, err)
+		}
+		var fields map[string]string
+		if json.Unmarshal(changes[0].Data, &fields) != nil || fields["terminalOutput"] != sample.want {
+			t.Fatalf("replacement or delta used another output model: %s wanted %q", changes[0].Data, sample.want)
+		}
 	}
 }

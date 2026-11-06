@@ -6,21 +6,6 @@ export const workflowZh = {
   failureDeliveryProgress:
     "已确认发送 {{count}} 个片段；后续处理应保留已有发送记录。",
   failureCauses: {
-    businessCheckFailed:
-      "步骤已执行，但结果未通过业务检查，后续步骤已停止。请检查数据或调整检查条件后重试。",
-    undeclaredTarget:
-      "发送目标未声明为工作流依赖，请通过优化工作流补充允许发送的目标范围。",
-    targetUnavailable: "发送目标已不存在，请通过优化工作流重新选择获准聊天。",
-    deliveryNotAllowed:
-      "此聊天未允许工作流发送，请在聊天配置中开启“工作流发送”。",
-    chatNotAuthorized: "此聊天尚未授权或授权已撤销，请在聊天配置中恢复授权。",
-    connectionDisabled: "发送连接已停用，请在连接设置中启用后重试。",
-    loginRequired: "发送连接的登录已失效，请重新登录。",
-    contextUnavailable: "微信聊天缺少发送上下文，请先给机器人发一条消息。",
-    platformUnavailable:
-      "消息平台暂时不可用，请检查连接状态；发送结果不确定时先核对是否已收到。",
-    protocolInvalid: "消息平台返回了无法识别的响应，请查看失败详情并检查连接。",
-    fileInvalid: "发送文件不存在或超出工作范围，请通过优化工作流修正文件。",
     generic: "工作流执行失败，请查看失败详情，或通过优化工作流分析原因并调整。",
   },
 
@@ -500,27 +485,6 @@ export const workflowEn = {
   failureDeliveryProgress:
     "{{count}} parts are confirmed sent. Preserve the existing delivery receipts.",
   failureCauses: {
-    businessCheckFailed:
-      "The step ran, but its result did not pass the business check. Later steps have stopped. Check the data or adjust the check condition, then retry.",
-    undeclaredTarget:
-      "The delivery target is not declared as a workflow dependency. Optimize the workflow to declare the allowed target scope.",
-    targetUnavailable:
-      "The delivery target no longer exists. Optimize the workflow and select an approved chat.",
-    deliveryNotAllowed:
-      "Workflow delivery is disabled for this chat. Enable it in the chat configuration.",
-    chatNotAuthorized:
-      "This chat is not authorized or its authorization was revoked. Restore authorization in the chat configuration.",
-    connectionDisabled:
-      "The delivery connection is disabled. Enable it in connection settings and retry.",
-    loginRequired: "The delivery connection is signed out. Sign in again.",
-    contextUnavailable:
-      "The WeChat delivery context is missing. Send the bot a message first.",
-    platformUnavailable:
-      "The messaging platform is unavailable. Check the connection and verify uncertain delivery before sending again.",
-    protocolInvalid:
-      "The messaging platform returned an unsupported response. Inspect the failure details and connection.",
-    fileInvalid:
-      "The delivery file is missing or outside the approved workspace. Optimize the workflow to correct it.",
     generic:
       "The workflow failed. Inspect the failure details or optimize the workflow to diagnose and correct it.",
   },

@@ -21,6 +21,7 @@ type Group = NonNullable<ListUsageGroupsResponse["groups"]>[number];
 const numbers = new Intl.NumberFormat();
 const counters = [
   "input",
+  "reportedInput",
   "output",
   "cacheRead",
   "cacheWrite",
@@ -33,14 +34,7 @@ function TokenValue({ metrics }: { metrics: Metrics }) {
   return known == null ? (
     <span className="text-muted-foreground">{t("unknown")}</span>
   ) : (
-    <>
-      <span className="tabular-nums">{numbers.format(known)}</span>
-      {metrics.totalWithCacheRead == null ? (
-        <span className="text-muted-foreground type-caption ml-2">
-          {t("partial")}
-        </span>
-      ) : null}
-    </>
+    <span className="tabular-nums">{numbers.format(known)}</span>
   );
 }
 
@@ -67,7 +61,8 @@ export function UsageOverview({ summary }: { summary: Summary }) {
           </dd>
         </div>
       </dl>
-      {metrics.knownTotalWithCacheRead != null ? (
+      {metrics.knownTotalWithCacheRead != null ||
+      metrics.knownTokens?.reportedInput != null ? (
         <dl className="text-muted-foreground type-ui flex flex-wrap gap-x-4 gap-y-1">
           {counters.map((key) => {
             const value = metrics.knownTokens?.[key];

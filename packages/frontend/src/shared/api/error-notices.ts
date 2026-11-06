@@ -1,4 +1,9 @@
 import {
+  applicationErrorMessage,
+  type ErrorParameters,
+  type ErrorMessageSource,
+} from "./error-presentation";
+import {
   ApiError,
   apiErrorMessageKey,
   serviceConnectionMessageKey,
@@ -15,15 +20,21 @@ export type ErrorNotice = {
   /** 一次真实失败的版本；回调绑定或页面卸载不产生新失败版本。 */
   version: string;
   message: string;
+  errorCode?: string;
+  errorParams?: ErrorParameters;
+  messageSource?: ErrorMessageSource;
   messageKey?: typeof serviceConnectionMessageKey;
   createdAt: number;
   action?: "retry" | "check";
 };
-type ErrorNoticeInput = Omit<
+type ErrorNoticeDraft = Omit<
   ErrorNotice,
   "createdAt" | "operation" | "version"
 > & {
   operation?: string;
+};
+type ErrorNoticeInput = Omit<ErrorNoticeDraft, "messageSource"> & {
+  messageSource: ErrorMessageSource;
 };
 
 const storageKey = "ally:error-notices";
@@ -52,13 +63,28 @@ function readStored<T>(key: string, fallback: T): T {
 }
 const stored: unknown = readStored(storageKey, []);
 function storedNotice(
-  input: ErrorNoticeInput,
+  input: ErrorNoticeDraft,
 ): Omit<ErrorNotice, "createdAt" | "version"> {
   const messageKey =
     input.messageKey === serviceConnectionMessageKey
       ? input.messageKey
       : apiErrorMessageKey(input.message);
-  const notice = { ...input, operation: input.operation ?? input.id };
+  const notice = {
+    ...input,
+    operation: input.operation ?? input.id,
+    errorCode:
+      typeof input.errorCode === "string" ? input.errorCode : undefined,
+    errorParams:
+      input.errorParams &&
+      typeof input.errorParams === "object" &&
+      !Array.isArray(input.errorParams)
+        ? input.errorParams
+        : undefined,
+    messageSource:
+      input.messageSource === "public"
+        ? ("public" as const)
+        : ("localized" as const),
+  };
   return messageKey ? { ...notice, message: "", messageKey } : notice;
 }
 let notices: ErrorNotice[] = Array.isArray(stored)
@@ -99,6 +125,27 @@ function subscribe(listener: () => void) {
   };
 }
 
+/** 把已归一化的 ApiError 投影到同一通知契约；未知异常只能使用调用方编写的本地 fallback。 */
+export function apiErrorNoticePresentation(
+  error: unknown,
+  fallback: string,
+): Pick<
+  ErrorNoticeInput,
+  "message" | "errorCode" | "errorParams" | "messageSource"
+> {
+  if (error instanceof ApiError && error.code !== "NETWORK") {
+    return {
+      message: error.message,
+      errorCode: error.code,
+      errorParams: error.params,
+      // 无传输来源的 ApiError 仅由产品主动构造可读本地提示，普通 Error 不进入此分支。
+      messageSource: error.messageSource ?? "public",
+    };
+  }
+  return { message: fallback, messageSource: "public" };
+}
+
+/** 通知调用方必须显式提供正文来源；历史缺失来源统一降级为应用本地化。 */
 export function reportErrorNotice(
   input: ErrorNoticeInput,
   action?: () => void | Promise<void>,
@@ -163,7 +210,15 @@ export function useErrorNotices() {
       storedNotices.map((notice) =>
         notice.messageKey
           ? { ...notice, message: t(notice.messageKey) }
-          : notice,
+          : {
+              ...notice,
+              message: applicationErrorMessage({
+                code: notice.errorCode,
+                params: notice.errorParams,
+                message: notice.message,
+                messageSource: notice.messageSource,
+              }),
+            },
       ),
     [storedNotices, t],
   );
@@ -197,10 +252,8 @@ export function reportChatError(
   operation = `chat-operation:${scope}:${fallback}`,
 ) {
   if (error instanceof ApiError && error.noticeId) return;
-  const message =
-    error instanceof ApiError && error.code !== "NETWORK"
-      ? error.message
-      : fallback;
+  const presentation = apiErrorNoticePresentation(error, fallback);
+  const { message } = presentation;
   const messageKey = apiErrorMessageKey(message);
   const previous = notices.find(
     (notice) =>
@@ -213,7 +266,7 @@ export function reportChatError(
   reportErrorNotice({
     id: previous?.id ?? `chat-operation:${crypto.randomUUID()}`,
     scope,
-    message,
+    ...presentation,
     operation,
   });
 }

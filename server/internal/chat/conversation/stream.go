@@ -108,6 +108,7 @@ const (
 	indexNativeEvent
 	indexDetachedInput
 	indexNativeClassification
+	indexNativeToolOutput
 )
 
 func contextError(ctx context.Context) error {

@@ -40,6 +40,7 @@ function renderPicker(
     const [reasoning, setReasoning] = useState(
       overrides.selectedReasoning ?? "high",
     );
+    const [fast, setFast] = useState(overrides.fast);
     return (
       <ExecutionModelControl
         models={models}
@@ -52,6 +53,14 @@ function renderPicker(
             ?.name ?? (overrides.allowDefaultModel ? "默认模型" : "")
         }
         selectedReasoning={reasoning}
+        fast={fast}
+        onFastChange={
+          overrides.onFastChange &&
+          ((value) => {
+            overrides.onFastChange?.(value);
+            setFast(value);
+          })
+        }
         onModelChange={(value) => {
           onModelChange(value);
           setModel(value);
@@ -68,6 +77,17 @@ function renderPicker(
 }
 
 describe("执行模型与强度选择", () => {
+  it("目录不可用时仍可打开弹层手动探测", async () => {
+    const user = userEvent.setup();
+    const onRefresh = vi.fn();
+    renderPicker({ disabled: true, onRefresh });
+    await user.click(screen.getByTestId("composer-model-control"));
+    expect(onRefresh).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "刷新模型列表" }));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog")).toBeVisible();
+  });
+
   it.each([10, 11])("%i 个实际模型时仅超过十个显示搜索框", async (count) => {
     const user = userEvent.setup();
     renderPicker({
@@ -415,14 +435,16 @@ it("表单入口有推理选项时也直接打开模型列表，选择后关闭"
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-it("无推理选项的模型也可独立修改 Fast，并传递显式关闭", async () => {
+it("无推理选项时 Fast 默认关闭，可在同一浮层开启和关闭", async () => {
   const user = userEvent.setup();
   const onFastChange = vi.fn();
-  renderPicker({ reasoningOptions: [], fast: true, onFastChange });
+  renderPicker({ reasoningOptions: [], onFastChange });
   await user.click(screen.getByTestId("composer-model-control"));
-  const fast = screen.getByRole("radiogroup", { name: "Fast" });
-  await user.click(within(fast).getByRole("radio", { name: "关闭" }));
-  expect(onFastChange).toHaveBeenCalledWith(false);
-  await user.click(within(fast).getByRole("radio", { name: "默认" }));
-  expect(onFastChange).toHaveBeenCalledWith(undefined);
+  const fast = screen.getByRole("button", { name: "Fast", pressed: false });
+  await user.click(fast);
+  expect(fast).toHaveAttribute("aria-pressed", "true");
+  expect(onFastChange).toHaveBeenLastCalledWith(true);
+  await user.keyboard("[Space]");
+  expect(fast).toHaveAttribute("aria-pressed", "false");
+  expect(onFastChange).toHaveBeenLastCalledWith(false);
 });

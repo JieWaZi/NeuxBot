@@ -193,12 +193,18 @@ type finalMessageChat struct {
 	chat.Module
 	// executions 记录适配器查询的准确执行身份。
 	executions []string
+	// initial 是测试显式提供的首次执行，空值沿用已完成执行。
+	initial *models.Execution
 	// outcome 是指定执行的原生终止与失败事实。
 	outcome chat.ExecutionOutcome
 }
 
 func (c *finalMessageChat) ReadInitialExecution(context.Context, string) (chat.InitialExecutionState, error) {
-	return chat.InitialExecutionState{CreateRequestID: "attempt", InitialExecution: &models.Execution{ID: "first", Status: constants.ExecutionStatusCompleted}}, nil
+	initial := c.initial
+	if initial == nil {
+		initial = &models.Execution{ID: "first", Status: constants.ExecutionStatusCompleted}
+	}
+	return chat.InitialExecutionState{CreateRequestID: "attempt", InitialExecution: initial}, nil
 }
 func (c *finalMessageChat) ReadExecutionOutcome(_ context.Context, chatID, executionID string) (chat.ExecutionOutcome, error) {
 	if chatID != "worker-chat" || executionID != "first" {
@@ -330,5 +336,23 @@ func TestCoreWorkerDispatchReplayedCompletionVerifiesOutcome(t *testing.T) {
 	}
 	if receipt.Status != constants.ExecutionStatusCompleted || receipt.OutputFailure == nil || receipt.FinalPresent {
 		t.Fatalf("completed replay bypassed outcome verification: %+v", receipt)
+	}
+}
+
+func TestCoreWorkerFailureKeepsApplicationPresentation(t *testing.T) {
+	port := &finalMessageChat{initial: &models.Execution{ID: "first", Status: constants.ExecutionStatusFailed, ErrorCode: "RuntimeWorkspaceScopeUnsupported", ErrorParams: map[string]interface{}{"MaxDirectories": 2}, ErrorMessageSource: constants.ErrorMessageSourceLocalized}}
+	receipt, err := (CoreWorkerAdapter{Chats: port}).Inspect(t.Context(), models.WorkflowEffect{ID: "attempt", ChatID: "worker-chat", ExecutionID: "first"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if receipt.ErrorCode != "RuntimeWorkspaceScopeUnsupported" || receipt.ErrorParams["MaxDirectories"] != 2 || receipt.ErrorMessageSource != "localized" {
+		t.Fatalf("worker failure = %+v", receipt)
+	}
+	port.initial.ErrorCode = "RuntimeQuotaExhausted"
+	port.initial.ErrorMessage = "Native quota exhausted"
+	port.initial.ErrorMessageSource = constants.ErrorMessageSourcePublic
+	receipt, err = (CoreWorkerAdapter{Chats: port}).Inspect(t.Context(), models.WorkflowEffect{ID: "attempt", ChatID: "worker-chat", ExecutionID: "first"})
+	if err != nil || receipt.ErrorMessage != "Native quota exhausted" || receipt.ErrorMessageSource != "public" {
+		t.Fatalf("worker public reason = %+v error=%v", receipt, err)
 	}
 }

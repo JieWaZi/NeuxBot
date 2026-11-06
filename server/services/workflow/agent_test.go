@@ -23,6 +23,15 @@ import (
 )
 
 func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) {
+	testAgentRunFileScope(t, false)
+}
+
+func TestAgentRunFreezesExactReferencedFileWithoutParentScope(t *testing.T) {
+	testAgentRunFileScope(t, true)
+}
+
+func testAgentRunFileScope(t *testing.T, exact bool) {
+	t.Helper()
 	ctx := context.Background()
 	s, _ := workflowTestService(t)
 	s.dataDirectory = t.TempDir()
@@ -49,7 +58,11 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 	s.chats = &consumerChatBoundary{actual: models.Execution{ID: lease.ID, ChatID: lease.ChatID, Status: constants.ExecutionStatusRunning, PermissionLevel: constants.PermissionLevelDefault}, summary: chat.ChatSummary{Chat: models.Chat{ID: lease.ChatID, ActiveExecutionID: lease.ID, AdditionalWorkingDirectories: []string{root}}}}
 	registry := capability.New(nil)
 	defer registry.Close()
-	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: lease.ID, FileRoots: []string{root}, Bindings: s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer), Validate: func(context.Context) error { return nil }})
+	roots, files := []string{root}, []string(nil)
+	if exact {
+		roots, files = nil, []string{filepath.Join(sub, "report.txt")}
+	}
+	grant, activate, revoke, err := registry.Prepare(capability.GrantSpec{ExecutionID: lease.ID, FileRoots: roots, FilePaths: files, Bindings: s.AgentBindings(lease.ID, lease.AuthToken, constants.WorkflowCapabilityScopeConsumer), Validate: func(context.Context) error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +83,7 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 				t.Fatal(err)
 			}
 		}
-		code := agentcli.Execute(ctx, arguments, agentcli.IO{In: &input, Out: &output, Err: &failure, ContextFile: connection})
+		code := agentcli.Execute(ctx, append([]string{"--context", connection}, arguments...), agentcli.IO{In: &input, Out: &output, Err: &failure})
 		body := output.Bytes()
 		if code != 0 {
 			body = failure.Bytes()
@@ -86,6 +99,12 @@ func TestAgentRunFreezesFilesFromCLICWDAndConflictsOnChangedBytes(t *testing.T) 
 	outside := filepath.Join(t.TempDir(), "outside.txt")
 	if err := os.WriteFile(outside, []byte("not authorized"), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	if exact {
+		outside = filepath.Join(sub, "unreferenced.txt")
+		if err := os.WriteFile(outside, []byte("not explicitly referenced"), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	invalid := map[string]any{"definitionId": definition.ID, "revisionId": definition.CurrentRevisionID, "args": map[string]any{"files": []string{"report.txt", outside}}}
 	code, rejected := call([]string{"workflow", "runs", "start", "--request-id", "outside", "--input", "-"}, invalid)

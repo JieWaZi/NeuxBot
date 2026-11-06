@@ -113,8 +113,6 @@ type service struct {
 	resolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
 	// runtimeSummaries supplies pure workspace file metadata from the runtime catalog.
 	runtimeSummaries []agent.RuntimeSummary
-	// workspacePreparer projects instructions and skills without opening a runtime.
-	workspacePreparer *agent.WorkspacePreparer
 	// nativeResources tracks connection-owned public resource projections for hot turns.
 	nativeResources sync.Map
 	// journal 读写 Chat 权威事实、窄投影和 committed SSE。
@@ -270,7 +268,6 @@ func New(config Config) (Core, error) {
 		threads:              config.Threads,
 		resolveAccount:       config.ResolveAccount,
 		runtimeSummaries:     slices.Clone(config.RuntimeSummaries),
-		workspacePreparer:    agent.NewWorkspacePreparer(config.RuntimeSummaries),
 		journal:              config.Journal,
 		dormantChats:         config.DormantChats,
 		wakerController:      config.Wakers,

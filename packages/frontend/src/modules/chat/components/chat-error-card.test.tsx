@@ -6,9 +6,11 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import "@/shared/i18n";
+import { i18n } from "@/shared/i18n";
 import { ApiError } from "@/shared/api/errors";
+import { classifyChatSendFailure } from "../runtime/chat-send-failure";
 import {
+  ChatErrorActions,
   ChatErrorCard,
   MessageFailure,
   ChatErrorNotices,
@@ -17,6 +19,7 @@ import {
 import {
   dismissErrorNotices,
   reportErrorNotice,
+  reportChatError,
   useErrorNotices,
 } from "@/shared/api/error-notices";
 import { renderHook } from "@testing-library/react";
@@ -58,6 +61,7 @@ describe("消息错误卡片", () => {
     );
     act(() =>
       reportErrorNotice({
+        messageSource: "public",
         id: "other",
         scope: "chat:history",
         operation: "approval:one",
@@ -125,7 +129,7 @@ describe("消息错误卡片", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("执行失败原因");
   });
 
-  it("模型思考配置错误使用操作说明，完整协议错误保留在详情", () => {
+  it("模型思考配置错误展示原生原因，完整协议错误保留在详情", () => {
     const raw = JSON.stringify({
       code: -32603,
       message: "Internal error",
@@ -136,7 +140,7 @@ describe("消息错误卡片", () => {
     });
     render(<ChatErrorCard id="thinking" message={raw} />);
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "当前模型不支持关闭思考，请调整思考设置后重试。",
+      "Current model does not support disabling thinking (modelId=step-5-preview)",
     );
     expect(screen.queryByText(raw)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "错误详情" }));
@@ -224,16 +228,35 @@ describe("消息错误卡片", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
     expect(await screen.findByText("当前回复不能直接重试")).toBeInTheDocument();
-    expect(screen.getByText("限流")).toBeInTheDocument();
+    expect(screen.queryByText("限流")).not.toBeInTheDocument();
+  });
+
+  it("重试返回同一原生原因时不重复显示", async () => {
+    render(
+      <ChatErrorCard
+        id="same-retry"
+        message="Native quota reason"
+        onRetry={async () => {
+          throw new ApiError("Native quota reason");
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "重试" })).not.toBeDisabled(),
+    );
+    expect(screen.getAllByText("Native quota reason")).toHaveLength(1);
   });
 
   it("错误按对话隔离，切换回来仍保留，关闭后才删除", () => {
     reportErrorNotice({
+      messageSource: "public",
       id: "scope-one",
       scope: "chat:one",
       message: "本对话发送失败",
     });
     reportErrorNotice({
+      messageSource: "public",
       id: "scope-two",
       scope: "chat:two",
       message: "另一个对话发送失败",
@@ -247,56 +270,221 @@ describe("消息错误卡片", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("默认只展示最新错误，手动展开后可分别重试和关闭", async () => {
-    const retry = vi.fn();
-    reportErrorNotice(
-      {
-        id: "older",
-        scope: "chat:group",
-        message: "较早错误",
-        action: "retry",
-      },
-      retry,
-    );
+  it("同一失败同时来自消息和提示时关闭一次，切换聊天后也不重复弹出", () => {
+    const failure = {
+      id: "failed-one",
+      role: "assistant" as const,
+      status: "failed" as const,
+      errorCode: "QUOTA_EXHAUSTED",
+    };
     reportErrorNotice({
-      id: "latest",
-      scope: "chat:group",
-      message: "最新错误",
+      messageSource: "public",
+      id: "duplicate",
+      scope: "chat:one",
+      message: "当前额度已用尽。请切换模型，或等待额度恢复后重试。",
     });
-    render(<ChatErrorNotices scopes={["chat:group"]} />);
-
+    const { rerender } = render(
+      <ChatErrorNotices scopes={["chat:one"]} failure={failure} />,
+    );
     expect(screen.getAllByRole("alert")).toHaveLength(1);
-    expect(screen.getByRole("alert")).toHaveTextContent("最新错误");
-    expect(screen.queryByText("较早错误")).not.toBeInTheDocument();
-    const expand = screen.getByRole("button", { name: "另外 1 条错误" });
-    expect(expand).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(expand);
-    expect(screen.getAllByRole("alert")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    await waitFor(() => expect(retry).toHaveBeenCalledTimes(1));
-    expect(screen.getAllByRole("alert")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "收起其他错误" }));
-    expect(screen.getAllByRole("alert")).toHaveLength(1);
-    fireEvent.click(screen.getByRole("button", { name: "另外 1 条错误" }));
-    fireEvent.click(screen.getByRole("button", { name: "关闭全部错误" }));
+    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    rerender(<ChatErrorNotices scopes={["chat:two"]} />);
+    rerender(<ChatErrorNotices scopes={["chat:one"]} failure={failure} />);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("关闭最新错误后自动展示上一条，关闭全部只影响当前对话", () => {
-    reportErrorNotice({ id: "first", scope: "chat:one", message: "第一条" });
-    reportErrorNotice({ id: "second", scope: "chat:one", message: "第二条" });
-    reportErrorNotice({ id: "other", scope: "chat:two", message: "其他对话" });
-    render(<ChatErrorNotices scopes={["chat:one"]} />);
+  it("同一原生额度原因只展示最新一条，关闭后不复现", () => {
+    reportChatError(
+      new ApiError(
+        "当前额度已用尽，请切换模型或等待额度恢复后重试",
+        "RuntimeQuotaExhausted",
+      ),
+      "chat:quota",
+      "发送失败",
+    );
+    reportErrorNotice({
+      messageSource: "public",
+      id: "quota-other",
+      scope: "chat:quota",
+      message: "另一个操作失败",
+    });
+    render(
+      <ChatErrorNotices
+        scopes={["chat:quota"]}
+        failure={{
+          id: "quota-failed",
+          role: "assistant",
+          status: "failed",
+          errorCode: "QUOTA_EXHAUSTED",
+          errorMessage: "当前额度已用尽，请切换模型或等待额度恢复后重试",
+        }}
+      />,
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(
+      screen.queryByRole("button", { name: /另外/ }),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("第一条");
-    expect(screen.queryByText("其他对话")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("关闭执行失败后再次出现的原生错误仍会展示", () => {
+    render(
+      <ChatErrorNotices
+        scopes={["chat:repeat"]}
+        failure={{
+          id: "failed-repeat",
+          role: "assistant",
+          status: "failed",
+          errorMessage: "Native quota reason",
+        }}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+    act(() =>
+      reportErrorNotice({
+        messageSource: "public",
+        id: "new-attempt",
+        scope: "chat:repeat",
+        message: "Native quota reason",
+      }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Native quota reason");
+  });
+
+  it("会话缺失的原生原因经过发送接口后仍直接展示", () => {
+    const failure = classifyChatSendFailure(
+      new ApiError(
+        "Native session missing: choose a different session",
+        "RuntimeSessionNotFound",
+      ),
+    );
+    render(<ChatErrorNotices scopes={[]} fallback={failure} />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Native session missing: choose a different session",
+    );
+  });
+
+  it("新的执行失败不会被此前其他操作的错误遮住", () => {
+    reportErrorNotice({
+      messageSource: "public",
+      id: "old-attachment",
+      scope: "chat:latest",
+      message: "附件读取失败",
+    });
+    render(
+      <ChatErrorNotices
+        scopes={["chat:latest"]}
+        failure={{
+          id: "new-failure",
+          role: "assistant",
+          status: "failed",
+          errorCode: "QUOTA_EXHAUSTED",
+          updatedAt: Date.now() + 1000,
+        }}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("当前额度已用尽");
+    expect(screen.queryByText("附件读取失败")).not.toBeInTheDocument();
+  });
+
+  it("新错误直接覆盖旧错误，最新错误恢复后也不回退", () => {
+    reportErrorNotice({
+      messageSource: "public",
+      id: "older",
+      scope: "chat:group",
+      message: "较早错误",
+    });
+    const { unmount } = render(<ChatErrorNotices scopes={["chat:group"]} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("较早错误");
+    act(() =>
+      reportErrorNotice({
+        messageSource: "public",
+        id: "latest",
+        scope: "chat:group",
+        message: "最新错误",
+      }),
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.getByRole("alert")).toHaveTextContent("最新错误");
+    expect(screen.queryByText("较早错误")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /另外/ }),
+    ).not.toBeInTheDocument();
+    act(() => dismissErrorNotices(["latest"]));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    unmount();
+    render(<ChatErrorNotices scopes={["chat:group"]} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("关闭最新错误不展示旧错误，且不影响其他对话", () => {
+    reportErrorNotice({
+      messageSource: "public",
+      id: "first",
+      scope: "chat:one",
+      message: "第一条",
+    });
+    reportErrorNotice({
+      messageSource: "public",
+      id: "second",
+      scope: "chat:one",
+      message: "第二条",
+    });
+    reportErrorNotice({
+      messageSource: "public",
+      id: "other",
+      scope: "chat:two",
+      message: "其他对话",
+    });
+    const { rerender } = render(<ChatErrorNotices scopes={["chat:one"]} />);
+    fireEvent.click(screen.getByRole("button", { name: "关闭错误提示" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    rerender(<ChatErrorNotices scopes={["chat:two"]} />);
+    expect(screen.getByRole("alert")).toHaveTextContent("其他对话");
+  });
+
+  it("新的操作错误覆盖执行失败，操作恢复后不再展示旧执行错误", () => {
+    const failure = {
+      id: "failed-overwritten",
+      role: "assistant" as const,
+      status: "failed" as const,
+      errorMessage: "旧执行失败",
+      createdAt: Date.now() - 1000,
+    };
+    const { unmount } = render(
+      <ChatErrorNotices scopes={["chat:overwrite"]} failure={failure} />,
+    );
+    act(() =>
+      reportErrorNotice({
+        messageSource: "public",
+        id: "new-operation",
+        scope: "chat:overwrite",
+        message: "新操作失败",
+      }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("新操作失败");
+    act(() => dismissErrorNotices(["new-operation"]));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    unmount();
+    render(<ChatErrorNotices scopes={["chat:overwrite"]} failure={failure} />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 
-describe("人工等待超时错误卡片", () => {
+describe("人工等待超时错误提示", () => {
   it.each([
-    ["INPUT_TIMEOUT", "waiting for user input timed out", "等待回答超时"],
-    ["APPROVAL_TIMEOUT", "waiting for approval timed out", "等待审批超时"],
+    [
+      "INPUT_TIMEOUT",
+      "waiting for user input timed out",
+      "waiting for user input timed out",
+    ],
+    [
+      "APPROVAL_TIMEOUT",
+      "waiting for approval timed out",
+      "waiting for approval timed out",
+    ],
   ])("%s 用稳定失败码展示明确文案", (code, detail, label) => {
     render(
       <MessageFailure
@@ -306,11 +494,73 @@ describe("人工等待超时错误卡片", () => {
           status: "failed",
           errorCode: code,
           errorMessage: detail,
+          errorMessageSource: "public",
         }}
         last={true}
+        placement="composer"
       />,
     );
     expect(screen.getByRole("alert")).toHaveTextContent(label);
-    expect(screen.queryByText(detail)).not.toBeInTheDocument();
+    expect(screen.getByText(detail)).toBeInTheDocument();
   });
+});
+
+it("消息失败按当前语言和参数重绘，并保留原生公开原因", async () => {
+  const message = {
+    id: "contract-message",
+    executionId: "contract",
+    role: "assistant" as const,
+    status: "failed" as const,
+    errorCode: "RuntimeWorkspaceScopeUnsupported",
+    errorParams: { MaxDirectories: 2 },
+    errorMessageSource: "localized" as const,
+    content: "",
+  };
+  const { rerender, unmount } = render(
+    <MessageFailure message={message} last placement="composer" />,
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "当前智能体最多支持 2 个项目目录，请调整工作范围",
+  );
+  await act(() => i18n.changeLanguage("en-US"));
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "the selected agent supports up to 2 project directories; adjust the workspace scope",
+  );
+  rerender(
+    <MessageFailure
+      message={{
+        ...message,
+        errorCode: "RuntimeQuotaExhausted",
+        errorMessage: "Native quota exhausted",
+        errorMessageSource: "public",
+      }}
+      last
+      placement="composer"
+    />,
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent("Native quota exhausted");
+  unmount();
+  await i18n.changeLanguage("zh-CN");
+});
+
+it("稳定应用会话错误保留真实恢复动作", () => {
+  const recover = vi.fn();
+  render(
+    <ChatErrorActions.Provider value={{ recover }}>
+      <MessageFailure
+        message={{
+          id: "missing-session",
+          role: "assistant",
+          status: "failed",
+          content: "",
+          errorCode: "RuntimeSessionNotFound",
+          errorMessageSource: "localized",
+        }}
+        last
+        placement="composer"
+      />
+    </ChatErrorActions.Provider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "在这里继续" }));
+  expect(recover).toHaveBeenCalledTimes(1);
 });

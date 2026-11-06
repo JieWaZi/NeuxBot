@@ -3,7 +3,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { expect, it, vi } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { usesNativeModelCatalog } from "@/shared/api/runtime-queries";
 import "@/shared/i18n";
 
@@ -43,6 +43,7 @@ import {
   useChatComposerControls,
   type ChatExecutionSelectionPatch,
 } from "./chat-composer-controls";
+import { ChatExecutionPicker } from "./chat-execution-picker";
 
 vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
   listAiAccountsOptions: () => ({
@@ -86,6 +87,26 @@ vi.mock("@/shared/api/generated/@tanstack/react-query.gen", () => ({
     }),
   }),
 }));
+
+vi.mock("@/shared/hooks/use-execution-selection", () => ({
+  useExecutionSelection: ({
+    runtime,
+  }: {
+    runtime?: (typeof runtimes)[number];
+  }) => ({
+    models: runtime?.models ?? [],
+    defaultModel: runtime?.defaultModel,
+    catalogState: "fresh",
+    catalogPending: false,
+  }),
+}));
+
+beforeAll(() => {
+  Element.prototype.hasPointerCapture = () => false;
+});
+afterAll(() => {
+  Reflect.deleteProperty(Element.prototype, "hasPointerCapture");
+});
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
@@ -189,43 +210,74 @@ function Controls({
 }
 
 it.each(["codex", "claude", "cursor", "pi", "workbuddy"])(
-  "普通与团队共用选择器支持 %s 和其模型",
+  "预览 %s 目录后一次提交智能体、账号与模型",
   async (id) => {
     const user = userEvent.setup();
     const changed = vi.fn();
     renderControls(changed);
-    await user.click(screen.getByRole("button", { name: "Kimi" }));
+    await user.click(screen.getByTestId("composer-model-control"));
     await user.click(
-      screen.getByRole("menuitemradio", {
-        name: new RegExp(`^${id}\\s*可用$`, "i"),
-      }),
+      screen.getByRole("button", { name: new RegExp(`^${id}$`, "i") }),
     );
-    if (id !== "cursor" && id !== "workbuddy") {
-      expect(
-        screen.getByRole("menuitem", { name: "返回智能体列表" }),
-      ).toBeVisible();
-      await user.click(screen.getByRole("menuitemradio", { name: "内置账号" }));
-    }
-    await user.click(
-      screen.getByRole("button", { name: new RegExp(`${id} Default`, "i") }),
-    );
-    await user.click(screen.getByRole("radio", { name: `${id} Model` }));
-    await waitFor(() =>
-      expect(changed).toHaveBeenLastCalledWith(
-        expect.objectContaining({ model: `${id}/model` }),
-      ),
-    );
-    expect(changed).toHaveBeenCalledWith(
-      expect.objectContaining({
-        runtimeId: id,
-        model: "",
-      }),
+    expect(changed).not.toHaveBeenCalled();
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜索模型" }),
+      "/model",
     );
     expect(
-      screen.getByRole("button", { name: `${id} Model` }),
-    ).toBeInTheDocument();
+      screen.queryByRole("radio", { name: `${id} Default` }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: `${id} Model` }));
+    expect(changed).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        runtimeId: id,
+        accountId: "system",
+        model: `${id}/model`,
+      }),
+    );
+    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
+      `${id} Model`,
+    );
+    expect(screen.getByRole("dialog", { name: "选择模型" })).toBeVisible();
+    expect(screen.getByRole("radio", { name: `${id} Model` })).toBeChecked();
   },
 );
+
+it("目录刷新失败时用感叹号提示并允许选择已有模型", async () => {
+  const user = userEvent.setup();
+  const onModel = vi.fn();
+  const models = [
+    { id: "cursor-first", name: "Cursor First" },
+    { id: "cursor-second", name: "Cursor Second" },
+  ];
+  const runtime = { id: "cursor", enabled: true, state: "ready", models };
+  render(
+    <ChatExecutionPicker
+      runtimes={[runtime]}
+      accounts={[]}
+      runtime={runtime}
+      accountId="system"
+      models={models}
+      modelId="cursor-first"
+      modelName="Cursor First"
+      reasoning=""
+      allowDefaultReasoning
+      catalogState="stale"
+      catalogIssue="catalogStale"
+      onRefresh={vi.fn()}
+      onModel={onModel}
+      onReasoning={vi.fn()}
+      onFast={vi.fn()}
+    />,
+  );
+  await user.click(screen.getByTestId("composer-model-control"));
+  expect(screen.getByRole("status")).toHaveTextContent("模型目录刷新失败");
+  expect(screen.queryByText(/已保留上次结果/)).not.toBeInTheDocument();
+  const option = screen.getByRole("radio", { name: "Cursor Second" });
+  expect(option).toBeEnabled();
+  await user.click(option);
+  expect(onModel).toHaveBeenCalledExactlyOnceWith(runtime, "system", models[1]);
+});
 
 it("已有对话时用全部源目录查询 Git 仓库", async () => {
   listWorkspaceGitRepositories.mockClear();
@@ -264,107 +316,133 @@ it("已有对话时锁定工作区选择并提示开启新对话", async () => {
   expect(control).toHaveAttribute("title", "如需修改目录请开启新对话");
 });
 
-it("代理菜单不展示未就绪代理和内部诊断", async () => {
+it("目录只展示已就绪智能体和兼容账号", async () => {
   const user = userEvent.setup();
   const availableRuntimes = [
     ...runtimes,
-    ...["Missing", "Broken"].map((name) => ({
+    {
+      id: "missing",
+      name: "Missing",
       enabled: true,
-      defaultModel: "missing-default",
-      defaultReasoning: "medium",
-      models: [],
-      id: name,
-      name,
       state: "unavailable",
-      diagnostics: [{ message: "[RuntimeUnavailable][50000000006]" }],
-    })),
+      defaultModel: "",
+      defaultReasoning: "",
+      models: [],
+    },
   ];
-  renderControls(vi.fn(), availableRuntimes);
-  await user.click(screen.getByTestId("composer-runtime-control"));
-  expect(
-    screen.queryByRole("menuitemradio", { name: /Missing|Broken/ }),
-  ).not.toBeInTheDocument();
-  expect(screen.queryByText(/RuntimeUnavailable/)).not.toBeInTheDocument();
-  expect(screen.queryByText("Cursor CLI")).not.toBeInTheDocument();
-  expect(
-    screen.getByRole("menuitemradio", { name: /Cursor/ }),
-  ).not.toHaveTextContent("CLI");
-});
-
-it("在智能体菜单内选择账号后交给原生目录解析模型与 Thinking", async () => {
-  const user = userEvent.setup();
   const changed = vi.fn();
-  renderControls(changed);
+  renderControls(changed, availableRuntimes);
+  await user.click(screen.getByTestId("composer-model-control"));
   expect(
-    screen.queryByRole("button", { name: "账号" }),
+    screen.queryByRole("button", { name: "Missing" }),
   ).not.toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Kimi" }));
-  await user.click(
-    screen.getByRole("menuitemradio", { name: /^Kimi\s*可用$/ }),
-  );
+  await user.click(screen.getByRole("button", { name: /^claude$/i }));
+  await user.click(screen.getByRole("combobox", { name: "账号" }));
   expect(
-    screen.getByRole("menuitem", { name: "返回智能体列表" }),
-  ).toBeVisible();
-  expect(
-    screen.queryByRole("menuitemradio", { name: /^Pi\s*可用$/ }),
+    screen.queryByRole("option", { name: "DeepSeek" }),
   ).not.toBeInTheDocument();
-  await user.click(
-    await screen.findByRole("menuitemradio", { name: "Anthropic 账号" }),
-  );
-  expect(changed).toHaveBeenLastCalledWith(
+  await user.click(screen.getByRole("option", { name: "Anthropic 账号" }));
+  expect(changed).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("radio", { name: "claude Model" }));
+  expect(changed).toHaveBeenCalledExactlyOnceWith(
     expect.objectContaining({
+      runtimeId: "claude",
       accountId: "anthropic-account",
-      model: "",
-      reasoning: "",
+      model: "claude/model",
     }),
   );
-  expect(screen.getByTestId("composer-runtime-control")).toHaveTextContent(
-    "Kimi · Anthropic 账号",
-  );
-  await user.click(screen.getByTestId("composer-runtime-control"));
-  await user.click(screen.getByRole("menuitemradio", { name: /^Pi\s*可用$/ }));
-  expect(changed.mock.lastCall?.[0]).toHaveProperty(
-    "accountId",
-    "anthropic-account",
-  );
-  await user.click(screen.getByRole("menuitemradio", { name: "内置账号" }));
-  expect(changed.mock.lastCall?.[0]).toHaveProperty("accountId", "system");
-  expect(screen.getByTestId("composer-runtime-control")).toHaveTextContent(
-    "Pi",
-  );
 });
 
-it("仅有内置账号的智能体不展开账号，并只展示兼容账号", async () => {
+it("模型行展示已知的上下文档位，并将 OpenCode 免费模型放到前面", async () => {
   const user = userEvent.setup();
-  renderControls(vi.fn());
-  await user.click(screen.getByRole("button", { name: "Kimi" }));
-  await user.click(
-    screen.getByRole("menuitemradio", { name: /^claude\s*可用$/i }),
+  const changed = vi.fn();
+  const fixtures = [
+    ...runtimes.map((runtime) =>
+      runtime.id === "cursor"
+        ? {
+            ...runtime,
+            models: [
+              {
+                id: "gpt-5.6-sol",
+                name: "GPT-5.6 Sol",
+                contextWindowTokens: 272_000,
+                maxContextWindowTokens: 1_000_000,
+                defaultReasoning: "medium",
+                reasoningOptions: [{ id: "medium", name: "Medium" }],
+              },
+              { id: "gemini[reasoning=high]", name: "Gemini" },
+            ],
+          }
+        : runtime,
+    ),
+    {
+      id: "opencode",
+      name: "OpenCode",
+      enabled: true,
+      state: "ready",
+      defaultModel: "openai/paid",
+      defaultReasoning: "",
+      models: [
+        { id: "openai/paid", name: "Paid Model" },
+        { id: "opencode/free", name: "Beam Free" },
+      ],
+    },
+  ];
+  renderControls(changed, fixtures);
+  await user.click(screen.getByTestId("composer-model-control"));
+  await user.click(screen.getByRole("button", { name: "Cursor" }));
+  expect(screen.getByRole("radio", { name: "GPT-5.6 Sol" })).toHaveTextContent(
+    "272K / 1M · 中",
   );
+  expect(screen.getByRole("radio", { name: "Gemini" })).toHaveTextContent("高");
+  await user.click(screen.getByRole("button", { name: "OpenCode" }));
+  const rows = screen.getAllByRole("radio");
+  expect(rows[0]).toHaveTextContent("Beam Free免费");
+  expect(rows[1]).toHaveTextContent("Paid Model默认");
+  expect(changed).not.toHaveBeenCalled();
+});
 
-  expect(
-    screen.getByRole("menuitemradio", { name: "Anthropic 账号" }),
-  ).toBeVisible();
-  expect(
-    screen.queryByRole("menuitemradio", { name: /DeepSeek/ }),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("menuitemradio", { name: /ChatGPT 订阅/ }),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("menuitemradio", { name: /协议与当前智能体不兼容/ }),
-  ).not.toBeInTheDocument();
-  await user.click(screen.getByRole("menuitem", { name: "返回智能体列表" }));
-  expect(
-    screen.queryByRole("menuitemradio", { name: "Anthropic 账号" }),
-  ).not.toBeInTheDocument();
-  await user.click(
-    screen.getByRole("menuitemradio", { name: /^cursor\s*可用$/i }),
-  );
-  expect(
-    screen.queryByRole("menuitemradio", { name: "内置账号" }),
-  ).not.toBeInTheDocument();
-  expect(screen.getByTestId("composer-runtime-control")).toHaveTextContent(
-    "Cursor",
+it("Qoder 可选两份目录的模型，只展示新模型和自定义分组", async () => {
+  const user = userEvent.setup();
+  const changed = vi.fn();
+  const fixtures = [
+    ...runtimes,
+    {
+      id: "qoder",
+      name: "Qoder",
+      enabled: true,
+      state: "ready",
+      defaultModel: "qfmodel",
+      defaultReasoning: "",
+      models: [
+        {
+          id: "qfmodel",
+          name: "Qwen3.8-Flash",
+          group: "qoder/new",
+          free: true,
+          creditMultiplier: 0,
+        },
+        { id: "auto", name: "Auto", group: "qoder/default" },
+        { id: "smodel", name: "Sonus", group: "qoder/new", creditMultiplier: 8 },
+        { id: "custom-model", name: "Custom Model", group: "qoder/custom" },
+      ],
+    },
+  ];
+  renderControls(changed, fixtures);
+  await user.click(screen.getByTestId("composer-model-control"));
+  await user.click(screen.getByRole("button", { name: "Qoder" }));
+  const sonus = screen.getByRole("radio", { name: "Sonus" });
+  expect(screen.queryByRole("radio", { name: "Auto" })).not.toBeInTheDocument();
+  expect(screen.getByRole("group", { name: "新模型" })).toContainElement(sonus);
+  expect(sonus).toHaveTextContent("8×");
+  const custom = screen.getByRole("radio", { name: "Custom Model" });
+  expect(screen.getByRole("group", { name: "自定义" })).toContainElement(custom);
+  expect(custom).toBeEnabled();
+  const flash = screen.getByRole("radio", { name: "Qwen3.8-Flash" });
+  expect(flash).toHaveTextContent("免费");
+  expect(flash).toHaveTextContent("0×");
+  await user.click(sonus);
+  expect(changed).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ runtimeId: "qoder", model: "smodel" }),
   );
 });

@@ -3,7 +3,9 @@ package execution
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -87,16 +89,17 @@ func TestPrepareChatGroupUsesLeadMemberChatAsMainChat(t *testing.T) {
 			group.Chats[1].WorkspaceDirectory,
 		)
 	}
-	leadProjects, err := filepath.EvalSymlinks(filepath.Join(group.Chats[0].WorkspaceDirectory, "projects"))
-	if err != nil {
-		t.Fatalf("resolve lead projects: %v", err)
+	shared := filepath.Join(filepath.Dir(group.Chats[0].WorkspaceDirectory), "shared")
+	if info, err := os.Lstat(shared); err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("team shared directory is not real: %v", err)
 	}
-	memberProjects, err := filepath.EvalSymlinks(filepath.Join(group.Chats[1].WorkspaceDirectory, "projects"))
-	if err != nil {
-		t.Fatalf("resolve member projects: %v", err)
-	}
-	if leadProjects != memberProjects {
-		t.Fatalf("member project roots differ: %q vs %q", leadProjects, memberProjects)
+	for _, chat := range group.Chats {
+		if !slices.Contains(chat.AdditionalWorkingDirectories, shared) {
+			t.Fatalf("member cannot access real team shared files: %+v", chat)
+		}
+		if _, err := os.Lstat(filepath.Join(chat.WorkspaceDirectory, "projects")); !os.IsNotExist(err) {
+			t.Fatalf("member cwd retained obsolete project alias: %v", err)
+		}
 	}
 	accepted, err := manager.execution.Start(context.Background(), WorkIntent{
 		Chat:  ChatTarget{ChatID: group.Chats[1].ID},

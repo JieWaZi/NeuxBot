@@ -595,6 +595,45 @@ func TestProviderRuntimeChild(t *testing.T) {
 	}
 	out := json.NewEncoder(os.Stdout)
 	scanner := bufio.NewScanner(os.Stdin)
+	if (provider == "qoder" || provider == "qoder-cn") && slices.Contains(os.Args, "--sdk") {
+		for scanner.Scan() {
+			var frame struct {
+				// ID correlates SDK requests and receipts.
+				ID string `json:"request_id"`
+				// Request holds control parameters read by the test.
+				Request map[string]any `json:"request"`
+			}
+			if json.Unmarshal(scanner.Bytes(), &frame) != nil {
+				os.Exit(2)
+			}
+			method, _ := frame.Request["type"].(string)
+			fmt.Fprintln(trace, method)
+			result := map[string]any{}
+			switch method {
+			case "daemon.initialize":
+				result["daemon_protocol_version"] = 2
+				result["capabilities"] = []string{"daemon_queries_v1"}
+			case "daemon.account_info":
+				result["account"] = map[string]string{"userId": "fixture-native-user"}
+			case "daemon.get_models":
+				result["models"] = []map[string]any{
+					{"value": "fixture-qoder-auto", "displayName": "Auto", "isEnabled": false},
+					{"value": "fixture-qoder-model", "displayName": "Fixture", "isNew": true, "isEnabled": true, "isFree": true},
+					{"value": "fixture-sdk-only", "displayName": "SDK Only", "isNew": true, "isEnabled": true,
+						"efforts": []string{"high", "max", "low"}, "defaultEffort": "high", "priceFactor": 0.1},
+					{"value": "fixture-custom", "displayName": "Custom Model", "source": "custom", "isEnabled": true},
+				}
+			default:
+				os.Exit(2)
+			}
+			if out.Encode(map[string]any{"type": "control_response", "response": map[string]any{
+				"subtype": "success", "request_id": frame.ID, "response": result,
+			}}) != nil {
+				os.Exit(2)
+			}
+		}
+		os.Exit(0)
+	}
 	for scanner.Scan() {
 		var frame struct {
 			ID        json.RawMessage
@@ -674,11 +713,21 @@ func TestProviderRuntimeChild(t *testing.T) {
 		} else {
 			switch frame.Method {
 			case "initialize":
-				reply["result"] = map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{
+				result := map[string]any{"protocolVersion": 1, "agentCapabilities": map[string]any{
 					"promptCapabilities": map[string]any{"image": true},
 				}}
+				if provider == "gemini" {
+					result["agentInfo"] = map[string]string{"name": "gemini-cli", "version": "0.65.0"}
+				}
+				reply["result"] = result
 			case "session/new":
 				result := map[string]any{"sessionId": "fixture-native"}
+				if provider == "gemini" {
+					result["configOptions"] = []map[string]any{{
+						"type": "select", "id": "model", "category": "model", "name": "Model", "currentValue": "fixture-gemini-model",
+						"options": []map[string]string{{"value": "fixture-gemini-model", "name": "Fixture"}},
+					}}
+				}
 				switch os.Getenv("FIXTURE_QODER_MODELS") {
 				case "signed-out":
 					reply["error"] = map[string]any{"code": -32000, "message": "Authentication required"}
@@ -690,7 +739,11 @@ func TestProviderRuntimeChild(t *testing.T) {
 				case "available":
 					result["configOptions"] = []map[string]any{{
 						"type": "select", "id": "model", "category": "model", "name": "Model", "currentValue": "fixture-qoder-model",
-						"options": []map[string]string{{"value": "fixture-qoder-model", "name": "Fixture"}},
+						"options": []map[string]string{
+							{"value": "fixture-qoder-model", "name": "Fixture"},
+							{"value": "fixture-acp-only", "name": "ACP Only"},
+							{"value": "fixture-qoder-auto", "name": "Unavailable"},
+						},
 					}}
 				}
 				if reply["error"] != nil {
@@ -715,4 +768,34 @@ func TestProviderRuntimeChild(t *testing.T) {
 		}
 	}
 	os.Exit(0)
+}
+
+func TestQoderContextWindowPreservesSessionCompatibility(t *testing.T) {
+	for _, provider := range []string{"qoder", "qoder-cn"} {
+		t.Run(provider, func(t *testing.T) {
+			base := ThreadRequest{Connection: ProviderConnectionRequest{
+				Account: AccountRequest{Provider: provider, CWD: t.TempDir(), Model: "qfmodel"},
+			}}
+			base.Selection = &TurnSelection{}
+			original, err := freezeThreadSettings(&base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			changed := base
+			changed.Selection = &TurnSelection{ContextWindow: "400000"}
+			override, err := freezeThreadSettings(&changed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(original) != string(override) || changed.Connection.Launch.QoderContextWindow != 400_000 {
+				t.Fatalf("window override must update launch settings and preserve the session key")
+			}
+			reset := changed
+			reset.Selection = &TurnSelection{}
+			key, err := freezeThreadSettings(&reset)
+			if err != nil || string(key) != string(original) || reset.Connection.Launch.QoderContextWindow != 0 {
+				t.Fatalf("default launch was not restored: %v", err)
+			}
+		})
+	}
 }

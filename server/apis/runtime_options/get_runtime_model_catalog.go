@@ -69,6 +69,7 @@ func (o *GetRuntimeModelCatalog) Output(ctx *gin.Context) (interface{}, error) {
 func nativeModelOption(provider string, row agent.AgentChoice) RuntimeModelOption {
 	result := RuntimeModelOption{
 		ID: row.ID, Name: row.Name, Description: row.Description, Group: row.Group, GroupName: row.GroupName,
+		Free: row.Free, CreditMultiplier: row.CreditMultiplier,
 		ConfigurationKnown: row.Config != nil && len(row.Config.UnknownOptionIDs) == 0,
 		InputModalities:    row.InputModalities, DefaultServiceTier: row.DefaultServiceTier,
 		FastSupported: row.FastServiceTier != "", ReasoningOptions: []RuntimeReasoningOption{},
@@ -95,6 +96,23 @@ func nativeModelOption(provider string, row agent.AgentChoice) RuntimeModelOptio
 			continue
 		}
 		switch {
+		case agent.IsContextWindowOption(setting):
+			result.ContextWindowTokens = agent.ContextWindowTokens(setting.Value.ID)
+			result.MaxContextWindowTokens = result.ContextWindowTokens
+			var options []RuntimeContextWindowOption
+			for _, choice := range setting.Choices {
+				tokens := agent.ContextWindowTokens(choice.ID)
+				if tokens > 0 && !slices.ContainsFunc(options, func(option RuntimeContextWindowOption) bool { return option.ID == choice.ID }) {
+					options = append(options, RuntimeContextWindowOption{ID: choice.ID, Tokens: tokens})
+					result.MaxContextWindowTokens = max(result.MaxContextWindowTokens, tokens)
+				}
+			}
+			if len(options) > 1 {
+				result.ContextWindowOptions = options
+				if slices.ContainsFunc(options, func(option RuntimeContextWindowOption) bool { return option.ID == setting.Value.ID }) {
+					result.DefaultContextWindow = setting.Value.ID
+				}
+			}
 		case (setting.Category == "thought_level" || setting.ID == "reasoning_effort") && !reasoningUnknown:
 			for _, choice := range setting.Choices {
 				if provider == constants.RuntimeIDWorkBuddy && (choice.ID == constants.RuntimeWorkBuddyThinkingEnabled || choice.ID == constants.RuntimeWorkBuddyThinkingDisabled) {

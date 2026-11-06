@@ -191,15 +191,16 @@ API -> Service -> Repository Controller
 - 普通稳定业务常量统一定义在 `constants/common.go`，名称必须准确表达业务用途，不得仅复述字面值；局部实现参数和仅用于测试样例或断言的数据不强制集中；
 - 所有业务枚举的类型和全部成员必须共同定义在 `constants`，即使枚举当前只供单个 API 使用也不得在 API 包内定义；
 - 每个枚举类型使用独立文件，并统一通过 `//go:generate toolx gen enum Xxx` 生成对应实现；生成文件禁止手工修改；
-- 所有导出的类型、函数、方法和常量必须有准确中文注释；
-- 所有 Go 结构体字段都必须有准确中文注释；
+- `server/internal/agent/` 及全部子包的源码注释统一使用英文，覆盖导出符号、结构体字段、内部实现与测试；本节其他中文注释要求不适用于该目录；
+- 其他目录中，所有导出的类型、函数、方法和常量必须有准确中文注释；
+- 其他目录中，所有 Go 结构体字段都必须有准确中文注释；
 - 字段规则覆盖未导出字段、测试替身字段和适配器内部字段；
 - 注释说明业务含义或技术用途，不机械重复字段名；
 - 新增或修改结构体时，必须检查该结构体的全部字段；
-- `internal/agent/native` 的原生 I/O 边界可以使用结构化技术 Fault 保留协议、取消和清理原因，由根 Agent 在产品入口一次映射为 `status_error`；这个例外只覆盖 native，不扩展到根 Agent、capability、cli、其他 `internal` 包、API、业务 Service 或装配。native 不定义产品错误，也不导入产品 constants、数据库或服务。
-- 除上述 native 结构化技术 Fault 边界外，所有项目自有错误必须集中定义在 `constants/status_error` 并通过 toolx 生成，规则覆盖 API、Service、Repository Controller、`internal` 深模块、`global` 装配和进程入口，生成文件禁止手改；
+- 独立 acp-go 客户端的结构化技术 Fault 保留原生协议、取消和清理原因，由 `internal/agent` 在产品边界一次转换为 `status_error`；宿主不另设 native 执行层或本地技术错误体系。
+- 所有宿主项目自有错误必须集中定义在 `constants/status_error` 并通过 toolx 生成，规则覆盖 API、Service、Repository Controller、`internal` 深模块、`global` 装配和进程入口，生成文件禁止手改；
 - API、Service、Repository Controller 和 `internal` 可以直接返回 `status_error` 中准确表达当前失败语义的错误，API 只负责通过 `ginx.WithStack(err)` 补充调用堆栈和必要的外部参数；
-- 除上述 native 结构化技术 Fault 边界外，禁止在任何业务或内部模块中使用 `errors.New`、`fmt.Errorf`、包级哨兵或本包自定义错误类型另行定义项目错误；内部错误说明只能使用稳定英文技术文本，禁止返回中文错误文案；只有 `constants/status_error` 可以通过 `@errZH`、`@errEN` 定义中文与英文 i18n 错误；标准库、第三方依赖和系统调用返回的底层错误必须在首次转换处记录技术上下文，再转换为 `status_error`，不得直接暴露给上层或前端；
+- 禁止在宿主任何业务或内部模块中使用 `errors.New`、`fmt.Errorf`、包级哨兵或本包自定义错误类型另行定义项目错误；内部错误说明只能使用稳定英文技术文本，禁止返回中文错误文案；只有 `constants/status_error` 可以通过 `@errZH`、`@errEN` 定义中文与英文 i18n 错误；标准库、第三方依赖和系统调用返回的底层错误必须在首次转换处记录技术上下文，再转换为 `status_error`，不得直接暴露给上层或前端；
 - 现有 `status_error` 不能准确表达失败语义时，必须在 `constants/status_error/error.go` 新增对应错误并重新生成，禁止为了消除错误字符串而把配置缺失、调用取消、外部服务失败、协议损坏、数据库故障等不同语义粗略折叠为 `BadRequest`、`InternalServerError` 或其他不准确错误；
 - 同一失败沿调用链只能转换一次；下层已经返回 `status_error` 时，上层必须原样传递，禁止再次按 `errors.Is`、错误文本或 switch 二次映射；
 - API 不得对 Controller、Service 已经返回的 `status_error` 再增加 `errors.go`、错误映射函数、`errors.Is` 分支或 switch 做二次转换；收到此类错误后直接使用 `ginx.WithStack(err)`；
@@ -248,7 +249,7 @@ API -> Service -> Repository Controller
 - Repository 契约测试允许注入 GORM Dialector；
 - Codex、Git、时钟和文件等外部边界使用 Fake；
 - 测试事务回滚、乐观锁、错误映射、Context 取消和进程退出；
-- 测试替身的每个结构体字段同样需要准确中文注释。
+- 测试替身的每个结构体字段同样需要准确注释，语言遵守第 6 节的目录规则。
 
 SQL 性能基准位于 `repositories/controllers/sql_performance_test.go`，在 `server` 中运行：
 
@@ -272,7 +273,7 @@ go test ./repositories/controllers -run '^$' -bench '^BenchmarkSQL' -benchtime=2
 - [ ] 术语和对象符合领域词汇及用户当前确认的功能范围；
 - [ ] 同领域内部能力归到同一上层目录；文件按共同变化的职责组织，没有单个辅助函数文件、命令碎片或宽泛聚合文件；
 - [ ] 没有新增用户确认范围之外的对象、表或依赖；
-- [ ] 所有新增或修改的 Go 结构体字段都有准确中文注释；
+- [ ] 所有新增或修改的 Go 结构体字段都有准确注释，语言遵守第 6 节的目录规则；
 - [ ] 稳定业务值、默认值、协议值和跨文件复用值已集中到 `constants`，调用方没有散落对应字面量；
 - [ ] 业务枚举的类型和成员均按类型独立定义在 `constants`，并通过 toolx 生成实现；
 - [ ] API 没有重复校验 ginx 请求绑定阶段已经校验的 toolx 枚举；

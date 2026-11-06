@@ -187,17 +187,7 @@ func (m *Manager) ResolveReference(subject, id, input, base string) (Resolution,
 	if strings.ContainsRune(input, 0) {
 		return Resolution{Status: "unavailable"}, nil
 	}
-	allowed := func(p string) bool {
-		if accountPath(p) {
-			return false
-		}
-		for _, r := range scope.roots {
-			if within(r, p) {
-				return true
-			}
-		}
-		return false
-	}
+	allowed := scope.allows
 	if base == "" {
 		base = scope.Root
 	} else {
@@ -226,6 +216,9 @@ func (m *Manager) ResolveReference(subject, id, input, base string) (Resolution,
 		try(input)
 	} else {
 		try(filepath.Join(base, input))
+		if scope.chatRoot != "" && strings.HasPrefix(input, "attachments/") {
+			try(filepath.Join(scope.chatRoot, input))
+		}
 		if len(candidates) == 0 {
 			for _, r := range scope.roots {
 				try(filepath.Join(r, input))

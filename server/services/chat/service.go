@@ -9,8 +9,8 @@ import (
 
 	"github.com/JieWaZi/NeuxBot/server/constants/status_error"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/changes"
-	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/conversation"
+	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
 	"github.com/JieWaZi/NeuxBot/server/internal/chatstorage"
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
@@ -74,8 +74,8 @@ type Service interface {
 	DeleteChatsAtomically(ctx context.Context, chatIDs []string, finalize func(context.Context) error) error
 	// DeleteProvisionalTeam 回滚未 ready 的 Team 聚合和可能只完成一部分的成员 Chat。
 	DeleteProvisionalTeam(ctx context.Context, threadID string, provisioningID string, chatIDs []string) error
-	// DeleteWakerChats 从权威日志枚举并删除一位伙伴的全部独立 Chat，保留团队历史快照。
-	DeleteWakerChats(ctx context.Context, wakerID string) error
+	// DeleteWakerChats 持有伙伴与 Chat 排他边界，原子删除普通 Chat 索引及 finalize 的伙伴事实。
+	DeleteWakerChats(ctx context.Context, wakerID string, prepare func([]string) (func() error, error), finalize func(context.Context) error) error
 }
 
 // Module 是组合根同时交给查询入口和 Execution Core 的完整 Chat 模块。

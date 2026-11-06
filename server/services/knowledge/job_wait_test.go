@@ -211,7 +211,7 @@ func TestKnowledgeJobWaitCLIResumesSameTaskAndReturnsReport(t *testing.T) {
 	invoke := func() map[string]any {
 		t.Helper()
 		var output, stderr bytes.Buffer
-		code := agentcli.Execute(ctx, []string{"knowledge", "jobs", "wait", "--library-id", lib.ID, "--job-id", job.ID, "--timeout", "1ms"}, agentcli.IO{Out: &output, Err: &stderr, ContextFile: connection})
+		code := agentcli.Execute(ctx, []string{"--context", connection, "knowledge", "jobs", "wait", "--library-id", lib.ID, "--job-id", job.ID, "--timeout", "1ms"}, agentcli.IO{Out: &output, Err: &stderr})
 		var response capability.Response
 		if err := json.Unmarshal(output.Bytes(), &response); err != nil || code != 0 || !response.OK {
 			t.Fatalf("CLI wait: code=%d stdout=%s stderr=%s error=%v", code, &output, &stderr, err)

@@ -203,19 +203,19 @@ const {
               {
                 name: "AGENTS.md",
                 path: "/tmp/project/AGENTS.md",
-                relativePath: "projects/zddiv3/AGENTS.md",
+                relativePath: "AGENTS.md",
               },
             ]
           : []),
         {
           name: "readme.md",
           path: "/tmp/ally/readme.md",
-          relativePath: "projects/zddiv3/readme.md",
+          relativePath: "readme.md",
         },
         {
           name: "package.json",
           path: "/tmp/ally/package.json",
-          relativePath: "projects/zddiv3/package.json",
+          relativePath: "package.json",
         },
         ...(scopePath === "attachments/generated"
           ? [
@@ -230,6 +230,7 @@ const {
       return files
         .filter(
           (file) =>
+            file.path.startsWith(`${_root}/`) &&
             (!scopePath ||
               file.relativePath === scopePath ||
               file.relativePath.startsWith(`${scopePath}/`)) &&
@@ -653,6 +654,7 @@ vi.mock("../api/chat-queries", async (importOriginal) => ({
           title: "直接进入的对话",
           forkSourceChatId: forkSourceChatId.current,
           workspaceDirectory: "/tmp/ally",
+          additionalWorkingDirectories: ["/tmp/project"],
           activeExecutionId: chatActiveExecutionID.current,
           latestSequence: chatLatestSequence.current,
           lastPermissionLevel: chatLastPermissionLevel.current,
@@ -714,6 +716,7 @@ const originalScrollTo = HTMLElement.prototype.scrollTo;
 beforeAll(() => {
   vi.stubGlobal("ResizeObserver", ResizeObserverStub);
   HTMLElement.prototype.scrollTo = vi.fn();
+  Element.prototype.hasPointerCapture = () => false;
 });
 
 beforeEach(() => {
@@ -802,6 +805,7 @@ beforeEach(() => {
 
 afterAll(() => {
   HTMLElement.prototype.scrollTo = originalScrollTo;
+  Reflect.deleteProperty(Element.prototype, "hasPointerCapture");
   vi.unstubAllGlobals();
 });
 
@@ -1055,21 +1059,24 @@ describe("ChatPage", () => {
       </QueryClientProvider>,
     );
     await waitFor(() =>
-      expect(screen.getByTestId("composer-runtime-control")).toHaveTextContent(
-        "Codex · 账号 A",
+      expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
+        "账号 A",
       ),
     );
     await user.click(screen.getByRole("button", { name: "测试打开成员会话" }));
     await screen.findByText("历史消息：member-chat");
     await waitFor(() =>
-      expect(screen.getByTestId("composer-runtime-control")).toHaveTextContent(
-        "Codex · 账号 B",
+      expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
+        "账号 B",
       ),
     );
-    expect(screen.getByRole("button", { name: "b-model" })).toBeVisible();
-    await user.click(screen.getByTestId("composer-runtime-control"));
-    await user.click(screen.getByRole("menuitemradio", { name: /Codex/ }));
-    await user.click(screen.getByRole("menuitemradio", { name: "账号 C" }));
+    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
+      "b-model",
+    );
+    await user.click(screen.getByTestId("composer-model-control"));
+    await user.click(screen.getByRole("combobox", { name: "账号" }));
+    await user.click(screen.getByRole("option", { name: "账号 C" }));
+    await user.click(await screen.findByRole("radio", { name: "c-model" }));
     expect(
       screen.getByRole("dialog", { name: "在当前聊天中继续" }),
     ).toBeVisible();
@@ -1081,7 +1088,10 @@ describe("ChatPage", () => {
     await user.clear(screen.getByLabelText("总结不可用时携带的最近轮数"));
     await user.type(screen.getByLabelText("总结不可用时携带的最近轮数"), "3");
     await user.click(screen.getByRole("button", { name: "确认切换并继续" }));
-    expect(screen.getByRole("button", { name: "c-model" })).toBeVisible();
+    expect(screen.getByRole("radio", { name: "c-model" })).toBeChecked();
+    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
+      "c-model",
+    );
     expect(window.localStorage.getItem("ally.account.chat:member-chat")).toBe(
       "C",
     );
@@ -1941,22 +1951,20 @@ describe("ChatPage", () => {
         name: "测试打开执行成员会话",
       }),
     );
-    const runtimeButton = await screen.findByTestId("composer-runtime-control");
-    expect(runtimeButton).toHaveTextContent("Codex");
-    expect(runtimeButton).not.toBeNull();
-    if (!runtimeButton) throw new Error("未找到成员 Runtime 选择按钮");
+    const runtimeButton = await screen.findByTestId("composer-model-control");
     await user.click(runtimeButton);
-    await user.click(screen.getByRole("menuitemradio", { name: /claude/i }));
+    await user.click(screen.getByRole("button", { name: "Claude" }));
+    await user.click(
+      await screen.findByRole("radio", { name: "Native Sonnet" }),
+    );
+    expect(screen.getByRole("combobox", { name: "选择强度" })).toBeVisible();
+    await user.click(screen.getByRole("combobox", { name: "选择强度" }));
+    await user.click(screen.getByRole("option", { name: "低" }));
     await user.keyboard("{Escape}");
     await user.click(
       screen.getByRole("button", { name: "执行权限：自动审批" }),
     );
     await user.click(screen.getByRole("menuitemradio", { name: /完全访问/ }));
-    await user.click(await screen.findByTestId("composer-model-control"));
-    await user.click(screen.getByRole("button", { name: "选择模型" }));
-    await user.click(screen.getByRole("radio", { name: "Native Sonnet" }));
-    screen.getByRole("slider", { name: "选择强度" }).focus();
-    await user.keyboard("{Home}{ArrowRight}{Escape}");
     await user.click(screen.getByRole("tab", { name: "团队负责人" }));
     await user.type(
       screen.getByRole("textbox", { name: "输入消息" }),
@@ -1966,7 +1974,7 @@ describe("ChatPage", () => {
 
     await waitFor(() => expect(onCreateThread).toHaveBeenCalledTimes(1));
     expect(screen.getByText("开始工作")).toBeVisible();
-    expect(screen.getByText("飞速运转")).toBeVisible();
+    expect(screen.getByText("正在准备会话")).toBeVisible();
     expect(
       screen.getByText("团队负责人", { selector: "span.type-body" }),
     ).toBeVisible();
@@ -2451,7 +2459,7 @@ describe("ChatPage", () => {
       await waitFor(() =>
         expect(screen.getByText("修复首条消息闪屏")).toBeVisible(),
       );
-      expect(screen.getByText("飞速运转")).toBeVisible();
+      expect(screen.getByText("正在准备会话")).toBeVisible();
       expect(
         screen.queryByRole("heading", { name: "今天想一起完成什么？" }),
       ).not.toBeInTheDocument();
@@ -3050,7 +3058,7 @@ describe("ChatPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "执行权限：完全访问" }),
-    ).toBeEnabled();
+    ).toBeDisabled();
     await user.type(screen.getByRole("textbox", { name: "输入消息" }), "继续");
     expect(screen.getByRole("button", { name: "发送消息" })).toBeDisabled();
     expect(sendMessage).not.toHaveBeenCalled();
@@ -3065,6 +3073,7 @@ describe("ChatPage", () => {
         state: "ready",
         defaultModel: "gpt-fixture",
         defaultReasoning: "medium",
+        defaultFast: true,
         models: [
           {
             id: "gpt-fast",
@@ -3079,8 +3088,10 @@ describe("ChatPage", () => {
           {
             id: "gpt-fixture",
             name: "GPT Fixture",
+            fastSupported: true,
             permissionLevels: ["default", "auto", "full-access"],
             reasoningOptions: [
+              { id: "default", name: "Default" },
               { id: "medium", name: "Medium" },
               { id: "high", name: "High" },
             ],
@@ -3116,41 +3127,47 @@ describe("ChatPage", () => {
     );
 
     await user.click(await screen.findByTestId("composer-model-control"));
-    await user.click(screen.getByRole("button", { name: "选择模型" }));
     await user.click(screen.getByRole("radio", { name: "GPT Fast" }));
-    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
-      "默认",
+    await user.click(screen.getByRole("combobox", { name: "选择强度" }));
+    expect(screen.getByRole("option", { name: "默认" })).toHaveAttribute(
+      "aria-selected",
+      "true",
     );
-    expect(screen.getByRole("slider")).toHaveAttribute(
-      "aria-valuetext",
-      "默认",
-    );
-    expect(screen.queryByText("High")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "高" }),
+    ).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
 
-    await user.click(screen.getByRole("button", { name: "选择模型" }));
     await user.click(screen.getByRole("radio", { name: "GPT Fixture" }));
-    expect(screen.getByRole("slider")).toHaveAttribute(
-      "aria-valuetext",
-      "默认",
+    const fast = screen.getByRole("button", { name: "Fast", pressed: false });
+    await user.click(fast);
+    expect(fast).toHaveAttribute("aria-pressed", "true");
+    await user.click(fast);
+    await user.click(screen.getByRole("combobox", { name: "选择强度" }));
+    expect(screen.getByRole("option", { name: "默认" })).toHaveAttribute(
+      "aria-selected",
+      "true",
     );
-    expect(screen.getByRole("slider")).toHaveAttribute("aria-valuemax", "2");
-    expect(screen.queryByText("Low")).not.toBeInTheDocument();
-    await user.keyboard("{End}");
+    expect(
+      screen.queryByRole("option", { name: "Default" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "低" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "高" }));
+    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
+      "高",
+    );
     expect(document.querySelector(".composer-effort-effect")).toHaveAttribute(
       "data-active",
     );
-    expect(screen.getByRole("slider")).toHaveAttribute(
-      "aria-valuetext",
-      "High",
-    );
-    await user.keyboard("{ArrowLeft}");
+    await user.click(screen.getByRole("combobox", { name: "选择强度" }));
+    await user.click(screen.getByRole("option", { name: "中" }));
     expect(
       document.querySelector(".composer-effort-effect"),
     ).not.toHaveAttribute("data-active");
-    expect(screen.getByRole("slider")).toHaveAttribute(
-      "aria-valuetext",
-      "Medium",
-    );
+    await user.click(screen.getByRole("combobox", { name: "选择强度" }));
+    await user.click(screen.getByRole("option", { name: "默认" }));
     await user.keyboard("{Escape}");
 
     const input = screen.getByRole("textbox", { name: "输入消息" });
@@ -3161,7 +3178,97 @@ describe("ChatPage", () => {
       expect.objectContaining({
         body: expect.objectContaining({
           model: "gpt-fixture",
-          reasoning: "medium",
+          reasoning: "default",
+          fast: false,
+        }),
+      }),
+    );
+  });
+
+  it("仅为多档模型显示上下文窗口并发送原生档位标识", async () => {
+    chatLastRuntimeID.current = "cursor";
+    runtimeOptions.current = [
+      {
+        id: "cursor",
+        name: "Cursor",
+        enabled: true,
+        state: "ready",
+        defaultModel: "gpt-5.6-sol",
+        models: [
+          {
+            id: "gpt-5.6-sol",
+            name: "GPT-5.6 Sol",
+            permissionLevels: ["default", "auto", "full-access"],
+            reasoningOptions: [{ id: "medium", name: "Medium" }],
+            defaultContextWindow: "272k",
+            contextWindowOptions: [
+              { id: "272k", tokens: 272_000 },
+              { id: "1m", tokens: 1_000_000 },
+            ],
+          },
+          {
+            id: "fixed",
+            name: "Fixed Window",
+            permissionLevels: ["default", "auto", "full-access"],
+            contextWindowTokens: 200_000,
+          },
+        ],
+      },
+    ];
+    const user = userEvent.setup();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <StrictMode>
+        <QueryClientProvider client={queryClient}>
+          <ChatQueueProvider>
+            <TooltipProvider delayDuration={0}>
+              <MemoryRouter initialEntries={["/chats/chat-1?wakerId=waker-1"]}>
+                <Routes>
+                  <Route element={<ChatLayout />}>
+                    <Route path="/chats/:chatId" element={<ChatPage />} />
+                  </Route>
+                </Routes>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </QueryClientProvider>
+      </StrictMode>,
+    );
+
+    await user.click(await screen.findByTestId("composer-model-control"));
+    const windowSelector = () =>
+      screen.getByRole("combobox", { name: "上下文窗口" });
+    expect(windowSelector()).toHaveTextContent("272K");
+    expect(
+      screen
+        .getByRole("combobox", { name: "选择强度" })
+        .compareDocumentPosition(windowSelector()) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await user.click(windowSelector());
+    await user.click(screen.getByRole("option", { name: "1M" }));
+
+    await user.click(screen.getByRole("radio", { name: "Fixed Window" }));
+    expect(
+      screen.queryByRole("combobox", { name: "上下文窗口" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "GPT-5.6 Sol" }));
+    expect(windowSelector()).toHaveTextContent("272K");
+
+    await user.click(windowSelector());
+    await user.click(screen.getByRole("option", { name: "1M" }));
+    await user.keyboard("{Escape}");
+    await user.type(screen.getByRole("textbox", { name: "输入消息" }), "继续");
+    await user.click(screen.getByRole("button", { name: "发送消息" }));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    expect(sendMessage.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        body: expect.objectContaining({
+          model: "gpt-5.6-sol",
+          contextWindow: "1m",
         }),
       }),
     );
@@ -3227,7 +3334,8 @@ describe("ChatPage", () => {
     expect(screen.getByRole("button", { name: /codex/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /codex/i }));
-    await user.click(screen.getByRole("menuitemradio", { name: /claude/i }));
+    await user.click(screen.getByRole("button", { name: "Claude" }));
+    await user.click(screen.getByRole("radio", { name: "Sonnet" }));
     await user.click(screen.getByRole("button", { name: "确认切换并继续" }));
 
     await waitFor(() =>
@@ -3236,7 +3344,9 @@ describe("ChatPage", () => {
       ).not.toBeInTheDocument(),
     );
     await user.keyboard("{Escape}");
-    expect(screen.getByRole("button", { name: /claude/i })).toBeInTheDocument();
+    expect(screen.getByTestId("composer-model-control")).toHaveTextContent(
+      "Sonnet",
+    );
   });
 
   it("聊天与工作台作为同级窗格共享内容高度", async () => {
@@ -3624,7 +3734,7 @@ describe("ChatPage", () => {
     ).toHaveAttribute("href", "/wakers/waker-1/connectors/connector-browser");
   });
 
-  it("已有对话的 @ 文件搜索只允许选择冻结项目文件", async () => {
+  it("已有对话的 @ 文件搜索使用真实工作目录和冻结项目根", async () => {
     const user = userEvent.setup();
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -3650,7 +3760,9 @@ describe("ChatPage", () => {
     expect(
       await screen.findAllByRole("option", { name: /AGENTS\.md/ }),
     ).not.toHaveLength(0);
-    await user.keyboard("{Enter}");
+    await user.click(
+      screen.getByRole("option", { name: /\/tmp\/project\/AGENTS\.md/ }),
+    );
     await waitFor(() => {
       const references = document.querySelectorAll(
         '[data-chat-composer-code-reference="/tmp/project/AGENTS.md"]',
@@ -3663,7 +3775,13 @@ describe("ChatPage", () => {
       "/tmp/ally",
       "AGENTS",
       20,
-      "projects",
+      undefined,
+    );
+    expect(searchWorkspaceFiles).toHaveBeenCalledWith(
+      "/tmp/project",
+      "AGENTS",
+      20,
+      "",
     );
   });
 
@@ -3691,7 +3809,7 @@ describe("ChatPage", () => {
     const scrollIntoView = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
     const input = await screen.findByRole("textbox", { name: "输入消息" });
     await user.type(input, "@");
-    expect(await screen.findAllByRole("option")).toHaveLength(2);
+    expect(await screen.findAllByRole("option")).toHaveLength(3);
     scrollIntoView.mockClear();
     await user.keyboard("{ArrowDown}");
     expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
@@ -3705,7 +3823,7 @@ describe("ChatPage", () => {
         document
           .querySelector("[data-chat-composer-code-reference]")
           ?.getAttribute("data-chat-composer-code-reference"),
-      ).toBe("/tmp/ally/readme.md"),
+      ).toBe("/tmp/ally/package.json"),
     );
     scrollIntoView.mockRestore();
   });

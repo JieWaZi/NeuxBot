@@ -135,7 +135,7 @@ func TestCommittedInteractionResolutionSurvivesRequestCancellation(t *testing.T)
 // TestUsageFoundationForkPreservesOriginWithoutNewConsumption 验证带用量的父回合只继承身份和展示，不创建子消费事实。
 func TestUsageFoundationForkPreservesOriginWithoutNewConsumption(t *testing.T) {
 	manager, parent := forkFixture(t)
-	root, err := manager.storage.ChatWorkspace(parent)
+	root, err := manager.storage.AgentWorkspace("waker")
 	if err != nil {
 		t.Fatal(err)
 	}

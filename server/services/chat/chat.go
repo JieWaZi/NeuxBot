@@ -36,7 +36,7 @@ type chatState struct {
 	initialExecution *models.Execution
 	// runtimeSessions 是每个 Runtime 当前仍然有效的原生会话。
 	runtimeSessions map[string]models.RuntimeSession
-	// projectSources 是工作区 projects/ 下全部来源入口的冻结快照。
+	// projectSources 是接纳时冻结的真实项目来源与展示标签。
 	projectSources []eventlog.ProjectSourceSnapshot
 	// threadWorkspaceID 非空时表示 Chat 绑定 thread 级共享执行工作区。
 	threadWorkspaceID string
@@ -347,6 +347,7 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 		state.chat.LastModel = data.ForkConfiguration.Model
 		state.chat.LastReasoning = data.ForkConfiguration.Reasoning
 		state.chat.LastFast = data.ForkConfiguration.Fast
+		state.chat.LastContextWindow = data.ForkConfiguration.ContextWindow
 		state.chat.LastPermissionLevel = data.ForkConfiguration.PermissionLevel
 	}
 	var activeExecution *models.Execution
@@ -391,6 +392,7 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 				Model:             executionData.Model,
 				Reasoning:         executionData.Reasoning,
 				Fast:              executionData.Fast,
+				ContextWindow:     executionData.ContextWindow,
 				PermissionLevel:   executionData.PermissionLevel,
 				WorkspaceReadOnly: executionData.WorkspaceReadOnly,
 				Status:            constants.ExecutionStatusPending,
@@ -412,6 +414,7 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 			state.chat.LastModel = executionData.Model
 			state.chat.LastReasoning = executionData.Reasoning
 			state.chat.LastFast = executionData.Fast
+			state.chat.LastContextWindow = executionData.ContextWindow
 			state.chat.LastPermissionLevel = executionData.PermissionLevel
 		case constants.ChatEventTypeExecutionStarted:
 			if activeExecution == nil || activeExecution.ID != record.ExecutionID {
@@ -503,6 +506,9 @@ func replayChatState(records []eventlog.Record) (chatState, error) {
 			}
 			activeExecution.Status = finished.Status
 			activeExecution.ErrorCode = finished.ErrorCode
+			activeExecution.ErrorMessage = finished.ErrorMessage
+			activeExecution.ErrorParams = finished.ErrorParams
+			activeExecution.ErrorMessageSource = finished.ErrorMessageSource
 			activeExecution.Revision++
 			activeExecution.UpdatedAt = record.RecordedAt
 			completedAt := record.RecordedAt
@@ -616,6 +622,8 @@ func (m *service) RenameChat(
 type chatDeletionTarget struct {
 	// chatID 是目标 Chat 标识。
 	chatID string
+	// wakerID 从 ChatCreated 恢复，只用于本次删除入口目录的归属快照。
+	wakerID string
 	// workspaceDirectory 是归属已经验证的受管执行目录。
 	workspaceDirectory string
 	// threadWorkspaceID 非空时表示目录属于 thread 级共享执行工作区。
@@ -624,7 +632,7 @@ type chatDeletionTarget struct {
 	threadWorkspaceDirectory string
 }
 
-// DeleteChat 删除对话权威日志、查询索引和归属可验证的项目内目录。
+// DeleteChat 删除 Chat 私有文件与查询索引，保留伙伴工作目录。
 func (m *service) DeleteChat(ctx context.Context, chatID string) error {
 	return m.DeleteChats(ctx, []string{chatID})
 }
@@ -640,6 +648,11 @@ func (m *service) DeleteChatsAtomically(
 	chatIDs []string,
 	finalize func(context.Context) error,
 ) error {
+	return m.deleteChatsAtomically(ctx, chatIDs, nil, finalize)
+}
+
+// deleteChatsAtomically 在同一组 Chat 排他边界内先执行一次文件准备，再进入可重试的数据库事务。
+func (m *service) deleteChatsAtomically(ctx context.Context, chatIDs []string, prepare func() error, finalize func(context.Context) error) error {
 	releaseOperation, operationErr := chatstorage.AcquireOperation(m.storage.Root(), chatIDs...)
 	if operationErr != nil {
 		return operationErr
@@ -660,7 +673,16 @@ func (m *service) DeleteChatsAtomically(
 		// 删除前从权威日志恢复冻结工作目录，不能信任可能落后的 SQLite。
 		_, state, err := m.loadChatState(chatID)
 		if hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
-			// 删除以最终不存在为目标，日志已缺失时仍需清理派生索引和上层关联。
+			// 私有文件由稳定 Chat 身份定位；日志缺失不留下附件和派生文件孤儿。
+			private, pathErr := m.storage.ChatRoot(chatID)
+			if pathErr != nil {
+				return pathErr
+			}
+			if _, statErr := os.Lstat(private); statErr == nil {
+				targets = append(targets, chatDeletionTarget{chatID: chatID})
+			} else if !os.IsNotExist(statErr) {
+				return status_error.ManagedWorkspaceError
+			}
 			continue
 		}
 		if err != nil {
@@ -715,22 +737,30 @@ func (m *service) DeleteChatsAtomically(
 			threadTargets[threadWorkspaceID] = struct{}{}
 			targets = append(targets, chatDeletionTarget{
 				chatID:                   chatID,
+				wakerID:                  chat.WakerID,
 				workspaceDirectory:       chat.WorkspaceDirectory,
 				threadWorkspaceID:        threadWorkspaceID,
 				threadWorkspaceDirectory: threadWorkspaceDirectory,
 			})
 			continue
 		}
-		expectedWorkspace, pathErr := m.storage.ChatWorkspace(chatID)
-		if pathErr != nil || filepath.Clean(chat.WorkspaceDirectory) != filepath.Clean(expectedWorkspace) {
-			return status_error.ChatDirectoryOwnershipInvalid
+		expectedWorkspace, pathErr := m.storage.AgentWorkspace(chat.WakerID)
+		if pathErr != nil {
+			return pathErr
 		}
-		if err := workspace.ValidateExecutionWorkspaceDeletion(chat.WorkspaceDirectory, chatID); err != nil {
-			logx.Errorf("validate managed chat deletion failed: chat_id=%s error=%v", chatID, err)
-			return status_error.ChatDirectoryOwnershipInvalid
+		if filepath.Clean(chat.WorkspaceDirectory) == filepath.Clean(expectedWorkspace) {
+			if err := workspace.ValidateAgentWorkspaceDeletion(chat.WorkspaceDirectory, chat.WakerID); err != nil {
+				return err
+			}
+		} else {
+			owner, err := workspace.ReadExecutionWorkspaceOwner(chat.WorkspaceDirectory)
+			if err != nil || owner.Kind != constants.IsolatedExecutionWorkspaceOwnerKind || owner.ChatID != chatID || owner.WakerID != chat.WakerID {
+				return status_error.ChatDirectoryOwnershipInvalid
+			}
 		}
 		targets = append(targets, chatDeletionTarget{
 			chatID:             chatID,
+			wakerID:            chat.WakerID,
 			workspaceDirectory: chat.WorkspaceDirectory,
 			threadWorkspaceID:  threadWorkspaceID,
 		})
@@ -748,6 +778,11 @@ func (m *service) DeleteChatsAtomically(
 	}
 	canonicalChatIDs := uniqueChatIDs(chatIDs)
 	if len(targets) == 0 {
+		if prepare != nil {
+			if err := prepare(); err != nil {
+				return err
+			}
+		}
 		if err := m.queryIndexes.deleteChats(ctx, canonicalChatIDs, finalize); err != nil {
 			return err
 		}
@@ -769,11 +804,33 @@ func (m *service) DeleteChatsAtomically(
 		})
 	}
 	for _, target := range targets {
-		if target.threadWorkspaceID == "" {
-			aggregates = append(aggregates, chatstorage.DeletionTarget{
-				Kind: chatstorage.AggregateKindChat, AggregateID: target.chatID,
-			})
+		aggregates = append(aggregates, chatstorage.DeletionTarget{Kind: chatstorage.AggregateKindChat, AggregateID: target.chatID})
+	}
+	if prepare != nil {
+		if err := prepare(); err != nil {
+			return err
 		}
+	}
+	// 团队目标已经包含成员子树；伙伴 prepare 也可能已将整个 Agents 目录 staging。
+	// 只追加仍独立存在的当前 Chat 入口，沿同一 manifest 完成提交或回滚。
+	for _, target := range targets {
+		if target.threadWorkspaceID != "" || target.workspaceDirectory == "" || target.wakerID == "" {
+			continue
+		}
+		directory := filepath.Join(target.workspaceDirectory, constants.ProjectEntriesDirectoryName, target.chatID)
+		if _, err := os.Lstat(directory); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return status_error.ManagedWorkspaceError
+		}
+		if err := workspace.ValidateProjectEntriesDeletion(directory, target.chatID); err != nil {
+			return err
+		}
+		canonicalWorkspace, err := filepath.EvalSymlinks(target.workspaceDirectory)
+		if err != nil {
+			return status_error.ManagedWorkspaceError
+		}
+		aggregates = append(aggregates, chatstorage.DeletionTarget{Kind: chatstorage.AggregateKindChatProjectEntries, AggregateID: target.chatID, WakerID: target.wakerID, WorkspaceDirectory: canonicalWorkspace})
 	}
 	if err := m.deleteAggregatesAtomically(ctx, aggregates, canonicalChatIDs, finalize); err != nil {
 		return err
@@ -801,54 +858,51 @@ func (m *service) DeleteProvisionalTeam(
 	if err != nil {
 		return err
 	}
-	if _, err := os.Stat(teamRoot); errors.Is(err, os.ErrNotExist) {
-		m.logStore.Forget(expected)
-		return m.queryIndexes.deleteChats(ctx, expected, nil)
-	} else if err != nil {
+	targets := []chatstorage.DeletionTarget{}
+	if _, err := os.Lstat(teamRoot); err == nil {
+		if err := workspace.ValidateThreadExecutionWorkspaceDeletion(teamRoot, threadID); err != nil {
+			return err
+		}
+		targets = append(targets, chatstorage.DeletionTarget{Kind: chatstorage.AggregateKindTeam, AggregateID: threadID})
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return status_error.ManagedWorkspaceError
-	}
-	registered, err := m.logStore.ListThreadChatIDs(threadID)
-	if err != nil {
-		return err
 	}
 	expectedSet := make(map[string]struct{}, len(expected))
 	for _, chatID := range expected {
 		expectedSet[chatID] = struct{}{}
-	}
-	for _, chatID := range registered {
-		if _, allowed := expectedSet[chatID]; !allowed {
-			return status_error.ChatDirectoryOwnershipInvalid
+		_, state, err := m.loadChatState(chatID)
+		if err != nil && !hasStatusErrorCode(err, status_error.ChatNotFound.Code()) {
+			return err
 		}
-		_, state, loadErr := m.loadChatState(chatID)
-		if loadErr != nil {
-			return loadErr
+		if err == nil {
+			if state.threadWorkspaceID != threadID {
+				return status_error.ChatDirectoryOwnershipInvalid
+			}
+			if state.chat.ActiveExecutionID != "" {
+				return status_error.ChatHasActiveExecution
+			}
 		}
-		if state.threadWorkspaceID != threadID {
-			return status_error.ChatDirectoryOwnershipInvalid
+		private, err := m.storage.ChatRoot(chatID)
+		if err != nil {
+			return err
 		}
-		if state.chat.ActiveExecutionID != "" {
-			return status_error.ChatHasActiveExecution
+		if _, err := os.Lstat(private); err == nil {
+			targets = append(targets, chatstorage.DeletionTarget{Kind: chatstorage.AggregateKindChat, AggregateID: chatID})
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return status_error.ManagedWorkspaceError
 		}
-	}
-	workspaceRoot, err := m.storage.TeamWorkspace(threadID)
-	if err != nil {
-		return err
-	}
-	if err := workspace.ValidateThreadExecutionWorkspaceDeletion(workspaceRoot, threadID); err != nil {
-		return err
 	}
 	if err := m.validateProvisionalTeamLogs(threadID, expectedSet); err != nil {
 		return err
 	}
-	return m.deleteAggregatesAtomically(
-		ctx,
-		[]chatstorage.DeletionTarget{{
-			Kind:        chatstorage.AggregateKindTeam,
-			AggregateID: threadID,
-		}},
-		expected,
-		nil,
-	)
+	if len(targets) == 0 {
+		if err := m.queryIndexes.deleteChats(ctx, expected, nil); err != nil {
+			return err
+		}
+		m.logStore.Forget(expected)
+		return nil
+	}
+	return m.deleteAggregatesAtomically(ctx, targets, expected, nil)
 }
 
 // validateProvisionalTeamLogs 拒绝删除计划成员集合以外的任何 Team 日志文件。
@@ -856,30 +910,16 @@ func (m *service) validateProvisionalTeamLogs(
 	threadID string,
 	expected map[string]struct{},
 ) error {
-	logDirectory, err := m.storage.TeamLogDirectory(threadID)
+	ids, err := m.logStore.ListThreadChatIDs(threadID)
 	if err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(logDirectory)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return status_error.ChatLogError
-	}
-	for _, entry := range entries {
-		if entry.IsDir() {
-			return status_error.ChatDirectoryOwnershipInvalid
-		}
-		extension := filepath.Ext(entry.Name())
-		if extension != ".jsonl" && extension != ".idx" {
-			return status_error.ChatDirectoryOwnershipInvalid
-		}
-		chatID := strings.TrimSuffix(entry.Name(), extension)
+	for _, chatID := range ids {
 		if _, allowed := expected[chatID]; !allowed {
 			return status_error.ChatDirectoryOwnershipInvalid
 		}
 	}
+
 	return nil
 }
 
@@ -957,7 +997,7 @@ func uniqueChatIDs(values []string) []string {
 }
 
 // DeleteWakerChats 从权威 JSONL 枚举并删除一位伙伴的全部对话。
-func (m *service) DeleteWakerChats(ctx context.Context, wakerID string) error {
+func (m *service) DeleteWakerChats(ctx context.Context, wakerID string, prepare func([]string) (func() error, error), finalize func(context.Context) error) error {
 	wakerID = strings.TrimSpace(wakerID)
 	if wakerID == "" {
 		return status_error.BadRequest
@@ -994,7 +1034,20 @@ func (m *service) DeleteWakerChats(ctx context.Context, wakerID string) error {
 		}
 		targetIDs = append(targetIDs, chatID)
 	}
-	if err := m.DeleteChats(ctx, targetIDs); err != nil {
+	if prepare == nil || finalize == nil {
+		return status_error.BadRequest
+	}
+	var settle func() error
+	deletionErr := m.deleteChatsAtomically(ctx, targetIDs, func() error {
+		var err error
+		settle, err = prepare(append([]string(nil), targetIDs...))
+		return err
+	}, finalize)
+	var settleErr error
+	if settle != nil {
+		settleErr = settle()
+	}
+	if err := errors.Join(deletionErr, settleErr); err != nil {
 		return err
 	}
 	return m.cancelUnpublishedForksForWaker(wakerID)

@@ -16,7 +16,7 @@ func (a *accumulator) add(row models.UsageRecord) error {
 	if row.Source == "" || row.AccountID == "" {
 		a.unknownAttribution = true
 	}
-	return a.tokens.Add(ledger.Tokens{Input: row.Input, CacheRead: row.CacheRead, CacheWrite: row.CacheWrite,
+	return a.tokens.Add(ledger.Tokens{Input: row.Input, ReportedInput: row.ReportedInput, CacheRead: row.CacheRead, CacheWrite: row.CacheWrite,
 		Output: row.Output, Reasoning: row.Reasoning}, row.Complete)
 }
 

@@ -1,4 +1,4 @@
-// Package capability 管理受管执行的软件能力、精确授权、连接文件和领域事务回执，不拥有领域状态。
+// Package capability manages execution capabilities, exact grants, connection files, and domain transaction receipts without owning domain state.
 package capability
 
 import (
@@ -27,109 +27,113 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/internal/util"
 )
 
-// Request 是已经完成闭合 Schema 校验的单次调用。
+// Request is a single invocation that has passed closed-schema validation.
 type Request struct {
-	// CWD 是 CLI 进程的绝对当前目录，仅用于解析相对路径，不能扩大文件授权。
+	// CWD is the CLI process's absolute working directory; it resolves relative paths without expanding file access.
 	CWD string `json:"cwd,omitempty"`
-	// InputDigests 是领域冻结真实文件后生成的内容摘要，不能由 HTTP 输入提供。
+	// InputDigests contains content digests computed after the domain freezes real files; HTTP input cannot supply them.
 	InputDigests map[string]string `json:"-"`
-	// Operation 是本次实际选择的精确操作。
+	// Operation is the exact operation selected for this invocation.
 	Operation string `json:"operation"`
-	// RequestID 是写操作必须复用的调用身份。
+	// RequestID is the invocation identity that writes must reuse.
 	RequestID string `json:"requestId,omitempty"`
-	// Params 是与操作契约完全一致的业务参数。
+	// Params contains business parameters matching the operation contract exactly.
 	Params map[string]any `json:"params"`
 }
 
-// Result 是领域模块真实提交或观察后返回的最小回执。
+// Result is the minimal receipt returned after a real domain commit or observation.
 type Result struct {
-	// CommandID 是领域持久回执身份；读取操作可以留空。
+	// CommandID identifies the durable domain receipt; reads may leave it empty.
 	CommandID string `json:"commandId,omitempty"`
-	// Replayed 表示本次读取了相同请求的原接纳结果。
+	// Replayed reports that the original admission result for this request was read.
 	Replayed bool `json:"replayed"`
-	// Data 保留该操作的真实领域结果，不复制新的业务状态机。
+	// Data retains the actual domain result without duplicating the domain state machine.
 	Data any `json:"data"`
 }
 
-// Binding 将一个精确命令绑定到真实授权范围及领域提交边界。
+// Binding binds an exact command to its authorized scope and domain commit boundary.
 type Binding struct {
-	// Operation 是静态目录中唯一的操作身份。
+	// Operation is the unique operation identity in the static catalog.
 	Operation string
-	// Call 只在 Grant 与参数验证通过后执行真实领域操作。
+	// Call executes the domain operation only after grant and parameter validation.
 	Call func(context.Context, Request) (Result, error)
-	// Receipt 从所属权威存储查询同一作用域原请求，读取操作可为空。
+	// Receipt queries the original scoped request in its authoritative store; reads may omit it.
 	Receipt func(context.Context, string) (Result, error)
 }
 
-// GrantSpec 冻结一次执行可用的精确操作和当前身份校验。
+// GrantSpec freezes the exact operations available to an execution and its current identity validation.
 type GrantSpec struct {
-	// ExecutionID 是真实接纳执行的稳定身份。
+	// ExecutionID is the stable identity of the admitted execution.
 	ExecutionID string
-	// Bindings 是由领域入口签发的精确调用集合。
+	// Bindings is the set of exact invocations granted by domain entry points.
 	Bindings []Binding
-	// FileRoots 是执行准备阶段冻结的目录授权，不接受 HTTP 参数覆盖。
+	// FileRoots freezes directory access during execution preparation and rejects HTTP overrides.
 	FileRoots []string
-	// Record 将真实结果登记到所属执行；登记失败不能推翻领域接纳事实。
+	// FilePaths grants only the validated referenced files, never their parent directories.
+	FilePaths []string
+	// Record registers real results with their execution; registration failure cannot undo domain admission.
 	Record func(context.Context, Operation, Result) error
-	// Validate 每次调用重新验证执行、角色和当前围栏。
+	// Validate revalidates the execution, role, and current fence on every call.
 	Validate func(context.Context) error
 }
 
-// Grant 是给连接文件准备器使用的非模型可见认证信息。
+// Grant holds authentication data for the connection-file preparer, hidden from the model.
 type Grant struct {
-	// ID 是本次不可重复使用的 Grant 身份。
+	// ID is the non-reusable identity of this grant.
 	ID string
-	// Token 是随机执行凭据，只能写入受管连接文件。
+	// Token is a random execution credential written only to the managed connection file.
 	Token string
-	// Epoch 是当前 Core 生命周期身份。
+	// Epoch identifies the current Core lifecycle.
 	Epoch string
 }
 
-// lease 保存服务端的真实执行绑定。
+// lease holds the actual server-side execution binding.
 type lease struct {
-	// id 限定连接文件中的 Grant 身份。
+	// id scopes the grant identity in the connection file.
 	id string
-	// executionID 限定来源执行，用于撤销和诊断。
+	// executionID identifies the source execution for revocation and diagnostics.
 	executionID string
-	// bindings 保证调用和回执查询使用相同的对象范围。
+	// bindings keeps invocation and receipt queries within the same object scope.
 	bindings map[string]Binding
-	// fileRoots 保存当前执行唯一的文件读取范围。
+	// fileRoots holds the execution's sole file-read scope.
 	fileRoots []string
-	// record 写入当前执行的安全命令事实。
+	// filePaths preserves exact file access in the same authenticated execution grant.
+	filePaths []string
+	// record writes safe command facts to the current execution.
 	record func(context.Context, Operation, Result) error
-	// recordMutex 串行化同执行命令事实的去重登记。
+	// recordMutex serializes deduplicated command recording within an execution.
 	recordMutex sync.Mutex
-	// recorded 按真实回执身份去重，重放不制造另一项成功活动。
+	// recorded deduplicates by real receipt identity so replay cannot create another successful activity.
 	recorded map[string]bool
-	// calls 保证撤销取消并收敛全部在途调用后，Execution 才提交终态。
+	// calls ensures execution termination waits for revocation to cancel and drain all in-flight calls.
 	calls sync.WaitGroup
-	// validate 检查领域身份仍有效。
+	// validate checks that the domain identity remains valid.
 	validate func(context.Context) error
-	// ctx 在执行撤销时取消所有在途观察。
+	// ctx cancels all in-flight observations when execution access is revoked.
 	ctx context.Context
-	// cancel 撤销该租约并终止在途请求。
+	// cancel revokes this lease and terminates in-flight requests.
 	cancel context.CancelFunc
-	// waits 限制同一执行最多四个并发有界观察。
+	// waits limits an execution to four concurrent bounded observations.
 	waits chan struct{}
-	// active 标识 Runtime 已经可以消费执行能力。
+	// active reports whether the runtime can consume execution capabilities.
 	active bool
 }
 
-// Registry 只保存活跃授权，关闭后不再签发或接纳调用。
+// Registry stores only active grants and stops issuing or admitting calls after closure.
 type Registry struct {
-	// mutex 保护活跃租约与关闭状态。
+	// mutex protects active leases and closure state.
 	mutex sync.Mutex
-	// leases 以令牌摘要为索引，不保留传输令牌明文。
+	// leases indexes grants by token digest without retaining plaintext transport tokens.
 	leases map[string]*lease
-	// epoch 区分 Core 重启前后的授权。
+	// epoch distinguishes grants across Core restarts.
 	epoch string
-	// closed 表示根生命周期已结束。
+	// closed reports whether the root lifecycle has ended.
 	closed bool
-	// guide 按主题读取系统技能的同源资源。
+	// guide reads system-skill resources by topic from the same source.
 	guide func(string) (string, error)
 }
 
-// New 创建空授权表，不启动 goroutine 或监听器。
+// New creates an empty grant registry without starting goroutines or listeners.
 func New(guide func(string) (string, error)) *Registry {
 	return &Registry{leases: map[string]*lease{}, epoch: util.New(), guide: guide}
 }
@@ -139,7 +143,7 @@ func tokenKey(token string) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// Prepare 先准备未激活授权；返回的激活与撤销函数都可重复调用。
+// Prepare prepares an inactive grant; both returned activation and revocation functions are idempotent.
 func (r *Registry) Prepare(spec GrantSpec) (Grant, func(), func(), error) {
 	if spec.ExecutionID == "" || spec.Validate == nil {
 		return Grant{}, nil, nil, status_error.AgentInputInvalid
@@ -157,7 +161,7 @@ func (r *Registry) Prepare(spec GrantSpec) (Grant, func(), func(), error) {
 	}
 	grant := Grant{ID: util.New(), Token: util.New() + util.New(), Epoch: r.epoch}
 	ctx, cancel := context.WithCancel(context.Background())
-	current := &lease{id: grant.ID, executionID: spec.ExecutionID, bindings: bindings, fileRoots: append([]string(nil), spec.FileRoots...), record: spec.Record, recorded: map[string]bool{}, validate: spec.Validate, ctx: ctx, cancel: cancel, waits: make(chan struct{}, 4)}
+	current := &lease{id: grant.ID, executionID: spec.ExecutionID, bindings: bindings, fileRoots: append([]string(nil), spec.FileRoots...), filePaths: append([]string(nil), spec.FilePaths...), record: spec.Record, recorded: map[string]bool{}, validate: spec.Validate, ctx: ctx, cancel: cancel, waits: make(chan struct{}, 4)}
 	key := tokenKey(grant.Token)
 	r.mutex.Lock()
 	if r.closed {
@@ -178,7 +182,7 @@ func (r *Registry) Prepare(spec GrantSpec) (Grant, func(), func(), error) {
 	return grant, activate, revoke, nil
 }
 
-// Close 撤销全部执行并唤醒在途请求，不取消已经接纳的领域工作。
+// Close revokes all executions and wakes in-flight requests without cancelling admitted domain work.
 func (r *Registry) Close() {
 	r.mutex.Lock()
 	r.closed = true
@@ -194,58 +198,58 @@ func (r *Registry) Close() {
 	}
 }
 
-// Failure 是可以安全显示给 agent 的稳定失败分类。
+// Failure is a stable failure classification safe to display to an agent.
 type Failure struct {
-	// Code 是 status_error 中定义的稳定标识。
+	// Code is the stable identifier defined in status_error.
 	Code string `json:"code"`
-	// Message 是有限英文说明，不包含底层错误、URL 或凭据。
+	// Message is a bounded English explanation without underlying errors, URLs, or credentials.
 	Message string `json:"message"`
-	// EffectState 区分未接纳与不能确定的结果。
+	// EffectState distinguishes unadmitted requests from uncertain outcomes.
 	EffectState string `json:"effectState"`
-	// RetryAdvice 明确允许的恢复动作，不能暗示换键重发。
+	// RetryAdvice explicitly permits recovery actions without suggesting resubmission under a new key.
 	RetryAdvice string `json:"retryAdvice"`
-	// Details 仅携带领域明确提供的可修正诊断或静态发现契约，不含原始输入。
+	// Details contains only domain-approved corrective diagnostics or static discovery contracts, never raw input.
 	Details map[string]any `json:"details,omitempty"`
 }
 
-// rejection 仅携带领域模块明确提供的安全修正提示。
+// rejection carries only safe corrective hints explicitly supplied by the domain.
 type rejection struct {
-	// cause 是稳定错误分类。
+	// cause is the stable error classification.
 	cause error
-	// message 是不含底层诊断和凭据的业务提示。
+	// message is a business hint without underlying diagnostics or credentials.
 	message string
-	// details 是经过领域选择的结构化修正信息。
+	// details contains structured corrective information selected by the domain.
 	details map[string]any
 }
 
 func (e rejection) Error() string { return e.message }
 func (e rejection) Unwrap() error { return e.cause }
 
-// Reject 包装业务模块主动提供的有限英文提示，禁止传入底层 err.Error()。
+// Reject wraps a bounded English business hint; never pass an underlying err.Error().
 func Reject(cause error, message string) error { return rejection{cause: cause, message: message} }
 
-// RejectWithDetails 附加安全诊断；不得传入源码、凭据或底层异常对象。
+// RejectWithDetails attaches safe diagnostics; never pass source code, credentials, or underlying exception objects.
 func RejectWithDetails(cause error, message string, details map[string]any) error {
 	return rejection{cause: cause, message: message, details: details}
 }
 
-// Response 是 HTTP 与 CLI 共用的单结果信封。
+// Response is the single-result envelope shared by HTTP and CLI.
 type Response struct {
-	// ProtocolVersion 是当前同包协议版本。
+	// ProtocolVersion is the protocol version shipped with this package.
 	ProtocolVersion int `json:"protocolVersion"`
-	// OK 表示请求处理成功，不表示异步业务完成。
+	// OK reports successful request handling, not completion of asynchronous work.
 	OK bool `json:"ok"`
-	// Operation 标明本次读取或执行的命令。
+	// Operation identifies the command read or executed.
 	Operation string `json:"operation,omitempty"`
-	// Completion 是真实动作的完成语义。
+	// Completion describes the actual action's completion semantics.
 	Completion string `json:"completion,omitempty"`
-	// Result 保存领域回执及其真实数据。
+	// Result holds the domain receipt and its actual data.
 	Result
-	// Error 只在失败时返回稳定分类。
+	// Error returns a stable classification only on failure.
 	Error *Failure `json:"error,omitempty"`
 }
 
-// ErrorResponse 将已定义项目错误投影为有限安全说明。
+// ErrorResponse projects defined project errors into bounded safe explanations.
 func ErrorResponse(operation string, err error) Response {
 	code := status_error.AgentConnectionUnavailable.Key()
 	var keyed interface{ Key() string }
@@ -296,10 +300,10 @@ func ErrorResponse(operation string, err error) Response {
 
 var requestIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,` + strconv.Itoa(constants.AgentCLIRequestIDMaximumLength-1) + `}$`)
 
-// ValidRequestID 校验 CLI、MCP 与收据查询共同使用的幂等标识。
+// ValidRequestID validates the idempotency identifier shared by CLI, MCP, and receipt queries.
 func ValidRequestID(value string) bool { return requestIDPattern.MatchString(value) }
 
-// ServeHTTP 接纳只使用短期执行认证的固定命令协议。
+// ServeHTTP admits the fixed command protocol using only short-lived execution authentication.
 func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -324,6 +328,7 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 	defer current.calls.Done()
 	ctx, cancel := context.WithCancel(request.Context())
 	ctx = context.WithValue(ctx, fileRootsKey{}, current.fileRoots)
+	ctx = context.WithValue(ctx, filePathsKey{}, current.filePaths)
 	stop := context.AfterFunc(current.ctx, cancel)
 	defer func() { stop(); cancel() }()
 	if current.ctx.Err() != nil {
@@ -455,11 +460,18 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, request *http.Request) {
 }
 
 type fileRootsKey struct{}
+type filePathsKey struct{}
 
-// FileRoots 返回认证层绑定的冻结目录副本；参数和业务请求不能自行添加目录。
+// FileRoots returns a copy of the frozen authenticated directories; parameters and business requests cannot add roots.
 func FileRoots(ctx context.Context) []string {
 	roots, _ := ctx.Value(fileRootsKey{}).([]string)
 	return append([]string(nil), roots...)
+}
+
+// FilePaths returns a copy of the exact authenticated files; tool parameters cannot add files.
+func FilePaths(ctx context.Context) []string {
+	files, _ := ctx.Value(filePathsKey{}).([]string)
+	return append([]string(nil), files...)
 }
 
 func writeSuccess(w http.ResponseWriter, operation, completion string, result Result) {
@@ -486,7 +498,7 @@ func writeFailure(w http.ResponseWriter, operation string, err error) {
 	}
 }
 
-// DecodeParams 只转换已经通过操作 Schema 的参数，不允许再添加调用身份。
+// DecodeParams converts parameters already validated against the operation schema without allowing additional invocation identities.
 func DecodeParams(params map[string]any, target any) error {
 	data, err := json.Marshal(params)
 	if err != nil || json.Unmarshal(data, target) != nil {
@@ -495,14 +507,14 @@ func DecodeParams(params map[string]any, target any) error {
 	return nil
 }
 
-// Page 按明确上限切出当前资源列表，不将一页误称为完整覆盖。
+// Page slices the current resource list within explicit bounds without claiming complete coverage.
 func Page[T any](items []T, params map[string]any) (map[string]any, error) {
 	var query struct {
-		// Cursor 是上一页明确返回的偏移位置。
+		// Cursor is the offset explicitly returned by the previous page.
 		Cursor string `json:"cursor"`
-		// PageNum 是从一开始的页码。
+		// PageNum is the one-based page number.
 		PageNum int `json:"pageNum"`
-		// PageSize 是有界页面大小。
+		// PageSize is the bounded page size.
 		PageSize int `json:"pageSize"`
 	}
 	if err := DecodeParams(params, &query); err != nil {
@@ -539,10 +551,10 @@ func Page[T any](items []T, params map[string]any) (map[string]any, error) {
 	return map[string]any{"nextCursor": next, "items": items[start:end], "total": len(items), "pageNum": query.PageNum, "pageSize": query.PageSize}, nil
 }
 
-// Observe 先建立精确监听，再读取权威状态；退出、期限和缓冲失效均有明确语义。
+// Observe subscribes to exact events before reading authoritative state, with explicit exit, deadline, and buffer-invalidity semantics.
 func Observe(ctx context.Context, params map[string]any, subscribe func() events.Subscription, read func(context.Context) (any, bool, error)) (Result, error) {
 	var input struct {
-		// TimeoutMS 是本次观察期限，不是业务运行期限。
+		// TimeoutMS is the observation deadline, not the business execution deadline.
 		TimeoutMS int64 `json:"timeoutMs"`
 	}
 	if err := DecodeParams(params, &input); err != nil {
@@ -581,21 +593,21 @@ func Observe(ctx context.Context, params map[string]any, subscribe func() events
 	return Result{Data: map[string]any{"completed": true, "resource": value}}, nil
 }
 
-// Connection 是只供 CLI 进程读取的受管连接描述，不进入模型指令。
+// Connection is a managed connection descriptor read only by the CLI process and excluded from model instructions.
 type Connection struct {
-	// ProtocolVersion 验证 CLI 与 Core 同包协议。
+	// ProtocolVersion verifies the CLI and Core protocol shipped together.
 	ProtocolVersion int `json:"protocolVersion"`
-	// Endpoint 是经过回环与固定路径校验的 Core 地址。
+	// Endpoint is the Core address validated for loopback access and a fixed path.
 	Endpoint string `json:"endpoint"`
-	// CoreEpoch 区分不同 Core 生命周期。
+	// CoreEpoch distinguishes Core lifecycles.
 	CoreEpoch string `json:"coreEpoch"`
-	// GrantID 是当前真实执行授权身份。
+	// GrantID identifies the current execution grant.
 	GrantID string `json:"grantId"`
-	// Token 是只保存在受管文件和请求头中的凭据。
+	// Token is a credential stored only in the managed file and request headers.
 	Token string `json:"token"`
 }
 
-// Validate 验证连接地址不能把执行令牌转交外部地址。
+// Validate ensures that the connection address cannot forward execution tokens externally.
 func (c Connection) Validate() error {
 	u, err := url.Parse(c.Endpoint)
 	if err != nil || c.ProtocolVersion != constants.AgentCLIProtocolVersion || c.Token == "" || c.GrantID == "" || c.CoreEpoch == "" || u.Scheme != "http" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != constants.AgentCLIPath {
@@ -608,7 +620,7 @@ func (c Connection) Validate() error {
 	return nil
 }
 
-// ReadConnection 固定读取一次完整描述文件；在途命令不能换用下一轮身份。
+// ReadConnection reads one complete descriptor once; in-flight commands cannot switch to the next turn's identity.
 func ReadConnection(path string) (Connection, error) {
 	if !filepath.IsAbs(path) {
 		return Connection{}, status_error.AgentContextStorageError
@@ -637,7 +649,7 @@ func ReadConnection(path string) (Connection, error) {
 	return result, result.Validate()
 }
 
-// WriteConnection 在应用独占目录发布文件，拒绝父目录或目标的符号链接替换。
+// WriteConnection publishes the file in an application-exclusive directory and rejects symlink replacement of its parent or target.
 func WriteConnection(directory, filename string, value Connection) (string, error) {
 	if !filepath.IsAbs(directory) || !filepath.IsLocal(filename) || strings.ContainsAny(filename, "/\\") {
 		return "", status_error.AgentContextStorageError
@@ -685,43 +697,43 @@ func WriteConnection(directory, filename string, value Connection) (string, erro
 	return path, nil
 }
 
-// Receipt 是与领域变更一同提交的最小接纳事实。
+// Receipt is the minimal admission fact committed together with the domain change.
 type Receipt struct {
-	// ID 对同一作用域、操作和请求保持稳定。
+	// ID remains stable for the same scope, operation, and request.
 	ID string
-	// Digest 拒绝相同请求身份的异内容重放。
+	// Digest rejects replay with different content under the same request identity.
 	Digest string
-	// Data 记录首次接纳结果，不保存凭据或完整输入。
+	// Data records the first admission result without credentials or full input.
 	Data map[string]any
 }
 
-// Store 必须使用传入 Context 中领域事务的同一连接。
+// Store must use the same domain transaction connection supplied through Context.
 type Store interface {
 	Find(context.Context, string) (Receipt, bool, error)
 	Create(context.Context, Receipt) error
 }
 
-// pending 只在当前调用栈传递待提交事实。
+// pending passes uncommitted facts only through the current call stack.
 type pending struct {
-	// store 是业务数据库的回执仓储。
+	// store is the receipt repository in the business database.
 	store Store
-	// receipt 固定身份和输入摘要。
+	// receipt freezes the identity and input digest.
 	receipt Receipt
 }
 
 type contextKey struct{}
 
-// Active 表示当前调用必须在自身领域事务内提交接纳事实。
+// Active reports whether this call must commit admission within its own domain transaction.
 func Active(ctx context.Context) bool { _, ok := ctx.Value(contextKey{}).(pending); return ok }
 
-// ID 根据服务端拥有的作用域计算不可跨场景复用的命令身份。
+// ID computes a server-owned scoped command identity that cannot be reused across scenarios.
 func ID(scope, operation, requestID string) string {
 	encoded, _ := json.Marshal([]string{scope, operation, requestID})
 	hash := sha256.Sum256(encoded)
 	return hex.EncodeToString(hash[:])
 }
 
-// Lookup 读取已接纳事实，不尝试重新执行命令。
+// Lookup reads admitted facts without attempting to execute the command again.
 func Lookup(ctx context.Context, store Store, scope, operation, requestID string) (Result, error) {
 	if store == nil {
 		return Result{}, status_error.AgentConnectionUnavailable
@@ -736,7 +748,7 @@ func Lookup(ctx context.Context, store Store, scope, operation, requestID string
 	return Result{CommandID: receipt.ID, Replayed: true, Data: receipt.Data}, nil
 }
 
-// Execute 先重放，再调用领域命令；只有同库事务内的 Commit 才构成成功。
+// Execute replays before invoking the domain command; only Commit in the same database transaction constitutes success.
 func Execute(ctx context.Context, store Store, scope string, request Request, call func(context.Context) error) (Result, error) {
 	if store == nil {
 		return Result{}, status_error.AgentConnectionUnavailable
@@ -772,7 +784,7 @@ func Execute(ctx context.Context, store Store, scope string, request Request, ca
 		return Result{}, status_error.AgentCommandOutcomeUnknown
 	}
 	if found {
-		// 即使提交后的派发或投影失败，原接纳事实仍然成立。
+		// The original admission remains valid even if post-commit dispatch or projection fails.
 		result.Replayed = callErr != nil
 		return result, nil
 	}
@@ -782,7 +794,7 @@ func Execute(ctx context.Context, store Store, scope string, request Request, ca
 	return Result{}, status_error.AgentCommandOutcomeUnknown
 }
 
-// Commit 由领域在自身目标变更事务内显式调用；普通业务入口不产生 CLI 回执。
+// Commit is explicitly called within the domain mutation transaction; ordinary business entry points create no CLI receipts.
 func Commit(ctx context.Context, data map[string]any) error {
 	value, ok := ctx.Value(contextKey{}).(pending)
 	if !ok {

@@ -303,6 +303,7 @@ func (s *service) createThread(
 		input.MentionWakerID == thread.LeadWakerID,
 	)
 	workOptions.AccountID = leadConfig.AccountID
+	input.Input.ContextInstructions = append(input.Input.ContextInstructions, leaderTurnInstruction(input.MentionWakerID == thread.LeadWakerID))
 
 	accepted, err := s.executions.Start(ctx, execution.WorkIntent{
 		AutomaticRunID: thread.AutomaticRunID, ExecutionID: leadExecutionID,

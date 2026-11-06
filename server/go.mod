@@ -4,7 +4,7 @@ go 1.25.8
 
 require (
 	github.com/BurntSushi/toml v1.5.0
-	github.com/JieWaZi/acp-go v0.0.0-20261030094227-a58342da0ddd
+	github.com/JieWaZi/acp-go v0.1.1-0.20261106060638-beaa58f4e1cc
 	github.com/JieWaZi/neux-knowledge v0.1.2-0.20261030094232-fff1c7595373
 	github.com/dop251/goja v0.0.0-20261002135814-104bc28c3abd
 	github.com/fsnotify/fsnotify v1.9.0
@@ -38,7 +38,7 @@ require (
 require (
 	dario.cat/mergo v1.0.0 // indirect
 	filippo.io/edwards25519 v1.1.0 // indirect
-	github.com/JieWaZi/acp-go/sdk v0.0.0-20261026093029-d283676c207f
+	github.com/JieWaZi/acp-go-sdk v0.13.6-0.20261106052225-bbb4e22da7a0
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/armon/go-metrics v0.3.10 // indirect
@@ -154,7 +154,7 @@ require (
 	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546 // indirect
 	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/oauth2 v0.35.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sync v0.20.0
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect

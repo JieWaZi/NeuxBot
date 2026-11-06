@@ -44,7 +44,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -57,7 +57,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -70,7 +70,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -83,7 +83,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -99,7 +99,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -112,7 +112,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -125,7 +125,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -164,7 +164,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -177,7 +177,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -190,7 +190,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -203,7 +203,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -216,7 +216,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -232,7 +232,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -245,7 +245,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -258,7 +258,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -313,7 +313,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -326,7 +326,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -339,7 +339,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -408,7 +408,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -422,7 +422,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -435,7 +435,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -448,7 +448,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -461,7 +461,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -477,7 +477,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -490,7 +490,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -504,7 +504,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -573,7 +573,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -586,7 +586,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -599,7 +599,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -612,7 +612,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -628,7 +628,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -642,7 +642,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -655,7 +655,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -738,7 +738,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -751,7 +751,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -764,7 +764,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -777,7 +777,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -793,7 +793,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -806,7 +806,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -819,7 +819,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -976,7 +976,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -989,7 +989,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1002,7 +1002,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1015,7 +1015,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1031,7 +1031,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1044,7 +1044,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1057,7 +1057,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1215,7 +1215,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1228,7 +1228,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1241,7 +1241,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1254,7 +1254,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1270,7 +1270,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1283,7 +1283,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1296,7 +1296,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1368,7 +1368,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1382,7 +1382,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1395,7 +1395,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1409,7 +1409,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1422,7 +1422,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1438,7 +1438,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1452,7 +1452,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1466,7 +1466,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1549,7 +1549,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1562,7 +1562,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1575,7 +1575,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1588,7 +1588,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1604,7 +1604,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1617,7 +1617,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1630,7 +1630,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1699,7 +1699,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1712,7 +1712,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1725,7 +1725,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1738,7 +1738,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1754,7 +1754,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1767,7 +1767,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1780,7 +1780,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1866,7 +1866,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1880,7 +1880,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1893,7 +1893,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1907,7 +1907,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1920,7 +1920,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1936,7 +1936,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1950,7 +1950,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -1964,7 +1964,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2033,7 +2033,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2046,7 +2046,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2059,7 +2059,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2072,7 +2072,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2088,7 +2088,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2101,7 +2101,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2114,7 +2114,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2222,7 +2222,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2235,7 +2235,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2248,7 +2248,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2261,7 +2261,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2277,7 +2277,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2290,7 +2290,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2303,7 +2303,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2382,7 +2382,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2395,7 +2395,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2408,7 +2408,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2421,7 +2421,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2437,7 +2437,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2450,7 +2450,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2463,7 +2463,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2533,7 +2533,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2547,7 +2547,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2560,7 +2560,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2574,7 +2574,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2587,7 +2587,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2603,7 +2603,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2617,7 +2617,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2631,7 +2631,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2713,7 +2713,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2726,7 +2726,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2739,7 +2739,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2752,7 +2752,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2768,7 +2768,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2781,7 +2781,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2794,7 +2794,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2866,7 +2866,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2879,7 +2879,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2892,7 +2892,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2905,7 +2905,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2921,7 +2921,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2936,7 +2936,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2949,7 +2949,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -2962,7 +2962,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3032,7 +3032,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3045,7 +3045,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3058,7 +3058,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3071,7 +3071,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3087,7 +3087,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3102,7 +3102,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3115,7 +3115,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3128,7 +3128,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3245,7 +3245,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3258,7 +3258,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3271,7 +3271,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3284,7 +3284,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3300,7 +3300,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3313,7 +3313,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3326,7 +3326,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3381,7 +3381,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3394,7 +3394,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3407,7 +3407,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3420,7 +3420,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3436,7 +3436,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3449,7 +3449,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3462,7 +3462,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3510,7 +3510,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3523,7 +3523,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3536,7 +3536,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3549,7 +3549,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3565,7 +3565,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3578,7 +3578,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3591,7 +3591,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3663,7 +3663,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3679,7 +3679,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3693,7 +3693,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3707,7 +3707,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3720,7 +3720,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3736,7 +3736,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3750,7 +3750,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3765,7 +3765,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3779,7 +3779,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3792,7 +3792,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3864,7 +3864,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3880,7 +3880,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3894,7 +3894,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3908,7 +3908,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3921,7 +3921,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3937,7 +3937,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3951,7 +3951,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3966,7 +3966,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3980,7 +3980,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -3993,7 +3993,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4048,7 +4048,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4062,7 +4062,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4075,7 +4075,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4089,7 +4089,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4102,7 +4102,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4118,7 +4118,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4132,7 +4132,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4146,7 +4146,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4234,7 +4234,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4248,7 +4248,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4261,7 +4261,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4275,7 +4275,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4288,7 +4288,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4304,7 +4304,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4318,7 +4318,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4332,7 +4332,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4418,7 +4418,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4432,7 +4432,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4445,7 +4445,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4459,7 +4459,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4472,7 +4472,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4488,7 +4488,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4502,7 +4502,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4516,7 +4516,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4595,7 +4595,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4609,7 +4609,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4622,7 +4622,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4636,7 +4636,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4649,7 +4649,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4665,7 +4665,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4679,7 +4679,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4693,7 +4693,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4763,11 +4763,11 @@
             }
           },
           "400": {
-            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
+            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4798,6 +4798,7 @@
               "[ProfileDocumentKindInvalid][40000000002]",
               "[ProfileDocumentTooLarge][40000000003]",
               "[RuntimeNotRegistered][40000002001]",
+              "[RuntimeWorkspaceScopeUnsupported][40000007108]",
               "[SkillContentInvalid][40000000013]",
               "[SkillContentLimitExceeded][40000000014]",
               "[SkillImportFailed][40000000006]",
@@ -4822,7 +4823,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4841,7 +4842,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4862,7 +4863,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4904,7 +4905,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4919,7 +4920,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -4998,7 +4999,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5011,7 +5012,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5026,7 +5027,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5035,11 +5036,11 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowBusinessCheckFailed][50000003006]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowHumanRequestTimedOut][50000003007]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimeModelSelectionFailed][50000000053]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeQuotaExhausted][50000000051]`\n* `[RuntimeRateLimited][50000000052]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowBusinessCheckFailed][50000003006]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowHumanRequestTimedOut][50000003007]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5097,8 +5098,11 @@
               "[RuntimeExecutionFailed][50000000045]",
               "[RuntimeHandoffInvalid][50000000049]",
               "[RuntimeInactivityTimeout][50000000013]",
+              "[RuntimeModelSelectionFailed][50000000053]",
               "[RuntimePolicyUnsupported][50000000011]",
               "[RuntimeProtocolIncompatible][50000000012]",
+              "[RuntimeQuotaExhausted][50000000051]",
+              "[RuntimeRateLimited][50000000052]",
               "[RuntimeSessionNotFound][50000000043]",
               "[RuntimeShutdownFailed][50000000041]",
               "[RuntimeUnavailable][50000000006]",
@@ -5120,7 +5124,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5144,7 +5148,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5161,7 +5165,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5226,11 +5230,11 @@
             }
           },
           "400": {
-            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
+            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5261,6 +5265,7 @@
               "[ProfileDocumentKindInvalid][40000000002]",
               "[ProfileDocumentTooLarge][40000000003]",
               "[RuntimeNotRegistered][40000002001]",
+              "[RuntimeWorkspaceScopeUnsupported][40000007108]",
               "[SkillContentInvalid][40000000013]",
               "[SkillContentLimitExceeded][40000000014]",
               "[SkillImportFailed][40000000006]",
@@ -5285,7 +5290,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5304,7 +5309,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5325,7 +5330,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5367,7 +5372,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5382,7 +5387,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5461,7 +5466,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5474,7 +5479,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5489,7 +5494,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5498,11 +5503,11 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowBusinessCheckFailed][50000003006]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowHumanRequestTimedOut][50000003007]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimeModelSelectionFailed][50000000053]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeQuotaExhausted][50000000051]`\n* `[RuntimeRateLimited][50000000052]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowBusinessCheckFailed][50000003006]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowHumanRequestTimedOut][50000003007]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5560,8 +5565,11 @@
               "[RuntimeExecutionFailed][50000000045]",
               "[RuntimeHandoffInvalid][50000000049]",
               "[RuntimeInactivityTimeout][50000000013]",
+              "[RuntimeModelSelectionFailed][50000000053]",
               "[RuntimePolicyUnsupported][50000000011]",
               "[RuntimeProtocolIncompatible][50000000012]",
+              "[RuntimeQuotaExhausted][50000000051]",
+              "[RuntimeRateLimited][50000000052]",
               "[RuntimeSessionNotFound][50000000043]",
               "[RuntimeShutdownFailed][50000000041]",
               "[RuntimeUnavailable][50000000006]",
@@ -5583,7 +5591,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5607,7 +5615,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5624,7 +5632,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5689,11 +5697,11 @@
             }
           },
           "400": {
-            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
+            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5724,6 +5732,7 @@
               "[ProfileDocumentKindInvalid][40000000002]",
               "[ProfileDocumentTooLarge][40000000003]",
               "[RuntimeNotRegistered][40000002001]",
+              "[RuntimeWorkspaceScopeUnsupported][40000007108]",
               "[SkillContentInvalid][40000000013]",
               "[SkillContentLimitExceeded][40000000014]",
               "[SkillImportFailed][40000000006]",
@@ -5748,7 +5757,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5767,7 +5776,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5788,7 +5797,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5830,7 +5839,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5845,7 +5854,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5924,7 +5933,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5937,7 +5946,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5952,7 +5961,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -5961,11 +5970,11 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowBusinessCheckFailed][50000003006]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowHumanRequestTimedOut][50000003007]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimeModelSelectionFailed][50000000053]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeQuotaExhausted][50000000051]`\n* `[RuntimeRateLimited][50000000052]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowBusinessCheckFailed][50000003006]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowHumanRequestTimedOut][50000003007]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6023,8 +6032,11 @@
               "[RuntimeExecutionFailed][50000000045]",
               "[RuntimeHandoffInvalid][50000000049]",
               "[RuntimeInactivityTimeout][50000000013]",
+              "[RuntimeModelSelectionFailed][50000000053]",
               "[RuntimePolicyUnsupported][50000000011]",
               "[RuntimeProtocolIncompatible][50000000012]",
+              "[RuntimeQuotaExhausted][50000000051]",
+              "[RuntimeRateLimited][50000000052]",
               "[RuntimeSessionNotFound][50000000043]",
               "[RuntimeShutdownFailed][50000000041]",
               "[RuntimeUnavailable][50000000006]",
@@ -6046,7 +6058,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6070,7 +6082,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6087,7 +6099,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6142,7 +6154,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6156,7 +6168,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6169,7 +6181,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6182,7 +6194,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6254,11 +6266,11 @@
             "description": ""
           },
           "400": {
-            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
+            "description": ">\n* `[AIAccountConfigurationInvalid][40000000020]`\n* `[AgentInputInvalid][40000009001]`\n* `[AutomaticScheduleInvalid][40000001001]`\n* `[AutomaticTaskInputInvalid][40000001003]`\n* `[AutomaticTaskWorkspaceInvalid][40000001002]`\n* `[BadRequest][40000000001]`\n* `[ChannelLeadInvalid][40000000019]`\n* `[ChannelMemberCountInvalid][40000000018]`\n* `[ChatEventCursorInvalid][40000000011]`\n* `[ChatIDInvalid][40000000010]`\n* `[ChatMessageCursorInvalid][40000000012]`\n* `[IMConfigurationInvalid][40000004001]`\n* `[IMFileInvalid][40000004002]`\n* `[IntegrationInvalid][40000009601]`\n* `[KnowledgeInvalid][40000009501]`\n* `[MemoryEmbeddingConflict][40000000009]`\n* `[MemoryEmbeddingNotConfigured][40000000007]`\n* `[MemoryProjectNotBound][40000000008]`\n* `[MessageAttachmentInvalid][40000000017]`\n* `[PluginContentInvalid][40000006502]`\n* `[PluginContentLimitExceeded][40000006503]`\n* `[PluginManifestInvalid][40000006501]`\n* `[ProfileDocumentEncodingInvalid][40000000004]`\n* `[ProfileDocumentKindInvalid][40000000002]`\n* `[ProfileDocumentTooLarge][40000000003]`\n* `[RuntimeNotRegistered][40000002001]`\n* `[RuntimeWorkspaceScopeUnsupported][40000007108]`\n* `[SkillContentInvalid][40000000013]`\n* `[SkillContentLimitExceeded][40000000014]`\n* `[SkillImportFailed][40000000006]`\n* `[SkillImportIntegrityInvalid][40000000016]`\n* `[SkillImportSourceInvalid][40000000015]`\n* `[TerminalInvalid][40000007109]`\n* `[WakerDeleteConfirmationMismatch][40000000005]`\n* `[WorkflowBudgetExceeded][40000003005]`\n* `[WorkflowCapabilityUnsupported][40000003003]`\n* `[WorkflowFileInvalid][40000003006]`\n* `[WorkflowIMTargetNotDeclared][40000003007]`\n* `[WorkflowResourceInvalid][40000003004]`\n* `[WorkflowRetryIdempotencyUnsupported][40000003009]`\n* `[WorkflowRetryRequiresReadOnly][40000003008]`\n* `[WorkflowSchemaInvalid][40000003002]`\n* `[WorkflowSourceInvalid][40000003001]`\n* `[WorkspacePathInvalid][40000007102]`\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6289,6 +6301,7 @@
               "[ProfileDocumentKindInvalid][40000000002]",
               "[ProfileDocumentTooLarge][40000000003]",
               "[RuntimeNotRegistered][40000002001]",
+              "[RuntimeWorkspaceScopeUnsupported][40000007108]",
               "[SkillContentInvalid][40000000013]",
               "[SkillContentLimitExceeded][40000000014]",
               "[SkillImportFailed][40000000006]",
@@ -6313,7 +6326,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6332,7 +6345,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6353,7 +6366,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6395,7 +6408,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6410,7 +6423,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6489,7 +6502,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6502,7 +6515,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6517,7 +6530,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6526,11 +6539,11 @@
             ]
           },
           "500": {
-            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowBusinessCheckFailed][50000003006]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowHumanRequestTimedOut][50000003007]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
+            "description": ">\n* `[AIAccountCredentialError][50000000046]`\n* `[AIAccountLoginFailed][50000000048]`\n* `[AIAccountWorkspaceError][50000000047]`\n* `[AgentContextStorageError][50000009001]`\n* `[AutomaticTaskAPIUnavailable][50000001003]`\n* `[AutomaticTaskServiceInvalid][50000001001]`\n* `[AutomaticTaskTokenGenerationFailed][50000001002]`\n* `[BuiltinRolePresetDefinitionInvalid][50000002001]`\n* `[ChannelToolDescriptorInvalid][50000002002]`\n* `[ChatDirectoryOwnershipInvalid][50000000007]`\n* `[ChatEventStreamUnavailable][50000000038]`\n* `[ChatLogCorrupted][50000000014]`\n* `[ChatLogError][50000000004]`\n* `[ChatLogIndexCorrupted][50000000015]`\n* `[ChatLogRecordInvalid][50000000016]`\n* `[ChatServiceNotStarted][50000000003]`\n* `[CoreChannelInitializationFailed][50000000042]`\n* `[CoreChatInitializationFailed][50000000028]`\n* `[CoreConfigurationInvalid][50000000023]`\n* `[CoreDataDirectoryError][50000000024]`\n* `[CoreDatabaseInitializationFailed][50000000025]`\n* `[CoreMemoryInitializationFailed][50000000026]`\n* `[CoreRuntimeInitializationFailed][50000000027]`\n* `[CoreShutdownFailed][50000000029]`\n* `[CoreTokenGenerationFailed][50000000030]`\n* `[DatabaseError][50000000002]`\n* `[IMCredentialError][50000004001]`\n* `[IntegrationCredentialError][50000009601]`\n* `[InternalServerError][50000000001]`\n* `[KnowledgeStorageError][50000009501]`\n* `[MCPConnectorCredentialError][50000000022]`\n* `[ManagedWorkspaceError][50000000033]`\n* `[MemoryContextTokenGenerationFailed][50000000020]`\n* `[MemoryCredentialError][50000000019]`\n* `[MemoryEmbeddingRequestFailed][50000000017]`\n* `[MemoryEmbeddingResponseInvalid][50000000018]`\n* `[MemoryEmbeddingTestFailed][50000000010]`\n* `[MemoryMCPEndpointFailed][50000000021]`\n* `[MemoryReindexFailed][50000000009]`\n* `[MemoryServiceUnavailable][50000000036]`\n* `[MessageAttachmentStorageError][50000000032]`\n* `[PluginStorageError][50000006501]`\n* `[ProfileArchiveGenerationFailed][50000000037]`\n* `[ProjectServiceUnavailable][50000000034]`\n* `[ProjectSourceUnavailable][50000000005]`\n* `[RuntimeAuthRequired][50000000044]`\n* `[RuntimeConfigurationInvalid][50000000040]`\n* `[RuntimeEnvironmentServiceUnavailable][50000000035]`\n* `[RuntimeEventEncodingFailed][50000000039]`\n* `[RuntimeEventQueueOverflow][50000000050]`\n* `[RuntimeExecutionFailed][50000000045]`\n* `[RuntimeHandoffInvalid][50000000049]`\n* `[RuntimeInactivityTimeout][50000000013]`\n* `[RuntimeModelSelectionFailed][50000000053]`\n* `[RuntimePolicyUnsupported][50000000011]`\n* `[RuntimeProtocolIncompatible][50000000012]`\n* `[RuntimeQuotaExhausted][50000000051]`\n* `[RuntimeRateLimited][50000000052]`\n* `[RuntimeSessionNotFound][50000000043]`\n* `[RuntimeShutdownFailed][50000000041]`\n* `[RuntimeUnavailable][50000000006]`\n* `[SkillStorageError][50000000031]`\n* `[SkillUnavailable][50000000008]`\n* `[WorkflowBusinessCheckFailed][50000003006]`\n* `[WorkflowCancelled][50000003002]`\n* `[WorkflowEffectFailed][50000003001]`\n* `[WorkflowFileStorageError][50000003005]`\n* `[WorkflowHumanRequestTimedOut][50000003007]`\n* `[WorkflowStateInvalid][50000003004]`\n* `[WorkflowTimeout][50000003003]`\n* `[WorkspaceGitFailed][50000007107]`\n* `[WorkspaceStorageFailed][50000007106]`\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6588,8 +6601,11 @@
               "[RuntimeExecutionFailed][50000000045]",
               "[RuntimeHandoffInvalid][50000000049]",
               "[RuntimeInactivityTimeout][50000000013]",
+              "[RuntimeModelSelectionFailed][50000000053]",
               "[RuntimePolicyUnsupported][50000000011]",
               "[RuntimeProtocolIncompatible][50000000012]",
+              "[RuntimeQuotaExhausted][50000000051]",
+              "[RuntimeRateLimited][50000000052]",
               "[RuntimeSessionNotFound][50000000043]",
               "[RuntimeShutdownFailed][50000000041]",
               "[RuntimeUnavailable][50000000006]",
@@ -6611,7 +6627,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6635,7 +6651,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -6652,7 +6668,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/GithubComShrewxGinxPkgStatuserrorStatusErr"
+                  "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter"
                 }
               }
             },
@@ -7061,28 +7077,66 @@
         "x-go-struct-name": "GithubComJieWaZiNeuxKnowledgeInternalDomainWikiExtractionGranularity",
         "x-go-vendor-type": "github.com/JieWaZi/neux-knowledge/internal/domain.WikiExtractionGranularity"
       },
-      "GithubComShrewxGinxPkgStatuserrorStatusErr": {
+      "GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter": {
         "type": "object",
         "properties": {
           "code": {
             "type": "integer",
             "format": "int64",
-            "description": "状态码",
-            "x-go-field-name": "ErrorCode"
+            "description": "错误数值码",
+            "x-go-field-name": "Code"
           },
           "key": {
             "type": "string",
-            "description": "错误名称",
-            "x-go-field-name": "K"
+            "description": "错误身份",
+            "x-go-field-name": "Key"
           },
           "message": {
             "type": "string",
-            "description": "消息",
+            "description": "可读原因",
             "x-go-field-name": "Message"
+          },
+          "messageSource": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GithubComJieWaZiNeuxBotServerConstantsErrorMessageSource"
+              },
+              {
+                "description": "原因来源",
+                "x-go-field-name": "MessageSource"
+              }
+            ]
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": true,
+            "propertyNames": {
+              "type": "string"
+            },
+            "description": "模板参数",
+            "x-go-field-name": "Params",
+            "x-tag-json": "params,omitempty"
           }
         },
-        "x-go-struct-name": "GithubComShrewxGinxPkgStatuserrorStatusErr",
-        "x-go-vendor-type": "github.com/shrewx/ginx/pkg/statuserror.StatusErr"
+        "description": "应用错误响应",
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerApisMiddlewareApplicationErrorFormatter",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/apis/middleware.ApplicationErrorFormatter"
+      },
+      "GithubComJieWaZiNeuxBotServerConstantsErrorMessageSource": {
+        "type": "string",
+        "enum": [
+          "",
+          "localized",
+          "public"
+        ],
+        "description": ">\n* `` - ErrorMessageSourceUnspecified 只用于尚无来源标记的历史记录。\n* `localized` - ErrorMessageSourceLocalized 表示正文必须由稳定身份与安全参数按当前语言呈现。\n* `public` - ErrorMessageSourcePublic 表示原生协议已明确允许展示的可读原因。\n",
+        "x-enum-labels": {
+          "": "ErrorMessageSourceUnspecified 只用于尚无来源标记的历史记录。",
+          "localized": "ErrorMessageSourceLocalized 表示正文必须由稳定身份与安全参数按当前语言呈现。",
+          "public": "ErrorMessageSourcePublic 表示原生协议已明确允许展示的可读原因。"
+        },
+        "x-go-struct-name": "GithubComJieWaZiNeuxBotServerConstantsErrorMessageSource",
+        "x-go-vendor-type": "github.com/JieWaZi/NeuxBot/server/constants.ErrorMessageSource"
       },
       "GithubComJieWaZiNeuxBotServerApisIntegrationKnowledgeLibraryListResponse": {
         "type": "object",

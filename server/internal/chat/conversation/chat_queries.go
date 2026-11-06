@@ -3,6 +3,11 @@ package conversation
 import (
 	"cmp"
 	"context"
+	"encoding/json"
+	"errors"
+	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
+	"github.com/shrewx/ginx/pkg/statuserror"
 	"path/filepath"
 	"slices"
 
@@ -27,7 +32,48 @@ func (s *Store) ListChatIDs() ([]string, error) {
 
 // ListThreadChatIDs discovers the member chats owned by one team aggregate.
 func (s *Store) ListThreadChatIDs(threadID string) ([]string, error) {
-	return s.catalog.ListThreadChatIDs(threadID)
+	if threadID == "" {
+		return nil, status_error.BadRequest
+	}
+	ids, err := s.ListChatIDs()
+	if err != nil {
+		return nil, err
+	}
+	members := make([]string, 0)
+	for _, id := range ids {
+		after := int64(0)
+		for {
+			page, err := s.ReadChanges(context.Background(), id, after, maxPageSize)
+			var missing statuserror.CommonError
+			if errors.As(err, &missing) && missing.Code() == status_error.ChatNotFound.Code() {
+				break
+			}
+			if err != nil {
+				return nil, err
+			}
+			found := false
+			for _, record := range page.Records {
+				fact := record.Change.Fact
+				if fact == nil || fact.Type != constants.ChatEventTypeCreated {
+					continue
+				}
+				var created eventlog.ChatCreatedData
+				if json.Unmarshal(fact.Data, &created) != nil {
+					return nil, status_error.ChatLogCorrupted
+				}
+				if created.ThreadWorkspaceID == threadID {
+					members = append(members, id)
+				}
+				found = true
+				break
+			}
+			if found || !page.More {
+				break
+			}
+			after = page.Next
+		}
+	}
+	return members, nil
 }
 
 // Forget invalidates derived locations after their aggregates were staged for deletion.

@@ -192,6 +192,8 @@ type MessageCreatedData struct {
 
 // ExecutionCreatedData 保存一次执行创建时冻结的选择。
 type ExecutionCreatedData struct {
+	// RequestedAt 是服务端收到输入的 Unix 毫秒时间，用于包含会话准备的整轮计时。
+	RequestedAt int64 `json:"requestedAt,omitempty"`
 	// SteerExecutionID 保存追加输入与上一执行的展示关联。
 	SteerExecutionID string `json:"steerExecutionId,omitempty"`
 
@@ -215,6 +217,8 @@ type ExecutionCreatedData struct {
 	Reasoning string `json:"reasoning"`
 	// Fast 是本次执行冻结的 Fast 意图。
 	Fast *bool `json:"fast,omitempty"`
+	// ContextWindow 是执行冻结的原生上下文档位。
+	ContextWindow string `json:"contextWindow,omitempty"`
 	// PermissionLevel 是本次发送冻结的跨 Runtime 产品权限等级。
 	PermissionLevel constants.PermissionLevel `json:"permissionLevel"`
 	// PluginResources 是接纳时冻结的插件身份、版本与配置修订。
@@ -447,6 +451,12 @@ type ExecutionFinishedData struct {
 	ErrorCode string `json:"errorCode,omitempty"`
 	// ErrorMessage 是不包含秘密值的失败说明。
 	ErrorMessage string `json:"errorMessage,omitempty"`
+	// ErrorMessageSource 明确区分公开原生原因与应用本地化正文；空值仅用于旧记录。
+	ErrorMessageSource constants.ErrorMessageSource `json:"errorMessageSource,omitempty"`
+	// FailureCode 是与公开应用身份分开的原生执行失败分类。
+	FailureCode constants.RuntimeFailureCode `json:"failureCode,omitempty"`
+	// ErrorParams 是稳定错误模板使用的安全参数。
+	ErrorParams map[string]interface{} `json:"errorParams,omitempty"`
 	// ExitCode 是 Runtime 主进程退出码。
 	ExitCode int `json:"exitCode"`
 	// Signal 是平台可以识别时的进程终止信号。

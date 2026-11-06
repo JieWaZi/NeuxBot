@@ -118,6 +118,28 @@ func TestRuntimeOptionIncludesCustomModels(t *testing.T) {
 	}
 }
 
+func TestNativeModelOptionProjectsCursorContextSeparatelyFromMaximum(t *testing.T) {
+	row := agent.AgentChoice{ID: "gpt-5.6-sol", Config: &agent.AgentModelConfig{
+		Options: []agent.AgentSessionOption{{
+			ID: "context", Category: "model_config", Value: agent.AgentOptionValue{ID: "272k"},
+			Choices: []agent.AgentChoice{{ID: "272k"}, {ID: "1m"}, {ID: "auto"}},
+		}},
+	}}
+	got := nativeModelOption("cursor", row)
+	if got.ContextWindowTokens != 272_000 || got.MaxContextWindowTokens != 1_000_000 {
+		t.Fatalf("Cursor context windows = %+v", got)
+	}
+	if got.DefaultContextWindow != "272k" || len(got.ContextWindowOptions) != 2 ||
+		got.ContextWindowOptions[1].ID != "1m" || got.ContextWindowOptions[1].Tokens != 1_000_000 {
+		t.Fatalf("Cursor selectable context windows = %+v", got)
+	}
+	row.Config.UnknownOptionIDs = []string{"context"}
+	got = nativeModelOption("cursor", row)
+	if got.ContextWindowTokens != 0 || got.MaxContextWindowTokens != 0 {
+		t.Fatalf("unknown context was exposed: %+v", got)
+	}
+}
+
 func TestNativeModelOptionPreservesProviderMenus(t *testing.T) {
 	for _, provider := range []string{"claude", "cursor"} {
 		t.Run(provider, func(t *testing.T) {
@@ -129,6 +151,9 @@ func TestNativeModelOptionPreservesProviderMenus(t *testing.T) {
 				{ID: "effort", Category: "thought_level", Value: agent.AgentOptionValue{ID: "max"}, Choices: []agent.AgentChoice{{ID: "max", Name: "Max"}}},
 				{ID: "fast", Value: agent.AgentOptionValue{ID: off}, Choices: []agent.AgentChoice{{ID: on}, {ID: off}}},
 			}}}
+			if provider == "claude" {
+				row.PermissionModes = []string{"default", "bypassPermissions"}
+			}
 			got := nativeModelOption(provider, row)
 			if !got.FastSupported || got.DefaultFast == nil || *got.DefaultFast || got.DefaultReasoning != "max" || len(got.ReasoningOptions) != 1 {
 				t.Fatalf("provider menus lost: %+v", got)
@@ -180,6 +205,22 @@ func TestNativeModelOptionKeepsUnknownSettingsOutOfMenus(t *testing.T) {
 		}
 		if len(got.ReasoningOptions) != 0 || got.DefaultReasoning != "" || got.FastSupported || got.DefaultFast != nil || len(got.ServiceTiers) != 0 || got.DefaultServiceTier != nil {
 			t.Fatalf("unknown settings %v leaked into choices: %+v", unknown, got)
+		}
+	}
+}
+
+func TestNativeModelOptionOffersOnlyMultipleNativeContextWindows(t *testing.T) {
+	for _, provider := range []string{"qoder", "qoder-cn", "workbuddy", "opencode"} {
+		row := agent.AgentChoice{Config: &agent.AgentModelConfig{Options: []agent.AgentSessionOption{{
+			ID: "context_window", Value: agent.AgentOptionValue{ID: "200000"},
+			Choices: []agent.AgentChoice{{ID: "200000"}},
+		}}}}
+		if got := nativeModelOption(provider, row); len(got.ContextWindowOptions) != 0 {
+			t.Fatalf("%s: single window was offered: %+v", provider, got)
+		}
+		row.Config.Options[0].Choices = append(row.Config.Options[0].Choices, agent.AgentChoice{ID: "400000"})
+		if got := nativeModelOption(provider, row); got.DefaultContextWindow != "200000" || len(got.ContextWindowOptions) != 2 {
+			t.Fatalf("%s: native choices missing: %+v", provider, got)
 		}
 	}
 }

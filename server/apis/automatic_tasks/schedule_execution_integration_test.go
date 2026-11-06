@@ -436,7 +436,7 @@ func TestAutomaticEntriesExecuteAndDeleteThroughRealCore(t *testing.T) {
 		if info, err := os.Stat(teamDirectory); err != nil || !info.IsDir() {
 			t.Fatalf("团队会话临时目录未创建: %v", err)
 		}
-		if teamDirectory != filepath.Join(filepath.Dir(leadState.Chat.WorkspaceDirectory), constants.ExecutionWorkspaceProjectsDirectory) {
+		if teamDirectory != filepath.Join(filepath.Dir(leadState.Chat.WorkspaceDirectory), constants.TeamSharedDirectoryName) {
 			t.Fatalf("团队临时范围应为共享项目目录，成员执行目录保持独立: %s / %s", leadState.Chat.WorkspaceDirectory, teamDirectory)
 		}
 		// 首发后更改团队默认值不能改写已有运行快照或幂等重放。

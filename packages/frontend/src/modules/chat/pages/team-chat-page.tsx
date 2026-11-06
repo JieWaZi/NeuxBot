@@ -51,7 +51,7 @@ import { resolveGitWorkspaceDirectories } from "../model/git-workspace-directori
 import { useChatWorkspaceBindings } from "../components/use-chat-workspace-bindings";
 import { useComposerScopeTransition } from "../model/use-composer-scope-transition";
 import { useChatViewState } from "../model/use-chat-view-state";
-import { projectFilesScopePath } from "../model/project-files-scope";
+import { chatFileRoots } from "../model/project-files-scope";
 import {
   conversationKeyOf,
   useChatInvocationGuard,
@@ -636,15 +636,19 @@ function TeamChatView({
   const terminalWorkingDirectory =
     teamContext.additionalWorkingDirectories?.[0] ??
     detailQuery.data?.chat?.additionalWorkingDirectories?.[0] ??
-    "";
+    workspaceDirectory;
   const fileRoots = (() => {
     if (teamContext.workspaceDirectory) {
-      return [
+      return chatFileRoots(
         teamContext.workspaceDirectory,
-        ...(teamContext.additionalWorkingDirectories ?? []),
-      ].filter(Boolean);
+        teamContext.additionalWorkingDirectories,
+      );
     }
-    if (activeChatId && workspaceDirectory) return [workspaceDirectory];
+    if (activeChatId && workspaceDirectory)
+      return chatFileRoots(
+        workspaceDirectory,
+        detailQuery.data?.chat?.additionalWorkingDirectories,
+      );
     const project = selectedDraftProject;
     const projectRoots = (project?.sources ?? [])
       .filter((source) => source.available && source.path)
@@ -1028,11 +1032,18 @@ function TeamChatView({
     selectedDraftProject?.name ||
     (workspaceDirectory ? workspaceDirectory.split(/[\\/]/).pop() : "") ||
     t("selectWorkspace");
-  const permissionWarning = selectedPermissionUnsupported
-    ? t("permissionUnsupported")
-    : defaultPermissionWasDowngraded
-      ? t("permissionDowngraded")
-      : "";
+  const permissionEvidenceReady =
+    !executionSelection.loading &&
+    !executionSelection.catalogPending &&
+    (!executionSelection.usesNativeCatalog ||
+      (executionSelection.catalogState === "fresh" && selectedModelOption));
+  const permissionWarning = !permissionEvidenceReady
+    ? ""
+    : selectedPermissionUnsupported
+      ? t("permissionUnsupported")
+      : defaultPermissionWasDowngraded
+        ? t("permissionDowngraded")
+        : "";
   const teamGreetingPhrases = useMemo(
     () => [
       t("team.emptyTitle"),
@@ -1093,9 +1104,12 @@ function TeamChatView({
     availableReasoningOptions,
     selectedAccountId: executionSelection.selection.accountId,
     modelOptionsOverride: executionSelection.models,
+    defaultModel: executionSelection.defaultModel,
     catalogState: executionSelection.catalogState,
     catalogIssue: executionSelection.catalogIssue,
     catalogPending: executionSelection.catalogPending,
+    fastSupported: executionSelection.fastSupported,
+    selectedFast: executionSelection.selection.fast ?? false,
     refreshCatalog: executionSelection.refreshCatalog,
     thinkingPending: executionSelection.thinkingQuery.isFetching,
     historicalRuntime,
@@ -1270,7 +1284,6 @@ function TeamChatView({
       composerConnectors: enabledConnectors,
       composerConnectorsError: connectorsQuery.isError,
       composerFileRoots: fileRoots,
-      composerFileScopePath: projectFilesScopePath(activeChatId) || undefined,
       composerMembers: activeMemberTab
         ? []
         : teamContext.members.map((member) => ({

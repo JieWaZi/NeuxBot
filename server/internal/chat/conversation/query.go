@@ -241,7 +241,7 @@ func (s *Store) ReadMessages(ctx context.Context, q agent.MessageQuery) (agent.M
 	if err != nil {
 		return page, err
 	}
-	page.Messages, err = s.projectPage(ctx, r, anchors, groups)
+	page.Messages, err = s.projectPage(ctx, r, anchors, groups, true)
 	if err != nil {
 		return agent.MessagePage{}, err
 	}
@@ -311,7 +311,7 @@ type projectedPart struct {
 	part int
 }
 
-func (s *Store) projectPage(ctx context.Context, reader chatReader, anchors []messageAnchor, groups map[int64][]rowIndex) ([]agent.StoredMessage, error) {
+func (s *Store) projectPage(ctx context.Context, reader chatReader, anchors []messageAnchor, groups map[int64][]rowIndex, includeToolOutput bool) ([]agent.StoredMessage, error) {
 	refs := make([]int64, 0, len(anchors))
 	for _, anchor := range anchors {
 		refs = append(refs, anchor.Ref)
@@ -359,7 +359,7 @@ func (s *Store) projectPage(ctx context.Context, reader chatReader, anchors []me
 		}
 	}
 	for bucket, selected := range byBucket {
-		if err := s.readDisplayBucket(ctx, bucket, selected, parts); err != nil {
+		if err := s.readDisplayBucket(ctx, bucket, selected, parts, includeToolOutput); err != nil {
 			return nil, err
 		}
 	}
@@ -369,7 +369,7 @@ func (s *Store) projectPage(ctx context.Context, reader chatReader, anchors []me
 	return messages, nil
 }
 
-func (s *Store) readDisplayBucket(ctx context.Context, bucket int, selected []projectedPart, out [][]agent.MessagePart) error {
+func (s *Store) readDisplayBucket(ctx context.Context, bucket int, selected []projectedPart, out [][]agent.MessagePart, includeToolOutput bool) error {
 	if bucket < 0 || bucket >= streamShards {
 		return status_error.ChatLogIndexCorrupted
 	}
@@ -434,6 +434,11 @@ func (s *Store) readDisplayBucket(ctx context.Context, bucket int, selected []pr
 		f, err := readFragment(file, positions, pos.Cursor, 0)
 		if err != nil {
 			return err
+		}
+		if includeToolOutput {
+			if err := hydrateToolOutput(ctx, file, idx, f); err != nil {
+				return err
+			}
 		}
 		kind := f.Change.ContentType
 		if kind == "" {
@@ -569,8 +574,8 @@ func (s *Store) ReadMessage(ctx context.Context, chatID, messageID string) (agen
 	return message, err
 }
 
-// ReadMessageCheckpoint returns the effective native message at its latest checkpoint.
-// An older requested cursor only returns the winning checkpoint identity.
+// ReadMessageCheckpoint 返回安全实时投影所需的最新工具元数据和正文，不展开独立终端输出。
+// 完整工具输出仍由 ReadMessage/ReadMessages 提供；旧游标只返回获胜检查点身份。
 func (s *Store) ReadMessageCheckpoint(ctx context.Context, chatID, messageID string, at int64) (agent.StoredMessage, int64, error) {
 	return s.readMessage(ctx, chatID, messageID, at, true)
 }
@@ -602,7 +607,7 @@ func (s *Store) readMessage(ctx context.Context, chatID, messageID string, at in
 	if err != nil {
 		return agent.StoredMessage{}, 0, err
 	}
-	messages, err := s.projectPage(ctx, r, []messageAnchor{anchor}, groups)
+	messages, err := s.projectPage(ctx, r, []messageAnchor{anchor}, groups, !native)
 	if err != nil {
 		return agent.StoredMessage{}, 0, err
 	}

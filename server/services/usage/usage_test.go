@@ -126,6 +126,62 @@ func verifyCanonicalUsageRebuildAndSnapshot(t *testing.T, provider string) {
 	}
 }
 
+func TestReportedInputSurvivesProjectionRebuild(t *testing.T) {
+	ctx := t.Context()
+	root := t.TempDir()
+	store, err := conversation.NewStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	input, output := int64(1200), int64(20)
+	result := agent.NativeResult{
+		Key: agent.NativeResultKey{Session: agent.NativeSessionKey{Provider: "qoder", Subject: "subject", SessionID: "session"}, InvocationID: "input-observation"},
+		Turn: acpmeta.NativeTurn{InvocationID: "input-observation", Origin: acpmeta.NativeTurnOriginProvider, Status: acpmeta.NativeTurnCompleted,
+			Usage: &acpmeta.TurnUsage{Source: "qoder.history.usage", Model: "returned-model", OutputTokens: &output,
+				Models:       map[string]acpmeta.ModelUsage{"returned-model": {OutputTokens: &output}},
+				Observations: []acpmeta.UsageObservation{{Source: "qoder.history.usage", Coverage: "observed_requests_raw", InputTotalTokens: &input}}}},
+	}
+	if err := store.CommitNativeResult(ctx, result); err != nil {
+		t.Fatal(err)
+	}
+	db, err := gorm.Open(sqlite.Open(filepath.Join(root, "reported-input.sqlite")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pool.Close()
+	if err := db.AutoMigrate(&models.UsageRecord{}, &models.UsageCheckpoint{}); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(store, controllers.NewUsageController(db))
+	filter := Filter{From: time.Now().Add(-time.Hour).UnixMilli(), To: time.Now().Add(time.Hour).UnixMilli(), Timezone: "Asia/Shanghai"}
+	for range 2 {
+		summary, err := service.Summary(ctx, filter, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		known := summary.Metrics.KnownTokens
+		if known.ReportedInput == nil || *known.ReportedInput != 1200 || known.Input != nil || summary.Metrics.KnownTotalWithCacheRead == nil ||
+			*summary.Metrics.KnownTotalWithCacheRead != 20 || summary.Metrics.IncompleteUsageInvocations != 1 {
+			t.Fatalf("reported input lost or double counted: %+v", summary.Metrics)
+		}
+		groups, err := service.Groups(ctx, filter, summary.Snapshot, "model", "", 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(groups.Groups) != 1 || groups.Groups[0].Metrics.KnownTokens.ReportedInput == nil || *groups.Groups[0].Metrics.KnownTokens.ReportedInput != 1200 {
+			t.Fatalf("single-model input lost: %+v", groups)
+		}
+		if err := db.Model(&models.UsageCheckpoint{}).Where("shard = -1").Update("generation", "tokens-v4:old").Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestUsageFiltersDSTPaginationAndMeasuredZero(t *testing.T) {
 	ctx := t.Context()
 	root := t.TempDir()

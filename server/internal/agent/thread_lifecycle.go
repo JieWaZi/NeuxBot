@@ -8,6 +8,8 @@ import (
 	"errors"
 	"maps"
 	"slices"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -74,6 +76,8 @@ type threadState struct {
 	admittedAccount providerAccount
 	// admittedPlugins identifies resources reserved by the active preparation.
 	admittedPlugins map[string]string
+	// admittedSkills fences incompatible physical targets during preparation.
+	admittedSkills *SkillSelection
 	// active is the actual Turn holding the seat from preparation through settlement.
 	active *Turn
 	// binding caches a committed native session address and its compatibility key.
@@ -123,7 +127,19 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 	if id == "" {
 		id = "private:" + input.HostInvocationID
 	}
+	request.Connection = freezeProviderRequest(request.Connection)
 	l.mu.Lock()
+	// Check and publish the preparing consumer under one admission lock. Two
+	// different Chats cannot both observe an empty target before either registers.
+	for _, other := range l.threads {
+		if other.id != id && other.active != nil && skillsConflict(other.admittedSkills, request.Connection.Resources.Skills) {
+			l.mu.Unlock()
+			if closeFiles != nil {
+				_ = closeFiles(context.WithoutCancel(ctx))
+			}
+			return nil, status_error.RuntimeUnavailable
+		}
+	}
 	state := l.threads[id]
 	if l.closing || state != nil && (state.closing || state.active != nil) {
 		l.mu.Unlock()
@@ -140,6 +156,7 @@ func (l *ThreadLifecycle) prepare(ctx context.Context, request ThreadRequest, in
 	state.active = t
 	state.admittedAccount = providerAccount{provider: request.Connection.Account.Provider, id: request.Connection.Account.AccountID}
 	state.admittedPlugins = maps.Clone(request.Connection.Resources.Plugins)
+	state.admittedSkills = request.Connection.Resources.Skills
 	l.mu.Unlock()
 
 	stopPrepare := context.AfterFunc(ctx, t.cancel)
@@ -187,13 +204,21 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	conn, hot, effective, reader := state.connection, state.binding, state.effective, state.reader
 	l.mu.Unlock()
 	compatible := !request.ForceNew && request.Fork == nil && compatibleBinding(stored, request.Connection.Account, cfg)
+	var replacementHandoff *NativeHandoff
+	if stored != nil && request.Fork == nil && request.Connection.Account.Provider != stored.Session.Provider {
+		replacementHandoff, err = l.failedHandoffForReplacement(ctx, state.chatID, *stored)
+		if err != nil {
+			return err
+		}
+	}
 	sameOwner := conn != nil && hot != nil && stored != nil && hot.Session == stored.Session && string(hot.Configuration) == string(stored.Configuration)
 	hotUsable := false
 	if sameOwner {
 		_, err := conn.Client()
 		hotUsable = err == nil
 	}
-	if compatible && hotUsable {
+	windowChanged := hotUsable && conn.qoderContextWindow != request.Connection.Launch.QoderContextWindow
+	if compatible && hotUsable && !windowChanged {
 		binding, err := l.reconcileHandoff(ctx, state.chatID, *stored, reader)
 		if err != nil {
 			return err
@@ -217,11 +242,14 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	}
 
 	var summary *NativeResultKey
-	wantSummary := request.Summarize && request.Fork == nil && !compatible && stored != nil
-	if hotUsable && !compatible {
-		prior, err := l.reconcileHandoff(ctx, state.chatID, *stored, reader)
-		if err != nil {
-			return err
+	wantSummary := request.Summarize && request.Fork == nil && !compatible && stored != nil && replacementHandoff == nil
+	if hotUsable {
+		prior := *stored
+		if replacementHandoff == nil {
+			prior, err = l.reconcileHandoff(ctx, state.chatID, prior, reader)
+			if err != nil {
+				return err
+			}
 		}
 		if wantSummary && prior.Handoff == nil {
 			summary = t.summarize(conn, prior, effective, nil)
@@ -234,7 +262,7 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 			return err
 		}
 	}
-	if !compatible && stored != nil && (wantSummary || handoffClaimed(stored.Handoff)) {
+	if !compatible && stored != nil && replacementHandoff == nil && (wantSummary || handoffClaimed(stored.Handoff)) {
 		var prior NativeBinding
 		prior, summary, err = l.reopenHandoffSource(t, *stored, wantSummary)
 		if err != nil {
@@ -278,6 +306,9 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 		session, err = openBoundSession(ctx, client, stored.Session.SessionID, request.Session)
 		missing := errors.Is(err, status_error.RuntimeSessionNotFound) ||
 			errors.Is(err, status_error.RuntimePolicyUnsupported) && !client.Capabilities().Resume && !client.Capabilities().Load
+		if missing && (windowChanged || request.Connection.Launch.QoderContextWindow != 0) {
+			return err
+		}
 		if missing && !handoffClaimed(stored.Handoff) {
 			fresh = true
 			session, err = client.NewSession(ctx, request.Session)
@@ -314,6 +345,10 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 	if !fresh || state.chatID == "" {
 		return t.applyHandoff(t.binding.Handoff)
 	}
+	if replacementHandoff != nil {
+		t.binding.Handoff = replacementHandoff
+		return t.applyHandoff(t.binding.Handoff)
+	}
 	if summary != nil {
 		t.binding.Handoff = &NativeHandoff{Summary: summary}
 		return t.applyHandoff(t.binding.Handoff)
@@ -334,6 +369,13 @@ func (l *ThreadLifecycle) openTurn(t *Turn, request ThreadRequest, closeFiles fu
 }
 
 func (l *ThreadLifecycle) openConnection(ctx context.Context, state *threadState, request ProviderConnectionRequest, acquire func(context.Context, ResourceSelection) (ResourceLease, error), closeFiles func(context.Context) error) (*providerConnection, error) {
+	// Retire idle consumers before ProviderRuntime reserves and materializes the
+	// target. Active and preparing consumers are never canceled for replacement.
+	if err := l.closeIdleConsumers(ctx, status_error.RuntimeUnavailable, func(other *threadState) bool {
+		return other != state && (other.connection != nil && skillsConflict(other.connection.skills, request.Resources.Skills) || other.active != nil && skillsConflict(other.admittedSkills, request.Resources.Skills))
+	}); err != nil {
+		return nil, err
+	}
 	l.mu.Lock()
 	state.generation++
 	generation := state.generation
@@ -474,19 +516,39 @@ func freezeThreadSettings(request *ThreadRequest) (json.RawMessage, error) {
 		}
 		request.Session.AdditionalDirectories[i] = resolved
 	}
-	// These CLIs accept extra authorized roots at launch even when they do
-	// not advertise the ACP session additionalDirectories capability.
-	switch account.Provider {
-	case "workbuddy", "qoder", "qoder-cn":
-		if len(request.Session.AdditionalDirectories) != 0 {
-			request.Connection.Launch.ACPAdditionalDirectories = request.Session.AdditionalDirectories
-			request.Session.AdditionalDirectories = nil
+	// Deliver authorized directories through each CLI's actual entry point and include process settings in session compatibility checks.
+	if account.Provider == "gemini" {
+		if len(request.Session.AdditionalDirectories) > 5 {
+			return nil, status_error.RuntimeWorkspaceScopeUnsupported.WithParams(map[string]interface{}{"MaxDirectories": 5})
+		}
+		for _, directory := range request.Session.AdditionalDirectories {
+			// Gemini splits commas and trims whitespace, so authorized paths must be passed unchanged.
+			if strings.Contains(directory, ",") || strings.TrimSpace(directory) != directory {
+				return nil, status_error.RuntimeWorkspaceScopeUnsupported
+			}
+		}
+	}
+	if nativeAdditionalDirectoryFlag(account.Provider) != "" && len(request.Session.AdditionalDirectories) != 0 {
+		request.Connection.Launch.ACPAdditionalDirectories = request.Session.AdditionalDirectories
+		request.Session.AdditionalDirectories = nil
+	}
+
+	if request.Selection != nil && (account.Provider == "qoder" || account.Provider == "qoder-cn") {
+		request.Connection.Launch.QoderContextWindow = 0
+		if window := request.Selection.ContextWindow; window != "" {
+			size, err := strconv.ParseInt(window, 10, 64)
+			if err != nil || size <= 0 || strconv.FormatInt(size, 10) != window {
+				return nil, status_error.RuntimeConfigurationInvalid
+			}
+			request.Connection.Launch.QoderContextWindow = size
 		}
 	}
 	// The inherited process environment reaches the child without selecting a
 	// thread. Managed overrides and the verified account still determine compatibility.
 	connection := request.Connection
 	connection.Launch.BaseEnvironment = nil
+	// Qoder's window argument only determines process startup; native sessions can still resume with the original ID.
+	connection.Launch.QoderContextWindow = 0
 	if request.Selection != nil {
 		settings := *request.Selection
 		if settings.Fast != nil {

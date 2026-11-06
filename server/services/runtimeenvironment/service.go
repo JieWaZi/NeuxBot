@@ -18,6 +18,7 @@ import (
 	"github.com/JieWaZi/NeuxBot/server/repositories/controllers"
 	"github.com/JieWaZi/NeuxBot/server/repositories/models"
 	"github.com/JieWaZi/NeuxBot/server/services/aiaccount"
+	"golang.org/x/sync/singleflight"
 )
 
 // Service 提供运行时环境条目的初始化和探测生命周期能力。
@@ -56,6 +57,8 @@ type Config struct {
 	RuntimeCatalog *agent.Catalog
 	// Environments 持久化运行时环境条目。
 	Environments controllers.RuntimeEnvironmentController
+	// ModelCatalogs 保存按运行时和账号隔离的目录快照。
+	ModelCatalogs controllers.RuntimeModelCatalogController
 	// Transactions 提供跨条目默认值替换的事务边界。
 	Transactions controllers.TransactionController
 	// Events 在启动探测结束后唤醒已有的运行时资源订阅。
@@ -66,6 +69,10 @@ type Config struct {
 type service struct {
 	// modelCatalog 保存按账号隔离的原生模型发现结果。
 	modelCatalog *agent.ModelCatalog
+	// modelCatalogs 为普通读取提供最近探测的持久快照。
+	modelCatalogs controllers.RuntimeModelCatalogController
+	// modelCatalogRefreshes 合并同一启动配置的首次读取和主动刷新。
+	modelCatalogRefreshes singleflight.Group
 	// resolveAccount 复用受管账号认证选择。
 	resolveAccount func(context.Context, agent.AccountRequest, string) (agent.AccountRequest, error)
 	// accounts 生成默认账号的受管探测配置。
@@ -131,6 +138,7 @@ func New(config Config) (Service, error) {
 	}
 	concrete := created.(*service)
 	concrete.accounts = config.Accounts
+	concrete.modelCatalogs = config.ModelCatalogs
 	if config.ProviderRuntime != nil {
 		concrete.modelCatalog = agent.NewModelCatalog(config.ProviderRuntime)
 		concrete.probeProvider = concrete.detectNative

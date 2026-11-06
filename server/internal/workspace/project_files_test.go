@@ -23,7 +23,11 @@ func TestResolveProjectFilesMapsSourceWithoutCopying(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveProjectFiles() error = %v", err)
 	}
-	if len(references) != 1 || references[0].Name != "main.go" || references[0].Path != "projects/ally/server/main.go" {
+	resolvedSource, err := filepath.EvalSymlinks(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(references) != 1 || references[0].Name != "main.go" || references[0].Path != resolvedSource {
 		t.Fatalf("references = %+v", references)
 	}
 	if content, readErr := os.ReadFile(source); readErr != nil || string(content) != "package main" {

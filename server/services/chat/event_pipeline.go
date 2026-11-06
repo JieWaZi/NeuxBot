@@ -267,6 +267,7 @@ func (p *queryIndexStore) indexStartedMessage(
 		"last_model":            execution.Model,
 		"last_reasoning":        execution.Reasoning,
 		"last_fast":             execution.Fast,
+		"last_context_window":   execution.ContextWindow,
 		"last_permission_level": execution.PermissionLevel,
 		"updated_at":            chat.UpdatedAt,
 	})

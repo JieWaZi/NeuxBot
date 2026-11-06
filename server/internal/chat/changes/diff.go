@@ -127,7 +127,7 @@ func (c *Capture) compare(ctx context.Context) error {
 				summary.Complete = false
 				continue
 			}
-			value := comparison{file: File{RootID: root.ID, Path: path, AbsolutePath: filepath.Join(root.Path, filepath.FromSlash(path)), Status: "modified", Content: "text"}}
+			value := comparison{file: File{RootID: root.ID, Path: path, AbsolutePath: root.absolutePath(path), Status: "modified", Content: "text"}}
 			if aOK {
 				v := a
 				value.before = &v

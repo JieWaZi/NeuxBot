@@ -8,8 +8,10 @@ import (
 	"testing"
 
 	"github.com/JieWaZi/NeuxBot/server/constants"
+	"github.com/JieWaZi/NeuxBot/server/internal/agent"
 	eventlog "github.com/JieWaZi/NeuxBot/server/internal/chat/eventlog"
 	"github.com/JieWaZi/NeuxBot/server/internal/chat/messageview"
+	"github.com/JieWaZi/acp-go/pkg/acpmeta"
 )
 
 func TestReplayDoesNotRetainPrivateRuntimeHistory(t *testing.T) {
@@ -493,5 +495,72 @@ func TestLateFileChangesWithoutBodyPrefix(t *testing.T) {
 	}
 	if strings.Contains(string(encoded), `"message":`) || len(encoded) > 512 {
 		t.Fatalf("reference sent body: %s", encoded)
+	}
+}
+
+func TestApplicationFailureContractSurvivesStreamAndHistory(t *testing.T) {
+	records := fixtureRecords(t)
+	finished, err := eventlog.MarshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusFailed, ErrorCode: "RuntimeWorkspaceScopeUnsupported", ErrorParams: map[string]interface{}{"MaxDirectories": 2}, ErrorMessageSource: constants.ErrorMessageSourceLocalized, FailureCode: constants.RuntimeFailureCodeEventDelivery})
+	if err != nil {
+		t.Fatal(err)
+	}
+	records = append(records, eventlog.Record{SchemaVersion: 1, ChatID: "chat-1", Sequence: 6, RecordedAt: 600, Type: constants.ChatEventTypeExecutionFailed, ExecutionID: "execution-1", Data: finished})
+	adapter, err := Replay(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := adapter.EventsAfter(5, 0)
+	history, err := messageview.ReplayMessages(records)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Message == nil || len(history) != 2 {
+		t.Fatalf("projection sizes events=%d history=%d", len(events), len(history))
+	}
+	stream := events[0]
+	message := stream.Message
+	if stream.ErrorCode != "RuntimeWorkspaceScopeUnsupported" || stream.ErrorMessageSource != "localized" || stream.ErrorParams["MaxDirectories"] != float64(2) || stream.ErrorMessage != "" {
+		t.Fatalf("stream contract = %+v", stream)
+	}
+	var restored *messageview.Message
+	for index := range history {
+		if history[index].ExecutionID == "execution-1" {
+			restored = &history[index]
+		}
+	}
+	if restored == nil || message.ErrorCode != restored.ErrorCode || message.ErrorMessageSource != restored.ErrorMessageSource || !reflect.DeepEqual(message.ErrorParams, restored.ErrorParams) {
+		t.Fatalf("stream and history differ: stream=%+v history=%+v", message, restored)
+	}
+}
+
+func TestTerminalFailureSourceSurvivesNativeResultProjection(t *testing.T) {
+	output := int64(4)
+	result := &agent.NativeResult{Turn: acpmeta.NativeTurn{Usage: &acpmeta.TurnUsage{OutputTokens: &output, Complete: true}}, Failure: &acpmeta.NativeTurnFailure{Message: "Native quota exhausted"}}
+	for _, source := range []constants.ErrorMessageSource{constants.ErrorMessageSourceUnspecified, constants.ErrorMessageSourceLocalized, constants.ErrorMessageSourcePublic} {
+		records := fixtureRecords(t)
+		data, _ := eventlog.MarshalData(eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusFailed, ErrorCode: "RuntimeQuotaExhausted", ErrorMessage: "Native quota exhausted", ErrorMessageSource: source})
+		terminal := eventlog.Record{ChatID: "chat-1", Sequence: 6, RecordedAt: 600, Type: constants.ChatEventTypeExecutionFailed, ExecutionID: "execution-1", Data: data}
+		adapter, err := Replay(records)
+		if err != nil {
+			t.Fatal(err)
+		}
+		event, err := adapter.ApplyNativeTerminal(terminal, result)
+		if err != nil {
+			t.Fatal(err)
+		}
+		builder := messageview.NewPublicMessageViewBuilder()
+		for _, record := range append(records, terminal) {
+			if _, err := builder.Apply(record); err != nil {
+				t.Fatal(err)
+			}
+		}
+		builder.SetNativeResult("execution-1", result)
+		history := builder.PublicMessage("execution-1")
+		if event.ErrorMessageSource != source || event.Message == nil || event.Message.ErrorMessageSource != source || history.ErrorMessageSource != source {
+			t.Fatalf("source=%q stream=%+v history=%+v", source, event, history)
+		}
+		if event.Message.RunMetrics == nil || event.Message.RunMetrics.OutputTokens != 4 || history.RunMetrics == nil || history.RunMetrics.OutputTokens != 4 {
+			t.Fatalf("canonical usage lost: stream=%+v history=%+v", event.Message, history)
+		}
 	}
 }

@@ -154,6 +154,11 @@ func (m *service) freezePluginResources(ctx context.Context, waker string, reque
 
 // acquirePluginResources 只从已冻结描述值取得内容与共享身份租约。
 func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPluginResources, nativeDeliverySupported bool, usage ...authorization.Usage) (preparedPlugins, error) {
+	return m.preparePluginResources(ctx, frozen, nativeDeliverySupported, false, usage...)
+}
+
+// preparePluginResources 共用固定版本、配置就绪及组件筛选，预选阶段跳过全部资源副作用。
+func (m *service) preparePluginResources(ctx context.Context, frozen frozenPluginResources, nativeDeliverySupported, readOnly bool, usage ...authorization.Usage) (preparedPlugins, error) {
 	if err := ctx.Err(); err != nil {
 		return preparedPlugins{}, err
 	}
@@ -187,7 +192,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 	var once sync.Once
 	result.release = func() {
 		once.Do(func() {
-			for _, release := range releases {
+			for _, release := range slices.Backward(releases) {
 				release()
 			}
 		})
@@ -256,10 +261,12 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			continue
 		}
 		data := filepath.Join(m.skillDataDirectory, "plugins", "data", id)
-		if err = os.MkdirAll(data, 0700); err != nil {
-			return result, status_error.PluginStorageError
+		if !readOnly {
+			if err = os.MkdirAll(data, 0700); err != nil {
+				return result, status_error.PluginStorageError
+			}
 		}
-		if m.pluginContents != nil {
+		if !readOnly && m.pluginContents != nil {
 			started := time.Now()
 			release, err := m.pluginContents.Acquire(root, data)
 			logSlowStage(id, "content_lease", started)
@@ -369,7 +376,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 				}
 				continue
 			}
-			if m.pluginInstallations != nil {
+			if !readOnly && m.pluginInstallations != nil {
 				update, retained, authErr := m.pluginInstallations.IdentityLease(id, usage...)
 				if authErr != nil {
 					return result, authErr
@@ -378,7 +385,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 				usageUpdates = append(usageUpdates, update)
 				bridgeRelease = retained
 			}
-			if m.pluginController != nil {
+			if !readOnly && m.pluginController != nil {
 				current, readErr := m.pluginController.Configuration(ctx, id)
 				if readErr != nil {
 					return result, readErr
@@ -417,7 +424,11 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			if !agentapi.DetectedConnectorTransportSupported(detection, transport) {
 				continue
 			}
-			resolved, resolveErr := plugins.ResolveServer(version.Package, server, root, data, values)
+			resolve := plugins.ResolveServer
+			if readOnly {
+				resolve = plugins.PreviewServer
+			}
+			resolved, resolveErr := resolve(version.Package, server, root, data, values)
 			if resolveErr != nil {
 				if required {
 					return result, resolveErr
@@ -447,43 +458,45 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			available[server.Key] = true
 			snapshot.ComponentIDs = append(snapshot.ComponentIDs, componentID)
 		}
-		bindings, accountID, bindErr := plugininstallation.DeliveryAuthentication(authVersion, configuration, cli)
-		snapshot.ProviderAccountID = accountID
-		if bindErr != nil {
-			return result, bindErr
-		}
-		if hasAuthentication && len(authenticationBindings) > 0 {
-			plugininstallation.ProjectBoundAuthentication(id, authenticationBindings, nativeEligible, candidateConnectors, candidateEnvironment, bindings)
-		} else if hasAuthentication {
-			for _, binding := range bindings {
-				isSkill := false
-				for _, declaration := range version.Package.Skills {
-					if plugins.ComponentID(id, "skill:"+declaration.Key) == binding.ComponentID && slices.ContainsFunc(candidateSkills, func(skill agentapi.Skill) bool { return skill.Name == declaration.Name }) {
-						isSkill = true
-					}
-				}
-				if isSkill {
-					for key, value := range binding.Environment {
-						if key == "PATH" {
-							candidateEnvironment[key] = plugininstallation.MergeDeliveryPath(candidateEnvironment[key], value, m.skillDataDirectory)
-							continue
+		if !readOnly {
+			bindings, accountID, bindErr := plugininstallation.DeliveryAuthentication(authVersion, configuration, cli)
+			snapshot.ProviderAccountID = accountID
+			if bindErr != nil {
+				return result, bindErr
+			}
+			if hasAuthentication && len(authenticationBindings) > 0 {
+				plugininstallation.ProjectBoundAuthentication(id, authenticationBindings, nativeEligible, candidateConnectors, candidateEnvironment, bindings)
+			} else if hasAuthentication {
+				for _, binding := range bindings {
+					isSkill := false
+					for _, declaration := range version.Package.Skills {
+						if plugins.ComponentID(id, "skill:"+declaration.Key) == binding.ComponentID && slices.ContainsFunc(candidateSkills, func(skill agentapi.Skill) bool { return skill.Name == declaration.Name }) {
+							isSkill = true
 						}
-						if old, ok := candidateEnvironment[key]; ok && old != value {
-							return result, status_error.PluginConfigurationConflict
-						}
-						candidateEnvironment[key] = value
 					}
-					continue
-				}
-				for index := range candidateConnectors {
-					if candidateConnectors[index].ID != binding.ComponentID {
+					if isSkill {
+						for key, value := range binding.Environment {
+							if key == "PATH" {
+								candidateEnvironment[key] = plugininstallation.MergeDeliveryPath(candidateEnvironment[key], value, m.skillDataDirectory)
+								continue
+							}
+							if old, ok := candidateEnvironment[key]; ok && old != value {
+								return result, status_error.PluginConfigurationConflict
+							}
+							candidateEnvironment[key] = value
+						}
 						continue
 					}
-					for key, value := range binding.Environment {
-						candidateConnectors[index].Environment = append(candidateConnectors[index].Environment, models.MCPSecretDefinition{Name: key, Value: value, Configured: true})
-					}
-					for key, value := range binding.Headers {
-						candidateConnectors[index].Headers = append(candidateConnectors[index].Headers, models.MCPSecretDefinition{Name: key, Value: value, Configured: true})
+					for index := range candidateConnectors {
+						if candidateConnectors[index].ID != binding.ComponentID {
+							continue
+						}
+						for key, value := range binding.Environment {
+							candidateConnectors[index].Environment = append(candidateConnectors[index].Environment, models.MCPSecretDefinition{Name: key, Value: value, Configured: true})
+						}
+						for key, value := range binding.Headers {
+							candidateConnectors[index].Headers = append(candidateConnectors[index].Headers, models.MCPSecretDefinition{Name: key, Value: value, Configured: true})
+						}
 					}
 				}
 			}
@@ -571,7 +584,7 @@ func (m *service) acquirePluginResources(ctx context.Context, frozen frozenPlugi
 			if !slices.Equal(snapshot.ComponentIDs, prior.ComponentIDs) || snapshot.Delivery != priorDelivery || snapshot.NativePluginID != priorNativeID || (prior.TargetDigest != "" && snapshot.TargetDigest != prior.TargetDigest) {
 				return result, status_error.PluginNotReady
 			}
-			if hasAuthentication && snapshot.ProviderAccountID != prior.ProviderAccountID {
+			if !readOnly && hasAuthentication && snapshot.ProviderAccountID != prior.ProviderAccountID {
 				return result, status_error.PluginConfigurationConflict
 			}
 		}
@@ -711,4 +724,10 @@ func nativeConfigurationKeyAllowed(key string) bool {
 		return false
 	}
 	return true
+}
+
+// selectNativePluginSkills 在接纳前固定插件技能，结果不包含凭据或原生授权。
+func (m *service) selectNativePluginSkills(ctx context.Context, frozen frozenPluginResources) ([]agentapi.Skill, error) {
+	prepared, err := m.preparePluginResources(ctx, frozen, false, true)
+	return prepared.skills, err
 }

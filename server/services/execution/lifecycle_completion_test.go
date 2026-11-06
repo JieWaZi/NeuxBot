@@ -94,9 +94,7 @@ func TestFinishExecutionReleasesReservationAndPublishesDurableTerminal(t *testin
 	executionCore.finishExecution(
 		models.Chat{ID: chatID},
 		models.Execution{ID: executionID, ChatID: chatID},
-		constants.ExecutionStatusCompleted,
-		"",
-		"",
+		eventlog.ExecutionFinishedData{Status: constants.ExecutionStatusCompleted},
 	)
 	select {
 	case <-journal.published:

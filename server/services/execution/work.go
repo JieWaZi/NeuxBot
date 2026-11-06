@@ -2,8 +2,10 @@ package execution
 
 import (
 	agent "github.com/JieWaZi/NeuxBot/server/internal/agent"
+	"os"
 
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -71,6 +73,8 @@ type runtimeSelection struct {
 	Reasoning string
 	// Fast 是本轮可冻结的 Fast 选择。
 	Fast *bool `json:"Fast,omitempty"`
+	// ContextWindow 是本轮冻结的原生窗口档位。
+	ContextWindow string `json:"ContextWindow,omitempty"`
 	// PermissionLevel 是本次执行冻结的跨 Runtime 产品权限等级。
 	PermissionLevel agent.PermissionLevel
 	// WorkspaceReadOnly 表示 Runtime 只能读取工作区，不能请求或执行文件修改。
@@ -97,12 +101,16 @@ type pendingChat struct {
 	projectID string
 	// workingDirectory 是选择的临时文件夹，项目 Chat 为空。
 	workingDirectory string
+	// executionWorkspaceDirectory 是宿主领域拥有的隔离执行目录，普通聊天为空。
+	executionWorkspaceDirectory string
 	// additionalWorkingDirectories 是宿主入口冻结的附加受管目录，不接受智能体参数扩展。
 	additionalWorkingDirectories []string
 }
 
 // pendingMessage 保存尚未被 Runtime 接受、尚未进入权威日志的输入。
 type pendingMessage struct {
+	// requestedAt 是服务端收到本轮输入的时间，计入资源准备和原生会话初始化耗时。
+	requestedAt int64
 	// automaticRunID 固定服务端编排来源，恢复和重试保持原调用链。
 	automaticRunID string
 	// submissionID 是耐久入口可选的续发请求身份。
@@ -139,7 +147,9 @@ type pendingMessage struct {
 	allowedAgentDomains *[]string
 	// allowedConnectorIDs 是入口冻结的 MCP 白名单，nil 与空列表具有不同业务含义。
 	allowedConnectorIDs *[]string
-	// supplementalInstructions 是业务层追加的虚拟上下文文件。
+	// contextInstructions 是本轮动态业务上下文，不参与原生会话资源指纹。
+	contextInstructions []agent.Instruction
+	// supplementalInstructions 是稳定的业务角色与成员上下文。
 	supplementalInstructions []agent.Instruction
 	// historyMessageIDsToOmit 是已包含在本次输入中的权威消息标识。
 	historyMessageIDsToOmit []string
@@ -158,6 +168,7 @@ func normalizePendingMessage(input pendingMessage) pendingMessage {
 	input.allowedAgentDomains = cloneConnectorAllowlist(input.allowedAgentDomains)
 	input.allowedConnectorIDs = cloneConnectorAllowlist(input.allowedConnectorIDs)
 	input.historyMessageIDsToOmit = append([]string(nil), input.historyMessageIDsToOmit...)
+	input.contextInstructions = append([]agent.Instruction(nil), input.contextInstructions...)
 	input.supplementalInstructions = append(
 		[]agent.Instruction(nil),
 		input.supplementalInstructions...,
@@ -202,6 +213,7 @@ func normalizePendingMessage(input pendingMessage) pendingMessage {
 	input.runtime.RuntimeID = strings.TrimSpace(input.runtime.RuntimeID)
 	input.runtime.Model = strings.TrimSpace(input.runtime.Model)
 	input.runtime.Reasoning = strings.TrimSpace(input.runtime.Reasoning)
+	input.runtime.ContextWindow = strings.TrimSpace(input.runtime.ContextWindow)
 	input.runtime.SummaryModel = strings.TrimSpace(input.runtime.SummaryModel)
 	input.runtime.SummaryReasoning = strings.TrimSpace(input.runtime.SummaryReasoning)
 	input.runtime.HistoryMode = constants.HistoryMode(strings.TrimSpace(string(input.runtime.HistoryMode)))
@@ -251,6 +263,9 @@ func (m *service) startMessage(
 	ctx context.Context,
 	request pendingMessage,
 ) (AcceptedExecution, error) {
+	if request.requestedAt == 0 {
+		request.requestedAt = nowMillis()
+	}
 	// 先完成纯输入规范化和契约校验，避免任何外部副作用发生后才拒绝请求。
 	request = normalizePendingMessage(request)
 	if !validCodeReferences(request.message.CodeReferences) {
@@ -258,7 +273,7 @@ func (m *service) startMessage(
 	}
 	isNew := request.chatID == ""
 	if request.submissionID != "" {
-		identity, err := requestidempotency.NewSubmission(request.submissionID, []any{request.chatID, request.message, request.runtime, request.parentExecutionID, request.admission, stableToolCapabilities(request.toolCapabilities), request.supplementalInstructions, request.allowedConnectorIDs, request.allowedAgentDomains})
+		identity, err := requestidempotency.NewSubmission(request.submissionID, []any{request.chatID, request.message, request.runtime, request.parentExecutionID, request.admission, stableToolCapabilities(request.toolCapabilities), request.supplementalInstructions, request.contextInstructions, request.allowedConnectorIDs, request.allowedAgentDomains})
 		if err != nil {
 			return AcceptedExecution{}, err
 		}
@@ -346,8 +361,9 @@ func (m *service) startMessage(
 	if !runtimeEnvironment.Enabled {
 		return AcceptedExecution{}, status_error.RuntimeUnavailable
 	}
-	// Scoped entries require native enforcement over inherited MCP and plugin settings.
-	if !agent.SupportsProvider(nativeProvider(runtimeEnvironment)) || request.allowedConnectorIDs != nil || request.allowedAgentDomains != nil {
+	// Connector allowlists require native enforcement over inherited MCP settings.
+	// Agent domains are enforced separately by the host's exact capability grants.
+	if !agent.SupportsProvider(nativeProvider(runtimeEnvironment)) || request.allowedConnectorIDs != nil {
 		return AcceptedExecution{}, status_error.RuntimePolicyUnsupported
 	}
 	requiredPermissionLevel := request.runtime.PermissionLevel
@@ -473,9 +489,11 @@ func (m *service) startMessage(
 		ctx,
 		state,
 		userMessageID,
+		executionID,
 		request.message.Attachments,
 		request.message.CodeReferences,
 		request.runtime.RuntimeID,
+		runtimeEnvironment.Detection,
 	)
 	if err != nil {
 		return AcceptedExecution{}, err
@@ -521,6 +539,7 @@ func createRequestContent(request pendingMessage) []interface{} {
 		request.create.wakerID,
 		request.create.projectID,
 		request.create.workingDirectory,
+		request.create.executionWorkspaceDirectory,
 		request.create.hiddenFromWakerHistory,
 		request.message.Actor,
 		request.message.Text,
@@ -545,10 +564,14 @@ func createRequestContent(request pendingMessage) []interface{} {
 		request.admission,
 		stableToolCapabilities(request.toolCapabilities),
 		request.supplementalInstructions,
+		request.contextInstructions,
 		request.allowedAgentDomains,
 	}
 	if request.runtime.Fast != nil {
 		content = append(content, map[string]any{"fast": *request.runtime.Fast})
+	}
+	if request.runtime.ContextWindow != "" {
+		content = append(content, map[string]any{"contextWindow": request.runtime.ContextWindow})
 	}
 	if request.automaticRunID != "" {
 		content = append(content, map[string]any{"automaticRunId": request.automaticRunID})
@@ -624,11 +647,11 @@ type messageChat struct {
 	chat models.Chat
 	// lastExecutionID 是最近助手执行或继承消息的原续接游标。
 	lastExecutionID string
-	// workspaceDirectory 是 Chat 私有的指令、技能与附件目录。
+	// workspaceDirectory 是伙伴固定 cwd 或宿主领域提供的隔离成员 cwd。
 	workspaceDirectory string
-	// projectLinks 是工作区 projects/ 下的来源软链接集合。
+	// projectLinks 只保存真实项目来源及展示标签，不对应磁盘链接。
 	projectLinks []workspace.ProjectLink
-	// projectSources 是工作区 projects/ 下全部来源入口的冻结快照。
+	// projectSources 是全部真实项目来源及指令策略的冻结快照。
 	projectSources []eventlog.ProjectSourceSnapshot
 	// threadWorkspaceID 非空时表示 Chat 绑定 thread 级共享执行工作区。
 	threadWorkspaceID string
@@ -642,7 +665,7 @@ type resolvedChatWorkspace struct {
 	projectName string
 	// additionalDirectories 是 Runtime 获得授权的真实目录，首项是用户终端起始目录。
 	additionalDirectories []string
-	// projectLinks 是对话执行工作区 projects/ 下的来源软链接。
+	// projectLinks 是真实项目来源与展示标签，不创建工作区入口。
 	projectLinks []workspace.ProjectLink
 	// projectSources 是包含目录级指令策略的权威冻结快照。
 	projectSources []eventlog.ProjectSourceSnapshot
@@ -650,20 +673,28 @@ type resolvedChatWorkspace struct {
 
 // preparedMessageFiles 保存发送前已经物化且可能需要回滚的文件副作用。
 type preparedMessageFiles struct {
-	// executionWorkspaceDirectory 是 Chat 私有的受管资源与附件目录。
+	// executionWorkspaceDirectory 是本轮冻结的真实 cwd，附件原件另由 Conversation 拥有。
 	executionWorkspaceDirectory string
 	// chatID 是执行工作区归属校验使用的对话标识。
 	chatID string
-	// removeExecutionWorkspaceOnRollback 表示提交失败时需要删除本次新建的执行工作区。
-	removeExecutionWorkspaceOnRollback bool
+	// newConversation 表示未提交的 Chat，可在回滚后移除空私有目录。
+	newConversation bool
+	// taskDirectories 是接纳前按既有 ExecutionID 准备的真实路径。
+	taskDirectories workspace.TaskDirectories
+	// projectEntries 是本轮原生工具使用的 Chat 独有项目入口，真实来源保持独立。
+	projectEntries []workspace.ProjectEntry
+	// rollbackProjectEntries 仅撤销本次准备新建的 Chat 独有入口。
+	rollbackProjectEntries func() error
 	// storage 用于在新 Chat 提交失败后清理空聚合目录。
 	storage *chatstorage.Layout
 	// attachments 保存附件运行路径和可回滚文件操作。
 	attachments workspace.PreparedAttachments
 	// attachmentReferences 是可以写入权威消息事件的安全引用。
 	attachmentReferences []eventlog.AttachmentReference
-	// codeReferences 保存整文件的权威工作区路径及按输入保留路径的代码片段。
+	// codeReferences 保存引用文件的真实路径及本轮选中的代码片段。
 	codeReferences []eventlog.CodeReference
+	// referencedFiles 是本轮引用校验后冻结的真实文件，仅用于精确采集与能力授权。
+	referencedFiles []string
 	// instructions 是本次执行实际读取并交给 Runtime 的当前指令。
 	instructions []agent.Instruction
 	// committed 表示权威消息和执行事实已经成功提交。
@@ -709,15 +740,13 @@ func (f *preparedMessageFiles) rollback() {
 			err,
 		)
 	}
-	if !f.removeExecutionWorkspaceOnRollback {
-		return
+	if f.rollbackProjectEntries != nil {
+		if err := f.rollbackProjectEntries(); err != nil {
+			logx.Errorf("rollback chat project entries failed: chat_id=%s error=%v", f.chatID, err)
+		}
 	}
-	if err := workspace.DeleteExecutionWorkspace(f.executionWorkspaceDirectory, f.chatID); err != nil {
-		logx.Errorf(
-			"rollback uncommitted chat execution workspace failed: chat_id=%s error=%v",
-			f.chatID,
-			err,
-		)
+	if !f.newConversation {
+		return
 	}
 	if f.storage != nil {
 		if err := f.storage.RemoveEmptyChatAggregate(f.chatID); err != nil {
@@ -773,16 +802,14 @@ func (m *service) resolveMessageChat(
 	if chatID == "" {
 		return messageChat{}, status_error.BadRequest
 	}
-	workspaceDirectory, err := m.storage.ChatWorkspace(chatID)
+	workspaceDirectory, err := m.storage.AgentWorkspace(input.wakerID)
 	if err != nil {
 		return messageChat{}, err
 	}
-	if err := workspace.EnsureExecutionWorkspace(
-		workspaceDirectory,
-		chatID,
-		input.wakerID,
-		resolvedWorkspace.projectLinks,
-	); err != nil {
+	if input.executionWorkspaceDirectory != "" {
+		workspaceDirectory = input.executionWorkspaceDirectory
+	}
+	if err := ensureInitialExecutionWorkspace(workspaceDirectory, chatID, input.wakerID, input.executionWorkspaceDirectory != ""); err != nil {
 		return messageChat{}, status_error.ChatDirectoryOwnershipInvalid
 	}
 	if input.projectID == "" && input.workingDirectory == "" && len(resolvedWorkspace.additionalDirectories) == 0 {
@@ -804,6 +831,7 @@ func (m *service) resolveMessageChat(
 		LastRuntimeID:                request.runtime.RuntimeID,
 		LastModel:                    request.runtime.Model,
 		LastFast:                     request.runtime.Fast,
+		LastContextWindow:            request.runtime.ContextWindow,
 		CreatedAt:                    now,
 		UpdatedAt:                    now,
 	}
@@ -967,7 +995,7 @@ func validateFrozenWorkspace(chat models.Chat) error {
 	return nil
 }
 
-func ensureMessageExecutionWorkspace(state messageChat, projectLinks []workspace.ProjectLink) error {
+func ensureMessageExecutionWorkspace(state messageChat) error {
 	threadWorkspaceID := strings.TrimSpace(state.threadWorkspaceID)
 	if threadWorkspaceID != "" {
 		return workspace.EnsureExistingThreadMemberExecutionWorkspace(
@@ -977,12 +1005,14 @@ func ensureMessageExecutionWorkspace(state messageChat, projectLinks []workspace
 			state.chat.WakerID,
 		)
 	}
-	return workspace.EnsureExecutionWorkspace(
-		state.workspaceDirectory,
-		state.chat.ID,
-		state.chat.WakerID,
-		projectLinks,
-	)
+	owner, err := workspace.ReadExecutionWorkspaceOwner(state.workspaceDirectory)
+	if err != nil {
+		return err
+	}
+	if owner.Kind == constants.IsolatedExecutionWorkspaceOwnerKind {
+		return workspace.EnsureIsolatedExecutionWorkspace(state.workspaceDirectory, state.chat.ID, state.chat.WakerID)
+	}
+	return workspace.EnsureAgentWorkspace(state.workspaceDirectory, state.chat.WakerID)
 }
 
 // prepareMessageFiles 原子物化执行上下文并准备消息附件。
@@ -990,9 +1020,11 @@ func (m *service) prepareMessageFiles(
 	ctx context.Context,
 	state messageChat,
 	messageID string,
+	executionID string,
 	attachments []AttachmentInput,
 	codeReferences []CodeReferenceInput,
 	runtimeID string,
+	detection agent.DetectionResult,
 ) (*preparedMessageFiles, error) {
 	if m.threads == nil {
 		return nil, status_error.RuntimeUnavailable
@@ -1010,34 +1042,11 @@ func (m *service) prepareMessageFiles(
 			})
 		}
 	}
-	if len(projectLinks) == 0 {
-		managedDirectory := workspaceDirectory
-		if state.threadWorkspaceID != "" {
-			var err error
-			managedDirectory, err = m.storage.TeamWorkspace(state.threadWorkspaceID)
-			if err != nil {
-				return nil, err
-			}
-			owner, err := workspace.ReadExecutionWorkspaceOwner(managedDirectory)
-			if err != nil || owner.Kind != constants.ThreadExecutionWorkspaceOwnerKind || owner.ThreadID != state.threadWorkspaceID {
-				return nil, status_error.ChatDirectoryOwnershipInvalid
-			}
-			managedDirectory, err = m.storage.TeamProjects(state.threadWorkspaceID)
-			if err != nil {
-				return nil, err
-			}
-		}
-		validDirectories := len(state.chat.AdditionalWorkingDirectories) == 1 && filepath.Clean(state.chat.AdditionalWorkingDirectories[0]) == filepath.Clean(managedDirectory)
-
-		if state.chat.ProjectID != "" || !validDirectories {
-			return nil, status_error.ChatDirectoryOwnershipInvalid
-		}
-	}
 	runtimeFiles, err := m.resolveRuntimeWorkspaceFiles(runtimeID)
 	if err != nil {
 		return nil, status_error.RuntimeUnavailable
 	}
-	if err := ensureMessageExecutionWorkspace(state, projectLinks); err != nil {
+	if err := ensureMessageExecutionWorkspace(state); err != nil {
 		logx.Errorf(
 			"prepare chat execution workspace failed: chat_id=%s error=%v",
 			state.chat.ID,
@@ -1056,7 +1065,7 @@ func (m *service) prepareMessageFiles(
 	if err != nil {
 		return nil, err
 	}
-	instructions := make([]agent.Instruction, 0, len(profileContents))
+	instructions := []agent.Instruction{{Name: "Workspace directories", Content: "The working directory is persistent and may be shared by several chats of this partner. outputs/ holds persistent execution results; tmp/ holds execution intermediate files and exact input copies. Task-specific paths arrive with each turn. User projects remain at their authorized absolute roots."}}
 	// 档案按固定业务顺序进入静态配置，避免相同内容因 map 遍历顺序变化重建原生会话。
 	for _, kind := range profile.EditableKinds() {
 		content, exists := profileContents[kind]
@@ -1088,26 +1097,59 @@ func (m *service) prepareMessageFiles(
 		}
 		if content, exists := files[runtimeFiles.instructionFileName]; exists {
 			instructions = append(instructions, agent.Instruction{
-				Name: filepath.Join(
-					constants.ExecutionWorkspaceProjectsDirectory,
-					source.EntryName,
-					runtimeFiles.instructionFileName,
-				),
+				Name:    filepath.Join(source.SourcePath, runtimeFiles.instructionFileName),
 				Content: content,
 			})
 		}
 	}
+	taskDirectories, err := workspace.EnsureTaskDirectories(workspaceDirectory, executionID)
+	if err != nil {
+		return nil, err
+	}
+	conversationDirectory, err := m.storage.ChatRoot(state.chat.ID)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.MkdirAll(conversationDirectory, 0o700); err != nil {
+		return nil, status_error.ManagedWorkspaceError
+	}
 	files := &preparedMessageFiles{
-		executionWorkspaceDirectory:        workspaceDirectory,
-		chatID:                             state.chat.ID,
-		removeExecutionWorkspaceOnRollback: state.isNew,
-		storage:                            m.storage,
+		executionWorkspaceDirectory: workspaceDirectory,
+		chatID:                      state.chat.ID,
+		newConversation:             state.isNew,
+		taskDirectories:             taskDirectories,
+		storage:                     m.storage,
 		attachments: workspace.PreparedAttachments{
 			Rollback: func() error { return nil },
 		},
 		instructions: instructions,
 	}
-	files.codeReferences, err = prepareCodeReferences(projectLinks, codeReferences)
+	if supported, known := agent.AdditionalDirectorySupport(detection); known && !supported {
+		projectionRoots := append([]workspace.ProjectLink(nil), projectLinks...)
+		usedNames := make(map[string]bool, len(projectionRoots))
+		for _, source := range projectionRoots {
+			usedNames[source.EntryName] = true
+		}
+		for _, directory := range state.chat.AdditionalWorkingDirectories {
+			if sameFilesystemPath(directory, workspaceDirectory) || slices.ContainsFunc(projectionRoots, func(source workspace.ProjectLink) bool { return sameFilesystemPath(source.SourcePath, directory) }) {
+				continue
+			}
+			name := filepath.Base(directory)
+			for suffix, base := 2, name; usedNames[name]; suffix++ {
+				name = fmt.Sprintf("%s-%d", base, suffix)
+			}
+			usedNames[name] = true
+			projectionRoots = append(projectionRoots, workspace.ProjectLink{EntryName: name, SourcePath: directory})
+		}
+		files.projectEntries, files.rollbackProjectEntries, err = workspace.PrepareProjectEntries(workspaceDirectory, state.chat.ID, projectionRoots)
+		if err != nil {
+			files.rollback()
+			return nil, err
+		}
+	}
+	referenceRoots := append([]workspace.ProjectLink(nil), projectLinks...)
+	referenceRoots = append(referenceRoots, workspace.ProjectLink{EntryName: "outputs", SourcePath: filepath.Join(workspaceDirectory, constants.TaskOutputsDirectoryName)})
+	files.codeReferences, err = prepareCodeReferences(referenceRoots, codeReferences)
 	if err != nil {
 		logx.Errorf(
 			"prepare chat code references failed: chat_id=%s error=%v",
@@ -1117,6 +1159,11 @@ func (m *service) prepareMessageFiles(
 		files.rollback()
 		return nil, status_error.BadRequest
 	}
+	for _, reference := range files.codeReferences {
+		if !slices.Contains(files.referencedFiles, reference.Path) {
+			files.referencedFiles = append(files.referencedFiles, reference.Path)
+		}
+	}
 	// 附件在执行工作区物化成功后准备；任一附件失败会撤销此前产生的全部可回滚文件。
 	attachmentInputs := make([]workspace.AttachmentInput, 0, len(attachments))
 	for _, attachment := range attachments {
@@ -1125,7 +1172,7 @@ func (m *service) prepareMessageFiles(
 		})
 	}
 	files.attachments, err = workspace.PrepareChatAttachments(
-		workspaceDirectory,
+		conversationDirectory,
 		state.chat.ID,
 		messageID,
 		attachmentInputs,
@@ -1138,6 +1185,10 @@ func (m *service) prepareMessageFiles(
 		)
 		files.rollback()
 		return nil, status_error.BadRequest
+	}
+	if err := workspace.MaterializeTaskInputs(taskDirectories.Temporary, state.chat.ID, messageID, &files.attachments); err != nil {
+		files.rollback()
+		return nil, err
 	}
 	files.attachmentReferences = make(
 		[]eventlog.AttachmentReference,
@@ -1164,29 +1215,16 @@ func prepareCodeReferences(
 ) ([]eventlog.CodeReference, error) {
 	sourcePaths := make([]string, 0, len(inputs))
 	for _, input := range inputs {
-		if input.StartLine == 0 && input.EndLine == 0 && input.Content == "" {
-			sourcePaths = append(sourcePaths, input.Path)
-		}
+		sourcePaths = append(sourcePaths, input.Path)
 	}
 	projectFiles, err := workspace.ResolveProjectFiles(projectLinks, sourcePaths)
 	if err != nil {
 		return nil, err
 	}
-	projectFileIndex := 0
 	references := make([]eventlog.CodeReference, 0, len(inputs))
-	for _, input := range inputs {
-		if input.StartLine == 0 && input.EndLine == 0 && input.Content == "" {
-			if projectFileIndex >= len(projectFiles) {
-				return nil, status_error.ProjectSourceUnavailable
-			}
-			references = append(references, eventlog.CodeReference{
-				Path: projectFiles[projectFileIndex].Path,
-			})
-			projectFileIndex++
-			continue
-		}
+	for index, input := range inputs {
 		references = append(references, eventlog.CodeReference{
-			Path:      filepath.ToSlash(filepath.Clean(input.Path)),
+			Path:      projectFiles[index].Path,
 			StartLine: input.StartLine,
 			EndLine:   input.EndLine,
 			Content:   input.Content,
@@ -1220,6 +1258,7 @@ func newExecutionIndex(
 		Model:             request.runtime.Model,
 		Reasoning:         request.runtime.Reasoning,
 		Fast:              request.runtime.Fast,
+		ContextWindow:     request.runtime.ContextWindow,
 		PermissionLevel:   request.runtime.PermissionLevel,
 		WorkspaceReadOnly: request.runtime.WorkspaceReadOnly,
 		Status:            constants.ExecutionStatusPending,
@@ -1287,6 +1326,7 @@ func startedMessageEvents(
 			ExecutionID:  execution.ID,
 			InvocationID: invocationID,
 			Data: marshalData(eventlog.ExecutionCreatedData{
+				RequestedAt:       request.requestedAt,
 				SteerExecutionID:  request.message.SteerExecutionID,
 				AutomaticRunID:    execution.AutomaticRunID,
 				PluginResources:   execution.PluginResources,
@@ -1299,6 +1339,7 @@ func startedMessageEvents(
 				Model:             request.runtime.Model,
 				Reasoning:         request.runtime.Reasoning,
 				Fast:              request.runtime.Fast,
+				ContextWindow:     request.runtime.ContextWindow,
 				PermissionLevel:   request.runtime.PermissionLevel,
 				WorkspaceReadOnly: request.runtime.WorkspaceReadOnly,
 			}),
@@ -1375,7 +1416,7 @@ func (m *service) buildSessionPlan(
 	codeReferences := make([]agent.CodeReference, 0, len(files.codeReferences))
 	for _, reference := range files.codeReferences {
 		codeReferences = append(codeReferences, agent.CodeReference{
-			Path: reference.Path, StartLine: reference.StartLine, EndLine: reference.EndLine, Content: reference.Content,
+			Path: runtimeProjectEntryPath(reference.Path, files.projectEntries), StartLine: reference.StartLine, EndLine: reference.EndLine, Content: reference.Content,
 		})
 	}
 	skills := make([]agent.Skill, 0, len(enabledSkills))
@@ -1395,10 +1436,9 @@ func (m *service) buildSessionPlan(
 	connectors := runtimeConnectorDeclarations(enabledConnectors)
 	instructions := append([]agent.Instruction(nil), files.instructions...)
 	for _, instruction := range request.supplementalInstructions {
-		if instruction.Name == "" || instruction.Content == "" {
-			continue
+		if instruction.Name != "" && instruction.Content != "" {
+			instructions = append(instructions, instruction)
 		}
-		instructions = append(instructions, instruction)
 	}
 
 	additionalWritableDirectories := append([]string(nil), state.chat.AdditionalWorkingDirectories...)
@@ -1432,8 +1472,17 @@ func (m *service) buildSessionPlan(
 			),
 		},
 	}
+	taskContext := fmt.Sprintf("New deliverables for this execution: %q. Intermediate files and exact input copies: %q. Keep modifications to existing files at their existing true paths.", files.taskDirectories.Outputs, files.taskDirectories.Temporary)
+	if request.message.Actor == "workflow" {
+		taskContext = fmt.Sprintf("This workflow worker has an isolated execution directory at %q. Its intermediate files and exact input copies are in %q. The current workflow workspace context specifies the owning scripts, state, cache and run-result directories.", files.executionWorkspaceDirectory, files.taskDirectories.Temporary)
+	}
 	turn := agent.TurnInput{
-		Message: agent.Message{Text: request.message.Text, Attachments: attachments, CodeReferences: codeReferences},
+		Message:             agent.Message{Text: request.message.Text, Attachments: attachments, CodeReferences: codeReferences},
+		ContextInstructions: append([]agent.Instruction{{Name: "Current task directories", Content: taskContext}}, request.contextInstructions...),
+	}
+	if len(files.projectEntries) > 0 {
+		encoded, _ := json.Marshal(files.projectEntries)
+		turn.ContextInstructions = append(turn.ContextInstructions, agent.Instruction{Name: "Current project entries", Content: "This native client uses the following cwd-relative project entries. Use each entry path for project tools; sourcePath remains the original authorized file location.\n" + string(encoded)})
 	}
 	for _, item := range enabledSkills {
 		if item.CurrentVersion.ID != "" && hasSkillID(selectedSkillIDs, item.SkillPackage.ID) {
@@ -1465,10 +1514,7 @@ func runtimeProjectDirectories(
 	}
 	for _, source := range sources {
 		directories = append(directories, agent.WorkspaceProjectDirectory{
-			Path: filepath.ToSlash(filepath.Join(
-				constants.ExecutionWorkspaceProjectsDirectory,
-				source.EntryName,
-			)),
+			Path:    source.SourcePath,
 			Default: sameFilesystemPath(source.SourcePath, defaultDirectory),
 		})
 	}
@@ -1569,4 +1615,32 @@ func runtimePermissionSupported(
 		return constants.SelectablePermissionLevel(level)
 	}
 	return agent.PermissionLevelSupported(levels, level)
+}
+
+// ensureInitialExecutionWorkspace 保留普通伙伴目录与宿主领域隔离工作区的不同归属。
+func ensureInitialExecutionWorkspace(root, chatID, wakerID string, isolated bool) error {
+	if isolated {
+		return workspace.EnsureIsolatedExecutionWorkspace(root, chatID, wakerID)
+	}
+	return workspace.EnsureAgentWorkspace(root, wakerID)
+}
+
+// runtimeProjectEntryPath 只映射发给原生工具的路径，不改写日志或成果的真实身份。
+func runtimeProjectEntryPath(path string, entries []workspace.ProjectEntry) string {
+	selected := ""
+	matched := ""
+	for _, entry := range entries {
+		relative, err := filepath.Rel(entry.SourcePath, path)
+		if err != nil || filepath.IsAbs(relative) || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			continue
+		}
+		if len(entry.SourcePath) > len(matched) {
+			matched = entry.SourcePath
+			selected = filepath.ToSlash(filepath.Join(entry.Path, relative))
+		}
+	}
+	if selected != "" {
+		return selected
+	}
+	return path
 }

@@ -12,6 +12,7 @@ export type ChatViewState = {
   query: string;
   reasoning: string;
   fast?: boolean | null;
+  contextWindow?: string;
   runtimeId: string;
   selectedCodeReferences: ChatCodeReference[];
 };

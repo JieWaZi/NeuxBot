@@ -8,6 +8,7 @@ import (
 	chatservice "github.com/JieWaZi/NeuxBot/server/services/chat"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -750,4 +751,30 @@ func (m *service) preparePlugins(ctx context.Context, waker string, request pend
 		prepared.release()
 	}
 	return prepared, err
+}
+
+// TestNativePluginSkillSelectionIsReadOnly 防止接纳前技能预选创建实例目录或提前取得身份租约。
+func TestNativePluginSkillSelectionIsReadOnly(t *testing.T) {
+	data := t.TempDir()
+	state := executionPlugin(t, data, "p1", "use office", true)
+	core := &service{pluginController: installedPluginFixture{states: []models.PluginState{state}}, skillDataDirectory: data, pluginLauncher: "/core"}
+	detection := agentapi.DetectionResult{State: agentapi.DetectionStateReady, Runtime: agentapi.RuntimeSummary{ID: "kimi", BaseRuntimeID: "kimi", SkillDirectoryName: ".agents"}, Capabilities: agentapi.CapabilitySet{agentapi.CapabilitySkillDirectory: true}}
+	frozen, err := core.freezePluginResources(t.Context(), "w1", pendingMessage{message: userMessage{PluginIDs: []string{"p1"}}}, detection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selected, err := core.selectNativePluginSkills(t.Context(), frozen)
+	if err != nil || len(selected) != 1 || selected[0].Name != "office" {
+		t.Fatalf("pre-admission skills = %+v %v", selected, err)
+	}
+	if _, err := os.Stat(filepath.Join(data, "plugins", "data", "p1")); !os.IsNotExist(err) {
+		t.Fatalf("read-only selection created plugin data: %v", err)
+	}
+	actual, err := core.acquirePluginResources(t.Context(), frozen, false)
+	if actual.release != nil {
+		defer actual.release()
+	}
+	if err != nil || !reflect.DeepEqual(selected, actual.skills) {
+		t.Fatalf("preflight/acquisition skills differ: %+v %+v %v", selected, actual.skills, err)
+	}
 }

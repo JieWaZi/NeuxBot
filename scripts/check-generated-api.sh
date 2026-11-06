@@ -8,6 +8,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+cp packages/frontend/src/shared/api/status-error-catalog.generated.ts "$ALLY_GENERATED_CHECK_DIR/status-error-catalog.generated.ts"
 cp server/openapi.json "$ALLY_GENERATED_CHECK_DIR/openapi.json"
 cp server/integration-openapi.json "$ALLY_GENERATED_CHECK_DIR/integration-openapi.json"
 if [ -d packages/frontend/src/shared/api/generated ]; then
@@ -16,6 +17,7 @@ fi
 
 sh ./scripts/generate-api.sh
 
+diff -u "$ALLY_GENERATED_CHECK_DIR/status-error-catalog.generated.ts" packages/frontend/src/shared/api/status-error-catalog.generated.ts
 diff -u "$ALLY_GENERATED_CHECK_DIR/openapi.json" server/openapi.json
 diff -u "$ALLY_GENERATED_CHECK_DIR/integration-openapi.json" server/integration-openapi.json
 if [ -d "$ALLY_GENERATED_CHECK_DIR/generated" ]; then
