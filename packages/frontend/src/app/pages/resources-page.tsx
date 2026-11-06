@@ -1,5 +1,6 @@
+import { WakerDetailLayout } from "@/modules/waker";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Package, Sparkles, Cable, Plus, Workflow } from "lucide-react";
+import { Package, Sparkles, Cable, Plus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -8,7 +9,6 @@ import {
   PluginComponentCollection,
   usePluginComponents,
   PartnerPicker,
-  resourceCategory,
 } from "@/modules/plugin";
 import { SkillResourceCollection } from "@/modules/skill";
 import { WorkflowResourceCollection } from "@/modules/workflow";
@@ -34,16 +34,18 @@ import {
   localApiErrorMessage,
 } from "@/shared/api/local-error-surface";
 
+import {
+  changeResourceCategory,
+  resourceCategoryFromParams,
+} from "./resources-navigation";
+
 type Installation = { kind: "skill" | "connector"; id: string; name: string };
 export function ResourcesPage() {
   const { t } = useTranslation("plugin");
   const { wakerId = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const category =
-    !wakerId && params.get("category") === "workflows"
-      ? "workflows"
-      : resourceCategory(params.get("category"));
+  const category = resourceCategoryFromParams(params, wakerId);
   const search = params.get("search") ?? "";
   const source: "all" | "plugins" | "independent" =
     params.get("source") === "plugins"
@@ -53,6 +55,11 @@ export function ResourcesPage() {
         : "all";
   const view = params.get("view") === "mine" ? "mine" : "catalog";
   const [adding, setAdding] = useState(false);
+  const [addingCategory, setAddingCategory] = useState(category);
+  if (addingCategory !== category) {
+    setAddingCategory(category);
+    setAdding(false);
+  }
   const components = usePluginComponents(
     category === "connectors" ? "connectors" : "skills",
     wakerId,
@@ -115,10 +122,7 @@ export function ResourcesPage() {
   };
   const targetPartner = params.get("partner") || undefined;
   return (
-    <main
-      className="bg-surface-scene h-full min-w-0 overflow-hidden"
-      data-partner-section={wakerId ? "resources" : undefined}
-    >
+    <WakerDetailLayout active="resources" showBreadcrumbs={Boolean(wakerId)}>
       <ResourcePageSurface>
         <ResourcePageHeader
           title={wakerId ? t("partnerResources") : t("title")}
@@ -154,56 +158,42 @@ export function ResourcesPage() {
             )
           }
         />
-        <div className="mb-5">
-          <SegmentedControl
-            appearance="resources"
-            ariaLabel={t("title")}
-            value={category}
-            options={[
-              {
-                value: "plugins",
-                label: t("plugins"),
-                icon: <Package />,
-                description: t("pluginsHelp"),
-              },
-              {
-                value: "skills",
-                label: t("skills"),
-                icon: <Sparkles />,
-                description: t("skillsHelp"),
-              },
-              {
-                value: "connectors",
-                label: t("connectors"),
-                icon: <Cable />,
-                description: t("connectorsHelp"),
-              },
-              ...(!wakerId
-                ? [
-                    {
-                      value: "workflows",
-                      label: t("workflow:title"),
-                      icon: <Workflow />,
-                      description: t("workflowsHelp"),
-                    },
-                  ]
-                : []),
-            ]}
-            onValueChange={(value) =>
-              setParams((current) => {
-                const next = new URLSearchParams(current);
-                next.set("category", value);
-                next.delete("page");
-                next.delete("search");
-                next.delete("view");
-                next.delete("componentPage");
-                next.delete("source");
-                setAdding(false);
-                return next;
-              })
-            }
-          />
-        </div>
+        {wakerId ? (
+          <div className="mb-5">
+            <SegmentedControl
+              appearance="resources"
+              ariaLabel={t("title")}
+              value={category}
+              options={[
+                {
+                  value: "plugins",
+                  label: t("plugins"),
+                  icon: <Package />,
+                  description: t("pluginsHelp"),
+                },
+                {
+                  value: "skills",
+                  label: t("skills"),
+                  icon: <Sparkles />,
+                  description: t("skillsHelp"),
+                },
+                {
+                  value: "connectors",
+                  label: t("connectors"),
+                  icon: <Cable />,
+                  description: t("connectorsHelp"),
+                },
+              ]}
+              onValueChange={(value) =>
+                setParams((current) => {
+                  const next = changeResourceCategory(current, value);
+                  setAdding(false);
+                  return next;
+                })
+              }
+            />
+          </div>
+        ) : null}
         <div key={category} className="space-y-5">
           {category === "plugins" ? (
             <PluginResourceCollection
@@ -248,7 +238,7 @@ export function ResourcesPage() {
           />
         )}
       </ResourcePageSurface>
-    </main>
+    </WakerDetailLayout>
   );
 }
 function IndependentInstallDialog({

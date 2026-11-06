@@ -1,8 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 
 import type * as ChatModule from "@/modules/chat";
@@ -10,7 +16,9 @@ import type { Waker } from "@/modules/waker";
 import { FloatingChat } from "@/modules/chat/components/floating-chat";
 import { SettingsContextSidebar } from "@/modules/settings/components/settings-context-sidebar";
 import { i18n } from "@/shared/i18n";
+import { configurePlatform, platform } from "@/shared/platform/provider";
 import { WorkspaceProvider } from "@/shared/workspace/workspace-context";
+import { ResourcesContextSidebar } from "./resources-context-sidebar";
 import { PartnerNavigationLayout } from "./partner-navigation-layout";
 import type { PartnerNavigationPreferences } from "./partner-navigation-preferences";
 
@@ -198,6 +206,9 @@ function TestLayout({
   sceneContentFlush = false,
   settingsOpen = false,
   settingsSidebar,
+  renderTitlebar,
+  navigationPreferences,
+  sidebarToolbar,
   teamContext,
 }: {
   activeChatId?: string;
@@ -207,37 +218,76 @@ function TestLayout({
   sceneContentFlush?: boolean;
   settingsOpen?: boolean;
   settingsSidebar?: ReactNode;
+  renderTitlebar?: (navigationToggle: ReactNode) => ReactNode;
+  navigationPreferences?: Partial<PartnerNavigationPreferences>;
+  sidebarToolbar?: ReactNode;
   teamContext?: { channelId: string; threadId?: string };
 }) {
-  const [preferences, setPreferences] = useState(initialPreferences);
-  const [sceneNavigationVisible, setSceneNavigationVisible] =
-    useState(settingsOpen);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const activeSettings =
+    settingsOpen || location.pathname.startsWith("/settings");
+  const [preferences, setPreferences] = useState({
+    ...initialPreferences,
+    ...navigationPreferences,
+  });
   const [fullView, setFullView] = useState(floatingChat);
   return (
     <PartnerNavigationLayout
+      renderTitlebar={renderTitlebar}
+      sidebarToolbar={sidebarToolbar}
       activeChatId={activeChatId}
       channels={[]}
-      contextSidebarHidden={contextSidebarHidden}
+      contextSidebarHidden={
+        contextSidebarHidden ?? !location.pathname.startsWith("/wakers/")
+      }
       onManageEntities={() => undefined}
       onOpenPartnerDetail={() => undefined}
-      onOpenAutomaticTasks={() => undefined}
-      onOpenSettings={() => undefined}
+      onNavigateModule={(id) =>
+        navigate(
+          id === "settings"
+            ? "/settings/general"
+            : id === "resources"
+              ? "/resources"
+              : id === "usage"
+                ? "/usage"
+                : "/wakers",
+        )
+      }
       onPreferencesChange={setPreferences}
-      onSceneNavigationVisibleChange={setSceneNavigationVisible}
       onSelectPartner={() => undefined}
       onSelectTeam={() => undefined}
       preferences={preferences}
-      sceneNavigationVisible={sceneNavigationVisible}
       sceneContentFlush={sceneContentFlush}
       selectedPartnerId={selectedPartnerId}
       selectedRailKey={`waker:${selectedPartnerId}`}
-      settingsOpen={settingsOpen}
-      settingsSidebar={settingsSidebar}
+      settingsOpen={activeSettings}
+      settingsSidebar={
+        activeSettings
+          ? (settingsSidebar ?? (
+              <SettingsContextSidebar
+                activeSection="general"
+                onSelect={() => undefined}
+              />
+            ))
+          : undefined
+      }
+      moduleSidebar={
+        location.pathname === "/resources" ? (
+          <ResourcesContextSidebar
+            category="plugins"
+            onCategoryChange={() => undefined}
+          />
+        ) : undefined
+      }
       teamContext={teamContext}
       wakers={wakers}
     >
       <main>
         主内容
+        <output data-testid="navigation-preferences">
+          {JSON.stringify(preferences)}
+        </output>
         <LocationProbe />
         {floatingChat ? (
           <>
@@ -274,6 +324,9 @@ function renderLayout({
   selectedPartnerId,
   settingsOpen,
   settingsSidebar,
+  renderTitlebar,
+  navigationPreferences,
+  sidebarToolbar,
   teamContext,
 }: {
   activeChatId?: string;
@@ -284,6 +337,9 @@ function renderLayout({
   selectedPartnerId?: string;
   settingsOpen?: boolean;
   settingsSidebar?: ReactNode;
+  renderTitlebar?: (navigationToggle: ReactNode) => ReactNode;
+  navigationPreferences?: Partial<PartnerNavigationPreferences>;
+  sidebarToolbar?: ReactNode;
   teamContext?: { channelId: string; threadId?: string };
 } = {}) {
   const queryClient = new QueryClient({
@@ -301,6 +357,9 @@ function renderLayout({
             selectedPartnerId={selectedPartnerId}
             settingsOpen={settingsOpen}
             settingsSidebar={settingsSidebar}
+            renderTitlebar={renderTitlebar}
+            navigationPreferences={navigationPreferences}
+            sidebarToolbar={sidebarToolbar}
             teamContext={teamContext}
           />
         </WorkspaceProvider>
@@ -310,10 +369,216 @@ function renderLayout({
 }
 
 describe("PartnerNavigationLayout", () => {
+  it("Rail仍是整窗首列，正常伙伴列表始终显示且没有全局收起/展开按钮", () => {
+    renderLayout({
+      renderTitlebar: () => <header aria-label="内容顶栏">当前内容</header>,
+      sidebarToolbar: <button>实体后退</button>,
+    });
+    const header = screen.getByRole("banner", { name: "内容顶栏" });
+    const sidebar = document.querySelector("[data-app-context-sidebar]");
+    const rail = screen.getByRole("navigation", { name: "模块导航" });
+    expect(rail.parentElement?.firstElementChild).toBe(rail);
+    expect(sidebar).not.toContainElement(header);
+    expect(screen.getByRole("region", { name: "场景工作区" })).toContainElement(
+      header,
+    );
+    expect(screen.getByRole("radiogroup", { name: "身份列表" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "实体后退" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /展开全局侧栏|收起全局侧栏/ }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["desktop", "darwin"],
+    ["desktop", undefined],
+    ["web", undefined],
+  ] as const)(
+    "%s宿主原生控件%s不改变38px区域顶行",
+    (kind, nativeWindowControls) => {
+      configurePlatform({
+        ...platform(),
+        kind,
+        chrome: { navigationInset: 72, nativeWindowControls },
+      });
+      renderLayout();
+      expect(document.querySelector("[data-app-workspace-frame]")).toHaveStyle({
+        "--shell-sidebar-header-height": "38px",
+      });
+      expect(document.querySelector("[data-scene-chrome-host]")).toHaveClass(
+        "h-(--shell-titlebar-height)",
+      );
+    },
+  );
+
+  it("所有模块保留左上toolbar，无sidebar正文时正文跨frame且原Entity保活", async () => {
+    const user = userEvent.setup();
+    renderLayout({
+      navigationPreferences: { globalSidebarCollapsed: false },
+      sidebarToolbar: <button>实体后退</button>,
+    });
+    const toolbarAction = screen.getByRole("button", { name: "实体后退" });
+    const entity = document.querySelector("[data-collapsed=false]");
+    const main = screen.getByText("主内容");
+    await user.click(screen.getByRole("button", { name: "用量统计" }));
+    expect(screen.getByRole("button", { name: "实体后退" })).toBe(
+      toolbarAction,
+    );
+    expect(entity).toBeInTheDocument();
+    expect(entity).not.toBeVisible();
+    expect(entity?.closest("[inert]")).not.toBeNull();
+    expect(screen.getByRole("region", { name: "场景工作区" })).toHaveAttribute(
+      "data-content-spans-sidebar",
+    );
+    expect(screen.getByText("主内容")).toBe(main);
+    await user.click(screen.getByRole("button", { name: "资源库" }));
+    expect(screen.getByRole("button", { name: "实体后退" })).toBe(
+      toolbarAction,
+    );
+    expect(entity).not.toBeVisible();
+    await user.click(screen.getByRole("button", { name: "伙伴" }));
+    expect(document.querySelector("[data-collapsed=false]")).toBe(entity);
+    expect(entity).toBeVisible();
+  });
+
+  it.each(["/resources", "/usage", "/work-board", "/automatic-tasks"])(
+    "非伙伴模块%s隐藏伙伴右下history，原实体列表仍保活",
+    (entry) => {
+      renderLayout({ initialEntry: entry });
+      expect(
+        document.querySelector("[data-sidebar-entity-body]"),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "查看历史会话" })).toBeNull();
+    },
+  );
+
+  it("右下只保留当前身份的历史入口，不重复弹实体导航", async () => {
+    const user = userEvent.setup();
+    renderLayout();
+    expect(screen.getAllByRole("navigation", { name: "伙伴" })).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /打开身份切换器/ })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "查看历史会话" }));
+    expect(await screen.findByText("项目会话")).toBeVisible();
+    expect(screen.getAllByRole("navigation", { name: "伙伴" })).toHaveLength(1);
+  });
+
+  it("忽略旧fold偏好与窄窗口自动收起，搜索仍从正常列表工具打开", async () => {
+    const user = userEvent.setup();
+    renderLayout({
+      navigationPreferences: {
+        contextSidebarWidth: 88,
+        globalSidebarCollapsed: true,
+      },
+    });
+    const frame = document.querySelector(
+      "[data-app-workspace-frame]",
+    ) as HTMLElement;
+    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "216px" });
+    vi.spyOn(frame, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 300, 700),
+    );
+    fireEvent(window, new Event("resize"));
+    expect(frame).toHaveStyle({ "--shell-sidebar-active-width": "216px" });
+    expect(screen.getByRole("radiogroup", { name: "身份列表" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: /展开全局侧栏|收起全局侧栏/ }),
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: "搜索伙伴" }));
+    expect(screen.getByRole("searchbox", { name: "搜索伙伴" })).toHaveFocus();
+  });
+
+  it("拖动到216px即停止，键盘Home/End仍调整正常宽度且不触发收起", () => {
+    renderLayout({
+      navigationPreferences: {
+        contextSidebarWidth: 280,
+        globalSidebarCollapsed: true,
+      },
+    });
+    const handle = screen.getByRole("separator", { name: "调整模块侧栏宽度" });
+    expect(handle).toHaveAttribute("aria-valuemin", "216");
+    fireEvent.mouseDown(handle, { clientX: 280 });
+    fireEvent.mouseUp(document, { clientX: 88 });
+    expect(handle).toHaveAttribute("aria-valuenow", "216");
+    expect(screen.getByRole("radiogroup", { name: "身份列表" })).toBeVisible();
+    fireEvent.keyDown(handle, { key: "End" });
+    expect(handle).toHaveAttribute("aria-valuenow", "400");
+    fireEvent.keyDown(handle, { key: "Home" });
+    expect(handle).toHaveAttribute("aria-valuenow", "216");
+    fireEvent.doubleClick(handle);
+    expect(handle).toHaveAttribute("aria-valuenow", "280");
+    expect(
+      screen.queryByRole("button", { name: /展开全局侧栏|收起全局侧栏/ }),
+    ).toBeNull();
+  });
+
+  it.each([
+    ["/wakers/waker-6", "概览"],
+    ["/wakers/waker-6/projects/project-1", "项目"],
+    ["/wakers/waker-6/memory", "记忆"],
+    ["/wakers/waker-6/resources?category=skills", "资源"],
+    ["/wakers/waker-6/plugins/plugin-1/skills/skill-1", "资源"],
+  ])(
+    "详情及子路由%s左栏显示原伙伴功能导航，正文不再挂Dock",
+    async (entry, label) => {
+      renderLayout({ initialEntry: entry });
+      const nav = await screen.findByRole("navigation", {
+        name: "当前伙伴功能",
+      });
+      expect(
+        document.querySelector("[data-app-context-sidebar]"),
+      ).toContainElement(nav);
+      expect(
+        screen.getByRole("region", { name: "场景工作区" }),
+      ).not.toContainElement(nav);
+      expect(within(nav).getByRole("link", { name: label })).toHaveAttribute(
+        "aria-current",
+        "page",
+      );
+      expect(screen.queryByRole("navigation", { name: "伙伴" })).toBeNull();
+      expect(
+        document.querySelector("[data-sidebar-entity-body]"),
+      ).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-slot=detail-dock-overlay]"),
+      ).toBeNull();
+    },
+  );
+
+  it("详情导航切换与返回伙伴列表保持原Entity正文实例", async () => {
+    const user = userEvent.setup();
+    renderLayout({ initialEntry: "/wakers/waker-6" });
+    const entity = document.querySelector("[data-sidebar-entity-body]");
+    await user.click(await screen.findByRole("link", { name: "项目" }));
+    expect(document.querySelector("[data-sidebar-entity-body]")).toBe(entity);
+    expect(entity).not.toBeVisible();
+    await user.click(
+      within(screen.getByRole("navigation", { name: "模块导航" })).getByRole(
+        "button",
+        { name: "伙伴" },
+      ),
+    );
+    expect(document.querySelector("[data-sidebar-entity-body]")).toBe(entity);
+    expect(entity).toBeVisible();
+    expect(
+      screen.queryByRole("navigation", { name: "当前伙伴功能" }),
+    ).toBeNull();
+  });
+
+  it("伙伴聊天保留原伙伴团队列表，不切换详情导航或插入Dock", () => {
+    renderLayout({ initialEntry: "/chat?wakerId=waker-6" });
+    expect(screen.getByRole("navigation", { name: "伙伴" })).toBeVisible();
+    expect(screen.getByRole("radiogroup", { name: "身份列表" })).toBeVisible();
+    expect(
+      screen.queryByRole("navigation", { name: "当前伙伴功能" }),
+    ).toBeNull();
+    expect(
+      document.querySelector("[data-slot=detail-dock-overlay]"),
+    ).toBeNull();
+  });
+
   it("侧栏加号每次打开所选伙伴的独立新会话草稿", async () => {
     const user = userEvent.setup();
     renderLayout();
-    await user.click(screen.getByRole("button", { name: "展开全局侧栏" }));
     const first = screen.getAllByRole("button", { name: "新建会话" })[0];
     if (!first) throw new Error("缺少新建会话按钮");
     await user.click(first);
@@ -335,7 +600,7 @@ describe("PartnerNavigationLayout", () => {
     );
   });
 
-  it("完整视图沿用右下角唯一入口，展开和收起全局导航都不叠加按钮", async () => {
+  it("完整视图沿用右下角唯一入口，不叠加伙伴history按钮", async () => {
     const user = userEvent.setup();
     renderLayout({ floatingChat: true });
 
@@ -352,7 +617,6 @@ describe("PartnerNavigationLayout", () => {
 
     await user.click(launcher);
     expect(screen.getByRole("region", { name: "悬浮对话" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "展开全局侧栏" }));
     expect(screen.queryByRole("button", { name: "查看历史会话" })).toBeNull();
     expect(
       document.querySelectorAll("[data-floating-chat-shell-launcher]"),
@@ -375,115 +639,57 @@ describe("PartnerNavigationLayout", () => {
     expect(
       screen.queryByRole("navigation", { name: "当前伙伴功能" }),
     ).toBeNull();
-    expect(screen.queryByRole("navigation", { name: "伙伴" })).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "打开身份切换器" }),
-    ).toBeVisible();
+    expect(screen.getByRole("navigation", { name: "伙伴" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "打开身份切换器" })).toBeNull();
     expect(
       screen.getByRole("region", { name: "场景工作区" }).children[1],
     ).toHaveClass("grid-cols-[minmax(0,1fr)]");
   });
 
-  it("收起左栏时先选择伙伴再查看会话，展开后改用会话入口", async () => {
+  it("调整侧栏宽度后右下仍为同一伙伴历史，保留实体活动与选择", async () => {
     const user = userEvent.setup();
     renderLayout();
-
-    expect(screen.queryByRole("navigation", { name: "伙伴" })).toBeNull();
-    const floatingTrigger = screen.getByRole("button", {
-      name: "打开身份切换器，当前：伙伴 6",
-    });
-    expect(floatingTrigger).toHaveAttribute("data-activity-state", "running");
-    expect(floatingTrigger.parentElement).toHaveClass("right-0", "bottom-0");
-    expect(floatingTrigger.querySelector(".lucide-users-round")).not.toBeNull();
-    expect(floatingTrigger.querySelector("img")).toBeNull();
-    expect(within(floatingTrigger).getByText("选择伙伴")).toHaveClass(
-      "opacity-0",
-    );
-
-    await user.click(floatingTrigger);
-
-    const rail = await screen.findByRole("navigation", { name: "伙伴" });
-    expect(within(rail).getByRole("button", { name: "伙伴 1" })).toBeVisible();
-    expect(
-      within(rail).getByRole("button", { name: "伙伴 5，1 个会话需要处理" }),
-    ).toBeVisible();
-    expect(
-      await within(rail).findByRole("button", {
-        name: "伙伴 6，4 个会话正在运行",
-      }),
-    ).toHaveAttribute("aria-current", "page");
-    expect(rail.querySelector(".overflow-y-auto")).not.toBeNull();
-    expect(
-      within(rail).queryByRole("button", { name: "展开全部伙伴" }),
-    ).toBeNull();
-
-    await user.click(
-      within(rail).getByRole("button", {
-        name: "伙伴 6，4 个会话正在运行",
-      }),
-    );
-    expect(screen.queryByRole("navigation", { name: "伙伴" })).toBeNull();
-    expect(
-      within(screen.getByLabelText("历史会话")).queryByText("伙伴 6"),
-    ).toBeNull();
-    expect(screen.getByRole("button", { name: "返回身份列表" })).toBeVisible();
+    const history = screen.getByRole("button", { name: "查看历史会话" });
+    expect(history.parentElement).toHaveClass("right-0", "bottom-0");
+    await user.click(history);
+    expect(await screen.findByText("项目会话")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "返回身份列表" })).toBeNull();
     expect(
       within(screen.getByLabelText("历史会话")).getByRole("button", {
         name: "新建会话",
       }).textContent,
     ).toBe("");
-    expect(await screen.findByText("项目会话")).toBeVisible();
-
-    const expandButton = screen.getByRole("button", {
-      name: "展开全局侧栏",
-    });
-    expect(expandButton.closest("[data-desktop-drag-region]")).toBeNull();
-
-    await user.click(expandButton);
-
+    const rail = screen.getByRole("navigation", { name: "伙伴" });
     expect(
-      screen.queryByRole("button", {
-        name: "打开身份切换器，当前：伙伴 6",
-      }),
+      within(rail).getByRole("button", { name: "伙伴 5，1 个会话需要处理" }),
+    ).toBeVisible();
+    expect(
+      within(rail).getByRole("button", { name: "伙伴 6，4 个会话正在运行" }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "查看历史会话" })).toBe(history);
+    expect(
+      screen.queryByRole("navigation", { name: "当前伙伴功能" }),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "查看历史会话" })).toBeVisible();
-    expect(
-      within(screen.getByRole("navigation", { name: "伙伴" })).getByRole(
-        "button",
-        { name: "伙伴 5，1 个会话需要处理" },
-      ),
-    ).toBeVisible();
-    expect(
-      screen.getByRole("navigation", { name: "当前伙伴功能" }),
-    ).toBeVisible();
   });
 
-  it("场景顶栏、详情 Dock 和主内容共用一个场景容器", async () => {
-    const user = userEvent.setup();
-    renderLayout();
-
-    await user.click(screen.getByRole("button", { name: "展开全局侧栏" }));
-    const navigationToolbar = screen.getByRole("toolbar", {
-      name: "导航控制",
-    });
-    expect(
-      within(navigationToolbar).getByRole("button", { name: "返回" }),
-    ).toBeDisabled();
-    expect(
-      within(navigationToolbar).getByRole("button", { name: "前进" }),
-    ).toBeDisabled();
+  it("详情导航位于左侧，场景顶栏和主体保持各自内容边界", async () => {
+    renderLayout({ initialEntry: "/wakers/waker-6" });
 
     const sceneSurface = screen.getByRole("region", { name: "场景工作区" });
 
     expect(sceneSurface).toContainElement(screen.getByText("主内容"));
-    expect(sceneSurface).toContainElement(
-      await screen.findByRole("navigation", { name: "当前伙伴功能" }),
-    );
+    const navigation = await screen.findByRole("navigation", {
+      name: "当前伙伴功能",
+    });
+    expect(sceneSurface).not.toContainElement(navigation);
+    expect(
+      document.querySelector("[data-app-context-sidebar]"),
+    ).toContainElement(navigation);
     expect(
       screen.queryByRole("separator", { name: "调整上下文侧栏宽度" }),
     ).toBeNull();
-    expect(sceneSurface).toHaveClass("rounded-l-3xl", "overflow-hidden");
-    expect(sceneSurface.parentElement).toHaveStyle({
+    expect(sceneSurface).toHaveClass("overflow-hidden");
+    expect(document.querySelector(".isolate")).toHaveStyle({
       "--shell-navigation-leading-inset": "8px",
     });
   });
@@ -495,55 +701,78 @@ describe("PartnerNavigationLayout", () => {
     expect(sceneSurface.children[1]).not.toHaveClass("pl-4");
   });
 
-  it("设置 Scene 的前进后退只切换左栏导航，不改变 Scene 内容", async () => {
-    const user = userEvent.setup();
+  it("工作流不装配空侧栏并保留固定模块入口", () => {
     renderLayout({
-      settingsOpen: true,
-      settingsSidebar: (
-        <SettingsContextSidebar
-          activeSection="general"
-          onSelect={() => undefined}
-        />
-      ),
+      initialEntry: "/workflows/definition-1",
+      selectedPartnerId: "",
     });
-
-    const settingsMenu = screen.getByRole("navigation", { name: "设置菜单" });
-    expect(settingsMenu).toBeVisible();
-    expect(settingsMenu.closest("aside")).not.toHaveClass("border-r");
-    expect(screen.queryByRole("navigation", { name: "伙伴" })).toBeNull();
     expect(
-      screen.queryByRole("separator", { name: "调整上下文侧栏宽度" }),
+      document.querySelector("[data-app-context-sidebar]"),
+    ).toBeInTheDocument();
+    expect(
+      document.querySelector("[data-sidebar-entity-body]"),
+    ).not.toBeVisible();
+    expect(screen.getByRole("region", { name: "场景工作区" })).toHaveAttribute(
+      "data-content-spans-sidebar",
+    );
+    expect(
+      screen.queryByRole("separator", { name: "调整模块侧栏宽度" }),
     ).toBeNull();
-    const toolbar = screen.getByRole("toolbar", { name: "导航控制" });
-    expect(toolbar).toHaveTextContent("设置");
-    expect(toolbar).not.toHaveClass("border-b");
-
-    const backButton = within(toolbar).getByRole("button", { name: "返回" });
-    const forwardButton = within(toolbar).getByRole("button", {
-      name: "前进",
-    });
-    expect(backButton).toBeEnabled();
-    expect(forwardButton).toBeDisabled();
-
-    await user.click(backButton);
-
-    expect(screen.queryByRole("navigation", { name: "设置菜单" })).toBeNull();
-    expect(screen.getByRole("navigation", { name: "伙伴" })).toBeVisible();
-    expect(screen.getByText("主内容")).toBeVisible();
-    expect(toolbar).not.toHaveTextContent("设置");
-    expect(backButton).toBeDisabled();
-    expect(forwardButton).toBeEnabled();
-
-    await user.click(forwardButton);
-
-    expect(screen.getByRole("navigation", { name: "设置菜单" })).toBeVisible();
-    expect(screen.queryByRole("navigation", { name: "伙伴" })).toBeNull();
-    expect(toolbar).toHaveTextContent("设置");
-    expect(backButton).toBeEnabled();
-    expect(forwardButton).toBeDisabled();
+    expect(screen.getByRole("button", { name: "工作流" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("navigation", { name: "模块导航" })).toBeVisible();
   });
 
-  it("详情 Dock 支持键盘切换四个功能，并保持唯一选中入口", async () => {
+  it("模块切换只更换模块侧栏，固定模块入口与内容保持挂载", async () => {
+    const user = userEvent.setup();
+    renderLayout();
+    const rail = screen.getByRole("navigation", { name: "模块导航" });
+    const main = screen.getByText("主内容");
+    await user.click(within(rail).getByRole("button", { name: "资源库" }));
+    expect(screen.queryByRole("navigation", { name: "伙伴" })).toBeNull();
+    expect(screen.getByRole("button", { name: "技能" })).toBeVisible();
+    expect(screen.getByRole("navigation", { name: "模块导航" })).toBe(rail);
+    await user.click(within(rail).getByRole("button", { name: "设置" }));
+    expect(screen.getByRole("navigation", { name: "设置菜单" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "技能" })).toBeNull();
+    expect(screen.getByText("主内容")).toBe(main);
+  });
+
+  it.each(["/settings/general", "/resources"])(
+    "覆盖页%s导航至少220px并隐藏伙伴resizer",
+    (entry) => {
+      renderLayout({
+        initialEntry: entry,
+        navigationPreferences: {
+          contextSidebarWidth: 128,
+          globalSidebarCollapsed: true,
+        },
+      });
+      expect(document.querySelector("[data-app-workspace-frame]")).toHaveStyle({
+        "--shell-sidebar-active-width": "220px",
+      });
+      expect(
+        screen.queryByRole("separator", { name: "调整模块侧栏宽度" }),
+      ).toBeNull();
+      expect(
+        screen.getByRole("navigation", {
+          name: entry.startsWith("/settings") ? "设置菜单" : "资源库",
+        }),
+      ).toBeVisible();
+      expect(
+        JSON.parse(
+          screen.getByTestId("navigation-preferences").textContent || "{}",
+        ),
+      ).toMatchObject({
+        contextSidebarWidth: 128,
+        globalSidebarCollapsed: true,
+      });
+    },
+  );
+
+  it("详情侧栏支持键盘切换原四个功能，并保持唯一选中入口", async () => {
     const user = userEvent.setup();
     renderLayout({ initialEntry: "/wakers/waker-6" });
 
@@ -581,7 +810,6 @@ describe("PartnerNavigationLayout", () => {
     try {
       const user = userEvent.setup();
       renderLayout();
-      await user.click(screen.getByRole("button", { name: "展开全局侧栏" }));
       await user.click(screen.getByRole("button", { name: "查看历史会话" }));
       const group = await screen.findByRole("button", { name: label });
       expect(screen.getAllByRole("button", { name: label })).toHaveLength(1);
@@ -600,7 +828,7 @@ describe("PartnerNavigationLayout", () => {
 
   it("伙伴菜单不包含会话，并从右下角浮层按来源查看会话", async () => {
     const user = userEvent.setup();
-    renderLayout();
+    renderLayout({ initialEntry: "/wakers/waker-6" });
 
     const menu = await screen.findByRole("navigation", {
       name: "当前伙伴功能",
@@ -612,7 +840,6 @@ describe("PartnerNavigationLayout", () => {
     ).toEqual(["概览", "项目", "记忆", "资源"]);
     expect(within(menu).queryByText("伙伴 6")).toBeNull();
     expect(within(menu).queryByText("会话")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "展开全局侧栏" }));
     expect(screen.queryByText("项目会话")).toBeNull();
     await user.click(screen.getByRole("button", { name: "查看历史会话" }));
     const historyPanel = screen.getByLabelText("历史会话");
@@ -637,8 +864,8 @@ describe("PartnerNavigationLayout", () => {
       within(screen.getByLabelText("历史会话")).queryByText("伙伴 6"),
     ).toBeNull();
     expect(
-      screen.getByRole("button", { name: "伙伴 6，4 个会话正在运行" }),
-    ).not.toHaveAttribute("aria-expanded");
+      screen.queryByRole("button", { name: "伙伴 6，4 个会话正在运行" }),
+    ).toBeNull();
     expect(screen.queryByRole("button", { name: "置顶" })).toBeNull();
     const taskListLink = await screen.findByRole("link", { name: "对话任务" });
     expect(taskListLink).toHaveAttribute("href", "/wakers/waker-6/chats");
@@ -693,7 +920,6 @@ describe("PartnerNavigationLayout", () => {
       screen.queryByRole("navigation", { name: "当前伙伴功能" }),
     ).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "展开全局侧栏" }));
     await user.click(screen.getByRole("button", { name: "查看历史会话" }));
 
     const projectChatRows = await waitFor(() =>

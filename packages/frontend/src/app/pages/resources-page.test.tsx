@@ -1,4 +1,11 @@
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+import {
+  render as renderUI,
+  screen,
+  fireEvent,
+  cleanup,
+} from "@testing-library/react";
 import {
   MemoryRouter,
   Routes,
@@ -10,6 +17,30 @@ import { afterEach, it, expect, vi } from "vitest";
 import "@/shared/i18n";
 import type * as PluginModule from "@/modules/plugin";
 import { ResourcesPage } from "./resources-page";
+import { ResourcesContextSidebar } from "../layout/resources-context-sidebar";
+import {
+  resourceCategoryFromParams,
+  changeResourceCategory,
+} from "./resources-navigation";
+import { useSearchParams } from "react-router-dom";
+function ResourceNavigation() {
+  const [params, setParams] = useSearchParams();
+  return (
+    <>
+      <ResourcesContextSidebar
+        category={resourceCategoryFromParams(params)}
+        onCategoryChange={(category) =>
+          setParams(changeResourceCategory(params, category))
+        }
+      />
+      <button
+        onClick={() => setParams(changeResourceCategory(params, "workflows"))}
+      >
+        打开工作流模块
+      </button>
+    </>
+  );
+}
 import { WorkflowListPage } from "@/modules/workflow/pages/workflow-list-page";
 vi.mock("@/modules/plugin", async (original) => ({
   ...(await original<typeof PluginModule>()),
@@ -75,13 +106,14 @@ it("分类、搜索、视图和来源由 URL 恢复，切换时立即展示对�
       ]}
     >
       <HistoryControls />
+      <ResourceNavigation />
       <Routes>
         <Route path="resources" element={<ResourcesPage />} />
       </Routes>
     </MemoryRouter>,
   );
   expect(screen.getByText(/技能内容 review independent/)).toBeVisible();
-  fireEvent.click(screen.getByRole("radio", { name: "插件" }));
+  fireEvent.click(screen.getByRole("button", { name: "插件" }));
   expect(screen.queryByText(/技能内容/)).not.toBeInTheDocument();
   expect(screen.getByText(/插件内容 catalog/)).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "我的插件" }));
@@ -149,19 +181,20 @@ it("工作流分类可从 URL 恢复，切换清理筛选并从页首创建", ()
       ]}
     >
       <HistoryControls />
+      <ResourceNavigation />
       <Routes>
         <Route path="resources" element={<ResourcesPage />} />
         <Route path="workflows/new" element={<p>新建工作流画布</p>} />
       </Routes>
     </MemoryRouter>,
   );
-  fireEvent.click(screen.getByRole("radio", { name: "工作流" }));
+  fireEvent.click(screen.getByRole("button", { name: "打开工作流模块" }));
   expect(screen.getByText("工作流内容")).toBeVisible();
   expect(screen.getByRole("status")).toHaveTextContent("?category=workflows");
   expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "历史返回" }));
   expect(screen.getByText(/技能内容 review plugins/)).toBeVisible();
-  fireEvent.click(screen.getByRole("radio", { name: "工作流" }));
+  fireEvent.click(screen.getByRole("button", { name: "打开工作流模块" }));
   const create = screen.getByRole("button", { name: "新建工作流" });
   expect(create.closest("header")).not.toBeNull();
   fireEvent.click(create);
@@ -186,16 +219,55 @@ it("旧工作流列表地址跳转资源库并保留搜索条件", () => {
   render(
     <MemoryRouter initialEntries={["/workflows?search=周会"]}>
       <HistoryControls />
+      <ResourceNavigation />
       <Routes>
         <Route path="workflows" element={<WorkflowListPage />} />
         <Route path="resources" element={<ResourcesPage />} />
       </Routes>
     </MemoryRouter>,
   );
-  expect(screen.getByRole("radio", { name: "工作流" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  expect(screen.queryByRole("radio", { name: "工作流" })).toBeNull();
   expect(screen.getByText("工作流内容 周会")).toBeVisible();
   expect(screen.getByRole("status")).toHaveTextContent("category=workflows");
 });
+
+it("全局资源页不再重复分类分段导航", () => {
+  render(
+    <MemoryRouter initialEntries={["/resources?category=skills"]}>
+      <Routes>
+        <Route path="resources" element={<ResourcesPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  expect(screen.queryByRole("radiogroup", { name: "资源库" })).toBeNull();
+  expect(screen.getByText(/技能内容/)).toBeVisible();
+});
+
+it("外部分类切换关闭原分类的添加流程且不带到另一分类", () => {
+  render(
+    <MemoryRouter initialEntries={["/resources?category=skills"]}>
+      <ResourceNavigation />
+      <Routes>
+        <Route path="resources" element={<ResourcesPage />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "添加技能" }));
+  expect(screen.getByText("技能导入")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "连接器" }));
+  expect(screen.queryByText("连接器创建")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "技能" }));
+  expect(screen.queryByText("技能导入")).toBeNull();
+});
+
+function render(ui: ReactNode) {
+  return renderUI(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
+      {ui}
+    </QueryClientProvider>,
+  );
+}

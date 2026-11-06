@@ -1,6 +1,7 @@
 /* NeuxBot 语义主题；业务组件不得直接依赖参考色阶。 */
 
 :root {
+  --surface-module-rail: var(--surface-chrome);
   /* 欢迎字标浅色绿到黑、暗色绿到白，两种渲染方式共用同一组颜色。 */
   --welcome-wordmark-start: var(--accent-default);
   --welcome-wordmark-end: var(--ref-neutral-1000);
@@ -87,6 +88,17 @@
 :root,
 [data-theme="light"] {
   color-scheme: light;
+  /* OpenBot v0.62.0/fcb35746：brand tokens-light.css；仅供窗口壳层消费。 */
+  --shell-surface-frame: #e8e8eb;
+  --shell-surface-canvas: #f5f5f6;
+  --shell-border-edge: rgba(20, 20, 20, 0.07);
+  --shell-separator: rgba(20, 20, 20, 0.07);
+  --shell-separator-strong: rgba(20, 20, 20, 0.1);
+  --shell-control-hover: #f0f0f2;
+  --shell-control-active: #e8e8eb;
+  --shell-tabs-track: #ececee;
+  --shell-tabs-pill: #ffffff;
+  --shell-menu-shadow: transparent;
 
   --editor-syntax-black: #383a42;
   --editor-syntax-gray: #a0a1a7;
@@ -318,6 +330,18 @@
 
 [data-theme="dark"] {
   color-scheme: dark;
+  /* 对应桌面 tokens.css，不读取 React Native 专属 tokens-native.css。 */
+  --shell-surface-frame: #0d0d0d;
+  --shell-surface-canvas: #1a1a1a;
+  --shell-border-edge: rgba(255, 255, 255, 0.035);
+  --shell-separator: rgba(255, 255, 255, 0.035);
+  --shell-separator-strong: rgba(255, 255, 255, 0.045);
+  --shell-control-hover: #242424;
+  --shell-control-active: #2a2a2a;
+  --shell-tabs-track: #212121;
+  --shell-tabs-pill: #2a2a2a;
+  --shell-menu-shadow: rgba(0, 0, 0, 0.45);
+
   --welcome-wordmark-end: var(--ref-neutral-0);
 
   --editor-syntax-black: #282c34;

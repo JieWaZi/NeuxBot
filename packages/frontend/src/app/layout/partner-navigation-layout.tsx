@@ -4,14 +4,7 @@ import {
   ChatHistoryNavigationRow,
   ChatForkMenuItem,
 } from "@/modules/chat";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Folder,
-  LoaderCircle,
-  MessageSquareText,
-  PanelLeft,
-} from "lucide-react";
+import { Folder, LoaderCircle, MessageSquareText } from "lucide-react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import {
   lazy,
@@ -44,19 +37,19 @@ import type {
 } from "@/shared/api/generated/types.gen";
 import { cn } from "@/shared/lib/cn";
 import { platform } from "@/shared/platform/provider";
-import { DetailDockLayout } from "@/shared/ui/detail-dock-layout";
 import { navigateRouteImmediately } from "./immediate-route-navigation";
+import { AppModuleRail } from "./app-module-rail";
+import { resolveAppNavigation, type AppModuleId } from "./app-navigation-model";
 import { ChatGroupHeader } from "@/modules/chat";
 import { TeamChatTree } from "./team-context-sidebar";
-import {
-  EntityNavigation,
-  FloatingEntityNavigation,
-  type NavigationEntity,
-} from "./entity-navigation";
+import { EntityNavigation, type NavigationEntity } from "./entity-navigation";
+import { useOptionalAppSceneWorkspace } from "@/shared/workspace/app-scene-workspace";
+import type { ChatSceneOwner } from "@/shared/workspace/app-scene-model";
 import { chatDraftHref, chatHref } from "@/shared/lib/chat-navigation";
 import { Button } from "@/shared/ui/button";
 import {
   clampContextSidebarWidth,
+  pinnedAppModules,
   contextSidebarWidthRange,
   moveItem,
   reconcilePartnerOrder,
@@ -78,21 +71,18 @@ type PartnerNavigationLayoutProps = {
   children: ReactNode;
   contextSidebar?: ReactNode;
   notificationBell?: ReactNode;
+  renderTitlebar?: (navigationToggle: ReactNode) => ReactNode;
+  sidebarToolbar?: ReactNode;
   contextSidebarHidden?: boolean;
   entityStatus?: "error" | "loading" | "ready";
   onManageEntities: (mode: PartnerNavigationPreferences["entityMode"]) => void;
   onOpenPartnerDetail: (partnerId: string) => void;
-  onOpenAutomaticTasks: () => void;
-  onOpenResources?: () => void;
-  onOpenKnowledge?: () => void;
-  onOpenUsage?: () => void;
-  onOpenSettings: () => void;
+  onNavigateModule: (moduleId: AppModuleId) => void;
+  moduleSidebar?: ReactNode;
   onPreferencesChange: Dispatch<SetStateAction<PartnerNavigationPreferences>>;
-  onSceneNavigationVisibleChange: (visible: boolean) => void;
   onSelectPartner: (partnerId: string) => void;
   onSelectTeam: (channelId: string) => void;
   preferences: PartnerNavigationPreferences;
-  sceneNavigationVisible: boolean;
   sceneContentFlush?: boolean;
   selectedPartnerId?: string;
   selectedRailKey: string;
@@ -112,9 +102,9 @@ type ChatGroup = {
   type: "folder" | "project";
 };
 
-const PartnerDetailDock = lazy(() =>
-  import("./partner-detail-dock").then((module) => ({
-    default: module.PartnerDetailDock,
+const PartnerContextSidebar = lazy(() =>
+  import("./partner-context-sidebar").then((module) => ({
+    default: module.PartnerContextSidebar,
   })),
 );
 
@@ -202,21 +192,18 @@ function PartnerNavigationLayoutContent({
   children,
   contextSidebar,
   notificationBell,
+  renderTitlebar,
+  sidebarToolbar,
   contextSidebarHidden = false,
   entityStatus = "ready",
   onManageEntities,
   onOpenPartnerDetail,
-  onOpenAutomaticTasks,
-  onOpenResources,
-  onOpenKnowledge,
-  onOpenUsage,
-  onOpenSettings,
+  onNavigateModule,
+  moduleSidebar,
   onPreferencesChange,
-  onSceneNavigationVisibleChange,
   onSelectPartner,
   onSelectTeam,
   preferences,
-  sceneNavigationVisible,
   sceneContentFlush = false,
   selectedPartnerId = "",
   selectedRailKey,
@@ -226,21 +213,27 @@ function PartnerNavigationLayoutContent({
   wakers,
 }: PartnerNavigationLayoutProps) {
   const navigate = useNavigate();
-  const openNewEntityChat = (item: NavigationEntity) => {
+  const { t } = useTranslation("common");
+  const appScenes = useOptionalAppSceneWorkspace();
+  const openNewOwnerChat = (owner: ChatSceneOwner) => {
+    if (appScenes?.openNewChat?.(owner)) return;
     navigate(
-      item.kind === "waker"
-        ? chatDraftHref(item.id)
-        : `/teams/${item.id}?draftId=${crypto.randomUUID()}`,
+      owner.kind === "waker"
+        ? chatDraftHref(owner.id)
+        : `/teams/${owner.id}?draftId=${crypto.randomUUID()}`,
       { flushSync: true },
     );
   };
+  const openNewEntityChat = (item: NavigationEntity) =>
+    openNewOwnerChat({
+      kind: item.kind === "waker" ? "waker" : "team",
+      id: item.id,
+    });
   const location = useLocation();
   const workflowChatOpen = /^\/workflows\/[^/]+(?:\/runs\/[^/]+)?$/.test(
     location.pathname,
   );
-  const automaticTasksOpen =
-    location.pathname.startsWith("/automatic-tasks") ||
-    location.pathname.startsWith("/workflows");
+  const navigation = resolveAppNavigation(location);
   const availableRailKeys = useMemo(
     () => [
       ...wakers.flatMap((waker) => (waker.id ? [`waker:${waker.id}`] : [])),
@@ -299,8 +292,8 @@ function PartnerNavigationLayoutContent({
   });
   const selectedRailItem = navigationEntityByKey.get(selectedRailKey);
   const resizeCleanup = useRef<() => void>(() => undefined);
-  const [contextSidebarWidth, setContextSidebarWidth] = useState(
-    preferences.contextSidebarWidth,
+  const [contextSidebarWidth, setContextSidebarWidth] = useState(() =>
+    clampContextSidebarWidth(preferences.contextSidebarWidth),
   );
   const [showcase, setShowcase] = useState<{
     origin: HTMLElement;
@@ -314,6 +307,24 @@ function PartnerNavigationLayoutContent({
       railOrder: moveItem(orderedRailKeys, sourceId, targetId),
     }));
   };
+  const settingsLayout = settingsOpen ? settingsSidebar : undefined;
+  const partnerContext = !settingsOpen && navigation.sidebarKind === "partners";
+  const sidebar = settingsLayout ?? moduleSidebar;
+  const pageSidebar = Boolean(sidebar);
+  const hasSidebar = pageSidebar || partnerContext;
+  const sidebarWidth = pageSidebar
+    ? Math.max(contextSidebarWidth, 220)
+    : contextSidebarWidth;
+  const resizeSidebar = (value: number, commit: boolean) => {
+    const width = clampContextSidebarWidth(value);
+    setContextSidebarWidth(width);
+    if (commit)
+      onPreferencesChange((current) =>
+        current.contextSidebarWidth === width
+          ? current
+          : { ...current, contextSidebarWidth: width },
+      );
+  };
   const beginContextResize = (event: ReactMouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     resizeCleanup.current();
@@ -322,199 +333,184 @@ function PartnerNavigationLayoutContent({
     resizeCleanup.current = trackHorizontalDrag({
       initialX: startX,
       initialValue: startWidth,
-      valueAt: (clientX) =>
-        clampContextSidebarWidth(startWidth + clientX - startX),
+      valueAt: (x) => clampContextSidebarWidth(startWidth + x - startX),
       onChange: setContextSidebarWidth,
-      onCommit: (width) =>
-        onPreferencesChange((current) =>
-          current.contextSidebarWidth === width
-            ? current
-            : { ...current, contextSidebarWidth: width },
-        ),
+      onCommit: (width) => resizeSidebar(width, true),
       onFinish: () => {
         resizeCleanup.current = () => undefined;
       },
     });
   };
-  const toggleCollapsed = () =>
-    onPreferencesChange((current) => ({
-      ...current,
-      globalSidebarCollapsed: !current.globalSidebarCollapsed,
-    }));
-  const settingsLayout = settingsOpen ? settingsSidebar : undefined;
-  const showSceneNavigation = Boolean(settingsLayout && sceneNavigationVisible);
-  const bodyContextSidebarHidden =
-    contextSidebarHidden || Boolean(settingsLayout) || automaticTasksOpen;
+  const bodyContextSidebarHidden = contextSidebarHidden || !partnerContext;
   const showContextSidebar =
     !bodyContextSidebarHidden && Boolean(contextSidebar);
-  const showDetailDock =
+  const showPartnerSidebarNavigation =
     !bodyContextSidebarHidden && !contextSidebar && Boolean(selectedPartnerId);
   const navigationInset = platform().chrome?.navigationInset ?? 8;
-  const navigationCollapsed =
-    !settingsLayout && preferences.globalSidebarCollapsed;
+  const nativeDarwin =
+    platform().kind === "desktop" &&
+    platform().chrome?.nativeWindowControls === "darwin";
 
   return (
     <SceneChromePortalProvider>
-      <div
-        className="bg-surface-chrome duration-layout ease-ui relative isolate grid h-full min-h-0 min-w-0 grid-cols-[var(--shell-global-active-width)_minmax(0,1fr)] overflow-hidden transition-[grid-template-columns]"
-        style={
-          {
-            "--shell-context-width": `${contextSidebarWidth}px`,
-            "--shell-navigation-leading-inset": `${navigationInset}px`,
-            "--shell-titlebar-navigation-width": `${navigationInset + 60}px`,
-            "--shell-global-active-width": settingsLayout
-              ? "var(--shell-global-sidebar-width)"
-              : preferences.globalSidebarCollapsed
-                ? "var(--shell-global-sidebar-collapsed-width)"
-                : "var(--shell-global-sidebar-width)",
-          } as CSSProperties
-        }
-      >
-        {navigationCollapsed ? (
-          <div
-            className="absolute top-0 left-(--shell-navigation-leading-inset) z-30 flex h-(--shell-titlebar-height) items-center"
-            data-desktop-no-drag-region
-          >
-            <NavigationToggleButton collapsed onClick={toggleCollapsed} />
-          </div>
-        ) : null}
-        <div className="grid min-h-0 min-w-0 grid-rows-[var(--shell-titlebar-height)_minmax(0,1fr)] overflow-hidden">
-          <NavigationToolbar
-            notificationBell={notificationBell}
-            canGoBack={showSceneNavigation}
-            canGoForward={Boolean(settingsLayout) && !showSceneNavigation}
-            collapsed={navigationCollapsed}
-            onBack={() => onSceneNavigationVisibleChange(false)}
-            onForward={() => onSceneNavigationVisibleChange(true)}
-            onToggleCollapsed={toggleCollapsed}
-            title={showSceneNavigation ? "设置" : undefined}
-          />
-          {showSceneNavigation ? (
-            settingsLayout
-          ) : navigationCollapsed ? null : (
-            <EntityNavigation
-              collapsed={false}
-              entityStatus={entityStatus}
-              mode={preferences.entityMode}
-              onManageEntities={onManageEntities}
-              onNewChat={openNewEntityChat}
-              onModeChange={(entityMode) =>
-                onPreferencesChange((current) => ({ ...current, entityMode }))
-              }
-              onOpenSettings={onOpenSettings}
-              onOpenAutomaticTasks={onOpenAutomaticTasks}
-              onOpenResources={onOpenResources}
-              onOpenKnowledge={onOpenKnowledge}
-              onOpenUsage={onOpenUsage}
-              onReorder={updateOrder}
-              onSelectPartner={onSelectPartner}
-              onSelectTeam={onSelectTeam}
-              onShowcaseWaker={(waker, origin) =>
-                setShowcase(captureShowcase(waker, origin))
-              }
-              selectedKey={selectedRailKey}
-              items={visibleRailItems}
-            />
-          )}
-        </div>
-        <section
-          aria-label="场景工作区"
+      {/* OpenBot v0.62.0/fcb35746：WorkspaceFrame.tsx、window.css；Scene 保活仍由本项目原所有者负责。 */}
+      <div className="app-window-shell bg-surface-chrome grid h-full min-h-0 min-w-0 grid-cols-[var(--shell-rail-width)_minmax(0,1fr)] overflow-hidden">
+        <AppModuleRail
+          activeModule={settingsOpen ? "settings" : navigation.moduleId}
+          onNavigate={onNavigateModule}
+          notification={notificationBell}
+          pinnedModules={pinnedAppModules(preferences.railPins)}
+          onPinChange={(id, pinned) =>
+            onPreferencesChange((current) => ({
+              ...current,
+              railPins: { ...current.railPins, [id]: pinned },
+            }))
+          }
+        />
+        <div
+          data-app-workspace-frame
+          data-page-sidebar={pageSidebar || undefined}
+          data-sidebar-body-hidden={!hasSidebar || undefined}
           className={cn(
-            "bg-surface-scene relative grid min-h-0 min-w-0 grid-rows-[var(--shell-titlebar-height)_minmax(0,1fr)] overflow-hidden rounded-l-3xl",
-            sceneContentFlush &&
-              !navigationCollapsed &&
-              "border-border-subtle border-l",
+            "app-workspace-frame relative isolate grid min-h-0 min-w-0 grid-cols-[var(--shell-sidebar-active-width)_1px_minmax(0,1fr)] grid-rows-[minmax(0,1fr)] overflow-hidden",
           )}
+          style={
+            {
+              "--shell-context-width": `${contextSidebarWidth}px`,
+              "--shell-sidebar-active-width": `${sidebarWidth}px`,
+              "--shell-navigation-leading-inset": `${navigationInset}px`,
+              "--shell-sidebar-header-inset": nativeDarwin ? "24px" : "12px",
+              "--shell-sidebar-header-height": "38px",
+            } as CSSProperties
+          }
         >
-          <div className="min-w-0">
-            <SceneChromeHost navigationCollapsed={navigationCollapsed} />
-          </div>
           <div
-            className={cn(
-              "duration-layout ease-ui grid min-h-0 min-w-0 transition-[grid-template-columns]",
-              sceneContentFlush || showDetailDock ? "pl-0" : "pl-4",
-              showContextSidebar
-                ? "grid-cols-[var(--shell-context-width)_1px_minmax(0,1fr)]"
-                : "grid-cols-[minmax(0,1fr)]",
-            )}
+            className="app-context-sidebar col-start-1 row-start-1 grid min-h-0 min-w-0 grid-rows-[var(--shell-sidebar-header-height)_minmax(0,1fr)]"
+            data-app-context-sidebar
           >
-            {showContextSidebar ? contextSidebar : null}
-            {showContextSidebar ? (
-              <VerticalResizeHandle
-                ariaLabel="调整上下文侧栏宽度"
-                ariaValueMax={contextSidebarWidthRange.max}
-                ariaValueMin={contextSidebarWidthRange.min}
-                ariaValueNow={contextSidebarWidth}
-                onKeyDown={(event) => {
-                  const direction =
-                    event.key === "ArrowLeft"
-                      ? -1
-                      : event.key === "ArrowRight"
-                        ? 1
-                        : 0;
-                  if (!direction) return;
-                  event.preventDefault();
-                  const width = clampContextSidebarWidth(
-                    contextSidebarWidth + direction * 8,
-                  );
-                  setContextSidebarWidth(width);
+            <div
+              className="app-sidebar-topbar flex min-w-0 items-center justify-end"
+              data-app-sidebar-toolbar
+              data-desktop-drag-region
+            >
+              <div data-sidebar-history-slot>{sidebarToolbar}</div>
+            </div>
+            <div
+              hidden={
+                !partnerContext || pageSidebar || showPartnerSidebarNavigation
+              }
+              aria-hidden={
+                !partnerContext ||
+                pageSidebar ||
+                showPartnerSidebarNavigation ||
+                undefined
+              }
+              inert={
+                !partnerContext || pageSidebar || showPartnerSidebarNavigation
+              }
+              data-sidebar-entity-body
+              className="min-h-0 min-w-0 overflow-x-hidden overflow-y-auto overscroll-contain"
+            >
+              <EntityNavigation
+                collapsed={false}
+                entityStatus={entityStatus}
+                mode={preferences.entityMode}
+                onManageEntities={onManageEntities}
+                onNewChat={openNewEntityChat}
+                onModeChange={(entityMode) =>
                   onPreferencesChange((current) => ({
                     ...current,
-                    contextSidebarWidth: width,
-                  }));
-                }}
-                onMouseDown={beginContextResize}
+                    entityMode,
+                  }))
+                }
+                onReorder={updateOrder}
+                onSelectPartner={onSelectPartner}
+                onSelectTeam={onSelectTeam}
+                onShowcaseWaker={(waker, origin) =>
+                  setShowcase(captureShowcase(waker, origin))
+                }
+                selectedKey={selectedRailKey}
+                items={visibleRailItems}
               />
-            ) : null}
-            <DetailDockLayout
-              navigation={
-                showDetailDock ? (
+            </div>
+            {sidebar || showPartnerSidebarNavigation ? (
+              <div
+                className="absolute inset-x-0 top-(--shell-titlebar-height) bottom-0 overflow-x-hidden overflow-y-auto overscroll-contain"
+                data-sidebar-page-nav
+              >
+                {sidebar ?? (
                   <Suspense fallback={null}>
-                    <PartnerDetailDock partnerId={selectedPartnerId} />
+                    <PartnerContextSidebar partnerId={selectedPartnerId} />
                   </Suspense>
-                ) : undefined
-              }
-            >
-              {children}
-            </DetailDockLayout>
+                )}
+              </div>
+            ) : null}
           </div>
-          {!settingsLayout ? (
-            <div className="absolute right-0 bottom-0 z-40">
-              <CornerLauncher>
-                {workflowChatOpen ? null : navigationCollapsed ? (
-                  <FloatingEntityNavigation
-                    entityStatus={entityStatus}
-                    items={visibleRailItems}
-                    mode={preferences.entityMode}
-                    onManageEntities={onManageEntities}
-                    onModeChange={(entityMode) =>
-                      onPreferencesChange((current) => ({
-                        ...current,
-                        entityMode,
-                      }))
-                    }
-                    onNewChat={openNewEntityChat}
-                    onReorder={updateOrder}
-                    onSelectPartner={onSelectPartner}
-                    onSelectTeam={onSelectTeam}
-                    onShowcaseWaker={(waker, origin) =>
-                      setShowcase(captureShowcase(waker, origin))
-                    }
-                    renderEntityChats={(item, onBack, onClose) => (
-                      <ChatHistoryPanel
-                        activeChatId={activeChatId}
-                        item={item}
-                        onBack={onBack}
-                        onClose={onClose}
-                        onPreferencesChange={onPreferencesChange}
-                        preferences={preferences}
-                        teamContext={teamContext}
-                      />
-                    )}
-                    selectedItem={selectedRailItem}
-                    selectedKey={selectedRailKey}
-                  />
-                ) : selectedRailItem ? (
+          {partnerContext && !pageSidebar ? (
+            <div
+              className="relative col-start-2 row-start-1 mt-(--shell-titlebar-height) min-h-0"
+              onDoubleClick={() => resizeSidebar(280, true)}
+            >
+              <VerticalResizeHandle
+                appearance="hover"
+                className="h-full"
+                ariaLabel={t("appNavigation.resizeSidebar")}
+                ariaValueMin={contextSidebarWidthRange.min}
+                ariaValueMax={contextSidebarWidthRange.max}
+                ariaValueNow={contextSidebarWidth}
+                onMouseDown={beginContextResize}
+                onKeyDown={(event) => {
+                  let next: number | undefined;
+                  if (event.key === "Home") {
+                    event.preventDefault();
+                    resizeSidebar(contextSidebarWidthRange.min, true);
+                    return;
+                  }
+                  if (event.key === "End") next = 400;
+                  else if (event.key === "ArrowRight")
+                    next = contextSidebarWidth + 12;
+                  else if (event.key === "ArrowLeft")
+                    next = contextSidebarWidth - 12;
+                  if (next === undefined) return;
+                  event.preventDefault();
+                  resizeSidebar(next, true);
+                }}
+              />
+            </div>
+          ) : null}
+          <section
+            aria-label="场景工作区"
+            data-content-spans-sidebar={!hasSidebar || undefined}
+            className={cn(
+              "relative row-start-1 grid min-h-0 min-w-0 grid-rows-[var(--shell-titlebar-height)_minmax(0,1fr)] overflow-hidden",
+              hasSidebar ? "col-start-3" : "col-span-3 col-start-1",
+            )}
+          >
+            <div
+              className="app-content-header min-w-0"
+              data-sidebar-offset={!hasSidebar || undefined}
+            >
+              <SceneChromeHost>{renderTitlebar?.(null)}</SceneChromeHost>
+            </div>
+            <div
+              className={cn(
+                "grid h-full min-h-0 min-w-0",
+                sceneContentFlush || showPartnerSidebarNavigation
+                  ? "pl-0"
+                  : "pl-4",
+                showContextSidebar
+                  ? "grid-cols-[var(--shell-context-width)_minmax(0,1fr)]"
+                  : "grid-cols-[minmax(0,1fr)]",
+              )}
+            >
+              {showContextSidebar ? contextSidebar : null}
+              <div className="app-scene-body-clip h-full min-h-0 min-w-0">
+                {children}
+              </div>
+            </div>
+            {partnerContext && !workflowChatOpen && selectedRailItem ? (
+              <div className="absolute right-0 bottom-0 z-40">
+                <CornerLauncher>
                   <ChatHistoryLauncher
                     activeChatId={activeChatId}
                     item={selectedRailItem}
@@ -522,14 +518,16 @@ function PartnerNavigationLayoutContent({
                     preferences={preferences}
                     teamContext={teamContext}
                   />
-                ) : null}
-              </CornerLauncher>
-            </div>
-          ) : null}
-        </section>
+                </CornerLauncher>
+              </div>
+            ) : null}
+          </section>
+        </div>
         <WakerShowcaseDialog
           onOpenDetail={onOpenPartnerDetail}
-          onStartChat={(wakerId) => navigate(chatDraftHref(wakerId))}
+          onStartChat={(wakerId) =>
+            openNewOwnerChat({ kind: "waker", id: wakerId })
+          }
           open={Boolean(showcase)}
           origin={showcase?.origin}
           originRect={showcase?.rect}
@@ -633,8 +631,16 @@ function ChatHistoryPanel({
   teamContext?: { channelId: string; threadId?: string };
 }) {
   const navigate = useNavigate();
+  const appScenes = useOptionalAppSceneWorkspace();
   const openNewChat = () => {
     onClose();
+    if (
+      appScenes?.openNewChat?.({
+        kind: item.kind === "waker" ? "waker" : "team",
+        id: item.id,
+      })
+    )
+      return;
     navigate(
       item.kind === "waker"
         ? chatDraftHref(item.id)
@@ -670,101 +676,6 @@ function ChatHistoryPanel({
   );
 }
 
-function NavigationToolbar({
-  notificationBell,
-  canGoBack,
-  canGoForward,
-  collapsed,
-  onBack,
-  onForward,
-  onToggleCollapsed,
-  title,
-}: {
-  notificationBell?: ReactNode;
-  canGoBack: boolean;
-  canGoForward: boolean;
-  collapsed: boolean;
-  onBack: () => void;
-  onForward: () => void;
-  onToggleCollapsed: () => void;
-  title?: string;
-}) {
-  return (
-    <div
-      className={cn(
-        "bg-surface-chrome relative flex min-w-0 items-center overflow-visible",
-        collapsed
-          ? "justify-center"
-          : "gap-0.5 pr-2 pl-(--shell-navigation-leading-inset)",
-      )}
-      data-desktop-drag-region
-      role="toolbar"
-      aria-label="导航控制"
-    >
-      {collapsed ? null : (
-        <NavigationToggleButton collapsed={false} onClick={onToggleCollapsed} />
-      )}
-      {collapsed ? null : (
-        <>
-          <Button
-            type="button"
-            onClick={onBack}
-            aria-label="返回"
-            size="icon-sm"
-            variant="ghost"
-            disabled={!canGoBack}
-          >
-            <ArrowLeft className="size-icon-sm" strokeWidth={1.5} />
-          </Button>
-          <Button
-            type="button"
-            onClick={onForward}
-            aria-label="前进"
-            size="icon-sm"
-            variant="ghost"
-            disabled={!canGoForward}
-          >
-            <ArrowRight className="size-icon-sm" strokeWidth={1.5} />
-          </Button>
-          {notificationBell}
-          {title ? (
-            <span className="text-content-secondary type-ui ml-1 min-w-0 truncate">
-              {title}
-            </span>
-          ) : null}
-        </>
-      )}
-    </div>
-  );
-}
-
-function NavigationToggleButton({
-  collapsed,
-  onClick,
-}: {
-  collapsed: boolean;
-  onClick: () => void;
-}) {
-  const { t } = useTranslation("common");
-
-  return (
-    <Button
-      type="button"
-      onClick={onClick}
-      data-desktop-no-drag-region
-      aria-label={
-        collapsed
-          ? t("partnerNavigation.expandGlobalSidebar")
-          : t("partnerNavigation.collapseGlobalSidebar")
-      }
-      size="icon-sm"
-      variant="ghost"
-    >
-      <PanelLeft className="size-icon-sm" strokeWidth={1.5} />
-    </Button>
-  );
-}
-
 function PartnerChatTree({
   activeChatId,
   onChatOpened,
@@ -780,6 +691,7 @@ function PartnerChatTree({
 }) {
   const { t } = useTranslation("common");
   const navigate = useNavigate();
+  const appScenes = useOptionalAppSceneWorkspace();
   const queryClient = useQueryClient();
   const chatsQuery = useInfiniteQuery({
     ...chatListInfiniteOptions(selectedPartnerId || "pending"),
@@ -968,6 +880,13 @@ function PartnerChatTree({
           }}
           onDeleted={(chatId) => {
             if (chatId === activeChatId) {
+              if (
+                appScenes?.openNewChat?.({
+                  kind: "waker",
+                  id: selectedPartnerId,
+                })
+              )
+                return;
               navigate(chatDraftHref(selectedPartnerId), {
                 replace: true,
               });

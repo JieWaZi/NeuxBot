@@ -1,3 +1,5 @@
+import { WakerDetailLayout } from "@/modules/waker";
+import { resourceListBack } from "@/shared/lib/resource-navigation";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
@@ -7,7 +9,11 @@ import { Plus, Pencil } from "lucide-react";
 import { PluginDetailHeader } from "../components/plugin-detail-header";
 import { PluginSettingsDialog } from "../components/deferred-plugin-dialogs";
 import { PluginOverview } from "../components/deferred-plugin-overview";
-import { pluginNeedsAuthorization, pluginLocale } from "../model/plugin-view";
+import {
+  pluginNeedsAuthorization,
+  pluginLocale,
+  pluginDisplayName,
+} from "../model/plugin-view";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { QueryState } from "@/shared/ui/query-state";
@@ -28,6 +34,7 @@ export function PluginCatalogDetailPage() {
   const back =
     (location.state as { resourceBack?: string } | null)?.resourceBack ??
     "/resources";
+  const breadcrumbBack = resourceListBack(back, "/resources");
   const [install, setInstall] = useState(false);
   const [editing, setEditing] = useState(false);
   const catalogOptions = getCatalogPluginOptions(
@@ -58,108 +65,116 @@ export function PluginCatalogDetailPage() {
   );
 
   return (
-    <ResourcePageSurface>
-      <PluginDetailHeader
-        pkg={pkg}
-        sourceKey={sourceKey}
-        backAction={{ label: t("back"), onClick: () => navigate(back) }}
-        actions={
-          entry && (
-            <>
-              {detail?.plugin?.id && (
-                <PageAction
-                  intent="edit"
-                  label={t("edit")}
-                  onClick={() => setEditing(true)}
-                >
-                  <Pencil />
-                </PageAction>
-              )}
-              <PageAction
-                intent="primary"
-                disabled={installed.isPending || installed.isError}
-                onClick={() => setInstall(true)}
-              >
-                <Plus />
-                {t(
-                  pluginNeedsAuthorization(pkg, detail)
-                    ? "authorize"
-                    : "installToPartners",
+    <WakerDetailLayout
+      active="resources"
+      breadcrumbItems={[
+        { label: t("title"), href: breadcrumbBack },
+        { label: pluginDisplayName(pkg) || t("plugins") },
+      ]}
+    >
+      <ResourcePageSurface>
+        <PluginDetailHeader
+          pkg={pkg}
+          sourceKey={sourceKey}
+          backAction={{ label: t("back"), onClick: () => navigate(back) }}
+          actions={
+            entry && (
+              <>
+                {detail?.plugin?.id && (
+                  <PageAction
+                    intent="edit"
+                    label={t("edit")}
+                    onClick={() => setEditing(true)}
+                  >
+                    <Pencil />
+                  </PageAction>
                 )}
-              </PageAction>
-            </>
-          )
-        }
-      />
-      <div className="mt-8 space-y-6">
-        {entry && query.isError && (
-          <QueryState
-            error={query.error}
-            onRetry={() => void query.refetch()}
-          />
-        )}
-        {!entry ? (
-          <QueryState
-            loadingLayout="detail"
-            pending={query.isPending}
-            error={query.error}
-            emptyLabel={t("noResults")}
-            onRetry={() => void query.refetch()}
-          />
-        ) : (
-          <PluginOverview
-            pkg={pkg}
-            sourceKey={sourceKey}
-            readmeSource={{
-              locale,
-              catalogKey,
-              sourceCommit: entry.sourceCommit,
-              archiveSHA256: entry.archiveSHA256,
-            }}
-            skillContext={{
-              catalogKey,
-              sourceCommit: entry.sourceCommit,
-              archiveSHA256: entry.archiveSHA256,
-            }}
+                <PageAction
+                  intent="primary"
+                  disabled={installed.isPending || installed.isError}
+                  onClick={() => setInstall(true)}
+                >
+                  <Plus />
+                  {t(
+                    pluginNeedsAuthorization(pkg, detail)
+                      ? "authorize"
+                      : "installToPartners",
+                  )}
+                </PageAction>
+              </>
+            )
+          }
+        />
+        <div className="mt-8 space-y-6">
+          {entry && query.isError && (
+            <QueryState
+              error={query.error}
+              onRetry={() => void query.refetch()}
+            />
+          )}
+          {!entry ? (
+            <QueryState
+              loadingLayout="detail"
+              pending={query.isPending}
+              error={query.error}
+              emptyLabel={t("noResults")}
+              onRetry={() => void query.refetch()}
+            />
+          ) : (
+            <PluginOverview
+              pkg={pkg}
+              sourceKey={sourceKey}
+              readmeSource={{
+                locale,
+                catalogKey,
+                sourceCommit: entry.sourceCommit,
+                archiveSHA256: entry.archiveSHA256,
+              }}
+              skillContext={{
+                catalogKey,
+                sourceCommit: entry.sourceCommit,
+                archiveSHA256: entry.archiveSHA256,
+              }}
+              detail={detail}
+              onUninstall={setRemovingPartner}
+              installationStatus={
+                installed.isPending || installed.isError ? (
+                  <QueryState
+                    loadingLayout="content"
+                    pending={installed.isPending}
+                    error={installed.error}
+                    onRetry={() => void installed.refetch()}
+                  />
+                ) : undefined
+              }
+            />
+          )}
+        </div>
+        {editing && detail && (
+          <PluginSettingsDialog
+            key={`${detail.plugin?.id}:${detail.resolvedVersionId}`}
             detail={detail}
-            onUninstall={setRemovingPartner}
-            installationStatus={
-              installed.isPending || installed.isError ? (
-                <QueryState
-                  loadingLayout="content"
-                  pending={installed.isPending}
-                  error={installed.error}
-                  onRetry={() => void installed.refetch()}
-                />
-              ) : undefined
-            }
+            versionId={detail.resolvedVersionId}
+            onClose={() => setEditing(false)}
           />
         )}
-      </div>
-      {editing && detail && (
-        <PluginSettingsDialog
-          key={`${detail.plugin?.id}:${detail.resolvedVersionId}`}
-          detail={detail}
-          versionId={detail.resolvedVersionId}
-          onClose={() => setEditing(false)}
-        />
-      )}
-      {removingPartner && detail && (
-        <PluginRemovalDialog
-          detail={detail}
-          mode="installation"
-          wakerId={removingPartner}
-          onClose={() => setRemovingPartner("")}
-        />
-      )}
-      {install && entry && (
-        <PluginInstallDialog
-          catalog={entry}
-          detail={detail}
-          authorizeOnly={pluginNeedsAuthorization(pkg, detail)}
-          onClose={() => setInstall(false)}
-        />
-      )}
-    </ResourcePageSurface>
+        {removingPartner && detail && (
+          <PluginRemovalDialog
+            detail={detail}
+            mode="installation"
+            wakerId={removingPartner}
+            onClose={() => setRemovingPartner("")}
+          />
+        )}
+        {install && entry && (
+          <PluginInstallDialog
+            catalog={entry}
+            detail={detail}
+            authorizeOnly={pluginNeedsAuthorization(pkg, detail)}
+            onClose={() => setInstall(false)}
+          />
+        )}
+      </ResourcePageSurface>
+    </WakerDetailLayout>
   );
 }

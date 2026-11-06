@@ -124,12 +124,18 @@ export function ChatEntryPage({
   if (chatId)
     return <ChatPageContent chatId={chatId} presentationScopeKey={scopeKey} />;
   if (!resolveRecent)
-    return <ChatPageContent presentationScopeKey={scopeKey} />;
+    return (
+      <ChatPageContent
+        resolvedWakerId={wakerId || undefined}
+        presentationScopeKey={scopeKey}
+      />
+    );
 
   if (resolvedTarget.kind === "chat") {
     return (
       <ChatPageContent
         chatId={resolvedTarget.chatId}
+        resolvedWakerId={resolvedTarget.wakerId}
         presentationScopeKey={scopeKey}
       />
     );
@@ -168,11 +174,20 @@ export function ChatEntryPage({
     (Boolean(wakerId) && !latestChat && chatsQuery.isPending)
   ) {
     return (
-      <ChatPageContent routeTransitioning presentationScopeKey={scopeKey} />
+      <ChatPageContent
+        routeTransitioning
+        resolvedWakerId={wakerId || undefined}
+        presentationScopeKey={scopeKey}
+      />
     );
   }
 
-  return <ChatPageContent presentationScopeKey={scopeKey} />;
+  return (
+    <ChatPageContent
+      resolvedWakerId={wakerId || undefined}
+      presentationScopeKey={scopeKey}
+    />
+  );
 }
 
 function ChatEntryState({

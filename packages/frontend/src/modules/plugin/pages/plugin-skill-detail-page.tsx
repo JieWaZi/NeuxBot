@@ -1,3 +1,4 @@
+import { resourceListBack } from "@/shared/lib/resource-navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   useLocation,
@@ -35,6 +36,12 @@ export function PluginSkillDetailPage() {
     (wakerId
       ? `/wakers/${wakerId}/resources?category=skills`
       : "/resources?category=skills");
+  const breadcrumbBack = resourceListBack(
+    back,
+    wakerId
+      ? `/wakers/${wakerId}/resources?category=skills`
+      : "/resources?category=skills",
+  );
   const options = getPluginSkillOptions(
     withLocalErrorSurface({
       path: { pluginId },
@@ -65,7 +72,18 @@ export function PluginSkillDetailPage() {
   const source = pluginDisplayName(version?.package, parent.data?.plugin?.name);
   const skill = query.data?.skill;
   return (
-    <WakerDetailLayout active="skills">
+    <WakerDetailLayout
+      active="skills"
+      breadcrumbItems={[
+        { label: t("title"), href: breadcrumbBack },
+        {
+          label: source || t("plugin:plugins"),
+          href: `${wakerId ? `/wakers/${wakerId}` : "/resources"}/plugins/${pluginId}${versionId ? `?version=${encodeURIComponent(versionId)}` : ""}`,
+          state: { resourceBack: breadcrumbBack },
+        },
+        { label: skill?.name || t("title") },
+      ]}
+    >
       <ResourcePageSurface>
         <PageHeader
           layout="detail"

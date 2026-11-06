@@ -19,7 +19,12 @@ declare global {
 export function createDesktopPlatform(bridge: DesktopBridge): Platform {
   const adapter: Platform = {
     kind: "desktop",
-    chrome: { navigationInset: 72 },
+    chrome: {
+      navigationInset: 72,
+      nativeWindowControls: navigator.platform.startsWith("Mac")
+        ? "darwin"
+        : undefined,
+    },
     async getConnection() {
       const connection = await bridge.core_connection();
       const url = new URL(connection.baseUrl);

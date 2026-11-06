@@ -1,13 +1,12 @@
+import { resolveAppNavigation } from "../layout/app-navigation-model";
 import type { AppSceneTab } from "@/shared/workspace/app-scene-model";
-import {
-  legacyIMSettingsHref,
-  settingsSectionFromPath,
-} from "./settings-route";
+import { legacyIMSettingsHref } from "./settings-route";
 
 export type RouteSceneLocation = {
   key?: string;
   pathname: string;
   search: string;
+  state?: unknown;
 };
 
 export type RouteSceneLabels = {
@@ -50,6 +49,7 @@ function routeTab(
     kind: "route",
     label,
     mountKey: id,
+    navigationState: location.state,
   };
 }
 
@@ -58,7 +58,8 @@ export function routeSceneForLocation(
   labels: RouteSceneLabels,
 ): Omit<AppSceneTab, "lastUsed"> {
   const { pathname, search } = location;
-  if (settingsSectionFromPath(pathname)) {
+  const navigation = resolveAppNavigation(location);
+  if (navigation.moduleId === "settings") {
     const href =
       legacyIMSettingsHref(pathname, search) || `${pathname}${search}`;
     const [settingsPath = "", settingsSearch = ""] = href.split("?");
@@ -69,11 +70,12 @@ export function routeSceneForLocation(
     params.delete("chat");
     return {
       ...settingsSceneTab(labels.settings),
+      navigationState: location.state,
       href: `${settingsPath}${params.size ? `?${params}` : ""}`,
     };
   }
   const knowledge = /^\/knowledge(?:\/([^/]+))?$/.exec(pathname);
-  if (knowledge) {
+  if (navigation.moduleId === "knowledge" && knowledge) {
     const params = new URLSearchParams(search);
     const id =
       knowledge[1] ||
@@ -95,18 +97,18 @@ export function routeSceneForLocation(
   }
   if (
     pathname === "/workflows" ||
-    pathname === "/resources" ||
-    pathname.startsWith("/resources/")
+    navigation.moduleId === "resources" ||
+    (navigation.moduleId === "workflows" && pathname === "/resources")
   )
     return routeTab("resources", labels.resources, location);
-  if (pathname === "/usage")
+  if (navigation.moduleId === "usage")
     return routeTab("usage", labels.usage || labels.page, location);
-  if (pathname === "/work-board")
+  if (navigation.moduleId === "work-board")
     return routeTab("work-board", labels.workBoard || labels.page, location);
   const workflow = /^\/workflows(?:\/([^/]+)(?:\/runs\/([^/]+))?)?$/.exec(
     pathname,
   );
-  if (workflow)
+  if (navigation.moduleId === "workflows" && workflow)
     return routeTab(
       workflow[1] === "new"
         ? `workflow-draft:${new URLSearchParams(search).get("draftId") || "default"}`
@@ -117,7 +119,7 @@ export function routeSceneForLocation(
       location,
     );
   const globalAutomatic = /^\/automatic-tasks(?:\/([^/]+))?$/.exec(pathname);
-  if (globalAutomatic)
+  if (navigation.moduleId === "automatic-tasks" && globalAutomatic)
     return routeTab(
       "automatic-tasks",
       labels.automaticTask || labels.page,

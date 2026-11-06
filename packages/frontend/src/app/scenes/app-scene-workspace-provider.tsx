@@ -16,25 +16,39 @@ import {
   appSceneReducer,
   initialAppSceneSnapshot,
   type AppSceneCommand,
+  type AppSceneTab,
+  type ChatSceneOwner,
 } from "@/shared/workspace/app-scene-model";
 import {
   routeSceneForLocation,
   type RouteSceneLabels,
   type RouteSceneLocation,
 } from "./app-route-scene-model";
+import {
+  chatOwnerForScene,
+  sameChatOwner,
+  unsentChatSceneForOwner,
+} from "../layout/entity-navigation-history";
 import { useRouteSceneNotFound } from "./route-scene-not-found";
 
 export function AppSceneWorkspaceProvider({
   children,
   location,
   navigate,
+  navigationType = "PUSH",
 }: {
   children: ReactNode;
   location: RouteSceneLocation;
-  navigate: (href: string) => void;
+  navigationType?: "POP" | "PUSH" | "REPLACE";
+  navigate: (href: string, navigationState?: unknown) => void;
 }) {
   const { t } = useTranslation("common");
-  const { pathname, search, key: navigationKey } = location;
+  const {
+    pathname,
+    search,
+    state: navigationState,
+    key: navigationKey,
+  } = location;
   const labels = useMemo<RouteSceneLabels>(
     () => ({
       knowledge: t("knowledge:knowledge"),
@@ -56,8 +70,12 @@ export function AppSceneWorkspaceProvider({
     [t],
   );
   const routeScene = useMemo(
-    () => routeSceneForLocation({ pathname, search }, labels),
-    [labels, pathname, search],
+    () =>
+      routeSceneForLocation(
+        { pathname, search, state: navigationState },
+        labels,
+      ),
+    [labels, navigationState, pathname, search],
   );
   const [snapshot, setSnapshot] = useState(() =>
     initialAppSceneSnapshot(routeScene),
@@ -92,9 +110,33 @@ export function AppSceneWorkspaceProvider({
     }
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSnapshot((current) =>
-      appSceneReducer(current, { type: "open", tab: routeScene }),
+      appSceneReducer(current, {
+        type: "open",
+        tab: routeScene,
+        // 只有首发接纳或入口解析的 replace 导航迁移草稿；普通切换保留未发送内容。
+        replaceTemporary: navigationType === "REPLACE",
+      }),
     );
-  }, [navigationKey, pathname, routeScene, search]);
+  }, [navigationKey, navigationType, pathname, routeScene, search]);
+
+  const navigateToScene = useCallback(
+    (target: AppSceneTab | undefined, tabs: readonly AppSceneTab[]) => {
+      if (!target?.href) return;
+      const owner =
+        target.kind === "workspace"
+          ? tabs.find((tab) => tab.id === target.ownerTabId)
+          : target;
+      const state = owner?.navigationState;
+      if (
+        target.href === `${pathname}${search}` &&
+        Object.is(state, navigationState)
+      )
+        return;
+      if (state === undefined) navigate(target.href);
+      else navigate(target.href, state);
+    },
+    [navigate, navigationState, pathname, search],
+  );
 
   const dispatch = useCallback(
     (command: AppSceneCommand) => {
@@ -138,8 +180,7 @@ export function AppSceneWorkspaceProvider({
           if (contribution)
             contribution.onSelect(contribution.primaryWorkspaceTabId);
         }
-        if (target?.href && target.href !== `${pathname}${search}`)
-          navigate(target.href);
+        navigateToScene(target, next.tabs);
         return;
       }
 
@@ -158,17 +199,31 @@ export function AppSceneWorkspaceProvider({
             contribution.onSelect(contribution.primaryWorkspaceTabId);
           }
         }
-        if (target?.href && target.href !== `${pathname}${search}`) {
-          navigate(target.href);
-        }
+        navigateToScene(target, next.tabs);
         return;
       }
 
-      if (command.type === "close" && current.activeTabId === command.tabId) {
+      if (
+        command.type === "close" &&
+        current.activeTabId &&
+        !next.tabs.some((tab) => tab.id === current.activeTabId)
+      ) {
         const target = next.tabs.find((tab) => tab.id === next.activeTabId);
-        if (target?.href && target.href !== `${pathname}${search}`) {
-          navigate(target.href);
+        // 关闭 owner 也可能移除活跃子项；回退沿用目标 pane 的选择协议。
+        if (
+          target?.kind === "workspace" &&
+          target.ownerTabId &&
+          target.workspaceTabId
+        ) {
+          workspaceContributionsRef.current
+            .get(target.ownerTabId)
+            ?.onSelect(target.workspaceTabId);
+        } else if (target?.kind === "route") {
+          const contribution = workspaceContributionsRef.current.get(target.id);
+          if (contribution)
+            contribution.onSelect(contribution.primaryWorkspaceTabId);
         }
+        navigateToScene(target, next.tabs);
       }
 
       if (
@@ -184,7 +239,7 @@ export function AppSceneWorkspaceProvider({
         contribution?.onClose(selectedBeforeUpdate.workspaceTabId);
       }
     },
-    [navigate, pathname, search, snapshot],
+    [navigateToScene, snapshot],
   );
 
   const syncWorkspace = useCallback(
@@ -196,6 +251,7 @@ export function AppSceneWorkspaceProvider({
       setSnapshot((current) =>
         appSceneReducer(current, {
           type: "sync-workspace",
+          chatOwner: contribution.chatOwner,
           activeWorkspaceTabId: contribution.activeWorkspaceTabId,
           ownerHref: contribution.ownerHref,
           ownerTabId: contribution.ownerTabId,
@@ -207,12 +263,28 @@ export function AppSceneWorkspaceProvider({
     [],
   );
 
-  const openNewChat = useCallback(() => {
-    const contribution = workspaceContributionsRef.current.get(routeScene.id);
-    if (!contribution?.onNewChat) return false;
-    contribution.onNewChat();
-    return true;
-  }, [routeScene.id]);
+  const openNewChat = useCallback(
+    (requestedOwner?: ChatSceneOwner) => {
+      const contribution = workspaceContributionsRef.current.get(routeScene.id);
+      const current = snapshot.tabs.find((tab) => tab.id === routeScene.id);
+      const owner =
+        requestedOwner ?? contribution?.chatOwner ?? chatOwnerForScene(current);
+      const draft = unsentChatSceneForOwner(snapshot.tabs, owner);
+      if (draft) {
+        dispatch({ type: "select", tabId: draft.id });
+        return true;
+      }
+      if (
+        requestedOwner &&
+        !sameChatOwner(chatOwnerForScene(current), requestedOwner)
+      )
+        return false;
+      if (!contribution?.onNewChat) return false;
+      contribution.onNewChat();
+      return true;
+    },
+    [dispatch, routeScene.id, snapshot.tabs],
+  );
   const value = useMemo(
     () => ({
       dispatch,

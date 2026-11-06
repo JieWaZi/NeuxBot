@@ -1,13 +1,18 @@
 import type { SceneTab } from "@/shared/ui/scene-tab-strip";
 
+export type ChatSceneOwner = { kind: "waker" | "team"; id: string };
+
 export type AppSceneKind = "route" | "settings" | "workspace";
 
 export type AppSceneTab = SceneTab & {
+  chatOwner?: ChatSceneOwner;
   customLabel?: string;
   href?: string;
   kind: AppSceneKind;
   lastUsed: number;
   mountKey?: string;
+  /** 仅属于该Scene的Router展示状态，不持久化或复制业务资源。 */
+  navigationState?: unknown;
   ownerTabId?: string;
   workspaceTabId?: string;
 };
@@ -18,14 +23,20 @@ export type AppSceneSnapshot = {
 };
 
 export type AppSceneCommand =
-  | { type: "open"; tab: Omit<AppSceneTab, "lastUsed">; now?: number }
+  | {
+      type: "open";
+      tab: Omit<AppSceneTab, "lastUsed">;
+      now?: number;
+      replaceTemporary?: boolean;
+    }
   | { type: "select"; tabId: string; now?: number }
   | { type: "close"; tabId: string }
   | { type: "rename-tab"; tabId: string; label: string }
-  | { type: "close-others"; tabId: string }
+  | { type: "close-others"; tabId: string; candidateTabIds?: readonly string[] }
   | { type: "rename"; tabId: string; label: string }
   | {
       type: "sync-workspace";
+      chatOwner?: ChatSceneOwner;
       activeWorkspaceTabId: string;
       now?: number;
       ownerHref?: string;
@@ -97,7 +108,10 @@ export function appSceneReducer(
     const activeTab = snapshot.tabs.find(
       (tab) => tab.id === snapshot.activeTabId,
     );
-    if (replacesTemporaryScene(activeTab, command.tab)) {
+    if (
+      command.replaceTemporary &&
+      replacesTemporaryScene(activeTab, command.tab)
+    ) {
       const existing = snapshot.tabs.some((tab) => tab.id === command.tab.id);
       return {
         activeTabId: command.tab.id,
@@ -200,7 +214,11 @@ export function appSceneReducer(
         tab.ownerTabId !== command.ownerTabId ||
         (tab.workspaceTabId ? incomingIds.has(tab.workspaceTabId) : false),
     );
-    const nextTabs = [...retained];
+    const nextTabs = retained.map((tab) =>
+      tab.id === command.ownerTabId && command.chatOwner
+        ? { ...tab, chatOwner: command.chatOwner }
+        : tab,
+    );
     for (const workspaceTab of incoming) {
       const id = workspaceSceneTabId(command.ownerTabId, workspaceTab.id);
       const index = nextTabs.findIndex((tab) => tab.id === id);
@@ -253,6 +271,8 @@ export function appSceneReducer(
         return (
           previous &&
           previous.id === tab.id &&
+          previous.chatOwner?.id === tab.chatOwner?.id &&
+          previous.chatOwner?.kind === tab.chatOwner?.kind &&
           previous.label === tab.label &&
           previous.href === tab.href &&
           previous.closeable === tab.closeable &&
@@ -268,8 +288,14 @@ export function appSceneReducer(
     if (!kept) return snapshot;
     // 工作台子页签依赖所属会话，保留子页签时不能卸载其宿主。
     const protectedIds = new Set([kept?.id, kept?.ownerTabId]);
+    const candidates = command.candidateTabIds
+      ? new Set(command.candidateTabIds)
+      : undefined;
     const closingTabs = snapshot.tabs.filter(
-      (tab) => tab.closeable && !protectedIds.has(tab.id),
+      (tab) =>
+        tab.closeable &&
+        !protectedIds.has(tab.id) &&
+        (!candidates || candidates.has(tab.id)),
     );
     let next = closingTabs.reduce(
       (current, tab) =>
@@ -294,7 +320,11 @@ export function appSceneReducer(
       tab.id !== command.tabId &&
       !(tab.kind === "workspace" && tab.ownerTabId === command.tabId),
   );
-  if (snapshot.activeTabId !== command.tabId) return { ...snapshot, tabs };
+  if (
+    !snapshot.activeTabId ||
+    tabs.some((tab) => tab.id === snapshot.activeTabId)
+  )
+    return { ...snapshot, tabs };
   const fallback = [...tabs].sort(
     (left, right) => right.lastUsed - left.lastUsed,
   )[0];

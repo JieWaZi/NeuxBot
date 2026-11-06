@@ -362,14 +362,11 @@ function WorkflowShell({ collapsed }: { collapsed: boolean }) {
       contextSidebarHidden
       onManageEntities={() => {}}
       onOpenPartnerDetail={() => {}}
-      onOpenAutomaticTasks={() => {}}
-      onOpenSettings={() => {}}
+      onNavigateModule={() => {}}
       onPreferencesChange={setPreferences}
-      onSceneNavigationVisibleChange={() => {}}
       onSelectPartner={() => {}}
       onSelectTeam={() => {}}
       preferences={preferences}
-      sceneNavigationVisible={false}
       sceneContentFlush
       selectedRailKey="waker:ordinary-waker"
       settingsOpen={false}
@@ -413,7 +410,17 @@ async function clickWorkflowAction(
   user: ReturnType<typeof userEvent.setup>,
   name: string,
 ) {
-  const dock = await screen.findByRole("navigation", { name: "工作流" });
+  const dock = await waitFor(() => {
+    const candidate = screen
+      .queryAllByRole("navigation", { name: "工作流" })
+      .find((navigation) =>
+        [name, "编辑与删除", "工作流操作"].some((label) =>
+          within(navigation).queryByRole("button", { name: label }),
+        ),
+      );
+    if (!candidate) throw new Error("等待工作流操作加载");
+    return candidate;
+  });
   const button = within(dock).queryByRole("button", { name });
   if (button) {
     await user.click(button);
@@ -2277,6 +2284,7 @@ it("工作流主容器与工具 Tab 独立，历史切换保留各自输入并�
     screen.queryByRole("button", { name: "关闭“工作流”" }),
   ).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "添加工作台标签" }));
+  await user.click(screen.getByRole("menuitem", { name: "浏览器" }));
   await screen.findByRole("tab", { name: "新标签页" });
   expect(screen.getByRole("button", { name: "终端" })).toBeEnabled();
   await user.click(screen.getByRole("button", { name: "查看历史会话" }));

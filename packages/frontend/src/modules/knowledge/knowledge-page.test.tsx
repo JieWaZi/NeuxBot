@@ -133,6 +133,15 @@ it("进入知识库默认展示知识目录，原件保留明确入口", async (
   show("/knowledge/kb");
   await vi.dynamicImportSettled();
   await screen.findByRole("heading", { name: "通用资料库" }, { timeout: 5000 });
+  const path = screen.getByRole("navigation", { name: "知识库" });
+  expect(within(path).getByRole("link", { name: "知识库" })).toHaveAttribute(
+    "href",
+    "/knowledge",
+  );
+  expect(within(path).getByText("通用资料库")).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   expect(
     screen.queryByRole("button", { name: "返回知识库列表" }),
   ).not.toBeInTheDocument();

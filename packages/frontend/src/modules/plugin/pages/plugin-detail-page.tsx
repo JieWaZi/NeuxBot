@@ -1,3 +1,5 @@
+import { WakerDetailLayout } from "@/modules/waker";
+import { resourceListBack } from "@/shared/lib/resource-navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
@@ -28,7 +30,7 @@ import { PluginInstallDialog } from "../components/deferred-plugin-dialogs";
 import { PluginRemovalDialog } from "../components/plugin-removal-dialog";
 import { PluginOverview } from "../components/deferred-plugin-overview";
 import { PluginDetailHeader } from "../components/plugin-detail-header";
-import { pluginLocale } from "../model/plugin-view";
+import { pluginLocale, pluginDisplayName } from "../model/plugin-view";
 import { PluginSettingsDialog } from "../components/deferred-plugin-dialogs";
 
 export function PluginDetailPage() {
@@ -80,10 +82,20 @@ export function PluginDetailPage() {
   const back =
     (location.state as { resourceBack?: string } | null)?.resourceBack ??
     (wakerId ? `/wakers/${wakerId}/resources` : "/resources?view=mine");
+  const breadcrumbBack = resourceListBack(
+    back,
+    wakerId ? `/wakers/${wakerId}/resources` : "/resources?view=mine",
+  );
   return (
-    <main
-      className="h-full min-w-0 overflow-hidden"
-      data-partner-section={wakerId ? "resources" : undefined}
+    <WakerDetailLayout
+      active="resources"
+      breadcrumbItems={[
+        {
+          label: wakerId ? t("partnerResources") : t("title"),
+          href: breadcrumbBack,
+        },
+        { label: pluginDisplayName(pkg, resource?.name) || t("plugins") },
+      ]}
     >
       <ResourcePageSurface>
         <PluginDetailHeader
@@ -243,6 +255,6 @@ export function PluginDetailPage() {
           />
         )}
       </ResourcePageSurface>
-    </main>
+    </WakerDetailLayout>
   );
 }

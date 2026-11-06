@@ -10,6 +10,8 @@ const segmentedControlVariants = cva("items-stretch", {
     appearance: {
       segments:
         "bg-button-fill relative isolate inline-flex w-fit gap-0.5 rounded-control p-0.5",
+      shell:
+        "segmented-control-shell relative isolate inline-flex w-fit rounded-control",
       cards:
         "grid w-full grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))] gap-3",
       underline: "inline-flex min-w-0 items-stretch gap-4",
@@ -27,6 +29,7 @@ const segmentedControlVariants = cva("items-stretch", {
   },
   compoundVariants: [
     { appearance: "segments", distribution: "fill", class: "flex" },
+    { appearance: "shell", distribution: "fill", class: "flex" },
     { appearance: "segments", size: "sm", class: "h-control-sm" },
     {
       appearance: "segments",
@@ -47,6 +50,8 @@ const segmentedOptionVariants = cva(
     variants: {
       appearance: {
         segments:
+          "[&_svg]:size-icon-md h-full items-center justify-center gap-1.5 rounded-control-inner px-2",
+        shell:
           "[&_svg]:size-icon-md h-full items-center justify-center gap-1.5 rounded-control-inner px-2",
         cards:
           "border-border-subtle bg-surface-raised hover:bg-surface-tertiary [&_svg]:size-icon-lg items-center gap-3 rounded-md border p-4 text-left aria-checked:border-accent-border",
@@ -101,6 +106,7 @@ export function SegmentedControl<T extends string>({
   size,
   value,
 }: SegmentedControlProps<T>) {
+  const isSegments = appearance === "segments" || appearance === "shell";
   const segmentRefs = useRef(new Map<string, HTMLButtonElement>());
 
   const moveSelection = (
@@ -201,9 +207,9 @@ export function SegmentedControl<T extends string>({
                 : selected
                   ? cn(
                       "text-content-primary font-medium",
-                      appearance !== "segments" && "bg-surface-raised",
+                      !isSegments && "bg-surface-raised",
                     )
-                  : appearance === "segments"
+                  : isSegments
                     ? "text-button-content opacity-70 [@media(hover:hover)_and_(pointer:fine)]:hover:opacity-90"
                     : "text-button-content hover:bg-button-fill-hover active:bg-button-fill-pressed",
               option.disabled && "pointer-events-none opacity-45",
@@ -225,7 +231,7 @@ export function SegmentedControl<T extends string>({
           </button>
         );
       })}
-      {appearance === "segments" ? (
+      {isSegments ? (
         <SegmentedControlHighlight
           optionRefs={segmentRefs}
           value={value}
@@ -236,7 +242,8 @@ export function SegmentedControl<T extends string>({
           ])}
           className={cn(
             segmentedControlVariants({ appearance, size, distribution }),
-            "bg-surface-raised text-content-primary pointer-events-none absolute inset-0 w-full",
+            "text-content-primary pointer-events-none absolute inset-0 w-full",
+            appearance === "shell" ? "bg-transparent" : "bg-surface-raised",
           )}
         >
           {options.map((option) => (

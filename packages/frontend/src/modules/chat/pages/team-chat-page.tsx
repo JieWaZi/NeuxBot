@@ -1355,6 +1355,7 @@ function TeamChatView({
 
   return (
     <ChatWorkspaceSurface
+      chatOwner={{ kind: "team", id: teamContext.channelId }}
       activeRightPanel={chatRightPanel}
       adapter={chatAdapter}
       onAddCodeReference={addCodeReference}

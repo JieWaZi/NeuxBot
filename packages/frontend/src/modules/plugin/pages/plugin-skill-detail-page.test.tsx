@@ -101,7 +101,13 @@ it.each(["", "w1"])(
     ).toBeVisible();
     expect(screen.getByRole("heading", { name: "操作指南" })).toBeVisible();
     expect(screen.getByRole("heading", { name: "元数据" })).toBeVisible();
-    expect(await screen.findByText("办公")).toBeVisible();
+    expect(await screen.findByRole("link", { name: "办公" })).toHaveAttribute(
+      "href",
+      `${base}/plugins/p?version=pinned`,
+    );
+    expect(screen.getByRole("link", { name: "办公" })).not.toHaveAttribute(
+      "aria-current",
+    );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
     expect(

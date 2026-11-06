@@ -1,4 +1,4 @@
-import { Laptop, Moon, Settings, Sun } from "lucide-react";
+import { Laptop, Moon, Sun } from "lucide-react";
 import { lazy, Suspense, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -8,8 +8,8 @@ import {
 } from "../components/settings-section-layout";
 import { type SettingsSection } from "../settings-navigation";
 import { useTheme, type ThemeMode } from "@/shared/theme";
-import { SceneTabStrip } from "@/shared/ui/scene-tab-strip";
-import { SceneChromePortal } from "@/shared/ui/scene-chrome-portal";
+import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
+
 import { NativeOverlayPresence } from "@/shared/ui/native-overlay";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 
@@ -121,7 +121,6 @@ function SettingsSectionContent({
 
 export function SettingsScene({
   imIntegrationContent,
-  onClose,
   onSelectSection,
   section,
   showSceneChrome = true,
@@ -133,6 +132,13 @@ export function SettingsScene({
   imIntegrationContent?: ReactNode;
 }) {
   const { t } = useTranslation("appSettings");
+  const sectionKey = {
+    general: "general",
+    "ai-accounts": "accounts",
+    "runtime-environments": "runtimeEnvironments",
+    "integration-api": "integrationAPI",
+    "integration-im": "integrationIM",
+  }[section];
 
   return (
     <>
@@ -142,23 +148,10 @@ export function SettingsScene({
         className="bg-surface-scene @container/settings-scene relative z-10 flex h-full min-h-0 flex-col overflow-hidden"
       >
         {showSceneChrome ? (
-          <SceneChromePortal>
-            <SceneTabStrip
-              activeTabId="settings"
-              ariaLabel={t("sceneTabList")}
-              tabs={[
-                {
-                  id: "settings",
-                  label: t("title"),
-                  icon: Settings,
-                  closeable: true,
-                  autoFocus: true,
-                },
-              ]}
-              onClose={onClose}
-              onSelect={() => undefined}
-            />
-          </SceneChromePortal>
+          <SceneBreadcrumbs
+            ariaLabel={t("sceneLabel")}
+            items={[{ label: t(`sections.${sectionKey}`) }]}
+          />
         ) : null}
         <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto px-4 py-6 @[42.5rem]/settings-scene:px-8 @[42.5rem]/settings-scene:py-8">
           <Suspense

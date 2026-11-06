@@ -2,6 +2,18 @@
 
 NeuxBot 自有代码与文档采用根目录 [MIT License](LICENSE)。以下版权及许可适用于对应的第三方组成，集中保存在本文件，并随安装包分发。
 
+## OpenBot UI 布局与页签交互
+
+窗口布局、侧栏几何与页签展示交互采用 [OpenBot v0.62.0](https://github.com/nightly-labs/openbot/tree/fcb35746d4919798ff889a8a58449f5d58de5f65) 的实现，结合本项目 React、语义 Token、可访问性与既有内容所有权适配。对应范围为 `app/layout` 的框架／导航、`shared/ui/scene-tab-strip.tsx` 与 `modules/chat/workbench` 的页签展示；具体来源见[源码对照](docs/discussions/openbot-ui-source-alignment-cn.md)。
+
+该来源采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)，原始 [LICENSE](https://github.com/nightly-labs/openbot/blob/fcb35746d4919798ff889a8a58449f5d58de5f65/LICENSE) 及以下 Required Notice 适用于对应第三方部分，不将其推定为项目 MIT 许可：
+
+```text
+Required Notice: Copyright 2026 Synthetify Labs spółka z ograniczoną odpowiedzialnością.
+
+Required Notice: For a commercial license, contact licenses@openbot.run.
+```
+
 ## ACP Go SDK
 
 Go 模块 `github.com/JieWaZi/acp-go-sdk` 使用独立 [官方仓库 fork](https://github.com/JieWaZi/acp-go-sdk)，从 coder/acp-go-sdk v0.13.5 迁入补丁并合并官方 main。Copyright 2025 Coder Technologies, Inc.，采用 Apache License 2.0；完整 [LICENSE](https://github.com/JieWaZi/acp-go-sdk/blob/main/LICENSE) 随安装包保存在 `licenses/acp-go-sdk/LICENSE`。

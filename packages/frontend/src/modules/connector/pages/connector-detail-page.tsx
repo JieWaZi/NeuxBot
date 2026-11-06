@@ -1,3 +1,4 @@
+import { resourceListBack } from "@/shared/lib/resource-navigation";
 import { ConnectorDetails } from "../components/connector-details";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { useQueryEvents } from "@/shared/api/use-query-events";
@@ -40,6 +41,12 @@ export function ConnectorDetailPage() {
     (wakerId
       ? `/wakers/${wakerId}/resources?category=connectors`
       : "/resources?category=connectors");
+  const breadcrumbBack = resourceListBack(
+    back,
+    wakerId
+      ? `/wakers/${wakerId}/resources?category=connectors`
+      : "/resources?category=connectors",
+  );
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -78,7 +85,13 @@ export function ConnectorDetailPage() {
   const canEdit = !builtIn || definitions.length > 0;
 
   return (
-    <WakerDetailLayout active="connectors">
+    <WakerDetailLayout
+      active="connectors"
+      breadcrumbItems={[
+        { label: t("title"), href: breadcrumbBack },
+        { label: connector?.name || t("title") },
+      ]}
+    >
       <ResourcePageSurface>
         <PageHeader
           layout="detail"

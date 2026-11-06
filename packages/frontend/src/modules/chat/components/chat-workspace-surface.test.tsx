@@ -305,9 +305,9 @@ describe("ChatWorkspaceSurface right workbench", () => {
         const panelWidth = Number.parseFloat(
           layout.style.getPropertyValue("--chat-right-panel-width"),
         );
-        expect(panelWidth).toBeLessThan(availableWidth * 0.8);
+        expect(availableWidth - panelWidth).toBeGreaterThanOrEqual(96);
         expect(panelWidth).toBeCloseTo(
-          Math.min(preferredWidth, availableWidth * 0.79),
+          Math.min(preferredWidth, availableWidth - 96),
         );
         expect(layout).not.toHaveAttribute("data-chat-full-view");
         const chrome = document.querySelector(
@@ -571,7 +571,7 @@ describe("ChatWorkspaceSurface right workbench", () => {
     expect(lifecycle.browserUnmounts).toBe(0);
   });
 
-  it("右栏拖动超过旧上限后，在占用 80% 时进入完整视图", () => {
+  it("右栏拖动至 80% 以上与 End 只调整宽度，显式最大化才进入完整视图", () => {
     renderHarness();
     const layout = screen.getByTestId("chat-page-layout");
     Object.defineProperty(layout, "clientWidth", {
@@ -588,8 +588,13 @@ describe("ChatWorkspaceSurface right workbench", () => {
 
     fireEvent.mouseDown(divider, { clientX: 500 });
     fireEvent.mouseUp(document, { clientX: 250 });
+    expect(layout).not.toHaveAttribute("data-chat-full-view");
+    expect(layout).toHaveStyle("--chat-right-panel-width: 1250px");
+    fireEvent.keyDown(divider, { key: "End" });
+    expect(layout).not.toHaveAttribute("data-chat-full-view");
+    expect(layout).toHaveStyle("--chat-right-panel-width: 1404px");
+    fireEvent.click(screen.getByRole("button", { name: "完整视图" }));
     expect(layout).toHaveAttribute("data-chat-full-view", "true");
-    expect(layout).toHaveStyle("--chat-right-panel-width: 0px");
   });
 
   it("关闭唯一标签时收起右栏，再展开显示新标签页", async () => {
@@ -742,6 +747,7 @@ describe("ChatWorkspaceSurface right workbench", () => {
         name: "添加工作台标签",
       }),
     );
+    await user.click(screen.getByRole("menuitem", { name: "浏览器" }));
     expect(
       within(terminalHeader).getByRole("tab", { name: "新标签页" }),
     ).toBeInTheDocument();
@@ -834,6 +840,7 @@ describe("ChatWorkspaceSurface right workbench", () => {
         name: "添加工作台标签",
       }),
     );
+    await user.click(screen.getByRole("menuitem", { name: "浏览器" }));
     expect(
       within(browserHeader).getByRole("tab", { name: "新标签页" }),
     ).toBeInTheDocument();

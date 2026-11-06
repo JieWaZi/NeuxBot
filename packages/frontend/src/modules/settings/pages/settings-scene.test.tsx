@@ -113,8 +113,7 @@ describe("SettingsScene", () => {
     await waitFor(() => expect(visibility.result.current).toBe(false));
   });
 
-  it("通过局部状态恢复分类并在关闭后返回此前 Scene", async () => {
-    const user = userEvent.setup();
+  it("设置路径显示当前分区，不重复输出设置标签", async () => {
     function Harness() {
       const [open, setOpen] = useState(true);
       const [section, setSection] = useState<SettingsSection>(
@@ -155,8 +154,10 @@ describe("SettingsScene", () => {
       await screen.findByRole("heading", { name: "执行环境内容" }),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "关闭 设置" }));
-
-    expect(screen.getByText("伙伴页面")).toBeInTheDocument();
+    const path = screen.getByRole("navigation", { name: "设置 Scene" });
+    expect(path.querySelector('[aria-current="page"]')).toHaveTextContent(
+      "智能体",
+    );
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
 });

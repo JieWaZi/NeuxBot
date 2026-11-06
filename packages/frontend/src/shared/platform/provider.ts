@@ -11,7 +11,11 @@ import type {
 export type Platform = {
   kind: "desktop" | "web";
   /** 宿主窗口控件需要的标题栏起始避让；普通浏览器使用共享默认间距。 */
-  chrome?: { navigationInset: number };
+  chrome?: {
+    navigationInset: number;
+    /** 原生交通灯占用侧栏顶行时用于避让；Web 不声明此能力。 */
+    nativeWindowControls?: "darwin";
+  };
   getConnection(): Promise<CoreConnection>;
   host: HostService;
   workspace?: WorkspaceService;

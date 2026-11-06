@@ -28,6 +28,22 @@ const routeSceneForLocation = (location: RouteSceneLocation) =>
 const settingsSceneTab = () => createSettingsSceneTab(labels.settings);
 
 describe("应用 Scene 模型", () => {
+  it.each([
+    ["/wakers/w1/projects/p1", "", "waker:w1:resources"],
+    ["/teams/t1/threads/c1", "", "team:t1:thread:c1"],
+    ["/resources/plugins/p1/skills/s1", "", "resources"],
+    ["/resources", "?category=workflows&search=demo", "resources"],
+    ["/workflows/f1/runs/r1", "?result=1", "workflow:f1"],
+    ["/wakers/w1/automatic-tasks/t1", "", "automatic-tasks"],
+    ["/settings/integration-mcp", "?search=demo", "settings"],
+    ["/unknown", "?search=demo", "route:/unknown"],
+  ])("模块解析接入后 %s 保留 Scene 身份与完整 URL", (pathname, search, id) => {
+    const scene = routeSceneForLocation({ pathname, search });
+    expect(scene.id).toBe(id);
+    expect(scene.mountKey).toBe(id);
+    expect(scene.href).toBe(`${pathname}${search}`);
+  });
+
   it("页签重命名在路由刷新及自动标题更新后保留，不修改原始标题", () => {
     let snapshot = initialAppSceneSnapshot({
       id: "chat:a",
@@ -214,6 +230,7 @@ describe("应用 Scene 模型", () => {
     });
     const snapshot = appSceneReducer(initialAppSceneSnapshot(draft, 1), {
       type: "open",
+      replaceTemporary: true,
       tab: saved,
       now: 2,
     });
@@ -277,6 +294,7 @@ describe("应用 Scene 模型", () => {
     let snapshot = initialAppSceneSnapshot(entry, 1);
     snapshot = appSceneReducer(snapshot, {
       type: "open",
+      replaceTemporary: true,
       tab: chat,
       now: 2,
     });
@@ -297,6 +315,7 @@ describe("应用 Scene 模型", () => {
     let snapshot = initialAppSceneSnapshot(draft, 1);
     snapshot = appSceneReducer(snapshot, {
       type: "open",
+      replaceTemporary: true,
       tab: chat,
       now: 2,
     });
@@ -318,6 +337,7 @@ describe("应用 Scene 模型", () => {
     let snapshot = initialAppSceneSnapshot(draft, 1);
     snapshot = appSceneReducer(snapshot, {
       type: "open",
+      replaceTemporary: true,
       tab: thread,
       now: 2,
     });
@@ -371,7 +391,7 @@ describe("应用 Scene 模型", () => {
           { ...chat, label: "真实会话", lastUsed: 2 },
         ],
       },
-      { type: "open", tab: chat, now: 3 },
+      { type: "open", replaceTemporary: true, tab: chat, now: 3 },
     );
 
     expect(snapshot.tabs.map((tab) => tab.id)).toEqual(["chat:chat-a"]);
@@ -469,4 +489,114 @@ it("用量筛选保存在同一个场景的 URL 中", () => {
   expect(next.id).toBe(first.id);
   expect(next.href).toBe("/usage?groupBy=waker");
   expect(next.label).toBe("用量统计");
+});
+
+describe("关闭包含活跃内容的owner", () => {
+  const tabs = [
+    {
+      id: "owner-one",
+      kind: "route" as const,
+      label: "会话一",
+      closeable: true,
+      lastUsed: 1,
+    },
+    {
+      id: "file-one",
+      kind: "workspace" as const,
+      ownerTabId: "owner-one",
+      workspaceTabId: "file",
+      label: "文件一",
+      closeable: true,
+      lastUsed: 5,
+    },
+    {
+      id: "owner-two",
+      kind: "route" as const,
+      label: "会话二",
+      closeable: true,
+      lastUsed: 2,
+    },
+    {
+      id: "file-two",
+      kind: "workspace" as const,
+      ownerTabId: "owner-two",
+      workspaceTabId: "file",
+      label: "文件二",
+      closeable: true,
+      lastUsed: 4,
+    },
+  ];
+  it("活跃子项被移除时回退最近使用的另一owner工作台", () => {
+    const next = appSceneReducer(
+      { activeTabId: "file-one", tabs },
+      { type: "close", tabId: "owner-one" },
+    );
+    expect(next.activeTabId).toBe("file-two");
+    expect(next.tabs.map((tab) => tab.id)).toEqual(["owner-two", "file-two"]);
+  });
+  it("关闭非活动owner保留当前项，不按最近时间乱跳", () => {
+    const next = appSceneReducer(
+      { activeTabId: "owner-two", tabs },
+      { type: "close", tabId: "owner-one" },
+    );
+    expect(next.activeTabId).toBe("owner-two");
+    expect(next.tabs.map((tab) => tab.id)).toEqual(["owner-two", "file-two"]);
+  });
+  it("最后owner关闭后清除子项的活跃身份", () => {
+    const next = appSceneReducer(
+      { activeTabId: "file-one", tabs: tabs.slice(0, 2) },
+      { type: "close", tabId: "owner-one" },
+    );
+    expect(next.tabs).toEqual([]);
+    expect(next.activeTabId).toBeUndefined();
+  });
+});
+
+it("关闭当前身份其他聊天保留其他伙伴、团队、资源和设置", () => {
+  const snapshot = {
+    activeTabId: "chat:a",
+    tabs: [
+      {
+        id: "chat:a",
+        kind: "route" as const,
+        label: "甲",
+        closeable: true,
+        lastUsed: 1,
+      },
+      {
+        id: "chat:a2",
+        kind: "route" as const,
+        label: "甲2",
+        closeable: true,
+        lastUsed: 2,
+      },
+      {
+        id: "file",
+        kind: "workspace" as const,
+        ownerTabId: "chat:a2",
+        label: "文件",
+        closeable: true,
+        lastUsed: 3,
+      },
+      ...["chat:b", "team", "resources", "settings"].map((id) => ({
+        id,
+        kind: "route" as const,
+        label: id,
+        closeable: true,
+        lastUsed: 4,
+      })),
+    ],
+  };
+  const next = appSceneReducer(snapshot, {
+    type: "close-others",
+    tabId: "chat:a",
+    candidateTabIds: ["chat:a", "chat:a2"],
+  });
+  expect(next.tabs.map((tab) => tab.id)).toEqual([
+    "chat:a",
+    "chat:b",
+    "team",
+    "resources",
+    "settings",
+  ]);
 });

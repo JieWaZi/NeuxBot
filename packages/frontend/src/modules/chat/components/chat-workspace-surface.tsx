@@ -22,6 +22,7 @@ import {
 import { SceneTabStrip } from "@/shared/ui/scene-tab-strip";
 import { Button } from "@/shared/ui/button";
 import { VerticalResizeHandle } from "@/shared/ui/vertical-resize-handle";
+import type { ChatSceneOwner } from "@/shared/workspace/app-scene-model";
 import type { SceneWorkspace } from "@/shared/workspace/workspace-context";
 import type { WorkspaceTab } from "@/shared/workspace/workspace-tab";
 import type { StreamState } from "@/shared/api/events";
@@ -78,6 +79,7 @@ export type ChatWorkspaceMainContent = {
 
 type ChatWorkspaceSurfaceProps = {
   active?: boolean;
+  chatOwner?: ChatSceneOwner;
   mainContent?: ChatWorkspaceMainContent;
   canvasInput?: boolean;
   showSummary?: boolean;
@@ -102,6 +104,7 @@ type ChatWorkspaceSurfaceProps = {
 /** Chat、Team 与 Workflow 共用会话内容和可交换位置的工作台。 */
 export function ChatWorkspaceSurface({
   active = true,
+  chatOwner,
   mainContent,
   canvasInput,
   showSummary = true,
@@ -153,7 +156,7 @@ export function ChatWorkspaceSurface({
   const preferredWidth = workbench.width;
   const displayWidth =
     layoutWidth > 0
-      ? Math.min(preferredWidth, layoutWidth * 0.79)
+      ? Math.min(preferredWidth, Math.max(workbenchMinWidth, layoutWidth - 96))
       : preferredWidth;
   const dragCleanup = useRef<(() => void) | undefined>(undefined);
   const lastVisibleWorkbenchScope = useRef<string | null>(null);
@@ -197,7 +200,6 @@ export function ChatWorkspaceSurface({
       layoutRef.current?.offsetWidth ||
       layoutRef.current?.clientWidth ||
       0;
-    let dragFullscreen = false;
     dragCleanup.current = trackHorizontalDrag({
       initialX: startX,
       initialValue: startWidth,
@@ -205,19 +207,14 @@ export function ChatWorkspaceSurface({
         Math.max(
           workbenchMinWidth,
           Math.min(
-            layoutWidth || Infinity,
+            layoutWidth > 0
+              ? Math.max(workbenchMinWidth, layoutWidth - 96)
+              : Infinity,
             startWidth +
               (clientX - startX) * (workbench.side === "left" ? 1 : -1),
           ),
         ),
-      onChange: (width) => {
-        const fullscreen = layoutWidth > 0 && width >= layoutWidth * 0.8;
-        if (fullscreen !== dragFullscreen) {
-          dragFullscreen = fullscreen;
-          dispatch({ type: "set-fullscreen", fullscreen });
-        }
-        if (!fullscreen) dispatch({ type: "set-width", width });
-      },
+      onChange: (width) => dispatch({ type: "set-width", width }),
       onCommit: () => {},
       onFinish: () => setIsResizing(false),
     });
@@ -242,9 +239,18 @@ export function ChatWorkspaceSurface({
               : undefined;
     if (width === undefined) return;
     event.preventDefault();
-    const fullscreen = availableWidth > 0 && width >= availableWidth * 0.8;
-    dispatch({ type: "set-fullscreen", fullscreen });
-    if (!fullscreen) dispatch({ type: "set-width", width });
+    dispatch({
+      type: "set-width",
+      width: Math.max(
+        workbenchMinWidth,
+        Math.min(
+          width,
+          availableWidth > 0
+            ? Math.max(workbenchMinWidth, availableWidth - 96)
+            : Infinity,
+        ),
+      ),
+    });
   };
 
   const tabs = adapter.tabs ?? workspace.snapshot.tabs;
@@ -273,6 +279,7 @@ export function ChatWorkspaceSurface({
   useEffect(() => {
     if (!appSceneWorkspace || !primaryTabId || !sceneActive) return;
     appSceneWorkspace.syncWorkspace({
+      chatOwner,
       onNewChat,
       activeWorkspaceTabId: activeTabId ?? primaryTabId,
       onClose: (tabId) => workspace.dispatch({ type: "close-tab", tabId }),
@@ -289,6 +296,7 @@ export function ChatWorkspaceSurface({
     });
   }, [
     activeTabId,
+    chatOwner,
     appSceneWorkspace,
     primaryTabId,
     routeScene?.href,

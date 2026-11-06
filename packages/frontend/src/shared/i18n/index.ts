@@ -250,7 +250,12 @@ const resources = {
       serviceUnrecognizedError: "本地服务返回了无法识别的错误",
       unknownError: "操作未完成，请稍后重试",
       pageLoading: "正在载入页面",
+      titlebar: {
+        back: "后退",
+        forward: "前进",
+      },
       sceneTabs: {
+        chatList: "聊天列表",
         rename: "重命名",
         renameTitle: "重命名页签",
         nameLabel: "页签名称",
@@ -281,6 +286,12 @@ const resources = {
         deleting: "正在删除…",
         retry: "重试失败项",
         failed: "{{count}} 项删除失败，已保留失败项，可重试。",
+      },
+      appNavigation: {
+        modules: "模块导航",
+        more: "更多模块",
+        resizeSidebar: "调整模块侧栏宽度",
+        pinModule: "固定{{name}}",
       },
       partnerNavigation: {
         partner: "伙伴",
@@ -316,8 +327,6 @@ const resources = {
         conversationList: "会话列表",
         newChat: "新建会话",
         backToEntities: "返回身份列表",
-        expandGlobalSidebar: "展开全局侧栏",
-        collapseGlobalSidebar: "收起全局侧栏",
         expandNavigationActions: "展开侧栏菜单",
         collapseNavigationActions: "收起侧栏菜单",
         expandPartners: "展开全部伙伴",
@@ -2260,7 +2269,12 @@ const resources = {
 
       serviceConnectionFailed:
         "Cannot connect to the local service right now. Check the connection.",
+      titlebar: {
+        back: "Back",
+        forward: "Forward",
+      },
       sceneTabs: {
+        chatList: "Chat list",
         rename: "Rename",
         renameTitle: "Rename tab",
         nameLabel: "Tab name",
