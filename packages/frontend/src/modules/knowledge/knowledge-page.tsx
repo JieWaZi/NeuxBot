@@ -1,3 +1,4 @@
+import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
 import {
   canUploadKnowledge,
   hasKnowledgeCapability,
@@ -555,6 +556,15 @@ export function KnowledgePage() {
   );
   return (
     <>
+      {detail ? (
+        <SceneBreadcrumbs
+          ariaLabel={t("knowledge")}
+          items={[
+            { label: t("knowledge"), href: "/knowledge" },
+            { label: library?.name || t("knowledge") },
+          ]}
+        />
+      ) : null}
       {detail ? (
         <ResourcePageSurface
           contentLayout="pane"

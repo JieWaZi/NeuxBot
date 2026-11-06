@@ -1,6 +1,7 @@
 import {
   useInfiniteQuery,
   useQuery,
+  useQueries,
   useQueryClient,
 } from "@tanstack/react-query";
 import { PanelRight, Plus } from "lucide-react";
@@ -16,7 +17,12 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  useLocation,
+  useNavigate,
+  useNavigationType,
+  useSearchParams,
+} from "react-router-dom";
 
 import type { ChatRightPanel } from "@/modules/chat";
 import { listChatsOptions, getChatOptions } from "@/modules/chat";
@@ -32,10 +38,17 @@ import {
   NotificationNavigationProvider,
 } from "@/modules/notification";
 import { notificationHref } from "../notifications/notification-navigation";
+import { ApiError } from "@/shared/api/errors";
+import {
+  getWakerQueryKey,
+  getChannelQueryKey,
+} from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { nativeModelCatalogQueryKey } from "@/shared/api/runtime-queries";
 import { listRuntimesQueryKey } from "@/shared/api/generated/@tanstack/react-query.gen";
 import {
+  getChannelOptions,
+  getChannelThreadOptions,
   teamChannelsInfiniteOptions,
   teamThreadsInfiniteOptions,
 } from "@/modules/team";
@@ -55,13 +68,32 @@ import {
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { SceneChromeActionsProvider } from "@/shared/ui/scene-chrome-actions";
-import { SceneChromePortal } from "@/shared/ui/scene-chrome-portal";
+import {
+  AppTitlebar,
+  pageOwnsSceneHeader,
+  AppNavigationHistoryControls,
+  useAppNavigationHistory,
+} from "./app-titlebar";
 import { SceneTabStrip } from "@/shared/ui/scene-tab-strip";
+import {
+  chatOwnerForScene,
+  chatScenesForOwner,
+} from "./entity-navigation-history";
 import { Toaster } from "@/shared/ui/sonner";
 import {
   useSceneWorkspace,
   WorkspaceProvider,
 } from "@/shared/workspace/workspace-context";
+import {
+  type AppModuleId,
+  resolveAppModuleHref,
+  resolveAppNavigation,
+} from "./app-navigation-model";
+import { ResourcesContextSidebar } from "./resources-context-sidebar";
+import {
+  changeResourceCategory,
+  resourceCategoryFromParams,
+} from "../pages/resources-navigation";
 import { PartnerNavigationLayout } from "./partner-navigation-layout";
 import { TeamMemberMenu } from "./team-context-sidebar";
 import { WelcomeScene } from "../scenes/welcome-scene";
@@ -101,6 +133,7 @@ export function AppShell({
   routeScene?: ComponentType<AppRouteSceneProps>;
 }) {
   const location = useLocation();
+  const navigationType = useNavigationType();
   const navigate = useNavigate();
   useEffect(() => {
     const href = legacyIMSettingsHref(location.pathname, location.search);
@@ -110,12 +143,14 @@ export function AppShell({
     <NotificationNavigationProvider resolveHref={notificationHref}>
       <WorkspaceProvider>
         <AppSceneWorkspaceProvider
+          navigationType={navigationType}
           location={{
             pathname: location.pathname,
             search: location.search,
             key: location.key,
+            state: location.state,
           }}
-          navigate={(href) => navigate(href, { flushSync: true })}
+          navigate={(href, state) => navigate(href, { flushSync: true, state })}
         >
           <AppShellContent RouteScene={RouteScene} />
         </AppSceneWorkspaceProvider>
@@ -133,6 +168,7 @@ function AppShellContent({
   const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const navigation = resolveAppNavigation(location);
   const appScenes = useAppSceneWorkspace();
   const [searchParams] = useSearchParams();
   const [preferences, setPreferences] = useState(
@@ -150,11 +186,6 @@ function AppShellContent({
         : undefined;
   const settingsOpen = appScenes.snapshot.activeTabId === "settings";
   const entitySelectionRequestRef = useRef(0);
-  const settingsPreviousCollapsedRef = useRef(false);
-  const previousSettingsOpenRef = useRef(false);
-  const [sceneNavigationVisible, setSceneNavigationVisible] = useState(() =>
-    Boolean(settingsSectionFromPath(location.pathname)),
-  );
   const [lastSettingsSection, setSettingsSection] =
     useState<SettingsSection>("general");
   const settingsTab = appScenes.snapshot.tabs.find(
@@ -253,13 +284,12 @@ function AppShellContent({
     /^\/wakers\/[^/]+(?:\/(?:connectors|memory|overview|projects|skills|resources|plugins)(?:\/.*)?)?$/.test(
       location.pathname,
     );
-  const hasPartnerContext =
-    isChatSurface || isTeamContext || location.pathname.startsWith("/wakers/");
+  const hasPartnerContext = navigation.moduleId === "partners";
   const routePartnerId = location.pathname.startsWith("/wakers/")
     ? location.pathname.split("/")[2]
     : searchParams.get("wakerId")?.trim();
-  const currentChat = chatLastActiveFromLocation(location);
-  const currentChatId = currentChat?.chatId;
+  const currentChatHint = chatLastActiveFromLocation(location);
+  const currentChatId = /^\/chats\/([^/]+)$/.exec(location.pathname)?.[1];
   const currentChatQuery = useQuery({
     ...getChatOptions({
       path: {
@@ -268,6 +298,11 @@ function AppShellContent({
     }),
     enabled: Boolean(currentChatId),
   });
+  const resolvedChat = currentChatQuery.data?.chat;
+  const currentChat =
+    currentChatId && resolvedChat?.wakerId
+      ? { chatId: currentChatId, wakerId: resolvedChat.wakerId }
+      : currentChatHint;
   const partnerWorkspaceScopeKey = isChat
     ? currentChatId
       ? `chat:${currentChatId}`
@@ -293,11 +328,14 @@ function AppShellContent({
         chatId: lastActiveChat?.chatId ?? "pending",
       },
     }),
-    enabled: Boolean(lastActiveChat?.chatId),
+    enabled:
+      Boolean(lastActiveChat?.chatId) &&
+      lastActiveChat?.chatId !== currentChatId,
   });
   const validatedChat = lastActiveValidationQuery.data?.chat;
   const validatedLastActive =
     lastActiveChat &&
+    lastActiveValidationQuery.isSuccess &&
     validatedChat?.id === lastActiveChat.chatId &&
     validatedChat.wakerId === lastActiveChat.wakerId
       ? lastActiveChat
@@ -309,12 +347,15 @@ function AppShellContent({
     preferences.currentPartnerId,
     validatedLastActive?.wakerId,
   ].find((partnerId) => partnerId && availablePartnerIds.has(partnerId));
+  const activeRouteOwner = appScenes.snapshot.tabs.find(
+    (tab) => tab.id === activeRouteSceneId,
+  )?.chatOwner;
   const selectedPartnerId =
+    currentChatQuery.data?.chat?.wakerId ||
+    (activeRouteOwner?.kind === "waker" ? activeRouteOwner.id : undefined) ||
     routePartnerId ||
     currentChat?.wakerId ||
-    storedPartnerId ||
-    wakers[0]?.id ||
-    "";
+    (isChat && currentChatId ? "" : storedPartnerId || wakers[0]?.id || "");
   useEffect(() => {
     writePartnerNavigationPreferences(preferences);
   }, [preferences]);
@@ -324,6 +365,17 @@ function AppShellContent({
       return;
     }
     rememberChatLastActive(currentChat.wakerId, currentChat.chatId);
+    // 深链与历史切换同样更新既有最近身份偏好，列表模式仍由用户独立切换。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setPreferences((current) =>
+      current.currentRailKey === `waker:${currentChat.wakerId}`
+        ? current
+        : {
+            ...current,
+            currentPartnerId: currentChat.wakerId,
+            currentRailKey: `waker:${currentChat.wakerId}`,
+          },
+    );
   }, [currentChat?.chatId, currentChat?.wakerId]);
 
   useLayoutEffect(() => {
@@ -340,29 +392,13 @@ function AppShellContent({
     if (!teamChannelId || !teamThreadId) return;
     // 路由是浏览器外部状态；进入已落库 Thread 后同步导航偏好一次。
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPreferences((current) =>
-      rememberTeamThread(current, teamChannelId, teamThreadId),
-    );
-  }, [teamChannelId, teamThreadId]);
-
-  useLayoutEffect(() => {
-    const wasOpen = previousSettingsOpenRef.current;
-    previousSettingsOpenRef.current = settingsOpen;
-    if (wasOpen === settingsOpen) return;
-    setSceneNavigationVisible(settingsOpen);
-    // Settings 激活时占用完整导航栏；切离后恢复进入前的折叠状态。
     setPreferences((current) => {
-      if (settingsOpen) {
-        settingsPreviousCollapsedRef.current = current.globalSidebarCollapsed;
-      }
-      return {
-        ...current,
-        globalSidebarCollapsed: settingsOpen
-          ? false
-          : settingsPreviousCollapsedRef.current,
-      };
+      const next = rememberTeamThread(current, teamChannelId, teamThreadId);
+      return next.currentRailKey === `team:${teamChannelId}`
+        ? next
+        : { ...next, currentRailKey: `team:${teamChannelId}` };
     });
-  }, [settingsOpen]);
+  }, [teamChannelId, teamThreadId]);
 
   const openPartnerDetail = (partnerId: string) => {
     navigate(`/wakers/${partnerId}`, { flushSync: true });
@@ -386,6 +422,11 @@ function AppShellContent({
       .then((data) => {
         if (entitySelectionRequestRef.current !== request) return;
         const latestChatId = data.resources?.[0]?.id;
+        if (
+          !latestChatId &&
+          appScenes.openNewChat?.({ kind: "waker", id: partnerId })
+        )
+          return;
         navigate(
           latestChatId
             ? chatHref(latestChatId, partnerId)
@@ -414,6 +455,11 @@ function AppShellContent({
       .then((data) => {
         if (entitySelectionRequestRef.current !== request) return;
         const latestThreadId = data.pages[0]?.resources?.[0]?.id;
+        if (
+          !latestThreadId &&
+          appScenes.openNewChat?.({ kind: "team", id: channelId })
+        )
+          return;
         navigate(
           latestThreadId
             ? `/teams/${channelId}/threads/${latestThreadId}`
@@ -424,6 +470,11 @@ function AppShellContent({
       .catch(() => {
         if (entitySelectionRequestRef.current !== request) return;
         const rememberedThreadId = preferences.lastTeamThreads[channelId];
+        if (
+          !rememberedThreadId &&
+          appScenes.openNewChat?.({ kind: "team", id: channelId })
+        )
+          return;
         navigate(
           rememberedThreadId
             ? `/teams/${channelId}/threads/${rememberedThreadId}`
@@ -454,8 +505,7 @@ function AppShellContent({
     [t],
   );
   const openWorkBoard = useCallback(() => {
-    setSceneNavigationVisible(false);
-    const href = "/work-board";
+    const href = resolveAppModuleHref("work-board");
     navigate(href, { flushSync: true });
     appScenes.dispatch({
       type: "open",
@@ -466,24 +516,11 @@ function AppShellContent({
     });
   }, [appScenes, navigate, routeSceneLabels]);
   const workBoardActive = location.pathname === "/work-board" && !settingsOpen;
-  const bellInSceneChrome = preferences.globalSidebarCollapsed && !settingsOpen;
-  const openAutomaticTasks = useCallback(() => {
-    setSceneNavigationVisible(false);
-    const href = "/automatic-tasks";
-    navigate(href, { flushSync: true });
-    appScenes.dispatch({
-      type: "open",
-      tab: routeSceneForLocation(
-        { pathname: href, search: "" },
-        routeSceneLabels,
-      ),
-    });
-  }, [appScenes, navigate, routeSceneLabels]);
   const openSettings = useCallback(() => {
-    setSceneNavigationVisible(true);
     if (settingsOpen) return;
-    const href = `/settings/${settingsSection}`;
-    settingsPreviousCollapsedRef.current = preferences.globalSidebarCollapsed;
+    const href = resolveAppModuleHref("settings", {
+      settingsHref: `/settings/${settingsSection}`,
+    });
     if (`${location.pathname}${location.search}` !== href) {
       navigate(href, { flushSync: true });
     } else {
@@ -495,15 +532,65 @@ function AppShellContent({
   }, [
     appScenes,
     navigate,
-    preferences.globalSidebarCollapsed,
     settingsOpen,
     settingsSection,
     location.pathname,
     location.search,
     t,
   ]);
+  const rememberedTeamId = preferences.currentRailKey.startsWith("team:")
+    ? preferences.currentRailKey.slice(5)
+    : "";
+  const rememberedTeamThreadId = preferences.lastTeamThreads[rememberedTeamId];
+  const lastTeamDetailQuery = useQuery({
+    ...getChannelOptions({
+      path: { channelId: rememberedTeamId || "pending" },
+    }),
+    enabled: Boolean(rememberedTeamId && rememberedTeamThreadId),
+  });
+  // 分页列表只能证明已读实体；最近目标的存在性由同一团队详情 Query 验证。
+  const rememberedTeamExists =
+    lastTeamDetailQuery.isSuccess &&
+    lastTeamDetailQuery.data?.channel?.id === rememberedTeamId;
+  const lastTeamValidationQuery = useQuery({
+    ...getChannelThreadOptions({
+      path: {
+        channelId: rememberedTeamId || "pending",
+        threadId: rememberedTeamThreadId || "pending",
+      },
+    }),
+    enabled: Boolean(rememberedTeamExists && rememberedTeamThreadId),
+  });
+  const validatedPartnerHref = rememberedTeamId
+    ? rememberedTeamExists &&
+      rememberedTeamThreadId &&
+      lastTeamValidationQuery.isSuccess &&
+      lastTeamValidationQuery.data?.thread?.id === rememberedTeamThreadId
+      ? `/teams/${rememberedTeamId}/threads/${rememberedTeamThreadId}`
+      : undefined
+    : validatedLastActive &&
+        availablePartnerIds.has(validatedLastActive.wakerId)
+      ? chatHref(validatedLastActive.chatId, validatedLastActive.wakerId)
+      : undefined;
+  const navigateModule = (moduleId: AppModuleId) => {
+    if (moduleId === "settings") {
+      openSettings();
+      return;
+    }
+    const href = resolveAppModuleHref(moduleId, {
+      partnerHref: validatedPartnerHref,
+    });
+    navigate(href, { flushSync: true });
+    const [pathname = "/", query] = href.split("?");
+    appScenes.dispatch({
+      type: "open",
+      tab: routeSceneForLocation(
+        { pathname, search: query ? `?${query}` : "" },
+        routeSceneLabels,
+      ),
+    });
+  };
   const closeSettings = () => {
-    setSceneNavigationVisible(false);
     setSettingsSection(settingsSection);
     appScenes.dispatch({ type: "close", tabId: "settings" });
     if (
@@ -516,22 +603,130 @@ function AppShellContent({
   useEffect(() => {
     const openGeneral = () => {
       setSettingsSection("general");
-      setSceneNavigationVisible(true);
       navigate("/settings/general", { flushSync: true });
     };
     window.addEventListener("ally:open-general-settings", openGeneral);
     return () =>
       window.removeEventListener("ally:open-general-settings", openGeneral);
   }, [navigate]);
+  const chatRouteTabs = appScenes.snapshot.tabs.flatMap((tab) => {
+    const match =
+      tab.kind === "route" ? /^\/chats\/([^/?]+)/.exec(tab.href ?? "") : null;
+    return match?.[1] ? [{ tab, chatId: match[1] }] : [];
+  });
+  // 只订阅页面已拥有的 Query Cache；后台标题与身份迟到不会新增请求。
+  const cachedChats = useQueries({
+    queries: chatRouteTabs.map(({ chatId }) => ({
+      ...getChatOptions({ path: { chatId } }),
+      enabled: false,
+    })),
+  });
+  const teamThreadTabs = appScenes.snapshot.tabs.flatMap((tab) => {
+    const match =
+      tab.kind === "route"
+        ? /^\/teams\/([^/]+)\/threads\/([^/?]+)/.exec(tab.href ?? "")
+        : null;
+    return match?.[1] && match[2]
+      ? [{ tab, channelId: match[1], threadId: match[2] }]
+      : [];
+  });
+  const cachedThreads = useQueries({
+    queries: teamThreadTabs.map(({ channelId, threadId }) => ({
+      ...getChannelThreadOptions({ path: { channelId, threadId } }),
+      enabled: false,
+    })),
+  });
+  const presentedTabs = appScenes.snapshot.tabs.map((tab) => {
+    const index = chatRouteTabs.findIndex((item) => item.tab.id === tab.id);
+    const chat = index >= 0 ? cachedChats[index]?.data?.chat : undefined;
+    const threadIndex = teamThreadTabs.findIndex(
+      (item) => item.tab.id === tab.id,
+    );
+    const thread =
+      threadIndex >= 0 ? cachedThreads[threadIndex]?.data?.thread : undefined;
+    return chat
+      ? {
+          ...tab,
+          label: chat.title?.trim() || tab.label,
+          chatOwner: chat.wakerId
+            ? { kind: "waker" as const, id: chat.wakerId }
+            : tab.chatOwner,
+        }
+      : thread?.title?.trim()
+        ? { ...tab, label: thread.title.trim() }
+        : tab;
+  });
+  const activeRouteScene = presentedTabs.find(
+    (tab) => tab.id === activeRouteSceneId,
+  );
+  const activeChatOwner =
+    isChat && currentChatQuery.data?.chat?.wakerId
+      ? { kind: "waker" as const, id: currentChatQuery.data.chat.wakerId }
+      : chatOwnerForScene(activeRouteScene);
+  const ownerTabs = chatScenesForOwner(presentedTabs, activeChatOwner);
+  const memberTabs =
+    activeChatOwner?.kind === "team"
+      ? appScenes.snapshot.tabs.filter(
+          (tab) =>
+            tab.kind === "workspace" && tab.ownerTabId === activeRouteSceneId,
+        )
+      : [];
+  const pageBack =
+    settingsOpen && searchParams.has("connection")
+      ? () => {
+          const next = new URLSearchParams(searchParams);
+          next.delete("connection");
+          next.delete("binding");
+          navigate(`${location.pathname}${next.size ? `?${next}` : ""}`, {
+            flushSync: true,
+          });
+        }
+      : undefined;
+  const cache = queryClient.getQueryCache();
+  const subscribeCache = useCallback(
+    (listener: () => void) => cache.subscribe(listener),
+    [cache],
+  );
+  const missingQueries = useSyncExternalStore(subscribeCache, () =>
+    cache
+      .getAll()
+      .filter(
+        (query) =>
+          query.state.error instanceof ApiError &&
+          query.state.error.status === 404,
+      )
+      .map((query) => query.queryHash)
+      .join("\n"),
+  );
+  const navigationHistory = useAppNavigationHistory({
+    owner: isChatSurface ? activeChatOwner : undefined,
+    // 历史记录已访问实体；分页缺席或其某个Chat删除不能证明实体失效。
+    available: (owner) =>
+      !cache
+        .findAll({
+          queryKey:
+            owner.kind === "waker"
+              ? getWakerQueryKey({ path: { wakerId: owner.id } })
+              : getChannelQueryKey({ path: { channelId: owner.id } }),
+        })
+        .some((query) => missingQueries.split("\n").includes(query.queryHash)),
+    onSelect: (owner) =>
+      owner.kind === "waker" ? selectPartner(owner.id) : selectTeam(owner.id),
+    onPageBack: pageBack,
+  });
+  const newOwnerChat = () => {
+    if (appScenes.openNewChat?.(activeChatOwner)) return;
+    if (!activeChatOwner) return;
+    setChatRightPanel(undefined);
+    navigate(
+      activeChatOwner.kind === "team"
+        ? `/teams/${activeChatOwner.id}?draftId=${crypto.randomUUID()}`
+        : chatDraftHref(activeChatOwner.id),
+      { flushSync: true },
+    );
+  };
   const sceneActions = (
     <>
-      {bellInSceneChrome ? (
-        <NotificationBell
-          active={workBoardActive}
-          onOpen={openWorkBoard}
-          connected={notificationsConnected}
-        />
-      ) : null}
       {hasActiveScene && !settingsOpen && showChatChromeActions ? (
         <Button
           aria-label={t("workspace")}
@@ -544,7 +739,7 @@ function AppShellContent({
             titlebarActionClass,
             activeRightPanel === "workspace" && "text-foreground",
           )}
-          size="icon-sm"
+          size="icon"
           title={t("workspace")}
           type="button"
           variant="ghost"
@@ -560,14 +755,86 @@ function AppShellContent({
       <NotificationPresenter onConnectionChange={setNotificationsConnected} />
       <div className="bg-canvas relative h-full overflow-hidden">
         <PartnerNavigationLayout
-          notificationBell={
-            settingsOpen || bellInSceneChrome ? undefined : (
-              <NotificationBell
-                active={workBoardActive}
-                onOpen={openWorkBoard}
-                connected={notificationsConnected}
+          sidebarToolbar={
+            <AppNavigationHistoryControls {...navigationHistory} />
+          }
+          renderTitlebar={() =>
+            isChatSurface && hasActiveScene ? (
+              <SceneTabStrip
+                activeTabId={appScenes.snapshot.activeTabId ?? ""}
+                ariaLabel={t("chat:workspace.content")}
+                tabs={[
+                  ...(ownerTabs.length
+                    ? ownerTabs
+                    : activeRouteScene
+                      ? [activeRouteScene]
+                      : []),
+                  ...memberTabs,
+                ].map((tab) => ({
+                  ...tab,
+                  separatorBefore: tab.id === memberTabs[0]?.id,
+                  label: tab.customLabel ?? tab.label,
+                }))}
+                onSelect={(tabId) =>
+                  appScenes.dispatch({ type: "select", tabId })
+                }
+                onClose={(tabId) =>
+                  appScenes.dispatch({ type: "close", tabId })
+                }
+                onRename={(tabId, label) =>
+                  appScenes.dispatch({ type: "rename-tab", tabId, label })
+                }
+                onCloseOthers={(tabId) =>
+                  appScenes.dispatch({
+                    type: "close-others",
+                    tabId,
+                    candidateTabIds: (memberTabs.some((tab) => tab.id === tabId)
+                      ? memberTabs
+                      : ownerTabs
+                    ).map((tab) => tab.id),
+                  })
+                }
+                trailing={
+                  <Button
+                    aria-label={t("common:partnerNavigation.newChat")}
+                    onClick={newOwnerChat}
+                    disabled={!activeChatOwner}
+                    size="icon"
+                    title={t("common:partnerNavigation.newChat")}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Plus />
+                  </Button>
+                }
+              />
+            ) : !hasActiveScene ||
+              pageOwnsSceneHeader(location.pathname) ? null : (
+              <AppTitlebar
+                breadcrumbs={
+                  <span aria-current="page">
+                    {isChatSurface
+                      ? routeSceneLabels.chat
+                      : navigation.moduleId === "workflows"
+                        ? routeSceneLabels.workflow
+                        : routeSceneForLocation(
+                            {
+                              pathname: location.pathname,
+                              search: location.search,
+                            },
+                            routeSceneLabels,
+                          ).label}
+                  </span>
+                }
               />
             )
+          }
+          notificationBell={
+            <NotificationBell
+              active={workBoardActive}
+              onOpen={openWorkBoard}
+              connected={notificationsConnected}
+            />
           }
           activeChatId={currentChat?.chatId}
           contextSidebarHidden={!hasActiveScene || !isWakerDetail}
@@ -576,50 +843,28 @@ function AppShellContent({
             navigate(mode === "team" ? "/wakers?tab=teams" : "/wakers")
           }
           onOpenPartnerDetail={openPartnerDetail}
-          onOpenAutomaticTasks={openAutomaticTasks}
-          onOpenKnowledge={() => {
-            setSceneNavigationVisible(false);
-            const href = "/knowledge";
-            navigate(href, { flushSync: true });
-            appScenes.dispatch({
-              type: "open",
-              tab: routeSceneForLocation(
-                { pathname: href, search: "" },
-                routeSceneLabels,
-              ),
-            });
-          }}
-          onOpenResources={() => {
-            setSceneNavigationVisible(false);
-            const href = "/resources";
-            navigate(href, { flushSync: true });
-            appScenes.dispatch({
-              type: "open",
-              tab: routeSceneForLocation(
-                { pathname: href, search: "" },
-                routeSceneLabels,
-              ),
-            });
-          }}
-          onOpenUsage={() => {
-            setSceneNavigationVisible(false);
-            const href = "/usage";
-            navigate(href, { flushSync: true });
-            appScenes.dispatch({
-              type: "open",
-              tab: routeSceneForLocation(
-                { pathname: href, search: "" },
-                routeSceneLabels,
-              ),
-            });
-          }}
-          onOpenSettings={openSettings}
+          onNavigateModule={navigateModule}
+          moduleSidebar={
+            navigation.sidebarKind === "resources" ? (
+              <ResourcesContextSidebar
+                category={resourceCategoryFromParams(
+                  location.pathname === "/resources"
+                    ? searchParams
+                    : new URLSearchParams(navigation.parentHref.split("?")[1]),
+                )}
+                onCategoryChange={(category) => {
+                  const next = changeResourceCategory(searchParams, category);
+                  navigate(`/resources?${next.toString()}`, {
+                    flushSync: true,
+                  });
+                }}
+              />
+            ) : undefined
+          }
           onPreferencesChange={setPreferences}
-          onSceneNavigationVisibleChange={setSceneNavigationVisible}
           onSelectPartner={selectPartner}
           onSelectTeam={selectTeam}
           preferences={preferences}
-          sceneNavigationVisible={sceneNavigationVisible}
           sceneContentFlush={
             (isChatSurface ||
               /^\/(?:knowledge|resources|usage|work-board|workflows|im|automatic-tasks)(?:\/|$)/.test(
@@ -656,65 +901,6 @@ function AppShellContent({
           wakers={wakers}
         >
           <div className="relative h-full min-h-0 overflow-hidden">
-            <SceneChromePortal>
-              <SceneTabStrip
-                activeTabId={appScenes.snapshot.activeTabId ?? ""}
-                ariaLabel={t("common:partnerNavigation.sceneTabList")}
-                onClose={(tabId) => {
-                  if (tabId === "settings") {
-                    closeSettings();
-                    return;
-                  }
-                  appScenes.dispatch({ type: "close", tabId });
-                }}
-                onRename={(tabId, label) => {
-                  appScenes.dispatch({ type: "rename-tab", tabId, label });
-                }}
-                onCloseOthers={(tabId) => {
-                  setSceneNavigationVisible(tabId === "settings");
-                  appScenes.dispatch({ type: "close-others", tabId });
-                }}
-                onSelect={(tabId) => {
-                  if (tabId === "settings" && !settingsOpen) {
-                    settingsPreviousCollapsedRef.current =
-                      preferences.globalSidebarCollapsed;
-                  }
-                  setSceneNavigationVisible(tabId === "settings");
-                  appScenes.dispatch({ type: "select", tabId });
-                }}
-                tabs={appScenes.snapshot.tabs.map((tab) => ({
-                  ...tab,
-                  label: tab.customLabel ?? tab.label,
-                }))}
-                trailing={
-                  (showChatChromeActions ||
-                    /^\/workflows\/[^/]+(?:\/runs\/[^/]+)?$/.test(
-                      location.pathname,
-                    )) &&
-                  !settingsOpen ? (
-                    <Button
-                      aria-label={t("common:partnerNavigation.newChat")}
-                      onClick={() => {
-                        if (appScenes.openNewChat?.()) return;
-                        setChatRightPanel(undefined);
-                        navigate(
-                          isTeamChat
-                            ? `/teams/${teamChannelId}?draftId=${crypto.randomUUID()}`
-                            : chatDraftHref(selectedPartnerId),
-                          { flushSync: true },
-                        );
-                      }}
-                      size="icon-sm"
-                      title={t("common:partnerNavigation.newChat")}
-                      type="button"
-                      variant="ghost"
-                    >
-                      <Plus />
-                    </Button>
-                  ) : undefined
-                }
-              />
-            </SceneChromePortal>
             {appScenes.snapshot.tabs
               .filter((tab) => tab.kind === "route" && tab.href)
               .map((tab) => {
@@ -735,6 +921,7 @@ function AppShellContent({
                     <AppSceneRouteScope routeSceneId={tab.id}>
                       <RouteScene
                         location={tab.href ?? "/"}
+                        locationState={tab.navigationState}
                         outletContext={{
                           chatRightPanel: active ? activeRightPanel : undefined,
                           onTeamThreadDeleted: (
@@ -768,7 +955,7 @@ function AppShellContent({
                   imIntegrationContent={<IMIntegrationSettingsContent />}
                   onClose={closeSettings}
                   onSelectSection={selectSettingsSection}
-                  showSceneChrome={false}
+                  showSceneChrome
                 />
               </div>
             ) : null}

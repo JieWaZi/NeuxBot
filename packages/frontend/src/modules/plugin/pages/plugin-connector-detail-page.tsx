@@ -1,3 +1,4 @@
+import { resourceListBack } from "@/shared/lib/resource-navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Cable } from "lucide-react";
 import {
@@ -34,6 +35,12 @@ export function PluginConnectorDetailPage() {
     (wakerId
       ? `/wakers/${wakerId}/resources?category=connectors`
       : "/resources?category=connectors");
+  const breadcrumbBack = resourceListBack(
+    back,
+    wakerId
+      ? `/wakers/${wakerId}/resources?category=connectors`
+      : "/resources?category=connectors",
+  );
   const context = { pluginId, versionId, wakerId };
   const query = usePluginConnector(context, connectorKey, active);
   const options = getPluginOptions(
@@ -55,7 +62,18 @@ export function PluginConnectorDetailPage() {
   const version = parent.data?.versions?.find((item) => item.id === versionId);
   const source = pluginDisplayName(version?.package, parent.data?.plugin?.name);
   return (
-    <WakerDetailLayout active="connectors">
+    <WakerDetailLayout
+      active="connectors"
+      breadcrumbItems={[
+        { label: t("title"), href: breadcrumbBack },
+        {
+          label: source || t("plugin:plugins"),
+          href: `${wakerId ? `/wakers/${wakerId}` : "/resources"}/plugins/${pluginId}${versionId ? `?version=${encodeURIComponent(versionId)}` : ""}`,
+          state: { resourceBack: breadcrumbBack },
+        },
+        { label: query.data?.connector?.name || t("title") },
+      ]}
+    >
       <ResourcePageSurface>
         <PageHeader
           layout="detail"

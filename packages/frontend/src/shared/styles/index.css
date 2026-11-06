@@ -12,6 +12,12 @@
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {
+  --color-shell-separator: var(--shell-separator);
+  --color-shell-separator-strong: var(--shell-separator-strong);
+  --color-shell-border-edge: var(--shell-border-edge);
+  --color-shell-control-hover: var(--shell-control-hover);
+  --color-shell-control-active: var(--shell-control-active);
+  --color-surface-module-rail: var(--surface-module-rail);
   --color-background: var(--background);
   --color-card: var(--card-surface);
   --color-card-hover: var(--card-hover);
@@ -137,6 +143,9 @@
   --spacing-icon-xs: 0.75rem;
   --spacing-icon-sm: 0.875rem;
   --spacing-icon-md: 1rem;
+  /* OpenBot agent-threads.css:180；普通话题宽度与收缩下限。 */
+  --spacing-scene-tab: 8.75rem;
+  --spacing-scene-tab-min: 6rem;
   --spacing-icon-lg: 1.25rem;
   --spacing-icon-xl: 1.5rem;
   /* 正文链接图标随所属阅读字号缩放，控件图标仍沿用固定尺寸阶梯。 */
@@ -259,13 +268,13 @@
   --shell-detail-dock-clearance: 6rem;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --shell-titlebar-height: 44px;
-  --shell-global-sidebar-width: 240px;
-  --shell-global-sidebar-collapsed-width: 0px;
-  --shell-rail-width: var(--shell-global-sidebar-collapsed-width);
-  --shell-context-width: 240px;
+  --shell-titlebar-height: 38px;
+  --shell-titlebar-history-width: calc(2 * var(--spacing-control-md));
+  --shell-rail-width: 52px;
+  --shell-context-width: 280px;
+  --shell-sidebar-header-height: var(--shell-titlebar-height);
   --shell-context-min-width: 216px;
-  --shell-context-max-width: 360px;
+  --shell-context-max-width: 400px;
   --shell-side-panel-width: 280px;
   --shell-inspector-width: 320px;
   --shell-inspector-wide-width: 400px;
@@ -279,6 +288,241 @@
   --traffic-light-close: #ff5f57;
   --traffic-light-minimize: #febc2e;
   --traffic-light-expand: #28c840;
+}
+
+/* OpenBot v0.62.0/fcb35746：window.css、page-rail.css。统一底板不属于业务 Card。 */
+.app-window-shell {
+  --surface-canvas: var(--shell-surface-canvas);
+  --surface-scene: var(--shell-surface-canvas);
+  --surface-workbench: var(--shell-surface-canvas);
+  --surface-chrome: var(--shell-surface-frame);
+  --surface-module-rail: var(--shell-surface-frame);
+}
+
+.app-module-rail {
+  padding-block: calc(var(--shell-titlebar-height) + 4px) 12px;
+}
+.app-workspace-frame {
+  --shell-window-edge: 4px;
+  padding-inline-end: calc(var(--shell-window-edge) + 1px);
+  padding-block-end: calc(var(--shell-window-edge) + 1px);
+}
+.app-workspace-frame::before {
+  position: absolute;
+  z-index: -1;
+  inset: calc(var(--shell-titlebar-height) - 1px) var(--shell-window-edge)
+    var(--shell-window-edge) 0;
+  border: 1px solid var(--shell-border-edge);
+  border-radius: var(--radius-xl);
+  background: var(--surface-scene);
+  pointer-events: none;
+  content: "";
+}
+.app-context-sidebar {
+  position: relative;
+}
+.app-context-sidebar::after {
+  position: absolute;
+  inset-block: var(--shell-titlebar-height) 0;
+  right: 0;
+  width: 1px;
+  background: var(--shell-separator);
+  content: "";
+  pointer-events: none;
+}
+.app-sidebar-topbar {
+  position: relative;
+  z-index: 2;
+  padding-inline: var(--shell-sidebar-header-inset, 12px) 4px;
+}
+.app-workspace-frame[data-sidebar-body-hidden] .app-context-sidebar::after {
+  display: none;
+}
+/* 正文自身裁切，顶栏、resizer、Dock overlay 与右下历史均保持在裁切层之外。 */
+.app-scene-body-clip {
+  overflow: hidden;
+  border-start-end-radius: calc(var(--radius-xl) - 1px);
+  border-end-end-radius: calc(var(--radius-xl) - 1px);
+}
+[data-content-spans-sidebar] .app-scene-body-clip {
+  border-start-start-radius: calc(var(--radius-xl) - 1px);
+  border-end-start-radius: calc(var(--radius-xl) - 1px);
+}
+[data-sidebar-entity-body],
+[data-sidebar-page-nav] {
+  border-start-start-radius: calc(var(--radius-xl) - 1px);
+  border-end-start-radius: calc(var(--radius-xl) - 1px);
+}
+.app-content-header[data-sidebar-offset] {
+  margin-inline-start: calc(var(--shell-sidebar-active-width) + 1px);
+}
+.app-workspace-frame:not([data-page-sidebar]) .app-sidebar-topbar::after {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 1px;
+  height: var(--spacing-icon-xl);
+  translate: 0 -50%;
+  background: var(--shell-separator-strong);
+  content: "";
+  pointer-events: none;
+}
+
+/* OpenBot ui/styles/sliding-tabs.css：低对比 inset 轮廓；36px 命中区按本项目约束适配。 */
+.segmented-control-shell {
+  height: var(--spacing-control-md);
+  gap: 3px;
+  padding: 0 3px;
+}
+/* 28px 视觉轨道，36px 不重叠的真实选项命中区；不靠加大可见外框增加高度。 */
+.segmented-control-shell::before {
+  position: absolute;
+  z-index: -1;
+  inset: 4px 0;
+  border-radius: inherit;
+  background: var(--shell-tabs-track);
+  box-shadow: inset 0 0 0 1px var(--shell-border-edge);
+  content: "";
+  pointer-events: none;
+}
+/* 高亮的圆角按可见药丸裁切，不能用 36px 命中框裁切 24px 白色表面。 */
+.segmented-control-shell[data-segmented-highlight] {
+  inset-block: 6px;
+  height: auto;
+}
+.segmented-control-shell[data-segmented-highlight]::before {
+  inset: 0;
+  border-radius: var(--radius-control-inner);
+  background: var(--shell-tabs-pill);
+  box-shadow: none;
+}
+/* OpenBot ui/styles/action-menu.css：仅 Rail More，浅色不画常驻投影。 */
+.app-module-menu {
+  border: 0;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--content-primary) 5%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--content-primary) 11%, transparent),
+    0 4px 6px -1px var(--shell-menu-shadow),
+    0 2px 4px -2px var(--shell-menu-shadow);
+}
+/* 主区和右工作台共享同一轨道、表面与关闭操作，差别只在内容及所属 pane。 */
+.shell-header-tab-track {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--spacing);
+  min-width: 0;
+  max-width: 100%;
+  height: var(--shell-titlebar-height);
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-inline: calc(var(--spacing) * 2);
+  scrollbar-width: none;
+}
+.shell-header-tab-track::-webkit-scrollbar {
+  display: none;
+}
+.workbench-pane-tabs {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--spacing);
+  direction: ltr;
+}
+.workbench-pane-content {
+  --surface-chrome: var(--surface-scene);
+}
+.shell-header-tab {
+  position: relative;
+  display: flex;
+  flex: 0 0 var(--spacing-scene-tab);
+  align-items: center;
+  width: var(--spacing-scene-tab);
+  min-width: var(--spacing-scene-tab-min);
+  max-width: var(--spacing-scene-tab);
+  height: var(--spacing-control-md);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--content-secondary);
+  transition:
+    background-color var(--duration-quick) var(--ease-ui),
+    color var(--duration-quick) var(--ease-ui);
+}
+.shell-header-tab[data-selected] {
+  background: var(--shell-control-active);
+  color: var(--content-primary);
+  font-weight: 500;
+}
+.shell-header-tab:not([data-invalid]):hover {
+  background: var(--shell-control-hover);
+  color: var(--content-primary);
+}
+.shell-header-tab[data-invalid] {
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+.shell-header-tab[data-invalid]:hover {
+  background: color-mix(in srgb, var(--destructive) 15%, transparent);
+}
+.shell-header-tab + .shell-header-tab::before {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--spacing) / -2 - 0.5px);
+  width: 1px;
+  height: var(--spacing-icon-md);
+  translate: 0 -50%;
+  background: var(--shell-separator);
+  content: "";
+  pointer-events: none;
+}
+.shell-header-tab:is([data-selected], :hover)::before,
+.shell-header-tab:is([data-selected], :hover) + .shell-header-tab::before {
+  opacity: 0;
+}
+.shell-header-tab-select {
+  @apply type-ui;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  padding: 0 calc(var(--spacing) * 2);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  outline: none;
+}
+.shell-header-tab-close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--spacing-control-md);
+  height: var(--spacing-control-md);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--content-muted);
+  opacity: 0;
+  outline: none;
+  pointer-events: none;
+}
+.shell-header-tab-close:hover {
+  background: transparent;
+  color: var(--content-primary);
+}
+.shell-header-tab:is(:hover, :focus-within) .shell-header-tab-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+.shell-header-tab-select:focus-visible,
+.shell-header-tab-close:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--ring);
 }
 
 @utility duration-quick {

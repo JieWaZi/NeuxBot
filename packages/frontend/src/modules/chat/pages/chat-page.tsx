@@ -151,6 +151,8 @@ export type ChatWorkspaceEntry = {
 
 type ChatPageContentProps = {
   chatId?: string;
+  /** 既有入口已解析的草稿身份，不替代落库Chat的真实归属。 */
+  resolvedWakerId?: string;
   embedded?: boolean;
   routeTransitioning?: boolean;
   entry?: ChatWorkspaceEntry;
@@ -183,6 +185,7 @@ export function ChatPageContent(props: ChatPageContentProps) {
 
 function ChatView({
   chatId,
+  resolvedWakerId,
   embedded = false,
   routeTransitioning = false,
   entry,
@@ -325,6 +328,7 @@ function ChatView({
     activeMemberWakerId ||
     detailQuery.data?.chat?.wakerId ||
     entry?.wakerId ||
+    resolvedWakerId ||
     requestedWaker ||
     wakers[0]?.id ||
     "";
@@ -734,6 +738,7 @@ function ChatView({
         });
         navigate(
           chatHref(createdID, result.chat?.wakerId ?? selectedWaker?.id ?? ""),
+          { replace: true },
         );
       }
     },
@@ -1369,6 +1374,16 @@ function ChatView({
         />
       ) : (
         <ChatWorkspaceSurface
+          chatOwner={
+            activeChatId === chatId && detailQuery.data?.chat?.wakerId
+              ? { kind: "waker", id: detailQuery.data.chat.wakerId }
+              : entry?.wakerId || resolvedWakerId || requestedWaker
+                ? {
+                    kind: "waker",
+                    id: entry?.wakerId || resolvedWakerId || requestedWaker,
+                  }
+                : undefined
+          }
           active={entry?.active}
           mainContent={entry?.mainContent}
           canvasInput={entry?.canvasInput}

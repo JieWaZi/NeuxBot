@@ -1,3 +1,4 @@
+import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
 import {
   useInfiniteQuery,
   useMutation,
@@ -1076,6 +1077,17 @@ export function WorkflowDetailPage() {
       tabIndex={-1}
       className="bg-surface-scene flex h-full min-h-0 min-w-0 flex-col"
     >
+      <SceneBreadcrumbs
+        ariaLabel={t("breadcrumb")}
+        items={[
+          { label: t("title"), href: "/resources?category=workflows" },
+          {
+            label: title || t("title"),
+            ...(routeRunId ? { href: `/workflows/${id}` } : {}),
+          },
+          ...(routeRunId ? [{ label: t("run") }] : []),
+        ]}
+      />
       {conversation}
       {revision && basicOpen ? (
         <BasicInformationDialog

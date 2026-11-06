@@ -1,291 +1,143 @@
 # OpenBot 界面分阶段对齐执行计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
-
-**Goal:** 直接采用 OpenBot 的界面设计，先迁移完整框架与面包屑，再逐模块对齐页面及交互细节。
-
-**Architecture:** 保留现有 React 路由、AppScene 与 workspace 所有权；在 app 层集中解析模块归属并装配图标栏、侧栏和顶栏。共享组件承载展示和尺寸，领域模块继续持有查询、业务操作和正文；面包屑通过所属 Scene 的展示接口发布，不复制服务器事实。
-
-**Tech Stack:** TypeScript、React、React Router Hash Router、TanStack Query、Tailwind CSS 4、Radix、Vitest、React Testing Library；沿用现有 pnpm 工具链。
+> 实施方式：根代理直接完成本轮修复，Terra 已执行原生 UI 核对。按最新授权提交并推送独立分支交接，当前仅执行第一阶段。
 
-**Spec:** [OpenBot 界面分阶段对齐设计](../specs/2026-11-06-openbot-ui-alignment-design.md)。
-
-## Global Constraints
-
-- 依赖方向保持 `app -> modules -> shared`，不增加第二套组件库、状态库或样式体系。
-- 服务器事实继续由 TanStack Query 管理，导航和面包屑不得复制领域数据、另开查询通道或建立第二套业务状态。
-- 保留现有业务接口、事件连接、执行生命周期、资源授权与文件、终端、原生视图身份。
-- 全部颜色、圆角、尺寸与焦点通过语义 Token 和共享组件表达；普通内容分组无常驻边框或阴影。
-- 图标操作提供至少 36×36px 命中区及可访问名称；键盘使用语义 `focus-visible`，鼠标点击不得产生布局容器整块外框。
-- 默认只运行对应修改点及直接受影响行为的检查；未经明确要求不运行全量验证。
-- 本轮文档编写不实现产品代码，不迁移原工作区的未提交修改。
+**目标：** 复用现有左侧、中间、右侧、主区顶部 Tab 与右侧顶部 Tab，直接按 OpenBot 固定版本源码调整。先框架，再逐模块整改。
 
-最后一项约束限定本次文档交付；后续获准实施时执行下面的产品任务。本计划不把尚未执行的任务记为已完成。
+**基线：** `codex/provider-runtime-parity` 的 `3a10bc53a8f2fa06b3fb5213e163d3acdb70c002`；独立分支 `codex/openbot-ui-alignment`。保留当前 WIP，不复制原工作目录脏改动。
 
-## Review Focus
+**规格：** [设计与按钮确认表](../specs/2026-11-06-openbot-ui-alignment-design.md)、[固定版本源码对照](../../discussions/openbot-ui-source-alignment-cn.md)。
 
-1. 直接进入资源、团队或工作流运行深链时，模块选中与面包屑必须一致，不能依赖曾经点击过侧栏；由任务 1、4 验证。
-2. 从带筛选列表进入多层详情再返回时，祖先目标和 URL 条件保持正确，不能用历史栈猜父级；由任务 4、7 验证。
-3. 隐藏 Scene 的查询迟到、重命名和卸载不能覆盖前台顶栏或触发阅读；由任务 4、5 验证。
-4. 重排框架或折叠侧栏时，聊天草稿、未保存缓冲、终端与嵌入视图身份不能重建；由任务 5 验证。
-5. 320px 主内容、长中文和不同宿主 inset 下，导航、面包屑与右侧操作不能互相覆盖；由任务 2、3、6 的行为及真实窗口检查验证。
+## 全局约束
 
----
+- 源码及用户最新明确反馈决定布局、归属、操作和条件，截图用于指出差异及验证；每项调整记录调用方、实际使用的样式与平台覆盖。
+- 按确认表最新结论实施；新发现的按钮位置、分组、作用域或显示条件不确定时，先给用户具体选项，等待确认再修改。
+- 复用现有组件、SceneChrome、Scene、workspace 与查询；不另建通用布局引擎、全局导航状态或第二份打开内容模型。
+- 数据、执行、授权、事件、原生内容身份和无关修改保持原所有者；普通布局变更不触发阅读、关闭、取消或重建。
+- 共享样式 Token 与组件是唯一尺寸／圆角／焦点入口。真实命中区至少 36px，不能互相覆盖；必要适配与源端差异明确记录。
+- 本轮问题由根代理直接修复，按用户最新要求不再派子代理改代码；Terra 负责的原生 UI 验收与根代理的 Web 验收分别记录。
+- 本轮问题处理完成后，按最新授权提交并推送 `codex/openbot-ui-alignment` 交接；后续阶段仍需用户验收，不自动进入第二阶段。
+- 只跑定向检查；不运行 pnpm check、desktop check、全量测试或 go test ./...。
 
-## 工作区与执行方式
+## 执行入口与当前边界
 
-独立 worktree 名称为 `openbot-ui-alignment`，分支为 `codex/openbot-ui-alignment`，从规格所列提交建立。路径由宿主返回，不把个人绝对路径写入仓库文档。后续执行先核对 `git status --short` 与 `git branch --show-current`，保留他人修改；需要整合原分支后续提交时按明确提交整合，不覆盖复制其工作目录。
+所有修改前阅读 CONTEXT、架构、前端及完整 UI 标准；文档修改遵循文档约定，宿主修改补读桌面边界及相关约定。操作前核对分支与状态。
 
-当前只交付规格与计划。实施顺序为任务 1–6 完成阶段一，任务 7–8 完成阶段二，任务 9 完成阶段三，任务 10 完成阶段四，任务 11 按模块完成阶段五。各阶段有独立提交与验收记录，不并行改动共享壳层。
+第一阶段已存在未提交 WIP。逐项保留有依据的路由解析、有效目标回退和生命周期修复；被用户否定的全局顶栏、全局菜单与错误尺寸必须修正。过去的测试通过或内部审阅不等于源码对齐，也不等于用户验收。
 
-实施前使用仓库声明的 pnpm 版本；仅在缺少依赖时运行 `pnpm install --frozen-lockfile`。文档交付无需安装前端依赖或运行产品测试。
+本计划中的路径未写仓库根时均相对 `packages/frontend/src`。新组件名称仅为实现建议；优先复用现有组件，不为对应源端名称机械复制整棵树。
 
-## 文件与接口分工
+## 第一阶段：整体框架
 
-以下新增名称是本计划的实施选择。所有业务路径以当前 [路由装配](../../../packages/frontend/src/app/scenes/app-route-scene.tsx) 为准。
+### 任务 1：固定来源、操作确认与 WIP 整理
 
-| 文件                                                             | 职责                                                              |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------- |
-| 新增 `app/layout/app-navigation-model.ts`                        | 纯模块／侧栏归属解析，静态父级与导航目标；无 Query 或独立选中状态 |
-| 新增 `app/layout/app-module-rail.tsx`                            | 固定模块图标栏、更多菜单及唯一通知槽位                            |
-| 新增 `app/layout/app-titlebar.tsx`                               | 宿主 inset、历史、面包屑、打开内容菜单、场景操作的排列            |
-| 新增 `app/layout/resources-context-sidebar.tsx`                  | 迁移现有资源分类，只读 URL，不持有资源副本                        |
-| 新增 `shared/ui/breadcrumbs.tsx`                                 | 纯展示的层级导航与溢出、焦点行为                                  |
-| 新增 `shared/ui/scene-breadcrumbs.tsx`                           | 按 owner 发布展示项，由 app 选择活跃 owner                        |
-| 修改 `app/layout/app-shell.tsx`、`partner-navigation-layout.tsx` | 装配新壳层；保留原 Scene、Query 与内容所有者                      |
-| 修改 `app/layout/entity-navigation.tsx`                          | 只保留伙伴／团队上下文，移出全局模块入口                          |
-| 修改 `shared/ui/scene-chrome-portal.tsx`、`scene-tab-strip.tsx`  | 顶栏槽位与 pane 页签接入；不建立新打开内容状态                    |
-| 修改 `shared/styles/index.css`、`theme.css`                      | 统一尺寸、表面与语义样式，不在页面散写值                          |
-| 修改资源、工作流、设置、其他模块                                 | 按后续各任务迁移内部页面，沿用模块公开接口                        |
+- [x] **1.1 固定源码。** OpenBot v0.62.0 / fcb35746；核对安装包版本，保留二进制精确对应尚未证明的边界。
+- [x] **1.2 核对实现。** 覆盖 WorkspaceShell／Frame、SidebarTopbar、PageRail、layout、页面覆盖、路径、会话和右面板；形成源码对照。
+- [x] **1.3 确认独有操作。** 用户确认 B01–B10；右下历史原位保留，全局打开内容菜单删除。
+- [x] **1.4 整理 WIP。** 核对 app-navigation-model、app-route-scene-model、资源分类参数及已有 owner-close 修复，保留真实业务行为与稳定 mountKey；不恢复旧的布局决策。
+- [x] **1.5 更新执行接口。** 按现有 SceneChrome 和布局组件分配区域顶栏；实现者遇到新的按钮映射先报告根代理，不擅自落位。
 
-文档中的文件路径均相对于 `packages/frontend/src/`，除非已写出仓库根目录路径。新增接口如下，实施时使用明确的 readonly 类型，不导入模块内部 DTO 到 shared。
+### 任务 2：调整既有框架与侧栏
 
-```ts
-type AppModuleId =
-  | "partners"
-  | "workflows"
-  | "work-board"
-  | "usage"
-  | "resources"
-  | "knowledge"
-  | "automatic-tasks"
-  | "settings";
-type AppSidebarKind =
-  "partners" | "resources" | "knowledge" | "settings" | "none";
-type AppNavigationRoute = {
-  moduleId: AppModuleId;
-  sidebarKind: AppSidebarKind;
-  parentHref: string;
-};
-function resolveAppNavigation(location: {
-  pathname: string;
-  search: string;
-}): AppNavigationRoute;
+**主要文件：** `app/layout/partner-navigation-layout.tsx`、`partner-navigation-preferences.ts`、`entity-navigation.tsx`、`app-module-rail.tsx`、`resources-context-sidebar.tsx`、`shared/styles/index.css`、`theme.css`；必要的 `desktop/electron/main/index.ts`。
 
-type BreadcrumbItem = { id: string; label: string; href?: string };
-type BreadcrumbsProps = { items: readonly BreadcrumbItem[] };
-type SceneBreadcrumbsProps = { items: readonly BreadcrumbItem[] };
-type SceneBreadcrumbsProviderProps = {
-  ownerId: string;
-  publish: (ownerId: string, items: readonly BreadcrumbItem[] | null) => void;
-  children: React.ReactNode;
-};
-```
+**源端：** WorkspaceFrame、SidebarTopbar、PageRail、layout-constants、layout、window.css 和 page-rail.css；以源码对照所列固定提交为准。
 
-`Breadcrumbs` 只渲染；`SceneBreadcrumbsProvider` 按 route owner 提供发布范围，`SceneBreadcrumbs` 发布当前页面已读取的名称。app 选择活跃 owner 的展示项，无发布项时使用该路由的稳定类型占位。组件名称与 props 在任务 4 实现。模块匹配的优先级先判伙伴／团队作用域，再判全局资源与工作流分类，避免错误归属。
+- [x] **2.1 对行为变化写定向失败用例。** 覆盖最小宽度 216px、有效旧宽度迁移、旧 collapsed 偏好忽略、无收起控件、Rail pin／unpin、设置／资源导航最小 220px、覆盖页隐藏 resizer，保持用户偏好与选择。
+- [x] **2.2 修正外框。** Rail 为整窗第一列；38px 区域顶行；主内容是统一底板。复用现有三栏及共享槽，不再跨全窗渲染 AppTitlebar。
+- [x] **2.3 修正侧栏。** 默认 280、正常 216–400；删除手动／自动 compact、阈值、展开／compact 搜索逻辑，旧 collapsed 偏好不控制 UI。聊天正常列表始终保留，拖动钳制到最小宽度；伙伴详情及子页用原 Dock 四项导航替换左侧列表，不保留额外 Dock。
+- [x] **2.4 按 B01、B03、B07、B08 调整入口。** 左上不加名称／下拉；默认 pin 与底部操作按确认顺序，More 支持固定／取消固定，选中从 URL 派生；通知仍唯一来源。分段条降低视觉高度且保留命中区；左侧新建伙伴／团队按用户要求保留列表原位与原行为，不加顶栏创建菜单。
+- [x] **2.5 宿主适配。** 原生按钮 x12、y13 与 38px 顶行共同核对，Web 无假按钮。共享控件适配至少 36px 命中区，过窄时先核对源码收缩条件，不自造按钮位置。
+- [x] **2.6 定向验证。** partner-navigation-preferences、partner-navigation-layout、entity-navigation、app-module-rail、resources-context-sidebar 及直接受影响 shell 用例；只对改动文件运行 ESLint／格式检查，执行 desktop ui:check。
 
-## 阶段一：整体框架
+### 任务 3：把现有主区／右侧顶部 Tab 调回所属区域
 
-### 任务 1：集中模块归属与入口目标
+**主要文件：** `app/layout/app-shell.tsx`、原 WIP `app-titlebar.tsx`、`shared/ui/scene-chrome-portal.tsx`、`scene-tab-strip.tsx`、`modules/chat/components/chat-workspace-surface.tsx`、`modules/chat/workbench/right-workbench.tsx`、`workbench-pane-canvas.tsx` 和其实际 Tab 组件。
 
-**Files:**
+**源端：** ConversationHeader、ThreadHeader、ThreadMenu、SidePanel、PanelResizer、conversation-scope、side-panel.css。
 
-- Create: `app/layout/app-navigation-model.ts`、`app-navigation-model.test.ts`。
-- Modify: `app/scenes/app-route-scene-model.ts`、`app/layout/app-shell.tsx`。
-- Test: `app/scenes/app-scene-model.test.ts`、`app/layout/app-shell.test.tsx`。
+- [x] **3.1 保留行为覆盖并换测试入口。** 移除全局菜单后，用已有模块入口、所属聊天／右面板 Tab 触发原生命周期测试；不得删除原用例来消除失败。新增用户可见作用域回归，先确认失败。
+- [x] **3.2 删除错误入口。** 移除全局打开内容菜单及仅服务它的代码、文案、测试；保留 Scene 存储与原关闭／重命名命令。删除或重写错误的全局 AppTitlebar，不保留废弃 Router history。
+- [x] **3.3 按 B02 重排聊天。** 主区仅当前伙伴／团队的会话名平铺 Tab，无身份头像／名称、无收起下拉；B09 成员页签保持当前会话内的主区分组，不混入会话下拉。复用现有 Chat／Channel Thread 和 Scene 身份，不建立主聊天／side thread 第二套记录。
+- [x] **3.4 按 B06 处理局部操作。** 摘要在主 pane 右端，工作区开关在整聊天顶栏最右，展开后也保持最右；右下角独有历史入口原位保留；runtime／账号／模型／权限选择本阶段不搬动。
+- [x] **3.5 按 B05、B10 重排右侧。** + 菜单按浏览器／终端／文件／变更／侧边聊天／任务板排序，保留能力条件与新页工具卡，分屏保留拖动，两个换位按钮保留原位，不新增更多或方向菜单（B11–B12）；显式最大化只覆盖聊天区，删除 80% 拖动全屏；保留真实 split、swap、关闭、终端和 native browser 生命周期。
+- [x] **3.6 对齐 Tab 与 overflow。** 主区按最新用户要求始终平铺并沿用滚动，不收起；主／右 Tab 统一 shell 背景、状态、密度与细分隔，整项 hover 一致且 X 无独立底色；+ 在最后一个 Tab 后共用横向滚动轨道，固定操作留在轨道外。移除不匹配的灰色 Card 头和外框。
+- [x] **3.7 定向验证。** app-shell、SceneTabStrip、chat-workspace-surface、右工作台与 owner-close 测试；检查 active tab、删除回退、关闭最后内容和隐藏 Scene 不抢前台。
 
-**Interfaces:** 消费现有 URL、最近聊天／团队与设置目标；产出上文 `resolveAppNavigation`，既有 `routeSceneForLocation` 复用其模块判断，保留 Scene ID 与挂载身份。
+### 任务 4：复用页面 header／路径并接通实体历史
 
-- [ ] **1.1 写行为用例。** 表驱动覆盖 `/wakers/w1/projects/p1` 归伙伴、`/teams/t1/threads/c1` 归伙伴团队模式、`/resources/plugins/p1/skills/s1` 归资源库、`/resources?category=workflows&search=demo` 与 `/workflows/f1/runs/r1` 归工作流、设置旧地址归对应有效分区；未知路径遵守既有路由回退。
-- [ ] **1.2 运行新增用例并确认缺少解析函数导致失败。** `pnpm --dir packages/frontend exec vitest run src/app/layout/app-navigation-model.test.ts`。
-- [ ] **1.3 实现解析与目标恢复。** 使用纯函数派生模块和侧栏；主入口目标按 spec 4.2，首次／已删除目标回实际列表，旧入口保留参数。不能新增全局 `selectedModule` Store。
-- [ ] **1.4 定向验证。** 运行上述用例及 `src/app/scenes/app-scene-model.test.ts`、`src/app/layout/app-shell.test.tsx`；预期全部通过，临时聊天接纳后的 `mountKey` 沿用。
-- [ ] **1.5 提交。** 仅暂存本任务文件，提交 `refactor: centralize app navigation ownership`。
+**主要文件：** `app/layout/app-shell.tsx`、现有布局和 SceneChrome、设置／资源页面及其已有路径元数据；仅在确有两个消费者时增加共享展示原语。
 
-### 任务 2：固定模块栏与模块侧栏装配
+**源端：** navigation、chat-history、SettingsPageFrame、SettingsDialogShell、MarketplaceHeader／nav stack。
 
-**Files:**
+- [x] **4.1 实现确认的伙伴／团队访问历史。** 最多 50 条纯交互记录，正常新访问截断 forward，重复当前目标不追加，失效目标跳过。历史不记录所有 URL 和文件；进入设置详情 Back 优先明确父级。
+- [x] **4.2 页面覆盖接入。** 复用现有保持挂载的 Scene；设置、目录导航覆盖伙伴正文，保留左上操作；原内容 inert／aria-hidden，框架变化不增加请求或阅读副作用。
+- [x] **4.3 路径归所属页面。** 设置和资源详情按源端输出父级／当前项；一级目录不显示冗余路径；已有伙伴、资源与工作流层级采用真实 Query 名称、明确祖先 href 及列表条件。普通聊天保留身份／Tab，不通用塞 route label。
+- [x] **4.4 定向回归。** 深链、含筛选返回、多层详情、名称迟到、删除目标、后台 Scene 名称变化、历史分支及替换；只跑涉及的页面／布局测试。
 
-- Create: `app/layout/app-module-rail.tsx`、`app-module-rail.test.tsx`、`resources-context-sidebar.tsx`、`resources-context-sidebar.test.tsx`。
-- Modify: `app/layout/partner-navigation-layout.tsx`、`entity-navigation.tsx`、`partner-navigation-preferences.ts`、`app-shell.tsx`、`app/pages/resources-page.tsx`、`shared/styles/index.css`、`shared/styles/theme.css`、`shared/i18n/index.ts`。
-- Test: `app/layout/partner-navigation-layout.test.tsx`、`entity-navigation.test.tsx`、`partner-navigation-preferences.test.ts`、`app/pages/resources-page.test.tsx`。
+### 任务 5：保持内容身份并收敛实现
 
-**Interfaces:** 消费任务 1 的 `AppNavigationRoute`；`AppModuleRail` 接收 `activeModule`、`onNavigate(moduleId)`、`notification` 槽位。`ResourcesContextSidebar` 接收当前 `category` 与 `onCategoryChange`，复用现有分类解析及参数清理规则；产出始终可用的模块栏和按模块装配的侧栏。
+- [x] **5.0 草稿复用。** 每个伙伴／团队仅一个未发送草稿，重复新建保留输入；普通导航不触发首发 Scene 替换，真实接纳继续迁移挂载身份。
+- [x] **5.1 回归原 Scene 生命周期。** 所属模块切换、侧栏调整、覆盖页与右面板 maximize 不重建草稿、文件缓冲、PTY 或 browser；真正关闭按原 owner 释放，取消关闭仍保留原目标。
+- [x] **5.2 核对已有 owner-close 修复。** 保留 active fallback 正确、关闭后台 owner 不改变当前目标、最后 owner 无无效 active id 的用例；不得额外逐 child 调关闭。
+- [x] **5.3 清理过时壳层。** 搜索旧全局菜单、重复模块入口、错误的40px／216–360／collapse-to-zero逻辑和旧浮动入口改动；仅删除无消费者部分。右下独有历史不能误删。
+- [x] **5.4 分清外观和事实。** Query、通知、执行、目录／授权与原生资源不新增权威来源；必要第三方来源和许可声明准确维护。
 
-- [ ] **2.1 写交互用例。** 模块栏不显示伙伴头像列表；伙伴／设置／资源之间切换只更换侧栏；折叠侧栏仍能访问全部模块；更多菜单有知识库与自动任务；通知仅一个；分类切换 URL 与原逻辑一致且没有重复页面分段导航。补旧偏好缺字段／无效宽度／伙伴顺序保留用例。
-- [ ] **2.2 定向运行新增组件用例，确认新框架缺失时失败。** 使用 `pnpm --dir packages/frontend exec vitest run` 后接本任务新增的两个 `.test.tsx` 文件路径。
-- [ ] **2.3 迁移容器与入口。** 全局栏宽 52px；侧栏默认 280px、范围 216–360px；全局栏与侧栏折叠解耦。把实体列表和设置导航接入侧栏槽位，资源分类从页面移到侧栏；此步不更改资源条目、设置字段或工作流画布。
-- [ ] **2.4 定向验证。** 运行本任务全部列出测试；通过后执行 `pnpm --dir desktop ui:check`。检查长中文、键盘可达性及焦点恢复；真实容器布局留到任务 6 检查。
-- [ ] **2.5 提交。** `refactor: adopt OpenBot module rail and context sidebar`。
+### 任务 6：真实对照、交付验收
 
-### 任务 3：统一顶栏与打开内容入口
+- [x] **6.1 检查实际受影响范围。** 定向测试、共享前端 typecheck、desktop ui:check、改动文件 ESLint／Prettier、docs:check、git diff --check。不运行项目总 check 或全量测试。
+- [x] **6.2 Computer Use 核对 Web 与 macOS。** 使用独立测试数据，按源端同一状态对照三栏、顶行、最小宽度、覆盖页面、主／右 Tab、历史、摘要／工作区和所有 +／更多菜单；不以截图反推实现。
+- [ ] **6.3 核对容器与键盘。** 1440×900、1024×768、768×700，主内容 480／320px，长名称、浅暗主题；逐按钮检查命中区、显示条件、焦点和 native drag 区。没有源码或确认的额外位置先问用户。
+- [x] **6.4 更新实际规则与验收记录。** 只把已经落地的变化同步 UI／前端／相关架构文档，分别列自动化、平台、视觉、约束适配与未验证边界。
+- **6.5 独立分支交接。** 完成本轮修复与定向、真实 UI 验证后，按最新授权提交并 push 当前独立分支，记录提交、验证结果和剩余平台边界；不进入第二阶段。
 
-**Files:**
+## 本轮验证边界
 
-- Create: `app/layout/app-titlebar.tsx`、`app-titlebar.test.tsx`。
-- Modify: `app/layout/app-shell.tsx`、`partner-navigation-layout.tsx`、`shared/ui/scene-chrome-portal.tsx`、`scene-tab-strip.tsx`、`shared/styles/index.css`。
-- Test: `shared/ui/scene-tab-strip.test.tsx`、`app/scenes/app-scene-bulk-close.test.tsx`。
+定向回归覆盖框架、伙伴／团队草稿、Scene 迁移、页面路径、工作台关闭及工作流：核心 13 个文件中其余 12 个通过，工作流修正路径导航重名与菜单调用后 40 项通过；最后补测草稿与伙伴卡片 93 项通过。共享前端类型、改动文件 ESLint、UI 策略、格式及文档检查分别执行，不以全量检查替代。
 
-**Interfaces:** 消费现有 `AppSceneSnapshot`、`AppSceneCommand`、场景操作及平台 `chrome.navigationInset`；`AppTitlebar` 以 props 接收 `breadcrumbs`、`sceneActions`、`openContents` 展示槽位和历史操作。打开内容菜单直接调用原 Scene 命令，不创建第二份 tabs 状态。
+Terra 在 macOS Native 核对浅暗表面、分段选中面、216px 侧栏、详情导航和显式最大化；根代理在 Web 的 1440×900、1024×768、768×700 核对边界，实测主／右整体 hover 一致、关闭 X 无独立背景、320px 右栏可双向滚动到末尾 +。跨模块、伙伴列表与卡片重复新建均复用原草稿，未发送模型消息。
 
-- [ ] **3.1 写用户行为用例。** 顶栏可切换、关闭、重命名及关闭其他已打开内容；选择文件仍选中其所属模块；关闭 owner 沿用已有联动行为；历史按钮在无可用历史时禁用。覆盖 72px Native inset 与 Web 默认 inset 的槽位配置、长标题完整可访问名称。
-- [ ] **3.2 运行新增顶栏与原批量关闭测试，确认缺少新入口导致失败。**
-- [ ] **3.3 实现顶栏排列。** 顶栏高度 40px；应用身份、历史、面包屑、操作按 spec 4.1／4.3 排列。全应用平铺 tabs 替换为打开内容菜单，pane tabs 继续留在所属 pane；交互区域标记既有 no-drag 约定，不更改平台 Bridge 契约。
-- [ ] **3.4 定向验证。** `pnpm --dir packages/frontend exec vitest run src/app/layout/app-titlebar.test.tsx src/shared/ui/scene-tab-strip.test.tsx src/app/scenes/app-scene-bulk-close.test.tsx`；预期原关闭与挂载契约仍通过。原生遮挡和拖动实际结果在任务 6 验收。
-- [ ] **3.5 提交。** `refactor: align app titlebar and retained content navigation`。
+Windows／Linux、原生窗口拖动、真实 PTY 与嵌入浏览器的完整回归未执行；团队无真实 UI 样本，草稿作用域与生命周期由定向测试覆盖。768px 沿用原窄屏工作台覆盖行为。知识库整文件的既有失败已做修改前后基线对照，不属于本轮路径改动；本轮新增路径用例单独通过。未执行项目全量检查，也未进入资源库等后续阶段。
 
-### 任务 4：完整面包屑与父级返回
+## 第二阶段：资源库
 
-**Files:**
+### 任务 7：目录与已安装列表
 
-- Create: `shared/ui/breadcrumbs.tsx`、`breadcrumbs.test.tsx`、`scene-breadcrumbs.tsx`、`scene-breadcrumbs.test.tsx`、`app/layout/app-breadcrumbs.test.tsx`。
-- Modify: `app/layout/app-shell.tsx`、`app-titlebar.tsx`、`app-navigation-model.ts`、`app/scenes/app-route-scene.tsx`、`shared/i18n/index.ts`。
-- Modify: 现有 `modules/waker/pages/waker-detail-page.tsx`、`modules/project/pages/project-detail-page.tsx`、`app/pages/team-thread-page.tsx`、`modules/skill/pages/skill-detail-page.tsx`、`modules/connector/pages/connector-detail-page.tsx`、`modules/plugin/pages/plugin-detail-page.tsx`、`plugin-catalog-detail-page.tsx`、`plugin-skill-detail-page.tsx`、`plugin-connector-detail-page.tsx`、`modules/workflow/pages/workflow-detail-page.tsx`、`modules/settings/pages/settings-scene.tsx`、`app/scenes/knowledge-scene.tsx`、`modules/automatic-task/pages/automatic-task-detail-page.tsx`。
+- [ ] 阅读 Marketplace、MarketplaceNav、apps／skills 列表、搜索／筛选／安装调用和全部相关样式；形成源端状态及 NeuxBot 字段映射。
+- [ ] 用户确认所有没有一一来源的动作位置；保留插件／技能／连接器现有分类、分页、伙伴启用与版本事实。
+- [ ] 迁移 ResourcePageSurface／Header／Toolbar 及相关 collection，使用居中内容、两列轻条目、窄容器单列；共享原语承载尺寸，修改实际对应的 UI 规则。
+- [ ] 针对分类、搜索、来源、空／错误、安装状态及返回条件跑定向测试和真实界面对照。
 
-**Interfaces:** 实现上文 `BreadcrumbItem`、`Breadcrumbs`、`SceneBreadcrumbsProvider`、`SceneBreadcrumbs`。app 按 owner 保存展示项，稳定静态父级由当前 URL 推导；页面发布从既有 Query 得到的动态名称。列表来源使用已有 `resourceBack` 与 URL，校验仍属于对应父列表后恢复，直达时用规范父路径。
+### 任务 8：详情与管理
 
-- [ ] **4.1 写层级与返回用例。** 覆盖 spec 4.3 全部路由家族；重点断言插件内技能有四层、伙伴资源不跳全局资源库、工作流运行父级回工作流。当前项不可点击且具有 `aria-current="page"`，祖先用明确 href；父列表 `search/source/view` 及分页恢复，详情直达无需历史栈。
-- [ ] **4.2 写异步归属用例。** A 详情请求未完成时切 B，A 后返回不得覆盖 B；后台 Scene 重命名不改前台；卸载一个 owner 不清除另一个；实体删除或名称请求失败时父级仍可用。长中文保留完整访问名称并允许从溢出位置操作祖先。
-- [ ] **4.3 运行新增三个测试文件，确认展示接口缺失时失败。**
-- [ ] **4.4 实现并接入现有页面。** 每个 route Scene 提供 owner scope；详情只增加展示发布，不改正文。未发布时立即使用新路由的类型占位，已加载时用真实名称。设置及知识库保持自己的既有导航层级；打开文件时主面包屑继续来自 owner route。
-- [ ] **4.5 定向验证。** 运行新增三个面包屑测试、`src/app/layout/app-shell.test.tsx`、`src/app/scenes/settings-route.test.ts` 与 `src/app/notifications/notification-navigation.test.ts`；预期所有直达、父级及迟到更新断言通过。
-- [ ] **4.6 提交。** `feat: add scene-owned breadcrumbs and parent navigation`。
+- [ ] 阅读源端身份／操作头、正文、信息及管理、返回、错误路径，逐个对应现有六类资源详情与插件设置弹窗。
+- [ ] 保留只读插件组件、独立资源管理、共享配置、版本固定与伙伴启用；有争议操作先确认，不新增空壳试用能力。
+- [ ] 按状态完成详情、编辑、安装和返回路径，定向验证并交用户验收；通过后才提交第二阶段并进入第三阶段。
 
-### 任务 5：保活、历史入口与关闭资源回归
+## 第三阶段：工作流
 
-**Files:**
+### 任务 9：入口、列表与工作区
 
-- Modify: `app/layout/partner-navigation-layout.tsx`、`app-shell.tsx`、`shared/workspace/floating-chat-launcher.tsx` 的实际调用点；仅在无消费者后删除旧浮动导航分支。
-- Test: `app/layout/app-shell.test.tsx`、`partner-navigation-layout.test.tsx`、`modules/chat/pages/retained-chat-page.test.tsx`、`modules/chat/workbench/workbench-store.lifecycle.test.tsx`、`shared/workspace/workspace-context.test.tsx`、`app/scenes/app-scene-bulk-close.test.tsx`。
+- [ ] 阅读源端实际 Workflows／Routines 调用，明确本项目 DSL、创作聊天、版本、运行、节点和检查器差异，确认独有动作位置。
+- [ ] 统一现有工作流列表入口与旧分类兼容跳转，保留搜索、定义、revision、run 与创作 owner。
+- [ ] 调整既有 workflow-list／detail／run、canvas、chat-pane、detail-dock、node-inspector 的布局，不改执行、编译或连线规则。
+- [ ] 定向验证进入、创作、运行、历史、返回、面板与窄容器；用户验收后才提交并进入第四阶段。
 
-**Interfaces:** 复用现有 Scene reducer、`mountKey` 与 workspace 关闭函数；历史控件迁移位置但保留原查询和分组。消费任务 3 的打开内容入口，产出无旧全局悬浮导航且内容身份不变的框架。
+## 第四阶段：设置
 
-- [ ] **5.1 增加真实生命周期断言。** 聊天填写未发送草稿、打开未保存文件和终端后，切设置、资源、工作流再回来，内容 ID 与挂载计数不变；折叠／调整侧栏不触发关闭。真正关闭时只回收对应资源；隐藏页不提交阅读。
-- [ ] **5.2 将用例作用于当前迁移结果。** 若发现失败，记录具体被重建／错误关闭的身份；缺少回归保护的行为先写失败用例再修实现，不能用 Snapshot 替代生命周期断言。
-- [ ] **5.3 移除已被替代的全局浮动导航。** 历史、分组及新建继续能从对应侧栏／顶栏访问；检查 `floating-chat-launcher` 其他消费者，局部浮动聊天能力不因删除导航而被连带移除。
-- [ ] **5.4 定向运行本任务测试。** 预期保活、关闭及后台阅读行为均通过；不扩展到整个聊天或工作流测试套件。
-- [ ] **5.5 提交。** `refactor: retain workspace identity across module navigation`。
+### 任务 10：导航、分组与编辑
 
-### 任务 6：阶段一真实界面对照与规范同步
+- [ ] 阅读 SettingsPageFrame、SettingsDialogShell、SettingsModal／ServerSettingsModal 及账号／服务商相关真实调用；不从截图推断同名业务。
+- [ ] 保留 general、ai-accounts、runtime-environments、integration-im、integration-api；分类搜索只过滤现有名称，账号与环境分开持有事实。
+- [ ] 调整已有 SettingsContextSidebar、SettingsGroup／Row 和各 section，使用源端 nav／path／content、分组行及容器换行；按钮新映射先确认，不加统一保存。
+- [ ] 定向验证编辑、测试、登录错误、更新、Key／监听流程和真实浅暗／窄容器；用户验收后才提交并进入第五阶段。
 
-**Files:**
+## 第五阶段：其他模块逐个验收
 
-- Create: `docs/discussions/openbot-ui-alignment-acceptance-cn.md`，仅记录已执行结果及未验证边界，不保存私人截图。
-- Modify: `docs/development/ui-cn.md`、`docs/development/frontend-cn.md` 的框架与导航章节；不提前改资源列表或设置内页规则。
-- Modify: 仅修复前述框架任务中已定位的差异文件。
+### 任务 11：伙伴／团队、聊天、知识库、工作看板、自动任务、用量
 
-**Interfaces:** 消费任务 1–5 的完整框架和 spec 6 验收矩阵；产出阶段一可审核的对照记录。
-
-- [ ] **6.1 冻结对照。** 通过已授权的 Computer Use 记录 OpenBot 版本、逻辑窗口／缩放和目标状态；用虚构数据准备 NeuxBot 测试工作区。验收记录按版本、窗口和状态描述，避免写个人账号或路径。
-- [ ] **6.2 执行框架检查。** 逐项核对图标栏、侧栏、顶栏、面包屑、历史、内容菜单、拖动区及 pane。按 spec 尺寸、长中文、浅暗主题、键盘和减少动态验收；macOS 和 Web 分别操作。没有 Windows 环境时明确记未验证。
-- [ ] **6.3 修复已定位差异并同步权威规范。** 只更新已经实现的框架规则，保留可访问性、焦点、事件和状态边界；不得为通过检查放宽策略。
-- [ ] **6.4 执行阶段检查。** `pnpm --dir packages/frontend typecheck`、`pnpm --dir desktop ui:check`、对修改 TS/TSX 文件定向运行 ESLint、对修改文件运行 Prettier 检查、`pnpm docs:check`。类型检查范围是共享前端包，不运行桌面总 `check` 或全量测试。
-- [ ] **6.5 提交与阶段交付。** `docs: record OpenBot frame alignment acceptance`；交付中分别说明自动化、Web、macOS、Windows 和视觉结果。框架验收后才进入阶段二。
-
-## 阶段二：资源库
-
-### 任务 7：目录与已安装资源列表
-
-**Files:**
-
-- Modify: `app/pages/resources-page.tsx`、`shared/ui/resource-page.tsx`、`resource-list-item.tsx`、`resource-management-card.tsx`、`resource-loading-state.tsx`、`modules/plugin/pages/plugin-resource-collection.tsx`、`modules/skill/pages/skill-resource-collection.tsx`、`modules/connector/pages/connector-resource-collection.tsx` 及其实际条目组件。
-- Test: `app/pages/resources-page.test.tsx`、`resources-page.collections.test.tsx`、`resource-loading.test.tsx`、`shared/ui/resource-list-item.test.tsx`、`resource-management-card.test.tsx`、`modules/plugin/pages/plugin-resource-collection.test.tsx`。
-
-**Interfaces:** 消费阶段一分类侧栏及原集合 props；保留搜索、来源、安装和伙伴选择回调；共享列表添加明确布局变体，只有迁移后的资源库使用两列轻量条目，其他待整改模块不随全局改动提前变化。
-
-- [ ] **7.1 补齐 OpenBot 状态对照。** 实际查看目录、已安装、搜索无结果、添加与管理路径；把观察结果及必要适配写入既有验收文档的资源库段。
-- [ ] **7.2 写失败行为用例。** 分类只有侧栏一份；进入带筛选列表、打开详情、点祖先返回后条件保留；安装／更新／卸载仍调用原 mutation，尾部动作不触发详情；局部错误和后台刷新不清空旧列表。
-- [ ] **7.3 迁移列表与骨架。** 880px 内容上限，按容器使用两列／单列轻量条目；图标、名称、简介及尾部真实动作按 OpenBot 排列。移除重复管理底栏，保留来源、固定版本、伙伴使用关系和原加载机制；空／错误与骨架跟随同一内容布局。
-- [ ] **7.4 定向运行本任务测试及实际修改组件测试。** 先确认新增断言在旧列表失败，再确认迁移后通过；执行 UI 策略、定向格式和类型检查。真实检查 880px、480px、320px 内容，确认两列与单列、搜索和按钮不裁切。
-- [ ] **7.5 同步资源列表规范并提交。** 更新前端约定中已迁移资源页的三列规定，保留其他模块适用的原布局；提交 `refactor: adopt OpenBot resource directory layouts`。
-
-### 任务 8：资源详情与管理交互
-
-**Files:**
-
-- Modify: `modules/plugin/pages/plugin-detail-page.tsx`、`plugin-catalog-detail-page.tsx`、`plugin-skill-detail-page.tsx`、`plugin-connector-detail-page.tsx`、`modules/skill/pages/skill-detail-page.tsx`、`modules/connector/pages/connector-detail-page.tsx` 及其现有元数据／编辑弹窗组件。
-- Test: 上述六个现有详情文件对应的 `.test.tsx`；另含 `modules/plugin/components/plugin-settings-dialog.test.tsx`。
-
-**Interfaces:** 消费阶段一面包屑与原详情 Query、mutation；正文、元数据和操作分区复用现有模块公开组件，不增加业务端点。
-
-- [ ] **8.1 对照实际详情、管理、安装和关闭返回路径，写入同一验收文档。**
-- [ ] **8.2 写失败用例。** 独立资源可管理，插件组件保持只读；原共享配置、版本固定与伙伴启用语义不变；弹窗失败就近呈现，关闭后焦点恢复；迟到详情不能更新其他 Scene 面包屑。
-- [ ] **8.3 迁移身份头、正文与信息区。** 按 OpenBot 保留简短简介和正确操作位置；去重复标题与卡片嵌套，复用现有 Markdown。不为试用展示新增产品能力。
-- [ ] **8.4 执行六组详情与配置弹窗定向测试，并实际走通列表→详情→原有安装／管理→返回。** 同步对应 UI 规则和验收记录；未观察／未运行状态明确列出。
-- [ ] **8.5 提交并交付阶段二。** `refactor: align resource detail and management presentation`；阶段二验收后进入阶段三。
-
-## 阶段三：工作流
-
-### 任务 9：工作流入口、创作、画布与运行布局
-
-**Files:**
-
-- Modify: `modules/workflow/pages/workflow-list-page.tsx`、`workflow-detail-page.tsx`、`workflow-run-page.tsx`、`modules/workflow/components/workflow-canvas.tsx`、`workflow-chat-pane.tsx`、`workflow-detail-dock.tsx`、`node-inspector.tsx`；以及 `app/pages/resources-page.tsx`、`app/layout/app-navigation-model.ts`、`app/scenes/app-route-scene-model.ts`。
-- Test: `modules/workflow/pages/workflow-list-page.integration.test.tsx`、`workflow-scene.integration.test.tsx`、`workflow-run-page.integration.test.tsx`、`modules/workflow/components/workflow-canvas-close.test.tsx`、`workflow-chat-pane.integration.test.tsx`、`node-inspector.integration.test.tsx`、`app/layout/app-navigation-model.test.ts`。
-
-**Interfaces:** `/workflows` 成为列表主入口，旧 `/resources?category=workflows` 使用 replace 保留搜索后转入；继续消费同一 `WorkflowResourceCollection`／查询。定义、运行、创作聊天、画布与检查器共用原 owner 身份。
-
-- [ ] **9.1 实机核对 OpenBot 的列表／进入画布、名称与历史、运行、局部工具、聊天和检查器开合路径，记录本项目节点差异。**
-- [ ] **9.2 写失败用例。** 新旧列表入口归属一致且参数不丢；从运行返回当前定义；开合聊天／检查器不重建画布或编辑缓冲；关闭画布与关闭整个工作流仍执行原资源释放；人工请求／重试仍可达。
-- [ ] **9.3 迁移入口及呈现。** 去掉当前列表重定向，把资源库中的旧入口变为兼容跳转；按 OpenBot 重排顶栏、全宽画布、局部工具、历史和按需面板。仅修改节点外观和操作位置，不修改 DSL、布局／连线算法或执行参数。
-- [ ] **9.4 运行本任务定向测试。** 对实际改动的节点控件加对应行为测试；执行类型、UI 策略和格式检查，并实际走通创作、运行、历史、返回和窄窗口。
-- [ ] **9.5 同步当前工作流 UI 说明、验收记录并提交阶段三。** `refactor: align workflow navigation and workbench layout`。
-
-## 阶段四：设置
-
-### 任务 10：设置导航、分组与账号／环境展示
-
-**Files:**
-
-- Modify: `modules/settings/components/settings-context-sidebar.tsx`、`settings-section-layout.tsx`、`ai-accounts-section.tsx`、`runtime-environments-section.tsx`、`api-integration-section.tsx`、`mcp-integration-section.tsx`、`modules/settings/pages/settings-scene.tsx`、`modules/settings/settings-navigation.ts`、`app/scenes/im-integration-settings-content.tsx` 与实际 IM 内容组件。
-- Test: `modules/settings/settings-navigation.test.ts`、`pages/settings-scene.test.tsx`、`components/ai-accounts-section.test.tsx`、`runtime-environments-section.test.tsx`、`account-login.test.tsx`、`api-integration-section.test.tsx`、`mcp-integration-section.test.tsx`、`app/scenes/im-integration-settings-content.test.tsx`。
-
-**Interfaces:** 分类保持 `general`、`ai-accounts`、`runtime-environments`、`integration-im`、`integration-api`；搜索只过滤分类名称；复用 `SettingsRow`／`SettingsGroup`、原登录与配置 mutation。公共布局兼容现有 props，避免各分区重做字段控件。
-
-- [ ] **10.1 实机核对 OpenBot 的分类搜索、分组行、服务商状态与详情返回；记录哪些对应当前账号与环境，哪些没有本项目业务。**
-- [ ] **10.2 写失败用例。** 搜索分类不改变已选分区或提交配置；无结果仍可清除搜索；设置仍唯一 Scene；AI 账号与环境不合并为一份状态；登录／测试／更新错误仍在原区域，API／MCP 的实际开关关系不变。
-- [ ] **10.3 迁移导航和设置行。** 内容上限 720px，分组背景及行内控件采用共享语义组件；长路径／多行字段容器不足时换行。保留必要权限说明和字段标签，不增加统一保存按钮。
-- [ ] **10.4 运行本任务定向测试，实际核对浅暗主题、分类搜索、原有编辑／测试操作、长内容及窄容器。** 登录等涉及真实外部操作的自动化使用现有 Fake／MSW，不替用户授予新权限。
-- [ ] **10.5 同步设置规则、验收记录并提交阶段四。** `refactor: adopt OpenBot settings navigation and rows`。
-
-## 阶段五：其他模块逐个对齐
-
-### 任务 11：按模块完成页面迁移与交付
-
-本任务为七次独立交付，依次为伙伴／团队、聊天、知识库、工作看板、自动任务、用量及全局收尾。每次重复下面步骤，不把多个模块混为一个提交；进入模块前将本节对应清单细化为该模块的文件和交互对照，不提前改无关模块。
-
-| 模块       | 起始文件（相对 frontend/src）                                                                                                                                 | 定向回归入口                                                                                                          |
-| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| 伙伴／团队 | `app/pages/partner-management-page.tsx`、`modules/waker/pages/waker-detail-page.tsx`、`app/pages/team-thread-page.tsx`、`app/layout/team-context-sidebar.tsx` | `app/layout/entity-navigation.test.tsx`、`app/pages/team-thread-page.integration.test.tsx`                            |
-| 聊天       | `modules/chat/pages/chat-page.tsx`、`components/chat-thread.tsx`、`components/chat-composer-panel.tsx`                                                        | `modules/chat/pages/chat-page.integration.test.tsx`、`retained-chat-page.test.tsx`，及实际修改的输入／消息组件测试    |
-| 知识库     | `app/scenes/knowledge-scene.tsx`、`modules/knowledge/knowledge-page.tsx`、`knowledge-library-navigation.tsx`                                                  | `modules/knowledge/knowledge-page.test.tsx`、`knowledge-loading.test.tsx`、`knowledge-read-lifecycle.test.tsx`        |
-| 工作看板   | `modules/work-board/pages/work-board-page.tsx` 及其实际行组件                                                                                                 | `modules/work-board/pages/work-board-page.integration.test.tsx`                                                       |
-| 自动任务   | `modules/automatic-task/pages/automatic-task-list-page.tsx`、`automatic-task-detail-page.tsx` 及其实际表单                                                    | `modules/automatic-task/components/task-form-workflow.test.tsx`、`workflow-input-fields.test.tsx`，及对应页面已有测试 |
-| 用量       | `modules/usage/pages/usage-page.tsx`、`components/usage-report.tsx`                                                                                           | `modules/usage/pages/usage-page.test.tsx`、`components/usage-report.test.tsx`                                         |
-
-**Interfaces:** 以上模块继续消费原 URL／Query／mutation／事件；仅对齐展示、控件位置和导航。任务 1–10 的 shared 与 app 接口是唯一壳层，不为各模块复制框架。
-
-- [ ] **11.1 为当前模块记录 OpenBot 实际列表、详情、编辑、空／错误、加载、返回及面板状态。** 无对应页面时写清采用哪一已有结构与本项目业务映射；把修改文件、原接口和验收用例补入本计划当前模块段后实施。
-- [ ] **11.2 为将变化的导航和行为写失败测试并运行确认。** 纯间距和圆角调整只做样式与视觉验证，不写镜像实现的测试；聊天／知识／通知等已有领域契约只回归直接受影响部分。
-- [ ] **11.3 实现当前模块完整页面路径。** 使用已落地的框架、面包屑和共享展示组件；删除重复说明／表面，保留实际字段和操作，不触碰消息接纳、文件成果判定、检索、调度或计量规则。
-- [ ] **11.4 定向测试、类型／样式／格式检查并做该模块真实界面对照。** 自动化与平台／视觉结果分别记录，未验证项保持明确；更新已改变的权威页面说明。
-- [ ] **11.5 按模块提交并交付。** 使用 `refactor: align <module> pages with OpenBot`；当前模块验收后再进入下一个。
-- [ ] **11.6 最后检查全局残留。** 搜索旧导航、重复分类、旧资源卡片分支和失效样式，确认无实际消费者后删除；检查帮助文案、键盘、全模块深链与正文／pane 返回。只回归被清理代码的调用方，运行 `pnpm docs:check` 并更新最终差异记录。
-
-## 本次文档交付验证
-
-- [x] 核对 spec 的框架、面包屑、状态身份及五阶段要求均有任务承接。
-- [x] 独立审阅 spec 的重要歧义；计划自审接口名称、文件存在性、测试命令和阶段边界。
-- [x] 运行 `pnpm docs:check`，检查新增文档链接与个人路径。
-- [x] 对两份新增文档运行 Prettier 检查及 `git diff --check`。
-- [x] 仅提交本次规格与计划，报告 worktree、分支、文档位置及验证结果；不把文档完成报告为产品实现完成。
+- [ ] 每次只选择一个模块，先固定源端组件、调用、样式覆盖和状态路径；无对应业务的按钮先确认，再将修改文件、行为和用例细化到当前任务。
+- [ ] 复用已落地三栏、区域顶栏及原模块查询，调整原有页面、列表、详情、编辑、错误和空状态；不改消息接纳、知识检索、调度和计量。
+- [ ] 聊天阶段逐项确认 runtime／账号／模型／权限选择迁移；右下独有历史入口保持用户已确认的位置，除非用户再次要求调整。
+- [ ] 每模块完成定向检查、真实对照和用户验收后才提交，再进入下一模块。
+- [ ] 最后删除确认无消费者的旧导航与样式，同步权威文档，记录仍未完成的原平台验收边界。

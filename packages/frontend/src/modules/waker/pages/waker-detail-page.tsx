@@ -1,3 +1,4 @@
+import { useOptionalAppSceneWorkspace } from "@/shared/workspace/app-scene-workspace";
 import { PageAction, ResourcePageSurface } from "@/shared/ui/resource-page";
 import { useQuery } from "@tanstack/react-query";
 import { MessageCircle, Pencil } from "lucide-react";
@@ -30,6 +31,7 @@ import { Skeleton } from "@/shared/ui/skeleton";
 
 export function WakerDetailPage() {
   const { wakerId = "" } = useParams();
+  const appScenes = useOptionalAppSceneWorkspace();
   const { t } = useTranslation("waker");
   const [editing, setEditing] = useState(false);
   const [skillImportOpen, setSkillImportOpen] = useState(false);
@@ -155,6 +157,19 @@ export function WakerDetailPage() {
                     >
                       <Link
                         to={chatDraftHref(wakerId)}
+                        onClick={(event) => {
+                          if (
+                            !event.metaKey &&
+                            !event.ctrlKey &&
+                            !event.shiftKey &&
+                            !event.altKey &&
+                            appScenes?.openNewChat?.({
+                              kind: "waker",
+                              id: wakerId,
+                            })
+                          )
+                            event.preventDefault();
+                        }}
                         aria-label={t("detail.startChat")}
                       >
                         <MessageCircle />

@@ -51,7 +51,12 @@ import {
   useSceneWorkspace,
   WorkspaceProvider,
 } from "@/shared/workspace/workspace-context";
-import { AppSceneWorkspaceContextProvider } from "@/shared/workspace/app-scene-workspace";
+import { AppSceneWorkspaceProvider } from "@/app/scenes/app-scene-workspace-provider";
+import { writeChatLastWakerId } from "@/shared/lib/chat-navigation";
+import {
+  useAppSceneWorkspace,
+  AppSceneWorkspaceContextProvider,
+} from "@/shared/workspace/app-scene-workspace";
 import { ChatQueueProvider } from "../runtime/chat-queue-store";
 import { WorkbenchProvider } from "../workbench/workbench-store";
 import { ChatEntryPage as SceneChatEntryPage } from "./chat-entry-page";
@@ -807,7 +812,61 @@ afterAll(() => {
   vi.unstubAllGlobals();
 });
 
+function ResolvedOwnerProbe() {
+  const scenes = useAppSceneWorkspace();
+  return (
+    <output aria-label="已解析伙伴">
+      {scenes.snapshot.tabs.find(
+        (tab) => tab.id === scenes.snapshot.activeTabId,
+      )?.chatOwner?.id ?? "unknown"}
+    </output>
+  );
+}
+
 describe("ChatPage", () => {
+  it("根欢迎入口把既有最近伙伴解析贡献给主顶栏，不按伙伴列表首项猜owner", async () => {
+    wakerResources.current = [
+      { id: "first-other", name: "另一个伙伴" },
+      { id: "waker-2", name: "真实最近伙伴" },
+    ];
+    writeChatLastWakerId("waker-2");
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <WorkspaceProvider>
+          <ChatQueueProvider>
+            <TooltipProvider>
+              <MemoryRouter initialEntries={["/"]}>
+                <AppSceneWorkspaceProvider
+                  location={{ pathname: "/", search: "" }}
+                  navigate={() => {}}
+                >
+                  <ResolvedOwnerProbe />
+                  <Routes>
+                    <Route element={<ChatLayout />}>
+                      <Route path="/" element={<ChatEntryPage />} />
+                    </Route>
+                  </Routes>
+                </AppSceneWorkspaceProvider>
+              </MemoryRouter>
+            </TooltipProvider>
+          </ChatQueueProvider>
+        </WorkspaceProvider>
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("status", { name: "已解析伙伴" }),
+      ).toHaveTextContent("waker-2"),
+    );
+    expect(createChat).not.toHaveBeenCalled();
+    expect(sendMessage).not.toHaveBeenCalled();
+    view.unmount();
+    client.clear();
+  });
+
   it("新聊天空态保留问候和输入框，不渲染推荐提示且无需消息区AuiProvider", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },

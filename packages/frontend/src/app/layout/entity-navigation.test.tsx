@@ -56,7 +56,6 @@ function NavigationHarness({
       onManageEntities={() => undefined}
       onModeChange={setMode}
       onNewChat={() => undefined}
-      onOpenSettings={() => undefined}
       onReorder={() => undefined}
       onSelectPartner={onSelectPartner}
       onSelectTeam={onSelectTeam}
@@ -67,41 +66,17 @@ function NavigationHarness({
 
 describe("EntityNavigation", () => {
   it.each([true, false])(
-    "工作流合并后仅保留资源库入口（侧栏收起=%s）",
-    async (collapsed) => {
-      const user = userEvent.setup();
-      const resources = vi.fn();
-      const automatic = vi.fn();
-      const settings = vi.fn();
+    "伙伴上下文不再提供全局模块入口（折叠=%s）",
+    (collapsed) => {
       render(
-        <EntityNavigation
+        <NavigationHarness
           collapsed={collapsed}
-          items={items}
-          mode="waker"
-          onManageEntities={() => undefined}
-          onModeChange={() => undefined}
-          onNewChat={() => undefined}
-          onOpenSettings={settings}
-          onOpenAutomaticTasks={automatic}
-          onOpenResources={resources}
-          onReorder={() => undefined}
           onSelectPartner={() => undefined}
           onSelectTeam={() => undefined}
-          selectedKey="waker:waker-1"
         />,
       );
-      for (const [name, callback] of [
-        ["资源库", resources],
-        ["自动任务", automatic],
-        ["设置", settings],
-      ] as const) {
-        await user.click(screen.getByRole("button", { name }));
-        expect(callback).toHaveBeenCalledTimes(1);
-      }
-      expect(screen.queryByRole("button", { name: "工作流" })).toBeNull();
-      expect(
-        screen.queryByRole("button", { name: /展开侧栏菜单|收起侧栏菜单/ }),
-      ).toBeNull();
+      for (const name of ["资源库", "设置", "自动任务", "工作流"])
+        expect(screen.queryByRole("button", { name })).toBeNull();
     },
   );
 
@@ -190,8 +165,12 @@ describe("EntityNavigation", () => {
       .getByRole("button", { name: "切换到团队" })
       .closest("[data-collapsed='true'] > div");
     expect(collapsedCapsule).not.toHaveClass("mt-2");
-    expect(collapsedCapsule).toHaveClass("shrink-0");
-    expect(collapsedCapsule).not.toHaveClass("flex-1");
+    expect(collapsedCapsule).toHaveClass("min-h-0", "flex-1");
+    expect(
+      screen
+        .getByRole("navigation", { name: "伙伴" })
+        .querySelector(".overflow-y-auto"),
+    ).not.toBeNull();
 
     rerender(
       <NavigationHarness
@@ -203,47 +182,6 @@ describe("EntityNavigation", () => {
     expect(screen.getByRole("radiogroup")).toBeVisible();
   });
 
-  it("设置和自动任务入口不在侧栏标记为当前页", () => {
-    render(
-      <EntityNavigation
-        collapsed={false}
-        items={items.filter((item) => item.kind === "waker")}
-        mode="waker"
-        onManageEntities={() => undefined}
-        onModeChange={() => undefined}
-        onOpenAutomaticTasks={() => undefined}
-        onNewChat={() => undefined}
-        onOpenSettings={() => undefined}
-        onReorder={() => undefined}
-        onSelectPartner={() => undefined}
-        onSelectTeam={() => undefined}
-        selectedKey="waker:waker-1"
-      />,
-    );
-
-    expect(screen.getByRole("button", { name: "设置" })).not.toHaveAttribute(
-      "aria-current",
-    );
-    expect(
-      screen.getByRole("button", { name: "自动任务" }),
-    ).not.toHaveAttribute("aria-current");
-  });
-
-  it("折叠态将工具区固定在侧栏底部", () => {
-    render(
-      <div className="h-80">
-        <NavigationHarness
-          collapsed
-          onSelectPartner={() => undefined}
-          onSelectTeam={() => undefined}
-        />
-      </div>,
-    );
-
-    const settings = screen.getByRole("button", { name: "设置" });
-    expect(settings.closest("div.border-t")).toHaveClass("mt-auto", "border-t");
-  });
-
   it("折叠态为加载、错误和空列表提供可读状态", () => {
     const commonProps = {
       collapsed: true,
@@ -252,7 +190,6 @@ describe("EntityNavigation", () => {
       onManageEntities: () => undefined,
       onModeChange: () => undefined,
       onNewChat: () => undefined,
-      onOpenSettings: () => undefined,
       onReorder: () => undefined,
       onSelectPartner: () => undefined,
       onSelectTeam: () => undefined,
@@ -270,24 +207,6 @@ describe("EntityNavigation", () => {
 
     rerender(<EntityNavigation {...commonProps} entityStatus="ready" />);
     expect(screen.getByRole("status", { name: "还没有团队" })).toBeVisible();
-  });
-
-  it("展开态工具区使用全宽分隔线并与列表共用对齐基准", () => {
-    render(
-      <NavigationHarness
-        collapsed={false}
-        onSelectPartner={() => undefined}
-        onSelectTeam={() => undefined}
-      />,
-    );
-
-    expect(
-      screen.getByRole("button", { name: "设置" }).closest("div.border-t"),
-    ).toHaveClass("border-t");
-    expect(screen.getByRole("navigation", { name: "伙伴" })).toHaveClass(
-      "overflow-x-hidden",
-    );
-    expect(screen.getByRole("radiogroup").closest(".px-1")).toBeNull();
   });
 
   it("展开态单击伙伴后直接切换且不内嵌会话", async () => {
@@ -319,7 +238,6 @@ describe("EntityNavigation", () => {
         onManageEntities={() => undefined}
         onModeChange={() => undefined}
         onNewChat={() => undefined}
-        onOpenSettings={() => undefined}
         onReorder={() => undefined}
         onSelectPartner={() => undefined}
         onSelectTeam={() => undefined}
@@ -361,7 +279,6 @@ describe("EntityNavigation", () => {
         onManageEntities={() => undefined}
         onModeChange={() => undefined}
         onNewChat={() => undefined}
-        onOpenSettings={() => undefined}
         onReorder={() => undefined}
         onSelectPartner={() => undefined}
         onSelectTeam={() => undefined}
@@ -392,7 +309,6 @@ describe("EntityNavigation", () => {
           onManageEntities={() => undefined}
           onModeChange={() => undefined}
           onNewChat={onNewChat}
-          onOpenSettings={() => undefined}
           onReorder={() => undefined}
           onSelectPartner={onSelectPartner}
           onSelectTeam={onSelectTeam}

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -79,28 +80,44 @@ function zoneAt(event: DragEvent<HTMLElement>): WorkbenchDropZone {
 }
 
 type PaneTabStripProps = {
+  active: boolean;
+  scopeKey: string;
   pane: WorkbenchPane;
   tabs: WorkbenchTab[];
+  trailing?: ReactNode;
   draggedTabId: React.RefObject<string>;
-  onClose: (tab: WorkbenchTab) => void;
+  onClose: (tab: WorkbenchTab) => void | Promise<void>;
   onDragStateChange: (dragging: boolean) => void;
   onFocus: (tab: WorkbenchTab) => void;
+  onFocusPane: (paneId: string) => void;
   onMove: (tabId: string, paneId: string, beforeTabId: string) => void;
   onSplit: (tabId: string, paneId: string, zone: WorkbenchDropZone) => void;
 };
 
 export function WorkbenchPaneTabStrip({
+  active,
+  scopeKey,
   pane,
   tabs,
+  trailing,
   draggedTabId,
   onClose,
   onDragStateChange,
   onFocus,
+  onFocusPane,
   onMove,
   onSplit,
 }: PaneTabStripProps) {
   const { t } = useTranslation("chat");
   const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const focusContext = useRef({ active, paneId: pane.id, scopeKey });
+  const pendingCloseFocus = useRef<{
+    tabId: string;
+    cancelled: boolean;
+  } | null>(null);
+  useLayoutEffect(() => {
+    focusContext.current = { active, paneId: pane.id, scopeKey };
+  }, [active, pane.id, scopeKey]);
   const ordered = pane.tabIds.flatMap((id) => {
     const tab = tabs.find((item) => item.id === id);
     return tab ? [tab] : [];
@@ -109,6 +126,35 @@ export function WorkbenchPaneTabStrip({
     event: KeyboardEvent<HTMLButtonElement>,
     tab: WorkbenchTab,
   ) => {
+    if (
+      (event.key === "Delete" || event.key === "Backspace") &&
+      tab.closeable !== false
+    ) {
+      event.preventDefault();
+      const request = { tabId: tab.id, cancelled: false };
+      pendingCloseFocus.current = request;
+      void Promise.resolve(onClose(tab)).then(() => {
+        requestAnimationFrame(() => {
+          const current = focusContext.current;
+          // A user focus change, hidden Scene, or replaced scope ends this request.
+          if (
+            pendingCloseFocus.current !== request ||
+            request.cancelled ||
+            !current.active ||
+            current.paneId !== pane.id ||
+            current.scopeKey !== scopeKey ||
+            buttons.current.has(tab.id) ||
+            document.activeElement !== document.body
+          )
+            return;
+          const selected = Array.from(buttons.current.values()).find(
+            (button) => button.getAttribute("aria-selected") === "true",
+          );
+          selected?.focus();
+        });
+      });
+      return;
+    }
     if (event.altKey && event.shiftKey) {
       const zone =
         event.key === "ArrowRight"
@@ -149,84 +195,102 @@ export function WorkbenchPaneTabStrip({
   };
   return (
     <div
-      className="scrollbar-hidden flex min-w-0 items-center gap-2 overflow-x-auto"
-      role="tablist"
+      className="shell-header-tab-track"
+      role="region"
       aria-label={t("workbench.tabs")}
-      data-workbench-pane-tabs={pane.id}
+      data-workbench-pane-scroll={pane.id}
     >
-      {ordered.map((tab) => {
-        const Icon = tabIcon(tab.kind);
-        const selected = pane.activeTabId === tab.id;
-        return (
-          <div
-            key={tab.id}
-            className={cn(
-              "group/tab duration-quick ease-ui h-control-tab rounded-control relative flex max-w-56 min-w-0 shrink-0 items-center border transition-[background-color,border-color,color]",
-              selected
-                ? "bg-selection-surface text-content-primary border-transparent font-medium"
-                : "border-button-outline text-content-primary hover:bg-button-fill hover:border-button-outline",
-            )}
-            draggable
-            onDragStart={(event) => {
-              draggedTabId.current = tab.id;
-              onDragStateChange(true);
-              event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData(dragMime, tab.id);
-              event.dataTransfer.setData("text/plain", tab.id);
-            }}
-            onDragEnd={() => {
-              draggedTabId.current = "";
-              onDragStateChange(false);
-            }}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              const source =
-                draggedTabId.current || event.dataTransfer.getData(dragMime);
-              if (source && source !== tab.id) onMove(source, pane.id, tab.id);
-              draggedTabId.current = "";
-              onDragStateChange(false);
-            }}
-          >
-            <button
-              id={`workbench-tab-${tab.id}`}
-              ref={(node) => {
-                if (node) buttons.current.set(tab.id, node);
-                else buttons.current.delete(tab.id);
+      <div
+        className="workbench-pane-tabs"
+        role="tablist"
+        aria-label={t("workbench.tabs")}
+        data-workbench-pane-tabs={pane.id}
+      >
+        {ordered.map((tab) => {
+          const Icon = tabIcon(tab.kind);
+          const selected = pane.activeTabId === tab.id;
+          return (
+            <div
+              key={tab.id}
+              className="shell-header-tab"
+              data-selected={selected || undefined}
+              draggable
+              onDragStart={(event) => {
+                draggedTabId.current = tab.id;
+                onDragStateChange(true);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData(dragMime, tab.id);
+                event.dataTransfer.setData("text/plain", tab.id);
               }}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              tabIndex={selected ? 0 : -1}
-              aria-controls={`workbench-panel-${tab.id}`}
-              aria-keyshortcuts="Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowUp Alt+Shift+ArrowDown"
-              className={cn(
-                "type-ui focus-visible:ring-ring flex h-full min-w-0 flex-1 items-center gap-1.5 py-0 pl-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-                tab.closeable === false ? "pr-3" : "pr-8",
-              )}
-              onClick={() => onFocus(tab)}
-              onKeyDown={(event) => onKeyDown(event, tab)}
+              onDragEnd={() => {
+                draggedTabId.current = "";
+                onDragStateChange(false);
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const source =
+                  draggedTabId.current || event.dataTransfer.getData(dragMime);
+                if (source && source !== tab.id)
+                  onMove(source, pane.id, tab.id);
+                draggedTabId.current = "";
+                onDragStateChange(false);
+              }}
             >
-              <Icon className="size-icon-sm shrink-0" strokeWidth={1.5} />
-              <span className="truncate">{tab.title}</span>
-            </button>
-            {tab.closeable !== false ? (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                shape="circle"
-                aria-label={t("workbench.closeTab", { title: tab.title })}
-                className="text-content-muted hover:text-content-primary absolute top-1/2 right-1 -translate-y-1/2 opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100"
-                draggable={false}
-                onClick={() => onClose(tab)}
+              <button
+                id={`workbench-tab-${tab.id}`}
+                ref={(node) => {
+                  if (node) buttons.current.set(tab.id, node);
+                  else buttons.current.delete(tab.id);
+                }}
+                type="button"
+                role="tab"
+                title={tab.title}
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                aria-controls={`workbench-panel-${tab.id}`}
+                aria-keyshortcuts="Delete Backspace Alt+Shift+ArrowLeft Alt+Shift+ArrowRight Alt+Shift+ArrowUp Alt+Shift+ArrowDown"
+                className="shell-header-tab-select"
+                onClick={() => onFocus(tab)}
+                onFocus={() => onFocusPane(pane.id)}
+                onBlur={() => {
+                  const request = pendingCloseFocus.current;
+                  if (request?.tabId === tab.id) request.cancelled = true;
+                }}
+                onAuxClick={(event) => {
+                  if (event.button === 1 && tab.closeable !== false)
+                    onClose(tab);
+                }}
+                onKeyDown={(event) => onKeyDown(event, tab)}
               >
-                <X className="size-icon-sm" strokeWidth={1.5} />
-              </Button>
-            ) : null}
-          </div>
-        );
-      })}
+                <Icon className="size-icon-sm shrink-0" strokeWidth={1.5} />
+                <span className="min-w-0 flex-1 truncate">{tab.title}</span>
+              </button>
+              {tab.closeable !== false ? (
+                <button
+                  type="button"
+                  aria-label={t("workbench.closeTab", { title: tab.title })}
+                  title={t("workbench.closeTab", { title: tab.title })}
+                  className="shell-header-tab-close"
+                  draggable={false}
+                  onClick={() => onClose(tab)}
+                >
+                  <X className="size-icon-sm" strokeWidth={1.5} />
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {trailing ? (
+        <div
+          className="flex shrink-0 items-center"
+          data-workbench-pane-trailing
+        >
+          {trailing}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -330,8 +394,8 @@ function PaneDivider({
         className={cn(
           "peer/divider absolute z-30 touch-none bg-transparent",
           vertical
-            ? "after:bg-border w-2 -translate-x-1/2 cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-px"
-            : "after:bg-border h-2 -translate-y-1/2 cursor-row-resize after:absolute after:inset-x-0 after:top-1/2 after:h-px",
+            ? "after:bg-shell-separator w-2 -translate-x-1/2 cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-px"
+            : "after:bg-shell-separator h-2 -translate-y-1/2 cursor-row-resize after:absolute after:inset-x-0 after:top-1/2 after:h-px",
         )}
         style={style}
         onPointerDown={(event) => {
@@ -506,7 +570,7 @@ export function WorkbenchPaneCanvas({
             aria-hidden={!active}
             style={style}
             className={cn(
-              "absolute min-h-0 min-w-0 overflow-hidden",
+              "workbench-pane-content absolute min-h-0 min-w-0 overflow-hidden",
               !active && "pointer-events-none invisible",
             )}
             onPointerDown={() => onFocusPane(pane.id)}
@@ -554,7 +618,7 @@ export function WorkbenchPaneCanvas({
             key={pane.id}
             data-workbench-pane-header={pane.id}
             data-workbench-local-header
-            className="border-border-subtle bg-surface-scene absolute z-10 flex h-(--shell-titlebar-height) min-w-0 items-center gap-1 overflow-hidden border-b px-2"
+            className="workbench-pane-header bg-surface-chrome absolute z-10 flex h-(--shell-titlebar-height) min-w-0 items-center overflow-hidden"
             style={{
               left: `${rect.left}%`,
               top: `${rect.top}%`,

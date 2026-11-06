@@ -1,10 +1,8 @@
-import { CircleAlert, MoreHorizontal, X, type LucideIcon } from "lucide-react";
+import { CircleAlert, X, type LucideIcon } from "lucide-react";
 import {
   useId,
-  useLayoutEffect,
   useRef,
   useState,
-  type CSSProperties,
   type DragEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -17,13 +15,6 @@ import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@/shared/ui/dropdown-menu";
-import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
@@ -31,13 +22,9 @@ import {
 } from "@/shared/ui/context-menu";
 import { OverflowText } from "@/shared/ui/overflow-text";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
-import { useSceneChromeActions } from "@/shared/ui/scene-chrome-actions";
 import {
+  SceneChromeLayout,
   useSceneChromeAccessoryFullscreen,
-  useSceneChromeAccessorySide,
-  useSceneChromeAccessoryTargetSetter,
-  useSceneChromeAccessoryWidth,
-  useSceneChromePaneActionsTargetSetter,
 } from "@/shared/ui/scene-chrome-portal";
 
 export type SceneTab = {
@@ -48,6 +35,7 @@ export type SceneTab = {
   closeable?: boolean;
   draggable?: boolean;
   notFound?: boolean;
+  separatorBefore?: boolean;
 };
 
 type SceneTabStripProps = {
@@ -86,51 +74,8 @@ export function SceneTabStrip({
   }>();
   const renameInputId = useId();
   const draggedTabId = useRef("");
-  const tabListRef = useRef<HTMLDivElement>(null);
   const tabButtons = useRef(new Map<string, HTMLButtonElement>());
-  const actionRef = useRef<HTMLDivElement>(null);
-  const [overflowing, setOverflowing] = useState(false);
-  const [actionWidth, setActionWidth] = useState(0);
-  const sceneActions = useSceneChromeActions();
-  const setAccessoryTarget = useSceneChromeAccessoryTargetSetter();
-  const setPaneActionsTarget = useSceneChromePaneActionsTargetSetter();
-  const accessoryWidth = useSceneChromeAccessoryWidth();
   const accessoryFullscreen = useSceneChromeAccessoryFullscreen();
-  const accessorySide = useSceneChromeAccessorySide();
-  const accessoryAtLeft =
-    accessorySide === "left" && Boolean(accessoryWidth) && !accessoryFullscreen;
-
-  useLayoutEffect(() => {
-    const tabList = tabListRef.current;
-    if (!tabList) return;
-    const measure = () => {
-      setOverflowing(tabList.scrollWidth > tabList.clientWidth + 1);
-    };
-    measure();
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? undefined
-        : new ResizeObserver(measure);
-    observer?.observe(tabList);
-    window.addEventListener("resize", measure);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [tabs]);
-
-  useLayoutEffect(() => {
-    const actions = actionRef.current;
-    if (!actions) return;
-    const measure = () => setActionWidth(actions.getBoundingClientRect().width);
-    measure();
-    const observer =
-      typeof ResizeObserver === "undefined"
-        ? undefined
-        : new ResizeObserver(measure);
-    observer?.observe(actions);
-    return () => observer?.disconnect();
-  }, [sceneActions, accessoryAtLeft]);
 
   const focusTab = (index: number) => {
     const tab = tabs[index];
@@ -174,277 +119,170 @@ export function SceneTabStrip({
     onClose(tabId);
   };
 
-  const accessory = (
+  const tabList = (
     <div
+      key="tabs"
       className={cn(
-        "relative flex h-full min-w-0 items-center",
-        accessoryFullscreen ? "flex-1" : "shrink-0",
+        "flex shrink-0 items-center gap-1",
+        tabs.length === 0 && "hidden",
+        accessoryFullscreen && "hidden",
       )}
-      style={
-        {
-          ...(accessoryFullscreen
-            ? {
-                marginLeft: "calc(-1 * var(--scene-chrome-left-inset, 8px))",
-              }
-            : {}),
-          ...(!accessoryFullscreen
-            ? { width: accessoryWidth ?? actionWidth }
-            : {}),
-          "--scene-chrome-actions-width": `${accessoryAtLeft ? 0 : actionWidth}px`,
-        } as CSSProperties
-      }
-      data-scene-chrome-accessory-wrapper
+      hidden={accessoryFullscreen || tabs.length === 0}
+      role="tablist"
+      aria-label={ariaLabel}
     >
-      <div
-        ref={setAccessoryTarget}
-        className="flex h-full min-w-0 flex-1 items-center overflow-hidden empty:hidden"
-        data-scene-chrome-accessory
-      />
-      {accessoryWidth && !accessoryFullscreen ? (
-        <span
-          aria-hidden="true"
-          className={cn(
-            "bg-border pointer-events-none absolute top-1.5 bottom-1.5 z-10 w-px",
-            accessoryAtLeft ? "right-0" : "left-0",
-          )}
-          data-scene-chrome-divider
-        />
-      ) : null}
-      {sceneActions && !accessoryAtLeft ? (
-        <div
-          ref={actionRef}
-          className="absolute inset-y-0 right-0 z-20 flex items-center gap-1 pr-2"
-        >
-          {sceneActions}
-        </div>
-      ) : null}
+      {tabs.map((tab, visibleIndex) => {
+        const active = tab.id === activeTabId;
+        const Icon = tab.icon;
+        const content = (
+          <div
+            key={tab.id}
+            data-motion="presence"
+            data-state="open"
+            draggable={tab.draggable}
+            onDragEnd={() => {
+              draggedTabId.current = "";
+            }}
+            onDragOver={(event) => {
+              if (onReorder && tab.draggable) event.preventDefault();
+            }}
+            onDragStart={(event) => {
+              if (!tab.draggable) return;
+              draggedTabId.current = tab.id;
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", tab.id);
+            }}
+            onDrop={(event) => dropTab(event, tab)}
+            className={cn(
+              "shell-header-tab h-control-md w-scene-tab max-w-scene-tab min-w-scene-tab-min rounded-control relative flex shrink items-center",
+              tab.separatorBefore && "ml-2",
+            )}
+            data-selected={active || undefined}
+            data-invalid={tab.notFound || undefined}
+            data-scene-tab-item
+            role="presentation"
+          >
+            <button
+              ref={(node) => {
+                if (node) tabButtons.current.set(tab.id, node);
+                else tabButtons.current.delete(tab.id);
+              }}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-description={
+                tab.notFound ? t("sceneTabs.notFound") : undefined
+              }
+              autoFocus={tab.autoFocus}
+              tabIndex={
+                active ||
+                (!tabs.some((item) => item.id === activeTabId) &&
+                  visibleIndex === 0)
+                  ? 0
+                  : -1
+              }
+              onClick={() => selectTab(tab.id)}
+              onKeyDown={(event) => moveFocus(event, tab.id)}
+              className={cn(
+                "shell-header-tab-select focus-visible:ring-ring type-ui rounded-control flex h-full min-w-0 flex-1 items-center gap-1.5 py-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+                "px-2",
+              )}
+            >
+              {tab.notFound ? (
+                <CircleAlert
+                  className="size-icon-sm shrink-0"
+                  strokeWidth={1.5}
+                  aria-hidden="true"
+                />
+              ) : Icon ? (
+                <Icon
+                  className="size-icon-sm shrink-0"
+                  strokeWidth={1.5}
+                  aria-hidden="true"
+                />
+              ) : null}
+              {tab.notFound ? (
+                <span className="min-w-0 flex-1 truncate">{tab.label}</span>
+              ) : (
+                <OverflowText className="min-w-0 flex-1">
+                  {tab.label}
+                </OverflowText>
+              )}
+            </button>
+            {tab.closeable ? (
+              <button
+                type="button"
+                aria-label={t("closeTab", { label: tab.label })}
+                onClick={() => closeTab(tab.id)}
+                className="shell-header-tab-close focus-visible:ring-ring size-control-md grid shrink-0 place-items-center outline-none focus-visible:ring-2"
+              >
+                <X className="size-icon-sm" strokeWidth={1.5} />
+              </button>
+            ) : null}
+          </div>
+        );
+        const triggerContent =
+          onRename && onCloseOthers ? (
+            <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
+          ) : (
+            content
+          );
+        const tabContent = tab.notFound ? (
+          <Tooltip key={tab.id}>
+            <TooltipTrigger asChild>{triggerContent}</TooltipTrigger>
+            <TooltipContent>{t("sceneTabs.notFound")}</TooltipContent>
+          </Tooltip>
+        ) : (
+          triggerContent
+        );
+        return onRename && onCloseOthers ? (
+          <ContextMenu key={tab.id}>
+            {tabContent}
+            <ContextMenuContent
+              onCloseAutoFocus={(event) => {
+                if (renameTarget) event.preventDefault();
+              }}
+            >
+              <ContextMenuItem
+                onSelect={() =>
+                  setRenameTarget({ id: tab.id, label: tab.label })
+                }
+              >
+                {t("sceneTabs.rename")}
+              </ContextMenuItem>
+              <ContextMenuItem
+                disabled={
+                  !tabs.some((item) => item.id !== tab.id && item.closeable)
+                }
+                onSelect={() => onCloseOthers(tab.id)}
+              >
+                {t("sceneTabs.closeOthers")}
+              </ContextMenuItem>
+            </ContextMenuContent>
+          </ContextMenu>
+        ) : (
+          tabContent
+        );
+      })}
     </div>
   );
-
   return (
-    <div
-      data-desktop-drag-region
-      data-scene-tab-strip
-      className={cn(
-        "border-border-subtle bg-surface-scene flex h-(--shell-titlebar-height) min-w-0 shrink-0 items-center border-b pr-0",
-        accessoryAtLeft ? "pl-0" : "pl-2",
-        className,
-      )}
-      data-accessory-left={accessoryAtLeft || undefined}
+    <SceneChromeLayout
+      className={cn("pl-0 [--scene-chrome-left-inset:0px]", className)}
+      paneActions={paneActions}
+      leading={leading}
     >
-      {accessoryAtLeft ? accessory : null}
-      {leading && !accessoryFullscreen ? (
+      {!accessoryFullscreen ? (
         <div
-          className={cn(
-            "mr-1 flex shrink-0 items-center",
-            accessoryAtLeft && "pl-2",
-          )}
+          className="shell-header-tab-track scrollbar-hidden flex min-w-0 items-center overflow-x-auto"
+          data-scene-tab-scroll
         >
-          {leading}
-        </div>
-      ) : null}
-      <div
-        ref={tabListRef}
-        className={cn(
-          "scrollbar-hidden flex min-w-0 items-center gap-2 overflow-x-auto",
-          accessoryAtLeft && !leading && "pl-2",
-          accessoryFullscreen && "hidden",
-        )}
-        role="tablist"
-        aria-label={ariaLabel}
-      >
-        {tabs.map((tab) => {
-          const active = tab.id === activeTabId;
-          const Icon = tab.icon;
-          const content = (
-            <div
-              key={tab.id}
-              data-motion="presence"
-              data-state="open"
-              draggable={tab.draggable}
-              onDragEnd={() => {
-                draggedTabId.current = "";
-              }}
-              onDragOver={(event) => {
-                if (onReorder && tab.draggable) event.preventDefault();
-              }}
-              onDragStart={(event) => {
-                if (!tab.draggable) return;
-                draggedTabId.current = tab.id;
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", tab.id);
-              }}
-              onDrop={(event) => dropTab(event, tab)}
-              className={cn(
-                "group/tab duration-quick ease-ui h-control-tab rounded-control relative flex max-w-56 min-w-0 shrink-0 items-center border transition-[background-color,border-color,color]",
-                tab.notFound
-                  ? "bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/15"
-                  : active
-                    ? "bg-selection-surface text-content-primary border-transparent font-medium"
-                    : "border-button-outline text-content-primary hover:bg-button-fill hover:border-button-outline",
-              )}
-              role="presentation"
-            >
-              <button
-                ref={(node) => {
-                  if (node) tabButtons.current.set(tab.id, node);
-                  else tabButtons.current.delete(tab.id);
-                }}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                aria-description={
-                  tab.notFound ? t("sceneTabs.notFound") : undefined
-                }
-                autoFocus={tab.autoFocus}
-                tabIndex={active ? 0 : -1}
-                onClick={() => selectTab(tab.id)}
-                onKeyDown={(event) => moveFocus(event, tab.id)}
-                className={cn(
-                  "focus-visible:ring-ring type-ui rounded-control flex h-full min-w-0 flex-1 items-center gap-1.5 py-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-                  tab.closeable ? "pr-8" : "pr-3",
-                  tab.closeable && !Icon && !tab.notFound ? "pl-8" : "pl-3",
-                )}
-              >
-                {tab.notFound ? (
-                  <CircleAlert
-                    className="size-icon-sm shrink-0"
-                    strokeWidth={1.5}
-                    aria-hidden="true"
-                  />
-                ) : Icon ? (
-                  <Icon
-                    className="size-icon-sm shrink-0"
-                    strokeWidth={1.5}
-                    aria-hidden="true"
-                  />
-                ) : null}
-                {tab.notFound ? (
-                  <span className="min-w-0 flex-1 truncate">{tab.label}</span>
-                ) : (
-                  <OverflowText className="min-w-0 flex-1">
-                    {tab.label}
-                  </OverflowText>
-                )}
-              </button>
-              {tab.closeable ? (
-                <button
-                  type="button"
-                  aria-label={t("closeTab", { label: tab.label })}
-                  onClick={() => closeTab(tab.id)}
-                  className="text-content-muted hover:bg-action-quiet-hover hover:text-content-primary focus-visible:ring-ring duration-quick size-icon-md absolute top-1/2 right-1 grid -translate-y-1/2 place-items-center rounded-full opacity-0 transition-[background-color,color,opacity] outline-none group-hover/tab:opacity-100 focus-visible:opacity-100 focus-visible:ring-2"
-                >
-                  <X className="size-icon-sm" strokeWidth={1.5} />
-                </button>
-              ) : null}
+          {tabList}
+          {trailing ? (
+            <div className="flex shrink-0 items-center" data-scene-tab-trailing>
+              {trailing}
             </div>
-          );
-          const triggerContent =
-            onRename && onCloseOthers ? (
-              <ContextMenuTrigger asChild>{content}</ContextMenuTrigger>
-            ) : (
-              content
-            );
-          const tabContent = tab.notFound ? (
-            <Tooltip key={tab.id}>
-              <TooltipTrigger asChild>{triggerContent}</TooltipTrigger>
-              <TooltipContent>{t("sceneTabs.notFound")}</TooltipContent>
-            </Tooltip>
-          ) : (
-            triggerContent
-          );
-          return onRename && onCloseOthers ? (
-            <ContextMenu key={tab.id}>
-              {tabContent}
-              <ContextMenuContent
-                onCloseAutoFocus={(event) => {
-                  if (renameTarget) event.preventDefault();
-                }}
-              >
-                <ContextMenuItem
-                  onSelect={() =>
-                    setRenameTarget({ id: tab.id, label: tab.label })
-                  }
-                >
-                  {t("sceneTabs.rename")}
-                </ContextMenuItem>
-                <ContextMenuItem
-                  disabled={
-                    !tabs.some((item) => item.id !== tab.id && item.closeable)
-                  }
-                  onSelect={() => onCloseOthers(tab.id)}
-                >
-                  {t("sceneTabs.closeOthers")}
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          ) : (
-            tabContent
-          );
-        })}
-      </div>
-      {trailing && !accessoryFullscreen ? (
-        <div
-          className="ml-1 flex shrink-0 items-center"
-          data-scene-tab-trailing
-        >
-          {trailing}
-        </div>
-      ) : null}
-      {overflowing && !accessoryFullscreen ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              aria-label={`${ariaLabel}中的其他标签`}
-              className="ml-1 shrink-0"
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <MoreHorizontal />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="max-w-64">
-            <DropdownMenuRadioGroup
-              value={activeTabId ?? ""}
-              onValueChange={selectTab}
-            >
-              {tabs.map((tab) => (
-                <DropdownMenuRadioItem key={tab.id} value={tab.id}>
-                  {tab.notFound ? (
-                    <CircleAlert
-                      className="text-destructive size-icon-sm shrink-0"
-                      aria-label={t("sceneTabs.notFound")}
-                    />
-                  ) : null}
-                  <OverflowText className="min-w-0 flex-1">
-                    {tab.label}
-                  </OverflowText>
-                </DropdownMenuRadioItem>
-              ))}
-            </DropdownMenuRadioGroup>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
-      {!accessoryFullscreen ? <div className="min-w-0 flex-1" /> : null}
-      <div
-        ref={setPaneActionsTarget}
-        hidden={accessoryFullscreen}
-        className={cn(
-          "flex h-full shrink-0 items-center gap-1 px-2 empty:hidden",
-          accessoryFullscreen && "hidden",
-        )}
-        data-scene-pane-actions
-      >
-        {paneActions}
-      </div>
-      {!accessoryAtLeft ? accessory : null}
-      {sceneActions && accessoryAtLeft ? (
-        <div
-          ref={actionRef}
-          className="flex h-full shrink-0 items-center gap-1 pr-2"
-        >
-          {sceneActions}
+          ) : null}
         </div>
       ) : null}
       <Dialog
@@ -504,6 +342,6 @@ export function SceneTabStrip({
           </form>
         </DialogContent>
       </Dialog>
-    </div>
+    </SceneChromeLayout>
   );
 }

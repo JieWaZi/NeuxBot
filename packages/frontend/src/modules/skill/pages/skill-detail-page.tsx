@@ -1,3 +1,4 @@
+import { resourceListBack } from "@/shared/lib/resource-navigation";
 import { useRouteSceneActive } from "@/shared/workspace/app-scene-workspace";
 import { useQueryEvents } from "@/shared/api/use-query-events";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -61,6 +62,12 @@ export function SkillDetailPage() {
     (wakerId
       ? `/wakers/${wakerId}/resources?category=skills`
       : "/resources?category=skills");
+  const breadcrumbBack = resourceListBack(
+    back,
+    wakerId
+      ? `/wakers/${wakerId}/resources?category=skills`
+      : "/resources?category=skills",
+  );
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
   const [tab, setTab] = useState<DetailTab>("explanation");
@@ -184,7 +191,13 @@ export function SkillDetailPage() {
     createVersion.mutate({ path: { wakerId, skillId }, body }, { onSuccess });
 
   return (
-    <WakerDetailLayout active="skills">
+    <WakerDetailLayout
+      active="skills"
+      breadcrumbItems={[
+        { label: t("title"), href: breadcrumbBack },
+        { label: skill?.name || t("title") },
+      ]}
+    >
       <ResourcePageSurface>
         <PageHeader
           layout="detail"

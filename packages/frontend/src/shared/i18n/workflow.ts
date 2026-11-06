@@ -1,4 +1,5 @@
 export const workflowZh = {
+  breadcrumb: "工作流路径",
   failureDetails: "查看失败详情",
   failureDeliveryUnknown:
     "发送结果不确定，请先核对微信或飞书是否收到消息，避免重复发送。",
@@ -477,6 +478,7 @@ type WorkflowTranslation = {
     : { [P in keyof (typeof workflowZh)[K]]: string };
 };
 export const workflowEn = {
+  breadcrumb: "Workflow path",
   failureDetails: "View failure details",
   failureDeliveryUnknown:
     "Delivery is uncertain. Check whether the chat received the message before sending again.",

@@ -17,16 +17,11 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Package,
-  BookOpen,
-  ChartNoAxesCombined,
   ArrowLeftRight,
   CircleAlert,
-  Clock3,
   LoaderCircle,
   Plus,
   Search,
-  Settings,
   UsersRound,
 } from "lucide-react";
 import {
@@ -46,7 +41,6 @@ import { cn } from "@/shared/lib/cn";
 import { Avatar } from "@/shared/ui/avatar";
 import { wakerCompanionActivity } from "@/shared/companion/activity";
 import { Button } from "@/shared/ui/button";
-import { NavigationItem } from "@/shared/ui/navigation-panel";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { SearchField } from "@/shared/ui/search-field";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
@@ -70,10 +64,6 @@ export type NavigationEntity =
   | { id: string; key: string; kind: "waker"; waker: Waker };
 
 type EntityNavigationProps = {
-  onOpenAutomaticTasks?: () => void;
-  onOpenResources?: () => void;
-  onOpenKnowledge?: () => void;
-  onOpenUsage?: () => void;
   collapsed: boolean;
   entityStatus?: "error" | "loading" | "ready";
   floating?: boolean;
@@ -82,13 +72,12 @@ type EntityNavigationProps = {
   onManageEntities: (mode: PartnerNavigationPreferences["entityMode"]) => void;
   onModeChange: (mode: PartnerNavigationPreferences["entityMode"]) => void;
   onNewChat: (item: NavigationEntity) => void;
-  onOpenSettings: () => void;
   onReorder: (sourceId: string, targetId: string) => void;
   onSelectPartner: (partnerId: string) => void;
   onSelectTeam: (channelId: string) => void;
   onShowcaseWaker?: (waker: Waker, origin: HTMLElement) => void;
   selectedKey: string;
-  showSettings?: boolean;
+  history?: ReactNode;
 };
 
 const modeSwitchDurationMs = 220;
@@ -379,10 +368,6 @@ function EntityRow({
 }
 
 export function EntityNavigation({
-  onOpenAutomaticTasks,
-  onOpenResources,
-  onOpenKnowledge,
-  onOpenUsage,
   collapsed,
   entityStatus = "ready",
   floating = false,
@@ -391,13 +376,12 @@ export function EntityNavigation({
   onManageEntities,
   onModeChange,
   onNewChat,
-  onOpenSettings,
   onReorder,
   onSelectPartner,
   onSelectTeam,
   onShowcaseWaker,
   selectedKey,
-  showSettings = true,
+  history,
 }: EntityNavigationProps) {
   const { t } = useTranslation("common");
   const [activeKey, setActiveKey] = useState("");
@@ -641,7 +625,7 @@ export function EntityNavigation({
           "flex min-h-0 flex-col overflow-x-hidden",
           floating
             ? "max-h-[calc(var(--radix-popover-content-available-height)-0.5rem)] min-h-0 bg-transparent"
-            : "bg-surface-chrome h-full",
+            : "h-full bg-transparent",
           collapsed
             ? floating
               ? "items-center"
@@ -657,7 +641,7 @@ export function EntityNavigation({
               "flex w-full shrink-0 flex-col items-center overflow-hidden px-1 pb-2",
               floating
                 ? "max-h-full min-h-0 flex-1 shrink rounded-2xl bg-transparent"
-                : "bg-surface-scene rounded-full",
+                : "min-h-0 flex-1 bg-transparent",
             )}
           >
             {floating ? (
@@ -707,7 +691,7 @@ export function EntityNavigation({
                 aria-label={t("partnerNavigation.partnerRail")}
                 className={cn(
                   "group/partner-rail mt-1 flex w-full flex-col items-center",
-                  floating ? "min-h-0 flex-1" : "shrink-0",
+                  "min-h-0 flex-1",
                 )}
                 data-motion="view"
                 data-state={switching ? "open" : undefined}
@@ -717,9 +701,7 @@ export function EntityNavigation({
                   ref={listRef}
                   className={cn(
                     "scrollbar-hidden relative grid min-w-0 gap-1 overflow-x-hidden",
-                    floating
-                      ? "min-h-0 flex-1 overflow-y-auto overscroll-contain"
-                      : "overflow-y-visible",
+                    "min-h-0 flex-1 overflow-y-auto overscroll-contain",
                   )}
                 >
                   <span
@@ -774,6 +756,7 @@ export function EntityNavigation({
         ) : (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <SegmentedControl
+              appearance="shell"
               ariaLabel={t("partnerNavigation.entityMode")}
               distribution="fill"
               onValueChange={changeMode}
@@ -846,157 +829,7 @@ export function EntityNavigation({
           </div>
         )}
 
-        {showSettings ? (
-          <div
-            className={cn(
-              "border-border-subtle w-full shrink-0 border-t pt-2",
-              collapsed ? "mt-auto grid justify-items-center gap-1" : "mt-2",
-            )}
-          >
-            {onOpenResources ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {collapsed ? (
-                    <Button
-                      size="icon"
-                      variant="choice"
-                      aria-label={t("plugin:title")}
-                      onClick={onOpenResources}
-                    >
-                      <Package />
-                    </Button>
-                  ) : (
-                    <NavigationItem
-                      density="navigation"
-                      icon={<Package strokeWidth={1.5} />}
-                      label={t("plugin:title")}
-                      onClick={onOpenResources}
-                    />
-                  )}
-                </TooltipTrigger>
-                {collapsed ? (
-                  <TooltipContent side="right">
-                    {t("plugin:title")}
-                  </TooltipContent>
-                ) : null}
-              </Tooltip>
-            ) : null}
-            {onOpenKnowledge ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {collapsed ? (
-                    <Button
-                      size="icon"
-                      variant="choice"
-                      aria-label={t("knowledge:knowledge")}
-                      onClick={onOpenKnowledge}
-                    >
-                      <BookOpen />
-                    </Button>
-                  ) : (
-                    <NavigationItem
-                      density="navigation"
-                      icon={<BookOpen strokeWidth={1.5} />}
-                      label={t("knowledge:knowledge")}
-                      onClick={onOpenKnowledge}
-                    />
-                  )}
-                </TooltipTrigger>
-                {collapsed ? (
-                  <TooltipContent side="right">
-                    {t("knowledge:knowledge")}
-                  </TooltipContent>
-                ) : null}
-              </Tooltip>
-            ) : null}
-            {onOpenUsage ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {collapsed ? (
-                    <Button
-                      size="icon"
-                      variant="choice"
-                      aria-label={t("usage:title")}
-                      onClick={onOpenUsage}
-                    >
-                      <ChartNoAxesCombined />
-                    </Button>
-                  ) : (
-                    <NavigationItem
-                      density="navigation"
-                      icon={<ChartNoAxesCombined strokeWidth={1.5} />}
-                      label={t("usage:title")}
-                      onClick={onOpenUsage}
-                    />
-                  )}
-                </TooltipTrigger>
-                {collapsed ? (
-                  <TooltipContent side="right">
-                    {t("usage:title")}
-                  </TooltipContent>
-                ) : null}
-              </Tooltip>
-            ) : null}
-            {onOpenAutomaticTasks ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {collapsed ? (
-                    <Button
-                      size="icon"
-                      variant="choice"
-                      aria-label={t("automaticTask:title")}
-                      onClick={onOpenAutomaticTasks}
-                    >
-                      <Clock3 />
-                    </Button>
-                  ) : (
-                    <NavigationItem
-                      density="navigation"
-                      icon={<Clock3 strokeWidth={1.5} />}
-                      label={t("automaticTask:title")}
-                      onClick={onOpenAutomaticTasks}
-                    />
-                  )}
-                </TooltipTrigger>
-                {collapsed ? (
-                  <TooltipContent side="right">
-                    {t("automaticTask:title")}
-                  </TooltipContent>
-                ) : null}
-              </Tooltip>
-            ) : null}
-            <div
-              className={cn("flex items-center", collapsed && "flex-col gap-1")}
-            >
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  {collapsed ? (
-                    <Button
-                      size="icon"
-                      variant="choice"
-                      aria-label={t("partnerNavigation.settings")}
-                      onClick={onOpenSettings}
-                    >
-                      <Settings />
-                    </Button>
-                  ) : (
-                    <NavigationItem
-                      density="navigation"
-                      icon={<Settings strokeWidth={1.5} />}
-                      label={t("partnerNavigation.settings")}
-                      onClick={onOpenSettings}
-                    />
-                  )}
-                </TooltipTrigger>
-                {collapsed ? (
-                  <TooltipContent side="right">
-                    {t("partnerNavigation.settings")}
-                  </TooltipContent>
-                ) : null}
-              </Tooltip>
-            </div>
-          </div>
-        ) : null}
+        {history}
       </aside>
     </TooltipProvider>
   );
@@ -1004,7 +837,7 @@ export function EntityNavigation({
 
 type FloatingEntityNavigationProps = Omit<
   EntityNavigationProps,
-  "collapsed" | "floating" | "onOpenSettings" | "showSettings"
+  "collapsed" | "floating" | "history"
 > & {
   renderEntityChats?: (
     item: NavigationEntity,
@@ -1129,7 +962,6 @@ export function FloatingEntityNavigation({
               closePopover();
               onNewChat(item);
             }}
-            onOpenSettings={() => undefined}
             onSelectPartner={(partnerId) => {
               const item = items.find(
                 (candidate) =>
@@ -1158,7 +990,6 @@ export function FloatingEntityNavigation({
               onShowcaseWaker?.(waker, origin);
               setOpen(false);
             }}
-            showSettings={false}
           />
         )}
       </PopoverContent>

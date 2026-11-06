@@ -1,6 +1,7 @@
 import { type Dispatch, type ReactNode, type SetStateAction } from "react";
 import {
   Navigate,
+  parsePath,
   Outlet,
   Route,
   Routes,
@@ -55,6 +56,7 @@ export type AppRouteOutletContext = {
 
 export type AppRouteSceneProps = {
   location: string;
+  locationState?: unknown;
   outletContext: AppRouteOutletContext;
 };
 
@@ -98,9 +100,13 @@ function LegacyAutomaticTaskRoute() {
 }
 
 /** 页面随工作台初始化就绪，重型编辑器、文件预览与弹窗在内容区按需加载。 */
-export function AppRouteScene({ location, outletContext }: AppRouteSceneProps) {
+export function AppRouteScene({
+  location,
+  locationState,
+  outletContext,
+}: AppRouteSceneProps) {
   return (
-    <Routes location={location}>
+    <Routes location={{ ...parsePath(location), state: locationState }}>
       <Route element={<RouteSceneOutlet context={outletContext} />}>
         <Route element={<ChatEntryPage />}>
           <Route index element={<></>} />

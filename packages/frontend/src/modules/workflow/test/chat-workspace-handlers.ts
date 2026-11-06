@@ -26,6 +26,22 @@ export function chatWorkspaceHandlers(origin: string) {
     http.get(`${api}/runtime-environments`, () =>
       HttpResponse.json({ resources: [] }),
     ),
+    http.get(`${api}/runtimes/codex/models`, ({ request }) =>
+      HttpResponse.json({
+        runtimeId: "codex",
+        accountId: new URL(request.url).searchParams.get("accountId"),
+        authGeneration: 0,
+        state: "fresh",
+        source: "native",
+        defaultModel: "native",
+        models: ["native", "selected-model", "actual-model"].map((id) => ({
+          id,
+          name: id,
+          configurationKnown: true,
+          permissionLevels: ["default", "auto", "full-access"],
+        })),
+      }),
+    ),
     http.get(`${api}/runtimes`, () =>
       HttpResponse.json({
         resources: [

@@ -1,4 +1,5 @@
 export {
+  getChannelOptions,
   getChannelThreadOptions,
   teamChannelsInfiniteOptions,
   teamThreadsInfiniteOptions,

@@ -7,13 +7,29 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { Maximize2, Minimize2, Plus } from "lucide-react";
+import {
+  Columns3,
+  FileDiff,
+  Files,
+  Globe,
+  Maximize2,
+  MessagesSquare,
+  Minimize2,
+  Plus,
+  TerminalSquare,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { WorkbenchContribution } from "../components/chat-contributions";
 import { ChatBrowserView } from "../components/chat-browser-view";
 import { closeTerminal } from "@/shared/platform";
 import { Button } from "@/shared/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/shared/ui/dropdown-menu";
 import {
   useSceneChromeAccessoryTarget,
   useSceneChromeAccessoryWidthSetter,
@@ -159,12 +175,11 @@ export function RightWorkbench({
   const closeTab = (tab: WorkbenchTab) => {
     if (tab.closeable === false) return;
     if (tab.kind === "terminal") {
-      void closeTerminal(tab.id)
+      return closeTerminal(tab.id)
         .then(() => finishClose(tab.id))
-        .catch((cause: unknown) =>
-          toast.error(cause instanceof Error ? cause.message : String(cause)),
-        );
-      return;
+        .catch((cause: unknown) => {
+          toast.error(cause instanceof Error ? cause.message : String(cause));
+        });
     }
     const draftKey = `${scopeKey}:${tab.id}`;
     if (
@@ -220,49 +235,99 @@ export function RightWorkbench({
     dispatch({ type: "focus", tabId: tab.id });
   };
   const renderPaneTabs = (pane: WorkbenchPane) => (
-    <>
-      <WorkbenchPaneTabStrip
-        pane={pane}
-        tabs={snapshot.tabs}
-        draggedTabId={draggedTabId}
-        onClose={closeTab}
-        onDragStateChange={setDraggingTab}
-        onFocus={focusTab}
-        onMove={(tabId, paneId, beforeTabId) =>
-          dispatch({
-            type: "move-tab",
-            tabId,
-            targetPaneId: paneId,
-            zone: "center",
-            beforeTabId,
-          })
-        }
-        onSplit={(tabId, paneId, zone) =>
-          dispatch({
-            type: "move-tab",
-            tabId,
-            targetPaneId: paneId,
-            zone,
-          })
-        }
-      />
-      <Button
-        aria-label={t("workbench.addTab")}
-        title={t("workbench.addTab")}
-        size="icon-sm"
-        variant="ghost"
-        onClick={() => openBrowser(pane.id)}
-      >
-        <Plus />
-      </Button>
-    </>
+    <WorkbenchPaneTabStrip
+      active={visible && snapshot.focusedPaneId === pane.id}
+      scopeKey={scopeKey}
+      pane={pane}
+      tabs={snapshot.tabs}
+      draggedTabId={draggedTabId}
+      onClose={closeTab}
+      onDragStateChange={setDraggingTab}
+      onFocus={focusTab}
+      onFocusPane={(paneId) => {
+        if (snapshotRef.current.focusedPaneId !== paneId)
+          dispatch({ type: "focus-pane", paneId });
+      }}
+      onMove={(tabId, paneId, beforeTabId) =>
+        dispatch({
+          type: "move-tab",
+          tabId,
+          targetPaneId: paneId,
+          zone: "center",
+          beforeTabId,
+        })
+      }
+      onSplit={(tabId, paneId, zone) =>
+        dispatch({
+          type: "move-tab",
+          tabId,
+          targetPaneId: paneId,
+          zone,
+        })
+      }
+      trailing={
+        <DropdownMenu
+          onOpenChange={(open) => {
+            if (open) dispatch({ type: "focus-pane", paneId: pane.id });
+          }}
+        >
+          <DropdownMenuTrigger asChild>
+            <Button
+              aria-label={t("workbench.addTab")}
+              title={t("workbench.addTab")}
+              size="icon"
+              variant="ghost"
+              className="shrink-0"
+            >
+              <Plus />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={() => openBrowser(pane.id)}>
+              <Globe />
+              {t("browser")}
+            </DropdownMenuItem>
+            {terminalWorkingDirectory ? (
+              <DropdownMenuItem onSelect={openTerminal}>
+                <TerminalSquare />
+                {t("terminal")}
+              </DropdownMenuItem>
+            ) : null}
+            {fileWorkspaceProps ? (
+              <DropdownMenuItem onSelect={() => openPage("files")}>
+                <Files />
+                {t("workspace.files")}
+              </DropdownMenuItem>
+            ) : null}
+            {changesProps ? (
+              <DropdownMenuItem onSelect={() => openPage("changes")}>
+                <FileDiff />
+                {t("workspace.changes")}
+              </DropdownMenuItem>
+            ) : null}
+            {parentChatId ? (
+              <DropdownMenuItem onSelect={openSideChat}>
+                <MessagesSquare />
+                {t("workbench.sideChat")}
+              </DropdownMenuItem>
+            ) : null}
+            {taskBoard ? (
+              <DropdownMenuItem onSelect={() => openTaskBoard(pane.id)}>
+                <Columns3 />
+                {t("team:taskBoard.boardTitle")}
+              </DropdownMenuItem>
+            ) : null}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      }
+    />
   );
 
   const tabHeader = (
     <header
       className={cn(
-        "border-border-subtle bg-surface-scene relative flex h-(--shell-titlebar-height) shrink-0 items-center overflow-hidden border-b",
-        chromeAccessoryTarget && visible && "min-w-0 flex-1 border-b-0",
+        "bg-surface-chrome relative flex h-(--shell-titlebar-height) shrink-0 items-center overflow-hidden",
+        chromeAccessoryTarget && visible && "min-w-0 flex-1",
       )}
       data-workbench-chrome
       data-workbench-layout-motion={animateLayout || undefined}
@@ -271,26 +336,14 @@ export function RightWorkbench({
         <div
           key={pane.id}
           data-workbench-pane-header={pane.id}
-          className={cn(
-            "absolute inset-y-0 flex min-w-0 items-center gap-1 pr-2",
-            index > 0 && "pl-3",
-            index === 0 &&
-              (!chromeAccessoryTarget ||
-                (!snapshot.fullscreen && snapshot.side !== "left")) &&
-              "pl-2",
-          )}
+          className="workbench-pane-header absolute inset-y-0 flex min-w-0 items-center"
           style={{
             left: `${left}%`,
             width: `${width}%`,
-            ...(index === 0 &&
-            chromeAccessoryTarget &&
-            (snapshot.fullscreen || snapshot.side === "left")
-              ? { paddingLeft: "var(--scene-chrome-left-inset, 8px)" }
-              : {}),
             ...(index === chromePanes.length - 1
               ? {
                   paddingRight:
-                    "calc(var(--scene-chrome-actions-width, 0px) + 40px)",
+                    "calc(var(--scene-chrome-actions-width, 0px) + var(--spacing-control-md) + 8px)",
                 }
               : {}),
           }}
@@ -298,7 +351,7 @@ export function RightWorkbench({
           {index > 0 ? (
             <span
               aria-hidden="true"
-              className="bg-border pointer-events-none absolute top-1.5 bottom-1.5 left-0 w-px"
+              className="bg-shell-separator pointer-events-none absolute top-1.5 bottom-1.5 left-0 w-px"
             />
           ) : null}
           {renderPaneTabs(pane)}
@@ -310,9 +363,10 @@ export function RightWorkbench({
             ? t("workbench.exitFullView")
             : t("workbench.fullView")
         }
+        aria-pressed={snapshot.fullscreen}
         className="absolute z-20"
         style={{ right: "calc(var(--scene-chrome-actions-width, 0px) + 8px)" }}
-        size="icon-sm"
+        size="icon"
         title={
           snapshot.fullscreen
             ? t("workbench.exitFullView")
@@ -497,7 +551,7 @@ export function RightWorkbench({
     <section
       aria-label={t("workbench.title")}
       className={cn(
-        "border-border-subtle bg-surface-panel flex h-full min-h-0 w-full flex-col",
+        "border-shell-separator bg-surface-scene flex h-full min-h-0 w-full flex-col",
         !snapshot.fullscreen &&
           (snapshot.side === "left" ? "border-r" : "border-l"),
       )}

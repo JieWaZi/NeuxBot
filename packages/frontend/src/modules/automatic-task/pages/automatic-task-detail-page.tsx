@@ -1,3 +1,4 @@
+import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
 import { applicationErrorMessage } from "@/shared/api/error-presentation";
 import { integrationServiceOptions } from "@/shared/api/integration-service";
 import { FailureNoticeContent } from "@/modules/notification";
@@ -238,6 +239,13 @@ export function AutomaticTaskDetailPage() {
   if (query.isPending)
     return (
       <ResourcePageSurface>
+        <SceneBreadcrumbs
+          ariaLabel={t("title")}
+          items={[
+            { label: t("title"), href: "/automatic-tasks" },
+            { label: t("title") },
+          ]}
+        />
         <PageHeader
           layout="detail"
           title={t("title")}
@@ -251,6 +259,13 @@ export function AutomaticTaskDetailPage() {
   if (!task)
     return (
       <ResourcePageSurface>
+        <SceneBreadcrumbs
+          ariaLabel={t("title")}
+          items={[
+            { label: t("title"), href: "/automatic-tasks" },
+            { label: t("title") },
+          ]}
+        />
         <PageHeader
           layout="detail"
           title={t("title")}
@@ -310,6 +325,13 @@ export function AutomaticTaskDetailPage() {
   };
   return (
     <ResourcePageSurface>
+      <SceneBreadcrumbs
+        ariaLabel={t("title")}
+        items={[
+          { label: t("title"), href: "/automatic-tasks" },
+          { label: task.name || t("title") },
+        ]}
+      />
       <PageHeader
         layout="detail"
         backAction={backAction}

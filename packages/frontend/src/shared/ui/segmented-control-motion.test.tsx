@@ -24,12 +24,16 @@ const options = [
 ];
 let teamWidth = 100;
 let ancestorScale = 1;
+let optionTop = 3;
+let optionHeight = 30;
 let resize: (() => void) | undefined;
 
 beforeEach(() => {
   preference.reduced = false;
   teamWidth = 100;
   ancestorScale = 1;
+  optionTop = 3;
+  optionHeight = 30;
   vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(
     function (this: HTMLElement) {
       return this.getAttribute("role") === "radiogroup" ? 106 + teamWidth : 0;
@@ -54,15 +58,15 @@ beforeEach(() => {
         return this.textContent === "伙伴"
           ? new DOMRect(
               23 * ancestorScale,
-              13 * ancestorScale,
+              (10 + optionTop) * ancestorScale,
               100 * ancestorScale,
-              30 * ancestorScale,
+              optionHeight * ancestorScale,
             )
           : new DOMRect(
               123 * ancestorScale,
-              13 * ancestorScale,
+              (10 + optionTop) * ancestorScale,
               teamWidth * ancestorScale,
-              30 * ancestorScale,
+              optionHeight * ancestorScale,
             );
       }
       return new DOMRect();
@@ -232,3 +236,36 @@ it("祖先缩放时仍使用控件本地坐标定位高亮", async () => {
     ),
   );
 });
+
+it.each([1, 0.5])(
+  "shell 在祖先缩放 %s 时保持选项横向定位与 36px 命中区",
+  async (scale) => {
+    preference.reduced = true;
+    ancestorScale = scale;
+    optionTop = 0;
+    optionHeight = 36;
+    const props = {
+      ariaLabel: "模式",
+      options,
+      onValueChange: () => {},
+      appearance: "shell" as const,
+    };
+    const { rerender } = render(<SegmentedControl {...props} value="waker" />);
+    await waitFor(() =>
+      expect(highlight().style.clipPath).toBe(
+        "inset(0px 103px 0px 3px round var(--radius-control-inner))",
+      ),
+    );
+    // 视觉高亮由 shell CSS 自身的 24px 表面裁切；Motion 只沿真实命中框定位横向边界。
+    expect(
+      screen.getByRole("radio", { name: "伙伴" }).getBoundingClientRect()
+        .height / scale,
+    ).toBe(36);
+    rerender(<SegmentedControl {...props} value="team" />);
+    await waitFor(() =>
+      expect(highlight().style.clipPath).toBe(
+        "inset(0px 3px 0px 103px round var(--radius-control-inner))",
+      ),
+    );
+  },
+);

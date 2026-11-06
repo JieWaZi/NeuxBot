@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
+import { SceneChromeActionsProvider } from "./scene-chrome-actions";
 import { i18n } from "@/shared/i18n";
 import {
   SceneChromePortalProvider,
@@ -98,7 +99,7 @@ describe("SceneTabStrip", () => {
     ).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("失效标签在未选中时保留淡红背景、感叹号与悬停提示，并可关闭", async () => {
+  it("失效标签在未选中时保留错误说明、感叹号与悬停提示，并可关闭", async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
     const onSelect = vi.fn();
@@ -119,7 +120,6 @@ describe("SceneTabStrip", () => {
     const tab = screen.getByRole("tab", { name: "详情" });
     expect(tab).toHaveAttribute("aria-selected", "false");
     expect(tab).toHaveAccessibleDescription("数据可能已被删除，请关闭该页面");
-    expect(tab.parentElement).toHaveClass("bg-destructive/10");
     expect(tab.querySelector(".lucide-circle-alert")).not.toBeNull();
     await user.hover(tab);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
@@ -173,8 +173,9 @@ describe("SceneTabStrip", () => {
         />
       </SceneChromePortalProvider>,
     );
-    const strip = screen.getByRole("tablist", { name: "场景标签" })
-      .parentElement as HTMLElement;
+    const strip = screen
+      .getByRole("tablist", { name: "场景标签" })
+      .closest("[data-scene-tab-strip]") as HTMLElement;
     const accessory = strip.querySelector("[data-scene-chrome-accessory]");
     const tablist = screen.getByRole("tablist", { name: "场景标签" });
     const divider = strip.querySelector("[data-scene-chrome-divider]");
@@ -190,3 +191,51 @@ describe("SceneTabStrip", () => {
     ).toBeTruthy();
   });
 });
+
+it.each([2, 20])(
+  "%s个平铺Tab时末尾新建属于同一滚动内容，局部操作留在滚动区外",
+  async (count) => {
+    const onSelect = vi.fn();
+    const onNew = vi.fn();
+    render(
+      <TooltipProvider>
+        <SceneChromeActionsProvider actions={<button>工作区开关</button>}>
+          <SceneTabStrip
+            activeTabId="chat-1"
+            ariaLabel="聊天标签"
+            tabs={Array.from({ length: count }, (_, index) => ({
+              id: `chat-${index + 1}`,
+              label: `聊天${index + 1}`,
+            }))}
+            onSelect={onSelect}
+            onClose={() => {}}
+            paneActions={<button>摘要</button>}
+            trailing={<button onClick={onNew}>新建会话</button>}
+          />
+        </SceneChromeActionsProvider>
+      </TooltipProvider>,
+    );
+    const first = screen.getByRole("tab", { name: "聊天1" });
+    const last = screen.getByRole("tab", { name: `聊天${count}` });
+    const add = screen.getByRole("button", { name: "新建会话" });
+    const scroll = first.closest("[data-scene-tab-scroll]");
+    expect(scroll).not.toBeNull();
+    expect(scroll).toContainElement(last);
+    expect(scroll).toContainElement(add);
+    expect(scroll).not.toContainElement(
+      screen.getByRole("button", { name: "摘要" }),
+    );
+    expect(scroll).not.toContainElement(
+      screen.getByRole("button", { name: "工作区开关" }),
+    );
+    const user = userEvent.setup();
+    first.focus();
+    await user.keyboard("{End}");
+    expect(last).toHaveFocus();
+    expect(onSelect).toHaveBeenLastCalledWith(`chat-${count}`);
+    await user.tab();
+    expect(add).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(onNew).toHaveBeenCalledOnce();
+  },
+);
