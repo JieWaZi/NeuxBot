@@ -1,14 +1,15 @@
 import {
   render,
+  act,
   screen,
   fireEvent,
   cleanup,
   within,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { expect, it, vi, afterEach } from "vitest";
-import "@/shared/i18n";
+import { i18n } from "@/shared/i18n";
 import { PluginOverview } from "./plugin-overview";
 import type { PluginCatalogEntry } from "../model/plugin-view";
 import { PluginReadme } from "./plugin-readme";
@@ -21,6 +22,7 @@ const readmeFixture = vi.hoisted(() => ({
   save: vi.fn(),
   connector: vi.fn(),
   probe: vi.fn(),
+  open: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -32,16 +34,21 @@ vi.mock("@/shared/api/generated/sdk.gen", async (importOriginal) => ({
 }));
 vi.mock("@/shared/platform", () => ({
   saveBlob: readmeFixture.save,
-  openExternalURL: vi.fn(),
+  openExternalURL: readmeFixture.open,
 }));
-vi.mock("./plugin-skill-dialog", () => ({
-  PluginSkillDialog: ({ name }: { name: string }) => (
-    <section aria-label="技能正文">{name}</section>
-  ),
-}));
-afterEach(() => {
+function CurrentRoute() {
+  const location = useLocation();
+  return (
+    <output aria-label="当前路由">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
+afterEach(async () => {
   cleanup();
   vi.restoreAllMocks();
+  await i18n.changeLanguage("zh-CN");
 });
 const pkg: PluginCatalogEntry["package"] = {
   manifest: {
@@ -68,9 +75,14 @@ const pkg: PluginCatalogEntry["package"] = {
 it("shows plugin metadata and installed partners, and opens an included skill", () => {
   render(
     <MemoryRouter>
+      <CurrentRoute />
       <PluginOverview
         pkg={pkg}
-        skillContext={{ catalogKey: "github" }}
+        skillContext={{
+          catalogKey: "github",
+          sourceCommit: "a".repeat(40),
+          archiveSHA256: "b".repeat(64),
+        }}
         detail={{
           installations: [{ wakerId: "w1", enabled: true, versionId: "v1" }],
           partnerNames: { w1: "开发伙伴" },
@@ -81,17 +93,26 @@ it("shows plugin metadata and installed partners, and opens an included skill", 
   );
   expect(screen.getByText("GitHub")).toBeVisible();
   expect(screen.getByText("MIT")).toBeVisible();
-  expect(screen.getByRole("heading", { name: "已安装 1" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "已安装" })).toBeVisible();
+  expect(
+    screen
+      .getAllByRole("heading", { level: 2 })
+      .map((item) => item.textContent),
+  ).toEqual(["已安装", "连接与设置", "技能", "插件信息"]);
+  expect(screen.getAllByRole("link", { name: /开发伙伴/ })).toHaveLength(1);
+  expect(screen.queryByText("https://api.githubcopilot.com")).toBeNull();
   expect(screen.getByRole("link", { name: /开发伙伴/ })).toHaveAttribute(
     "href",
     "/wakers/w1/resources",
   );
   expect(
-    screen.queryByRole("button", { name: "查看技能 skill-6" }),
-  ).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "查看全部 7 项技能" }));
+    screen.getByRole("button", { name: "查看技能 skill-6" }),
+  ).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "查看技能 skill-6" }));
-  expect(screen.getByLabelText("技能正文")).toHaveTextContent("skill-6");
+  expect(screen.getByLabelText("当前路由")).toHaveTextContent(
+    `/resources/plugins/catalog/github/skills/skill-6?sourceCommit=${"a".repeat(40)}&archiveSHA256=${"b".repeat(64)}`,
+  );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 it("keeps unknown installation state distinct from an empty installation list", () => {
   render(
@@ -107,7 +128,7 @@ it("keeps unknown installation state distinct from an empty installation list", 
   expect(screen.queryByText("尚未安装到伙伴")).not.toBeInTheDocument();
 });
 
-it("hides absent capabilities and keeps link values as icons", () => {
+it("hides absent capabilities and names public links by their real host", () => {
   render(
     <MemoryRouter>
       <PluginOverview
@@ -129,12 +150,40 @@ it("hides absent capabilities and keeps link values as icons", () => {
   expect(
     screen.queryByRole("heading", { name: /连接器/ }),
   ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("heading", { name: /^已安装/ }),
+  ).not.toBeInTheDocument();
   expect(screen.getAllByText("官方网站")).toHaveLength(1);
   expect(screen.getAllByText("源代码")).toHaveLength(1);
-  expect(screen.getByRole("button", { name: "官方网站" })).toHaveTextContent(
-    "",
+  expect(screen.getByRole("link", { name: "官方网站" })).toHaveTextContent(
+    "example.com",
   );
 });
+
+it.each([
+  ["zh-CN", "上游版本", "插件版本"],
+  ["en-US", "Upstream version", "Plugin version"],
+])(
+  "%s identifies the upstream release without relabeling it as the package version",
+  async (locale, label, packageLabel) => {
+    await i18n.changeLanguage(locale);
+    render(
+      <MemoryRouter>
+        <PluginOverview
+          pkg={{
+            ...pkg,
+            manifest: { ...pkg?.manifest, name: "github", version: "0.1.0" },
+            upstream: { tag: "v1.0.98" },
+          }}
+        />
+      </MemoryRouter>,
+    );
+    const field = screen.getByText(label);
+    expect(field.parentElement).toHaveTextContent("v1.0.98");
+    expect(screen.queryByText(packageLabel)).not.toBeInTheDocument();
+    expect(screen.getAllByText("v1.0.98")).toHaveLength(1);
+  },
+);
 
 it("shows the same plugin metadata in partner scope without other partner installations", () => {
   render(
@@ -152,7 +201,7 @@ it("shows the same plugin metadata in partner scope without other partner instal
   ).not.toBeInTheDocument();
 });
 
-it("groups the explanation and plugin information before capabilities", () => {
+it("keeps the README and public fields together in the final information section", () => {
   render(
     <MemoryRouter>
       <PluginOverview pkg={{ ...pkg, readme: "说明正文" }} />
@@ -162,14 +211,22 @@ it("groups the explanation and plugin information before capabilities", () => {
     screen
       .getAllByRole("heading", { level: 2 })
       .map((heading) => heading.textContent),
-  ).toEqual(["说明", "插件信息", "技能 7", "连接器 1", "已安装 0"]);
+  ).toEqual(["连接与设置", "技能", "插件信息"]);
   expect(
     screen.queryByRole("heading", { name: "简介" }),
   ).not.toBeInTheDocument();
   expect(
     screen.queryByRole("heading", { name: "插件说明" }),
   ).not.toBeInTheDocument();
-  expect(screen.getByText("说明正文")).toBeVisible();
+  const information = screen
+    .getByRole("heading", { name: "插件信息" })
+    .closest("section");
+  expect(information).not.toBeNull();
+  expect(information).toContainElement(screen.getByText("说明正文"));
+  expect(information).toContainElement(screen.getByText("MIT"));
+  expect(
+    screen.queryByRole("heading", { name: "说明" }),
+  ).not.toBeInTheDocument();
 });
 
 it("opens the complete long README and closes it when the source changes", async () => {
@@ -182,7 +239,15 @@ it("opens the complete long README and closes it when the source changes", async
       <PluginOverview pkg={{ ...pkg, readme }} />
     </MemoryRouter>,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "查看完整内容" }));
+  const expand = await screen.findByRole("button", { name: "查看完整内容" });
+  const informationHeader = screen
+    .getByRole("heading", { name: "插件信息" })
+    .closest("header");
+  expect(informationHeader).toContainElement(expand);
+  expect(screen.getAllByRole("button", { name: "查看完整内容" })).toHaveLength(
+    1,
+  );
+  fireEvent.click(expand);
   const dialog = await screen.findByRole("dialog", { name: "完整说明" });
   expect(await within(dialog).findByText("不可截断的结尾")).toBeInTheDocument();
   view.rerender(
@@ -244,46 +309,25 @@ it("downloads the complete oversized README from its fixed version instead of sh
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-it("keeps native implementation paths and digests out of the public plugin overview", () => {
+it("keeps standard MCP startup arguments out of the public plugin overview", () => {
   render(
     <MemoryRouter>
       <PluginOverview
         pkg={{
-          manifest: { name: "logical", version: "2.0.0" },
-          nativeComponents: [{ kind: "hooks", paths: ["hooks/hooks.json"] }],
-          nativeImplementations: {
-            codex: {
-              path: "codex-plugins/github",
-              name: "github",
-              version: "0.1.12",
-              format: "codex",
-              digest: "a".repeat(64),
-              components: [],
-              skillCount: 0,
-              serverCount: 1,
+          manifest: { name: "logical" },
+          servers: [
+            {
+              key: "tools",
+              command: "private/start.mjs",
+              args: ["--token=hidden"],
             },
-            claude: {
-              path: "claude-plugins/github",
-              name: "github",
-              version: "1.0.0",
-              format: "claude",
-              digest: "b".repeat(64),
-              components: [],
-              skillCount: 0,
-              serverCount: 1,
-            },
-          },
+          ],
         }}
       />
     </MemoryRouter>,
   );
-  expect(
-    screen.queryByRole("heading", { name: "原生组件" }),
-  ).not.toBeInTheDocument();
-  expect(screen.queryByText("hooks/hooks.json")).not.toBeInTheDocument();
-  expect(screen.queryByText("codex-plugins/github")).not.toBeInTheDocument();
-  expect(screen.queryByText("claude-plugins/github")).not.toBeInTheDocument();
-  expect(screen.queryByText("0.1.12")).not.toBeInTheDocument();
+  expect(screen.queryByText("private/start.mjs")).toBeNull();
+  expect(screen.queryByText(/--token/)).toBeNull();
 });
 
 it("downloads the displayed locale from the same pinned catalog source", async () => {
@@ -315,163 +359,292 @@ it("downloads the displayed locale from the same pinned catalog source", async (
 });
 
 it.each(["installed", "catalog"])(
-  "opens the included MCP in a read-only dialog from %s",
-  async (mode) => {
-    readmeFixture.connector.mockClear();
-    readmeFixture.connector.mockResolvedValue({
-      data: {
-        connector: {
-          id: "github",
-          name: "github",
-          transport: "streamable_http",
-          url: "https://api.githubcopilot.com/mcp/",
-        },
-        compatibility: [{ runtimeId: "codex", supported: true }],
-      },
-    });
+  "opens included MCP as a pinned detail page from %s",
+  (mode) => {
     render(
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <MemoryRouter>
-          <PluginOverview
-            pkg={pkg}
-            skillContext={
-              mode === "catalog"
-                ? {
-                    catalogKey: "github",
-                    sourceCommit: "a".repeat(40),
-                    archiveSHA256: "b".repeat(64),
-                  }
-                : { pluginId: "p", versionId: "v1" }
-            }
-          />
-        </MemoryRouter>
-      </QueryClientProvider>,
+      <MemoryRouter initialEntries={["/resources/plugins/p?version=v1"]}>
+        <CurrentRoute />
+        <PluginOverview
+          pkg={pkg}
+          skillContext={
+            mode === "catalog"
+              ? {
+                  catalogKey: "github",
+                  sourceCommit: "a".repeat(40),
+                  archiveSHA256: "b".repeat(64),
+                }
+              : { pluginId: "p", versionId: "v1" }
+          }
+        />
+      </MemoryRouter>,
     );
     fireEvent.click(screen.getByRole("button", { name: "查看连接器 github" }));
-    const dialog = await screen.findByRole("dialog", { name: "github" });
-    expect(
-      await within(dialog).findByText("https://api.githubcopilot.com/mcp/"),
-    ).toBeVisible();
-    expect(
-      within(dialog).getByText("Codex", { selector: "span" }),
-    ).toBeVisible();
-    expect(
-      within(dialog).queryByRole("button", { name: "编辑" }),
-    ).not.toBeInTheDocument();
-    expect(within(dialog).queryByRole("switch")).not.toBeInTheDocument();
-    expect(readmeFixture.connector).toHaveBeenCalledWith(
-      expect.objectContaining(
-        mode === "catalog"
-          ? {
-              path: { key: "github" },
-              query: {
-                connectorKey: "github",
-                sourceCommit: "a".repeat(40),
-                archiveSHA256: "b".repeat(64),
-              },
-            }
-          : {
-              path: { pluginId: "p" },
-              query: { versionId: "v1", key: "github", wakerId: undefined },
-            },
-      ),
+    const route = screen.getByRole("status", { name: "当前路由" });
+    expect(route).toHaveTextContent(
+      mode === "catalog"
+        ? `/resources/plugins/catalog/github/connectors/github?sourceCommit=${"a".repeat(40)}&archiveSHA256=${"b".repeat(64)}`
+        : "/resources/plugins/p/connectors/github?version=v1",
     );
-    fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
-    await waitFor(() =>
-      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
-    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(readmeFixture.probe).not.toHaveBeenCalled();
   },
 );
 
-it("discovers tools from the exact authorized local version in a catalog modal", async () => {
-  readmeFixture.probe.mockClear();
-  readmeFixture.connector.mockResolvedValue({
-    data: {
-      connector: {
-        id: "c",
-        name: "github",
-        transport: "streamable_http",
-        testStatus: "untested",
-      },
-    },
-  });
-  readmeFixture.probe.mockImplementation(async () => {
-    const result = {
-      data: {
-        connector: {
-          id: "c",
-          name: "github",
-          transport: "streamable_http",
-          testStatus: "succeeded",
-          testedAt: Date.now(),
-          testToolCount: 1,
-          testTools: [{ name: "list_repositories", description: "列出仓库" }],
-        },
-      },
-    };
-    readmeFixture.connector.mockResolvedValue(result);
-    return result;
-  });
+it("keeps the matching local version in a catalog connector detail link", () => {
   render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
-      <MemoryRouter>
-        <PluginOverview
-          pkg={pkg}
-          skillContext={{
-            catalogKey: "github",
-            sourceCommit: "a".repeat(40),
-            archiveSHA256: "b".repeat(64),
-          }}
-          detail={{
-            plugin: { id: "p" },
-            versions: [
-              {
-                id: "local-v",
-                provenance: {
-                  sourceCommit: "a".repeat(40),
-                  archiveSHA256: "b".repeat(64),
-                },
+    <MemoryRouter>
+      <CurrentRoute />
+      <PluginOverview
+        pkg={pkg}
+        skillContext={{
+          catalogKey: "github",
+          sourceCommit: "a".repeat(40),
+          archiveSHA256: "b".repeat(64),
+        }}
+        detail={{
+          plugin: { id: "p" },
+          versions: [
+            {
+              id: "local-v",
+              provenance: {
+                sourceCommit: "a".repeat(40),
+                archiveSHA256: "b".repeat(64),
               },
-            ],
-          }}
-        />
-      </MemoryRouter>
-    </QueryClientProvider>,
+            },
+          ],
+        }}
+      />
+    </MemoryRouter>,
   );
   fireEvent.click(screen.getByRole("button", { name: "查看连接器 github" }));
-  const dialog = await screen.findByRole("dialog", { name: "github" });
-  fireEvent.click(
-    await within(dialog).findByRole("button", { name: "测试连接" }),
+  expect(screen.getByRole("status", { name: "当前路由" })).toHaveTextContent(
+    "&pluginId=p&version=local-v",
   );
+});
+
+it("uses a connection section with the cached unverified account and a management action", () => {
+  const edit = vi.fn();
+  render(
+    <MemoryRouter>
+      <PluginOverview
+        pkg={{
+          integration: {
+            authentication: {
+              strategy: "plugin-command",
+              protocol: "neuxbot-auth/1",
+            },
+          },
+        }}
+        detail={{ plugin: { id: "p" }, account: { available: false } }}
+        onEdit={edit}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.getByRole("heading", { name: "连接与设置" })).toBeVisible();
+  expect(screen.getByText("尚未核验账号")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "编辑插件" }));
+  expect(edit).toHaveBeenCalledOnce();
+});
+it("does not create an empty management section for a rename-only package", () => {
+  render(
+    <MemoryRouter>
+      <PluginOverview
+        pkg={{ manifest: { name: "simple" } }}
+        detail={{ plugin: { id: "p" } }}
+        onEdit={vi.fn()}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.queryByRole("heading", { name: "管理" })).toBeNull();
+  expect(screen.queryByRole("heading", { name: "连接与设置" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "编辑插件" })).toBeNull();
+});
+
+it("keeps localized setup instructions in the connection card and its support target only in information", async () => {
+  readmeFixture.open.mockClear();
+  render(
+    <MemoryRouter>
+      <PluginOverview
+        pkg={{
+          integration: {
+            authentication: {
+              strategy: "plugin-command",
+              protocol: "neuxbot-auth/1",
+            },
+          },
+          presentation: {
+            supportURL: "https://support.github.com/",
+            setup: {
+              instructions: {
+                "zh-CN": "中文连接步骤。",
+                en: "English connection steps.",
+              },
+              helpURL: "https://support.github.com/",
+            },
+          },
+        }}
+        onEdit={vi.fn()}
+      />
+    </MemoryRouter>,
+  );
+  expect(await screen.findByText("中文连接步骤。")).toBeVisible();
+  const connection = screen
+    .getByRole("heading", { name: "连接与设置" })
+    .closest("section");
+  expect(connection).not.toBeNull();
+  if (!connection) throw new Error("Missing connection section");
+  expect(connection).toContainElement(screen.getByText("中文连接步骤。"));
+  expect(within(connection).queryByRole("link")).not.toBeInTheDocument();
   expect(
-    await within(dialog).findByRole("heading", { name: "list_repositories" }),
-  ).toBeVisible();
-  expect(readmeFixture.probe).toHaveBeenCalledWith(
-    expect.objectContaining({
-      path: { pluginId: "p" },
-      query: expect.objectContaining({
-        versionId: "local-v",
-        key: "github",
-        sourceCommit: "a".repeat(40),
-        archiveSHA256: "b".repeat(64),
-      }),
-    }),
-  );
-  fireEvent.click(within(dialog).getByRole("button", { name: "关闭" }));
+    screen.queryByRole("link", { name: "连接说明" }),
+  ).not.toBeInTheDocument();
+  const support = screen.getByRole("link", { name: "支持" });
+  expect(screen.getAllByText("support.github.com")).toHaveLength(1);
+  expect(
+    screen.getByRole("heading", { name: "插件信息" }).closest("section"),
+  ).toContainElement(support);
+  fireEvent.click(support);
   await waitFor(() =>
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    expect(readmeFixture.open).toHaveBeenCalledWith(
+      "https://support.github.com/",
+    ),
   );
-  fireEvent.click(screen.getByRole("button", { name: "查看连接器 github" }));
+  expect(screen.queryByRole("heading", { name: "账号连接" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "编辑插件" })).toBeNull();
+  expect(screen.queryByText("尚未核验账号")).toBeNull();
+  await act(() => i18n.changeLanguage("en-US"));
+  expect(await screen.findByText("English connection steps.")).toBeVisible();
+  expect(screen.queryByText("中文连接步骤。")).toBeNull();
+});
+it("does not create a connection card for a setup help URL alone", () => {
+  render(
+    <MemoryRouter>
+      <PluginOverview
+        pkg={{
+          presentation: {
+            setup: { helpURL: "https://support.github.com/" },
+          },
+        }}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.queryByRole("heading", { name: "连接与设置" })).toBeNull();
+  expect(screen.queryByRole("link")).toBeNull();
+});
+it("falls back to English setup inside the existing connection card", async () => {
+  render(
+    <MemoryRouter>
+      <PluginOverview
+        pkg={{
+          presentation: {
+            setup: {
+              instructions: { en: "Prepare the account before connecting." },
+            },
+          },
+        }}
+      />
+    </MemoryRouter>,
+  );
   expect(
-    await screen.findByRole("heading", { name: "list_repositories" }),
+    await screen.findByText("Prepare the account before connecting."),
   ).toBeVisible();
-  expect(readmeFixture.probe).toHaveBeenCalledTimes(1);
+  expect(screen.getAllByRole("heading", { name: "连接与设置" })).toHaveLength(
+    1,
+  );
+  expect(screen.queryByRole("heading", { name: "连接说明" })).toBeNull();
+});
+it("merges MCP and account management into one connection card without changing readonly actions", () => {
+  const edit = vi.fn();
+  render(
+    <MemoryRouter>
+      <PluginOverview
+        pkg={{
+          integration: {
+            authentication: {
+              strategy: "plugin-command",
+              protocol: "neuxbot-auth/1",
+            },
+          },
+          servers: [{ key: "tools", url: "https://tools.example.com/mcp" }],
+        }}
+        detail={{
+          plugin: { id: "p" },
+          account: { checkedAt: 1, available: true, name: "测试用户" },
+        }}
+        skillContext={{ pluginId: "p", versionId: "fixed" }}
+        onEdit={edit}
+      />
+    </MemoryRouter>,
+  );
+  const heading = screen.getByRole("heading", { name: "连接与设置" });
+  const section = heading.closest("section");
+  expect(screen.getAllByRole("heading", { name: "连接与设置" })).toHaveLength(
+    1,
+  );
+  expect(screen.queryByRole("heading", { name: "连接器" })).toBeNull();
+  expect(section).toContainElement(
+    screen.getByRole("button", { name: "查看连接器 tools" }),
+  );
+  expect(screen.getByText("已连接：测试用户")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "编辑插件" }));
+  expect(edit).toHaveBeenCalledOnce();
+});
+it("omits author capability statements from information", () => {
+  readmeFixture.probe.mockClear();
+  readmeFixture.connector.mockClear();
+  render(
+    <MemoryRouter>
+      <PluginOverview
+        pkg={{
+          presentation: { capabilities: ["Search notes", "Create summaries"] },
+        }}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.queryByText("作者能力说明")).not.toBeInTheDocument();
+  expect(screen.queryByText("Search notes")).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "连接与设置" })).toBeNull();
+  expect(screen.queryByRole("button")).toBeNull();
+  expect(readmeFixture.probe).not.toHaveBeenCalled();
+  expect(readmeFixture.connector).not.toHaveBeenCalled();
+});
+
+it("shows repository identity beyond its hosting domain", () => {
+  render(
+    <MemoryRouter>
+      <PluginOverview
+        pkg={{
+          manifest: { repository: "https://github.com/openai/skills.git" },
+        }}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.getByRole("link", { name: "源代码" })).toHaveTextContent(
+    "openai/skills",
+  );
+});
+
+it("keeps one source link when the website and repository point to the same repo", () => {
+  render(
+    <MemoryRouter>
+      <PluginOverview
+        pkg={{
+          manifest: { repository: "https://github.com/larksuite/cli" },
+          presentation: {
+            websiteURL: "https://github.com/larksuite/cli/",
+            supportURL: "https://github.com/larksuite/cli/issues",
+          },
+        }}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.getByRole("link", { name: "源代码" })).toHaveTextContent(
+    "larksuite/cli",
+  );
+  expect(
+    screen.queryByRole("link", { name: "官方网站" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "支持" })).toHaveTextContent(
+    "larksuite/cli/issues",
+  );
 });

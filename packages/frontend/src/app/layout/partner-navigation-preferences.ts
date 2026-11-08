@@ -47,7 +47,6 @@ export type AppPinnableModuleId = Exclude<
 >;
 // B03 确认的 NeuxBot 模块次序；pin 选择参照 OpenBot src/renderer/src/layout.tsx。
 export const appPinnableModules = [
-  "workflows",
   "work-board",
   "usage",
   "knowledge",
@@ -57,9 +56,7 @@ export function pinnedAppModules(
   choices: Readonly<Record<string, boolean>> = {},
 ): readonly AppPinnableModuleId[] {
   return appPinnableModules.filter(
-    (id) =>
-      choices[id] ??
-      (id === "workflows" || id === "work-board" || id === "usage"),
+    (id) => choices[id] ?? (id === "work-board" || id === "usage"),
   );
 }
 function booleanRecord(value: unknown): Record<string, boolean> {

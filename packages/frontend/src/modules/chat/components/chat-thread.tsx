@@ -128,6 +128,7 @@ import {
 import {
   ChatComposerInput,
   type ChatMemberMentionOption,
+  type ChatComposerDraftReference,
   type ChatComposerContextReference,
 } from "./chat-composer-input";
 import { chatContentColumnClassName } from "./chat-layout";
@@ -223,6 +224,7 @@ type ChatThreadProps = {
   onMemberMentionChange?: (wakerId?: string) => void;
   codeReferenceRequest?: ChatCodeReference;
   composerDraft?: string;
+  composerDraftReference?: ChatComposerDraftReference;
   showComposer?: boolean;
   /** 完整输入区可独立用于业务指令，不呈现消息列表或产生阅读事实。 */
   presentation?: "thread" | "composer";
@@ -1642,6 +1644,7 @@ const Composer = memo(function Composer({
   codeReferenceRequest,
   onCodeReferencesChange,
   draft,
+  draftReference,
   clearRevision,
   restoreRevision,
   terminalEnabled,
@@ -1693,6 +1696,7 @@ const Composer = memo(function Composer({
   codeReferenceRequest?: ChatCodeReference;
   onCodeReferencesChange?: (references: ChatCodeReference[]) => void;
   draft?: string;
+  draftReference?: ChatComposerDraftReference;
   clearRevision?: number;
   restoreRevision?: number;
   terminalEnabled: boolean;
@@ -1933,6 +1937,7 @@ const Composer = memo(function Composer({
                 codeReferenceRequest={codeReferenceRequest}
                 onCodeReferencesChange={onCodeReferencesChange}
                 draft={draft}
+                draftReference={draftReference}
                 clearRevision={clearRevision}
                 restoreRevision={restoreRevision}
                 className="placeholder:text-muted-foreground type-label resize-none bg-transparent outline-none disabled:opacity-55"
@@ -2081,6 +2086,7 @@ export function ChatThread({
   onMemberMentionChange,
   codeReferenceRequest,
   composerDraft,
+  composerDraftReference,
   showComposer = true,
   presentation = "thread",
   composerAutoFocus,
@@ -2434,6 +2440,7 @@ export function ChatThread({
                       codeReferenceRequest={codeReferenceRequest}
                       onCodeReferencesChange={onCodeReferencesChange}
                       draft={composerDraft}
+                      draftReference={composerDraftReference}
                       clearRevision={composerClearRevision}
                       restoreRevision={composerRestoreRevision}
                       isRunning={isRunning}

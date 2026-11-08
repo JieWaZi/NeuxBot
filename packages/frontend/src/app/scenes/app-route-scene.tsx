@@ -10,6 +10,8 @@ import {
   useSearchParams,
 } from "react-router-dom";
 
+import { ConnectorAddPage } from "@/modules/connector";
+import { SkillAddPage } from "@/modules/skill";
 import { ResourcesPage } from "@/app/pages/resources-page";
 import { KnowledgeScene } from "./knowledge-scene";
 import {
@@ -121,6 +123,10 @@ export function AppRouteScene({
           element={<PluginCatalogDetailPage />}
         />
         <Route
+          path="resources/plugins/catalog/:catalogKey/skills/:skillKey"
+          element={<PluginSkillDetailPage />}
+        />
+        <Route
           path="resources/plugins/:pluginId"
           element={<PluginDetailPage />}
         />
@@ -132,6 +138,25 @@ export function AppRouteScene({
           path="wakers/:wakerId/plugins/:pluginId/connectors/:connectorKey"
           element={<PluginConnectorDetailPage />}
         />
+        <Route
+          path="resources/plugins/catalog/:catalogKey/connectors/:connectorKey"
+          element={<PluginConnectorDetailPage />}
+        />
+        <Route path="resources/connectors/new" element={<ConnectorAddPage />} />
+        <Route
+          path="wakers/:wakerId/resources/connectors/new"
+          element={<ConnectorAddPage />}
+        />
+        <Route
+          path="wakers/:wakerId/connectors/new"
+          element={<ConnectorAddPage />}
+        />
+        <Route path="resources/skills/new" element={<SkillAddPage />} />
+        <Route
+          path="wakers/:wakerId/resources/skills/new"
+          element={<SkillAddPage />}
+        />
+        <Route path="wakers/:wakerId/skills/new" element={<SkillAddPage />} />
         <Route path="resources/skills/:skillId" element={<SkillDetailPage />} />
         <Route
           path="resources/plugins/:pluginId/skills/:skillKey"

@@ -1,14 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { listWakersOptions, getWakerOptions } from "../api/plugin-queries";
 import { withLocalErrorSurface } from "@/shared/api/local-error-surface";
+import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
 import { Checkbox } from "@/shared/ui/checkbox";
 import { Input } from "@/shared/ui/input";
 import { Button } from "@/shared/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { FieldControlTrigger } from "@/shared/ui/field-control-trigger";
-import { QueryState } from "@/shared/ui/query-state";
+import { QueryState, QueryRefreshError } from "@/shared/ui/query-state";
 import { ResourcePartnerAvatar } from "@/shared/ui/resource-management-card";
 
 export function PartnerPicker({
@@ -18,9 +19,11 @@ export function PartnerPicker({
   onlyPartner,
   onNames,
   variant = "list",
+  selectionMode = "multiple",
   disabled = false,
 }: {
   variant?: "list" | "select";
+  selectionMode?: "single" | "multiple";
   disabled?: boolean;
   selected: string[];
   onChange: (ids: string[]) => void;
@@ -79,7 +82,7 @@ export function PartnerPicker({
           }}
         />
       )}
-      {query.isPending || query.isError ? (
+      {!query.data ? (
         <QueryState
           loadingLayout="content"
           pending={query.isPending}
@@ -89,7 +92,11 @@ export function PartnerPicker({
       ) : partners.length === 0 ? (
         <p className="text-muted-foreground type-body">{t("noPartners")}</p>
       ) : (
-        <div className="space-y-1">
+        <PartnerChoiceList
+          mode={selectionMode}
+          selected={selected[0] ?? ""}
+          onChange={(id) => onChange([id])}
+        >
           {partners.map((partner) => {
             const id = partner.id;
             if (!id) return null;
@@ -99,18 +106,26 @@ export function PartnerPicker({
                 key={id}
                 className="hover:bg-surface-subtle min-h-control-md rounded-control flex cursor-pointer items-center gap-3 px-2 py-2"
               >
-                <Checkbox
-                  aria-label={partner.name}
-                  checked={existing || selected.includes(id)}
-                  disabled={existing || disabled}
-                  onCheckedChange={(checked) =>
-                    onChange(
-                      checked
-                        ? [...selected, id]
-                        : selected.filter((value) => value !== id),
-                    )
-                  }
-                />
+                {selectionMode === "single" ? (
+                  <RadioGroupItem
+                    value={id}
+                    aria-label={partner.name}
+                    disabled={disabled}
+                  />
+                ) : (
+                  <Checkbox
+                    aria-label={partner.name}
+                    checked={existing || selected.includes(id)}
+                    disabled={existing || disabled}
+                    onCheckedChange={(checked) =>
+                      onChange(
+                        checked
+                          ? [...selected, id]
+                          : selected.filter((value) => value !== id),
+                      )
+                    }
+                  />
+                )}
                 <ResourcePartnerAvatar
                   name={partner.name ?? ""}
                   avatar={partner.avatar}
@@ -127,13 +142,20 @@ export function PartnerPicker({
               </label>
             );
           })}
-        </div>
+        </PartnerChoiceList>
+      )}
+      {query.data && query.isError && (
+        <QueryRefreshError
+          error={query.error}
+          pending={query.isFetching}
+          onRetry={() => void query.refetch()}
+        />
       )}
       {!onlyPartner && (library.data?.totalSize ?? 0) > 50 && (
         <div className="flex items-center justify-between gap-3">
           <Button
             variant="ghost"
-            disabled={page === 1}
+            disabled={disabled || page === 1}
             onClick={() => setPage(page - 1)}
           >
             {t("previous")}
@@ -143,7 +165,7 @@ export function PartnerPicker({
           </span>
           <Button
             variant="ghost"
-            disabled={page * 50 >= (library.data?.totalSize ?? 0)}
+            disabled={disabled || page * 50 >= (library.data?.totalSize ?? 0)}
             onClick={() => setPage(page + 1)}
           >
             {t("next")}
@@ -177,5 +199,25 @@ export function PartnerPicker({
         {content}
       </PopoverContent>
     </Popover>
+  );
+}
+
+function PartnerChoiceList({
+  mode,
+  selected,
+  onChange,
+  children,
+}: {
+  mode: "single" | "multiple";
+  selected: string;
+  onChange: (id: string) => void;
+  children: ReactNode;
+}) {
+  return mode === "single" ? (
+    <RadioGroup value={selected} onValueChange={onChange} className="space-y-1">
+      {children}
+    </RadioGroup>
+  ) : (
+    <div className="space-y-1">{children}</div>
   );
 }

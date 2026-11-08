@@ -4,10 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { MessageCircle, Pencil } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { SkillImportDialog } from "@/modules/skill";
-import { ConnectorFormDialog } from "@/modules/connector";
 import { AutomaticTaskAttentionSection } from "@/modules/automatic-task";
 import { chatDraftHref } from "@/shared/lib/chat-navigation";
 import {
@@ -34,8 +32,7 @@ export function WakerDetailPage() {
   const appScenes = useOptionalAppSceneWorkspace();
   const { t } = useTranslation("waker");
   const [editing, setEditing] = useState(false);
-  const [skillImportOpen, setSkillImportOpen] = useState(false);
-  const [connectorCreateOpen, setConnectorCreateOpen] = useState(false);
+  const navigate = useNavigate();
   const query = useQuery(getWakerOptions({ path: { wakerId } }));
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const workRecordQuery = useQuery(
@@ -226,8 +223,12 @@ export function WakerDetailPage() {
                       skillsError={skillsQuery.isError}
                       connectorsPending={connectorsQuery.isPending}
                       connectorsError={connectorsQuery.isError}
-                      onAddSkill={() => setSkillImportOpen(true)}
-                      onAddConnector={() => setConnectorCreateOpen(true)}
+                      onAddSkill={() =>
+                        navigate(`/wakers/${wakerId}/resources/skills/new`)
+                      }
+                      onAddConnector={() =>
+                        navigate(`/wakers/${wakerId}/resources/connectors/new`)
+                      }
                     />
 
                     <WakerProfileSection waker={waker} />
@@ -240,17 +241,6 @@ export function WakerDetailPage() {
       </WakerDetailLayout>
 
       <WakerFormDialog open={editing} onOpenChange={setEditing} waker={waker} />
-      <SkillImportDialog
-        open={skillImportOpen}
-        wakerId={wakerId}
-        onOpenChange={setSkillImportOpen}
-        onImported={() => void skillsQuery.refetch()}
-      />
-      <ConnectorFormDialog
-        open={connectorCreateOpen}
-        wakerId={wakerId}
-        onOpenChange={setConnectorCreateOpen}
-      />
     </>
   );
 }

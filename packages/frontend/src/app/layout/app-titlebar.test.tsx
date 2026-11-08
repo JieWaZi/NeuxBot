@@ -6,6 +6,7 @@ import "@/shared/i18n";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import {
   AppNavigationHistoryControls,
+  pageOwnsSceneHeader,
   useAppNavigationHistory,
 } from "./app-titlebar";
 import type { ChatSceneOwner } from "@/shared/workspace/app-scene-model";
@@ -57,4 +58,10 @@ describe("侧栏实体历史", () => {
     await user.click(screen.getByRole("button", { name: "后退" }));
     expect(screen.getByRole("status")).toHaveTextContent("one");
   });
+});
+
+it("资源列表与详情由页面提供顶部类别或实体路径", () => {
+  expect(pageOwnsSceneHeader("/resources")).toBe(true);
+  expect(pageOwnsSceneHeader("/resources/skills/skill-1")).toBe(true);
+  expect(pageOwnsSceneHeader("/resources/plugins/plugin-1")).toBe(true);
 });

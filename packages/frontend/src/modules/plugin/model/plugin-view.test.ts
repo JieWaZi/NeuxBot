@@ -18,9 +18,9 @@ const pkg: PluginCatalogEntry["package"] = {
   integration: {
     authentication: {
       strategy: "plugin-command",
-      protocol: "neuxally-auth/1",
+      protocol: "neuxbot-auth/1",
       command: "node",
-      args: ["./.neuxally/auth/authorize.mjs"],
+      args: ["./.neuxbot/auth/authorize.mjs"],
     },
   },
   skills: [],
@@ -41,8 +41,8 @@ it("recognizes authorization declarations without a provider allowlist", () => {
       integration: {
         authentication: {
           strategy: "plugin-command",
-          protocol: "neuxally-auth/1",
-          command: "./.neuxally/auth/authorize",
+          protocol: "neuxbot-auth/1",
+          command: "./.neuxbot/auth/authorize",
         },
       },
     }),
@@ -52,25 +52,9 @@ it("recognizes authorization declarations without a provider allowlist", () => {
   );
 });
 
-it.each(["feishu", "github"])(
-  "does not offer authorization for the unsupported legacy %s provider",
-  (provider) => {
-    const legacy: PluginCatalogEntry["package"] = JSON.parse(
-      `{"manifest":{"extensions":{"com.ally":{"provider":"${provider}"}}}}`,
-    );
-    expect(pluginHasAuthorization(legacy)).toBe(false);
-    expect(
-      pluginNeedsAuthorization(legacy, {
-        installations: [{ wakerId: "w1" }],
-        account: { available: false, checkedAt: 123 },
-      }),
-    ).toBe(false);
-  },
-);
-
 it.each([
-  { strategy: "other-command", protocol: "neuxally-auth/1" },
-  { strategy: "plugin-command", protocol: "neuxally-auth/2" },
+  { strategy: "other-command", protocol: "neuxbot-auth/1" },
+  { strategy: "plugin-command", protocol: "neuxbot-auth/2" },
 ])(
   "does not offer unsupported authorization declarations (%j)",
   (authentication) => {
@@ -102,19 +86,17 @@ it("localizes authored names and descriptions while preserving a user rename", (
   const bilingual = {
     manifest: { name: "feishu-office", description: "Office tools" },
     presentation: {
-      displayName: "Feishu Office",
-      displayNames: { en: "Feishu Office", "zh-CN": "飞书办公" },
+      displayName: "Feishu",
+      displayNames: { en: "Feishu", "zh-CN": "飞书" },
       localizedDescriptions: {
         en: "Work with documents",
         "zh-CN": "处理办公资料",
       },
     },
   };
-  expect(pluginDisplayName(bilingual, "Feishu Office", "zh-CN")).toBe(
-    "飞书办公",
-  );
+  expect(pluginDisplayName(bilingual, "Feishu", "zh-CN")).toBe("飞书");
   expect(pluginDisplayName(bilingual, "我的办公室", "en")).toBe("我的办公室");
-  expect(pluginDisplayName(bilingual, "飞书办公", "en")).toBe("Feishu Office");
+  expect(pluginDisplayName(bilingual, "飞书", "en")).toBe("Feishu");
   expect(
     pluginDisplayName(
       {
@@ -124,10 +106,10 @@ it("localizes authored names and descriptions while preserving a user rename", (
           displayName: "feishu-office",
         },
       },
-      "Feishu Office",
+      "Feishu",
       "zh-CN",
     ),
-  ).toBe("飞书办公");
+  ).toBe("飞书");
   expect(pluginSummary(bilingual, undefined, undefined, "zh-CN")).toBe(
     "处理办公资料",
   );

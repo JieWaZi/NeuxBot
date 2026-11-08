@@ -5,58 +5,62 @@ import "@/shared/i18n";
 import { toSkillSummary } from "../model/skill-view";
 import { SkillCard } from "./skill-card";
 
-const avatar = vi.hoisted(() => vi.fn());
-vi.mock("@/shared/ui/avatar", () => ({
-  Avatar: (props: unknown) => {
-    avatar(props);
-    return <span data-testid="installed-partner-avatar" />;
-  },
-}));
-afterEach(() => {
-  cleanup();
-  avatar.mockClear();
-});
+afterEach(cleanup);
 
-it("shows actual installed partner profiles and offers manage and uninstall", () => {
+it("目录行只展示名称和简介，打开详情并独立处理安装", () => {
   const skill = toSkillSummary({
-    skill: { id: "writing", name: "writing-skills", source: "git" },
+    skill: {
+      id: "writing",
+      name: "writing-skills",
+      description: "写作方法",
+      source: "git",
+      gitUrl: "https://github.com/example/writing.git",
+    },
     affectedWakerCount: 6,
-    installedPartners: Array.from({ length: 4 }, (_, index) => ({
-      id: `partner-${index}`,
-      name: `伙伴${index}`,
-      avatar: `actual-avatar-${index}`,
-    })),
   });
   if (!skill) throw new Error("missing skill fixture");
-  const uninstall = vi.fn();
+  const install = vi.fn();
   render(
     <MemoryRouter>
       <SkillCard
-        compact
         skill={skill}
-        wakerId="w1"
+        wakerId=""
         onEnabledChange={vi.fn()}
-        onDelete={uninstall}
+        onInstall={install}
       />
     </MemoryRouter>,
   );
-  expect(screen.getByText("6 个伙伴使用")).toBeVisible();
-  expect(screen.getByText("来自 Git")).toBeVisible();
-  expect(screen.getAllByTestId("installed-partner-avatar")).toHaveLength(4);
-  expect(avatar.mock.calls.map(([props]) => props.src)).toEqual([
-    "actual-avatar-0",
-    "actual-avatar-1",
-    "actual-avatar-2",
-    "actual-avatar-3",
-  ]);
-  fireEvent.pointerDown(
-    screen.getByRole("button", { name: "writing-skills更多操作" }),
-    { button: 0, ctrlKey: false },
+  expect(screen.queryByText(/来自/)).not.toBeInTheDocument();
+  expect(screen.getByText("写作方法")).toBeVisible();
+  expect(
+    screen.getByRole("link", { name: "查看技能 writing-skills" }),
+  ).toHaveAttribute("href", "/resources/skills/writing");
+  expect(screen.getByRole("article")).toHaveAttribute("data-appearance", "row");
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(screen.queryByText("6 个伙伴使用")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /更多操作/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "安装" }));
+  expect(install).toHaveBeenCalledOnce();
+});
+
+it("伙伴目录行保留真实启停能力与伙伴详情地址", () => {
+  const skill = toSkillSummary({
+    skill: { id: "writing", name: "写作技能", source: "zip" },
+    enabled: true,
+  });
+  if (!skill) throw new Error("missing skill fixture");
+  const toggle = vi.fn();
+  render(
+    <MemoryRouter>
+      <SkillCard skill={skill} wakerId="w1" onEnabledChange={toggle} />
+    </MemoryRouter>,
   );
-  expect(screen.getByRole("menuitem", { name: "管理" })).toHaveAttribute(
-    "href",
-    "/wakers/w1/skills/writing",
-  );
-  fireEvent.click(screen.getByRole("menuitem", { name: "卸载" }));
-  expect(uninstall).toHaveBeenCalledOnce();
+  expect(screen.queryByText(/来自/)).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("link", { name: "查看技能 写作技能" }),
+  ).toHaveAttribute("href", "/wakers/w1/skills/writing");
+  fireEvent.click(screen.getByRole("switch", { name: "停用 写作技能" }));
+  expect(toggle).toHaveBeenCalledWith(false);
 });

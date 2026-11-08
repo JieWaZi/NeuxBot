@@ -437,12 +437,14 @@ vi.mock("./partner-navigation-layout", async () => {
       }>;
     }) => (
       <SceneChromePortalProvider>
-        <div data-sidebar-history-slot>{sidebarToolbar}</div>
+        <div data-sidebar-history-slot>
+          {sidebarToolbar}
+          {notificationBell}
+        </div>
         <SceneChromeHost>{renderTitlebar?.(null)}</SceneChromeHost>
         <AppModuleRail
           activeModule={settingsOpen ? "settings" : "partners"}
           onNavigate={onNavigateModule}
-          notification={notificationBell}
         />
         <output data-testid="sidebar-collapsed">
           {String(preferences.globalSidebarCollapsed)}
@@ -1406,6 +1408,11 @@ describe("AppShell 伙伴导航", () => {
         name: "通知，打开任务看板",
       });
       expect(activeBell).toHaveAttribute("aria-current", "page");
+      const historySlot = activeBell.closest("[data-sidebar-history-slot]");
+      expect(historySlot).not.toBeNull();
+      const historyButtons = historySlot?.querySelectorAll("button");
+      expect(historyButtons?.[1]).toHaveAccessibleName("前进");
+      expect(historyButtons?.[2]).toBe(activeBell);
       await user.click(activeBell);
       expect(
         document.querySelectorAll('[data-route-scene-id="work-board"]'),
@@ -1480,13 +1487,28 @@ describe("AppShell 伙伴导航", () => {
     expect(screen.getByText("资源 Scene")).toBeVisible();
   });
 
-  it("工作流兼容列表的顶栏占位按模块显示", async () => {
+  it("工作流资源列表沿用资源库 Scene 并显示分类侧栏", async () => {
     renderShell("/resources?category=workflows");
-    expect(
-      document.querySelector("[data-titlebar-breadcrumbs]"),
-    ).toHaveTextContent("工作流");
+    expect(document.querySelector("[data-titlebar-breadcrumbs]")).toBeNull();
+    expect(screen.getByRole("button", { name: "工作流" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(screen.queryByRole("tablist", { name: "场景标签" })).toBeNull();
-    expect(screen.getAllByRole("banner")).toHaveLength(1);
+    expect(activeRouteScene()).toHaveTextContent(
+      "/resources?category=workflows",
+    );
+  });
+
+  it.each([
+    "/workflows/new?draftId=d1",
+    "/workflows/flow-1",
+    "/workflows/flow-1/runs/run-1",
+  ])("工作流创作与运行 %s 隐藏整个资源分类侧栏", (entry) => {
+    renderShell(entry);
+    expect(screen.queryByRole("heading", { name: "资源库" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "技能" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "工作流" })).toBeNull();
   });
 
   it("关闭最后一个 Scene 后进入无标签欢迎页", async () => {
@@ -1927,7 +1949,7 @@ describe("AppShell 伙伴导航", () => {
     expect(
       await screen.findByRole("heading", { name: "操作指南" }),
     ).toBeVisible();
-    const skills = screen.getByRole("link", { name: "技能" });
+    const skills = screen.getByRole("link", { name: "插件" });
     expect(skills).toHaveAttribute(
       "href",
       "/resources?category=skills&search=desk&source=plugin",

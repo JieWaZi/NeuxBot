@@ -106,13 +106,13 @@ export function AppTitlebar({ breadcrumbs }: { breadcrumbs?: ReactNode }) {
   );
 }
 
-/** 这些详情由所属页面的既有 Query 贡献完整顶栏，Shell 只提供其挂载槽。 */
+/** 这些页面贡献当前类别或实体路径，Shell 只提供其顶栏挂载槽。 */
 export function pageOwnsSceneHeader(pathname: string) {
   return (
     /^\/settings(?:\/|$)/.test(pathname) ||
     /^\/wakers\/[^/]+(?:\/|$)/.test(pathname) ||
     /^\/teams\/[^/]+\/chats$/.test(pathname) ||
-    /^\/resources\/.+/.test(pathname) ||
+    /^\/resources(?:\/|$)/.test(pathname) ||
     /^\/knowledge\/[^/]+$/.test(pathname) ||
     /^\/workflows\/[^/]+(?:\/runs\/[^/]+)?$/.test(pathname) ||
     /^\/automatic-tasks\/[^/]+$/.test(pathname)

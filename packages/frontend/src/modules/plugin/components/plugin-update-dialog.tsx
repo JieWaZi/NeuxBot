@@ -4,6 +4,8 @@ import { useTranslation } from "react-i18next";
 import type {
   GetPluginAuthorizationResponse,
   StartPluginAuthorizationResponse,
+  CheckPluginAccountData,
+  GetPluginConfigurationResponse,
 } from "@/shared/api/generated/types.gen";
 import {
   localApiErrorMessage,
@@ -21,7 +23,8 @@ import {
   getPluginOptions,
   invalidatePluginQueries,
   prepareCatalogPluginMutation,
-  updatePluginConfigurationMutation,
+  updatePluginInstallationsMutation,
+  getPluginConfigurationOptions,
 } from "../api/plugin-queries";
 import {
   pluginDisplayName,
@@ -30,6 +33,8 @@ import {
   pluginSummary,
   type PluginDetail,
 } from "../model/plugin-view";
+import { pluginAccountContext } from "../model/plugin-account-context";
+import { usePluginConfiguration } from "../api/use-plugin-configuration";
 import { PluginAuthPanel } from "./plugin-auth-panel";
 import {
   PluginConfigurationFields,
@@ -55,6 +60,7 @@ export function PluginUpdateDialog({
   const ownedSession = useRef<{
     session: StartPluginAuthorizationResponse;
     versionId: string;
+    context: CheckPluginAccountData["body"];
   } | null>(null);
   const cancelled = useRef(new Set<string>());
   const pluginId = snapshot.plugin?.id ?? "";
@@ -90,7 +96,7 @@ export function PluginUpdateDialog({
     const statusKey = getPluginAuthorizationOptions(
       withLocalErrorSurface({
         path: { pluginId },
-        query: { wakerId, versionId: owned.versionId, verify: true },
+        query: { wakerId, versionId: owned.versionId },
       }),
     ).queryKey;
     const latest =
@@ -102,6 +108,7 @@ export function PluginUpdateDialog({
       await cancellation.mutateAsync({
         path: { pluginId, sessionId: owned.session.id },
         query: { wakerId, versionId: owned.versionId },
+        body: owned.context,
       });
     } catch {
       cancelled.current.delete(owned.session.id);
@@ -119,7 +126,17 @@ export function PluginUpdateDialog({
   }, []);
   const prepare = useMutation({
     ...withLocalErrorMutation(prepareCatalogPluginMutation()),
-    onSuccess: (value) => {
+    onSuccess: async (value) => {
+      if (!alive.current) return;
+      await client.fetchQuery({
+        ...getPluginConfigurationOptions(
+          withLocalErrorSurface({
+            path: { pluginId },
+            query: { wakerId, versionId: value.resolvedVersionId ?? "" },
+          }),
+        ),
+        staleTime: 0,
+      });
       if (!alive.current) return;
       // 重新准备同一版本时，用本次权威配置替换旧缓存，避免草稿冻结过期修订。
       client.setQueryData(
@@ -188,8 +205,8 @@ export function PluginUpdateDialog({
             queryError={target.error}
             fetching={target.isFetching}
             onRetry={() => void target.refetch()}
-            onAuthorizationStarted={(session) => {
-              ownedSession.current = { session, versionId };
+            onAuthorizationStarted={(session, context) => {
+              ownedSession.current = { session, versionId, context };
               if (!alive.current) void cancelOwnedSession();
             }}
             onAuthorizationReady={() => {
@@ -239,7 +256,6 @@ export function PluginUpdateDialog({
                   prepare.mutate({
                     path: { key: snapshot.update?.catalogKey ?? "" },
                     body: {
-                      ownerWakerId: snapshot.plugin?.ownerWakerId ?? "",
                       expectedArchiveSHA256: snapshot.update?.archiveSHA256,
                       trustConfirmed: true,
                     },
@@ -261,7 +277,52 @@ export function PluginUpdateDialog({
   );
 }
 
-function PreparedPluginUpdate({
+type PreparedUpdateProps = {
+  detail: PluginDetail;
+  snapshot: PluginDetail;
+  versionId: string;
+  wakerId: string;
+  queryError: unknown;
+  fetching: boolean;
+  onRetry: () => void;
+  onAuthorizationStarted: (
+    session: StartPluginAuthorizationResponse,
+    context: CheckPluginAccountData["body"],
+  ) => void;
+  onAuthorizationReady: () => void;
+  onReload: () => void;
+  reloading: boolean;
+  onClose: () => void;
+};
+function PreparedPluginUpdate(props: PreparedUpdateProps) {
+  const configuration = usePluginConfiguration(
+    props.detail.plugin?.id ?? "",
+    props.versionId,
+    props.wakerId,
+  );
+  return configuration.data ? (
+    <PreparedPluginUpdateForm
+      {...props}
+      configuration={configuration.data}
+      fetching={props.fetching || configuration.isFetching}
+      queryError={props.queryError ?? configuration.error}
+      onRetry={() => {
+        props.onRetry();
+        void configuration.refetch();
+      }}
+    />
+  ) : (
+    <div className="px-6 pb-6">
+      <QueryState
+        loadingLayout="content"
+        pending={configuration.isPending}
+        error={configuration.error}
+        onRetry={() => void configuration.refetch()}
+      />
+    </div>
+  );
+}
+function PreparedPluginUpdateForm({
   detail,
   snapshot,
   versionId,
@@ -274,40 +335,29 @@ function PreparedPluginUpdate({
   onReload,
   reloading,
   onClose,
-}: {
-  detail: PluginDetail;
-  snapshot: PluginDetail;
-  versionId: string;
-  wakerId: string;
-  queryError: unknown;
-  fetching: boolean;
-  onRetry: () => void;
-  onAuthorizationStarted: (session: StartPluginAuthorizationResponse) => void;
-  onAuthorizationReady: () => void;
-  onReload: () => void;
-  reloading: boolean;
-  onClose: () => void;
-}) {
+  configuration,
+}: PreparedUpdateProps & { configuration: GetPluginConfigurationResponse }) {
   const { t } = useTranslation("plugin");
   const client = useQueryClient();
-  const draft = usePluginConfigurationDraft(detail);
+  const draft = usePluginConfigurationDraft(configuration);
   const pkg = detail.versions?.find(
     (version) => version.id === versionId,
   )?.package;
   const hasAuth = pluginHasAuthorization(pkg);
   const [authenticated, setAuthenticated] = useState(false);
   const save = useMutation({
-    ...withLocalErrorMutation(updatePluginConfigurationMutation()),
+    ...withLocalErrorMutation(updatePluginInstallationsMutation()),
     onSuccess: async () => {
       await invalidatePluginQueries(client);
       onClose();
     },
   });
   const pending = save.isPending || reloading;
+  const accountContext = pluginAccountContext(configuration);
   const hasConfiguration = Boolean(
-    detail.fields?.length ||
-    Object.keys(detail.values ?? {}).length ||
-    detail.configuredSecrets?.length,
+    configuration.fields?.length ||
+    Object.keys(configuration.values ?? {}).length ||
+    configuration.configuredSecrets?.length,
   );
   return (
     <>
@@ -327,7 +377,10 @@ function PreparedPluginUpdate({
         ) : null}
         <fieldset disabled={pending} className="min-w-0 space-y-5">
           {hasConfiguration && (
-            <PluginConfigurationFields detail={detail} draft={draft} />
+            <PluginConfigurationFields
+              configuration={configuration}
+              draft={draft}
+            />
           )}
           {hasAuth && (
             <PluginAuthPanel
@@ -364,7 +417,8 @@ function PreparedPluginUpdate({
             pending ||
             fetching ||
             Boolean(queryError) ||
-            (hasAuth && !authenticated)
+            (hasAuth && !authenticated) ||
+            !accountContext
           }
           onClick={() =>
             save.mutate({
@@ -372,6 +426,8 @@ function PreparedPluginUpdate({
               query: { wakerId },
               body: {
                 ...draft.body,
+                expectedAccountGeneration:
+                  accountContext?.expectedAccountGeneration,
                 switches: (snapshot.installations ?? []).map((relation) => ({
                   wakerId: relation.wakerId ?? "",
                   expectedVersionId: relation.versionId ?? "",

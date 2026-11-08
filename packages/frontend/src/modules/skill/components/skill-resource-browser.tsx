@@ -20,6 +20,7 @@ import type {
 } from "@/shared/api/generated/types.gen";
 import { saveBlob } from "@/shared/platform";
 import { Button } from "@/shared/ui/button";
+import { ResourcePageFooter } from "@/shared/ui/resource-page";
 import { Input } from "@/shared/ui/input";
 import { ResourceLoadingState } from "@/shared/ui/resource-loading-state";
 import { Textarea } from "@/shared/ui/textarea";
@@ -38,6 +39,7 @@ import {
 } from "./skill-resource-dialogs";
 
 type SkillResourceBrowserProps = {
+  active?: boolean;
   currentVersion: string;
   error: boolean;
   instructions: string;
@@ -73,6 +75,7 @@ export function SkillResourceBrowser({
   skillId,
   versionId,
   wakerId,
+  active = true,
 }: SkillResourceBrowserProps) {
   const { t } = useTranslation("skill");
   const baseEntries = useMemo(
@@ -338,6 +341,18 @@ export function SkillResourceBrowser({
       resourceName(selectedEntry.path),
     );
   };
+  const resetChanges = () => {
+    setOperations([]);
+    setEntries(baseEntries);
+    setSelected(null);
+    setEditing(false);
+    setEditedContent("");
+    setSaveVersion(suggestNextPatchVersion(currentVersion));
+    setSaveNotes("");
+    setUploadTooLarge(false);
+    setPathAction(null);
+    setDeleteOpen(false);
+  };
   const saveChanges = () => {
     if (
       !changeCount ||
@@ -353,18 +368,12 @@ export function SkillResourceBrowser({
         version: saveVersion,
         notes: saveNotes,
       },
-      () => {
-        setOperations([]);
-        setEntries(baseEntries);
-        setSelected(null);
-        setEditing(false);
-        setSaveNotes("");
-      },
+      resetChanges,
     );
   };
 
   return (
-    <section className="border-border-subtle bg-surface-raised overflow-hidden rounded-lg border">
+    <section className="bg-resource-surface text-resource-content @container/skill-files overflow-hidden rounded-lg">
       <div className="border-border min-h-control-md flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2">
         <span className="text-muted-foreground type-body">
           {t("detail.resourceCount", {
@@ -429,8 +438,8 @@ export function SkillResourceBrowser({
           {t("detail.uploadTooLarge")}
         </p>
       ) : null}
-      <div className="grid min-h-96 grid-cols-[minmax(180px,240px)_minmax(0,1fr)]">
-        <div className="border-border border-r p-2">
+      <div className="grid min-h-96 grid-cols-1 @[32rem]/skill-files:grid-cols-[minmax(180px,240px)_minmax(0,1fr)]">
+        <div className="border-resource-border border-b p-2 @[32rem]/skill-files:border-r @[32rem]/skill-files:border-b-0">
           {tree.length ? (
             tree.map((resource) => (
               <SkillResourceRow
@@ -589,53 +598,72 @@ export function SkillResourceBrowser({
           )}
         </div>
       </div>
-      {changeCount ? (
-        <div className="border-border bg-muted/40 grid gap-3 border-t p-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="grid min-w-40 flex-1 gap-1.5">
-              <span className="type-label font-medium">
-                {t("detail.newVersion")}
-              </span>
-              <Input
-                value={saveVersion}
-                aria-invalid={!saveVersionValid}
-                onChange={(event) => setSaveVersion(event.target.value)}
-              />
-            </label>
-            <label className="grid min-w-48 flex-1 gap-1.5">
-              <span className="type-label font-medium">
-                {t("detail.versionNotes")}
-              </span>
-              <Input
-                value={saveNotes}
-                onChange={(event) => setSaveNotes(event.target.value)}
-              />
-            </label>
-            <Button
-              disabled={
-                !saveVersionValid ||
-                pending ||
-                (instructionsChanged && !instructionsContent.trim())
-              }
-              onClick={saveChanges}
-            >
-              <Save />
-              {pending
-                ? t("detail.savingVersion")
-                : t("detail.saveResourceChanges")}
-            </Button>
-          </div>
-          <p className="text-muted-foreground type-caption">
-            {t("detail.pendingResourceOperations", {
-              count: changeCount,
-            })}
-          </p>
-          {error ? (
-            <p role="alert" className="text-destructive type-caption">
-              {t("detail.saveVersionFailed")}
+      {active && changeCount ? (
+        <ResourcePageFooter aria-label={t("detail.resourceSaveStatus")}>
+          <div className="grid w-full min-w-0 gap-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="grid min-w-0 flex-1 basis-40 gap-1.5">
+                <span className="type-label font-medium">
+                  {t("detail.newVersion")}
+                </span>
+                <Input
+                  appearance="catalog"
+                  value={saveVersion}
+                  placeholder={suggestNextPatchVersion(currentVersion)}
+                  disabled={pending}
+                  aria-invalid={!saveVersionValid}
+                  onChange={(event) => setSaveVersion(event.target.value)}
+                />
+              </label>
+              <label className="grid min-w-0 flex-1 basis-48 gap-1.5">
+                <span className="type-label font-medium">
+                  {t("detail.versionNotes")}
+                </span>
+                <Input
+                  appearance="catalog"
+                  value={saveNotes}
+                  placeholder={t("detail.versionNotesPlaceholder")}
+                  disabled={pending}
+                  onChange={(event) => setSaveNotes(event.target.value)}
+                />
+              </label>
+              <Button
+                type="button"
+                size="catalog"
+                variant="ghost"
+                disabled={pending}
+                onClick={resetChanges}
+              >
+                {t("detail.resetResourceChanges")}
+              </Button>
+              <Button
+                type="button"
+                size="catalog"
+                disabled={
+                  !saveVersionValid ||
+                  pending ||
+                  (instructionsChanged && !instructionsContent.trim())
+                }
+                onClick={saveChanges}
+              >
+                <Save />
+                {pending
+                  ? t("detail.savingVersion")
+                  : t("detail.saveResourceChanges")}
+              </Button>
+            </div>
+            <p className="text-muted-foreground type-caption">
+              {t("detail.pendingResourceOperations", {
+                count: changeCount,
+              })}
             </p>
-          ) : null}
-        </div>
+            {error ? (
+              <p role="alert" className="text-destructive type-caption">
+                {t("detail.saveVersionFailed")}
+              </p>
+            ) : null}
+          </div>
+        </ResourcePageFooter>
       ) : null}
 
       <SkillResourcePathDialog

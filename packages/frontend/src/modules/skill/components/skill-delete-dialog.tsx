@@ -16,7 +16,6 @@ export type DeletableSkill = {
   affectedWakerCount: number;
   id: string;
   name: string;
-  scope: "private" | "public";
 };
 
 type Props = {
@@ -25,6 +24,7 @@ type Props = {
   open: boolean;
   skills: DeletableSkill[];
   wakerId: string;
+  partnerName?: string;
 };
 
 export function SkillDeleteDialog({
@@ -33,6 +33,7 @@ export function SkillDeleteDialog({
   open,
   skills,
   wakerId,
+  partnerName,
 }: Props) {
   const { t } = useTranslation("skill");
   const queryClient = useQueryClient();
@@ -41,13 +42,7 @@ export function SkillDeleteDialog({
   const [failedCount, setFailedCount] = useState(0);
   const [isDeleting, setIsDeleting] = useState(false);
   const batch = skills.length > 1;
-  const publicSkills = remainingSkills.filter(
-    (skill) => skill.scope === "public",
-  );
-  const publicAffectedWakerCount = Math.max(
-    0,
-    ...publicSkills.map((skill) => skill.affectedWakerCount),
-  );
+  const removingRelations = Boolean(wakerId);
 
   const close = () => {
     if (isDeleting) return;
@@ -104,36 +99,45 @@ export function SkillDeleteDialog({
     >
       <DialogContent
         size="sm"
-        title={t(batch ? "delete.batchTitle" : "delete.title")}
-        description={t("delete.description")}
+        title={t(
+          removingRelations
+            ? batch
+              ? "remove.batchTitle"
+              : "remove.title"
+            : batch
+              ? "delete.batchTitle"
+              : "delete.title",
+        )}
+        description={t(
+          removingRelations ? "remove.description" : "delete.description",
+        )}
       >
         <div className="px-6 pb-5">
           <div className="bg-destructive/8 text-destructive type-body flex gap-2 rounded-md p-3">
             <TriangleAlert className="size-icon-md mt-0.5 shrink-0" />
             <p>
-              {batch
-                ? publicSkills.length > 0
-                  ? t("delete.batchPublicWarning", {
-                      count: remainingSkills.length,
-                      publicCount: publicSkills.length,
-                      wakerCount: publicAffectedWakerCount,
+              {removingRelations
+                ? batch
+                  ? t("remove.batchWarning", { count: remainingSkills.length })
+                  : t("remove.warning", {
+                      name: remainingSkills[0]?.name ?? "",
+                      partner:
+                        partnerName || t("common:partnerNavigation.partner"),
                     })
-                  : t("delete.batchPrivateWarning", {
-                      count: remainingSkills.length,
-                    })
-                : remainingSkills[0]?.scope === "public"
-                  ? t("delete.publicWarning", {
+                : batch
+                  ? t("delete.batchWarning", { count: remainingSkills.length })
+                  : t("delete.warning", {
                       name: remainingSkills[0]?.name ?? "",
                       count: remainingSkills[0]?.affectedWakerCount ?? 0,
-                    })
-                  : t("delete.privateWarning", {
-                      name: remainingSkills[0]?.name ?? "",
                     })}
             </p>
           </div>
           {failedCount > 0 ? (
             <p role="alert" className="text-destructive type-body mt-3">
-              {singleError ?? t("delete.failed", { count: failedCount })}
+              {singleError ??
+                t(removingRelations ? "remove.failed" : "delete.failed", {
+                  count: failedCount,
+                })}
             </p>
           ) : null}
         </div>
@@ -154,11 +158,17 @@ export function SkillDeleteDialog({
           >
             {isDeleting ? <LoaderCircle className="animate-spin" /> : null}
             {t(
-              failedCount > 0
-                ? "delete.retry"
-                : batch
-                  ? "delete.confirmBatch"
-                  : "delete.confirm",
+              removingRelations
+                ? failedCount > 0
+                  ? "remove.retry"
+                  : batch
+                    ? "remove.confirmBatch"
+                    : "remove.confirm"
+                : failedCount > 0
+                  ? "delete.retry"
+                  : batch
+                    ? "delete.confirmBatch"
+                    : "delete.confirm",
             )}
           </Button>
         </DialogFooter>

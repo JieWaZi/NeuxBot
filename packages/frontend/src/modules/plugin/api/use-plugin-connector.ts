@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import {
   withLocalErrorMutation,
   withLocalErrorSurface,
@@ -9,15 +10,25 @@ import {
   getCatalogPluginConnectorOptions,
   testPluginConnectorMutation,
 } from "./plugin-queries";
-import type { PluginSkillContext } from "../components/plugin-skill-dialog";
+import type { PluginComponentContext } from "../model/plugin-components";
 
 /** 查看连接器只读取当前入口固定的来源，不触发连接或授权。 */
 export function usePluginConnector(
-  context: PluginSkillContext,
+  context: PluginComponentContext,
   connectorKey: string,
   active = true,
 ) {
   const client = useQueryClient();
+  const [probeIdentity, setProbeIdentity] = useState("");
+  const identity = JSON.stringify([
+    context.catalogKey,
+    context.pluginId,
+    context.versionId,
+    context.wakerId,
+    context.sourceCommit,
+    context.archiveSHA256,
+    connectorKey,
+  ]);
   const catalog = Boolean(context.catalogKey);
   const catalogOptions = getCatalogPluginConnectorOptions(
     withLocalErrorSurface({
@@ -41,7 +52,10 @@ export function usePluginConnector(
   );
   const catalogQuery = useQuery({
     ...catalogOptions,
-    enabled: active && catalog && Boolean(connectorKey),
+    enabled:
+      active &&
+      catalog &&
+      Boolean(connectorKey && context.sourceCommit && context.archiveSHA256),
   });
   const installedQuery = useQuery({
     ...installedOptions,
@@ -60,9 +74,14 @@ export function usePluginConnector(
     withLocalErrorMutation(testPluginConnectorMutation()),
   );
   const query = catalog ? catalogQuery : installedQuery;
-  const canTest = Boolean(context.pluginId && context.versionId);
+  const canTest = Boolean(
+    context.pluginId &&
+    context.versionId &&
+    (!catalog || (context.sourceCommit && context.archiveSHA256)),
+  );
   const test = () => {
     if (!canTest) return;
+    setProbeIdentity(identity);
     // 回调固定发起时的查询身份，切换组件或版本后不会把迟到结果写入新详情。
     const viewKey = catalog
       ? catalogOptions.queryKey
@@ -88,10 +107,15 @@ export function usePluginConnector(
     );
   };
   const currentProbe =
+    probeIdentity === identity &&
     probe.variables?.path?.pluginId === context.pluginId &&
     probe.variables?.query?.versionId === context.versionId &&
     probe.variables?.query?.key === connectorKey &&
-    probe.variables?.query?.wakerId === (context.wakerId || undefined);
+    probe.variables?.query?.wakerId === (context.wakerId || undefined) &&
+    probe.variables?.query?.sourceCommit ===
+      (catalog ? context.sourceCommit : undefined) &&
+    probe.variables?.query?.archiveSHA256 ===
+      (catalog ? context.archiveSHA256 : undefined);
   return {
     ...query,
     canTest,

@@ -358,7 +358,6 @@ function PartnerNavigationLayoutContent({
         <AppModuleRail
           activeModule={settingsOpen ? "settings" : navigation.moduleId}
           onNavigate={onNavigateModule}
-          notification={notificationBell}
           pinnedModules={pinnedAppModules(preferences.railPins)}
           onPinChange={(id, pinned) =>
             onPreferencesChange((current) => ({
@@ -393,7 +392,14 @@ function PartnerNavigationLayoutContent({
               data-app-sidebar-toolbar
               data-desktop-drag-region
             >
-              <div data-sidebar-history-slot>{sidebarToolbar}</div>
+              <div
+                data-sidebar-history-slot
+                className="flex shrink-0 items-center"
+                data-desktop-no-drag-region
+              >
+                {sidebarToolbar}
+                {notificationBell}
+              </div>
             </div>
             <div
               hidden={

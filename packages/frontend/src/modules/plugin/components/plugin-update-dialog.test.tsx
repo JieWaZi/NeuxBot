@@ -1,45 +1,62 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
   waitFor,
-  act,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import "@/shared/i18n";
 import { ApiError } from "@/shared/api/errors";
+import type {
+  GetPluginAuthorizationResponse,
+  GetPluginConfigurationResponse,
+} from "@/shared/api/generated/types.gen";
 import type { PluginDetail } from "../model/plugin-view";
 import { PluginUpdateDialog } from "./plugin-update-dialog";
-
 const fixture = vi.hoisted(() => ({
-  auth: vi.fn(),
-  startAuth: vi.fn(),
-  cancel: vi.fn(),
-  read: vi.fn(),
   prepare: vi.fn(),
+  read: vi.fn(),
+  configRead: vi.fn(),
   save: vi.fn(),
+  start: vi.fn(),
+  cancel: vi.fn(),
   invalidate: vi.fn(),
+  configuration: {} as GetPluginConfigurationResponse,
+  account: {} as GetPluginAuthorizationResponse,
+  target: {} as PluginDetail,
 }));
 vi.mock("@/shared/api/use-query-events", () => ({
   useQueryEvents: () => undefined,
 }));
 vi.mock("../api/plugin-queries", () => ({
-  cancelPluginAuthorizationMutation: () => ({ mutationFn: fixture.cancel }),
-  getPluginAuthorizationOptions: () => ({
-    queryKey: ["auth"],
-    queryFn: fixture.auth,
-  }),
-  startPluginAuthorizationMutation: () => ({ mutationFn: fixture.startAuth }),
-  logoutPluginAuthorizationMutation: () => ({ mutationFn: vi.fn() }),
   getPluginOptions: (options: { query?: { versionId?: string } }) => ({
     queryKey: [{ _id: "getPlugin", versionId: options.query?.versionId }],
     queryFn: () => fixture.read(options.query?.versionId),
   }),
+  getPluginConfigurationOptions: () => ({
+    queryKey: [{ _id: "getPluginConfiguration" }],
+    queryFn: fixture.configRead,
+  }),
+  getPluginAuthorizationOptions: () => ({
+    queryKey: ["auth"],
+    queryFn: async () => structuredClone(fixture.account),
+  }),
+  getPluginAuthorizationSessionOptions: (options: {
+    path: { sessionId: string };
+  }) => ({
+    queryKey: ["auth-session", options.path.sessionId],
+    queryFn: async () => structuredClone(fixture.account.session),
+  }),
+  checkPluginAccountMutation: () => ({ mutationFn: vi.fn() }),
+  startPluginAuthorizationMutation: () => ({ mutationFn: fixture.start }),
+  cancelPluginAuthorizationMutation: () => ({ mutationFn: fixture.cancel }),
+  logoutPluginAuthorizationMutation: () => ({ mutationFn: vi.fn() }),
   prepareCatalogPluginMutation: () => ({ mutationFn: fixture.prepare }),
-  updatePluginConfigurationMutation: () => ({ mutationFn: fixture.save }),
+  updatePluginInstallationsMutation: () => ({ mutationFn: fixture.save }),
   invalidatePluginQueries: fixture.invalidate,
 }));
 const installed: PluginDetail = {
@@ -51,419 +68,254 @@ const installed: PluginDetail = {
     { wakerId: "w2", versionId: "v2", enabled: true },
   ],
   partnerNames: { w1: "伙伴一", w2: "伙伴二" },
+  configurationRevision: 3,
+  accountGeneration: 4,
   update: {
     available: true,
     catalogKey: "office",
     archiveSHA256: "fixed-sha",
     version: "2.0.0",
-    wakerIds: ["w1"],
   },
-  fields: [{ key: "existing", label: "现有设置" }],
-  values: { existing: "keep" },
-  configurationRevision: 3,
 };
-function target(): PluginDetail {
-  return {
+beforeEach(() => {
+  vi.resetAllMocks();
+  fixture.target = {
     ...installed,
     resolvedVersionId: "v2",
-    ready: true,
     versions: [
       {
         id: "v2",
         package: {
-          manifest: { version: "0.1.0", description: "新版说明" },
+          manifest: { description: "新版说明" },
           upstream: { tag: "v2026" },
         },
       },
       ...(installed.versions ?? []),
     ],
   };
-}
-function show(wakerId = "") {
+  fixture.configuration = {
+    versionId: "v2",
+    fields: [{ key: "existing", label: "现有设置" }],
+    values: { existing: "keep" },
+    configuredSecrets: [],
+    configurationRevision: 3,
+    accountGeneration: 4,
+    ready: true,
+    blockers: [],
+  };
+  fixture.account = {
+    versionId: "v2",
+    configurationRevision: 3,
+    accountGeneration: 4,
+    account: { available: false },
+    session: { id: "", state: "" },
+  };
+  fixture.prepare.mockImplementation(async () =>
+    structuredClone(fixture.target),
+  );
+  fixture.read.mockImplementation(async (version?: string) =>
+    structuredClone(version ? fixture.target : installed),
+  );
+  fixture.configRead.mockImplementation(async () =>
+    structuredClone(fixture.configuration),
+  );
+  fixture.save.mockResolvedValue({ success: true });
+  fixture.cancel.mockResolvedValue({ success: true });
+  fixture.start.mockResolvedValue({ id: "mine", state: "waiting" });
+  fixture.invalidate.mockResolvedValue(undefined);
+});
+afterEach(cleanup);
+function show() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  const onClose = vi.fn();
+  const close = vi.fn();
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <PluginUpdateDialog
-          detail={installed}
-          wakerId={wakerId}
-          onClose={onClose}
-        />
+        <PluginUpdateDialog detail={installed} onClose={close} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  return { onClose, client };
+  return { client, close };
 }
-afterEach(cleanup);
-beforeEach(() => {
-  vi.resetAllMocks();
-  fixture.auth.mockResolvedValue({ account: { available: false } });
-  fixture.startAuth.mockResolvedValue({
-    id: "owned-session",
-    state: "waiting",
-  });
-  fixture.read.mockImplementation(async (versionId?: string) =>
-    structuredClone(versionId ? target() : installed),
-  );
-  fixture.prepare.mockResolvedValue(target());
-  fixture.save.mockResolvedValue({ success: true });
-  fixture.invalidate.mockResolvedValue(undefined);
-});
 async function prepare() {
-  fireEvent.click(
-    await screen.findByRole("button", { name: "确认并准备更新" }),
-  );
-  await screen.findByText("新版说明");
+  fireEvent.click(screen.getByRole("button", { name: "确认并准备更新" }));
+  await screen.findByText(/v2026/);
   await waitFor(() =>
-    expect(screen.queryByText("正在处理…")).not.toBeInTheDocument(),
+    expect(
+      screen.getByRole("button", { name: "更新全部伙伴" }),
+    ).not.toBeDisabled(),
   );
-  await act(async () => {
-    await Promise.resolve();
-  });
 }
-it("prepares a fixed target and explicitly updates every installed partner including disabled and already-current installs", async () => {
-  const { onClose } = show("w1");
-  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  await prepare();
-  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  expect(screen.getByText("将更新全部 2 个伙伴")).toBeVisible();
-  expect(screen.getByText("伙伴二")).toBeVisible();
-  expect(fixture.prepare.mock.calls[0]?.[0]).toMatchObject({
-    path: { key: "office" },
-    body: { expectedArchiveSHA256: "fixed-sha", trustConfirmed: true },
-  });
-  expect(fixture.save).not.toHaveBeenCalled();
-  expect(screen.getByText(/插件版本 · v2026/)).toBeVisible();
-  expect(screen.queryByText("0.1.0")).not.toBeInTheDocument();
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeEnabled(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
-  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-  expect(fixture.save.mock.calls[0]?.[0]).toMatchObject({
-    path: { pluginId: "p" },
-    body: {
-      expectedRevision: 3,
-      values: { existing: "keep" },
-      switches: [
-        { wakerId: "w1", expectedVersionId: "v1", versionId: "v2" },
-        { wakerId: "w2", expectedVersionId: "v2", versionId: "v2" },
-      ],
-    },
-  });
-  expect(fixture.invalidate).toHaveBeenCalledOnce();
-});
-it("retains preparation errors for retry without changing any installation", async () => {
-  fixture.prepare.mockRejectedValueOnce(new ApiError("归档已变化"));
-  const { onClose } = show();
-  fireEvent.click(
-    await screen.findByRole("button", { name: "确认并准备更新" }),
-  );
-  expect(await screen.findByRole("alert")).toHaveTextContent("归档已变化");
-  expect(fixture.save).not.toHaveBeenCalled();
-  expect(onClose).not.toHaveBeenCalled();
-  await prepare();
-});
-it("keeps draft settings and the original optimistic revision after a failed atomic switch", async () => {
-  const detail = {
-    ...target(),
-    ready: false,
-    fields: [{ key: "endpoint", label: "服务地址", required: true }],
-  };
-  fixture.prepare.mockResolvedValue(detail);
-  fixture.read.mockImplementation(async (id?: string) =>
-    structuredClone(id ? detail : installed),
-  );
-  fixture.save.mockRejectedValueOnce(new ApiError("配置已变化"));
-  const { onClose } = show();
-  await prepare();
-  fireEvent.change(screen.getByRole("textbox", { name: /服务地址/ }), {
-    target: { value: "https://example.test" },
-  });
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeEnabled(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("配置已变化");
-  expect(screen.getByRole("textbox", { name: /服务地址/ })).toHaveValue(
-    "https://example.test",
-  );
-  expect(onClose).not.toHaveBeenCalled();
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeEnabled(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
-  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-  expect(fixture.save.mock.calls[1]?.[0]).toMatchObject({
-    body: {
-      expectedRevision: 3,
-      values: { endpoint: "https://example.test", existing: "keep" },
-    },
-  });
-});
-it("waits for account readiness but never auto-submits after authorization", async () => {
-  let current = { ...target(), ready: false, account: { available: false } };
-  const pkg = current.versions?.[0]?.package;
+function withAuthentication() {
+  const pkg = fixture.target.versions?.[0]?.package;
   if (pkg)
     pkg.integration = {
       authentication: {
         strategy: "plugin-command",
-        protocol: "neuxally-auth/1",
-        command: "node",
-        args: ["./.neuxally/auth/authorize.mjs"],
+        protocol: "neuxbot-auth/1",
       },
     };
-  fixture.prepare.mockResolvedValue(current);
-  fixture.read.mockImplementation(async (id?: string) =>
-    structuredClone(id ? current : installed),
-  );
-  const { onClose, client } = show();
+  fixture.configuration.ready = false;
+}
+it("reads configuration only after explicit preparation and commits every fixed installation with the account generation", async () => {
+  const { close } = show();
+  expect(fixture.configRead).not.toHaveBeenCalled();
   await prepare();
+  expect(fixture.save).not.toHaveBeenCalled();
+  expect(fixture.prepare.mock.calls[0]?.[0]).toEqual(
+    expect.objectContaining({
+      path: { key: "office" },
+      body: expect.objectContaining({
+        expectedArchiveSHA256: "fixed-sha",
+        trustConfirmed: true,
+      }),
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  expect(fixture.save.mock.calls[0]?.[0]).toEqual(
+    expect.objectContaining({
+      body: {
+        expectedRevision: 3,
+        expectedAccountGeneration: 4,
+        values: { existing: "keep" },
+        secrets: [],
+        switches: [
+          { wakerId: "w1", expectedVersionId: "v1", versionId: "v2" },
+          { wakerId: "w2", expectedVersionId: "v2", versionId: "v2" },
+        ],
+      },
+    }),
+  );
+});
+it("retains required draft settings and original revision after an atomic update conflict", async () => {
+  fixture.configuration.fields = [
+    { key: "endpoint", label: "服务地址", required: true },
+  ];
+  fixture.configuration.ready = false;
+  fixture.save.mockRejectedValueOnce(new ApiError("配置已变化"));
+  const { close } = show();
+  await prepare();
+  fireEvent.change(screen.getByRole("textbox", { name: /服务地址/ }), {
+    target: { value: "https://example.test" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("配置已变化");
+  expect(close).not.toHaveBeenCalled();
+  expect(screen.getByRole("textbox", { name: /服务地址/ })).toHaveValue(
+    "https://example.test",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  expect(fixture.save.mock.calls[1]?.[0]).toMatchObject({
+    body: {
+      expectedRevision: 3,
+      expectedAccountGeneration: 4,
+      values: { existing: "keep", endpoint: "https://example.test" },
+    },
+  });
+});
+it("waits for cached account readiness and still requires the user's final update confirmation", async () => {
+  withAuthentication();
+  const { client, close } = show();
+  fireEvent.click(screen.getByRole("button", { name: "确认并准备更新" }));
+  await screen.findByText(/v2026/);
   expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeDisabled();
-  current = { ...current, ready: true, account: { available: true } };
+  fixture.account = {
+    ...fixture.account,
+    accountGeneration: 5,
+    account: { available: true },
+    session: { id: "done", state: "ready" },
+  };
+  fixture.configuration.accountGeneration = 5;
   await act(async () => {
-    client.setQueryData(["auth"], {
-      account: { available: true },
-      session: { id: "completed", state: "ready" },
+    client.setQueryData(["auth"], structuredClone(fixture.account));
+    await client.invalidateQueries({
+      queryKey: [{ _id: "getPluginConfiguration" }],
     });
   });
   await waitFor(() =>
     expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeEnabled(),
   );
   expect(fixture.save).not.toHaveBeenCalled();
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeEnabled(),
-  );
   fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
-  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-});
-it("does not close until affected queries have refreshed", async () => {
-  let refreshed: (() => void) | undefined;
-  fixture.invalidate.mockReturnValue(
-    new Promise<void>((resolve) => {
-      refreshed = resolve;
-    }),
-  );
-  const { onClose } = show();
-  await prepare();
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeEnabled(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
-  await waitFor(() => expect(fixture.invalidate).toHaveBeenCalled());
-  expect(onClose).not.toHaveBeenCalled();
-  await act(async () => refreshed?.());
-  expect(onClose).toHaveBeenCalledOnce();
-});
-
-it("reloads changed catalog metadata after preparation fails instead of repeatedly preparing an obsolete digest", async () => {
-  fixture.prepare.mockRejectedValueOnce(new ApiError("归档已变化"));
-  fixture.read.mockResolvedValue({
-    ...installed,
-    update: { ...installed.update, archiveSHA256: "new-fixed-sha" },
-  });
-  show();
-  fireEvent.click(
-    await screen.findByRole("button", { name: "确认并准备更新" }),
-  );
-  await screen.findByRole("alert");
-  fireEvent.click(screen.getByRole("button", { name: "重新读取并确认" }));
-  await waitFor(() =>
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "确认并准备更新" }));
-  await waitFor(() => expect(fixture.prepare).toHaveBeenCalledTimes(2));
-  expect(fixture.prepare.mock.calls[1]?.[0]).toMatchObject({
-    body: { expectedArchiveSHA256: "new-fixed-sha" },
-  });
-});
-it.each([false, true])(
-  "only cancels its own waiting authorization when closing (completed=%s)",
-  async (completed) => {
-    const detail = target();
-    if (detail.versions?.[0]?.package)
-      detail.versions[0].package.integration = {
-        authentication: {
-          strategy: "plugin-command",
-          protocol: "neuxally-auth/1",
-          command: "node",
-          args: ["./.neuxally/auth/authorize.mjs"],
-        },
-      };
-    fixture.prepare.mockResolvedValue(detail);
-    fixture.read.mockResolvedValue(detail);
-    const { client, onClose } = show();
-    await prepare();
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "连接账号" })).toBeEnabled(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "连接账号" }));
-    await waitFor(() => expect(fixture.startAuth).toHaveBeenCalledOnce());
-    if (completed)
-      client.setQueryData(["auth"], {
-        session: { id: "owned-session", state: "ready" },
-      });
-    fireEvent.click(screen.getByRole("button", { name: "关闭" }));
-    expect(onClose).toHaveBeenCalledOnce();
-    if (completed) expect(fixture.cancel).not.toHaveBeenCalled();
-    else
-      await waitFor(() =>
-        expect(fixture.cancel.mock.calls[0]?.[0]).toMatchObject({
-          path: { pluginId: "p", sessionId: "owned-session" },
-          query: { versionId: "v2" },
-        }),
-      );
-    expect(fixture.save).not.toHaveBeenCalled();
-  },
-);
-
-it("updates with new required draft settings and an already connected account even when the saved configuration summary is not ready", async () => {
-  const detail = {
-    ...target(),
-    ready: false,
-    account: {},
-    fields: [{ key: "endpoint", label: "服务地址", required: true }],
-  };
-  if (detail.versions?.[0]?.package)
-    detail.versions[0].package.integration = {
-      authentication: {
-        strategy: "plugin-command",
-        protocol: "neuxally-auth/1",
-        command: "node",
-        args: ["./.neuxally/auth/authorize.mjs"],
-      },
-    };
-  fixture.prepare.mockResolvedValue(detail);
-  fixture.read.mockResolvedValue(detail);
-  fixture.auth.mockResolvedValue({
-    account: { available: true, name: "已连接账号" },
-  });
-  const { onClose } = show();
-  await prepare();
-  expect(await screen.findByText("已连接：已连接账号")).toBeVisible();
-  fireEvent.change(screen.getByRole("textbox", { name: /服务地址/ }), {
-    target: { value: "https://new.test" },
-  });
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeEnabled(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
-  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
   expect(fixture.save.mock.calls[0]?.[0]).toMatchObject({
-    body: {
-      values: { endpoint: "https://new.test", existing: "keep" },
-      switches: [
-        { wakerId: "w1", expectedVersionId: "v1", versionId: "v2" },
-        { wakerId: "w2", expectedVersionId: "v2", versionId: "v2" },
-      ],
-    },
+    body: { expectedAccountGeneration: 5 },
   });
 });
-
-it("cancels a newly started authorization whose response arrives after the update dialog has closed", async () => {
-  const detail = target();
-  if (detail.versions?.[0]?.package)
-    detail.versions[0].package.integration = {
-      authentication: {
-        strategy: "plugin-command",
-        protocol: "neuxally-auth/1",
-        command: "node",
-        args: ["./.neuxally/auth/authorize.mjs"],
-      },
-    };
-  fixture.prepare.mockResolvedValue(detail);
-  fixture.read.mockResolvedValue(detail);
-  let finish: ((session: { id: string; state: string }) => void) | undefined;
-  fixture.startAuth.mockImplementationOnce(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve;
-      }),
-  );
-  const { onClose } = show();
-  await prepare();
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "连接账号" })).toBeEnabled(),
-  );
-  fireEvent.click(screen.getByRole("button", { name: "连接账号" }));
-  await waitFor(() => expect(fixture.startAuth).toHaveBeenCalledOnce());
-  fireEvent.click(screen.getByRole("button", { name: "关闭" }));
-  await act(async () => finish?.({ id: "late-session", state: "waiting" }));
-  await waitFor(() =>
-    expect(fixture.cancel.mock.calls[0]?.[0]).toMatchObject({
-      path: { pluginId: "p", sessionId: "late-session" },
-    }),
-  );
-  expect(onClose).toHaveBeenCalledOnce();
+it("keeps preparation and configuration read failures local without switching any installation", async () => {
+  fixture.configRead.mockRejectedValueOnce(new ApiError("配置读取失败"));
+  show();
+  fireEvent.click(screen.getByRole("button", { name: "确认并准备更新" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("配置读取失败");
   expect(fixture.save).not.toHaveBeenCalled();
 });
-it("does not cancel another owner's existing waiting authorization when the dialog closes", async () => {
-  const detail = target();
-  if (detail.versions?.[0]?.package)
-    detail.versions[0].package.integration = {
-      authentication: {
-        strategy: "plugin-command",
-        protocol: "neuxally-auth/1",
-        command: "node",
-        args: ["./.neuxally/auth/authorize.mjs"],
-      },
-    };
-  fixture.prepare.mockResolvedValue(detail);
-  fixture.read.mockResolvedValue(detail);
-  fixture.auth.mockResolvedValue({
-    account: { available: false },
-    session: { id: "other-owner", state: "waiting" },
-  });
+it("compensates a late authorization response using the original context after closing", async () => {
+  withAuthentication();
+  let resolve: ((value: { id: string; state: string }) => void) | undefined;
+  fixture.start.mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  const { close } = show();
+  fireEvent.click(screen.getByRole("button", { name: "确认并准备更新" }));
+  await screen.findByText(/v2026/);
+  fireEvent.click(await screen.findByRole("button", { name: "连接账号" }));
+  await waitFor(() => expect(fixture.start).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole("button", { name: "取消" }));
+  expect(close).toHaveBeenCalledOnce();
+  fixture.account.accountGeneration = 9;
+  await act(async () => resolve?.({ id: "late", state: "waiting" }));
+  await waitFor(() =>
+    expect(fixture.cancel.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({
+        path: { pluginId: "p", sessionId: "late" },
+        query: { wakerId: "", versionId: "v2" },
+        body: {
+          expectedConfigurationRevision: 3,
+          expectedAccountGeneration: 4,
+        },
+      }),
+    ),
+  );
+});
+it("does not cancel another owner's existing authorization", async () => {
+  withAuthentication();
+  fixture.account.session = {
+    id: "someone-else",
+    state: "waiting",
+    actions: [{ type: "open-url", url: "https://example.com/auth" }],
+  };
   show();
-  await prepare();
-  expect(
-    await screen.findByText("请完成当前授权步骤，完成后会自动更新状态。"),
-  ).toBeVisible();
-  fireEvent.click(screen.getByRole("button", { name: "关闭" }));
+  fireEvent.click(screen.getByRole("button", { name: "确认并准备更新" }));
+  await screen.findByText(/v2026/);
+  fireEvent.click(screen.getByRole("button", { name: "取消" }));
   expect(fixture.cancel).not.toHaveBeenCalled();
 });
-
-it("uses the fresh configuration revision when re-preparing the same target after a conflict", async () => {
-  fixture.save.mockRejectedValueOnce(new ApiError("配置已变化"));
-  const { onClose } = show();
+it("loads fresh configuration when the same target is prepared again after a conflict", async () => {
+  fixture.save.mockRejectedValueOnce(new ApiError("冲突"));
+  show();
   await prepare();
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeEnabled(),
-  );
   fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("配置已变化");
-  const refreshedTarget = {
-    ...target(),
+  await screen.findByRole("alert");
+  fixture.configuration = {
+    ...fixture.configuration,
     configurationRevision: 4,
     values: { existing: "fresh" },
   };
-  fixture.read.mockImplementation(async (versionId?: string) =>
-    structuredClone(
-      versionId
-        ? refreshedTarget
-        : {
-            ...installed,
-            configurationRevision: 4,
-            values: { existing: "fresh" },
-          },
-    ),
-  );
-  fixture.prepare.mockResolvedValue(refreshedTarget);
   fireEvent.click(screen.getByRole("button", { name: "重新读取并确认" }));
-  await waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "确认并准备更新" }),
-    ).toBeEnabled(),
-  );
+  await screen.findByRole("button", { name: "确认并准备更新" });
   await prepare();
-  await waitFor(() =>
-    expect(screen.getByRole("button", { name: "更新全部伙伴" })).toBeEnabled(),
+  expect(screen.getByRole("textbox", { name: "现有设置" })).toHaveValue(
+    "fresh",
   );
   fireEvent.click(screen.getByRole("button", { name: "更新全部伙伴" }));
-  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  await waitFor(() => expect(fixture.save).toHaveBeenCalledTimes(2));
   expect(fixture.save.mock.calls[1]?.[0]).toMatchObject({
     body: { expectedRevision: 4, values: { existing: "fresh" } },
   });

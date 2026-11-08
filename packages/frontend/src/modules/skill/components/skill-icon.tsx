@@ -10,12 +10,12 @@ export function SkillIcon({ className }: Props) {
   return (
     <span
       className={cn(
-        "bg-muted text-muted-foreground grid size-10 shrink-0 place-items-center rounded-md",
+        "bg-resource-surface text-resource-muted size-resource-icon grid shrink-0 place-items-center rounded-lg",
         className,
       )}
       aria-hidden="true"
     >
-      <Sparkles className="size-icon-md" strokeWidth={1.5} />
+      <Sparkles className="size-resource-logo" strokeWidth={1.5} />
     </span>
   );
 }

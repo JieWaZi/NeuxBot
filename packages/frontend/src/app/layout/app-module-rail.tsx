@@ -8,9 +8,8 @@ import {
   Package,
   Pin,
   Settings,
-  Workflow,
 } from "lucide-react";
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/shared/ui/button";
 import {
@@ -36,7 +35,6 @@ import {
 type AppModuleRailProps = {
   readonly activeModule: AppModuleId;
   readonly onNavigate: (moduleId: AppModuleId) => void;
-  readonly notification?: ReactNode;
   readonly pinnedModules?: readonly AppPinnableModuleId[];
   readonly onPinChange?: (
     moduleId: AppPinnableModuleId,
@@ -48,7 +46,6 @@ type AppModuleRailProps = {
 export function AppModuleRail({
   activeModule,
   onNavigate,
-  notification,
   pinnedModules = pinnedAppModules(),
   onPinChange,
 }: AppModuleRailProps) {
@@ -63,7 +60,6 @@ export function AppModuleRail({
       menuRef.current.style.translate = `0 ${menuAnchorTop.current - moreRef.current.getBoundingClientRect().top}px`;
   }, [moreOpen, pinnedModules]);
   const pages = [
-    { id: "workflows", label: t("workflow:title"), icon: Workflow },
     { id: "work-board", label: t("workBoard:title"), icon: ListChecks },
     { id: "usage", label: t("usage:title"), icon: ChartNoAxesCombined },
     { id: "knowledge", label: t("knowledge:knowledge"), icon: BookOpen },
@@ -202,7 +198,6 @@ export function AppModuleRail({
             label: t("plugin:title"),
             icon: Package,
           })}
-          {notification}
           {moduleButton({
             id: "settings",
             label: t("partnerNavigation.settings"),

@@ -13,25 +13,67 @@ import {
   invalidatePluginQueries,
 } from "../api/plugin-queries";
 import type { PluginDetail } from "../model/plugin-view";
+import type { GetPluginConfigurationResponse } from "@/shared/api/generated/types.gen";
+import { usePluginConfiguration } from "../api/use-plugin-configuration";
+import { QueryState, QueryRefreshError } from "@/shared/ui/query-state";
 
 export function PluginConfigurationEditor({
   detail,
   wakerId = "",
-  switches = [],
   onSaved,
 }: {
   detail: PluginDetail;
   wakerId?: string;
-  switches?: {
-    wakerId: string;
-    expectedVersionId: string;
-    versionId: string;
-  }[];
+  onSaved?: () => void;
+}) {
+  const versionId = detail.resolvedVersionId ?? detail.versions?.[0]?.id ?? "";
+  const query = usePluginConfiguration(
+    detail.plugin?.id ?? "",
+    versionId,
+    wakerId,
+  );
+  return query.data ? (
+    <>
+      {query.error && (
+        <QueryRefreshError
+          error={query.error}
+          pending={query.isFetching}
+          onRetry={() => void query.refetch()}
+        />
+      )}
+      <ConfigurationEditorForm
+        detail={detail}
+        configuration={query.data}
+        wakerId={wakerId}
+        onSaved={onSaved}
+        blocked={query.isFetching || Boolean(query.error)}
+      />
+    </>
+  ) : (
+    <QueryState
+      loadingLayout="content"
+      pending={query.isPending}
+      error={query.error}
+      onRetry={() => void query.refetch()}
+    />
+  );
+}
+function ConfigurationEditorForm({
+  detail,
+  configuration,
+  wakerId,
+  onSaved,
+  blocked,
+}: {
+  detail: PluginDetail;
+  configuration: GetPluginConfigurationResponse;
+  blocked: boolean;
+  wakerId: string;
   onSaved?: () => void;
 }) {
   const { t } = useTranslation("plugin");
   const client = useQueryClient();
-  const draft = usePluginConfigurationDraft(detail);
+  const draft = usePluginConfigurationDraft(configuration);
   const save = useMutation({
     ...withLocalErrorMutation(updatePluginConfigurationMutation()),
     onSuccess: async () => {
@@ -43,49 +85,56 @@ export function PluginConfigurationEditor({
   });
   return (
     <section className="space-y-4">
-      <PluginConfigurationFields detail={detail} draft={draft} />
+      <fieldset disabled={save.isPending || blocked} className="min-w-0">
+        <PluginConfigurationFields
+          configuration={configuration}
+          draft={draft}
+        />
+      </fieldset>
       {save.error && (
         <p role="alert" className="type-body text-destructive">
           {localApiErrorMessage(save.error, t("failed"))}
         </p>
       )}
       <Button
-        disabled={save.isPending}
+        size="catalog-form"
+        disabled={save.isPending || blocked}
         onClick={() =>
           save.mutate({
             path: { pluginId: detail.plugin?.id ?? "" },
             query: { wakerId },
-            body: {
-              ...draft.body,
-              expectedRevision: detail.configurationRevision ?? 0,
-              switches,
-            },
+            body: draft.body,
           })
         }
       >
-        {switches.length ? t("update") : t("save")}
+        {t("save")}
       </Button>
     </section>
   );
 }
 
 /** 未提交配置由调用表单持有，安装与编辑复用字段及密钥保留语义。 */
-export function usePluginConfigurationDraft(detail: PluginDetail) {
+export function usePluginConfigurationDraft(
+  configuration: GetPluginConfigurationResponse,
+) {
   const [values, setValues] = useState<Record<string, string>>({
-    ...detail.values,
+    ...configuration.values,
   });
   const [removedValues, setRemovedValues] = useState<string[]>([]);
   const [secrets, setSecrets] = useState<Record<string, string>>({});
   const [clear, setClear] = useState<string[]>([]);
-  const retiredValues = Object.keys(detail.values ?? {}).filter(
+  const retiredValues = Object.keys(configuration.values ?? {}).filter(
     (key) =>
-      !detail.fields?.some((field) => field.key === key && !field.secret),
+      !configuration.fields?.some(
+        (field) => field.key === key && !field.secret,
+      ),
   );
-  const retiredSecrets = (detail.configuredSecrets ?? []).filter(
-    (key) => !detail.fields?.some((field) => field.key === key && field.secret),
+  const retiredSecrets = (configuration.configuredSecrets ?? []).filter(
+    (key) =>
+      !configuration.fields?.some((field) => field.key === key && field.secret),
   );
-  const [initialValues] = useState({ ...detail.values });
-  const [expectedRevision] = useState(detail.configurationRevision ?? 0);
+  const [initialValues] = useState({ ...configuration.values });
+  const [expectedRevision] = useState(configuration.configurationRevision ?? 0);
   return {
     values,
     setValues,
@@ -118,10 +167,10 @@ export function usePluginConfigurationDraft(detail: PluginDetail) {
 }
 
 export function PluginConfigurationFields({
-  detail,
+  configuration,
   draft,
 }: {
-  detail: PluginDetail;
+  configuration: GetPluginConfigurationResponse;
   draft: ReturnType<typeof usePluginConfigurationDraft>;
 }) {
   const { t } = useTranslation("plugin");
@@ -145,20 +194,23 @@ export function PluginConfigurationFields({
           {t("configurationHelp")}
         </p>
       </div>
-      {(detail.fields ?? []).map((field) => {
+      {(configuration.fields ?? []).map((field) => {
         const key = field.key;
         if (!key) return null;
-        const configured = detail.configuredSecrets?.includes(key);
+        const configured = configuration.configuredSecrets?.includes(key);
         return (
           <div key={key} className="space-y-2">
             <label className="type-body grid gap-2">
               {field.label || key}
               {field.required && " *"}
               <Input
+                appearance="catalog"
                 type={field.secret ? "password" : "text"}
                 value={(field.secret ? secrets : values)[key] ?? ""}
                 placeholder={
-                  configured ? t("configured") : (field.default ?? "")
+                  configured
+                    ? t("configured")
+                    : field.default || field.label || key
                 }
                 autoComplete={field.secret ? "new-password" : "off"}
                 onChange={(event) =>

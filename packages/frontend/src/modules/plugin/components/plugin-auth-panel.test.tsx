@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   render,
+  act,
   screen,
   fireEvent,
   waitFor,
@@ -12,7 +13,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@/shared/i18n";
 import { PluginAuthPanel } from "./plugin-auth-panel";
 const fixture = vi.hoisted(() => ({
+  check: vi.fn().mockResolvedValue({}),
+  logout: vi.fn().mockResolvedValue({}),
   status: {
+    versionId: "v1",
+    configurationRevision: 3,
+    accountGeneration: 4,
     provider: "plugin-command",
     account: {
       configured: true,
@@ -58,6 +64,11 @@ vi.mock("qrcode.react", () => ({
   ),
 }));
 vi.mock("../api/plugin-queries", () => ({
+  checkPluginAccountMutation: () => ({ mutationFn: fixture.check }),
+  getPluginAuthorizationSessionOptions: () => ({
+    queryKey: [{ _id: "getPluginAuthorizationSession" }],
+    queryFn: async () => structuredClone(fixture.status.session),
+  }),
   getPluginAuthorizationOptions: () => ({
     queryKey: [{ _id: "getPluginAuthorization" }],
     queryFn: async () => {
@@ -68,13 +79,15 @@ vi.mock("../api/plugin-queries", () => ({
   }),
   startPluginAuthorizationMutation: () => ({ mutationFn: fixture.login }),
   cancelPluginAuthorizationMutation: () => ({ mutationFn: fixture.cancel }),
-  logoutPluginAuthorizationMutation: () => ({ mutationFn: vi.fn() }),
+  logoutPluginAuthorizationMutation: () => ({ mutationFn: fixture.logout }),
   invalidatePluginQueries: async (client: QueryClient) =>
     client.invalidateQueries(),
 }));
 afterEach(cleanup);
 beforeEach(() => {
-  fixture.login.mockClear();
+  fixture.check.mockClear();
+  fixture.logout.mockClear();
+  fixture.login.mockReset().mockResolvedValue({});
   fixture.submit.mockClear();
   fixture.statusError = null;
   fixture.statusWait = null;
@@ -117,6 +130,7 @@ function show(
         >
           <PluginAuthPanel
             pluginId="p"
+            versionId="v1"
             preferredAction={preferredAction}
             installation={installation}
             onReady={onReady}
@@ -129,7 +143,7 @@ function show(
   return client;
 }
 describe("shared plugin authorization", () => {
-  it.each(["expired", "failed", "cancelled", "idle"])(
+  it.each(["expired", "failed", "cancelled", ""])(
     "retries %s installation authorization without closing the dialog",
     async (state) => {
       fixture.status.account.available = false;
@@ -144,7 +158,7 @@ describe("shared plugin authorization", () => {
         return {};
       });
       show(true, vi.fn(), "open-url");
-      fireEvent.click(await screen.findByRole("button", { name: "重试" }));
+      fireEvent.click(await screen.findByRole("button", { name: "重新授权" }));
       expect(
         await screen.findByRole("button", { name: "打开授权页面" }),
       ).toBeVisible();
@@ -268,7 +282,7 @@ describe("shared plugin authorization", () => {
     );
   });
   it("requests server-reported missing permissions without a manual scope field", async () => {
-    fixture.status.session.state = "idle";
+    fixture.status.session.state = "";
     fixture.status.account.available = false;
     fixture.status.missingScopes = ["docx:document", "bitable:app"];
     show();
@@ -295,7 +309,7 @@ describe("shared plugin authorization", () => {
     ).not.toBeInTheDocument();
   });
   it("shows account leases as work links and blocks identity changes", async () => {
-    fixture.status.session.state = "idle";
+    fixture.status.session.state = "";
     fixture.status.activeUses = [
       {
         chatId: "chat-1",
@@ -319,7 +333,7 @@ describe("shared plugin authorization", () => {
   it("starts first-time plugin setup through authorization without app credentials", async () => {
     fixture.status.account.configured = false;
     fixture.status.account.available = false;
-    fixture.status.session.state = "idle";
+    fixture.status.session.state = "";
     show();
     fireEvent.click(await screen.findByRole("button", { name: "连接账号" }));
     await waitFor(() => expect(fixture.login).toHaveBeenCalledTimes(1));
@@ -632,10 +646,10 @@ it.each(["session", "new-session"])(
     );
     if (id === "session") expect(onSessionStarted).not.toHaveBeenCalled();
     else
-      expect(onSessionStarted).toHaveBeenCalledWith({
-        id: "new-session",
-        state: "waiting",
-      });
+      expect(onSessionStarted).toHaveBeenCalledWith(
+        { id: "new-session", state: "waiting" },
+        { expectedConfigurationRevision: 3, expectedAccountGeneration: 4 },
+      );
   },
 );
 
@@ -671,4 +685,63 @@ it("does not display unsupported inline image formats", async () => {
   await screen.findByRole("button", { name: "刷新二维码" });
   expect(screen.queryByRole("img")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("二维码内容")).not.toBeInTheDocument();
+});
+
+it("keeps account reads cached and checks online only after an explicit action", async () => {
+  fixture.status.account.available = false;
+  fixture.status.session.state = "";
+  show();
+  const check = await screen.findByRole("button", { name: "重新检查认证" });
+  expect(fixture.check).not.toHaveBeenCalled();
+  expect(fixture.login).not.toHaveBeenCalled();
+  fireEvent.click(check);
+  await waitFor(() => expect(fixture.check).toHaveBeenCalledOnce());
+  expect(fixture.check.mock.calls[0]?.[0]).toMatchObject({
+    path: { pluginId: "p" },
+    query: { versionId: "v1", wakerId: "" },
+    body: { expectedConfigurationRevision: 3, expectedAccountGeneration: 4 },
+  });
+});
+it("confirms the shared impact before logging out with the exact account context", async () => {
+  fixture.status.session.state = "";
+  show();
+  fireEvent.click(await screen.findByRole("button", { name: "断开连接" }));
+  expect(fixture.logout).not.toHaveBeenCalled();
+  expect(await screen.findByRole("dialog", { name: "断开连接" })).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "确认断开" }));
+  await waitFor(() => expect(fixture.logout).toHaveBeenCalledOnce());
+  expect(fixture.logout.mock.calls[0]?.[0]).toMatchObject({
+    query: { versionId: "v1" },
+    body: { expectedConfigurationRevision: 3, expectedAccountGeneration: 4 },
+  });
+});
+it("compensates a settings-owned authorization that arrives after the panel unmounts", async () => {
+  fixture.status.account.available = false;
+  fixture.status.session.state = "";
+  let resolve: ((value: { id: string; state: string }) => void) | undefined;
+  fixture.login.mockImplementationOnce(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <PluginAuthPanel pluginId="p" versionId="v1" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "重新授权" }));
+  await waitFor(() => expect(fixture.login).toHaveBeenCalledOnce());
+  view.unmount();
+  await act(async () => resolve?.({ id: "late-settings", state: "waiting" }));
+  await waitFor(() => expect(fixture.cancel).toHaveBeenCalledOnce());
+  expect(fixture.cancel.mock.calls[0]?.[0]).toMatchObject({
+    path: { pluginId: "p", sessionId: "late-settings" },
+    body: { expectedConfigurationRevision: 3, expectedAccountGeneration: 4 },
+  });
 });

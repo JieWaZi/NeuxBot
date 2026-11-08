@@ -46,6 +46,8 @@ import { ApiError } from "@/shared/api/errors";
 import type { FileDropEvent } from "@/shared/platform";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 import themeStyles from "@/shared/styles/index.css?raw";
+import { compile } from "tailwindcss";
+import { contrast, resolveColor, themeTokens } from "@/test/theme-colors";
 import { ChatComposerInput } from "../components/chat-composer-input";
 import { workspaceFileDragType } from "../model/workspace-file-drag";
 import { ChatThread } from "../components/chat-thread";
@@ -623,7 +625,188 @@ function ChatThreadHistoryHarness({
   );
 }
 
+async function expectReadableMentionAcrossThemes(
+  mention: HTMLElement,
+  verify?: () => void,
+) {
+  // Compile the actual node's utility classes, then resolve the shipped theme tokens for jsdom.
+  // The assertion measures rendered foreground/background contrast instead of mirroring class names.
+  const theme = themeStyles.match(/@theme inline\s*\{[^}]+\}/)?.[0];
+  if (!theme) throw new Error("missing Tailwind theme");
+  const compiler = await compile(`${theme}\n@tailwind utilities;`);
+  const utilities = compiler.build(
+    [...mention.classList].filter((name) => /^(?:text|bg)-/.test(name)),
+  );
+  const style = document.createElement("style");
+  style.textContent = (["light", "dark"] as const)
+    .map((mode) => {
+      const tokens = themeTokens(mode);
+      return [
+        ...utilities
+          .replace(/\/\*[\s\S]*?\*\//g, "")
+          .matchAll(/(\.[^{}]+)\{([^{}]+)\}/g),
+      ]
+        .map((rule) => {
+          const resolved = rule[2]?.replace(
+            /var\((--[\w-]+)\)/g,
+            (_, token: string) => {
+              const color = resolveColor(token, tokens);
+              return `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
+            },
+          );
+          return `[data-theme="${mode}"] ${rule[1]} { ${resolved} }`;
+        })
+        .join("\n");
+    })
+    .join("\n");
+  document.head.append(style);
+  const previousTheme = document.documentElement.dataset.theme;
+  try {
+    for (const mode of ["light", "dark", "light"] as const) {
+      document.documentElement.dataset.theme = mode;
+      const computed = getComputedStyle(mention);
+      const tokens = {
+        ...themeTokens(mode),
+        "--mention-content": computed.color,
+        "--mention-surface": computed.backgroundColor,
+      };
+      expect(
+        contrast(
+          "--mention-content",
+          "--mention-surface",
+          tokens,
+          "--field-background",
+        ),
+        `Mention in ${mode}`,
+      ).toBeGreaterThanOrEqual(4.5);
+      verify?.();
+    }
+  } finally {
+    style.remove();
+    if (previousTheme) document.documentElement.dataset.theme = previousTheme;
+    else delete document.documentElement.dataset.theme;
+  }
+}
+
 describe("chat composer", () => {
+  it.each(["skill", "plugin", "connector"] as const)(
+    "%s draft Mention stays readable across themes without changing the reference or sending",
+    async (kind) => {
+      const send = vi.fn<SendMessage>();
+      const onSelectionChange = vi.fn();
+      const option = {
+        id: `${kind}-review`,
+        name: "验收共享技能",
+        description: "主题验收",
+      };
+      const { container } = render(
+        <ChatQueueProvider>
+          <ComposerHarness send={send}>
+            <ComposerPrimitive.Root>
+              <ChatComposerInput
+                placeholder="输入消息"
+                ariaLabel="message"
+                draft="帮我使用这个技能。"
+                draftReference={{ kind, id: option.id }}
+                skills={kind === "skill" ? [option] : []}
+                plugins={kind === "plugin" ? [option] : []}
+                connectors={kind === "connector" ? [option] : []}
+                onSkillSelectionChange={
+                  kind === "skill" ? onSelectionChange : undefined
+                }
+                onPluginSelectionChange={
+                  kind === "plugin" ? onSelectionChange : undefined
+                }
+                onConnectorSelectionChange={
+                  kind === "connector" ? onSelectionChange : undefined
+                }
+              />
+            </ComposerPrimitive.Root>
+          </ComposerHarness>
+        </ChatQueueProvider>,
+      );
+      const mention = await screen.findByText(option.name);
+      const input = screen.getByRole("textbox", { name: "message" });
+      expect(mention).toHaveAttribute(`data-chat-composer-${kind}`, option.id);
+      expect(input).toHaveAttribute("contenteditable", "true");
+      await waitFor(() =>
+        expect(onSelectionChange).toHaveBeenCalledWith([option.id]),
+      );
+
+      input.focus();
+      await expectReadableMentionAcrossThemes(mention, () => {
+        expect(
+          container.querySelectorAll(
+            `[data-chat-composer-${kind}="${option.id}"]`,
+          ),
+        ).toHaveLength(1);
+        expect(document.activeElement).toBe(input);
+        expect(input).toHaveTextContent("帮我使用这个技能。");
+        expect(send).not.toHaveBeenCalled();
+      });
+    },
+  );
+
+  it("connector draft waits for real candidates, inserts once and preserves user text through refresh and removal", async () => {
+    const user = userEvent.setup();
+    const send = vi.fn<SendMessage>();
+    const onSelectionChange = vi.fn();
+    const option = {
+      id: "connector-review",
+      name: "真实连接器",
+      description: "工具",
+    };
+    const scene = (ready: boolean) => (
+      <ChatQueueProvider>
+        <ComposerHarness send={send}>
+          <ComposerPrimitive.Root>
+            <ChatComposerInput
+              placeholder="输入消息"
+              ariaLabel="message"
+              draft="帮我使用这个连接器。"
+              draftReference={{ kind: "connector", id: option.id }}
+              connectors={ready ? [option] : []}
+              skills={[{ ...option, name: "同 ID 技能" }]}
+              plugins={[{ ...option, name: "同 ID 插件" }]}
+              onConnectorSelectionChange={onSelectionChange}
+            />
+          </ComposerPrimitive.Root>
+        </ComposerHarness>
+      </ChatQueueProvider>
+    );
+    const view = render(scene(false));
+    const input = screen.getByRole("textbox", { name: "message" });
+    await waitFor(() =>
+      expect(input).toHaveTextContent("帮我使用这个连接器。"),
+    );
+    expect(input.querySelector("[data-chat-composer-connector]")).toBeNull();
+    await user.type(input, " 保留用户补充");
+    view.rerender(scene(true));
+    const mention = await screen.findByText("真实连接器");
+    expect(mention).toHaveAttribute("data-chat-composer-connector", option.id);
+    expect(input).toHaveTextContent("帮我使用这个连接器。");
+    expect(input).toHaveTextContent("保留用户补充");
+    expect(input.textContent?.match(/帮我使用这个连接器。/g)).toHaveLength(1);
+    await waitFor(() =>
+      expect(onSelectionChange).toHaveBeenLastCalledWith([option.id]),
+    );
+    view.rerender(scene(true));
+    expect(
+      input.querySelectorAll("[data-chat-composer-connector]"),
+    ).toHaveLength(1);
+    expect(
+      input.querySelector(
+        "[data-chat-composer-skill], [data-chat-composer-plugin]",
+      ),
+    ).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+    await user.clear(input);
+    await waitFor(() => expect(onSelectionChange).toHaveBeenLastCalledWith([]));
+    view.rerender(scene(true));
+    expect(input.querySelector("[data-chat-composer-connector]")).toBeNull();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("错误替换目录权限顶栏，关闭后恢复且保留输入内容", async () => {
     const user = userEvent.setup();
     const { container } = render(
@@ -880,6 +1063,14 @@ describe("chat composer", () => {
       document.querySelector('[data-chat-composer-member="member-1"]'),
     ).toHaveTextContent("@项目经理");
     expect(onMemberMentionChange).toHaveBeenLastCalledWith("member-1");
+    const mention = document.querySelector<HTMLElement>(
+      '[data-chat-composer-member="member-1"]',
+    );
+    if (!mention) throw new Error("missing member Mention");
+    await expectReadableMentionAcrossThemes(mention, () => {
+      expect(mention).toHaveTextContent("@项目经理");
+      expect(onMemberMentionChange).toHaveBeenLastCalledWith("member-1");
+    });
   });
 
   it("添加本地文件后在输入框内显示并可移除附件", async () => {

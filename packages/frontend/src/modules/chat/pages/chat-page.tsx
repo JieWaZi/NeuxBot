@@ -1,3 +1,4 @@
+import { readChatDraftIntent } from "@/shared/lib/chat-draft-intent";
 import { getWakerRecentProjectOptions } from "@/shared/api/generated/@tanstack/react-query.gen";
 import { useInstalledPluginReferences } from "@/modules/plugin";
 import { useExecutionSelection } from "@/shared/hooks/use-execution-selection";
@@ -30,6 +31,7 @@ import type { ChatSendSelection } from "../runtime/chat-queue-store";
 import { useTranslation } from "react-i18next";
 import {
   useNavigate,
+  useLocation,
   useOutletContext,
   useParams,
   useSearchParams,
@@ -198,6 +200,15 @@ function ChatView({
   const sceneActive = routeActive && (entry?.active ?? true);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const promptDraft =
+    !entry && !chatId
+      ? readChatDraftIntent(
+          location.state,
+          searchParams.get("draftId") ?? "",
+          searchParams.get("wakerId") ?? resolvedWakerId ?? "",
+        )
+      : undefined;
   const queryClient = useQueryClient();
   const outlet = useOutletContext<ChatOutletContext | null>();
   const [localPanel, setLocalPanel] =
@@ -212,12 +223,24 @@ function ChatView({
     useDraftWorkspaceSelections();
   const [selectedSkillIDsByWaker, setSelectedSkillIDsByWaker] = useState<
     Record<string, string[]>
-  >({});
+  >(() =>
+    promptDraft?.skillId
+      ? { [promptDraft.wakerId]: [promptDraft.skillId] }
+      : {},
+  );
   const [selectedPluginIDsByWaker, setSelectedPluginIDsByWaker] = useState<
     Record<string, string[]>
-  >({});
+  >(() =>
+    promptDraft?.pluginId
+      ? { [promptDraft.wakerId]: [promptDraft.pluginId] }
+      : {},
+  );
   const [selectedConnectorIDsByWaker, setSelectedConnectorIDsByWaker] =
-    useState<Record<string, string[]>>({});
+    useState<Record<string, string[]>>(() =>
+      promptDraft?.connectorId
+        ? { [promptDraft.wakerId]: [promptDraft.connectorId] }
+        : {},
+    );
   const [composerRestoreRevision, setComposerRestoreRevision] = useState(0);
   const [sessionSwitch, setSessionSwitch] = useState<{
     chatId: string;
@@ -1295,7 +1318,14 @@ function ChatView({
       isHistoryLoading: historyIsLoading,
       composerSettings,
       composerEffects,
-      composerDraft: entry?.draft,
+      composerDraft: entry?.draft ?? promptDraft?.text,
+      composerDraftReference: promptDraft?.skillId
+        ? { kind: "skill", id: promptDraft.skillId }
+        : promptDraft?.pluginId
+          ? { kind: "plugin", id: promptDraft.pluginId }
+          : promptDraft?.connectorId
+            ? { kind: "connector", id: promptDraft.connectorId }
+            : undefined,
       renderComposerContextStrip,
       composerReferences: entry?.composerReferences,
       onComposerReferencesChange: entry?.onComposerReferencesChange,

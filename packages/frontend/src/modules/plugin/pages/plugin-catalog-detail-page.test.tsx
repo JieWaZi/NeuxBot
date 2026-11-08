@@ -7,19 +7,22 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { afterEach, expect, it, vi } from "vitest";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
 import { i18n } from "@/shared/i18n";
 import { PluginCatalogDetailPage } from "./plugin-catalog-detail-page";
 import type { GlobalEventObserver } from "@/shared/api/global-events";
-import type { PluginSkillContext } from "../components/plugin-skill-dialog";
 import type { PluginDetail } from "../model/plugin-view";
 
 const fixture = vi.hoisted(() => ({
   version: 1,
   accountAvailable: true,
+  installedError: false,
   read: vi.fn(),
   listeners: new Set<GlobalEventObserver>(),
+}));
+vi.mock("../components/plugin-presentation", () => ({
+  PluginPresentation: () => null,
 }));
 vi.mock("@/shared/api/global-events", () => ({
   subscribeGlobalEvents: (
@@ -31,13 +34,15 @@ vi.mock("@/shared/api/global-events", () => ({
     return () => fixture.listeners.delete(observer);
   },
 }));
-vi.mock("../components/plugin-skill-dialog", () => ({
-  PluginSkillDialog: ({ context }: { context: PluginSkillContext }) => (
-    <div role="dialog">
-      {context.sourceCommit}:{context.archiveSHA256}
-    </div>
-  ),
-}));
+function SkillRoute() {
+  const location = useLocation();
+  return (
+    <output aria-label="技能路由">
+      {location.pathname}
+      {location.search}
+    </output>
+  );
+}
 vi.mock("../api/plugin-queries", () => {
   const pkg = {
     manifest: {
@@ -74,19 +79,20 @@ vi.mock("../api/plugin-queries", () => {
     }),
     listPluginsOptions: () => ({
       queryKey: ["installed"],
-      queryFn: async () => ({
-        resources: [
-          {
-            plugin: { id: "p", sourceKey: "catalog:github" },
-            resolvedVersionId: "v1",
-            ready: fixture.accountAvailable,
-            account: { available: fixture.accountAvailable },
-            blockers: fixture.accountAvailable ? [] : ["PluginNotReady"],
-            versions: [{ id: "v1", package: pkg }],
-            installations: [],
-          },
-        ],
-      }),
+      queryFn: async () => {
+        if (fixture.installedError) throw new Error("installed refresh failed");
+        return {
+          resources: [
+            {
+              plugin: { id: "p", sourceKey: "catalog:github" },
+              resolvedVersionId: "v1",
+              account: { available: fixture.accountAvailable },
+              versions: [{ id: "v1", package: pkg }],
+              installations: [],
+            },
+          ],
+        };
+      },
     }),
   };
 });
@@ -96,11 +102,17 @@ vi.mock("../components/plugin-settings-dialog", () => ({
   ),
 }));
 
+// 页面行为用例先准备实际正文模块，避免将开发环境模块编译时间当作读取失败。
+beforeAll(async () => {
+  await import("../components/plugin-overview");
+});
+
 afterEach(async () => {
   cleanup();
   fixture.listeners.clear();
   fixture.version = 1;
   fixture.accountAvailable = true;
+  fixture.installedError = false;
   fixture.read.mockClear();
   await i18n.changeLanguage("zh-CN");
 });
@@ -116,6 +128,10 @@ it("keeps catalog instructions readable before configuration and authentication 
       <MemoryRouter initialEntries={["/resources/plugins/catalog/github"]}>
         <Routes>
           <Route
+            path="/resources/plugins/catalog/:catalogKey/skills/:skillKey"
+            element={<SkillRoute />}
+          />
+          <Route
             path="/resources/plugins/catalog/:catalogKey"
             element={<PluginCatalogDetailPage />}
           />
@@ -123,6 +139,13 @@ it("keeps catalog instructions readable before configuration and authentication 
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  expect(await screen.findByRole("link", { name: "插件" })).toHaveAttribute(
+    "href",
+    "/resources",
+  );
+  expect(
+    screen.queryByRole("link", { name: "资源库" }),
+  ).not.toBeInTheDocument();
   expect(await screen.findByText("业务说明")).toBeVisible();
   expect(screen.getByRole("heading", { name: "插件信息" })).toBeVisible();
   expect(
@@ -140,6 +163,10 @@ it("catalog details use the selected source summary and README and edit the actu
       <MemoryRouter initialEntries={["/resources/plugins/catalog/github"]}>
         <Routes>
           <Route
+            path="/resources/plugins/catalog/:catalogKey/skills/:skillKey"
+            element={<SkillRoute />}
+          />
+          <Route
             path="/resources/plugins/catalog/:catalogKey"
             element={<PluginCatalogDetailPage />}
           />
@@ -152,7 +179,9 @@ it("catalog details use the selected source summary and README and edit the actu
   expect(summary).toHaveClass("truncate");
   expect(summary).toHaveAttribute("title", summary.textContent);
   expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "说明" })).toBeVisible();
+  expect(
+    screen.queryByRole("heading", { name: "说明" }),
+  ).not.toBeInTheDocument();
   expect(screen.getByText("业务说明")).toBeVisible();
   expect(
     screen.queryByRole("button", {
@@ -178,6 +207,10 @@ it("switches catalog README and summary with the UI language without reusing the
       <MemoryRouter initialEntries={["/resources/plugins/catalog/github"]}>
         <Routes>
           <Route
+            path="/resources/plugins/catalog/:catalogKey/skills/:skillKey"
+            element={<SkillRoute />}
+          />
+          <Route
             path="/resources/plugins/catalog/:catalogKey"
             element={<PluginCatalogDetailPage />}
           />
@@ -201,6 +234,10 @@ it("refreshes the detail and its skill source pins after a background catalog ch
     >
       <MemoryRouter initialEntries={["/resources/plugins/catalog/github"]}>
         <Routes>
+          <Route
+            path="/resources/plugins/catalog/:catalogKey/skills/:skillKey"
+            element={<SkillRoute />}
+          />
           <Route
             path="/resources/plugins/catalog/:catalogKey"
             element={<PluginCatalogDetailPage />}
@@ -228,7 +265,44 @@ it("refreshes the detail and its skill source pins after a background catalog ch
   });
   await waitFor(() => expect(fixture.read).toHaveBeenCalledTimes(2));
   fireEvent.click(screen.getByRole("button", { name: "查看技能 guide" }));
-  expect(screen.getByRole("dialog")).toHaveTextContent(
-    "2".repeat(40) + ":" + "2".repeat(64),
+  expect(screen.getByLabelText("技能路由")).toHaveTextContent(
+    `sourceCommit=${"2".repeat(40)}&archiveSHA256=${"2".repeat(64)}`,
   );
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+it("keeps known installed partners visible when their background refresh fails", async () => {
+  fixture.installedError = true;
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(["installed"], {
+    resources: [
+      {
+        plugin: { id: "p", sourceKey: "catalog:github" },
+        resolvedVersionId: "v1",
+        installations: [{ wakerId: "w1", versionId: "v1", enabled: true }],
+        partnerNames: { w1: "已知伙伴" },
+      },
+    ],
+  });
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={["/resources/plugins/catalog/github"]}>
+        <Routes>
+          <Route
+            path="/resources/plugins/catalog/:catalogKey"
+            element={<PluginCatalogDetailPage />}
+          />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByRole("link", { name: "已知伙伴" })).toBeVisible();
+  await waitFor(() =>
+    expect(client.getQueryState(["installed"])?.status).toBe("error"),
+  );
+  expect(screen.getByRole("link", { name: "已知伙伴" })).toBeVisible();
+  expect(screen.getAllByText("已安装")).toHaveLength(2);
+  expect(screen.getByRole("button", { name: "重试" })).toBeVisible();
 });

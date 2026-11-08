@@ -7,17 +7,28 @@ import {
   withLocalErrorMutation,
   withLocalErrorSurface,
 } from "@/shared/api/local-error-surface";
-import { Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
+import {
+  useNavigate,
+  useParams,
+  useLocation,
+  useSearchParams,
+} from "react-router-dom";
 
 import { WakerDetailLayout } from "@/modules/waker";
-import { PageHeader } from "@/shared/ui/page-header";
-import { PageAction, ResourcePageSurface } from "@/shared/ui/resource-page";
+import { DetailSection } from "@/shared/ui/detail-section";
+import {
+  ResourceCatalogRow,
+  ResourceCatalogRows,
+  ResourceCatalogStatus,
+} from "@/shared/ui/resource-catalog";
+import { ResourcePageSurface } from "@/shared/ui/resource-page";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
-import { QueryState } from "@/shared/ui/query-state";
-import { Skeleton } from "@/shared/ui/skeleton";
+import { Button } from "@/shared/ui/button";
+import { ResourcePartnerAvatar } from "@/shared/ui/resource-management-card";
+import { QueryState, QueryRefreshError } from "@/shared/ui/query-state";
+
 import { Switch } from "@/shared/ui/switch";
 import { useTheme } from "@/shared/theme";
 
@@ -32,10 +43,11 @@ import {
   setWakerSkillEnabledMutation,
   updateWakerSkillMutation,
 } from "../api/skill-queries";
+import { SkillPresentation } from "../components/skill-presentation";
 import { SkillDeleteDialog } from "../components/skill-delete-dialog";
 import { SkillDisplayNameEditor } from "../components/skill-display-name-editor";
 import { SkillGitPullDialog } from "../components/skill-git-pull-dialog";
-import { SkillIcon } from "../components/skill-icon";
+import { SkillDetailHeader } from "../components/skill-detail-header";
 import { SkillInstructionsPanel } from "../components/skill-instructions-panel";
 import { SkillMetadataCard } from "../components/skill-metadata-card";
 import { SkillResourceBrowser } from "../components/skill-resource-browser";
@@ -48,6 +60,8 @@ import {
   buildSkillResourceTree,
   countSkillResourceFiles,
 } from "../model/skill-detail";
+
+import { skillSourceName } from "../model/skill-source-name";
 
 type DetailTab = "explanation" | "resources" | "version";
 
@@ -70,9 +84,24 @@ export function SkillDetailPage() {
   );
   const queryClient = useQueryClient();
   const { resolvedTheme } = useTheme();
-  const [tab, setTab] = useState<DetailTab>("explanation");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const tab: DetailTab =
+    requestedTab === "resources" || requestedTab === "version"
+      ? requestedTab
+      : "explanation";
+  const setTab = (next: DetailTab) => {
+    const params = new URLSearchParams(searchParams);
+    if (next === "explanation") params.delete("tab");
+    else params.set("tab", next);
+    setSearchParams(params, { replace: true, state: location.state });
+  };
   const [diffVersionId, setDiffVersionId] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [removingPartner, setRemovingPartner] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const detailOptions = getWakerSkillOptions(
     withLocalErrorSurface({
       path: { wakerId, skillId },
@@ -108,7 +137,7 @@ export function SkillDetailPage() {
         },
       }),
     ),
-    enabled: Boolean(skillId && currentVersionId),
+    enabled: active && Boolean(skillId && currentVersionId),
   });
   const diffVersionQuery = useQuery({
     ...getSkillVersionOptions(
@@ -120,7 +149,7 @@ export function SkillDetailPage() {
         },
       }),
     ),
-    enabled: Boolean(diffVersionId),
+    enabled: active && Boolean(diffVersionId),
   });
 
   const refresh = async () => {
@@ -163,27 +192,28 @@ export function SkillDetailPage() {
     : null;
   const backAction = {
     label: t("detail.backToList"),
-    onClick: () => navigate(back),
+    onClick: () => navigate(breadcrumbBack),
   };
 
   const currentVersionNumber = currentVersion?.version ?? "";
-  const sourceLabel =
-    skill?.source === "git"
-      ? t("source.publicGit")
-      : skill?.source === "zip"
-        ? t("source.zipImport")
-        : t("source.allyBuiltIn");
-  const scopeLabel =
-    skill?.builtIn || skill?.source === "builtin"
-      ? t("scope.built_in")
-      : skill?.scope === "public"
-        ? t("scope.public")
-        : t("scope.private");
+  const sourceLabel = skill?.gitUrl
+    ? skillSourceName({ source: "git", sourceUrl: skill.gitUrl }, t)
+    : "";
   const instructions = currentVersionQuery.data?.content ?? "";
-  const metadataName = currentVersion?.name ?? "";
   const metadataDescription =
     currentVersion?.description ?? skill?.description ?? "";
-  const builtIn = Boolean(skill?.builtIn || skill?.source === "builtin");
+  // 完整安装名单只提供身份资料；其他伙伴的启停与版本仍由各自上下文读取。
+  const partners = detailQuery.data?.installedPartners ?? [];
+  const currentPartner = partners.find((partner) => partner.id === wakerId);
+  const shownPartners = wakerId
+    ? [
+        {
+          id: wakerId,
+          name: currentPartner?.name,
+          avatar: currentPartner?.avatar,
+        },
+      ]
+    : partners;
   const saveVersion = (
     body: Parameters<typeof createVersion.mutate>[0]["body"],
     onSuccess?: () => void,
@@ -198,207 +228,380 @@ export function SkillDetailPage() {
         { label: skill?.name || t("title") },
       ]}
     >
-      <ResourcePageSurface>
-        <PageHeader
-          layout="detail"
+      <ResourcePageSurface appearance="catalog">
+        <SkillDetailHeader
           backAction={backAction}
-          visual={<SkillIcon />}
           title={skill?.name ?? t("title")}
+          description={skill?.description}
+          status={
+            skill && (wakerId || partners.length > 0) ? (
+              <ResourceCatalogStatus
+                pill
+                tone={
+                  !wakerId || detailQuery.data?.enabled ? "success" : "neutral"
+                }
+              >
+                {t(
+                  wakerId
+                    ? detailQuery.data?.enabled
+                      ? "enabled"
+                      : "disabled"
+                    : "installed",
+                )}
+              </ResourceCatalogStatus>
+            ) : undefined
+          }
           actions={
             skill && (
-              <div className="grid max-w-full justify-items-end gap-2">
-                <div className="flex max-w-full flex-wrap items-center gap-2">
-                  {wakerId && (
-                    <>
-                      <Switch
-                        hitArea="comfortable"
-                        checked={detailQuery.data?.enabled ?? false}
-                        disabled={toggleSkill.isPending}
-                        aria-label={t(
-                          detailQuery.data?.enabled
-                            ? "detail.disable"
-                            : "detail.enable",
-                          { name: skill?.name },
-                        )}
-                        onClick={() =>
-                          toggleSkill.mutate({
-                            path: { wakerId, skillId },
-                            body: {
-                              enabled: !(detailQuery.data?.enabled ?? false),
-                            },
-                          })
-                        }
-                      />
-                      <span className="text-content-secondary type-body">
-                        {detailQuery.data?.enabled
-                          ? t("enabled")
-                          : t("disabled")}
-                      </span>
-                    </>
-                  )}
-                  <SkillDisplayNameEditor
-                    name={skill?.name ?? ""}
-                    pending={updateSkill.isPending}
-                    error={updateSkill.error}
-                    onSave={(name, onSuccess) =>
-                      updateSkill.mutate(
-                        { path: { wakerId, skillId }, body: { name } },
+              <>
+                <SkillDisplayNameEditor
+                  name={skill.name ?? ""}
+                  categories={skill.categories ?? []}
+                  pending={updateSkill.isPending}
+                  error={updateSkill.error}
+                  onSave={(metadata, onSuccess) =>
+                    updateSkill.mutate(
+                      { path: { wakerId, skillId }, body: metadata },
+                      { onSuccess },
+                    )
+                  }
+                />
+                {!wakerId && skill.source === "git" && (
+                  <SkillGitPullDialog
+                    currentVersion={currentVersionNumber}
+                    error={pullUpdate.isError}
+                    pending={pullUpdate.isPending}
+                    onPull={(version, notes, onSuccess) =>
+                      pullUpdate.mutate(
+                        {
+                          path: { wakerId, skillId },
+                          body: { version, notes },
+                        },
                         { onSuccess },
                       )
                     }
                   />
-                  {!builtIn ? (
-                    <PageAction
-                      intent="delete"
-                      label={t("detail.uninstall")}
-                      onClick={() => setDeleteOpen(true)}
-                    >
-                      <Trash2 />
-                    </PageAction>
-                  ) : null}
-                  {skill?.source === "git" ? (
-                    <SkillGitPullDialog
-                      currentVersion={currentVersionNumber}
-                      error={pullUpdate.isError}
-                      pending={pullUpdate.isPending}
-                      onPull={(version, notes, onSuccess) =>
-                        pullUpdate.mutate(
-                          {
-                            path: { wakerId, skillId },
-                            body: { version, notes },
-                          },
-                          { onSuccess },
-                        )
-                      }
-                    />
-                  ) : null}
-                </div>
-                {toggleSkill.isError ? (
-                  <p role="alert" className="text-destructive type-caption">
-                    {localApiErrorMessage(toggleSkill.error, t("toggleFailed"))}
-                  </p>
-                ) : null}
-              </div>
+                )}
+              </>
             )
           }
-        >
-          {skill && (
-            <div className="mt-2 flex items-center gap-2">
-              <span className="bg-muted text-muted-foreground type-caption shrink-0 rounded-full px-2 py-1">
-                v{currentVersionNumber}
-              </span>
-              <span className="bg-muted text-muted-foreground type-caption shrink-0 rounded-full px-2 py-1">
-                {scopeLabel}
-              </span>
-            </div>
-          )}
-        </PageHeader>
-
-        <main className="min-w-0">
+        />
+        <main className="mt-6 min-w-0 space-y-6">
           {skill && detailQuery.isError && (
-            <QueryState
+            <QueryRefreshError
               error={detailQuery.error}
+              pending={detailQuery.isFetching}
               onRetry={() => void detailQuery.refetch()}
             />
           )}
-          {skill ? (
-            <SkillMetadataCard
-              name={metadataName}
-              description={metadataDescription}
-              source={sourceLabel}
-            />
-          ) : detailQuery.isPending ? (
-            <Skeleton className="mt-6 h-40 w-full" />
-          ) : null}
-          <section className="mt-8">
-            <SegmentedControl
-              value={tab}
-              onValueChange={setTab}
-              ariaLabel={t("detail.tabs")}
-              size="sm"
-              options={[
-                { value: "explanation", label: t("detail.explanation") },
-                {
-                  value: "resources",
-                  label: `${t("detail.resources")} ${countSkillResourceFiles(resources)}`,
-                },
-                {
-                  value: "version",
-                  label: t("detail.currentVersionTab", {
-                    version: currentVersionNumber,
-                  }),
-                },
-              ]}
-            />
-            {!skill ? (
-              <div className="mt-4">
-                <QueryState
-                  loadingLayout="detail"
-                  pending={detailQuery.isPending}
-                  error={detailQuery.error}
-                  emptyLabel={t("detail.notFound")}
-                  onRetry={() => void detailQuery.refetch()}
+          <>
+            {skill && (
+              <SkillPresentation
+                name={skill.name ?? ""}
+                context={{
+                  kind: "skill",
+                  skillId,
+                  versionId: currentVersionId,
+                }}
+                wakerId={wakerId}
+                usable={Boolean(
+                  wakerId &&
+                  currentVersionId &&
+                  detailQuery.data?.enabled &&
+                  !detailQuery.isError,
+                )}
+              />
+            )}
+            {skill && shownPartners.length > 0 && (
+              <DetailSection
+                appearance="catalog"
+                title={t("detail.installedPartners")}
+              >
+                <ResourceCatalogRows>
+                  {shownPartners.map((partner) => {
+                    const name =
+                      partner.name || t("common:partnerNavigation.partner");
+                    return (
+                      <ResourceCatalogRow
+                        key={partner.id}
+                        className="flex-wrap"
+                      >
+                        <ResourcePartnerAvatar
+                          name={name}
+                          avatar={partner.avatar}
+                          size="md"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <h3
+                            className="type-resource-body text-resource-content truncate font-medium"
+                            title={name}
+                          >
+                            {name}
+                          </h3>
+                          {wakerId && currentVersionNumber && (
+                            <p className="type-resource-caption text-resource-muted">
+                              v{currentVersionNumber}
+                            </p>
+                          )}
+                        </div>
+                        {wakerId && (
+                          <div className="ml-auto flex max-w-full flex-wrap items-center gap-2">
+                            {skill.source === "git" && (
+                              <SkillGitPullDialog
+                                currentVersion={currentVersionNumber}
+                                error={pullUpdate.isError}
+                                pending={pullUpdate.isPending}
+                                onPull={(version, notes, onSuccess) =>
+                                  pullUpdate.mutate(
+                                    {
+                                      path: { wakerId, skillId },
+                                      body: { version, notes },
+                                    },
+                                    { onSuccess },
+                                  )
+                                }
+                              />
+                            )}
+                            <Switch
+                              hitArea="comfortable"
+                              checked={detailQuery.data?.enabled ?? false}
+                              disabled={toggleSkill.isPending}
+                              aria-label={t(
+                                detailQuery.data?.enabled
+                                  ? "detail.disable"
+                                  : "detail.enable",
+                                { name: skill.name },
+                              )}
+                              onClick={() =>
+                                toggleSkill.mutate({
+                                  path: { wakerId, skillId },
+                                  body: {
+                                    enabled: !(
+                                      detailQuery.data?.enabled ?? false
+                                    ),
+                                  },
+                                })
+                              }
+                            />
+                            <Button
+                              size="catalog"
+                              variant="catalog-danger"
+                              onClick={() => setDeleteOpen(true)}
+                            >
+                              {t("detail.remove")}
+                            </Button>
+                          </div>
+                        )}
+                        {!wakerId && (
+                          <Button
+                            size="catalog"
+                            variant="catalog-danger"
+                            disabled={!partner.id}
+                            onClick={() => {
+                              if (partner.id)
+                                setRemovingPartner({ id: partner.id, name });
+                            }}
+                          >
+                            {t("detail.remove")}
+                          </Button>
+                        )}
+                      </ResourceCatalogRow>
+                    );
+                  })}
+                </ResourceCatalogRows>
+                {toggleSkill.isError && (
+                  <p
+                    role="alert"
+                    className="text-destructive type-resource-caption px-4 pb-3"
+                  >
+                    {localApiErrorMessage(toggleSkill.error, t("toggleFailed"))}
+                  </p>
+                )}
+              </DetailSection>
+            )}
+            {/* 文件与版本是本项目在 OpenBot 文档区上的明确扩展，切换保留未提交内容。 */}
+            <section className="min-w-0 space-y-4">
+              <div className="min-w-0 overflow-x-auto">
+                <SegmentedControl
+                  value={tab}
+                  onValueChange={setTab}
+                  ariaLabel={t("detail.tabs")}
+                  appearance="shell"
+                  size="sm"
+                  distribution="fill"
+                  options={[
+                    { value: "explanation", label: t("detail.content") },
+                    {
+                      value: "resources",
+                      label: `${t("detail.resources")} ${countSkillResourceFiles(resources)}`,
+                    },
+                    {
+                      value: "version",
+                      label: t("detail.version"),
+                    },
+                  ]}
                 />
               </div>
-            ) : (
-              <div className="mt-4">
-                <div hidden={tab !== "explanation"}>
-                  {!currentVersionQuery.data ? (
-                    <QueryState
-                      loadingLayout="content"
-                      pending={currentVersionQuery.isPending}
-                      error={currentVersionQuery.error}
-                      onRetry={() => void currentVersionQuery.refetch()}
-                    />
-                  ) : (
-                    <SkillInstructionsPanel content={instructions} />
-                  )}
-                </div>
-                <div hidden={tab !== "resources"}>
-                  {currentVersionQuery.data ? (
-                    <SkillResourceBrowser
-                      key={`${skillId}:${currentVersionId}`}
-                      resources={resources}
-                      instructions={instructions}
-                      wakerId={wakerId}
-                      skillId={skillId}
-                      versionId={currentVersionId}
-                      currentVersion={currentVersionNumber}
-                      pending={createVersion.isPending}
-                      error={createVersion.isError}
-                      onSave={saveVersion}
-                    />
-                  ) : (
-                    <QueryState
-                      loadingLayout="content"
-                      pending={currentVersionQuery.isPending}
-                      error={currentVersionQuery.error}
-                      onRetry={() => void currentVersionQuery.refetch()}
-                    />
-                  )}
-                </div>
-                <div hidden={tab !== "version"}>
-                  {!versionsQuery.data ? (
-                    <QueryState
-                      loadingLayout="content"
-                      pending={versionsQuery.isPending}
-                      error={versionsQuery.error}
-                      onRetry={() => void versionsQuery.refetch()}
-                    />
-                  ) : (
-                    <SkillVersionHistory
-                      currentVersionId={currentVersionId}
-                      currentVersion={currentVersionNumber}
-                      onVersionClick={(version) =>
-                        version.id && setDiffVersionId(version.id)
-                      }
-                      versions={versionsQuery.data ?? []}
-                    />
-                  )}
-                </div>
+              <div hidden={tab !== "explanation"}>
+                {currentVersionQuery.data && currentVersionQuery.isError && (
+                  <QueryRefreshError
+                    error={currentVersionQuery.error}
+                    pending={currentVersionQuery.isFetching}
+                    onRetry={() =>
+                      void (skill
+                        ? currentVersionQuery.refetch()
+                        : detailQuery.refetch())
+                    }
+                  />
+                )}
+                {!currentVersionQuery.data ? (
+                  <QueryState
+                    loadingLayout="content"
+                    pending={
+                      detailQuery.isPending ||
+                      Boolean(
+                        skill &&
+                        currentVersionId &&
+                        currentVersionQuery.isPending,
+                      )
+                    }
+                    error={detailQuery.error ?? currentVersionQuery.error}
+                    emptyLabel={t("detail.notFound")}
+                    onRetry={() =>
+                      void (skill
+                        ? currentVersionQuery.refetch()
+                        : detailQuery.refetch())
+                    }
+                  />
+                ) : (
+                  <SkillInstructionsPanel
+                    content={instructions}
+                    name={skill?.name}
+                    embedded
+                  />
+                )}
               </div>
+              <div hidden={tab !== "resources"}>
+                {currentVersionQuery.data && currentVersionQuery.isError && (
+                  <QueryRefreshError
+                    error={currentVersionQuery.error}
+                    pending={currentVersionQuery.isFetching}
+                    onRetry={() =>
+                      void (skill
+                        ? currentVersionQuery.refetch()
+                        : detailQuery.refetch())
+                    }
+                  />
+                )}
+                {currentVersionQuery.data ? (
+                  <SkillResourceBrowser
+                    active={active && tab === "resources"}
+                    key={`${skillId}:${currentVersionId}`}
+                    resources={resources}
+                    instructions={instructions}
+                    wakerId={wakerId}
+                    skillId={skillId}
+                    versionId={currentVersionId}
+                    currentVersion={currentVersionNumber}
+                    pending={createVersion.isPending}
+                    error={createVersion.isError}
+                    onSave={saveVersion}
+                  />
+                ) : (
+                  <QueryState
+                    loadingLayout="content"
+                    pending={
+                      detailQuery.isPending ||
+                      Boolean(
+                        skill &&
+                        currentVersionId &&
+                        currentVersionQuery.isPending,
+                      )
+                    }
+                    error={detailQuery.error ?? currentVersionQuery.error}
+                    emptyLabel={t("detail.notFound")}
+                    onRetry={() =>
+                      void (skill
+                        ? currentVersionQuery.refetch()
+                        : detailQuery.refetch())
+                    }
+                  />
+                )}
+              </div>
+              <div hidden={tab !== "version"}>
+                {versionsQuery.data && versionsQuery.isError && (
+                  <QueryRefreshError
+                    error={versionsQuery.error}
+                    pending={versionsQuery.isFetching}
+                    onRetry={() => void versionsQuery.refetch()}
+                  />
+                )}
+                {!versionsQuery.data ? (
+                  <QueryState
+                    loadingLayout="content"
+                    pending={
+                      detailQuery.isPending ||
+                      Boolean(skill && versionsQuery.isPending)
+                    }
+                    error={detailQuery.error ?? versionsQuery.error}
+                    emptyLabel={t("detail.notFound")}
+                    onRetry={() =>
+                      void (skill
+                        ? versionsQuery.refetch()
+                        : detailQuery.refetch())
+                    }
+                  />
+                ) : (
+                  <SkillVersionHistory
+                    currentVersionId={currentVersionId}
+                    currentVersion={currentVersionNumber}
+                    onVersionClick={(version) =>
+                      version.id && setDiffVersionId(version.id)
+                    }
+                    versions={versionsQuery.data ?? []}
+                  />
+                )}
+              </div>
+            </section>
+            {skill && (
+              <SkillMetadataCard
+                category={
+                  skill.categories?.join("、") || t("category.uncategorized")
+                }
+                description={metadataDescription}
+                source={sourceLabel}
+                sourceURL={skill.gitUrl}
+                version={currentVersionNumber}
+                updatedAt={skill.updatedAt}
+              />
             )}
-          </section>
+            {skill && !wakerId && (
+              <DetailSection
+                appearance="catalog"
+                title={t("detail.dangerZone")}
+              >
+                <ResourceCatalogRow className="flex-wrap">
+                  <div className="min-w-0 flex-1 basis-60 space-y-1">
+                    <h3 className="type-resource-body text-resource-content font-medium">
+                      {t("detail.delete")}
+                    </h3>
+                    <p className="type-resource-caption text-resource-muted">
+                      {t("detail.deleteHelp", {
+                        count: detailQuery.data?.affectedWakerCount ?? 0,
+                      })}
+                    </p>
+                  </div>
+                  <Button
+                    size="catalog"
+                    variant="catalog-danger"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    {t("detail.delete")}
+                  </Button>
+                </ResourceCatalogRow>
+              </DetailSection>
+            )}
+          </>
         </main>
       </ResourcePageSurface>
 
@@ -432,7 +635,7 @@ export function SkillDetailPage() {
         theme={resolvedTheme}
         t={t}
       />
-      {deleteOpen ? (
+      {deleteOpen || removingPartner ? (
         <SkillDeleteDialog
           key={skillId}
           open
@@ -441,12 +644,17 @@ export function SkillDetailPage() {
               affectedWakerCount: detailQuery.data?.affectedWakerCount ?? 1,
               id: skillId,
               name: skill?.name ?? "",
-              scope: skill?.scope === "public" ? "public" : "private",
             },
           ]}
-          wakerId={wakerId}
-          onOpenChange={setDeleteOpen}
-          onDeleted={() => navigate(back)}
+          wakerId={removingPartner?.id ?? wakerId}
+          partnerName={removingPartner?.name ?? currentPartner?.name}
+          onOpenChange={(open) => {
+            if (!open) setRemovingPartner(null);
+            setDeleteOpen(open);
+          }}
+          onDeleted={() => {
+            if (wakerId || !removingPartner) navigate(breadcrumbBack);
+          }}
         />
       ) : null}
     </WakerDetailLayout>

@@ -131,7 +131,7 @@ it("忽略旧收起字段，并把过小旧宽度钳制到216，不丢弃实体�
 });
 
 it("Rail默认顺序与pin选择恢复，未知版本的boolean选择仍保留", () => {
-  expect(pinnedAppModules()).toEqual(["workflows", "work-board", "usage"]);
+  expect(pinnedAppModules()).toEqual(["work-board", "usage"]);
   window.localStorage.setItem(
     "ally.partner-navigation",
     JSON.stringify({

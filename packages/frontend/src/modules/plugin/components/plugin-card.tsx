@@ -1,184 +1,101 @@
-import { LockKeyhole, Plus, Trash2 } from "lucide-react";
+import { Check, Plus, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/shared/ui/button";
-import { Switch } from "@/shared/ui/switch";
-import { Checkbox } from "@/shared/ui/checkbox";
-import {
-  ResourceItemAction,
-  ResourceListItem,
-} from "@/shared/ui/resource-list-item";
-import {
-  ResourceManagementCard,
-  ResourcePartnerUsage,
-  ResourceMoreAction,
-} from "@/shared/ui/resource-management-card";
-import { DropdownMenuItem } from "@/shared/ui/dropdown-menu";
+import { ResourceListItem } from "@/shared/ui/resource-list-item";
+import { ResourceCatalogStatus } from "@/shared/ui/resource-catalog";
 import { PluginIcon } from "./plugin-icon";
+import {
+  pluginBrowseHref,
+  type PluginBrowseEntry,
+} from "../model/plugin-browse";
 import {
   pluginDisplayName,
   pluginInstalledVersion,
   pluginSummary,
-  pluginNeedsAuthorization,
   type PluginDetail,
-  type PluginCatalogEntry,
 } from "../model/plugin-view";
+
+/** 条目只展示身份与当前状态；维护操作由详情承载。 */
 export function PluginCard({
+  entry,
   detail,
-  catalog,
   wakerId = "",
   onInstall,
   onUpdate,
-  onToggle,
-  onRemove,
   pending = false,
-  selected = false,
-  onSelectedChange,
 }: {
+  entry?: PluginBrowseEntry;
   detail?: PluginDetail;
-  catalog?: PluginCatalogEntry;
   wakerId?: string;
-  onInstall: () => void;
+  onInstall?: () => void;
   onUpdate?: () => void;
-  onToggle?: (enabled: boolean) => void;
-  onRemove?: () => void;
   pending?: boolean;
-  selected?: boolean;
-  onSelectedChange?: (selected: boolean) => void;
 }) {
   const { t } = useTranslation("plugin");
-  const relation = detail?.installations?.find(
-    (item) => item.wakerId === wakerId,
-  );
-  const version = pluginInstalledVersion(detail, wakerId);
-  const pkg = catalog?.package ?? version?.package;
-  const needsAuthorization = pluginNeedsAuthorization(pkg, detail);
-  const mine = Boolean(detail && !catalog);
-  const name = pluginDisplayName(pkg, detail?.plugin?.name);
-  const to = catalog
-    ? `/resources/plugins/catalog/${catalog.key}`
-    : wakerId
-      ? `/wakers/${wakerId}/plugins/${detail?.plugin?.id}`
-      : `/resources/plugins/${detail?.plugin?.id}`;
-  const description = pluginSummary(
-    pkg,
-    detail?.plugin?.description,
-    catalog
-      ? (catalog.sourceKey ?? `catalog:${catalog.key}`)
-      : detail?.plugin?.sourceKey,
-  );
-  const installations = (detail?.installations ?? []).filter(
-    (item) => !wakerId || item.wakerId === wakerId,
-  );
-  if (mine)
-    return (
-      <ResourceManagementCard
-        title={name}
-        description={description}
-        icon={<PluginIcon pkg={pkg} />}
-        to={to}
-        label={t("viewPlugin", { name })}
-        selected={selected}
-        selection={
-          onSelectedChange && (
-            <Checkbox
-              size="sm"
-              checked={selected}
-              aria-label={t("selectNamed", { name })}
-              onCheckedChange={(checked) => onSelectedChange(checked === true)}
-            />
-          )
-        }
-        control={
-          <div className="flex items-center gap-2">
-            {detail?.update?.available && onUpdate && (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={pending}
-                onClick={onUpdate}
-              >
-                {t("updateAvailable")}
-              </Button>
-            )}
-            {relation && onToggle && (
-              <Switch
-                hitArea="comfortable"
-                checked={relation.enabled ?? false}
-                disabled={pending}
-                aria-label={t("enable")}
-                onClick={() => onToggle(!relation.enabled)}
-              />
-            )}
-          </div>
-        }
-        usage={
-          <ResourcePartnerUsage
-            count={installations.length}
-            partners={installations.map((item) => ({
-              id: item.wakerId ?? "",
-              name: detail?.partnerNames?.[item.wakerId ?? ""] || t("unknown"),
-              avatar: detail?.partnerAvatars?.[item.wakerId ?? ""],
-            }))}
-          />
-        }
-        actions={
-          <>
-            {needsAuthorization && (
-              <span className="type-caption text-warning flex items-center gap-1">
-                <LockKeyhole className="size-icon-sm" />
-                {t("requiresAuthorization")}
-              </span>
-            )}
-            <ResourceMoreAction to={to} name={name}>
-              {(!wakerId || needsAuthorization) && (
-                <DropdownMenuItem onSelect={onInstall}>
-                  {needsAuthorization ? <LockKeyhole /> : <Plus />}
-                  {t(needsAuthorization ? "authorize" : "installToPartners")}
-                </DropdownMenuItem>
-              )}
-              {onRemove && (
-                <DropdownMenuItem
-                  className="text-destructive data-[highlighted]:text-destructive"
-                  onSelect={onRemove}
-                >
-                  <Trash2 />
-                  {t(wakerId ? "uninstall" : "remove")}
-                </DropdownMenuItem>
-              )}
-            </ResourceMoreAction>
-          </>
-        }
-      />
-    );
+  const pkg = pluginInstalledVersion(detail, wakerId)?.package;
+  const name = entry
+    ? (entry.name ?? "")
+    : pluginDisplayName(pkg, detail?.plugin?.name);
+  const description = entry
+    ? entry.description
+    : pluginSummary(pkg, detail?.plugin?.description);
+  const to = entry
+    ? pluginBrowseHref(entry)
+    : `/wakers/${encodeURIComponent(wakerId)}/plugins/${encodeURIComponent(detail?.plugin?.id ?? "")}`;
+  const installed = entry
+    ? (entry.installedCount ?? 0) > 0
+    : Boolean(
+        detail?.installations?.some((relation) => relation.wakerId === wakerId),
+      );
   return (
     <ResourceListItem
+      appearance="row"
+      headingLevel={3}
       title={name}
       description={description}
       descriptionLines={1}
-      icon={<PluginIcon pkg={pkg} />}
+      icon={<PluginIcon icon={entry?.icon} icons={entry?.icons} pkg={pkg} />}
       to={to}
       label={t("viewPlugin", { name })}
       actions={
-        needsAuthorization ? (
+        entry?.requiresAuthorization && onInstall ? (
           <Button
-            variant="ghost"
-            size="sm"
+            size="catalog"
+            variant="catalog-outline"
             disabled={pending}
             aria-label={t("authorizeNamed", { name })}
             onClick={onInstall}
           >
+            <TriangleAlert aria-hidden="true" />
             {t("authorize")}
           </Button>
-        ) : (
-          <ResourceItemAction
-            variant="ghost"
+        ) : entry?.update?.available && onUpdate ? (
+          <Button
+            size="catalog"
+            variant="catalog-secondary"
             disabled={pending}
-            label={t("installNamed", { name })}
+            aria-label={t("updateNamed", { name })}
+            onClick={onUpdate}
+          >
+            {t("updateAvailable")}
+          </Button>
+        ) : installed ? (
+          <ResourceCatalogStatus>
+            <Check aria-hidden="true" className="size-icon-md text-success" />
+            {t("installed")}
+          </ResourceCatalogStatus>
+        ) : onInstall ? (
+          <Button
+            size="catalog"
+            variant="catalog-secondary"
+            disabled={pending}
+            aria-label={t("installNamed", { name })}
             onClick={onInstall}
           >
-            <Plus />
-          </ResourceItemAction>
-        )
+            <Plus aria-hidden="true" />
+            {t("install")}
+          </Button>
+        ) : undefined
       }
     />
   );

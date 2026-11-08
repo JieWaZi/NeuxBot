@@ -62,6 +62,11 @@ export type ChatMemberMentionOption = {
   name: string;
 };
 
+export type ChatComposerDraftReference = {
+  kind: "skill" | "plugin" | "connector";
+  id: string;
+};
+
 type ChatComposerInputProps = {
   autoFocus?: boolean;
   placeholder: string;
@@ -95,6 +100,7 @@ type ChatComposerInputProps = {
   contextReferences?: ChatComposerContextReference[];
   onContextReferencesChange?: (ids: string[]) => void;
   draft?: string;
+  draftReference?: ChatComposerDraftReference;
   clearRevision?: number;
   restoreRevision?: number;
   disabled?: boolean;
@@ -376,6 +382,7 @@ export function ChatComposerInput({
   contextReferences = noContextReferences,
   onContextReferencesChange,
   draft,
+  draftReference,
   clearRevision = 0,
   restoreRevision = 0,
   disabled = false,
@@ -427,6 +434,7 @@ export function ChatComposerInput({
     undefined,
   );
   const handledDraftRef = useRef<string | undefined>(draft ? undefined : draft);
+  const handledDraftReferenceRef = useRef("");
   const handledClearRevisionRef = useRef(clearRevision);
   const handledRestoreRevisionRef = useRef(restoreRevision);
 
@@ -787,13 +795,13 @@ export function ChatComposerInput({
             class: cn(
               "bg-action-quiet-hover text-content-primary type-body inline-flex max-w-full items-center rounded-full px-2 py-0.5 font-medium",
               node.attrs.referenceType === "skill" &&
-                "bg-primary/12 text-primary",
+                "bg-accent-surface text-accent-content",
               node.attrs.referenceType === "connector" &&
                 "bg-success/12 text-success",
               node.attrs.referenceType === "code" &&
                 "bg-success/12 text-success",
               node.attrs.referenceType === "member" &&
-                "bg-primary/12 text-primary",
+                "bg-accent-surface text-accent-content",
             ),
             "data-chat-composer-reference": node.attrs.id,
             title:
@@ -977,6 +985,46 @@ export function ChatComposerInput({
       editor.off("create", applyDraft);
     };
   }, [draft, editor]);
+
+  // 来源草稿的引用等待真实可用资料；一次性写入现有 Mention 文档，不会随刷新或删除重插。
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !draftReference) return;
+    const key = `${draftReference.kind}:${draftReference.id}`;
+    if (handledDraftReferenceRef.current === key) return;
+    const options = { skill: skills, plugin: plugins, connector: connectors };
+    const option = options[draftReference.kind].find(
+      (item) => item.id === draftReference.id,
+    );
+    if (!option) return;
+    const apply = () => {
+      if (editor.isDestroyed || handledDraftReferenceRef.current === key)
+        return;
+      handledDraftReferenceRef.current = key;
+      editor
+        .chain()
+        .setMeta(contextReferenceSync, true)
+        .setMeta("addToHistory", false)
+        .insertContentAt(1, [
+          {
+            type: "mention",
+            attrs: {
+              id: option.id,
+              label: option.name,
+              referenceType: draftReference.kind,
+              mentionSuggestionChar:
+                draftReference.kind === "connector" ? "#" : "/",
+            },
+          },
+          { type: "text", text: " " },
+        ])
+        .run();
+    };
+    if (editor.isInitialized) apply();
+    else editor.on("create", apply);
+    return () => {
+      editor.off("create", apply);
+    };
+  }, [editor, draftReference, skills, plugins, connectors]);
 
   useLayoutEffect(() => {
     if (!editor || handledClearRevisionRef.current === clearRevision) return;

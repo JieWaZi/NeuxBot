@@ -31,14 +31,33 @@ describe("应用模块归属", () => {
     ["/teams", "partners", "partners", "/wakers?tab=teams"],
     ["/wakers?tab=teams", "partners", "partners", "/wakers?tab=teams"],
     ["/chats/c1?wakerId=w1", "partners", "partners", "/wakers"],
+    ["/resources/plugins/p1/skills/s1", "resources", "resources", "/resources"],
     [
-      "/resources/plugins/p1/skills/s1",
+      "/resources/plugins/p1/connectors/c1",
+      "resources",
+      "resources",
+      "/resources",
+    ],
+    [
+      "/resources/plugins/catalog/github/connectors/github",
+      "resources",
+      "resources",
+      "/resources",
+    ],
+    [
+      "/resources/plugins/catalog/office/skills/guide",
+      "resources",
+      "resources",
+      "/resources",
+    ],
+    [
+      "/resources/skills/s1",
       "resources",
       "resources",
       "/resources?category=skills",
     ],
     [
-      "/resources/plugins/p1/connectors/c1",
+      "/resources/connectors/c1",
       "resources",
       "resources",
       "/resources?category=connectors",
@@ -46,13 +65,19 @@ describe("应用模块归属", () => {
     ["/resources/plugins/p1", "resources", "resources", "/resources"],
     [
       "/resources?category=workflows&search=demo",
-      "workflows",
+      "resources",
+      "resources",
+      "/resources?category=workflows",
+    ],
+    ["/workflows", "resources", "resources", "/resources?category=workflows"],
+    [
+      "/workflows/new?draftId=d1",
+      "resources",
       "none",
       "/resources?category=workflows",
     ],
-    ["/workflows", "workflows", "none", "/resources?category=workflows"],
-    ["/workflows/f1/runs/r1", "workflows", "none", "/workflows/f1"],
-    ["/workflows/f1", "workflows", "none", "/resources?category=workflows"],
+    ["/workflows/f1/runs/r1", "resources", "none", "/workflows/f1"],
+    ["/workflows/f1", "resources", "none", "/resources?category=workflows"],
     ["/work-board", "work-board", "none", "/work-board"],
     ["/usage?groupBy=model", "usage", "none", "/usage"],
     [
@@ -86,7 +111,6 @@ describe("应用模块归属", () => {
 describe("模块入口目标", () => {
   it.each([
     ["partners", "/wakers"],
-    ["workflows", "/resources?category=workflows"],
     ["work-board", "/work-board"],
     ["usage", "/usage"],
     ["resources", "/resources"],

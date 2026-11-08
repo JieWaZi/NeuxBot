@@ -1,14 +1,13 @@
-export type SkillScope = "built_in" | "private" | "public";
-
-export type SkillSource = "ally" | "git" | "zip";
+export type SkillSource = "git" | "zip";
 
 export type SkillSummary = {
   id: string;
   name: string;
   description: string;
+  categories?: string[];
   version: string;
-  scope: SkillScope;
   source: SkillSource;
+  sourceUrl?: string;
   enabled: boolean;
   affectedWakerCount: number;
   installedPartners?: { id: string; name: string; avatar?: string }[];

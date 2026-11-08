@@ -3,24 +3,22 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Package, Sparkles, Cable, Plus } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
-  PluginResourceCollection,
-  PluginComponentCollection,
-  usePluginComponents,
-  PartnerPicker,
-} from "@/modules/plugin";
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
+import { PluginResourceCollection, PartnerPicker } from "@/modules/plugin";
 import { SkillResourceCollection } from "@/modules/skill";
 import { WorkflowResourceCollection } from "@/modules/workflow";
 import { ConnectorResourceCollection } from "@/modules/connector";
 import {
   ResourcePageSurface,
   ResourcePageHeader,
-  ResourcePageSearchField,
-  PageActionLabel,
-  PageAction,
 } from "@/shared/ui/resource-page";
-import { ResourceFilterSelect } from "@/shared/ui/resource-filter-select";
+import { SearchField } from "@/shared/ui/search-field";
+import { SceneBreadcrumbs } from "@/shared/ui/scene-breadcrumbs";
 import { StatusNotice } from "@/shared/ui/status-notice";
 import { SegmentedControl } from "@/shared/ui/segmented-control";
 import { Button } from "@/shared/ui/button";
@@ -45,27 +43,19 @@ export function ResourcesPage() {
   const { wakerId = "" } = useParams();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const category = resourceCategoryFromParams(params, wakerId);
   const search = params.get("search") ?? "";
-  const source: "all" | "plugins" | "independent" =
-    params.get("source") === "plugins"
-      ? "plugins"
-      : params.get("source") === "independent"
-        ? "independent"
-        : "all";
-  const view = params.get("view") === "mine" ? "mine" : "catalog";
-  const [adding, setAdding] = useState(false);
-  const [addingCategory, setAddingCategory] = useState(category);
-  if (addingCategory !== category) {
-    setAddingCategory(category);
-    setAdding(false);
-  }
-  const components = usePluginComponents(
-    category === "connectors" ? "connectors" : "skills",
-    wakerId,
-    search,
-    category === "skills" || category === "connectors",
-  );
+  const skillCategory = params.get("skillCategory");
+  const skillCategoryName = skillCategory || t("skill:category.uncategorized");
+  const skillSearchLabel =
+    skillCategory === null
+      ? t("skill:search")
+      : t("skill:category.searchIn", { name: skillCategoryName });
+  const skillLibraryParams = new URLSearchParams(params);
+  skillLibraryParams.delete("skillCategory");
+  skillLibraryParams.delete("source");
+  const skillLibraryHref = `${wakerId ? `/wakers/${wakerId}/resources` : "/resources"}?${skillLibraryParams}`;
   const [installation, setInstallation] = useState<Installation | null>(null);
   const setParam = (key: string, value: string) =>
     setParams((current) => {
@@ -74,88 +64,140 @@ export function ResourcesPage() {
       else next.delete(key);
       next.delete("page");
       next.delete("componentPage");
+      next.delete("source");
       return next;
     });
 
   const searchField = (
-    <ResourcePageSearchField
+    <SearchField
+      appearance="catalog"
+      size="md"
+      width="full"
       value={search}
-      aria-label={category === "workflows" ? t("workflow:search") : t("search")}
+      aria-label={
+        category === "skills"
+          ? skillSearchLabel
+          : t(
+              category === "connectors"
+                ? "connector:search"
+                : category === "workflows"
+                  ? "workflow:search"
+                  : "searchPlugins",
+            )
+      }
       placeholder={
-        category === "workflows" ? t("workflow:search") : t("search")
+        category === "skills"
+          ? skillSearchLabel
+          : t(
+              category === "connectors"
+                ? "connector:search"
+                : category === "workflows"
+                  ? "workflow:search"
+                  : "searchPlugins",
+            )
       }
       onChange={(event) => setParam("search", event.target.value)}
     />
   );
-  const setSource = (value: "all" | "plugins" | "independent") =>
-    setParam("source", value === "all" ? "" : value);
-  const capabilityProps = {
-    source,
-    onSourceChange: setSource,
-    filters: (
-      <>
-        <ResourceFilterSelect
-          value={source}
-          onValueChange={setSource}
-          ariaLabel={t("sourceFilter")}
-          options={[
-            { value: "all", label: t("allSources") },
-            { value: "plugins", label: t("fromPlugins") },
-            { value: "independent", label: t("independentResources") },
-          ]}
-        />
-        {searchField}
-      </>
-    ),
-    pluginCount: components.items.length,
-    pluginEmpty: components.isSuccess && components.items.length === 0,
-    pluginContent: source !== "independent" && (
-      <PluginComponentCollection
-        key={`${category}:${search}:${source}`}
-        kind={category === "skills" ? "skills" : "connectors"}
-        wakerId={wakerId}
-        resources={components}
-        preview={source === "all"}
-        onSourceSelect={() => setSource("plugins")}
-      />
-    ),
-  };
+  const skillAddAction = (
+    <Button
+      variant="catalog-primary"
+      size="catalog"
+      className="shrink-0 whitespace-nowrap"
+      onClick={() =>
+        navigate(
+          `${wakerId ? `/wakers/${wakerId}/resources` : "/resources"}/skills/new?${new URLSearchParams({ returnTo: location.pathname + location.search })}`,
+        )
+      }
+    >
+      <Plus />
+      {t("addSkill")}
+    </Button>
+  );
+  const connectorAddAction = (
+    <Button
+      variant="catalog-primary"
+      size="catalog"
+      className="shrink-0 whitespace-nowrap"
+      onClick={() =>
+        navigate(
+          `${wakerId ? `/wakers/${wakerId}/resources` : "/resources"}/connectors/new?${new URLSearchParams({ returnTo: location.pathname + location.search })}`,
+        )
+      }
+    >
+      <Plus />
+      {t("addConnector")}
+    </Button>
+  );
+  const workflowCreateAction = (
+    <Button
+      variant="catalog-primary"
+      size="catalog"
+      className="shrink-0 whitespace-nowrap"
+      onClick={() =>
+        navigate(`/workflows/new?draftId=${crypto.randomUUID()}`, {
+          state: { resourceBack: location.pathname + location.search },
+        })
+      }
+    >
+      <Plus />
+      {t("workflow:create")}
+    </Button>
+  );
   const targetPartner = params.get("partner") || undefined;
   return (
-    <WakerDetailLayout active="resources" showBreadcrumbs={Boolean(wakerId)}>
-      <ResourcePageSurface>
+    <WakerDetailLayout
+      active="resources"
+      showBreadcrumbs={
+        Boolean(wakerId) && !(category === "skills" && skillCategory !== null)
+      }
+      breadcrumbItems={[
+        { label: t(category === "workflows" ? "workflow:title" : category) },
+      ]}
+    >
+      {(!wakerId || (category === "skills" && skillCategory !== null)) && (
+        <SceneBreadcrumbs
+          ariaLabel={t(category === "workflows" ? "workflow:title" : category)}
+          items={
+            category === "skills" && skillCategory !== null
+              ? [
+                  { label: t("skills"), href: skillLibraryHref },
+                  { label: skillCategoryName },
+                ]
+              : [
+                  {
+                    label: t(
+                      category === "workflows" ? "workflow:title" : category,
+                    ),
+                  },
+                ]
+          }
+        />
+      )}
+      <ResourcePageSurface appearance="catalog">
         <ResourcePageHeader
-          title={wakerId ? t("partnerResources") : t("title")}
-          description={t(wakerId ? "description" : "libraryDescription")}
-          actions={
-            category !== "plugins" && (
-              <PageAction
-                intent="primary"
-                aria-label={t(
-                  category === "workflows"
-                    ? "workflow:create"
-                    : category === "skills"
-                      ? "addSkill"
-                      : "addConnector",
-                )}
-                onClick={() =>
-                  category === "workflows"
-                    ? navigate(`/workflows/new?draftId=${crypto.randomUUID()}`)
-                    : setAdding(true)
-                }
-              >
-                <Plus />
-                <PageActionLabel>
-                  {t(
-                    category === "workflows"
-                      ? "workflow:create"
-                      : category === "skills"
-                        ? "addSkill"
-                        : "addConnector",
-                  )}
-                </PageActionLabel>
-              </PageAction>
-            )
+          appearance="catalog"
+          title={
+            category === "skills" && skillCategory !== null
+              ? skillCategory || t("skill:category.uncategorized")
+              : wakerId
+                ? t("partnerResources")
+                : t(category === "workflows" ? "workflow:title" : category)
+          }
+          description={
+            category === "plugins"
+              ? t("browseDescription")
+              : category === "skills"
+                ? skillCategory === null
+                  ? t("skill:libraryDescription")
+                  : undefined
+                : category === "connectors"
+                  ? t(
+                      wakerId
+                        ? "connector:description"
+                        : "connector:libraryDescription",
+                    )
+                  : t("workflow:subtitle")
           }
         />
         {wakerId ? (
@@ -187,7 +229,6 @@ export function ResourcesPage() {
               onValueChange={(value) =>
                 setParams((current) => {
                   const next = changeResourceCategory(current, value);
-                  setAdding(false);
                   return next;
                 })
               }
@@ -201,29 +242,57 @@ export function ResourcesPage() {
               targetPartnerId={targetPartner}
               searchField={searchField}
               search={search}
-              view={view}
-              onViewChange={(value) => setParam("view", value)}
             />
           ) : category === "skills" ? (
             <SkillResourceCollection
-              {...capabilityProps}
               wakerId={wakerId}
-              adding={adding}
-              onAddingChange={setAdding}
               search={search}
+              filters={
+                <>
+                  <div className="basis-field-search-min min-w-0 grow">
+                    {searchField}
+                  </div>
+                  {skillCategory === null && skillAddAction}
+                </>
+              }
+              category={skillCategory}
+              onCategoryChange={(value) =>
+                setParams((current) => {
+                  const next = new URLSearchParams(current);
+                  next.delete("source");
+                  if (value === null) next.delete("skillCategory");
+                  else next.set("skillCategory", value);
+                  return next;
+                })
+              }
               onInstall={(id, name) =>
                 setInstallation({ kind: "skill", id, name })
               }
             />
           ) : category === "workflows" ? (
-            <WorkflowResourceCollection search={search} filters={searchField} />
+            <WorkflowResourceCollection
+              search={search}
+              filters={
+                <>
+                  <div className="basis-field-search-min min-w-0 grow">
+                    {searchField}
+                  </div>
+                  {workflowCreateAction}
+                </>
+              }
+            />
           ) : (
             <ConnectorResourceCollection
-              {...capabilityProps}
               wakerId={wakerId}
-              adding={adding}
-              onAddingChange={setAdding}
               search={search}
+              filters={
+                <>
+                  <div className="basis-field-search-min min-w-0 grow">
+                    {searchField}
+                  </div>
+                  {connectorAddAction}
+                </>
+              }
               onInstall={(id, name) =>
                 setInstallation({ kind: "connector", id, name })
               }
